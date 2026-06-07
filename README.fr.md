@@ -11,8 +11,7 @@
 <p align="center">
   <a href="https://sysreseval.github.io/sysreseval/html/main/index.html">Documentation principale (HTML)</a> ·
   <a href="https://sysreseval.github.io/sysreseval/html/api/index.html">Référence de l'API</a> ·
-  <a href="docs/documentation.pdf">Manuel PDF</a> ·
-  <a href="README.md">English</a>
+  <a href="docs/documentation.pdf">Manuel PDF</a>
 </p>
 
 ---
