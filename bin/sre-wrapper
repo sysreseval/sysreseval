@@ -1,0 +1,15 @@
+#!/bin/bash
+
+if [[ ! "$USER" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+  echo "sre-wrapper: invalid username: '$USER'" >&2
+  exit 1
+fi
+export USER_USERNAME="$USER"
+_COOKIE="$(xauth list 2>/dev/null | head -n1 | awk '{print $3}')"
+if [[ "$_COOKIE" =~ ^[0-9A-Fa-f]+$ ]]; then
+  export SRE_XAUTH_COOKIE="$_COOKIE"
+fi
+_SCRIPT="${BASH_SOURCE[0]}"
+while [ -L "$_SCRIPT" ]; do _SCRIPT="$(readlink "$_SCRIPT")"; done
+DIR="$(cd "$(dirname "$_SCRIPT")" && pwd)"
+sudo "$DIR/../sbin/sre" --user "$@"

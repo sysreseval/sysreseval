@@ -1,0 +1,108 @@
+# Runtime Environment
+
+## Architecture
+
+```{graphviz}
+digraph architecture {
+    rankdir=TB;
+    graph [fontname="sans-serif", fontsize=11];
+    node  [fontname="sans-serif", fontsize=11, shape=box,
+           style="filled,rounded", margin="0.3,0.2"];
+    edge  [fontname="sans-serif", fontsize=10];
+
+    subgraph cluster_desktop {
+        label="Student desktop";
+        labeljust=l;
+        style=dashed;
+        color="#888888";
+        bgcolor="#fafafa";
+        margin=20;
+
+        gui [label="sysreseval  (PySide6 GUI)\lsrc/sysreseval/\l    main_window.py · project_widget.py\l    view/: machines · questions · evaluations · schema\l",
+             fillcolor="#dae8fc", color="#6c8ebf"];
+
+        wrapper [label="sre-wrapper  (bin/sre-wrapper, C binary)\l    • sets USER_USERNAME env var\l    • sudo /opt/sre/sbin/sre --user ...\l",
+                 fillcolor="#ffe6cc", color="#d6b656"];
+
+        cli [label="sre CLI  (src/sre.py → src/SRE/)\lcommand/: start · eval · stop · watch · sheet · cat …\llib_sre.py: Data0 · NetScheme0 · Grade0 · Flavor0\l",
+             fillcolor="#dae8fc", color="#6c8ebf"];
+
+        docker [label="Kathara / Docker\lRunning containers  ↔  exetests.py  (in container)\l",
+                fillcolor="#d5e8d4", color="#82b366"];
+
+        gui     -> wrapper [label="  calls via sre-wrapper"];
+        wrapper -> cli     [label="  setuid(sre_uid=1100)"];
+        cli     -> docker;
+    }
+}
+```
+
+Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper` exports `USER_USERNAME` and calls `sudo sre --user`; the CLI drops from root to `sre_uid` before doing anything.
+
+## Paths
+
+| Path | Description |
+|------|-------------|
+| `/opt/sre/` | Installation root |
+| `/opt/sre/sbin/sre` | CLI binary |
+| `/opt/sre/bin/sre-wrapper` | C binary for student use (handles sudo) |
+| `/opt/sre/bin/sysreseval` | GUI launcher script |
+| `/opt/sre/lab/` | Lab definitions (`srelab.py` modules) |
+| `/opt/sre/lib/` | Shared libraries (`ips.py`, `std.py`, `exetests.py`, `net_config.py`, `dhcp.py`, `ping.py`, `ssh.py`, `tls.py`, `grade_helpers.py`, `frr.py`, `state_helpers.py`, `pcap_gen.py`, `utils.py`) |
+| `/opt/sre/graphics/` | SVG icons and logos |
+| `/opt/sre/locale/` | Compiled gettext translations for the CLI |
+| `/var/lib/sre/` | Runtime state root (`sre_pub_dir`) |
+| `/var/lib/sre/exam.json` | Exam configuration (absent = no exam) |
+| `/var/lib/sre/projects/` | One directory per running lab instance |
+| `/var/lib/sre/archives/` | Default evaluation archive directory |
+| `/var/lib/sre/last_self_grades/` | Self-grade cooldown timestamps |
+| `/home/sre/` | Shared directories for projects with `shared_path=True` (mode `0o777`, removed on stop/wipe) |
+
+### Running lab directory
+
+```
+/var/lib/sre/projects/{timestamp}@@@{lab_name}@@@{username}/
+├── .private/               mode 0o700
+│   ├── data.json           serialized Data instance, mode 0o600
+│   ├── srelab              symlink to the lab's srelab.py
+│   ├── eval_in_progress    lock file (PID) during active eval
+│   └── auto_eval.log       one ISO timestamp per student self-evaluation
+├── info.json               public machine/question metadata (InfoLab)
+├── scheme.svg              graphviz network diagram
+├── answers/
+│   ├── answers.json        student answers (updated by GUI)
+│   └── cheat.json          instructor-provided answers (if any)
+└── shared/                 mode 0o777 (only if shared_path=True)
+```
+
+## Configuration constants (`src/SRE/params.py`)
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `sre_uid` | `1100` | UID of the `sre` system user |
+| `docker_gid` | `988` | GID of the `docker` group |
+| `max_docker_concurrency` | `16` | Max parallel Docker API calls during eval |
+| `default_eval_interval_during_exams` | `60` | Default auto-eval period (seconds) |
+| `default_exam_duration` | `90` | Default exam duration (minutes), used if `duration` absent from `exam.json` |
+| `default_inactivity_threshold_in_watch_command` | `90` | Default `sre watch` inactivity alert threshold |
+| `max_duration_between_exam_pre_start_and_start` | `60` | Window before `start_after` during which `pre-start-exam` fires (seconds) |
+| `email_in_gecos_last_field` | `True` | Extract last GECOS sub-field as student email |
+| `terminal_cmd_prefix` | `["/usr/bin/mate-terminal", "--"]` | External terminal emulator |
+| `terminal_font_size` | `12` | Default terminal font size (points) |
+| `terminal_color_scheme` | `"black_on_white"` | Default terminal colors |
+| `exam_only_affix` | `["_EXAM_", "_OLD_", "_DRAFT_", "_TESTS_"]` | Name substrings that hide labs from `sre list` |
+| `authorized_src_dir` | `['/opt/sre/lab', '/home/etudiant']` | Allowed lab source directories |
+| `hostname_keyword` / `login_keyword` / `fullname_keyword` / `email_keyword` / `language_keyword` | `"hostname"` / `"login"` / `"fullname"` / `"email"` / `"language"` | Keys used in `answers.json` and archive `answers` dict |
+
+## Environment variables
+
+| Variable | Used by | Description |
+|----------|---------|-------------|
+| `USER_USERNAME` | sre CLI (with `--user`) | Student login name |
+| `SRE_PUB_DIR` | sre CLI, GUI, tests | Override `/var/lib/sre` |
+| `SRE_WRAPPER` | params.py | Override the sre-wrapper path |
+| `LANG` | sre CLI | Loads French help strings when set to a French locale |
+
+## Locale
+
+The CLI uses `gettext` (`locale/fr/LC_MESSAGES/sre.mo`); the GUI uses Qt `.qm` catalogs (`translations/sysreseval_fr.qm`). Both are regenerated by `make translations`.

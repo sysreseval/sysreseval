@@ -1,0 +1,77 @@
+# Archive Format
+
+Every evaluation produces an archive — a `zstandard`-compressed `msgpack` file with the `.zst` extension that captures everything needed to reconstruct or re-grade the run later: the lab parameters, raw test outputs, student answers, and the computed grade table.
+
+## When and where archives are written
+
+| Writer | Trigger |
+|--------|---------|
+| `sre eval` | Manual or self-grade evaluation of a single project |
+| `sre eval-all` | Concurrent evaluation of every running project |
+| `sre eval-exam` | Periodic evaluation during an active exam |
+| `sre end-exam` | Final evaluation when an exam ends |
+| `sre re-eval` | Re-grading existing archives with an updated `srelab.py` |
+
+The default destination is `params.archive_dirs = ['/var/lib/sre/archives']`. A lab can extend this list via the module-level `archive_dirs` attribute (each entry must already exist and be writable by `sre_uid`).
+
+## Filename
+
+```
+{eval_date}_{running_lab_name}.zst
+└─ YYYYmmddHHMMSS  └─ {timestamp}@@@{lab_name}@@@{username}
+```
+
+The leading timestamp makes a plain `ls` sort archives chronologically, and the embedded `running_lab_name` lets `sre sheet` / `sre outline` group runs by lab and student without opening each file.
+
+## On-disk layout
+
+```
+archive = {
+    "running_lab_name": "{timestamp}@@@{lab_name}@@@{username}",
+    "eval_date":        "20260615110042",       # YYYYmmddHHMMSS
+    "data_json":        "<JSON string>",        # serialized Data instance
+    "tests": {
+        ("router", 1): {
+            ("ping -c1 8.8.8.8", 5): ("64 bytes from ...\n", 0),
+            ...
+        },
+        ...
+    },
+    "errors":     ["error message", ...],
+    "answers": {
+        "<question_hash>":          "<student answer>",
+        "hostname":                 "pc-101",
+        "login":                    "alice",
+        "fullname":                 "Alice Martin",      # from GECOS, always present
+        "email":                    "alice@example.com", # from GECOS, when email_in_gecos_last_field=True
+        "language":                 "fr",
+        "answers_updated_at":       "20260615110000",
+        "auto_eval_count":          2,                  # student-triggered self-evaluations before this one
+        "exam_mode":                true,               # only in exam mode
+        "exam_started_at":          "2026-06-15T09:00", # only in exam mode
+        "exam_duration":            120,                # only in exam mode
+        "exam_time_remaining":      3600,               # only in exam mode
+        ...
+    },
+    "grade_list": [
+        {"title": "Connectivity", "max_grade": 4, "grade": 4,
+         "grade_letter": null, "description": ""},
+        ...
+    ],
+    "total_grade":  14.0,
+    "total_max":    20.0,
+}
+```
+
+## Reading archives
+
+Archives are consumed by several CLI commands — see [CLI Reference](cli.md#admin-only-commands-for-post-exam-management) for full details:
+
+| Command | Purpose |
+|---------|---------|
+| `sre cat` | Print one or more archives as text or JSON |
+| `sre sheet` | Aggregate archives into a LibreOffice ODS spreadsheet |
+| `sre outline` | Generate per-student PDF reports + summary ODS |
+| `sre re-eval` | Re-grade with an updated `srelab.py`, writing fresh archives |
+| `sre check-eval` | Diff stored grades against re-graded results without writing files |
+| `sre watch` | Live terminal dashboard that polls a directory of archives |

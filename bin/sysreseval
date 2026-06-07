@@ -1,0 +1,8 @@
+#!/bin/bash
+
+_SCRIPT="${BASH_SOURCE[0]}"
+while [ -L "$_SCRIPT" ]; do _SCRIPT="$(readlink "$_SCRIPT")"; done
+DIR="$(cd "$(dirname "$_SCRIPT")" && pwd)"
+source "$DIR/../venv/bin/activate"
+python3 "$DIR/../src/sysreseval.py" "$@"
+

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+setfacl -m g:docker-access:rw /var/run/docker.sock
+echo "Docker allowed to users"

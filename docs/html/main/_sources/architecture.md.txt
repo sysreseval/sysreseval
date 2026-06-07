@@ -1,0 +1,51 @@
+# Architecture
+
+```{graphviz}
+digraph architecture {
+    rankdir=TB;
+    graph [fontname="sans-serif", fontsize=11];
+    node  [fontname="sans-serif", fontsize=11, shape=box,
+           style="filled,rounded", margin="0.3,0.2"];
+    edge  [fontname="sans-serif", fontsize=10];
+
+    subgraph cluster_desktop {
+        label="Student desktop";
+        labeljust=l;
+        style=dashed;
+        color="#888888";
+        bgcolor="#fafafa";
+        margin=20;
+
+        gui [label="sysreseval  (PySide6 GUI)\lsrc/sysreseval/\l    main_window.py · project_widget.py\l    view/: machines · questions · evaluations · schema\l",
+             fillcolor="#dae8fc", color="#6c8ebf"];
+
+        wrapper [label="sre-wrapper  (bin/sre-wrapper, C binary)\l    • sets USER_USERNAME env var\l    • sudo /opt/sre/sbin/sre --user ...\l",
+                 fillcolor="#ffe6cc", color="#d6b656"];
+
+        cli [label="sre CLI  (src/sre.py → src/SRE/)\lcommand/: start · eval · stop · watch · sheet · cat …\llib_sre.py: Data0 · NetScheme0 · Grade0 · Flavor0\l",
+             fillcolor="#dae8fc", color="#6c8ebf"];
+
+        docker [label="Kathara / Docker\lRunning containers  ↔  exetests.py  (in container)\l",
+                fillcolor="#d5e8d4", color="#82b366"];
+
+        gui     -> wrapper [label="  calls via sre-wrapper"];
+        wrapper -> cli     [label="  setuid(sre_uid=1100)"];
+        cli     -> docker;
+    }
+}
+```
+
+```
+Key directories (production):
+  /opt/sre/          — installation root
+  /opt/sre/lab/      — lab definition files (srelab.py modules)
+  /opt/sre/lib/      — shared libraries (ips.py, exetests.py, net_config.py, …)
+  /var/lib/sre/      — runtime state
+  /var/lib/sre/projects/  — one directory per running lab instance
+  /var/lib/sre/archives/  — default evaluation archive destination
+  /var/lib/sre/exam.json  — exam configuration (absent = no exam)
+```
+
+## Two-Tier Command Model
+
+Every command that touches Docker must run as user `sre` (uid 1100). The `sre-wrapper` binary sets the `USER_USERNAME` environment variable and calls `sudo sre --user`, which then applies the action on behalf of the named user. The CLI binary itself drops from root to `sre_uid` before executing any logic.

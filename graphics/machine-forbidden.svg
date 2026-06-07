@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="260" viewBox="0 0 200 260"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Server body -->
+  <rect x="30" y="20" width="140" height="220" rx="10"
+        fill="#cfd8dc" stroke="#000" stroke-width="2"/>
+
+  <!-- Server slots -->
+  <g fill="#b0bec5">
+    <rect x="45" y="45" width="110" height="26" rx="4"/>
+    <rect x="45" y="85" width="110" height="26" rx="4"/>
+    <rect x="45" y="125" width="110" height="26" rx="4"/>
+    <rect x="45" y="165" width="110" height="26" rx="4"/>
+  </g>
+
+  <!-- Centered prohibition sign -->
+  <g transform="translate(100,130)">
+
+    <!-- Circle -->
+    <circle r="48" fill="none"
+            stroke="#e53935" stroke-width="8"/>
+
+    <!-- Slash -->
+    <line x1="-32" y1="32" x2="32" y2="-32"
+          stroke="#e53935" stroke-width="8"/>
+
+    <!-- Side-view person -->
+
+    <!-- Head -->
+    <circle cx="-6" cy="-16" r="6" fill="#455a64"/>
+    <circle cx="0" cy="-16" r="1.5" fill="#455a64"/>
+
+    <!-- Body -->
+    <rect x="-10" y="-10" width="6" height="18"
+          fill="#455a64"/>
+
+    <!-- Arm -->
+    <rect x="-4" y="-4" width="10" height="4"
+          fill="#455a64"/>
+
+    <!-- Monitor -->
+    <rect x="10" y="-14" width="20" height="16" rx="2"
+          fill="#607d8b"/>
+
+    <!-- Stand -->
+    <rect x="18" y="2" width="4" height="6"
+          fill="#607d8b"/>
+
+    <!-- Desk -->
+    <rect x="-12" y="10" width="48" height="6"
+          fill="#90a4ae"/>
+
+    <!-- Keyboard -->
+    <rect x="6" y="16" width="26" height="4"
+          fill="#b0bec5"/>
+  </g>
+</svg>

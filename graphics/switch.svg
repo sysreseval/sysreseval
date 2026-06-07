@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="100" viewBox="0 0 200 100"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Switch body -->
+  <rect x="20" y="20" width="160" height="60" rx="8"
+        fill="#cfd8dc" stroke="#000" stroke-width="2"/>
+
+  <!-- Ports -->
+  <g fill="#b0bec5">
+    <rect x="35" y="38" width="18" height="14" rx="2"/>
+    <rect x="57" y="38" width="18" height="14" rx="2"/>
+    <rect x="79" y="38" width="18" height="14" rx="2"/>
+    <rect x="101" y="38" width="18" height="14" rx="2"/>
+    <rect x="123" y="38" width="18" height="14" rx="2"/>
+    <rect x="145" y="38" width="18" height="14" rx="2"/>
+  </g>
+
+  <!-- LEDs -->
+  <g fill="#b0bec5">
+    <circle cx="40" cy="62" r="3"/>
+    <circle cx="62" cy="62" r="3"/>
+    <circle cx="84" cy="62" r="3"/>
+    <circle cx="106" cy="62" r="3"/>
+    <circle cx="128" cy="62" r="3"/>
+    <circle cx="150" cy="62" r="3"/>
+  </g>
+</svg>

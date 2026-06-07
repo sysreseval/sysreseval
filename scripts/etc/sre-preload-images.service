@@ -1,0 +1,16 @@
+#
+# to preload the docker images used in sre when the machine start (and after sleeping a random time up to 120s)
+# this is to prevent network congestion if dozen of machines are trying to download the images at the same time
+
+[Unit]
+Description=Preload sre images into local cache
+Requires=network-online.target opt-sre.mount
+After=network-online.target opt-sre.mount
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sre/sbin/sre preload-images --random-delay 120 /opt/sre/lab/
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

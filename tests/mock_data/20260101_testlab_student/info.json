@@ -1,0 +1,21 @@
+{
+  "lab_name": "test1",
+  "lab_hash": "abc123",
+  "description": "# Test Lab\n\nThis lab simulates a small network with a router and two PCs.\n\n## Topology\n\n- **m1**: central router\n- **m2**, **m3**: end hosts\n",
+  "machines": [
+    {"name": "m1", "status": "running",  "allow_connection": true,  "hidden": false},
+    {"name": "m2", "status": "running",  "allow_connection": true,  "hidden": false},
+    {"name": "m3", "status": "running",  "allow_connection": false, "hidden": false},
+    {"name": "m4", "status": "stopped",  "allow_connection": false, "hidden": false}
+  ],
+  "questions": [
+    {
+      "title": "q1 kkkk kkkk2",
+      "description": "kkkk kkkk2",
+      "question_hash": "deadbeef",
+      "order": 0,
+      "default_answer": "11111bla bla bla",
+      "answers": {"a": "lll", "b": "mmm"}
+    }
+  ]
+}

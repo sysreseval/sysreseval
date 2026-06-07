@@ -1,0 +1,12 @@
+/venv/
+/build/
+/misc/
+CLAUDE.md
+.claude/
+/lab/em/
+.idea
+.DS_Store
+__pycache__/
+*.py[co]
+.pytest_cache/
+/docs/sphinx/_build/

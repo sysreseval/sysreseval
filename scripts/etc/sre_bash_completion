@@ -1,0 +1,285 @@
+# Bash completion for the `sre` CLI.
+#
+# Install:
+#   cp sre_bash_completion /etc/bash_completion.d/sre
+# or source it from ~/.bashrc:
+#   . /path/to/sre_bash_completion
+
+_sre_running_labs() {
+    local dir=/var/lib/sre/projects
+    [[ -d "$dir" && -r "$dir" ]] || return
+    compgen -W "$(ls -1 "$dir" 2>/dev/null)" -- "$1"
+}
+
+_sre_labs() {
+    # Try `sre list` if it does not require root for the calling user.
+    local out
+    out=$(sre list 2>/dev/null) || return
+    # `sre list` emits JSON; pull out string entries with a tolerant grep.
+    compgen -W "$(printf '%s\n' "$out" | grep -oE '"[^"]+"' | tr -d '"')" -- "$1"
+}
+
+_sre_archives() {
+    compgen -f -X '!*.zst' -- "$1"
+    compgen -d -- "$1"
+}
+
+_sre() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="start stop wipe connect eval state exec eval-all check \
+watch preload-images make-titles set-exam del-exam save-records cat \
+check-eval re-eval sheet outline list export eval-exam end-exam \
+pre-start-exam start-exam"
+
+    local global_opts="--user --debug --version --help -h"
+
+    # Locate the subcommand (first non-option word after `sre`).
+    local i cmd=""
+    for ((i = 1; i < cword; i++)); do
+        case "${words[i]}" in
+            --user|--debug|--version) ;;
+            -*) ;;
+            *) cmd="${words[i]}"; break ;;
+        esac
+    done
+
+    if [[ -z "$cmd" ]]; then
+        if [[ "$cur" == -* ]]; then
+            COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+        else
+            COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+        fi
+        return
+    fi
+
+    # Handle option arguments that take a value. Some short options (-d, -p)
+    # have different meanings per subcommand — disambiguate via $cmd.
+    case "$prev" in
+        --data)
+            _filedir; return ;;
+        --xauth-file)
+            _filedir; return ;;
+        --pdf-directory|--output-dir)
+            _filedir -d; return ;;
+        --output|--output-file)
+            _filedir; return ;;
+        --srelab)
+            _filedir; return ;;
+        --prefix)
+            return ;;
+        --users-file)
+            _filedir; return ;;
+        --shell)
+            COMPREPLY=($(compgen -W "/bin/sh /bin/bash /bin/dash /bin/zsh" -- "$cur"))
+            return ;;
+        --lang)
+            COMPREPLY=($(compgen -W "en fr" -- "$cur"))
+            return ;;
+        --record-sessions)
+            COMPREPLY=($(compgen -W "true false" -- "$cur"))
+            return ;;
+        --timeout|--interval|--duration|--eval-interval|--random-delay|--sep|--random-seed)
+            return ;;
+        --start-after|--end-before)
+            return ;;
+        --labs)
+            COMPREPLY=($(_sre_labs "$cur"))
+            return ;;
+        --flavor|--flavor-json|--set-flavor-name)
+            return ;;
+        -s)
+            # Only check-eval / re-eval use -s, always for --srelab.
+            _filedir; return ;;
+        -d)
+            case "$cmd" in
+                start)      _filedir; return ;;
+                re-eval)    _filedir -d; return ;;
+                outline)    _filedir -d; return ;;
+            esac
+            ;;
+        -p)
+            case "$cmd" in
+                eval)       _filedir -d; return ;;
+                re-eval)    return ;;  # --prefix, free string
+            esac
+            ;;
+        -o)
+            _filedir; return ;;
+        -r)
+            ;;  # bare flag (recursive), no argument
+    esac
+
+    case "$cmd" in
+        start)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-d --data -p --path --flavor \
+--flavor-json --set-flavor-name --debug-project --xauth-file --help" -- "$cur"))
+            else
+                COMPREPLY=($(_sre_labs "$cur"))
+                [[ ${#COMPREPLY[@]} -eq 0 ]] && _filedir
+            fi
+            ;;
+        stop)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--help" -- "$cur"))
+            else
+                COMPREPLY=($(_sre_running_labs "$cur"))
+            fi
+            ;;
+        connect)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--shell --exec --no-records --help" -- "$cur"))
+            else
+                # Position-aware: 1st positional = running_lab, 2nd = device.
+                local pos=0 w
+                for ((i = 1; i < cword; i++)); do
+                    w="${words[i]}"
+                    case "$w" in
+                        --shell|--exec) ((i++)) ;;
+                        -*) ;;
+                        *)
+                            if [[ "$w" != "$cmd" ]]; then ((pos++)); fi
+                            ;;
+                    esac
+                done
+                if [[ $pos -eq 0 ]]; then
+                    COMPREPLY=($(_sre_running_labs "$cur"))
+                fi
+            fi
+            ;;
+        eval)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-p --path --auto-eval --help" -- "$cur"))
+            else
+                COMPREPLY=($(_sre_running_labs "$cur"))
+            fi
+            ;;
+        state)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--help" -- "$cur"))
+            else
+                local pos=0
+                for ((i = 1; i < cword; i++)); do
+                    [[ "${words[i]}" != "$cmd" && "${words[i]}" != -* ]] && ((pos++))
+                done
+                if [[ $pos -eq 0 ]]; then
+                    COMPREPLY=($(_sre_running_labs "$cur"))
+                fi
+            fi
+            ;;
+        exec)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--shell --help" -- "$cur"))
+            else
+                local pos=0
+                for ((i = 1; i < cword; i++)); do
+                    case "${words[i]}" in
+                        --shell) ((i++)) ;;
+                        -*) ;;
+                        *) [[ "${words[i]}" != "$cmd" ]] && ((pos++)) ;;
+                    esac
+                done
+                if [[ $pos -eq 0 ]]; then
+                    COMPREPLY=($(_sre_running_labs "$cur"))
+                fi
+            fi
+            ;;
+        eval-all)
+            COMPREPLY=($(compgen -W "--display-grades --no-display-grades --help" -- "$cur"))
+            ;;
+        check)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--help" -- "$cur"))
+            else
+                _filedir
+            fi
+            ;;
+        watch)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--timeout --interval --help" -- "$cur"))
+            else
+                _filedir -d
+            fi
+            ;;
+        preload-images)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--random-delay --help" -- "$cur"))
+            else
+                _filedir
+            fi
+            ;;
+        make-titles)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-o --output-file -r --recursive --help" -- "$cur"))
+            else
+                _filedir -d
+            fi
+            ;;
+        set-exam)
+            COMPREPLY=($(compgen -W "--labs --start-after --end-before --duration \
+--eval-interval --record-sessions --help" -- "$cur"))
+            ;;
+        save-records)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--only-last-record --help" -- "$cur"))
+            else
+                _filedir -d
+            fi
+            ;;
+        cat)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--data --tests --errors --answers --grades \
+--files --extract-files --json --help" -- "$cur"))
+            else
+                _filedir zst
+            fi
+            ;;
+        check-eval)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-s --srelab --help" -- "$cur"))
+            else
+                _filedir zst
+            fi
+            ;;
+        re-eval)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-s --srelab -p --prefix -d --output-dir \
+-r --recursive --help" -- "$cur"))
+            else
+                _sre_archives "$cur"
+            fi
+            ;;
+        sheet)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-o --output -r --recursive --help" -- "$cur"))
+            else
+                _sre_archives "$cur"
+            fi
+            ;;
+        outline)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-o --output-file -d --pdf-directory --lang \
+-r --recursive --no-timeline --remaining-time --no-parts --users-file --help" -- "$cur"))
+            else
+                _sre_archives "$cur"
+            fi
+            ;;
+        list)
+            COMPREPLY=($(compgen -W "--with-titles --help" -- "$cur"))
+            ;;
+        export)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--sep --curved --shapes --reverse --random-seed --help" -- "$cur"))
+            else
+                COMPREPLY=($(_sre_running_labs "$cur"))
+            fi
+            ;;
+        wipe|del-exam|eval-exam|end-exam|pre-start-exam|start-exam)
+            COMPREPLY=($(compgen -W "--help" -- "$cur"))
+            ;;
+    esac
+}
+
+complete -F _sre sre
