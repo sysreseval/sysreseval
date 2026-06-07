@@ -1,0 +1,4 @@
+#!/bin/bash
+
+setfacl -m g:docker-access:-- /var/run/docker.sock
+echo "Docker forbidden to users"

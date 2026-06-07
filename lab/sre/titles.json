@@ -1,0 +1,9 @@
+{
+  "dns1.py": "DNS 1",
+  "ssh.py": "SSH",
+  "static_routing.py": {
+    "en": "Static routing",
+    "fr": "Routage statique"
+  },
+  "wireshark.py": "Wireshark"
+}

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Mock sre-wrapper for local Mac development
+case "$1" in
+  list)
+    echo '["class1/chapter1/project1","class1/chapter1/project2","class1/chapter2/project1","class2/chapter1/project1"]'
+    ;;
+  start)
+    echo "Would start: $2"
+    ;;
+  *)
+    echo "Unknown command: $1" >&2
+    exit 1
+    ;;
+esac

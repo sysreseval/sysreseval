@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SysResEval
+GenericName=SysResEval
+Comment=SysResEval
+Icon=/opt/sre/graphics/logo_sre.svg
+Exec=/opt/sre/bin/sysreseval
+Terminal=false
+Categories=Development;Science;IDE;Qt;
+Keywords=Development;Science;IDE;Qt;
+StartupNotify=true

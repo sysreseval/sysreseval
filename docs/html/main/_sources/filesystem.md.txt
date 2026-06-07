@@ -1,0 +1,47 @@
+# File System Reference
+
+## Production Paths
+
+| Path | Description |
+|------|-------------|
+| `/opt/sre/` | Installation root |
+| `/opt/sre/sbin/sre` | CLI binary |
+| `/opt/sre/bin/sre-wrapper` | C binary for student use (handles sudo) |
+| `/opt/sre/bin/sysreseval` | GUI launcher script |
+| `/opt/sre/lab/` | Lab definitions (`srelab.py` modules) |
+| `/opt/sre/lib/` | Shared libraries: `ips.py`, `std.py`, `exetests.py`, `net_config.py`, `dhcp.py`, `ping.py`, `ssh.py`, `tls.py`, `grade_helpers.py`, `frr.py`, `state_helpers.py`, `pcap_gen.py`, `utils.py` |
+| `/opt/sre/graphics/` | SVG icons and logos |
+| `/opt/sre/locale/` | Compiled gettext translations for `sre` CLI |
+| `/var/lib/sre/` | Runtime state root (`sre_pub_dir`) |
+| `/var/lib/sre/exam.json` | Exam configuration (absent = no exam) |
+| `/var/lib/sre/projects/` | One directory per running lab instance |
+| `/var/lib/sre/archives/` | Default evaluation archive directory |
+| `/var/lib/sre/last_self_grades/` | Self-grade cooldown timestamps |
+| `/home/sre/` | Shared directories for running projects (when `shared_path = True`) |
+
+## Running Lab Directory Layout
+
+```
+/var/lib/sre/projects/{timestamp}@@@{lab_name}@@@{username}/
+├── .private/               mode 0o700
+│   ├── data.json           serialized Data instance, mode 0o600
+│   ├── srelab              symlink to the lab's srelab.py
+│   ├── eval_in_progress    lock file (contains PID) during active eval
+│   └── auto_eval.log       one ISO timestamp per student-triggered self-evaluation
+├── info.json               public machine/question metadata (InfoLab)
+├── scheme.svg              graphviz network diagram
+├── answers/
+│   ├── answers.json        student answers (updated by GUI)
+│   └── cheat.json          instructor-provided answers (if any)
+└── shared/                 mode 0o777 (only if shared_path=True)
+
+/home/sre/{timestamp}@@@{lab_name}@@@{username}/
+                            shared directory (only if shared_path=True)
+                            mode 0o777, writable by containers and student
+```
+
+## Shared Project Directories (`/home/sre/`)
+
+When a lab sets `shared_path = True`, `sre start` creates a directory `/home/sre/{running_lab_name}/` that is accessible to the student from inside the containers. This allows file exchange between the host and the virtual machines without going through the terminal connection.
+
+The directory is created with mode `0o777` and removed when the project is stopped (`sre stop`) or wiped (`sre wipe`).

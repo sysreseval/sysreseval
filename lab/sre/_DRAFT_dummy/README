@@ -1,0 +1,2 @@
+All project files whose name (or directory name) contains _DRAFT_ or _OLD_ or _EXAM_ are not displayed in the project list in sysreseval
+(it's only possible to launch them by a privileged user or in an exam)

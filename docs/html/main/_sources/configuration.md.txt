@@ -1,0 +1,48 @@
+# Configuration Reference
+
+## `src/SRE/params.py` — Key Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `sre_uid` | `1100` | UID of the `sre` system user |
+| `docker_gid` | `988` | GID of the `docker` group |
+| `max_docker_concurrency` | `16` | Max parallel Docker API calls during eval |
+| `default_eval_interval_during_exams` | `60` | Default auto-eval period (seconds) |
+| `default_exam_duration` | `90` | Default exam duration in minutes (used if `duration` absent from exam.json) |
+| `default_inactivity_threshold_in_watch_command` | `90` | Default `sre watch` inactivity alert threshold |
+| `max_duration_between_exam_pre_start_and_start` | `60` | Window before `start_after` during which `pre-start-exam` fires (seconds) |
+| `email_in_gecos_last_field` | `True` | If `True`, `sysreseval` extracts the last GECOS sub-field as the student's email and saves it in `answers.json` |
+| `terminal_cmd_prefix` | `["/usr/bin/mate-terminal", "--"]` | External terminal emulator |
+| `terminal_font_size` | `12` | Default terminal font size (points) |
+| `terminal_color_scheme` | `"black_on_white"` | Default terminal colors |
+| `exam_only_affix` | `["_EXAM_", "_OLD_", "_DRAFT_", "_TESTS_"]` | Name substrings that hide labs from `sre list` |
+| `authorized_src_dir` | `['/opt/sre/lab', '/home/etudiant']` | Allowed lab source directories |
+
+**Answer field name constants** (used as keys in `answers.json` and archive `answers` dict):
+
+| Constant | Key | Description |
+|----------|-----|-------------|
+| `hostname_keyword` | `"hostname"` | Machine hostname |
+| `login_keyword` | `"login"` | Student login |
+| `fullname_keyword` | `"fullname"` | Student full name (from GECOS) |
+| `email_keyword` | `"email"` | Student email (from GECOS, when enabled) |
+| `language_keyword` | `"language"` | Active display language |
+
+## Environment Variables
+
+| Variable | Used by | Description |
+|----------|---------|-------------|
+| `USER_USERNAME` | sre CLI (with `--user`) | Student login name |
+| `SRE_PUB_DIR` | sre CLI, GUI, tests | Override `/var/lib/sre` |
+| `SRE_WRAPPER` | params.py | Override the sre-wrapper path |
+| `LANG` | sre CLI | If set to a French locale, loads French help strings |
+
+## Locale / Translations
+
+The `sre` CLI uses `gettext` for its help strings. If `LANG` is set to a French locale (`fr_FR.UTF-8`, `fr`, etc.), the French catalog is loaded from `locale/fr/LC_MESSAGES/sre.mo` (dev) or `/opt/sre/locale/fr/LC_MESSAGES/sre.mo` (production). To recompile after editing `sre.po`:
+
+```bash
+make translations
+```
+
+The `sysreseval` GUI uses Qt translations (`.ts` / `.qm`). Recompile with `make translations`.

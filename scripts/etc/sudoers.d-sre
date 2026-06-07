@@ -1,0 +1,3 @@
+
+Defaults!/opt/sre/sbin/sre env_keep += "USER_USERNAME SRE_XAUTH_COOKIE"
+ALL  ALL= NOPASSWD: /opt/sre/sbin/sre --user *
