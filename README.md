@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <img src="graphics/logo_sre.svg" alt="SysResEval logo" width="140">
+  <img src="graphics/sysreseval.svg" alt="SysResEval logo" width="140">
 </p>
 
 <h1 align="center">SysResEval (SRE)</h1>
 
 <p align="center">
-  <a href="docs/html/main/index.html">Main docs (HTML)</a> ·
-  <a href="docs/html/api/index.html">API reference</a> ·
+  <a href="https://sysreseval.github.io/sysreseval/html/main/index.html">Main docs (HTML)</a> ·
+  <a href="https://sysreseval.github.io/sysreseval/html/api/index.html">API reference</a> ·
   <a href="docs/documentation.pdf">PDF manual</a> ·
   <a href="README.fr.md">Français</a>
 </p>
