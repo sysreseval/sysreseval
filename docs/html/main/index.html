@@ -203,35 +203,112 @@
 <li class="toctree-l1"><a class="reference internal" href="exam.html">Exam Administration</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#lifecycle-at-a-glance">Lifecycle at a glance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#setting-up-an-exam-sre-set-exam">Setting up an exam — <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#clean-up-after-an-exam">Clean up after an exam</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#exam-only-labs">Exam-only labs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#inspect-a-single-archive">Inspect a single archive</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#re-grade-with-a-corrected-project-file">Re-grade with a corrected project file</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#per-student-pdf-reports-summary-spreadsheet">Per-student PDF reports + summary spreadsheet</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#export-to-a-spreadsheet">Export to a spreadsheet</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Authoring Labs</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="lab-authoring.html">Lab Authoring Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-start-debug-project-p-lab-xauth-file-path"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;path&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-connect-running-lab-device-and-sre-exec-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#identifying-a-running-lab-and-where-its-files-live">Identifying a running lab and where its files live</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-four-classes-at-a-glance">The four classes at a glance</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ip-helper-functions-from-opt-sre-lib-ips-py">IP helper functions (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ips.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#compute-pre-generate-and-compute-post-generate"><code class="docutils literal notranslate"><span class="pre">compute_pre_generate</span></code> and <code class="docutils literal notranslate"><span class="pre">compute_post_generate</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#flavor-class"><code class="docutils literal notranslate"><span class="pre">Flavor</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#module-level-attributes">Module-level Attributes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#declarations-and-accessors">Declarations and accessors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#machine-constructor-parameters"><code class="docutils literal notranslate"><span class="pre">Machine</span></code> constructor parameters</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-decorator"><code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> decorator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#per-machine-operations">Per-machine operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#file-transfer-between-host-and-container">File transfer between host and container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#host-side-operations">Host-side operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-helpers-from-opt-sre-lib-state-helpers-py">State helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/state_helpers.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#the-grading-lifecycle">The grading lifecycle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-parts">Grade parts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#cheat-answers">Cheat answers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-methods">Grade methods</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ping-helper-from-opt-sre-lib-ping-py">Ping helper (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ping.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ssh-helpers-from-opt-sre-lib-ssh-py">SSH helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ssh.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#packet-capture-helpers-from-opt-sre-lib-pcap-gen-py">Packet capture helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/pcap_gen.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#module-level-attributes">Module-level Attributes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#lab-identity-and-presentation">Lab identity and presentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#student-self-evaluation">Student self-evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#automatic-evaluation">Automatic evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#archives-and-recordings">Archives and recordings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-machine-and-flavors">State machine and flavors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#filesystem-and-export">Filesystem and export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#schema-rendering">Schema rendering</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#complete-minimal-example">Complete Minimal Example</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#internationalization-with-tr-make-tr">Internationalization with <code class="docutils literal notranslate"><span class="pre">tr()</span></code> / <code class="docutils literal notranslate"><span class="pre">make_tr()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#marking-strings-that-must-not-be-translated-no-tr">Marking strings that must NOT be translated: <code class="docutils literal notranslate"><span class="pre">no_tr()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#where-to-put-translations">Where to put <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#dynamic-strings-with-format-placeholders">Dynamic strings with format placeholders</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prepare-sre-translations-migrate-and-scaffold">1. <code class="docutils literal notranslate"><span class="pre">prepare-sre-translations</span></code> — migrate and scaffold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#check-sre-translations-verify-consistency">2. <code class="docutils literal notranslate"><span class="pre">check-sre-translations</span></code> — verify consistency</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#add-sre-translations-machine-translate-missing-strings">3. <code class="docutils literal notranslate"><span class="pre">add-sre-translations</span></code> — machine-translate missing strings</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#complete-translation-workflow">Complete translation workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#example-switching-to-english-as-a-pivot-before-translating">Example: switching to English as a pivot before translating</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -242,8 +319,21 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#deployment-layout">Deployment layout</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-installer">Running the installer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-manually">Install manually</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#deploy-and-verify">1. Deploy and verify</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#raise-inotify-limits">2. Raise inotify limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#restricting-student-access-to-docker">3. Restricting student access to Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#sharing-evaluation-archives-for-sre-watch">4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#pre-loading-docker-images">5. Pre-loading Docker images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#build-targets">Build targets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#tests">Tests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#building-the-documentation">Building the documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#dependencies">Dependencies</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -259,11 +349,47 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#global-options">Global options</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-set-exam-options"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span> <span class="pre">[options]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-del-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">del-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-records-d-dir-only-last-record"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save-records</span> <span class="pre">-d</span> <span class="pre">&lt;dir&gt;</span> <span class="pre">[--only-last-record]</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-cat-options-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span> <span class="pre">[options]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-eval-s-srelab-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span> <span class="pre">[-s</span> <span class="pre">&lt;srelab&gt;]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-re-eval-s-srelab-p-prefix-d-outdir-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span> <span class="pre">-s</span> <span class="pre">&lt;srelab&gt;</span> <span class="pre">-p</span> <span class="pre">&lt;prefix&gt;</span> <span class="pre">[-d</span> <span class="pre">&lt;outdir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-sheet-o-output-ods-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-pre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-end-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">end-exam</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="exam-reference.html">Exam Reference</a><ul>
@@ -274,8 +400,16 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="internals.html">Runtime &amp; Internals</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#architecture">Architecture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#running-lab-directory">Running lab directory</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#constants-src-sre-params-py">Constants (<code class="docutils literal notranslate"><span class="pre">src/SRE/params.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#environment-variables">Environment variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#locale">Locale</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#dynamic-module-loading">Dynamic module loading</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
@@ -337,9 +471,18 @@
 <li class="toctree-l1"><a class="reference internal" href="exam.html">Exam Administration</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#lifecycle-at-a-glance">Lifecycle at a glance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#setting-up-an-exam-sre-set-exam">Setting up an exam — <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#clean-up-after-an-exam">Clean up after an exam</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#exam-only-labs">Exam-only labs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#inspect-a-single-archive">Inspect a single archive</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#re-grade-with-a-corrected-project-file">Re-grade with a corrected project file</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#per-student-pdf-reports-summary-spreadsheet">Per-student PDF reports + summary spreadsheet</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#export-to-a-spreadsheet">Export to a spreadsheet</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -348,26 +491,94 @@
 <p class="caption" role="heading"><span class="caption-text">Authoring Labs</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="lab-authoring.html">Lab Authoring Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-start-debug-project-p-lab-xauth-file-path"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;path&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-connect-running-lab-device-and-sre-exec-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#identifying-a-running-lab-and-where-its-files-live">Identifying a running lab and where its files live</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-four-classes-at-a-glance">The four classes at a glance</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ip-helper-functions-from-opt-sre-lib-ips-py">IP helper functions (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ips.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#compute-pre-generate-and-compute-post-generate"><code class="docutils literal notranslate"><span class="pre">compute_pre_generate</span></code> and <code class="docutils literal notranslate"><span class="pre">compute_post_generate</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#flavor-class"><code class="docutils literal notranslate"><span class="pre">Flavor</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#module-level-attributes">Module-level Attributes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#declarations-and-accessors">Declarations and accessors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#machine-constructor-parameters"><code class="docutils literal notranslate"><span class="pre">Machine</span></code> constructor parameters</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-decorator"><code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> decorator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#per-machine-operations">Per-machine operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#file-transfer-between-host-and-container">File transfer between host and container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#host-side-operations">Host-side operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-helpers-from-opt-sre-lib-state-helpers-py">State helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/state_helpers.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#the-grading-lifecycle">The grading lifecycle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-parts">Grade parts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#cheat-answers">Cheat answers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-methods">Grade methods</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ping-helper-from-opt-sre-lib-ping-py">Ping helper (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ping.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ssh-helpers-from-opt-sre-lib-ssh-py">SSH helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ssh.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#packet-capture-helpers-from-opt-sre-lib-pcap-gen-py">Packet capture helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/pcap_gen.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#module-level-attributes">Module-level Attributes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#lab-identity-and-presentation">Lab identity and presentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#student-self-evaluation">Student self-evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#automatic-evaluation">Automatic evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#archives-and-recordings">Archives and recordings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-machine-and-flavors">State machine and flavors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#filesystem-and-export">Filesystem and export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#schema-rendering">Schema rendering</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#complete-minimal-example">Complete Minimal Example</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#internationalization-with-tr-make-tr">Internationalization with <code class="docutils literal notranslate"><span class="pre">tr()</span></code> / <code class="docutils literal notranslate"><span class="pre">make_tr()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#marking-strings-that-must-not-be-translated-no-tr">Marking strings that must NOT be translated: <code class="docutils literal notranslate"><span class="pre">no_tr()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#where-to-put-translations">Where to put <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#dynamic-strings-with-format-placeholders">Dynamic strings with format placeholders</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prepare-sre-translations-migrate-and-scaffold">1. <code class="docutils literal notranslate"><span class="pre">prepare-sre-translations</span></code> — migrate and scaffold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#check-sre-translations-verify-consistency">2. <code class="docutils literal notranslate"><span class="pre">check-sre-translations</span></code> — verify consistency</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#add-sre-translations-machine-translate-missing-strings">3. <code class="docutils literal notranslate"><span class="pre">add-sre-translations</span></code> — machine-translate missing strings</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#complete-translation-workflow">Complete translation workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#example-switching-to-english-as-a-pivot-before-translating">Example: switching to English as a pivot before translating</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -380,8 +591,21 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#deployment-layout">Deployment layout</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-installer">Running the installer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-manually">Install manually</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#deploy-and-verify">1. Deploy and verify</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#raise-inotify-limits">2. Raise inotify limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#restricting-student-access-to-docker">3. Restricting student access to Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#sharing-evaluation-archives-for-sre-watch">4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#pre-loading-docker-images">5. Pre-loading Docker images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#build-targets">Build targets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#tests">Tests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#building-the-documentation">Building the documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#dependencies">Dependencies</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -399,11 +623,47 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#global-options">Global options</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-set-exam-options"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span> <span class="pre">[options]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-del-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">del-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-records-d-dir-only-last-record"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save-records</span> <span class="pre">-d</span> <span class="pre">&lt;dir&gt;</span> <span class="pre">[--only-last-record]</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-cat-options-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span> <span class="pre">[options]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-eval-s-srelab-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span> <span class="pre">[-s</span> <span class="pre">&lt;srelab&gt;]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-re-eval-s-srelab-p-prefix-d-outdir-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span> <span class="pre">-s</span> <span class="pre">&lt;srelab&gt;</span> <span class="pre">-p</span> <span class="pre">&lt;prefix&gt;</span> <span class="pre">[-d</span> <span class="pre">&lt;outdir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-sheet-o-output-ods-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-pre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-end-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">end-exam</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="exam-reference.html">Exam Reference</a><ul>
@@ -414,8 +674,16 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="internals.html">Runtime &amp; Internals</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#architecture">Architecture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#running-lab-directory">Running lab directory</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#constants-src-sre-params-py">Constants (<code class="docutils literal notranslate"><span class="pre">src/SRE/params.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#environment-variables">Environment variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#locale">Locale</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#dynamic-module-loading">Dynamic module loading</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>

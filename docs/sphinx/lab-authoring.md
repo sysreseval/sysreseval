@@ -548,23 +548,48 @@ def grade(self):
 
 Elements registered without `grade_part=` are shown ungrouped (above or between the parts, in registration order). Parts are rendered in the order they were registered with `add_grade_part()`. See `lab/sre/dns1.py` for a real-world example with three parts.
 
-### Registration API
+### Self-eval vs instructor-eval scope
 
-| Method | Description |
-|--------|-------------|
-| `self.test(machine, command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Register a command in a container; returns `(stdout, exit_code)` (placeholder on first pass, real result on subsequent passes). |
-| `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
-| `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). |
-| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question with inline `@@{field:regex}@@` (text), `@@{field:>opt1|opt2}@@` (dropdown), or `@@{field:?true}@@` (checkbox) fields. Returns the student's answers as `{field: value}`. |
-| `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). |
-| `self.add_grade_part(title, description='')` | Register a named group of grade elements and return the resulting `GradePart`. Pass it to `add_grade_element(..., grade_part=...)` to associate elements with this group; parts render in registration order with a subtotal row per part in the GUI Evaluations view and in `sre outline` PDFs. |
-| `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. |
-| `self.set_grade(title, grade)` | Set the score of a previously registered element. |
-| `self.section(level=0, fmt=None, show=None, pad=None)` | Increment the section counter at `level` and return its formatted label (e.g. `"I."`, `"I.1."`) — for grouping questions under numbered headings. |
-| `self.current_section(level=0, fmt=None, show=None, pad=None)` | Same formatting as `section()` but without incrementing — read the current label for the same level. |
-| `self.add_error(error, category=ErrorCategory.ERROR, step=1)` / `self.add_warning(warning, step=1)` | Record an error/warning in the archive. Only registered when `self.step == step` so the same call doesn't fire on every pass. `add_warning` is a thin alias for `add_error(..., category=ErrorCategory.WARNING)`. |
-| `self.data`, `self.step`, `self.max_step`, `self.net_scheme` | Instance attributes available inside `grade()`. |
-| `self.auto_eval_count` | Number of student-triggered self-evaluations performed on this project *before* the current run (read from `.private/auto_eval.log`; `0` for the first self-evaluation, instructor evaluations, periodic background evals, and re-evaluations of legacy archives). Lets `grade()` apply a penalty per retry, gate hints, etc. |
+Every `add_grade_element` call takes a `scope=` bitmask that decides which audiences see the element. Three values are defined in `params`:
+
+| Value | Visible in |
+|-------|-----------|
+| `SELF_EVAL_SCOPE` (1) | Student self-eval only — `sre eval --auto-eval` (GUI **Start evaluation** button) |
+| `EXO_EVAL_SCOPE` (2) | Instructor view only — `sre eval` (non-auto), `sre outline`, `sre sheet`, periodic exam-mode evals |
+| `BOTH_EVAL_SCOPE` (3, default) | Both audiences |
+
+The total mark reflects only the elements in the active scope: `mark_self_eval()` sums elements with `scope & SELF_EVAL_SCOPE`, `mark_exo_eval()` sums elements with `scope & EXO_EVAL_SCOPE`. The same `grade()` body can therefore produce a different total for a student self-eval than for the instructor's archive.
+
+A common pattern is to register a **detailed rubric** for the instructor and a **coarse summary** for the student — enough feedback to know something is broken in a given part, without disclosing which individual check failed:
+
+```python
+from SRE import params
+
+def grade(self):
+    super().grade()
+
+    part1 = self.add_grade_part("part1", tr("DNS resolution"))
+    host1_ok = ...   # bool computed from self.test(...) results
+    host2_ok = ...
+    ptr_ok   = ...
+
+    # Detailed rubric — only the instructor (and sre outline / sre sheet) sees these
+    self.add_grade_element('dig host1 A',   max_grade=1, grade=int(host1_ok),
+                           grade_part=part1, scope=params.EXO_EVAL_SCOPE)
+    self.add_grade_element('dig host2 A',   max_grade=1, grade=int(host2_ok),
+                           grade_part=part1, scope=params.EXO_EVAL_SCOPE)
+    self.add_grade_element('dig host1 PTR', max_grade=1, grade=int(ptr_ok),
+                           grade_part=part1, scope=params.EXO_EVAL_SCOPE)
+
+    # Summary — what the student sees during self-eval
+    all_ok = host1_ok and host2_ok and ptr_ok
+    self.add_grade_element('part1_global', max_grade=1, grade=int(all_ok),
+                           scope=params.SELF_EVAL_SCOPE,
+                           description='Part 1 (combined)')
+```
+
+During the student's self-eval, only the `SELF_EVAL_SCOPE` element appears: one row per part with a pass/fail score (no need for grade parts there). 
+During the instructor's evaluation, only the three `EXO_EVAL_SCOPE` rows appear. `scope` and `grade_part` compose freely — elements in the same part can have different scopes and will be subtotalled accordingly for each audience.
 
 ### Cheat answers
 
@@ -605,6 +630,25 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 - **Bonus / penalty handling.** When penalty rubrics are registered with `max_grade=0` (so they only subtract), they don't enlarge the denominator — but if you want them to *not* subtract below zero either, clamp `total_grade` before scaling.
 
 `mark_exo_eval()` is called once at the end of `run_tests()`, after every pass of `grade()` and after `compute_total()`. By that time `self._grade_list`, `self._total_grade_exo_eval` / `_total_max_exo_eval`, `self._maximum_mark`, and `self._use_numerical_marks` are all final, so the override is free to read them. Return `None` to signal "no mark" (shown as blank), a `float` for a numeric mark, or a string for a letter grade.
+
+### Grade methods
+
+| Method | Description |
+|--------|-------------|
+| `self.test(machine, command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Register a command in a container; returns `(stdout, exit_code)` (placeholder on first pass, real result on subsequent passes). |
+| `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
+| `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). |
+| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question with inline `@@{field:regex}@@` (text), `@@{field:>opt1|opt2}@@` (dropdown), or `@@{field:?true}@@` (checkbox) fields. Returns the student's answers as `{field: value}`. |
+| `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). |
+| `self.add_grade_part(title, description='')` | Register a named group of grade elements and return the resulting `GradePart`. Pass it to `add_grade_element(..., grade_part=...)` to associate elements with this group; parts render in registration order with a subtotal row per part in the GUI Evaluations view and in `sre outline` PDFs. |
+| `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. |
+| `self.set_grade(title, grade)` | Set the score of a previously registered element. |
+| `self.section(level=0, fmt=None, show=None, pad=None)` | Increment the section counter at `level` and return its formatted label (e.g. `"I."`, `"I.1."`) — for grouping questions under numbered headings. |
+| `self.current_section(level=0, fmt=None, show=None, pad=None)` | Same formatting as `section()` but without incrementing — read the current label for the same level. |
+| `self.add_error(error, category=ErrorCategory.ERROR, step=1)` / `self.add_warning(warning, step=1)` | Record an error/warning in the archive. Only registered when `self.step == step` so the same call doesn't fire on every pass. `add_warning` is a thin alias for `add_error(..., category=ErrorCategory.WARNING)`. |
+| `self.data`, `self.step`, `self.max_step`, `self.net_scheme` | Instance attributes available inside `grade()`. |
+| `self.auto_eval_count` | Number of student-triggered self-evaluations performed on this project *before* the current run (read from `.private/auto_eval.log`; `0` for the first self-evaluation, instructor evaluations, periodic background evals, and re-evaluations of legacy archives). Lets `grade()` apply a penalty per retry, gate hints, etc. |
+
 
 ## Grading Library Reference
 
@@ -899,7 +943,8 @@ from typing import Dict
 
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr
 from ips import random_ipv4networks, random_ipv4s
-from net_config import set_net_config_entry, NetConfigEntry
+from net_config import set_net_config_entry, NetConfigEntry, get_net_config_from_topology, set_ip_forward
+from state_helpers import set_nat_gateway
 
 tr = make_tr('en')
 title = tr("Example: Router", fr="Exemple : Routeur")
@@ -945,18 +990,23 @@ class NetScheme(NetScheme0):
             fr="## TP Routage\nConfigurez le routage entre lan1 et lan2.",
         )
         d = data
-        self.net_config: Dict[str, NetConfigEntry] = {
-            'router': [([d.ips.router_lan1], [(d.nets.lan2, d.ips.router_lan2)]),
-                       ([d.ips.router_lan2], [])],
-            'client1': [([d.ips.client1], [(IPv4Network('0.0.0.0/0'), d.ips.router_lan1)])],
-            'client2': [([d.ips.client2], [(IPv4Network('0.0.0.0/0'), d.ips.router_lan2)])],
-        }
+        self.net_config = get_net_config_from_topology(net_scheme=self, gateway="router")
+        # self.net_config: Dict[str, NetConfigEntry] = {
+        #     'router': [([d.ips.router_lan1], [(d.nets.lan2, d.ips.router_lan2)]),
+        #                ([d.ips.router_lan2], [])],
+        #     'client1': [([d.ips.client1], [(IPv4Network('0.0.0.0/0'), d.ips.router_lan1)])],
+        #     'client2': [([d.ips.client2], [(IPv4Network('0.0.0.0/0'), d.ips.router_lan2)])],
+        # }
 
     @sre_state(user_allowed=False)
     def initial(self):
         for machine, config in self.net_config.items():
             set_net_config_entry(net_scheme=self, machine_name=machine, nc_entry=config)
         self.cmd('router', 'sysctl -w net.ipv4.ip_forward=1')
+        for m in self.get_visible_machine_names():
+            set_ip_forward(net_scheme=self, machine_name=m, ip_forward=(m == "router"))
+        set_nat_gateway(net_scheme=self, machine="router")
+
 
 
 class Grade(Grade0):

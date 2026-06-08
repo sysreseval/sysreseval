@@ -203,35 +203,112 @@
 <li class="toctree-l1"><a class="reference internal" href="exam.html">Exam Administration</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#lifecycle-at-a-glance">Lifecycle at a glance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#setting-up-an-exam-sre-set-exam">Setting up an exam — <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#clean-up-after-an-exam">Clean up after an exam</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="exam.html#exam-only-labs">Exam-only labs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#inspect-a-single-archive">Inspect a single archive</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#re-grade-with-a-corrected-project-file">Re-grade with a corrected project file</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#per-student-pdf-reports-summary-spreadsheet">Per-student PDF reports + summary spreadsheet</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#export-to-a-spreadsheet">Export to a spreadsheet</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Authoring Labs</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Lab Authoring Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-start-debug-project-p-lab-xauth-file-path"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;path&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-connect-running-lab-device-and-sre-exec-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#identifying-a-running-lab-and-where-its-files-live">Identifying a running lab and where its files live</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-four-classes-at-a-glance">The four classes at a glance</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ip-helper-functions-from-opt-sre-lib-ips-py">IP helper functions (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ips.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#compute-pre-generate-and-compute-post-generate"><code class="docutils literal notranslate"><span class="pre">compute_pre_generate</span></code> and <code class="docutils literal notranslate"><span class="pre">compute_post_generate</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#flavor-class"><code class="docutils literal notranslate"><span class="pre">Flavor</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#state-methods">State methods</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#grading-library-reference">Grading Library Reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-level-attributes">Module-level Attributes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#declarations-and-accessors">Declarations and accessors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#machine-constructor-parameters"><code class="docutils literal notranslate"><span class="pre">Machine</span></code> constructor parameters</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#state-methods">State methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#sre-state-decorator"><code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> decorator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#per-machine-operations">Per-machine operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#file-transfer-between-host-and-container">File transfer between host and container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#host-side-operations">Host-side operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#state-helpers-from-opt-sre-lib-state-helpers-py">State helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/state_helpers.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-grading-lifecycle">The grading lifecycle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#grade-parts">Grade parts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#cheat-answers">Cheat answers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#grade-methods">Grade methods</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#grading-library-reference">Grading Library Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ping-helper-from-opt-sre-lib-ping-py">Ping helper (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ping.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ssh-helpers-from-opt-sre-lib-ssh-py">SSH helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ssh.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#packet-capture-helpers-from-opt-sre-lib-pcap-gen-py">Packet capture helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/pcap_gen.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-level-attributes">Module-level Attributes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#lab-identity-and-presentation">Lab identity and presentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#student-self-evaluation">Student self-evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#automatic-evaluation">Automatic evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#archives-and-recordings">Archives and recordings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#state-machine-and-flavors">State machine and flavors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#filesystem-and-export">Filesystem and export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#schema-rendering">Schema rendering</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#complete-minimal-example">Complete Minimal Example</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#internationalization-with-tr-make-tr">Internationalization with <code class="docutils literal notranslate"><span class="pre">tr()</span></code> / <code class="docutils literal notranslate"><span class="pre">make_tr()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#marking-strings-that-must-not-be-translated-no-tr">Marking strings that must NOT be translated: <code class="docutils literal notranslate"><span class="pre">no_tr()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#where-to-put-translations">Where to put <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#dynamic-strings-with-format-placeholders">Dynamic strings with format placeholders</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prepare-sre-translations-migrate-and-scaffold">1. <code class="docutils literal notranslate"><span class="pre">prepare-sre-translations</span></code> — migrate and scaffold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#check-sre-translations-verify-consistency">2. <code class="docutils literal notranslate"><span class="pre">check-sre-translations</span></code> — verify consistency</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#add-sre-translations-machine-translate-missing-strings">3. <code class="docutils literal notranslate"><span class="pre">add-sre-translations</span></code> — machine-translate missing strings</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="translations.html#complete-translation-workflow">Complete translation workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#example-switching-to-english-as-a-pivot-before-translating">Example: switching to English as a pivot before translating</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -242,8 +319,21 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#deployment-layout">Deployment layout</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-installer">Running the installer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-manually">Install manually</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#deploy-and-verify">1. Deploy and verify</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#raise-inotify-limits">2. Raise inotify limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#restricting-student-access-to-docker">3. Restricting student access to Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#sharing-evaluation-archives-for-sre-watch">4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#pre-loading-docker-images">5. Pre-loading Docker images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#build-targets">Build targets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#tests">Tests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#building-the-documentation">Building the documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#dependencies">Dependencies</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -259,11 +349,47 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#global-options">Global options</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-set-exam-options"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span> <span class="pre">[options]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-del-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">del-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-records-d-dir-only-last-record"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save-records</span> <span class="pre">-d</span> <span class="pre">&lt;dir&gt;</span> <span class="pre">[--only-last-record]</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-cat-options-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span> <span class="pre">[options]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-eval-s-srelab-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span> <span class="pre">[-s</span> <span class="pre">&lt;srelab&gt;]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-re-eval-s-srelab-p-prefix-d-outdir-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span> <span class="pre">-s</span> <span class="pre">&lt;srelab&gt;</span> <span class="pre">-p</span> <span class="pre">&lt;prefix&gt;</span> <span class="pre">[-d</span> <span class="pre">&lt;outdir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-sheet-o-output-ods-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-pre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-end-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">end-exam</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="exam-reference.html">Exam Reference</a><ul>
@@ -274,8 +400,16 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="internals.html">Runtime &amp; Internals</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#architecture">Architecture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#running-lab-directory">Running lab directory</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#constants-src-sre-params-py">Constants (<code class="docutils literal notranslate"><span class="pre">src/SRE/params.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#environment-variables">Environment variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#locale">Locale</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#dynamic-module-loading">Dynamic module loading</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
@@ -1053,8 +1187,96 @@ in a supervised classroom, the instructor may want every student to share the sa
 </div>
 <p>Elements registered without <code class="docutils literal notranslate"><span class="pre">grade_part=</span></code> are shown ungrouped (above or between the parts, in registration order). Parts are rendered in the order they were registered with <code class="docutils literal notranslate"><span class="pre">add_grade_part()</span></code>. See <code class="docutils literal notranslate"><span class="pre">lab/sre/dns1.py</span></code> for a real-world example with three parts.</p>
 </section>
-<section id="registration-api">
-<h3>Registration API<a class="headerlink" href="#registration-api" title="Link to this heading">¶</a></h3>
+<section id="self-eval-vs-instructor-eval-scope">
+<h3>Self-eval vs instructor-eval scope<a class="headerlink" href="#self-eval-vs-instructor-eval-scope" title="Link to this heading">¶</a></h3>
+<p>Every <code class="docutils literal notranslate"><span class="pre">add_grade_element</span></code> call takes a <code class="docutils literal notranslate"><span class="pre">scope=</span></code> bitmask that decides which audiences see the element. Three values are defined in <code class="docutils literal notranslate"><span class="pre">params</span></code>:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Visible in</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SELF_EVAL_SCOPE</span></code> (1)</p></td>
+<td><p>Student self-eval only — <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">--auto-eval</span></code> (GUI <strong>Start evaluation</strong> button)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EXO_EVAL_SCOPE</span></code> (2)</p></td>
+<td><p>Instructor view only — <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> (non-auto), <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code>, periodic exam-mode evals</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BOTH_EVAL_SCOPE</span></code> (3, default)</p></td>
+<td><p>Both audiences</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The total mark reflects only the elements in the active scope: <code class="docutils literal notranslate"><span class="pre">mark_self_eval()</span></code> sums elements with <code class="docutils literal notranslate"><span class="pre">scope</span> <span class="pre">&amp;</span> <span class="pre">SELF_EVAL_SCOPE</span></code>, <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> sums elements with <code class="docutils literal notranslate"><span class="pre">scope</span> <span class="pre">&amp;</span> <span class="pre">EXO_EVAL_SCOPE</span></code>. The same <code class="docutils literal notranslate"><span class="pre">grade()</span></code> body can therefore produce a different total for a student self-eval than for the instructor’s archive.</p>
+<p>A common pattern is to register a <strong>detailed rubric</strong> for the instructor and a <strong>coarse summary</strong> for the student — enough feedback to know something is broken in a given part, without disclosing which individual check failed:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">SRE</span><span class="w"> </span><span class="kn">import</span> <span class="n">params</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">grade</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">grade</span><span class="p">()</span>
+
+    <span class="n">part1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_grade_part</span><span class="p">(</span><span class="s2">&quot;part1&quot;</span><span class="p">,</span> <span class="n">tr</span><span class="p">(</span><span class="s2">&quot;DNS resolution&quot;</span><span class="p">))</span>
+    <span class="n">host1_ok</span> <span class="o">=</span> <span class="o">...</span>   <span class="c1"># bool computed from self.test(...) results</span>
+    <span class="n">host2_ok</span> <span class="o">=</span> <span class="o">...</span>
+    <span class="n">ptr_ok</span>   <span class="o">=</span> <span class="o">...</span>
+
+    <span class="c1"># Detailed rubric — only the instructor (and sre outline / sre sheet) sees these</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">add_grade_element</span><span class="p">(</span><span class="s1">&#39;dig host1 A&#39;</span><span class="p">,</span>   <span class="n">max_grade</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">host1_ok</span><span class="p">),</span>
+                           <span class="n">grade_part</span><span class="o">=</span><span class="n">part1</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">EXO_EVAL_SCOPE</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">add_grade_element</span><span class="p">(</span><span class="s1">&#39;dig host2 A&#39;</span><span class="p">,</span>   <span class="n">max_grade</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">host2_ok</span><span class="p">),</span>
+                           <span class="n">grade_part</span><span class="o">=</span><span class="n">part1</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">EXO_EVAL_SCOPE</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">add_grade_element</span><span class="p">(</span><span class="s1">&#39;dig host1 PTR&#39;</span><span class="p">,</span> <span class="n">max_grade</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">ptr_ok</span><span class="p">),</span>
+                           <span class="n">grade_part</span><span class="o">=</span><span class="n">part1</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">EXO_EVAL_SCOPE</span><span class="p">)</span>
+
+    <span class="c1"># Summary — what the student sees during self-eval</span>
+    <span class="n">all_ok</span> <span class="o">=</span> <span class="n">host1_ok</span> <span class="ow">and</span> <span class="n">host2_ok</span> <span class="ow">and</span> <span class="n">ptr_ok</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">add_grade_element</span><span class="p">(</span><span class="s1">&#39;part1_global&#39;</span><span class="p">,</span> <span class="n">max_grade</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">all_ok</span><span class="p">),</span>
+                           <span class="n">scope</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">SELF_EVAL_SCOPE</span><span class="p">,</span>
+                           <span class="n">description</span><span class="o">=</span><span class="s1">&#39;Part 1 (combined)&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>During the student’s self-eval, only the <code class="docutils literal notranslate"><span class="pre">SELF_EVAL_SCOPE</span></code> element appears: one row per part with a pass/fail score (no need for grade parts there).
+During the instructor’s evaluation, only the three <code class="docutils literal notranslate"><span class="pre">EXO_EVAL_SCOPE</span></code> rows appear. <code class="docutils literal notranslate"><span class="pre">scope</span></code> and <code class="docutils literal notranslate"><span class="pre">grade_part</span></code> compose freely — elements in the same part can have different scopes and will be subtotalled accordingly for each audience.</p>
+</section>
+<section id="cheat-answers">
+<h3>Cheat answers<a class="headerlink" href="#cheat-answers" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">cheat_answers</span></code> on <code class="docutils literal notranslate"><span class="pre">question_text</span></code> / <code class="docutils literal notranslate"><span class="pre">question_form</span></code> maps a state name (e.g. <code class="docutils literal notranslate"><span class="pre">'final'</span></code>) to an answer value. When the student has applied that state, the cheat answer is used instead of the student’s actual input. Useful when the instructor’s <code class="docutils literal notranslate"><span class="pre">final</span></code> state should produce a fully-passing evaluation.</p>
+</section>
+<section id="letter-grades-vs-numeric-marks">
+<h3>Letter grades vs numeric marks<a class="headerlink" href="#letter-grades-vs-numeric-marks" title="Link to this heading">¶</a></h3>
+<p>By default, marks are numeric, scaled to <code class="docutils literal notranslate"><span class="pre">params.default_maximum_mark</span></code>, and rounded to one decimal. Set <code class="docutils literal notranslate"><span class="pre">self._use_numerical_marks</span> <span class="pre">=</span> <span class="pre">False</span></code> (per instance, inside <code class="docutils literal notranslate"><span class="pre">grade()</span></code> or earlier) to switch to letter grades on the <strong>total</strong>: <code class="docutils literal notranslate"><span class="pre">A+</span> <span class="pre">≥</span> <span class="pre">18/20</span></code>, <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">≥</span> <span class="pre">16</span></code>, <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">≥</span> <span class="pre">14</span></code>, <code class="docutils literal notranslate"><span class="pre">C</span> <span class="pre">≥</span> <span class="pre">12</span></code>, <code class="docutils literal notranslate"><span class="pre">D</span> <span class="pre">≥</span> <span class="pre">10</span></code>, else <code class="docutils literal notranslate"><span class="pre">F</span></code>.</p>
+<p>Per-element letter conversion (<code class="docutils literal notranslate"><span class="pre">OK</span></code> / <code class="docutils literal notranslate"><span class="pre">MEH</span></code> / <code class="docutils literal notranslate"><span class="pre">FAIL</span></code>) is also available via <code class="docutils literal notranslate"><span class="pre">GradeElement.to_grade_letter()</span></code> — full marks → OK, partial → MEH, zero → FAIL.</p>
+</section>
+<section id="overriding-mark-exo-eval-to-adjust-the-overall-mark">
+<h3>Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark<a class="headerlink" href="#overriding-mark-exo-eval-to-adjust-the-overall-mark" title="Link to this heading">¶</a></h3>
+<p>The overall mark stored in the archive (and surfaced by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code>, and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span></code>) is produced by <code class="docutils literal notranslate"><span class="pre">Grade.mark_exo_eval()</span></code>. The default implementation is:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">mark_exo_eval</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_mark</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_total_grade_exo_eval</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_total_max_exo_eval</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>i.e. <code class="docutils literal notranslate"><span class="pre">ceil(10</span> <span class="pre">·</span> <span class="pre">maximum_mark</span> <span class="pre">·</span> <span class="pre">total_grade</span> <span class="pre">/</span> <span class="pre">total_max)</span> <span class="pre">/</span> <span class="pre">10</span></code> in numerical mode, or the A+/A/B/C/D/F letter in letter mode. <code class="docutils literal notranslate"><span class="pre">_total_grade_exo_eval</span></code> / <code class="docutils literal notranslate"><span class="pre">_total_max_exo_eval</span></code> are the sums over every <code class="docutils literal notranslate"><span class="pre">add_grade_element</span></code> that contributes to the instructor’s view (i.e. excluding self-eval-only rubrics). <code class="docutils literal notranslate"><span class="pre">mark_self_eval()</span></code> is the counterpart used during student self-evaluations.</p>
+<p>Override <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> (and/or <code class="docutils literal notranslate"><span class="pre">mark_self_eval()</span></code>) on the <code class="docutils literal notranslate"><span class="pre">Grade</span></code> subclass when you want a non-default scale — typically because the maximum of the rubric does not match the intended denominator. Common reasons:</p>
+<ul>
+<li><p><strong>Fixed denominator.</strong> The exam was designed against an absolute target (e.g. 39 points). The rubric may sum to more, but you want the mark expressed against that fixed value. Replace <code class="docutils literal notranslate"><span class="pre">_total_max_exo_eval</span></code> with the constant, and cap at <code class="docutils literal notranslate"><span class="pre">_maximum_mark</span></code> so bonuses don’t push above the cap:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Grade</span><span class="p">(</span><span class="n">Grade0</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mark_exo_eval</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grade_list</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_total_max_exo_eval</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_maximum_mark</span><span class="p">,</span>
+                   <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="mi">10</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_maximum_mark</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_total_grade_exo_eval</span> <span class="o">/</span> <span class="mi">39</span><span class="p">)</span> <span class="o">/</span> <span class="mi">10</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Bonus / penalty handling.</strong> When penalty rubrics are registered with <code class="docutils literal notranslate"><span class="pre">max_grade=0</span></code> (so they only subtract), they don’t enlarge the denominator — but if you want them to <em>not</em> subtract below zero either, clamp <code class="docutils literal notranslate"><span class="pre">total_grade</span></code> before scaling.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> is called once at the end of <code class="docutils literal notranslate"><span class="pre">run_tests()</span></code>, after every pass of <code class="docutils literal notranslate"><span class="pre">grade()</span></code> and after <code class="docutils literal notranslate"><span class="pre">compute_total()</span></code>. By that time <code class="docutils literal notranslate"><span class="pre">self._grade_list</span></code>, <code class="docutils literal notranslate"><span class="pre">self._total_grade_exo_eval</span></code> / <code class="docutils literal notranslate"><span class="pre">_total_max_exo_eval</span></code>, <code class="docutils literal notranslate"><span class="pre">self._maximum_mark</span></code>, and <code class="docutils literal notranslate"><span class="pre">self._use_numerical_marks</span></code> are all final, so the override is free to read them. Return <code class="docutils literal notranslate"><span class="pre">None</span></code> to signal “no mark” (shown as blank), a <code class="docutils literal notranslate"><span class="pre">float</span></code> for a numeric mark, or a string for a letter grade.</p>
+</section>
+<section id="grade-methods">
+<h3>Grade methods<a class="headerlink" href="#grade-methods" title="Link to this heading">¶</a></h3>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -1105,41 +1327,6 @@ in a supervised classroom, the instructor may want every student to share the sa
 </tbody>
 </table>
 </div>
-</section>
-<section id="cheat-answers">
-<h3>Cheat answers<a class="headerlink" href="#cheat-answers" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">cheat_answers</span></code> on <code class="docutils literal notranslate"><span class="pre">question_text</span></code> / <code class="docutils literal notranslate"><span class="pre">question_form</span></code> maps a state name (e.g. <code class="docutils literal notranslate"><span class="pre">'final'</span></code>) to an answer value. When the student has applied that state, the cheat answer is used instead of the student’s actual input. Useful when the instructor’s <code class="docutils literal notranslate"><span class="pre">final</span></code> state should produce a fully-passing evaluation.</p>
-</section>
-<section id="letter-grades-vs-numeric-marks">
-<h3>Letter grades vs numeric marks<a class="headerlink" href="#letter-grades-vs-numeric-marks" title="Link to this heading">¶</a></h3>
-<p>By default, marks are numeric, scaled to <code class="docutils literal notranslate"><span class="pre">params.default_maximum_mark</span></code>, and rounded to one decimal. Set <code class="docutils literal notranslate"><span class="pre">self._use_numerical_marks</span> <span class="pre">=</span> <span class="pre">False</span></code> (per instance, inside <code class="docutils literal notranslate"><span class="pre">grade()</span></code> or earlier) to switch to letter grades on the <strong>total</strong>: <code class="docutils literal notranslate"><span class="pre">A+</span> <span class="pre">≥</span> <span class="pre">18/20</span></code>, <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">≥</span> <span class="pre">16</span></code>, <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">≥</span> <span class="pre">14</span></code>, <code class="docutils literal notranslate"><span class="pre">C</span> <span class="pre">≥</span> <span class="pre">12</span></code>, <code class="docutils literal notranslate"><span class="pre">D</span> <span class="pre">≥</span> <span class="pre">10</span></code>, else <code class="docutils literal notranslate"><span class="pre">F</span></code>.</p>
-<p>Per-element letter conversion (<code class="docutils literal notranslate"><span class="pre">OK</span></code> / <code class="docutils literal notranslate"><span class="pre">MEH</span></code> / <code class="docutils literal notranslate"><span class="pre">FAIL</span></code>) is also available via <code class="docutils literal notranslate"><span class="pre">GradeElement.to_grade_letter()</span></code> — full marks → OK, partial → MEH, zero → FAIL.</p>
-</section>
-<section id="overriding-mark-exo-eval-to-adjust-the-overall-mark">
-<h3>Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark<a class="headerlink" href="#overriding-mark-exo-eval-to-adjust-the-overall-mark" title="Link to this heading">¶</a></h3>
-<p>The overall mark stored in the archive (and surfaced by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code>, and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span></code>) is produced by <code class="docutils literal notranslate"><span class="pre">Grade.mark_exo_eval()</span></code>. The default implementation is:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">mark_exo_eval</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_mark</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_total_grade_exo_eval</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_total_max_exo_eval</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>i.e. <code class="docutils literal notranslate"><span class="pre">ceil(10</span> <span class="pre">·</span> <span class="pre">maximum_mark</span> <span class="pre">·</span> <span class="pre">total_grade</span> <span class="pre">/</span> <span class="pre">total_max)</span> <span class="pre">/</span> <span class="pre">10</span></code> in numerical mode, or the A+/A/B/C/D/F letter in letter mode. <code class="docutils literal notranslate"><span class="pre">_total_grade_exo_eval</span></code> / <code class="docutils literal notranslate"><span class="pre">_total_max_exo_eval</span></code> are the sums over every <code class="docutils literal notranslate"><span class="pre">add_grade_element</span></code> that contributes to the instructor’s view (i.e. excluding self-eval-only rubrics). <code class="docutils literal notranslate"><span class="pre">mark_self_eval()</span></code> is the counterpart used during student self-evaluations.</p>
-<p>Override <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> (and/or <code class="docutils literal notranslate"><span class="pre">mark_self_eval()</span></code>) on the <code class="docutils literal notranslate"><span class="pre">Grade</span></code> subclass when you want a non-default scale — typically because the maximum of the rubric does not match the intended denominator. Common reasons:</p>
-<ul>
-<li><p><strong>Fixed denominator.</strong> The exam was designed against an absolute target (e.g. 39 points). The rubric may sum to more, but you want the mark expressed against that fixed value. Replace <code class="docutils literal notranslate"><span class="pre">_total_max_exo_eval</span></code> with the constant, and cap at <code class="docutils literal notranslate"><span class="pre">_maximum_mark</span></code> so bonuses don’t push above the cap:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
-
-<span class="k">class</span><span class="w"> </span><span class="nc">Grade</span><span class="p">(</span><span class="n">Grade0</span><span class="p">):</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">mark_exo_eval</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grade_list</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_total_max_exo_eval</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
-        <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_maximum_mark</span><span class="p">,</span>
-                   <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="mi">10</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_maximum_mark</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_total_grade_exo_eval</span> <span class="o">/</span> <span class="mi">39</span><span class="p">)</span> <span class="o">/</span> <span class="mi">10</span><span class="p">)</span>
-</pre></div>
-</div>
-</li>
-<li><p><strong>Bonus / penalty handling.</strong> When penalty rubrics are registered with <code class="docutils literal notranslate"><span class="pre">max_grade=0</span></code> (so they only subtract), they don’t enlarge the denominator — but if you want them to <em>not</em> subtract below zero either, clamp <code class="docutils literal notranslate"><span class="pre">total_grade</span></code> before scaling.</p></li>
-</ul>
-<p><code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> is called once at the end of <code class="docutils literal notranslate"><span class="pre">run_tests()</span></code>, after every pass of <code class="docutils literal notranslate"><span class="pre">grade()</span></code> and after <code class="docutils literal notranslate"><span class="pre">compute_total()</span></code>. By that time <code class="docutils literal notranslate"><span class="pre">self._grade_list</span></code>, <code class="docutils literal notranslate"><span class="pre">self._total_grade_exo_eval</span></code> / <code class="docutils literal notranslate"><span class="pre">_total_max_exo_eval</span></code>, <code class="docutils literal notranslate"><span class="pre">self._maximum_mark</span></code>, and <code class="docutils literal notranslate"><span class="pre">self._use_numerical_marks</span></code> are all final, so the override is free to read them. Return <code class="docutils literal notranslate"><span class="pre">None</span></code> to signal “no mark” (shown as blank), a <code class="docutils literal notranslate"><span class="pre">float</span></code> for a numeric mark, or a string for a letter grade.</p>
 </section>
 </section>
 <section id="grading-library-reference">
@@ -1745,7 +1932,8 @@ in a supervised classroom, the instructor may want every student to share the sa
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">SRE.lib_sre</span><span class="w"> </span><span class="kn">import</span> <span class="n">Data0</span><span class="p">,</span> <span class="n">NetScheme0</span><span class="p">,</span> <span class="n">Grade0</span><span class="p">,</span> <span class="n">sre_state</span><span class="p">,</span> <span class="n">make_tr</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ips</span><span class="w"> </span><span class="kn">import</span> <span class="n">random_ipv4networks</span><span class="p">,</span> <span class="n">random_ipv4s</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">net_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_net_config_entry</span><span class="p">,</span> <span class="n">NetConfigEntry</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">net_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_net_config_entry</span><span class="p">,</span> <span class="n">NetConfigEntry</span><span class="p">,</span> <span class="n">get_net_config_from_topology</span><span class="p">,</span> <span class="n">set_ip_forward</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">state_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_nat_gateway</span>
 
 <span class="n">tr</span> <span class="o">=</span> <span class="n">make_tr</span><span class="p">(</span><span class="s1">&#39;en&#39;</span><span class="p">)</span>
 <span class="n">title</span> <span class="o">=</span> <span class="n">tr</span><span class="p">(</span><span class="s2">&quot;Example: Router&quot;</span><span class="p">,</span> <span class="n">fr</span><span class="o">=</span><span class="s2">&quot;Exemple : Routeur&quot;</span><span class="p">)</span>
@@ -1791,18 +1979,23 @@ in a supervised classroom, the instructor may want every student to share the sa
             <span class="n">fr</span><span class="o">=</span><span class="s2">&quot;## TP Routage</span><span class="se">\n</span><span class="s2">Configurez le routage entre lan1 et lan2.&quot;</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="n">d</span> <span class="o">=</span> <span class="n">data</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">net_config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">NetConfigEntry</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s1">&#39;router&#39;</span><span class="p">:</span> <span class="p">[([</span><span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">router_lan1</span><span class="p">],</span> <span class="p">[(</span><span class="n">d</span><span class="o">.</span><span class="n">nets</span><span class="o">.</span><span class="n">lan2</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">router_lan2</span><span class="p">)]),</span>
-                       <span class="p">([</span><span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">router_lan2</span><span class="p">],</span> <span class="p">[])],</span>
-            <span class="s1">&#39;client1&#39;</span><span class="p">:</span> <span class="p">[([</span><span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">client1</span><span class="p">],</span> <span class="p">[(</span><span class="n">IPv4Network</span><span class="p">(</span><span class="s1">&#39;0.0.0.0/0&#39;</span><span class="p">),</span> <span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">router_lan1</span><span class="p">)])],</span>
-            <span class="s1">&#39;client2&#39;</span><span class="p">:</span> <span class="p">[([</span><span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">client2</span><span class="p">],</span> <span class="p">[(</span><span class="n">IPv4Network</span><span class="p">(</span><span class="s1">&#39;0.0.0.0/0&#39;</span><span class="p">),</span> <span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">router_lan2</span><span class="p">)])],</span>
-        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">net_config</span> <span class="o">=</span> <span class="n">get_net_config_from_topology</span><span class="p">(</span><span class="n">net_scheme</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">gateway</span><span class="o">=</span><span class="s2">&quot;router&quot;</span><span class="p">)</span>
+        <span class="c1"># self.net_config: Dict[str, NetConfigEntry] = {</span>
+        <span class="c1">#     &#39;router&#39;: [([d.ips.router_lan1], [(d.nets.lan2, d.ips.router_lan2)]),</span>
+        <span class="c1">#                ([d.ips.router_lan2], [])],</span>
+        <span class="c1">#     &#39;client1&#39;: [([d.ips.client1], [(IPv4Network(&#39;0.0.0.0/0&#39;), d.ips.router_lan1)])],</span>
+        <span class="c1">#     &#39;client2&#39;: [([d.ips.client2], [(IPv4Network(&#39;0.0.0.0/0&#39;), d.ips.router_lan2)])],</span>
+        <span class="c1"># }</span>
 
     <span class="nd">@sre_state</span><span class="p">(</span><span class="n">user_allowed</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">initial</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">for</span> <span class="n">machine</span><span class="p">,</span> <span class="n">config</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">net_config</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">set_net_config_entry</span><span class="p">(</span><span class="n">net_scheme</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">machine_name</span><span class="o">=</span><span class="n">machine</span><span class="p">,</span> <span class="n">nc_entry</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">cmd</span><span class="p">(</span><span class="s1">&#39;router&#39;</span><span class="p">,</span> <span class="s1">&#39;sysctl -w net.ipv4.ip_forward=1&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_visible_machine_names</span><span class="p">():</span>
+            <span class="n">set_ip_forward</span><span class="p">(</span><span class="n">net_scheme</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">machine_name</span><span class="o">=</span><span class="n">m</span><span class="p">,</span> <span class="n">ip_forward</span><span class="o">=</span><span class="p">(</span><span class="n">m</span> <span class="o">==</span> <span class="s2">&quot;router&quot;</span><span class="p">))</span>
+        <span class="n">set_nat_gateway</span><span class="p">(</span><span class="n">net_scheme</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">machine</span><span class="o">=</span><span class="s2">&quot;router&quot;</span><span class="p">)</span>
+
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">Grade</span><span class="p">(</span><span class="n">Grade0</span><span class="p">):</span>
@@ -1921,10 +2114,11 @@ in a supervised classroom, the instructor may want every student to share the sa
 <li><a class="reference internal" href="#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a><ul>
 <li><a class="reference internal" href="#the-grading-lifecycle">The grading lifecycle</a></li>
 <li><a class="reference internal" href="#grade-parts">Grade parts</a></li>
-<li><a class="reference internal" href="#registration-api">Registration API</a></li>
+<li><a class="reference internal" href="#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
 <li><a class="reference internal" href="#cheat-answers">Cheat answers</a></li>
 <li><a class="reference internal" href="#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
 <li><a class="reference internal" href="#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
+<li><a class="reference internal" href="#grade-methods">Grade methods</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#grading-library-reference">Grading Library Reference</a><ul>

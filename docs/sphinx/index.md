@@ -2,7 +2,7 @@
 
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 3
 :caption: Utilisation
 
 overview
@@ -10,7 +10,7 @@ exam
 ```
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 3
 :caption: Authoring Labs
 
 lab-authoring
@@ -18,14 +18,14 @@ translations
 ```
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 3
 :caption: Installation and Setup
 
 installation
 ```
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 3
 :caption: Reference
 
 gui
