@@ -70,10 +70,10 @@ Full step-by-step setup, manual install, and post-install steps are documented i
 
 ## Documentation
 
-- [Overview](docs/sphinx/overview.md)
-- [Installation & deployment](docs/sphinx/installation.md)
-- [Running exams](docs/sphinx/exam.md) · [exam reference](docs/sphinx/exam-reference.md)
-- [Authoring labs](docs/sphinx/lab-authoring.md) · [translations](docs/sphinx/translations.md)
-- [CLI reference](docs/sphinx/cli.md) · [GUI reference](docs/sphinx/gui.md)
-- [Runtime & internals](docs/sphinx/internals.md)
+- [Overview](https://sysreseval.github.io/sysreseval/html/main/overview.html)
+- [Installation & deployment](https://sysreseval.github.io/sysreseval/html/main/installation.html)
+- [Running exams](https://sysreseval.github.io/sysreseval/html/main/exam.html) · [exam reference](https://sysreseval.github.io/sysreseval/html/main/exam-reference.html)
+- [Authoring labs](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [translations](https://sysreseval.github.io/sysreseval/html/main/translations.html)
+- [CLI reference](https://sysreseval.github.io/sysreseval/html/main/cli.html) · [GUI reference](https://sysreseval.github.io/sysreseval/html/main/gui.html)
+- [Runtime & internals](https://sysreseval.github.io/sysreseval/html/main/internals.html)
 

@@ -27,28 +27,33 @@ Il a été développé à l'**IUT d'Orsay, Université Paris-Saclay**.
 
 - **Interface à deux niveaux.** Une interface graphique (`sysreseval`) pour les étudiants, ainsi qu'une CLI complète (`sre`) pour les enseignants. 
 L'interface graphique délègue à la CLI via un petit utilitaire setuid `sre-wrapper`, ce qui maintient une séparation claire des privilèges.
-- **Structure de TP riche.** Chaque TP présente plusieurs onglets :
-  - **Schéma** — la topologie réseau (certaines machines peuvent interdire la connexion (en rouge) ou être cachées)
-  - **Informations** — contexte général et consignes, rédigés en Markdown.
-  - **Questions** — liste d'items que l'étudiant doit traiter. Chaque question est :
+- **Structure de projet riche.** Chaque projet présente plusieurs onglets :
+  - **Schéma** — le schéma du réseau (certaines machines peuvent interdire la connexion — affichées généralement en rouge — ou être cachées ;
+  - **Informations** — le contexte général et les consignes, rédigés en Markdown ;
+  - **Questions** — Une liste d'items que l'étudiant doit traiter. Chaque question est :
     - soit un texte Markdown décrivant une tâche à effectuer sur les machines (par ex. *configurer le réseau sur m1*),
     - soit un formulaire dont les champs capturent des faits précis (par ex. *quel est le MTU de `eth0` sur m1 ?*) ; les champs peuvent être du texte libre validé par une regex (par ex. une adresse IPv4), une liste déroulante ou une case à cocher,
     - soit une réponse libre multi-lignes.
-  - **Terminaux** — un shell embarqué pour chaque machine à laquelle l'étudiant a le droit de se connecter. Un TP peut les exposer comme de simples shells root ou, par exemple, comme une invite `login` qui restreint l'étudiant à un compte utilisateur particulier.
-  - **Machines** — un tableau d'état pour chaque machine : état, réseau NAT, ports exposés. Les étudiants peuvent l'utiliser pour ouvrir des sessions séparées vers une machine (utile lorsque plusieurs sessions sont nécessaires sur une même machine).
+  - **Terminaux** — un terminal pour chaque machine à laquelle l'étudiant a le droit de se connecter. Ce peut être de simples shells root ou
+par exemple une invite `login` qui restreint l'étudiant à un compte utilisateur particulier.
+  - **Machines** — un tableau d'état pour chaque machine : état, réseau NAT, ports exposés. Les étudiants peuvent l'utiliser
+pour ouvrir des terminaux supplémentaires vers une machine (utile lorsque plusieurs sessions sont nécessaires sur une même machine).
   - **Évaluations** — permet à l'étudiant de déclencher une évaluation automatique de son travail et de visualiser le tableau des notes obtenues.
   - **Appliquer une configuration** — permet à l'étudiant de placer le projet dans un état prédéfini, par exemple une correction partielle.
 - **Plusieurs projets ouverts simultanément.** Le contenu d'un cours peut être organisé par thème plutôt que par séance — les étudiants peuvent garder plusieurs projets ouverts et basculer entre eux.
-- **Supervision en direct.** `sre watch` est un tableau de bord en terminal qui diffuse la dernière évaluation de chaque étudiant et affiche les min/max/moyennes par item pour la classe.
-- **Examens à durée limitée.** `sysreseval` démarre le projet de chaque étudiant (immédiatement ou à une heure programmée), affiche un compte à rebours, lance des évaluations périodiques et affiche une bannière de fin d'examen. La durée peut être ajustée à la volée — utile pour les aménagements.
-- **Notation reproductible et outillage post-examen.** Chaque évaluation est archivée sous forme de fichier msgpack compressé contenant les données du projet, les sorties des commandes envoyées sur les machines, les réponses de l'étudiant et les notes par item, consultables avec `sre cat`. Si un bug de notation apparaît après coup, `sre re-eval` permet de 
+- **Supervision en direct.** `sre watch` est un tableau de bord qui permet à l'enseignant d'obtenir la dernière évaluation de chaque étudiant et affiche les min/max/moyennes par item pour la classe.
+- **Examens à durée limitée.** `sysreseval` démarre le projet de chaque étudiant (immédiatement ou à une heure programmée), 
+affiche un compte à rebours, lance des évaluations périodiques et affiche une bannière de fin d'examen. 
+La durée peut être ajustée à la volée — utile pour les étudiants disposant d'un aménagement.
+- **Notation reproductible et traitement post-examen.** Chaque évaluation est archivée sous forme de fichier msgpack compressé contenant les données du projet, les sorties des commandes envoyées sur les machines, les réponses de l'étudiant et les notes par item, consultables avec `sre cat`. Si un bug de notation apparaît après coup, `sre re-eval` permet de 
 re-corriger avec un script mis à jour ; `sre outline` produit alors des rapports PDF par étudiant ainsi qu'un tableur ODS récapitulatif. Pendant les examens, chaque session de terminal est aussi enregistrée (format `asciinema`).
-- **Internationalisable.** Les chaînes des TP et les traductions de l'interface graphique sont livrées en français et en anglais ; les outils (`prepare-sre-translations`, `add-sre-translations`) facilitent la rédaction multilingue.
+- **Internationalisation.** Les chaînes des TP et les traductions de l'interface graphique sont livrées en français et en anglais ; 
+les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permettent de traduire facilement un projet.
 
 
 ## Installation
 
-SRE est une installation Linux côté serveur (Debian/Ubuntu, toute autre distribution avec une installation manuelle des dépendances).
+SRE est disponible sous Linux (Debian/Ubuntu, toute autre distribution avec une installation manuelle des dépendances).
 Les déploiements en production se trouvent sous `/opt/sre` et sont typiquement partagés à toute une salle de classe via NFS.
 
 ```bash
@@ -71,10 +76,10 @@ L'installation pas à pas, l'installation manuelle et les étapes post-installat
 
 ## Documentation
 
-- [Aperçu](docs/sphinx/overview.md)
-- [Installation & déploiement](docs/sphinx/installation.md)
-- [Faire passer un examen](docs/sphinx/exam.md) · [référence examen](docs/sphinx/exam-reference.md)
-- [Écrire des TP](docs/sphinx/lab-authoring.md) · [traductions](docs/sphinx/translations.md)
-- [Référence CLI](docs/sphinx/cli.md) · [Référence GUI](docs/sphinx/gui.md)
-- [Runtime & internes](docs/sphinx/internals.md)
+- [Aperçu](https://sysreseval.github.io/sysreseval/html/main/overview.html)
+- [Installation & déploiement](https://sysreseval.github.io/sysreseval/html/main/installation.html)
+- [Faire passer un examen](https://sysreseval.github.io/sysreseval/html/main/exam.html) · [référence examen](https://sysreseval.github.io/sysreseval/html/main/exam-reference.html)
+- [Écrire des TP](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [traductions](https://sysreseval.github.io/sysreseval/html/main/translations.html)
+- [Référence CLI](https://sysreseval.github.io/sysreseval/html/main/cli.html) · [Référence GUI](https://sysreseval.github.io/sysreseval/html/main/gui.html)
+- [Runtime & internes](https://sysreseval.github.io/sysreseval/html/main/internals.html)
 
