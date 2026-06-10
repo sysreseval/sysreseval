@@ -46,6 +46,13 @@ If a grading bug surfaces after the fact, `sre re-eval` re-runs the scoring agai
 - **Internationalisable.** Lab strings and GUI translations ship in French and English; tools (`prepare-sre-translations`, `add-sre-translations`) make multilingual authoring straightforward.
 
 
+## Example
+
+<p align="center">
+  <video src="docs/demo1.mp4" controls width="720"></video>
+</p>
+
+
 ## Installation
 
 SRE is a Linux server-side install (Debian/Ubuntu, any other distros with manual dependency installation). 

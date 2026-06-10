@@ -23,7 +23,7 @@ les enseignants supervisent les séances et organisent des examens à durée lim
 
 Il a été développé à l'**IUT d'Orsay, Université Paris-Saclay**. 
 
-## Points forts
+## Fonctionnalités
 
 - **Interface à deux niveaux.** Une interface graphique (`sysreseval`) pour les étudiants, ainsi qu'une CLI complète (`sre`) pour les enseignants. 
 L'interface graphique délègue à la CLI via un petit utilitaire setuid `sre-wrapper`, ce qui maintient une séparation claire des privilèges.
@@ -49,6 +49,13 @@ La durée peut être ajustée à la volée — utile pour les étudiants disposa
 re-corriger avec un script mis à jour ; `sre outline` produit alors des rapports PDF par étudiant ainsi qu'un tableur ODS récapitulatif. Pendant les examens, chaque session de terminal est aussi enregistrée (format `asciinema`).
 - **Internationalisation.** Les chaînes des TP et les traductions de l'interface graphique sont livrées en français et en anglais ; 
 les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permettent de traduire facilement un projet.
+
+
+## Exemple
+
+<p align="center">
+  <video src="docs/demo1.mp4" controls width="720"></video>
+</p>
 
 
 ## Installation
