@@ -29,6 +29,16 @@ def log_debug(message):
         print(f"{message}", file=sys.stderr)
 
 
+def dedup_preserve_order(items):
+    seen = set()
+    out = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
 def user_not_allowed():
     if in_user_mode():
         error_quit("you're not allowed to run this command")

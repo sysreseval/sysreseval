@@ -12,7 +12,7 @@ from pathlib import Path
 from Kathara.manager.Kathara import Kathara
 
 from ..utils import error_quit, set_all_variables_for_action, user_not_allowed_in_exam_mode, exam_mode_is_on, \
-    resolve_running_lab_name
+    resolve_running_lab_name, dedup_preserve_order
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, drop_privileges_permanently, \
     drop_privileges_temporarily, gain_privileges_if_needed, gain_privileges, set_sudo_uid_for_username
 from ..files_transfert import copy_state_files
@@ -130,7 +130,8 @@ def do_eval(running_lab_name, multiples_evals=False, print_result=False):
 
         grade = module_rvlab.Grade(net_scheme=net_scheme)
         grade._default_language = getattr(module_rvlab, 'default_language', 'en')
-        grade.archive_dirs = params.archive_dirs + getattr(module_rvlab, 'archive_dirs', [])
+        grade.archive_dirs = dedup_preserve_order(
+            list(params.archive_dirs) + list(getattr(module_rvlab, 'archive_dirs', [])))
         grade.files_to_save_in_archives = getattr(module_rvlab, 'files_to_save_in_archives', [])
         grade._use_numerical_marks = getattr(module_rvlab, 'use_numerical_marks', params.use_numerical_marks_by_default)
         grade._display_marks_in_auto_evaluations = getattr(module_rvlab, 'display_marks_in_auto_evaluations', params.display_marks_in_auto_evaluations_by_default)

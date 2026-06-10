@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed, error_quit, set_lab_dir_and_import_module
+from ..utils import user_not_allowed, error_quit, set_lab_dir_and_import_module, dedup_preserve_order
 
 
 _archive_suffix = "__records.tar.gz"
@@ -102,16 +102,6 @@ def _latest_archive_age_seconds(running_lab_name, dest_dirs) -> float | None:
     return (datetime.now() - most_recent).total_seconds()
 
 
-def _dedup_preserve_order(items):
-    seen = set()
-    out = []
-    for item in items:
-        if item not in seen:
-            seen.add(item)
-            out.append(item)
-    return out
-
-
 def save_exam_records_for_project(running_lab_name, force=False) -> None:
     """Archive a running exam project's records into params.archive_dirs +
     the project's own archive_dirs, throttled by save_record_interval_during_exams.
@@ -127,7 +117,7 @@ def save_exam_records_for_project(running_lab_name, force=False) -> None:
         if interval == 0:
             return
 
-        dest_dirs = _dedup_preserve_order(
+        dest_dirs = dedup_preserve_order(
             list(params.archive_dirs) + list(getattr(module, 'archive_dirs', [])))
         if not dest_dirs:
             return
