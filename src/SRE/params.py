@@ -156,9 +156,21 @@ pdf_info_file = "informations.pdf"
 
 # External terminal emulator used to open machine connections.
 # The command is built as: terminal_cmd_prefix[:-1] + [terminal_title_opt, title] + terminal_cmd_prefix[-1:] + [sre_wrapper, "connect", project, machine]
-# xterm / xfce4-terminal use "-e" and "-title"; mate-terminal / gnome-terminal use "--" and "--title"
-# terminal_cmd_prefix = ["/usr/bin/xterm", "-e"]
-# terminal_title_opt = "-title"
+# The title is passed as a two-token pair (terminal_title_opt, title), so only
+# terminals that accept a separate "--title TITLE"-style option work here.
+# Uncomment ONE pair below (binary path may differ on your host; check with `command -v`):
+#   gnome-terminal:
+#     terminal_cmd_prefix = ["/usr/bin/gnome-terminal", "--"]
+#     terminal_title_opt = "--title"
+#   xfce4-terminal:
+#     terminal_cmd_prefix = ["/usr/bin/xfce4-terminal", "-x"]
+#     terminal_title_opt = "--title"
+#   xterm:
+#     terminal_cmd_prefix = ["/usr/bin/xterm", "-e"]
+#     terminal_title_opt = "-title"
+#   terminator:
+#     terminal_cmd_prefix = ["/usr/bin/terminator", "-x"]
+#     terminal_title_opt = "-T"
 terminal_cmd_prefix = ["/usr/bin/mate-terminal", "--"]
 terminal_title_opt = "--title"
 

@@ -121,6 +121,10 @@ If you prefer to skip `scripts/install.sh` (e.g. on a non-Debian distribution, o
    - `execute_commands_on_host` — `'shell'`, `'split'`, or `False`.
    - `authorized_src_dir` — list of directories from which `srelab.py` files may be loaded. Must include `main_sre_dir + '/lab'`; defaults to also including `/home`.
    - `admin_uids`, `admin_gids` — extra UIDs/GIDs treated as administrators.
+   - `terminal_cmd_prefix`, `terminal_title_opt` — the external terminal emulator the GUI launches to open machine connections (default `mate-terminal`). Check which terminals are installed and uncomment the matching pair shown in `params.py`:
+     ```bash
+     command -v mate-terminal gnome-terminal xfce4-terminal xterm terminator
+     ```
    - `debug_mode` — **must be `False`** before building (`make wrappers` refuses otherwise). Use `make remove-debug-mode` if needed.
 
 4. **Install the sudoers rule** — required for `sysreseval` to start labs (the GUI invokes `sudo /opt/sre/sbin/sre --user` through `sre-wrapper`). The rule allows every user on the host to invoke the wrapper without a password; restrict the first column to a specific group (e.g. `%etudiant`) if your site policy requires it. Then validate before keeping the file:

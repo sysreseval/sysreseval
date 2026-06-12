@@ -520,6 +520,58 @@ Next steps (manual):
 EOF
 echo "  - Verify Docker access for the sre user: 'sudo -u sre docker ps'."
 
+# ── external terminal emulator ───────────────────────────────────────────────────
+
+# The GUI opens machine connections in an external terminal. Detect which of the
+# supported terminals are installed and let the admin pick one (default
+# mate-terminal when present). Only terminals that accept a separate
+# "--title TITLE"-style option are offered — the command is built as
+# terminal_cmd_prefix[:-1] + [terminal_title_opt, title] + terminal_cmd_prefix[-1:] + [cmd].
+hr "External terminal emulator"
+
+# name → "<cmd_prefix_python_list>|<title_opt>"; <bin> is replaced by the resolved path.
+declare -A TERM_PREFIX=(
+    [mate-terminal]='["<bin>", "--"]'
+    [gnome-terminal]='["<bin>", "--"]'
+    [xfce4-terminal]='["<bin>", "-x"]'
+    [xterm]='["<bin>", "-e"]'
+    [terminator]='["<bin>", "-x"]'
+)
+declare -A TERM_TITLE_OPT=(
+    [mate-terminal]="--title"
+    [gnome-terminal]="--title"
+    [xfce4-terminal]="--title"
+    [xterm]="-title"
+    [terminator]="-T"
+)
+# Preferred display order (mate-terminal first so it is the natural default).
+TERM_ORDER=(mate-terminal gnome-terminal xfce4-terminal xterm terminator)
+
+found_terms=()
+declare -A TERM_BIN=()
+for t in "${TERM_ORDER[@]}"; do
+    if bin=$(command -v "$t" 2>/dev/null); then
+        found_terms+=("$t")
+        TERM_BIN[$t]="$bin"
+    fi
+done
+
+if (( ${#found_terms[@]} == 0 )); then
+    warn "None of the supported terminal emulators are installed (${TERM_ORDER[*]})."
+    echo "  Leaving terminal settings in params.py unchanged (default: mate-terminal)."
+    echo "  Install one of them, or edit terminal_cmd_prefix / terminal_title_opt in params.py by hand."
+else
+    term_default="${found_terms[0]}"
+    for t in "${found_terms[@]}"; do
+        [[ $t == mate-terminal ]] && { term_default="mate-terminal"; break; }
+    done
+    chosen_term=$(prompt_choice "Which terminal emulator should the GUI use?" "$term_default" "${found_terms[@]}")
+    prefix="${TERM_PREFIX[$chosen_term]/<bin>/${TERM_BIN[$chosen_term]}}"
+    update_param "terminal_cmd_prefix = " "terminal_cmd_prefix = ${prefix}"
+    update_param "terminal_title_opt = " "terminal_title_opt = \"${TERM_TITLE_OPT[$chosen_term]}\""
+    echo "Terminal emulator set to: $chosen_term (${TERM_BIN[$chosen_term]})"
+fi
+
 # ── X11 access for lab virtual machines ─────────────────────────────────────────
 
 # Lab containers run graphical (X11) apps that display on the host's X server,

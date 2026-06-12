@@ -599,7 +599,7 @@ install<span class="w"> </span>-d<span class="w"> </span>-o<span class="w"> </sp
 </div>
 </li>
 <li><p><strong>Edit <code class="docutils literal notranslate"><span class="pre">src/SRE/params.py</span></code></strong> to match your site. At minimum review:</p>
-<ul class="simple">
+<ul>
 <li><p><code class="docutils literal notranslate"><span class="pre">main_sre_dir</span></code> — runtime root for SRE binaries, libs, labs, graphics, translations, locale (default <code class="docutils literal notranslate"><span class="pre">/opt/sre</span></code>). If you change this, also rewrite the literal <code class="docutils literal notranslate"><span class="pre">/opt/sre</span></code> in the sudoers rule, <code class="docutils literal notranslate"><span class="pre">.desktop</span></code> file, and <code class="docutils literal notranslate"><span class="pre">sre-preload-images.service</span></code> snippets below.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">sre_uid</span></code>, <code class="docutils literal notranslate"><span class="pre">sre_gid</span></code> — must match the user/group created above.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">docker_gid</span></code> — GID of the group owning <code class="docutils literal notranslate"><span class="pre">/var/run/docker.sock</span></code>.</p></li>
@@ -609,6 +609,11 @@ install<span class="w"> </span>-d<span class="w"> </span>-o<span class="w"> </sp
 <li><p><code class="docutils literal notranslate"><span class="pre">execute_commands_on_host</span></code> — <code class="docutils literal notranslate"><span class="pre">'shell'</span></code>, <code class="docutils literal notranslate"><span class="pre">'split'</span></code>, or <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">authorized_src_dir</span></code> — list of directories from which <code class="docutils literal notranslate"><span class="pre">srelab.py</span></code> files may be loaded. Must include <code class="docutils literal notranslate"><span class="pre">main_sre_dir</span> <span class="pre">+</span> <span class="pre">'/lab'</span></code>; defaults to also including <code class="docutils literal notranslate"><span class="pre">/home</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">admin_uids</span></code>, <code class="docutils literal notranslate"><span class="pre">admin_gids</span></code> — extra UIDs/GIDs treated as administrators.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">terminal_cmd_prefix</span></code>, <code class="docutils literal notranslate"><span class="pre">terminal_title_opt</span></code> — the external terminal emulator the GUI launches to open machine connections (default <code class="docutils literal notranslate"><span class="pre">mate-terminal</span></code>). Check which terminals are installed and uncomment the matching pair shown in <code class="docutils literal notranslate"><span class="pre">params.py</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>mate-terminal<span class="w"> </span>gnome-terminal<span class="w"> </span>xfce4-terminal<span class="w"> </span>xterm<span class="w"> </span>terminator
+</pre></div>
+</div>
+</li>
 <li><p><code class="docutils literal notranslate"><span class="pre">debug_mode</span></code> — <strong>must be <code class="docutils literal notranslate"><span class="pre">False</span></code></strong> before building (<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">wrappers</span></code> refuses otherwise). Use <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">remove-debug-mode</span></code> if needed.</p></li>
 </ul>
 </li>
