@@ -21,7 +21,7 @@ On other distributions install them with your package manager before running the
 
 ## Deployment layout
 
-SRE's runtime root defaults to `/opt/sre`, but the installer makes it configurable. Clone the repo (`git clone https://github.com/sysreseval/sysreseval`) or untar the release into `/opt/sre` — or into any other location you prefer.
+SRE's runtime root defaults to `/opt/sre`, but the installer makes it configurable. Clone the repo (`git clone https://github.com/sysreseval/sysreseval /opt/sre`) or untar the release into `/opt/sre` — or into any other location you prefer.
 
 `scripts/install.sh` detects where it is being run from and offers that path as the default — `/opt/sre` when run from `/opt/sre/scripts/`, 
 otherwise the parent of the script directory. The chosen value is patched into `src/SRE/params.py` (`main_sre_dir`) and substituted for `/opt/sre` in the sudoers rule, 

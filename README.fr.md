@@ -54,7 +54,10 @@ les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permette
 ## Exemple
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/e2255246-7996-40db-9547-019dd29d7080" controls width="720"></video>
+  <img src="docs/demo1.gif" alt="Démo SysResEval" width="800">
+</p>
+<p align="center">
+  <a href="docs/demo1.mp4">Télécharger la vidéo en pleine qualité (MP4)</a>
 </p>
 
 

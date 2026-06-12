@@ -49,7 +49,10 @@ If a grading bug surfaces after the fact, `sre re-eval` re-runs the scoring agai
 ## Example
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/e2255246-7996-40db-9547-019dd29d7080" controls width="720"></video>
+  <img src="docs/demo1.gif" alt="SysResEval demo" width="800">
+</p>
+<p align="center">
+  <a href="docs/demo1.mp4">Download the full-quality video (MP4)</a>
 </p>
 
 
