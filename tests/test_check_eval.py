@@ -7,7 +7,7 @@ from SRE import params
 from SRE.command.check_eval import action_check_eval
 from SRE.command.re_eval import _load_srelab
 
-_LAB_PATH = Path(__file__).parent.parent / 'lab' / '_TESTS_' / 'functional_test_lab.py'
+_LAB_PATH = Path(__file__).parent / 'labs' / 'functional_test_lab.py'
 _RUNNING_LAB_NAME = '20260101000000@@@functional_test_lab@@@user'
 _ARCHIVE_STEM = f'20260101000000_{_RUNNING_LAB_NAME}'
 

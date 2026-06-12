@@ -2,7 +2,7 @@
 Functional tests for the full SRE lab lifecycle:
   do_action_start → verify files → do_eval (various outcomes) → action_stop → verify cleanup
 
-The test lab (lab/_TESTS_/functional_test_lab.py) has:
+The test lab (tests/labs/functional_test_lab.py) has:
   - 2 machines: router, client
   - 2 steps of tests: step 1 on both machines, step 2 on router only
   - Various outcomes: pass (code 0), fail (code 1), timeout (code -1)
@@ -30,7 +30,7 @@ from SRE.command.stop import action_stop
 # Helpers
 # ---------------------------------------------------------------------------
 
-_LAB_PATH = Path(__file__).parent.parent / 'lab' / '_TESTS_' / 'functional_test_lab.py'
+_LAB_PATH = Path(__file__).parent / 'labs' / 'functional_test_lab.py'
 
 
 def _build_exetests_output(*commands):
@@ -102,9 +102,8 @@ def functional_env(tmp_path, monkeypatch):
     home_sre.mkdir()
     monkeypatch.setattr(params, 'sre_user_public_dir', str(home_sre))
 
-    # Allow lab files from this project's lab/ directory
-    project_lab_dir = str(_LAB_PATH.parent.parent)
-    monkeypatch.setattr(params, 'authorized_src_dir', [project_lab_dir, '/home/etudiant'])
+    # Allow lab files from the test fixture labs directory
+    monkeypatch.setattr(params, 'authorized_src_dir', [str(_LAB_PATH.parent), '/home/etudiant'])
 
     # Set a non-empty username so the running_lab_name regex '^(.+)@@@(.+)@@@(.+)$'
     # matches (empty username causes resolve_running_lab_name to filter it out)
