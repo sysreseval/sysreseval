@@ -38,7 +38,7 @@ lib_dir = main_sre_dir + "/lib"
 # debug_mode:
 # - allow environment variables SRE_WRAPPER and SRE_PUB_DIR to overcome the default value (insecure)
 # - allow "sysreseval --debug"
-debug_mode = True #False
+debug_mode = False
 
 # If True, sysreseval will use the last field in the gecos string and save it in the answers
 # of the user as email (to be used in the pdfs generated with "sre outline")
