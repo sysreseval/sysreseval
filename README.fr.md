@@ -16,8 +16,9 @@
 
 ---
 
-**SysResEval** (*Système Réseaux Évaluation* ou **SRE**) est une suite logicielle open-source pour gérer les séances de TPs et les évaluations dans les cours d'administration réseaux et systèmes.
-Chaque « lab » ou projet est un petit réseau virtuel de machines Linux, orchestré via le [framework Kathara](https://github.com/KatharaFramework/Kathara) au-dessus de Docker et VDE.
+**SysResEval** (*Système Réseaux Évaluation* ou **SRE**) est une suite logicielle open-source pour gérer les séances de TPs et les évaluations 
+dans les cours d'administration réseaux et systèmes.
+Chaque « lab » ou projet est un petit réseau virtuel de machines (conteneurs) Linux, orchestré via le [framework Kathara](https://github.com/KatharaFramework/Kathara) au-dessus de Docker et VDE.
 Les étudiants suivent des exercices guidés dans une interface graphique ;
 les enseignants supervisent les séances et organisent des examens à durée limitée avec une notation automatique et reproductible.
 
@@ -28,7 +29,7 @@ Il a été développé à l'**IUT d'Orsay, Université Paris-Saclay**.
 - **Interface à deux niveaux.** Une interface graphique (`sysreseval`) pour les étudiants, ainsi qu'une CLI complète (`sre`) pour les enseignants. 
 L'interface graphique délègue à la CLI via un petit utilitaire setuid `sre-wrapper`, ce qui maintient une séparation claire des privilèges.
 - **Structure de projet riche.** Chaque projet présente plusieurs onglets :
-  - **Schéma** — le schéma du réseau (certaines machines peuvent interdire la connexion — affichées généralement en rouge — ou être cachées ;
+  - **Schéma** — le schéma du réseau (certaines machines peuvent interdire la connexion — affichées généralement en rouge — ou être cachées) ;
   - **Informations** — le contexte général et les consignes, rédigés en Markdown ;
   - **Questions** — Une liste d'items que l'étudiant doit traiter. Chaque question est :
     - soit un texte Markdown décrivant une tâche à effectuer sur les machines (par ex. *configurer le réseau sur m1*),
@@ -45,10 +46,10 @@ pour ouvrir des terminaux supplémentaires vers une machine (utile lorsque plusi
 - **Examens à durée limitée.** `sysreseval` démarre le projet de chaque étudiant (immédiatement ou à une heure programmée), 
 affiche un compte à rebours, lance des évaluations périodiques et affiche une bannière de fin d'examen. 
 La durée peut être ajustée à la volée — utile pour les étudiants disposant d'un aménagement.
-- **Notation reproductible et traitement post-examen.** Chaque évaluation est archivée sous forme de fichier msgpack compressé contenant les données du projet, les sorties des commandes envoyées sur les machines, les réponses de l'étudiant et les notes par item, consultables avec `sre cat`. Si un bug de notation apparaît après coup, `sre re-eval` permet de 
+- **Notation reproductible et traitement post-examen.** Chaque évaluation est archivée sous forme de fichier `msgpack` compressé contenant les données du projet, les sorties des commandes envoyées sur les machines, les réponses de l'étudiant et les notes par item, consultables avec `sre cat`. Si un bug de notation apparaît après coup, `sre re-eval` permet de 
 re-corriger avec un script mis à jour ; `sre outline` produit alors des rapports PDF par étudiant ainsi qu'un tableur ODS récapitulatif. Pendant les examens, chaque session de terminal est aussi enregistrée (format `asciinema`).
-- **Internationalisation.** Les chaînes des TP et les traductions de l'interface graphique sont livrées en français et en anglais ; 
-les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permettent de traduire facilement un projet.
+- **Internationalisation.** Les TPs proposés et l'interface graphique sont livrées en français et en anglais ; 
+les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permettent de traduire facilement un projet dans une autre langue.
 
 
 ## Exemple
@@ -77,11 +78,12 @@ et installe (en option) une entrée `.desktop`, la complétion bash, ainsi qu'un
 
 Voir **[docs/sphinx/installation.md](docs/sphinx/installation.md)** pour la configuration post-installation :
 - relever les limites inotify,
+- configurer le serveur X pour écouter le port TCP 6000,
 - restreindre l'accès des étudiants à Docker pendant les examens,
 - partager les répertoires d'archives pour la supervision en direct,
 - pré-télécharger les images Docker pour éviter une saturation réseau au démarrage d'un examen.
 
-L'installation pas à pas, l'installation manuelle et les étapes post-installation sont entièrement documentées dans **[docs/sphinx/installation.md](docs/sphinx/installation.md)**.
+L'installation pas à pas, l'installation manuelle et les étapes post-installation sont documentées dans **[docs/sphinx/installation.md](docs/sphinx/installation.md)**.
 
 
 ## Documentation

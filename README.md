@@ -71,6 +71,7 @@ The installer creates the `sre` system user, drops a sudoers rule, builds the C 
 
 See **[docs/sphinx/installation.md](docs/sphinx/installation.md)** for the post-install set-up:
 - raising inotify limits,
+- configure X to listen to TCP port 6000,
 - restricting student access to Docker during exams,
 - sharing archive directories for live monitoring,
 - pre-loading Docker images to avoid a network meltdown when an exam starts.
