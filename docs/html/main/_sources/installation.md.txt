@@ -137,7 +137,7 @@ If you prefer to skip `scripts/install.sh` (e.g. on a non-Debian distribution, o
    install -m 0644 -o root -g root scripts/etc/sysreseval.desktop /usr/share/applications/sysreseval.desktop
    ```
 
-6. **(Optional) Install the image pre-pull systemd unit** from `scripts/etc/sre-preload-images.service` into `/etc/systemd/system/`. It requires `opt-sre.mount` and is not enabled by default — see [Pre-loading Docker images](#5-pre-loading-docker-images) below.
+6. **(Optional) Install the image pre-pull systemd unit** from `scripts/etc/sre-preload-images.service` into `/etc/systemd/system/`. It requires `opt-sre.mount` and is not enabled by default — see [Pre-loading Docker images](#6-pre-loading-docker-images) below.
 
 7. **(Optional) Install bash completion** for the `sre` CLI. The script under `scripts/etc/sre_bash_completion` completes subcommands, running lab names (read from `/var/lib/sre/projects/`), available labs (via `sre list`), and option arguments. 
 Install it system-wide:
@@ -193,7 +193,31 @@ sysctl --system
 
 (Optional) Tune `src/SRE/params.py` further — see [Runtime & Internals](internals.md).
 
-### 3. Restricting student access to Docker
+### 3. Enable X11 access for lab virtual machines
+
+Labs run graphical (X11) applications inside their containers and those apps display on the host's X server
+(if the parameter `x11_host` is set to `True` in a virtual machine configuration).
+For this to work the host's X server must accept TCP connections on **port 6000** (display `:0`). Modern X servers start with `-nolisten tcp`, so TCP is disabled by default and must be turned on explicitly. Access to individual labs is then authorized per project via an xauth cookie (`SRE_XAUTH_COOKIE` / `sre start --xauth-file`), so no `xhost` tweaks are needed — only the TCP listener.
+
+How to enable TCP listening depends on your display manager. Two common cases:
+
+- **GDM** — in `/etc/gdm3/custom.conf`:
+  ```ini
+  [security]
+  DisallowTCP=false
+  ```
+- **LightDM** — in `/etc/lightdm/lightdm.conf` under `[Seat:*]`:
+  ```ini
+  xserver-allow-tcp=true
+  ```
+
+Restart the display manager (or log out and back in) for the change to take effect, then verify:
+```bash
+ss -ltn | grep 6000
+```
+You should see the X server listening on `0.0.0.0:6000` (and/or `[::]:6000`). `scripts/install.sh` runs this same check at the end and warns if no X server is listening on port 6000.
+
+### 4. Restricting student access to Docker
 
 For an exam to be meaningful, students must not be able to talk to Docker directly — otherwise a `docker exec -it ...` from a regular shell would let them connect to a forbidden container and bypass the lab's restrictions.
 
@@ -207,7 +231,7 @@ The recommended setup:
 
 Both helpers use `setfacl` on the Docker socket, so the change is immediate and survives until the next call.
 
-### 4. Sharing evaluation archives for `sre watch`
+### 5. Sharing evaluation archives for `sre watch`
 
 `sre watch <directory>` runs an interactive terminal dashboard that monitors evaluation archives as they appear and alerts on student inactivity or errors.
 To use it during an exercise session or an exam, every workstation must drop its archives into a directory the instructor can read from one place. 
@@ -228,7 +252,7 @@ Edit the `MACHINES`, `BASE_DIR`, and `EXPORTS_FILE` constants at the top of the 
 
 **Read-only cross-mount for the instructor.** In addition to either of the above, you can re-export the shared directory read-only to the instructor's workstation. The instructor can then run `sre watch` from their own machine without logging into the server.
 
-### 5. Pre-loading Docker images
+### 6. Pre-loading Docker images
 
 When an exam starts, every workstation pulls the same images at the same time — without precaution this can saturate the network and cause a meltdown. The fix is to pre-pull the images on each host ahead of time.
 

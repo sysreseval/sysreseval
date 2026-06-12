@@ -322,9 +322,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#post-install-steps">Post-install steps</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#deploy-and-verify">1. Deploy and verify</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#raise-inotify-limits">2. Raise inotify limits</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#restricting-student-access-to-docker">3. Restricting student access to Docker</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#sharing-evaluation-archives-for-sre-watch">4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#pre-loading-docker-images">5. Pre-loading Docker images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#enable-x11-access-for-lab-virtual-machines">3. Enable X11 access for lab virtual machines</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#restricting-student-access-to-docker">4. Restricting student access to Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sharing-evaluation-archives-for-sre-watch">5. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pre-loading-docker-images">6. Pre-loading Docker images</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#reference">Reference</a><ul>
@@ -681,8 +682,33 @@ sysctl<span class="w"> </span>--system
 </div>
 <p>(Optional) Tune <code class="docutils literal notranslate"><span class="pre">src/SRE/params.py</span></code> further — see <a class="reference internal" href="internals.html"><span class="std std-doc">Runtime &amp; Internals</span></a>.</p>
 </section>
+<section id="enable-x11-access-for-lab-virtual-machines">
+<h3>3. Enable X11 access for lab virtual machines<a class="headerlink" href="#enable-x11-access-for-lab-virtual-machines" title="Link to this heading">¶</a></h3>
+<p>Labs run graphical (X11) applications inside their containers and those apps display on the host’s X server
+(if the parameter <code class="docutils literal notranslate"><span class="pre">x11_host</span></code> is set to <code class="docutils literal notranslate"><span class="pre">True</span></code> in a virtual machine configuration).
+For this to work the host’s X server must accept TCP connections on <strong>port 6000</strong> (display <code class="docutils literal notranslate"><span class="pre">:0</span></code>). Modern X servers start with <code class="docutils literal notranslate"><span class="pre">-nolisten</span> <span class="pre">tcp</span></code>, so TCP is disabled by default and must be turned on explicitly. Access to individual labs is then authorized per project via an xauth cookie (<code class="docutils literal notranslate"><span class="pre">SRE_XAUTH_COOKIE</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--xauth-file</span></code>), so no <code class="docutils literal notranslate"><span class="pre">xhost</span></code> tweaks are needed — only the TCP listener.</p>
+<p>How to enable TCP listening depends on your display manager. Two common cases:</p>
+<ul>
+<li><p><strong>GDM</strong> — in <code class="docutils literal notranslate"><span class="pre">/etc/gdm3/custom.conf</span></code>:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[security]</span>
+<span class="na">DisallowTCP</span><span class="o">=</span><span class="s">false</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>LightDM</strong> — in <code class="docutils literal notranslate"><span class="pre">/etc/lightdm/lightdm.conf</span></code> under <code class="docutils literal notranslate"><span class="pre">[Seat:*]</span></code>:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="na">xserver-allow-tcp</span><span class="o">=</span><span class="s">true</span>
+</pre></div>
+</div>
+</li>
+</ul>
+<p>Restart the display manager (or log out and back in) for the change to take effect, then verify:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ss<span class="w"> </span>-ltn<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="m">6000</span>
+</pre></div>
+</div>
+<p>You should see the X server listening on <code class="docutils literal notranslate"><span class="pre">0.0.0.0:6000</span></code> (and/or <code class="docutils literal notranslate"><span class="pre">[::]:6000</span></code>). <code class="docutils literal notranslate"><span class="pre">scripts/install.sh</span></code> runs this same check at the end and warns if no X server is listening on port 6000.</p>
+</section>
 <section id="restricting-student-access-to-docker">
-<h3>3. Restricting student access to Docker<a class="headerlink" href="#restricting-student-access-to-docker" title="Link to this heading">¶</a></h3>
+<h3>4. Restricting student access to Docker<a class="headerlink" href="#restricting-student-access-to-docker" title="Link to this heading">¶</a></h3>
 <p>For an exam to be meaningful, students must not be able to talk to Docker directly — otherwise a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span> <span class="pre">-it</span> <span class="pre">...</span></code> from a regular shell would let them connect to a forbidden container and bypass the lab’s restrictions.</p>
 <p>The recommended setup:</p>
 <ol class="arabic simple">
@@ -698,7 +724,7 @@ sysctl<span class="w"> </span>--system
 <p>Both helpers use <code class="docutils literal notranslate"><span class="pre">setfacl</span></code> on the Docker socket, so the change is immediate and survives until the next call.</p>
 </section>
 <section id="sharing-evaluation-archives-for-sre-watch">
-<h3>4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code><a class="headerlink" href="#sharing-evaluation-archives-for-sre-watch" title="Link to this heading">¶</a></h3>
+<h3>5. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code><a class="headerlink" href="#sharing-evaluation-archives-for-sre-watch" title="Link to this heading">¶</a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">&lt;directory&gt;</span></code> runs an interactive terminal dashboard that monitors evaluation archives as they appear and alerts on student inactivity or errors.
 To use it during an exercise session or an exam, every workstation must drop its archives into a directory the instructor can read from one place.
 Set the <code class="docutils literal notranslate"><span class="pre">archive_dirs</span></code> attribute in <code class="docutils literal notranslate"><span class="pre">params.py</span></code> (or on some lab’s <code class="docutils literal notranslate"><span class="pre">srelab.py</span></code>) so evaluations are written into the shared location in addition to the local one.</p>
@@ -715,7 +741,7 @@ Set the <code class="docutils literal notranslate"><span class="pre">archive_dir
 <p><strong>Read-only cross-mount for the instructor.</strong> In addition to either of the above, you can re-export the shared directory read-only to the instructor’s workstation. The instructor can then run <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> from their own machine without logging into the server.</p>
 </section>
 <section id="pre-loading-docker-images">
-<h3>5. Pre-loading Docker images<a class="headerlink" href="#pre-loading-docker-images" title="Link to this heading">¶</a></h3>
+<h3>6. Pre-loading Docker images<a class="headerlink" href="#pre-loading-docker-images" title="Link to this heading">¶</a></h3>
 <p>When an exam starts, every workstation pulls the same images at the same time — without precaution this can saturate the network and cause a meltdown. The fix is to pre-pull the images on each host ahead of time.</p>
 <p>The unit <code class="docutils literal notranslate"><span class="pre">scripts/etc/sre-preload-images.service</span></code> (offered for installation by <code class="docutils literal notranslate"><span class="pre">scripts/install.sh</span></code>) runs once at boot and shells out to:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">sre</span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">sre</span> <span class="n">preload</span><span class="o">-</span><span class="n">images</span> <span class="o">--</span><span class="n">random</span><span class="o">-</span><span class="n">delay</span> <span class="mi">120</span> <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">sre</span><span class="o">/</span><span class="n">lab</span><span class="o">/</span>
@@ -896,9 +922,10 @@ make<span class="w"> </span>api_doc<span class="w">         </span><span class="
 <li><a class="reference internal" href="#post-install-steps">Post-install steps</a><ul>
 <li><a class="reference internal" href="#deploy-and-verify">1. Deploy and verify</a></li>
 <li><a class="reference internal" href="#raise-inotify-limits">2. Raise inotify limits</a></li>
-<li><a class="reference internal" href="#restricting-student-access-to-docker">3. Restricting student access to Docker</a></li>
-<li><a class="reference internal" href="#sharing-evaluation-archives-for-sre-watch">4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
-<li><a class="reference internal" href="#pre-loading-docker-images">5. Pre-loading Docker images</a></li>
+<li><a class="reference internal" href="#enable-x11-access-for-lab-virtual-machines">3. Enable X11 access for lab virtual machines</a></li>
+<li><a class="reference internal" href="#restricting-student-access-to-docker">4. Restricting student access to Docker</a></li>
+<li><a class="reference internal" href="#sharing-evaluation-archives-for-sre-watch">5. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
+<li><a class="reference internal" href="#pre-loading-docker-images">6. Pre-loading Docker images</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#reference">Reference</a><ul>

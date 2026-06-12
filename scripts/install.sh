@@ -519,3 +519,30 @@ Backup of params.py: $backup
 Next steps (manual):
 EOF
 echo "  - Verify Docker access for the sre user: 'sudo -u sre docker ps'."
+
+# ── X11 access for lab virtual machines ─────────────────────────────────────────
+
+# Lab containers run graphical (X11) apps that display on the host's X server,
+# which must accept TCP connections on port 6000 (display :0). Modern X servers
+# ship with '-nolisten tcp', so this is off until an admin enables it. Purely
+# informational — never alters the exit status (the installer may run headless).
+hr "X11 access for lab virtual machines"
+if command -v ss >/dev/null 2>&1; then
+    x_listening=$(ss -ltn 2>/dev/null)
+elif command -v netstat >/dev/null 2>&1; then
+    x_listening=$(netstat -ltn 2>/dev/null)
+else
+    x_listening=""
+    echo "Neither 'ss' nor 'netstat' is available — skipping the X server TCP check."
+fi
+if [[ -n $x_listening ]]; then
+    if grep -qE ':6000[[:space:]]' <<<"$x_listening"; then
+        echo "X server is listening on TCP port 6000 — X11 apps in lab virtual machines can reach it."
+    else
+        warn "No X server is listening on TCP port 6000."
+        echo "  To run graphical (X11) applications inside the lab virtual machines, the host's"
+        echo "  X server must accept TCP connections on port 6000 (disabled by default via"
+        echo "  '-nolisten tcp'). See 'Post-install steps' in docs/sphinx/installation.md for"
+        echo "  how to enable it for your display manager."
+    fi
+fi
