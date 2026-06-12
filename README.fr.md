@@ -57,7 +57,7 @@ les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permette
   <img src="docs/demo1.gif" alt="Démo SysResEval" width="800">
 </p>
 <p align="center">
-  <a href="docs/demo1.mp4">Télécharger la vidéo en pleine qualité (MP4)</a>
+  <a href="docs/demo1.mp4?raw=1">Télécharger la vidéo en pleine qualité (MP4)</a>
 </p>
 
 
