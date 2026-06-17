@@ -515,6 +515,23 @@ if [[ -f $ETC_DIR/sre-preload-images.service ]] && command -v systemctl >/dev/nu
     fi
 fi
 
+# Raise the kernel inotify limits. Privileged labs run systemd (PID 1) in each
+# container; the Debian default fs.inotify.max_user_instances = 128 is exhausted
+# once a couple of privileged labs run side by side, after which systemd in any
+# new container exits at startup with "Failed to create control group inotify
+# object: Too many open files".
+if [[ -f $ETC_DIR/sre-inotify.conf ]]; then
+    if confirm "Install $ETC_DIR/sre-inotify.conf to /etc/sysctl.d/60-sre-inotify.conf?" "Y"; then
+        install -m 0644 -o root -g root "$ETC_DIR/sre-inotify.conf" /etc/sysctl.d/60-sre-inotify.conf
+        echo "Installed /etc/sysctl.d/60-sre-inotify.conf."
+        if command -v sysctl >/dev/null 2>&1; then
+            sysctl --system >/dev/null && echo "Applied sysctl settings."
+        else
+            warn "sysctl not found — inotify limits will take effect on next boot."
+        fi
+    fi
+fi
+
 # ── build and install ──────────────────────────────────────────────────────────
 
 cd "$REPO_DIR"

@@ -45,7 +45,8 @@ and all runtime state lives elsewhere — `/var/lib/sre` (`sre_pub_dir`) and `/h
 - membership of `sre` in the local `docker` group
 - a copy of `scripts/etc/sre_bash_completion` into `/etc/bash_completion.d/sre`
 - a copy of `scripts/etc/sysreseval.desktop` into `/usr/share/applications/`
-- raised inotify limits and other post-install steps (see [Post-install steps](#post-install-steps))
+- raised inotify limits (`scripts/etc/sre-inotify.conf` into `/etc/sysctl.d/`, then `sysctl --system`)
+- the other post-install steps (see [Post-install steps](#post-install-steps))
 - for the NFS topology, the mount itself
 
 Script these from the relevant sections of `scripts/install.sh` if you have many machines.
@@ -92,8 +93,9 @@ After you confirm the summary, the installer:
 7. Optionally installs `scripts/etc/sysreseval.desktop` to `/usr/share/applications/` so the GUI appears in the desktop application menu.
 8. Optionally installs `scripts/etc/sre_bash_completion` to `/etc/bash_completion.d/sre` so the `sre` CLI gets bash completion system-wide.
 9. Optionally installs the `sre-preload-images.service` systemd unit (oneshot, requires `opt-sre.mount`; not enabled by default — enable with `systemctl enable --now sre-preload-images.service` once `/opt/sre` is mounted).
-10. Runs `make venv` then `make install` (which is `check-debug-mode` + `sre-wrapper` + `wrappers`).
-11. Optionally creates symlinks in `/usr/local/bin/` and `/usr/local/sbin/` pointing to each executable under `main_sre_dir/bin/` and `main_sre_dir/sbin/`, so `sre`, `sysreseval`, and `sre-wrapper` can be launched without their full path. Existing non-symlink files at the same paths are left untouched (with a warning).
+10. Optionally installs `scripts/etc/sre-inotify.conf` to `/etc/sysctl.d/60-sre-inotify.conf` and runs `sysctl --system`, raising the kernel inotify limits that privileged labs (systemd PID 1 in each container) would otherwise exhaust.
+11. Runs `make venv` then `make install` (which is `check-debug-mode` + `sre-wrapper` + `wrappers`).
+12. Optionally creates symlinks in `/usr/local/bin/` and `/usr/local/sbin/` pointing to each executable under `main_sre_dir/bin/` and `main_sre_dir/sbin/`, so `sre`, `sysreseval`, and `sre-wrapper` can be launched without their full path. Existing non-symlink files at the same paths are left untouched (with a warning).
 
 ## Install manually
 
@@ -141,9 +143,15 @@ If you prefer to skip `scripts/install.sh` (e.g. on a non-Debian distribution, o
    install -m 0644 -o root -g root scripts/etc/sysreseval.desktop /usr/share/applications/sysreseval.desktop
    ```
 
-6. **(Optional) Install the image pre-pull systemd unit** from `scripts/etc/sre-preload-images.service` into `/etc/systemd/system/`. It requires `opt-sre.mount` and is not enabled by default — see [Pre-loading Docker images](#6-pre-loading-docker-images) below.
+6. **(Optional) Install the image pre-pull systemd unit** from `scripts/etc/sre-preload-images.service` into `/etc/systemd/system/`. It requires `opt-sre.mount` and is not enabled by default — see [Pre-loading Docker images](#5-pre-loading-docker-images) below.
 
-7. **(Optional) Install bash completion** for the `sre` CLI. The script under `scripts/etc/sre_bash_completion` completes subcommands, running lab names (read from `/var/lib/sre/projects/`), available labs (via `sre list`), and option arguments. 
+7. **(Recommended) Raise the kernel inotify limits.** Privileged labs run `/sbin/init` (systemd PID 1) inside each container, and systemd reserves inotify watches per cgroup. Debian defaults (`max_user_instances = 128`) are quickly exhausted once two privileged labs run side by side, after which systemd in any new container exits at startup with `Failed to create control group inotify object: Too many open files`. Drop in the file shipped under `scripts/etc/` and apply it:
+   ```bash
+   install -m 0644 scripts/etc/sre-inotify.conf /etc/sysctl.d/60-sre-inotify.conf
+   sysctl --system
+   ```
+
+8. **(Optional) Install bash completion** for the `sre` CLI. The script under `scripts/etc/sre_bash_completion` completes subcommands, running lab names (read from `/var/lib/sre/projects/`), available labs (via `sre list`), and option arguments. 
 Install it system-wide:
    ```bash
    cp scripts/etc/sre_bash_completion /etc/bash_completion.d/sre
@@ -153,7 +161,7 @@ Install it system-wide:
    . /path/to/sre_bash_completion
    ```
 
-8. **Build the venv and the binaries:**
+9. **Build the venv and the binaries:**
    ```bash
    make venv      # creates venv/ with Python 3.13 deps — see Dependencies below
    make install   # check-debug-mode + sre-wrapper + wrappers
@@ -187,17 +195,9 @@ Once the installer has built the binaries, finish the deployment:
    ln -s /opt/sre/sbin/* /usr/local/sbin/
    ```
 
-### 2. Raise inotify limits
-
-Privileged labs run `/sbin/init` (systemd PID 1) inside each container, and systemd reserves inotify watches per cgroup. Debian defaults (`max_user_instances = 128`) are quickly exhausted once two privileged labs run side by side, after which systemd in any new container exits at startup with `Failed to create control group inotify object: Too many open files`. Drop in the file shipped under `scripts/etc/`:
-```bash
-cp scripts/etc/sre-inotify.conf /etc/sysctl.d/60-sre-inotify.conf
-sysctl --system
-```
-
 (Optional) Tune `src/SRE/params.py` further — see [Runtime & Internals](internals.md).
 
-### 3. Enable X11 access for lab virtual machines
+### 2. Enable X11 access for lab virtual machines
 
 Labs run graphical (X11) applications inside their containers and those apps display on the host's X server
 (if the parameter `x11_host` is set to `True` in a virtual machine configuration).
@@ -221,7 +221,7 @@ ss -ltn | grep 6000
 ```
 You should see the X server listening on `0.0.0.0:6000` (and/or `[::]:6000`). `scripts/install.sh` runs this same check at the end and warns if no X server is listening on port 6000.
 
-### 4. Restricting student access to Docker
+### 3. Restricting student access to Docker
 
 For an exam to be meaningful, students must not be able to talk to Docker directly — otherwise a `docker exec -it ...` from a regular shell would let them connect to a forbidden container and bypass the lab's restrictions.
 
@@ -235,7 +235,7 @@ The recommended setup:
 
 Both helpers use `setfacl` on the Docker socket, so the change is immediate and survives until the next call.
 
-### 5. Sharing evaluation archives for `sre watch`
+### 4. Sharing evaluation archives for `sre watch`
 
 `sre watch <directory>` runs an interactive terminal dashboard that monitors evaluation archives as they appear and alerts on student inactivity or errors.
 To use it during an exercise session or an exam, every workstation must drop its archives into a directory the instructor can read from one place. 
@@ -256,7 +256,7 @@ Edit the `MACHINES`, `BASE_DIR`, and `EXPORTS_FILE` constants at the top of the 
 
 **Read-only cross-mount for the instructor.** In addition to either of the above, you can re-export the shared directory read-only to the instructor's workstation. The instructor can then run `sre watch` from their own machine without logging into the server.
 
-### 6. Pre-loading Docker images
+### 5. Pre-loading Docker images
 
 When an exam starts, every workstation pulls the same images at the same time — without precaution this can saturate the network and cause a meltdown. The fix is to pre-pull the images on each host ahead of time.
 

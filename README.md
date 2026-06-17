@@ -67,10 +67,9 @@ cd /opt/sre
 sudo ./scripts/install.sh        # interactive — ~10 questions
 ```
 
-The installer creates the `sre` system user, drops a sudoers rule, builds the C wrapper and Python venv, and (optionally) installs a `.desktop` entry, bash completion, and a `sre-preload-images.service` systemd unit. 
+The installer creates the `sre` system user, drops a sudoers rule, builds the C wrapper and Python venv, raises the kernel inotify limits, and (optionally) installs a `.desktop` entry, bash completion, and a `sre-preload-images.service` systemd unit. 
 
 See **[docs/sphinx/installation.md](docs/sphinx/installation.md)** for the post-install set-up:
-- raising inotify limits,
 - configure X to listen to TCP port 6000,
 - restricting student access to Docker during exams,
 - sharing archive directories for live monitoring,
