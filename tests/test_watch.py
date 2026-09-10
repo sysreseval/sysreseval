@@ -13,6 +13,8 @@ Covers:
   archives displayed, and two machines sharing a running_lab_name both show.
 """
 import os
+import re
+import types
 from datetime import datetime
 from pathlib import Path
 
@@ -743,3 +745,73 @@ class TestScan:
         assert errors == []
         assert best[('host0', _LAB)].path == str(bad)
         assert reads == [str(bad), str(bad)]
+
+
+# ---------------------------------------------------------------------------
+# Hostname filter: _compile_host_filter and the -H/--hostname-filter option
+# ---------------------------------------------------------------------------
+
+class TestCompileHostFilter:
+    def test_empty_means_show_all(self):
+        assert watch._compile_host_filter('') == ('', None)
+
+    def test_valid_pattern(self):
+        pattern, regex = watch._compile_host_filter('^pc-1[0-9]$')
+        assert pattern == '^pc-1[0-9]$'
+        assert regex.search('pc-12') and not regex.search('pc-2')
+
+    def test_invalid_pattern_raises(self):
+        with pytest.raises(re.error):
+            watch._compile_host_filter('pc-(')
+
+
+def _row_hostnames(out: str) -> list[str]:
+    """Hostnames of the project rows printed by the dashboard."""
+    return [m.group(1) for m in
+            (re.match(r'^(?: ► |   )(host\d+)\s', line) for line in out.splitlines())
+            if m]
+
+
+class TestActionWatchHostnameFilter:
+    @pytest.fixture
+    def run_watch(self, tmp_path, monkeypatch, capsys):
+        """Run action_watch non-interactively for a single refresh (the sleep
+        between refreshes raises KeyboardInterrupt) and return its stdout."""
+        from SRE import params
+        _populate(tmp_path, n_instances=2, n_files=1)
+
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+        monkeypatch.setattr(watch.time, 'sleep', interrupt)
+        monkeypatch.setattr(watch.sys, 'stdin', types.SimpleNamespace(isatty=lambda: False))
+
+        def run(hostname_filter: str) -> str:
+            args = params.SRE.args
+            args.dirs = [str(tmp_path)]
+            args.timeout = 90
+            args.interval = 1
+            args.hostname_filter = hostname_filter
+            watch.action_watch()
+            return capsys.readouterr().out
+        return run
+
+    def test_option_sets_filter_and_hides_other_hosts(self, run_watch):
+        out = run_watch('^host1$')
+        assert watch._host_filter_pattern == '^host1$'
+        assert watch._host_filter_re.pattern == '^host1$'
+        assert 'filter:/^host1$/' in out
+        assert _row_hostnames(out) == ['host1']
+        assert '1 project(s) hidden' in out
+
+    def test_no_option_shows_all(self, run_watch):
+        out = run_watch('')
+        assert watch._host_filter_re is None
+        assert 'filter:' not in out
+        assert _row_hostnames(out) == ['host0', 'host1']
+
+    def test_invalid_regexp_exits_with_message(self, run_watch, capsys):
+        with pytest.raises(SystemExit) as exc:
+            run_watch('host(')
+        assert exc.value.code == 1
+        assert "invalid hostname filter 'host('" in capsys.readouterr().err
+        assert watch._host_filter_re is None

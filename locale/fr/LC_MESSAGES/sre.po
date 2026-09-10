@@ -128,6 +128,9 @@ msgstr "seuil d'alerte d'inactivité (défaut : 90)"
 msgid "dashboard refresh interval (default: 3)"
 msgstr "intervalle de rafraîchissement du tableau de bord (défaut : 3)"
 
+msgid "show only hostnames matching this regexp (same as the R key in the dashboard)"
+msgstr "n'afficher que les noms d'hôtes correspondant à cette expression régulière (comme la touche R du tableau de bord)"
+
 msgid "Export evaluation archives to a LibreOffice ODS spreadsheet"
 msgstr "Exporter des archives d'évaluation vers un tableur LibreOffice ODS"
 

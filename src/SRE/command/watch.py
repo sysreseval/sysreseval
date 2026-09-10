@@ -17,7 +17,7 @@ import zstandard as zstd
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed, exam_remaining_seconds
+from ..utils import user_not_allowed, exam_remaining_seconds, error_quit
 
 
 @dataclass
@@ -136,7 +136,8 @@ _HELP = """\
               (no-op when cursor is on a lab title row)
     H         dismiss all projects from selected hostname
               (no-op when cursor is on a lab title row)
-    R         set hostname regexp filter (empty = show all)
+    R         set hostname regexp filter (empty = show all;
+              initial value: -H/--hostname-filter option)
     U         un-dismiss all (projects, hostnames and alerts)
 
   In Alerts zone:
@@ -492,6 +493,14 @@ def _read_key() -> str | None:
     return 'esc'
 
 
+def _compile_host_filter(pattern: str) -> tuple[str, re.Pattern | None]:
+    """Return (pattern, compiled regexp) for a hostname filter; ('', None)
+    means "show all hostnames".  Raises re.error on an invalid pattern."""
+    if not pattern:
+        return '', None
+    return pattern, re.compile(pattern)
+
+
 def _prompt_regexp(old_settings) -> tuple[str, re.Pattern | None] | None:
     """Temporarily restore the terminal, prompt for a hostname regexp, then
     re-enter cbreak mode.  Returns (pattern, compiled_re) or None if cancelled."""
@@ -515,10 +524,8 @@ def _prompt_regexp(old_settings) -> tuple[str, re.Pattern | None] | None:
         finally:
             readline.set_pre_input_hook(None)
 
-        if not raw:
-            return '', None
         try:
-            return raw, re.compile(raw)
+            return _compile_host_filter(raw)
         except re.error as exc:
             print(f"\n  Invalid regexp: {exc}  (press any key to continue)")
             # brief pause so the user can read the error
@@ -1012,10 +1019,17 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
 
 def action_watch():
     user_not_allowed()
+    global _host_filter_pattern, _host_filter_re
     args = SRE.args
     dirs = args.dirs
     timeout = args.timeout
     interval = args.interval
+    # Validate the -H/--hostname-filter regexp before touching the terminal,
+    # so a bad pattern exits with a plain error message.
+    try:
+        _host_filter_pattern, _host_filter_re = _compile_host_filter(args.hostname_filter or '')
+    except re.error as exc:
+        error_quit(f"invalid hostname filter {args.hostname_filter!r}: {exc}")
 
     is_tty = sys.stdin.isatty()
     old_settings = None
@@ -1028,7 +1042,6 @@ def action_watch():
     alert_cursor = 0
     scroll_offset = 0
     show_help = False
-    global _host_filter_pattern, _host_filter_re
     selectable_rows: list[tuple] = []
     visible_alerts: list[tuple] = []
     best: dict[tuple, Record] = {}

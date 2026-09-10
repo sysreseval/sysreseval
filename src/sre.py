@@ -169,6 +169,8 @@ def parse_args():
                               metavar='seconds',
                               help=_(
                                   f'dashboard refresh interval (default: {params.default_dashboard_refresh_interval_in_watch_command})'))
+    parser_watch.add_argument('-H', '--hostname-filter', metavar='regexp', default='',
+                              help=_('show only hostnames matching this regexp (same as the R key in the dashboard)'))
 
     parser_preload = subparsers.add_parser('preload-images',
                                            help=_('Pre-pull Docker images referenced by lab files'))
