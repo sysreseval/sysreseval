@@ -84,7 +84,7 @@ disable_volume_mount_on_root_partition = False
 # For identifying the users, use the environment variable SUDO_USER instead of USER_USERNAME
 # SUDO_USER is set by sudo itself, thus not spoofable (but in some configurations don't give the current USER variable)
 # USER_USERNAME is set by sre-wrapper from USER (spoofable by the user)
-use_sudo_user_for_username = False
+use_sudo_user_for_username = True
 
 # Should projects be able to execute commands on the host (which might be useful)
 # shell : execution through subprocess.run with shell=True which allow pipes

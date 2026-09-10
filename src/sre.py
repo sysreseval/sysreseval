@@ -2,12 +2,11 @@
 import argparse
 import gettext
 import os
-import re
 import sys
 import logging
 from pathlib import Path
 
-from SRE import params
+from SRE import access, params
 
 # Kathara sets Docker connection pool size = cpu_count(), but SRE runs up to
 # max_docker_concurrency concurrent operations — suppress the harmless overflow warning.
@@ -321,73 +320,26 @@ if '--version' in sys.argv[1:]:
     sys.exit(0)
 
 uid = os.geteuid()
-if uid != 0 and uid != params.sre_uid:
-    if uid not in params.admin_uids:
-        gids = set(os.getgroups()) | {os.getegid()}
-        if not gids.intersection(params.admin_gids):
-            error_quit(_("illegal userid"))
+if not access.is_allowed_user(uid, set(os.getgroups()) | {os.getegid()},
+                              sre_uid=params.sre_uid,
+                              admin_uids=params.admin_uids, admin_gids=params.admin_gids):
+    error_quit(_("illegal userid"))
 
 SRE.args = parse_args()
 
-if uid != 0 and uid != params.sre_uid and SRE.args.action not in ('cat', 'check-eval', 're-eval', 'sheet', 'outline', 'watch'):
+if not access.is_allowed_action(uid, SRE.args.action, sre_uid=params.sre_uid):
     error_quit(_("illegal userid"))
 
-if SRE.args.user:
-    if params.use_sudo_user_for_username:
-        SRE.username = os.getenv('SUDO_USER', '')
-    else:
-        SRE.username = os.getenv('USER_USERNAME', '')
-else:
-    SRE.username = os.getenv('LOGNAME', '')
-
-_VALID_USERNAME = re.compile(r'^[a-zA-Z0-9._-]+$')
-
-if not _VALID_USERNAME.match(SRE.username):
+SRE.username = access.resolve_username(os.environ, user_flag=SRE.args.user,
+                                       use_sudo_user=params.use_sudo_user_for_username)
+if not access.is_valid_username(SRE.username):
     error_quit(_("invalid username: '{}'").format(SRE.username))
 
-if os.getenv('SUDO_USER'):
-    # Called via sudo: must come through sre-wrapper (which sets --user), unless it's an admin
-    # A direct "sudo sre" without --user is rejected immediately
-    if not SRE.args.user:
-        error_quit(_("must be launched via sre-wrapper"))
-
-    def _check_launched_from_wrapper():
-        wrapper_real = os.path.realpath(params.sre_wrapper)
-        pid = os.getppid()
-        for _ in range(6):
-            try:
-                # exe readlink may be denied when the target process runs as a
-                # different uid (e.g. root sudo vs. dropped-privilege sre).
-                # Treat EACCES/EPERM as "not a match" and fall through to the
-                # cmdline check, which is world-readable.
-                try:
-                    if os.readlink(f'/proc/{pid}/exe') == wrapper_real:
-                        return True
-                except OSError:
-                    pass
-                # Also handle shell-script wrapper: kernel sets argv as
-                # [interpreter, script_path, ...], so check cmdline args.
-                with open(f'/proc/{pid}/cmdline', 'rb') as f:
-                    cmdline = [a.decode(errors='replace')
-                               for a in f.read().split(b'\x00') if a]
-                if any(os.path.realpath(a) == wrapper_real
-                       for a in cmdline[:3]):
-                    return True
-                ppid = None
-                with open(f'/proc/{pid}/status') as f:
-                    for line in f:
-                        if line.startswith('PPid:'):
-                            ppid = int(line.split()[1])
-                            break
-                if ppid in (None, 0, 1, pid):
-                    break
-                pid = ppid
-            except OSError:
-                break
-        return False
-
-
-    if not _check_launched_from_wrapper():
+# Student path: sudo ran sre itself (through sre-wrapper).  Such a call must
+# carry --user and have sre-wrapper as an ancestor.  An admin running sre from a
+# "sudo -i" shell is not caught here because SUDO_COMMAND is then the shell.
+if access.launched_by_sudo(os.environ, params.sre_exe):
+    if not SRE.args.user or not access.launched_from_wrapper(params.sre_wrapper, os.getppid()):
         error_quit(_("must be launched via sre-wrapper"))
 
 if uid == 0:
