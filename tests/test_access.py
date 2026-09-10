@@ -192,25 +192,39 @@ class TestLaunchedFromWrapper:
         })
         assert access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
 
+    def test_c_wrapper_behind_sudo_monitor(self, install, tmp_path):
+        """With sudoers ``use_pty`` sudo forks a monitor, so the wrapper is one
+        level further up: sre (100) -> sudo (90) -> sudo (85) -> sre-wrapper (80)."""
+        sre_dir, real = install
+        wrapper = str(real / 'bin' / 'sre-wrapper')
+        proc = _fake_proc(tmp_path / 'proc', {
+            90: (self.SUDO, ['sudo', f'{real}/sbin/sre', '--user', 'start', 'lab1'], 85),
+            85: (self.SUDO, ['sudo', f'{real}/sbin/sre', '--user', 'start', 'lab1'], 80),
+            80: (wrapper, [f'{sre_dir}/bin/sre-wrapper', 'start', 'lab1'], 70),
+            70: (self.BASH, ['-bash'], 1),
+        })
+        assert access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
+
     def test_c_wrapper_exe_unreadable(self, install, tmp_path):
-        """readlink on /proc/<pid>/exe may be refused across uids; argv[0] still matches."""
+        """An unreadable /proc/<pid>/exe is a refusal: argv is not a fallback."""
         sre_dir, real = install
         proc = _fake_proc(tmp_path / 'proc', {
             90: (None, ['sudo', f'{real}/sbin/sre', '--user', 'start', 'lab1'], 80),
             80: (None, [f'{sre_dir}/bin/sre-wrapper', 'start', 'lab1'], 70),
             70: (None, ['-bash'], 1),
         })
-        assert access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
+        assert not access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
 
-    def test_shell_wrapper(self, install, tmp_path):
-        """bin/sre-wrapper as a bash script: the interpreter's argv[1] is the script."""
+    def test_shell_script_wrapper_is_refused(self, install, tmp_path):
+        """A bash-script wrapper has the interpreter as exe and the script only
+        in argv, which is not trusted: only the compiled binary is accepted."""
         sre_dir, real = install
         proc = _fake_proc(tmp_path / 'proc', {
             90: (self.SUDO, ['sudo', f'{sre_dir}/bin/../sbin/sre', '--user', 'start', 'lab1'], 80),
             80: (self.BASH, ['/bin/bash', f'{sre_dir}/bin/sre-wrapper', 'start', 'lab1'], 70),
             70: (self.BASH, ['-bash'], 1),
         })
-        assert access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
+        assert not access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
 
     def test_direct_sudo_from_shell(self, install, tmp_path):
         """Student bypassing the wrapper: sre -> sudo -> bash -> sshd."""
@@ -252,16 +266,20 @@ class TestLaunchedFromWrapper:
         assert not access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
         assert not access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 12345, proc=proc)
 
-    @pytest.mark.xfail(strict=True, reason='known weakness: argv[0] is caller-controlled '
-                                           '(exec -a), so the cmdline check can be spoofed')
-    def test_argv_spoof_is_refused(self, install, tmp_path):
-        """A student can run ``exec -a /opt/sre/bin/sre-wrapper bash`` and then
-        ``USER_USERNAME=victim sudo sre --user ...``: exe is bash but argv[0]
-        names the wrapper.  The desired behaviour is refusal."""
+    @pytest.mark.parametrize('argv', [
+        pytest.param(['{w}'], id='argv0-exec-a'),
+        pytest.param(['/bin/bash', '{w}'], id='argv1-script-style'),
+        pytest.param(['/bin/bash', '-c', '{w}'], id='argv2'),
+    ])
+    def test_argv_spoof_is_refused(self, install, tmp_path, argv):
+        """argv is caller-controlled: ``exec -a /opt/sre/bin/sre-wrapper bash``
+        followed by a direct ``sudo sre --user ...`` shows the wrapper path in
+        argv while exe is bash.  Only /proc/<pid>/exe counts."""
         sre_dir, real = install
+        w = f'{sre_dir}/bin/sre-wrapper'
         proc = _fake_proc(tmp_path / 'proc', {
             90: (self.SUDO, ['sudo', f'{real}/sbin/sre', '--user', 'stop', 'lab1'], 80),
-            80: (self.BASH, [f'{sre_dir}/bin/sre-wrapper'], 70),
+            80: (self.BASH, [a.format(w=w) for a in argv], 70),
             70: (self.BASH, ['-bash'], 1),
         })
-        assert not access.launched_from_wrapper(f'{sre_dir}/bin/sre-wrapper', 90, proc=proc)
+        assert not access.launched_from_wrapper(w, 90, proc=proc)

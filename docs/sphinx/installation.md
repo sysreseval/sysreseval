@@ -89,7 +89,7 @@ After you confirm the summary, the installer:
    Defaults!/opt/sre/sbin/sre env_keep += "USER_USERNAME SRE_XAUTH_COOKIE"
    ALL  ALL= NOPASSWD: /opt/sre/sbin/sre --user *
    ```
-   The rule grants passwordless access to every user on the host, not a specific group — `sre-wrapper` is the only entry point and it always passes `--user` with the caller's real login, so widening the sudoers scope doesn't lower the security envelope. Restrict it to a specific group (e.g. `%etudiant`) if your site policy requires it.
+   The rule grants passwordless access to every user on the host, not a specific group — `sre-wrapper` is the only entry point and it always passes `--user` with the caller's real login, so widening the sudoers scope doesn't lower the security envelope. `sre` enforces this itself: a `--user` call is accepted only when sudo ran `sre` directly (`SUDO_COMMAND`) and the compiled `sre-wrapper` binary is an ancestor of the process (`/proc/<pid>/exe`), so the C binary built by `make sre-wrapper` is required and a script cannot stand in for it. Restrict it to a specific group (e.g. `%etudiant`) if your site policy requires it.
 7. Optionally installs `scripts/etc/sysreseval.desktop` to `/usr/share/applications/` so the GUI appears in the desktop application menu.
 8. Optionally installs `scripts/etc/sre_bash_completion` to `/etc/bash_completion.d/sre` so the `sre` CLI gets bash completion system-wide.
 9. Optionally installs the `sre-preload-images.service` systemd unit (oneshot, requires `opt-sre.mount`; not enabled by default — enable with `systemctl enable --now sre-preload-images.service` once `/opt/sre` is mounted).

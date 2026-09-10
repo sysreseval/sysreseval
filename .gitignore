@@ -1,6 +1,6 @@
 /venv/
 /build/
-/misc/
+/misc0/
 CLAUDE.md
 .claude/
 /lab/em/
@@ -10,3 +10,6 @@ __pycache__/
 *.py[co]
 .pytest_cache/
 /docs/sphinx/_build/
+
+# compiled by "make sre-wrapper" (see src/sre-wrapper/sre-wrapper.c)
+bin/sre-wrapper

@@ -15,6 +15,10 @@ Who reaches ``sre`` and how
   ``ALL ALL= NOPASSWD: /opt/sre/sbin/sre --user *``.  In that path ``sre`` is
   therefore *also* uid 0, which is why uid alone cannot tell a student apart from
   an admin working in a ``sudo -i`` shell.
+* ``sre-wrapper`` must be the compiled binary from ``make sre-wrapper``: it is
+  recognised through ``/proc/<pid>/exe``, which the kernel sets and a caller
+  cannot forge.  A shell script has no such identity (its ``exe`` is the
+  interpreter) and is never accepted.
 """
 import os
 import re
@@ -82,31 +86,30 @@ def _parent_pid(status_path):
 
 
 def launched_from_wrapper(wrapper, ppid, *, proc='/proc', depth=WRAPPER_ANCESTOR_DEPTH):
-    """Walk up the process tree from ``ppid`` looking for sre-wrapper.
+    """Walk up the process tree from ``ppid`` looking for the sre-wrapper binary.
 
-    Matches either the C wrapper (``/proc/<pid>/exe`` is the wrapper binary) or
-    the shell wrapper (the interpreter's argv holds the script path).  ``proc``
-    lets tests point at a fake ``/proc`` tree.
+    Only ``/proc/<pid>/exe`` is trusted: the kernel sets it to the executed
+    file.  argv is never consulted because the caller controls it
+    (``exec -a /opt/sre/bin/sre-wrapper bash``); for the same reason a
+    shell-script wrapper can never be recognised, its ``exe`` being the
+    interpreter.  ``wrapper`` must be the compiled binary.
+
+    A few ancestors are inspected rather than a fixed grandparent because sudo
+    may insert a monitor process (``use_pty``): the chain is then
+    sre -> sudo -> sudo -> sre-wrapper.  ``proc`` lets tests point at a fake
+    ``/proc`` tree.
     """
     wrapper_real = os.path.realpath(wrapper)
     pid = ppid
     for _ in range(depth):
         try:
-            # exe readlink may be denied when the target process runs as a
-            # different uid (e.g. root sudo vs. dropped-privilege sre).
-            # Treat EACCES/EPERM as "not a match" and fall through to the
-            # cmdline check, which is world-readable.
+            # A failed readlink (vanished process, denied access) is simply
+            # "not the wrapper"; there is deliberately no fallback.
             try:
                 if os.readlink(f'{proc}/{pid}/exe') == wrapper_real:
                     return True
             except OSError:
                 pass
-            # Shell-script wrapper: kernel sets argv as
-            # [interpreter, script_path, ...], so check cmdline args.
-            with open(f'{proc}/{pid}/cmdline', 'rb') as f:
-                cmdline = [a.decode(errors='replace') for a in f.read().split(b'\x00') if a]
-            if any(os.path.realpath(a) == wrapper_real for a in cmdline[:3]):
-                return True
             parent = _parent_pid(f'{proc}/{pid}/status')
             if parent in (None, 0, 1, pid):
                 break
