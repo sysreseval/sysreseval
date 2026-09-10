@@ -6,17 +6,29 @@ Covers:
   uneven element counts, missing grades).
 - `_render`: tagged-union `selectable_rows` output now includes lab title
   entries alongside project entries, in the correct interleaved order.
+- `_group_archives_by_instance` / `_scan`: the first time an instance is
+  seen only its newest archive is decompressed (the previous one is a
+  fallback when the newest is unreadable), afterwards each new archive is
+  decompressed once; records persist in `_INDEX`, `_CACHE` is pruned to the
+  archives displayed, and two machines sharing a running_lab_name both show.
 """
+import os
 from datetime import datetime
+from pathlib import Path
 
+import msgpack
 import pytest
+import zstandard as zstd
 
+from SRE import params
 from SRE.command import watch
 from SRE.command.watch import (
     Record,
     _aggregate_grade_lists,
     _aggregate_part_subtotals,
+    _group_archives_by_instance,
     _render,
+    _scan,
 )
 
 
@@ -32,12 +44,16 @@ def clean_watch_globals():
     watch._DISMISSED_ALERTS.clear()
     watch._host_filter_pattern = ''
     watch._host_filter_re = None
+    watch._CACHE.clear()
+    watch._INDEX.clear()
     yield
     watch._DISMISSED_PROJECTS.clear()
     watch._DISMISSED_HOSTS.clear()
     watch._DISMISSED_ALERTS.clear()
     watch._host_filter_pattern = ''
     watch._host_filter_re = None
+    watch._CACHE.clear()
+    watch._INDEX.clear()
 
 
 def _ge(*, title='', description='', grade=None, max_grade=None, grade_letter=None,
@@ -401,3 +417,329 @@ class TestRenderSelectableRows:
         lab_lines = [l for l in buf if 'Lab: lab/x' in l]
         assert len(lab_lines) == 1
         assert '►' in lab_lines[0]
+
+
+# ---------------------------------------------------------------------------
+# Archive scanning: _group_archives_by_instance / _scan
+# ---------------------------------------------------------------------------
+
+_LAB = 'lab@x.py'
+_BASE_MTIME = 1_747_400_000.0
+
+
+def _rln(start_ts='20260516100000', lab=_LAB, user='etudiant') -> str:
+    """Build a running_lab_name as params.get_running_lab_name does."""
+    return f"{start_ts}@@@{lab}@@@{user}"
+
+
+def _archive_name(rln: str, eval_date: str) -> str:
+    return params.get_archive_name(rln, params.string_to_datetime(eval_date))
+
+
+def _write_archive(path, *, hostname, login, running_lab_name,
+                   eval_date='20260516120000', grade=10.0, max_grade=10.0,
+                   errors=(), grade_list=(), mtime=None) -> str:
+    """Write a real zstd+msgpack archive laid out like Grade0.save_tests_on_file.
+    Returns the path as a string (what `_scan` stores in `Record.path`)."""
+    archive = {
+        params.running_lab_name_keyword: running_lab_name,
+        params.eval_date_keyword: eval_date,
+        'answers': {params.hostname_keyword: hostname, params.login_keyword: login},
+        'errors': list(errors),
+        'grade_list': list(grade_list),
+        'grade_parts': [],
+        'total_grade_exo_eval': grade,
+        'total_max_exo_eval': max_grade,
+    }
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'wb') as f:
+        with zstd.ZstdCompressor().stream_writer(f) as compressor:
+            compressor.write(msgpack.packb(archive, use_bin_type=True))
+    if mtime is not None:
+        os.utime(path, (mtime, mtime))
+    return str(path)
+
+
+def _populate(root: Path, n_instances=3, n_files=5) -> dict[str, list[str]]:
+    """Create n_instances instances (one host each, in its own sub-directory)
+    with n_files archives each, one per minute, mtimes increasing with time.
+    Returns {running_lab_name: [paths oldest .. newest]}."""
+    files: dict[str, list[str]] = {}
+    for i in range(n_instances):
+        rln = _rln(start_ts=f'2026051610000{i}')
+        paths = []
+        for j in range(n_files):
+            eval_date = f'2026051610{j:02d}00'
+            paths.append(_write_archive(
+                root / f'host{i}' / _archive_name(rln, eval_date),
+                hostname=f'host{i}', login='alice', running_lab_name=rln,
+                eval_date=eval_date, grade=float(j),
+                mtime=_BASE_MTIME + j * 60 + i))
+        files[rln] = paths
+    return files
+
+
+class TestGroupArchivesByInstance:
+    def test_empty(self):
+        assert _group_archives_by_instance([]) == {}
+
+    def test_two_instances_two_groups(self):
+        rln_a, rln_b = _rln(start_ts='20260516100000'), _rln(start_ts='20260516100005')
+        a = f'/d/{_archive_name(rln_a, "20260516100100")}'
+        b = f'/d/{_archive_name(rln_b, "20260516100100")}'
+        assert _group_archives_by_instance([a, b]) == {rln_a: [a], rln_b: [b]}
+
+    def test_one_instance_sorted_newest_first_by_prefix_not_by_path(self):
+        rln = _rln()
+        # Newer archives deliberately live in directories that sort *before*
+        # the older ones, so path order and date order disagree.
+        older = f'/z/{_archive_name(rln, "20260516100100")}'
+        middle = f'/m/{_archive_name(rln, "20260516100300")}'
+        newer = f'/a/{_archive_name(rln, "20260516100500")}'
+        groups = _group_archives_by_instance([middle, older, newer])
+        assert groups == {rln: [newer, middle, older]}
+
+    def test_lab_name_with_special_characters(self):
+        rln = _rln(lab='em@em_EXAM_@CC-2026-03-24.py')
+        old = f'/d/{_archive_name(rln, "20260516100100")}'
+        new = f'/d/{_archive_name(rln, "20260516100200")}'
+        assert _group_archives_by_instance([old, new]) == {rln: [new, old]}
+
+    def test_non_matching_name_is_its_own_singleton_group(self):
+        groups = _group_archives_by_instance(['/d/foo.zst', '/d/bar.zst'])
+        assert groups == {'/d/foo.zst': ['/d/foo.zst'], '/d/bar.zst': ['/d/bar.zst']}
+
+    def test_same_filename_in_two_dirs_one_group_deterministic(self):
+        rln = _rln()
+        name = _archive_name(rln, '20260516100100')
+        g1 = _group_archives_by_instance([f'/a/{name}', f'/b/{name}'])
+        g2 = _group_archives_by_instance([f'/b/{name}', f'/a/{name}'])
+        assert g1 == g2
+        assert list(g1) == [rln]
+        assert sorted(g1[rln]) == [f'/a/{name}', f'/b/{name}']
+
+
+class TestScan:
+    @pytest.fixture
+    def reads(self, monkeypatch):
+        """Record every path handed to `_read_archive` (i.e. every decompression)."""
+        calls: list[str] = []
+        real = watch._read_archive
+
+        def recording(path):
+            calls.append(path)
+            return real(path)
+
+        monkeypatch.setattr(watch, '_read_archive', recording)
+        return calls
+
+    def test_only_newest_per_instance_is_decompressed(self, tmp_path, reads):
+        files = _populate(tmp_path, n_instances=3, n_files=5)
+        newest = {paths[-1] for paths in files.values()}
+
+        best, errors = _scan([str(tmp_path)])
+
+        assert errors == []
+        assert set(reads) == newest and len(reads) == 3
+        assert set(best) == {(f'host{i}', _LAB) for i in range(3)}
+        for i, (rln, paths) in enumerate(files.items()):
+            rec = best[(f'host{i}', _LAB)]
+            assert rec.path == paths[-1]
+            assert rec.login == 'alice'
+            assert rec.grade == 4.0
+            assert rec.eval_time == datetime(2026, 5, 16, 10, 4, 0)
+
+    def test_second_scan_hits_cache(self, tmp_path, reads):
+        _populate(tmp_path, n_instances=2, n_files=3)
+        best1, _ = _scan([str(tmp_path)])
+        reads.clear()
+        best2, _ = _scan([str(tmp_path)])
+        assert reads == []
+        assert {k: r.path for k, r in best2.items()} == {k: r.path for k, r in best1.items()}
+
+    def test_new_archive_replaces_previous_and_evicts_it(self, tmp_path, reads):
+        files = _populate(tmp_path, n_instances=1, n_files=2)
+        rln, paths = next(iter(files.items()))
+        _scan([str(tmp_path)])
+        reads.clear()
+
+        newer = _write_archive(tmp_path / 'host0' / _archive_name(rln, '20260516100900'),
+                               hostname='host0', login='alice', running_lab_name=rln,
+                               eval_date='20260516100900', grade=9.0,
+                               mtime=_BASE_MTIME + 9 * 60)
+        best, errors = _scan([str(tmp_path)])
+
+        assert errors == []
+        assert reads == [newer]
+        assert best[('host0', _LAB)].path == newer
+        assert best[('host0', _LAB)].grade == 9.0
+        assert set(watch._CACHE) == {newer}
+        assert paths[-1] not in watch._CACHE
+
+    def test_restart_on_same_host_keeps_newest_mtime(self, tmp_path):
+        rln_old, rln_new = _rln(start_ts='20260516100000'), _rln(start_ts='20260516103000')
+        _write_archive(tmp_path / _archive_name(rln_old, '20260516102900'),
+                       hostname='h1', login='alice', running_lab_name=rln_old,
+                       grade=3.0, mtime=_BASE_MTIME)
+        p_new = _write_archive(tmp_path / _archive_name(rln_new, '20260516103100'),
+                               hostname='h1', login='alice', running_lab_name=rln_new,
+                               grade=7.0, mtime=_BASE_MTIME + 120)
+
+        best, errors = _scan([str(tmp_path)])
+
+        assert errors == []
+        assert list(best) == [('h1', _LAB)]
+        assert best[('h1', _LAB)].path == p_new
+        assert best[('h1', _LAB)].grade == 7.0
+
+    def test_corrupt_newest_falls_back_to_previous(self, tmp_path, reads):
+        rln = _rln()
+        good = _write_archive(tmp_path / _archive_name(rln, '20260516100100'),
+                              hostname='h1', login='alice', running_lab_name=rln, grade=5.0)
+        bad = tmp_path / _archive_name(rln, '20260516100200')
+        bad.write_bytes(b'not a zstd archive')
+
+        best, errors = _scan([str(tmp_path)])
+
+        assert errors == [f"cannot read: {bad}"]
+        assert reads == [str(bad), good]
+        assert best[('h1', _LAB)].path == good
+        assert set(watch._CACHE) == {good}
+
+    def test_fallback_is_bounded(self, tmp_path, reads):
+        """With the two newest archives unreadable, older ones are not tried."""
+        rln = _rln()
+        _write_archive(tmp_path / _archive_name(rln, '20260516100100'),
+                       hostname='h1', login='alice', running_lab_name=rln)
+        bad1 = tmp_path / _archive_name(rln, '20260516100200')
+        bad2 = tmp_path / _archive_name(rln, '20260516100300')
+        bad1.write_bytes(b'garbage')
+        bad2.write_bytes(b'garbage')
+
+        best, errors = _scan([str(tmp_path)])
+
+        assert best == {}
+        assert errors == [f"cannot read: {bad2}", f"cannot read: {bad1}"]
+        assert reads == [str(bad2), str(bad1)]
+        assert watch._CACHE == {}
+
+    def test_cache_pruned_to_parsed_paths(self, tmp_path):
+        _populate(tmp_path, n_instances=2, n_files=3)
+        watch._CACHE['/stale/path.zst'] = (0.0, {})
+
+        best, _ = _scan([str(tmp_path)])
+
+        assert set(watch._CACHE) == {r.path for r in best.values()}
+        assert len(watch._CACHE) == 2
+
+    def test_same_instance_in_two_dirs_parsed_once(self, tmp_path, reads):
+        rln = _rln()
+        name = _archive_name(rln, '20260516100100')
+        for d in ('a', 'b'):
+            _write_archive(tmp_path / d / name, hostname='h1', login='alice',
+                           running_lab_name=rln, mtime=_BASE_MTIME)
+
+        best, errors = _scan([str(tmp_path / 'a'), str(tmp_path / 'b')])
+
+        assert errors == []
+        assert len(reads) == 1
+        assert list(best) == [('h1', _LAB)]
+
+    def test_non_matching_filename_still_parsed(self, tmp_path):
+        rln = _rln()
+        odd = _write_archive(tmp_path / 'renamed.zst', hostname='h1', login='alice',
+                             running_lab_name=rln, grade=2.0)
+        best, errors = _scan([str(tmp_path)])
+        assert errors == []
+        assert best[('h1', _LAB)].path == odd
+
+    def test_missing_directory_reported(self, tmp_path):
+        missing = tmp_path / 'nope'
+        best, errors = _scan([str(missing)])
+        assert best == {}
+        assert errors == [f"directory not found: {missing}"]
+
+
+    def test_two_hosts_sharing_an_instance_both_show_after_next_save(self, tmp_path, reads):
+        """Same lab started the same second under the same account on two
+        machines: the archives of both land in one instance group."""
+        rln = _rln()
+        # Interleaved history: hostA at :05, hostB at :20, every minute.
+        for j, (host, sec) in enumerate([('hostA', '05'), ('hostB', '20')] * 2):
+            minute = j // 2
+            _write_archive(tmp_path / _archive_name(rln, f'2026051610{minute:02d}{sec}'),
+                           hostname=host, login='x', running_lab_name=rln,
+                           mtime=_BASE_MTIME + minute * 60 + int(sec))
+        newest_b = str(tmp_path / _archive_name(rln, '20260516100120'))
+
+        best, errors = _scan([str(tmp_path)])
+        # First sight: only the newest archive of the group is decompressed.
+        assert errors == [] and reads == [newest_b]
+        assert set(best) == {('hostB', _LAB)}
+
+        # hostA saves again: only that new file is decompressed, hostA appears.
+        reads.clear()
+        new_a = _write_archive(tmp_path / _archive_name(rln, '20260516100205'),
+                               hostname='hostA', login='x', running_lab_name=rln,
+                               mtime=_BASE_MTIME + 125)
+        best, errors = _scan([str(tmp_path)])
+        assert errors == [] and reads == [new_a]
+        assert set(best) == {('hostA', _LAB), ('hostB', _LAB)}
+        assert best[('hostA', _LAB)].path == new_a
+        assert best[('hostB', _LAB)].path == newest_b
+        assert set(watch._CACHE) == {new_a, newest_b}
+
+        # A quiet refresh decompresses nothing and keeps both rows.
+        reads.clear()
+        best, _ = _scan([str(tmp_path)])
+        assert reads == [] and set(best) == {('hostA', _LAB), ('hostB', _LAB)}
+
+    def test_skipped_older_archives_are_never_decompressed_later(self, tmp_path, reads):
+        files = _populate(tmp_path, n_instances=1, n_files=4)
+        rln, paths = next(iter(files.items()))
+        _scan([str(tmp_path)])
+        reads.clear()
+        # A new archive arrives; the three skipped older ones stay skipped.
+        newer = _write_archive(tmp_path / 'host0' / _archive_name(rln, '20260516101000'),
+                               hostname='host0', login='alice', running_lab_name=rln,
+                               mtime=_BASE_MTIME + 600)
+        _scan([str(tmp_path)])
+        _scan([str(tmp_path)])
+        assert reads == [newer]
+        assert all(watch._INDEX[p] is None for p in paths[:-1])
+
+    def test_vanished_archives_drop_their_row(self, tmp_path):
+        files = _populate(tmp_path, n_instances=2, n_files=2)
+        best, _ = _scan([str(tmp_path)])
+        assert set(best) == {('host0', _LAB), ('host1', _LAB)}
+        for path in next(iter(files.values())):
+            os.unlink(path)
+
+        best, errors = _scan([str(tmp_path)])
+
+        assert errors == []
+        assert set(best) == {('host1', _LAB)}
+        assert set(watch._INDEX) == set(files[_rln(start_ts='20260516100001')])
+        assert set(watch._CACHE) == {best[('host1', _LAB)].path}
+
+    def test_unreadable_new_archive_is_retried(self, tmp_path, reads):
+        files = _populate(tmp_path, n_instances=1, n_files=1)
+        rln, (first,) = next(iter(files.items()))
+        _scan([str(tmp_path)])
+        reads.clear()
+        bad = tmp_path / 'host0' / _archive_name(rln, '20260516100500')
+        bad.write_bytes(b'still being written')
+
+        best, errors = _scan([str(tmp_path)])
+        assert errors == [f"cannot read: {bad}"]
+        assert best[('host0', _LAB)].path == first
+        assert str(bad) not in watch._INDEX
+
+        # Once complete, it is picked up.
+        _write_archive(bad, hostname='host0', login='alice', running_lab_name=rln,
+                       grade=5.0, mtime=_BASE_MTIME + 300)
+        best, errors = _scan([str(tmp_path)])
+        assert errors == []
+        assert best[('host0', _LAB)].path == str(bad)
+        assert reads == [str(bad), str(bad)]

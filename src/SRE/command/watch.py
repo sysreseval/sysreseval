@@ -7,6 +7,7 @@ import termios
 import time
 import tty
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -89,6 +90,23 @@ def _ansi_clip(s: str, n: int) -> str:
 
 
 _CACHE: dict[str, tuple[float, dict]] = {}
+
+# Archive filenames are ``{YYYYmmddHHMMSS}_{running_lab_name}.zst`` (see
+# params.get_archive_name).  Group 1 is the eval date, group 2 the
+# running_lab_name, which may itself contain '@', '_' and '.'.
+_ARCHIVE_NAME_RE = re.compile(r'(\d{14})_(.+)\.zst')
+
+# Every archive path the watcher has decided about, in glob order:
+#   Record → parsed (kept until the file disappears, so a machine that stops
+#            saving keeps its row and gets the inactivity alert)
+#   None   → an older archive skipped for good when its instance was first seen
+# Unreadable archives are not recorded, so they are retried on the next scan.
+_INDEX: dict[str, Record | None] = {}
+
+# Archives tried, newest first, when an instance is seen for the first time:
+# the first one that parses is used, the next is a fallback for an unreadable
+# file, the rest are skipped.
+_BOOTSTRAP_CANDIDATES = 2
 
 # Alert dismissals — self-expiring keys:
 #   inactivity : ('inactive', hostname, lab_name, int(file_mtime))
@@ -204,24 +222,97 @@ def _parse_archive(path: str) -> Record | None:
         return None
 
 
+def _group_archives_by_instance(paths: Iterable[str]) -> dict[str, list[str]]:
+    """Group archive paths by running project instance, newest first.
+
+    The key is the ``running_lab_name`` taken from the filename (see
+    ``params.get_archive_name``); a filename that does not match becomes its
+    own singleton group keyed by its full path.  Within a group, paths are
+    sorted by the 14-digit eval-date prefix, newest first (the prefix comes
+    from the student machine's own clock, so it is consistent within one
+    instance), then by path so the order is deterministic.  No stat call is
+    made."""
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for path in paths:
+        m = _ARCHIVE_NAME_RE.fullmatch(os.path.basename(path))
+        if m:
+            groups.setdefault(m.group(2), []).append((m.group(1), path))
+        else:
+            groups.setdefault(path, []).append(('', path))
+    return {key: [p for _, p in sorted(items, reverse=True)]
+            for key, items in groups.items()}
+
+
+def _prune_cache(keep: set[str]) -> None:
+    """Drop every cached archive whose path is not in *keep*.
+    Pruned in place: the grade/summary/error screens hold the dict object."""
+    for k in list(_CACHE):
+        if k not in keep:
+            del _CACHE[k]
+
+
+def _index_archive(path: str, read_errors: list[str]) -> bool:
+    """Parse *path* into _INDEX.  Returns False (and reports) when unreadable."""
+    rec = _parse_archive(path)
+    if rec is None:
+        read_errors.append(f"cannot read: {path}")
+        return False
+    rec.path = path
+    _INDEX[path] = rec
+    return True
+
+
 def _scan(dirs) -> tuple[dict[tuple, Record], list[str]]:
-    """Returns (best record per (hostname, lab_name), list of read errors)."""
-    best: dict[tuple, Record] = {}
+    """Returns (best record per (hostname, lab_name), list of read errors).
+
+    Archives are grouped by running project instance from their filename
+    (see _group_archives_by_instance).  The first time an instance is seen,
+    only its newest archive is decompressed (the next one is a fallback when
+    the newest is unreadable) and its older archives are skipped for good.
+    From then on, every archive that appears for that instance is
+    decompressed exactly once.  One archive is produced per minute per open
+    project, so the per-refresh cost is proportional to the number of running
+    projects, not to the number of files.  Parsing every new archive (rather
+    than only the newest) matters when two machines share a running_lab_name
+    (same lab started the same second under the same account): both machines
+    get their own row as soon as each has saved once more.
+
+    Parsed records persist in _INDEX; the decompressed archives in _CACHE are
+    pruned to the records currently displayed."""
     read_errors: list[str] = []
+    all_paths: list[str] = []
     for d in dirs:
         p = Path(d)
         if not p.is_dir():
             read_errors.append(f"directory not found: {d}")
             continue
-        for path in p.rglob('*.zst'):
-            rec = _parse_archive(str(path))
-            if rec is None:
-                read_errors.append(f"cannot read: {path}")
-                continue
-            rec.path = str(path)
-            key = (rec.hostname, rec.lab_name)
-            if key not in best or rec.file_mtime > best[key].file_mtime:
-                best[key] = rec
+        all_paths.extend(str(path) for path in p.rglob('*.zst'))
+
+    present = set(all_paths)
+    for path in [k for k in _INDEX if k not in present]:
+        del _INDEX[path]
+
+    for candidates in _group_archives_by_instance(all_paths).values():
+        new = [path for path in candidates if path not in _INDEX]
+        if any(_INDEX.get(path) is not None for path in candidates):
+            for path in new:
+                _index_archive(path, read_errors)
+        else:
+            parsed = False
+            for i, path in enumerate(new):
+                if parsed or i >= _BOOTSTRAP_CANDIDATES:
+                    _INDEX[path] = None
+                elif _index_archive(path, read_errors):
+                    parsed = True
+
+    best: dict[tuple, Record] = {}
+    for rec in _INDEX.values():
+        if rec is None:
+            continue
+        key = (rec.hostname, rec.lab_name)
+        if key not in best or rec.file_mtime > best[key].file_mtime:
+            best[key] = rec
+    _prune_cache({rec.path for rec in best.values()})
     return best, read_errors
 
 
