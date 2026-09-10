@@ -171,6 +171,9 @@ def parse_args():
                                   f'dashboard refresh interval (default: {params.default_dashboard_refresh_interval_in_watch_command})'))
     parser_watch.add_argument('-H', '--hostname-filter', metavar='regexp', default='',
                               help=_('show only hostnames matching this regexp (same as the R key in the dashboard)'))
+    parser_watch.add_argument('-S', '--starting-time', metavar='time', default='',
+                              help=_('only consider projects with an archive received after this time '
+                                     '(15:01 or 2026-09-10 15:01; same as the S key in the dashboard)'))
 
     parser_preload = subparsers.add_parser('preload-images',
                                            help=_('Pre-pull Docker images referenced by lab files'))

@@ -123,6 +123,11 @@ _DISMISSED_HOSTS: set[str] = set()        # hostname  (all labs from that host)
 _host_filter_pattern: str = ''
 _host_filter_re: re.Pattern | None = None
 
+# Starting-time filter — only projects whose newest archive arrived (file
+# mtime, the clock used by inactivity alerts) at or after this local datetime
+# are shown (None = no limit)
+_starting_time: datetime | None = None
+
 _HELP = """\
 ── Keys ─────────────────────────────────────────────────────────────
   t           toggle focus between Projects table and Alerts
@@ -138,6 +143,9 @@ _HELP = """\
               (no-op when cursor is on a lab title row)
     R         set hostname regexp filter (empty = show all;
               initial value: -H/--hostname-filter option)
+    S         only show projects with an archive received after a time
+              (15:01 or 2026-09-10 15:01; empty = no limit;
+              initial value: -S/--starting-time option)
     U         un-dismiss all (projects, hostnames and alerts)
 
   In Alerts zone:
@@ -324,6 +332,8 @@ def _filter_best(best: dict) -> dict:
         if r.hostname not in _DISMISSED_HOSTS
         and k not in _DISMISSED_PROJECTS
         and (_host_filter_re is None or _host_filter_re.search(r.hostname))
+        and (_starting_time is None
+             or datetime.fromtimestamp(r.file_mtime) >= _starting_time)
     }
 
 
@@ -358,9 +368,11 @@ def _render(best: dict, dirs: list[str], timeout: int, read_errors: list[str],
     now = datetime.now()
     focus_label = "[Projects]" if focus == 'projects' else "[Alerts]  "
     filter_label = f"  filter:/{_host_filter_pattern}/" if _host_filter_pattern else ""
+    since_label = (f"  since:{_starting_time_label(_starting_time, now)}"
+                   if _starting_time is not None else "")
     # Fixed 3-line header — always visible, printed by the caller before the scrollable buf.
     header = [
-        f"=== SRE Watch — {now.strftime('%H:%M:%S')}  focus:{focus_label}{filter_label}  "
+        f"=== SRE Watch — {now.strftime('%H:%M:%S')}  focus:{focus_label}{filter_label}{since_label}  "
         f"dirs: {', '.join(dirs)}",
         "  t toggle focus · ? help · q quit",
         "",
@@ -431,9 +443,9 @@ def _render(best: dict, dirs: list[str], timeout: int, read_errors: list[str],
             buf.append("")
 
     if focus == 'projects':
-        buf.append("  ↑↓ navigate · Enter show grades / lab summary · P dismiss project · H dismiss hostname · R filter · U un-dismiss all")
+        buf.append("  ↑↓ navigate · Enter show grades / lab summary · P dismiss project · H dismiss hostname · R filter · S since · U un-dismiss all")
     if dismissed_proj_count:
-        buf.append(f"  ({dismissed_proj_count} project(s) hidden — U to restore)")
+        buf.append(f"  ({dismissed_proj_count} project(s) hidden — U un-dismiss · R filter · S since)")
     buf.append("")
 
     # ── Alerts ────────────────────────────────────────────────────────
@@ -493,6 +505,45 @@ def _read_key() -> str | None:
     return 'esc'
 
 
+# Accepted by -S/--starting-time and the S key (mirrors set_exam._parse_date).
+_STARTING_TIME_FORMATS = ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M",
+                          "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
+_STARTING_TIME_ONLY_FORMATS = ("%H:%M", "%H:%M:%S")
+
+
+def _parse_starting_time(text: str, now: datetime | None = None) -> datetime | None:
+    """Parse a starting time; '' means no limit (None).
+
+    Accepts a date-time ('2026-09-10 15:01', '2026-09-10T15:01', optional
+    ':SS'), a date alone (midnight) or a time alone ('15:01', '15:01:30'),
+    which means today at that time — even when that is later than *now*, so
+    a future cutoff hides everything until then.  Raises ValueError otherwise."""
+    text = text.strip()
+    if not text:
+        return None
+    for fmt in _STARTING_TIME_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            pass
+    today = (now or datetime.now()).date()
+    for fmt in _STARTING_TIME_ONLY_FORMATS:
+        try:
+            return datetime.combine(today, datetime.strptime(text, fmt).time())
+        except ValueError:
+            pass
+    raise ValueError(f"expected a time like 15:01 or a date-time like "
+                     f"2026-09-10 15:01, got {text!r}")
+
+
+def _starting_time_label(dt: datetime, now: datetime) -> str:
+    """Short label for the header: time only when *dt* is on *now*'s day."""
+    fmt = "%H:%M" if dt.date() == now.date() else "%Y-%m-%d %H:%M"
+    if dt.second:
+        fmt += ":%S"
+    return dt.strftime(fmt)
+
+
 def _compile_host_filter(pattern: str) -> tuple[str, re.Pattern | None]:
     """Return (pattern, compiled regexp) for a hostname filter; ('', None)
     means "show all hostnames".  Raises re.error on an invalid pattern."""
@@ -501,43 +552,74 @@ def _compile_host_filter(pattern: str) -> tuple[str, re.Pattern | None]:
     return pattern, re.compile(pattern)
 
 
-def _prompt_regexp(old_settings) -> tuple[str, re.Pattern | None] | None:
-    """Temporarily restore the terminal, prompt for a hostname regexp, then
-    re-enter cbreak mode.  Returns (pattern, compiled_re) or None if cancelled."""
+def _prompt_value(old_settings, title: str, help_lines: list[str], current: str,
+                  prompt: str, parse):
+    """Full-screen line prompt shared by the R and S keys.
+
+    Temporarily restores the terminal, shows *title* and *help_lines*, reads
+    one line with readline pre-filled with *current* (so it can be edited)
+    and returns ``parse(raw)``.  When *parse* raises ValueError or re.error
+    the message is shown for a few seconds and None is returned (keep the
+    old value); None is also returned on Ctrl-C / EOF.  Re-enters cbreak
+    mode before returning."""
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
     try:
         print('\033[2J\033[H', end='')
-        current = _host_filter_pattern or ''
-        print("── Hostname filter ──────────────────────────────────────")
-        print("  Enter a regexp to restrict visible hostnames.")
-        print("  Leave empty and press Enter to show all hostnames.")
-        print(f"  Current: {'/' + current + '/' if current else '(all)'}")
+        print(f"── {title} " + "─" * max(8, 54 - len(title)))
+        for line in help_lines:
+            print(f"  {line}")
         print("  Ctrl-C to cancel without changing.\n")
 
-        # Pre-fill readline with the current pattern so the user can edit it
         def _prefill():
             readline.insert_text(current)
             readline.redisplay()
         readline.set_pre_input_hook(_prefill)
         try:
-            raw = input("  Regexp: ").strip()
+            raw = input(f"  {prompt}: ").strip()
         finally:
             readline.set_pre_input_hook(None)
 
         try:
-            return _compile_host_filter(raw)
-        except re.error as exc:
-            print(f"\n  Invalid regexp: {exc}  (press any key to continue)")
+            return parse(raw)
+        except (ValueError, re.error) as exc:
+            print(f"\n  Invalid value: {exc}  (press any key to continue)")
             # brief pause so the user can read the error
             fd = sys.stdin.fileno()
             select.select([fd], [], [], 3)
             if select.select([fd], [], [], 0)[0]:
                 os.read(fd, 16)   # drain whatever key they pressed
-            return None           # cancelled — keep old filter
+            return None           # cancelled — keep old value
     except (KeyboardInterrupt, EOFError):
         return None
     finally:
         tty.setcbreak(sys.stdin.fileno())
+
+
+def _prompt_regexp(old_settings) -> tuple[str, re.Pattern | None] | None:
+    """Prompt for the hostname regexp (R key).
+    Returns (pattern, compiled_re) or None if cancelled."""
+    current = _host_filter_pattern or ''
+    return _prompt_value(
+        old_settings, "Hostname filter",
+        ["Enter a regexp to restrict visible hostnames.",
+         "Leave empty and press Enter to show all hostnames.",
+         f"Current: {'/' + current + '/' if current else '(all)'}"],
+        current, "Regexp", _compile_host_filter)
+
+
+def _prompt_starting_time(old_settings) -> tuple[datetime | None] | None:
+    """Prompt for the starting time (S key).  Returns a 1-tuple holding the
+    new datetime (None inside = no limit), or None if cancelled."""
+    now = datetime.now()
+    current = _starting_time_label(_starting_time, now) if _starting_time else ''
+    return _prompt_value(
+        old_settings, "Starting time",
+        ["Only show projects with an archive received at or after this time",
+         "(archive arrival time, the clock used by inactivity alerts).",
+         "Enter a time (15:01) for today, or a date-time (2026-09-10 15:01).",
+         "Leave empty and press Enter to remove the limit.",
+         f"Current: {current or '(none)'}"],
+        current, "Starting time", lambda raw: (_parse_starting_time(raw, now),))
 
 
 def _resolve_title(v) -> str:
@@ -1019,17 +1101,21 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
 
 def action_watch():
     user_not_allowed()
-    global _host_filter_pattern, _host_filter_re
+    global _host_filter_pattern, _host_filter_re, _starting_time
     args = SRE.args
     dirs = args.dirs
     timeout = args.timeout
     interval = args.interval
-    # Validate the -H/--hostname-filter regexp before touching the terminal,
-    # so a bad pattern exits with a plain error message.
+    # Validate -H/--hostname-filter and -S/--starting-time before touching
+    # the terminal, so a bad value exits with a plain error message.
     try:
         _host_filter_pattern, _host_filter_re = _compile_host_filter(args.hostname_filter or '')
     except re.error as exc:
         error_quit(f"invalid hostname filter {args.hostname_filter!r}: {exc}")
+    try:
+        _starting_time = _parse_starting_time(args.starting_time or '')
+    except ValueError as exc:
+        error_quit(f"invalid starting time {args.starting_time!r}: {exc}")
 
     is_tty = sys.stdin.isatty()
     old_settings = None
@@ -1149,6 +1235,11 @@ def action_watch():
                     result = _prompt_regexp(old_settings)
                     if result is not None:
                         _host_filter_pattern, _host_filter_re = result
+                    needs_render = True
+                elif key in ('s', 'S') and old_settings is not None:
+                    result = _prompt_starting_time(old_settings)
+                    if result is not None:
+                        (_starting_time,) = result
                     needs_render = True
                 elif key in ('u', 'U'):
                     _DISMISSED_ALERTS.clear()

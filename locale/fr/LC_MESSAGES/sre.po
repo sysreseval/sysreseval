@@ -131,6 +131,9 @@ msgstr "intervalle de rafraîchissement du tableau de bord (défaut : 3)"
 msgid "show only hostnames matching this regexp (same as the R key in the dashboard)"
 msgstr "n'afficher que les noms d'hôtes correspondant à cette expression régulière (comme la touche R du tableau de bord)"
 
+msgid "only consider projects with an archive received after this time (15:01 or 2026-09-10 15:01; same as the S key in the dashboard)"
+msgstr "ne considérer que les projets dont une archive a été reçue après cet instant (15:01 ou 2026-09-10 15:01 ; comme la touche S du tableau de bord)"
+
 msgid "Export evaluation archives to a LibreOffice ODS spreadsheet"
 msgstr "Exporter des archives d'évaluation vers un tableur LibreOffice ODS"
 

@@ -48,6 +48,7 @@ def clean_watch_globals():
     watch._host_filter_re = None
     watch._CACHE.clear()
     watch._INDEX.clear()
+    watch._starting_time = None
     yield
     watch._DISMISSED_PROJECTS.clear()
     watch._DISMISSED_HOSTS.clear()
@@ -56,6 +57,7 @@ def clean_watch_globals():
     watch._host_filter_re = None
     watch._CACHE.clear()
     watch._INDEX.clear()
+    watch._starting_time = None
 
 
 def _ge(*, title='', description='', grade=None, max_grade=None, grade_letter=None,
@@ -791,6 +793,7 @@ class TestActionWatchHostnameFilter:
             args.timeout = 90
             args.interval = 1
             args.hostname_filter = hostname_filter
+            args.starting_time = ''
             watch.action_watch()
             return capsys.readouterr().out
         return run
@@ -815,3 +818,179 @@ class TestActionWatchHostnameFilter:
         assert exc.value.code == 1
         assert "invalid hostname filter 'host('" in capsys.readouterr().err
         assert watch._host_filter_re is None
+
+
+# ---------------------------------------------------------------------------
+# Starting time: _parse_starting_time, label, filtering, -S option, prompts
+# ---------------------------------------------------------------------------
+
+_NOW = datetime(2026, 9, 10, 16, 30, 0)
+
+
+class TestParseStartingTime:
+    def test_empty_means_no_limit(self):
+        assert watch._parse_starting_time('', now=_NOW) is None
+        assert watch._parse_starting_time('   ', now=_NOW) is None
+
+    @pytest.mark.parametrize('text, expected', [
+        ('15:01', datetime(2026, 9, 10, 15, 1)),
+        ('15:01:30', datetime(2026, 9, 10, 15, 1, 30)),
+        ('23:30', datetime(2026, 9, 10, 23, 30)),            # later than now: still today
+        (' 15:01 ', datetime(2026, 9, 10, 15, 1)),
+        ('2026-09-09 15:01', datetime(2026, 9, 9, 15, 1)),
+        ('2026-09-09T15:01', datetime(2026, 9, 9, 15, 1)),
+        ('2026-09-09 15:01:30', datetime(2026, 9, 9, 15, 1, 30)),
+        ('2026-09-09T15:01:30', datetime(2026, 9, 9, 15, 1, 30)),
+        ('2026-09-09', datetime(2026, 9, 9, 0, 0)),
+    ])
+    def test_accepted_formats(self, text, expected):
+        assert watch._parse_starting_time(text, now=_NOW) == expected
+
+    @pytest.mark.parametrize('text', ['15h01', 'foo', '25:00', '15:01:99',
+                                      '2026-13-01 10:00', '10', '15:01 2026-09-09'])
+    def test_invalid_raises_value_error(self, text):
+        with pytest.raises(ValueError):
+            watch._parse_starting_time(text, now=_NOW)
+
+
+class TestStartingTimeLabel:
+    def test_same_day_shows_time_only(self):
+        assert watch._starting_time_label(datetime(2026, 9, 10, 15, 1), _NOW) == '15:01'
+
+    def test_seconds_kept_when_non_zero(self):
+        assert watch._starting_time_label(datetime(2026, 9, 10, 15, 1, 30), _NOW) == '15:01:30'
+
+    def test_other_day_shows_date(self):
+        assert watch._starting_time_label(datetime(2026, 9, 9, 15, 1), _NOW) == '2026-09-09 15:01'
+
+
+class TestFilterBestStartingTime:
+    @staticmethod
+    def _best() -> dict:
+        old = _rec(hostname='h-old', lab_name='lab/x', path='/old.zst')
+        new = _rec(hostname='h-new', lab_name='lab/x', path='/new.zst')
+        old.file_mtime = datetime(2026, 9, 10, 14, 0).timestamp()
+        new.file_mtime = datetime(2026, 9, 10, 15, 30).timestamp()
+        return {('h-old', 'lab/x'): old, ('h-new', 'lab/x'): new}
+
+    def test_no_limit_keeps_all(self):
+        assert set(watch._filter_best(self._best())) == {('h-old', 'lab/x'), ('h-new', 'lab/x')}
+
+    def test_limit_hides_projects_updated_before_it(self):
+        watch._starting_time = datetime(2026, 9, 10, 15, 1)
+        assert set(watch._filter_best(self._best())) == {('h-new', 'lab/x')}
+
+    def test_limit_is_inclusive(self):
+        watch._starting_time = datetime(2026, 9, 10, 15, 30)
+        assert set(watch._filter_best(self._best())) == {('h-new', 'lab/x')}
+
+    def test_render_shows_since_hidden_count_and_no_alert_for_hidden(self):
+        watch._starting_time = datetime(2026, 9, 10, 15, 1)
+        rows, alerts, buf, _ = _render(
+            best=self._best(), dirs=['/tmp'], timeout=1, read_errors=[],
+            focus='projects', proj_cursor=0, alert_cursor=0, show_help=False)
+        assert 'since:' in buf[0]
+        assert [r[1].hostname for r in rows if r[0] == 'project'] == ['h-new']
+        assert '1 project(s) hidden' in '\n'.join(buf)
+        assert all('h-old' not in msg for _, msg in alerts)
+
+
+class TestActionWatchStartingTime:
+    @pytest.fixture
+    def run_watch(self, tmp_path, monkeypatch, capsys):
+        """Two projects whose archives arrived today at 14:00 (host0) and
+        15:30 (host1); run action_watch for a single refresh."""
+        from SRE import params
+        today = datetime.now().date()
+        for i, (hour, minute) in enumerate([(14, 0), (15, 30)]):
+            rln = _rln(start_ts=f'2026051610000{i}')
+            _write_archive(tmp_path / f'host{i}' / _archive_name(rln, '20260516100000'),
+                           hostname=f'host{i}', login='alice', running_lab_name=rln,
+                           mtime=datetime(today.year, today.month, today.day, hour, minute).timestamp())
+
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+        monkeypatch.setattr(watch.time, 'sleep', interrupt)
+        monkeypatch.setattr(watch.sys, 'stdin', types.SimpleNamespace(isatty=lambda: False))
+
+        def run(starting_time: str) -> str:
+            args = params.SRE.args
+            args.dirs = [str(tmp_path)]
+            args.timeout = 90
+            args.interval = 1
+            args.hostname_filter = ''
+            args.starting_time = starting_time
+            watch.action_watch()
+            return capsys.readouterr().out
+        return run
+
+    def test_option_hides_projects_updated_before(self, run_watch):
+        out = run_watch('15:01')
+        today = datetime.now().date()
+        assert watch._starting_time == datetime(today.year, today.month, today.day, 15, 1)
+        assert 'since:15:01' in out
+        assert _row_hostnames(out) == ['host1']
+        assert '1 project(s) hidden' in out
+
+    def test_no_option_keeps_all(self, run_watch):
+        out = run_watch('')
+        assert watch._starting_time is None
+        assert 'since:' not in out
+        assert _row_hostnames(out) == ['host0', 'host1']
+
+    def test_invalid_value_exits_with_message(self, run_watch, capsys):
+        with pytest.raises(SystemExit) as exc:
+            run_watch('15h01')
+        assert exc.value.code == 1
+        assert "invalid starting time '15h01'" in capsys.readouterr().err
+        assert watch._starting_time is None
+
+
+class TestPromptValue:
+    @pytest.fixture(autouse=True)
+    def no_terminal(self, monkeypatch):
+        """Stub the terminal handling so the prompts run under pytest."""
+        monkeypatch.setattr(watch.termios, 'tcsetattr', lambda *a: None)
+        monkeypatch.setattr(watch.tty, 'setcbreak', lambda *a: None)
+        monkeypatch.setattr(watch.readline, 'set_pre_input_hook', lambda *a: None)
+        monkeypatch.setattr(watch.sys, 'stdin', types.SimpleNamespace(fileno=lambda: 0))
+        monkeypatch.setattr(watch.select, 'select', lambda *a: ([], [], []))
+
+    @staticmethod
+    def _typed(monkeypatch, text):
+        monkeypatch.setattr('builtins.input', lambda _prompt='': text)
+
+    def test_returns_parsed_value(self, monkeypatch):
+        self._typed(monkeypatch, ' 42 ')
+        assert watch._prompt_value(None, "Title", ["help"], 'cur', "Value", int) == 42
+
+    def test_empty_input_is_passed_to_parse(self, monkeypatch):
+        self._typed(monkeypatch, '')
+        assert watch._prompt_value(None, "Title", [], '', "Value", lambda raw: ('set', raw)) == ('set', '')
+
+    def test_parse_error_returns_none_and_shows_message(self, monkeypatch, capsys):
+        self._typed(monkeypatch, 'x')
+        assert watch._prompt_value(None, "Title", [], '', "Value", int) is None
+        assert 'Invalid value' in capsys.readouterr().out
+
+    def test_cancel_returns_none(self, monkeypatch):
+        def interrupt(_prompt=''):
+            raise KeyboardInterrupt
+        monkeypatch.setattr('builtins.input', interrupt)
+        assert watch._prompt_value(None, "Title", [], '', "Value", int) is None
+
+    def test_regexp_prompt(self, monkeypatch):
+        self._typed(monkeypatch, '^pc')
+        pattern, regex = watch._prompt_regexp(None)
+        assert pattern == '^pc' and regex.search('pc-1')
+        self._typed(monkeypatch, 'pc(')
+        assert watch._prompt_regexp(None) is None
+
+    def test_starting_time_prompt(self, monkeypatch):
+        self._typed(monkeypatch, '15:01')
+        (dt,) = watch._prompt_starting_time(None)
+        assert (dt.date(), dt.hour, dt.minute) == (datetime.now().date(), 15, 1)
+        self._typed(monkeypatch, '')
+        assert watch._prompt_starting_time(None) == (None,)
+        self._typed(monkeypatch, '15h01')
+        assert watch._prompt_starting_time(None) is None
