@@ -88,3 +88,22 @@ class TestGetSrelabDir:
         name = '20260101000000@@@test/mylab.py@@@user'
         result = params.get_srelab_dir(name)
         assert result is None
+
+
+class TestArchiveName:
+    def test_get_date_from_archive_name(self):
+        name = params.get_archive_name('20260910100000@@@em@em_EXAM_@CC-2026.py@@@etudiant',
+                                       datetime(2026, 9, 10, 15, 1, 30))
+        assert name == '20260910150130_20260910100000@@@em@em_EXAM_@CC-2026.py@@@etudiant.zst'
+        assert params.get_date_from_archive_name(name) == datetime(2026, 9, 10, 15, 1, 30)
+
+    def test_full_path_accepted(self):
+        assert params.get_date_from_archive_name('/a/b/20260910150130_x@@@lab@@@u.zst') == datetime(2026, 9, 10, 15, 1, 30)
+
+    @pytest.mark.parametrize('name', ['renamed.zst', '20260910150130_lab.txt',
+                                      '2026091015013_x@@@lab@@@u.zst', 'x_20260910150130_lab.zst'])
+    def test_non_matching_name(self, name):
+        assert params.get_date_from_archive_name(name) is None
+
+    def test_invalid_date_digits(self):
+        assert params.get_date_from_archive_name('20261399000000_x@@@lab@@@u.zst') is None

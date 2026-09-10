@@ -17,7 +17,7 @@ from odf.text import P
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed
+from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args
 
 # i18n — same lookup as sre.py
 def _setup_i18n(lang: str | None = None):
@@ -75,18 +75,12 @@ def _safe_filename(s: str) -> str:
     return s
 
 
-def _collect_archives(args) -> list:
-    paths = []
-    for arg in args.files:
-        p = Path(arg)
-        if p.is_dir():
-            glob_fn = p.rglob if args.recursive else p.glob
-            paths.extend(sorted(glob_fn('*.zst')))
-        else:
-            paths.append(p)
-
+def _collect_archives(args, start=None, finish=None) -> list:
+    """One record dict per readable archive named by args.files; *start* /
+    *finish* are the -S/--start and -F/--finish bounds (see
+    utils.collect_archive_paths)."""
     records = []
-    for path in paths:
+    for path in collect_archive_paths(args.files, args.recursive, start, finish):
         try:
             archive = _read_archive(str(path))
         except Exception as e:
@@ -458,6 +452,7 @@ def _header_cell(value, style_name: str) -> TableCell:
 def action_outline():
     user_not_allowed()
     args = SRE.args
+    start, finish = parse_time_interval_args(args.start, args.finish)
 
     if not args.output_file and not args.pdf_directory:
         print(_("error: at least one of --output-file or --pdf-directory must be provided"), file=sys.stderr)
@@ -487,7 +482,7 @@ def action_outline():
         except Exception as e:
             print(_("warning: cannot read aux file {path}: {e}").format(path=args.users_file, e=e), file=sys.stderr)
 
-    records = _collect_archives(args)
+    records = _collect_archives(args, start, finish)
     if not records:
         print(_("no archives to process"), file=sys.stderr)
         return

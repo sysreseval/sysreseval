@@ -324,3 +324,94 @@ def set_all_variables_for_action(running_lab_name):
     net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
     return module_rvlab, net_scheme
 
+
+#
+# Time arguments shared by `watch -S` and the -S/--start, -F/--finish options
+# of `outline` and `sheet`
+#
+TIME_OR_DATETIME_FORMATS = ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M",
+                            "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
+TIME_ONLY_FORMATS = ("%H:%M", "%H:%M:%S")
+
+
+def parse_time_or_datetime(text: str, now: datetime | None = None) -> datetime | None:
+    """Parse a user-supplied time; '' means "no bound" (None).
+
+    Accepts a date-time ('2026-09-10 15:01', '2026-09-10T15:01', optional
+    ':SS'), a date alone (midnight) or a time alone ('15:01', '15:01:30'),
+    which means today at that time — even when that is later than *now*.
+    Raises ValueError otherwise.  Mirrors set_exam._parse_date."""
+    text = (text or '').strip()
+    if not text:
+        return None
+    for fmt in TIME_OR_DATETIME_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            pass
+    today = (now or datetime.now()).date()
+    for fmt in TIME_ONLY_FORMATS:
+        try:
+            return datetime.combine(today, datetime.strptime(text, fmt).time())
+        except ValueError:
+            pass
+    raise ValueError(f"expected a time like 15:01 or a date-time like "
+                     f"2026-09-10 15:01, got {text!r}")
+
+
+def in_time_interval(dt: datetime, start: datetime | None, finish: datetime | None) -> bool:
+    """True when *dt* lies in [start, finish]; a None bound is open."""
+    return (start is None or dt >= start) and (finish is None or dt <= finish)
+
+
+def archive_creation_time(path) -> datetime:
+    """When an archive was created: the eval date encoded in its filename
+    (see params.get_archive_name), else the file's mtime."""
+    path = Path(path)
+    return (params.get_date_from_archive_name(path.name)
+            or datetime.fromtimestamp(path.stat().st_mtime))
+
+
+def collect_archive_paths(files, recursive: bool,
+                          start: datetime | None = None,
+                          finish: datetime | None = None) -> list[Path]:
+    """Archive paths named by *files*: a directory contributes its sorted
+    '*.zst' entries (recursively with *recursive*), anything else is taken
+    as an archive file.  With a bound, only archives whose creation time
+    (see archive_creation_time) lies in [start, finish] are kept; a file that
+    cannot be stat'ed is kept so that the reader reports it."""
+    paths: list[Path] = []
+    for arg in files:
+        p = Path(arg)
+        if p.is_dir():
+            glob_fn = p.rglob if recursive else p.glob
+            paths.extend(sorted(glob_fn('*.zst')))
+        else:
+            paths.append(p)
+    if start is None and finish is None:
+        return paths
+    kept = []
+    for p in paths:
+        try:
+            if not in_time_interval(archive_creation_time(p), start, finish):
+                continue
+        except OSError:
+            pass
+        kept.append(p)
+    return kept
+
+
+def parse_time_interval_args(start_text, finish_text) -> tuple[datetime | None, datetime | None]:
+    """Parse the --start / --finish command-line values (None or '' = no
+    bound); exits with a message on an invalid value or when start is after
+    finish."""
+    bounds = []
+    for option, text in (('--start', start_text), ('--finish', finish_text)):
+        try:
+            bounds.append(parse_time_or_datetime(text or ''))
+        except ValueError as exc:
+            error_quit(f"invalid {option} value {text!r}: {exc}")
+    start, finish = bounds
+    if start is not None and finish is not None and start > finish:
+        error_quit(f"--start {start:%Y-%m-%d %H:%M:%S} is after --finish {finish:%Y-%m-%d %H:%M:%S}")
+    return start, finish

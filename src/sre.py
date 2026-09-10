@@ -254,6 +254,10 @@ def parse_args():
     parser_sheet.add_argument('-o', '--output', metavar='file', required=True, help=_('output .ods file'))
     parser_sheet.add_argument('-r', '--recursive', action='store_true',
                               help=_('recurse into subdirectories when searching for .zst archives'))
+    parser_sheet.add_argument('-S', '--start', metavar='time', default=None,
+                              help=_('only consider archives created at or after this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)'))
+    parser_sheet.add_argument('-F', '--finish', metavar='time', default=None,
+                              help=_('only consider archives created at or before this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)'))
     parser_sheet.add_argument('files', nargs='+', metavar='file_or_dir',
                               help=_('archive file(s) or director(ies) of .zst archives'))
 
@@ -267,6 +271,10 @@ def parse_args():
                                 help=_('force language for PDF output (e.g. en, fr)'))
     parser_outline.add_argument('-r', '--recursive', action='store_true',
                                 help=_('recurse into subdirectories when searching for .zst archives'))
+    parser_outline.add_argument('-S', '--start', metavar='time', default=None,
+                                help=_('only consider archives created at or after this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)'))
+    parser_outline.add_argument('-F', '--finish', metavar='time', default=None,
+                                help=_('only consider archives created at or before this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)'))
     parser_outline.add_argument('--no-timeline', action='store_true',
                                 help=_('omit the evaluation history table from PDF reports'))
     parser_outline.add_argument('--remaining-time', action='store_true',

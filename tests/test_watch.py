@@ -18,10 +18,9 @@ import types
 from datetime import datetime
 from pathlib import Path
 
-import msgpack
 import pytest
-import zstandard as zstd
 
+from archive_helpers import LAB, archive_name as _archive_name, rln as _rln, write_archive as _write_archive
 from SRE import params
 from SRE.command import watch
 from SRE.command.watch import (
@@ -427,42 +426,8 @@ class TestRenderSelectableRows:
 # Archive scanning: _group_archives_by_instance / _scan
 # ---------------------------------------------------------------------------
 
-_LAB = 'lab@x.py'
+_LAB = LAB
 _BASE_MTIME = 1_747_400_000.0
-
-
-def _rln(start_ts='20260516100000', lab=_LAB, user='etudiant') -> str:
-    """Build a running_lab_name as params.get_running_lab_name does."""
-    return f"{start_ts}@@@{lab}@@@{user}"
-
-
-def _archive_name(rln: str, eval_date: str) -> str:
-    return params.get_archive_name(rln, params.string_to_datetime(eval_date))
-
-
-def _write_archive(path, *, hostname, login, running_lab_name,
-                   eval_date='20260516120000', grade=10.0, max_grade=10.0,
-                   errors=(), grade_list=(), mtime=None) -> str:
-    """Write a real zstd+msgpack archive laid out like Grade0.save_tests_on_file.
-    Returns the path as a string (what `_scan` stores in `Record.path`)."""
-    archive = {
-        params.running_lab_name_keyword: running_lab_name,
-        params.eval_date_keyword: eval_date,
-        'answers': {params.hostname_keyword: hostname, params.login_keyword: login},
-        'errors': list(errors),
-        'grade_list': list(grade_list),
-        'grade_parts': [],
-        'total_grade_exo_eval': grade,
-        'total_max_exo_eval': max_grade,
-    }
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'wb') as f:
-        with zstd.ZstdCompressor().stream_writer(f) as compressor:
-            compressor.write(msgpack.packb(archive, use_bin_type=True))
-    if mtime is not None:
-        os.utime(path, (mtime, mtime))
-    return str(path)
 
 
 def _populate(root: Path, n_instances=3, n_files=5) -> dict[str, list[str]]:
@@ -821,36 +786,10 @@ class TestActionWatchHostnameFilter:
 
 
 # ---------------------------------------------------------------------------
-# Starting time: _parse_starting_time, label, filtering, -S option, prompts
+# Starting time: label, filtering, -S option, prompts
 # ---------------------------------------------------------------------------
 
 _NOW = datetime(2026, 9, 10, 16, 30, 0)
-
-
-class TestParseStartingTime:
-    def test_empty_means_no_limit(self):
-        assert watch._parse_starting_time('', now=_NOW) is None
-        assert watch._parse_starting_time('   ', now=_NOW) is None
-
-    @pytest.mark.parametrize('text, expected', [
-        ('15:01', datetime(2026, 9, 10, 15, 1)),
-        ('15:01:30', datetime(2026, 9, 10, 15, 1, 30)),
-        ('23:30', datetime(2026, 9, 10, 23, 30)),            # later than now: still today
-        (' 15:01 ', datetime(2026, 9, 10, 15, 1)),
-        ('2026-09-09 15:01', datetime(2026, 9, 9, 15, 1)),
-        ('2026-09-09T15:01', datetime(2026, 9, 9, 15, 1)),
-        ('2026-09-09 15:01:30', datetime(2026, 9, 9, 15, 1, 30)),
-        ('2026-09-09T15:01:30', datetime(2026, 9, 9, 15, 1, 30)),
-        ('2026-09-09', datetime(2026, 9, 9, 0, 0)),
-    ])
-    def test_accepted_formats(self, text, expected):
-        assert watch._parse_starting_time(text, now=_NOW) == expected
-
-    @pytest.mark.parametrize('text', ['15h01', 'foo', '25:00', '15:01:99',
-                                      '2026-13-01 10:00', '10', '15:01 2026-09-09'])
-    def test_invalid_raises_value_error(self, text):
-        with pytest.raises(ValueError):
-            watch._parse_starting_time(text, now=_NOW)
 
 
 class TestStartingTimeLabel:

@@ -11,7 +11,7 @@ from odf.text import P
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed
+from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args
 
 
 def _setup_i18n():
@@ -198,27 +198,16 @@ def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles
         row_num += 1
 
 
-def action_sheet():
-    user_not_allowed()
-    args = SRE.args
-
-    # Collect .zst archive paths from files and/or directories
-    paths = []
-    for arg in args.files:
-        p = Path(arg)
-        if p.is_dir():
-            glob_fn = p.rglob if args.recursive else p.glob
-            paths.extend(sorted(glob_fn('*.zst')))
-        else:
-            paths.append(p)
-
-    # Read all archives
+def _collect_archives(args, start=None, finish=None) -> list:
+    """One record dict per readable archive named by args.files; *start* /
+    *finish* are the -S/--start and -F/--finish bounds (see
+    utils.collect_archive_paths)."""
     records = []
-    for path in paths:
+    for path in collect_archive_paths(args.files, args.recursive, start, finish):
         try:
             archive = _read_archive(str(path))
         except Exception as e:
-            print(f"warning: cannot read {path}: {e}", file=sys.stderr)
+            print(_("warning: cannot read {path}: {e}").format(path=path, e=e), file=sys.stderr)
             continue
 
         answers = archive.get('answers', {})
@@ -240,9 +229,17 @@ def action_sheet():
                            if e.get('scope', params.BOTH_EVAL_SCOPE) & params.EXO_EVAL_SCOPE],
             'language': answers.get(params.language_keyword, 'en'),
         })
+    return records
 
+
+def action_sheet():
+    user_not_allowed()
+    args = SRE.args
+    start, finish = parse_time_interval_args(args.start, args.finish)
+
+    records = _collect_archives(args, start, finish)
     if not records:
-        print("no archives to process", file=sys.stderr)
+        print(_("no archives to process"), file=sys.stderr)
         return
 
     # Group by lab_name

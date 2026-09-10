@@ -134,6 +134,12 @@ msgstr "n'afficher que les noms d'hôtes correspondant à cette expression régu
 msgid "only consider projects with an archive received after this time (15:01 or 2026-09-10 15:01; same as the S key in the dashboard)"
 msgstr "ne considérer que les projets dont une archive a été reçue après cet instant (15:01 ou 2026-09-10 15:01 ; comme la touche S du tableau de bord)"
 
+msgid "only consider archives created at or after this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)"
+msgstr "ne considérer que les archives créées à partir de cet instant (15:01 pour aujourd'hui, ou 2026-09-10 15:01 ; une date seule signifie minuit)"
+
+msgid "only consider archives created at or before this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)"
+msgstr "ne considérer que les archives créées jusqu'à cet instant (15:01 pour aujourd'hui, ou 2026-09-10 15:01 ; une date seule signifie minuit)"
+
 msgid "Export evaluation archives to a LibreOffice ODS spreadsheet"
 msgstr "Exporter des archives d'évaluation vers un tableur LibreOffice ODS"
 

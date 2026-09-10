@@ -17,7 +17,7 @@ import zstandard as zstd
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed, exam_remaining_seconds, error_quit
+from ..utils import user_not_allowed, exam_remaining_seconds, error_quit, parse_time_or_datetime
 
 
 @dataclass
@@ -94,7 +94,7 @@ _CACHE: dict[str, tuple[float, dict]] = {}
 # Archive filenames are ``{YYYYmmddHHMMSS}_{running_lab_name}.zst`` (see
 # params.get_archive_name).  Group 1 is the eval date, group 2 the
 # running_lab_name, which may itself contain '@', '_' and '.'.
-_ARCHIVE_NAME_RE = re.compile(r'(\d{14})_(.+)\.zst')
+_ARCHIVE_NAME_RE = re.compile(params.archive_name_match_pattern)
 
 # Every archive path the watcher has decided about, in glob order:
 #   Record → parsed (kept until the file disappears, so a machine that stops
@@ -505,37 +505,6 @@ def _read_key() -> str | None:
     return 'esc'
 
 
-# Accepted by -S/--starting-time and the S key (mirrors set_exam._parse_date).
-_STARTING_TIME_FORMATS = ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M",
-                          "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
-_STARTING_TIME_ONLY_FORMATS = ("%H:%M", "%H:%M:%S")
-
-
-def _parse_starting_time(text: str, now: datetime | None = None) -> datetime | None:
-    """Parse a starting time; '' means no limit (None).
-
-    Accepts a date-time ('2026-09-10 15:01', '2026-09-10T15:01', optional
-    ':SS'), a date alone (midnight) or a time alone ('15:01', '15:01:30'),
-    which means today at that time — even when that is later than *now*, so
-    a future cutoff hides everything until then.  Raises ValueError otherwise."""
-    text = text.strip()
-    if not text:
-        return None
-    for fmt in _STARTING_TIME_FORMATS:
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            pass
-    today = (now or datetime.now()).date()
-    for fmt in _STARTING_TIME_ONLY_FORMATS:
-        try:
-            return datetime.combine(today, datetime.strptime(text, fmt).time())
-        except ValueError:
-            pass
-    raise ValueError(f"expected a time like 15:01 or a date-time like "
-                     f"2026-09-10 15:01, got {text!r}")
-
-
 def _starting_time_label(dt: datetime, now: datetime) -> str:
     """Short label for the header: time only when *dt* is on *now*'s day."""
     fmt = "%H:%M" if dt.date() == now.date() else "%Y-%m-%d %H:%M"
@@ -619,7 +588,7 @@ def _prompt_starting_time(old_settings) -> tuple[datetime | None] | None:
          "Enter a time (15:01) for today, or a date-time (2026-09-10 15:01).",
          "Leave empty and press Enter to remove the limit.",
          f"Current: {current or '(none)'}"],
-        current, "Starting time", lambda raw: (_parse_starting_time(raw, now),))
+        current, "Starting time", lambda raw: (parse_time_or_datetime(raw, now),))
 
 
 def _resolve_title(v) -> str:
@@ -1113,7 +1082,7 @@ def action_watch():
     except re.error as exc:
         error_quit(f"invalid hostname filter {args.hostname_filter!r}: {exc}")
     try:
-        _starting_time = _parse_starting_time(args.starting_time or '')
+        _starting_time = parse_time_or_datetime(args.starting_time or '')
     except ValueError as exc:
         error_quit(f"invalid starting time {args.starting_time!r}: {exc}")
 

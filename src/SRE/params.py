@@ -360,6 +360,24 @@ def get_archive_name(running_lab_name: str, date: datetime) -> str:
     return f"{datetime_to_string(date)}_{running_lab_name}.zst"
 
 
+# Matches the basename produced by get_archive_name(): group 1 is the eval
+# date (YYYYmmddHHMMSS), group 2 the running_lab_name (which may itself
+# contain '@', '_' and '.').  Use with re.fullmatch.
+archive_name_match_pattern = r'(\d{14})_(.+)\.zst'
+
+
+def get_date_from_archive_name(filename: str) -> datetime | None:
+    """Creation (eval) date encoded in an archive filename, or None when the
+    name does not follow get_archive_name() or the digits are not a date."""
+    match = re.fullmatch(archive_name_match_pattern, Path(filename).name)
+    if not match:
+        return None
+    try:
+        return string_to_datetime(match.group(1))
+    except ValueError:
+        return None
+
+
 def private_lab_dir(running_lab_name: str) -> str:
     return f"{sre_projects_dir}/{running_lab_name}/{private_dir_name}"
 
