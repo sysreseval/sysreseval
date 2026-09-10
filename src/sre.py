@@ -329,7 +329,7 @@ if uid != 0 and uid != params.sre_uid:
 
 SRE.args = parse_args()
 
-if uid != 0 and uid != params.sre_uid and SRE.args.action not in ('cat', 'check-eval', 're-eval', 'sheet', 'outline'):
+if uid != 0 and uid != params.sre_uid and SRE.args.action not in ('cat', 'check-eval', 're-eval', 'sheet', 'outline', 'watch'):
     error_quit(_("illegal userid"))
 
 if SRE.args.user:
