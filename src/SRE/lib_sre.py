@@ -227,12 +227,27 @@ class _FileOp:
         self.mtime = mtime
 
 
+class _CmdOp(str):
+    """A container command registered via NetScheme0.cmd().
+
+    A ``str`` subclass (so every consumer that checks ``isinstance(op, str)`` or writes
+    the op into a startup script keeps working) carrying the command's ``timeout`` in
+    seconds (``0`` = no timeout).
+    """
+
+    def __new__(cls, command: str, timeout: int = 0):
+        op = super().__new__(cls, command)
+        op.timeout = timeout
+        return op
+
+
 class _HostCmdOp:
     """A host-side command registered via NetScheme0.host_cmd()."""
-    __slots__ = ('command',)
+    __slots__ = ('command', 'timeout')
 
-    def __init__(self, command: str):
+    def __init__(self, command: str, timeout: int = 0):
         self.command = command
+        self.timeout = timeout
 
 
 class _CpFromHostOp:
@@ -620,11 +635,25 @@ class Data0:
             )
 
 
-def sre_state(fn=None, *, user_allowed=False, description=''):
+def sre_state(fn=None, *, user_allowed=False, description='', multi_pass=False):
+    """Mark a ``NetScheme`` method as a state.
+
+    Args:
+        user_allowed: students may apply this state themselves (``sre state``).
+        description:  label shown in the GUI.
+        multi_pass:   re-run the state method before each step and once more after the
+                      last one (``max_step + 1`` calls, like ``Grade.grade()``) so that
+                      ``cmd()`` / ``host_cmd()`` return the real ``(output, code)`` of
+                      commands executed at earlier steps (see
+                      :meth:`NetScheme0.iter_state_steps`).  Default ``False``: the method
+                      runs once and its ops are applied step by step; ``cmd()`` then always
+                      returns its placeholder.
+    """
     def decorator(f):
         f._is_sre_state = True
         f._sre_state_user_allowed = user_allowed
         f._sre_state_description = description
+        f._sre_state_multi_pass = multi_pass
         return f
 
     if fn is not None:
@@ -735,10 +764,43 @@ class NetScheme0:
                 _iface_counter[mname] = max(_iface_counter.get(mname, 0), iface) + 1
                 NetAdapter(network=net, machine=machine, interface=iface, mac=mac)
 
-        self._ops: dict[str, list] = {}  # machine → [str | _FileOp, ...]
+        self._ops: dict[int, dict[str, list]] = {}  # step → machine → [_CmdOp | _FileOp, ...]
         self._host_ops: dict[int, list] = {}
+        self.reset_state_results()
 
         self.net_config = None
+
+    def reset_state_results(self):
+        """Forget every command result and pass counter (called before a state is applied)."""
+        self.step = 0  # number of steps already applied
+        self.max_step = 1
+        self._multi_pass = False  # True while iter_state_steps() runs a multi_pass state
+        self._cmd_results = {}  # (machine, step) -> {(command, timeout): (output, code)}
+        self._host_cmd_results = {}  # step -> {(command, timeout): (output, code)}
+        self._allow_errors_in_cmds = {}  # (machine, step, command, timeout) -> True
+        self._allow_errors_in_host_cmds = {}  # (step, command, timeout) -> True
+        self._once_cache = {}
+
+    def once(self, key, factory):
+        """Return a value computed once per state application, whatever the number of passes.
+
+        In a ``multi_pass`` state the state method runs several times; anything drawn at
+        random or mutated later (e.g. a dict filled by a ``host_callback``) must stay the
+        same object across passes.  ``once(key, factory)`` calls ``factory()`` the first
+        time *key* is seen and returns the cached value afterwards.
+        """
+        if key not in self._once_cache:
+            self._once_cache[key] = factory()
+        return self._once_cache[key]
+
+    def _log_op(self, step, message):
+        """Debug-print a registered op once: on every call in single-pass mode, only in the
+        pass right before its step is applied in multi-pass mode."""
+        if not SRE.args.debug:
+            return
+        if self._multi_pass and step != self.step + 1:
+            return
+        print(f"[state] {message}", file=sys.stderr)
 
     def host_interfaces_from_topology(self) -> dict:
         """Return {machine_name: [net_name, ...]} derived from the resolved topology."""
@@ -771,6 +833,15 @@ class NetScheme0:
             fn = klass.__dict__.get(state)
             if fn is not None and getattr(fn, '_is_sre_state', False):
                 return getattr(fn, '_sre_state_user_allowed', False)
+        return False
+
+    @classmethod
+    def is_state_multi_pass(cls, state):
+        """Return ``True`` if *state* was decorated with ``@sre_state(multi_pass=True)``."""
+        for klass in cls.__mro__:
+            fn = klass.__dict__.get(state)
+            if fn is not None and getattr(fn, '_is_sre_state', False):
+                return getattr(fn, '_sre_state_multi_pass', False)
         return False
 
     @classmethod
@@ -845,28 +916,67 @@ class NetScheme0:
     def get_network_specs(self):
         return self._resolve_spec('_network_specs', 'network_specs')
 
-    def cmd(self, machine, command, step=1):
-        """Register a shell command to execute inside *machine*'s container at *step*."""
-        if SRE.args.debug:
-            print(f"[state] [{machine}] CMD (step={step}): {command}", file=sys.stderr)
-        self._ops.setdefault(step, {}).setdefault(machine, []).append(command)
+    def cmd(self, machine, command, step=1, timeout: int = params.default_state_cmd_timeout,
+            default_value='', default_code: int = 0, allow_error: bool = False):
+        """Register a shell command to execute inside *machine*'s container at *step*.
 
-    def host_cmd(self, command, step=1):
+        Returns ``(output, exit_code)``.  The command runs under ``sh`` through
+        ``exetests.py`` with *timeout* seconds (``0`` = no timeout; ``-1`` is returned
+        as exit code on timeout).  Until the command has run the placeholder
+        ``(default_value, default_code)`` is returned; the real result is only visible
+        in a ``@sre_state(multi_pass=True)`` state, from the next call of the state
+        method on (its final call sees every result).  A non-zero exit code is reported
+        on stderr unless *allow_error* is set.
+        """
+        if self.max_step < step:
+            self.max_step = step
+        self._log_op(step, f"[{machine}] CMD (step={step}, timeout={timeout}): {command}")
+        self._ops.setdefault(step, {}).setdefault(machine, []).append(_CmdOp(command, timeout))
+        if allow_error:
+            self._allow_errors_in_cmds[(machine, step, command, timeout)] = True
+        results = self._cmd_results.setdefault((machine, step), {})
+        if (command, timeout) not in results:
+            results[(command, timeout)] = (default_value, default_code)
+        return results[(command, timeout)]
+
+    def host_cmd(self, command, step=1, timeout: int = params.default_state_cmd_timeout,
+                 default_value='', default_code: int = 0, allow_error: bool = False):
         """Register a shell command to execute on the **host** (not inside a container) at *step*.
 
-        Requires ``params.execute_commands_on_host`` to be enabled; aborts otherwise.
+        Same contract as :meth:`cmd` (returns ``(stdout, exit_code)``, placeholder until the
+        command has run).  Requires ``params.execute_commands_on_host`` to be enabled; aborts
+        otherwise.
         """
         if params.execute_commands_on_host is False:
             sys.exit("host_cmd() is disabled by params.execute_commands_on_host")
-        if SRE.args.debug:
-            print(f"[state] HOST_CMD (step={step}): {command}", file=sys.stderr)
-        self._host_ops.setdefault(step, []).append(_HostCmdOp(command))
+        if self.max_step < step:
+            self.max_step = step
+        self._log_op(step, f"HOST_CMD (step={step}, timeout={timeout}): {command}")
+        self._host_ops.setdefault(step, []).append(_HostCmdOp(command, timeout))
+        if allow_error:
+            self._allow_errors_in_host_cmds[(step, command, timeout)] = True
+        results = self._host_cmd_results.setdefault(step, {})
+        if (command, timeout) not in results:
+            results[(command, timeout)] = (default_value, default_code)
+        return results[(command, timeout)]
+
+    def record_cmd_result(self, machine, step, command, timeout, output, code):
+        """Store the result of a container command run at *step* (called by ``sre state``)."""
+        self._cmd_results.setdefault((machine, step), {})[(command, timeout)] = (output, code)
+
+    def record_host_cmd_result(self, step, command, timeout, output, code):
+        """Store the result of a host command run at *step* (called by ``sre state``)."""
+        self._host_cmd_results.setdefault(step, {})[(command, timeout)] = (output, code)
+
+    def is_cmd_error_allowed(self, machine, step, command, timeout):
+        return self._allow_errors_in_cmds.get((machine, step, command, timeout), False)
+
+    def is_host_cmd_error_allowed(self, step, command, timeout):
+        return self._allow_errors_in_host_cmds.get((step, command, timeout), False)
 
     def host_callback(self, callback, step=1):
         """Register a Python callable to invoke on the host at *step* (called with no arguments)."""
-        if SRE.args.debug:
-            print(f"[state] HOST_CALLBACK (step={step}): {getattr(callback, '__name__', repr(callback))}",
-                  file=sys.stderr)
+        self._log_op(step, f"HOST_CALLBACK (step={step}): {getattr(callback, '__name__', repr(callback))}")
         self._host_ops.setdefault(step, []).append(_HostCallbackOp(callback))
 
     def cp_from_host(self, src: str, machine: str, dest: str, owner: str = "root:root", permissions: int = None,
@@ -879,8 +989,7 @@ class NetScheme0:
         orig_path = Path(src)
         if not orig_path.is_absolute():
             orig_path = Path(params.files_dir(self.running_lab_name)) / orig_path
-        if SRE.args.debug:
-            print(f"[state] [{machine}] CP (step={step}): {orig_path} -> {dest} (owner={owner})", file=sys.stderr)
+        self._log_op(step, f"[{machine}] CP (step={step}): {orig_path} -> {dest} (owner={owner})")
         self._ops.setdefault(step, {}).setdefault(machine, []).append(
             _CpFromHostOp(orig_path, dest, permissions, owner, mtime)
         )
@@ -899,8 +1008,7 @@ class NetScheme0:
         dest_path = (files_dir / dest).resolve()
         if not dest_path.is_relative_to(files_dir):
             error_quit(f"cp_to_host: dest '{dest}' is outside files_dir '{files_dir}'")
-        if SRE.args.debug:
-            print(f"[state] [{machine}] CP_TO_HOST (step={step}): {path} -> {dest_path}", file=sys.stderr)
+        self._log_op(step, f"[{machine}] CP_TO_HOST (step={step}): {path} -> {dest_path}")
         self._ops.setdefault(step, {}).setdefault(machine, []).append(
             _CpToHostOp(path, str(dest_path), permissions)
         )
@@ -919,10 +1027,8 @@ class NetScheme0:
         """
         import time as _time
         raw = content.encode() if isinstance(content, str) else content
-        if SRE.args.debug:
-            print(
-                f"[state] [{machine}] FILE (step={step}): {filename} (permissions={permissions:#o}, owner={owner}, size={len(raw)}B)",
-                file=sys.stderr)
+        self._log_op(step, f"[{machine}] FILE (step={step}): {filename} "
+                           f"(permissions={permissions:#o}, owner={owner}, size={len(raw)}B)")
         self._ops.setdefault(step, {}).setdefault(machine, []).append(
             _FileOp(filename, raw, permissions, owner, mtime if mtime is not None else _time.time())
         )
@@ -940,8 +1046,7 @@ class NetScheme0:
             step:        execution step (default 1); higher steps run after lower ones
         """
         raw = content.encode() if isinstance(content, str) else content
-        if SRE.args.debug:
-            print(f"[state] [{machine}] APPEND (step={step}): {filename} (size={len(raw)}B)", file=sys.stderr)
+        self._log_op(step, f"[{machine}] APPEND (step={step}): {filename} (size={len(raw)}B)")
         self._ops.setdefault(step, {}).setdefault(machine, []).append(
             _AppendOp(filename, raw, permissions, owner, mtime)
         )
@@ -963,9 +1068,7 @@ class NetScheme0:
             step:        execution step (default 1); higher steps run after lower ones
         """
         raw = content.encode() if isinstance(content, str) else content
-        if SRE.args.debug:
-            print(f"[state] [{machine}] IDEMPOTENT_APPEND (step={step}): {filename} (size={len(raw)}B)",
-                  file=sys.stderr)
+        self._log_op(step, f"[{machine}] IDEMPOTENT_APPEND (step={step}): {filename} (size={len(raw)}B)")
         self._ops.setdefault(step, {}).setdefault(machine, []).append(
             _IdempotentAppendOp(filename, raw, permissions, owner, mtime)
         )
@@ -982,7 +1085,41 @@ class NetScheme0:
             method()
         except Exception as e:
             error_quit(f"error during {state} execution: {e}")
+        self.max_step = max([self.max_step, *self._ops, *self._host_ops])
         return self._ops, self._host_ops
+
+    def iter_state_steps(self, state):
+        """Yield ``(step, {machine: [ops]}, [host_ops])`` for every step of *state*, in order.
+
+        Single-pass state (default): the state method is called once and its ops are
+        yielded step by step.
+
+        ``@sre_state(multi_pass=True)``: the state method is called again before each
+        step, so ``cmd()`` / ``host_cmd()`` calls registered at earlier steps return their
+        real ``(output, code)``.  The method runs ``max_step + 1`` times, like
+        ``Grade.grade()`` in ``run_tests()``: the call that registers the ops of step N+1
+        sees the results of steps 1..N, and a final call after the last step sees every
+        result.  If that final call registers a new, higher step the loop goes on with it.
+        Ops re-registered for an already applied step are ignored.
+
+        The caller applies the yielded ops and records command results with
+        :meth:`record_cmd_result` / :meth:`record_host_cmd_result` before asking for the next
+        step.
+        """
+        self.reset_state_results()
+        self._multi_pass = type(self).is_state_multi_pass(state)
+        if not self._multi_pass:
+            ops_by_step, host_ops_by_step = self.compute_state_ops(state)
+            for step in sorted(set(ops_by_step) | set(host_ops_by_step)):
+                self.step = step
+                yield step, ops_by_step.get(step, {}), host_ops_by_step.get(step, [])
+            return
+        while True:
+            ops_by_step, host_ops_by_step = self.compute_state_ops(state)  # may bump self.max_step
+            if self.step >= self.max_step:
+                break  # final pass: every result was visible, nothing left to apply
+            self.step += 1
+            yield self.step, ops_by_step.get(self.step, {}), host_ops_by_step.get(self.step, [])
 
     def get_new_lab_from_scheme(self):
         lab = Lab(name=self.running_lab_name)
@@ -1189,6 +1326,64 @@ class Machine:
             error_quit("To add ports in a machine, you need to activate bridged mode")
 
 
+def build_exetests_string(cmds) -> str:
+    """Build the ``EXETESTS`` value for *cmds*, an iterable of ``(command, timeout)`` pairs."""
+    return params.exetests_separator.join(f"{timeout}:{cmd}" for (cmd, timeout) in cmds)
+
+
+def parse_exetests_output(output: bytes) -> list:
+    """Parse the stdout of ``exetests.py`` into ``[(command, timeout, result, code), ...]``.
+
+    *code* is the command's exit code, ``-1`` on timeout, ``-2`` when exetests printed
+    something that is not an integer (an exception).  A truncated trailer stops the parse.
+    """
+    parsed = []
+    output1 = output.decode("utf-8")
+    separator, _, rest = output1.partition("\n")
+    output2 = rest.split(f"\n{separator}\n")
+    for i in range(0, len(output2) - 1, 2):
+        ligne1 = ""
+        try:
+            ligne1, date1, result = output2[i].split("\n", 2)
+        except ValueError:
+            result = ""
+        if not ligne1:
+            continue
+        timeout_s, cmd = ligne1.split(":", 1)
+        timeout = int(timeout_s)
+        date2, code_s = output2[i + 1].split("\n", 1)
+        try:
+            code = int(code_s.strip())
+        except ValueError:
+            code = -2
+        parsed.append((cmd, timeout, result, code))
+    return parsed
+
+
+def run_host_command(command: str, timeout: int, cwd=None) -> tuple:
+    """Run *command* on the host as the sre user and return ``(stdout, exit_code)``.
+
+    Honours ``params.execute_commands_on_host`` (``"shell"`` or ``"split"``).  Returns
+    ``-1`` as exit code on timeout (``timeout <= 0`` disables it) and ``-2`` on any other
+    failure to run the command.
+    """
+    from .utils_privileges import preexec_drop_to_sre
+    run_cmd = shlex.split(command) if params.execute_commands_on_host == "split" else command
+    use_shell = params.execute_commands_on_host == "shell"
+    try:
+        proc = subprocess.run(
+            run_cmd, shell=use_shell, capture_output=True, text=True,
+            timeout=timeout if timeout > 0 else None,
+            cwd=cwd,
+            preexec_fn=preexec_drop_to_sre,
+        )
+        return proc.stdout, proc.returncode
+    except subprocess.TimeoutExpired:
+        return '', -1
+    except Exception:
+        return '', -2
+
+
 class Grade0:
     """Base class for lab evaluation logic.
 
@@ -1338,8 +1533,7 @@ class Grade0:
         for (machine, step1) in self._tests.keys():
             if step != step1:
                 continue
-            result[machine] = params.exetests_separator.join(
-                [f"{timeout}:{cmd}" for (cmd, timeout) in self._tests[(machine, step)].keys()])
+            result[machine] = build_exetests_string(self._tests[(machine, step)].keys())
         return result
 
     def get_running_lab_name(self):
@@ -1847,6 +2041,7 @@ class Grade0:
                                                    stderr=False,
                                                    tty=False,
                                                    environment=environment,
+                                                   workdir="/",
                                                    )
         return machine_name, code, output
 
@@ -1900,24 +2095,8 @@ class Grade0:
                     self.add_error(
                         f"exetests error on {machine_name}: {exetests_by_machine[machine_name]} -- return code {exetests_code}",
                         step=self.step)
-                output1 = output.decode("utf-8")
-                separator, _, rest = output1.partition("\n")
-                output2 = rest.split(f"\n{separator}\n")
-                for i in range(0, len(output2), 2):
-                    ligne1 = ""
-                    try:
-                        ligne1, date1, result = output2[i].split("\n", 2)
-                    except ValueError:
-                        result = ""
-                    if not ligne1:
-                        continue
-                    timeout_s, cmd = ligne1.split(":", 1)
-                    timeout = int(timeout_s)
-                    date2, code_s = output2[i + 1].split("\n", 1)
-                    try:
-                        code = int(code_s.strip())
-                    except ValueError:
-                        code = -2
+                for cmd, timeout, result, code in parse_exetests_output(output):
+                    if code == -2:
                         self.add_error(f"test error on {machine_name}:{self.step}:{cmd} illegal error code",
                                        step=self.step)
                     if code != 0:
@@ -1937,20 +2116,7 @@ class Grade0:
             host_step_cmds = self._host_tests.get(self.step, {})
             if host_step_cmds:
                 def _run_host_cmd(cmd, t):
-                    from .utils_privileges import preexec_drop_to_sre
-                    run_cmd = shlex.split(cmd) if params.execute_commands_on_host == "split" else cmd
-                    use_shell = params.execute_commands_on_host == "shell"
-                    try:
-                        proc = subprocess.run(
-                            run_cmd, shell=use_shell, capture_output=True, text=True,
-                            timeout=t if t > 0 else None,
-                            preexec_fn=preexec_drop_to_sre,
-                        )
-                        return cmd, t, proc.stdout, proc.returncode
-                    except subprocess.TimeoutExpired:
-                        return cmd, t, '', -1
-                    except Exception:
-                        return cmd, t, '', -2
+                    return (cmd, t, *run_host_command(cmd, t))
 
                 with ThreadPoolExecutor(max_workers=min(params.max_docker_concurrency,
                                                         len(host_step_cmds))) as executor:

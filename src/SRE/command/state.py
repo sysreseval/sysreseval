@@ -1,17 +1,16 @@
 import json
 import os
-import shlex
-import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from ..utils import error_quit, set_all_variables_for_action, in_user_mode, resolve_running_lab_name, \
-    user_not_allowed_in_exam_mode
-from ..utils_privileges import preexec_drop_to_sre, drop_privileges_permanently_if_not_needed, \
+from ..utils import error_quit, log_error, log_debug, set_all_variables_for_action, in_user_mode, \
+    resolve_running_lab_name, user_not_allowed_in_exam_mode
+from ..utils_privileges import drop_privileges_permanently_if_not_needed, \
     drop_privileges_temporarily, gain_privileges_if_needed, set_sudo_uid_for_username
 from ..files_transfert import copy_state_files, put_file_in_container, append_to_file_in_container, \
     idempotent_append_to_file_in_container, deploy_exetests
-from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp, _CpFromHostOp, _CpToHostOp, _HostCallbackOp
+from ..lib_sre import (Grade0, _CmdOp, _FileOp, _AppendOp, _IdempotentAppendOp, _CpFromHostOp, _CpToHostOp,
+                       _HostCallbackOp, build_exetests_string, parse_exetests_output, run_host_command)
 from .. import params
 from ..params import SRE
 
@@ -74,11 +73,39 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
     elif state == params.initial_state_name:
         deploy_exetests(lab=lab)
 
-    ops_by_step, host_ops_by_step = net_scheme.compute_state_ops(state)
+    files_dir = params.files_dir(net_scheme.running_lab_name)
 
-    def _apply_ops(_machine_name, machine, ops):
+    def _run_cmd_batch(machine_name, machine, step, batch):
+        """Run consecutive cmd() ops of one machine through exetests.py and record results."""
+        if not batch:
+            return
+        _, exetests_code, output = Grade0.run_tests_on_machine(
+            machine_name, machine, build_exetests_string((str(op), op.timeout) for op in batch))
+        if exetests_code != 0:
+            log_error(f"exetests error on {machine_name} (step {step}): return code {exetests_code}")
+        seen = set()
+        for cmd, timeout, result, code in parse_exetests_output(output):
+            seen.add((cmd, timeout))
+            net_scheme.record_cmd_result(machine_name, step, cmd, timeout, result, code)
+            if code != 0 and not net_scheme.is_cmd_error_allowed(machine_name, step, cmd, timeout):
+                log_error(f"state cmd error on {machine_name}:{cmd} code={code}")
+            if SRE.args.debug:
+                log_debug(f"[state] {machine_name} - step {step} - command {cmd} - timeout {timeout}:")
+                log_debug(result)
+                log_debug(f"-------- exit code {code}\n")
+        for op in batch:
+            if (str(op), op.timeout) not in seen:
+                log_error(f"state cmd on {machine_name}:{op} produced no result")
+
+    def _apply_ops(_machine_name, machine, step, ops):
         import time as _time
+        batch = []
         for op in ops:
+            if isinstance(op, str):
+                batch.append(op if isinstance(op, _CmdOp) else _CmdOp(op, params.default_state_cmd_timeout))
+                continue
+            _run_cmd_batch(_machine_name, machine, step, batch)
+            batch = []
             if isinstance(op, _CpFromHostOp):
                 content = op.src_path.read_bytes()
                 permissions = op.permissions if op.permissions is not None else op.src_path.stat().st_mode & 0o7777
@@ -104,33 +131,34 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
             elif isinstance(op, _IdempotentAppendOp):
                 idempotent_append_to_file_in_container(machine.api_object, op)
             else:
-                machine.api_object.exec_run(
-                    shlex.split(op) if isinstance(op, str) else op, workdir="/"
-                )
+                error_quit(f"unknown state operation {op!r} for machine {_machine_name}")
+        _run_cmd_batch(_machine_name, machine, step, batch)
 
-    all_steps = sorted(set(ops_by_step) | set(host_ops_by_step))
-    files_dir = params.files_dir(net_scheme.running_lab_name)
-
-    for step in all_steps:
-        for host_op in host_ops_by_step.get(step, []):
+    # iter_state_steps() calls the state method once (default) or once per step
+    # (@sre_state(multi_pass=True)); host ops of a step run before its container ops.
+    for step, step_ops, host_ops in net_scheme.iter_state_steps(state):
+        for host_op in host_ops:
             if isinstance(host_op, _HostCallbackOp):
                 host_op.callback()
             else:
                 os.makedirs(files_dir, exist_ok=True)
-                devnull = subprocess.DEVNULL if in_user_mode() else None
-                run_cmd = shlex.split(host_op.command) if params.execute_commands_on_host == "split" else host_op.command
-                subprocess.run(run_cmd, shell=(params.execute_commands_on_host == "shell"),
-                               cwd=files_dir, check=True,
-                               stdout=devnull, stderr=devnull,
-                               preexec_fn=preexec_drop_to_sre)
+                output, code = run_host_command(host_op.command, host_op.timeout, cwd=files_dir)
+                net_scheme.record_host_cmd_result(step, host_op.command, host_op.timeout, output, code)
+                if code != 0 and not net_scheme.is_host_cmd_error_allowed(step, host_op.command,
+                                                                          host_op.timeout):
+                    log_error(f"host cmd error: {host_op.command} code={code}")
+                if SRE.args.debug:
+                    log_debug(f"[state] host - step {step} - command {host_op.command} - "
+                              f"timeout {host_op.timeout}:")
+                    log_debug(output)
+                    log_debug(f"-------- exit code {code}\n")
 
-        step_ops = ops_by_step.get(step, {})
         machines_with_ops = {name: m for name, m in lab.machines.items() if name in step_ops}
         if not machines_with_ops:
             continue
         with ThreadPoolExecutor(max_workers=min(params.max_docker_concurrency,
                                                 len(machines_with_ops))) as executor:
-            futures = {executor.submit(_apply_ops, name, m, step_ops[name]): name
+            futures = {executor.submit(_apply_ops, name, m, step, step_ops[name]): name
                        for name, m in machines_with_ops.items()}
             for future in as_completed(futures):
                 future.result()  # re-raise any exception from the worker

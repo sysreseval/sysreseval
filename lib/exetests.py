@@ -46,7 +46,7 @@ for ligne in cmds:
                 **os.environ,
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             },
-            timeout=timeout,
+            timeout=timeout if timeout > 0 else None,
         )
         print(f"\n{separator}\n{datetime.datetime.now().isoformat()}\n{proc.returncode}", flush=True)
     except subprocess.TimeoutExpired as te:

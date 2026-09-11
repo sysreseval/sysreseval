@@ -369,6 +369,7 @@ class TestGeneratePcapTcpExample:
 
     def _make_ns(self):
         ns = MagicMock()
+        ns.once.side_effect = lambda key, factory: factory()
         return ns
 
     def test_returns_expected_keys(self):
@@ -473,7 +474,9 @@ class TestGeneratePcapTcpExample:
 class TestSetupTcpClientServer:
 
     def _make_ns(self):
-        return MagicMock()
+        ns = MagicMock()
+        ns.once.side_effect = lambda key, factory: factory()
+        return ns
 
     def test_returns_server_and_client_port(self):
         ns = self._make_ns()

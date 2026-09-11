@@ -137,6 +137,7 @@ exetests_machines_path = '/usr/local/sbin/exetests.py'
 exetests_env_name = 'EXETESTS'
 exetests_separator = '@@@'
 default_timeout = 20
+default_state_cmd_timeout = 120  # seconds, for NetScheme.cmd() / host_cmd() (0 = no timeout)
 
 exit_code_flavor_form_needed = 3
 exit_code_flavor_not_allowed = 4

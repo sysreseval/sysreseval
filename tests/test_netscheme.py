@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from SRE import params
-from SRE.lib_sre import (Data0, NetScheme0, Machine, Network, NetAdapter,
-                         _FileOp, _AppendOp, _IdempotentAppendOp, _HostCmdOp, _CpToHostOp)
+from SRE.lib_sre import (Data0, NetScheme0, Machine, Network, NetAdapter, sre_state,
+                         _CmdOp, _FileOp, _AppendOp, _IdempotentAppendOp, _HostCmdOp, _CpToHostOp)
 from SRE.files_transfert import idempotent_append_to_file_in_container
 
 
@@ -676,3 +676,355 @@ class TestIdempotentAppendExecution:
     def test_chmod_in_cmd_when_permissions_set(self, tmp_path):
         cmd, _ = _get_shell_cmd('x', '/tmp/test_file.txt', permissions=0o755)
         assert 'chmod 755' in cmd
+
+
+# ---------------------------------------------------------------------------
+# cmd() / host_cmd() — registration and results (mirror of Grade0.test / test_host)
+# ---------------------------------------------------------------------------
+
+class CmdScheme(NetScheme0):
+    """Records how many times each state method ran and what cmd() returned."""
+
+    def __init__(self, data):
+        super().__init__(data=data, running_lab_name=RUNNING_LAB)
+        self.calls = 0
+        self.seen = []
+
+    def initial(self):
+        self.calls += 1
+        out, code = self.cmd('m1', 'date')
+        self.seen.append((out, code))
+        self.cmd('m1', 'date')  # duplicate: two ops, one result key
+        self.cmd('m2', 'false', allow_error=True, timeout=5)
+        self.file('m1', '/etc/x', 'y', step=3)
+
+    @sre_state(user_allowed=True)
+    def single(self):
+        self.calls += 1
+        self.cmd('m1', 'a', step=1)
+        self.cmd('m2', 'b', step=3)
+
+    @sre_state(multi_pass=True)
+    def multi(self):
+        self.calls += 1
+        out, code = self.cmd('m1', 'cat /etc/hostname', step=1)
+        self.seen.append((out, code))
+        self.cmd('m1', f'echo {out.strip()}', step=3)
+
+
+def _record_all(scheme, step, ops, output_for_step=None):
+    """Record a fake result for every _CmdOp of *ops* (as the state applier would)."""
+    for machine, machine_ops in ops.items():
+        for op in machine_ops:
+            if isinstance(op, _CmdOp):
+                out = output_for_step(step) if output_for_step else 'real\n'
+                scheme.record_cmd_result(machine, step, str(op), op.timeout, out, 0)
+
+
+class TestCmdRegistration:
+    def test_returns_placeholder_first(self):
+        s = CmdScheme(MockData())
+        assert s.cmd('m1', 'date') == ('', 0)
+
+    def test_custom_default_value_and_code(self):
+        s = CmdScheme(MockData())
+        assert s.cmd('m1', 'date', default_value='x', default_code=7) == ('x', 7)
+
+    def test_returns_recorded_result(self):
+        s = CmdScheme(MockData())
+        s.cmd('m1', 'date')
+        s.record_cmd_result('m1', 1, 'date', params.default_state_cmd_timeout, 'Mon\n', 0)
+        assert s.cmd('m1', 'date') == ('Mon\n', 0)
+
+    def test_result_keyed_by_timeout(self):
+        s = CmdScheme(MockData())
+        s.record_cmd_result('m1', 1, 'date', 5, 'Mon\n', 0)
+        assert s.cmd('m1', 'date', timeout=5) == ('Mon\n', 0)
+        assert s.cmd('m1', 'date', timeout=6) == ('', 0)
+
+    def test_result_keyed_by_step_and_machine(self):
+        s = CmdScheme(MockData())
+        s.record_cmd_result('m1', 1, 'date', 5, 'one\n', 0)
+        assert s.cmd('m1', 'date', timeout=5, step=2) == ('', 0)
+        assert s.cmd('m2', 'date', timeout=5) == ('', 0)
+
+    def test_op_is_a_str_carrying_timeout(self):
+        s = CmdScheme(MockData())
+        ops = _flat_ops(s, 'initial')
+        m1 = [op for op in ops['m1'] if isinstance(op, str)]
+        assert m1 == ['date', 'date']
+        assert all(isinstance(op, _CmdOp) for op in m1)
+        assert m1[0].timeout == params.default_state_cmd_timeout
+        m2 = [op for op in ops['m2'] if isinstance(op, _CmdOp)]
+        assert m2 == ['false']
+        assert m2[0].timeout == 5
+
+    def test_duplicate_cmd_appends_twice_but_one_result_key(self):
+        s = CmdScheme(MockData())
+        s.compute_state_ops('initial')
+        assert len(s._cmd_results[('m1', 1)]) == 1
+
+    def test_allow_error_recorded(self):
+        s = CmdScheme(MockData())
+        s.compute_state_ops('initial')
+        assert s.is_cmd_error_allowed('m2', 1, 'false', 5)
+        assert not s.is_cmd_error_allowed('m1', 1, 'date', params.default_state_cmd_timeout)
+
+    def test_max_step_bumped_by_cmd(self):
+        s = CmdScheme(MockData())
+        s.cmd('m1', 'x', step=4)
+        assert s.max_step == 4
+
+    def test_max_step_bumped_by_file_via_compute_state_ops(self):
+        s = CmdScheme(MockData())
+        s.compute_state_ops('initial')
+        assert s.max_step == 3
+
+    def test_compute_state_ops_without_ops_keeps_max_step(self):
+        class Empty(NetScheme0):
+            def __init__(self, data):
+                super().__init__(data=data, running_lab_name=RUNNING_LAB)
+
+            def initial(self):
+                pass
+
+        s = Empty(MockData())
+        s.compute_state_ops('initial')
+        assert s.max_step == 1
+
+    def test_reset_clears_results_and_counters(self):
+        s = CmdScheme(MockData())
+        s.record_cmd_result('m1', 1, 'date', 1, 'x', 0)
+        s.cmd('m1', 'y', step=5, allow_error=True)
+        s.reset_state_results()
+        assert s.cmd('m1', 'date', timeout=1) == ('', 0)
+        assert s.max_step == 1
+        assert s.step == 0
+        assert not s.is_cmd_error_allowed('m1', 5, 'y', params.default_state_cmd_timeout)
+
+
+class TestHostCmdRegistration:
+    def test_returns_placeholder_then_result(self, monkeypatch):
+        monkeypatch.setattr(params, 'execute_commands_on_host', 'shell')
+        s = CmdScheme(MockData())
+        assert s.host_cmd('uname') == ('', 0)
+        s.record_host_cmd_result(1, 'uname', params.default_state_cmd_timeout, 'Linux\n', 0)
+        assert s.host_cmd('uname') == ('Linux\n', 0)
+
+    def test_op_carries_timeout_and_allow_error(self, monkeypatch):
+        monkeypatch.setattr(params, 'execute_commands_on_host', 'shell')
+        s = CmdScheme(MockData())
+        s.host_cmd('false', timeout=3, allow_error=True, step=2)
+        op = s._host_ops[2][0]
+        assert isinstance(op, _HostCmdOp)
+        assert op.command == 'false'
+        assert op.timeout == 3
+        assert s.is_host_cmd_error_allowed(2, 'false', 3)
+        assert not s.is_host_cmd_error_allowed(2, 'false', 4)
+        assert s.max_step == 2
+
+    def test_disabled_exits(self, monkeypatch):
+        monkeypatch.setattr(params, 'execute_commands_on_host', False)
+        s = CmdScheme(MockData())
+        with pytest.raises(SystemExit):
+            s.host_cmd('echo')
+
+
+class TestOnce:
+    def test_same_object_across_calls(self):
+        s = CmdScheme(MockData())
+        calls = []
+
+        def factory():
+            calls.append(1)
+            return {}
+
+        d1 = s.once('k', factory)
+        d2 = s.once('k', factory)
+        assert d1 is d2
+        assert calls == [1]
+
+    def test_distinct_keys(self):
+        s = CmdScheme(MockData())
+        assert s.once(('a', 1), dict) is not s.once(('a', 2), dict)
+
+    def test_cleared_by_reset(self):
+        s = CmdScheme(MockData())
+        d1 = s.once('k', dict)
+        s.reset_state_results()
+        assert s.once('k', dict) is not d1
+
+
+class TestMultiPassFlag:
+    def test_default_false(self):
+        assert CmdScheme.is_state_multi_pass('initial') is False
+        assert CmdScheme.is_state_multi_pass('single') is False
+
+    def test_true_when_decorated(self):
+        assert CmdScheme.is_state_multi_pass('multi') is True
+
+    def test_inherited_through_mro_when_override_is_undecorated(self):
+        class Child(CmdScheme):
+            def multi(self):
+                super().multi()
+
+            def initial(self):
+                super().initial()
+
+        assert Child.is_state_multi_pass('multi') is True
+        assert Child.is_state_multi_pass('initial') is False
+
+    def test_unknown_state_false(self):
+        assert CmdScheme.is_state_multi_pass('nope') is False
+
+    def test_bare_decorator_still_works(self):
+        class S(NetScheme0):
+            @sre_state
+            def s1(self):
+                pass
+
+        assert 's1' in S.get_state_methods()
+        assert S.is_state_multi_pass('s1') is False
+        assert S.is_state_user_allowed('s1') is False
+
+
+class TestIterStateSteps:
+    def test_single_pass_calls_method_once_and_yields_registered_steps(self):
+        s = CmdScheme(MockData())
+        steps = list(s.iter_state_steps('single'))
+        assert s.calls == 1
+        assert [st for st, _, _ in steps] == [1, 3]
+        assert list(steps[0][1]) == ['m1']
+        assert list(steps[1][1]) == ['m2']
+
+    def test_single_pass_sets_step_to_current_step(self):
+        s = CmdScheme(MockData())
+        seen = [s.step for _ in s.iter_state_steps('single')]
+        assert seen == [1, 3]
+
+    def test_single_pass_only_sees_placeholder(self):
+        s = CmdScheme(MockData())
+        for step, ops, _host in s.iter_state_steps('initial'):
+            _record_all(s, step, ops)
+        assert s.calls == 1
+        assert s.seen == [('', 0)]
+
+    def test_single_pass_flag_false(self):
+        s = CmdScheme(MockData())
+        flags = [s._multi_pass for _ in s.iter_state_steps('single')]
+        assert flags == [False, False]
+
+    def test_multi_pass_runs_once_per_step_and_feeds_results(self):
+        s = CmdScheme(MockData())
+        for step, ops, _host in s.iter_state_steps('multi'):
+            _record_all(s, step, ops, output_for_step=lambda st: f'out{st}\n')
+        assert s.calls == 4  # max_step == 3 → three passes plus the final one
+        assert s.seen == [('', 0), ('out1\n', 0), ('out1\n', 0), ('out1\n', 0)]
+
+    def test_multi_pass_later_step_uses_earlier_result(self):
+        s = CmdScheme(MockData())
+        yielded = {}
+        for step, ops, _host in s.iter_state_steps('multi'):
+            yielded[step] = {m: [str(op) for op in mops] for m, mops in ops.items()}
+            _record_all(s, step, ops, output_for_step=lambda st: 'h1\n')
+        assert yielded == {1: {'m1': ['cat /etc/hostname']}, 2: {}, 3: {'m1': ['echo h1']}}
+        assert s.calls == 4
+
+    def test_multi_pass_flag_true_during_run(self):
+        s = CmdScheme(MockData())
+        flags = [s._multi_pass for _ in s.iter_state_steps('multi')]
+        assert flags == [True, True, True]
+
+    def test_multi_pass_single_step_runs_twice(self):
+        class M(NetScheme0):
+            def __init__(self, data):
+                super().__init__(data=data, running_lab_name=RUNNING_LAB)
+                self.calls = 0
+                self.seen = []
+
+            @sre_state(multi_pass=True)
+            def initial(self):
+                self.calls += 1
+                self.seen.append(self.cmd('m1', 'x'))
+
+        s = M(MockData())
+        for step, ops, _host in s.iter_state_steps('initial'):
+            _record_all(s, step, ops)
+        assert s.calls == 2  # register, then a final call that sees the result
+        assert s.seen == [('', 0), ('real\n', 0)]
+
+    def test_op_registered_in_final_pass_extends_loop(self):
+        # Like a late self.test(step=N) in grade(): a step-2 op that only exists once the
+        # step-1 result is known is registered by the final call, which extends the loop.
+        class M(NetScheme0):
+            def __init__(self, data):
+                super().__init__(data=data, running_lab_name=RUNNING_LAB)
+                self.calls = 0
+
+            @sre_state(multi_pass=True)
+            def initial(self):
+                self.calls += 1
+                out, _ = self.cmd('m1', 'x')
+                if out == 'go\n':
+                    self.cmd('m1', 'y', step=2)
+
+        s = M(MockData())
+        yielded = []
+        for step, ops, _host in s.iter_state_steps('initial'):
+            yielded.append(step)
+            _record_all(s, step, ops, output_for_step=lambda st: 'go\n')
+        assert yielded == [1, 2]
+        assert s.calls == 3
+        assert s.cmd('m1', 'y', step=2) == ('go\n', 0)
+
+    def test_unconditional_later_step_op_can_depend_on_result(self):
+        class M(NetScheme0):
+            def __init__(self, data):
+                super().__init__(data=data, running_lab_name=RUNNING_LAB)
+                self.calls = 0
+
+            @sre_state(multi_pass=True)
+            def initial(self):
+                self.calls += 1
+                out, _ = self.cmd('m1', 'x')
+                self.cmd('m1', 'y' if out == 'go\n' else 'true', step=2)
+
+        s = M(MockData())
+        yielded = {}
+        for step, ops, _host in s.iter_state_steps('initial'):
+            yielded[step] = [str(op) for op in ops.get('m1', [])]
+            _record_all(s, step, ops, output_for_step=lambda st: 'go\n')
+        assert s.calls == 3
+        assert yielded == {1: ['x'], 2: ['y']}
+
+    def test_resets_previous_results(self):
+        s = CmdScheme(MockData())
+        s.record_cmd_result('m1', 1, 'cat /etc/hostname', params.default_state_cmd_timeout, 'old\n', 0)
+        for step, ops, _host in s.iter_state_steps('multi'):
+            _record_all(s, step, ops, output_for_step=lambda st: 'new\n')
+        assert s.seen[0] == ('', 0)
+
+
+class TestDebugOpLogging:
+    def test_multi_pass_prints_each_op_once_with_final_content(self, mock_sre_args, capsys):
+        mock_sre_args.debug = True
+        s = CmdScheme(MockData())
+        for step, ops, _host in s.iter_state_steps('multi'):
+            _record_all(s, step, ops, output_for_step=lambda st: 'h1\n')
+        err = capsys.readouterr().err
+        assert err.count('CMD (step=1') == 1
+        assert err.count('CMD (step=3') == 1
+        assert 'echo h1' in err
+
+    def test_single_pass_prints_every_registration(self, mock_sre_args, capsys):
+        mock_sre_args.debug = True
+        s = CmdScheme(MockData())
+        list(s.iter_state_steps('initial'))
+        err = capsys.readouterr().err
+        assert err.count('CMD (step=1') == 3   # date, date, false
+        assert err.count('FILE (step=3') == 1
+
+    def test_nothing_printed_without_debug(self, capsys):
+        s = CmdScheme(MockData())
+        list(s.iter_state_steps('multi'))
+        assert capsys.readouterr().err == ''

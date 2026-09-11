@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from SRE import params
-from SRE.lib_sre import Grade0, ErrorCategory
+from SRE.lib_sre import Grade0, ErrorCategory, build_exetests_string, parse_exetests_output, run_host_command
 from SRE.common import GradeElement, GradePart, _tt_hash_str
 
 
@@ -724,3 +724,84 @@ class TestGradePartSerialization:
     def test_to_grade_letter_preserves_grade_part(self):
         e = GradeElement(title='t', max_grade=5, grade=5, grade_part='Part 1')
         assert e.to_grade_letter().grade_part == 'Part 1'
+
+
+# ---------------------------------------------------------------------------
+# exetests helpers shared by run_tests() and `sre state`
+# ---------------------------------------------------------------------------
+
+def _exetests_output(*commands):
+    """Fake exetests.py stdout for (timeout, cmd, result, code) tuples."""
+    sep = "FAKE-EXETESTS-UUID-SEPARATOR"
+    parts = []
+    for timeout, cmd, result, code in commands:
+        parts.append(f"{timeout}:{cmd}\n2024-01-01T00:00:00\n{result}")
+        parts.append(f"2024-01-01T00:00:01\n{code}")
+    return (sep + "\n" + ("\n" + sep + "\n").join(parts)).encode()
+
+
+class TestExetestsHelpers:
+    def test_build_string(self):
+        assert build_exetests_string([('ip route', 10), ('cat /etc/hostname', 5)]) == \
+            '10:ip route@@@5:cat /etc/hostname'
+
+    def test_build_string_empty(self):
+        assert build_exetests_string([]) == ''
+
+    def test_parse_round_trip(self):
+        out = _exetests_output(
+            (10, 'ip route', 'default via 10.0.0.1\n', 0),
+            (2, 'sleep 100', '', -1),
+            (5, 'boom', '', 'ERROR something'),
+        )
+        assert parse_exetests_output(out) == [
+            ('ip route', 10, 'default via 10.0.0.1\n', 0),
+            ('sleep 100', 2, '', -1),
+            ('boom', 5, '', -2),
+        ]
+
+    def test_parse_command_with_colon_and_multiline_output(self):
+        out = _exetests_output((10, 'echo a:b; echo c', 'a:b\nc\n', 0))
+        assert parse_exetests_output(out) == [('echo a:b; echo c', 10, 'a:b\nc\n', 0)]
+
+    def test_parse_truncated_trailer_stops(self):
+        out = _exetests_output((10, 'a', 'x', 0)) + \
+            b"\nFAKE-EXETESTS-UUID-SEPARATOR\n10:b\n2024-01-01T00:00:00\npartial"
+        assert parse_exetests_output(out) == [('a', 10, 'x', 0)]
+
+    def test_parse_empty_output(self):
+        assert parse_exetests_output(b'') == []
+
+    def test_run_host_command_returns_stdout_and_code(self):
+        def fake_run(cmd, shell, capture_output, text, timeout, **kwargs):
+            r = MagicMock()
+            r.stdout = 'out\n'
+            r.returncode = 4
+            assert kwargs['cwd'] == '/tmp/somewhere'
+            assert timeout == 9
+            return r
+
+        with patch('SRE.lib_sre.subprocess.run', side_effect=fake_run):
+            assert run_host_command('cmd', 9, cwd='/tmp/somewhere') == ('out\n', 4)
+
+    def test_run_host_command_zero_timeout_means_none(self):
+        seen = {}
+
+        def fake_run(cmd, shell, capture_output, text, timeout, **kwargs):
+            seen['timeout'] = timeout
+            r = MagicMock()
+            r.stdout = ''
+            r.returncode = 0
+            return r
+
+        with patch('SRE.lib_sre.subprocess.run', side_effect=fake_run):
+            run_host_command('cmd', 0)
+        assert seen['timeout'] is None
+
+    def test_run_host_command_timeout_returns_minus_one(self):
+        with patch('SRE.lib_sre.subprocess.run', side_effect=subprocess.TimeoutExpired('x', 1)):
+            assert run_host_command('sleep 9', 1) == ('', -1)
+
+    def test_run_host_command_failure_returns_minus_two(self):
+        with patch('SRE.lib_sre.subprocess.run', side_effect=OSError('nope')):
+            assert run_host_command('x', 1) == ('', -2)

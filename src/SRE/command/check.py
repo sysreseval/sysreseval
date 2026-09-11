@@ -56,7 +56,12 @@ def _run_state_method(net_scheme, state_name: str) -> dict:
         error_quit(f"'{state_name}' is not callable in NetScheme")
     net_scheme._ops = {}
     method()
-    return net_scheme._ops
+    # Flatten {step: {machine: [ops]}} → {machine: [ops]} in step order for _print_ops().
+    ops: dict = {}
+    for step in sorted(net_scheme._ops):
+        for machine, op_list in net_scheme._ops[step].items():
+            ops.setdefault(machine, []).extend(op_list)
+    return ops
 
 
 def _print_ops(ops: dict):

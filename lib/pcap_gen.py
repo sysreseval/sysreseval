@@ -123,25 +123,39 @@ def generate_pcap_tcp_example(
           packet_dst_to_src_absolute_seq_number (int)
           packet_dst_to_src_absolute_ack_number (int)
     """
-    server_port      = random.randint(dst_port_min, dst_port_max)
-    client_port      = random.randint(40000, 59999)
-    tcp_window_src   = random.randint(8, 63) * 1024   # window advertised by src (client)
-    tcp_window_dst   = random.randint(8, 63) * 1024   # window advertised by dst (server)
+    # Drawn once per state application: in a multi_pass state this function runs on
+    # every pass and must register the same ports and return the same dict object
+    # (the host_callback below fills it in place at step+2).
+    drawn = net_scheme.once(
+        ('pcap_gen', 'generate_pcap_tcp_example', src_machine, dst_machine, step),
+        lambda: {
+            'server_port': random.randint(dst_port_min, dst_port_max),
+            'client_port': random.randint(40000, 59999),
+            'tcp_window_src': random.randint(8, 63) * 1024,   # window advertised by src (client)
+            'tcp_window_dst': random.randint(8, 63) * 1024,   # window advertised by dst (server)
+            'results': {
+                'server_port': None,
+                'client_port': None,
+                # filled in by host_callback at step+2:
+                'packet_src_to_dst':                     None,
+                'packet_src_to_dst_tcp_window':          None,
+                'packet_src_to_dst_absolute_seq_number': None,
+                'packet_src_to_dst_absolute_ack_number': None,
+                'packet_dst_to_src':                     None,
+                'packet_dst_to_src_tcp_window':          None,
+                'packet_dst_to_src_absolute_seq_number': None,
+                'packet_dst_to_src_absolute_ack_number': None,
+            },
+        })
+    server_port      = drawn['server_port']
+    client_port      = drawn['client_port']
+    tcp_window_src   = drawn['tcp_window_src']
+    tcp_window_dst   = drawn['tcp_window_dst']
     dst_ip_str       = str(dst_ip).split('/')[0]
 
-    results = {
-        'server_port': server_port,
-        'client_port': client_port,
-        # filled in by host_callback at step+2:
-        'packet_src_to_dst':                     None,
-        'packet_src_to_dst_tcp_window':          None,
-        'packet_src_to_dst_absolute_seq_number': None,
-        'packet_src_to_dst_absolute_ack_number': None,
-        'packet_dst_to_src':                     None,
-        'packet_dst_to_src_tcp_window':          None,
-        'packet_dst_to_src_absolute_seq_number': None,
-        'packet_dst_to_src_absolute_ack_number': None,
-    }
+    results = drawn['results']
+    results['server_port'] = server_port
+    results['client_port'] = client_port
 
     # ── orchestrate script (runs on dst_machine) ──────────────────────────────
     # Starts tcpdump as a Python subprocess, runs the TCP server with a clamped
@@ -291,8 +305,14 @@ def setup_tcp_client_server(
           server_port (int) – TCP port the server listens on.
           client_port (int) – fixed TCP source port used by the client.
     """
-    server_port = random.randint(dst_port_min, dst_port_max)
-    client_port = random.randint(40000, 59999)
+    # Drawn once per state application so every pass of a multi_pass state uses the
+    # same ports (scripts deployed at `step`, launched at `step+1`).
+    ports = net_scheme.once(
+        ('pcap_gen', 'setup_tcp_client_server', src_machine, dst_machine, step),
+        lambda: {'server_port': random.randint(dst_port_min, dst_port_max),
+                 'client_port': random.randint(40000, 59999)})
+    server_port = ports['server_port']
+    client_port = ports['client_port']
     src_ip_str  = str(src_ip).split('/')[0]
     dst_ip_str  = str(dst_ip).split('/')[0]
 

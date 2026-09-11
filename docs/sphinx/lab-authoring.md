@@ -379,6 +379,7 @@ def final(self):
 |-----------|-------------|
 | `user_allowed` | If `False`, students cannot apply this state themselves (only root/instructor can). |
 | `description` | Human-readable label shown in the GUI (supports `TranslatedText` from `make_tr`). |
+| `multi_pass` | If `True`, the state method is re-run before each step so that `self.cmd()` / `self.host_cmd()` return real results (see *Reading command results* below). Default `False`: the method is called once, as before. |
 
 ### Per-machine operations
 
@@ -386,7 +387,7 @@ These all register an op against a single machine and accept a `step=` parameter
 
 | Method | Description |
 |--------|-------------|
-| `self.cmd(machine, command, step=1)` | Run a shell command inside `machine`. |
+| `self.cmd(machine, command, step=1, timeout=120, default_value='', default_code=0, allow_error=False)` | Run a shell command inside `machine` (under `sh`, via `exetests.py`). Returns `(output, exit_code)` — a placeholder until the command has run, see *Reading command results*. Non-zero exit codes are reported on stderr unless `allow_error=True`. |
 | `self.file(machine, path, content, permissions=0o644, owner="root:root", mtime=None, step=1)` | Create or overwrite a file inside `machine`. `content` may be `str` or `bytes`. |
 | `self.append_to_file(machine, path, content, permissions=None, owner=None, mtime=None, step=1)` | Append to a file (creates it if missing). |
 | `self.idempotent_append_to_file(machine, path, content, ..., step=1)` | Same as `append_to_file` but only appends if the file does not already end with `content` — safe to call repeatedly. |
@@ -402,7 +403,7 @@ These all register an op against a single machine and accept a `step=` parameter
 
 | Method | Description |
 |--------|-------------|
-| `self.host_cmd(command, step=1)` | Run a shell command on the **host** (not inside any container). Refused if `params.execute_commands_on_host is False`. |
+| `self.host_cmd(command, step=1, timeout=120, default_value='', default_code=0, allow_error=False)` | Run a shell command on the **host** (not inside any container). Returns `(stdout, exit_code)` with the same contract as `cmd()`. Refused if `params.execute_commands_on_host is False`. |
 | `self.host_callback(callable, step=1)` | Invoke a Python callable on the host at this step, with no arguments. Useful when the next steps need values computed in Python. |
 
 ### Multi-step state setup — the `step` parameter
@@ -416,7 +417,31 @@ def initial(self):
     self.cmd('dns',  'systemctl restart unbound',    step=2)
 ```
 
-Inside a single step the per-machine op order is preserved, and ops on different machines run in parallel. `host_cmd` / `host_callback` for step `N` run after all container ops of step `N` finish.
+Inside a single step the per-machine op order is preserved, and ops on different machines run in parallel. `host_cmd` / `host_callback` for step `N` run *before* the container ops of step `N` (so a key generated on the host at step 1 can be copied into a machine at step 1).
+
+Container commands registered with `self.cmd()` run under `sh` through `/usr/local/sbin/exetests.py`, the runner `Grade.test()` also uses: consecutive `cmd()` ops of one machine at one step are sent as a single batch, shell syntax such as `|`, `>>` or `&&` works, and each command is killed after `timeout` seconds (default `params.default_state_cmd_timeout`, 120 s; `0` disables the timeout; the exit code is then `-1`). A non-zero exit code is reported on stderr (hidden in `--user` mode) unless the call passes `allow_error=True`.
+
+### Reading command results — `multi_pass=True`
+
+`self.cmd()` and `self.host_cmd()` return `(output, exit_code)` with the same register-then-resolve contract as `Grade.test()`: the value is the placeholder `(default_value, default_code)` until the command has actually run. By default a state method is called **once**, before anything runs, so it only ever sees placeholders.
+
+Decorate the state with `@sre_state(multi_pass=True)` to have SRE call the method again before each step: the call that registers the ops of step `N+1` sees the real results of steps `1..N`. The method runs `max_step + 1` times, like `grade()` during an evaluation: a final call after the last step sees the results of every command and is the natural place to copy them into `self.data`. Each call only contributes the ops of the step about to be applied; re-registering the ops of an earlier step is expected and harmless.
+
+```python
+@sre_state(multi_pass=True)
+def initial(self):
+    hostname, code = self.cmd('client', 'cat /etc/hostname', step=1)   # ('', 0) on the first call
+    self.file('server', '/etc/motd', f'welcome {hostname.strip()}\n', step=2)
+    self.data.client_hostname = hostname.strip()   # real on the final call; data.json is saved after initial()
+```
+
+Rules for a `multi_pass` state:
+
+- **Consume a result at a later step than the command.** An op that uses a result (`file()`, another `cmd()`) must be registered by a call that runs after the command, i.e. at step `N+1` or later; a plain `self.data` assignment can simply rely on the final call. An op registered during the final call for a new, higher step extends the loop — another pass follows, exactly as a late `self.test(step=N)` extends `grade()`.
+- **The method must be idempotent.** It runs several times: `print()` shows up once per pass, and anything random or filled in later must give the same answer on every pass. Wrap such values in `self.once(key, factory)`, which calls `factory()` the first time `key` is seen and returns the cached value afterwards (`pcap_gen.generate_pcap_tcp_example` does this for its ports and result dict).
+- `self.step` is the number of steps already applied when the method runs (0 on the first call) and `self.max_step` the highest step registered so far.
+
+`sre check` and `sre export` always call the method once and only see placeholders.
 
 ### Network config helpers (from `/opt/sre/lib/net_config.py`)
 
