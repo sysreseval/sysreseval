@@ -11,6 +11,10 @@ Covers:
   fallback when the newest is unreadable), afterwards each new archive is
   decompressed once; records persist in `_INDEX`, `_CACHE` is pruned to the
   archives displayed, and two machines sharing a running_lab_name both show.
+- One row per running project instance (Record.key = hostname, lab_name,
+  instance_start): a lab opened twice by one student keeps two rows with
+  their own grades and alerts; `_last_instances` / -L/--only-last-instances
+  collapse to the most recently started instance per hostname and lab.
 """
 import os
 import re
@@ -48,6 +52,7 @@ def clean_watch_globals():
     watch._CACHE.clear()
     watch._INDEX.clear()
     watch._starting_time = None
+    watch._only_last_instances = False
     yield
     watch._DISMISSED_PROJECTS.clear()
     watch._DISMISSED_HOSTS.clear()
@@ -57,6 +62,7 @@ def clean_watch_globals():
     watch._CACHE.clear()
     watch._INDEX.clear()
     watch._starting_time = None
+    watch._only_last_instances = False
 
 
 def _ge(*, title='', description='', grade=None, max_grade=None, grade_letter=None,
@@ -77,8 +83,11 @@ def _gp(title: str, description: str = '') -> dict:
     return {'title': title, 'description': description}
 
 
+_START = '20260516100000'   # instance start timestamp of _rec() and _key()
+
+
 def _rec(hostname='host1', login='alice', lab_name='lab/x', grade=10.0,
-         max_grade=10.0, path='/tmp/archive.zst') -> Record:
+         max_grade=10.0, path='/tmp/archive.zst', instance_start=_START) -> Record:
     return Record(
         hostname=hostname, login=login, lab_name=lab_name,
         grade=grade, max_grade=max_grade,
@@ -87,6 +96,8 @@ def _rec(hostname='host1', login='alice', lab_name='lab/x', grade=10.0,
         file_mtime=1747400000.0,
         time_remaining=None, auto_eval_count=None,
         path=path,
+        running_lab_name=f"{instance_start}@@@{lab_name}@@@{login}",
+        instance_start=instance_start,
     )
 
 
@@ -361,7 +372,7 @@ class TestRenderSelectableRows:
     def test_one_lab_one_user_emits_lab_then_project(self):
         rec = _rec(hostname='h1', lab_name='lab/x', path='/p1.zst')
         rows, *_ = _render(
-            best={('h1', 'lab/x'): rec},
+            best={rec.key: rec},
             dirs=['/tmp'], timeout=60, read_errors=[],
             focus='projects', proj_cursor=0, alert_cursor=0, show_help=False,
         )
@@ -373,7 +384,7 @@ class TestRenderSelectableRows:
         r1 = _rec(hostname='h1', lab_name='lab/x', path='/p1.zst')
         r2 = _rec(hostname='h2', lab_name='lab/x', path='/p2.zst')
         rows, *_ = _render(
-            best={('h1', 'lab/x'): r1, ('h2', 'lab/x'): r2},
+            best={r1.key: r1, r2.key: r2},
             dirs=['/tmp'], timeout=60, read_errors=[],
             focus='projects', proj_cursor=0, alert_cursor=0, show_help=False,
         )
@@ -387,7 +398,7 @@ class TestRenderSelectableRows:
         ra = _rec(hostname='h1', lab_name='lab/a', path='/a.zst')
         rb = _rec(hostname='h1', lab_name='lab/b', path='/b.zst')
         rows, *_ = _render(
-            best={('h1', 'lab/a'): ra, ('h1', 'lab/b'): rb},
+            best={ra.key: ra, rb.key: rb},
             dirs=['/tmp'], timeout=60, read_errors=[],
             focus='projects', proj_cursor=0, alert_cursor=0, show_help=False,
         )
@@ -400,7 +411,7 @@ class TestRenderSelectableRows:
         r1 = _rec(hostname='h1', lab_name='lab/x', path='/p1.zst')
         r2 = _rec(hostname='h2', lab_name='lab/x', path='/p2.zst')
         rows, *_ = _render(
-            best={('h1', 'lab/x'): r1, ('h2', 'lab/x'): r2},
+            best={r1.key: r1, r2.key: r2},
             dirs=['/tmp'], timeout=60, read_errors=[],
             focus='projects', proj_cursor=0, alert_cursor=0, show_help=False,
         )
@@ -411,7 +422,7 @@ class TestRenderSelectableRows:
     def test_cursor_on_lab_entry_renders_marker_arrow(self):
         rec = _rec(hostname='h1', lab_name='lab/x', path='/p1.zst')
         _rows, _alerts, buf, _cursor = _render(
-            best={('h1', 'lab/x'): rec},
+            best={rec.key: rec},
             dirs=['/tmp'], timeout=60, read_errors=[],
             focus='projects', proj_cursor=0, alert_cursor=0, show_help=False,
         )
@@ -428,6 +439,11 @@ class TestRenderSelectableRows:
 
 _LAB = LAB
 _BASE_MTIME = 1_747_400_000.0
+
+
+def _key(host: str, start_ts: str = _START, lab: str = _LAB) -> tuple:
+    """Record.key of the instance started at *start_ts* on *host*."""
+    return (host, lab, start_ts)
 
 
 def _populate(root: Path, n_instances=3, n_files=5) -> dict[str, list[str]]:
@@ -511,9 +527,9 @@ class TestScan:
 
         assert errors == []
         assert set(reads) == newest and len(reads) == 3
-        assert set(best) == {(f'host{i}', _LAB) for i in range(3)}
+        assert set(best) == {_key(f'host{i}', f'2026051610000{i}') for i in range(3)}
         for i, (rln, paths) in enumerate(files.items()):
-            rec = best[(f'host{i}', _LAB)]
+            rec = best[_key(f'host{i}', f'2026051610000{i}')]
             assert rec.path == paths[-1]
             assert rec.login == 'alice'
             assert rec.grade == 4.0
@@ -541,16 +557,17 @@ class TestScan:
 
         assert errors == []
         assert reads == [newer]
-        assert best[('host0', _LAB)].path == newer
-        assert best[('host0', _LAB)].grade == 9.0
+        assert best[_key('host0')].path == newer
+        assert best[_key('host0')].grade == 9.0
         assert set(watch._CACHE) == {newer}
         assert paths[-1] not in watch._CACHE
 
-    def test_restart_on_same_host_keeps_newest_mtime(self, tmp_path):
+    def test_restart_on_same_host_shows_both_instances(self, tmp_path):
+        """A lab stopped and started again is two instances: two rows."""
         rln_old, rln_new = _rln(start_ts='20260516100000'), _rln(start_ts='20260516103000')
-        _write_archive(tmp_path / _archive_name(rln_old, '20260516102900'),
-                       hostname='h1', login='alice', running_lab_name=rln_old,
-                       grade=3.0, mtime=_BASE_MTIME)
+        p_old = _write_archive(tmp_path / _archive_name(rln_old, '20260516102900'),
+                               hostname='h1', login='alice', running_lab_name=rln_old,
+                               grade=3.0, mtime=_BASE_MTIME)
         p_new = _write_archive(tmp_path / _archive_name(rln_new, '20260516103100'),
                                hostname='h1', login='alice', running_lab_name=rln_new,
                                grade=7.0, mtime=_BASE_MTIME + 120)
@@ -558,9 +575,36 @@ class TestScan:
         best, errors = _scan([str(tmp_path)])
 
         assert errors == []
-        assert list(best) == [('h1', _LAB)]
-        assert best[('h1', _LAB)].path == p_new
-        assert best[('h1', _LAB)].grade == 7.0
+        assert set(best) == {_key('h1', '20260516100000'), _key('h1', '20260516103000')}
+        assert best[_key('h1', '20260516100000')].path == p_old
+        assert best[_key('h1', '20260516100000')].grade == 3.0
+        assert best[_key('h1', '20260516103000')].path == p_new
+        assert best[_key('h1', '20260516103000')].grade == 7.0
+        assert set(watch._CACHE) == {p_old, p_new}
+
+    def test_two_concurrent_instances_keep_their_own_grade(self, tmp_path):
+        """Archives of two instances of one lab on one host arrive
+        alternately; each row shows the grade of its own newest archive."""
+        rln_a, rln_b = _rln(start_ts='20260516100000'), _rln(start_ts='20260516100500')
+        expected = {}
+        for j, (rln, grade) in enumerate([(rln_a, 3.0), (rln_b, 7.0), (rln_a, 4.0), (rln_b, 8.0)]):
+            _write_archive(tmp_path / _archive_name(rln, f'2026051610{10 + j:02d}00'),
+                           hostname='h1', login='alice', running_lab_name=rln,
+                           grade=grade, mtime=_BASE_MTIME + j * 60)
+            expected[('h1', _LAB, rln.split('@@@')[0])] = grade
+            best, errors = _scan([str(tmp_path)])
+            assert errors == []
+            assert {k: r.grade for k, r in best.items()} == expected
+
+    def test_malformed_running_lab_name_gets_one_row(self, tmp_path):
+        _write_archive(tmp_path / 'weird.zst', hostname='h1', login='alice',
+                       running_lab_name='weird', grade=1.0)
+        best, errors = _scan([str(tmp_path)])
+        assert errors == []
+        assert set(best) == {('h1', 'weird', '')}
+        rec = best[('h1', 'weird', '')]
+        assert rec.running_lab_name == 'weird'
+        assert rec.instance_start == ''
 
     def test_corrupt_newest_falls_back_to_previous(self, tmp_path, reads):
         rln = _rln()
@@ -573,7 +617,7 @@ class TestScan:
 
         assert errors == [f"cannot read: {bad}"]
         assert reads == [str(bad), good]
-        assert best[('h1', _LAB)].path == good
+        assert best[_key('h1')].path == good
         assert set(watch._CACHE) == {good}
 
     def test_fallback_is_bounded(self, tmp_path, reads):
@@ -613,7 +657,7 @@ class TestScan:
 
         assert errors == []
         assert len(reads) == 1
-        assert list(best) == [('h1', _LAB)]
+        assert list(best) == [_key('h1')]
 
     def test_non_matching_filename_still_parsed(self, tmp_path):
         rln = _rln()
@@ -621,7 +665,10 @@ class TestScan:
                              running_lab_name=rln, grade=2.0)
         best, errors = _scan([str(tmp_path)])
         assert errors == []
-        assert best[('h1', _LAB)].path == odd
+        assert best[_key('h1')].path == odd
+        # Identity comes from the archive content, not from the filename.
+        assert best[_key('h1')].running_lab_name == rln
+        assert best[_key('h1')].instance_start == _START
 
     def test_missing_directory_reported(self, tmp_path):
         missing = tmp_path / 'nope'
@@ -645,7 +692,7 @@ class TestScan:
         best, errors = _scan([str(tmp_path)])
         # First sight: only the newest archive of the group is decompressed.
         assert errors == [] and reads == [newest_b]
-        assert set(best) == {('hostB', _LAB)}
+        assert set(best) == {_key('hostB')}
 
         # hostA saves again: only that new file is decompressed, hostA appears.
         reads.clear()
@@ -654,15 +701,15 @@ class TestScan:
                                mtime=_BASE_MTIME + 125)
         best, errors = _scan([str(tmp_path)])
         assert errors == [] and reads == [new_a]
-        assert set(best) == {('hostA', _LAB), ('hostB', _LAB)}
-        assert best[('hostA', _LAB)].path == new_a
-        assert best[('hostB', _LAB)].path == newest_b
+        assert set(best) == {_key('hostA'), _key('hostB')}
+        assert best[_key('hostA')].path == new_a
+        assert best[_key('hostB')].path == newest_b
         assert set(watch._CACHE) == {new_a, newest_b}
 
         # A quiet refresh decompresses nothing and keeps both rows.
         reads.clear()
         best, _ = _scan([str(tmp_path)])
-        assert reads == [] and set(best) == {('hostA', _LAB), ('hostB', _LAB)}
+        assert reads == [] and set(best) == {_key('hostA'), _key('hostB')}
 
     def test_skipped_older_archives_are_never_decompressed_later(self, tmp_path, reads):
         files = _populate(tmp_path, n_instances=1, n_files=4)
@@ -681,16 +728,16 @@ class TestScan:
     def test_vanished_archives_drop_their_row(self, tmp_path):
         files = _populate(tmp_path, n_instances=2, n_files=2)
         best, _ = _scan([str(tmp_path)])
-        assert set(best) == {('host0', _LAB), ('host1', _LAB)}
+        assert set(best) == {_key('host0'), _key('host1', '20260516100001')}
         for path in next(iter(files.values())):
             os.unlink(path)
 
         best, errors = _scan([str(tmp_path)])
 
         assert errors == []
-        assert set(best) == {('host1', _LAB)}
+        assert set(best) == {_key('host1', '20260516100001')}
         assert set(watch._INDEX) == set(files[_rln(start_ts='20260516100001')])
-        assert set(watch._CACHE) == {best[('host1', _LAB)].path}
+        assert set(watch._CACHE) == {best[_key('host1', '20260516100001')].path}
 
     def test_unreadable_new_archive_is_retried(self, tmp_path, reads):
         files = _populate(tmp_path, n_instances=1, n_files=1)
@@ -702,7 +749,7 @@ class TestScan:
 
         best, errors = _scan([str(tmp_path)])
         assert errors == [f"cannot read: {bad}"]
-        assert best[('host0', _LAB)].path == first
+        assert best[_key('host0')].path == first
         assert str(bad) not in watch._INDEX
 
         # Once complete, it is picked up.
@@ -710,7 +757,7 @@ class TestScan:
                        grade=5.0, mtime=_BASE_MTIME + 300)
         best, errors = _scan([str(tmp_path)])
         assert errors == []
-        assert best[('host0', _LAB)].path == str(bad)
+        assert best[_key('host0')].path == str(bad)
         assert reads == [str(bad), str(bad)]
 
 
@@ -759,6 +806,7 @@ class TestActionWatchHostnameFilter:
             args.interval = 1
             args.hostname_filter = hostname_filter
             args.starting_time = ''
+            args.only_last_instances = False
             watch.action_watch()
             return capsys.readouterr().out
         return run
@@ -810,18 +858,18 @@ class TestFilterBestStartingTime:
         new = _rec(hostname='h-new', lab_name='lab/x', path='/new.zst')
         old.file_mtime = datetime(2026, 9, 10, 14, 0).timestamp()
         new.file_mtime = datetime(2026, 9, 10, 15, 30).timestamp()
-        return {('h-old', 'lab/x'): old, ('h-new', 'lab/x'): new}
+        return {old.key: old, new.key: new}
 
     def test_no_limit_keeps_all(self):
-        assert set(watch._filter_best(self._best())) == {('h-old', 'lab/x'), ('h-new', 'lab/x')}
+        assert set(watch._filter_best(self._best())) == {('h-old', 'lab/x', _START), ('h-new', 'lab/x', _START)}
 
     def test_limit_hides_projects_updated_before_it(self):
         watch._starting_time = datetime(2026, 9, 10, 15, 1)
-        assert set(watch._filter_best(self._best())) == {('h-new', 'lab/x')}
+        assert set(watch._filter_best(self._best())) == {('h-new', 'lab/x', _START)}
 
     def test_limit_is_inclusive(self):
         watch._starting_time = datetime(2026, 9, 10, 15, 30)
-        assert set(watch._filter_best(self._best())) == {('h-new', 'lab/x')}
+        assert set(watch._filter_best(self._best())) == {('h-new', 'lab/x', _START)}
 
     def test_render_shows_since_hidden_count_and_no_alert_for_hidden(self):
         watch._starting_time = datetime(2026, 9, 10, 15, 1)
@@ -859,6 +907,7 @@ class TestActionWatchStartingTime:
             args.interval = 1
             args.hostname_filter = ''
             args.starting_time = starting_time
+            args.only_last_instances = False
             watch.action_watch()
             return capsys.readouterr().out
         return run
@@ -933,3 +982,179 @@ class TestPromptValue:
         assert watch._prompt_starting_time(None) == (None,)
         self._typed(monkeypatch, '15h01')
         assert watch._prompt_starting_time(None) is None
+
+
+# ---------------------------------------------------------------------------
+# One row per running instance; -L/--only-last-instances
+# ---------------------------------------------------------------------------
+
+_OLD_START, _NEW_START = '20260516100000', '20260516103000'
+
+
+class TestLastInstances:
+    def test_keeps_latest_start_per_host_and_lab(self):
+        old = _rec(hostname='h1', instance_start=_OLD_START, path='/old.zst')
+        new = _rec(hostname='h1', instance_start=_NEW_START, path='/new.zst')
+        assert watch._last_instances({old.key: old, new.key: new}) == {new.key: new}
+
+    def test_start_timestamp_wins_over_archive_age(self):
+        old = _rec(hostname='h1', instance_start=_OLD_START, path='/old.zst')
+        new = _rec(hostname='h1', instance_start=_NEW_START, path='/new.zst')
+        old.file_mtime = new.file_mtime + 600
+        assert list(watch._last_instances({old.key: old, new.key: new})) == [new.key]
+
+    def test_different_labs_and_hosts_not_collapsed(self):
+        a = _rec(hostname='h1', lab_name='lab/a', path='/a.zst')
+        b = _rec(hostname='h1', lab_name='lab/b', path='/b.zst')
+        c = _rec(hostname='h2', lab_name='lab/a', path='/c.zst')
+        best = {r.key: r for r in (a, b, c)}
+        assert watch._last_instances(best) == best
+
+    def test_malformed_start_loses_to_wellformed(self):
+        bad = _rec(hostname='h1', instance_start='', path='/bad.zst')
+        good = _rec(hostname='h1', instance_start=_OLD_START, path='/good.zst')
+        assert watch._last_instances({bad.key: bad, good.key: good}) == {good.key: good}
+
+    def test_empty(self):
+        assert watch._last_instances({}) == {}
+
+    def test_falls_back_while_newest_instance_is_unreadable(self, tmp_path):
+        rln_old, rln_new = _rln(start_ts=_OLD_START), _rln(start_ts=_NEW_START)
+        _write_archive(tmp_path / _archive_name(rln_old, '20260516100100'),
+                       hostname='h1', login='alice', running_lab_name=rln_old, grade=3.0)
+        bad = tmp_path / _archive_name(rln_new, '20260516103100')
+        bad.write_bytes(b'garbage')
+
+        best, errors = _scan([str(tmp_path)])
+        assert errors == [f"cannot read: {bad}"]
+        assert list(watch._last_instances(best)) == [_key('h1', _OLD_START)]
+
+        _write_archive(bad, hostname='h1', login='alice', running_lab_name=rln_new, grade=7.0)
+        best, errors = _scan([str(tmp_path)])
+        assert errors == []
+        assert list(watch._last_instances(best)) == [_key('h1', _NEW_START)]
+
+
+class TestInstanceStartLabel:
+    def test_same_day_shows_time(self):
+        assert watch._instance_start_label('20260910150100', _NOW) == '15:01:00'
+
+    def test_other_day_shows_date_and_time(self):
+        assert watch._instance_start_label(_OLD_START, _NOW) == '2026-05-16 10:00:00'
+
+    def test_unknown_start(self):
+        assert watch._instance_start_label('', _NOW) == '-'
+
+    def test_not_a_date_is_returned_raw(self):
+        assert watch._instance_start_label('123', _NOW) == '123'
+
+
+class TestRenderInstances:
+    @staticmethod
+    def _records():
+        old = _rec(hostname='h1', instance_start=_OLD_START, grade=3.0, path='/old.zst')
+        new = _rec(hostname='h1', instance_start=_NEW_START, grade=7.0, path='/new.zst')
+        other = _rec(hostname='h0', instance_start=_OLD_START, grade=5.0, path='/other.zst')
+        return old, new, other
+
+    @staticmethod
+    def _render(best, timeout=60):
+        return _render(best=best, dirs=['/tmp'], timeout=timeout, read_errors=[],
+                       focus='projects', proj_cursor=0, alert_cursor=0, show_help=False)
+
+    def test_rows_sorted_by_hostname_then_instance_start(self):
+        old, new, other = self._records()
+        rows, _, _, _ = self._render({r.key: r for r in (old, new, other)})
+        assert [r[1].path for r in rows if r[0] == 'project'] == ['/other.zst', '/old.zst', '/new.zst']
+
+    def test_started_column_and_instance_count(self):
+        old, new, _ = self._records()
+        _, _, buf, _ = self._render({old.key: old, new.key: new})
+        text = '\n'.join(buf)
+        assert 'STARTED' in next(l for l in buf if 'HOSTNAME' in l)
+        assert '2026-05-16 10:00:00' in text and '2026-05-16 10:30:00' in text
+        assert 'n=2' in text
+
+    def test_only_last_instances_hides_older_row_and_its_alert(self):
+        watch._only_last_instances = True
+        old, new, other = self._records()
+        old.file_mtime = 0.0    # long inactive: an alert if it were shown
+        rows, alerts, buf, _ = self._render({r.key: r for r in (old, new, other)}, timeout=1)
+        assert 'only-last-instances' in buf[0]
+        assert [r[1].path for r in rows if r[0] == 'project'] == ['/other.zst', '/new.zst']
+        alerted = {k[1:4] for k, _ in alerts}
+        assert old.key not in alerted and new.key in alerted
+        assert 'hidden' not in '\n'.join(buf)
+
+    def test_dismissed_latest_instance_does_not_reveal_older(self):
+        watch._only_last_instances = True
+        old, new, _ = self._records()
+        watch._DISMISSED_PROJECTS.add(new.key)
+        rows, _, buf, _ = self._render({old.key: old, new.key: new})
+        assert [r for r in rows if r[0] == 'project'] == []
+        assert '1 project(s) hidden' in '\n'.join(buf)
+
+    def test_dismissing_one_instance_keeps_the_other(self):
+        old, new, _ = self._records()
+        watch._DISMISSED_PROJECTS.add(old.key)
+        assert set(watch._filter_best({old.key: old, new.key: new})) == {new.key}
+
+
+class TestBuildAlertsInstances:
+    def test_each_instance_has_its_own_alert_key(self):
+        old = _rec(hostname='h1', instance_start=_OLD_START, path='/old.zst')
+        new = _rec(hostname='h1', instance_start=_NEW_START, path='/new.zst')
+        old.errors = new.errors = 1
+        alerts = watch._build_alerts({old.key: old, new.key: new}, timeout=10**9)
+        assert [k[0] for k, _ in alerts] == ['errors', 'errors']
+        assert [k[1:4] for k, _ in alerts] == [old.key, new.key]
+        assert all('started' in msg for _, msg in alerts)
+        watch._DISMISSED_ALERTS.add(alerts[0][0])
+        assert [k for k, _ in alerts if k not in watch._DISMISSED_ALERTS] == [alerts[1][0]]
+
+
+class TestActionWatchOnlyLastInstances:
+    @pytest.fixture
+    def run_watch(self, tmp_path, monkeypatch, capsys):
+        """host1 started the lab at 10:00:00 and again at 10:30:00; the
+        older instance has the more recent archive."""
+        from SRE import params
+        rln_old, rln_new = _rln(start_ts=_OLD_START), _rln(start_ts=_NEW_START)
+        _write_archive(tmp_path / _archive_name(rln_old, '20260516104000'),
+                       hostname='host1', login='alice', running_lab_name=rln_old,
+                       grade=3.0, mtime=_BASE_MTIME + 600)
+        _write_archive(tmp_path / _archive_name(rln_new, '20260516103100'),
+                       hostname='host1', login='alice', running_lab_name=rln_new,
+                       grade=7.0, mtime=_BASE_MTIME)
+
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+        monkeypatch.setattr(watch.time, 'sleep', interrupt)
+        monkeypatch.setattr(watch.sys, 'stdin', types.SimpleNamespace(isatty=lambda: False))
+
+        def run(only_last_instances: bool) -> str:
+            args = params.SRE.args
+            args.dirs = [str(tmp_path)]
+            args.timeout = 90
+            args.interval = 1
+            args.hostname_filter = ''
+            args.starting_time = ''
+            args.only_last_instances = only_last_instances
+            watch.action_watch()
+            return capsys.readouterr().out
+        return run
+
+    def test_default_shows_every_instance(self, run_watch):
+        out = run_watch(False)
+        assert watch._only_last_instances is False
+        assert 'only-last-instances' not in out
+        assert _row_hostnames(out) == ['host1', 'host1']
+        assert '3/10' in out and '7/10' in out
+
+    def test_option_keeps_newest_started_instance(self, run_watch):
+        out = run_watch(True)
+        assert watch._only_last_instances is True
+        assert 'only-last-instances' in out
+        assert _row_hostnames(out) == ['host1']
+        assert '7/10' in out and '3/10' not in out
+        assert 'hidden' not in out

@@ -36,6 +36,16 @@ class Record:
     time_remaining: int | None = None
     auto_eval_count: int | None = None
     path: str = ''
+    # Identity of the running project instance, from the archive content:
+    # running_lab_name as stored, and its 14-digit start timestamp ('' when
+    # the name is malformed).
+    running_lab_name: str = ''
+    instance_start: str = ''
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        """Row key: one row per running instance per host."""
+        return (self.hostname, self.lab_name, self.instance_start)
 
 
 def _error_category(entry) -> str:
@@ -109,14 +119,15 @@ _INDEX: dict[str, Record | None] = {}
 _BOOTSTRAP_CANDIDATES = 2
 
 # Alert dismissals — self-expiring keys:
-#   inactivity : ('inactive', hostname, lab_name, int(file_mtime))
+#   inactivity : ('inactive', hostname, lab_name, instance_start, int(file_mtime))
 #                → auto-clears when a new archive arrives (mtime changes)
-#   errors     : ('errors',   hostname, lab_name, error_count)
+#   errors     : ('errors',   hostname, lab_name, instance_start, errors, warnings)
 #                → auto-clears when error count changes or drops to 0
+# key[1:4] is the Record.key of the instance the alert is about.
 _DISMISSED_ALERTS: set[tuple] = set()
 
 # Project / host dismissals — removed from table and alert generation
-_DISMISSED_PROJECTS: set[tuple] = set()   # (hostname, lab_name)
+_DISMISSED_PROJECTS: set[tuple] = set()   # Record.key: (hostname, lab_name, instance_start)
 _DISMISSED_HOSTS: set[str] = set()        # hostname  (all labs from that host)
 
 # Hostname regexp filter — only hostnames matching this are shown ('' = all)
@@ -128,6 +139,12 @@ _host_filter_re: re.Pattern | None = None
 # are shown (None = no limit)
 _starting_time: datetime | None = None
 
+# Only-last-instances mode — collapse to one row per (hostname, lab_name): the
+# instance with the latest start timestamp, whatever its archives' age.
+# Applied at render time (see _last_instances) so the hidden instances stay
+# indexed and cached and the L key can bring them back without a rescan.
+_only_last_instances: bool = False
+
 _HELP = """\
 ── Keys ─────────────────────────────────────────────────────────────
   t           toggle focus between Projects table and Alerts
@@ -137,7 +154,7 @@ _HELP = """\
     Enter     on a project row: show its grade elements
               on a "Lab:" title row: show per-element aggregation
                                      (max, min, avg, tot, distribution)
-    P         dismiss selected project (hostname+lab)
+    P         dismiss selected project instance (hostname+lab+start)
               (no-op when cursor is on a lab title row)
     H         dismiss all projects from selected hostname
               (no-op when cursor is on a lab title row)
@@ -146,7 +163,16 @@ _HELP = """\
     S         only show projects with an archive received after a time
               (15:01 or 2026-09-10 15:01; empty = no limit;
               initial value: -S/--starting-time option)
+    L         toggle "only last instances": one row per hostname+lab,
+              the most recently started instance (dismissals and S
+              apply afterwards, so they never reveal an older instance;
+              initial value: -L/--only-last-instances option)
     U         un-dismiss all (projects, hostnames and alerts)
+
+  One row per running project instance (hostname + lab + start time):
+  a lab stopped and started again shows two rows until the old one is
+  dismissed (P), hidden (S) or collapsed (L).  Lab counts and statistics
+  are per instance too.
 
   In Alerts zone:
     ↑ / ↓     move selection
@@ -186,6 +212,7 @@ def _parse_archive(path: str) -> Record | None:
         rln = raw.get(params.running_lab_name_keyword, '')
         parts = rln.split('@@@')
         lab_name = parts[1] if len(parts) == 3 else rln
+        instance_start = params.get_start_date_string_from_running_lab_name(rln)
 
         eval_date_str = raw.get(params.eval_date_keyword, '')
         try:
@@ -226,7 +253,8 @@ def _parse_archive(path: str) -> Record | None:
                 auto_eval_count = None
 
         return Record(hostname, login, lab_name, total_grade, total_max, errors, warnings, eval_time, mtime,
-                      time_remaining, auto_eval_count)
+                      time_remaining, auto_eval_count,
+                      running_lab_name=rln, instance_start=instance_start)
     except Exception:
         return None
 
@@ -272,7 +300,11 @@ def _index_archive(path: str, read_errors: list[str]) -> bool:
 
 
 def _scan(dirs) -> tuple[dict[tuple, Record], list[str]]:
-    """Returns (best record per (hostname, lab_name), list of read errors).
+    """Returns (best record per instance, list of read errors).
+
+    One entry per Record.key = (hostname, lab_name, instance_start): a lab
+    started twice by the same student gives two entries, each with its own
+    newest archive, so their grades are never mixed.
 
     Archives are grouped by running project instance from their filename
     (see _group_archives_by_instance).  The first time an instance is seen,
@@ -318,7 +350,7 @@ def _scan(dirs) -> tuple[dict[tuple, Record], list[str]]:
     for rec in _INDEX.values():
         if rec is None:
             continue
-        key = (rec.hostname, rec.lab_name)
+        key = rec.key
         if key not in best or rec.file_mtime > best[key].file_mtime:
             best[key] = rec
     _prune_cache({rec.path for rec in best.values()})
@@ -337,22 +369,51 @@ def _filter_best(best: dict) -> dict:
     }
 
 
+def _last_instances(best: dict) -> dict:
+    """Collapse *best* to one record per (hostname, lab_name): the instance
+    with the latest start timestamp ('' = malformed name, loses to any
+    well-formed one), whatever the age of its archives.  Applied before
+    dismissals and the -S filter, so hiding the latest instance never
+    reveals an older one."""
+    winners: dict[tuple, Record] = {}
+    for rec in best.values():
+        k = (rec.hostname, rec.lab_name)
+        if k not in winners or rec.instance_start > winners[k].instance_start:
+            winners[k] = rec
+    return {r.key: r for r in winners.values()}
+
+
+def _instance_start_label(instance_start: str, now: datetime) -> str:
+    """Label for an instance start timestamp: '-' when unknown, time only
+    when started on *now*'s day, else date and time."""
+    if not instance_start:
+        return '-'
+    try:
+        dt = params.string_to_datetime(instance_start)
+    except ValueError:
+        return instance_start
+    fmt = "%H:%M:%S" if dt.date() == now.date() else "%Y-%m-%d %H:%M:%S"
+    return dt.strftime(fmt)
+
+
 def _build_alerts(best: dict, timeout: int) -> list[tuple[tuple, str]]:
-    """Return list of (key, message) for every current alert condition."""
+    """Return list of (key, message) for every current alert condition.
+    key[1:4] is the Record.key of the instance concerned."""
     now = datetime.now()
     alerts = []
-    for (hostname, lab_name), rec in sorted(best.items()):
+    for (hostname, lab_name, instance_start), rec in sorted(best.items()):
+        who = f"({rec.login}, started {_instance_start_label(instance_start, now)})"
         age = (now - datetime.fromtimestamp(rec.file_mtime)).total_seconds()
         if age > timeout:
-            key = ('inactive', hostname, lab_name, int(rec.file_mtime))
-            alerts.append((key, f"[!] {hostname} / {lab_name} ({rec.login}): "
+            key = ('inactive', hostname, lab_name, instance_start, int(rec.file_mtime))
+            alerts.append((key, f"[!] {hostname} / {lab_name} {who}: "
                                  f"no archive for {int(age)}s"))
         if rec.errors or rec.warnings:
-            key = ('errors', hostname, lab_name, rec.errors, rec.warnings)
+            key = ('errors', hostname, lab_name, instance_start, rec.errors, rec.warnings)
             parts = []
             if rec.errors:   parts.append(f"{rec.errors} error(s)")
             if rec.warnings: parts.append(f"{rec.warnings} warning(s)")
-            alerts.append((key, f"[!] {hostname} / {lab_name} ({rec.login}): "
+            alerts.append((key, f"[!] {hostname} / {lab_name} {who}: "
                                  f"{', '.join(parts)} in last eval"))
     return alerts
 
@@ -370,9 +431,10 @@ def _render(best: dict, dirs: list[str], timeout: int, read_errors: list[str],
     filter_label = f"  filter:/{_host_filter_pattern}/" if _host_filter_pattern else ""
     since_label = (f"  since:{_starting_time_label(_starting_time, now)}"
                    if _starting_time is not None else "")
+    last_label = "  only-last-instances" if _only_last_instances else ""
     # Fixed 3-line header — always visible, printed by the caller before the scrollable buf.
     header = [
-        f"=== SRE Watch — {now.strftime('%H:%M:%S')}  focus:{focus_label}{filter_label}{since_label}  "
+        f"=== SRE Watch — {now.strftime('%H:%M:%S')}  focus:{focus_label}{filter_label}{since_label}{last_label}  "
         f"dirs: {', '.join(dirs)}",
         "  t toggle focus · ? help · q quit",
         "",
@@ -385,8 +447,9 @@ def _render(best: dict, dirs: list[str], timeout: int, read_errors: list[str],
         buf.extend(_HELP.splitlines())
         return [], [], header + buf, 0
 
-    filtered = _filter_best(best)
-    dismissed_proj_count = len(best) - len(filtered)
+    pool = _last_instances(best) if _only_last_instances else best
+    filtered = _filter_best(pool)
+    dismissed_proj_count = len(pool) - len(filtered)
 
     # ── Projects table ────────────────────────────────────────────────
     selectable_rows: list[tuple] = []
@@ -416,10 +479,13 @@ def _render(best: dict, dirs: list[str], timeout: int, read_errors: list[str],
             if lab_is_cursor:
                 cursor_line = len(buf)
             lab_marker = " ► " if lab_is_cursor else "   "
+            rows = sorted(recs, key=lambda x: (x.hostname, x.instance_start))
+            started = [_instance_start_label(r.instance_start, now) for r in rows]
+            w_started = max([len('STARTED')] + [len(s) for s in started])
             buf.append(_bold(f"{lab_marker}Lab: {lab_name}  |  n={n}  {stats}"))
-            buf.append(f"   {'HOSTNAME':<12} {'LOGIN':<14} {'LAB NAME':<24} {'GRADE':>8}  {'ERR':>4}  {'WARN':>5}  {'AUTO-EVAL':>9}  LAST EVAL  TIME REMAINING")
+            buf.append(f"   {'HOSTNAME':<12} {'LOGIN':<14} {'LAB NAME':<24} {'STARTED':<{w_started}} {'GRADE':>8}  {'ERR':>4}  {'WARN':>5}  {'AUTO-EVAL':>9}  LAST EVAL  TIME REMAINING")
 
-            for r in sorted(recs, key=lambda x: x.hostname):
+            for r, started_str in zip(rows, started):
                 idx = len(selectable_rows)
                 selectable_rows.append(('project', r))
                 is_cursor = focus == 'projects' and idx == proj_cursor
@@ -439,11 +505,11 @@ def _render(best: dict, dirs: list[str], timeout: int, read_errors: list[str],
                     rem_str = f"{h:02d}:{m:02d}:{s:02d}"
                 lab_str = r.lab_name[:24]
                 aec_str = str(r.auto_eval_count) if r.auto_eval_count is not None else "-"
-                buf.append(f"{marker}{r.hostname:<12} {r.login:<14} {lab_str:<24} {grade_str:>8}  {err_str:>4}  {warn_str:>5}  {aec_str:>9}  {time_str}  {rem_str}")
+                buf.append(f"{marker}{r.hostname:<12} {r.login:<14} {lab_str:<24} {started_str:<{w_started}} {grade_str:>8}  {err_str:>4}  {warn_str:>5}  {aec_str:>9}  {time_str}  {rem_str}")
             buf.append("")
 
     if focus == 'projects':
-        buf.append("  ↑↓ navigate · Enter show grades / lab summary · P dismiss project · H dismiss hostname · R filter · S since · U un-dismiss all")
+        buf.append("  ↑↓ navigate · Enter show grades / lab summary · P dismiss project · H dismiss hostname · R filter · S since · L last instances · U un-dismiss all")
     if dismissed_proj_count:
         buf.append(f"  ({dismissed_proj_count} project(s) hidden — U un-dismiss · R filter · S since)")
     buf.append("")
@@ -665,7 +731,8 @@ def _show_grades_screen(rec: Record, grade_list: list, grade_parts: list,
                 term_rows, term_cols = 40, 120
 
             header = [
-                f"── Grades: {rec.hostname} / {rec.lab_name} ({rec.login}) ── "
+                f"── Grades: {rec.hostname} / {rec.lab_name} ({rec.login}, started "
+                f"{_instance_start_label(rec.instance_start, datetime.now())}) ── "
                 f"{grade_str}  ──  ↑↓ scroll · any other key: back",
                 "",
             ]
@@ -754,7 +821,8 @@ def _show_errors_screen(rec: Record, error_list: list, old_settings) -> None:
                 f"{warn_count} warning(s)" if warn_count else "",
             ])) or "0 errors"
             header = [
-                f"── Errors: {rec.hostname} / {rec.lab_name} ({rec.login}) ── "
+                f"── Errors: {rec.hostname} / {rec.lab_name} ({rec.login}, started "
+                f"{_instance_start_label(rec.instance_start, datetime.now())}) ── "
                 f"{counts_str}  ──  ↑↓ scroll · any other key: back",
                 "",
             ]
@@ -980,7 +1048,7 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
                 term_rows, term_cols = 40, 120
 
             hdr = [
-                f"── Lab summary: {lab_name} ── {n_users} user(s) · {n_elements} element(s) ── "
+                f"── Lab summary: {lab_name} ── {n_users} instance(s) · {n_elements} element(s) ── "
                 f"↑↓ scroll · any other key: back",
                 "",
             ]
@@ -1070,7 +1138,7 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
 
 def action_watch():
     user_not_allowed()
-    global _host_filter_pattern, _host_filter_re, _starting_time
+    global _host_filter_pattern, _host_filter_re, _starting_time, _only_last_instances
     args = SRE.args
     dirs = args.dirs
     timeout = args.timeout
@@ -1085,6 +1153,7 @@ def action_watch():
         _starting_time = parse_time_or_datetime(args.starting_time or '')
     except ValueError as exc:
         error_quit(f"invalid starting time {args.starting_time!r}: {exc}")
+    _only_last_instances = bool(args.only_last_instances)
 
     is_tty = sys.stdin.isatty()
     old_settings = None
@@ -1190,7 +1259,7 @@ def action_watch():
                     entry = selectable_rows[proj_cursor]
                     if entry[0] == 'project':
                         r = entry[1]
-                        _DISMISSED_PROJECTS.add((r.hostname, r.lab_name))
+                        _DISMISSED_PROJECTS.add(r.key)
                         proj_cursor = _clamp(proj_cursor, selectable_rows[:-1])
                         needs_render = True
                 elif key in ('h', 'H') and selectable_rows:
@@ -1210,6 +1279,10 @@ def action_watch():
                     if result is not None:
                         (_starting_time,) = result
                     needs_render = True
+                elif key in ('l', 'L'):
+                    _only_last_instances = not _only_last_instances
+                    proj_cursor = 0
+                    needs_render = True
                 elif key in ('u', 'U'):
                     _DISMISSED_ALERTS.clear()
                     _DISMISSED_PROJECTS.clear()
@@ -1226,8 +1299,7 @@ def action_watch():
                     alert_key, _ = visible_alerts[alert_cursor]
                     if alert_key[0] == 'errors' and old_settings is not None:
                         # Show error detail screen
-                        hostname, lab_name = alert_key[1], alert_key[2]
-                        rec = _filter_best(best).get((hostname, lab_name))
+                        rec = _filter_best(best).get(alert_key[1:4])
                         if rec and rec.path in _CACHE:
                             error_list = sorted(
                                 _CACHE[rec.path][1].get('errors', []),

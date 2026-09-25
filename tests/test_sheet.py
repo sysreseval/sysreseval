@@ -1,10 +1,15 @@
-"""Tests for `sre sheet` archive collection with the -S/--start and
--F/--finish bounds."""
+"""Tests for `sre sheet`: archive collection with the -S/--start and
+-F/--finish bounds, and the Sessions sheet per student or per running
+instance (--separate-instances)."""
 import types
 from datetime import datetime
 from pathlib import Path
 
-from archive_helpers import archive_name, rln, write_archive
+from odf import teletype
+from odf.opendocument import OpenDocumentSpreadsheet
+from odf.table import Table, TableRow
+
+from archive_helpers import archive_name, rln, write_archive, write_two_instances
 from SRE.command import sheet
 
 
@@ -69,3 +74,40 @@ class TestCollectArchives:
         assert rec['lab_name'] == 'lab@x.py'   # sheet keeps the raw lab name (outline normalises it)
         assert rec['total_grade'] == 14.0
         assert rec['total_max'] == 20.0
+
+
+# ---------------------------------------------------------------------------
+# A student who opened the same lab twice: the Sessions sheet
+# ---------------------------------------------------------------------------
+
+def _sessions(rows, separate_instances: bool) -> list[str]:
+    """Text of every row of the Sessions sheet built from *rows*."""
+    doc = OpenDocumentSpreadsheet()
+    sname = sheet._make_header_style(doc).getAttribute('name')
+    sheet._add_sessions_sheet(doc, sname, 'lab@x.py', rows, sheet._grade_titles_for(rows),
+                              separate_instances)
+    table = doc.spreadsheet.getElementsByType(Table)[-1]
+    return [' | '.join(teletype.extractText(c) for c in tr.childNodes)
+            for tr in table.getElementsByType(TableRow)]
+
+
+class TestSessionsSheet:
+    def test_record_carries_instance_start(self, tmp_path):
+        write_two_instances(tmp_path)
+        records = sheet._collect_archives(_args(tmp_path))
+        assert sorted(r['instance_start'] for r in records) == ['20260910100000'] * 2 + ['20260910110000'] * 2
+
+    def test_default_one_row_per_student_best_of_all_instances(self, tmp_path):
+        write_two_instances(tmp_path)
+        lines = _sessions(sheet._collect_archives(_args(tmp_path)), separate_instances=False)
+        assert len(lines) == 2
+        assert lines[0].startswith('login | hostname | max score')
+        assert lines[1].startswith('bob | hb | 9.0')
+
+    def test_separate_instances_one_row_each(self, tmp_path):
+        write_two_instances(tmp_path)
+        lines = _sessions(sheet._collect_archives(_args(tmp_path)), separate_instances=True)
+        assert len(lines) == 3
+        assert lines[0].startswith('login | hostname | project start | max score')
+        assert lines[1].startswith('bob | hb | 2026-09-10 10:00:00 | 5.0')
+        assert lines[2].startswith('bob | hb | 2026-09-10 11:00:00 | 9.0')

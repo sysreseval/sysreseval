@@ -10,6 +10,7 @@ from pathlib import Path
 import msgpack
 import zstandard as zstd
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 from odf.opendocument import OpenDocumentSpreadsheet
 from odf.style import Style, TextProperties, TableCellProperties
 from odf.table import Table, TableRow, TableCell
@@ -17,7 +18,7 @@ from odf.text import P
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args
+from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args, format_instance_start
 
 # i18n — same lookup as sre.py
 def _setup_i18n(lang: str | None = None):
@@ -91,6 +92,8 @@ def _collect_archives(args, start=None, finish=None) -> list:
         running_lab_name = archive.get(params.running_lab_name_keyword, '')
 
         records.append({
+            'running_lab_name': running_lab_name,
+            'instance_start': params.get_start_date_string_from_running_lab_name(running_lab_name),
             'lab_name': _lab_name_from_running(running_lab_name),
             'abbreviated_lab_name': params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name),
             'login': answers.get(params.login_keyword, ''),
@@ -110,6 +113,20 @@ def _collect_archives(args, start=None, finish=None) -> list:
         })
 
     return records
+
+
+def _group_records(records: list, separate_instances: bool = False) -> list[tuple[tuple, list]]:
+    """Group archive records, one group per report: by (lab_name, login,
+    hostname), plus the instance start timestamp when *separate_instances*
+    (one report per running project instance instead of one per student,
+    for a lab the student opened several times).  Sorted by key."""
+    groups: dict[tuple, list] = defaultdict(list)
+    for rec in records:
+        key = (rec['lab_name'], rec['login'], rec['hostname'])
+        if separate_instances:
+            key += (rec['instance_start'],)
+        groups[key].append(rec)
+    return sorted(groups.items(), key=lambda kv: kv[0])
 
 
 def _tt_str(v, lang='en') -> str:
@@ -164,7 +181,13 @@ def _read_aux_file(path: str) -> dict[str, dict]:
 
 def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
               no_timeline: bool = False, user_info: dict | None = None,
-              show_remaining: bool = False, show_parts: bool = True):
+              show_remaining: bool = False, show_parts: bool = True,
+              show_instance: bool = False):
+    """Write the PDF report of one group of records (see _group_records).
+    The best archive is taken across every record; the evaluation history
+    gets one table per running project instance when the records span
+    several.  *show_instance* adds the instance start to the header (one
+    report per instance)."""
     if not records:
         return
 
@@ -184,7 +207,7 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
 
     # --- Header ---
     pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 9, _pdf_str(t("Evaluation Report")), ln=True, align='C')
+    pdf.cell(0, 9, _pdf_str(t("Evaluation Report")), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
     pdf.ln(2)
 
     pdf.set_font('Helvetica', '', 11)
@@ -194,6 +217,8 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
     name_str  = info['name']  if info else (fullname if fullname else '')
     email_str = info['email'] if info else email
     fields = [(t('Login:'), login), (t('Hostname:'), hostname), (t('Project:'), _pdf_str(lab_name))]
+    if show_instance:
+        fields.append((t('Project started:'), format_instance_start(first.get('instance_start', '')) or '?'))
     if name_str:
         fields.append((t('Name:'), _pdf_str(name_str)))
     if email_str:
@@ -201,7 +226,7 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
     for label, value in fields:
         pdf.cell(40, 7, _pdf_str(label))
         pdf.set_font('Helvetica', 'B', 11)
-        pdf.cell(0, 7, value, ln=True)
+        pdf.cell(0, 7, value, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font('Helvetica', '', 11)
 
     lang = forced_lang or (locale.getlocale()[0] or '').split('_')[0].lower()
@@ -216,12 +241,12 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
     dates = sorted({r['eval_date'][:10] for r in records if r['eval_date']})
     pdf.cell(40, 7, _pdf_str(t('Date:')))
     pdf.set_font('Helvetica', 'B', 11)
-    pdf.cell(0, 7, '   '.join(_fmt_date(d) for d in dates), ln=True)
+    pdf.cell(0, 7, '   '.join(_fmt_date(d) for d in dates), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font('Helvetica', '', 11)
 
     pdf.cell(40, 7, _pdf_str(t('Raw grade:')))
     pdf.set_font('Helvetica', 'B', 11)
-    pdf.cell(0, 7, f"{best['total_grade']} / {best['total_max']}", ln=True)
+    pdf.cell(0, 7, f"{best['total_grade']} / {best['total_max']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font('Helvetica', '', 11)
 
     if best.get('mark') is not None:
@@ -229,7 +254,7 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         mark_str = f"{best['mark']} / {max_mark}" if max_mark is not None else str(best['mark'])
         pdf.cell(40, 7, _pdf_str(t('Mark:')))
         pdf.set_font('Helvetica', 'B', 11)
-        pdf.cell(0, 7, _pdf_str(mark_str), ln=True)
+        pdf.cell(0, 7, _pdf_str(mark_str), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font('Helvetica', '', 11)
     pdf.ln(4)
 
@@ -258,7 +283,7 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         grade=best_index,
         max=len(records)) if not no_timeline else t("Best evaluation  -  {date}").format(
         date=_fmt_eval_dt(best['eval_date']))
-    pdf.cell(0, 7, _pdf_str(best_title), ln=True)
+    pdf.cell(0, 7, _pdf_str(best_title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(1)
 
     grade_list = best['grade_list']
@@ -356,14 +381,14 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         pdf.set_font('Helvetica', '', 9)
     else:
         pdf.set_font('Helvetica', 'I', 10)
-        pdf.cell(0, 7, _pdf_str(t('(no details available)')), ln=True)
+        pdf.cell(0, 7, _pdf_str(t('(no details available)')), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.ln(4)
 
     if not no_timeline:
         # --- Timetable ---
         pdf.set_font('Helvetica', 'B', 12)
-        pdf.cell(0, 7, _pdf_str(t("Evaluation History")), ln=True)
+        pdf.cell(0, 7, _pdf_str(t("Evaluation History")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
 
         pdf.set_font('Helvetica', 'B', 9)
@@ -380,41 +405,57 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         widths += [w_grade, w_max]
         aligns += ['C', 'C']
 
-        for h_txt, w in zip(headers, widths):
-            pdf.cell(w, 7, h_txt, border=1, fill=True)
-        pdf.ln()
-
-        # Collapse consecutive rows with identical grade/max into one
-        groups = []
+        # One table per running project instance (a student who opened the
+        # lab several times), so the evaluations of two instances are never
+        # interleaved.  A single instance gets no title: same output as before.
+        instances: dict[str, list] = {}
         for rec in records:
-            if groups and groups[-1][0]['total_grade'] == rec['total_grade'] and groups[-1][0]['total_max'] == rec['total_max']:
-                groups[-1].append(rec)
-            else:
-                groups.append([rec])
+            instances.setdefault(rec.get('instance_start', ''), []).append(rec)
+        titled = len(instances) > 1
 
-        pdf.set_font('Helvetica', '', 9)
-        for grp in groups:
-            if len(grp) == 1:
-                time_str = _fmt_eval_dt(grp[0]['eval_date'])
-            else:
-                time_str = _pdf_str(
-                    f"{_fmt_eval_dt(grp[0]['eval_date'])} - {_fmt_eval_dt(grp[-1]['eval_date'])}"
-                    f" ({len(grp)} {t('evaluations')})"
-                )
-            values = [time_str]
-            row_widths = [w_time]
-            row_aligns = ['']
-            if has_remaining:
-                r0 = _format_remaining(grp[0]['exam_time_remaining'])
-                r1 = _format_remaining(grp[-1]['exam_time_remaining'])
-                rem_str = r0 if r0 == r1 else f"{r0} - {r1}"
-                values.append(rem_str)
-                row_widths.append(w_rem)
-                row_aligns.append('C')
-            values += [grp[0]['total_grade'], grp[0]['total_max']]
-            row_widths += [w_grade, w_max]
-            row_aligns += ['C', 'C']
-            _pdf_row(pdf, row_widths, values, row_aligns)
+        for i_inst, (instance_start, inst_records) in enumerate(sorted(instances.items())):
+            if titled:
+                if i_inst:
+                    pdf.ln(2)
+                pdf.set_font('Helvetica', 'B', 9)
+                pdf.cell(0, 6, _pdf_str(f"{t('Project started:')} {format_instance_start(instance_start) or '?'}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+            pdf.set_font('Helvetica', 'B', 9)
+            for h_txt, w in zip(headers, widths):
+                pdf.cell(w, 7, h_txt, border=1, fill=True)
+            pdf.ln()
+
+            # Collapse consecutive rows with identical grade/max into one
+            groups = []
+            for rec in inst_records:
+                if groups and groups[-1][0]['total_grade'] == rec['total_grade'] and groups[-1][0]['total_max'] == rec['total_max']:
+                    groups[-1].append(rec)
+                else:
+                    groups.append([rec])
+
+            pdf.set_font('Helvetica', '', 9)
+            for grp in groups:
+                if len(grp) == 1:
+                    time_str = _fmt_eval_dt(grp[0]['eval_date'])
+                else:
+                    time_str = _pdf_str(
+                        f"{_fmt_eval_dt(grp[0]['eval_date'])} - {_fmt_eval_dt(grp[-1]['eval_date'])}"
+                        f" ({len(grp)} {t('evaluations')})"
+                    )
+                values = [time_str]
+                row_widths = [w_time]
+                row_aligns = ['']
+                if has_remaining:
+                    r0 = _format_remaining(grp[0]['exam_time_remaining'])
+                    r1 = _format_remaining(grp[-1]['exam_time_remaining'])
+                    rem_str = r0 if r0 == r1 else f"{r0} - {r1}"
+                    values.append(rem_str)
+                    row_widths.append(w_rem)
+                    row_aligns.append('C')
+                values += [grp[0]['total_grade'], grp[0]['total_max']]
+                row_widths += [w_grade, w_max]
+                row_aligns += ['C', 'C']
+                _pdf_row(pdf, row_widths, values, row_aligns)
 
     pdf.output(str(output_path))
 
@@ -487,11 +528,10 @@ def action_outline():
         print(_("no archives to process"), file=sys.stderr)
         return
 
-    # Group by (lab_name, login, hostname) and sort
-    groups: dict[tuple, list] = defaultdict(list)
-    for rec in records:
-        groups[(rec['lab_name'], rec['login'], rec['hostname'])].append(rec)
-    sorted_groups = sorted(groups.items(), key=lambda kv: kv[0])
+    # One group per report: per student, or per running instance of a lab
+    # with --separate-instances.
+    separate = bool(args.separate_instances)
+    sorted_groups = _group_records(records, separate)
 
     has_any_name  = any(r['fullname'] for r in records) or user_info is not None
     has_any_email = any(r['email']    for r in records) or user_info is not None
@@ -506,7 +546,10 @@ def action_outline():
         doc.spreadsheet.addElement(sheet)
 
         hrow = TableRow()
-        ods_cols = [_('login'), _('hostname'), _('project'), _('best_grade'), _('best_grade_time'), _('max_points'), _('mark'), _('maximum_mark')]
+        ods_cols = [_('login'), _('hostname'), _('project')]
+        if separate:
+            ods_cols.append(_('project_start'))
+        ods_cols += [_('best_grade'), _('best_grade_time'), _('max_points'), _('mark'), _('maximum_mark')]
         if has_any_name:
             ods_cols.append(_('name'))
         if has_any_email:
@@ -515,8 +558,10 @@ def action_outline():
             hrow.addElement(_header_cell(col, sname))
         sheet.addElement(hrow)
 
-    for (lab_name, login, hostname), recs in sorted_groups:
+    for key, recs in sorted_groups:
+        lab_name, login, hostname = key[:3]
         abbreviated = recs[0]['abbreviated_lab_name']
+        instance_start = recs[0]['instance_start']
 
         if user_info is not None and login not in user_info:
             print(_("warning: login '{login}' not found in aux file").format(login=login), file=sys.stderr)
@@ -524,12 +569,14 @@ def action_outline():
         if output_dir is not None:
             safe = (f"{_safe_filename(login)}"
                     f"__{_safe_filename(abbreviated)}"
-                    f"__{_safe_filename(hostname)}.pdf")
-            pdf_path = output_dir / safe
+                    f"__{_safe_filename(hostname)}")
+            if separate:
+                safe += f"__{instance_start or 'unknown'}"
+            pdf_path = output_dir / f"{safe}.pdf"
             try:
                 _make_pdf(recs, pdf_path, forced_lang=args.lang, no_timeline=args.no_timeline,
                           user_info=user_info, show_remaining=args.remaining_time,
-                          show_parts=not args.no_parts)
+                          show_parts=not args.no_parts, show_instance=separate)
             except OSError as e:
                 print(_("error: cannot write {path}: {e}").format(path=pdf_path, e=e), file=sys.stderr)
                 continue
@@ -543,6 +590,8 @@ def action_outline():
             tr.addElement(_str_cell(login))
             tr.addElement(_str_cell(hostname))
             tr.addElement(_str_cell(abbreviated))
+            if separate:
+                tr.addElement(_str_cell(format_instance_start(instance_start)))
             tr.addElement(_num_cell(best['total_grade']))
             tr.addElement(_str_cell(_format_dt(best['eval_date'])))
             tr.addElement(_num_cell(best['total_max']))

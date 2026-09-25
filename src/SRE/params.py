@@ -319,6 +319,15 @@ def get_username_from_running_lab_name(running_lab_name: str) -> str:
     return ''
 
 
+def get_start_date_string_from_running_lab_name(running_lab_name: str) -> str:
+    """Instance start date (YYYYmmddHHMMSS digits) encoded in a running_lab_name,
+    or '' when the name does not follow get_running_lab_name().  The digits
+    sort chronologically, so callers compare/sort the string and only convert
+    it with string_to_datetime() for display."""
+    match = re.match(running_lab_name_match_pattern, running_lab_name)
+    return match.group(1) if match else ''
+
+
 def get_abbreviated_lab_name_from_running_lab_name(running_lab_name: str) -> str:
     name = get_lab_name_from_running_lab_name(running_lab_name).replace("@", "/").rpartition("/")[2]
     return name.removesuffix(".py")

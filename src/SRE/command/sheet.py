@@ -11,7 +11,7 @@ from odf.text import P
 
 from .. import params
 from ..params import SRE
-from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args
+from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args, format_instance_start
 
 
 def _setup_i18n():
@@ -150,25 +150,36 @@ def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_title
         sheet.addElement(tr)
 
 
-def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles_list: list):
+def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles_list: list,
+                        separate_instances: bool = False):
+    """One row per session: per (login, hostname), i.e. the best of every
+    archive of that student, or per running project instance of the lab
+    (adding the instance start) with *separate_instances*."""
     sheet = Table(name=_safe_sheet_name(f"Sessions {lab_name}"))
     doc.spreadsheet.addElement(sheet)
 
-    # Column layout: login(A=0), hostname(B=1), max score(C=2), sum of maxima(D=3), questions(E=4+)
-    q_start = _col_letter(4)
-    q_end = _col_letter(3 + len(grade_titles_list)) if grade_titles_list else q_start
+    # Column layout: login(A=0), hostname(B=1), [project start], max score,
+    # sum of maxima, then the questions
+    n_fixed = 5 if separate_instances else 4
+    q_start = _col_letter(n_fixed)
+    q_end = _col_letter(n_fixed - 1 + len(grade_titles_list)) if grade_titles_list else q_start
 
     header_row = TableRow()
-    for col in ['login', 'hostname', 'max score', 'sum of maxima'] + grade_titles_list:
+    cols = ['login', 'hostname'] + (['project start'] if separate_instances else []) + ['max score', 'sum of maxima']
+    for col in cols + grade_titles_list:
         header_row.addElement(_header_cell(col, sname))
     sheet.addElement(header_row)
 
     sessions: dict[tuple, list] = {}
     for row in rows:
-        sessions.setdefault((row['login'], row['hostname']), []).append(row)
+        key = (row['login'], row['hostname'])
+        if separate_instances:
+            key += (row['instance_start'],)
+        sessions.setdefault(key, []).append(row)
 
     row_num = 2  # row 1 is the header
-    for (login, hostname), session_rows in sorted(sessions.items()):
+    for key, session_rows in sorted(sessions.items()):
+        login, hostname = key[:2]
         max_score = max(r['total_grade'] for r in session_rows)
 
         question_maxima: dict[str, float | None] = {}
@@ -187,6 +198,8 @@ def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles
         tr = TableRow()
         tr.addElement(_str_cell(login))
         tr.addElement(_str_cell(hostname))
+        if separate_instances:
+            tr.addElement(_str_cell(format_instance_start(key[2])))
         tr.addElement(_num_cell(max_score))
         if grade_titles_list:
             tr.addElement(_formula_cell(f"of:=SUM([.{q_start}{row_num}:.{q_end}{row_num}])"))
@@ -214,6 +227,7 @@ def _collect_archives(args, start=None, finish=None) -> list:
         running_lab_name = archive.get(params.running_lab_name_keyword, '')
         records.append({
             'running_lab_name': running_lab_name,
+            'instance_start': params.get_start_date_string_from_running_lab_name(running_lab_name),
             'lab_name': _lab_name_from_running(running_lab_name),
             'login': answers.get(params.login_keyword, ''),
             'fullname': answers.get(params.fullname_keyword, ''),
@@ -252,6 +266,8 @@ def action_sheet():
     sname = header_style.getAttribute("name")
 
     for lab_name, rows in groups.items():
+        # Each running project instance's evaluations contiguous, in order
+        rows = sorted(rows, key=lambda r: (r['login'], r['hostname'], r['instance_start'], r['eval_date'] or ''))
         grade_titles_list = _grade_titles_for(rows)
 
         sheet = Table(name=_safe_sheet_name(lab_name))
@@ -259,7 +275,7 @@ def action_sheet():
 
         # Header row
         header_row = TableRow()
-        for col in ['login', 'fullname', 'email', 'hostname', 'eval_date', 'errors',
+        for col in ['login', 'fullname', 'email', 'hostname', 'project_start', 'eval_date', 'errors',
                     'total_grade', 'total_max', _('mark'), _('maximum_mark')] + grade_titles_list:
             header_row.addElement(_header_cell(col, sname))
         sheet.addElement(header_row)
@@ -273,6 +289,7 @@ def action_sheet():
             tr.addElement(_str_cell(row['fullname']))
             tr.addElement(_str_cell(row['email']))
             tr.addElement(_str_cell(row['hostname']))
+            tr.addElement(_str_cell(format_instance_start(row['instance_start'])))
             tr.addElement(_str_cell(row['eval_date']))
             tr.addElement(_num_cell(row['errors']))
             tr.addElement(_num_cell(row['total_grade']))
@@ -285,7 +302,7 @@ def action_sheet():
             sheet.addElement(tr)
 
         _add_questions_sheet(doc, sname, lab_name, rows, grade_titles_list)
-        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list)
+        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, bool(args.separate_instances))
 
     doc.save(args.output)
     print(f"saved: {args.output}")

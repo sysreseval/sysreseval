@@ -78,9 +78,11 @@ Evaluates every running lab instance concurrently. `--no-display-grades` suppres
 
 Validates a lab module without deploying: imports it, runs `Data.generate()`, builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method.
 
-### `sre watch [--timeout <sec>] [--interval <sec>] <dir…>`
+### `sre watch [--timeout <sec>] [--interval <sec>] [-H <regexp>] [-S <time>] [-L] <dir…>`
 
-Live terminal dashboard scanning `<dir…>` for `.zst` archives. Default refresh: `params.default_dashboard_refresh_interval_in_watch_command`. `--timeout` is the inactivity-alert threshold (default 90 s).
+Live terminal dashboard scanning `<dir…>` for `.zst` archives. Default refresh: `params.default_dashboard_refresh_interval_in_watch_command`. `--timeout` is the inactivity-alert threshold (default 90 s). `-H/--hostname-filter` and `-S/--starting-time` preset the `R` and `S` keys.
+
+One row per **running project instance** on a host: hostname + lab + the start timestamp of `running_lab_name`. A lab opened twice by the same student gives two rows with their own grades and alerts; a lab stopped then started again keeps its old row until it is dismissed (`P`), hidden (`S`) or collapsed. `-L/--only-last-instances` (the `L` key) collapses to one row per host and lab: the most recently *started* instance, whatever the age of its archives. Dismissals and `S` apply after the collapse, so they never reveal an older instance. Lab counts and statistics are per instance.
 
 **Columns** (from each archive):
 
@@ -88,6 +90,7 @@ Live terminal dashboard scanning `<dir…>` for `.zst` archives. Default refresh
 |--------|--------|
 | HOSTNAME / LOGIN | `answers["hostname"]` / `answers["login"]` |
 | LAB NAME | Middle segment of `running_lab_name` |
+| STARTED | First segment of `running_lab_name` (instance start; time only when today) |
 | GRADE | `total_grade / total_max` |
 | ERR | Length of `errors` |
 | LAST EVAL | `eval_date` (`YYYYmmddHHMMSS`) |
@@ -99,9 +102,12 @@ Live terminal dashboard scanning `<dir…>` for `.zst` archives. Default refresh
 |-----|---------|--------|
 | `t` | Any | Toggle focus between Projects and Alerts |
 | `↑` / `↓` | Projects / Alerts | Move selection |
-| `P` | Projects | Dismiss selected project |
+| `Enter` | Projects | On a project row: its grade elements; on a `Lab:` row: per-element aggregation over the lab's instances |
+| `P` | Projects | Dismiss selected project instance (hostname + lab + start) |
 | `H` | Projects | Dismiss all projects from the selected hostname |
-| `R` | Projects | Set a hostname regexp filter (empty = show all) |
+| `R` | Projects | Set a hostname regexp filter (empty = show all; initial value: `-H`) |
+| `S` | Projects | Only show projects with an archive received after a time (empty = no limit; initial value: `-S`) |
+| `L` | Projects | Toggle "only last instances": one row per host and lab, the most recently started (initial value: `-L`) |
 | `U` | Either | Un-dismiss all |
 | `d` / `Enter` | Alerts | Dismiss selected alert |
 | `q` / `Ctrl-C` | Any | Quit |
@@ -196,21 +202,23 @@ Re-grades archives with an updated `srelab.py`. Useful for fixing a grading bug 
 | `-d` / `--output-dir` | Output directory (default: current). |
 | `-r` / `--recursive` | Recurse into subdirectories. |
 
-### `sre sheet -o <output.ods> [-r] <file_or_dir…>`
+### `sre sheet -o <output.ods> [-r] [-S <time>] [-F <time>] [--separate-instances] <file_or_dir…>`
 
 Exports archives to a LibreOffice ODS spreadsheet. Per distinct lab name, three sheets are produced:
 
 | Sheet | Content |
 |-------|---------|
-| `{lab_name}` | One row per archive: `login`, `fullname`, `email`, `hostname`, `eval_date`, `errors`, `total_grade`, `total_max`, `mark`, `maximum_mark`, then one column per grade element |
+| `{lab_name}` | One row per archive, sorted by `login`, `hostname`, `project_start`, `eval_date`: `login`, `fullname`, `email`, `hostname`, `project_start` (start of the running project instance), `eval_date`, `errors`, `total_grade`, `total_max`, `mark`, `maximum_mark`, then one column per grade element |
 | `Questions {lab_name}` | Per-question: `max_grade`, `maximum grade`, `average`, `number of projects`, `projects grade 0` |
-| `Sessions {lab_name}` | Per-student best score: `login`, `hostname`, `max score`, `sum of maxima`, then best score per question |
+| `Sessions {lab_name}` | Per-student best score: `login`, `hostname`, `max score`, `sum of maxima`, then best score per question. With `--separate-instances`, one row per running project instance instead (a student who opened the lab twice gets two rows), with a `project start` column after `hostname` |
 
 `fullname` and `email` come from the archive's `answers` (empty if absent).
 
-### `sre outline [-o <summary.ods>] [-d <pdf_dir>] [-r] [--lang <lang>] [--no-timeline] [--remaining-time] [--users-file <file>] <file_or_dir…>`
+### `sre outline [-o <summary.ods>] [-d <pdf_dir>] [-r] [-S <time>] [-F <time>] [--lang <lang>] [--no-timeline] [--remaining-time] [--separate-instances] [--users-file <file>] <file_or_dir…>`
 
-Generates per-student PDF reports plus a summary ODS — best-graded archive per student. At least one of `-o` / `-d` is required.
+Generates per-student PDF reports plus a summary ODS — best-graded archive per student (`login` + `hostname` + lab). At least one of `-o` / `-d` is required.
+
+When a student opened the same lab several times, the best grade is taken across every instance and the evaluation history shows one table per instance, each headed by its start time. `--separate-instances` produces one PDF and one ODS row per running project instance instead: the PDF name gains `__<start timestamp>`, its header a "Project started" line, and the ODS a `project_start` column.
 
 | Option | Description |
 |--------|-------------|
@@ -220,6 +228,7 @@ Generates per-student PDF reports plus a summary ODS — best-graded archive per
 | `--lang <lang>` | Force PDF language (e.g. `en`, `fr`). |
 | `--no-timeline` | Omit the evaluation-history table. |
 | `--remaining-time` | Include the time-remaining column in the history. |
+| `--separate-instances` | One report and one ODS row per running project instance instead of one per student. |
 | `--users-file <file>` | User list `LOGIN NAME EMAIL` (whitespace/CSV; `#` comments; <3-field lines skipped). |
 
 Name / email resolution: `--users-file` (if provided) → `fullname` / `email` from archive answers. Columns appear only when at least one student has a non-empty value.

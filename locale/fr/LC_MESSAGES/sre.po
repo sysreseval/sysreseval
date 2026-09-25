@@ -134,6 +134,15 @@ msgstr "n'afficher que les noms d'hôtes correspondant à cette expression régu
 msgid "only consider projects with an archive received after this time (15:01 or 2026-09-10 15:01; same as the S key in the dashboard)"
 msgstr "ne considérer que les projets dont une archive a été reçue après cet instant (15:01 ou 2026-09-10 15:01 ; comme la touche S du tableau de bord)"
 
+msgid "show only the most recently started instance of each lab on each host (same as the L key in the dashboard)"
+msgstr "n'afficher que l'instance démarrée le plus récemment de chaque TP sur chaque hôte (comme la touche L du tableau de bord)"
+
+msgid "one Sessions row per running instance of a lab instead of one per student"
+msgstr "une ligne Sessions par instance démarrée d'un TP au lieu d'une par étudiant"
+
+msgid "one PDF report and one ODS row per running instance of a lab instead of one per student"
+msgstr "un rapport PDF et une ligne ODS par instance démarrée d'un TP au lieu d'un par étudiant"
+
 msgid "only consider archives created at or after this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)"
 msgstr "ne considérer que les archives créées à partir de cet instant (15:01 pour aujourd'hui, ou 2026-09-10 15:01 ; une date seule signifie minuit)"
 
@@ -288,6 +297,9 @@ msgstr "Hostname :"
 msgid "Project:"
 msgstr "Projet :"
 
+msgid "Project started:"
+msgstr "Projet démarré :"
+
 msgid "Name:"
 msgstr "Nom :"
 
@@ -347,6 +359,9 @@ msgstr "hostname"
 
 msgid "project"
 msgstr "projet"
+
+msgid "project_start"
+msgstr "début_projet"
 
 msgid "best_grade"
 msgstr "note_max"

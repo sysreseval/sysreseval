@@ -43,3 +43,23 @@ def write_archive(path, *, hostname, login, running_lab_name,
     if mtime is not None:
         os.utime(path, (mtime, mtime))
     return str(path)
+
+
+# One student ('bob' on host 'hb') who opened LAB twice on 2026-09-10, at
+# 10:00 and 11:00, two evaluations each; eval dates are ISO like real archives.
+# Best grade overall: 9.0, in the second instance.
+TWO_INSTANCES = [
+    ('20260910100000', '2026-09-10T10:05:00', 3.0),
+    ('20260910100000', '2026-09-10T10:20:00', 5.0),
+    ('20260910110000', '2026-09-10T11:05:00', 4.0),
+    ('20260910110000', '2026-09-10T11:20:00', 9.0),
+]
+
+
+def write_two_instances(root, *, lab=LAB, login='bob', hostname='hb') -> None:
+    """Write the TWO_INSTANCES archives under *root*."""
+    for start_ts, eval_iso, grade in TWO_INSTANCES:
+        r = rln(start_ts=start_ts, lab=lab, user=login)
+        compact = eval_iso.replace('-', '').replace(':', '').replace('T', '')
+        write_archive(Path(root) / archive_name(r, compact), hostname=hostname, login=login,
+                      running_lab_name=r, eval_date=eval_iso, grade=grade, max_grade=10.0)

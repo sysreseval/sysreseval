@@ -364,6 +364,18 @@ def in_time_interval(dt: datetime, start: datetime | None, finish: datetime | No
     return (start is None or dt >= start) and (finish is None or dt <= finish)
 
 
+def format_instance_start(instance_start: str) -> str:
+    """'YYYY-MM-DD HH:MM:SS' for the 14-digit start timestamp of a running
+    project (see params.get_start_date_string_from_running_lab_name); '' when
+    empty, the raw string when it is not a date."""
+    if not instance_start:
+        return ''
+    try:
+        return params.string_to_datetime(instance_start).strftime('%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        return instance_start
+
+
 def archive_creation_time(path) -> datetime:
     """When an archive was created: the eval date encoded in its filename
     (see params.get_archive_name), else the file's mtime."""

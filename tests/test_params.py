@@ -31,6 +31,14 @@ class TestRunningLabName:
         result = params.get_lab_name_from_running_lab_name('20260101000000@@@labonly')
         assert result == 'ERROR-running_lab_name-ILLEGAL-FORMAT'
 
+    def test_start_date_string_roundtrip(self):
+        name = params.get_running_lab_name('mylab', datetime(2026, 1, 1, 0, 0, 0), 'bob')
+        assert params.get_start_date_string_from_running_lab_name(name) == '20260101000000'
+
+    @pytest.mark.parametrize('name', ['not_valid', '20260101000000@@@labonly', ''])
+    def test_start_date_string_invalid_returns_empty(self, name):
+        assert params.get_start_date_string_from_running_lab_name(name) == ''
+
 
 class TestLabNameFromCliArg:
     def test_plain_name_encodes_slashes(self):

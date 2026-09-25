@@ -1,10 +1,13 @@
-"""Tests for `sre outline` archive collection with the -S/--start and
--F/--finish bounds."""
+"""Tests for `sre outline`: archive collection with the -S/--start and
+-F/--finish bounds, grouping per student or per running instance
+(--separate-instances), and the per-instance evaluation history in the PDF."""
 import types
 from datetime import datetime
 from pathlib import Path
 
-from archive_helpers import archive_name, rln, write_archive
+import pytest
+
+from archive_helpers import archive_name, rln, write_archive, write_two_instances
 from SRE.command import outline
 
 
@@ -69,3 +72,82 @@ class TestCollectArchives:
         assert rec['lab_name'] == 'lab/x'
         assert rec['total_grade'] == 14.0
         assert rec['total_max'] == 20.0
+
+
+# ---------------------------------------------------------------------------
+# A student who opened the same lab twice: grouping and PDF history
+# ---------------------------------------------------------------------------
+
+_FIRST, _SECOND = '20260910100000', '20260910110000'
+
+
+class TestGroupRecords:
+    def test_record_carries_instance_start(self, tmp_path):
+        write_two_instances(tmp_path)
+        records = outline._collect_archives(_args(tmp_path))
+        assert {r['instance_start'] for r in records} == {_FIRST, _SECOND}
+        assert all(r['running_lab_name'].startswith(r['instance_start']) for r in records)
+
+    def test_default_one_group_per_student(self, tmp_path):
+        write_two_instances(tmp_path)
+        groups = outline._group_records(outline._collect_archives(_args(tmp_path)))
+        assert [key for key, _ in groups] == [('lab/x', 'bob', 'hb')]
+        assert len(groups[0][1]) == 4
+
+    def test_separate_instances_one_group_per_instance(self, tmp_path):
+        write_two_instances(tmp_path)
+        groups = outline._group_records(outline._collect_archives(_args(tmp_path)),
+                                        separate_instances=True)
+        assert [key for key, _ in groups] == [('lab/x', 'bob', 'hb', _FIRST),
+                                              ('lab/x', 'bob', 'hb', _SECOND)]
+        assert [sorted(r['total_grade'] for r in recs) for _, recs in groups] == [[3.0, 5.0], [4.0, 9.0]]
+
+    def test_groups_are_sorted_by_key(self, tmp_path):
+        write_two_instances(tmp_path)
+        write_two_instances(tmp_path / 'other', login='alice', hostname='ha')
+        groups = outline._group_records(outline._collect_archives(_args(tmp_path, recursive=True)))
+        assert [key for key, _ in groups] == [('lab/x', 'alice', 'ha'), ('lab/x', 'bob', 'hb')]
+
+
+class TestMakePdfInstances:
+    @pytest.fixture
+    def cells(self, monkeypatch):
+        """Every text handed to FPDF.cell, in order."""
+        texts: list[str] = []
+
+        class Recording(outline.FPDF):
+            def cell(self, w=None, h=None, text='', *args, **kwargs):
+                texts.append(str(text))
+                return super().cell(w, h, text, *args, **kwargs)
+
+        monkeypatch.setattr(outline, 'FPDF', Recording)
+        return texts
+
+    def test_history_has_one_table_per_instance(self, tmp_path, cells):
+        write_two_instances(tmp_path)
+        out = tmp_path / 'bob.pdf'
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), out, forced_lang='en')
+        assert out.stat().st_size > 0
+        assert cells.count('Evaluation Time') == 2
+        assert [c for c in cells if c.startswith('Project started: ')] == [
+            'Project started: 2026-09-10 10:00:00', 'Project started: 2026-09-10 11:00:00']
+        assert 'Project started:' not in cells          # header field only with show_instance
+        assert '9.0 / 10.0' in cells                     # best grade taken across both instances
+
+    def test_single_instance_output_has_no_instance_title(self, tmp_path, cells):
+        write_two_instances(tmp_path)
+        records = outline._collect_archives(_args(tmp_path))
+        _, recs = outline._group_records(records, separate_instances=True)[0]
+        outline._make_pdf(recs, tmp_path / 'first.pdf', forced_lang='en')
+        assert cells.count('Evaluation Time') == 1
+        assert not any(c.startswith('Project started') for c in cells)
+        assert '5.0 / 10.0' in cells
+
+    def test_show_instance_adds_header_field(self, tmp_path, cells):
+        write_two_instances(tmp_path)
+        records = outline._collect_archives(_args(tmp_path))
+        _, recs = outline._group_records(records, separate_instances=True)[1]
+        outline._make_pdf(recs, tmp_path / 'second.pdf', forced_lang='en', show_instance=True)
+        i = cells.index('Project started:')
+        assert cells[i + 1] == '2026-09-10 11:00:00'
+        assert cells.count('Evaluation Time') == 1
