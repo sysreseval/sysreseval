@@ -249,6 +249,7 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#file-transfer-between-host-and-container">File transfer between host and container</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#host-side-operations">Host-side operations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#reading-command-results-multi-pass-true">Reading command results — <code class="docutils literal notranslate"><span class="pre">multi_pass=True</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-helpers-from-opt-sre-lib-state-helpers-py">State helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/state_helpers.py</span></code>)</a></li>
 </ul>
@@ -362,7 +363,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#sre-watch-timeout-sec-interval-sec-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
 </ul>
@@ -377,8 +378,8 @@
 <li class="toctree-l3"><a class="reference internal" href="#sre-cat-options-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span> <span class="pre">[options]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-check-eval-s-srelab-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span> <span class="pre">[-s</span> <span class="pre">&lt;srelab&gt;]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-re-eval-s-srelab-p-prefix-d-outdir-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span> <span class="pre">-s</span> <span class="pre">&lt;srelab&gt;</span> <span class="pre">-p</span> <span class="pre">&lt;prefix&gt;</span> <span class="pre">[-d</span> <span class="pre">&lt;outdir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#sre-sheet-o-output-ods-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-sheet-o-output-ods-r-s-time-f-time-separate-instances-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--separate-instances]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-outline-o-summary-ods-d-pdf-dir-r-s-time-f-time-lang-lang-no-timeline-remaining-time-separate-instances-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--separate-instances]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
@@ -582,9 +583,10 @@
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code><a class="headerlink" href="#sre-check-p-lab-state" title="Link to this heading">¶</a></h3>
 <p>Validates a lab module without deploying: imports it, runs <code class="docutils literal notranslate"><span class="pre">Data.generate()</span></code>, builds <code class="docutils literal notranslate"><span class="pre">NetScheme</span></code>, runs <code class="docutils literal notranslate"><span class="pre">initial()</span></code>, calls <code class="docutils literal notranslate"><span class="pre">Grade.grade()</span></code>. With <code class="docutils literal notranslate"><span class="pre">state</span></code>, also validates that state method.</p>
 </section>
-<section id="sre-watch-timeout-sec-interval-sec-dir">
-<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;dir…&gt;</span></code><a class="headerlink" href="#sre-watch-timeout-sec-interval-sec-dir" title="Link to this heading">¶</a></h3>
-<p>Live terminal dashboard scanning <code class="docutils literal notranslate"><span class="pre">&lt;dir…&gt;</span></code> for <code class="docutils literal notranslate"><span class="pre">.zst</span></code> archives. Default refresh: <code class="docutils literal notranslate"><span class="pre">params.default_dashboard_refresh_interval_in_watch_command</span></code>. <code class="docutils literal notranslate"><span class="pre">--timeout</span></code> is the inactivity-alert threshold (default 90 s).</p>
+<section id="sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code><a class="headerlink" href="#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir" title="Link to this heading">¶</a></h3>
+<p>Live terminal dashboard scanning <code class="docutils literal notranslate"><span class="pre">&lt;dir…&gt;</span></code> for <code class="docutils literal notranslate"><span class="pre">.zst</span></code> archives. Default refresh: <code class="docutils literal notranslate"><span class="pre">params.default_dashboard_refresh_interval_in_watch_command</span></code>. <code class="docutils literal notranslate"><span class="pre">--timeout</span></code> is the inactivity-alert threshold (default 90 s). <code class="docutils literal notranslate"><span class="pre">-H/--hostname-filter</span></code> and <code class="docutils literal notranslate"><span class="pre">-S/--starting-time</span></code> preset the <code class="docutils literal notranslate"><span class="pre">R</span></code> and <code class="docutils literal notranslate"><span class="pre">S</span></code> keys.</p>
+<p>One row per <strong>running project instance</strong> on a host: hostname + lab + the start timestamp of <code class="docutils literal notranslate"><span class="pre">running_lab_name</span></code>. A lab opened twice by the same student gives two rows with their own grades and alerts; a lab stopped then started again keeps its old row until it is dismissed (<code class="docutils literal notranslate"><span class="pre">P</span></code>), hidden (<code class="docutils literal notranslate"><span class="pre">S</span></code>) or collapsed. <code class="docutils literal notranslate"><span class="pre">-L/--only-last-instances</span></code> (the <code class="docutils literal notranslate"><span class="pre">L</span></code> key) collapses to one row per host and lab: the most recently <em>started</em> instance, whatever the age of its archives. Dismissals and <code class="docutils literal notranslate"><span class="pre">S</span></code> apply after the collapse, so they never reveal an older instance. Lab counts and statistics are per instance.</p>
 <p><strong>Columns</strong> (from each archive):</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
@@ -600,16 +602,19 @@
 <tr class="row-odd"><td><p>LAB NAME</p></td>
 <td><p>Middle segment of <code class="docutils literal notranslate"><span class="pre">running_lab_name</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p>GRADE</p></td>
+<tr class="row-even"><td><p>STARTED</p></td>
+<td><p>First segment of <code class="docutils literal notranslate"><span class="pre">running_lab_name</span></code> (instance start; time only when today)</p></td>
+</tr>
+<tr class="row-odd"><td><p>GRADE</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">total_grade</span> <span class="pre">/</span> <span class="pre">total_max</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p>ERR</p></td>
+<tr class="row-even"><td><p>ERR</p></td>
 <td><p>Length of <code class="docutils literal notranslate"><span class="pre">errors</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p>LAST EVAL</p></td>
+<tr class="row-odd"><td><p>LAST EVAL</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">eval_date</span></code> (<code class="docutils literal notranslate"><span class="pre">YYYYmmddHHMMSS</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p>TIME REMAINING</p></td>
+<tr class="row-even"><td><p>TIME REMAINING</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">answers[&quot;exam_time_remaining&quot;]</span></code> minus elapsed since <code class="docutils literal notranslate"><span class="pre">answers[&quot;answers_updated_at&quot;]</span></code></p></td>
 </tr>
 </tbody>
@@ -633,31 +638,43 @@
 <td><p>Projects / Alerts</p></td>
 <td><p>Move selection</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">P</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Enter</span></code></p></td>
 <td><p>Projects</p></td>
-<td><p>Dismiss selected project</p></td>
+<td><p>On a project row: its grade elements; on a <code class="docutils literal notranslate"><span class="pre">Lab:</span></code> row: per-element aggregation over the lab’s instances</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">P</span></code></p></td>
+<td><p>Projects</p></td>
+<td><p>Dismiss selected project instance (hostname + lab + start)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
 <td><p>Projects</p></td>
 <td><p>Dismiss all projects from the selected hostname</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">R</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">R</span></code></p></td>
 <td><p>Projects</p></td>
-<td><p>Set a hostname regexp filter (empty = show all)</p></td>
+<td><p>Set a hostname regexp filter (empty = show all; initial value: <code class="docutils literal notranslate"><span class="pre">-H</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">U</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">S</span></code></p></td>
+<td><p>Projects</p></td>
+<td><p>Only show projects with an archive received after a time (empty = no limit; initial value: <code class="docutils literal notranslate"><span class="pre">-S</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">L</span></code></p></td>
+<td><p>Projects</p></td>
+<td><p>Toggle “only last instances”: one row per host and lab, the most recently started (initial value: <code class="docutils literal notranslate"><span class="pre">-L</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">U</span></code></p></td>
 <td><p>Either</p></td>
 <td><p>Un-dismiss all</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code> / <code class="docutils literal notranslate"><span class="pre">Enter</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code> / <code class="docutils literal notranslate"><span class="pre">Enter</span></code></p></td>
 <td><p>Alerts</p></td>
 <td><p>Dismiss selected alert</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">q</span></code> / <code class="docutils literal notranslate"><span class="pre">Ctrl-C</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">q</span></code> / <code class="docutils literal notranslate"><span class="pre">Ctrl-C</span></code></p></td>
 <td><p>Any</p></td>
 <td><p>Quit</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">?</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">?</span></code></p></td>
 <td><p>Any</p></td>
 <td><p>Toggle help</p></td>
 </tr>
@@ -820,8 +837,8 @@
 </table>
 </div>
 </section>
-<section id="sre-sheet-o-output-ods-r-file-or-dir">
-<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code><a class="headerlink" href="#sre-sheet-o-output-ods-r-file-or-dir" title="Link to this heading">¶</a></h3>
+<section id="sre-sheet-o-output-ods-r-s-time-f-time-separate-instances-file-or-dir">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--separate-instances]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code><a class="headerlink" href="#sre-sheet-o-output-ods-r-s-time-f-time-separate-instances-file-or-dir" title="Link to this heading">¶</a></h3>
 <p>Exports archives to a LibreOffice ODS spreadsheet. Per distinct lab name, three sheets are produced:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
@@ -832,22 +849,23 @@
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">{lab_name}</span></code></p></td>
-<td><p>One row per archive: <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">email</span></code>, <code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">eval_date</span></code>, <code class="docutils literal notranslate"><span class="pre">errors</span></code>, <code class="docutils literal notranslate"><span class="pre">total_grade</span></code>, <code class="docutils literal notranslate"><span class="pre">total_max</span></code>, <code class="docutils literal notranslate"><span class="pre">mark</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum_mark</span></code>, then one column per grade element</p></td>
+<td><p>One row per archive, sorted by <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">project_start</span></code>, <code class="docutils literal notranslate"><span class="pre">eval_date</span></code>: <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">email</span></code>, <code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">project_start</span></code> (start of the running project instance), <code class="docutils literal notranslate"><span class="pre">eval_date</span></code>, <code class="docutils literal notranslate"><span class="pre">errors</span></code>, <code class="docutils literal notranslate"><span class="pre">total_grade</span></code>, <code class="docutils literal notranslate"><span class="pre">total_max</span></code>, <code class="docutils literal notranslate"><span class="pre">mark</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum_mark</span></code>, then one column per grade element</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Questions</span> <span class="pre">{lab_name}</span></code></p></td>
 <td><p>Per-question: <code class="docutils literal notranslate"><span class="pre">max_grade</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span> <span class="pre">grade</span></code>, <code class="docutils literal notranslate"><span class="pre">average</span></code>, <code class="docutils literal notranslate"><span class="pre">number</span> <span class="pre">of</span> <span class="pre">projects</span></code>, <code class="docutils literal notranslate"><span class="pre">projects</span> <span class="pre">grade</span> <span class="pre">0</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Sessions</span> <span class="pre">{lab_name}</span></code></p></td>
-<td><p>Per-student best score: <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">max</span> <span class="pre">score</span></code>, <code class="docutils literal notranslate"><span class="pre">sum</span> <span class="pre">of</span> <span class="pre">maxima</span></code>, then best score per question</p></td>
+<td><p>Per-student best score: <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">max</span> <span class="pre">score</span></code>, <code class="docutils literal notranslate"><span class="pre">sum</span> <span class="pre">of</span> <span class="pre">maxima</span></code>, then best score per question. With <code class="docutils literal notranslate"><span class="pre">--separate-instances</span></code>, one row per running project instance instead (a student who opened the lab twice gets two rows), with a <code class="docutils literal notranslate"><span class="pre">project</span> <span class="pre">start</span></code> column after <code class="docutils literal notranslate"><span class="pre">hostname</span></code></p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">fullname</span></code> and <code class="docutils literal notranslate"><span class="pre">email</span></code> come from the archive’s <code class="docutils literal notranslate"><span class="pre">answers</span></code> (empty if absent).</p>
 </section>
-<section id="sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir">
-<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code><a class="headerlink" href="#sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir" title="Link to this heading">¶</a></h3>
-<p>Generates per-student PDF reports plus a summary ODS — best-graded archive per student. At least one of <code class="docutils literal notranslate"><span class="pre">-o</span></code> / <code class="docutils literal notranslate"><span class="pre">-d</span></code> is required.</p>
+<section id="sre-outline-o-summary-ods-d-pdf-dir-r-s-time-f-time-lang-lang-no-timeline-remaining-time-separate-instances-users-file-file-file-or-dir">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--separate-instances]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code><a class="headerlink" href="#sre-outline-o-summary-ods-d-pdf-dir-r-s-time-f-time-lang-lang-no-timeline-remaining-time-separate-instances-users-file-file-file-or-dir" title="Link to this heading">¶</a></h3>
+<p>Generates per-student PDF reports plus a summary ODS — best-graded archive per student (<code class="docutils literal notranslate"><span class="pre">login</span></code> + <code class="docutils literal notranslate"><span class="pre">hostname</span></code> + lab). At least one of <code class="docutils literal notranslate"><span class="pre">-o</span></code> / <code class="docutils literal notranslate"><span class="pre">-d</span></code> is required.</p>
+<p>When a student opened the same lab several times, the best grade is taken across every instance and the evaluation history shows one table per instance, each headed by its start time. <code class="docutils literal notranslate"><span class="pre">--separate-instances</span></code> produces one PDF and one ODS row per running project instance instead: the PDF name gains <code class="docutils literal notranslate"><span class="pre">__&lt;start</span> <span class="pre">timestamp&gt;</span></code>, its header a “Project started” line, and the ODS a <code class="docutils literal notranslate"><span class="pre">project_start</span></code> column.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -874,7 +892,10 @@
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--remaining-time</span></code></p></td>
 <td><p>Include the time-remaining column in the history.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--users-file</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--separate-instances</span></code></p></td>
+<td><p>One report and one ODS row per running project instance instead of one per student.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--users-file</span> <span class="pre">&lt;file&gt;</span></code></p></td>
 <td><p>User list <code class="docutils literal notranslate"><span class="pre">LOGIN</span> <span class="pre">NAME</span> <span class="pre">EMAIL</span></code> (whitespace/CSV; <code class="docutils literal notranslate"><span class="pre">#</span></code> comments; &lt;3-field lines skipped).</p></td>
 </tr>
 </tbody>
@@ -984,7 +1005,7 @@
 <li><a class="reference internal" href="#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
 <li><a class="reference internal" href="#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
-<li><a class="reference internal" href="#sre-watch-timeout-sec-interval-sec-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
+<li><a class="reference internal" href="#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
 </ul>
@@ -999,8 +1020,8 @@
 <li><a class="reference internal" href="#sre-cat-options-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span> <span class="pre">[options]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-check-eval-s-srelab-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span> <span class="pre">[-s</span> <span class="pre">&lt;srelab&gt;]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-re-eval-s-srelab-p-prefix-d-outdir-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span> <span class="pre">-s</span> <span class="pre">&lt;srelab&gt;</span> <span class="pre">-p</span> <span class="pre">&lt;prefix&gt;</span> <span class="pre">[-d</span> <span class="pre">&lt;outdir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
-<li><a class="reference internal" href="#sre-sheet-o-output-ods-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
-<li><a class="reference internal" href="#sre-outline-o-summary-ods-d-pdf-dir-r-lang-lang-no-timeline-remaining-time-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li><a class="reference internal" href="#sre-sheet-o-output-ods-r-s-time-f-time-separate-instances-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--separate-instances]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li><a class="reference internal" href="#sre-outline-o-summary-ods-d-pdf-dir-r-s-time-f-time-lang-lang-no-timeline-remaining-time-separate-instances-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--separate-instances]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>

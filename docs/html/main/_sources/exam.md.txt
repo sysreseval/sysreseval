@@ -99,6 +99,13 @@ Once each student machine mirrors its archives into a shared directory subtree o
   produce errors; if a command is legitimately allowed to fail, pass `allow_error=True` to `Grade.cmd()`
   so the failure is not reported.
 
+The dashboard shows **one row per running project instance** (hostname, lab and start time), so a student
+who opened the same lab twice gets two rows, each with its own grade and alerts, instead of one row whose
+grade jumps between the two. A lab that was stopped and started again also keeps its old row, with an
+inactivity alert, until you dismiss it (`P` key) or hide it (`S` key). To see a single row per student
+and lab, the most recently started instance, run `sre watch -L <directory>` or press `L` in the dashboard.
+See [CLI Reference](cli.md) for the other options and keys.
+
 ---
 
 ### Clean up after an exam
@@ -204,6 +211,11 @@ Useful options:
 - `--remaining-time` — include each student's remaining exam time (from `exam_time_remaining` in the archive) in the summary.
 - `--no-timeline` - omit the evaluation history table from PDF reports
 - `--no-parts` - do not group PDF grade rows by GradePart (flat list, no subtotals)
+- `--separate-instances` - one PDF report and one ODS row per running project instance instead of one per
+  student. By default a student who opened the same lab several times gets a single report: the best grade
+  is taken across all instances and the evaluation history shows one table per instance, headed by its start
+  time. With this option each instance gets its own report (the PDF name ends with the instance start
+  timestamp) and its own row in the summary, with a `project_start` column.
 
 ### Export to a spreadsheet
 
@@ -212,6 +224,11 @@ To get a full sheet of all grades elements of all evaluations with per-question 
 ```bash
 sre sheet -o /tmp/exam-results.ods -r /var/lib/sre/archives/
 ```
+
+Each archive is one row of the lab's sheet, with a `project_start` column identifying the running project
+instance it comes from; rows are sorted by login, hostname, project start and evaluation date. The
+`Sessions` sheet keeps the best score per student; add `--separate-instances` to get one line per running
+project instance instead, for a student who opened the same lab several times.
 
 
 
