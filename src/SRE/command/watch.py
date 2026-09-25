@@ -99,6 +99,16 @@ def _ansi_clip(s: str, n: int) -> str:
     return ''.join(out)
 
 
+def _print_frame(lines: Iterable[str], term_cols: int) -> None:
+    """Clear the screen and print *lines* from its top-left corner, each
+    clipped to *term_cols* so none wraps onto a second row, and with no
+    newline after the last one: a terminal that receives as many newlines
+    as it has rows scrolls up by one and loses its first line (the cursor
+    row, right after the dashboard has scrolled up to it)."""
+    print('\033[2J\033[H' + '\n'.join(_ansi_clip(line, term_cols) for line in lines),
+          end='', flush=True)
+
+
 _CACHE: dict[str, tuple[float, dict]] = {}
 
 # Archive filenames are ``{YYYYmmddHHMMSS}_{running_lab_name}.zst`` (see
@@ -211,7 +221,9 @@ def _parse_archive(path: str) -> Record | None:
         login = answers.get(params.login_keyword, '?')
         rln = raw.get(params.running_lab_name_keyword, '')
         parts = rln.split('@@@')
-        lab_name = parts[1] if len(parts) == 3 else rln
+        # Lab path as given to `sre start` (get_lab_name_from_cli_arg encodes
+        # its '/' as '@'); a malformed name is kept as is.
+        lab_name = parts[1].replace('@', '/') if len(parts) == 3 else rln
         instance_start = params.get_start_date_string_from_running_lab_name(rln)
 
         eval_date_str = raw.get(params.eval_date_keyword, '')
@@ -783,11 +795,7 @@ def _show_grades_screen(rec: Record, grade_list: list, grade_parts: list,
             max_scroll = max(0, len(lines) - (term_rows - len(header)))
             scroll = max(0, min(scroll, max_scroll))
 
-            print('\033[2J\033[H', end='')
-            for line in header:
-                print(_ansi_clip(line, term_cols))
-            for line in lines[scroll : scroll + term_rows - len(header)]:
-                print(_ansi_clip(line, term_cols))
+            _print_frame([*header, *lines[scroll : scroll + term_rows - len(header)]], term_cols)
 
             tty.setcbreak(sys.stdin.fileno())
             key = _read_key()
@@ -838,11 +846,7 @@ def _show_errors_screen(rec: Record, error_list: list, old_settings) -> None:
             max_scroll = max(0, len(lines) - (term_rows - len(header)))
             scroll = max(0, min(scroll, max_scroll))
 
-            print('\033[2J\033[H', end='')
-            for line in header:
-                print(line[:term_cols])
-            for line in lines[scroll : scroll + term_rows - len(header)]:
-                print(line[:term_cols])
+            _print_frame([*header, *lines[scroll : scroll + term_rows - len(header)]], term_cols)
 
             tty.setcbreak(sys.stdin.fileno())
             key = _read_key()
@@ -1117,11 +1121,7 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
             max_scroll = max(0, len(lines) - (term_rows - len(hdr)))
             scroll = max(0, min(scroll, max_scroll))
 
-            print('\033[2J\033[H', end='')
-            for line in hdr:
-                print(_ansi_clip(line, term_cols))
-            for line in lines[scroll : scroll + term_rows - len(hdr)]:
-                print(_ansi_clip(line, term_cols))
+            _print_frame([*hdr, *lines[scroll : scroll + term_rows - len(hdr)]], term_cols)
 
             tty.setcbreak(sys.stdin.fileno())
             key = _read_key()
@@ -1184,9 +1184,9 @@ def action_watch():
         alert_cursor = _clamp(alert_cursor, visible_alerts)
 
         try:
-            term_rows = os.get_terminal_size().lines
+            term_rows, term_cols = os.get_terminal_size().lines, os.get_terminal_size().columns
         except OSError:
-            term_rows = 9999
+            term_rows, term_cols = 9999, 9999
 
         # Scroll to keep the cursor row visible.
         if cursor_line < scroll_offset:
@@ -1196,9 +1196,7 @@ def action_watch():
         # Clamp so we don't scroll past the end.
         scroll_offset = max(0, min(scroll_offset, max(0, len(buf) - term_rows)))
 
-        print('\033[2J\033[H', end='')
-        for line in buf[scroll_offset : scroll_offset + term_rows]:
-            print(line)
+        _print_frame(buf[scroll_offset : scroll_offset + term_rows], term_cols)
 
     try:
         while True:

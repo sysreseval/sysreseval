@@ -437,11 +437,12 @@ class TestRenderSelectableRows:
 # Archive scanning: _group_archives_by_instance / _scan
 # ---------------------------------------------------------------------------
 
-_LAB = LAB
+_LAB = LAB                       # 'lab@x.py' in running_lab_name ...
+_LAB_SHOWN = LAB.replace('@', '/')   # ... shown as the lab path, 'lab/x.py'
 _BASE_MTIME = 1_747_400_000.0
 
 
-def _key(host: str, start_ts: str = _START, lab: str = _LAB) -> tuple:
+def _key(host: str, start_ts: str = _START, lab: str = _LAB_SHOWN) -> tuple:
     """Record.key of the instance started at *start_ts* on *host*."""
     return (host, lab, start_ts)
 
@@ -591,7 +592,7 @@ class TestScan:
             _write_archive(tmp_path / _archive_name(rln, f'2026051610{10 + j:02d}00'),
                            hostname='h1', login='alice', running_lab_name=rln,
                            grade=grade, mtime=_BASE_MTIME + j * 60)
-            expected[('h1', _LAB, rln.split('@@@')[0])] = grade
+            expected[('h1', _LAB_SHOWN, rln.split('@@@')[0])] = grade
             best, errors = _scan([str(tmp_path)])
             assert errors == []
             assert {k: r.grade for k, r in best.items()} == expected
@@ -669,6 +670,7 @@ class TestScan:
         # Identity comes from the archive content, not from the filename.
         assert best[_key('h1')].running_lab_name == rln
         assert best[_key('h1')].instance_start == _START
+        assert best[_key('h1')].lab_name == 'lab/x.py'   # '@' decoded back to '/'
 
     def test_missing_directory_reported(self, tmp_path):
         missing = tmp_path / 'nope'
@@ -1158,3 +1160,44 @@ class TestActionWatchOnlyLastInstances:
         assert _row_hostnames(out) == ['host1']
         assert '7/10' in out and '3/10' not in out
         assert 'hidden' not in out
+
+
+# ---------------------------------------------------------------------------
+# Dashboard frame: exactly the terminal height, no wrapping, no trailing newline
+# ---------------------------------------------------------------------------
+
+class TestDashboardFrame:
+    @pytest.fixture
+    def frame(self, tmp_path, monkeypatch, capsys):
+        """Render one refresh of three projects on a 40x6 terminal and return
+        the printed frame (what follows the clear-screen sequence)."""
+        from SRE import params
+        _populate(tmp_path, n_instances=3, n_files=1)
+
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+        monkeypatch.setattr(watch.time, 'sleep', interrupt)
+        monkeypatch.setattr(watch.sys, 'stdin', types.SimpleNamespace(isatty=lambda: False))
+        # watch.os is the os module itself: accept pytest's own fd argument too.
+        monkeypatch.setattr(watch.os, 'get_terminal_size', lambda *_fd: os.terminal_size((40, 6)))
+        args = params.SRE.args
+        args.dirs = [str(tmp_path)]
+        args.timeout = 90
+        args.interval = 1
+        args.hostname_filter = ''
+        args.starting_time = ''
+        args.only_last_instances = False
+        watch.action_watch()
+        out = capsys.readouterr().out
+        assert out.endswith('\nStopped.\n')
+        return out.split('\033[2J\033[H')[1].removesuffix('\nStopped.\n')
+
+    def test_exactly_term_rows_lines_and_no_trailing_newline(self, frame):
+        """As many newlines as the terminal has rows would scroll it by one
+        and push the first line (the cursor row after scrolling up) away."""
+        assert frame.count('\n') == 5
+        assert not frame.endswith('\n')
+
+    def test_lines_clipped_to_terminal_width(self, frame):
+        assert all(len(watch._ANSI_RE.sub('', line)) <= 40 for line in frame.split('\n'))
+        assert frame.split('\n')[0].startswith('=== SRE Watch')

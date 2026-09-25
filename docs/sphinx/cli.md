@@ -89,7 +89,7 @@ One row per **running project instance** on a host: hostname + lab + the start t
 | Column | Source |
 |--------|--------|
 | HOSTNAME / LOGIN | `answers["hostname"]` / `answers["login"]` |
-| LAB NAME | Middle segment of `running_lab_name` |
+| LAB NAME | Middle segment of `running_lab_name`, its `@` decoded back to `/` (the lab path given to `sre start`) |
 | STARTED | First segment of `running_lab_name` (instance start; time only when today) |
 | GRADE | `total_grade / total_max` |
 | ERR | Length of `errors` |
