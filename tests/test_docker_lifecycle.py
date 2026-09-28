@@ -77,6 +77,9 @@ class Grade(Grade0):
         self.add_grade_element(title='dummy', grade=0, max_grade=1)
 '''
 
+KEYED_LAB = NON_PRIVILEGED_LAB.replace(
+    'allow_save_restore = True', 'allow_save_restore = True\nsave_key = "docker-tests-key"')
+
 PRIVILEGED_LAB = '''
 from dataclasses import dataclass
 from SRE.lib_sre import Data0, NetScheme0, Grade0
@@ -136,6 +139,7 @@ def labs_dir():
     d.chmod(0o755)
     (d / 'non_privileged.py').write_text(NON_PRIVILEGED_LAB)
     (d / 'privileged.py').write_text(PRIVILEGED_LAB)
+    (d / 'keyed.py').write_text(KEYED_LAB)
     for f in d.iterdir():
         f.chmod(0o644)
     yield d
@@ -281,4 +285,44 @@ class TestSaveRestore:
             assert r.returncode == 0, r.stderr
             assert _containers(docker_client, h) == [], f"containers of {name} left after sre stop"
             assert _networks(docker_client, h) == []
+            assert not (PROJECTS / name).exists()
+
+    def test_encrypted_round_trip(self, docker_client, labs_dir, projects, tmp_path):
+        pytest.importorskip('cryptography')
+        lab_file = labs_dir / 'keyed.py'
+        running_lab_name, lab_hash = _start(projects, lab_file)
+
+        save_file = tmp_path / 'keyed.sre'
+        r = _sre('save', running_lab_name, '-o', str(save_file))
+        assert r.returncode == 0, r.stderr
+        magic, header, payload = save_file.read_bytes().split(b'\n', 2)
+        assert magic + b'\n' == params.save_file_magic
+        assert json.loads(header)[params.save_meta_encrypted] is True
+        assert b'data.json' not in payload, "encrypted payload must not expose tar member names"
+
+        before = _project_dirs()
+        r = _sre('restore', str(save_file))
+        assert r.returncode == 0, r.stderr[-3000:]
+        restored = (_project_dirs() - before).pop()
+        restored_hash = _lab_hash(restored)
+        projects.append((restored, restored_hash))
+        assert {c.labels['name'] for c in _containers(docker_client, restored_hash)} == {'router', 'client'}
+        r = _sre('exec', restored, 'router', 'sh', '-c', 'cat /root/from_initial /root/save_hook /root/restore_hook')
+        assert r.returncode == 0 and 'from-initial' in r.stdout and 'saved' in r.stdout and 'restored' in r.stdout, \
+            (r.stdout, r.stderr)
+
+        # a lab whose key changed cannot restore the file any more
+        lab_file.write_text(KEYED_LAB.replace('docker-tests-key', 'another-key'))
+        try:
+            before = _project_dirs()
+            r = _sre('restore', str(save_file))
+            assert r.returncode != 0 and 'cannot decrypt' in r.stderr, (r.returncode, r.stderr[-500:])
+            assert _project_dirs() == before
+        finally:
+            lab_file.write_text(KEYED_LAB)
+
+        for name, h in ((restored, restored_hash), (running_lab_name, lab_hash)):
+            r = _sre('stop', name)
+            assert r.returncode == 0, r.stderr
+            assert _containers(docker_client, h) == []
             assert not (PROJECTS / name).exists()

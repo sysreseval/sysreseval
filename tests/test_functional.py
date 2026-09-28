@@ -660,19 +660,51 @@ class TestSaveRestore:
             do_action_restore(f)
         assert _project_dirs() == sorted([rln, new_rln])
 
-    def test_cleartext_file_refused_in_user_mode_when_lab_has_key(self, save_restore_env, tmp_path,
-                                                                  monkeypatch, mock_sre_args):
-        lab = _lab_copy(tmp_path, 'keyed2.py', lambda t: t)
-        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+    def _keyed_lab_in_lab_dir(self, tmp_lab_dir, monkeypatch, key):
+        """A lab inside params.lab_dir (so that user-mode restore reaches the key checks)."""
+        lab = tmp_lab_dir / 'keyed' / 'lab.py'
+        lab.parent.mkdir()
+        lab.write_text(_LAB_PATH.read_text() + (f'\nsave_key = "{key}"\n' if key else ''))
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_lab_dir)])
         do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
         (rln,) = _project_dirs()
+        return lab, rln
+
+    def test_cleartext_file_for_keyed_lab_accepted_by_privileged_with_warning(self, save_restore_env, tmp_lab_dir,
+                                                                             tmp_path, monkeypatch, capsys):
+        lab, rln = self._keyed_lab_in_lab_dir(tmp_lab_dir, monkeypatch, key=None)
         out = tmp_path / 'p.sre'
         do_action_save(rln, output=str(out))            # cleartext (no key yet)
         lab.write_text(lab.read_text() + '\nsave_key = "s3cret"\n')
-        # privileged: accepted with a warning
         with open(out, 'rb') as f:
             do_action_restore(f)
         assert len(_project_dirs()) == 2
+        assert 'warning: restoring a cleartext save file' in capsys.readouterr().err
+
+    def test_cleartext_file_for_keyed_lab_refused_in_user_mode(self, save_restore_env, tmp_lab_dir, tmp_path,
+                                                               monkeypatch, mock_sre_args, capsys):
+        lab, rln = self._keyed_lab_in_lab_dir(tmp_lab_dir, monkeypatch, key=None)
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))            # cleartext (no key yet)
+        lab.write_text(lab.read_text() + '\nsave_key = "s3cret"\n')
+        mock_sre_args.user = True
+        with open(out, 'rb') as f, pytest.raises(SystemExit):
+            do_action_restore(f)
+        assert 'only accepts encrypted save files' in capsys.readouterr().err
+        assert _project_dirs() == [rln]
+
+    def test_encrypted_file_refused_when_lab_has_no_key(self, save_restore_env, tmp_lab_dir, tmp_path,
+                                                         monkeypatch, capsys):
+        pytest.importorskip('cryptography')
+        monkeypatch.setattr(params, 'save_kdf_iterations', 1000)
+        lab, rln = self._keyed_lab_in_lab_dir(tmp_lab_dir, monkeypatch, key='s3cret')
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))            # encrypted
+        lab.write_text(lab.read_text().replace('save_key = "s3cret"', ''))
+        with open(out, 'rb') as f, pytest.raises(SystemExit):
+            do_action_restore(f)
+        assert 'encrypted but the lab defines no save_key' in capsys.readouterr().err
+        assert _project_dirs() == [rln]
 
     def test_lifecycle_states_not_listed_in_debug_info(self, started_lab):
         info = json.loads((Path(params.sre_projects_dir) / started_lab / 'info.json').read_text())
