@@ -15,6 +15,12 @@ One instance per user. A PID file at `/tmp/sysreseval-{uid}.pid` kills any prior
 
 During an exam, **Open Project** is disabled — only pre-authorised exam labs open automatically.
 
+## Saving and restoring a project
+
+**File → Save Project** appears only when the current project's lab sets `allow_save_restore = True`. A file dialog asks where to write the `.sre` save file (default `~/<lab>.sre`); the GUI then runs `sre-wrapper save <project>` with its stdout redirected to that file, showing a progress dialog. The file contains the filesystem of every machine (as a diff against its base image) and the project files; it is encrypted when the lab defines `save_key`.
+
+**File → Restore Project** (always available outside exam mode) asks for a `.sre` file and runs `sre-wrapper restore -` with the file on stdin, showing the same image-pull / machine-start progress as **Open Project**. The saved project comes back as a **new** tab (new instance); the original one, if still open, is untouched. Only files are restored — the lab's `restore` state relaunches its services.
+
 ## Project tabs
 
 | Tab | Content |
@@ -32,7 +38,7 @@ During an exam, **Open Project** is disabled — only pre-authorised exam labs o
 
 ## Exam mode
 
-When `/var/lib/sre/exam.json` exists, the GUI switches modes: File → Open / Close / Close All are disabled, and answers re-save with an updated `exam_time_remaining` on every exam-config change.
+When `/var/lib/sre/exam.json` exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All are disabled, and answers re-save with an updated `exam_time_remaining` on every exam-config change.
 
 | Phase | Trigger | Shows / actions |
 |-------|---------|----------------|

@@ -11,7 +11,11 @@ Kathara and Docker are not needed: Grade0.run_tests_on_machine is patched to
 return predetermined exetests-format output, and the Kathara manager is the
 MagicMock stub already installed by conftest.py.
 """
+import io
 import json
+import shutil
+import stat
+import tarfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -24,6 +28,9 @@ from SRE.lib_sre import Grade0
 from SRE.command.start import do_action_start
 from SRE.command.eval import do_eval
 from SRE.command.stop import action_stop
+from SRE.command.save import do_action_save, action_save
+from SRE.command.restore import do_action_restore, action_restore
+from SRE import save_archive
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +138,17 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_eval_cmd,  'set_sudo_uid_for_username',              noop_u)
     monkeypatch.setattr(_stop_cmd,  'drop_privileges_permanently',            noop)
     monkeypatch.setattr(_stop_cmd,  'gain_privileges',                        noop)
+    import SRE.command.save    as _save_cmd
+    import SRE.command.restore as _restore_cmd
+    monkeypatch.setattr(_save_cmd,    'gain_privileges',                          noop)
+    monkeypatch.setattr(_save_cmd,    'drop_privileges_temporarily',              noop)
+    monkeypatch.setattr(_save_cmd,    'set_sudo_uid_for_username',                noop_u)
+    monkeypatch.setattr(_restore_cmd, 'drop_privileges_permanently_if_not_needed', noop_ns)
+    monkeypatch.setattr(_restore_cmd, 'drop_privileges_temporarily',              noop)
+    monkeypatch.setattr(_restore_cmd, 'gain_privileges',                          noop)
+    monkeypatch.setattr(_restore_cmd, 'gain_privileges_if_needed',                noop_ns)
+    monkeypatch.setattr(_restore_cmd, 'set_sudo_uid_for_username',                noop_u)
+    monkeypatch.setattr(params, 'save_tmp_dir', str(pub / 'tmp'))
 
     # Set SRE.args attributes that do_action_start reads (MagicMock auto-attributes
     # are truthy, so we must explicitly set optional ones to None/False)
@@ -140,6 +158,8 @@ def functional_env(tmp_path, monkeypatch):
     args.data = None
     args.flavor_json = None
     args.flavor = None
+    args.output = None
+    args.full_images = False
 
     # Import Lab and Kathara from lib_sre's own namespace so we patch the
     # exact mock objects that lib_sre uses — independent of test ordering.
@@ -149,6 +169,13 @@ def functional_env(tmp_path, monkeypatch):
     _lib_sre.Lab.return_value.hash = "fake-lab-hash-1234"
 
     kathara_instance = _lib_sre.Kathara.get_instance()
+    # save.py / restore.py / start.py import Kathara themselves; make them use the same mock
+    monkeypatch.setattr(_save_cmd,    'Kathara', _lib_sre.Kathara)
+    monkeypatch.setattr(_restore_cmd, 'Kathara', _lib_sre.Kathara)
+    monkeypatch.setattr(_start_cmd,   'Kathara', _lib_sre.Kathara)
+    kathara_instance.save_lab.reset_mock(side_effect=True)
+    kathara_instance.restore_lab.reset_mock(side_effect=True)
+    kathara_instance.undeploy_lab.reset_mock()
 
     # get_machine_stats returns an iterator; returning an empty one means
     # next(..., None) yields None, so machine status is set to "" in info.json
@@ -405,3 +432,220 @@ class Grade:
         projects_dir = Path(params.sre_projects_dir)
         remaining = list(projects_dir.iterdir()) if projects_dir.exists() else []
         assert remaining == [], "No project directory should remain after failed start"
+
+
+# ---------------------------------------------------------------------------
+# Tests: save / restore
+# ---------------------------------------------------------------------------
+
+def _write_fake_kathara_tar(archive_path, **_kwargs):
+    """Stand-in for Kathara.save_lab(): write a minimal save archive with a manifest."""
+    manifest = {"save_mode": "diff", "machines": [
+        {"name": "router", "meta": {"image": "kathara_save_h:router"}},
+        {"name": "client", "meta": {"image": "kathara_save_h:client"}},
+    ]}
+    with tarfile.open(archive_path, 'w') as tar:
+        payload = json.dumps(manifest).encode()
+        info = tarfile.TarInfo('manifest.json')
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+
+
+@pytest.fixture
+def save_restore_env(functional_env):
+    from SRE import lib_sre as _lib_sre
+    kathara_instance = _lib_sre.Kathara.get_instance()
+    kathara_instance.save_lab.side_effect = _write_fake_kathara_tar
+    kathara_instance.restore_lab.side_effect = lambda archive_path, lab=None, **kw: lab
+    return functional_env
+
+
+def _project_dirs():
+    return sorted(p.name for p in Path(params.sre_projects_dir).iterdir() if '@@@' in p.name)
+
+
+def _data_value(running_lab_name):
+    return json.loads((Path(params.sre_projects_dir) / running_lab_name / '.private' / 'data.json').read_text())
+
+
+def _lab_copy(tmp_path, name, transform):
+    """Copy the fixture lab under tmp_path (which functional_env must authorize) after transforming its text."""
+    text = transform(_LAB_PATH.read_text())
+    dst = tmp_path / 'labs' / name
+    dst.parent.mkdir(exist_ok=True)
+    dst.write_text(text)
+    return dst
+
+
+class TestSaveRestore:
+
+    def test_save_to_file_layout(self, save_restore_env, started_lab, tmp_path):
+        proj = Path(params.sre_projects_dir) / started_lab
+        (proj / 'answers' / 'answers.json').write_text('{"q1": "42"}')
+        user_public = (proj / '.private' / 'user_public_dir').resolve()
+        (user_public / 'hello.txt').write_text('shared file')
+        (proj / '.private' / 'files' / 'host.txt').write_text('host file')
+
+        out = tmp_path / 'p.sre'
+        do_action_save(started_lab, output=str(out))
+
+        with open(out, 'rb') as f:
+            meta, _ = save_archive.read_header(f)
+            dest = tmp_path / 'extracted'
+            dest.mkdir()
+            save_archive.extract_payload(f, str(dest))
+        assert meta.lab_name == params.get_lab_name_from_running_lab_name(started_lab)
+        assert meta.running_lab_name == started_lab
+        assert meta.username == 'testuser'
+        assert meta.encrypted is False and meta.full_images is False
+        assert meta.srelab_file == str(_LAB_PATH.resolve())
+        assert json.loads((dest / 'data.json').read_text())['data']['value'] == 42
+        assert tarfile.is_tarfile(dest / 'kathara.tar')
+        assert (dest / 'answers' / 'answers.json').read_text() == '{"q1": "42"}'
+        assert (dest / 'user_public' / 'hello.txt').read_text() == 'shared file'
+        assert (dest / 'files' / 'host.txt').read_text() == 'host file'
+        assert not (dest / 'mnt').exists()
+
+    def test_save_lab_called_with_hash_and_diff_mode(self, save_restore_env, started_lab, tmp_path):
+        from SRE import lib_sre as _lib_sre
+        do_action_save(started_lab, out_fileobj=io.BytesIO())
+        kwargs = _lib_sre.Kathara.get_instance().save_lab.call_args.kwargs
+        assert kwargs['lab_hash'] == 'fake-lab-hash-1234'
+        assert kwargs['filesystem_diff'] is True
+
+    def test_save_to_stream_and_save_state_applied(self, save_restore_env, started_lab, monkeypatch):
+        import SRE.command.save as _save_cmd
+        states = []
+        monkeypatch.setattr(_save_cmd, 'do_action_state',
+                            lambda lab, state, net_scheme, project_has_directory: states.append(state))
+        buf = io.BytesIO()
+        do_action_save(started_lab, out_fileobj=buf)
+        assert buf.getvalue().startswith(params.save_file_magic)
+        assert states == [params.save_state_name]
+
+    def test_save_refused_without_flag(self, save_restore_env, tmp_path, monkeypatch):
+        lab = _lab_copy(tmp_path, 'noflag.py', lambda t: t.replace('allow_save_restore = True', ''))
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+        do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        with pytest.raises(SystemExit):
+            do_action_save(rln, out_fileobj=io.BytesIO())
+
+    def test_user_mode_refusals(self, save_restore_env, started_lab, mock_sre_args, monkeypatch):
+        mock_sre_args.user = True
+        mock_sre_args.running_lab = started_lab
+        mock_sre_args.output = '/tmp/x.sre'
+        with pytest.raises(SystemExit):
+            action_save()
+        mock_sre_args.output = None
+        mock_sre_args.full_images = True
+        with pytest.raises(SystemExit):
+            action_save()
+        mock_sre_args.full_images = False
+        monkeypatch.setattr(params.SRE, 'username', 'someone_else')
+        with pytest.raises(SystemExit):        # another student's project
+            action_save()
+        mock_sre_args.save_file = '/tmp/x.sre'
+        with pytest.raises(SystemExit):        # restore must read stdin in user mode
+            action_restore()
+
+    def test_restore_creates_new_project(self, save_restore_env, started_lab, tmp_path, monkeypatch):
+        from SRE import lib_sre as _lib_sre
+        import SRE.command.start as _start_cmd
+        proj = Path(params.sre_projects_dir) / started_lab
+        (proj / 'answers' / 'answers.json').write_text('{"q1": "42"}')
+        out = tmp_path / 'p.sre'
+        do_action_save(started_lab, output=str(out))
+
+        states = []
+        real = _start_cmd.do_action_state
+        monkeypatch.setattr(_start_cmd, 'do_action_state',
+                            lambda **kw: (states.append(kw['state']), real(**kw)))
+        with open(out, 'rb') as f:
+            new_rln = do_action_restore(f)
+
+        assert new_rln != started_lab
+        assert _project_dirs() == sorted([started_lab, new_rln])
+        assert params.get_username_from_running_lab_name(new_rln) == 'testuser'
+        assert _data_value(new_rln) == _data_value(started_lab)
+        new_proj = Path(params.sre_projects_dir) / new_rln
+        answers = new_proj / 'answers' / 'answers.json'
+        assert answers.read_text() == '{"q1": "42"}'
+        assert stat.S_IMODE(answers.stat().st_mode) == 0o666
+        assert stat.S_IMODE((new_proj / 'answers').stat().st_mode) == 0o777
+        info = json.loads((new_proj / 'info.json').read_text())
+        assert info['allow_save_restore'] is True
+        assert (new_proj / '.private' / 'srelab').resolve() == _LAB_PATH.resolve()
+        assert (new_proj / '.private' / 'user_public_dir').resolve().is_dir()
+        call = _lib_sre.Kathara.get_instance().restore_lab.call_args
+        assert call.args[0].endswith(params.save_kathara_name)
+        assert call.kwargs['lab'] is not None
+        assert states == [params.restore_state_name]
+
+    def test_restore_rollback_on_failure(self, save_restore_env, started_lab, tmp_path):
+        from SRE import lib_sre as _lib_sre
+        out = tmp_path / 'p.sre'
+        do_action_save(started_lab, output=str(out))
+        kathara_instance = _lib_sre.Kathara.get_instance()
+        kathara_instance.restore_lab.side_effect = RuntimeError('boom')
+        home_before = sorted(p.name for p in Path(params.sre_user_public_dir).iterdir())
+        with open(out, 'rb') as f, pytest.raises(RuntimeError):
+            do_action_restore(f)
+        assert _project_dirs() == [started_lab]
+        assert sorted(p.name for p in Path(params.sre_user_public_dir).iterdir()) == home_before
+        kathara_instance.undeploy_lab.assert_called_once()
+
+    def test_restore_absolute_path_lab_refused_in_user_mode(self, save_restore_env, started_lab,
+                                                            tmp_path, mock_sre_args):
+        out = tmp_path / 'p.sre'
+        do_action_save(started_lab, output=str(out))
+        mock_sre_args.user = True
+        with open(out, 'rb') as f, pytest.raises(SystemExit):
+            do_action_restore(f)
+        assert _project_dirs() == [started_lab]
+
+    def test_encrypted_roundtrip(self, save_restore_env, tmp_path, monkeypatch):
+        pytest.importorskip('cryptography')
+        monkeypatch.setattr(params, 'save_kdf_iterations', 1000)
+        lab = _lab_copy(tmp_path, 'keyed.py', lambda t: t + '\nsave_key = "s3cret"\n')
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+        do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))
+
+        blob = out.read_bytes()
+        with open(out, 'rb') as f:
+            meta, _ = save_archive.read_header(f)
+        assert meta.encrypted is True and meta.kdf_salt
+        assert b'data.json' not in blob.split(b'\n', 2)[2]
+
+        with open(out, 'rb') as f:
+            new_rln = do_action_restore(f)
+        assert _project_dirs() == sorted([rln, new_rln])
+        assert _data_value(new_rln) == _data_value(rln)
+
+        # the lab's key changed → the file cannot be restored any more
+        lab.write_text(lab.read_text().replace('"s3cret"', '"other"'))
+        with open(out, 'rb') as f, pytest.raises(SystemExit):
+            do_action_restore(f)
+        assert _project_dirs() == sorted([rln, new_rln])
+
+    def test_cleartext_file_refused_in_user_mode_when_lab_has_key(self, save_restore_env, tmp_path,
+                                                                  monkeypatch, mock_sre_args):
+        lab = _lab_copy(tmp_path, 'keyed2.py', lambda t: t)
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+        do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))            # cleartext (no key yet)
+        lab.write_text(lab.read_text() + '\nsave_key = "s3cret"\n')
+        # privileged: accepted with a warning
+        with open(out, 'rb') as f:
+            do_action_restore(f)
+        assert len(_project_dirs()) == 2
+
+    def test_lifecycle_states_not_listed_in_debug_info(self, started_lab):
+        info = json.loads((Path(params.sre_projects_dir) / started_lab / 'info.json').read_text())
+        assert not set(params.lifecycle_state_names) & set(info['admin_only_states'])
+        assert not set(params.lifecycle_state_names) & set(info['user_allowed_states'])

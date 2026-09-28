@@ -1028,3 +1028,33 @@ class TestDebugOpLogging:
         s = CmdScheme(MockData())
         list(s.iter_state_steps('multi'))
         assert capsys.readouterr().err == ''
+
+
+class TestLifecycleStates:
+    """`save` / `restore` are lifecycle states of NetScheme0 (like `initial`), empty by default."""
+
+    def test_present_on_base_class(self):
+        for state in params.lifecycle_state_names:
+            assert state in NetScheme0.get_state_methods()
+        assert params.lifecycle_state_names == ('initial', 'save', 'restore')
+
+    def test_never_user_allowed_nor_multi_pass(self):
+        for state in ('save', 'restore'):
+            assert NetScheme0.is_state_user_allowed(state) is False
+            assert NetScheme0.is_state_multi_pass(state) is False
+        assert not set(params.lifecycle_state_names) & set(CmdScheme.get_user_allowed_states())
+
+    def test_default_states_register_no_ops(self):
+        s = CmdScheme(MockData())
+        assert list(s.iter_state_steps('save')) == []
+        assert list(s.iter_state_steps('restore')) == []
+
+    def test_lab_override_keeps_base_flags(self):
+        class S(CmdScheme):
+            def restore(self):
+                self.cmd('m1', 'service ssh start')
+
+        assert S.is_state_user_allowed('restore') is False
+        steps = list(S(MockData()).iter_state_steps('restore'))
+        assert [st for st, _, _ in steps] == [1]
+        assert list(steps[0][1]) == ['m1']

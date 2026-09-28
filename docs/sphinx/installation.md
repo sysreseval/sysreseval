@@ -318,7 +318,8 @@ Installed by `make venv`:
 
 | Package | Purpose |
 |---------|---------|
-| `kathara` | Docker lab orchestration |
+| `kathara` | Docker lab orchestration — installed from the fork `emotchane/Kathara`, branch `feature/save-restore-lab` (adds `save_lab()` / `restore_lab()` used by `sre save` / `sre restore`); `git` must be available when running `make venv` |
+| `cryptography` | AES-GCM encryption of save files for labs that define `save_key` |
 | `pyside6` | Qt6 GUI |
 | `msgpack` | Efficient binary serialization |
 | `zstandard` | Archive compression |

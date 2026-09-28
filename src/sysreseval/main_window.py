@@ -10,7 +10,7 @@ from PySide6.QtCore import QByteArray, QEvent, QTimer, QRectF, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QFont, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QDialogButtonBox, QListWidget, QListWidgetItem,
+    QApplication, QDialog, QDialogButtonBox, QFileDialog, QListWidget, QListWidgetItem,
     QMainWindow, QTabWidget, QToolButton, QWidget, QMessageBox,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QSizePolicy,
     QSpacerItem,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from sysreseval.open_project_dialog import OpenProjectDialog
 from sysreseval.project_widget import ProjectWidget
 from sysreseval.util import load_projects, log_wrapper_cmd
+from sysreseval.wrapper_progress_dialog import SaveProjectDialog, RestoreProjectDialog
 from sysreseval import util, settings
 from SRE import params
 from SRE.common import TranslatedText
@@ -307,6 +308,15 @@ class MainWindow(QMainWindow):
         self._open_action.triggered.connect(self._open_new_project)
         file_menu.addAction(self._open_action)
 
+        self._restore_action = QAction(self.tr("Restore Project"), self)
+        self._restore_action.triggered.connect(self._restore_project)
+        file_menu.addAction(self._restore_action)
+
+        self._save_action = QAction(self.tr("Save Project"), self)
+        self._save_action.setVisible(False)
+        self._save_action.triggered.connect(self._save_project)
+        file_menu.addAction(self._save_action)
+
         self._close_action = QAction(self.tr("Close Project"), self)
         self._close_action.setShortcut(QKeySequence("Ctrl+W"))
         self._close_action.setEnabled(False)
@@ -443,14 +453,21 @@ class MainWindow(QMainWindow):
                                 self.tr("Project exported to ") + str(zip_path))
 
     def _update_menu_state(self):
+        self._refresh_file_menu_actions(self._exam_data is not None)
+
+    def _refresh_file_menu_actions(self, in_exam: bool):
+        """Enable/hide the File menu actions from the current tab and exam state."""
         has_projects = any(
             isinstance(self.tabs.widget(i), ProjectWidget)
             for i in range(self.tabs.count())
         )
         current_widget = self.tabs.currentWidget()
         current_is_project = isinstance(current_widget, ProjectWidget)
-        in_exam = self._exam_data is not None
         self._open_action.setEnabled(not in_exam)
+        self._restore_action.setEnabled(not in_exam)
+        can_save = current_is_project and bool(current_widget.info.get("allow_save_restore", False))
+        self._save_action.setVisible(can_save)
+        self._save_action.setEnabled(can_save and not in_exam)
         self._close_action.setEnabled(not in_exam and current_is_project)
         self._close_all_action.setEnabled(not in_exam and has_projects)
         can_export = (not in_exam and current_is_project and
@@ -500,6 +517,8 @@ class MainWindow(QMainWindow):
     def _retranslate(self):
         self._file_menu.setTitle(self.tr("File"))
         self._open_action.setText(self.tr("Open Project"))
+        self._restore_action.setText(self.tr("Restore Project"))
+        self._save_action.setText(self.tr("Save Project"))
         self._close_action.setText(self.tr("Close Project"))
         self._close_all_action.setText(self.tr("Close All Projects"))
         self._export_action.setText(self.tr("Export Kathara Project"))
@@ -869,18 +888,7 @@ class MainWindow(QMainWindow):
         self._update_stacked_page()
 
     def _set_exam_ui(self, active: bool):
-        has_projects = any(
-            isinstance(self.tabs.widget(i), ProjectWidget)
-            for i in range(self.tabs.count())
-        )
-        current_widget = self.tabs.currentWidget()
-        current_is_project = isinstance(current_widget, ProjectWidget)
-        self._open_action.setEnabled(not active)
-        self._close_action.setEnabled(not active and current_is_project)
-        self._close_all_action.setEnabled(not active and has_projects)
-        can_export = (not active and current_is_project and
-                      current_widget.info.get("export_kathara_project", True))
-        self._export_action.setEnabled(can_export)
+        self._refresh_file_menu_actions(active)
         self.tabs.setTabVisible(self.tabs.indexOf(self._plus_widget), not active)
 
     def _maybe_pre_start(self, exam_data: dict):
@@ -1084,12 +1092,51 @@ class MainWindow(QMainWindow):
         if progress.exec() != StartProgressDialog.DialogCode.Accepted:
             return
 
+        self._add_new_projects()
+
+    def _add_new_projects(self):
+        """Open a tab (and switch to it) for every running project that has no tab yet."""
         existing = {self.tabs.widget(i).project_dir
                     for i in range(self.tabs.count())
                     if isinstance(self.tabs.widget(i), ProjectWidget)}
         for project_dir in load_projects():
             if project_dir not in existing:
                 self.add_project(project_dir)
+
+    def _save_file_filter(self) -> str:
+        return self.tr("SRE save files (*{suffix})").format(suffix=params.save_file_suffix)
+
+    def _save_project(self):
+        widget = self.tabs.currentWidget()
+        if not isinstance(widget, ProjectWidget):
+            return
+
+        running_lab_name = widget.project_dir.name
+        lab_name = params.get_lab_name_from_running_lab_name(running_lab_name)
+        lab_display = lab_name.replace('@', '/').split('/')[-1].removesuffix('.py')
+        default = Path.home() / f"{lab_display}{params.save_file_suffix}"
+
+        path, _ = QFileDialog.getSaveFileName(self, self.tr("Save Project"), str(default),
+                                              self._save_file_filter())
+        if not path:
+            return
+        if not path.endswith(params.save_file_suffix):
+            path += params.save_file_suffix
+
+        dlg = SaveProjectDialog(running_lab_name, path, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            QMessageBox.information(self, self.tr("Save Project"),
+                                    self.tr("Project saved to ") + path)
+
+    def _restore_project(self):
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("Restore Project"), str(Path.home()),
+                                              self._save_file_filter())
+        if not path:
+            return
+
+        dlg = RestoreProjectDialog(path, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._add_new_projects()
 
     def _open_settings(self):
         from sysreseval.settings_dialog import SettingsDialog

@@ -38,6 +38,23 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 
 Undeploys containers and removes the project directory from `/var/lib/sre/projects/`.
 
+### `sre save [-o <file>] [--full-images] <running_lab>`
+
+Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the patched Kathara `save_lab`, as a diff against the base image by default) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save-restore)). Only files are captured, not running processes.
+
+| Option | Description |
+|--------|-------------|
+| `-o` / `--output <file>` | Write the save file here instead of stdout (privileged only). |
+| `--full-images` | Store full committed device images instead of filesystem diffs — self-contained but large (privileged only). |
+
+In user mode (`--user`, i.e. from the GUI) the file is always written to stdout, and the running lab must belong to the caller. When the lab defines `save_key`, the payload is encrypted. See [Save file format](internals.md#save-file-format).
+
+### `sre restore <save_file | ->`
+
+Restores a save file as a **new** running project (fresh timestamp, current user): loads the lab module named in the header (`allow_save_restore` required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored `data.json` (fresh host ports, X11 cookie, volumes, `/shared`), redeploys the containers from the saved filesystems (`Kathara.restore_lab(…, lab=…)`, same `pull`/`deploy` progress events as `start`), refreshes `exetests.py`, applies the lab's `restore` state and writes `info.json`. On failure everything created so far is rolled back.
+
+`-` reads the save file from stdin — the only form accepted in user mode (the GUI opens the file as the student). Labs referenced by an absolute path (`sre start -p`) can only be restored by privileged users. An encrypted file needs a lab with the same `save_key`; a cleartext file for a lab that defines `save_key` is refused in user mode (accepted with a warning otherwise).
+
 ### `sre wipe`
 
 Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/`.

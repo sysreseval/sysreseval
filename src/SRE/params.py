@@ -254,6 +254,35 @@ sysreseval_exam_duration = 'exam_duration'
 sysreseval_exam_mode = 'exam_mode'
 
 initial_state_name = "initial"
+save_state_name = "save"
+restore_state_name = "restore"
+# States applied by the lab lifecycle itself (start / save / restore), never listed as user states
+lifecycle_state_names = (initial_state_name, save_state_name, restore_state_name)
+
+# --- save / restore of running projects (`sre save`, `sre restore`) ---
+save_file_suffix = ".sre"
+save_file_magic = b"SRESAVE1\n"
+save_format_version = 1
+save_stdio_arg = "-"                    # `sre restore -` reads the save file from stdin
+save_tmp_dir = sre_pub_dir + "/tmp"     # not /tmp (may be a small tmpfs): full-image saves can be large
+save_kathara_name = "kathara.tar"       # payload member: the Kathara save archive
+save_user_public_member = "user_public" # payload member: contents of the user public dir (shared/, volumes)
+# keys of the cleartext JSON header line
+save_meta_format_version = "format_version"
+save_meta_sre_version = "sre_version"
+save_meta_running_lab_name = "running_lab_name"
+save_meta_lab_name = "lab_name"
+save_meta_srelab_file = "srelab_file"
+save_meta_username = "username"
+save_meta_saved_at = "saved_at"
+save_meta_debug_project = "debug_project"
+save_meta_full_images = "full_images"
+save_meta_shared_path = "shared_path"
+save_meta_encrypted = "encrypted"
+save_meta_kdf_salt = "kdf_salt"
+save_meta_kdf_iterations = "kdf_iterations"
+save_kdf_iterations = 600_000
+save_cipher_chunk_size = 16 * 1024 * 1024
 
 self_grade_timestamp_dir = sre_pub_dir + "/last_self_grades"
 

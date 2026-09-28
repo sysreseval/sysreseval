@@ -148,6 +148,15 @@ def action_check():
     total_ops = _print_ops(ops)
     _ok(f"initial() produced {total_ops} operation(s) across {len(ops)} machine(s)")
 
+    if getattr(module, 'allow_save_restore', False):
+        for lifecycle_state in (params.save_state_name, params.restore_state_name):
+            try:
+                ops = _run_state_method(net_scheme, lifecycle_state)
+            except Exception:
+                _fail(f"NetScheme.{lifecycle_state}() raised an exception:")
+                raise
+            _ok(f"{lifecycle_state}() produced {_print_ops(ops)} operation(s) (allow_save_restore)")
+
     # ── Step 5 (optional): run extra state ────────────────────────────
     if extra_state:
         print(f"\n[ 5/{total_steps} ] Running NetScheme.{extra_state}() …")

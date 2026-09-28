@@ -1,4 +1,6 @@
 """Tests for common.py: Question/GradeElement/InfoLab serialization."""
+import json
+
 import pytest
 
 from SRE.common import (
@@ -182,3 +184,17 @@ class TestInfoLab:
         lab = _make_info_lab()
         lab2 = InfoLab.from_json(lab.to_json())
         assert lab2.informations.resolve('en') == 'A **test** lab'
+
+    def test_allow_save_restore_default_false(self):
+        lab = _make_info_lab()
+        assert lab.allow_save_restore is False
+        assert InfoLab.from_json(lab.to_json()).allow_save_restore is False
+        # absent from an older info.json → False
+        d = json.loads(lab.to_json())
+        del d['allow_save_restore']
+        assert InfoLab.from_json(json.dumps(d)).allow_save_restore is False
+
+    def test_allow_save_restore_roundtrip(self):
+        lab = _make_info_lab()
+        lab.allow_save_restore = True
+        assert InfoLab.from_json(lab.to_json()).allow_save_restore is True

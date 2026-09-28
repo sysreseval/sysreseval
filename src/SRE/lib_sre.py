@@ -816,6 +816,20 @@ class NetScheme0:
     def initial(self):
         pass
 
+    @sre_state(user_allowed=False)
+    def save(self):
+        """Lifecycle state applied by ``sre save`` just before the container
+        filesystems are captured (e.g. flush a database to disk).  Empty by default."""
+        pass
+
+    @sre_state(user_allowed=False)
+    def restore(self):
+        """Lifecycle state applied by ``sre restore`` on the new instance right after
+        the containers have been redeployed from the saved filesystems.  Only files are
+        restored, not processes: relaunch here the daemons that ``initial()`` started
+        with ``cmd()``.  Empty by default."""
+        pass
+
     @classmethod
     def get_state_methods(cls):
         """Return a sorted list of all ``@sre_state``-decorated method names in this class hierarchy."""
@@ -1944,6 +1958,7 @@ class Grade0:
 
         eval_interval_without_exam_mode = getattr(module_rvlab, 'eval_interval_without_exam_mode', params.default_eval_interval_without_exam_mode)
         eval_before_exit = getattr(module_rvlab, 'eval_before_exit', False)
+        allow_save_restore = getattr(module_rvlab, 'allow_save_restore', False)
 
         informations = TranslatedText.from_value(self.net_scheme.informations, default_language)
         for q in questions:
@@ -1954,6 +1969,8 @@ class Grade0:
         if debug_project:
             user_allowed_states_raw = {}
             for state in net_scheme_cls.get_state_methods():
+                if state in params.lifecycle_state_names:
+                    continue
                 desc = ''
                 for klass in net_scheme_cls.__mro__:
                     fn = klass.__dict__.get(state)
@@ -1988,6 +2005,7 @@ class Grade0:
                        debug_project=debug_project,
                        eval_interval_without_exam_mode=eval_interval_without_exam_mode,
                        eval_before_exit=eval_before_exit,
+                       allow_save_restore=allow_save_restore,
                        default_language=default_language,
                        user_allowed_states=user_allowed_states,
                        admin_only_states=admin_only_states,

@@ -60,6 +60,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 | `/var/lib/sre/archives/` | Default evaluation archive directory                                                                                                                                                                           |
 | `/var/lib/sre/last_self_grades/` | Self-grade cooldown timestamps                                                                                                                                                                                 |
 | `/home/sre/` | Shared directories for projects with `shared_path=True` (mode `0o777`, removed on stop/wipe)                                                                                                                   |
+| `/var/lib/sre/tmp/` | Temporary directories of `sre save` / `sre restore` (`params.save_tmp_dir`; not `/tmp`, which may be a small tmpfs) |
 
 ### Running lab directory
 
@@ -234,3 +235,32 @@ archive = {
 ```
 
 Archives are written by `sre eval`, `eval-all`, `eval-exam`, `end-exam`, `re-eval`, and consumed by `sre cat`, `sheet`, `outline`, `check-eval`, `watch` — see [CLI Reference](cli.md).
+
+## Save file format
+
+`sre save` writes, and `sre restore` reads, a single `.sre` file (`src/SRE/save_archive.py`). The layout is sequential so that `sre restore -` can consume it from stdin:
+
+```
+SRESAVE1\n                       magic (params.save_file_magic)
+{"format_version": 1, …}\n       one-line cleartext JSON header (keys = params.save_meta_*)
+<payload>                        tar stream — encrypted when the lab defines save_key
+```
+
+Header fields: `format_version`, `sre_version`, `lab_name` (the `lab@path` form), `running_lab_name`, `srelab_file`, `username`, `saved_at`, `debug_project`, `full_images`, `shared_path`, `encrypted`, `kdf_salt`, `kdf_iterations`.
+
+Payload members:
+
+| Member | Content |
+|--------|---------|
+| `data.json` | `.private/data.json` of the saved instance |
+| `kathara.tar` | The patched Kathara `save_lab` archive: `manifest.json` (topology, `save_mode`, per-device `original_image`, `deletions`, saved image tag `kathara_save_<hash>:<device>`) and `images/<device>.diff.tar` (filesystem diff, default) or `images/<device>.tar` (full image, `--full-images`) |
+| `answers/` | Student answers and `cheat.json` |
+| `files/` | `.private/files` (host-side files of `cp_to_host()` / `host_cmd()`) |
+| `user_public/` | Contents of the user public dir (`/home/sre/<lab>[_N]/`): `shared/` and the relative-path volume directories |
+| `mnt/` | `.private/mnt` (private volumes), when present |
+
+Not saved: `info.json` (regenerated), `records/`, the eval lock. Kathara's diff excludes `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`, `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/hosthome`, `/shared`, `/hostlab`; bind-mounted directories are covered by `user_public/` and `mnt/` instead.
+
+**Encryption** (`save_key`): the payload tar stream is cut into `params.save_cipher_chunk_size` chunks, each sealed with AES-256-GCM (key = PBKDF2-HMAC-SHA256 of `save_key` with the header's salt). Frame: `[4-byte length][1-byte last flag][12-byte nonce][ciphertext+tag]`; the associated data is `sha256(header) + chunk index + last flag`, so header tampering, reordering and truncation are detected. The `cryptography` package is imported lazily (only needed for encrypted files).
+
+**Restore** (`src/SRE/command/restore.py`): read the header → import the lab module (`allow_save_restore` required, `save_key` checked) → extract the payload into `/var/lib/sre/tmp` with `tarfile.data_filter` → recreate the project directories with the `start.py` helpers (`ProjectSetup`, `create_project_directories`), copy the saved project files back and give them to the student (answers `0o666`, `shared/` and volume dirs `0o777`) → build the Kathara lab from the restored `Data` (`get_new_lab_from_scheme()`: fresh host ports, X11 cookie, volumes, `/shared`) → `Kathara.restore_lab(kathara.tar, lab=…)` (images rebuilt from the base image + diff, deployed with the same `pull`/`deploy` progress events as `start`) → refresh `exetests.py` → `finalize_project` (lifecycle state `restore`, `data.json`, `info.json`). Any failure triggers `rollback_project` (undeploy + directory removal). Restored images (`kathara_save_<hash>:<device>`) are not garbage-collected; `docker image prune` removes the unused ones.

@@ -81,8 +81,7 @@ venv:
 	rm -rf ${ROOT_DIR}/venv
 	python3.13 -m venv ${ROOT_DIR}/venv
 	${ROOT_DIR}/venv/bin/pip install setuptools
-#	${ROOT_DIR}/venv/bin/pip install git+https://github.com/saghul/pyuv@master#egg=pyuv
-	${ROOT_DIR}/venv/bin/pip install kathara
+	${ROOT_DIR}/venv/bin/pip install "kathara @ git+https://github.com/emotchane/Kathara.git@feature/save-restore-lab"
 	${ROOT_DIR}/venv/bin/python3 -c 'import os, pathlib, site; sp = pathlib.Path(site.getsitepackages()[0]); pkg = sp / "pkg_resources"; pkg.mkdir(exist_ok=True); (pkg / "__init__.py").write_text(os.environ["PKG_RESOURCES_STUB"])'
 	${ROOT_DIR}/venv/bin/pip install graphviz
 	${ROOT_DIR}/venv/bin/pip install pyside6
@@ -93,6 +92,7 @@ venv:
 	${ROOT_DIR}/venv/bin/pip install odfpy
 	${ROOT_DIR}/venv/bin/pip install pytest
 	${ROOT_DIR}/venv/bin/pip install netaddr
+	${ROOT_DIR}/venv/bin/pip install cryptography
 
 #	python3 -m pip install pyuv; \
 #   python3 -m pip install graphviz;
@@ -103,6 +103,8 @@ translations:
 		src/sysreseval/open_project_dialog.py \
 		src/sysreseval/project_widget.py \
 		src/sysreseval/start_progress_dialog.py \
+		src/sysreseval/wrapper_progress_dialog.py \
+		src/sysreseval/flavor_form_dialog.py \
 		src/sysreseval/settings_dialog.py \
 		src/sysreseval/view/machines_view.py \
 		src/sysreseval/view/questions_view.py \

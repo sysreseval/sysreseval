@@ -373,6 +373,21 @@ def final(self):
     self.cmd('router', 'iptables -A FORWARD -j ACCEPT')
 ```
 
+### Lifecycle states: `save` / `restore`
+
+`NetScheme0` defines three *lifecycle* states that SRE applies itself: `initial` (at `sre start`), `save` (by `sre save`, just before the container filesystems are captured) and `restore` (by `sre restore`, on the new instance right after the containers have been redeployed from the saved filesystems). `save` and `restore` are empty by default and only matter for labs that set `allow_save_restore = True`.
+
+A save captures **files only**: a restored container starts from its saved filesystem but nothing that `initial()` launched with `cmd()` is running any more. Relaunch those daemons in `restore()`:
+
+```python
+@sre_state()
+def restore(self):
+    self.cmd('server', 'service ssh start')
+    self.cmd('server', 'service isc-dhcp-server start', allow_error=True)
+```
+
+Lifecycle states are never user-allowed, never listed in the GUI, and `sre check` runs `save()` / `restore()` when the lab allows save/restore. `<srelab_dir>/save/` and `<srelab_dir>/restore/` are therefore reserved state-file directories (see [State file transfer](internals.md)).
+
 ### `@sre_state` decorator
 
 | Parameter | Description |
@@ -942,6 +957,8 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 |-----------|------|---------|-------------|
 | `shared_path` | `bool` | `False` | Create `/home/sre/{running_lab_name}/` (mode `0o777`) and bind-mount it into each container for file exchange between host and containers |
 | `export_kathara_project` | `bool` | `True` | If `False`, disable **File → Export** in the GUI and refuse `sre export` for this lab |
+| `allow_save_restore` | `bool` | `False` | If `True`, students may save a running project to a file (**File → Save Project**, `sre save`) and restore it later as a new instance (**File → Restore Project**, `sre restore`). The save file holds `data.json` and `.private/files` — in clear unless `save_key` is set — so enable it only for labs whose `Data` holds nothing the student must not read, or set `save_key` |
+| `save_key` | `str` | _(unset)_ | Non-empty secret string. When set, the payload of every save file is encrypted (AES-256-GCM, key derived from `save_key`); only a lab with the same key can restore it, and students cannot restore cleartext files. Keep the lab file unreadable by students |
 
 ### Schema rendering
 

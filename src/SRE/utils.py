@@ -128,7 +128,7 @@ def set_lab_dir_and_import_module(start_projet=False, lab_cli_arg=None, path=Non
             # we use lab_name
             lab_list = get_lab_list(include_exam_only_labs=True)
             if lab_cli_arg not in lab_list:
-                error_quit(f"lab '{SRE.args.lab}' does not exist")
+                error_quit(f"lab '{lab_cli_arg}' does not exist")
             lab_name = params.get_lab_name_from_cli_arg(lab_cli_arg, is_path=False)
             if os.path.isdir(f'{params.lab_dir}/{lab_cli_arg}'):
                 current_srelab_file = f'{params.lab_dir}/{lab_cli_arg}/{params.srelab_py_name}'

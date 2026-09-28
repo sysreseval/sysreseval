@@ -348,6 +348,7 @@ class InfoLab:
     eval_before_exit: bool
     user_allowed_states: dict
     debug_project: bool = False
+    allow_save_restore: bool = False
     admin_only_states: list = field(default_factory=list)
     default_language: str = ''
     network_colors: dict = field(default_factory=dict)
@@ -381,6 +382,7 @@ class InfoLab:
             export_kathara_project=d.get("export_kathara_project", True),
             allow_self_grade=d.get("allow_self_grade", False),
             debug_project=d.get("debug_project", False),
+            allow_save_restore=d.get("allow_save_restore", False),
             delay_between_self_grade=d.get("delay_between_self_grade", 0),
             eval_interval_without_exam_mode=d.get("eval_interval_without_exam_mode", 0),
             eval_before_exit=d.get("eval_before_exit", False),

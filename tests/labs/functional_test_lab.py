@@ -11,6 +11,8 @@ _REDUCED_SRELAB) — keep them in sync when changing the grade elements.
 from dataclasses import dataclass
 from SRE.lib_sre import Data0, NetScheme0, Grade0
 
+allow_save_restore = True   # exercised by TestSaveRestore in test_functional.py
+
 
 @dataclass(slots=True)
 class Data(Data0):

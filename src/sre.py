@@ -36,6 +36,8 @@ from SRE.command.make_titles import action_make_titles
 from SRE.command.start import action_start
 from SRE.command.wipe import action_wipe
 from SRE.command.stop import action_stop
+from SRE.command.save import action_save
+from SRE.command.restore import action_restore
 from SRE.command.set_exam import action_set_exam
 from SRE.command.del_exam import action_del_exam
 from SRE.command.pre_start_exam import action_pre_start_exam
@@ -120,6 +122,20 @@ def parse_args():
 
     parser_stop = subparsers.add_parser('stop', help=_('Stop a running project'))
     parser_stop.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
+
+    parser_save = subparsers.add_parser('save',
+                                        help=_('Save a running project (device filesystems and project files) '
+                                               'into a save file (written to stdout, or to -o FILE)'))
+    parser_save.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
+    parser_save.add_argument('-o', '--output', metavar='save_file', default=None,
+                             help=_('write the save file here instead of stdout (privileged only)'))
+    parser_save.add_argument('--full-images', dest='full_images', action='store_true',
+                             help=_('save full device images instead of filesystem diffs (privileged only)'))
+
+    parser_restore = subparsers.add_parser('restore', help=_('Restore a saved project as a new running project'))
+    parser_restore.add_argument('save_file', metavar='save_file',
+                                help=_("save file created by 'sre save' ('-' reads it from stdin; "
+                                       "user mode accepts only '-')"))
 
     subparsers.add_parser('wipe', help=_('Remove all files and stop kathara'))
 
@@ -372,7 +388,8 @@ if uid == 0:
 
 if params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
                                                             'eval', 'eval-all',
-                                                            'eval-exam', 'state', 'stop', 'wipe'):
+                                                            'eval-exam', 'state', 'stop', 'wipe',
+                                                            'save', 'restore'):
     drop_privileges_temporarily()
 else:
     drop_privileges_permanently()
@@ -403,6 +420,10 @@ match SRE.args.action:
         action_eval_all()
     case 'stop':
         action_stop()
+    case 'save':
+        action_save()
+    case 'restore':
+        action_restore()
     case 'eval-exam':
         action_eval_exam()
     case 'set-exam':

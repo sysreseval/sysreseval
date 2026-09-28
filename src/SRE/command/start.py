@@ -220,108 +220,149 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
     object.__setattr__(data, '__current_srelab_file', str(current_srelab_file))
     now = datetime.datetime.now()
     running_lab_name = params.get_running_lab_name(lab_name=lab_name, instance_start_date=now)
-    if not hasattr(module_rvlab, 'Grade'):
-        error_quit(f"'{current_srelab_file}' must define a Grade class (inheriting from Grade0)")
-    if not hasattr(module_rvlab.Grade, 'grade'):
-        error_quit(f"'{current_srelab_file}': Grade class must define a grade() method")
+    check_grade_class(module_rvlab, current_srelab_file)
 
-    os.makedirs(params.sre_projects_dir, mode=0o755, exist_ok=True)
-
-    public_lab_dir = params.public_lab_dir(running_lab_name)
-    public_lab_dir_created = False
-    user_public_dir = None
-    net_scheme = None
-    lab_deployed = False
-
+    setup = ProjectSetup(running_lab_name=running_lab_name)
     try:
-        try:
-            os.mkdir(public_lab_dir)
-            public_lab_dir_created = True
-        except FileExistsError:
-            error_quit(f"cannot create directory '{public_lab_dir}'")
-        try:
-            os.mkdir(params.private_lab_dir(running_lab_name))
-        except FileExistsError:
-            error_quit(f"cannot create directory '{params.private_lab_dir(running_lab_name)}'")
-        os.chmod(params.private_lab_dir(running_lab_name), 0o700)
-
-        if should_record_sessions(module_rvlab):
-            os.mkdir(params.records_dir(running_lab_name), mode=0o700)
-
-        if getattr(SRE.args, 'debug_project', False):
-            Path(params.debug_project_marker_filename(running_lab_name)).touch(mode=0o600)
-
-        files_dir = params.files_dir(running_lab_name)
-        try:
-            os.makedirs(files_dir)
-        except FileExistsError:
-            error_quit(f"cannot create directory '{files_dir}'")
-
-        try:
-            os.mkdir(params.answers_dir(running_lab_name))
-        except FileExistsError:
-            error_quit(f"cannot create directory '{params.answers_dir(running_lab_name)}'")
-        os.chmod(params.answers_dir(running_lab_name), 0o777)
-
-        os.symlink(current_srelab_file, params.srelab_link_filename(running_lab_name))
-
-        user_public_dir_base = f"{params.sre_user_public_dir}/{params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name)}"
-        _user_public_dir = user_public_dir_base
-        counter = 1
-        while os.path.exists(_user_public_dir):
-            _user_public_dir = f"{user_public_dir_base}_{counter}"
-            counter += 1
-        os.makedirs(_user_public_dir)
-        user_public_dir = _user_public_dir
-        os.chmod(user_public_dir, 0o755)
-        os.symlink(user_public_dir, params.link_to_user_public_dir(running_lab_name))
-
-        if getattr(module_rvlab, 'shared_path', False):
-            shared_dir = f"{user_public_dir}/{params.shared_dir_name}"
-            os.makedirs(shared_dir)
-            os.chmod(shared_dir, 0o777)
+        create_project_directories(setup, module_rvlab, current_srelab_file,
+                                   debug_project=bool(getattr(SRE.args, 'debug_project', False)))
 
         net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
+        setup.net_scheme = net_scheme
         drop_privileges_permanently_if_not_needed(net_scheme)
 
         lab = net_scheme.get_new_lab_from_scheme()
-        if getattr(module_rvlab, 'shared_path', False):
-            lab.shared_path = shared_dir
+        if setup.shared_dir is not None:
+            lab.shared_path = setup.shared_dir
 
         register_progress_handlers()
 
         set_sudo_uid_for_username(SRE.username)
         gain_privileges_if_needed(net_scheme)
         Kathara.get_instance().deploy_lab(lab)
-        lab_deployed = True
-        if multi_project:
-            drop_privileges_temporarily()
-        else:
-            drop_privileges_permanently()
+        setup.lab_deployed = True
 
-        do_action_state(lab=lab, state=params.initial_state_name, net_scheme=net_scheme,
-                        project_has_directory=params.project_has_directory(running_lab_name=running_lab_name))
-
-        # we save data only after executing the initial state to allow initial() to modify the data object
-        data.save_to_json_file(params.data_filename(running_lab_name))
-        # net_scheme.render_svg_scheme()
-
-        grade = module_rvlab.Grade(net_scheme=net_scheme)
-        grade.save_lab_info()
+        finalize_project(setup, module_rvlab, net_scheme, lab, data,
+                         state=params.initial_state_name, multi_project=multi_project)
 
     except BaseException:
-        if lab_deployed:
-            try:
-                gain_privileges_if_needed(net_scheme)
-                Kathara.get_instance().undeploy_lab(net_scheme.get_lab_hash())
-                if multi_project:
-                    drop_privileges_temporarily()
-                else:
-                    drop_privileges_permanently()
-            except Exception:
-                pass
-        if user_public_dir is not None:
-            shutil.rmtree(user_public_dir, ignore_errors=True)
-        if public_lab_dir_created:
-            shutil.rmtree(public_lab_dir, ignore_errors=True)
+        rollback_project(setup, multi_project=multi_project)
         raise
+
+
+@dataclasses.dataclass
+class ProjectSetup:
+    """Bookkeeping of a project being created (by ``sre start`` or ``sre restore``)
+    so that :func:`rollback_project` undoes exactly what was done so far."""
+    running_lab_name: str
+    public_lab_dir_created: bool = False
+    user_public_dir: str | None = None
+    shared_dir: str | None = None
+    net_scheme: object = None
+    lab_deployed: bool = False
+
+
+def check_grade_class(module_rvlab, current_srelab_file):
+    if not hasattr(module_rvlab, 'Grade'):
+        error_quit(f"'{current_srelab_file}' must define a Grade class (inheriting from Grade0)")
+    if not hasattr(module_rvlab.Grade, 'grade'):
+        error_quit(f"'{current_srelab_file}': Grade class must define a grade() method")
+
+
+def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab_file, debug_project: bool):
+    """Create the on-disk layout of a new project (public/private dirs, answers, files,
+    srelab symlink, user public dir, shared dir).  Fills ``setup`` as it goes."""
+    running_lab_name = setup.running_lab_name
+    os.makedirs(params.sre_projects_dir, mode=0o755, exist_ok=True)
+
+    public_lab_dir = params.public_lab_dir(running_lab_name)
+    try:
+        os.mkdir(public_lab_dir)
+        setup.public_lab_dir_created = True
+    except FileExistsError:
+        error_quit(f"cannot create directory '{public_lab_dir}'")
+    try:
+        os.mkdir(params.private_lab_dir(running_lab_name))
+    except FileExistsError:
+        error_quit(f"cannot create directory '{params.private_lab_dir(running_lab_name)}'")
+    os.chmod(params.private_lab_dir(running_lab_name), 0o700)
+
+    if should_record_sessions(module_rvlab):
+        os.mkdir(params.records_dir(running_lab_name), mode=0o700)
+
+    if debug_project:
+        Path(params.debug_project_marker_filename(running_lab_name)).touch(mode=0o600)
+
+    files_dir = params.files_dir(running_lab_name)
+    try:
+        os.makedirs(files_dir)
+    except FileExistsError:
+        error_quit(f"cannot create directory '{files_dir}'")
+
+    try:
+        os.mkdir(params.answers_dir(running_lab_name))
+    except FileExistsError:
+        error_quit(f"cannot create directory '{params.answers_dir(running_lab_name)}'")
+    os.chmod(params.answers_dir(running_lab_name), 0o777)
+
+    os.symlink(current_srelab_file, params.srelab_link_filename(running_lab_name))
+
+    user_public_dir_base = f"{params.sre_user_public_dir}/{params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name)}"
+    user_public_dir = user_public_dir_base
+    counter = 1
+    while os.path.exists(user_public_dir):
+        user_public_dir = f"{user_public_dir_base}_{counter}"
+        counter += 1
+    os.makedirs(user_public_dir)
+    setup.user_public_dir = user_public_dir
+    os.chmod(user_public_dir, 0o755)
+    os.symlink(user_public_dir, params.link_to_user_public_dir(running_lab_name))
+
+    if getattr(module_rvlab, 'shared_path', False):
+        shared_dir = f"{user_public_dir}/{params.shared_dir_name}"
+        os.makedirs(shared_dir)
+        os.chmod(shared_dir, 0o777)
+        setup.shared_dir = shared_dir
+
+
+def finalize_project(setup: ProjectSetup, module_rvlab, net_scheme, lab, data, state: str,
+                     multi_project: bool = False, pre_state=None):
+    """Steps common to ``sre start`` and ``sre restore`` once the containers are up:
+    drop privileges, optionally run ``pre_state(lab)``, apply the lifecycle ``state``,
+    save ``data.json`` and write ``info.json``."""
+    if multi_project:
+        drop_privileges_temporarily()
+    else:
+        drop_privileges_permanently()
+
+    if pre_state is not None:
+        pre_state(lab)
+
+    do_action_state(lab=lab, state=state, net_scheme=net_scheme,
+                    project_has_directory=params.project_has_directory(running_lab_name=setup.running_lab_name))
+
+    # we save data only after executing the lifecycle state to allow it to modify the data object
+    data.save_to_json_file(params.data_filename(setup.running_lab_name))
+    # net_scheme.render_svg_scheme()
+
+    grade = module_rvlab.Grade(net_scheme=net_scheme)
+    grade.save_lab_info()
+
+
+def rollback_project(setup: ProjectSetup, multi_project: bool = False):
+    """Undo a failed project creation: undeploy the containers if they were started,
+    remove the user public dir and the project dir."""
+    if setup.lab_deployed:
+        try:
+            gain_privileges_if_needed(setup.net_scheme)
+            Kathara.get_instance().undeploy_lab(setup.net_scheme.get_lab_hash())
+            if multi_project:
+                drop_privileges_temporarily()
+            else:
+                drop_privileges_permanently()
+        except Exception:
+            pass
+    if setup.user_public_dir is not None:
+        shutil.rmtree(setup.user_public_dir, ignore_errors=True)
+    if setup.public_lab_dir_created:
+        shutil.rmtree(params.public_lab_dir(setup.running_lab_name), ignore_errors=True)

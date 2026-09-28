@@ -57,4 +57,5 @@ def tmp_pub_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(params, 'sre_pub_dir', str(pub))
     monkeypatch.setattr(params, 'sre_projects_dir', str(pub / 'projects'))
     monkeypatch.setattr(params, 'self_grade_timestamp_dir', str(pub / 'last_self_grades'))
+    monkeypatch.setattr(params, 'save_tmp_dir', str(pub / 'tmp'))
     return pub
