@@ -36,7 +36,7 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 
 ### `sre stop <running_lab>`
 
-Undeploys containers and removes the project directory from `/var/lib/sre/projects/`.
+Undeploys containers and removes the project directory from `/var/lib/sre/projects/`. Kathara only undeploys the containers whose `user` label matches the caller, so `stop` first aligns `SUDO_UID` with the label used at deploy time (`sre` for non-privileged labs, the project owner for privileged ones; both are tried when the lab is not loaded, as in `pre-start-exam`).
 
 ### `sre save [-o <file>] [--full-images] <running_lab>`
 
