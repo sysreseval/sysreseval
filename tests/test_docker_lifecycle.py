@@ -60,6 +60,16 @@ class NetScheme(NetScheme0):
     def initial(self):
         self.cmd('router', 'echo from-initial > /root/from_initial')
 
+    @sre_state()
+    def save(self):
+        # runs in the running instance just before its filesystem is captured
+        self.cmd('router', 'echo saved > /root/save_hook')
+
+    @sre_state()
+    def restore(self):
+        # runs in the restored instance right after its containers are redeployed
+        self.cmd('router', 'echo restored > /root/restore_hook')
+
 
 class Grade(Grade0):
     def grade(self):
@@ -240,6 +250,10 @@ class TestSaveRestore:
         r = _sre('save', running_lab_name, '-o', str(save_file))
         assert r.returncode == 0, r.stderr
         assert save_file.read_bytes().startswith(params.save_file_magic)
+        # the lab's save() hook ran in the original instance before the capture
+        r = _sre('exec', running_lab_name, 'router', 'sh', '-c', 'cat /root/save_hook; ls /root')
+        assert r.returncode == 0 and 'saved' in r.stdout, (r.stdout, r.stderr)
+        assert 'restore_hook' not in r.stdout, "restore() must not run in the saved instance"
 
         before = _project_dirs()
         r = _sre('restore', str(save_file))
@@ -255,8 +269,12 @@ class TestSaveRestore:
         assert {c.labels['name'] for c in containers} == {'router', 'client'}
         assert all(c.attrs['Config']['Image'].startswith('kathara_save_') for c in containers), \
             [c.attrs['Config']['Image'] for c in containers]
-        r = _sre('exec', restored, 'router', 'sh', '-c', 'cat /root/marker /root/from_initial')
-        assert r.returncode == 0 and 'marker' in r.stdout and 'from-initial' in r.stdout, (r.stdout, r.stderr)
+        r = _sre('exec', restored, 'router', 'sh', '-c',
+                 'cat /root/marker /root/from_initial /root/save_hook /root/restore_hook')
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert 'marker' in r.stdout and 'from-initial' in r.stdout, r.stdout
+        assert 'saved' in r.stdout, "the file written by save() must travel with the saved filesystem"
+        assert 'restored' in r.stdout, "the lab's restore() hook must run in the restored instance"
 
         for name, h in ((restored, restored_hash), (running_lab_name, lab_hash)):
             r = _sre('stop', name)

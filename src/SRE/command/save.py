@@ -32,10 +32,9 @@ def action_save():
             error_quit("-o/--output is not available in user mode (the save file is written to stdout)")
         if full_images:
             error_quit("--full-images is only available to privileged users")
+    # No ownership check: like stop/eval/state/connect, a project started by root
+    # (`sre start -p ...`) must be savable from the GUI running as a normal user.
     running_lab_name = resolve_running_lab_name(SRE.args.running_lab)
-    if in_user_mode() and params.get_username_from_running_lab_name(running_lab_name) != SRE.username:
-        # substring matching in resolve_running_lab_name must not reach another student's project
-        error_quit(f"no running lab matches '{SRE.args.running_lab}'")
     do_action_save(running_lab_name=running_lab_name, output=output, full_images=full_images)
 
 

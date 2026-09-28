@@ -321,6 +321,21 @@ class DecryptingReader:
 
 def lab_cli_arg_from_lab_name(lab_name: str) -> tuple[str, bool]:
     """Invert ``params.get_lab_name_from_cli_arg``: ``'s4@tp_ssh'`` → ``('s4/tp_ssh', False)``,
-    ``'@opt@x@lab.py'`` → ``('/opt/x/lab.py', True)`` (absolute-path lab)."""
+    ``'@opt@x@lab.py'`` → ``('/opt/x/lab.py', True)`` (absolute-path lab, ``sre start -p``).
+
+    An absolute path *inside* ``params.lab_dir`` (a lab of the lab directory started with
+    ``-p``) is turned back into its lab name, so that such a save file is restored like any
+    other lab, including in user mode: ``'@opt@sre@lab@s4@tp_ssh'`` → ``('s4/tp_ssh', False)``."""
     path = lab_name.replace('@', '/')
-    return path, path.startswith('/')
+    if not path.startswith('/'):
+        return path, False
+    lab_dir = os.path.realpath(params.lab_dir)
+    try:
+        rel = os.path.relpath(os.path.realpath(path), lab_dir)
+    except ValueError:      # different drives (Windows only)
+        rel = '..'
+    if rel == '..' or rel.startswith('../') or rel == '.':
+        return path, True
+    if os.path.basename(rel) == params.srelab_py_name:
+        rel = os.path.dirname(rel)          # directory lab given as .../srelab.py
+    return rel, False

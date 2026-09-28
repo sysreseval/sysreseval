@@ -543,12 +543,40 @@ class TestSaveRestore:
         with pytest.raises(SystemExit):
             action_save()
         mock_sre_args.full_images = False
-        monkeypatch.setattr(params.SRE, 'username', 'someone_else')
-        with pytest.raises(SystemExit):        # another student's project
-            action_save()
         mock_sre_args.save_file = '/tmp/x.sre'
         with pytest.raises(SystemExit):        # restore must read stdin in user mode
             action_restore()
+
+    def test_user_can_save_a_project_started_by_someone_else(self, save_restore_env, started_lab,
+                                                             mock_sre_args, monkeypatch, capsysbinary):
+        """A project started by root (`sre start -p ...`) must be savable from the GUI, which
+        runs `sre-wrapper save` as the logged-in user: no ownership check in user mode."""
+        mock_sre_args.user = True
+        mock_sre_args.running_lab = started_lab          # owner is 'testuser'
+        monkeypatch.setattr(params.SRE, 'username', 'someone_else')
+        action_save()
+        assert capsysbinary.readouterr().out.startswith(params.save_file_magic)
+
+    def test_restore_of_path_lab_inside_lab_dir_allowed_in_user_mode(self, save_restore_env, tmp_lab_dir,
+                                                                     tmp_path, mock_sre_args, monkeypatch):
+        """`sre start -p /opt/sre/lab/x/lab.py` names the lab by its absolute path; a save of
+        such a project is restored like the lab `x/lab.py`, so students can restore it too."""
+        lab = tmp_lab_dir / 'x' / 'lab.py'
+        lab.parent.mkdir()
+        lab.write_text(_LAB_PATH.read_text())
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_lab_dir)])
+        do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        assert params.get_lab_name_from_running_lab_name(rln).startswith('@')
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))
+
+        mock_sre_args.user = True
+        with open(out, 'rb') as f:
+            new_rln = do_action_restore(f)
+        assert _project_dirs() == sorted([rln, new_rln])
+        assert params.get_lab_name_from_running_lab_name(new_rln) == 'x@lab.py'
+        assert (Path(params.sre_projects_dir) / new_rln / '.private' / 'srelab').resolve() == lab.resolve()
 
     def test_restore_creates_new_project(self, save_restore_env, started_lab, tmp_path, monkeypatch):
         from SRE import lib_sre as _lib_sre

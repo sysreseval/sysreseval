@@ -308,3 +308,16 @@ class TestLabCliArg:
     ])
     def test_cases(self, lab_name, expected):
         assert sa.lab_cli_arg_from_lab_name(lab_name) == expected
+
+    def test_absolute_path_inside_lab_dir_is_the_lab_name(self, tmp_path, monkeypatch):
+        lab_dir = tmp_path / 'labs'
+        (lab_dir / 's4' / 'tp_ssh').mkdir(parents=True)
+        monkeypatch.setattr(params, 'lab_dir', str(lab_dir))
+        prefix = str(lab_dir).replace('/', '@')
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}@s4@tp_ssh') == ('s4/tp_ssh', False)
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}@s4@tp_ssh@srelab.py') == ('s4/tp_ssh', False)
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}@class1@lab.py') == ('class1/lab.py', False)
+        # outside the lab dir (or the lab dir itself): still an absolute-path lab
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}') == (str(lab_dir), True)
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}_other@lab.py') == (f'{lab_dir}_other/lab.py', True)
+        assert sa.lab_cli_arg_from_lab_name('@home@etudiant@lab.py') == ('/home/etudiant/lab.py', True)
