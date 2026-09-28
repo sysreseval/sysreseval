@@ -150,12 +150,12 @@ remove-debug-mode:
 
 
 tests:
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/ -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py
+	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/ -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_docker_lifecycle.py
 
 # Run a single test file: make test FILE=test_net_config.py
 FILE ?=
 test:
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/$(FILE) -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py
+	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/$(FILE) -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_docker_lifecycle.py
 
 functional-tests:
 	rm -rf /tmp/pytest-sre-functional
@@ -180,7 +180,12 @@ exam-tests:
 		|| { echo "ERROR: debug_mode is False in params.py — set debug_mode = True before running exam-tests"; exit 1; }
 	PYTHONPATH=${ROOT_DIR}/src ${ROOT_DIR}/venv/bin/python ${ROOT_DIR}/tests/test_exam_mode.py $(EXAM_ARGS)
 
-all-tests: tests functional-tests exam-tests
+# Docker integration tests with real containers (run as root on a host with Docker and the SRE images):
+# sre start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker API.
+docker-tests:
+	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_docker_lifecycle.py -v -p no:cacheprovider
+
+all-tests: tests functional-tests exam-tests docker-tests
 
 images:
 	$(MAKE) -C ${ROOT_DIR}/images all

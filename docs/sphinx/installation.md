@@ -294,7 +294,8 @@ make tests                          # unit tests (excludes test_exam_mode.py)
 make test FILE=test_net_config.py   # single file
 make functional-tests               # functional tests (test_functional.py)
 make exam-tests                     # exam-mode integration tests (requires debug_mode=True)
-make all-tests                      # tests + functional-tests + exam-tests
+make docker-tests                   # Docker integration tests with real containers (root; start/stop, save/restore)
+make all-tests                      # tests + functional-tests + exam-tests + docker-tests
 ```
 
 Unit tests don't need Docker or Kathara — they cover serialization, topology, grading logic, and pure-Python helpers. Functional and exam-mode tests stand up more of the system: see `tests/conftest.py` for the shared fixtures (`mock_sre_args`, `tmp_lab_dir`, `tmp_pub_dir`).
