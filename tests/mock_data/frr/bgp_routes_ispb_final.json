@@ -1,0 +1,13 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 9,
+ "routerId": "200.200.200.200",
+ "defaultLocPrf": 100,
+ "localAS": 65200,
+ "routes": { "10.148.200.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"10.148.200.0","prefixLen":24,"network":"10.148.200.0/24","version":8,"weight":0,"peerId":"172.18.192.125","path":"65001 65300","origin":"IGP","nexthops":[{"ip":"172.18.192.125","hostname":"r3","afi":"ipv4","used":true}]}]
+,"10.223.94.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"10.223.94.0","prefixLen":24,"network":"10.223.94.0/24","version":1,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"IGP","nexthops":[{"ip":"0.0.0.0","hostname":"ispb","afi":"ipv4","used":true}]}]
+,"172.18.92.0/22": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"172.18.92.0","prefixLen":22,"network":"172.18.92.0/22","version":9,"metric":0,"weight":0,"peerId":"172.18.192.125","path":"65001","origin":"IGP","nexthops":[{"ip":"172.18.192.125","hostname":"r3","afi":"ipv4","used":true}]}]
+,"192.168.195.0/24": [{"valid":true,"pathFrom":"external","prefix":"192.168.195.0","prefixLen":24,"network":"192.168.195.0/24","version":4,"weight":0,"peerId":"192.168.140.54","path":"65000 65100","origin":"IGP","nexthops":[{"ip":"192.168.140.54","hostname":"inet","afi":"ipv4","used":true}]},{"valid":true,"bestpath":true,"selectionReason":"AS Path","pathFrom":"external","prefix":"192.168.195.0","prefixLen":24,"network":"192.168.195.0/24","version":4,"metric":0,"weight":0,"peerId":"172.20.249.157","path":"65100","origin":"IGP","nexthops":[{"ip":"172.20.249.157","hostname":"ispa","afi":"ipv4","used":true}]}]
+,"203.0.113.0/24": [{"valid":true,"pathFrom":"external","prefix":"203.0.113.0","prefixLen":24,"network":"203.0.113.0/24","version":2,"weight":0,"peerId":"172.20.249.157","path":"65100 65000","origin":"IGP","nexthops":[{"ip":"172.20.249.157","hostname":"ispa","afi":"ipv4","used":true}]},{"valid":true,"bestpath":true,"selectionReason":"AS Path","pathFrom":"external","prefix":"203.0.113.0","prefixLen":24,"network":"203.0.113.0/24","version":2,"metric":0,"weight":0,"peerId":"192.168.140.54","path":"65000","origin":"IGP","nexthops":[{"ip":"192.168.140.54","hostname":"inet","afi":"ipv4","used":true}]}]
+ }  } 

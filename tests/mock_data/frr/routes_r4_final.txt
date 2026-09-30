@@ -1,0 +1,36 @@
+============ OSPF network routing table ============
+D IA 10.137.0.0/22         Discard entry
+N    10.137.0.0/24         [200] area: 0.0.0.2
+                           via 10.137.2.1, eth3
+N    10.137.1.0/24         [300] area: 0.0.0.2
+                           via 10.137.2.1, eth3
+N    10.137.2.0/30         [100] area: 0.0.0.2
+                           directly attached to eth3
+N    10.137.2.4/30         [200] area: 0.0.0.2
+                           via 10.137.2.1, eth3
+N IA 172.16.241.0/24       [400] area: 0.0.0.0
+                           via 192.168.169.81, eth2
+N    172.18.219.188/30     [492] area: 0.0.0.0
+                           directly attached to eth1
+N IA 172.25.145.120/30     [300] area: 0.0.0.0
+                           via 192.168.169.81, eth2
+N    192.168.105.0/24      [100] area: 0.0.0.0
+                           directly attached to eth0
+N    192.168.130.0/24      [300] area: 0.0.0.0
+                           via 192.168.169.81, eth2
+N    192.168.142.0/24      [200] area: 0.0.0.0
+                           via 192.168.169.81, eth2
+N    192.168.169.80/30     [100] area: 0.0.0.0
+                           directly attached to eth2
+
+============ OSPF router routing table =============
+R    1.1.1.1               [200] area: 0.0.0.0, ASBR
+                           via 192.168.169.81, eth2
+R    3.3.3.3               [200] area: 0.0.0.0, ABR
+                           via 192.168.169.81, eth2
+
+============ OSPF external routing table ===========
+N E2 0.0.0.0/0             [200/10] tag: 0
+                           via 192.168.169.81, eth2
+N E2 203.0.113.0/24        [200/20] tag: 0
+                           via 192.168.169.81, eth2

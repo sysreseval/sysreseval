@@ -1,0 +1,1 @@
+[{"dst":"default","nhid":10,"gateway":"172.25.145.122","dev":"eth1","protocol":"ospf","metric":20,"flags":[]},{"dst":"172.16.241.0/24","dev":"eth0","protocol":"kernel","scope":"link","prefsrc":"172.16.241.110","flags":[]},{"dst":"172.25.145.120/30","dev":"eth1","protocol":"kernel","scope":"link","prefsrc":"172.25.145.121","flags":[]}]

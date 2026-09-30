@@ -1,0 +1,79 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 9.1.3
+frr defaults traditional
+hostname r3
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+ip route 172.18.92.0/22 blackhole
+!
+interface lo
+ ip address 172.18.95.3/32
+ ip ospf passive
+exit
+!
+interface eth0
+ ip ospf passive
+exit
+!
+router bgp 65001
+ bgp router-id 172.18.95.3
+ no bgp ebgp-requires-policy
+ neighbor 172.18.95.2 remote-as 65001
+ neighbor 172.18.95.2 description r2
+ neighbor 172.18.95.2 update-source lo
+ neighbor 172.18.192.126 remote-as 65200
+ neighbor 172.18.192.126 description ISP-B
+ neighbor 172.18.192.126 password G1IgAnV3EL0H
+ neighbor 172.18.192.126 timers 15 45
+ neighbor 192.168.162.33 remote-as 65300
+ neighbor 192.168.162.33 description CLIENT-AS65300
+ !
+ address-family ipv4 unicast
+  network 172.18.92.0/22
+  neighbor 172.18.95.2 next-hop-self
+  neighbor 172.18.192.126 route-map LP-IN in
+  neighbor 172.18.192.126 route-map TO-ISPB out
+  neighbor 192.168.162.33 default-originate
+  neighbor 192.168.162.33 route-map FROM-R4 in
+  neighbor 192.168.162.33 route-map TO-R4 out
+ exit-address-family
+exit
+!
+router ospf
+ ospf router-id 172.18.95.3
+ network 172.18.93.0/24 area 0
+ network 172.18.94.4/30 area 0
+ network 172.18.95.3/32 area 0
+exit
+!
+ip prefix-list TO-ISPB seq 5 permit 172.18.92.0/22
+ip prefix-list TO-ISPB seq 10 permit 10.148.200.0/24
+ip prefix-list WEB seq 5 permit 203.0.113.0/24
+ip prefix-list DEFAULT-ONLY seq 5 permit 0.0.0.0/0
+!
+route-map LP-IN permit 10
+ match ip address prefix-list WEB
+ set local-preference 200
+exit
+!
+route-map LP-IN permit 20
+exit
+!
+route-map TO-ISPB permit 10
+ match ip address prefix-list TO-ISPB
+exit
+!
+route-map FROM-R4 permit 10
+ set community 65001:538
+exit
+!
+route-map TO-R4 permit 10
+ match ip address prefix-list DEFAULT-ONLY
+exit
+!
+end

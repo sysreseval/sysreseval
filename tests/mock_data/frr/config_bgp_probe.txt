@@ -1,0 +1,41 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 9.1.3
+frr defaults traditional
+hostname b3154461526e
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+interface lo
+ ip address 10.9.9.1/32
+exit
+!
+router bgp 65001
+ neighbor 10.1.1.2 remote-as 65100
+ neighbor 10.1.1.2 description ISP-A
+ neighbor 10.1.1.2 timers 10 30
+ neighbor 10.9.9.3 remote-as 65001
+ neighbor 10.9.9.3 update-source lo
+ !
+ address-family ipv4 unicast
+  network 10.9.9.1/32
+  network 10.20.0.0/22
+  neighbor 10.1.1.2 default-originate
+  neighbor 10.1.1.2 route-map OUT out
+  neighbor 10.9.9.3 route-reflector-client
+  neighbor 10.9.9.3 next-hop-self
+ exit-address-family
+exit
+!
+ip prefix-list P seq 5 permit 10.20.0.0/22
+!
+bgp as-path access-list CUST seq 5 permit ^65300$
+!
+route-map OUT permit 10
+ match ip address prefix-list P
+ set as-path prepend 65001 65001
+exit
+!
+end

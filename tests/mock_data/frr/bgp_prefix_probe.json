@@ -1,0 +1,44 @@
+
+{
+  "prefix":"10.9.9.1/32",
+  "version":1,
+  "paths":[
+    {
+      "aspath":{
+        "string":"Local",
+        "segments":[
+        ],
+        "length":0
+      },
+      "origin":"IGP",
+      "metric":0,
+      "weight":32768,
+      "valid":true,
+      "version":1,
+      "sourced":true,
+      "local":true,
+      "bestpath":{
+        "overall":true,
+        "selectionReason":"First path received"
+      },
+      "lastUpdate":{
+        "epoch":1790692873,
+        "string":"Tue Sep 29 14:41:13 2026\n"
+      },
+      "nexthops":[
+        {
+          "ip":"0.0.0.0",
+          "hostname":"b3154461526e",
+          "afi":"ipv4",
+          "metric":0,
+          "accessible":true,
+          "used":true
+        }
+      ],
+      "peer":{
+        "peerId":"0.0.0.0",
+        "routerId":"10.9.9.1"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+[{"dst":"default","nhid":6,"gateway":"192.168.162.34","dev":"eth1","protocol":"bgp","metric":20,"flags":[]},{"dst":"10.148.200.0/24","dev":"eth0","protocol":"kernel","scope":"link","prefsrc":"10.148.200.87","flags":[]},{"dst":"192.168.162.32/30","dev":"eth1","protocol":"kernel","scope":"link","prefsrc":"192.168.162.33","flags":[]}]

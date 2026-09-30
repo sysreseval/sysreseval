@@ -1,0 +1,9 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 0,
+ "routerId": "172.18.95.3",
+ "defaultLocPrf": 100,
+ "localAS": 65001,
+ "routes": { "172.18.92.0/22": [{"pathFrom":"external","prefix":"172.18.92.0","prefixLen":22,"network":"172.18.92.0/22","version":0,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"IGP","nexthops":[{"ip":"0.0.0.0","hostname":"r3","afi":"ipv4","used":true}]}]
+ }  } 

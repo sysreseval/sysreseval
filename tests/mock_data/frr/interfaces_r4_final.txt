@@ -1,0 +1,56 @@
+eth0 is up
+  ifindex 4, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 192.168.105.196/24, Broadcast 192.168.105.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 4.4.4.4, Network Type BROADCAST, Cost: 100
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 4.4.4.4 Interface Address 192.168.105.196/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+eth1 is up
+  ifindex 8, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 172.18.219.189/30, Broadcast 172.18.219.191, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 4.4.4.4, Network Type BROADCAST, Cost: 492
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 4.4.4.4 Interface Address 172.18.219.189/30
+  Backup Designated Router (ID) 1.1.1.1, Interface Address 172.18.219.190
+  Multicast group memberships: OSPFAllRouters OSPFDesignatedRouters
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    Hello due in 5.698s
+  Neighbor Count is 1, Adjacent neighbor count is 1
+  Graceful Restart hello delay: 10s
+  Cryptographic authentication enabled
+  Algorithm:MD5
+  Cryptographic authentication enabled
+  Algorithm:MD5
+eth2 is up
+  ifindex 12, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 192.168.169.82/30, Broadcast 192.168.169.83, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 4.4.4.4, Network Type BROADCAST, Cost: 100
+  Transmit Delay is 1 sec, State Backup, Priority 1
+  Designated Router (ID) 192.168.169.81 Interface Address 192.168.169.81/30
+  Backup Designated Router (ID) 4.4.4.4, Interface Address 192.168.169.82
+  Multicast group memberships: OSPFAllRouters OSPFDesignatedRouters
+  Timer intervals configured, Hello 2s, Dead 8s, Wait 8s, Retransmit 5
+    Hello due in 1.711s
+  Neighbor Count is 1, Adjacent neighbor count is 1
+  Graceful Restart hello delay: 10s
+eth3 is up
+  ifindex 15, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.137.2.2/30, Broadcast 10.137.2.3, Area 0.0.0.2
+  MTU mismatch detection: enabled
+  Router ID 4.4.4.4, Network Type BROADCAST, Cost: 100
+  Transmit Delay is 1 sec, State Backup, Priority 1
+  Designated Router (ID) 6.6.6.6 Interface Address 10.137.2.1/30
+  Backup Designated Router (ID) 4.4.4.4, Interface Address 10.137.2.2
+  Multicast group memberships: OSPFAllRouters OSPFDesignatedRouters
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    Hello due in 5.698s
+  Neighbor Count is 1, Adjacent neighbor count is 1
+  Graceful Restart hello delay: 10s

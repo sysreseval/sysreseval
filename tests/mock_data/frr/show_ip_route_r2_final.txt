@@ -1,0 +1,29 @@
+Codes: K - kernel route, C - connected, S - static, R - RIP,
+       O - OSPF, I - IS-IS, B - BGP, E - EIGRP, N - NHRP,
+       T - Table, v - VNC, V - VNC-Direct, A - Babel, F - PBR,
+       f - OpenFabric,
+       > - selected route, * - FIB route, q - queued, r - rejected, b - backup
+       t - trapped, o - offload failure
+
+B>  10.148.200.0/24 [200/0] via 172.18.95.3 (recursive), weight 1, 00:00:29
+  *                           via 172.18.94.6, eth1, weight 1, 00:00:29
+B>  10.223.94.0/24 [200/0] via 172.18.95.3 (recursive), weight 1, 00:00:28
+  *                          via 172.18.94.6, eth1, weight 1, 00:00:28
+B>  172.18.92.0/22 [200/0] via 172.18.95.1 (recursive), weight 1, 00:00:29
+  *                          via 172.18.94.1, eth0, weight 1, 00:00:29
+                           via 172.18.95.3 (recursive), weight 1, 00:00:29
+  *                          via 172.18.94.6, eth1, weight 1, 00:00:29
+O>* 172.18.92.0/24 [110/20] via 172.18.94.1, eth0, weight 1, 00:06:04
+O>* 172.18.93.0/24 [110/20] via 172.18.94.6, eth1, weight 1, 00:06:19
+O   172.18.94.0/30 [110/10] is directly connected, eth0, weight 1, 00:06:59
+C>* 172.18.94.0/30 is directly connected, eth0, 00:06:59
+O   172.18.94.4/30 [110/10] is directly connected, eth1, weight 1, 00:06:59
+C>* 172.18.94.4/30 is directly connected, eth1, 00:06:59
+O>* 172.18.95.1/32 [110/10] via 172.18.94.1, eth0, weight 1, 00:06:04
+O   172.18.95.2/32 [110/0] is directly connected, lo, weight 1, 00:06:59
+C>* 172.18.95.2/32 is directly connected, lo, 00:06:59
+O>* 172.18.95.3/32 [110/10] via 172.18.94.6, eth1, weight 1, 00:06:19
+B>  192.168.195.0/24 [200/0] via 172.18.95.1 (recursive), weight 1, 00:00:29
+  *                            via 172.18.94.1, eth0, weight 1, 00:00:29
+B>  203.0.113.0/24 [200/0] via 172.18.95.3 (recursive), weight 1, 00:00:28
+  *                          via 172.18.94.6, eth1, weight 1, 00:00:28

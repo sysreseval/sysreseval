@@ -1,0 +1,95 @@
+
+{
+  "prefix":"203.0.113.0/24",
+  "version":7,
+  "paths":[
+    {
+      "aspath":{
+        "string":"65200 65000",
+        "segments":[
+          {
+            "type":"as-sequence",
+            "list":[
+              65200,
+              65000
+            ]
+          }
+        ],
+        "length":2
+      },
+      "origin":"IGP",
+      "metric":0,
+      "locPrf":200,
+      "valid":true,
+      "version":7,
+      "bestpath":{
+        "overall":true,
+        "selectionReason":"Local Pref"
+      },
+      "originatorId":"172.18.95.3",
+      "clusterList":{
+        "list":[
+          "172.18.95.2"
+        ]
+      },
+      "lastUpdate":{
+        "epoch":1790700120,
+        "string":"Tue Sep 29 16:42:00 2026\n"
+      },
+      "nexthops":[
+        {
+          "ip":"172.18.95.3",
+          "hostname":"r2",
+          "afi":"ipv4",
+          "metric":20,
+          "accessible":true,
+          "used":true
+        }
+      ],
+      "peer":{
+        "peerId":"172.18.95.2",
+        "routerId":"172.18.95.2",
+        "hostname":"r2",
+        "type":"internal"
+      }
+    },
+    {
+      "aspath":{
+        "string":"65100 65000",
+        "segments":[
+          {
+            "type":"as-sequence",
+            "list":[
+              65100,
+              65000
+            ]
+          }
+        ],
+        "length":2
+      },
+      "origin":"IGP",
+      "valid":true,
+      "version":7,
+      "lastUpdate":{
+        "epoch":1790699731,
+        "string":"Tue Sep 29 16:35:31 2026\n"
+      },
+      "nexthops":[
+        {
+          "ip":"172.26.133.30",
+          "hostname":"ispa",
+          "afi":"ipv4",
+          "metric":0,
+          "accessible":true,
+          "used":true
+        }
+      ],
+      "peer":{
+        "peerId":"172.26.133.30",
+        "routerId":"100.100.100.100",
+        "hostname":"ispa",
+        "type":"external"
+      }
+    }
+  ]
+}

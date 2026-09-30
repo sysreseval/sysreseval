@@ -1,0 +1,13 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 8,
+ "routerId": "172.18.95.2",
+ "defaultLocPrf": 100,
+ "localAS": 65001,
+ "routes": { "10.148.200.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"internal","prefix":"10.148.200.0","prefixLen":24,"network":"10.148.200.0/24","version":5,"metric":0,"locPrf":100,"weight":0,"peerId":"172.18.95.3","path":"65300","origin":"IGP","nexthops":[{"ip":"172.18.95.3","hostname":"r3","afi":"ipv4","used":true}]}]
+,"10.223.94.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"internal","prefix":"10.223.94.0","prefixLen":24,"network":"10.223.94.0/24","version":7,"metric":0,"locPrf":100,"weight":0,"peerId":"172.18.95.3","path":"65200","origin":"IGP","nexthops":[{"ip":"172.18.95.3","hostname":"r3","afi":"ipv4","used":true}]}]
+,"172.18.92.0/22": [{"valid":true,"multipath":true,"pathFrom":"internal","prefix":"172.18.92.0","prefixLen":22,"network":"172.18.92.0/22","version":6,"metric":0,"locPrf":100,"weight":0,"peerId":"172.18.95.3","path":"","origin":"IGP","nexthops":[{"ip":"172.18.95.3","hostname":"r3","afi":"ipv4","used":true}]},{"valid":true,"bestpath":true,"selectionReason":"Router ID","pathFrom":"internal","prefix":"172.18.92.0","prefixLen":22,"network":"172.18.92.0/22","version":6,"metric":0,"locPrf":100,"weight":0,"peerId":"172.18.95.1","path":"","origin":"IGP","nexthops":[{"ip":"172.18.95.1","hostname":"r1","afi":"ipv4","used":true}]}]
+,"192.168.195.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"internal","prefix":"192.168.195.0","prefixLen":24,"network":"192.168.195.0/24","version":3,"metric":0,"locPrf":100,"weight":0,"peerId":"172.18.95.1","path":"65100","origin":"IGP","nexthops":[{"ip":"172.18.95.1","hostname":"r1","afi":"ipv4","used":true}]}]
+,"203.0.113.0/24": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"internal","prefix":"203.0.113.0","prefixLen":24,"network":"203.0.113.0/24","version":8,"locPrf":200,"weight":0,"peerId":"172.18.95.3","path":"65200 65000","origin":"IGP","nexthops":[{"ip":"172.18.95.3","hostname":"r3","afi":"ipv4","used":true}]}]
+ }  } 

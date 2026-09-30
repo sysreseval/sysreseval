@@ -1,0 +1,53 @@
+{
+  "prefix":"203.0.113.0/24",
+  "version":4,
+  "advertisedTo":{
+    "172.26.133.30":{
+      "hostname":"ispa"
+    }
+  },
+  "paths":[
+    {
+      "aspath":{
+        "string":"65100 65000",
+        "segments":[
+          {
+            "type":"as-sequence",
+            "list":[
+              65100,
+              65000
+            ]
+          }
+        ],
+        "length":2
+      },
+      "origin":"IGP",
+      "valid":true,
+      "version":4,
+      "bestpath":{
+        "overall":true,
+        "selectionReason":"First path received"
+      },
+      "lastUpdate":{
+        "epoch":1790699732,
+        "string":"Tue Sep 29 16:35:32 2026\n"
+      },
+      "nexthops":[
+        {
+          "ip":"172.26.133.30",
+          "hostname":"ispa",
+          "afi":"ipv4",
+          "metric":0,
+          "accessible":true,
+          "used":true
+        }
+      ],
+      "peer":{
+        "peerId":"172.26.133.30",
+        "routerId":"100.100.100.100",
+        "hostname":"ispa",
+        "type":"external"
+      }
+    }
+  ]
+}

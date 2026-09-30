@@ -1,0 +1,12 @@
+BGP routing table entry for 192.168.195.0/24, version 4
+Paths: (2 available, best #2, table default)
+  Not advertised to any peer
+  65200 65100
+    172.18.192.126 from 172.18.192.126 (200.200.200.200)
+      Origin IGP, valid, external
+      Last update: Tue Sep 29 16:42:04 2026
+  65100
+    172.18.95.1 (metric 20) from 172.18.95.2 (172.18.95.1)
+      Origin IGP, metric 0, localpref 100, valid, internal, best (AS Path)
+      Originator: 172.18.95.1, Cluster list: 172.18.95.2 
+      Last update: Tue Sep 29 16:42:00 2026

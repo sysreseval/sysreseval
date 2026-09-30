@@ -77,8 +77,14 @@ def _resolve_dest_ip(arg: Union[str, IPv4Address], get_nc) -> str:
 
 
 def eval_ping(grade: Grade0, src: Union[str, IPv4Address], dest: Union[str, IPv4Address],
-              step: int = 1, net_config: Optional[Dict[str, NetConfigEntry]] = None) -> bool:
+              step: int = 1, net_config: Optional[Dict[str, NetConfigEntry]] = None,
+              count: int = 1, deadline: int = 1, allow_error: bool = False) -> bool:
     """Ping dest from src machine; return True if successful ("bytes from" in output).
+
+    count / deadline are passed to ``ping -c count -w deadline`` (default: one packet,
+    one second -- raise them for multi-hop paths with cold ARP caches).  With
+    allow_error=True a failed ping is not recorded as an error in the archive (use it
+    when unreachability is an expected outcome rather than a test malfunction).
 
     src and dest can each be:
     - An IPv4Address object or a valid IPv4 string → used directly (no net_config needed for dest)
@@ -98,5 +104,9 @@ def eval_ping(grade: Grade0, src: Union[str, IPv4Address], dest: Union[str, IPv4
     src_machine = _resolve_src_machine(src, get_nc)
     dest_ip = _resolve_dest_ip(dest, get_nc)
 
-    output, _code = grade.test(src_machine, f'ping -c 1 -w 1 {dest_ip}', step=step)
+    command = f'ping -c {count} -w {deadline} {dest_ip}'
+    if allow_error:
+        output, _code = grade.test(src_machine, command, step=step, allow_error=True)
+    else:
+        output, _code = grade.test(src_machine, command, step=step)
     return 'bytes from' in output

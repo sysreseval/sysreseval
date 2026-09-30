@@ -749,6 +749,30 @@ from frr import get_ospf_interfaces
 
 `get_ospf_interfaces(grade, machine_name, step=1) → dict` — runs `vtysh -c "show ip ospf interface"` inside the container and parses the output. Returns a dict keyed by interface name, each value containing: `area`, `cost`, `state` (`DR`/`BDR`/`DROther`/…), `dr`, `bdr`, `neighbor_count`, `adj_neighbor_count`.
 
+### BGP helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_bgp_summary, get_bgp_neighbor, get_bgp_routes, get_bgp_prefix,
+                 get_bgp_advertised_routes, bgp_best_path, bgp_paths, is_bgp_protocol)
+```
+
+These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, each `get_*` registers one command through `grade.test()` (two-pass contract) and returns its empty shape (`{}`) on the registration pass, when BGP is not running or when the output cannot be decoded. Pass `allow_error=True` while BGP may not be configured yet.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_bgp_summary(grade, machine, step=1, allow_error=False)` | `dict` | `show bgp ipv4 unicast summary`: `router_id`, `as`, `peers: {ip: {remote_as, state, established, policy_blocked, pfx_rcd, pfx_snt, description, uptime}}`. `policy_blocked` is `True` for an eBGP peer without inbound/outbound policy (RFC 8212, `(Policy)` in the text output) |
+| `get_bgp_neighbor(grade, machine, peer, step=1, allow_error=False)` | `dict` | `show bgp neighbors <peer>`: `remote_as`, `local_as`, `state`, `established`, `link` (`external`/`internal`), negotiated `hold_time`/`keepalive` (seconds), `local_host`/`foreign_host`, `update_source`, `route_reflector_client`, `next_hop_self`, `default_originate`, `route_map_in`/`route_map_out`, `prefix_list_in`/`prefix_list_out`, `accepted_prefixes`, `sent_prefixes`; `{}` for an unknown neighbour |
+| `get_bgp_routes(grade, machine, step=1, allow_error=False)` | `dict[str, list[dict]]` | `show bgp ipv4 unicast`: `{prefix: [path, ...]}`; each path has `valid`, `best`, `reason` (FRR `selectionReason`), `path_from` (`external`/`internal`), `nexthop`, `peer`, `aspath` (`'65100 65000'`), `as_list` (`[65100, 65000]`), `locprf`, `med`, `weight`, `origin`, `local` |
+| `bgp_best_path(routes, prefix)` | `dict` | The best path of `prefix` in a `get_bgp_routes()` result (`{}` when none) |
+| `bgp_paths(routes, prefix, nexthop=None, peer=None, first_as=None, ends_with=None, path_from=None, valid=None)` | `list[dict]` | Paths of `prefix` matching every given criterion (`ends_with=[65001, 65300]` compares the end of `as_list`) |
+| `get_bgp_prefix(grade, machine, prefix, step=1, allow_error=False)` | `dict` | `show bgp ipv4 unicast <prefix>`: `{'prefix', 'paths': [...]}` with the fields above plus `accessible` (next-hop reachability), `peer_router_id`, `originator_id`, `cluster_list` (route reflection) and `communities` (`['65001:300']`) |
+| `get_bgp_advertised_routes(grade, machine, peer, step=1, allow_error=False)` | `dict` | `show bgp ipv4 unicast neighbors <peer> advertised-routes`: `{prefix: {nexthop, aspath, as_list, locprf, med, weight, origin}}`, i.e. what is really sent to that peer after the outbound policy |
+| `is_bgp_protocol(protocol)` | `bool` | `True` when a kernel route `protocol` (see `get_kernel_routes`) denotes a route installed by bgpd; `kernel_route_gateways(routes, prefix, protocols=BGP_ROUTE_PROTOCOLS)` lists the gateways of a BGP kernel route |
+
+`parse_frr_config` / `get_frr_running_config` also return the BGP configuration: `router_bgp` (`as`, `router_id`, `ebgp_requires_policy`, `network_import_check`, `bestpath`, `neighbors: {peer: {remote_as, description, update_source, timers, shutdown, password, next_hop_self, route_reflector_client, default_originate, route_map_in/out, prefix_list_in/out, ...}}`, `networks`, `aggregate_addresses`, `redistribute`), `prefix_lists`, `route_maps` (`{name: [{seq, action, match: [...], set: [...]}]}`), `as_path_lists`, `community_lists`; interface blocks expose their `ip address` lines in `addresses`.
+
+Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

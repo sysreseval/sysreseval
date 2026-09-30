@@ -1,0 +1,13 @@
+============ OSPF network routing table ============
+N IA 0.0.0.0/0             [101] area: 0.0.0.1
+                           via 172.25.145.122, eth1
+N    172.16.241.0/24       [100] area: 0.0.0.1
+                           directly attached to eth0
+N    172.25.145.120/30     [100] area: 0.0.0.1
+                           directly attached to eth1
+
+============ OSPF router routing table =============
+R    3.3.3.3               [100] area: 0.0.0.1, ABR
+                           via 172.25.145.122, eth1
+
+============ OSPF external routing table ===========

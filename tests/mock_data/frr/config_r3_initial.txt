@@ -1,0 +1,12 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 9.1.3
+frr defaults traditional
+hostname r3
+log file /var/log/frr/frr.log
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+end

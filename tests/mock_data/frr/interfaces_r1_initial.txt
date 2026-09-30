@@ -1,0 +1,39 @@
+eth0 is up
+  ifindex 5, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 192.168.130.164/24, Broadcast 192.168.130.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 1.1.1.1, Network Type BROADCAST, Cost: 10
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 1.1.1.1 Interface Address 192.168.130.164/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+eth1 is up
+  ifindex 11, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 192.168.142.196/24, Broadcast 192.168.142.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 1.1.1.1, Network Type BROADCAST, Cost: 10
+  Transmit Delay is 1 sec, State Backup, Priority 1
+  Designated Router (ID) 192.168.169.81 Interface Address 192.168.142.194/24
+  Backup Designated Router (ID) 1.1.1.1, Interface Address 192.168.142.196
+  Multicast group memberships: OSPFAllRouters OSPFDesignatedRouters
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    Hello due in 1.452s
+  Neighbor Count is 1, Adjacent neighbor count is 1
+  Graceful Restart hello delay: 10s
+eth2 is up
+  ifindex 13, MTU 1500 bytes, BW 10000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 172.18.219.190/30, Broadcast 172.18.219.191, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 1.1.1.1, Network Type BROADCAST, Cost: 10
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 1.1.1.1 Interface Address 172.18.219.190/30
+  No backup designated router on this network
+  Multicast group memberships: OSPFAllRouters OSPFDesignatedRouters
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    Hello due in 1.453s
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s

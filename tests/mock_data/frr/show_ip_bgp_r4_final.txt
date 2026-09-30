@@ -1,0 +1,13 @@
+BGP table version is 2, local router ID is 4.4.4.4, vrf id 0
+Default local pref 100, local AS 65300
+Status codes:  s suppressed, d damped, h history, * valid, > best, = multipath,
+               i internal, r RIB-failure, S Stale, R Removed
+Nexthop codes: @NNN nexthop's vrf id, < announce-nh-self
+Origin codes:  i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V valid, I invalid, N Not found
+
+    Network          Next Hop            Metric LocPrf Weight Path
+ *> 0.0.0.0/0        192.168.162.34           0             0 65001 i
+ *> 10.148.200.0/24  0.0.0.0                  0         32768 i
+
+Displayed  2 routes and 2 total paths

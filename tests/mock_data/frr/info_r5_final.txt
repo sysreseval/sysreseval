@@ -1,0 +1,36 @@
+ OSPF Routing Process, Router ID: 5.5.5.5
+ Supports only single TOS (TOS0) routes
+ This implementation conforms to RFC2328
+ RFC1583Compatibility flag is disabled
+ OpaqueCapability flag is disabled
+ Initial SPF scheduling delay 0 millisec(s)
+ Minimum hold time between consecutive SPFs 50 millisec(s)
+ Maximum hold time between consecutive SPFs 5000 millisec(s)
+ Hold time multiplier is currently 1
+ SPF algorithm last executed 1m11s ago
+ Last SPF duration 90 usecs
+ SPF timer is inactive
+ LSA minimum interval 5000 msecs
+ LSA minimum arrival 1000 msecs
+ Write Multiplier set to 20 
+ Refresh timer 10 secs
+ Maximum multiple paths(ECMP) supported 256
+ Administrative distance 110
+ Number of external LSA 0. Checksum Sum 0x00000000
+ Number of opaque AS LSA 0. Checksum Sum 0x00000000
+ Number of areas attached to this router: 1
+ Area ID: 0.0.0.1 (Stub)
+   Shortcutting mode: Default, S-bit consensus: no
+   Number of interfaces in this area: Total: 2, Active: 2
+   Number of fully adjacent neighbors in this area: 1
+   Area has no authentication
+   Number of full virtual adjacencies going through this area: 0
+   SPF algorithm executed 4 times
+   Number of LSA 4
+   Number of router LSA 2. Checksum Sum 0x0000e34e
+   Number of network LSA 1. Checksum Sum 0x00004614
+   Number of summary LSA 1. Checksum Sum 0x00003919
+   Number of ASBR summary LSA 0. Checksum Sum 0x00000000
+   Number of NSSA LSA 0. Checksum Sum 0x00000000
+   Number of opaque link LSA 0. Checksum Sum 0x00000000
+   Number of opaque area LSA 0. Checksum Sum 0x00000000
