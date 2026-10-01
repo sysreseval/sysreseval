@@ -1,0 +1,14 @@
+table ip mangle {
+	chain prerouting {
+		type filter hook prerouting priority mangle; policy accept;
+		ip saddr 192.168.1.0/24 meta l4proto tcp meta mark set 0x0000000a
+		ip saddr 10.1.0.0/16 ip protocol tcp meta mark set 0x0000002a
+	}
+
+	chain forward {
+		type filter hook forward priority mangle; policy accept;
+		ip saddr 172.20.0.0/24 tcp dport 5201 meta mark set 0x00000007
+		ip saddr { 192.168.5.0-192.168.6.255 } meta mark set 0x00000009
+		ip saddr 192.168.7.1 counter packets 0 bytes 0 meta mark set 0x0000000b
+	}
+}

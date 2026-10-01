@@ -1,0 +1,13 @@
+### tools
+tc utility, iproute2-6.19.0, libbpf 1.1.2
+ip utility, iproute2-6.19.0, libbpf 1.1.2
+iperf3: /usr/bin/iperf3
+ethtool: /usr/sbin/ethtool
+nft: /usr/sbin/nft
+jq: /usr/bin/jq
+bridge: /usr/sbin/bridge
+timeout: /usr/bin/timeout
+python3: /usr/bin/python3
+iperf 3.12 (cJSON 1.7.15)
+nftables v1.0.6 (Lester Gooch #5)
+12.14

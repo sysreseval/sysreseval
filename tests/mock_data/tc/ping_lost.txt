@@ -1,0 +1,5 @@
+PING 10.255.255.1 (10.255.255.1) 56(84) bytes of data.
+
+--- 10.255.255.1 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 203ms
+

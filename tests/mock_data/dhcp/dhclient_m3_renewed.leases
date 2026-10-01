@@ -1,0 +1,29 @@
+default-duid "\000\001\000\0012O\3363\346\247\0236\214\005";
+lease {
+  interface "eth0";
+  fixed-address 172.18.14.152;
+  option subnet-mask 255.255.255.0;
+  option routers 172.18.14.49;
+  option dhcp-lease-time 90;
+  option dhcp-message-type 5;
+  option domain-name-servers 172.18.202.184;
+  option dhcp-server-identifier 192.168.11.23;
+  option domain-name "tp-dhcp.lan";
+  renew 3 2026/09/30 14:51:13;
+  rebind 3 2026/09/30 14:51:46;
+  expire 3 2026/09/30 14:51:58;
+}
+lease {
+  interface "eth0";
+  fixed-address 172.18.14.152;
+  option subnet-mask 255.255.255.0;
+  option routers 172.18.14.49;
+  option dhcp-lease-time 600;
+  option dhcp-message-type 5;
+  option domain-name-servers 172.18.202.184;
+  option dhcp-server-identifier 192.168.11.23;
+  option domain-name "tp-dhcp.lan";
+  renew 3 2026/09/30 14:55:07;
+  rebind 3 2026/09/30 14:59:58;
+  expire 3 2026/09/30 15:01:13;
+}

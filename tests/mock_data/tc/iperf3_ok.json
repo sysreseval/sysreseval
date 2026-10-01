@@ -1,0 +1,176 @@
+{
+	"start":	{
+		"connected":	[{
+				"socket":	5,
+				"local_host":	"127.0.0.1",
+				"local_port":	46758,
+				"remote_host":	"127.0.0.1",
+				"remote_port":	5201
+			}],
+		"version":	"iperf 3.12",
+		"system_info":	"Linux f07ff6638a3b 6.12.107+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.107-1 (2026-08-29) x86_64",
+		"timestamp":	{
+			"time":	"Thu, 01 Oct 2026 11:50:49 GMT",
+			"timesecs":	1790855449
+		},
+		"connecting_to":	{
+			"host":	"127.0.0.1",
+			"port":	5201
+		},
+		"cookie":	"36owmfdtdtjmsh5k2g3ih4yxhysxa5wu4p3k",
+		"tcp_mss_default":	32768,
+		"target_bitrate":	0,
+		"sock_bufsize":	0,
+		"sndbuf_actual":	16384,
+		"rcvbuf_actual":	131072,
+		"test_start":	{
+			"protocol":	"TCP",
+			"num_streams":	1,
+			"blksize":	131072,
+			"omit":	1,
+			"duration":	2,
+			"bytes":	0,
+			"blocks":	0,
+			"reverse":	0,
+			"tos":	0,
+			"target_bitrate":	0
+		}
+	},
+	"intervals":	[{
+			"streams":	[{
+					"socket":	5,
+					"start":	0,
+					"end":	1.000149,
+					"seconds":	1.0001490116119385,
+					"bytes":	6069944320,
+					"bits_per_second":	48552319700.578064,
+					"retransmits":	0,
+					"snd_cwnd":	1309660,
+					"snd_wnd":	6215424,
+					"rtt":	24,
+					"rttvar":	6,
+					"pmtu":	65535,
+					"omitted":	true,
+					"sender":	true
+				}],
+			"sum":	{
+				"start":	0,
+				"end":	1.000149,
+				"seconds":	1.0001490116119385,
+				"bytes":	6069944320,
+				"bits_per_second":	48552319700.578064,
+				"retransmits":	0,
+				"omitted":	true,
+				"sender":	true
+			}
+		}, {
+			"streams":	[{
+					"socket":	5,
+					"start":	2.3e-05,
+					"end":	1.000088,
+					"seconds":	1.0001109838485718,
+					"bytes":	6139412480,
+					"bits_per_second":	49109849439.90638,
+					"retransmits":	0,
+					"snd_cwnd":	1309660,
+					"snd_wnd":	6215424,
+					"rtt":	23,
+					"rttvar":	5,
+					"pmtu":	65535,
+					"omitted":	false,
+					"sender":	true
+				}],
+			"sum":	{
+				"start":	2.3e-05,
+				"end":	1.000088,
+				"seconds":	1.0001109838485718,
+				"bytes":	6139412480,
+				"bits_per_second":	49109849439.90638,
+				"retransmits":	0,
+				"omitted":	false,
+				"sender":	true
+			}
+		}, {
+			"streams":	[{
+					"socket":	5,
+					"start":	1.000088,
+					"end":	2.000003,
+					"seconds":	0.99991500377655029,
+					"bytes":	6117916672,
+					"bits_per_second":	48947493728.11422,
+					"retransmits":	0,
+					"snd_cwnd":	1571592,
+					"snd_wnd":	6215424,
+					"rtt":	25,
+					"rttvar":	6,
+					"pmtu":	65535,
+					"omitted":	false,
+					"sender":	true
+				}],
+			"sum":	{
+				"start":	1.000088,
+				"end":	2.000003,
+				"seconds":	0.99991500377655029,
+				"bytes":	6117916672,
+				"bits_per_second":	48947493728.11422,
+				"retransmits":	0,
+				"omitted":	false,
+				"sender":	true
+			}
+		}],
+	"end":	{
+		"streams":	[{
+				"sender":	{
+					"socket":	5,
+					"start":	0,
+					"end":	2.000003,
+					"seconds":	2.000003,
+					"bytes":	12257329152,
+					"bits_per_second":	49029243064.1354,
+					"retransmits":	0,
+					"max_snd_cwnd":	1571592,
+					"max_snd_wnd":	6215424,
+					"max_rtt":	25,
+					"min_rtt":	23,
+					"mean_rtt":	24,
+					"sender":	true
+				},
+				"receiver":	{
+					"socket":	5,
+					"start":	0,
+					"end":	2.000168,
+					"seconds":	2.000003,
+					"bytes":	12258246656,
+					"bits_per_second":	49028868199.071281,
+					"sender":	true
+				}
+			}],
+		"sum_sent":	{
+			"start":	0,
+			"end":	2.000003,
+			"seconds":	2.000003,
+			"bytes":	12257329152,
+			"bits_per_second":	49029243064.1354,
+			"retransmits":	0,
+			"sender":	true
+		},
+		"sum_received":	{
+			"start":	0,
+			"end":	2.000168,
+			"seconds":	2.000168,
+			"bytes":	12258246656,
+			"bits_per_second":	49028868199.071281,
+			"sender":	true
+		},
+		"cpu_utilization_percent":	{
+			"host_total":	99.9362571094315,
+			"host_user":	3.0212064233374285,
+			"host_system":	96.915017365189442,
+			"remote_total":	86.931743755185053,
+			"remote_user":	12.559025054587863,
+			"remote_system":	74.372685369585923
+		},
+		"sender_tcp_congestion":	"cubic",
+		"receiver_tcp_congestion":	"cubic"
+	}
+}
