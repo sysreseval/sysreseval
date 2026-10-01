@@ -4,6 +4,8 @@ Shared fixtures for the SRE test suite.
 Run with:
     source venv/bin/activate && python -m pytest tests/ -v
 """
+import errno
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -59,3 +61,20 @@ def tmp_pub_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(params, 'self_grade_timestamp_dir', str(pub / 'last_self_grades'))
     monkeypatch.setattr(params, 'save_tmp_dir', str(pub / 'tmp'))
     return pub
+
+
+@pytest.fixture
+def unremovable(monkeypatch):
+    """Names of the files that `os.unlink` refuses (PermissionError) whatever the uid of the test
+    process: what the content of a root-owned directory looks like to the sre user (`rmtree`
+    then also fails to rmdir the parents, which stay non-empty).  Add names to the returned set."""
+    names = set()
+    real_unlink = os.unlink
+
+    def unlink(path, *, dir_fd=None):
+        if os.path.basename(os.fspath(path)) in names:
+            raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), os.fspath(path))
+        return real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, 'unlink', unlink)
+    return names

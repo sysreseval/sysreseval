@@ -350,19 +350,23 @@ def finalize_project(setup: ProjectSetup, module_rvlab, net_scheme, lab, data, s
 
 
 def rollback_project(setup: ProjectSetup, multi_project: bool = False):
-    """Undo a failed project creation: undeploy the containers if they were started,
-    remove the user public dir and the project dir."""
+    """Undo a failed project creation: undeploy the containers if they were started, then
+    remove the user public dir and the project dir while still root (the containers may already
+    have left root-owned files in shared/ or the volume dirs) before dropping privileges."""
     if setup.lab_deployed:
         try:
             gain_privileges_if_needed(setup.net_scheme)
             Kathara.get_instance().undeploy_lab(setup.net_scheme.get_lab_hash())
-            if multi_project:
-                drop_privileges_temporarily()
-            else:
-                drop_privileges_permanently()
         except Exception:
             pass
-    if setup.user_public_dir is not None:
-        shutil.rmtree(setup.user_public_dir, ignore_errors=True)
-    if setup.public_lab_dir_created:
-        shutil.rmtree(params.public_lab_dir(setup.running_lab_name), ignore_errors=True)
+    gain_privileges()
+    try:
+        if setup.user_public_dir is not None:
+            shutil.rmtree(setup.user_public_dir, ignore_errors=True)
+        if setup.public_lab_dir_created:
+            shutil.rmtree(params.public_lab_dir(setup.running_lab_name), ignore_errors=True)
+    finally:
+        if multi_project:
+            drop_privileges_temporarily()
+        else:
+            drop_privileges_permanently()

@@ -131,6 +131,8 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_start_cmd, 'drop_privileges_permanently_if_not_needed', noop_ns)
     monkeypatch.setattr(_start_cmd, 'gain_privileges_if_needed',              noop_ns)
     monkeypatch.setattr(_start_cmd, 'set_sudo_uid_for_username',              noop_u)
+    monkeypatch.setattr(_start_cmd, 'gain_privileges',                        noop)
+    monkeypatch.setattr(_start_cmd, 'drop_privileges_temporarily',            noop)
     monkeypatch.setattr(_eval_cmd,  'drop_privileges_permanently',            noop)
     monkeypatch.setattr(_eval_cmd,  'drop_privileges_permanently_if_not_needed', noop_ns)
     monkeypatch.setattr(_eval_cmd,  'drop_privileges_temporarily',            noop)
@@ -139,6 +141,7 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_stop_cmd,  'drop_privileges_permanently',            noop)
     monkeypatch.setattr(_stop_cmd,  'gain_privileges',                        noop)
     monkeypatch.setattr(_stop_cmd,  'set_sudo_uid_for_username',              noop_u)
+    monkeypatch.setattr(_stop_cmd,  'drop_privileges_temporarily',            noop)
     import SRE.command.save    as _save_cmd
     import SRE.command.restore as _restore_cmd
     monkeypatch.setattr(_save_cmd,    'gain_privileges',                          noop)

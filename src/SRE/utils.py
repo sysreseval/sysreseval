@@ -1,6 +1,7 @@
 import importlib
 import json
 import os
+import shutil
 import sys
 import re
 import logging
@@ -27,6 +28,16 @@ def log_error(error):
 def log_debug(message):
     if not SRE.args.user:
         print(f"{message}", file=sys.stderr)
+
+
+def remove_tree(path, errors: list[str]) -> None:
+    """`shutil.rmtree(path)` that goes on after a failure: each entry that could not be removed
+    is appended to *errors* as "<path>: <error>" instead of raising."""
+    shutil.rmtree(path, onexc=lambda function, p, exc: errors.append(f"{p}: {exc}"))
+
+
+def cannot_remove_message(errors: list[str]) -> str:
+    return "cannot remove:\n  " + "\n  ".join(errors)
 
 
 def dedup_preserve_order(items):

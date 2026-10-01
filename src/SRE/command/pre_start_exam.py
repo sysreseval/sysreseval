@@ -7,7 +7,7 @@ from Kathara.manager.Kathara import Kathara
 
 from .stop import stop_running_lab
 from .. import params
-from ..utils import error_quit, user_not_allowed
+from ..utils import error_quit, user_not_allowed, cannot_remove_message
 from .start import do_action_start
 
 
@@ -62,11 +62,14 @@ def action_pre_start_exam():
 
     running = _get_running_labs()
 
-    # Stop running projects whose lab_name is not in the allowed list
+    # Stop running projects whose lab_name is not in the allowed list (a project whose
+    # directories cannot be removed does not prevent the exam labs from starting)
+    not_removed: list[str] = []
     for lab_name, instances in running.items():
         if lab_name not in allowed_lab_names:
             for running_lab_name, lab_hash in instances:
-                stop_running_lab(running_lab_name=running_lab_name, lab_hash=lab_hash, multi_project=True)
+                not_removed += stop_running_lab(running_lab_name=running_lab_name, lab_hash=lab_hash,
+                                                multi_project=True)
 
     # Start one instance for each lab in the list that has no running project
     labs = exam_data.get(params.exam_labs, [])
@@ -86,3 +89,6 @@ def action_pre_start_exam():
     dates.append(datetime.datetime.now().isoformat())
     exam_data[params.exam_pre_start_date] = dates
     exam_path.write_text(json.dumps(exam_data, indent=4))
+
+    if not_removed:
+        error_quit(cannot_remove_message(not_removed))

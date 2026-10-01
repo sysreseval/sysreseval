@@ -80,6 +80,16 @@ class Grade(Grade0):
 KEYED_LAB = NON_PRIVILEGED_LAB.replace(
     'allow_save_restore = True', 'allow_save_restore = True\nsave_key = "docker-tests-key"')
 
+# shared/ (bind-mounted as /shared) plus a private volume (.private/mnt/data, mounted as /data):
+# the containers run as host root and leave root-owned files in both
+SHARED_LAB = NON_PRIVILEGED_LAB.replace(
+    'allow_save_restore = True', 'allow_save_restore = True\nshared_path = True').replace(
+    "_machine_specs = {'router': {}, 'client': {}}",
+    "_machine_specs = {'router': {'volumes': [['data', '/data', 'rw', 'private']]}, 'client': {}}")
+assert 'shared_path = True' in SHARED_LAB and "'volumes'" in SHARED_LAB
+
+ROOT_OWNED_DIRS_CMD = 'mkdir -p /shared/rep_root /data/rep_root && echo x > /shared/rep_root/f && echo x > /data/rep_root/f'
+
 PRIVILEGED_LAB = '''
 from dataclasses import dataclass
 from SRE.lib_sre import Data0, NetScheme0, Grade0
@@ -140,6 +150,7 @@ def labs_dir():
     (d / 'non_privileged.py').write_text(NON_PRIVILEGED_LAB)
     (d / 'privileged.py').write_text(PRIVILEGED_LAB)
     (d / 'keyed.py').write_text(KEYED_LAB)
+    (d / 'shared.py').write_text(SHARED_LAB)
     for f in d.iterdir():
         f.chmod(0o644)
     yield d
@@ -163,6 +174,30 @@ def _lab_hash(running_lab_name):
     return info['lab_hash']
 
 
+def _user_public_dir(running_lab_name):
+    """Target of the project's `.private/user_public_dir` symlink (under /home/sre), or None."""
+    link = PROJECTS / running_lab_name / params.private_dir_name / params.user_public_dir_name
+    if not link.is_symlink():
+        return None
+    target = link.resolve()
+    return target if str(target).startswith(params.sre_user_public_dir + '/') else None
+
+
+def _leave_root_owned_dirs(running_lab_name):
+    """Make the router leave a non-empty root-owned directory in /shared and in its private
+    volume, and return the two host-side directories (checked to be root-owned)."""
+    r = _sre('exec', running_lab_name, 'router', 'sh', '-c', ROOT_OWNED_DIRS_CMD)
+    assert r.returncode == 0, r.stderr
+    user_public_dir = _user_public_dir(running_lab_name)
+    assert user_public_dir is not None
+    dirs = (user_public_dir / params.shared_dir_name / 'rep_root',
+            Path(params.private_mount_dir(running_lab_name)) / 'data' / 'rep_root')
+    for d in dirs:
+        assert (d / 'f').is_file(), d
+        assert d.stat().st_uid == 0, f"precondition: {d} should have been created by root"
+    return dirs
+
+
 def _containers(client, lab_hash):
     return client.containers.list(all=True, filters={'label': [f'lab_hash={lab_hash}']})
 
@@ -178,8 +213,14 @@ def projects(docker_client):
     created = []
     yield created
     for running_lab_name, lab_hash in created:
-        if (PROJECTS / running_lab_name).exists():
+        project_dir = PROJECTS / running_lab_name
+        if project_dir.exists():
+            user_public_dir = _user_public_dir(running_lab_name)
             _sre('stop', running_lab_name)
+            # whatever a failing stop left behind (we are root)
+            shutil.rmtree(project_dir, ignore_errors=True)
+            if user_public_dir is not None:
+                shutil.rmtree(user_public_dir, ignore_errors=True)
         for c in _containers(docker_client, lab_hash):
             c.remove(force=True)
         for n in _networks(docker_client, lab_hash):
@@ -237,6 +278,22 @@ class TestStop:
         assert _containers(docker_client, lab_hash) == [], "containers left running after sre stop"
         assert _networks(docker_client, lab_hash) == [], "networks left after sre stop"
         assert not (PROJECTS / running_lab_name).exists()
+
+    def test_stop_removes_root_owned_dirs_in_shared_and_volume(self, docker_client, labs_dir, projects):
+        """The containers run as host root: a non-empty directory they leave in /shared or in a
+        volume used to make `sre stop` die with PermissionError (the privileges were dropped
+        before the removal) and leave the project dir behind."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'shared.py')
+        _leave_root_owned_dirs(running_lab_name)
+        user_public_dir = _user_public_dir(running_lab_name)
+
+        r = _sre('stop', running_lab_name)
+        assert r.returncode == 0, r.stderr
+
+        assert _containers(docker_client, lab_hash) == []
+        assert _networks(docker_client, lab_hash) == []
+        assert not (PROJECTS / running_lab_name).exists()
+        assert not user_public_dir.exists(), "user public dir left after sre stop"
 
 
 # ---------------------------------------------------------------------------
@@ -326,3 +383,27 @@ class TestSaveRestore:
             assert r.returncode == 0, r.stderr
             assert _containers(docker_client, h) == []
             assert not (PROJECTS / name).exists()
+
+
+# ---------------------------------------------------------------------------
+# sre wipe
+# ---------------------------------------------------------------------------
+
+class TestWipe:
+    """`sre wipe` removes every project of the host: the test only runs when there is none."""
+
+    def test_wipe_removes_root_owned_dirs(self, docker_client, labs_dir, projects):
+        others = _project_dirs() | {c.name for c in docker_client.containers.list(all=True, filters={'name': 'kathara_'})}
+        if others:
+            pytest.skip(f"sre wipe would remove projects that are not the test's: {sorted(others)}")
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'shared.py')
+        _leave_root_owned_dirs(running_lab_name)
+        user_public_dir = _user_public_dir(running_lab_name)
+
+        r = _sre('wipe')
+        assert r.returncode == 0, r.stderr
+
+        assert _containers(docker_client, lab_hash) == []
+        assert _networks(docker_client, lab_hash) == []
+        assert not (PROJECTS / running_lab_name).exists()
+        assert not user_public_dir.exists(), "user public dir left after sre wipe"

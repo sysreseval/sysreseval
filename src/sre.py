@@ -388,7 +388,7 @@ if uid == 0:
 
 if params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
                                                             'eval', 'eval-all',
-                                                            'eval-exam', 'state', 'stop', 'wipe',
+                                                            'eval-exam', 'state', 'stop', 'wipe', 'del-exam',
                                                             'save', 'restore'):
     drop_privileges_temporarily()
 else:
