@@ -188,6 +188,22 @@ machine_icon_svg_file = graphicdir + "/machine.svg"
 machine_forbidden_icon_svg_file = graphicdir + "/machine-forbidden.svg"
 switch_icon_svg_file = graphicdir + "/switch.svg"
 
+# TrueType fonts embedded in the PDFs of "sre export" and "sre outline" (downloaded by "make fonts"):
+# {style: file} with the styles '' (regular), 'B', 'I' and 'BI'. A missing style uses the regular
+# file. If the regular file cannot be loaded, the core Helvetica/Courier fonts are used and the
+# text is reduced to Latin-1.
+fontdir = graphicdir + "/fonts"
+pdf_font_files = {
+    '': fontdir + "/DejaVuSans.ttf",
+    'B': fontdir + "/DejaVuSans-Bold.ttf",
+    'I': fontdir + "/DejaVuSans-Oblique.ttf",
+    'BI': fontdir + "/DejaVuSans-BoldOblique.ttf",
+}
+pdf_mono_font_files = {
+    '': fontdir + "/DejaVuSansMono.ttf",
+    'B': fontdir + "/DejaVuSansMono-Bold.ttf",
+}
+
 exam_only_affix = ["_EXAM_", "_OLD_", "_DRAFT_", "_TESTS_"]
 
 exam_json_name = "exam.json"

@@ -2,9 +2,16 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
+
+# DejaVu fonts embedded in the PDFs of "sre export" and "sre outline" (params.pdf_font_files).
+DEJAVU_VERSION := 2.37
+DEJAVU_URL := https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_$(subst .,_,$(DEJAVU_VERSION))/dejavu-fonts-ttf-$(DEJAVU_VERSION).tar.bz2
+DEJAVU_SHA256 := fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7
+DEJAVU_FILES := DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSans-Oblique.ttf DejaVuSans-BoldOblique.ttf DejaVuSansMono.ttf DejaVuSansMono-Bold.ttf
+FONT_DIR := ${ROOT_DIR}/graphics/fonts
 
 # Minimal pkg_resources stub. The 'fs' library (a Kathara dependency) calls
 # pkg_resources.declare_namespace at import time, so we cannot simply uninstall
@@ -73,7 +80,28 @@ api_doc:
 		lib.ips lib.net_config lib.dhcp lib.tls lib.grade_helpers lib.frr lib.state_helpers lib.utils
 	@echo "Docs written to ${ROOT_DIR}/docs/html/api"
 
-venv:
+# Download the DejaVu fonts into graphics/fonts (nothing to do when they are already there).
+# Without them the PDFs fall back on the core fonts and their text is reduced to Latin-1.
+fonts:
+	@set -e; \
+	missing=0; for f in $(DEJAVU_FILES); do [ -s "$(FONT_DIR)/$$f" ] || missing=1; done; \
+	if [ $$missing -eq 0 ]; then echo "DejaVu fonts already in $(FONT_DIR)"; exit 0; fi; \
+	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	echo "Downloading DejaVu $(DEJAVU_VERSION) fonts"; \
+	curl -fsSL -o "$$tmp/dejavu.tar.bz2" "$(DEJAVU_URL)"; \
+	if command -v sha256sum >/dev/null 2>&1; then sum=$$(sha256sum "$$tmp/dejavu.tar.bz2"); \
+	else sum=$$(shasum -a 256 "$$tmp/dejavu.tar.bz2"); fi; \
+	[ "$${sum%% *}" = "$(DEJAVU_SHA256)" ] \
+		|| { echo "ERROR: unexpected SHA-256 for $(DEJAVU_URL): $${sum%% *}"; exit 1; }; \
+	tar -xjf "$$tmp/dejavu.tar.bz2" -C "$$tmp"; \
+	mkdir -p "$(FONT_DIR)"; \
+	for f in $(DEJAVU_FILES); do \
+		install -m 644 "$$tmp/dejavu-fonts-ttf-$(DEJAVU_VERSION)/ttf/$$f" "$(FONT_DIR)/$$f"; \
+	done; \
+	install -m 644 "$$tmp/dejavu-fonts-ttf-$(DEJAVU_VERSION)/LICENSE" "$(FONT_DIR)/LICENSE"; \
+	echo "DejaVu fonts installed in $(FONT_DIR)"
+
+venv: fonts
 	# Always start from a clean slate. `python3 -m venv` over an existing
 	# directory only partially refreshes it and won't rewrite shebangs whose
 	# absolute paths point outside the tree (e.g. when the project was moved
@@ -131,7 +159,7 @@ sre-wrapper:
 	chmod 711 ${ROOT_DIR}/bin/sre-wrapper
 
 
-install: check-debug-mode sre-wrapper wrappers
+install: check-debug-mode fonts sre-wrapper wrappers
 
 check-debug-mode:
 	@grep -qP '^debug_mode\s*=\s*True' ${ROOT_DIR}/src/SRE/params.py \

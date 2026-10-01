@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from archive_helpers import archive_name, rln, write_archive, write_two_instances
+from SRE import params
 from SRE.command import outline
 
 
@@ -112,15 +113,15 @@ class TestGroupRecords:
 class TestMakePdfInstances:
     @pytest.fixture
     def cells(self, monkeypatch):
-        """Every text handed to FPDF.cell, in order."""
+        """Every text handed to SrePDF.cell, in order."""
         texts: list[str] = []
 
-        class Recording(outline.FPDF):
+        class Recording(outline.SrePDF):
             def cell(self, w=None, h=None, text='', *args, **kwargs):
                 texts.append(str(text))
                 return super().cell(w, h, text, *args, **kwargs)
 
-        monkeypatch.setattr(outline, 'FPDF', Recording)
+        monkeypatch.setattr(outline, 'SrePDF', Recording)
         return texts
 
     def test_history_has_one_table_per_instance(self, tmp_path, cells):
@@ -151,3 +152,37 @@ class TestMakePdfInstances:
         i = cells.index('Project started:')
         assert cells[i + 1] == '2026-09-10 11:00:00'
         assert cells.count('Evaluation Time') == 1
+
+    @pytest.mark.parametrize('with_fonts', [True, False])
+    def test_non_latin1_text_does_not_crash(self, tmp_path, cells, monkeypatch, with_fonts):
+        """Grade titles outside Latin-1 (the core fonts of fpdf raise on them)."""
+        if not with_fonts:
+            monkeypatch.setattr(params, 'pdf_font_files', {'': str(tmp_path / 'missing.ttf')})
+        title = 'Mise en œuvre du routage → LAN2 ⚠️'
+        r = rln(start_ts='20260910100000', user='bob')
+        write_archive(tmp_path / archive_name(r, '20260910100500'), hostname='hb', login='bob',
+                      running_lab_name=r, eval_date='2026-09-10T10:05:00',
+                      grade_list=[{'title': title, 'max_grade': 1, 'grade': 1, 'grade_letter': 'OK',
+                                   'description': ''}])
+        out = tmp_path / 'bob.pdf'
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), out, forced_lang='en')
+        assert out.read_bytes().startswith(b'%PDF')
+        assert title in cells
+
+
+class TestPdfFit:
+    @pytest.fixture
+    def pdf(self):
+        pdf = outline.SrePDF()
+        pdf.add_page()
+        pdf.set_font(pdf.text_font, '', 9)
+        return pdf
+
+    def test_short_text_is_unchanged(self, pdf):
+        assert outline._pdf_fit(pdf, 'Routage → LAN2', 150) == 'Routage → LAN2'
+
+    def test_long_text_is_shortened_to_the_cell_width(self, pdf):
+        fitted = outline._pdf_fit(pdf, 'W' * 200, 150)
+        assert fitted.endswith('...') and len(fitted) < 200
+        assert pdf.get_string_width(fitted) <= 150 - 2 * pdf.c_margin
+        assert pdf.get_string_width('W' + fitted) > 150 - 2 * pdf.c_margin

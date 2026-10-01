@@ -13,3 +13,6 @@ __pycache__/
 
 # compiled by "make sre-wrapper" (see src/sre-wrapper/sre-wrapper.c)
 bin/sre-wrapper
+
+# downloaded by "make fonts"
+/graphics/fonts/

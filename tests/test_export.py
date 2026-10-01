@@ -1,4 +1,4 @@
-"""Tests for export.py: lab.conf generation and file collection logic."""
+"""Tests for export.py: lab.conf generation, file collection logic and informations.pdf."""
 import io
 import zipfile
 from dataclasses import dataclass
@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from SRE import params
+from SRE.common import InfoLab, QuestionDummy, QuestionForm, QuestionText, TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Machine, Network, NetAdapter, _FileOp, _AppendOp
-from SRE.command.export import _build_lab_conf, _lab_display_name, _random_token
+from SRE.command.export import _build_info_pdf, _build_lab_conf, _lab_display_name, _random_token
 
 
 # ---------------------------------------------------------------------------
@@ -252,3 +254,54 @@ class TestDirectoryFiles:
         (initial / 'orphan.txt').write_bytes(b'ignored')
         files = self._collect_dir_files(initial, ['m1'])
         assert files == {}
+
+
+# ---------------------------------------------------------------------------
+# informations.pdf
+# ---------------------------------------------------------------------------
+
+INFORMATIONS = """
+    Mise en œuvre d’un serveur… **attention** ⚠️ : `a → b`
+
+    ```
+    mount <serveur>:/export /mnt   # ─ →
+    ```
+
+    | machine | rôle → |
+    |---------|--------|
+    | srv     | œ      |
+    """
+
+
+def _write_info(running_lab_name):
+    info = InfoLab(
+        lab_name='test/mylab', lab_hash='abc123',
+        title=TranslatedText.from_value('Mise en œuvre → NFS'),
+        informations=TranslatedText.from_value(INFORMATIONS),
+        export_kathara_project=True, allow_self_grade=True, machines=[],
+        questions=[
+            QuestionText(title='Quelle est l’adresse… ?', description='Réponse **en → gras** `x ─ y`', order=1),
+            QuestionForm(title='Formulaire œ', description='Adresse → @@{addr:[0-9.]+}@@ …', order=2,
+                         fields=[{'name': 'addr →', 'regex': '[0-9.]+'}]),
+            QuestionDummy(title='Note …', description='ignorée', order=3),
+        ],
+        delay_between_self_grade=60, eval_interval_without_exam_mode=0, eval_before_exit=False,
+        user_allowed_states={},
+    )
+    path = Path(params.info_filename(running_lab_name))
+    path.parent.mkdir(parents=True)
+    path.write_text(info.to_json())
+
+
+class TestBuildInfoPdf:
+    @pytest.mark.parametrize('with_fonts', [True, False])
+    def test_non_latin1_text(self, tmp_pub_dir, tmp_path, monkeypatch, with_fonts):
+        """The core fonts of fpdf raise on text outside Latin-1: `sre export` printed nothing."""
+        if not with_fonts:
+            monkeypatch.setattr(params, 'pdf_font_files', {'': str(tmp_path / 'missing.ttf')})
+            monkeypatch.setattr(params, 'pdf_mono_font_files', {'': str(tmp_path / 'missing.ttf')})
+        _write_info(RUNNING_LAB)
+        assert _build_info_pdf(RUNNING_LAB).startswith(b'%PDF')
+
+    def test_missing_info_file(self, tmp_pub_dir):
+        assert _build_info_pdf(RUNNING_LAB) == b''

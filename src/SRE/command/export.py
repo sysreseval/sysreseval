@@ -11,13 +11,12 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-import markdown as _md
-from fpdf import FPDF
 from graphviz import Graph
 
 from .. import params
 from ..common import InfoLab, QuestionType, TranslatedText
 from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp
+from ..pdf import SrePDF, markdown_to_html
 from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, error_quit
 from ..params import SRE
 
@@ -223,21 +222,21 @@ def _build_info_pdf(running_lab_name: str) -> bytes:
     def _r(v) -> str:
         return TranslatedText.from_value(v).resolve(lang)
 
-    pdf = FPDF()
+    pdf = SrePDF()
     pdf.set_margins(20, 20, 20)
     pdf.add_page()
+    tag_styles = pdf.html_tag_styles()
 
     # Title
-    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_font(pdf.text_font, "B", 16)
     pdf.cell(0, 10, _r(info_lab.title) or info_lab.lab_name, new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
     # Informations (markdown → HTML)
     informations_str = _r(info_lab.informations)
     if informations_str.strip():
-        html = _md.markdown(informations_str)
-        pdf.set_font("Helvetica", size=11)
-        pdf.write_html(html)
+        pdf.set_font(pdf.text_font, size=11)
+        pdf.write_html(markdown_to_html(informations_str), tag_styles=tag_styles)
         pdf.ln(6)
 
     # Questions
@@ -247,29 +246,29 @@ def _build_info_pdf(running_lab_name: str) -> bytes:
     )
     if questions:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_font(pdf.text_font, "B", 14)
         pdf.cell(0, 10, "Questions", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
         w = pdf.w - pdf.l_margin - pdf.r_margin
         for i, q in enumerate(questions, 1):
             pdf.set_x(pdf.l_margin)
-            pdf.set_font("Helvetica", "B", 12)
-            pdf.multi_cell(w, 7, f"{i}. {_r(q.title)}")
+            pdf.set_font(pdf.text_font, "B", 12)
+            pdf.multi_cell(w, 7, f"{i}. {_r(q.title)}", new_x="LMARGIN", new_y="NEXT")
             desc_str = _r(q.description)
             if desc_str:
-                pdf.set_x(pdf.l_margin)
-                pdf.set_font("Helvetica", size=11)
+                pdf.set_font(pdf.text_font, size=11)
                 desc = desc_str
                 if q.question_type == QuestionType.FORM.value:
                     desc = re.sub(r'@@\{[^:}]+:[^}]*\}@@', '', desc)
-                pdf.multi_cell(w, 6, desc)
+                pdf.write_html(markdown_to_html(desc), tag_styles=tag_styles)
+                pdf.ln(6)
             if q.question_type == QuestionType.FORM.value and hasattr(q, "fields"):
                 pdf.ln(2)
                 label_w = 60
                 box_w = w - label_w
                 for field in q.fields:
                     pdf.set_x(pdf.l_margin)
-                    pdf.set_font("Helvetica", size=11)
+                    pdf.set_font(pdf.text_font, size=11)
                     pdf.cell(label_w, 8, field.get("name", "") + " :", new_x="END", new_y="LAST")
                     pdf.rect(pdf.get_x(), pdf.get_y(), box_w, 8)
                     pdf.ln(10)

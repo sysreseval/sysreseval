@@ -9,7 +9,6 @@ from pathlib import Path
 
 import msgpack
 import zstandard as zstd
-from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 from odf.opendocument import OpenDocumentSpreadsheet
 from odf.style import Style, TextProperties, TableCellProperties
@@ -18,6 +17,7 @@ from odf.text import P
 
 from .. import params
 from ..params import SRE
+from ..pdf import SrePDF
 from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args, format_instance_start
 
 # i18n — same lookup as sre.py
@@ -136,11 +136,6 @@ def _tt_str(v, lang='en') -> str:
     return str(v) if v else ''
 
 
-def _pdf_str(s: str) -> str:
-    """Replace characters outside Latin-1 with '?' so fpdf built-in fonts don't crash."""
-    return s.encode('latin-1', errors='replace').decode('latin-1')
-
-
 def _fmt_num(v) -> str:
     """Format a numeric grade value: drop the decimal point for whole numbers."""
     if v is None:
@@ -150,7 +145,17 @@ def _fmt_num(v) -> str:
     return str(v)
 
 
-def _pdf_row(pdf: FPDF, widths: list, values: list, aligns: list = None, h: float = 6):
+def _pdf_fit(pdf: SrePDF, text: str, width: float) -> str:
+    """Shorten *text* with '...' so that it fits a cell of *width* in the current font."""
+    available = width - 2 * pdf.c_margin
+    if pdf.get_string_width(text) <= available:
+        return text
+    while text and pdf.get_string_width(text + '...') > available:
+        text = text[:-1]
+    return text + '...'
+
+
+def _pdf_row(pdf: SrePDF, widths: list, values: list, aligns: list = None, h: float = 6):
     """Output a table row of border=1 cells then ln()."""
     if aligns is None:
         aligns = [''] * len(widths)
@@ -201,33 +206,33 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
 
     t = _setup_i18n(forced_lang)
 
-    pdf = FPDF()
+    pdf = SrePDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
     # --- Header ---
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 9, _pdf_str(t("Evaluation Report")), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
+    pdf.set_font(pdf.text_font, 'B', 14)
+    pdf.cell(0, 9, t("Evaluation Report"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
     pdf.ln(2)
 
-    pdf.set_font('Helvetica', '', 11)
+    pdf.set_font(pdf.text_font, '', 11)
     info = user_info.get(login) if user_info else None
     fullname = first.get('fullname', '')
     email    = first.get('email', '')
     name_str  = info['name']  if info else (fullname if fullname else '')
     email_str = info['email'] if info else email
-    fields = [(t('Login:'), login), (t('Hostname:'), hostname), (t('Project:'), _pdf_str(lab_name))]
+    fields = [(t('Login:'), login), (t('Hostname:'), hostname), (t('Project:'), lab_name)]
     if show_instance:
         fields.append((t('Project started:'), format_instance_start(first.get('instance_start', '')) or '?'))
     if name_str:
-        fields.append((t('Name:'), _pdf_str(name_str)))
+        fields.append((t('Name:'), name_str))
     if email_str:
-        fields.append((t('Email:'), _pdf_str(email_str)))
+        fields.append((t('Email:'), email_str))
     for label, value in fields:
-        pdf.cell(40, 7, _pdf_str(label))
-        pdf.set_font('Helvetica', 'B', 11)
+        pdf.cell(40, 7, label)
+        pdf.set_font(pdf.text_font, 'B', 11)
         pdf.cell(0, 7, value, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font('Helvetica', '', 11)
+        pdf.set_font(pdf.text_font, '', 11)
 
     lang = forced_lang or (locale.getlocale()[0] or '').split('_')[0].lower()
     date_fmt = '%A, %B %d, %Y' if lang == 'en' else '%A %d %B %Y'
@@ -239,23 +244,23 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
             return iso_date
 
     dates = sorted({r['eval_date'][:10] for r in records if r['eval_date']})
-    pdf.cell(40, 7, _pdf_str(t('Date:')))
-    pdf.set_font('Helvetica', 'B', 11)
+    pdf.cell(40, 7, t('Date:'))
+    pdf.set_font(pdf.text_font, 'B', 11)
     pdf.cell(0, 7, '   '.join(_fmt_date(d) for d in dates), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font('Helvetica', '', 11)
+    pdf.set_font(pdf.text_font, '', 11)
 
-    pdf.cell(40, 7, _pdf_str(t('Raw grade:')))
-    pdf.set_font('Helvetica', 'B', 11)
+    pdf.cell(40, 7, t('Raw grade:'))
+    pdf.set_font(pdf.text_font, 'B', 11)
     pdf.cell(0, 7, f"{best['total_grade']} / {best['total_max']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font('Helvetica', '', 11)
+    pdf.set_font(pdf.text_font, '', 11)
 
     if best.get('mark') is not None:
         max_mark = best.get('maximum_mark')
         mark_str = f"{best['mark']} / {max_mark}" if max_mark is not None else str(best['mark'])
-        pdf.cell(40, 7, _pdf_str(t('Mark:')))
-        pdf.set_font('Helvetica', 'B', 11)
-        pdf.cell(0, 7, _pdf_str(mark_str), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font('Helvetica', '', 11)
+        pdf.cell(40, 7, t('Mark:'))
+        pdf.set_font(pdf.text_font, 'B', 11)
+        pdf.cell(0, 7, mark_str, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font(pdf.text_font, '', 11)
     pdf.ln(4)
 
     w_time = 55
@@ -277,13 +282,13 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
             return str(eval_date)
 
     # --- Best evaluation detail ---
-    pdf.set_font('Helvetica', 'B', 12)
+    pdf.set_font(pdf.text_font, 'B', 12)
     best_title = t("Best evaluation  -  {date}  ({grade} / {max})").format(
         date=_fmt_eval_dt(best['eval_date']),
         grade=best_index,
         max=len(records)) if not no_timeline else t("Best evaluation  -  {date}").format(
         date=_fmt_eval_dt(best['eval_date']))
-    pdf.cell(0, 7, _pdf_str(best_title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 7, best_title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(1)
 
     grade_list = best['grade_list']
@@ -292,10 +297,10 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         w_m = 18
         w_title = _PAGE_W - w_g - w_m
 
-        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_font(pdf.text_font, 'B', 9)
         pdf.set_fill_color(200, 200, 220)
         for h_txt, w in [(t('Element'), w_title), (t('Score'), w_g), (t('Max'), w_m)]:
-            pdf.cell(w, 7, _pdf_str(h_txt), border=1, fill=True)
+            pdf.cell(w, 7, h_txt, border=1, fill=True)
         pdf.ln()
 
         def _emit_grade_row(elem):
@@ -307,32 +312,30 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
             grade_str = '' if grade is None else str(grade)
             max_str = '' if max_grade is None else str(max_grade)
             label = desc if desc else title
-            label_clip = _pdf_str(label[:110] + ('...' if len(label) > 110 else ''))
-
-            pdf.cell(w_title, 6, label_clip, border=1)
+            pdf.cell(w_title, 6, _pdf_fit(pdf, label, w_title), border=1)
             pdf.cell(w_g, 6, grade_str, border=1, align='C')
             pdf.cell(w_m, 6, max_str, border=1, align='C')
             pdf.ln()
 
         def _emit_subtotal_row(label_txt: str, grade_val: float, max_val: float):
-            pdf.set_font('Helvetica', 'B', 9)
+            pdf.set_font(pdf.text_font, 'B', 9)
             pdf.set_fill_color(220, 230, 245)
-            pdf.cell(w_title, 6, _pdf_str(label_txt), border=1, fill=True)
+            pdf.cell(w_title, 6, label_txt, border=1, fill=True)
             pdf.cell(w_g, 6, _fmt_num(grade_val), border=1, align='C', fill=True)
             pdf.cell(w_m, 6, _fmt_num(max_val), border=1, align='C', fill=True)
             pdf.ln()
-            pdf.set_font('Helvetica', '', 9)
+            pdf.set_font(pdf.text_font, '', 9)
 
         def _emit_part_header_row(part: dict):
             desc = _tt_str(part.get('description') or '', lang) or _tt_str(part.get('title', ''), lang)
-            pdf.set_font('Helvetica', 'B', 9)
+            pdf.set_font(pdf.text_font, 'B', 9)
             pdf.set_fill_color(220, 230, 245)
-            pdf.cell(w_title + w_g + w_m, 6, _pdf_str(desc), border=1, align='C', fill=True)
+            pdf.cell(w_title + w_g + w_m, 6, desc, border=1, align='C', fill=True)
             pdf.ln()
-            pdf.set_font('Helvetica', '', 9)
+            pdf.set_font(pdf.text_font, '', 9)
 
         grade_parts = best.get('grade_parts') or []
-        pdf.set_font('Helvetica', '', 9)
+        pdf.set_font(pdf.text_font, '', 9)
         if show_parts and grade_parts:
             ungrouped: list = []
             elements_by_part: dict[str, list] = {p.get('title', ''): [] for p in grade_parts}
@@ -364,9 +367,9 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
                 _emit_grade_row(elem)
 
         # Grand total row
-        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_font(pdf.text_font, 'B', 9)
         pdf.set_fill_color(220, 230, 245)
-        pdf.cell(w_title, 6, _pdf_str(t('Total')), border=1, fill=True)
+        pdf.cell(w_title, 6, t('Total'), border=1, fill=True)
         pdf.cell(w_g, 6, str(best['total_grade']), border=1, align='C', fill=True)
         pdf.cell(w_m, 6, str(best['total_max']), border=1, align='C', fill=True)
         pdf.ln()
@@ -374,31 +377,31 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         if best.get('mark') is not None:
             max_mark = best.get('maximum_mark')
             mark_str = f"{best['mark']} / {max_mark}" if max_mark is not None else str(best['mark'])
-            pdf.cell(w_title, 6, _pdf_str(t('Mark')), border=1)
-            pdf.cell(w_g + w_m, 6, _pdf_str(mark_str), border=1, align='C')
+            pdf.cell(w_title, 6, t('Mark'), border=1)
+            pdf.cell(w_g + w_m, 6, mark_str, border=1, align='C')
             pdf.ln()
 
-        pdf.set_font('Helvetica', '', 9)
+        pdf.set_font(pdf.text_font, '', 9)
     else:
-        pdf.set_font('Helvetica', 'I', 10)
-        pdf.cell(0, 7, _pdf_str(t('(no details available)')), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font(pdf.text_font, 'I', 10)
+        pdf.cell(0, 7, t('(no details available)'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.ln(4)
 
     if not no_timeline:
         # --- Timetable ---
-        pdf.set_font('Helvetica', 'B', 12)
-        pdf.cell(0, 7, _pdf_str(t("Evaluation History")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font(pdf.text_font, 'B', 12)
+        pdf.cell(0, 7, t("Evaluation History"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
 
-        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_font(pdf.text_font, 'B', 9)
         pdf.set_fill_color(200, 200, 220)
 
-        headers = [_pdf_str(t("Evaluation Time"))]
+        headers = [t("Evaluation Time")]
         widths = [w_time]
         aligns = ['']
         if has_remaining:
-            headers.append(_pdf_str(t('Time Remaining')))
+            headers.append(t('Time Remaining'))
             widths.append(w_rem)
             aligns.append('C')
         headers += [t('Score'), t('Max')]
@@ -417,10 +420,10 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
             if titled:
                 if i_inst:
                     pdf.ln(2)
-                pdf.set_font('Helvetica', 'B', 9)
-                pdf.cell(0, 6, _pdf_str(f"{t('Project started:')} {format_instance_start(instance_start) or '?'}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_font(pdf.text_font, 'B', 9)
+                pdf.cell(0, 6, f"{t('Project started:')} {format_instance_start(instance_start) or '?'}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-            pdf.set_font('Helvetica', 'B', 9)
+            pdf.set_font(pdf.text_font, 'B', 9)
             for h_txt, w in zip(headers, widths):
                 pdf.cell(w, 7, h_txt, border=1, fill=True)
             pdf.ln()
@@ -433,12 +436,12 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
                 else:
                     groups.append([rec])
 
-            pdf.set_font('Helvetica', '', 9)
+            pdf.set_font(pdf.text_font, '', 9)
             for grp in groups:
                 if len(grp) == 1:
                     time_str = _fmt_eval_dt(grp[0]['eval_date'])
                 else:
-                    time_str = _pdf_str(
+                    time_str = (
                         f"{_fmt_eval_dt(grp[0]['eval_date'])} - {_fmt_eval_dt(grp[-1]['eval_date'])}"
                         f" ({len(grp)} {t('evaluations')})"
                     )
