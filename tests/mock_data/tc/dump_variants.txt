@@ -1,0 +1,126 @@
+qdisc noqueue 0: dev lo root refcnt 2 
+qdisc noqueue 0: dev eth0 root refcnt 2 
+qdisc noqueue 0: dev p0 root refcnt 2 
+qdisc ingress ffff: dev p0 parent ffff:fff1 ---------------- 
+qdisc htb 1: dev v0 root refcnt 5 r2q 10 default 0x20 direct_packets_stat 0 direct_qlen 1000
+qdisc noqueue 0: dev p1 root refcnt 2 
+qdisc fq_codel 8010: dev v1 root refcnt 5 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc htb 1: dev p2 root refcnt 5 r2q 20 default 0x30 direct_packets_stat 0 direct_qlen 1000
+qdisc pfifo 30: dev p2 parent 1:30 limit 50p
+qdisc fq_codel 10: dev p2 parent 1:10 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc sfq 8011: dev v2 root refcnt 5 limit 127p quantum 1514b depth 127 divisor 1024 perturb 10sec 
+qdisc cake 8016: dev p3 root refcnt 5 bandwidth 20Mbit besteffort flowblind nonat nowash no-ack-filter split-gso rtt 100ms raw overhead 0 
+qdisc pfifo 8012: dev v3 root refcnt 5 limit 100p
+qdisc cake 8017: dev p4 root refcnt 5 bandwidth unlimited diffserv3 triple-isolate nonat nowash no-ack-filter split-gso rtt 100ms raw overhead 0 
+qdisc codel 8013: dev v4 root refcnt 5 limit 1000p target 5ms interval 100ms 
+qdisc noqueue 0: dev p5 root refcnt 2 
+qdisc netem 8014: dev v5 root refcnt 5 limit 1000 delay 100ms  10ms 25% loss 2% 10% duplicate 1% reorder 25% 50% corrupt 0.1% rate 5Mbit seed 3148353789097594279 gap 1
+qdisc noqueue 0: dev p6 root refcnt 2 
+qdisc tbf 2: dev v6 root refcnt 5 rate 1Mbit burst 4Kb peakrate 2Mbit minburst 1540b lat 400ms 
+qdisc sfq 8015: dev v6 parent 2: limit 127p quantum 1514b depth 127 divisor 1024 
+qdisc noqueue 0: dev p7 root refcnt 2 
+qdisc noqueue 0: dev v7 root refcnt 2 
+qdisc clsact ffff: dev v7 parent ffff:fff1 
+qdisc fq_codel 0: dev ifb0 root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+===CLASS eth0
+===FILTER eth0
+===INGRESS eth0
+===CLASS ifb0
+===FILTER ifb0
+===INGRESS ifb0
+===CLASS lo
+===FILTER lo
+===INGRESS lo
+===CLASS p0
+===FILTER p0
+===INGRESS p0
+===CLASS p1
+===FILTER p1
+===INGRESS p1
+===CLASS p2
+class htb 1:10 parent 1:1 leaf 10: prio 0 rate 40Mbit ceil 50Mbit burst 1600b cburst 1600b
+class htb 1:1 root rate 50Mbit ceil 50Mbit burst 1600b cburst 1600b
+class htb 1:30 parent 1:1 leaf 30: prio 1 rate 10Mbit ceil 50Mbit burst 15Kb cburst 15Kb
+===FILTER p2
+filter parent 1: protocol ip pref 49152 fw chain 0 
+filter parent 1: protocol ip pref 49152 fw chain 0 handle 0x2a classid 1:10 
+===INGRESS p2
+===CLASS p3
+===FILTER p3
+===INGRESS p3
+===CLASS p4
+class cake 8017:498 parent 8017: 
+===FILTER p4
+===INGRESS p4
+===CLASS p5
+===FILTER p5
+===INGRESS p5
+===CLASS p6
+===FILTER p6
+===INGRESS p6
+===CLASS p7
+===FILTER p7
+===INGRESS p7
+===CLASS v0
+class htb 1:10 root prio 0 rate 8Mbit ceil 10Mbit burst 1600b cburst 1600b
+class htb 1:20 root prio 0 rate 2Mbit ceil 10Mbit burst 1600b cburst 1600b
+===FILTER v0
+filter parent 1: protocol ip pref 2 flower chain 0 
+filter parent 1: protocol ip pref 2 flower chain 0 handle 0x1 classid 1:10 
+  eth_type ipv4
+  ip_proto tcp
+  dst_port 5201
+  not_in_hw
+filter parent 1: protocol ip pref 3 u32 chain 0 
+filter parent 1: protocol ip pref 3 u32 chain 0 fh 800: ht divisor 1 
+filter parent 1: protocol ip pref 3 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 flowid 1:20 not_in_hw 
+  match 0a000000/ff000000 at 16
+  match 00060000/00ff0000 at 8
+filter parent 1: protocol ip pref 4 u32 chain 0 
+filter parent 1: protocol ip pref 4 u32 chain 0 fh 801: ht divisor 1 
+filter parent 1: protocol ip pref 4 u32 chain 0 fh 801::800 order 2048 key ht 801 bkt 0 flowid 1:20 not_in_hw 
+  match 00001452/0000ffff at nexthdr+0
+filter parent 1: protocol all pref 5 fw chain 0 
+filter parent 1: protocol all pref 5 fw chain 0 handle 0x10/0xff classid 1:20 
+filter parent 1: protocol ip pref 6 u32 chain 0 
+filter parent 1: protocol ip pref 6 u32 chain 0 fh 802: ht divisor 1 
+filter parent 1: protocol ip pref 6 u32 chain 0 fh 802::800 order 2048 key ht 802 bkt 0 flowid 1:10 not_in_hw 
+  match c0a80100/ffffff00 at 12
+  match 00001451/0000ffff at 20
+===INGRESS v0
+===CLASS v1
+===FILTER v1
+===INGRESS v1
+===CLASS v2
+===FILTER v2
+===INGRESS v2
+===CLASS v3
+===FILTER v3
+===INGRESS v3
+===CLASS v4
+===FILTER v4
+===INGRESS v4
+===CLASS v5
+===FILTER v5
+===INGRESS v5
+===CLASS v6
+class tbf 2:1 parent 2: leaf 8015: 
+===FILTER v6
+===INGRESS v6
+===CLASS v7
+===FILTER v7
+===INGRESS v7
+filter protocol ip pref 1 u32 chain 0 
+filter protocol ip pref 1 u32 chain 0 fh 802: ht divisor 1 
+filter protocol ip pref 1 u32 chain 0 fh 802::800 order 2048 key ht 802 bkt 0 flowid :1 not_in_hw 
+  match 00000000/00000000 at 0
+ police 0x1 rate 1Mbit burst 100Kb mtu 2Kb action drop overhead 0b 
+	ref 1 bind 1 
+
+filter protocol ip pref 1 u32 chain 0 fh 800: ht divisor 1 
+filter protocol ip pref 1 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 terminal flowid not_in_hw 
+  match 00000050/0000ffff at 20
+	action order 1: gact action drop
+	 random type none pass val 0
+	 index 1 ref 1 bind 1
+

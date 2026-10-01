@@ -1,0 +1,35 @@
+failover peer "lan2" state {
+  my state recover at 3 2026/09/30 14:50:23;
+  partner state unknown-state at 3 2026/09/30 14:50:23;
+--
+failover peer "lan2" state {
+  my state recover at 3 2026/09/30 14:50:23;
+  partner state unknown-state at 3 2026/09/30 14:50:23;
+--
+failover peer "lan2" state {
+  my state recover at 3 2026/09/30 14:50:23;
+  partner state recover at 3 2026/09/30 14:50:23;
+--
+failover peer "lan2" state {
+  my state recover at 3 2026/09/30 14:50:23;
+  partner state recover at 3 2026/09/30 14:50:23;
+--
+failover peer "lan2" state {
+  my state recover at 3 2026/09/30 14:50:23;
+  partner state recover at 3 2026/09/30 14:50:23;
+--
+failover peer "lan2" state {
+  my state recover at 3 2026/09/30 14:50:23;
+  partner state recover-done at 3 2026/09/30 14:50:24;
+--
+failover peer "lan2" state {
+  my state recover-done at 3 2026/09/30 14:50:24;
+  partner state recover-done at 3 2026/09/30 14:50:24;
+--
+failover peer "lan2" state {
+  my state recover-done at 3 2026/09/30 14:50:24;
+  partner state normal at 3 2026/09/30 14:50:24;
+--
+failover peer "lan2" state {
+  my state normal at 3 2026/09/30 14:50:24;
+  partner state normal at 3 2026/09/30 14:50:24;

@@ -1,6 +1,9 @@
+import base64
+import json
 import re
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv4Network
+from pathlib import Path
 from typing import Any
 
 from SRE.lib_sre import Grade0, NetScheme0
@@ -572,3 +575,286 @@ def _parse_dhcpd_config(grade: Grade0, machine: str, step: int = 1) -> dict:
         'global_parameters': global_params,
         'subnets': effective_subnets,
     }
+
+
+# ---------------------------------------------------------------------------
+# Running dhcpd (process command line)
+# ---------------------------------------------------------------------------
+
+def _parse_dhcpd_cmdlines(output: str) -> list[str] | None:
+    """Interfaces of the running IPv4 dhcpd, from one command line per process.
+
+    *output* holds one line per dhcpd process (arguments separated by spaces).  The
+    DHCPv6 process (``-6``) is ignored.  Returns ``None`` when no IPv4 dhcpd is running,
+    ``["*"]`` when it listens on every interface.
+    """
+    for line in output.splitlines():
+        tokens = line.split()
+        if not tokens or not tokens[0].endswith('dhcpd') or '-6' in tokens:
+            continue
+        return _parse_dhcpd_interfaces('\n'.join(tokens))
+    return None
+
+
+def get_dhcpd_interfaces(grade: Grade0, machine: str, step: int = 1) -> list[str] | None:
+    """Return the interfaces the running ``dhcpd`` (IPv4) of *machine* listens on.
+
+    ``None`` when dhcpd is not running, ``["*"]`` when it was started without interface.
+    The process table is read directly: the Debian init script (and the systemd unit
+    generated from it) can report a failed service while ``dhcpd -4`` is running.
+    """
+    output, _ = grade.test(
+        machine,
+        r"for p in $(pidof dhcpd); do tr '\000' ' ' < /proc/$p/cmdline; echo; done",
+        step=step, allow_error=True)
+    return _parse_dhcpd_cmdlines(output)
+
+
+# ---------------------------------------------------------------------------
+# DHCP relay (isc-dhcp-relay)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DhcpRelayParameters:
+    """Content of /etc/default/isc-dhcp-relay."""
+    servers: list[Any]                                      # SERVERS: addresses of the DHCP servers
+    interfaces: list[str] = field(default_factory=list)     # INTERFACES (-i, both directions); empty = all
+    options: str = ''                                       # OPTIONS, e.g. "-id eth2 -iu eth1"
+
+
+def set_dhcp_relay(net_scheme: NetScheme0, machine: str,
+                   relay_params: DhcpRelayParameters, step: int = 1) -> None:
+    """Write /etc/default/isc-dhcp-relay and (re)start the relay on *machine*."""
+    content = (f'SERVERS="{" ".join(str(s) for s in relay_params.servers)}"\n'
+               f'INTERFACES="{" ".join(relay_params.interfaces)}"\n'
+               f'OPTIONS="{relay_params.options}"\n')
+    net_scheme.file(machine, '/etc/default/isc-dhcp-relay', content, step=step)
+    net_scheme.cmd(machine, 'systemctl enable isc-dhcp-relay', step=step)
+    net_scheme.cmd(machine, 'systemctl restart isc-dhcp-relay', step=step)
+
+
+def _parse_dhcrelay_cmdline(cmdline_output: str) -> dict | None:
+    """Parse the dhcrelay command line (one token per line, or space separated).
+
+    Returns ``None`` when *cmdline_output* is not a dhcrelay command line (no running relay), else
+    ``{'servers': [...], 'interfaces': [...], 'upstream': [...], 'downstream': [...]}``
+    where *interfaces* are the ``-i`` (both directions) interfaces, *upstream* the ``-iu``
+    ones (towards the servers) and *downstream* the ``-id`` ones (towards the clients).
+    All three empty means that dhcrelay listens on every interface.
+    """
+    IFACE_FLAGS = {'-i': 'interfaces', '-iu': 'upstream', '-id': 'downstream'}
+    VALUE_FLAGS = {'-p', '-rp', '-c', '-A', '-m', '-U', '-g', '-pf', '-l', '-u', '-s', '-I'}
+    tokens = cmdline_output.split()
+    if not tokens or not tokens[0].endswith('dhcrelay'):
+        return None
+    result = {'servers': [], 'interfaces': [], 'upstream': [], 'downstream': []}
+    i = 1  # tokens[0] is the executable
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in IFACE_FLAGS:
+            if i + 1 < len(tokens):
+                result[IFACE_FLAGS[tok]].append(tokens[i + 1])
+            i += 2
+        elif tok in VALUE_FLAGS:
+            i += 2
+        elif tok.startswith('-'):
+            i += 1
+        else:
+            result['servers'].append(tok)
+            i += 1
+    return result
+
+
+def check_running_dhcp_relay(grade: Grade0, machine: str, step: int = 1) -> tuple[bool, dict]:
+    """Check whether ``dhcrelay`` is running on *machine*.
+
+    Returns ``(running, args)`` where *args* is the dict of :func:`_parse_dhcrelay_cmdline`
+    (empty lists when not running).  ``systemctl is-active isc-dhcp-relay`` is not used:
+    the init script always exits 0, even when dhcrelay refused to start.
+    """
+    output, _ = grade.test(
+        machine,
+        r"tr '\000' '\n' < /proc/$(pidof -s dhcrelay)/cmdline 2>/dev/null",
+        step=step, allow_error=True)
+    parsed = _parse_dhcrelay_cmdline(output)
+    if parsed is None:
+        return False, {'servers': [], 'interfaces': [], 'upstream': [], 'downstream': []}
+    return True, parsed
+
+
+# ---------------------------------------------------------------------------
+# Failover state and client leases
+# ---------------------------------------------------------------------------
+
+def parse_dhcpd_failover_state(leases_text: str) -> dict[str, dict[str, str]]:
+    """Extract the failover states recorded in a dhcpd.leases file.
+
+    Returns ``{peer_name: {'my_state': ..., 'partner_state': ...}}``; dhcpd appends a new
+    ``failover peer "name" state { ... }`` block at each transition, the last one wins.
+    """
+    states: dict[str, dict[str, str]] = {}
+    current = None
+    for line in leases_text.splitlines():
+        m = re.match(r'\s*failover\s+peer\s+"([^"]+)"\s+state\b', line)
+        if m:
+            current = states[m.group(1)] = {}
+            continue
+        m = re.match(r'\s*(my|partner)\s+state\s+([a-z-]+)', line)
+        if m and current is not None:
+            current[f'{m.group(1)}_state'] = m.group(2)
+    return states
+
+
+def get_dhcp_failover_state(grade: Grade0, machine: str, step: int = 1) -> dict[str, dict[str, str]]:
+    """Return the failover states of the dhcpd of *machine* (see :func:`parse_dhcpd_failover_state`)."""
+    output, _ = grade.test(
+        machine, "grep -A 2 '^failover peer' /var/lib/dhcp/dhcpd.leases",
+        step=step, allow_error=True)
+    return parse_dhcpd_failover_state(output)
+
+
+def parse_dhclient_leases(leases_text: str) -> list[dict]:
+    """Parse dhclient lease files; returns one dict per ``lease { ... }`` block, in file order.
+
+    Keys: ``interface``, ``fixed-address`` and every ``option`` by its name (values as
+    strings, quotes removed), plus ``renew`` / ``rebind`` / ``expire``.
+    """
+    leases = []
+    for m in re.finditer(r'lease\s*\{(.*?)\n\}', leases_text, re.DOTALL):
+        lease: dict[str, str] = {}
+        for statement in m.group(1).split(';'):
+            words = statement.split(None, 1)
+            if len(words) < 2:
+                continue
+            key, value = words[0], words[1].strip()
+            if key == 'option':
+                opt = value.split(None, 1)
+                if len(opt) == 2:
+                    lease[opt[0]] = opt[1].strip().strip('"')
+            else:
+                lease[key] = value.strip('"')
+        leases.append(lease)
+    return leases
+
+
+def get_dhclient_leases(grade: Grade0, machine: str, step: int = 1) -> list[dict]:
+    """Return the leases recorded by dhclient on *machine* (manual runs and ifup), oldest first."""
+    output, _ = grade.test(machine, "cat /var/lib/dhcp/dhclient*.leases 2>/dev/null",
+                           step=step, allow_error=True)
+    return parse_dhclient_leases(output)
+
+
+# ---------------------------------------------------------------------------
+# Active probe (lib/dhcp_probe.py run inside a container)
+# ---------------------------------------------------------------------------
+
+DHCP_PROBE_PATH = '/usr/local/sbin/dhcp_probe.py'
+
+
+@dataclass
+class DhcpProbeReply:
+    """One BOOTREPLY seen by the probe for a given query."""
+    interface: str
+    query: str
+    msg_type: str | None                         # 'OFFER', 'ACK', 'NAK'
+    yiaddr: IPv4Address | None = None
+    giaddr: IPv4Address | None = None            # relay agent address (0.0.0.0 → None)
+    server_id: IPv4Address | None = None         # option 54
+    src_ip: IPv4Address | None = None
+    subnet_mask: IPv4Address | None = None
+    routers: list[IPv4Address] = field(default_factory=list)
+    dns_servers: list[IPv4Address] = field(default_factory=list)
+    domain_name: str | None = None
+    lease_time: int | None = None
+    raw: dict = field(default_factory=dict)
+
+
+def install_dhcp_probe(net_scheme: NetScheme0, machine: str, step: int = 1) -> None:
+    """Copy lib/dhcp_probe.py to DHCP_PROBE_PATH on *machine* (usually a hidden one)."""
+    script = Path(__file__).with_name('dhcp_probe.py').read_text()
+    net_scheme.file(machine, DHCP_PROBE_PATH, script, permissions=0o755, step=step)
+
+
+def dhcp_probe_query(query_id: str, chaddr, msg_type: str = 'discover', lease: int | None = None,
+                     requested=None, late: bool = False, hostname: str | None = None) -> dict:
+    """Build one query of a probe spec (see lib/dhcp_probe.py).
+
+    *chaddr* is the client MAC address announced in the query.  ``msg_type='request'``
+    with *requested* sends an INIT-REBOOT DHCPREQUEST (an authoritative server answers
+    DHCPNAK when the address does not belong to the network).  *late* queries are sent
+    after the others: use it for a second DISCOVER of the same *chaddr*.
+    """
+    query = {'id': query_id, 'type': msg_type, 'chaddr': str(chaddr).replace('-', ':').lower()}
+    if lease is not None:
+        query['lease'] = lease
+    if requested is not None:
+        query['requested'] = str(requested)
+    if late:
+        query['late'] = True
+    if hostname:
+        query['hostname'] = hostname
+    return query
+
+
+def dhcp_probe_command(spec: dict) -> str:
+    """Shell command running the probe with *spec*; depends on *spec* only (stable across passes)."""
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(spec, sort_keys=True, separators=(',', ':')).encode()).decode()
+    return f'python3 {DHCP_PROBE_PATH} {encoded}'
+
+
+def _probe_ip(value) -> IPv4Address | None:
+    try:
+        ip = IPv4Address(value)
+    except ValueError:
+        return None
+    return None if int(ip) == 0 else ip
+
+
+def parse_dhcp_probe(output: str) -> dict[str, dict[str, list[DhcpProbeReply]]]:
+    """Parse the JSON printed by the probe into ``{interface: {query_id: [DhcpProbeReply]}}``.
+
+    Returns ``{}`` on empty or malformed output.
+    """
+    try:
+        document = json.loads(output)
+        replies = document['replies']
+    except (ValueError, KeyError, TypeError):
+        return {}
+    result: dict[str, dict[str, list[DhcpProbeReply]]] = {}
+    if not isinstance(replies, dict):
+        return result
+    for iface, queries in replies.items():
+        if not isinstance(queries, dict):
+            continue
+        result[iface] = {}
+        for query_id, items in queries.items():
+            parsed = []
+            for r in items if isinstance(items, list) else []:
+                if not isinstance(r, dict):
+                    continue
+                lease_time = r.get('lease_time')
+                parsed.append(DhcpProbeReply(
+                    interface=iface, query=query_id, msg_type=r.get('msg_type'),
+                    yiaddr=_probe_ip(r.get('yiaddr')), giaddr=_probe_ip(r.get('giaddr')),
+                    server_id=_probe_ip(r.get('server_id')), src_ip=_probe_ip(r.get('src_ip')),
+                    subnet_mask=_probe_ip(r.get('subnet_mask')),
+                    routers=[ip for ip in map(_probe_ip, r.get('routers') or []) if ip],
+                    dns_servers=[ip for ip in map(_probe_ip, r.get('dns_servers') or []) if ip],
+                    domain_name=r.get('domain_name'),
+                    lease_time=lease_time if isinstance(lease_time, int) else None,
+                    raw=r))
+            result[iface][query_id] = parsed
+    return result
+
+
+def dhcp_probe(grade: Grade0, machine: str, spec: dict, step: int = 1,
+               timeout: int = 30) -> dict[str, dict[str, list[DhcpProbeReply]]]:
+    """Run the probe installed on *machine* and return its replies.
+
+    *spec* is ``{'interfaces': {'eth0': [dhcp_probe_query(...), ...]}, 'wait': 2.5,
+    'late_wait': 1.5}``.  It must be built from lab data only (never from test results)
+    so that the command is identical on every grade pass.
+    """
+    output, _ = grade.test(machine, dhcp_probe_command(spec), step=step, timeout=timeout, allow_error=True)
+    return parse_dhcp_probe(output)

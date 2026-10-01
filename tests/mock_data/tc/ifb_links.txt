@@ -1,0 +1,2 @@
+17: ifb0: <BROADCAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc cake state UNKNOWN mode DEFAULT group default qlen 32\    link/ether 42:cc:a4:5f:d7:8f brd ff:ff:ff:ff:ff:ff
+18: ifb1: <BROADCAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc tbf state UNKNOWN mode DEFAULT group default qlen 32\    link/ether 7a:0b:26:10:5e:69 brd ff:ff:ff:ff:ff:ff

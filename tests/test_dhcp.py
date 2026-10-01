@@ -734,3 +734,314 @@ class TestCheckRunningDhcpServer:
         grade = make_running_grade(active=False)
         check_running_dhcp_server(grade, 'myrouter')
         assert grade.test.call_args_list[0].args[0] == 'myrouter'
+
+# ---------------------------------------------------------------------------
+# Probe, relay, failover and client leases
+# Fixtures in tests/mock_data/dhcp were captured on ISC DHCP 4.4.3-P1 (lab dhcp.py,
+# state `final`: two servers, relay on r1, failover pool on lan2).
+# ---------------------------------------------------------------------------
+
+import base64
+import json
+import struct
+
+import dhcp_probe
+from dhcp import (DHCP_PROBE_PATH, DhcpRelayParameters, _parse_dhcpd_cmdlines, _parse_dhcrelay_cmdline,
+                  check_running_dhcp_relay, dhcp_probe as run_dhcp_probe, dhcp_probe_command,
+                  dhcp_probe_query, get_dhclient_leases, get_dhcp_failover_state, get_dhcpd_interfaces,
+                  install_dhcp_probe, parse_dhclient_leases, parse_dhcp_probe, parse_dhcpd_failover_state,
+                  set_dhcp_relay)
+
+FIXTURES = Path(__file__).parent / 'mock_data' / 'dhcp'
+
+
+def load(name: str) -> str:
+    return (FIXTURES / name).read_text()
+
+
+def make_output_grade(output='', code=0):
+    """Mock Grade0 whose .test() returns the same canned output for every command."""
+    grade = MagicMock()
+    grade.test.return_value = (output, code)
+    return grade
+
+
+class TestProbeFrames:
+    SRC = '02:53:52:00:00:aa'
+    CHADDR = '02:53:52:00:00:01'
+
+    def _bootp(self, frame: bytes) -> bytes:
+        return frame[14 + 20 + 8:]
+
+    def _options(self, frame: bytes) -> dict[int, bytes]:
+        opts, raw, i = {}, self._bootp(frame)[240:], 0
+        while raw[i] != 255:
+            opts[raw[i]] = raw[i + 2:i + 2 + raw[i + 1]]
+            i += 2 + raw[i + 1]
+        return opts
+
+    def test_discover_is_broadcast_from_the_interface_mac(self):
+        frame = dhcp_probe.build_request(self.SRC, self.CHADDR, 0x1234)
+        assert frame[0:6] == b'\xff' * 6
+        assert frame[6:12] == bytes.fromhex('0253520000aa')
+        assert frame[12:14] == b'\x08\x00'
+        assert frame[14 + 12:14 + 16] == bytes(4) and frame[14 + 16:14 + 20] == b'\xff' * 4
+        assert struct.unpack('!HH', frame[34:38]) == (68, 67)
+
+    def test_bootp_header(self):
+        bootp = self._bootp(dhcp_probe.build_request(self.SRC, self.CHADDR, 0xdeadbeef, secs=7))
+        op, htype, hlen, hops, xid, secs, flags = struct.unpack('!BBBBIHH', bootp[:12])
+        assert (op, htype, hlen, hops, xid, secs) == (1, 1, 6, 0, 0xdeadbeef, 7)
+        assert flags == dhcp_probe.FLAG_BROADCAST
+        assert bootp[28:34] == bytes.fromhex('025352000001')  # chaddr differs from the Ethernet source
+        assert len(bootp) >= dhcp_probe.BOOTP_MIN_LEN
+
+    def test_checksums_are_valid(self):
+        frame = dhcp_probe.build_request(self.SRC, self.CHADDR, 1)
+        assert dhcp_probe._checksum(frame[14:34]) == 0
+        udp_len = struct.unpack('!H', frame[38:40])[0]
+        pseudo = frame[26:34] + struct.pack('!BBH', 0, 17, udp_len)
+        assert dhcp_probe._checksum(pseudo + frame[34:]) == 0
+
+    def test_discover_options(self):
+        opts = self._options(dhcp_probe.build_request(self.SRC, self.CHADDR, 1, hostname='sonde', lease=4000000))
+        assert opts[53] == b'\x01'
+        assert opts[12] == b'sonde'
+        assert struct.unpack('!I', opts[51])[0] == 4000000
+        assert set(opts[55]) >= {1, 3, 6, 15, 51, 54}
+        assert 50 not in opts
+
+    def test_init_reboot_request(self):
+        opts = self._options(dhcp_probe.build_request(self.SRC, self.CHADDR, 1, msg_type='request',
+                                                      requested='192.0.2.77'))
+        assert opts[53] == b'\x03'
+        assert opts[50] == bytes([192, 0, 2, 77])
+        assert 54 not in opts  # no server identifier: INIT-REBOOT, nothing can be committed
+
+    def _reply_frame(self, xid=0x1234, options=b''):
+        bootp = struct.pack('!BBBBIHH4s4s4s4s16s64s128s', 2, 1, 6, 1, xid, 0, 0x8000,
+                            bytes(4), bytes([10, 0, 0, 50]), bytes(4), bytes([10, 0, 0, 254]),
+                            bytes.fromhex('025352000001'), b'', b'')
+        bootp += dhcp_probe.BOOTP_MAGIC + options + b'\xff'
+        udp = struct.pack('!HHHH', 67, 68, 8 + len(bootp), 0)
+        ip = struct.pack('!BBHHHBBH4s4s', 0x45, 0, 20 + len(udp) + len(bootp), 0, 0, 64, 17, 0,
+                         bytes([10, 0, 0, 254]), b'\xff' * 4)
+        return b'\xff' * 6 + bytes.fromhex('aabbccddeeff') + b'\x08\x00' + ip + udp + bootp
+
+    def test_parse_reply(self):
+        options = (bytes([53, 1, 2]) + bytes([54, 4, 192, 168, 1, 10]) + bytes([51, 4]) + struct.pack('!I', 600)
+                   + bytes([1, 4, 255, 255, 255, 0]) + bytes([3, 4, 10, 0, 0, 254])
+                   + bytes([6, 8, 10, 9, 9, 9, 10, 8, 8, 8]) + bytes([15, 6]) + b'tp.lan')
+        reply = dhcp_probe.parse_reply(self._reply_frame(options=options))
+        assert reply['msg_type'] == 'OFFER'
+        assert reply['xid'] == 0x1234
+        assert reply['yiaddr'] == '10.0.0.50'
+        assert reply['giaddr'] == '10.0.0.254'
+        assert reply['server_id'] == '192.168.1.10'
+        assert reply['src_ip'] == '10.0.0.254'
+        assert reply['src_mac'] == 'aa:bb:cc:dd:ee:ff'
+        assert reply['lease_time'] == 600
+        assert reply['subnet_mask'] == '255.255.255.0'
+        assert reply['routers'] == ['10.0.0.254']
+        assert reply['dns_servers'] == ['10.9.9.9', '10.8.8.8']
+        assert reply['domain_name'] == 'tp.lan'
+
+    def test_parse_reply_ignores_requests_and_garbage(self):
+        assert dhcp_probe.parse_reply(dhcp_probe.build_request(self.SRC, self.CHADDR, 1)) is None
+        assert dhcp_probe.parse_reply(b'') is None
+        assert dhcp_probe.parse_reply(b'\x00' * 400) is None
+        assert dhcp_probe.parse_reply(self._reply_frame()[:100]) is None
+
+    def test_main_always_prints_json(self, capsys):
+        assert dhcp_probe.main(['dhcp_probe.py', 'not base64 json']) == 0
+        document = json.loads(capsys.readouterr().out)
+        assert document['replies'] == {} and document['errors']
+
+
+class TestProbeCommand:
+    def test_command_is_deterministic_and_shell_safe(self):
+        spec = {'interfaces': {'eth0': [dhcp_probe_query('dyn', '02-53-52-AA-BB-CC')]}}
+        cmd = dhcp_probe_command(spec)
+        assert cmd == dhcp_probe_command({'interfaces': {'eth0': [dhcp_probe_query('dyn', '02:53:52:aa:bb:cc')]}})
+        assert cmd.startswith(f'python3 {DHCP_PROBE_PATH} ')
+        encoded = cmd.split()[-1]
+        assert all(c.isalnum() or c in '-_=' for c in encoded)  # no quote, no ':' first, no '@@@'
+        assert json.loads(base64.urlsafe_b64decode(encoded)) == spec
+
+    def test_query_fields(self):
+        q = dhcp_probe_query('nak', '02:53:52:00:00:01', msg_type='request', requested=IPv4Address('192.0.2.77'))
+        assert q == {'id': 'nak', 'type': 'request', 'chaddr': '02:53:52:00:00:01', 'requested': '192.0.2.77'}
+        q = dhcp_probe_query('max', '02:53:52:00:00:01', lease=4000000, late=True, hostname='sonde')
+        assert q['lease'] == 4000000 and q['late'] is True and q['hostname'] == 'sonde'
+
+    def test_install_copies_the_script(self):
+        ns = make_net_scheme()
+        install_dhcp_probe(ns, 'sonde')
+        (machine, path, content), kwargs = ns.file.call_args
+        assert (machine, path) == ('sonde', DHCP_PROBE_PATH)
+        assert 'def build_request' in content and kwargs['permissions'] == 0o755
+
+    def test_dhcp_probe_registers_one_test(self):
+        grade = make_output_grade(load('probe_final.json'))
+        spec = {'interfaces': {'eth0': [dhcp_probe_query('dyn', '02:53:52:a5:fe:4c')]}}
+        result = run_dhcp_probe(grade, 'sonde', spec)
+        grade.test.assert_called_once_with('sonde', dhcp_probe_command(spec), step=1, timeout=30, allow_error=True)
+        assert result['eth0']['dyn']
+
+
+class TestParseDhcpProbe:
+    SRV1, SRV2 = IPv4Address('192.168.11.54'), IPv4Address('192.168.11.23')
+
+    def test_empty_or_malformed_output(self):
+        assert parse_dhcp_probe('') == {}
+        assert parse_dhcp_probe('Traceback (most recent call last):') == {}
+        assert parse_dhcp_probe('{"errors": []}') == {}
+        assert parse_dhcp_probe('{"replies": {"eth0": {"dyn": "x"}}}') == {'eth0': {'dyn': []}}
+
+    def test_two_servers_on_lan1(self):
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['dyn']
+        direct = {r.server_id: r for r in replies if r.giaddr is None}
+        assert set(direct) == {self.SRV1, self.SRV2}
+        offer = direct[self.SRV1]
+        assert offer.msg_type == 'OFFER'
+        assert offer.yiaddr == IPv4Address('192.168.11.162')
+        assert offer.subnet_mask == IPv4Address('255.255.255.0')
+        assert offer.routers == [IPv4Address('192.168.11.115')]
+        assert offer.dns_servers == [IPv4Address('172.18.202.184')]
+        assert offer.domain_name == 'tp-dhcp.lan'
+        assert offer.lease_time == 600
+        assert direct[self.SRV2].yiaddr == IPv4Address('192.168.11.209')
+
+    def test_relay_duplicates_on_the_server_lan(self):
+        # dhcrelay -i eth1 -i eth2 also relays the lan1 broadcasts: same offers with giaddr set.
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['dyn']
+        relayed = [r for r in replies if r.giaddr is not None]
+        assert relayed and {r.giaddr for r in relayed} == {IPv4Address('192.168.11.115')}
+        assert {r.yiaddr for r in replies if r.server_id == self.SRV1} == {IPv4Address('192.168.11.162')}
+
+    def test_reservation_offered_by_both_servers(self):
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['fixed']
+        assert {r.server_id for r in replies} == {self.SRV1, self.SRV2}
+        assert {r.yiaddr for r in replies} == {IPv4Address('192.168.11.139')}
+
+    def test_max_lease_time(self):
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['max']
+        assert {r.lease_time for r in replies} == {7200}
+
+    def test_nak_from_authoritative_servers(self):
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['nak']
+        assert {r.msg_type for r in replies} == {'NAK'}
+        assert {r.server_id for r in replies} == {self.SRV1, self.SRV2}
+        assert all(r.yiaddr is None for r in replies)
+
+    def test_relayed_network(self):
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth1']['dyn']
+        assert {r.giaddr for r in replies} == {IPv4Address('172.18.14.49')}
+        assert {r.src_ip for r in replies} == {IPv4Address('172.18.14.49')}  # sent by the relay
+        assert {r.server_id for r in replies} == {self.SRV1, self.SRV2}      # failover peers, secs > 3
+        assert {r.lease_time for r in replies} == {90}                       # first lease = MCLT
+        assert len({r.yiaddr for r in replies}) == 2
+
+
+class TestDhcpRelay:
+    def test_set_dhcp_relay(self):
+        ns = make_net_scheme()
+        set_dhcp_relay(ns, 'r1', DhcpRelayParameters(
+            servers=[IPv4Address('192.168.11.54'), '192.168.11.23'], interfaces=['eth1', 'eth2']))
+        (machine, path, content), _ = ns.file.call_args
+        assert (machine, path) == ('r1', '/etc/default/isc-dhcp-relay')
+        assert content == 'SERVERS="192.168.11.54 192.168.11.23"\nINTERFACES="eth1 eth2"\nOPTIONS=""\n'
+        assert ns.cmd.call_args_list[-1] == call('r1', 'systemctl restart isc-dhcp-relay', step=1)
+
+    def test_set_dhcp_relay_options(self):
+        ns = make_net_scheme()
+        set_dhcp_relay(ns, 'r1', DhcpRelayParameters(servers=['10.0.0.1'], options='-id eth2 -iu eth1'), step=2)
+        (_machine, _path, content), kwargs = ns.file.call_args
+        assert 'INTERFACES=""\nOPTIONS="-id eth2 -iu eth1"\n' in content
+        assert kwargs['step'] == 2
+
+    def test_parse_cmdline_captured(self):
+        parsed = _parse_dhcrelay_cmdline(load('dhcrelay_cmdline_final.txt'))
+        assert parsed == {'servers': ['192.168.11.54', '192.168.11.23'], 'interfaces': ['eth1', 'eth2'],
+                          'upstream': [], 'downstream': []}
+
+    def test_parse_cmdline_directions(self):
+        parsed = _parse_dhcrelay_cmdline('/usr/sbin/dhcrelay -q -id eth2 -iu eth1 192.168.11.54')
+        assert parsed == {'servers': ['192.168.11.54'], 'interfaces': [], 'upstream': ['eth1'],
+                          'downstream': ['eth2']}
+
+    def test_parse_cmdline_value_flags_and_all_interfaces(self):
+        parsed = _parse_dhcrelay_cmdline('/usr/sbin/dhcrelay -q -m append -c 5 10.0.0.1 10.0.0.2')
+        assert parsed == {'servers': ['10.0.0.1', '10.0.0.2'], 'interfaces': [], 'upstream': [], 'downstream': []}
+
+    def test_not_running(self):
+        assert _parse_dhcrelay_cmdline('') is None
+        assert _parse_dhcrelay_cmdline('sh: 1: cannot open /proc//cmdline: No such file') is None
+        running, args = check_running_dhcp_relay(make_output_grade('', 1), 'r1')
+        assert running is False and args['servers'] == []
+
+    def test_running(self):
+        running, args = check_running_dhcp_relay(make_output_grade(load('dhcrelay_cmdline_final.txt')), 'r1')
+        assert running is True and args['interfaces'] == ['eth1', 'eth2']
+
+
+class TestDhcpdCmdlines:
+    def test_captured(self):
+        assert _parse_dhcpd_cmdlines(load('dhcpd_cmdlines_srv1_final.txt')) == ['eth0']
+
+    def test_not_running(self):
+        assert _parse_dhcpd_cmdlines('') is None
+        assert _parse_dhcpd_cmdlines('sh: 1: pidof: not found\n') is None
+        assert get_dhcpd_interfaces(make_output_grade(''), 'srv1') is None
+
+    def test_no_interface_means_all(self):
+        # started with an empty INTERFACESv4: the unit is "failed" but dhcpd -4 runs on every interface
+        assert _parse_dhcpd_cmdlines('/usr/sbin/dhcpd -4 -q -cf /etc/dhcp/dhcpd.conf \n') == ['*']
+
+    def test_ipv6_process_is_ignored(self):
+        output = ('/usr/sbin/dhcpd -6 -q -cf /etc/dhcp/dhcpd6.conf eth0 \n'
+                  '/usr/sbin/dhcpd -4 -q -cf /etc/dhcp/dhcpd.conf eth0 eth1 \n')
+        assert _parse_dhcpd_cmdlines(output) == ['eth0', 'eth1']
+        assert _parse_dhcpd_cmdlines('/usr/sbin/dhcpd -6 -q -cf /etc/dhcp/dhcpd6.conf eth0 \n') is None
+
+
+class TestFailoverState:
+    def test_last_block_wins(self):
+        for name in ('failover_srv1_final.txt', 'failover_srv2_final.txt'):
+            assert parse_dhcpd_failover_state(load(name)) == {
+                'lan2': {'my_state': 'normal', 'partner_state': 'normal'}}
+
+    def test_full_leases_file_syntax(self):
+        text = ('lease 10.0.0.5 {\n  binding state free;\n}\n'
+                'failover peer "a" state {\n  my state communications-interrupted at 3 2026/09/30 14:50:24;\n'
+                '  partner state normal at 3 2026/09/30 14:50:24;\n  mclt 90;\n}\n'
+                'failover peer "b" state {\n  my state partner-down at 3 2026/09/30 14:50:24;\n}\n')
+        assert parse_dhcpd_failover_state(text) == {
+            'a': {'my_state': 'communications-interrupted', 'partner_state': 'normal'},
+            'b': {'my_state': 'partner-down'}}
+
+    def test_no_failover(self):
+        assert parse_dhcpd_failover_state('') == {}
+        assert get_dhcp_failover_state(make_output_grade('', 1), 'srv1') == {}
+
+
+class TestDhclientLeases:
+    def test_first_lease(self):
+        leases = parse_dhclient_leases(load('dhclient_m3_first_lease.leases'))
+        assert len(leases) == 1
+        lease = leases[0]
+        assert lease['interface'] == 'eth0'
+        assert lease['fixed-address'] == '172.18.14.152'
+        assert lease['routers'] == '172.18.14.49'
+        assert lease['dhcp-lease-time'] == '90'
+        assert lease['dhcp-server-identifier'] == '192.168.11.23'
+        assert lease['domain-name'] == 'tp-dhcp.lan'
+        assert lease['expire'].startswith('3 2026/09/30')
+
+    def test_renewed_lease_is_last(self):
+        leases = parse_dhclient_leases(load('dhclient_m3_renewed.leases'))
+        assert [l['dhcp-lease-time'] for l in leases] == ['90', '600']
+
+    def test_empty(self):
+        assert parse_dhclient_leases('') == []
+        assert get_dhclient_leases(make_output_grade('', 1), 'm3') == []

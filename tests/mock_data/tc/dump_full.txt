@@ -1,0 +1,121 @@
+qdisc noqueue 0: dev lo root refcnt 2 
+qdisc noqueue 0: dev eth0 root refcnt 2 
+qdisc netem 8005: dev p0 root refcnt 5 limit 1000 delay 25ms seed 4266383998030122162
+qdisc netem 8003: dev v0 root refcnt 5 limit 1000 delay 100ms  50ms loss 10% seed 8894747655002086268
+qdisc noqueue 0: dev p1 root refcnt 2 
+qdisc tbf 8006: dev v1 root refcnt 5 rate 1Mbit burst 3840b lat 400ms 
+qdisc noqueue 0: dev p2 root refcnt 2 
+qdisc htb 1: dev v2 root refcnt 5 r2q 10 default 0x20 direct_packets_stat 0 direct_qlen 1000
+qdisc fq_codel 8009: dev v2 parent 1:20 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 8008: dev v2 parent 1:10 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc noqueue 0: dev p3 root refcnt 2 
+qdisc htb 1: dev v3 root refcnt 5 r2q 10 default 0x20 direct_packets_stat 0 direct_qlen 1000
+qdisc fq_codel 800b: dev v3 parent 1:20 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc fq_codel 800a: dev v3 parent 1:10 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc ingress ffff: dev v3 parent ffff:fff1 ---------------- 
+qdisc noqueue 0: dev p4 root refcnt 2 
+qdisc prio 2: dev v4 root refcnt 5 bands 3 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1
+qdisc netem 30: dev v4 parent 2:3 limit 1000 loss 30% seed 13748102458819262156
+qdisc clsact ffff: dev v4 parent ffff:fff1 
+qdisc noqueue 0: dev p5 root refcnt 2 
+qdisc netem 8004: dev v5 root refcnt 5 limit 1000 loss 12% seed 11908448901947393130
+qdisc noqueue 0: dev p6 root refcnt 2 
+qdisc tbf 3: dev v6 root refcnt 5 rate 2Mbit burst 4Kb lat 400ms 
+qdisc fq_codel 8007: dev v6 parent 3: limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64 
+qdisc cake 8001: dev ifb0 root refcnt 2 bandwidth 50Mbit diffserv3 triple-isolate nonat nowash no-ack-filter split-gso rtt 100ms raw overhead 0 
+qdisc tbf 8002: dev ifb1 root refcnt 2 rate 30Mbit burst 12799b lat 50ms 
+qdisc noqueue 0: dev br0 root refcnt 2 
+===CLASS br0
+===FILTER br0
+===INGRESS br0
+===CLASS eth0
+===FILTER eth0
+===INGRESS eth0
+===CLASS ifb0
+===FILTER ifb0
+===INGRESS ifb0
+===CLASS ifb1
+class tbf 8002:1 parent 8002: 
+===FILTER ifb1
+===INGRESS ifb1
+===CLASS lo
+===FILTER lo
+===INGRESS lo
+===CLASS p0
+===FILTER p0
+===INGRESS p0
+===CLASS p1
+===FILTER p1
+===INGRESS p1
+===CLASS p2
+===FILTER p2
+===INGRESS p2
+===CLASS p3
+===FILTER p3
+===INGRESS p3
+===CLASS p4
+===FILTER p4
+===INGRESS p4
+===CLASS p5
+===FILTER p5
+===INGRESS p5
+===CLASS p6
+===FILTER p6
+===INGRESS p6
+===CLASS v0
+===FILTER v0
+===INGRESS v0
+===CLASS v1
+class tbf 8006:1 parent 8006: 
+===FILTER v1
+===INGRESS v1
+===CLASS v2
+class htb 1:10 parent 1:1 leaf 8008: prio 0 rate 8Mbit ceil 10Mbit burst 1600b cburst 1600b
+class htb 1:1 root rate 10Mbit ceil 10Mbit burst 1600b cburst 1600b
+class htb 1:20 parent 1:1 leaf 8009: prio 0 rate 2Mbit ceil 10Mbit burst 1600b cburst 1600b
+class fq_codel 8009:122 parent 8009: 
+===FILTER v2
+filter parent 1: protocol ip pref 1 u32 chain 0 
+filter parent 1: protocol ip pref 1 u32 chain 0 fh 800: ht divisor 1 
+filter parent 1: protocol ip pref 1 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 flowid 1:10 not_in_hw 
+  match 00001451/0000ffff at 20
+===INGRESS v2
+===CLASS v3
+class htb 1:10 root leaf 800a: prio 0 rate 40Mbit ceil 50Mbit burst 1600b cburst 1600b
+class htb 1:20 root leaf 800b: prio 1 rate 10Mbit ceil 50Mbit burst 1600b cburst 1600b
+class fq_codel 800b:2ec parent 800b: 
+===FILTER v3
+filter parent 1: protocol ip pref 49152 fw chain 0 
+filter parent 1: protocol ip pref 49152 fw chain 0 handle 0xa classid 1:10 
+===INGRESS v3
+filter parent ffff: protocol ip pref 49152 u32 chain 0 
+filter parent ffff: protocol ip pref 49152 u32 chain 0 fh 800: ht divisor 1 
+filter parent ffff: protocol ip pref 49152 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 terminal flowid not_in_hw 
+  match 00000000/00000000 at 0
+	action order 1: mirred (Egress Redirect to device ifb0) stolen
+	index 1 ref 1 bind 1
+
+===CLASS v4
+class prio 2:1 parent 2: 
+class prio 2:2 parent 2: 
+class prio 2:3 parent 2: leaf 30: 
+===FILTER v4
+filter parent 2: protocol ip pref 3 u32 chain 0 
+filter parent 2: protocol ip pref 3 u32 chain 0 fh 800: ht divisor 1 
+filter parent 2: protocol ip pref 3 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 flowid 2:3 not_in_hw 
+  match 00001388/0000ffff at 20
+===INGRESS v4
+filter protocol ip pref 49152 u32 chain 0 
+filter protocol ip pref 49152 u32 chain 0 fh 800: ht divisor 1 
+filter protocol ip pref 49152 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 terminal flowid not_in_hw 
+  match 00000000/00000000 at 0
+	action order 1: mirred (Egress Redirect to device ifb1) stolen
+	index 2 ref 1 bind 1
+
+===CLASS v5
+===FILTER v5
+===INGRESS v5
+===CLASS v6
+class tbf 3:1 parent 3: leaf 8007: 
+===FILTER v6
+===INGRESS v6

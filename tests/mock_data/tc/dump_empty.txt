@@ -1,0 +1,8 @@
+qdisc noqueue 0: dev lo root refcnt 2 
+qdisc noqueue 0: dev eth0 root refcnt 2 
+===CLASS eth0
+===FILTER eth0
+===INGRESS eth0
+===CLASS lo
+===FILTER lo
+===INGRESS lo

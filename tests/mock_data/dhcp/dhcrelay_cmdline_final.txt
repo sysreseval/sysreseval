@@ -1,0 +1,8 @@
+/usr/sbin/dhcrelay
+-q
+-i
+eth1
+-i
+eth2
+192.168.11.54
+192.168.11.23
