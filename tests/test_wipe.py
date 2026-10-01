@@ -9,7 +9,9 @@ simulated euid in effect.
 import os
 import shutil
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import docker.errors
 import pytest
 
 from SRE import params
@@ -151,3 +153,64 @@ class TestWipe:
         monkeypatch.setattr(_FakeProcess, 'exitcode', 1)
         wipe_mod.wipe()
         assert wipe_env['events'] == [('gain',), ('docker_wipe',), ('drop', 'permanent')]
+
+
+class _FakeDockerObject:
+    """A docker SDK container/network: `remove()` is logged in the shared *log*, in call order."""
+
+    def __init__(self, name, log, fail_with=None):
+        self.name = name
+        self._log = log
+        self._fail_with = fail_with
+        self.remove_calls = []
+
+    def remove(self, **kwargs):
+        self.remove_calls.append(kwargs)
+        self._log.append(self.name)
+        if self._fail_with is not None:
+            raise self._fail_with
+
+
+@pytest.fixture
+def kathara_instance(monkeypatch):
+    kathara = MagicMock()
+    monkeypatch.setattr(wipe_mod, 'Kathara', kathara)
+    return kathara.get_instance.return_value
+
+
+class TestRemoveLabLeftovers:
+    def test_removes_containers_then_networks_of_every_user(self, kathara_instance):
+        log = []
+        containers = [_FakeDockerObject('kathara_root-x_srv_h', log), _FakeDockerObject('kathara_root-x_client_h', log)]
+        networks = [_FakeDockerObject('kathara_root-x_lan_h', log)]
+        kathara_instance.get_machines_api_objects.return_value = containers
+        kathara_instance.get_links_api_objects.return_value = networks
+        errors = []
+        removed = wipe_mod.remove_lab_leftovers('h', errors)
+        kathara_instance.get_machines_api_objects.assert_called_once_with(lab_hash='h', all_users=True)
+        kathara_instance.get_links_api_objects.assert_called_once_with(lab_hash='h', all_users=True)
+        assert log == [c.name for c in containers] + [n.name for n in networks], "containers first"
+        assert all(c.remove_calls == [{'v': True, 'force': True}] for c in containers)
+        assert networks[0].remove_calls == [{}]
+        assert removed == log
+        assert errors == []
+
+    def test_already_gone_is_skipped_and_failures_are_collected(self, kathara_instance):
+        log = []
+        gone = _FakeDockerObject('gone', log, fail_with=docker.errors.NotFound('no such container'))
+        broken = _FakeDockerObject('broken', log, fail_with=docker.errors.APIError('device busy'))
+        fine = _FakeDockerObject('fine', log)
+        kathara_instance.get_machines_api_objects.return_value = [gone, broken, fine]
+        kathara_instance.get_links_api_objects.return_value = [_FakeDockerObject('lan', log, fail_with=RuntimeError('x'))]
+        errors = []
+        removed = wipe_mod.remove_lab_leftovers('h', errors)
+        assert removed == ['fine']
+        assert [e.split(':')[0] for e in errors] == ['container broken', 'network lan'], errors
+        assert 'device busy' in errors[0]
+
+    def test_nothing_left(self, kathara_instance):
+        kathara_instance.get_machines_api_objects.return_value = []
+        kathara_instance.get_links_api_objects.return_value = []
+        errors = []
+        assert wipe_mod.remove_lab_leftovers('h', errors) == []
+        assert errors == []

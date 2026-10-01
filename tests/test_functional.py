@@ -144,6 +144,7 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_stop_cmd,  'drop_privileges_temporarily',            noop)
     import SRE.command.save    as _save_cmd
     import SRE.command.restore as _restore_cmd
+    import SRE.wipe            as _wipe_mod
     monkeypatch.setattr(_save_cmd,    'gain_privileges',                          noop)
     monkeypatch.setattr(_save_cmd,    'drop_privileges_temporarily',              noop)
     monkeypatch.setattr(_save_cmd,    'set_sudo_uid_for_username',                noop_u)
@@ -177,9 +178,15 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_save_cmd,    'Kathara', _lib_sre.Kathara)
     monkeypatch.setattr(_restore_cmd, 'Kathara', _lib_sre.Kathara)
     monkeypatch.setattr(_start_cmd,   'Kathara', _lib_sre.Kathara)
+    monkeypatch.setattr(_wipe_mod,    'Kathara', _lib_sre.Kathara)
     kathara_instance.save_lab.reset_mock(side_effect=True)
     kathara_instance.restore_lab.reset_mock(side_effect=True)
     kathara_instance.undeploy_lab.reset_mock()
+    # the leftover sweep of rollback_project / stop sees nothing unless a test says so
+    kathara_instance.get_machines_api_objects.reset_mock(return_value=True, side_effect=True)
+    kathara_instance.get_links_api_objects.reset_mock(return_value=True, side_effect=True)
+    kathara_instance.get_machines_api_objects.return_value = []
+    kathara_instance.get_links_api_objects.return_value = []
 
     # get_machine_stats returns an iterator; returning an empty one means
     # next(..., None) yields None, so machine status is set to "" in info.json
@@ -442,6 +449,34 @@ class Grade:
 # Tests: save / restore
 # ---------------------------------------------------------------------------
 
+    def test_failure_after_deploy_removes_leftover_containers(self, functional_env, monkeypatch):
+        """A failure once the containers are up (here in the initial state) must undo the deploy:
+        Kathara's undeploy, which cannot see a privileged lab's containers after the permanent
+        drop, plus the force-removal of whatever still carries the lab hash."""
+        import SRE.command.start as _start_cmd
+        from SRE import lib_sre as _lib_sre
+        kathara_instance = _lib_sre.Kathara.get_instance()
+        container, network = MagicMock(), MagicMock()
+        kathara_instance.get_machines_api_objects.return_value = [container]
+        kathara_instance.get_links_api_objects.return_value = [network]
+
+        def failing_state(**kwargs):
+            raise RuntimeError('boom after deploy')
+
+        monkeypatch.setattr(_start_cmd, 'do_action_state', failing_state)
+        with pytest.raises(RuntimeError, match='boom after deploy'):
+            do_action_start(lab_cli_arg=str(_LAB_PATH), lab_cli_arg_is_path=True)
+
+        kathara_instance.undeploy_lab.assert_called_once_with('fake-lab-hash-1234')
+        kathara_instance.get_machines_api_objects.assert_called_once_with(lab_hash='fake-lab-hash-1234', all_users=True)
+        kathara_instance.get_links_api_objects.assert_called_once_with(lab_hash='fake-lab-hash-1234', all_users=True)
+        container.remove.assert_called_once_with(v=True, force=True)
+        network.remove.assert_called_once_with()
+        projects_dir = Path(params.sre_projects_dir)
+        assert not projects_dir.exists() or list(projects_dir.iterdir()) == []
+        assert list(functional_env['home_sre'].iterdir()) == []
+
+
 def _write_fake_kathara_tar(archive_path, **_kwargs):
     """Stand-in for Kathara.save_lab(): write a minimal save archive with a manifest."""
     manifest = {"save_mode": "diff", "machines": [
@@ -479,8 +514,6 @@ def _lab_copy(tmp_path, name, transform):
     dst.parent.mkdir(exist_ok=True)
     dst.write_text(text)
     return dst
-
-
 class TestSaveRestore:
 
     def test_save_to_file_layout(self, save_restore_env, started_lab, tmp_path):

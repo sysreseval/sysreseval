@@ -7,6 +7,7 @@ from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode,
 from ..params import SRE
 from ..utils_privileges import gain_privileges, drop_privileges_permanently, drop_privileges_temporarily, \
     set_sudo_uid_for_username
+from ..wipe import remove_lab_leftovers
 
 
 def action_stop():
@@ -51,9 +52,10 @@ def remove_project_directories(running_lab_name: str, errors: list[str]) -> None
 
 
 def stop_running_lab(running_lab_name: str, lab_hash: str = None, multi_project: bool = False) -> list[str]:
-    """Undeploy the containers of *running_lab_name*, then remove its directories while still
-    root (see `remove_project_directories`).  Privileges are dropped in every case: temporarily
-    when *multi_project* (the caller goes on with other projects), permanently otherwise.
+    """Undeploy the containers of *running_lab_name*, force-remove whatever still carries its lab
+    hash (see `wipe.remove_lab_leftovers`), then remove its directories, all while still root (see
+    `remove_project_directories`).  Privileges are dropped in every case: temporarily when
+    *multi_project* (the caller goes on with other projects), permanently otherwise.
     Returns the entries that could not be removed (empty on success)."""
     privileged = None
     if lab_hash is None:
@@ -66,6 +68,7 @@ def stop_running_lab(running_lab_name: str, lab_hash: str = None, multi_project:
         for user in undeploy_users(running_lab_name, privileged):
             set_sudo_uid_for_username(user)
             Kathara.get_instance().undeploy_lab(lab_hash)
+        remove_lab_leftovers(lab_hash, errors)
         remove_project_directories(running_lab_name, errors)
     finally:
         if multi_project:

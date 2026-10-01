@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import multiprocessing
 import subprocess
+import docker.errors
 from Kathara.manager.Kathara import Kathara
 
 from . import params
@@ -32,6 +33,36 @@ def _kathara_wipe_worker():
         Kathara.get_instance().wipe(all_users=True)
     except Exception:
         raise SystemExit(1)
+
+
+def remove_lab_leftovers(lab_hash: str, errors: list[str]) -> list[str]:
+    """Force-remove the containers, then the networks, still carrying *lab_hash*, whatever their
+    `user` label, and return their names.
+
+    Kathara's undeploy only sees the containers labelled with the calling user: after a permanent
+    drop to sre, the containers of a privileged lab (labelled with the lab owner) are invisible to
+    it and would stay running, with their networks.  This is the last resort for what that undeploy
+    could not see, so the shutdown hooks are not run.  Each object that cannot be removed is
+    appended to *errors*; one already gone is simply skipped."""
+    kathara = Kathara.get_instance()
+    removed: list[str] = []
+    for container in kathara.get_machines_api_objects(lab_hash=lab_hash, all_users=True):
+        try:
+            container.remove(v=True, force=True)
+            removed.append(container.name)
+        except docker.errors.NotFound:
+            pass
+        except Exception as e:
+            errors.append(f"container {container.name}: {e}")
+    for network in kathara.get_links_api_objects(lab_hash=lab_hash, all_users=True):
+        try:
+            network.remove()
+            removed.append(network.name)
+        except docker.errors.NotFound:
+            pass
+        except Exception as e:
+            errors.append(f"network {network.name}: {e}")
+    return removed
 
 
 def _remove_entries(base: Path, errors: list[str], keep: frozenset = frozenset()) -> None:

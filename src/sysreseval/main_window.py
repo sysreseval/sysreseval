@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QEvent, QTimer, QRectF, Qt
+from PySide6.QtCore import QByteArray, QEvent, QProcess, QTimer, QRectF, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QFont, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -404,9 +404,7 @@ class MainWindow(QMainWindow):
         self._update_menu_state()
 
     def _stop_project(self, widget: ProjectWidget):
-        cmd = [params.sre_wrapper, "stop", widget.project_dir.name]
-        log_wrapper_cmd(cmd)
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._run_wrapper_in_background(["stop", widget.project_dir.name], self.tr("Close Project"))
 
     def _close_current_project(self):
         widget = self.tabs.currentWidget()
@@ -414,9 +412,40 @@ class MainWindow(QMainWindow):
             self._stop_project(widget)
 
     def _close_all_projects(self):
-        cmd = [params.sre_wrapper, "wipe"]
-        log_wrapper_cmd(cmd)
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._run_wrapper_in_background(["wipe"], self.tr("Close All Projects"))
+
+    def _run_wrapper_in_background(self, args: list[str], failure_title: str):
+        """Run `sre-wrapper *args*` without blocking the GUI.  A non-zero exit shows its stderr
+        (e.g. the `sre: cannot remove: ...` lines of stop/wipe) in a message box titled
+        *failure_title*; a success is silent (the project tab follows the directory)."""
+        log_wrapper_cmd([params.sre_wrapper] + args)
+        proc = QProcess(self)
+        proc.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
+
+        def finished(exit_code, _exit_status):
+            self._on_background_wrapper_finished(proc, args, exit_code, failure_title)
+
+        def error_occurred(error):
+            if error == QProcess.ProcessError.FailedToStart:
+                self._on_background_wrapper_finished(proc, args, -1, failure_title, proc.errorString())
+
+        proc.finished.connect(finished)
+        proc.errorOccurred.connect(error_occurred)
+        proc.start(params.sre_wrapper, args)
+
+    def _on_background_wrapper_finished(self, proc: QProcess, args: list[str], exit_code: int,
+                                        failure_title: str, detail: str | None = None):
+        if detail is None:
+            detail = proc.readAllStandardError().toStdString().strip()
+        proc.deleteLater()
+        if exit_code == 0:
+            return
+        cmd = " ".join(args)
+        if self._debug:
+            self._dbg("wrapper_failed", cmd=cmd, exit_code=exit_code)
+        QMessageBox.critical(self, failure_title,
+                             self.tr("'sre {cmd}' failed (exit code {code}):\n{detail}").format(
+                                 cmd=cmd, code=exit_code, detail=detail or self.tr("(no output)")))
 
     def _export_project(self):
         widget = self.tabs.currentWidget()

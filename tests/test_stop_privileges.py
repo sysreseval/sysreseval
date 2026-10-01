@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from SRE import params
+from SRE import wipe as wipe_mod
 from SRE.command import stop as stop_cmd
 
 RLN = '20260101000000@@@test_lab@@@em'
@@ -73,12 +74,17 @@ def privilege_simulator(monkeypatch, tmp_path):
     kathara = MagicMock()
     kathara.get_instance.return_value.undeploy_lab.side_effect = \
         lambda lab_hash: state['undeploys'].append((lab_hash, state['euid'], state['sudo_uid']))
+    # nothing left behind by the undeploy unless a test says so (see `leftovers`)
+    kathara.get_instance.return_value.get_machines_api_objects.return_value = []
+    kathara.get_instance.return_value.get_links_api_objects.return_value = []
+    state['kathara'] = kathara.get_instance.return_value
 
     monkeypatch.setattr(stop_cmd, 'set_sudo_uid_for_username', fake_set_sudo_uid)
     monkeypatch.setattr(stop_cmd, 'gain_privileges', fake_gain_privileges)
     monkeypatch.setattr(stop_cmd, 'drop_privileges_permanently', fake_drop_perm)
     monkeypatch.setattr(stop_cmd, 'drop_privileges_temporarily', fake_drop_temp)
     monkeypatch.setattr(stop_cmd, 'Kathara', kathara)
+    monkeypatch.setattr(wipe_mod, 'Kathara', kathara)
     monkeypatch.setattr(shutil, 'rmtree', recording_rmtree)
     monkeypatch.setattr(params, 'sre_projects_dir', str(state['projects']))
     monkeypatch.setattr(params, 'sre_user_public_dir', str(state['home_sre']))
@@ -154,6 +160,24 @@ class TestStopRunningLab:
         assert privilege_simulator['events'] == [('rmtree', user_public_dir, 0),
                                                  ('rmtree', proj, 0),
                                                  ('drop', 'permanent')]
+
+    def test_leftover_containers_removed_as_root_before_the_directories(self, privilege_simulator,
+                                                                         non_privileged_lab):
+        """A container the undeploy could not see (its `user` label does not match) is force-removed,
+        still as root, after the undeploys and before the directories go."""
+        state = privilege_simulator
+        proj, user_public_dir = _make_project(state)
+        leftover = MagicMock()
+        leftover.name = 'kathara_root-x_router_hash'
+        leftover.remove.side_effect = lambda **kw: state['events'].append(('remove', leftover.name, state['euid'], kw))
+        state['kathara'].get_machines_api_objects.return_value = [leftover]
+        assert stop_cmd.stop_running_lab(RLN) == []
+        assert len(state['undeploys']) == 1
+        state['kathara'].get_machines_api_objects.assert_called_once_with(lab_hash='hash', all_users=True)
+        assert state['events'] == [('remove', leftover.name, 0, {'v': True, 'force': True}),
+                                   ('rmtree', user_public_dir, 0),
+                                   ('rmtree', proj, 0),
+                                   ('drop', 'permanent')]
 
     def test_user_public_dir_outside_home_sre_is_kept(self, privilege_simulator, non_privileged_lab, tmp_path):
         proj, user_public_dir = _make_project(privilege_simulator)

@@ -16,11 +16,12 @@ from .. import params
 from ..params import SRE
 from ..progress import register_progress_handlers
 
-from ..utils import error_quit, in_user_mode, set_lab_dir_and_import_module, should_record_sessions, \
+from ..utils import error_quit, in_user_mode, log_error, set_lab_dir_and_import_module, should_record_sessions, \
     user_not_allowed_in_exam_mode
 from ..utils_privileges import drop_privileges_permanently, gain_privileges_if_needed, \
     drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, drop_privileges_temporarily, \
     gain_privileges
+from ..wipe import remove_lab_leftovers
 
 
 def _install_privileged_cgroupns_patch():
@@ -354,11 +355,22 @@ def rollback_project(setup: ProjectSetup, multi_project: bool = False):
     remove the user public dir and the project dir while still root (the containers may already
     have left root-owned files in shared/ or the volume dirs) before dropping privileges."""
     if setup.lab_deployed:
+        lab_hash = setup.net_scheme.get_lab_hash()
         try:
             gain_privileges_if_needed(setup.net_scheme)
-            Kathara.get_instance().undeploy_lab(setup.net_scheme.get_lab_hash())
+            Kathara.get_instance().undeploy_lab(lab_hash)
         except Exception:
             pass
+        # Kathara's undeploy only sees the containers labelled with the current user: after the
+        # permanent drop of finalize_project(), those of a privileged lab (labelled with the owner)
+        # would stay running.  Force-remove whatever still carries the lab hash.
+        leftover_errors: list[str] = []
+        try:
+            remove_lab_leftovers(lab_hash, leftover_errors)
+        except Exception as e:
+            leftover_errors.append(str(e))
+        for error in leftover_errors:
+            log_error(f"rollback: cannot remove {error}")
     gain_privileges()
     try:
         if setup.user_public_dir is not None:

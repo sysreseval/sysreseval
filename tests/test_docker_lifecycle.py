@@ -122,6 +122,20 @@ class Grade(Grade0):
         self.add_grade_element(title='dummy', grade=0, max_grade=1)
 '''
 
+# fails in its initial state, i.e. once the containers are up and (single-project mode) the
+# privileges permanently dropped: Kathara's undeploy then no longer sees the owner-labelled containers
+FAILING_PRIVILEGED_LAB = PRIVILEGED_LAB.replace(
+    'from SRE.lib_sre import Data0, NetScheme0, Grade0\n',
+    'from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state\n').replace(
+    'class Grade(Grade0):',
+    """    @sre_state()
+    def initial(self):
+        raise RuntimeError("deliberate failure after deploy")
+
+
+class Grade(Grade0):""")
+assert 'sre_state' in FAILING_PRIVILEGED_LAB and 'deliberate failure' in FAILING_PRIVILEGED_LAB
+
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -151,6 +165,7 @@ def labs_dir():
     (d / 'privileged.py').write_text(PRIVILEGED_LAB)
     (d / 'keyed.py').write_text(KEYED_LAB)
     (d / 'shared.py').write_text(SHARED_LAB)
+    (d / 'failing_privileged.py').write_text(FAILING_PRIVILEGED_LAB)
     for f in d.iterdir():
         f.chmod(0o644)
     yield d
@@ -294,6 +309,58 @@ class TestStop:
         assert _networks(docker_client, lab_hash) == []
         assert not (PROJECTS / running_lab_name).exists()
         assert not user_public_dir.exists(), "user public dir left after sre stop"
+
+
+# ---------------------------------------------------------------------------
+# failed sre start
+# ---------------------------------------------------------------------------
+
+def _kathara_containers(client):
+    return {c.id: c for c in client.containers.list(all=True, filters={'label': ['app=kathara']})}
+
+
+def _kathara_networks(client):
+    return {n.id: n for n in client.networks.list() if (n.attrs.get('Labels') or {}).get('app') == 'kathara'}
+
+
+def _user_public_entries():
+    home = Path(params.sre_user_public_dir)
+    return {p.name for p in home.iterdir()} if home.exists() else set()
+
+
+class TestStartFailure:
+
+    def test_failed_privileged_start_leaves_nothing(self, docker_client, labs_dir):
+        """A privileged lab failing in its initial state, after finalize_project's permanent drop:
+        Kathara's undeploy no longer sees its containers (labelled with the owner, filtered on sre),
+        the rollback must force-remove whatever still carries the lab hash.  The lab hash is derived
+        from the timestamped running lab name, unknown from outside: compare before/after."""
+        if not params.allow_privileged_machines:
+            pytest.skip("params.allow_privileged_machines is False")
+        before_containers = _kathara_containers(docker_client)
+        before_networks = _kathara_networks(docker_client)
+        before_projects, before_home = _project_dirs(), _user_public_entries()
+        try:
+            r = _sre('start', '-p', str(labs_dir / 'failing_privileged.py'))
+            assert r.returncode != 0, "the lab is meant to fail once deployed"
+            assert 'deliberate failure after deploy' in r.stderr, r.stderr[-2000:]
+            assert _project_dirs() == before_projects
+            assert _user_public_entries() == before_home
+            assert set(_kathara_containers(docker_client)) == set(before_containers), \
+                "containers left after a failed start"
+            assert set(_kathara_networks(docker_client)) == set(before_networks), \
+                "networks left after a failed start"
+        finally:
+            # leak of a failing test only: remove what this lab created (never anything older)
+            for cid, c in _kathara_containers(docker_client).items():
+                if cid not in before_containers and c.labels.get('name') in ('srv', 'client'):
+                    c.remove(force=True)
+            for nid, n in _kathara_networks(docker_client).items():
+                if nid not in before_networks and (n.attrs.get('Labels') or {}).get('name') == 'lan':
+                    try:
+                        n.remove()
+                    except Exception:  # noqa: BLE001
+                        pass
 
 
 # ---------------------------------------------------------------------------
