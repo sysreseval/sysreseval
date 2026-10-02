@@ -139,6 +139,7 @@ translations:
 		src/sysreseval/view/evaluations_view.py \
 		src/sysreseval/view/apply_config_view.py \
 		src/sysreseval/view/schema_view.py \
+		src/sysreseval/view/log_view.py \
 		-ts translations/sysreseval_fr.ts
 	${ROOT_DIR}/venv/bin/pyside6-lrelease \
 		translations/sysreseval_fr.ts \

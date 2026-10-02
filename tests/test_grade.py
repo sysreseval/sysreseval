@@ -3,6 +3,7 @@ import hashlib
 import json
 import shlex
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -805,3 +806,95 @@ class TestExetestsHelpers:
     def test_run_host_command_failure_returns_minus_two(self):
         with patch('SRE.lib_sre.subprocess.run', side_effect=OSError('nope')):
             assert run_host_command('x', 1) == ('', -2)
+
+
+# ---------------------------------------------------------------------------
+# Operations log of debug projects (run_tests() → <project>/operations.log)
+# ---------------------------------------------------------------------------
+
+class TestOperationsLogEval:
+    """run_tests() appends an `evaluation` run to the project's OperationsLog: one entry per
+    machine test and host test, with output and exit code."""
+
+    RUNNING = '20260101000000@@@test@@@user'
+
+    def _enabled_log(self):
+        from SRE.operations_log import OperationsLog
+        from test_operations_log import make_debug_project
+        log_path = make_debug_project(self.RUNNING)
+        return OperationsLog(self.RUNNING, enabled=True), log_path
+
+    def test_host_test_logged(self, tmp_pub_dir):
+        ops_log, log_path = self._enabled_log()
+        ns = make_net_scheme()
+        ns.ops_log = ops_log
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        g = GradeWithHostCmd(ns, 'uname -r')
+        with patch('SRE.lib_sre.subprocess.run', return_value=MagicMock(stdout='6.1.0\n', returncode=0)):
+            g.run_tests()
+        lines = log_path.read_text().split('\n')
+        assert lines[0].startswith('=== ') and lines[0].endswith('  evaluation')
+        assert lines[1:5] == ['step1 - on host : uname -r', '    6.1.0', '    exit code 0', '']
+
+    def test_machine_tests_logged_per_step(self, tmp_pub_dir):
+        from test_state_apply import FakeMachine
+        ops_log, log_path = self._enabled_log()
+
+        class G(Grade0):
+            def grade(self):
+                super().grade()
+                host, _ = self.test('m1', 'cat /etc/hostname')
+                self.test('m1', 'sleep 99', timeout=2, allow_error=True)
+                self.test('m2', 'true')
+                self.test('m1', f'echo {host.strip()}', step=2)
+
+        lab = MagicMock()
+        lab.machines = {'m1': FakeMachine({'cat /etc/hostname': ('m1\n', 0), 'sleep 99': ('', -1)}),
+                        'm2': FakeMachine()}
+        ns = make_net_scheme()
+        ns.ops_log = ops_log
+        ns.get_lab_from_kathara.return_value = lab
+        G(ns).run_tests()
+        lines = log_path.read_text().split('\n')
+        i = lines.index('step1 - on m1 : cat /etc/hostname')
+        assert lines[i:i + 5] == ['step1 - on m1 : cat /etc/hostname', '    m1', '    exit code 0',
+                                  'step1 - on m1 : sleep 99', '    exit code -1 (timeout)']
+        assert 'step1 - on m2 : true' in lines
+        assert lines[-3:] == ['step2 - on m1 : echo m1', '    exit code 0', '']
+
+    def test_exec_exception_logged(self, tmp_pub_dir):
+        ops_log, log_path = self._enabled_log()
+        machine = MagicMock()
+        machine.api_object.exec_run.side_effect = RuntimeError('container gone')
+        lab = MagicMock()
+        lab.machines = {'m1': machine}
+        ns = make_net_scheme()
+        ns.ops_log = ops_log
+        ns.get_lab_from_kathara.return_value = lab
+
+        class G(Grade0):
+            def grade(self):
+                super().grade()
+                self.test('m1', 'true')
+
+        G(ns).run_tests()
+        assert 'step1 - on m1 : error during test execution: container gone' in log_path.read_text()
+
+    def test_net_scheme_without_ops_log_falls_back_to_disabled(self, tmp_pub_dir):
+        from SRE.operations_log import OperationsLog
+        ns = make_net_scheme()
+        del ns.ops_log
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        g = GradeWithHostCmd(ns, 'uname -r')
+        assert g._ops_log() is OperationsLog.disabled()
+        with patch('SRE.lib_sre.subprocess.run', return_value=MagicMock(stdout='x', returncode=0)):
+            g.run_tests()  # must not raise
+        assert not Path(params.operations_log_filename(self.RUNNING)).exists()
+
+    def test_no_marker_no_file(self, tmp_pub_dir):
+        ns = make_net_scheme()
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        g = GradeWithHostCmd(ns, 'uname -r')
+        with patch('SRE.lib_sre.subprocess.run', return_value=MagicMock(stdout='x', returncode=0)):
+            g.run_tests()
+        assert not Path(params.operations_log_filename(self.RUNNING)).exists()

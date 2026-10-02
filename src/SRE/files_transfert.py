@@ -130,21 +130,33 @@ def deploy_exetests(lab):
             machine.api_object.put_archive("/", f)
 
 
-def copy_state_files(lab, state, srelab_dir):
+def copy_state_files(lab, state, srelab_dir) -> dict:
+    """Push ``<srelab_dir>/<state>/<machine>/`` and ``<srelab_dir>/<state>/all/`` into every machine
+    (plus ``exetests.py`` for the ``initial`` state).
+
+    Returns ``{machine_name: [source directories that existed and were pushed]}``: an empty list
+    when only ``exetests.py`` went in, machines that received nothing are absent.
+    """
+    pushed = {}
     for machine_name, machine in lab.machines.items():
         src_machine_dir = Path(f"{srelab_dir}/{state}/{machine_name}").resolve()
         src_all_dir = Path(f"{srelab_dir}/{state}/all").resolve()
         if (not os.path.exists(src_machine_dir)) and (not os.path.exists(src_all_dir)) and (state != "initial"):
             continue
+        dirs = []
         with tempfile.TemporaryFile() as f:
             with tarfile.open(fileobj=f, mode="w|") as tar:
                 if os.path.exists(src_machine_dir):
                     for item in src_machine_dir.iterdir():
                         tar.add(item, arcname=item.name, filter=_force_root)
+                    dirs.append(str(src_machine_dir))
                 if os.path.exists(src_all_dir):
                     for item in src_all_dir.iterdir():
                         tar.add(item, arcname=item.name, filter=_force_root)
+                    dirs.append(str(src_all_dir))
                 if state == "initial":
                     tar.add(params.exetests_path, arcname=params.exetests_machines_path, filter=_force_root)
             f.seek(0)
             machine.api_object.put_archive("/", f)
+        pushed[machine_name] = dirs
+    return pushed

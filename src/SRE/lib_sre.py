@@ -40,6 +40,7 @@ from . import params
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
+from .operations_log import OperationsLog
 from .params import SRE
 
 
@@ -767,6 +768,8 @@ class NetScheme0:
         self.data = data
         self.running_lab_name = running_lab_name
         self.debug_project = os.path.exists(params.debug_project_marker_filename(running_lab_name))
+        # operations log of debug projects (`sre state` / `sre eval` → GUI "Log" tab), opened on first write
+        self.ops_log = OperationsLog(running_lab_name, enabled=self.debug_project)
         self.lab_name = params.get_lab_name_from_running_lab_name(running_lab_name)
         self.lab_hash = lab_hash
         self.current_srelab_file = params.get_current_srelab_file_from_running_lab_name(running_lab_name)
@@ -1745,6 +1748,10 @@ class Grade0:
             return default_value, default_code
         return self._host_tests[step][(command, timeout)]
 
+    def _ops_log(self) -> OperationsLog:
+        """The project's :class:`OperationsLog` (a disabled one when ``net_scheme`` is a stand-in without it)."""
+        return getattr(self.net_scheme, 'ops_log', None) or OperationsLog.disabled()
+
     def test(self, machine_name, command, step=1, timeout: int = params.default_timeout, default_value='',
              default_code: int = 0, allow_error: bool = False):
         """Register and retrieve the result of a command executed inside *machine_name*.
@@ -2143,6 +2150,8 @@ class Grade0:
         self._errors = []
         self.load_answers()
         self._eval_date = datetime.datetime.now().isoformat()
+        ops_log = self._ops_log()
+        ops_log.begin("evaluation")
 
         while self.step <= self.max_step:
             self.reset_before_grade()
@@ -2177,6 +2186,7 @@ class Grade0:
                         results[machine_name] = (code, output)
                     except Exception as e:
                         self.add_error(f"error during test execution on machine {machine_name}: {e}", step=self.step)
+                        ops_log.op(self.step, machine_name, f"error during test execution: {e}")
                         continue
 
             for machine_name, (exetests_code, output) in results.items():
@@ -2186,7 +2196,9 @@ class Grade0:
                     self.add_error(
                         f"exetests error on {machine_name}: {exetests_by_machine[machine_name]} -- return code {exetests_code}",
                         step=self.step)
-                for cmd, timeout, result, code in parse_exetests_output(output):
+                    ops_log.op(self.step, machine_name, f"exetests error: return code {exetests_code}")
+                parsed = parse_exetests_output(output)
+                for cmd, timeout, result, code in parsed:
                     if code == -2:
                         self.add_error(f"test error on {machine_name}:{self.step}:{cmd} illegal error code",
                                        step=self.step)
@@ -2194,6 +2206,7 @@ class Grade0:
                         if not self._allow_errors_in_tests.get((machine_name, self.step, cmd, timeout), False):
                             self.add_error(f"test error on {machine_name}:{cmd} code={code}", step=self.step)
                     self._tests[(machine_name, self.step)][cmd, timeout] = (result, code)
+                ops_log.cmds(self.step, machine_name, [(cmd, result, code) for cmd, _timeout, result, code in parsed])
             if SRE.args.debug:
                 for machine_name in lab.machines:
                     if (machine_name, self.step) not in self._tests:
@@ -2219,6 +2232,7 @@ class Grade0:
                             if not self._allow_errors_in_host_tests.get((self.step, cmd, t), False):
                                 self.add_error(f"host test error: {cmd} code={code}", step=self.step)
                         self._host_tests[self.step][(cmd, t)] = (result, code)
+                        ops_log.cmd(self.step, OperationsLog.HOST, cmd, result, code)
                         if SRE.args.debug:
                             log_debug(f"host - step {self.step} - command {cmd} - timeout {t}:")
                             log_debug(result)

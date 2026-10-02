@@ -251,6 +251,11 @@ use_asciinema_for_records = True  # True: prefer asciinema (fall back to script 
 eval_in_progress_name = "eval_in_progress"
 auto_eval_log_name = "auto_eval.log"
 debug_project_marker_name = "debug_project"
+# Operations log of debug projects (GUI "Log" tab): every `sre state` / `sre eval` appends what it
+# executed; lives in the public project dir, never written for non-debug projects
+operations_log_name = "operations.log"
+operations_log_max_output_chars = 16384  # per command output written to operations.log
+operations_log_view_max_lines = 100000   # block cap of the GUI Log tab
 auto_eval_count_keyword = "auto_eval_count"
 info_json_name = "info.json"
 
@@ -452,6 +457,10 @@ def auto_eval_log_filename(running_lab_name: str) -> str:
 
 def debug_project_marker_filename(running_lab_name: str) -> str:
     return f"{private_lab_dir(running_lab_name)}/{debug_project_marker_name}"
+
+
+def operations_log_filename(running_lab_name: str) -> str:
+    return f"{public_lab_dir(running_lab_name)}/{operations_log_name}"
 
 
 def link_to_user_public_dir(running_lab_name: str) -> str:

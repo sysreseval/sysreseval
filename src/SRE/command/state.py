@@ -11,6 +11,7 @@ from ..files_transfert import copy_state_files, put_file_in_container, append_to
     idempotent_append_to_file_in_container, deploy_exetests
 from ..lib_sre import (Grade0, _CmdOp, _FileOp, _AppendOp, _IdempotentAppendOp, _CpFromHostOp, _CpToHostOp,
                        _HostCallbackOp, build_exetests_string, parse_exetests_output, run_host_command)
+from ..operations_log import OperationsLog, describe_file
 from .. import params
 from ..params import SRE
 
@@ -68,8 +69,14 @@ def action_state():
 
 def do_action_state(lab, state, net_scheme, project_has_directory):
     srelab_dir = params.get_srelab_dir(running_lab_name=net_scheme.running_lab_name)
+    # operations log of debug projects (GUI "Log" tab); a null object otherwise
+    ops_log = getattr(net_scheme, 'ops_log', None) or OperationsLog.disabled()
+    ops_log.begin(f"state {state}")
     if project_has_directory and srelab_dir is not None:
-        copy_state_files(lab=lab, state=state, srelab_dir=srelab_dir)
+        pushed = copy_state_files(lab=lab, state=state, srelab_dir=srelab_dir)
+        for machine_name, dirs in pushed.items():
+            if dirs:
+                ops_log.op(0, machine_name, "state files " + ", ".join(dirs))
     elif state == params.initial_state_name:
         deploy_exetests(lab=lab)
 
@@ -83,8 +90,10 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
             machine_name, machine, build_exetests_string((str(op), op.timeout) for op in batch))
         if exetests_code != 0:
             log_error(f"exetests error on {machine_name} (step {step}): return code {exetests_code}")
+            ops_log.op(step, machine_name, f"exetests error: return code {exetests_code}")
         seen = set()
-        for cmd, timeout, result, code in parse_exetests_output(output):
+        parsed = parse_exetests_output(output)
+        for cmd, timeout, result, code in parsed:
             seen.add((cmd, timeout))
             net_scheme.record_cmd_result(machine_name, step, cmd, timeout, result, code)
             if code != 0 and not net_scheme.is_cmd_error_allowed(machine_name, step, cmd, timeout):
@@ -93,9 +102,11 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
                 log_debug(f"[state] {machine_name} - step {step} - command {cmd} - timeout {timeout}:")
                 log_debug(result)
                 log_debug(f"-------- exit code {code}\n")
+        ops_log.cmds(step, machine_name, [(cmd, result, code) for cmd, _timeout, result, code in parsed])
         for op in batch:
             if (str(op), op.timeout) not in seen:
                 log_error(f"state cmd on {machine_name}:{op} produced no result")
+                ops_log.cmd(step, machine_name, str(op), '', None)
 
     def _apply_ops(_machine_name, machine, step, ops):
         import time as _time
@@ -110,6 +121,8 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
                 content = op.src_path.read_bytes()
                 permissions = op.permissions if op.permissions is not None else op.src_path.stat().st_mode & 0o7777
                 mtime = op.mtime if op.mtime is not None else _time.time()
+                ops_log.op(step, _machine_name, describe_file(f"copy from host {op.src_path} ->", op.dest,
+                                                              permissions, op.owner, len(content)))
                 put_file_in_container(machine.api_object, _FileOp(op.dest, content, permissions, op.owner, mtime))
             elif isinstance(op, _CpToHostOp):
                 import io as _io, tarfile as _tarfile
@@ -120,15 +133,24 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
                 with _tarfile.open(fileobj=buf) as tar:
                     member = tar.getmembers()[0]
                     f_in = tar.extractfile(member)
-                    dest_path.write_bytes(f_in.read())
+                    data = f_in.read()
+                    dest_path.write_bytes(data)
                 os.chown(str(dest_path), params.sre_uid, -1)
                 if op.permissions is not None:
                     os.chmod(str(dest_path), op.permissions)
+                ops_log.op(step, _machine_name, describe_file(f"copy to host {op.src_path} ->", str(dest_path),
+                                                              op.permissions, None, len(data)))
             elif isinstance(op, _FileOp):
+                ops_log.op(step, _machine_name,
+                           describe_file("file", op.filename, op.permissions, op.owner, len(op.content)))
                 put_file_in_container(machine.api_object, op)
             elif isinstance(op, _AppendOp):
+                ops_log.op(step, _machine_name,
+                           describe_file("append", op.filename, op.permissions, op.owner, len(op.content)))
                 append_to_file_in_container(machine.api_object, op)
             elif isinstance(op, _IdempotentAppendOp):
+                ops_log.op(step, _machine_name,
+                           describe_file("idempotent append", op.filename, op.permissions, op.owner, len(op.content)))
                 idempotent_append_to_file_in_container(machine.api_object, op)
             else:
                 error_quit(f"unknown state operation {op!r} for machine {_machine_name}")
@@ -139,11 +161,14 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
     for step, step_ops, host_ops in net_scheme.iter_state_steps(state):
         for host_op in host_ops:
             if isinstance(host_op, _HostCallbackOp):
+                ops_log.op(step, OperationsLog.HOST,
+                           f"callback {getattr(host_op.callback, '__name__', repr(host_op.callback))}")
                 host_op.callback()
             else:
                 os.makedirs(files_dir, exist_ok=True)
                 output, code = run_host_command(host_op.command, host_op.timeout, cwd=files_dir)
                 net_scheme.record_host_cmd_result(step, host_op.command, host_op.timeout, output, code)
+                ops_log.cmd(step, OperationsLog.HOST, host_op.command, output, code)
                 if code != 0 and not net_scheme.is_host_cmd_error_allowed(step, host_op.command,
                                                                           host_op.timeout):
                     log_error(f"host cmd error: {host_op.command} code={code}")

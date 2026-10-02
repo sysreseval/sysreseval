@@ -2,6 +2,7 @@
 state methods, result feedback and host commands.  No Docker: containers are stand-ins
 whose exec_run answers exetests batches with canned results."""
 from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,6 +89,19 @@ class ApplyScheme(NetScheme0):
     def hostallowed(self):
         self.calls['hostallowed'] += 1
         self.host_cmd('false', allow_error=True)
+
+    @sre_state
+    def hostcb(self):
+        self.host_callback(self._cb)
+
+    def _cb(self):
+        self.seen.append('cb')
+
+    @sre_state
+    def fileops(self):
+        self.file('m1', '/etc/x', 'xy', permissions=0o600, owner='sre:sre')
+        self.append_to_file('m1', '/etc/hosts', 'abc')
+        self.idempotent_append_to_file('m1', '/etc/hosts', 'abcd', permissions=0o644)
 
 
 def _run(scheme, state, machines):
@@ -215,3 +229,109 @@ class TestHostCmdApply:
             state_cmd.do_action_state(lab=lab, state='hostallowed', net_scheme=s, project_has_directory=False)
         log_error.assert_not_called()
         assert s._host_cmd_results[1][('false', params.default_state_cmd_timeout)] == ('', 1)
+
+
+class TestOperationsLogApply:
+    """do_action_state() appends what it executed to the operations log of a debug project
+    (`.private/debug_project` marker), one `stepN - on <machine|host> : ...` entry per operation."""
+
+    @staticmethod
+    def _debug_scheme():
+        from test_operations_log import make_debug_project
+        log_path = make_debug_project(RUNNING_LAB)
+        return ApplyScheme(MockData()), log_path   # the scheme sees the marker at construction
+
+    def test_no_marker_no_file(self, tmp_pub_dir):
+        Path(params.private_lab_dir(RUNNING_LAB)).mkdir(parents=True)
+        _run(ApplyScheme(MockData()), 'single', {'m1': FakeMachine(), 'm2': FakeMachine()})
+        assert not Path(params.operations_log_filename(RUNNING_LAB)).exists()
+
+    def test_single_pass_entries(self, tmp_pub_dir):
+        s, log_path = self._debug_scheme()
+        m1 = FakeMachine({'echo a': ('a\n', 0)})
+        m2 = FakeMachine({'exit 3': ('', 3), 'false': ('', 1)})
+        _run(s, 'single', {'m1': m1, 'm2': m2})
+        lines = log_path.read_text().split('\n')
+        assert lines[0].startswith('=== ') and lines[0].endswith('  state single')
+        i = lines.index('step1 - on m1 : echo a')
+        assert lines[i:i + 5] == ['step1 - on m1 : echo a', '    a', '    exit code 0',
+                                  'step1 - on m1 : echo b', '    exit code 0']
+        assert 'step1 - on m1 : file /etc/x (0o644 root:root, 1 B)' in lines
+        assert lines.index('step1 - on m1 : file /etc/x (0o644 root:root, 1 B)') < lines.index('step1 - on m1 : echo c')
+        j = lines.index('step1 - on m2 : exit 3')
+        assert lines[j:j + 4] == ['step1 - on m2 : exit 3', '    exit code 3', 'step1 - on m2 : false', '    exit code 1']
+        step1 = [k for k, l in enumerate(lines) if l.startswith('step1 ')]
+        step2 = [k for k, l in enumerate(lines) if l.startswith('step2 ')]
+        assert step2 == [len(lines) - 3] and max(step1) < min(step2)
+        assert lines[-3:] == ['step2 - on m2 : echo d', '    exit code 0', '']
+
+    def test_file_ops_described(self, tmp_pub_dir):
+        s, log_path = self._debug_scheme()
+        _run(s, 'fileops', {'m1': FakeMachine()})
+        lines = log_path.read_text().split('\n')
+        assert lines[1:4] == ['step1 - on m1 : file /etc/x (0o600 sre:sre, 2 B)',
+                              'step1 - on m1 : append /etc/hosts (3 B)',
+                              'step1 - on m1 : idempotent append /etc/hosts (0o644, 4 B)']
+
+    def test_host_cmd_and_callback(self, tmp_pub_dir):
+        s, log_path = self._debug_scheme()
+        with patch.object(state_cmd, 'run_host_command', return_value=('hosty\n', 0)):
+            _run(s, 'hostmulti', {'m1': FakeMachine()})
+        lines = log_path.read_text().split('\n')
+        assert lines[1:4] == ['step1 - on host : hostname', '    hosty', '    exit code 0']
+        assert lines[4:6] == ['step2 - on m1 : echo hosty', '    exit code 0']
+        _run(s, 'hostcb', {'m1': FakeMachine()})
+        lines = log_path.read_text().split('\n')
+        assert lines[-3:] == ['=== ' + lines[-3][4:], 'step1 - on host : callback _cb', '']
+        assert s.seen[-1] == 'cb'
+
+    def test_missing_result_and_exetests_failure(self, tmp_pub_dir):
+        s, log_path = self._debug_scheme()
+        m1 = FakeMachine()
+        m1.api_object.exec_run.side_effect = None
+        m1.api_object.exec_run.return_value = (1, _exetests_output(
+            (params.default_state_cmd_timeout, 'echo a', '', 0)))
+        _run(s, 'single', {'m1': m1, 'm2': FakeMachine()})
+        lines = log_path.read_text().split('\n')
+        assert 'step1 - on m1 : exetests error: return code 1' in lines
+        i = lines.index('step1 - on m1 : echo b')
+        assert lines[i + 1] == '    no result'
+
+    def test_state_files_logged(self, tmp_pub_dir, tmp_lab_dir, monkeypatch):
+        s, log_path = self._debug_scheme()
+        srelab_dir = tmp_lab_dir / 'test' / 'test1'
+        (srelab_dir / 'single' / 'm1').mkdir(parents=True)
+        (srelab_dir / 'single' / 'm1' / 'f').write_text('f')
+        (srelab_dir / 'single' / 'all').mkdir()
+        (srelab_dir / 'single' / 'all' / 'g').write_text('g')
+        monkeypatch.setattr(params, 'get_srelab_dir', lambda running_lab_name: str(srelab_dir))
+        lab = MagicMock()
+        lab.machines = {'m1': FakeMachine(), 'm2': FakeMachine(), 'm3': FakeMachine()}
+        with patch.object(state_cmd, 'log_error'):
+            state_cmd.do_action_state(lab=lab, state='single', net_scheme=s, project_has_directory=True)
+        lines = log_path.read_text().split('\n')
+        m1_dir, all_dir = (srelab_dir / 'single' / 'm1').resolve(), (srelab_dir / 'single' / 'all').resolve()
+        assert lines[1:3] == [f'step0 - on m1 : state files {m1_dir}, {all_dir}',
+                              f'step0 - on m2 : state files {all_dir}']
+        assert lines[3] == f'step0 - on m3 : state files {all_dir}'
+        assert lines[4].startswith('step1 ')
+
+
+class TestCopyStateFilesReturn:
+    def test_returns_pushed_dirs_per_machine(self, tmp_lab_dir):
+        from SRE.files_transfert import copy_state_files
+        srelab_dir = tmp_lab_dir / 'lab'
+        (srelab_dir / 'final' / 'm1').mkdir(parents=True)
+        (srelab_dir / 'final' / 'm1' / 'f').write_text('f')
+        lab = MagicMock()
+        lab.machines = {'m1': FakeMachine(), 'm2': FakeMachine()}
+        assert copy_state_files(lab=lab, state='final', srelab_dir=str(srelab_dir)) == {
+            'm1': [str((srelab_dir / 'final' / 'm1').resolve())]}
+        assert lab.machines['m2'].api_object.put_archive.call_count == 0
+
+    def test_initial_without_dirs_gives_empty_lists(self, tmp_lab_dir):
+        from SRE.files_transfert import copy_state_files
+        lab = MagicMock()
+        lab.machines = {'m1': FakeMachine()}
+        assert copy_state_files(lab=lab, state='initial', srelab_dir=str(tmp_lab_dir)) == {'m1': []}
+        lab.machines['m1'].api_object.put_archive.assert_called_once()

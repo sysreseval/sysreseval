@@ -18,6 +18,7 @@ from sysreseval.view.evaluations_view import EvaluationView
 
 from sysreseval.view.questions_view import QuestionsView
 from sysreseval.view.apply_config_view import ApplyConfigView
+from sysreseval.view.log_view import LogView
 
 from sysreseval.util import load_info
 from sysreseval import settings, util
@@ -81,12 +82,17 @@ class ProjectWidget(QWidget):
         )
         tabs.addTab(self._apply_config_view, self.tr("Apply Configuration"))
 
+        # debug projects only: tail of the operations log written by `sre state` / `sre eval`
+        self._log_view = LogView(project_dir / params.operations_log_name)
+        tabs.addTab(self._log_view, self.tr("Log"))
+
         layout.addWidget(tabs)
 
         self._exam_mode = False
         self._info_mtime = self._mtime(project_dir / params.info_json_name)
         self._update_eval_visibility()
         self._update_apply_config_visibility()
+        self._update_log_visibility()
 
         self._bg_eval_interval: int = self.info.get("eval_interval_without_exam_mode", 0)
         self._bg_eval_next: datetime | None = None
@@ -101,6 +107,7 @@ class ProjectWidget(QWidget):
             self._tabs.setTabText(self._tabs.indexOf(self._eval_view), self.tr("Evaluation"))
             self._tabs.setTabText(self._tabs.indexOf(self._terminals_view), self.tr("Terminals"))
             self._tabs.setTabText(self._tabs.indexOf(self._apply_config_view), self.tr("Apply Configuration"))
+            self._tabs.setTabText(self._tabs.indexOf(self._log_view), self.tr("Log"))
         super().changeEvent(event)
 
     def _resolve_tt(self, v) -> str:
@@ -133,6 +140,10 @@ class ProjectWidget(QWidget):
         visible = debug or (not self._exam_mode and bool(self.info.get("user_allowed_states")))
         self._tabs.setTabVisible(self._tabs.indexOf(self._apply_config_view), visible)
 
+    def _update_log_visibility(self):
+        visible = bool(self.info.get("debug_project", False))
+        self._tabs.setTabVisible(self._tabs.indexOf(self._log_view), visible)
+
     def set_exam_mode(self, active: bool):
         self._exam_mode = active
         if active:
@@ -140,6 +151,7 @@ class ProjectWidget(QWidget):
             self._bg_eval_proc = None
         self._update_eval_visibility()
         self._update_apply_config_visibility()
+        self._update_log_visibility()
 
     def tick_bg_eval(self):
         """Called every second when not in exam mode. Fires a background eval if due."""
@@ -186,6 +198,11 @@ class ProjectWidget(QWidget):
             except Exception:
                 pass
 
+        # Tail the operations log of a debug project on every tick (the file grows while a state
+        # or an evaluation runs, independently of info.json)
+        if self.info.get("debug_project", False):
+            self._log_view.refresh()
+
         info_path = self.project_dir / params.info_json_name
         info_mtime = self._mtime(info_path)
         if info_mtime == self._info_mtime:
@@ -216,6 +233,7 @@ class ProjectWidget(QWidget):
                                             admin_only_states=self.info.get("admin_only_states", []))
         self._update_eval_visibility()
         self._update_apply_config_visibility()
+        self._update_log_visibility()
         new_interval = self.info.get("eval_interval_without_exam_mode", 0)
         if new_interval != self._bg_eval_interval:
             self._bg_eval_interval = new_interval

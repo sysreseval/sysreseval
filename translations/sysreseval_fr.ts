@@ -125,6 +125,15 @@
     </message>
 </context>
 <context>
+    <name>LogView</name>
+    <message>
+        <location filename="../src/sysreseval/view/log_view.py" line="68"/>
+        <location filename="../src/sysreseval/view/log_view.py" line="84"/>
+        <source>Clear</source>
+        <translation>Effacer</translation>
+    </message>
+</context>
+<context>
     <name>MachinesView</name>
     <message>
         <location filename="../src/sysreseval/view/machines_view.py" line="45"/>
@@ -427,46 +436,52 @@
 <context>
     <name>ProjectWidget</name>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="51"/>
-        <location filename="../src/sysreseval/project_widget.py" line="97"/>
+        <location filename="../src/sysreseval/project_widget.py" line="52"/>
+        <location filename="../src/sysreseval/project_widget.py" line="103"/>
         <source>Schema</source>
         <translation>Schéma</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="54"/>
-        <location filename="../src/sysreseval/project_widget.py" line="98"/>
+        <location filename="../src/sysreseval/project_widget.py" line="55"/>
+        <location filename="../src/sysreseval/project_widget.py" line="104"/>
         <source>Informations</source>
         <translation>Informations</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="57"/>
-        <location filename="../src/sysreseval/project_widget.py" line="99"/>
+        <location filename="../src/sysreseval/project_widget.py" line="58"/>
+        <location filename="../src/sysreseval/project_widget.py" line="105"/>
         <source>Machines</source>
         <translation>Machines</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="60"/>
-        <location filename="../src/sysreseval/project_widget.py" line="100"/>
+        <location filename="../src/sysreseval/project_widget.py" line="61"/>
+        <location filename="../src/sysreseval/project_widget.py" line="106"/>
         <source>Questions</source>
         <translation>Questions</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="72"/>
-        <location filename="../src/sysreseval/project_widget.py" line="101"/>
+        <location filename="../src/sysreseval/project_widget.py" line="73"/>
+        <location filename="../src/sysreseval/project_widget.py" line="107"/>
         <source>Evaluation</source>
         <translation>Évaluation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="76"/>
-        <location filename="../src/sysreseval/project_widget.py" line="102"/>
+        <location filename="../src/sysreseval/project_widget.py" line="77"/>
+        <location filename="../src/sysreseval/project_widget.py" line="108"/>
         <source>Terminals</source>
         <translation>Terminaux</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="82"/>
-        <location filename="../src/sysreseval/project_widget.py" line="103"/>
+        <location filename="../src/sysreseval/project_widget.py" line="83"/>
+        <location filename="../src/sysreseval/project_widget.py" line="109"/>
         <source>Apply Configuration</source>
         <translation>Appliquer une configuration</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/project_widget.py" line="87"/>
+        <location filename="../src/sysreseval/project_widget.py" line="110"/>
+        <source>Log</source>
+        <translation>Journal</translation>
     </message>
 </context>
 <context>

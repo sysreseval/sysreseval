@@ -73,6 +73,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 │   └── auto_eval.log       one ISO timestamp per student self-evaluation
 ├── info.json               public machine/question metadata (InfoLab)
 ├── scheme.svg              graphviz network diagram
+├── operations.log          debug projects only: operations of every state / evaluation (GUI Log tab), mode 0o644
 ├── answers/
 │   ├── answers.json        student answers (updated by GUI)
 │   └── cheat.json          instructor-provided answers (if any)
