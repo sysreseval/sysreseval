@@ -1,6 +1,7 @@
 """Tests for lib/net_config.py — all public functions."""
 import sys
-from ipaddress import IPv4Address, IPv4Interface, IPv4Network
+from ipaddress import (IPv4Address, IPv4Interface, IPv4Network,
+                       IPv6Address, IPv6Interface, IPv6Network)
 from pathlib import Path
 from unittest.mock import MagicMock, call
 
@@ -32,7 +33,10 @@ from net_config import (
     get_persistent_net_config_entry,
     get_routes,
     get_sysctl_conf,
+    get_ipv6_forward,
+    net_config_entry_family,
     set_ip_forward,
+    set_ipv6_forward,
     set_net_config_entry,
     set_persistent_net_config_entry,
     set_persistent_sysctl,
@@ -1124,14 +1128,22 @@ class TestGetIpForward:
 # get_net_config_from_topology
 # ---------------------------------------------------------------------------
 
-def make_topology_net_scheme(ips: dict, nets: dict, topology: dict):
-    """Return a minimal net_scheme mock for get_net_config_from_topology."""
+def make_topology_net_scheme(ips: dict, nets: dict, topology: dict, ips6: dict = None, nets6: dict = None):
+    """Return a minimal net_scheme mock for get_net_config_from_topology.
+
+    Without *ips6* / *nets6* the data has no IPv6 containers at all (a Data0 always has
+    them, empty; both shapes must give the same IPv4 result)."""
     ns = MagicMock()
     ns.get_topology.return_value = topology
-    ns.data = SimpleNamespace(
+    data = SimpleNamespace(
         ips=SimpleNamespace(**{k: IPv4Interface(v) for k, v in ips.items()}),
         nets=SimpleNamespace(**{k: IPv4Network(v) for k, v in nets.items()}),
     )
+    if ips6 is not None:
+        data.ips6 = SimpleNamespace(**{k: IPv6Interface(v) for k, v in ips6.items()})
+    if nets6 is not None:
+        data.nets6 = SimpleNamespace(**{k: IPv6Network(v) for k, v in nets6.items()})
+    ns.data = data
     return ns
 
 
@@ -1439,3 +1451,467 @@ class TestGetNetConfigFromTopology:
         # Must use .ip (172.17.0.1), not the full interface string
         assert _all_routes(result['router']).get('0.0.0.0/0') == '172.17.0.1'
 
+
+
+# ===========================================================================
+# IPv6 (ipv6=True on the readers, dual-stack entries on the writers)
+# ===========================================================================
+
+IP_A_DUAL = """\
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host noprefixroute
+       valid_lft forever preferred_lft forever
+2: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:0a:00:00:01 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.0.0.1/24 brd 10.0.0.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fd00:1::1/64 scope global
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:aff:fe00:1/64 scope link proto kernel_ll
+       valid_lft forever preferred_lft forever
+3: eth1@if14: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    inet6 fd00:2::1/64 scope global
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:aff:fe01:1/64 scope link
+       valid_lft forever preferred_lft forever
+"""
+
+IP_A_SLAAC = """\
+2: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    inet 10.0.0.2/24 brd 10.0.0.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fd00:1:0:0:42:aff:fe00:2/64 scope global dynamic mngtmpaddr proto kernel_ra
+       valid_lft 86375sec preferred_lft 14375sec
+    inet6 fd00:1::9c3e:1f0b:7a2d:44e1/64 scope global temporary dynamic
+       valid_lft 86375sec preferred_lft 14375sec
+    inet6 fe80::42:aff:fe00:2/64 scope link proto kernel_ll
+       valid_lft forever preferred_lft forever
+"""
+
+IP_A_SLAAC_ONLY = """\
+2: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    inet6 fd00:1:0:0:42:aff:fe00:2/64 scope global dynamic mngtmpaddr proto kernel_ra
+       valid_lft 86375sec preferred_lft 14375sec
+    inet6 fe80::42:aff:fe00:2/64 scope link proto kernel_ll
+       valid_lft forever preferred_lft forever
+"""
+
+IP_ROUTE_DUAL_V4 = """\
+default via 10.0.0.254 dev eth0
+10.0.0.0/24 dev eth0 proto kernel scope link src 10.0.0.1
+"""
+
+IP_6_ROUTE = """\
+fd00:1::/64 dev eth0 proto kernel metric 256 pref medium
+fd00:2::/64 dev eth1 proto kernel metric 256 pref medium
+fd00:3::/64 via fd00:2::fe dev eth1 metric 1024 pref medium
+fd00:4::1 via fd00:2::fe dev eth1 metric 1024 pref medium
+fe80::/64 dev eth0 proto kernel metric 256 pref medium
+fe80::/64 dev eth1 proto kernel metric 256 pref medium
+unreachable fd00:9::/64 dev lo metric 1024 error -113 pref medium
+default via fd00:1::fe dev eth0 metric 1024 pref medium
+"""
+
+IP_6_ROUTE_RA = """\
+fd00:1::/64 dev eth1 proto ra metric 256 expires 86375sec pref medium
+fe80::/64 dev eth0 proto kernel metric 256 pref medium
+fe80::/64 dev eth1 proto kernel metric 256 pref medium
+default via fe80::42:aff:fe00:fe dev eth1 proto ra metric 1024 expires 1775sec hoplimit 64 pref medium
+"""
+
+IP_LINK_DUAL = """\
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+2: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default
+3: eth1@if14: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default
+"""
+
+INTERFACES_DUAL = """\
+auto eth0
+iface eth0 inet static
+    address 10.0.0.1/24
+    gateway 10.0.0.254
+
+iface eth0 inet6 static
+    address fd00:1::1/64
+    gateway fd00:1::fe
+    post-up ip -6 route add fd00:3::/64 via fd00:1::fd
+    post-up ip addr add fd00:1::11/64 dev eth0
+
+auto eth1
+iface eth1 inet6 static
+    address fd00:2::1
+    netmask 64
+    accept_ra 0
+"""
+
+
+def _dual_grade(ip_a=IP_A_DUAL, ip_route=IP_ROUTE_DUAL_V4, ip6_route=IP_6_ROUTE, ip_link=IP_LINK_DUAL):
+    return make_grade({'ip a': (ip_a, 0), 'ip route': (ip_route, 0), 'ip -6 route': (ip6_route, 0),
+                       'ip link show': (ip_link, 0)})
+
+
+class TestGetIpAddressesIPv6:
+    def test_default_excludes_inet6(self):
+        res = get_ip_addresses(_dual_grade(), 'r1')
+        assert res == {'lo': [('127.0.0.1', 8)], 'eth0': [('10.0.0.1', 24)], 'eth1': []}
+
+    def test_ipv6_true_adds_global_addresses_v4_first(self):
+        res = get_ip_addresses(_dual_grade(), 'r1', ipv6=True)
+        assert res['eth0'] == [('10.0.0.1', 24), ('fd00:1::1', 64)]
+        assert res['eth1'] == [('fd00:2::1', 64)]
+        assert ('::1', 128) in res['lo']
+
+    def test_link_local_only_on_request(self):
+        assert get_ip_addresses(_dual_grade(), 'r1', ipv6=True, link_local=True)['eth1'] == [
+            ('fd00:2::1', 64), ('fe80::42:aff:fe01:1', 64)]
+
+    def test_slaac_kept_temporary_dropped(self):
+        res = get_ip_addresses(_dual_grade(ip_a=IP_A_SLAAC), 'pc', ipv6=True)
+        assert res['eth0'] == [('10.0.0.2', 24), ('fd00:1:0:0:42:aff:fe00:2', 64)]
+
+    def test_ipv6_sort_prefix_then_address(self):
+        out = ("2: eth0: <UP>\n    inet6 fd00:1::9/64 scope global\n    inet6 fd00:1::1/64 scope global\n"
+               "    inet6 fd00:1::5/128 scope global\n")
+        res = get_ip_addresses(make_grade({'ip a': (out, 0)}), 'r', ipv6=True)
+        assert res['eth0'] == [('fd00:1::5', 128), ('fd00:1::1', 64), ('fd00:1::9', 64)]
+
+
+class TestGetRoutesIPv6:
+    def test_default_issues_only_ip_route(self):
+        g = _dual_grade()
+        res = get_routes(g, 'r1')
+        g.test.assert_called_once_with('r1', 'ip route', step=1)
+        assert ('::', 0) not in res
+
+    def test_ipv6_merges_both_tables(self):
+        res = get_routes(_dual_grade(), 'r1', ipv6=True)
+        assert res[('0.0.0.0', 0)] == ('10.0.0.254', 'eth0', 0)
+        assert res[('::', 0)] == ('fd00:1::fe', 'eth0', 1024)
+        assert res[('fd00:3::', 64)] == ('fd00:2::fe', 'eth1', 1024)
+        assert res[('fd00:4::1', 128)] == ('fd00:2::fe', 'eth1', 1024)
+        assert res[('fd00:1::', 64)] == ('', 'eth0', 256)
+        assert not any(k[0] == 'unreachable' or 'fd00:9::' in k[0] for k in res)
+
+    def test_ra_default_route(self):
+        res = get_routes(_dual_grade(ip6_route=IP_6_ROUTE_RA), 'pc', ipv6=True)
+        assert res[('::', 0)] == ('fe80::42:aff:fe00:fe', 'eth1', 1024)
+
+    def test_ipv6_routes_even_if_ipv4_table_empty(self):
+        g = make_grade({'ip route': ('', 0), 'ip -6 route': (IP_6_ROUTE, 0)})
+        assert ('::', 0) in get_routes(g, 'r1', ipv6=True)
+        assert get_routes(g, 'r1') == {}
+
+
+class TestGetNetConfigEntryIPv6:
+    def test_dual_stack_entries(self):
+        nc = get_net_config_entry(_dual_grade(), 'r1', ipv6=True)
+        assert nc == [
+            ([IPv4Interface('10.0.0.1/24'), IPv6Interface('fd00:1::1/64')],
+             [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254')), (IPv6Network('::/0'), IPv6Address('fd00:1::fe'))]),
+            ([IPv6Interface('fd00:2::1/64')],
+             [(IPv6Network('fd00:3::/64'), IPv6Address('fd00:2::fe')), (IPv6Network('fd00:4::1/128'), IPv6Address('fd00:2::fe'))]),
+        ]
+
+    def test_same_output_without_flag_is_ipv4_only(self):
+        nc = get_net_config_entry(_dual_grade(), 'r1')
+        assert nc == [([IPv4Interface('10.0.0.1/24')], [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254'))]), None]
+
+    def test_static_v4_plus_slaac_is_a_tuple(self):
+        link = "2: eth0@if12: <UP> mtu 1500\n"
+        nc = get_net_config_entry(_dual_grade(ip_a=IP_A_SLAAC, ip_route='', ip6_route=IP_6_ROUTE_RA, ip_link=link),
+                                  'pc', ipv6=True)
+        assert nc[0][0] == [IPv4Interface('10.0.0.2/24'), IPv6Interface('fd00:1:0:0:42:aff:fe00:2/64')]
+
+    def test_slaac_only_interface_is_dhcp(self):
+        link = "2: eth0@if12: <UP> mtu 1500\n"
+        nc = get_net_config_entry(_dual_grade(ip_a=IP_A_SLAAC_ONLY, ip_route='', ip6_route=IP_6_ROUTE_RA, ip_link=link),
+                                  'pc', ipv6=True)
+        assert nc == ['dhcp']
+
+    def test_ra_default_attached_by_dev(self):
+        ip_a = ("2: eth0@if12: <UP>\n    inet 10.0.0.2/24 scope global eth0\n"
+                "3: eth1@if14: <UP>\n    inet 10.1.0.2/24 scope global eth1\n    inet6 fd00:1::2/64 scope global\n")
+        nc = get_net_config_entry(_dual_grade(ip_a=ip_a, ip_route='', ip6_route=IP_6_ROUTE_RA), 'pc', ipv6=True)
+        assert nc[0] == ([IPv4Interface('10.0.0.2/24')], [])
+        assert nc[1] == ([IPv4Interface('10.1.0.2/24'), IPv6Interface('fd00:1::2/64')],
+                         [(IPv6Network('::/0'), IPv6Address('fe80::42:aff:fe00:fe'))])
+
+
+class TestGetPersistentNetConfigIPv6:
+    def _grade(self, text=INTERFACES_DUAL):
+        return make_grade({'cat /etc/network/interfaces': (text, 0)})
+
+    def test_default_ignores_inet6_stanzas(self):
+        nc, errors = get_persistent_net_config_entry(self._grade(), 'r1')
+        assert nc == [([IPv4Interface('10.0.0.1/24')], [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254'))]), None]
+        assert errors == 0
+
+    def test_ipv6_merges_families(self):
+        nc, errors = get_persistent_net_config_entry(self._grade(), 'r1', ipv6=True)
+        assert errors == 0
+        assert nc[0] == ([IPv4Interface('10.0.0.1/24'), IPv6Interface('fd00:1::1/64'), IPv6Interface('fd00:1::11/64')],
+                         [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254')),
+                          (IPv6Network('::/0'), IPv6Address('fd00:1::fe')),
+                          (IPv6Network('fd00:3::/64'), IPv6Address('fd00:1::fd'))])
+        assert nc[1] == ([IPv6Interface('fd00:2::1/64')], [])
+
+    def test_inet6_auto_alone_is_dhcp(self):
+        nc, errors = get_persistent_net_config_entry(self._grade("auto eth0\niface eth0 inet6 auto\n"), 'pc', ipv6=True)
+        assert nc == ['dhcp'] and errors == 0
+        nc, _ = get_persistent_net_config_entry(self._grade("auto eth0\niface eth0 inet6 auto\n"), 'pc')
+        assert nc == [None]
+
+    def test_static_v4_with_inet6_auto_keeps_v4_tuple(self):
+        text = "auto eth0\niface eth0 inet static\n    address 10.0.0.1/24\niface eth0 inet6 auto\n"
+        nc, errors = get_persistent_net_config_entry(self._grade(text), 'pc', ipv6=True)
+        assert nc == [([IPv4Interface('10.0.0.1/24')], [])] and errors == 0
+
+    def test_route_without_dash6_accepted(self):
+        text = "auto eth0\niface eth0 inet6 static\n    address fd00:1::1/64\n    post-up ip route add fd00:3::/64 via fd00:1::fd dev eth0\n"
+        nc, errors = get_persistent_net_config_entry(self._grade(text), 'pc', ipv6=True)
+        assert nc == [([IPv6Interface('fd00:1::1/64')], [(IPv6Network('fd00:3::/64'), IPv6Address('fd00:1::fd'))])]
+        assert errors == 0
+
+    def test_errors_counted_only_with_flag(self):
+        text = ("auto eth0\niface eth0 inet6 static\n    address fd00:1::zz/64\n    gateway 10.0.0.1\n"
+                "    post-up ip -6 route add fd00:3::/64 via 10.0.0.2\n    bogus-option 1\n")
+        _, errors = get_persistent_net_config_entry(self._grade(text), 'pc')
+        assert errors == 0
+        _, errors = get_persistent_net_config_entry(self._grade(text), 'pc', ipv6=True)
+        assert errors == 4
+
+    def test_bad_netmask_counted(self):
+        text = "auto eth0\niface eth0 inet6 static\n    address fd00:1::1\n    netmask 200\n"
+        nc, errors = get_persistent_net_config_entry(self._grade(text), 'pc', ipv6=True)
+        assert errors == 1
+
+
+class TestEvalNetConfigIPv6:
+    EXP = [([IPv4Interface('10.0.0.1/24'), IPv6Interface('fd00:1::1/64')],
+            [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254')), (IPv6Network('::/0'), IPv6Interface('fd00:1::fe/64'))]),
+           ([IPv6Interface('fd00:2::1/64')], [(IPv6Network('fd00:3::/64'), IPv6Address('fd00:2::fe'))])]
+
+    def test_dual_match(self):
+        cur = get_net_config_entry(_dual_grade(), 'r1', ipv6=True)
+        r = eval_net_config(make_grade(), self.EXP, current=cur)
+        assert (r.ips, r.ips_expected, r.default_route, r.other_routes, r.wrong_routes) == (3, 3, 1, 1, 1)
+
+    def test_wrong_v6_gateway_breaks_default(self):
+        cur = [([IPv4Interface('10.0.0.1/24'), IPv6Interface('fd00:1::1/64')],
+                [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254')), (IPv6Network('::/0'), IPv6Address('fd00:1::1'))])]
+        r = eval_net_config(make_grade(), self.EXP, current=cur)
+        assert r.default_route == 0 and r.default_route_expected == 1
+
+    def test_family_split(self):
+        v4 = net_config_entry_family(self.EXP, 4)
+        v6 = net_config_entry_family(self.EXP, 6)
+        assert v4 == [([IPv4Interface('10.0.0.1/24')], [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254'))]), ([], [])]
+        assert v6[0] == ([IPv6Interface('fd00:1::1/64')], [(IPv6Network('::/0'), IPv6Interface('fd00:1::fe/64'))])
+        assert net_config_entry_family(['dhcp', None], 6) == ['dhcp', None]
+        cur = get_net_config_entry(_dual_grade(), 'r1', ipv6=True)
+        r6 = eval_net_config(make_grade(), v6, current=net_config_entry_family(cur, 6))
+        assert (r6.ips, r6.default_route, r6.other_routes) == (2, 1, 1)
+
+
+class TestSetPersistentNetConfigIPv6:
+    ENTRY = [([IPv4Interface('10.0.0.1/24'), IPv6Interface('fd00:1::1/64'), IPv6Interface('fd00:1::11/64')],
+              [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254')),
+               (IPv4Network('10.2.0.0/24'), IPv4Interface('10.0.0.253/24')),
+               (IPv6Network('::/0'), IPv6Interface('fd00:1::fe/64')),
+               (IPv6Network('fd00:3::/64'), IPv6Address('fd00:1::fd')),
+               (IPv6Network('fd00:4::/64'), IPv6Address('fe80::1'))]),
+             ([IPv6Interface('fd00:2::1/64')], [(IPv4Network('10.9.0.0/24'), IPv4Address('10.0.0.9'))])]
+
+    def _content(self, entry):
+        ns = make_net_scheme()
+        set_persistent_net_config_entry(ns, 'r1', entry)
+        return ns.file.call_args.args[2]
+
+    def test_dual_text(self):
+        assert self._content(self.ENTRY) == """\
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+    address 10.0.0.1/24
+    gateway 10.0.0.254
+    post-up ip route add 10.2.0.0/24 via 10.0.0.253
+
+iface eth0 inet6 static
+    address fd00:1::1/64
+    post-up ip addr add fd00:1::11/64 dev eth0
+    gateway fd00:1::fe
+    post-up ip -6 route add fd00:3::/64 via fd00:1::fd
+    post-up ip -6 route add fd00:4::/64 via fe80::1 dev eth0
+
+auto eth1
+iface eth1 inet6 static
+    address fd00:2::1/64
+    post-up ip route add 10.9.0.0/24 via 10.0.0.9
+"""
+
+    def test_v4_only_text_unchanged(self):
+        entry = [([IPv4Interface('10.0.0.1/24'), IPv4Interface('10.0.0.2/24')],
+                  [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254')), (IPv4Network('10.2.0.0/24'), IPv4Address('10.0.0.253'))]),
+                 'dhcp', None]
+        assert self._content(entry) == """\
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+    address 10.0.0.1/24
+    post-up ip addr add 10.0.0.2/24 dev eth0
+    gateway 10.0.0.254
+    post-up ip route add 10.2.0.0/24 via 10.0.0.253
+
+auto eth1
+iface eth1 inet dhcp
+"""
+
+    def test_roundtrip_through_parser(self):
+        text = self._content(self.ENTRY)
+        nc, errors = get_persistent_net_config_entry(make_grade({'cat /etc/network/interfaces': (text, 0)}), 'r1', ipv6=True)
+        assert errors == 0
+        assert nc[0][0] == self.ENTRY[0][0]
+        assert {(str(n), str(g)) for n, g in nc[0][1]} == {('0.0.0.0/0', '10.0.0.254'), ('10.2.0.0/24', '10.0.0.253'),
+                                                          ('::/0', 'fd00:1::fe'), ('fd00:3::/64', 'fd00:1::fd'),
+                                                          ('fd00:4::/64', 'fe80::1')}
+        assert nc[1] == ([IPv6Interface('fd00:2::1/64')], [(IPv4Network('10.9.0.0/24'), IPv4Address('10.0.0.9'))])
+
+    def test_no_address_raises(self):
+        with pytest.raises(ValueError):
+            self._content([([], [])])
+
+
+class TestSetNetConfigIPv6:
+    def test_commands(self):
+        ns = make_net_scheme()
+        set_net_config_entry(ns, 'r1', TestSetPersistentNetConfigIPv6.ENTRY)
+        assert [c.args[1] for c in ns.cmd.call_args_list] == [
+            'ip link set eth0 up',
+            'ip addr add 10.0.0.1/24 dev eth0',
+            'ip addr add fd00:1::1/64 dev eth0',
+            'ip addr add fd00:1::11/64 dev eth0',
+            'ip route add 0.0.0.0/0 via 10.0.0.254',
+            'ip route add 10.2.0.0/24 via 10.0.0.253',
+            'ip route add ::/0 via fd00:1::fe',
+            'ip route add fd00:3::/64 via fd00:1::fd',
+            'ip route add fd00:4::/64 via fe80::1 dev eth0',
+            'ip link set eth1 up',
+            'ip addr add fd00:2::1/64 dev eth1',
+            'ip route add 10.9.0.0/24 via 10.0.0.9',
+        ]
+
+
+class TestIpv6Forward:
+    def test_set(self):
+        ns = make_net_scheme()
+        set_ipv6_forward(ns, 'r1', True, step=2)
+        assert ns.cmd.call_args_list[0].args[1] == 'mount -o rw,remount /proc/sys'
+        assert ns.cmd.call_args_list[1] == call('r1', 'sysctl -w net.ipv6.conf.all.forwarding=1', step=2)
+        ns = make_net_scheme()
+        set_ipv6_forward(ns, 'r1', False)
+        assert ns.cmd.call_args_list[-1] == call('r1', 'sysctl -w net.ipv6.conf.all.forwarding=0', step=1)
+
+    def test_get(self):
+        assert get_ipv6_forward(make_grade({'cat /proc/sys/net/ipv6/conf/all/forwarding': ('1\n', 0)}), 'r1') is True
+        assert get_ipv6_forward(make_grade({'cat /proc/sys/net/ipv6/conf/all/forwarding': ('0\n', 0)}), 'r1') is False
+        assert get_ipv6_forward(make_grade({'cat /proc/sys/net/ipv6/conf/all/forwarding': ('', 1)}), 'r1') is False
+        g = make_grade({'cat /proc/sys/net/ipv6/conf/all/forwarding': ('1', 0)})
+        get_ipv6_forward(g, 'r1', step=3)
+        g.test.assert_called_once_with('r1', 'cat /proc/sys/net/ipv6/conf/all/forwarding', step=3)
+
+
+_STAR_IPS6 = {
+    'pc1':        'fd00:a::1/64',
+    'pc2':        'fd00:a::2/64',
+    'router_lan': 'fd00:a::fe/64',
+    'router_wan': 'fd00:b::fe/64',
+    'server':     'fd00:b::1/64',
+}
+_STAR_NETS6 = {'lan': 'fd00:a::/64', 'wan': 'fd00:b::/64'}
+
+
+class TestGetNetConfigFromTopologyIPv6:
+    def _dual(self, **kw):
+        kw.setdefault('ipv6', True)
+        ns = make_topology_net_scheme(_STAR_IPS, _STAR_NETS, _STAR_TOPOLOGY, ips6=_STAR_IPS6, nets6=_STAR_NETS6)
+        return get_net_config_from_topology(ns, _STAR_TOPOLOGY, **kw)
+
+    def test_ipv4_result_identical_with_or_without_ipv6_containers(self):
+        a = get_net_config_from_topology(make_topology_net_scheme(_STAR_IPS, _STAR_NETS, _STAR_TOPOLOGY), _STAR_TOPOLOGY, gateway='router')
+        b = self._dual(gateway='router', ipv6=False)
+        assert a == b
+        assert _all_routes(b['pc1']) == {'0.0.0.0/0': '10.0.0.254'}
+
+    def test_dual_addresses_and_routes(self):
+        nc = self._dual(gateway='router')
+        assert nc['pc1'][0][0] == [IPv4Interface('10.0.0.1/24'), IPv6Interface('fd00:a::1/64')]
+        assert _all_routes(nc['pc1']) == {'0.0.0.0/0': '10.0.0.254', '::/0': 'fd00:a::fe'}
+        assert nc['router'][0][0] == [IPv4Interface('10.0.0.254/24'), IPv6Interface('fd00:a::fe/64')]
+        assert nc['router'][1][0] == [IPv4Interface('10.1.0.254/24'), IPv6Interface('fd00:b::fe/64')]
+        assert _all_routes(nc['router']) == {'0.0.0.0/0': '172.17.0.1'}  # no ::/0 without default_route6
+
+    def test_default_route6(self):
+        nc = self._dual(gateway='router', default_route6=IPv6Interface('fd00:ffff::1/64'))
+        assert _all_routes(nc['router']) == {'0.0.0.0/0': '172.17.0.1', '::/0': 'fd00:ffff::1'}
+
+    def test_default_route_none_gives_the_gateway_no_external_route(self):
+        nc = self._dual(gateway='router', default_route=None, default_route6=IPv6Address('fd00:ffff::1'))
+        assert _all_routes(nc['router']) == {'::/0': 'fd00:ffff::1'}
+        nc = get_net_config_from_topology(make_topology_net_scheme(_STAR_IPS, _STAR_NETS, _STAR_TOPOLOGY),
+                                          _STAR_TOPOLOGY, gateway='router', default_route=None)
+        assert _all_routes(nc['router']) == {}
+        assert _all_routes(nc['pc1']) == {'0.0.0.0/0': '10.0.0.254'}
+
+    def test_specific_routes_without_gateway(self):
+        nc = self._dual()
+        assert _all_routes(nc['pc1']) == {'10.1.0.0/24': '10.0.0.254', 'fd00:b::/64': 'fd00:a::fe'}
+        assert _all_routes(nc['server']) == {'10.0.0.0/24': '10.1.0.254', 'fd00:a::/64': 'fd00:b::fe'}
+
+    def test_ipv6_only(self):
+        nc = self._dual(gateway='router', ipv4=False)
+        assert nc['pc1'][0][0] == [IPv6Interface('fd00:a::1/64')]
+        assert _all_routes(nc['pc1']) == {'::/0': 'fd00:a::fe'}
+        assert _all_routes(nc['router']) == {}
+
+    def test_ipv6_only_requires_ipv6_data(self):
+        ns = make_topology_net_scheme(_STAR_IPS, _STAR_NETS, _STAR_TOPOLOGY, ips6={}, nets6=_STAR_NETS6)
+        with pytest.raises(AttributeError):
+            get_net_config_from_topology(ns, _STAR_TOPOLOGY, ipv4=False, ipv6=True)
+
+    def test_both_families_off(self):
+        with pytest.raises(ValueError):
+            self._dual(ipv4=False, ipv6=False)
+
+    def test_partial_network_without_v6_prefix(self):
+        ns = make_topology_net_scheme(_STAR_IPS, _STAR_NETS, _STAR_TOPOLOGY,
+                                      ips6={k: v for k, v in _STAR_IPS6.items() if k != 'router_wan' and k != 'server'},
+                                      nets6={'lan': 'fd00:a::/64'})
+        nc = get_net_config_from_topology(ns, _STAR_TOPOLOGY, gateway='router', ipv6=True)
+        assert nc['server'][0][0] == [IPv4Interface('10.1.0.1/24')]
+        assert nc['router'][1][0] == [IPv4Interface('10.1.0.254/24')]
+        assert _all_routes(nc['server']) == {'0.0.0.0/0': '10.1.0.254'}
+        assert _all_routes(nc['pc1']) == {'0.0.0.0/0': '10.0.0.254', '::/0': 'fd00:a::fe'}
+
+    def test_machine_without_v6_address_has_no_v6_part(self):
+        """A SLAAC or IPv4-only host: no entry in ips6 -> IPv4 only for it, the others unchanged."""
+        ns = make_topology_net_scheme(_STAR_IPS, _STAR_NETS, _STAR_TOPOLOGY,
+                                      ips6={k: v for k, v in _STAR_IPS6.items() if k != 'pc2'}, nets6=_STAR_NETS6)
+        nc = get_net_config_from_topology(ns, _STAR_TOPOLOGY, gateway='router', ipv6=True)
+        assert nc['pc2'] == [([IPv4Interface('10.0.0.2/24')], [(IPv4Network('0.0.0.0/0'), IPv4Address('10.0.0.254'))])]
+        assert _all_routes(nc['pc1']) == {'0.0.0.0/0': '10.0.0.254', '::/0': 'fd00:a::fe'}
+
+    def test_chain_multi_hop_v6(self):
+        ips6 = {'pc1': 'fd00:1::1/64', 'r1_lan1': 'fd00:1::fe/64', 'r1_mid': 'fd00:2::1/64',
+                'r2_mid': 'fd00:2::fe/64', 'r2_lan2': 'fd00:3::1/64', 'pc2': 'fd00:3::2/64'}
+        nets6 = {'lan1': 'fd00:1::/64', 'mid': 'fd00:2::/64', 'lan2': 'fd00:3::/64'}
+        ns = make_topology_net_scheme(_CHAIN_IPS, _CHAIN_NETS, _CHAIN_TOPOLOGY, ips6=ips6, nets6=nets6)
+        nc = get_net_config_from_topology(ns, _CHAIN_TOPOLOGY, ipv6=True)
+        assert _all_routes(nc['pc1']) == {'10.0.2.0/24': '10.0.1.254', '10.0.3.0/24': '10.0.1.254',
+                                          'fd00:2::/64': 'fd00:1::fe', 'fd00:3::/64': 'fd00:1::fe'}
+        assert _all_routes(nc['r1']) == {'10.0.3.0/24': '10.0.2.254', 'fd00:3::/64': 'fd00:2::fe'}

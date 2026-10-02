@@ -2,6 +2,7 @@ import hashlib
 import re
 import shlex
 import ssl
+from ipaddress import IPv4Interface, IPv6Interface
 
 from SRE.lib_sre import Grade0, NetScheme0
 
@@ -318,8 +319,22 @@ def eval_certificate_validity(grade: Grade0, machine_name: str,
     return verify_code == 0
 
 
+def _bracketed(ip) -> str:
+    """The address for curl / openssl: an IPv6 address goes between brackets.
+
+    *ip* may be a string or an ``ipaddress`` Address / Interface object (prefix stripped).
+    """
+    host = str(ip.ip) if isinstance(ip, (IPv4Interface, IPv6Interface)) else str(ip)
+    return f'[{host}]' if ':' in host else host
+
+
+def _host_port(ip, port: int) -> str:
+    """``host:port`` for curl / openssl, with the brackets an IPv6 address needs."""
+    return f'{_bracketed(ip)}:{port}'
+
+
 def eval_https_server(grade: Grade0, machine_name: str, url: str,
-                      server_ip: str, cert: str,
+                      server_ip, cert: str,
                       server_port: int = 443, step: int = 1) -> bool:
     """Check that an HTTPS server at server_ip responds correctly and presents
     the expected certificate.
@@ -332,7 +347,8 @@ def eval_https_server(grade: Grade0, machine_name: str, url: str,
         grade:        the Grade0 instance.
         machine_name: name of the virtual machine from which to connect.
         url:          full URL to request (e.g. https://myserver/index.html).
-        server_ip:    IP address of the HTTPS server to connect to.
+        server_ip:    IP address of the HTTPS server to connect to (IPv4 or IPv6, as a
+                      string or an ``ipaddress`` object; IPv6 is bracketed automatically).
         cert:         PEM certificate content to verify against the server.
         server_port:  HTTPS port (default: 443).
         step:         step number passed to grade.test() (default: 1).
@@ -344,14 +360,14 @@ def eval_https_server(grade: Grade0, machine_name: str, url: str,
     # in the first (registration) pass and carry real results in the second pass.
     _, http_code = grade.test(
         machine_name=machine_name,
-        command=f"curl -k -L --fail --connect-to ::{server_ip}:{server_port}"
+        command=f"curl -k -L --fail --connect-to ::{_host_port(server_ip, server_port)}"
                 f" -s -o /dev/null {url}",
         step=step,
         allow_error=True,
     )
     server_fp, server_fp_code = grade.test(
         machine_name=machine_name,
-        command=f"openssl s_client -connect {server_ip}:{server_port}"
+        command=f"openssl s_client -connect {_host_port(server_ip, server_port)}"
                 f" </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256",
         step=step,
         allow_error=True,

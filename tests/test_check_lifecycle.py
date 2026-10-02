@@ -69,3 +69,25 @@ class TestCheckLifecycleHooks:
         with pytest.raises(RuntimeError, match='boom in save'):
             action_check()
         assert 'FAIL  NetScheme.save() raised an exception' in capsys.readouterr().out
+
+
+class TestCheckDataRoundTrip:
+    """`sre check` serialises Data the way `sre start` does, so a field that does not survive
+    data.json is caught before any container runs."""
+
+    def test_interface_field_survives(self, check_env, capsys):
+        check_env('iface.py', lambda t: t.replace(
+            'from dataclasses import dataclass', 'from dataclasses import dataclass\nfrom ipaddress import IPv4Interface'
+        ).replace('    value: int = 0\n', "    value: int = 0\n    iface: IPv4Interface = IPv4Interface('10.0.0.1/24')\n"))
+        action_check()
+        out = capsys.readouterr().out
+        assert 'Data survives the JSON/msgpack round trip' in out
+        assert 'All checks passed' in out
+
+    def test_unserialisable_field_is_reported(self, check_env, capsys):
+        check_env('bad.py', lambda t: t.replace(
+            'from dataclasses import dataclass', 'from dataclasses import dataclass, field'
+        ).replace('    value: int = 0\n', '    value: int = 0\n    tags: set = field(default_factory=set)\n'))
+        with pytest.raises(TypeError):
+            action_check()
+        assert 'FAIL  Data does not survive the data.json round trip' in capsys.readouterr().out

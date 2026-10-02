@@ -545,3 +545,182 @@ class TestSetupSimpleTcpServer:
         assert len(launches) == 2
         # both launches must try to kill the previous instance via its PID file
         assert all('/run/sre_tcp_server_2020.pid' in c and 'kill' in c for c in launches)
+
+
+# ---------------------------------------------------------------------------
+# IPv6: hosts file, tcp server, radvd, SLAAC
+# ---------------------------------------------------------------------------
+
+from ipaddress import IPv6Interface, IPv6Network  # noqa: E402
+
+import pytest  # noqa: E402
+
+from state_helpers import set_radvd, set_slaac_client  # noqa: E402
+
+
+def _make_single6():
+    s = _make_single()
+    s.data.ips6.router = IPv6Interface('fd00:1::1/64')
+    s.data.ips6.pc = IPv6Interface('fd00:1::2/64')
+    return s
+
+
+def _make_multi6(with_pc2=True):
+    s = _make_multi()
+    s.data.ips6.router_lan = IPv6Interface('fd00:a::1/64')
+    s.data.ips6.router_wan = IPv6Interface('fd00:b::1/64')
+    s.data.ips6.pc1 = IPv6Interface('fd00:a::2/64')
+    if with_pc2:
+        s.data.ips6.pc2 = IPv6Interface('fd00:b::2/64')
+    return s
+
+
+class TestHostsFileContentIPv6:
+    def test_default_unchanged_with_ips6_present(self):
+        assert hosts_file_content(_make_single6(), 'example.com') == hosts_file_content(_make_single(), 'example.com')
+
+    def test_ipv6_line_follows_ipv4_line(self):
+        lines = hosts_file_content(_make_single6(), 'example.com', ipv6=True).splitlines()
+        i = lines.index(f'10.0.0.1{SEP}router{SEP}router.example.com')
+        assert lines[i + 1] == f'fd00:1::1{SEP}router{SEP}router.example.com'
+        assert f'fd00:1::2{SEP}pc{SEP}pc.example.com' in lines
+
+    def test_multi_net_naming(self):
+        content = hosts_file_content(_make_multi6(), 'lab', ipv6=True)
+        assert f'fd00:a::1{SEP}router_lan{SEP}router_lan.lab' in content
+        assert f'fd00:b::1{SEP}router_wan{SEP}router_wan.lab' in content
+        assert f'fd00:b::2{SEP}pc2{SEP}pc2.lab' in content
+
+    def test_missing_ipv6_entry_skipped(self):
+        content = hosts_file_content(_make_multi6(with_pc2=False), 'lab', ipv6=True)
+        assert f'10.1.0.2{SEP}pc2{SEP}pc2.lab' in content
+        assert 'fd00:b::2' not in content
+
+    def test_ips6_dict_wins_over_data(self):
+        content = hosts_file_content(_make_single6(), 'lab', ipv6=True,
+                                     ips6={'router': [IPv6Interface('fd00:9::1/64')], 'pc': ['fd00:9::2/64']})
+        assert f'fd00:9::1{SEP}router{SEP}router.lab' in content and f'fd00:9::2{SEP}pc{SEP}pc.lab' in content
+        assert 'fd00:1::' not in content
+
+    def test_custom_separator(self):
+        content = hosts_file_content(_make_single6(), 'lab', ipv6=True, separator=' ')
+        assert 'fd00:1::1 router router.lab' in content
+
+
+class TestCreateHostsFileIPv6:
+    def _hosts(self, ipv6):
+        s = _make_single6()
+        create_hosts_file(s, 'lab', ipv6=ipv6)
+        op = next(op for op in _file_ops(s, 'router') if op.filename == '/etc/hosts')
+        return op.content.decode() if isinstance(op.content, bytes) else op.content
+
+    def test_header_default_unchanged(self):
+        content = self._hosts(ipv6=False)
+        assert content.startswith('127.0.0.1\t\tlocalhost\n127.0.1.1\t\trouter\t\trouter.lab\n')
+        assert '::1' not in content
+
+    def test_header_ipv6(self):
+        content = self._hosts(ipv6=True)
+        assert content.startswith('127.0.0.1\t\tlocalhost\n127.0.1.1\t\trouter\t\trouter.lab\n'
+                                  '::1\t\tlocalhost ip6-localhost ip6-loopback\n'
+                                  'ff02::1\t\tip6-allnodes\nff02::2\t\tip6-allrouters\n')
+        assert f'fd00:1::2{SEP}pc{SEP}pc.lab' in content
+
+
+class TestSetupSimpleTcpServerIPv6:
+    def _script(self, **kw):
+        s = _make_bare()
+        setup_simple_tcp_server(s, 'host', 2020, 'hi', **kw)
+        op = next(op for op in _file_ops(s, 'host') if op.filename == '/usr/local/sbin/sre_tcp_server_2020.py')
+        return op.content
+
+    def test_default_ipv4(self):
+        c = self._script()
+        assert b'socket.AF_INET,' in c and b"s.bind(('0.0.0.0', 2020))" in c and b'IPV6_V6ONLY' not in c
+
+    def test_ipv6_any_dual_stack(self):
+        c = self._script(ipv6=True)
+        assert b'socket.AF_INET6,' in c and b"s.bind(('::', 2020))" in c
+        assert b's.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)' in c
+
+    def test_explicit_ipv6_address(self):
+        for ip in ('fd00::1', 'fd00::1/64', IPv6Interface('fd00::1/64')):
+            c = self._script(ip=ip)
+            assert b'socket.AF_INET6,' in c and b"s.bind(('fd00::1', 2020))" in c and b'IPV6_V6ONLY' not in c
+
+    def test_explicit_ipv4_wins_over_flag(self):
+        c = self._script(ip='10.0.0.1', ipv6=True)
+        assert b'socket.AF_INET,' in c and b"s.bind(('10.0.0.1', 2020))" in c
+
+
+class TestSetRadvd:
+    def _run(self, prefixes, **kw):
+        s = _make_bare()
+        content = set_radvd(s, 'host', prefixes, **kw)
+        op = next(op for op in _file_ops(s, 'host') if op.filename == '/etc/radvd.conf')
+        return s, content, op
+
+    def test_config_and_commands(self):
+        s, content, op = self._run({1: [IPv6Network('fd00:1::/64')]})
+        assert op.permissions == 0o644
+        assert (op.content.decode() if isinstance(op.content, bytes) else op.content) == content
+        assert content == """\
+interface eth1
+{
+    AdvSendAdvert on;
+    MinRtrAdvInterval 3;
+    MaxRtrAdvInterval 10;
+    prefix fd00:1::/64
+    {
+        AdvOnLink on;
+        AdvAutonomous on;
+        AdvRouterAddr off;
+    };
+};
+"""
+        assert _cmd_ops(s, 'host') == ['mount -o rw,remount /proc/sys', 'sysctl -w net.ipv6.conf.all.forwarding=1',
+                                       'systemctl enable radvd', 'systemctl restart radvd']
+
+    def test_string_interface_prefix_forms_rdnss_dnssl(self):
+        _, content, _ = self._run({'eth0': 'fd00:1::1/64', 'eth2': [IPv6Interface('fd00:2::1/64'), 'fd00:3::/64']},
+                                  rdnss=[IPv6Interface('fd00:1::53/64'), 'fd00:1::54'], dnssl=['lab.example'],
+                                  min_rtr_adv_interval=4, max_rtr_adv_interval=20, adv_router_addr=True)
+        assert 'interface eth0\n' in content and 'interface eth2\n' in content
+        assert '    prefix fd00:1::/64\n' in content and '    prefix fd00:2::/64\n' in content and '    prefix fd00:3::/64\n' in content
+        assert '    RDNSS fd00:1::53 fd00:1::54 { };\n' in content and '    DNSSL lab.example { };\n' in content
+        assert 'MinRtrAdvInterval 4;' in content and 'MaxRtrAdvInterval 20;' in content and 'AdvRouterAddr on;' in content
+
+    def test_non_64_prefix_rejected_for_slaac(self):
+        with pytest.raises(ValueError, match='/64'):
+            self._run({0: ['fd00:1::/48']})
+        _, content, _ = self._run({0: ['fd00:1::/48']}, adv_autonomous=False)
+        assert 'AdvAutonomous off;' in content
+
+    def test_empty_rejected(self):
+        with pytest.raises(ValueError):
+            self._run({})
+        with pytest.raises(ValueError):
+            self._run({0: []})
+
+    def test_no_forwarding_and_step(self):
+        s = _make_bare()
+        set_radvd(s, 'host', {0: ['fd00:1::/64']}, step=2, enable_forwarding=False)
+        assert _cmd_ops(s, 'host', step=2) == ['systemctl enable radvd', 'systemctl restart radvd']
+        assert all('forwarding' not in c for c in _cmd_ops(s, 'host', step=1))
+        assert any(op.filename == '/etc/radvd.conf' for op in _file_ops(s, 'host', step=2))
+
+
+class TestSetSlaacClient:
+    def test_default_interfaces_from_topology(self):
+        s = _make_multi()
+        set_slaac_client(s, 'router')
+        assert _cmd_ops(s, 'router') == ['mount -o rw,remount /proc/sys',
+                                         'sysctl -w net.ipv6.conf.eth0.accept_ra=2', 'sysctl -w net.ipv6.conf.eth0.autoconf=1',
+                                         'sysctl -w net.ipv6.conf.eth1.accept_ra=2', 'sysctl -w net.ipv6.conf.eth1.autoconf=1']
+
+    def test_explicit_interfaces_and_step(self):
+        s = _make_single()
+        set_slaac_client(s, 'pc', interfaces=[1, 'eth3'], step=2)
+        assert _cmd_ops(s, 'pc', step=2) == ['sysctl -w net.ipv6.conf.eth1.accept_ra=2', 'sysctl -w net.ipv6.conf.eth1.autoconf=1',
+                                             'sysctl -w net.ipv6.conf.eth3.accept_ra=2', 'sysctl -w net.ipv6.conf.eth3.autoconf=1']
+        assert _cmd_ops(s, 'pc', step=1) == ['mount -o rw,remount /proc/sys']

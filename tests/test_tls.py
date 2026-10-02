@@ -405,3 +405,28 @@ class TestSetRsaPrivateKey:
             'r1',
             'openssl genrsa -des-ede3-cbc -passout pass:pw -out /key.pem 2048',
         )
+
+
+class TestEvalHttpsServerIPv6:
+    def test_ipv6_server_ip_is_bracketed(self):
+        responses = {
+            "curl -k -L --fail --connect-to ::[fd00::1]:443 -s -o /dev/null https://example.com/": ('', 0),
+            "openssl s_client -connect [fd00::1]:443 </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256": (f"SHA256 Fingerprint={CERT_FP}", 0),
+        }
+        grade = make_grade(responses)
+        with _patch_der():
+            assert eval_https_server(grade, 'r1', 'https://example.com/', 'fd00::1', FAKE_PEM) is True
+
+    def test_interface_objects_accepted(self):
+        from ipaddress import IPv4Interface, IPv6Interface
+        grade = make_grade(_https_responses())
+        with _patch_der():
+            assert eval_https_server(grade, 'r1', 'https://example.com/', IPv4Interface('10.0.0.1/24'), FAKE_PEM) is True
+        responses = {
+            "curl -k -L --fail --connect-to ::[fd00::1]:8443 -s -o /dev/null https://example.com/": ('', 0),
+            "openssl s_client -connect [fd00::1]:8443 </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256": (f"SHA256 Fingerprint={CERT_FP}", 0),
+        }
+        grade = make_grade(responses)
+        with _patch_der():
+            assert eval_https_server(grade, 'r1', 'https://example.com/', IPv6Interface('fd00::1/64'), FAKE_PEM,
+                                     server_port=8443) is True

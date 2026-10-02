@@ -93,7 +93,7 @@ Evaluates every running lab instance concurrently. `--no-display-grades` suppres
 
 ### `sre check [-p] <lab> [<state>]`
 
-Validates a lab module without deploying: imports it, runs `Data.generate()`, builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method.
+Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method.
 
 ### `sre watch [--timeout <sec>] [--interval <sec>] [-H <regexp>] [-S <time>] [-L] <dir…>`
 

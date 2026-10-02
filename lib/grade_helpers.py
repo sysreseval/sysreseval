@@ -1,12 +1,12 @@
 import re
-from ipaddress import IPv4Address, IPv4Interface
+from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface
 from typing import Union
 
 from SRE.lib_sre import Grade0
 
 
 def test_dig(grade: Grade0, machine_name: str,
-             server_ip: Union[str, IPv4Address, IPv4Interface], *,
+             server_ip: Union[str, IPv4Address, IPv4Interface, IPv6Address, IPv6Interface], *,
              proto: str = "udp", port: int = 53, request: str,
              timeout: int = 2, step: int = 1) -> tuple[str, int]:
     """Run a ``dig +short`` query from a container and return ``(stdout, exit_code)``.
@@ -19,9 +19,10 @@ def test_dig(grade: Grade0, machine_name: str,
         grade:        the Grade0 instance — required so the command is
                       registered in the first pass and re-fetched in the second.
         machine_name: container the dig command is executed from.
-        server_ip:    target DNS server. Accepts a dotted-quad string, an
-                      ``IPv4Address`` or an ``IPv4Interface`` (the prefix is
-                      stripped). Substituted as ``@server_ip``.
+        server_ip:    target DNS server. Accepts an IPv4/IPv6 literal string, an
+                      ``IPv4Address`` / ``IPv6Address`` or an ``IPv4Interface`` /
+                      ``IPv6Interface`` (the prefix is stripped). Substituted as
+                      ``@server_ip`` (dig takes a bare IPv6 address, no brackets).
         proto:        ``"udp"`` (default) or ``"tcp"``; TCP adds ``+tcp``.
         port:         server port (default 53).
         request:      dig query body — everything that follows ``@server``,
@@ -36,9 +37,9 @@ def test_dig(grade: Grade0, machine_name: str,
         servers the output may be empty; the exit code from ``grade.test()`` is
         passed through unchanged. Errors are not recorded (``allow_error=True``).
     """
-    if isinstance(server_ip, IPv4Interface):
+    if isinstance(server_ip, (IPv4Interface, IPv6Interface)):
         server_ip_str = str(server_ip.ip)
-    elif isinstance(server_ip, IPv4Address):
+    elif isinstance(server_ip, (IPv4Address, IPv6Address)):
         server_ip_str = str(server_ip)
     else:
         server_ip_str = server_ip
@@ -92,8 +93,9 @@ def eval_tcp_server(grade: Grade0, machine_name: str, server_name: str,
             continue
         if not any(f"pid={pid}" in line for pid in pids):
             continue
-        # Extract port from the local address column (e.g. 0.0.0.0:443 or *:80)
-        addr_m = re.search(r'\s+\*?[\d.:]+:(\d+)\s+', line)
+        # Extract port from the local address column: 0.0.0.0:443, 127.0.0.1:53,
+        # 127.0.0.53%lo:53, *:443 (dual-stack socket), [::]:443, [::1]:9000, [fd00::1%eth0]:80
+        addr_m = re.search(r'\s+(?:\*|\[[^\]]*\](?:%\w+)?|[0-9a-fA-F.:]+(?:%\w+)?):(\d+)\s+', line)
         if addr_m:
             ports.append(int(addr_m.group(1)))
 

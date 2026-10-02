@@ -149,6 +149,10 @@ default_host_network_shape = "hexagon"
 default_host_network_exploded = False
 default_host_network_edge_relative_length = 1.0
 
+# Module-level `ipv6` lab option: None = leave Kathara's own enable_ipv6 setting (False by default),
+# True/False = force IPv6 on/off in every machine; Machine(ipv6=...) overrides it per machine.
+default_ipv6 = None
+
 default_machine_shape = "box"
 default_network_shape = "ellipse"
 
@@ -230,6 +234,11 @@ def parse_lab_entry(entry) -> tuple[str, str | None]:
 srelab_py_name = "srelab.py"
 titles_file_name = "titles.json"
 data_json_name = "data.json"
+# Keys/markers used inside data.json by Data0.to_dict()/from_dict()
+data_json_ips6_key = "ips6"          # Data0.ips6 container (IPv6Interface values)
+data_json_nets6_key = "nets6"        # Data0.nets6 container (IPv6Network values)
+data_json_iface_marker = "__iface__" # standalone IPv4Interface / IPv6Interface field
+data_json_mac_marker = "__mac__"     # standalone netaddr.EUI field
 private_dir_name = ".private"
 files_dir_name = "files"
 private_mount_dir_name = "mnt"

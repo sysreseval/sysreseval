@@ -289,8 +289,10 @@ def _build_lab_conf(net_scheme, ops, extra_cmds) -> str:
         if machine.bridged:
             lines.append(f'{machine.name}[bridged]="true"')
 
-        if machine.ipv6 is not None:
-            lines.append(f'{machine.name}[ipv6]="{str(machine.ipv6).lower()}"')
+        # effective value: Machine(ipv6=...) or the module-level `ipv6` lab option; nothing when unspecified
+        ipv6 = net_scheme.machine_ipv6_enabled(machine)
+        if ipv6 is not None:
+            lines.append(f'{machine.name}[ipv6]="{str(ipv6).lower()}"')
 
         if machine.mem:
             lines.append(f'{machine.name}[mem]="{machine.mem}"')

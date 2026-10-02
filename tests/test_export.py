@@ -305,3 +305,37 @@ class TestBuildInfoPdf:
 
     def test_missing_info_file(self, tmp_pub_dir):
         assert _build_info_pdf(RUNNING_LAB) == b''
+
+
+# ---------------------------------------------------------------------------
+# lab.conf [ipv6] lines
+# ---------------------------------------------------------------------------
+
+import sys  # noqa: E402
+import types  # noqa: E402
+
+
+class TestBuildLabConfIpv6:
+    def _conf(self, monkeypatch, module_attrs=None, m2_ipv6=None):
+        if module_attrs is None:
+            monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        else:
+            monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace(**module_attrs))
+        s = make_scheme()
+        s.m2.ipv6 = m2_ipv6
+        return _build_lab_conf(s, _flatten_ops(s, 'initial'), {})
+
+    def test_no_line_when_unspecified(self, monkeypatch):
+        assert '[ipv6]' not in self._conf(monkeypatch)
+
+    def test_module_option(self, monkeypatch):
+        conf = self._conf(monkeypatch, {'ipv6': True})
+        assert 'm1[ipv6]="true"' in conf and 'm2[ipv6]="true"' in conf
+
+    def test_machine_override(self, monkeypatch):
+        conf = self._conf(monkeypatch, {'ipv6': True}, m2_ipv6=False)
+        assert 'm1[ipv6]="true"' in conf and 'm2[ipv6]="false"' in conf
+
+    def test_machine_alone(self, monkeypatch):
+        conf = self._conf(monkeypatch, m2_ipv6=True)
+        assert 'm1[ipv6]' not in conf and 'm2[ipv6]="true"' in conf

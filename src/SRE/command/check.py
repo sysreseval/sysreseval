@@ -114,6 +114,17 @@ def action_check():
         _fail("Data.generate() raised an exception:")
         raise
     _ok(f"Data.generate() returned {type(data).__name__}")
+    # `sre start` writes data.json and every later command reloads it: a field that does not
+    # serialise (a set, an unknown object) would only fail then.
+    try:
+        reloaded = module.Data.from_json(data.to_json())
+        if reloaded.to_dict() != data.to_dict():
+            raise ValueError("Data differs after a to_json()/from_json() round trip")
+        module.Data.unpack(data.pack())
+    except Exception:
+        _fail("Data does not survive the data.json round trip (to_json/from_json):")
+        raise
+    _ok("Data survives the JSON/msgpack round trip (as at sre eval)")
 
     # ── Step 3: instantiate NetScheme ──────────────────────────────────
     print(f"\n[ 3/{total_steps} ] Instantiating NetScheme …")

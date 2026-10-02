@@ -26,9 +26,10 @@ from netaddr import EUI
 from dataclasses import dataclass, fields
 from ipaddress import (
     ip_address,
+    ip_interface,
     ip_network,
     IPv4Address, IPv6Address,
-    IPv4Interface,
+    IPv4Interface, IPv6Interface,
     IPv4Network, IPv6Network
 )
 
@@ -173,6 +174,20 @@ def _resolve_port(spec: str, used: set) -> str:
     error_quit(f"no free {proto} port in range {base}-{base + range_size - 1}")
 
 
+def _lab_module():
+    """The imported srelab module (``sys.modules['srelab']``), or ``None`` when no lab is loaded
+    (unit tests, GUI)."""
+    return sys.modules.get(params.srelab_py_name.removesuffix(".py"))
+
+
+def lab_ipv6_default():
+    """Module-level ``ipv6`` option of the current lab (``params.default_ipv6`` when absent).
+
+    ``None`` means "not specified": Kathara then applies its own ``enable_ipv6`` setting.
+    """
+    return getattr(_lab_module(), 'ipv6', params.default_ipv6)
+
+
 def _resolve_xauth_cookie():
     """Return the validated hex X11 magic cookie from $SRE_XAUTH_COOKIE, or None.
 
@@ -280,49 +295,55 @@ class _HostCallbackOp:
         self.callback = callback
 
 
-class _IPv4InterfaceContainer:
+class _TypedContainer:
+    """Dynamic attribute bag accepting only values of ``_item_type`` (see the subclasses).
+
+    Values are serialised with ``str()`` by :meth:`to_dict`; the ``Data0`` containers are
+    rebuilt from those strings by ``Data0.from_dict``.
+    """
+    _item_type = object
+    _type_name = "object"
+
+    def __setattr__(self, name, value):
+        if not isinstance(value, self._item_type):
+            raise TypeError(f"{name}: expected {self._type_name}, got {type(value).__name__}")
+        super().__setattr__(name, value)
+
+    def __getitem__(self, name):
+        return getattr(self, name)
+
+    def to_dict(self):
+        return {k: str(v) for k, v in self.__dict__.items()}
+
+
+class _IPv4InterfaceContainer(_TypedContainer):
     """Holds named IPv4Interface attributes. Automatically available as Data0.ips."""
-
-    def __setattr__(self, name, value):
-        if not isinstance(value, IPv4Interface):
-            raise TypeError(f"{name}: expected IPv4Interface, got {type(value).__name__}")
-        super().__setattr__(name, value)
-
-    def __getitem__(self, name):
-        return getattr(self, name)
-
-    def to_dict(self):
-        return {k: str(v) for k, v in self.__dict__.items()}
+    _item_type = IPv4Interface
+    _type_name = "IPv4Interface"
 
 
-class _IPv4NetContainer:
+class _IPv4NetContainer(_TypedContainer):
     """Holds named IPv4Network attributes. Automatically available as Data0.nets."""
-
-    def __setattr__(self, name, value):
-        if not isinstance(value, IPv4Network):
-            raise TypeError(f"{name}: expected IPv4Network, got {type(value).__name__}")
-        super().__setattr__(name, value)
-
-    def __getitem__(self, name):
-        return getattr(self, name)
-
-    def to_dict(self):
-        return {k: str(v) for k, v in self.__dict__.items()}
+    _item_type = IPv4Network
+    _type_name = "IPv4Network"
 
 
-class _MacContainer:
+class _IPv6InterfaceContainer(_TypedContainer):
+    """Holds named IPv6Interface attributes. Automatically available as Data0.ips6."""
+    _item_type = IPv6Interface
+    _type_name = "IPv6Interface"
+
+
+class _IPv6NetContainer(_TypedContainer):
+    """Holds named IPv6Network attributes. Automatically available as Data0.nets6."""
+    _item_type = IPv6Network
+    _type_name = "IPv6Network"
+
+
+class _MacContainer(_TypedContainer):
     """Holds named EUI MAC address attributes. Automatically available as Data0.macs."""
-
-    def __setattr__(self, name, value):
-        if not isinstance(value, EUI):
-            raise TypeError(f"{name}: expected EUI, got {type(value).__name__}")
-        super().__setattr__(name, value)
-
-    def __getitem__(self, name):
-        return getattr(self, name)
-
-    def to_dict(self):
-        return {k: str(v) for k, v in self.__dict__.items()}
+    _item_type = EUI
+    _type_name = "EUI"
 
 
 @dataclass
@@ -405,12 +426,14 @@ class Data0:
     """Base class for lab-specific parameter dataclasses.
 
     Subclass with ``@dataclass(slots=True)`` and declare your fields normally.
-    Three dynamic containers are injected automatically into every instance by
-    ``__post_init__``:
+    Five dynamic containers are injected automatically into every instance by
+    ``__post_init__`` (do not declare fields with these names):
 
-    * ``self.ips``  — :class:`_IPv4InterfaceContainer`: named ``IPv4Interface`` values
-    * ``self.nets`` — :class:`_IPv4NetContainer`: named ``IPv4Network`` values
-    * ``self.macs`` — :class:`_MacContainer`: named ``EUI`` MAC-address values
+    * ``self.ips``   — :class:`_IPv4InterfaceContainer`: named ``IPv4Interface`` values
+    * ``self.nets``  — :class:`_IPv4NetContainer`: named ``IPv4Network`` values
+    * ``self.ips6``  — :class:`_IPv6InterfaceContainer`: named ``IPv6Interface`` values
+    * ``self.nets6`` — :class:`_IPv6NetContainer`: named ``IPv6Network`` values
+    * ``self.macs``  — :class:`_MacContainer`: named ``EUI`` MAC-address values
 
     The class-level ``_registry`` maps ``"module.ClassName"`` keys to concrete
     subclasses so that ``from_dict``/``unpack``/``from_json`` can reconstruct the
@@ -431,7 +454,7 @@ class Data0:
         Data0._registry[key] = cls
 
     def __post_init__(self):
-        """Inject ``ips``, ``nets``, ``macs``, and ``flavor`` into every instance.
+        """Inject ``ips``, ``nets``, ``ips6``, ``nets6``, ``macs``, and ``flavor`` into every instance.
 
         Called automatically by the dataclass ``__init__``.  Uses
         ``object.__setattr__`` so the injection works even when the subclass
@@ -441,6 +464,8 @@ class Data0:
         # because Data0 itself has no __slots__, so __dict__ is always inherited).
         object.__setattr__(self, 'ips', _IPv4InterfaceContainer())
         object.__setattr__(self, 'nets', _IPv4NetContainer())
+        object.__setattr__(self, 'ips6', _IPv6InterfaceContainer())
+        object.__setattr__(self, 'nets6', _IPv6NetContainer())
         object.__setattr__(self, 'macs', _MacContainer())
         object.__setattr__(self, 'flavor', None)
         object.__setattr__(self, '__flavor_name', None)
@@ -469,8 +494,8 @@ class Data0:
         """Serialise to a plain dict (JSON-safe).
 
         Dataclass fields are encoded via :meth:`_encode_value`.  ``ips``, ``nets``,
-        and ``macs`` are stored as nested dicts of strings.  An attached ``Flavor``
-        is stored under the ``"flavor"`` key with its type key.
+        ``ips6``, ``nets6`` and ``macs`` are stored as nested dicts of strings.  An
+        attached ``Flavor`` is stored under the ``"flavor"`` key with its type key.
         """
         result = {}
         for f in fields(self):
@@ -478,6 +503,8 @@ class Data0:
             result[f.name] = self._encode_value(v)
         result['ips'] = self.ips.to_dict()
         result['nets'] = self.nets.to_dict()
+        result[params.data_json_ips6_key] = self.ips6.to_dict()
+        result[params.data_json_nets6_key] = self.nets6.to_dict()
         result['macs'] = self.macs.to_dict()
         if self.flavor is not None:
             result['flavor'] = {"__flavor_type__": self.flavor._type_key, "data": self.flavor.to_dict()}
@@ -500,6 +527,9 @@ class Data0:
         d = dict(d)
         ips_data = d.pop('ips', {})
         nets_data = d.pop('nets', {})
+        # files written before IPv6 support have no ips6/nets6 keys: empty containers
+        ips6_data = d.pop(params.data_json_ips6_key, {})
+        nets6_data = d.pop(params.data_json_nets6_key, {})
         macs_data = d.pop('macs', {})
         flavor_data = d.pop('flavor', None)
         flavor_name = d.pop('__flavor_name', None)
@@ -510,6 +540,10 @@ class Data0:
             setattr(obj.ips, k, IPv4Interface(v))
         for k, v in nets_data.items():
             setattr(obj.nets, k, IPv4Network(v))
+        for k, v in ips6_data.items():
+            setattr(obj.ips6, k, IPv6Interface(v))
+        for k, v in nets6_data.items():
+            setattr(obj.nets6, k, IPv6Network(v))
         for k, v in macs_data.items():
             setattr(obj.macs, k, EUI(v))
         if flavor_data is not None:
@@ -527,15 +561,22 @@ class Data0:
     def _encode_value(v):
         """Encode a field value for JSON/msgpack storage.
 
+        * ``IPv4Interface`` / ``IPv6Interface`` → ``{"__iface__": "..."}`` (checked before the
+          addresses: an Interface *is* an Address, and ``ip_address()`` rejects a prefix)
         * ``IPv4Address`` / ``IPv6Address`` → ``{"__ip__": "..."}``
         * ``IPv4Network`` / ``IPv6Network`` → ``{"__net__": "..."}``
+        * ``EUI`` → ``{"__mac__": "..."}``
         * nested ``Data0`` → ``{"__type__": "...", "data": {...}}``
         * all other values are returned unchanged.
         """
+        if isinstance(v, (IPv4Interface, IPv6Interface)):
+            return {params.data_json_iface_marker: str(v)}
         if isinstance(v, (IPv4Address, IPv6Address)):
             return {"__ip__": str(v)}
         if isinstance(v, (IPv4Network, IPv6Network)):
             return {"__net__": str(v)}
+        if isinstance(v, EUI):
+            return {params.data_json_mac_marker: str(v)}
 
         if isinstance(v, Data0):
             return {
@@ -548,10 +589,14 @@ class Data0:
     def _decode_value(v):
         """Decode a value produced by :meth:`_encode_value` back to its Python type."""
         if isinstance(v, dict):
+            if params.data_json_iface_marker in v:
+                return ip_interface(v[params.data_json_iface_marker])
             if "__ip__" in v:
                 return ip_address(v["__ip__"])
             if "__net__" in v:
                 return ip_network(v["__net__"])
+            if params.data_json_mac_marker in v:
+                return EUI(v[params.data_json_mac_marker])
             if "__type__" in v:
                 type_key = v["__type__"]
                 if type_key not in Data0._registry:
@@ -1135,6 +1180,15 @@ class NetScheme0:
             self.step += 1
             yield self.step, ops_by_step.get(self.step, {}), host_ops_by_step.get(self.step, [])
 
+    def machine_ipv6_enabled(self, machine):
+        """Effective IPv6 flag of *machine*: ``Machine(ipv6=True/False)`` wins, else the module-level
+        ``ipv6`` lab option (:func:`lab_ipv6_default`).  ``None`` = not specified (Kathara's own
+        ``enable_ipv6`` setting applies, ``False`` by default)."""
+        if machine.ipv6 is not None:
+            return bool(machine.ipv6)
+        default = lab_ipv6_default()
+        return None if default is None else bool(default)
+
     def get_new_lab_from_scheme(self):
         lab = Lab(name=self.running_lab_name)
         abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self.running_lab_name)
@@ -1182,19 +1236,24 @@ class NetScheme0:
                         error_quit(f"volume mode {v[2]} not supported (only rw and ro)")
 
                     volumes.append(f"{v_host}|{v[1]}|{v[2]}")
-            lab.new_machine(m.name,
-                            exec_commands=m.exec_commands,
-                            sysctls=m.sysctls,
-                            envs=m.envs,
-                            ports=m.ports,
-                            ulimits=m.ulimits,
-                            volumes=volumes,
-                            shell=m.kathara_shell,
-                            image=m.image,
-                            bridged=m.bridged,
-                            privileged=m.privileged,
-                            entrypoint=m.entrypoint,
-                            )
+            machine_kwargs = dict(exec_commands=m.exec_commands,
+                                  sysctls=m.sysctls,
+                                  envs=m.envs,
+                                  ports=m.ports,
+                                  ulimits=m.ulimits,
+                                  volumes=volumes,
+                                  shell=m.kathara_shell,
+                                  image=m.image,
+                                  bridged=m.bridged,
+                                  privileged=m.privileged,
+                                  entrypoint=m.entrypoint,
+                                  )
+            # Kathara disables IPv6 in the container unless its `ipv6` meta is true; only say
+            # something when the lab did (module-level `ipv6` option or Machine(ipv6=...)).
+            ipv6 = self.machine_ipv6_enabled(m)
+            if ipv6 is not None:
+                machine_kwargs['ipv6'] = ipv6
+            lab.new_machine(m.name, **machine_kwargs)
             for net, netAdapter in m.net_adapters.items():
                 lab.connect_machine_to_link(m.name, net.name, machine_iface_number=netAdapter.interface,
                                             mac_address=str(netAdapter.mac).replace('-',
@@ -1278,6 +1337,20 @@ class Network:
 
 
 class Machine:
+    """One container of the lab (built from ``NetScheme._machine_specs`` entries).
+
+    Networking options:
+
+    * ``ipv6``: ``None`` (default) = the module-level ``ipv6`` lab option decides (and when that
+      one is absent too, Kathara's own ``enable_ipv6`` setting, ``False`` by default);
+      ``True``/``False`` = per-machine override.  With IPv6 enabled Kathara starts the container
+      with ``net.ipv6.conf.all.disable_ipv6=0``, ``forwarding=1``, ``accept_ra=0``; otherwise
+      IPv6 is disabled on every interface.
+    * ``sysctls``: iterable of ``"net.<key>=<value>"`` strings (a dict is iterated over its
+      keys, so ``{"net.ipv6.conf.all.accept_ra=2": True}`` works; a ``{name: value}`` dict is
+      rejected by Kathara).  They are merged after Kathara's own defaults and win.
+    """
+
     def __init__(self, name, image=params.default_docker_image, bridged=False, x11_host=False, mem="",
                  cpus=None, ipv6=None,
                  exec_commands=[],

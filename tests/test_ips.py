@@ -703,3 +703,247 @@ class TestRandomMacAddress:
         for mac in random_mac_address(n=50):
             first_byte = int(str(mac).split('-')[0], 16)
             assert first_byte & 1 == 0, f"multicast MAC generated: {mac}"
+
+
+# ---------------------------------------------------------------------------
+# IPv6
+# ---------------------------------------------------------------------------
+
+import random  # noqa: E402
+from dataclasses import dataclass  # noqa: E402
+from ipaddress import IPv6Address, IPv6Interface, IPv6Network  # noqa: E402
+
+from ips import (  # noqa: E402
+    IPv6Addresses,
+    IPv6Networks,
+    random_ipv6networks,
+    random_ipv6s,
+    random_ipv6s_with_range,
+    random_ips_from_topology,
+)
+
+GUA = IPv6Network('2000::/3')
+ULA = IPv6Network('fd00::/8')
+DOC = IPv6Network('2001:db8::/32')
+
+
+class TestIPv6Addresses:
+    def test_set_get_and_type_check(self):
+        ips = IPv6Addresses()
+        ips.r = IPv6Interface('2001:db8::1/64')
+        assert ips.r == IPv6Interface('2001:db8::1/64')
+        for bad in ('2001:db8::1/64', IPv4Interface('10.0.0.1/24'), IPv6Network('2001:db8::/64')):
+            with pytest.raises(TypeError, match='expected IPv6Interface'):
+                ips.x = bad
+
+    def test_roundtrips(self):
+        ips = IPv6Addresses()
+        ips.r = IPv6Interface('2001:db8::1/64')
+        assert ips.to_dict() == {'r': '2001:db8::1/64'}
+        assert IPv6Addresses.from_dict(ips.to_dict()).r == ips.r
+        assert IPv6Addresses.from_json(ips.to_json()).r == ips.r
+        assert IPv6Addresses.unpack(ips.pack()).r == ips.r
+
+    def test_ipv4_container_unchanged(self):
+        ips = IPv4Addresses()
+        with pytest.raises(TypeError, match='expected IPv4Interface'):
+            ips.r = IPv6Interface('2001:db8::1/64')
+
+
+class TestIPv6Networks:
+    def test_set_get_and_type_check(self):
+        nets = IPv6Networks()
+        nets.lan = IPv6Network('2001:db8::/64')
+        for bad in ('2001:db8::/64', IPv4Network('10.0.0.0/24'), IPv6Interface('2001:db8::1/64')):
+            with pytest.raises(TypeError, match='expected IPv6Network'):
+                nets.x = bad
+
+    def test_roundtrips(self):
+        nets = IPv6Networks()
+        nets.lan = IPv6Network('2001:db8::/64')
+        assert IPv6Networks.from_dict(nets.to_dict()).lan == nets.lan
+        assert IPv6Networks.from_json(nets.to_json()).lan == nets.lan
+        assert IPv6Networks.unpack(nets.pack()).lan == nets.lan
+
+
+class TestRandomIPv6Networks:
+    def test_default_is_global_unicast(self):
+        for _ in range(20):
+            (net,) = random_ipv6networks(64)
+            assert isinstance(net, IPv6Network) and net.prefixlen == 64 and net.subnet_of(GUA)
+
+    def test_list_of_masks_disjoint(self):
+        nets = random_ipv6networks([64, 48, 56])
+        assert [n.prefixlen for n in nets] == [64, 48, 56]
+        for i, a in enumerate(nets):
+            for b in nets[i + 1:]:
+                assert not a.overlaps(b)
+
+    def test_from_network(self):
+        for _ in range(20):
+            (net,) = random_ipv6networks(64, from_network=DOC)
+            assert net.subnet_of(DOC)
+
+    def test_private_is_ula(self):
+        for _ in range(20):
+            a, b = random_ipv6networks([64, 48], from_private_network=True)
+            assert a.subnet_of(ULA) and b.subnet_of(ULA) and not a.overlaps(b)
+
+    def test_private_within_from_network(self):
+        (net,) = random_ipv6networks(64, from_network=IPv6Network('fd12::/32'), from_private_network=True)
+        assert net.subnet_of(IPv6Network('fd12::/32'))
+
+    def test_exclude(self):
+        space = IPv6Network('2001:db8::/46')
+        excluded = [IPv6Network('2001:db8::/48'), IPv6Network('2001:db8:1::/48'), IPv6Network('2001:db8:2::/48')]
+        for _ in range(10):
+            (net,) = random_ipv6networks(48, from_network=space, exclude=excluded)
+            assert net == IPv6Network('2001:db8:3::/48')
+
+    def test_exclude_other_family_is_ignored(self):
+        (net,) = random_ipv6networks(64, from_network=DOC, exclude=[IPv4Network('10.0.0.0/8')])
+        assert net.subnet_of(DOC)
+
+    def test_impossible(self):
+        with pytest.raises(ValueError):
+            random_ipv6networks(48, from_network=IPv6Network('2001:db8::/56'))
+        with pytest.raises(ValueError):
+            random_ipv6networks(48, from_network=IPv6Network('2001:db8::/46'),
+                                exclude=[IPv6Network('2001:db8::/46')])
+
+    def test_huge_index_space_does_not_overflow(self):
+        (net,) = random_ipv6networks([120], from_network=IPv6Network('::/0'))
+        assert net.prefixlen == 120
+
+    def test_mask_out_of_range(self):
+        with pytest.raises(ValueError, match='out of range'):
+            random_ipv6networks(129)
+        with pytest.raises(ValueError, match='out of range'):
+            random_ipv4networks(33)
+
+    def test_family_guards(self):
+        with pytest.raises(ValueError, match='expected an IPv4 network'):
+            random_ipv4networks(64, from_network=DOC)
+        with pytest.raises(ValueError, match='expected an IPv6 network'):
+            random_ipv6networks(24, from_network=IPv4Network('10.0.0.0/8'))
+
+    def test_reproducible_with_seed(self):
+        random.seed(7)
+        a = random_ipv6networks([64, 64], from_private_network=True)
+        random.seed(7)
+        assert random_ipv6networks([64, 64], from_private_network=True) == a
+
+
+class TestRandomIPv6s:
+    NET = IPv6Network('2001:db8:1::/64')
+
+    def test_count_type_membership_prefix_distinct(self):
+        ips = random_ipv6s(self.NET, 5)
+        assert len(ips) == 5 and len(set(ips)) == 5
+        for ip in ips:
+            assert isinstance(ip, IPv6Interface) and ip.ip in self.NET and ip.network == self.NET
+
+    def test_anycast_offset_zero_never_returned(self):
+        small = IPv6Network('2001:db8::/120')
+        for _ in range(30):
+            assert all(ip.ip != small.network_address for ip in random_ipv6s(small, 10))
+        for _ in range(50):
+            assert random_ipv6s(self.NET, 1)[0].ip != self.NET.network_address
+
+    def test_slash_126_uses_offsets_1_to_3(self):
+        net = IPv6Network('2001:db8::/126')
+        got = sorted(random_ipv6s(net, 3), key=lambda i: int(i.ip))
+        assert got == [IPv6Interface('2001:db8::1/126'), IPv6Interface('2001:db8::2/126'),
+                       IPv6Interface('2001:db8::3/126')]
+        with pytest.raises(ValueError, match='Not enough'):
+            random_ipv6s(net, 4)
+
+    def test_slash_127_and_128(self):
+        assert set(random_ipv6s(IPv6Network('2001:db8::/127'), 2)) == {
+            IPv6Interface('2001:db8::/127'), IPv6Interface('2001:db8::1/127')}
+        assert random_ipv6s(IPv6Network('2001:db8::1/128'), 1) == [IPv6Interface('2001:db8::1/128')]
+
+    def test_exclusions(self):
+        net = IPv6Network('2001:db8::/120')
+        ex_ips = [IPv6Interface(f'2001:db8::{i:x}/120') for i in range(1, 200)]
+        for _ in range(10):
+            ips = random_ipv6s(net, 5, exclude_ips=ex_ips, exclude_nets=[IPv6Network('2001:db8::c8/125')])
+            assert all(int(ip.ip) >= 0xd0 for ip in ips)
+
+    def test_zero_and_too_many(self):
+        assert random_ipv6s(self.NET, 0) == []
+        with pytest.raises(ValueError):
+            random_ipv6s(IPv6Network('2001:db8::/126'), 10)
+
+    def test_family_guards(self):
+        with pytest.raises(ValueError, match='expected an IPv6 network'):
+            random_ipv6s(IPv4Network('10.0.0.0/24'))
+        with pytest.raises(ValueError, match='expected an IPv4 network'):
+            random_ipv4s(self.NET)
+
+    def test_reproducible_with_seed(self):
+        random.seed(11)
+        a = random_ipv6s(self.NET, 3)
+        random.seed(11)
+        assert random_ipv6s(self.NET, 3) == a
+
+
+class TestRandomIPv6sWithRange:
+    @pytest.mark.parametrize('net', [IPv6Network('2001:db8::/64'), IPv6Network('2001:db8::/120')])
+    def test_structure(self, net):
+        for _ in range(10):
+            res = random_ipv6s_with_range(net, 10, 3)
+            assert len(res) == 5 and all(isinstance(i, IPv6Interface) for i in res)
+            lo, hi = res[0], res[1]
+            assert int(hi.ip) - int(lo.ip) == 10
+            for extra in res[2:]:
+                assert not (int(lo.ip) <= int(extra.ip) <= int(hi.ip))
+                assert extra.ip in net
+
+    def test_family_guard(self):
+        with pytest.raises(ValueError, match='expected an IPv6 network'):
+            random_ipv6s_with_range(IPv4Network('10.0.0.0/24'), 5)
+
+
+class TestRandomIpsFromTopology:
+    TOPO = {'lan': ['r', 'pc'], 'wan': ['r', 'srv']}
+
+    def _data(self):
+        from SRE.lib_sre import Data0
+
+        @dataclass(slots=True)
+        class _D(Data0):
+            x: int = 0
+
+        d = _D()
+        d.nets.lan, d.nets.wan = IPv4Network('10.0.0.0/24'), IPv4Network('10.1.0.0/24')
+        d.nets6.lan, d.nets6.wan = IPv6Network('fd00:a::/64'), IPv6Network('fd00:b::/64')
+        return d
+
+    def test_default_fills_ipv4_only(self):
+        d = self._data()
+        random_ips_from_topology(d, self.TOPO)
+        assert set(d.ips.__dict__) == {'r_lan', 'r_wan', 'pc', 'srv'}
+        assert d.ips.pc.network == d.nets.lan and d.ips.r_wan.network == d.nets.wan
+        assert d.ips6.__dict__ == {}
+
+    def test_ipv6_fills_both(self):
+        d = self._data()
+        random_ips_from_topology(d, self.TOPO, ipv6=True)
+        assert set(d.ips.__dict__) == {'r_lan', 'r_wan', 'pc', 'srv'}
+        assert set(d.ips6.__dict__) == {'r_lan', 'r_wan', 'pc', 'srv'}
+        assert isinstance(d.ips6.pc, IPv6Interface) and d.ips6.pc.network == d.nets6.lan
+        assert d.ips6.r_lan != d.ips6.pc
+
+    def test_ipv6_only(self):
+        d = self._data()
+        random_ips_from_topology(d, self.TOPO, ipv4=False, ipv6=True)
+        assert d.ips.__dict__ == {} and set(d.ips6.__dict__) == {'r_lan', 'r_wan', 'pc', 'srv'}
+
+    def test_missing_network_raises(self):
+        d = self._data()
+        del d.nets6.__dict__['wan']
+        with pytest.raises(AttributeError, match="nets6 has no network 'wan'"):
+            random_ips_from_topology(d, self.TOPO, ipv6=True)
+        with pytest.raises(ValueError):
+            random_ips_from_topology(d, self.TOPO, ipv4=False, ipv6=False)

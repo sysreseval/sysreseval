@@ -1058,3 +1058,74 @@ class TestLifecycleStates:
         steps = list(S(MockData()).iter_state_steps('restore'))
         assert [st for st, _, _ in steps] == [1]
         assert list(steps[0][1]) == ['m1']
+
+
+# ---------------------------------------------------------------------------
+# IPv6 option: module-level `ipv6` + Machine(ipv6=...) -> Kathara new_machine(ipv6=...)
+# ---------------------------------------------------------------------------
+
+import sys  # noqa: E402
+import types  # noqa: E402
+
+from SRE import lib_sre  # noqa: E402
+from SRE.lib_sre import lab_ipv6_default  # noqa: E402
+
+
+class IPv6OverrideScheme(NetScheme0):
+    def __init__(self, data):
+        super().__init__(data=data, running_lab_name=RUNNING_LAB)
+        self.net1 = Network(name='net1')
+        self.m1 = Machine(name='m1')
+        self.m2 = Machine(name='m2', ipv6=False)
+        self.m3 = Machine(name='m3', ipv6=True)
+        for m in (self.m1, self.m2, self.m3):
+            NetAdapter(machine=m, network=self.net1, interface=0)
+
+
+def _ipv6_kwargs(scheme, monkeypatch, module_attrs=None):
+    """{machine: ipv6 kwarg or '-' when absent} of the new_machine() calls of get_new_lab_from_scheme."""
+    if module_attrs is None:
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+    else:
+        monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace(**module_attrs))
+    lab_cls = MagicMock()
+    monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+    scheme.get_new_lab_from_scheme()
+    return {c.args[0]: c.kwargs.get('ipv6', '-') for c in lab_cls.return_value.new_machine.call_args_list}
+
+
+class TestIpv6Flag:
+    def test_nothing_specified_passes_nothing(self, monkeypatch):
+        assert _ipv6_kwargs(FullScheme(MockData()), monkeypatch) == {'m1': '-', 'm2': '-', 'm3': '-'}
+        assert _ipv6_kwargs(FullScheme(MockData()), monkeypatch, {}) == {'m1': '-', 'm2': '-', 'm3': '-'}
+
+    def test_module_option_applies_to_every_machine(self, monkeypatch):
+        assert _ipv6_kwargs(FullScheme(MockData()), monkeypatch, {'ipv6': True}) == {'m1': True, 'm2': True, 'm3': True}
+        assert _ipv6_kwargs(FullScheme(MockData()), monkeypatch, {'ipv6': False}) == {'m1': False, 'm2': False, 'm3': False}
+
+    def test_machine_overrides_module_option(self, monkeypatch):
+        assert _ipv6_kwargs(IPv6OverrideScheme(MockData()), monkeypatch, {'ipv6': True}) == {'m1': True, 'm2': False, 'm3': True}
+
+    def test_machine_alone(self, monkeypatch):
+        assert _ipv6_kwargs(IPv6OverrideScheme(MockData()), monkeypatch) == {'m1': '-', 'm2': False, 'm3': True}
+
+    def test_machine_ipv6_enabled_and_default(self, monkeypatch):
+        s = IPv6OverrideScheme(MockData())
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        assert lab_ipv6_default() is params.default_ipv6
+        assert (s.machine_ipv6_enabled(s.m1), s.machine_ipv6_enabled(s.m2), s.machine_ipv6_enabled(s.m3)) == (None, False, True)
+        monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace(ipv6=True))
+        assert lab_ipv6_default() is True
+        assert (s.machine_ipv6_enabled(s.m1), s.machine_ipv6_enabled(s.m2)) == (True, False)
+        monkeypatch.setattr(params, 'default_ipv6', True)
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        assert s.machine_ipv6_enabled(s.m1) is True
+
+    def test_other_kwargs_still_passed(self, monkeypatch):
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        lab_cls = MagicMock()
+        monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+        FullScheme(MockData()).get_new_lab_from_scheme()
+        kwargs = lab_cls.return_value.new_machine.call_args_list[0].kwargs
+        assert {'exec_commands', 'sysctls', 'envs', 'ports', 'ulimits', 'volumes', 'shell', 'image', 'bridged',
+                'privileged', 'entrypoint'} <= set(kwargs)

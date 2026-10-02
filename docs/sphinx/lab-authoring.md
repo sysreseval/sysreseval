@@ -33,7 +33,7 @@ While iterating on a `srelab.py`, you typically alternate between editing the mo
 
 ### `sre check [-p] <lab> [<state>]`
 
-Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab.
+Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`, as `sre start` and `sre eval` do), instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab.
 
 ### `sre start --debug-project [-p] <lab> [--xauth-file <path>]`
 
@@ -152,33 +152,79 @@ class Data(Data0):
         data = cls(secret="changeme", vlan_id=42)
         # data.nets and data.ips are injected automatically by Data0.__post_init__
         data.nets.lan, data.nets.mgmt = random_ipv4networks([24, 24], from_private_network=True)
-        ip = random_ipv4s(data.nets.lan, 1)[0]
-        data.ips.router = IPv4Interface(f'{ip}/{data.nets.lan.prefixlen}')
+        data.ips.router = random_ipv4s(data.nets.lan, 1)[0]   # an IPv4Interface, prefix included
+        data.ips.printer = IPv4Interface('192.0.2.7/24')        # explicit values work too
         return data
 ```
 
 **Key points:**
 
-- `data.ips` holds `IPv4Interface` values (address + prefix length); `data.nets` holds `IPv4Network` values; `data.macs` holds `netaddr.EUI` (MAC address) values.
-- All three containers are injected automatically into every `Data0` subclass instance by `__post_init__` — no declaration needed.
-- The containers enforce their types: assigning a plain string to `data.ips` raises `TypeError`; always wrap with the correct type before assigning.
-- `data.ips` requires `IPv4Interface` (not bare `IPv4Address`) — always assign with a prefix, e.g. `IPv4Interface('10.0.0.1/24')`.
+- `data.ips` holds `IPv4Interface` values (address + prefix length); `data.nets` holds `IPv4Network` values; `data.ips6` holds `IPv6Interface` values; `data.nets6` holds `IPv6Network` values; `data.macs` holds `netaddr.EUI` (MAC address) values.
+- All five containers are injected automatically into every `Data0` subclass instance by `__post_init__` — no declaration needed (and do not declare fields with these names).
+- The containers enforce their types: assigning a plain string to `data.ips` raises `TypeError`; always wrap with the correct type before assigning. The families are kept apart: `data.ips` refuses an `IPv6Interface` and `data.ips6` an `IPv4Interface`.
+- `data.ips` requires `IPv4Interface` (not bare `IPv4Address`) — always assign with a prefix, e.g. `IPv4Interface('10.0.0.1/24')`; likewise `data.ips6` requires `IPv6Interface`, e.g. `IPv6Interface('2001:db8::1/64')`.
 - `Data.generate(flavor)` is called once at `sre start`; the result is saved to `data.json`.
-- Serialization handles `IPv4Interface`, `IPv4Network`, `EUI`, and nested `Data0` subclasses transparently.
+- Serialization: the containers are stored as strings; standalone fields of type `IPv4Address` / `IPv6Address`, `IPv4Interface` / `IPv6Interface`, `IPv4Network` / `IPv6Network`, `EUI` and nested `Data0` subclasses are encoded with markers and restored with their exact type. Any other field must be JSON-serialisable (`sre check` verifies the round trip).
 
 ### IP helper functions (from `/opt/sre/lib/ips.py`)
 
 ```python
-from ips import random_ipv4networks, random_ipv4s
+from ipaddress import IPv6Network
+from ips import (random_ipv4networks, random_ipv4s, random_ipv6networks, random_ipv6s,
+                 random_ips_from_topology)
 
-# Returns a list of n disjoint networks with the given prefix lengths:
+# n disjoint IPv4 networks with the given prefix lengths (RFC 1918 ranges with from_private_network=True):
 nets = random_ipv4networks([24, 28, 24], from_private_network=True)
+# n distinct random IPv4Interface values (prefix included) in a network;
+# the network and broadcast addresses are never returned:
+data.ips.host, data.ips.gw = random_ipv4s(nets[0], 2, exclude_nets=[nets[1]])
 
-# Returns n distinct random IPv4Address objects within a network:
-hosts = random_ipv4s(nets[0], 3, exclude_nets=[nets[1]])
-# Wrap as IPv4Interface before assigning to data.ips:
-data.ips.host = IPv4Interface(f'{hosts[0]}/{nets[0].prefixlen}')
+# IPv6 twins — search space: global unicast 2000::/3 by default, unique local fd00::/8 with
+# from_private_network=True, or anything with from_network=IPv6Network('2001:db8::/32'):
+data.nets6.lan, data.nets6.wan = random_ipv6networks([64, 64], from_private_network=True)
+# n distinct IPv6Interface values; offset 0 (the subnet-router anycast address) is never returned:
+data.ips6.host, data.ips6.gw = random_ipv6s(data.nets6.lan, 2)
+
+# Fill data.ips (and data.ips6 with ipv6=True) for every machine of a topology from
+# data.nets / data.nets6 — data.ips.m for single-homed machines, data.ips.m_net otherwise:
+random_ips_from_topology(data, NetScheme._topology, ipv6=True)   # ipv4=False, ipv6=True: IPv6-only lab
 ```
+
+`random_ipv4s_with_range` / `random_ipv6s_with_range` draw ordered address ranges (for DHCP pools), `random_mac_address` random unicast MAC addresses.
+
+### IPv6 labs
+
+Kathara starts every container with IPv6 **disabled** (`net.ipv6.conf.all.disable_ipv6=1`). A lab turns it on with the module-level option:
+
+```python
+ipv6 = True   # IPv6 enabled in every machine of the lab
+```
+
+`Machine(ipv6=False)` (an `'ipv6': False` entry in `_machine_specs`) opts one machine out, `Machine(ipv6=True)` opts one in when the module option is absent. With IPv6 enabled Kathara sets `disable_ipv6=0`, `net.ipv6.conf.all.forwarding=1` and `accept_ra=0` in the container (every interface gets its link-local address), so, as for IPv4 (`set_ip_forward`), the `initial` state turns forwarding off on the hosts with `set_ipv6_forward(self, m, False)`. `sre export` writes the effective flag as `m[ipv6]="true"` in `lab.conf`.
+
+A dual-stack lab keeps both families in the same `net_config` entry, IPv4 first:
+
+```python
+from ipaddress import IPv4Network, IPv6Network
+from net_config import get_net_config_from_topology, set_net_config_entry, set_ip_forward, set_ipv6_forward
+
+# by hand:
+self.net_config = {
+    'pc': [([d.ips.pc, d.ips6.pc], [(IPv4Network('0.0.0.0/0'), d.ips.gw), (IPv6Network('::/0'), d.ips6.gw)])],
+}
+# or from the topology (data.ips6 / data.nets6 follow the data.ips / data.nets naming; a machine
+# without an entry in data.ips6 — a SLAAC or IPv4-only host — simply gets no IPv6 part):
+self.net_config = get_net_config_from_topology(self, gateway='gw', ipv6=True)   # default_route6=... for a ::/0 on gw;
+# default_route (172.17.0.1, the Docker bridge, for a bridged=True gateway) / default_route=None: no 0.0.0.0/0 on gw
+
+# in initial(): set_net_config_entry() emits `ip addr add` / `ip route add` for both families
+set_net_config_entry(self, 'pc', self.net_config['pc'])
+set_ipv6_forward(self, 'pc', False)
+```
+
+Readers take `ipv6=True` to *also* return the IPv6 side (link-local and temporary addresses are left out): `get_ip_addresses`, `get_routes` (adds `ip -6 route`, `default` → `('::', 0)`), `get_net_config_entry`, `get_persistent_net_config_entry` (parses `iface ethN inet6 static` stanzas); `set_persistent_net_config_entry` writes one `inet` and one `inet6` stanza per interface; `eval_net_config` compares both families (`net_config_entry_family(entry, 6)` grades one family apart); `eval_ping(self, 'pc', 'srv', ipv6=True)` pings the IPv6 address of a machine named in `net_config` (an IPv6 literal needs no flag); `create_hosts_file(..., ipv6=True)` adds the IPv6 lines; `setup_simple_tcp_server(..., ipv6=True)` listens on `::`.
+
+Router advertisements / SLAAC: on the router `set_radvd(self, 'gw', {2: [d.nets6.lan]})` writes `/etc/radvd.conf` and starts radvd; on the hosts `set_slaac_client(self, 'pc')` sets `accept_ra=2` and `autoconf=1` (a forwarding host ignores RAs otherwise). Grade with `get_ip_addresses(self, 'pc', ipv6=True)` (the SLAAC address is in `d.nets6.lan`) and `get_routes(self, 'pc', ipv6=True)[('::', 0)]` (next hop `fe80::…`). The Docker bridge has no IPv6 unless the daemon is configured for it: no IPv6 reaches the outside through `bridged=True` machines, and `set_nat_gateway` stays IPv4. See `lab/sre/_DRAFT_dummy/ipv6_example.py` for a complete dual-stack lab.
 
 ### `compute_pre_generate` and `compute_post_generate`
 
@@ -342,9 +388,10 @@ class NetScheme(NetScheme0):
 | `shell` | `None` | Shell launched by `sre connect` (interactive terminal session) |
 | `kathara_shell` | `None` | Shell Kathara uses to execute startup `exec_commands` inside the container |
 | `privileged` | `None` | Run the container in privileged mode. Refused at startup unless `params.allow_privileged_machines = True` |
+| `ipv6` | `None` | Enable IPv6 in the container. `None`: the module-level `ipv6` option decides (Kathara's own setting, off, when that one is absent too); `True` / `False`: per-machine override. See [IPv6 labs](#ipv6-labs) |
 | `color` | `None` | Node color in the SVG diagram |
 | `exec_commands` | `[]` | Commands run at container start |
-| `sysctls` | `{}` | Kernel parameters |
+| `sysctls` | `{}` | Kernel parameters, as an iterable of `"net.<key>=<value>"` strings (a dict is iterated over its keys, so `{"net.ipv6.conf.all.accept_ra=2": True}` works; a `{name: value}` dict is rejected by Kathara). Merged after Kathara's defaults, so they win |
 | `envs` | `{}` | Environment variables |
 | `ports` | `[]` | Port mappings, e.g. `["80XX:80/tcp"]` (X = wildcard digit) |
 | `ulimits` | `{}` | ulimit settings |
@@ -470,9 +517,11 @@ set_net_config_entry(net_scheme=self, machine_name='router', nc_entry=[
 set_sysctl(net_scheme=self, machine_name='router', sysctl_config={'ipv4.ip_forward': 1})
 ```
 
-`NetConfig` is a list of interface entries; each entry is `([addresses], [(dest_network, gateway), ...])` or `'dhcp'` or `None`.
+`NetConfig` is a list of interface entries; each entry is `([addresses], [(dest_network, gateway), ...])` or `'dhcp'` or `None`. An entry may hold both families (`[d.ips.pc, d.ips6.pc]`, routes to `IPv4Network('0.0.0.0/0')` and `IPv6Network('::/0')`): `set_net_config_entry` dispatches on the address family, and `get_net_config_from_topology(..., ipv6=True)` builds such entries — see [IPv6 labs](#ipv6-labs).
 
-Persistent equivalents — these write to `/etc/network/interfaces` and `/etc/sysctl.d/99-sre.conf` so the config survives a container restart:
+`set_ip_forward(net_scheme, machine_name, ip_forward, step=1)` and `set_ipv6_forward(net_scheme, machine_name, ipv6_forward, step=1)` set `net.ipv4.ip_forward` / `net.ipv6.conf.all.forwarding` (Kathara starts every machine with forwarding on in both families).
+
+Persistent equivalents — these write to `/etc/network/interfaces` (one `inet static` and one `inet6 static` stanza per interface as needed) and `/etc/sysctl.d/99-sre.conf` so the config survives a container restart:
 
 - `set_persistent_net_config_entry(net_scheme, machine_name, nc_entry)`
 - `set_persistent_sysctl(net_scheme, machine_name, sysctl_config)`
@@ -484,7 +533,8 @@ Convenience functions called inside `@sre_state` methods:
 ```python
 from state_helpers import (set_unbound_server, set_basic_unbound_server,
                            change_password, create_user,
-                           hosts_file_content, create_hosts_file)
+                           hosts_file_content, create_hosts_file,
+                           setup_simple_tcp_server, set_radvd, set_slaac_client)
 ```
 
 | Function | Description |
@@ -493,8 +543,11 @@ from state_helpers import (set_unbound_server, set_basic_unbound_server,
 | `set_basic_unbound_server(net_scheme, machine)` | Same as above; explicit name when you want to make the "basic / permissive" intent obvious. |
 | `change_password(net_scheme, machine, username, password)` | Set a user's password via `chpasswd`. The password is written to a temporary file (never passed on the command line). |
 | `create_user(net_scheme, machine, username, password, uid=None, gid=None)` | Create a user with `useradd` (if not already present) and set its password. `uid`/`gid` are passed as integers. The password is written to a temporary file; the username is passed via an environment variable to prevent shell injection. |
-| `hosts_file_content(net_scheme, domain_extension, included=None, ips=None, separator="\t\t")` | Return `/etc/hosts` lines for a set of machines. Each machine gets one line per network it is connected to (two lines if multi-homed, with `machine_net` naming). Addresses are read from `net_scheme.data.ips.*` by convention (`machine` for single-homed, `machine_net` for multi-homed), or from the `ips` dict if provided. `included` defaults to all visible machines. |
-| `create_hosts_file(net_scheme, domain_extension, machine_list=None, included=None, ips=None, separator="\t\t")` | Write `/etc/hosts` to each machine in `machine_list` (defaults to all visible machines). Each file begins with standard loopback entries (`127.0.0.1 localhost`, `127.0.1.1 <machine>`) followed by the lines from `hosts_file_content()`. |
+| `hosts_file_content(net_scheme, domain_extension, included=None, ips=None, separator="\t\t", ipv6=False, ips6=None)` | Return `/etc/hosts` lines for a set of machines. Each machine gets one line per network it is connected to (two lines if multi-homed, with `machine_net` naming). Addresses are read from `net_scheme.data.ips.*` by convention (`machine` for single-homed, `machine_net` for multi-homed), or from the `ips` dict if provided. `included` defaults to all visible machines. `ipv6=True` adds, after each IPv4 line, the IPv6 line of the machines that have an address in `net_scheme.data.ips6.*` (or in the `ips6` dict). |
+| `create_hosts_file(net_scheme, domain_extension, machine_list=None, included=None, ips=None, separator="\t\t", ipv6=False, ips6=None)` | Write `/etc/hosts` to each machine in `machine_list` (defaults to all visible machines). Each file begins with standard loopback entries (`127.0.0.1 localhost`, `127.0.1.1 <machine>`, plus `::1` / `ff02::1` / `ff02::2` with `ipv6=True`) followed by the lines from `hosts_file_content()`. |
+| `setup_simple_tcp_server(net_scheme, machine, port, answer, ip=None, ipv6=False)` | Start an idempotent daemon that answers `answer` to every TCP connection on `port`, bound to `ip` (IPv4 or IPv6, prefix stripped), to `0.0.0.0`, or to `::` (dual stack) with `ipv6=True`. |
+| `set_radvd(net_scheme, machine, prefixes, step=1, *, rdnss=None, dnssl=None, min_rtr_adv_interval=3, max_rtr_adv_interval=10, adv_autonomous=True, adv_on_link=True, adv_router_addr=False, enable_forwarding=True)` | Write `/etc/radvd.conf` (`prefixes = {interface: [IPv6Network, ...]}`, interfaces as `'eth1'` or `1`, /64 prefixes for SLAAC) and start radvd, after enabling IPv6 forwarding. Returns the configuration text. |
+| `set_slaac_client(net_scheme, machine, interfaces=None, step=1)` | Make the machine configure itself from router advertisements: `accept_ra=2` and `autoconf=1` on `interfaces` (default: every interface of the topology). Needed because Kathara starts the machines with forwarding on, which makes the kernel ignore RAs. |
 
 ## `Grade` class
 
@@ -736,10 +789,12 @@ from tls import eval_rsa_private_key, set_rsa_private_key, eval_self_signed_cert
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python
-from grade_helpers import eval_tcp_server
+from grade_helpers import eval_tcp_server, test_dig
 ```
 
-`eval_tcp_server(grade, machine_name, port, step=1) → bool` — checks whether a process is listening on `port` (TCP) inside the container. Returns `True` if the port is bound.
+`eval_tcp_server(grade, machine_name, server_name, step=1) → list[int] | None` — returns the TCP ports in LISTEN state of the processes matching `server_name` (`pgrep -f`, `ss -tlnp`), whatever the local address form (`0.0.0.0:80`, `*:80`, `[::]:80`, `[fd00::1]:8080`, `127.0.0.53%lo:53`), or `None` when no such process runs.
+
+`test_dig(grade, machine_name, server_ip, *, proto='udp', port=53, request, timeout=2, step=1) → (stdout, exit_code)` — runs `dig +short` against `server_ip` (a string, an `IPv4Address` / `IPv6Address` or an `IPv4Interface` / `IPv6Interface`, prefix stripped).
 
 ### OSPF helpers (from `/opt/sre/lib/frr.py`)
 
@@ -800,22 +855,25 @@ These functions are used inside `Grade.grade()` to read live container state.
 ```python
 from net_config import (get_ip_addresses, get_routes, get_sysctl_conf,
                         get_net_config_entry, get_persistent_net_config_entry,
-                        eval_net_config, get_ip_forward, get_sys_parameter_bool,
+                        eval_net_config, net_config_entry_family,
+                        get_ip_forward, get_ipv6_forward, get_sys_parameter_bool,
                         get_sys_parameter)
 ```
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `get_ip_addresses(grade, machine, step=1)` | `dict[str, list[tuple[str,int]]]` | Run `ip a`; return `{iface: [(addr, prefixlen), ...]}` (sorted by prefix desc, addr asc) |
-| `get_routes(grade, machine, step=1)` | `dict[tuple[str,int], tuple[str,str,int]]` | Run `ip route`; return `{(net, mask): (via, dev, metric)}` — `default` maps to `('0.0.0.0', 0)` |
+| `get_ip_addresses(grade, machine, step=1, ipv6=False, link_local=False)` | `dict[str, list[tuple[str,int]]]` | Run `ip a`; return `{iface: [(addr, prefixlen), ...]}` (sorted by prefix desc, addr asc). `ipv6=True` adds the IPv6 addresses after the IPv4 ones (SLAAC addresses included, temporary ones excluded; link-local ones only with `link_local=True`) |
+| `get_routes(grade, machine, step=1, ipv6=False)` | `dict[tuple[str,int], tuple[str,str,int]]` | Run `ip route` (and `ip -6 route` with `ipv6=True`); return `{(net, mask): (via, dev, metric)}` — `default` maps to `('0.0.0.0', 0)` (`('::', 0)` in the IPv6 table) |
 | `get_sysctl_conf(grade, machine, step=1)` | `dict[str, str]` | Read `/etc/sysctl.conf` and `/etc/sysctl.d/*.conf`; return `{key: value}` |
 | `get_ip_forward(grade, machine, step=1)` | `bool` | Read `/proc/sys/net/ipv4/ip_forward`; return `True` if `1` |
+| `get_ipv6_forward(grade, machine, step=1)` | `bool` | Read `/proc/sys/net/ipv6/conf/all/forwarding`; return `True` if `1` |
 | `get_sys_parameter(grade, machine, param, step=1)` | `str \| None` | Read an arbitrary `/proc/sys/...` file (e.g. `'net.ipv4.ip_forward'`); return string value or `None` |
 | `get_sys_parameter_bool(grade, machine, param, step=1)` | `bool \| None` | Same as `get_sys_parameter` but cast to `bool` (`'1'` → `True`, `'0'` → `False`, else `None`) |
-| `get_net_config_entry(grade, machine, step=1)` | `NetConfigEntry` | Run `ip a` + `ip route`; reconstruct a `NetConfigEntry` from live state |
-| `get_persistent_net_config_entry(grade, machine, step=1)` | `tuple[NetConfigEntry, int]` | Parse `/etc/network/interfaces`; return `(entry, n_errors)` |
+| `get_net_config_entry(grade, machine, step=1, ipv6=False)` | `NetConfigEntry` | Run `ip a` + `ip route`; reconstruct a `NetConfigEntry` from live state. `ipv6=True` adds the IPv6 addresses and routes to the same entries (a SLAAC address counts as dynamic: an interface with only SLAAC addresses is `'dhcp'`; the RA default route has a `fe80::` next hop) |
+| `get_persistent_net_config_entry(grade, machine, step=1, ipv6=False)` | `tuple[NetConfigEntry, int]` | Parse `/etc/network/interfaces`; return `(entry, n_errors)`. `ipv6=True` also parses the `inet6 static` stanzas (`address`, `netmask <prefixlen>`, `gateway`, `post-up ip [-6] route add` / `ip addr add`; `inet6 auto|dhcp` count as dynamic) and merges them into the IPv4 entries |
+| `net_config_entry_family(entry, version)` | `NetConfigEntry` | Keep only the addresses and routes of IP `version` (4 or 6) in each tuple, to grade the two families of a dual-stack configuration apart |
 
-`eval_net_config(grade, expected, machine_name=None, current=None, step=1)` — compare a live or provided `NetConfigEntry` against an expected one. Returns an attribute-accessible dict with the following keys:
+`eval_net_config(grade, expected, machine_name=None, current=None, step=1)` — compare a live or provided `NetConfigEntry` against an expected one (`0.0.0.0/0` and `::/0` are both default routes). Returns an attribute-accessible dict with the following keys:
 
 | Key | Description |
 |-----|-------------|
@@ -838,12 +896,12 @@ If `current` is `None`, `get_net_config_entry(grade, machine_name, step)` is cal
 from ping import eval_ping
 ```
 
-`eval_ping(grade, src, dest, step=1, net_config=None) → bool` — run `ping -c 1 -w 1 dest` from `src` machine; return `True` if `"bytes from"` appears in the output.
+`eval_ping(grade, src, dest, step=1, net_config=None, count=1, deadline=1, allow_error=False, ipv6=False) → bool` — run `ping -c count -w deadline dest` from `src` machine; return `True` if `"bytes from"` appears in the output. Raise `count` / `deadline` for multi-hop paths; `allow_error=True` keeps an expected failure out of the archive's errors.
 
 `src` and `dest` can each be:
-- An `IPv4Address` or valid IPv4 string — used directly; `src` is resolved by reverse-lookup in `net_config`
-- `"machine_name"` — machine name looked up in `net_config`; `dest` → first interface IP
-- `"machine_name:N"` or `"machine_name:ethN"` — resolves to interface index N of that machine
+- An `IPv4Address` / `IPv6Address` (or Interface) object, or a valid IPv4 / IPv6 literal — used directly (the literal decides the family); `src` is resolved by reverse-lookup in `net_config`
+- `"machine_name"` — machine name looked up in `net_config`; `dest` → first IPv4 address of the first interface, or first IPv6 address with `ipv6=True`
+- `"machine_name:N"` or `"machine_name:ethN"` — resolves to interface index N of that machine (same family rule)
 
 If `net_config` is not provided, `grade.net_scheme.net_config` is used. Raises `ValueError` on resolution failure.
 
@@ -975,6 +1033,12 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 | `allow_user_states` | `bool` | `False` | If `True`, students can apply states decorated with `@sre_state(user_allowed=True)` from the GUI. States decorated with `user_allowed=False` remain instructor-only |
 | `flavor_form_at_startup` | `bool` | `False` | If `True` and a `Flavor` subclass is defined, the GUI shows the flavor form before calling `sre start`, letting the student parameterize the lab |
 
+### Networking
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ipv6` | `bool` | `params.default_ipv6` (`None`: Kathara's own setting, off) | If `True`, IPv6 is enabled in every machine (`disable_ipv6=0`, forwarding and `accept_ra=0` set by Kathara); `Machine(ipv6=...)` overrides it per machine. The effective value is written to the `lab.conf` of `sre export`. See [IPv6 labs](#ipv6-labs) |
+
 ### Filesystem and export
 
 | Attribute | Type | Default | Description |
@@ -1025,12 +1089,8 @@ class Data(Data0):
     def generate(cls, flavor=None):
         d = cls()
         d.nets.lan1, d.nets.lan2 = random_ipv4networks([24, 24], from_private_network=True)
-        ips1 = random_ipv4s(d.nets.lan1, 2)
-        ips2 = random_ipv4s(d.nets.lan2, 2)
-        d.ips.router_lan1 = IPv4Interface(f'{ips1[0]}/{d.nets.lan1.prefixlen}')
-        d.ips.client1 = IPv4Interface(f'{ips1[1]}/{d.nets.lan1.prefixlen}')
-        d.ips.router_lan2 = IPv4Interface(f'{ips2[0]}/{d.nets.lan2.prefixlen}')
-        d.ips.client2 = IPv4Interface(f'{ips2[1]}/{d.nets.lan2.prefixlen}')
+        d.ips.router_lan1, d.ips.client1 = random_ipv4s(d.nets.lan1, 2)   # IPv4Interface values
+        d.ips.router_lan2, d.ips.client2 = random_ipv4s(d.nets.lan2, 2)
         return d
 
 

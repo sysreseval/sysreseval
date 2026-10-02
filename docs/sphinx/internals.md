@@ -138,8 +138,11 @@ Each lab is loaded at runtime via `importlib.util.spec_from_file_location('srela
   "__type__": "srelab.Data",
   "data": {
     "secret": "changeme",
-    "ips":  {"router": "10.0.0.1/24"},
-    "nets": {"lan1": "10.0.0.0/24"}
+    "ips":   {"router": "10.0.0.1/24"},
+    "nets":  {"lan1": "10.0.0.0/24"},
+    "ips6":  {"router": "2001:db8::1/64"},
+    "nets6": {"lan1": "2001:db8::/64"},
+    "macs":  {}
   }
 }
 ```
@@ -148,9 +151,16 @@ Each lab is loaded at runtime via `importlib.util.spec_from_file_location('srela
 |-------|----------|
 | `IPv4Interface` inside `ips` container | `"10.0.0.1/24"` |
 | `IPv4Network` inside `nets` container | `"10.0.0.0/24"` |
-| `IPv4Address` (standalone field) | `{"__ip__": "10.0.0.1"}` |
-| `IPv4Network` (standalone field) | `{"__net__": "10.0.0.0/24"}` |
+| `IPv6Interface` inside `ips6` container | `"2001:db8::1/64"` |
+| `IPv6Network` inside `nets6` container | `"2001:db8::/64"` |
+| `EUI` inside `macs` container | `"00-11-22-33-44-55"` |
+| `IPv4Address` / `IPv6Address` (standalone field) | `{"__ip__": "10.0.0.1"}` |
+| `IPv4Interface` / `IPv6Interface` (standalone field) | `{"__iface__": "10.0.0.1/24"}` |
+| `IPv4Network` / `IPv6Network` (standalone field) | `{"__net__": "10.0.0.0/24"}` |
+| `EUI` (standalone field) | `{"__mac__": "00-11-22-33-44-55"}` |
 | Nested `Data0` subclass | `{"__type__": "module.ClassName", "data": {...}}` |
+
+The container keys and markers are the `params.data_json_*` constants. Files written before IPv6 support have no `ips6` / `nets6` keys: they load as empty containers.
 
 `data.json` is saved mode `0o600` inside `.private/` (mode `0o700`).
 

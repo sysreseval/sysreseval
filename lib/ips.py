@@ -1,23 +1,22 @@
 import json
 import random
-from ipaddress import IPv4Address, IPv4Interface, IPv4Network
+from ipaddress import IPv4Address, IPv4Interface, IPv4Network, IPv6Interface, IPv6Network
 
 import msgpack
 from netaddr import EUI
 
 
-class IPv4Addresses:
-    """Dynamic container for named IPv4Address attributes, with no boilerplate.
+class _AttrContainer:
+    """Dynamic container for named attributes of one type (see the subclasses).
 
-    Usage:
-        ips = IPv4Addresses()
-        ips.ip1 = IPv4Address("192.168.1.1")
-        ips.ip2 = IPv4Address("192.168.1.2")
+    Serialises to ``{name: str(value)}`` (dict, JSON, msgpack) and back.
     """
+    _item_type = object
+    _type_name = "object"
 
     def __setattr__(self, name, value):
-        if not isinstance(value, IPv4Interface):
-            raise TypeError(f"{name}: expected IPv4Interface, got {type(value).__name__}")
+        if not isinstance(value, self._item_type):
+            raise TypeError(f"{name}: expected {self._type_name}, got {type(value).__name__}")
         super().__setattr__(name, value)
 
     # ---------------- dict ----------------
@@ -29,7 +28,7 @@ class IPv4Addresses:
     def from_dict(cls, d):
         obj = cls()
         for k, v in d.items():
-            super(IPv4Addresses, obj).__setattr__(k, IPv4Interface(v))
+            setattr(obj, k, cls._item_type(v))
         return obj
 
     # ---------------- JSON ----------------
@@ -51,7 +50,19 @@ class IPv4Addresses:
         return cls.from_dict(msgpack.unpackb(blob, raw=False))
 
 
-class IPv4Networks:
+class IPv4Addresses(_AttrContainer):
+    """Dynamic container for named IPv4Interface attributes, with no boilerplate.
+
+    Usage:
+        ips = IPv4Addresses()
+        ips.ip1 = IPv4Interface("192.168.1.1/24")
+        ips.ip2 = IPv4Interface("192.168.1.2/24")
+    """
+    _item_type = IPv4Interface
+    _type_name = "IPv4Interface"
+
+
+class IPv4Networks(_AttrContainer):
     """Dynamic container for named IPv4Network attributes, with no boilerplate.
 
     Usage:
@@ -59,41 +70,30 @@ class IPv4Networks:
         nets.lan = IPv4Network("192.168.1.0/24")
         nets.mgmt = IPv4Network("10.0.0.0/8")
     """
+    _item_type = IPv4Network
+    _type_name = "IPv4Network"
 
-    def __setattr__(self, name, value):
-        if not isinstance(value, IPv4Network):
-            raise TypeError(f"{name}: expected IPv4Network, got {type(value).__name__}")
-        super().__setattr__(name, value)
 
-    # ---------------- dict ----------------
+class IPv6Addresses(_AttrContainer):
+    """Dynamic container for named IPv6Interface attributes (the IPv6 twin of IPv4Addresses).
 
-    def to_dict(self):
-        return {k: str(v) for k, v in self.__dict__.items()}
+    Usage:
+        ips6 = IPv6Addresses()
+        ips6.router = IPv6Interface("2001:db8:1::1/64")
+    """
+    _item_type = IPv6Interface
+    _type_name = "IPv6Interface"
 
-    @classmethod
-    def from_dict(cls, d):
-        obj = cls()
-        for k, v in d.items():
-            super(IPv4Networks, obj).__setattr__(k, IPv4Network(v))
-        return obj
 
-    # ---------------- JSON ----------------
+class IPv6Networks(_AttrContainer):
+    """Dynamic container for named IPv6Network attributes (the IPv6 twin of IPv4Networks).
 
-    def to_json(self):
-        return json.dumps(self.to_dict())
-
-    @classmethod
-    def from_json(cls, s):
-        return cls.from_dict(json.loads(s))
-
-    # ---------------- msgpack ----------------
-
-    def pack(self):
-        return msgpack.packb(self.to_dict(), use_bin_type=True)
-
-    @classmethod
-    def unpack(cls, blob):
-        return cls.from_dict(msgpack.unpackb(blob, raw=False))
+    Usage:
+        nets6 = IPv6Networks()
+        nets6.lan = IPv6Network("2001:db8:1::/64")
+    """
+    _item_type = IPv6Network
+    _type_name = "IPv6Network"
 
 
 _PRIVATE_NETWORKS = [
@@ -101,14 +101,26 @@ _PRIVATE_NETWORKS = [
     IPv4Network("172.16.0.0/12"),
     IPv4Network("192.168.0.0/16"),
 ]
+_PRIVATE_NETWORKS_V6 = [IPv6Network("fd00::/8")]  # RFC 4193 unique local addresses
+_GLOBAL_UNICAST_V6 = IPv6Network("2000::/3")  # default search space of random_ipv6networks
+_PRIVATE_BY_VERSION = {4: _PRIVATE_NETWORKS, 6: _PRIVATE_NETWORKS_V6}
 
 
 def _pick_one(mask, from_network, exclude, from_private_network):
-    """Pick a single random /mask network. Internal helper for random_ipv4networks."""
-    block_size = 2 ** (32 - mask)
+    """Pick a single random /mask network of the family of *from_network*.
+
+    Internal helper for random_ipv4networks / random_ipv6networks.
+    """
+    max_prefixlen = from_network.max_prefixlen
+    if not 0 <= mask <= max_prefixlen:
+        raise ValueError(f"mask /{mask} out of range for IPv{from_network.version} (0-{max_prefixlen})")
+    block_size = 1 << (max_prefixlen - mask)
+    net_cls = type(from_network)  # not ip_network((int, mask)): it would guess the family from the int
+    # networks of the other family never overlap: drop them
+    exclude = [ex for ex in exclude if ex.version == from_network.version]
 
     def make(abs_idx):
-        return IPv4Network((abs_idx * block_size, mask))
+        return net_cls((abs_idx * block_size, mask))
 
     def available(net):
         return not any(net.overlaps(ex) for ex in exclude)
@@ -122,7 +134,7 @@ def _pick_one(mask, from_network, exclude, from_private_network):
     fhi = int(from_network.broadcast_address)
     if from_private_network:
         boxes = []
-        for p in _PRIVATE_NETWORKS:
+        for p in _PRIVATE_BY_VERSION[from_network.version]:
             lo = max(flo, int(p.network_address))
             hi = min(fhi, int(p.broadcast_address))
             if lo <= hi:
@@ -130,7 +142,8 @@ def _pick_one(mask, from_network, exclude, from_private_network):
     else:
         boxes = [(flo, fhi)]
 
-    spans = [(r.start, len(r)) for lo, hi in boxes for r in [indices_in(lo, hi)] if r]
+    # r.stop - r.start, not len(r): len() overflows for ranges longer than 2**63 (IPv6)
+    spans = [(r.start, r.stop - r.start) for lo, hi in boxes for r in [indices_in(lo, hi)] if r]
     total = sum(count for _, count in spans)
 
     if total == 0:
@@ -164,6 +177,24 @@ def _pick_one(mask, from_network, exclude, from_private_network):
     raise ValueError(f"No available /{mask} network found after 1000 attempts")
 
 
+def _random_networks(masks, from_network, exclude, from_private_network):
+    if isinstance(masks, int):
+        masks = [masks]
+
+    working_exclude = list(exclude) if exclude else []
+    result = []
+    for mask in masks:
+        net = _pick_one(mask, from_network, working_exclude, from_private_network)
+        result.append(net)
+        working_exclude.append(net)
+    return result
+
+
+def _check_version(func_name, network, version):
+    if getattr(network, 'version', None) != version:
+        raise ValueError(f"{func_name}: expected an IPv{version} network, got {type(network).__name__}")
+
+
 def random_ipv4networks(
     masks,
     from_network=IPv4Network("0.0.0.0/0"),
@@ -180,42 +211,66 @@ def random_ipv4networks(
 
     Raises ValueError if any network cannot be allocated.
     """
-    if isinstance(masks, int):
-        masks = [masks]
-
-    working_exclude = list(exclude) if exclude else []
-    result = []
-    for mask in masks:
-        net = _pick_one(mask, from_network, working_exclude, from_private_network)
-        result.append(net)
-        working_exclude.append(net)
-    return result
+    _check_version("random_ipv4networks", from_network, 4)
+    return _random_networks(masks, from_network, exclude, from_private_network)
 
 
-def random_ipv4s(network, n=1, exclude_ips=None, exclude_nets=None):
-    """Return a list of n distinct random IPv4Interface within `network`,
-    excluding any address in `exclude_ips` or covered by any network in `exclude_nets`.
+def random_ipv6networks(
+    masks,
+    from_network=None,
+    exclude=None,
+    from_private_network=False,
+):
+    """Return a list of disjoint random IPv6Networks (the IPv6 twin of random_ipv4networks).
 
-    Raises ValueError if fewer than n addresses are available.
+    `masks` is an int or a list of ints (prefix lengths, e.g. 64); one network is returned
+    per mask, all mutually disjoint and not overlapping any network in `exclude`.
+
+    `from_network=None` (default) means the global unicast space ``2000::/3``, or ``::/0``
+    when `from_private_network=True`: the search space is then the unique local range
+    ``fd00::/8`` (RFC 4193).  Use ``from_network=IPv6Network('2001:db8::/32')`` for
+    documentation prefixes.
+
+    Raises ValueError if any network cannot be allocated.
     """
+    if from_network is None:
+        from_network = IPv6Network("::/0") if from_private_network else _GLOBAL_UNICAST_V6
+    _check_version("random_ipv6networks", from_network, 6)
+    return _random_networks(masks, from_network, exclude, from_private_network)
+
+
+def _host_offsets(network):
+    """Offsets of *network* usable as host addresses.
+
+    IPv4: the network and broadcast addresses are skipped up to /30; /31 (RFC 3021) and /32
+    use every address.  IPv6: offset 0 (the subnet-router anycast address, RFC 4291) is
+    skipped up to /126; /127 (RFC 6164) and /128 use every address.
+    """
+    total = network.num_addresses
+    if network.version == 4:
+        return range(1, total - 1) if network.prefixlen <= 30 else range(total)
+    return range(1, total) if network.prefixlen <= 126 else range(total)
+
+
+def _iface_cls(network):
+    return IPv4Interface if network.version == 4 else IPv6Interface
+
+
+def _random_addresses(network, n, exclude_ips, exclude_nets):
     ex_ips = set(exclude_ips) if exclude_ips else set()
     ex_nets = list(exclude_nets) if exclude_nets else []
 
     base = int(network.network_address)
     total = network.num_addresses
+    iface_cls = _iface_cls(network)
 
     def make(i):
-        return IPv4Interface(f"{IPv4Address(base + i)}/{network.prefixlen}")
+        return iface_cls((base + i, network.prefixlen))
 
     def available(ip):
         return ip not in ex_ips and not any(ip in net for net in ex_nets)
 
-    # Exclude network address (offset 0) and broadcast (offset total-1) for prefix <= 30.
-    # /31 (point-to-point, RFC 3021) and /32 (host route) have no reserved boundary addresses.
-    if network.prefixlen <= 30:
-        host_range = range(1, total - 1)
-    else:
-        host_range = range(total)
+    host_range = _host_offsets(network)
 
     # Small space: enumerate all candidates, then sample.
     if total <= 65536:
@@ -243,8 +298,36 @@ def random_ipv4s(network, n=1, exclude_ips=None, exclude_nets=None):
     return result
 
 
-def random_ipv4s_with_range(network, gap, n=1, exclude_ips=None, exclude_nets=None):
-    """Return a list of n + 2*k distinct random IPv4Interface within `network`.
+def random_ipv4s(network, n=1, exclude_ips=None, exclude_nets=None):
+    """Return a list of n distinct random IPv4Interface within `network`,
+    excluding any address in `exclude_ips` or covered by any network in `exclude_nets`.
+
+    The network address and the broadcast address are never returned (prefix <= /30).
+    Note: `exclude_ips` is compared with the prefix, so list IPv4Interface values
+    (as returned by this function), not bare IPv4Address values.
+
+    Raises ValueError if fewer than n addresses are available.
+    """
+    _check_version("random_ipv4s", network, 4)
+    return _random_addresses(network, n, exclude_ips, exclude_nets)
+
+
+def random_ipv6s(network, n=1, exclude_ips=None, exclude_nets=None):
+    """Return a list of n distinct random IPv6Interface within `network` (the IPv6 twin
+    of random_ipv4s), excluding any address in `exclude_ips` or covered by any network
+    in `exclude_nets`.
+
+    Offset 0 (the subnet-router anycast address) is never returned up to /126; /127 and
+    /128 use every address.
+
+    Raises ValueError if fewer than n addresses are available.
+    """
+    _check_version("random_ipv6s", network, 6)
+    return _random_addresses(network, n, exclude_ips, exclude_nets)
+
+
+def _random_addresses_with_range(network, gap, n, exclude_ips, exclude_nets):
+    """Return a list of n + 2*k distinct random interfaces within `network`.
 
     `gap` is either an int or a list of ints. ``k = 1`` when gap is an int,
     ``k = len(gap)`` otherwise.
@@ -268,9 +351,10 @@ def random_ipv4s_with_range(network, gap, n=1, exclude_ips=None, exclude_nets=No
     base = int(network.network_address)
     total = network.num_addresses
     prefixlen = network.prefixlen
+    iface_cls = _iface_cls(network)
 
     def make(i):
-        return IPv4Interface(f"{IPv4Address(base + i)}/{prefixlen}")
+        return iface_cls((base + i, prefixlen))
 
     def is_excluded(ip):
         return ip in ex_ips or any(ip in net for net in ex_nets)
@@ -379,8 +463,59 @@ def random_ipv4s_with_range(network, gap, n=1, exclude_ips=None, exclude_nets=No
     return result
 
 
-def random_ips_from_topology(data, topology):
-    """Assign random IPs to data.ips from data.nets based on a NetScheme0 topology.
+def random_ipv4s_with_range(network, gap, n=1, exclude_ips=None, exclude_nets=None):
+    """Return a list of n + 2*k distinct random IPv4Interface within `network`.
+
+    `gap` is either an int or a list of ints. ``k = 1`` when gap is an int,
+    ``k = len(gap)`` otherwise.
+
+    The returned list has the form:
+        [ip_min1, ip_max1, ip_min2, ip_max2, ..., ip_mink, ip_maxk, ip1, ..., ipn]
+
+    Guarantees:
+    - int(ip_max_i.ip) - int(ip_min_i.ip) == gap[i]  (or gap when gap is an int)
+    - ip_max_i < ip_min_{i+1}  (ranges are strictly ordered, non-overlapping)
+    - ip1 .. ipn are outside every range [ip_min_i, ip_max_i]
+
+    Unlike random_ipv4s, every offset of the network is eligible (including the first
+    and the last address).
+
+    Raises ValueError if the constraints cannot be satisfied.
+    """
+    _check_version("random_ipv4s_with_range", network, 4)
+    return _random_addresses_with_range(network, gap, n, exclude_ips, exclude_nets)
+
+
+def random_ipv6s_with_range(network, gap, n=1, exclude_ips=None, exclude_nets=None):
+    """IPv6 twin of random_ipv4s_with_range: n + 2*k distinct random IPv6Interface within
+    `network`, the first 2*k forming k ordered ranges of the given gap(s), the last n
+    outside those ranges.  Every offset of the network is eligible.
+
+    Raises ValueError if the constraints cannot be satisfied.
+    """
+    _check_version("random_ipv6s_with_range", network, 6)
+    return _random_addresses_with_range(network, gap, n, exclude_ips, exclude_nets)
+
+
+def _assign_from_topology(machine_nets, nets, ips, picker, nets_label):
+    """Fill the container *ips* from the networks of *nets* for every machine of *machine_nets*."""
+    assigned = {}  # {net_name: list[interface]} — used addresses per network, to avoid duplicates
+    for machine, net_names in machine_nets.items():
+        for net_name in net_names:
+            try:
+                network = getattr(nets, net_name)
+            except AttributeError:
+                raise AttributeError(
+                    f"random_ips_from_topology: data.{nets_label} has no network {net_name!r}") from None
+            ip = picker(network, 1, exclude_ips=assigned.get(net_name))[0]
+            assigned.setdefault(net_name, []).append(ip)
+            attr = machine if len(net_names) == 1 else f"{machine}_{net_name}"
+            setattr(ips, attr, ip)
+
+
+def random_ips_from_topology(data, topology, ipv4=True, ipv6=False):
+    """Assign random IPs to data.ips (from data.nets) and/or data.ips6 (from data.nets6)
+    based on a NetScheme0 topology.
 
     topology: {net_name: [machine, ...] or {machine: iface_spec, ...}}
     (the _topology class attribute format of NetScheme0)
@@ -388,7 +523,14 @@ def random_ips_from_topology(data, topology):
     For each machine m:
     - belongs to exactly one network netX → data.ips.m  (in data.nets.netX)
     - belongs to multiple networks       → data.ips.m_netX for each netX
+
+    `ipv4=True` (default) fills data.ips from data.nets as always; `ipv6=True` also fills
+    data.ips6 from data.nets6 with the same naming rule (use `ipv4=False, ipv6=True` for an
+    IPv6-only lab).  Every network of *topology* must exist in the containers used;
+    AttributeError otherwise.
     """
+    if not ipv4 and not ipv6:
+        raise ValueError("random_ips_from_topology: at least one of ipv4/ipv6 must be True")
     # Build inverse map: machine -> [net_name, ...]  (preserve insertion order)
     machine_nets = {}
     for net_name, machines in topology.items():
@@ -396,15 +538,10 @@ def random_ips_from_topology(data, topology):
         for m in names:
             machine_nets.setdefault(m, []).append(net_name)
 
-    # Assign IPs, tracking used addresses per network to avoid duplicates
-    assigned = {}  # {net_name: list[IPv4Interface]}
-    for machine, nets in machine_nets.items():
-        for net_name in nets:
-            network = getattr(data.nets, net_name)
-            ip = random_ipv4s(network, 1, exclude_ips=assigned.get(net_name))[0]
-            assigned.setdefault(net_name, []).append(ip)
-            attr = machine if len(nets) == 1 else f"{machine}_{net_name}"
-            setattr(data.ips, attr, ip)
+    if ipv4:
+        _assign_from_topology(machine_nets, data.nets, data.ips, random_ipv4s, 'nets')
+    if ipv6:
+        _assign_from_topology(machine_nets, data.nets6, data.ips6, random_ipv6s, 'nets6')
 
 
 def random_mac_address(prefix=None, n=1):

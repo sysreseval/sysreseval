@@ -1,7 +1,8 @@
 import shlex
-from ipaddress import IPv4Address, IPv4Interface
+from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface, IPv6Network
 
 from SRE.lib_sre import NetScheme0
+from net_config import remount_proc_sys, set_ipv6_forward
 
 
 def set_unbound_server(net_scheme: NetScheme0, machine: str):
@@ -44,8 +45,25 @@ def set_nat_gateway(net_scheme: NetScheme0, machine: str):
                    f" || iptables -t nat -A POSTROUTING -o eth{bridged_iface} -j MASQUERADE'")
 
 
+def _hosts_line(ip: str, name: str, domain_extension: str, separator: str) -> str:
+    return f"{ip}{separator}{name}{separator}{name}.{domain_extension}"
+
+
+def _hosts_address(table, container, machine_name: str, index: int, attr: str):
+    """Address (without prefix) of one machine/network, from the explicit *table*
+    ({machine: [addresses in topology order]}) when given, else from the data container
+    attribute *attr*; None when absent."""
+    if table is not None:
+        addrs = table.get(machine_name, [])
+        return str(addrs[index]).split('/')[0] if index < len(addrs) else None
+    if container is None:
+        return None
+    ip_obj = getattr(container, attr, None)
+    return None if ip_obj is None else str(ip_obj).split('/')[0]
+
+
 def hosts_file_content(net_scheme: NetScheme0, domain_extension: str, included=None, ips=None,
-                       separator: str = "\t\t") -> str:
+                       separator: str = "\t\t", ipv6: bool = False, ips6=None) -> str:
     """Return /etc/hosts lines for the given machines.
 
     Args:
@@ -56,6 +74,9 @@ def hosts_file_content(net_scheme: NetScheme0, domain_extension: str, included=N
              in the same order as host_interfaces_from_topology().
              If None, addresses are read from net_scheme.data.ips.*
         separator: string placed between fields (default: two tabs)
+        ipv6: also write an IPv6 line (right after the IPv4 one) for every machine/network
+              that has one, from *ips6* or from net_scheme.data.ips6.*
+        ips6: dict {machine_name: [IPv6Interface|IPv6Address, ...]} like *ips* (ipv6=True)
     """
     if included is None:
         included = [m.name for m in net_scheme.get_visibles_machines()]
@@ -67,39 +88,26 @@ def hosts_file_content(net_scheme: NetScheme0, domain_extension: str, included=N
         nets = machine_nets.get(machine_name, [])
         single = len(nets) == 1
 
-        if ips is not None:
-            addrs = ips.get(machine_name, [])
-            for i, net_name in enumerate(nets):
-                ip = str(addrs[i]).split('/')[0] if i < len(addrs) else None
-                if ip is None:
-                    continue
-                if single:
-                    lines.append(f"{ip}{separator}{machine_name}{separator}{machine_name}.{domain_extension}")
-                else:
-                    lines.append(
-                        f"{ip}{separator}{machine_name}_{net_name}{separator}{machine_name}_{net_name}.{domain_extension}")
-        else:
-            for net_name in nets:
-                attr = machine_name if single else f"{machine_name}_{net_name}"
-                ip_obj = getattr(net_scheme.data.ips, attr, None)
-                if ip_obj is None:
-                    continue
-                ip = str(ip_obj).split('/')[0]
-                if single:
-                    lines.append(f"{ip}{separator}{machine_name}{separator}{machine_name}.{domain_extension}")
-                else:
-                    lines.append(
-                        f"{ip}{separator}{machine_name}_{net_name}{separator}{machine_name}_{net_name}.{domain_extension}")
+        for i, net_name in enumerate(nets):
+            name = machine_name if single else f"{machine_name}_{net_name}"
+            ip = _hosts_address(ips, net_scheme.data.ips, machine_name, i, name)
+            if ip is not None:
+                lines.append(_hosts_line(ip, name, domain_extension, separator))
+            if ipv6:
+                ip6 = _hosts_address(ips6, getattr(net_scheme.data, 'ips6', None), machine_name, i, name)
+                if ip6 is not None:
+                    lines.append(_hosts_line(ip6, name, domain_extension, separator))
 
     return '\n'.join(lines) + '\n' if lines else ''
 
 
 def create_hosts_file(net_scheme: NetScheme0, domain_extension: str, machine_list=None, included=None, ips=None,
-                      separator: str = "\t\t"):
+                      separator: str = "\t\t", ipv6: bool = False, ips6=None):
     """Write /etc/hosts to each machine in machine_list.
 
     Each file starts with the standard loopback entries (127.0.0.1 localhost and
-    127.0.1.1 for the machine itself), followed by the lines produced by
+    127.0.1.1 for the machine itself, plus the ::1 / ff02::1 / ff02::2 lines of a
+    Debian host when ipv6=True), followed by the lines produced by
     hosts_file_content() for the machines in included.
 
     Args:
@@ -110,15 +118,20 @@ def create_hosts_file(net_scheme: NetScheme0, domain_extension: str, machine_lis
                   hosts_file_content() — defaults to get_visibles_machines() when None
         ips: dict {machine_name: [IPv4Interface|IPv4Address, ...]} — see hosts_file_content()
         separator: string placed between fields (default: two tabs)
+        ipv6, ips6: see hosts_file_content()
     """
     if machine_list is None:
         machine_list = included if included is not None else [m.name for m in net_scheme.get_visibles_machines()]
 
     hosts = hosts_file_content(net_scheme=net_scheme, domain_extension=domain_extension, included=included, ips=ips,
-                               separator=separator)
+                               separator=separator, ipv6=ipv6, ips6=ips6)
 
     for m in machine_list:
         hosts_start = f"127.0.0.1\t\tlocalhost\n127.0.1.1\t\t{m}\t\t{m}.{domain_extension}\n"
+        if ipv6:
+            hosts_start += ("::1\t\tlocalhost ip6-localhost ip6-loopback\n"
+                            "ff02::1\t\tip6-allnodes\n"
+                            "ff02::2\t\tip6-allrouters\n")
         net_scheme.file(machine=m, filename='/etc/hosts', content=hosts_start + hosts, permissions=0o0644,
                         owner="root:root")
 
@@ -158,20 +171,26 @@ def create_user(net_scheme: NetScheme0, machine: str, username: str, password: s
 
 
 def setup_simple_tcp_server(net_scheme: NetScheme0, machine: str, port: int, answer: str,
-                            ip: "str | IPv4Interface | IPv4Address" = None):
+                            ip: "str | IPv4Interface | IPv4Address | IPv6Interface | IPv6Address" = None,
+                            ipv6: bool = False):
     """Setup and (re)launch an idempotent TCP server on *machine*.
 
     The server listens on *port* — bound to *ip* if provided (the network prefix of an
-    ``IPv4Interface`` is stripped), or to ``0.0.0.0`` otherwise. On each client connection
-    it sends *answer* (UTF-8) and closes the socket. Calling this function again for the
-    same *port* kills the previous instance before relaunching.
+    ``IPv4Interface`` / ``IPv6Interface`` is stripped; the address decides the family), to
+    ``0.0.0.0`` otherwise, or to ``::`` (dual-stack: IPv4 clients too) with ``ipv6=True`` and
+    no *ip*. On each client connection it sends *answer* (UTF-8) and closes the socket.
+    Calling this function again for the same *port* kills the previous instance before
+    relaunching.
     """
     if ip is None:
-        bind_addr = "0.0.0.0"
-    elif isinstance(ip, IPv4Interface):
+        bind_addr = "::" if ipv6 else "0.0.0.0"
+    elif isinstance(ip, (IPv4Interface, IPv6Interface)):
         bind_addr = str(ip.ip)
     else:
         bind_addr = str(ip).split('/')[0]
+    family = "AF_INET6" if ':' in bind_addr else "AF_INET"
+    # a '::' listener also accepts IPv4 clients (mapped addresses) unless IPV6_V6ONLY is set
+    v6only_line = "    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)\n" if bind_addr == "::" else ""
 
     script_path = f"/usr/local/sbin/sre_tcp_server_{port}.py"
     answer_file = f"/var/lib/sre_tcp_server_{port}.answer"
@@ -204,8 +223,9 @@ def setup_simple_tcp_server(net_scheme: NetScheme0, machine: str, port: int, ans
         "try:\n"
         f"    with open({answer_file!r}, 'rb') as f:\n"
         "        answer = f.read()\n"
-        "    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        f"    s = socket.socket(socket.{family}, socket.SOCK_STREAM)\n"
         "    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n"
+        f"{v6only_line}"
         f"    s.bind(({bind_addr!r}, {int(port)}))\n"
         "    s.listen(16)\n"
         "    while True:\n"
@@ -229,3 +249,100 @@ def setup_simple_tcp_server(net_scheme: NetScheme0, machine: str, port: int, ans
                    f"sh -c '[ -f {quoted_pidfile} ] && kill $(cat {quoted_pidfile}) 2>/dev/null; "
                    f"sleep 0.2; "
                    f"python3 {quoted_script}'")
+
+
+def _on_off(flag: bool) -> str:
+    return "on" if flag else "off"
+
+
+def _plain_v6(addr) -> str:
+    """IPv6 address without prefix, from a string or an ipaddress object."""
+    if isinstance(addr, IPv6Interface):
+        return str(addr.ip)
+    return str(addr).split('/')[0]
+
+
+def set_radvd(net_scheme: NetScheme0, machine: str, prefixes: dict, step: int = 1, *,
+              rdnss=None, dnssl=None, min_rtr_adv_interval: int = 3, max_rtr_adv_interval: int = 10,
+              adv_autonomous: bool = True, adv_on_link: bool = True, adv_router_addr: bool = False,
+              enable_forwarding: bool = True) -> str:
+    """Write /etc/radvd.conf on *machine* and (re)start radvd: the machine then announces the
+    given prefixes in router advertisements, so the hosts of those LANs configure themselves
+    with SLAAC (see set_slaac_client()) and learn it as their default router.
+
+    Args:
+        prefixes: ``{interface: [prefix, ...]}`` — the interface as ``'eth1'`` or ``1``, each
+                  prefix as an ``IPv6Network``, an ``IPv6Interface`` (its network is used) or
+                  a string; with *adv_autonomous* every prefix must be a /64 (SLAAC).
+        rdnss: optional list of recursive DNS server addresses announced in the RAs.
+        dnssl: optional list of DNS search domains announced in the RAs.
+        min_rtr_adv_interval, max_rtr_adv_interval: radvd timers in seconds (short by
+                  default so that hosts configure themselves within seconds of the state).
+        adv_autonomous, adv_on_link, adv_router_addr: the prefix flags (radvd.conf(5)).
+        enable_forwarding: also set net.ipv6.conf.all.forwarding=1 (radvd requires it and a
+                  router advertising a prefix forwards anyway); False to leave it as is.
+
+    Returns the radvd.conf text.  Hosts must accept RAs: Kathara starts every machine with
+    forwarding enabled, which makes the kernel ignore RAs unless accept_ra=2 — call
+    set_slaac_client() on them.
+    """
+    if not prefixes:
+        raise ValueError("set_radvd: no prefix to advertise")
+    blocks = []
+    for iface, plist in prefixes.items():
+        iface_name = f"eth{iface}" if isinstance(iface, int) else str(iface)
+        if isinstance(plist, (str, IPv6Network, IPv6Interface)):
+            plist = [plist]
+        nets = [IPv6Network(str(p), strict=False) for p in plist]
+        if not nets:
+            raise ValueError(f"set_radvd: no prefix for {iface_name}")
+        for net in nets:
+            if adv_autonomous and net.prefixlen != 64:
+                raise ValueError(f"set_radvd: {net} is not a /64, SLAAC (adv_autonomous) needs 64-bit prefixes")
+        lines = [
+            f"interface {iface_name}",
+            "{",
+            "    AdvSendAdvert on;",
+            f"    MinRtrAdvInterval {int(min_rtr_adv_interval)};",
+            f"    MaxRtrAdvInterval {int(max_rtr_adv_interval)};",
+        ]
+        for net in nets:
+            lines += [
+                f"    prefix {net}",
+                "    {",
+                f"        AdvOnLink {_on_off(adv_on_link)};",
+                f"        AdvAutonomous {_on_off(adv_autonomous)};",
+                f"        AdvRouterAddr {_on_off(adv_router_addr)};",
+                "    };",
+            ]
+        if rdnss:
+            lines.append(f"    RDNSS {' '.join(_plain_v6(a) for a in rdnss)} {{ }};")
+        if dnssl:
+            lines.append(f"    DNSSL {' '.join(str(d) for d in dnssl)} {{ }};")
+        lines.append("};")
+        blocks.append('\n'.join(lines))
+    content = '\n\n'.join(blocks) + '\n'
+    net_scheme.file(machine=machine, filename='/etc/radvd.conf', content=content, permissions=0o644, step=step)
+    if enable_forwarding:
+        set_ipv6_forward(net_scheme, machine, True, step=step)
+    net_scheme.cmd(machine, 'systemctl enable radvd', step=step)
+    net_scheme.cmd(machine, 'systemctl restart radvd', step=step)
+    return content
+
+
+def set_slaac_client(net_scheme: NetScheme0, machine: str, interfaces=None, step: int = 1):
+    """Make *machine* accept router advertisements (SLAAC address + default route) on
+    *interfaces* (``'eth0'`` or ``0``; default: every interface of the topology).
+
+    Sets ``accept_ra=2`` and ``autoconf=1`` per interface: Kathara starts the machines of an
+    IPv6 lab with forwarding enabled, and a forwarding host ignores RAs unless accept_ra=2.
+    It keeps working after set_ipv6_forward(net_scheme, machine, False).
+    """
+    if interfaces is None:
+        m = net_scheme.get_machine(machine)
+        interfaces = sorted(a.interface for a in m.net_adapters.values())
+    names = [f"eth{i}" if isinstance(i, int) else str(i) for i in interfaces]
+    remount_proc_sys(net_scheme, machine)
+    for iface in names:
+        net_scheme.cmd(machine, f'sysctl -w net.ipv6.conf.{iface}.accept_ra=2', step=step)
+        net_scheme.cmd(machine, f'sysctl -w net.ipv6.conf.{iface}.autoconf=1', step=step)

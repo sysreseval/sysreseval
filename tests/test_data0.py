@@ -821,3 +821,137 @@ class TestGenerateInstanceAttrs:
         """Declared field survives pack → unpack."""
         data2 = Data0.unpack(DeclaredFieldData.generate().pack())
         assert data2.topology == {'net0': ['m1']}
+
+
+# ---------------------------------------------------------------------------
+# IPv6 containers (ips6 / nets6) and standalone field encoding
+# ---------------------------------------------------------------------------
+
+from ipaddress import IPv6Address, IPv6Interface, IPv6Network  # noqa: E402
+
+
+@dataclass(slots=True)
+class FieldData(Data0):
+    iface4: IPv4Interface = IPv4Interface('10.0.0.1/24')
+    iface6: IPv6Interface = IPv6Interface('2001:db8::1/64')
+    addr4: IPv4Address = IPv4Address('10.0.0.2')
+    addr6: IPv6Address = IPv6Address('2001:db8::2')
+    net4: IPv4Network = IPv4Network('10.0.0.0/24')
+    net6: IPv6Network = IPv6Network('2001:db8::/64')
+    mac: EUI = None
+    inner: SimpleData = None
+
+
+@dataclass
+class IfaceFlavor(Flavor0):
+    gw: IPv4Interface = IPv4Interface('10.0.0.254/24')
+    flavor_form = ""
+
+
+class TestIPv6Containers:
+    def test_ips6_and_nets6_injected_and_empty(self):
+        d = SimpleData()
+        assert d.ips6.__dict__ == {} and d.nets6.__dict__ == {}
+
+    def test_ips6_accepts_only_ipv6_interface(self):
+        d = SimpleData()
+        d.ips6.router = IPv6Interface('2001:db8::1/64')
+        assert d.ips6['router'] == IPv6Interface('2001:db8::1/64')
+        for bad in ('2001:db8::1/64', IPv4Interface('10.0.0.1/24'), IPv6Address('2001:db8::1'),
+                    IPv6Network('2001:db8::/64')):
+            with pytest.raises(TypeError, match='expected IPv6Interface'):
+                d.ips6.x = bad
+
+    def test_nets6_accepts_only_ipv6_network(self):
+        d = SimpleData()
+        d.nets6.lan = IPv6Network('2001:db8::/64')
+        for bad in ('2001:db8::/64', IPv4Network('10.0.0.0/24'), IPv6Interface('2001:db8::1/64')):
+            with pytest.raises(TypeError, match='expected IPv6Network'):
+                d.nets6.x = bad
+
+    def test_ipv4_containers_still_reject_ipv6(self):
+        d = SimpleData()
+        with pytest.raises(TypeError, match='expected IPv4Interface'):
+            d.ips.r = IPv6Interface('2001:db8::1/64')
+        with pytest.raises(TypeError, match='expected IPv4Network'):
+            d.nets.r = IPv6Network('2001:db8::/64')
+
+    def test_to_dict_always_has_ips6_nets6_keys(self):
+        dd = SimpleData().to_dict()
+        assert dd['ips6'] == {} and dd['nets6'] == {}
+
+    def test_dict_roundtrip_mixed_families(self):
+        d = SimpleData(value=1)
+        d.ips.r = IPv4Interface('10.0.0.1/24')
+        d.nets.lan = IPv4Network('10.0.0.0/24')
+        d.ips6.r = IPv6Interface('2001:db8::1/64')
+        d.ips6.pc = IPv6Interface('2001:db8::2/64')
+        d.nets6.lan = IPv6Network('2001:db8::/64')
+        dd = d.to_dict()
+        assert dd['ips6'] == {'r': '2001:db8::1/64', 'pc': '2001:db8::2/64'}
+        assert dd['nets6'] == {'lan': '2001:db8::/64'}
+        d2 = SimpleData.from_dict(dd)
+        assert d2.ips.r == IPv4Interface('10.0.0.1/24') and type(d2.ips.r) is IPv4Interface
+        assert d2.ips6.r == IPv6Interface('2001:db8::1/64') and type(d2.ips6.r) is IPv6Interface
+        assert d2.ips6.pc == IPv6Interface('2001:db8::2/64')
+        assert d2.nets6.lan == IPv6Network('2001:db8::/64') and type(d2.nets6.lan) is IPv6Network
+        assert d2.nets.lan == IPv4Network('10.0.0.0/24')
+
+    def test_json_and_msgpack_roundtrip(self):
+        d = SimpleData(value=2)
+        d.ips6.r = IPv6Interface('fd00::1/64')
+        d.nets6.lan = IPv6Network('fd00::/64')
+        for d2 in (Data0.from_json(d.to_json()), Data0.unpack(d.pack())):
+            assert d2.ips6.r == IPv6Interface('fd00::1/64')
+            assert d2.nets6.lan == IPv6Network('fd00::/64')
+            assert d2.value == 2
+
+    def test_old_format_without_ips6_keys_loads(self):
+        old = {'value': 3, 'name': 'n', 'ips': {'r': '10.0.0.1/24'}, 'nets': {'lan': '10.0.0.0/24'}, 'macs': {}}
+        d = SimpleData.from_dict(old)
+        assert d.ips.r == IPv4Interface('10.0.0.1/24')
+        assert d.ips6.__dict__ == {} and d.nets6.__dict__ == {}
+
+    def test_from_dict_ips6_rejects_ipv4_string(self):
+        with pytest.raises(ValueError):
+            SimpleData.from_dict({'value': 0, 'name': '', 'ips6': {'r': '10.0.0.1/24'}})
+
+
+class TestStandaloneFields:
+    def test_markers(self):
+        d = FieldData(mac=EUI('00:11:22:33:44:55'), inner=SimpleData(value=1))
+        dd = d.to_dict()
+        assert dd['iface4'] == {'__iface__': '10.0.0.1/24'}
+        assert dd['iface6'] == {'__iface__': '2001:db8::1/64'}
+        assert dd['addr4'] == {'__ip__': '10.0.0.2'}
+        assert dd['addr6'] == {'__ip__': '2001:db8::2'}
+        assert dd['net4'] == {'__net__': '10.0.0.0/24'}
+        assert dd['net6'] == {'__net__': '2001:db8::/64'}
+        assert dd['mac'] == {'__mac__': '00-11-22-33-44-55'}
+        assert dd['inner']['__type__'].endswith('SimpleData')
+
+    def test_exact_types_after_reload(self):
+        d = FieldData(mac=EUI('00:11:22:33:44:55'), inner=SimpleData(value=1))
+        for d2 in (FieldData.from_dict(d.to_dict()), Data0.from_json(d.to_json()), Data0.unpack(d.pack())):
+            assert type(d2.iface4) is IPv4Interface and d2.iface4 == d.iface4
+            assert type(d2.iface6) is IPv6Interface and d2.iface6 == d.iface6
+            assert type(d2.addr4) is IPv4Address and type(d2.addr6) is IPv6Address
+            assert type(d2.net4) is IPv4Network and type(d2.net6) is IPv6Network
+            assert type(d2.mac) is EUI and d2.mac == d.mac
+            assert isinstance(d2.inner, SimpleData) and d2.inner.value == 1
+
+    def test_interface_field_json_roundtrip_regression(self):
+        """Before: encoded as __ip__ with a prefix, ip_address() raised ValueError on reload."""
+        d = FieldData()
+        s = d.to_json()
+        assert '"__iface__"' in s
+        assert Data0.from_json(s).iface4 == IPv4Interface('10.0.0.1/24')
+
+    def test_flavor_interface_field_roundtrip(self):
+        f = IfaceFlavor(gw=IPv4Interface('10.0.0.1/24'))
+        assert f.to_dict()['gw'] == {'__iface__': '10.0.0.1/24'}
+        assert IfaceFlavor.from_dict(f.to_dict()).gw == IPv4Interface('10.0.0.1/24')
+        d = SimpleData(value=1)
+        object.__setattr__(d, 'flavor', f)
+        d2 = Data0.from_json(d.to_json())
+        assert d2.flavor.gw == IPv4Interface('10.0.0.1/24') and type(d2.flavor.gw) is IPv4Interface

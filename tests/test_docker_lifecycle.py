@@ -137,6 +137,44 @@ class Grade(Grade0):""")
 assert 'sre_state' in FAILING_PRIVILEGED_LAB and 'deliberate failure' in FAILING_PRIVILEGED_LAB
 
 
+# IPv6: the module-level `ipv6 = True` enables IPv6 in every container, `'ipv6': False` on a
+# machine opts it out; `r` and `h` get static addresses in the initial state.
+IPV6_LAB = '''
+from dataclasses import dataclass
+from ipaddress import IPv6Interface
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state
+
+title = "docker lifecycle test (ipv6)"
+ipv6 = True
+
+
+@dataclass(slots=True)
+class Data(Data0):
+    @classmethod
+    def generate(cls):
+        d = cls()
+        d.ips6.r = IPv6Interface('fd00:1::1/64')
+        d.ips6.h = IPv6Interface('fd00:1::2/64')
+        return d
+
+
+class NetScheme(NetScheme0):
+    _machine_specs = {'r': {}, 'h': {}, 'h4': {'ipv6': False}}
+    _topology = {'lan': ['r', 'h', 'h4']}
+
+    @sre_state()
+    def initial(self):
+        self.cmd('r', f'ip addr add {self.data.ips6.r} dev eth0')
+        self.cmd('h', f'ip addr add {self.data.ips6.h} dev eth0')
+
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        self.add_grade_element(title='dummy', grade=0, max_grade=1)
+'''
+
+
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -166,6 +204,7 @@ def labs_dir():
     (d / 'keyed.py').write_text(KEYED_LAB)
     (d / 'shared.py').write_text(SHARED_LAB)
     (d / 'failing_privileged.py').write_text(FAILING_PRIVILEGED_LAB)
+    (d / 'ipv6.py').write_text(IPV6_LAB)
     for f in d.iterdir():
         f.chmod(0o644)
     yield d
@@ -474,3 +513,42 @@ class TestWipe:
         assert _networks(docker_client, lab_hash) == []
         assert not (PROJECTS / running_lab_name).exists()
         assert not user_public_dir.exists(), "user public dir left after sre wipe"
+
+
+# ---------------------------------------------------------------------------
+# IPv6 option
+# ---------------------------------------------------------------------------
+
+def _exec(container, command):
+    rc, out = container.exec_run(['sh', '-c', command])
+    return rc, out.decode(errors='replace')
+
+
+class TestIpv6:
+
+    def test_ipv6_option_per_machine(self, docker_client, labs_dir, projects):
+        """`ipv6 = True` reaches Kathara (IPv6 enabled, addresses usable), `'ipv6': False`
+        keeps a machine IPv4-only, and `sre export` writes both in lab.conf."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'ipv6.py')
+        by_name = {c.labels['name']: c for c in _containers(docker_client, lab_hash)}
+        assert set(by_name) == {'r', 'h', 'h4'}
+
+        for name, expected in (('r', '0'), ('h', '0'), ('h4', '1')):
+            rc, out = _exec(by_name[name], 'cat /proc/sys/net/ipv6/conf/all/disable_ipv6')
+            assert rc == 0 and out.strip() == expected, (name, rc, out)
+
+        rc, out = _exec(by_name['r'], 'ip -6 addr show dev eth0')
+        assert rc == 0 and 'fd00:1::1/64' in out, out
+        rc, out = _exec(by_name['h4'], 'ip -6 addr show dev eth0')
+        assert 'inet6' not in out, out
+        rc, out = _exec(by_name['h'], 'ping -c 1 -w 3 fd00:1::1')
+        assert rc == 0 and 'bytes from' in out, out
+
+        r = _sre('export', running_lab_name)
+        assert r.returncode == 0, r.stderr
+        import base64
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(base64.b64decode(r.stdout))) as z:
+            lab_conf = next(z.read(n).decode() for n in z.namelist() if n.endswith('lab.conf'))
+        assert 'r[ipv6]="true"' in lab_conf and 'h[ipv6]="true"' in lab_conf and 'h4[ipv6]="false"' in lab_conf, lab_conf
