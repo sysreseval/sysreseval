@@ -1,0 +1,17 @@
+HTTP/1.1 400 Bad Request
+Server: nginx/1.22.1
+Date: Fri, 02 Oct 2026 10:25:31 GMT
+Content-Type: text/html
+Content-Length: 237
+Connection: close
+
+<html>
+<head><title>400 No required SSL certificate was sent</title></head>
+<body>
+<center><h1>400 Bad Request</h1></center>
+<center>No required SSL certificate was sent</center>
+<hr><center>nginx/1.22.1</center>
+</body>
+</html>
+
+===SRE_CODE 400

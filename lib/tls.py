@@ -1,8 +1,13 @@
+import base64
 import hashlib
+import json
 import re
 import shlex
 import ssl
+from dataclasses import dataclass, field
 from ipaddress import IPv4Interface, IPv6Interface
+from datetime import datetime
+from urllib.parse import urlparse
 
 from SRE.lib_sre import Grade0, NetScheme0
 
@@ -15,7 +20,8 @@ def _cert_fingerprint_sha256(pem: str) -> str:
 
 
 def _val(line, prefix):
-    m = re.search(rf'{prefix}=(.+)', line)
+    # OpenSSL 3 prints "sha256 Fingerprint=", OpenSSL 1.1 "SHA256 Fingerprint=": ignore the case.
+    m = re.search(rf'{prefix}=(.+)', line, flags=re.IGNORECASE)
     return m.group(1).strip() if m else ''
 
 
@@ -296,7 +302,7 @@ def eval_certificate(grade: Grade0, machine_name: str,
 
 def eval_certificate_validity(grade: Grade0, machine_name: str,
                               cert_file: str, ca_cert_file: str,
-                              step: int = 1) -> bool:
+                              step: int = 1, untrusted: str | None = None) -> bool:
     """Check that cert_file is signed by ca_cert_file on machine_name.
 
     Args:
@@ -305,14 +311,18 @@ def eval_certificate_validity(grade: Grade0, machine_name: str,
         cert_file:    absolute path to the certificate file on the machine.
         ca_cert_file: absolute path to the CA certificate file on the machine.
         step:         step number passed to grade.test() (default: 1).
+        untrusted:    optional PEM file of intermediate certificates (``-untrusted``),
+                      e.g. the leaf bundle written by step-ca whose second block is the
+                      intermediate CA.
 
     Returns:
-        True if cert_file is a valid certificate signed by ca_cert_file,
+        True if cert_file is a valid certificate chaining to ca_cert_file,
         False otherwise.
     """
+    untrusted_opt = f" -untrusted {shlex.quote(untrusted)}" if untrusted else ""
     _, verify_code = grade.test(
         machine_name=machine_name,
-        command=f"openssl verify -CAfile {shlex.quote(ca_cert_file)} {shlex.quote(cert_file)}",
+        command=f"openssl verify -CAfile {shlex.quote(ca_cert_file)}{untrusted_opt} {shlex.quote(cert_file)}",
         step=step,
         allow_error=True,
     )
@@ -385,3 +395,358 @@ def eval_https_server(grade: Grade0, machine_name: str, url: str,
 
     server_fp_val = _val(server_fp, "SHA256 Fingerprint")
     return bool(server_fp_val) and server_fp_val == cert_fp_val
+
+
+# ---------------------------------------------------------------------------
+# Certificate details: SAN, validity period
+# ---------------------------------------------------------------------------
+
+def parse_san(text: str) -> list[str]:
+    """Return the DNS and IP entries of an ``openssl x509 -ext subjectAltName`` output.
+
+    ``DNS:web.tp, DNS:www.web.tp, IP Address:10.0.0.1`` -> ``['web.tp', 'www.web.tp', '10.0.0.1']``.
+    """
+    return [m.group(1).strip() for m in re.finditer(r'(?:DNS|IP Address)\s*:\s*([^,\s]+)', text or '')]
+
+
+def get_certificate_san(grade: Grade0, machine_name: str, cert_file: str,
+                        step: int = 1) -> list[str]:
+    """DNS/IP names of the subjectAltName extension of cert_file (``[]`` when absent or on error)."""
+    out, code = grade.test(
+        machine_name=machine_name,
+        command=f"openssl x509 -in {shlex.quote(cert_file)} -noout -ext subjectAltName",
+        step=step,
+        allow_error=True,
+    )
+    if code != 0:
+        return []
+    return parse_san(out)
+
+
+_MONTHS = {m: i + 1 for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun',
+                                            'jul', 'aug', 'sep', 'oct', 'nov', 'dec'))}
+_OPENSSL_DATE_RE = re.compile(r'([A-Za-z]{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+(\d{4})')
+
+
+def parse_openssl_date(text: str) -> datetime | None:
+    """Parse an OpenSSL date such as ``Jan  1 00:00:00 2024 GMT`` (English month names,
+    whatever the locale of the grading process: ``strptime('%b')`` would not do)."""
+    m = _OPENSSL_DATE_RE.search(text or '')
+    if not m:
+        return None
+    month = _MONTHS.get(m.group(1).lower())
+    if month is None:
+        return None
+    try:
+        return datetime(int(m.group(6)), month, int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)))
+    except ValueError:
+        return None
+
+
+def certificate_validity_days(cert: dict | None) -> int | None:
+    """Validity period in days of a certificate dict (``not_before``/``not_after`` keys
+    as returned by :func:`eval_certificate`), ``None`` when the dates cannot be read."""
+    if not cert:
+        return None
+    start = parse_openssl_date(cert.get('not_before', ''))
+    end = parse_openssl_date(cert.get('not_after', ''))
+    if start is None or end is None:
+        return None
+    return round((end - start).total_seconds() / 86400)
+
+
+# ---------------------------------------------------------------------------
+# CRL
+# ---------------------------------------------------------------------------
+
+def normalize_serial(serial: str) -> str:
+    """Canonical form of a certificate serial number: upper-case hex, no colons, no
+    ``0x`` prefix, no leading zeros (``'0'`` for zero)."""
+    s = re.sub(r'[\s:]', '', (serial or '')).upper()
+    if s.startswith('0X'):
+        s = s[2:]
+    s = s.lstrip('0')
+    return s or '0'
+
+
+def parse_crl_text(text: str) -> list[str]:
+    """Serial numbers (normalised) listed as revoked in an ``openssl crl -text`` output."""
+    if 'Revoked Certificates' not in (text or ''):
+        return []
+    body = text.split('Revoked Certificates', 1)[1]
+    return [normalize_serial(m.group(1)) for m in re.finditer(r'Serial Number:\s*([0-9A-Fa-f:]+)', body)]
+
+
+def get_crl_revoked_serials(grade: Grade0, machine_name: str, crl_file: str,
+                            step: int = 1) -> list[str]:
+    """Revoked serial numbers of the CRL *crl_file* (``[]`` when unreadable)."""
+    out, code = grade.test(
+        machine_name=machine_name,
+        command=f"openssl crl -in {shlex.quote(crl_file)} -noout -text",
+        step=step,
+        allow_error=True,
+    )
+    if code != 0:
+        return []
+    return parse_crl_text(out)
+
+
+def eval_crl(grade: Grade0, machine_name: str, crl_file: str, ca_cert_file: str,
+             step: int = 1) -> bool:
+    """True when *crl_file* is a CRL whose signature verifies against *ca_cert_file*."""
+    out, code = grade.test(
+        machine_name=machine_name,
+        command=f"openssl crl -in {shlex.quote(crl_file)} -CAfile {shlex.quote(ca_cert_file)} -noout 2>&1",
+        step=step,
+        allow_error=True,
+    )
+    return code == 0 and 'verify failure' not in (out or '').lower()
+
+
+# ---------------------------------------------------------------------------
+# PKCS#12
+# ---------------------------------------------------------------------------
+
+_PEM_CERT_RE = re.compile(r'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', re.S)
+_CN_RE = re.compile(r'(?:^|[,/]\s*)CN\s*=\s*([^,/]+)')
+
+
+def cert_sha256_hex(pem: str) -> str:
+    """Lower-case hex SHA-256 of the DER form of a PEM certificate (``''`` if unparsable)."""
+    try:
+        return hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem.strip())).hexdigest()
+    except Exception:
+        return ''
+
+
+def eval_pkcs12(grade: Grade0, machine_name: str, p12_file: str, password: str,
+                step: int = 1) -> dict | None:
+    """Open the PKCS#12 file *p12_file* with *password* on machine_name.
+
+    Returns ``None`` when the file cannot be opened (missing file or wrong password),
+    otherwise ``{'subject', 'common_name', 'fingerprint'}`` of the client certificate,
+    ``'ca_fingerprints'`` (SHA-256 fingerprints of the CA certificates bundled in the file)
+    and ``'has_key'`` (a private key is present).
+    """
+    q_file = shlex.quote(p12_file)
+    q_pass = shlex.quote(f'pass:{password}')
+    cert_out, cert_code = grade.test(
+        machine_name=machine_name,
+        command=f"openssl pkcs12 -in {q_file} -passin {q_pass} -nokeys -clcerts 2>/dev/null"
+                f" | openssl x509 -noout -subject -fingerprint -sha256",
+        step=step,
+        allow_error=True,
+    )
+    ca_out, _ = grade.test(
+        machine_name=machine_name,
+        command=f"openssl pkcs12 -in {q_file} -passin {q_pass} -nokeys -cacerts 2>/dev/null",
+        step=step,
+        allow_error=True,
+    )
+    _, key_code = grade.test(
+        machine_name=machine_name,
+        command=f"openssl pkcs12 -in {q_file} -passin {q_pass} -nocerts -nodes 2>/dev/null"
+                f" | openssl pkey -noout",
+        step=step,
+        allow_error=True,
+    )
+    if cert_code != 0 or 'subject=' not in (cert_out or ''):
+        return None
+    subject = _val(cert_out, 'subject')
+    cn_m = _CN_RE.search(subject)
+    ca_fps = []
+    for pem in _PEM_CERT_RE.findall(ca_out or ''):
+        try:
+            ca_fps.append(_cert_fingerprint_sha256(pem))
+        except Exception:
+            continue
+    return {
+        'subject': subject,
+        'common_name': cn_m.group(1).strip() if cn_m else '',
+        'fingerprint': _val(cert_out, 'SHA256 Fingerprint'),
+        'ca_fingerprints': ca_fps,
+        'has_key': key_code == 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Live TLS servers
+# ---------------------------------------------------------------------------
+
+def get_tls_server_certificate(grade: Grade0, machine_name: str, server_ip: str,
+                               port: int = 443, servername: str | None = None,
+                               step: int = 1) -> dict | None:
+    """Certificate presented by the TLS server at *server_ip*:*port* (SNI *servername*),
+    as ``{'subject', 'issuer', 'common_name', 'fingerprint'}``; ``None`` when no
+    certificate could be read."""
+    sni = f" -servername {shlex.quote(servername)}" if servername else ""
+    out, code = grade.test(
+        machine_name=machine_name,
+        command=f"openssl s_client -connect {_host_port(server_ip, int(port))}{sni} </dev/null 2>/dev/null"
+                f" | openssl x509 -noout -subject -issuer -fingerprint -sha256",
+        step=step,
+        allow_error=True,
+    )
+    if code != 0 or 'subject=' not in (out or ''):
+        return None
+    subject = _val(out, 'subject')
+    cn_m = _CN_RE.search(subject)
+    return {
+        'subject': subject,
+        'issuer': _val(out, 'issuer'),
+        'common_name': cn_m.group(1).strip() if cn_m else '',
+        'fingerprint': _val(out, 'SHA256 Fingerprint'),
+    }
+
+
+_CURL_CODE_MARK = '===SRE_CODE '
+
+
+@dataclass
+class HttpResult:
+    """Result of :func:`https_get`: *code* is the HTTP status (``None`` when the request
+    failed before an answer, e.g. a certificate error), *headers* are lower-cased."""
+    code: int | None = None
+    headers: dict = field(default_factory=dict)
+    body: str = ''
+    exit_code: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return self.code is not None and 200 <= self.code < 300
+
+
+def parse_curl_output(out: str, exit_code: int = 0) -> HttpResult:
+    """Parse the output of ``curl -D - -o - -w '\\n===SRE_CODE %{http_code}'``."""
+    text = out or ''
+    code = None
+    if _CURL_CODE_MARK in text:
+        text, _, tail = text.rpartition(_CURL_CODE_MARK)
+        try:
+            code = int(tail.strip())
+        except ValueError:
+            code = None
+        if code == 0:
+            code = None
+    headers: dict = {}
+    body = text
+    if text.startswith('HTTP/'):
+        m = re.search(r'\r?\n\r?\n', text)
+        head, body = (text[:m.start()], text[m.end():]) if m else (text, '')
+        for line in head.splitlines()[1:]:
+            if ':' in line:
+                name, value = line.split(':', 1)
+                headers[name.strip().lower()] = value.strip()
+    return HttpResult(code=code, headers=headers, body=body, exit_code=exit_code)
+
+
+def https_get(grade: Grade0, machine_name: str, url: str, server_ip: str,
+              port: int = 443, cacert: str | None = None, cert: str | None = None,
+              key: str | None = None, insecure: bool = False,
+              step: int = 1, timeout: int = 15) -> HttpResult:
+    """GET *url* from machine_name, connecting to *server_ip*:*port* for the URL's host
+    name (``curl --resolve``: no DNS needed, SNI and Host header come from the URL).
+
+    *cacert* / *cert* / *key* are paths on the machine (``--cacert``, ``--cert``, ``--key``);
+    *insecure* adds ``-k``. The status code, headers and body are returned in an
+    :class:`HttpResult` (``code`` is ``None`` when the TLS handshake or the connection failed).
+    """
+    host = urlparse(url).hostname or ''
+    opts = [f"--resolve {shlex.quote(f'{host}:{int(port)}:{_bracketed(server_ip)}')}"]
+    if insecure:
+        opts.append("-k")
+    if cacert:
+        opts.append(f"--cacert {shlex.quote(cacert)}")
+    if cert:
+        opts.append(f"--cert {shlex.quote(cert)}")
+    if key:
+        opts.append(f"--key {shlex.quote(key)}")
+    max_time = max(1, timeout - 3)
+    cmd = (f"curl -s -S --max-time {max_time} {' '.join(opts)} -D - -o - "
+           f"-w '\\n{_CURL_CODE_MARK}%{{http_code}}' {shlex.quote(url)} 2>&1")
+    out, code = grade.test(machine_name=machine_name, command=cmd, step=step,
+                           timeout=timeout, allow_error=True)
+    return parse_curl_output(out, code)
+
+
+# ---------------------------------------------------------------------------
+# Firefox (NSS) certificate store
+# ---------------------------------------------------------------------------
+
+def nss_hashes_command(home: str = '/root') -> str:
+    """One-line shell command printing the SHA-256 (hex) of every certificate stored in the
+    Firefox profiles under *home* (``cert9.db``, SQLite table ``nssPublic``, column ``a11`` =
+    CKA_VALUE). The databases are opened read-only and immutable so a running Firefox is
+    not disturbed. One hash per line; nothing when no profile exists.
+
+    The script is base64-encoded into a ``python3 -c`` one-liner: the exetests runner only
+    supports single-line commands."""
+    script = (
+        "import glob, hashlib, sqlite3\n"
+        "seen = set()\n"
+        f"for db in glob.glob({home!r} + '/.mozilla/firefox*/*/cert9.db'):\n"
+        "    try:\n"
+        "        con = sqlite3.connect('file:' + db + '?mode=ro&immutable=1', uri=True)\n"
+        "        for (blob,) in con.execute('SELECT a11 FROM nssPublic WHERE a11 IS NOT NULL'):\n"
+        "            if isinstance(blob, bytes) and blob[:1] == b'\\x30':\n"
+        "                seen.add(hashlib.sha256(blob).hexdigest())\n"
+        "        con.close()\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "print('\\n'.join(sorted(seen)))\n"
+    )
+    b64 = base64.b64encode(script.encode()).decode()
+    return f'python3 -c "import base64; exec(base64.b64decode(\'{b64}\').decode())"'
+
+
+def get_nss_certificate_hashes(grade: Grade0, machine_name: str, home: str = '/root',
+                               step: int = 1) -> set[str]:
+    """SHA-256 hashes of the certificates in the Firefox profiles of *home* on machine_name."""
+    out, code = grade.test(machine_name=machine_name, command=nss_hashes_command(home),
+                           step=step, allow_error=True)
+    if code != 0:
+        return set()
+    return {line.strip() for line in (out or '').splitlines() if re.fullmatch(r'[0-9a-f]{64}', line.strip())}
+
+
+def eval_firefox_certificate(grade: Grade0, machine_name: str, cert_pem: str,
+                             home: str = '/root', step: int = 1) -> bool:
+    """True when the PEM certificate *cert_pem* has been imported into a Firefox profile of
+    *home* on machine_name (any trust setting)."""
+    hashes = get_nss_certificate_hashes(grade, machine_name, home=home, step=step)
+    wanted = cert_sha256_hex(cert_pem)
+    return bool(wanted) and wanted in hashes
+
+
+# ---------------------------------------------------------------------------
+# step-ca
+# ---------------------------------------------------------------------------
+
+def parse_stepca_config(text: str) -> dict | None:
+    """Summary of a step-ca ``ca.json``: ``{'address', 'dns_names', 'root', 'provisioners':
+    [{'name', 'type'}, ...]}``; ``None`` when the text is not a JSON object."""
+    try:
+        cfg = json.loads(text or '')
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(cfg, dict):
+        return None
+    provisioners = (cfg.get('authority') or {}).get('provisioners') or []
+    return {
+        'address': cfg.get('address', ''),
+        'dns_names': list(cfg.get('dnsNames') or []),
+        'root': cfg.get('root', ''),
+        'provisioners': [{'name': p.get('name', ''), 'type': p.get('type', '')}
+                         for p in provisioners if isinstance(p, dict)],
+    }
+
+
+def get_stepca_config(grade: Grade0, machine_name: str,
+                      config_file: str = '/home/ca/.step/config/ca.json',
+                      step: int = 1) -> dict | None:
+    """Parsed step-ca configuration of machine_name (see :func:`parse_stepca_config`)."""
+    out, code = grade.test(machine_name=machine_name, command=f"cat {shlex.quote(config_file)}",
+                           step=step, allow_error=True)
+    if code != 0:
+        return None
+    return parse_stepca_config(out)

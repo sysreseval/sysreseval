@@ -1,4 +1,5 @@
-"""Tests for lib/grade_helpers.py — test_dig and eval_tcp_server (IPv4 and IPv6 address forms)."""
+"""Tests for lib/grade_helpers.py — the two-step file transfer between containers."""
+import base64
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -14,6 +15,8 @@ for _mod in [
         sys.modules[_mod] = MagicMock()
 sys.modules['Kathara.manager.Kathara'].Kathara = MagicMock()
 sys.modules['Kathara.model.Lab'].Lab = MagicMock()
+
+from grade_helpers import transplant_files  # noqa: E402
 
 
 def make_grade(responses: dict | None = None):
@@ -39,6 +42,91 @@ def calls(grade, machine=None, step=None):
     return out
 
 
+FILES = {'/root/ca/ca.tp.pem': '/tmp/sre_tls/ca.tp.pem', '/root/ca/client.key': '/tmp/sre_tls/client.key'}
+PEM = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+B64 = base64.b64encode(PEM.encode()).decode()
+
+
+class TestTransplantFiles:
+    def test_registration_pass(self):
+        grade = make_grade()
+        contents = transplant_files(grade, 'ca', 'h1', FILES, workdir='/tmp/sre_tls')
+        assert contents == {'/root/ca/ca.tp.pem': '', '/root/ca/client.key': ''}
+        assert calls(grade, 'h1') == ["rm -rf /tmp/sre_tls; mkdir -p /tmp/sre_tls"]
+        assert calls(grade, 'ca', step=1) == ["base64 -w0 /root/ca/ca.tp.pem 2>/dev/null",
+                                               "base64 -w0 /root/ca/client.key 2>/dev/null"]
+        assert calls(grade, step=2) == []
+
+    def test_result_pass(self):
+        grade = make_grade({('ca', "base64 -w0 /root/ca/ca.tp.pem 2>/dev/null"): (B64 + "\n", 0),
+                            ('ca', "base64 -w0 /root/ca/client.key 2>/dev/null"): ('', 1)})
+        contents = transplant_files(grade, 'ca', 'h1', FILES)
+        assert contents == {'/root/ca/ca.tp.pem': PEM, '/root/ca/client.key': ''}
+        applied = calls(grade, 'h1', step=2)
+        assert applied == [f"mkdir -p /tmp/sre_tls && echo {B64} | base64 -d > /tmp/sre_tls/ca.tp.pem"
+                           f" && chmod 600 /tmp/sre_tls/ca.tp.pem"]
+
+    def test_custom_steps_and_errors_allowed(self):
+        grade = make_grade({('ca', "base64 -w0 /root/ca/ca.tp.pem 2>/dev/null"): (B64, 0)})
+        transplant_files(grade, 'ca', 'h1', {'/root/ca/ca.tp.pem': '/tmp/x/ca.pem'}, download_step=2, apply_step=4,
+                         workdir='/tmp/x')
+        assert calls(grade, 'h1', step=2) == ["rm -rf /tmp/x; mkdir -p /tmp/x"]
+        assert calls(grade, 'ca', step=2) == ["base64 -w0 /root/ca/ca.tp.pem 2>/dev/null"]
+        assert len(calls(grade, 'h1', step=4)) == 1
+        assert all(c.kwargs.get('allow_error') for c in grade.test.call_args_list)
+
+    def test_invalid_base64_ignored(self):
+        grade = make_grade({('ca', "base64 -w0 /root/ca/ca.tp.pem 2>/dev/null"): ('not base64!!', 0)})
+        contents = transplant_files(grade, 'ca', 'h1', {'/root/ca/ca.tp.pem': '/tmp/sre_tls/ca.pem'})
+        assert contents == {'/root/ca/ca.tp.pem': ''}
+        assert calls(grade, 'h1', step=2) == []
+
+
+# ---------------------------------------------------------------------------
+# eval_tcp_server: local address formats of `ss -tlnp`
+# ---------------------------------------------------------------------------
+
+from grade_helpers import eval_tcp_server  # noqa: E402
+
+SS_OUT = """\
+State  Recv-Q Send-Q Local Address:Port  Peer Address:Port Process
+LISTEN 0      511          0.0.0.0:80         0.0.0.0:*     users:(("nginx",pid=100,fd=6))
+LISTEN 0      511                *:443              *:*     users:(("apache2",pid=200,fd=4),("apache2",pid=201,fd=4))
+LISTEN 0      4096            [::]:9000          [::]:*     users:(("step-ca",pid=300,fd=7))
+LISTEN 0      4096       127.0.0.1:2019         0.0.0.0:*     users:(("caddy",pid=400,fd=3))
+LISTEN 0      4096           [::1]:8443            [::]:*     users:(("caddy",pid=400,fd=9))
+"""
+
+
+def _tcp_grade(pgrep_out: str, pgrep_code: int = 0):
+    grade = MagicMock()
+
+    def _test(machine_name, command, step=1, **kwargs):
+        if command.startswith("pgrep -f"):
+            return (pgrep_out, pgrep_code)
+        return (SS_OUT, 0)
+
+    grade.test.side_effect = _test
+    return grade
+
+
+class TestEvalTcpServer:
+    def test_dotted_address(self):
+        assert eval_tcp_server(_tcp_grade("100\n"), 'srv', 'nginx') == [80]
+
+    def test_dual_stack_star(self):
+        assert eval_tcp_server(_tcp_grade("200\n201\n"), 'srv', 'apache2') == [443]
+
+    def test_ipv6_any(self):
+        assert eval_tcp_server(_tcp_grade("300\n"), 'srv', 'step-ca') == [9000]
+
+    def test_ipv6_loopback_and_ipv4_loopback(self):
+        assert eval_tcp_server(_tcp_grade("400\n"), 'srv', 'caddy') == [2019, 8443]
+
+    def test_not_running(self):
+        assert eval_tcp_server(_tcp_grade("", 1), 'srv', 'nginx') is None
+
+
 # ---------------------------------------------------------------------------
 # IPv6: test_dig address objects, eval_tcp_server local address forms
 # ---------------------------------------------------------------------------
@@ -47,7 +135,7 @@ from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface  # 
 
 import pytest  # noqa: E402
 
-from grade_helpers import eval_tcp_server, test_dig as dig_query  # noqa: E402  (test_ prefix would be collected)
+from grade_helpers import test_dig as dig_query  # noqa: E402  (test_ prefix would be collected)
 
 SS_V6 = """\
 State  Recv-Q Send-Q      Local Address:Port  Peer Address:Port Process

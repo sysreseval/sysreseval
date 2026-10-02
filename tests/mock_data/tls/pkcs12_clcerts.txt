@@ -1,0 +1,2 @@
+subject=CN = dave11
+sha256 Fingerprint=5F:F7:9F:2B:73:14:F4:BE:BC:5D:9F:78:21:CC:38:55:4D:7B:BA:59:F8:08:64:E8:92:03:AB:52:62:62:82:F8

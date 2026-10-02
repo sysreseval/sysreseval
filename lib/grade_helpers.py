@@ -1,4 +1,7 @@
+import base64
+import posixpath
 import re
+import shlex
 from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface
 from typing import Union
 
@@ -100,3 +103,41 @@ def eval_tcp_server(grade: Grade0, machine_name: str, server_name: str,
             ports.append(int(addr_m.group(1)))
 
     return sorted(set(ports))
+
+
+def transplant_files(grade: Grade0, src: str, dst: str, files: dict[str, str],
+                     download_step: int = 1, apply_step: int = 2,
+                     workdir: str = "/tmp/sre_transplant") -> dict[str, str]:
+    """Copy text files from the container *src* to the container *dst* during an evaluation.
+
+    *files* maps a path on *src* to a path on *dst* (normally under *workdir*). Each file is
+    read on *src* at *download_step* (``base64 -w0``) and, from the grade pass that follows
+    that step, re-created on *dst* at *apply_step* (``base64 -d``, mode 0600) — the two-step
+    contract of ``firewall.transplant_ruleset``: nothing is registered on *dst* for an empty
+    or missing file, so the command keys stay stable and no phantom "write of the empty
+    string" exists. *workdir* is wiped and re-created on *dst* at *download_step*, so a file
+    of a previous evaluation never survives.
+
+    Returns ``{src_path: content}`` with the decoded text of each file (``''`` until the
+    download step has run, or when the file is missing on *src*).
+    """
+    grade.test(dst, f"rm -rf {shlex.quote(workdir)}; mkdir -p {shlex.quote(workdir)}",
+               step=download_step, allow_error=True)
+    contents: dict[str, str] = {}
+    for src_path, dst_path in files.items():
+        b64, code = grade.test(src, f"base64 -w0 {shlex.quote(src_path)} 2>/dev/null",
+                               step=download_step, allow_error=True)
+        b64 = (b64 or "").strip()
+        if code != 0 or not b64:
+            contents[src_path] = ""
+            continue
+        try:
+            contents[src_path] = base64.b64decode(b64, validate=True).decode("utf-8", errors="replace")
+        except (ValueError, UnicodeDecodeError):
+            contents[src_path] = ""
+            continue
+        parent = posixpath.dirname(dst_path) or "."
+        grade.test(dst, f"mkdir -p {shlex.quote(parent)} && echo {b64} | base64 -d > {shlex.quote(dst_path)}"
+                        f" && chmod 600 {shlex.quote(dst_path)}",
+                   step=apply_step, allow_error=True)
+    return contents

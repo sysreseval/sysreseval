@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Date: Fri, 02 Oct 2026 10:25:31 GMT
+Server: Apache/2.4.67 (Debian)
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Last-Modified: Fri, 02 Oct 2026 10:24:59 GMT
+ETag: "78-65cd8f1c254c0"
+Accept-Ranges: bytes
+Content-Length: 120
+Vary: Accept-Encoding
+Content-Type: text/html
+
+<html><head><title>web2.tp</title></head>
+<body>
+<h1>web2.tp</h1>
+<p>iure molestiae pariatur quaerat</p>
+</body></html>
+
+===SRE_CODE 200
