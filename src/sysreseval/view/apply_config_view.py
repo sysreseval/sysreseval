@@ -35,7 +35,7 @@ class _StateWorker(QThread):
 
 class ApplyConfigView(QWidget):
     def __init__(self, user_allowed_states: dict, running_lab_name: str,
-                 admin_only_states: list | None = None, parent=None):
+                 admin_only_states: list | None = None, show_admin_only: bool = True, parent=None):
         super().__init__(parent)
         self._running_lab_name = running_lab_name
         self._workers = []
@@ -54,13 +54,30 @@ class ApplyConfigView(QWidget):
         self._lang_priority = settings.get_language_priority()
         self._user_allowed_states = user_allowed_states
         self._admin_only_states = set(admin_only_states or [])
-        self._populate(user_allowed_states)
+        # False for a project in instructor mode while the "Instructor mode" button is off:
+        # only the states a student could apply are listed
+        self._show_admin_only = show_admin_only
+        self._populate()
 
-    def _populate(self, user_allowed_states: dict):
+    def _listed_states(self) -> dict:
+        if self._show_admin_only:
+            return self._user_allowed_states
+        return {state: description for state, description in self._user_allowed_states.items()
+                if state not in self._admin_only_states}
+
+    def has_states(self) -> bool:
+        return bool(self._listed_states())
+
+    def set_show_admin_only(self, show: bool):
+        if show != self._show_admin_only:
+            self._show_admin_only = show
+            self._populate()
+
+    def _populate(self):
         self._table.setRowCount(0)
         self._buttons.clear()
 
-        for state, description in user_allowed_states.items():
+        for state, description in self._listed_states().items():
             row = self._table.rowCount()
             self._table.insertRow(row)
             resolved = TranslatedText.from_value(description).resolve_priority(self._lang_priority) if description else ''
@@ -98,10 +115,10 @@ class ApplyConfigView(QWidget):
 
     def set_language_priority(self, priority: list):
         self._lang_priority = priority
-        self._populate(self._user_allowed_states)
+        self._populate()
 
     def update_data(self, user_allowed_states: dict, admin_only_states: list | None = None):
         self._user_allowed_states = user_allowed_states
         if admin_only_states is not None:
             self._admin_only_states = set(admin_only_states)
-        self._populate(user_allowed_states)
+        self._populate()

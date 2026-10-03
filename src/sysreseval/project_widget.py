@@ -80,6 +80,7 @@ class ProjectWidget(QWidget):
         self._apply_config_view = ApplyConfigView(
             self.info.get("user_allowed_states", {}), project_dir.name,
             admin_only_states=self.info.get("admin_only_states", []),
+            show_admin_only=debug_project,
         )
         tabs.addTab(self._apply_config_view, self.tr("Apply Configuration"))
 
@@ -131,6 +132,10 @@ class ProjectWidget(QWidget):
         shown = self._instructor_shown()
         self._info_view.set_instructor_view(shown)
         self._questions_view.set_instructor_view(shown)
+        # the states a student could not apply: always for a debug project, with the button on
+        # for a project in instructor mode
+        self._apply_config_view.set_show_admin_only(bool(self.info.get("debug_project", False)) or shown)
+        self._update_apply_config_visibility()
         self._update_log_visibility()
 
     def set_language_priority(self, priority: list):
@@ -153,7 +158,8 @@ class ProjectWidget(QWidget):
 
     def _update_apply_config_visibility(self):
         debug = bool(self.info.get("debug_project", False))
-        visible = debug or (not self._exam_mode and bool(self.info.get("user_allowed_states")))
+        visible = debug or ((self._instructor_shown() or not self._exam_mode)
+                            and self._apply_config_view.has_states())
         self._tabs.setTabVisible(self._tabs.indexOf(self._apply_config_view), visible)
 
     def _update_log_visibility(self):
@@ -248,7 +254,6 @@ class ProjectWidget(QWidget):
         self._apply_config_view.update_data(self.info.get("user_allowed_states", {}),
                                             admin_only_states=self.info.get("admin_only_states", []))
         self._update_eval_visibility()
-        self._update_apply_config_visibility()
         self._apply_instructor_view()
         new_interval = self.info.get("eval_interval_without_exam_mode", 0)
         if new_interval != self._bg_eval_interval:

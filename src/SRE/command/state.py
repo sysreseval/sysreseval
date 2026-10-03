@@ -38,8 +38,10 @@ def action_state():
         else:
             error_quit(f"unknown state '{state}' (valid: {', '.join(valid_states)})")
 
-    debug_project = os.path.exists(params.debug_project_marker_filename(running_lab_name))
-    if in_user_mode() and not debug_project:
+    # every state may be applied to a debug project and to a project in instructor mode
+    all_states_allowed = (os.path.exists(params.debug_project_marker_filename(running_lab_name))
+                          or os.path.exists(params.instructor_mode_marker_filename(running_lab_name)))
+    if in_user_mode() and not all_states_allowed:
         if not getattr(module_rvlab, 'allow_user_states', False):
             error_quit("state changes are not allowed in user mode for this lab")
         if not net_scheme_cls.is_state_user_allowed(state):

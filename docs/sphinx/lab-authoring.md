@@ -442,7 +442,7 @@ Rules:
 - no `@@{field:regex}@@` form field inside a fragment (a student would not get the field);
 - use `+` or `TranslatedText.format()` to combine texts, as with `tr()`: `%` and f-strings do not work on translated texts.
 
-In instructor mode the project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
+In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
 
 ## State methods
 

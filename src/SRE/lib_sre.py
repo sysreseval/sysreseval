@@ -2082,7 +2082,10 @@ class Grade0:
             q.description = TranslatedText.from_value(q.description, default_language)
 
         net_scheme_cls = type(self.net_scheme)
-        if debug_project:
+        # debug and instructor-mode projects: every state can be applied; the ones a student
+        # could not apply are listed in admin_only_states
+        all_states_allowed = debug_project or instructor_mode
+        if all_states_allowed:
             user_allowed_states_raw = {}
             for state in net_scheme_cls.get_state_methods():
                 if state in params.lifecycle_state_names:
@@ -2115,7 +2118,7 @@ class Grade0:
             user_allowed_states = {state: strip_instructor(desc)
                                    for state, desc in user_allowed_states.items()}
 
-        if debug_project:
+        if all_states_allowed:
             module_allows_user_states = getattr(module_rvlab, 'allow_user_states', False)
             admin_only_states = [
                 state for state in user_allowed_states_raw

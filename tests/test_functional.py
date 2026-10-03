@@ -796,8 +796,13 @@ def instructor_env(functional_env, mock_sre_args, monkeypatch):
     """functional_env for the instructor-mode commands.  The projects are not debug projects
     (an unset flag of the MagicMock args is truthy)."""
     import SRE.command.instructor_mode as _instructor_cmd
+    import SRE.command.state as _state_cmd
     monkeypatch.setattr(_instructor_cmd, 'drop_privileges_permanently_if_not_needed', lambda net_scheme: None)
     monkeypatch.setattr(_instructor_cmd, 'set_sudo_uid_for_username', lambda username: None)
+    monkeypatch.setattr(_state_cmd, 'drop_privileges_permanently_if_not_needed', lambda net_scheme: None)
+    monkeypatch.setattr(_state_cmd, 'gain_privileges_if_needed', lambda net_scheme: None)
+    monkeypatch.setattr(_state_cmd, 'set_sudo_uid_for_username', lambda username: None)
+    monkeypatch.setattr(_state_cmd, 'drop_privileges_temporarily', lambda: None)
     mock_sre_args.debug_project = False
     return functional_env
 
@@ -852,6 +857,31 @@ def _forcing_the_instructor_flag(text: str) -> str:
     init = "        super().__init__(data=data, running_lab_name=running_lab_name)\n"
     text = _replace_once(text, init, init + "        " + force)
     return _replace_once(text, _LAB_GRADE, _STATE_WITH_INSTRUCTOR_TEXT + _LAB_GRADE + "        " + force)
+
+
+_LAB_STATES = ("    @sre_state(user_allowed=True, description='Break the route')\n"
+               "    def broken(self):\n"
+               "        pass\n\n"
+               "    @sre_state(description='Apply the solution')\n"
+               "    def final(self):\n"
+               "        pass\n\n\n")
+
+
+def _with_states(allow_user_states: bool):
+    """The lab with a user-allowed state (`broken`) and one reserved to privileged users (`final`)."""
+    def transform(text: str) -> str:
+        text = _replace_once(text, _LAB_IMPORT,
+                             _LAB_IMPORT.replace("make_tr", "make_tr, sre_state")
+                             + ("allow_user_states = True\n" if allow_user_states else ""))
+        return _replace_once(text, _LAB_GRADE, _LAB_STATES + _LAB_GRADE)
+    return transform
+
+
+def _apply_state(running_lab_name: str, state: str):
+    from SRE.command.state import action_state
+    params.SRE.args.running_lab = running_lab_name
+    params.SRE.args.state = state
+    action_state()
 
 
 def _raw_info(running_lab_name: str) -> str:
@@ -1112,3 +1142,80 @@ class TestInstructorMode:
         assert not any(has_instructor(text) for text in _info_texts(info))
         for secret in ('Solution', 'expected', 'Any notation', 'The mask is 24'):
             assert secret not in _raw_info(normal_project)
+
+    # -- states: every state can be applied to a project in instructor mode, as to a debug project
+
+    BROKEN = {'broken': {'en': 'Break the route'}}
+    FINAL = {'final': {'en': 'Apply the solution'}}
+
+    def test_instructor_project_lists_every_state(self, instructor_env, tmp_path, monkeypatch):
+        """info.json lists every state but the lifecycle ones; those a student could not apply
+        are in admin_only_states (the GUI shows them only while the button is on)."""
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'states_normal.py', _with_states(True))
+        info = _info(_start_instructor_lab(False, lab))
+        assert info['user_allowed_states'] == self.BROKEN and info['admin_only_states'] == []
+
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'states_instructor.py', _with_states(True))
+        info = _info(_start_instructor_lab(True, lab))
+        assert info['user_allowed_states'] == {**self.BROKEN, **self.FINAL}
+        assert info['admin_only_states'] == ['final']
+        assert not set(params.lifecycle_state_names) & set(info['user_allowed_states'])
+
+    def test_instructor_project_of_a_lab_without_user_states(self, instructor_env, tmp_path, monkeypatch):
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'no_user_states_normal.py', _with_states(False))
+        info = _info(_start_instructor_lab(False, lab))
+        assert info['user_allowed_states'] == {} and info['admin_only_states'] == []
+
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'no_user_states_instructor.py', _with_states(False))
+        info = _info(_start_instructor_lab(True, lab))
+        assert info['user_allowed_states'] == {**self.BROKEN, **self.FINAL}
+        assert info['admin_only_states'] == ['broken', 'final']
+
+    def test_set_and_remove_switch_the_listed_states(self, instructor_env, mock_sre_args, tmp_path, monkeypatch):
+        from SRE.command.instructor_mode import action_remove_instructor_mode, action_set_instructor_mode
+        rln = _start_instructor_lab(False, _instructor_lab_copy(tmp_path, monkeypatch, 'states.py', _with_states(True)))
+        mock_sre_args.running_lab = rln
+        action_set_instructor_mode()
+        assert _info(rln)['user_allowed_states'] == {**self.BROKEN, **self.FINAL}
+        assert _info(rln)['admin_only_states'] == ['final']
+        action_remove_instructor_mode()
+        assert _info(rln)['user_allowed_states'] == self.BROKEN and _info(rln)['admin_only_states'] == []
+
+    def test_user_mode_applies_any_state_of_an_instructor_project(self, instructor_env, mock_sre_args,
+                                                                  tmp_path, monkeypatch, capsys):
+        """`sre --user state` (what the GUI runs): a state reserved to privileged users is refused
+        on a normal project and applied on a project in instructor mode."""
+        normal = _start_instructor_lab(False, _instructor_lab_copy(tmp_path, monkeypatch, 'a.py', _with_states(True)))
+        instructor_project = _start_instructor_lab(
+            True, _instructor_lab_copy(tmp_path, monkeypatch, 'b.py', _with_states(True)))
+        mock_sre_args.user = True
+
+        _apply_state(normal, 'broken')
+        with pytest.raises(SystemExit):
+            _apply_state(normal, 'final')
+        assert "state 'final' is not allowed in user mode" in capsys.readouterr().err
+
+        _apply_state(instructor_project, 'broken')
+        _apply_state(instructor_project, 'final')
+        log = Path(params.operations_log_filename(instructor_project)).read_text()
+        assert '  state broken\n' in log and '  state final\n' in log
+        with pytest.raises(SystemExit):
+            _apply_state(instructor_project, 'nosuchstate')
+        assert "unknown state 'nosuchstate'" in capsys.readouterr().err
+
+    def test_user_mode_and_a_lab_without_user_states(self, instructor_env, mock_sre_args, tmp_path,
+                                                     monkeypatch, capsys):
+        from SRE.command.instructor_mode import action_remove_instructor_mode
+        rln = _start_instructor_lab(True, _instructor_lab_copy(tmp_path, monkeypatch, 'c.py', _with_states(False)))
+        mock_sre_args.user = True
+        _apply_state(rln, 'final')
+        _apply_state(rln, 'broken')
+
+        mock_sre_args.user = False
+        mock_sre_args.running_lab = rln
+        action_remove_instructor_mode()
+        mock_sre_args.user = True
+        for state in ('broken', 'final'):
+            with pytest.raises(SystemExit):
+                _apply_state(rln, state)
+            assert 'state changes are not allowed in user mode for this lab' in capsys.readouterr().err

@@ -41,10 +41,10 @@ During an exam, **Open Project** is disabled — only pre-authorised exam labs o
 
 A project in instructor mode (`sre start --instructor-mode`, `sre restore --instructor-mode` or `sre set-instructor-mode`, all privileged) adds a checkable **Instructor mode** button (mortarboard icon) at the left of the Wrap / Settings / Language buttons. The button is visible only while the current tab is such a project; it is off when the GUI starts and its state is not saved.
 
-| Button | Informations / Questions | Log tab |
-|--------|--------------------------|---------|
-| off | Exactly what a student sees: the `instructor()` texts are not displayed. | Hidden. |
-| on | The `instructor()` texts are displayed in colour (`params.instructor_text_color` on `params.instructor_background_color`, or the colours given by the lab). | Shown, with what each applied state executed (no evaluation). |
+| Button | Informations / Questions | Apply Configuration | Log tab |
+|--------|--------------------------|---------------------|---------|
+| off | Exactly what a student sees: the `instructor()` texts are not displayed. | Only the states a student may apply (the tab is hidden when there is none). | Hidden. |
+| on | The `instructor()` texts are displayed in colour (`params.instructor_text_color` on `params.instructor_background_color`, or the colours given by the lab). | Every state of the lab, those reserved to the instructor in red. | Shown, with what each applied state executed (no evaluation). |
 
 The button applies to every open project in instructor mode. Switching the mode of an open project with `sre set-instructor-mode` / `sre remove-instructor-mode` is picked up within a second.
 

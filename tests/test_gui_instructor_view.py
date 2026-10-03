@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from SRE import params  # noqa: E402
 from SRE.instructor_text import instructor, set_instructor_context  # noqa: E402
+from sysreseval.view.apply_config_view import ApplyConfigView  # noqa: E402
 from sysreseval.view.form_question_widget import FormQuestionWidget  # noqa: E402
 from sysreseval.view.information_view import InformationsView  # noqa: E402
 from sysreseval.view.questions_view import QuestionsView  # noqa: E402
@@ -119,11 +120,51 @@ class TestFormQuestionWidget:
         assert 'SREINSTRUCTOR' not in first.toPlainText() + second.toPlainText()
 
 
-def _write_info(project_dir: Path, texts, instructor_mode: bool):
+# what info.json holds for a debug or instructor-mode project: every state, and the list of
+# those a student could not apply
+STATES = {"broken": {"en": "Break the route"}, "final": {"en": "Apply the solution"}}
+BROKEN, FINAL = "Break the route", "Apply the solution"
+
+
+def _listed(view: ApplyConfigView) -> list:
+    return [view._table.item(row, 0).text() for row in range(view._table.rowCount())]
+
+
+class TestApplyConfigView:
+    def test_everything_listed_by_default(self):
+        """Debug projects: unchanged."""
+        view = ApplyConfigView(STATES, RUNNING, admin_only_states=['final'])
+        assert _listed(view) == [BROKEN, FINAL] and view.has_states()
+        assert view._table.item(1, 0).foreground().color().name() == '#ff0000'
+
+    def test_admin_only_states_listed_on_request(self):
+        view = ApplyConfigView(STATES, RUNNING, admin_only_states=['final'], show_admin_only=False)
+        assert _listed(view) == [BROKEN] and view.has_states()
+        view.set_show_admin_only(True)
+        assert _listed(view) == [BROKEN, FINAL]
+        assert view._table.item(1, 0).foreground().color().name() == '#ff0000'
+        view.set_show_admin_only(False)
+        assert _listed(view) == [BROKEN]
+
+    def test_nothing_to_list_when_every_state_is_admin_only(self):
+        view = ApplyConfigView(STATES, RUNNING, admin_only_states=['broken', 'final'], show_admin_only=False)
+        assert _listed(view) == [] and not view.has_states()
+        view.set_show_admin_only(True)
+        assert _listed(view) == [BROKEN, FINAL] and view.has_states()
+
+    def test_new_data_and_language_keep_the_choice(self):
+        view = ApplyConfigView({}, RUNNING, show_admin_only=False)
+        view.update_data(STATES, admin_only_states=['final'])
+        assert _listed(view) == [BROKEN]
+        view.set_language_priority(['fr', 'en'])
+        assert _listed(view) == [BROKEN]
+
+
+def _write_info(project_dir: Path, texts, instructor_mode: bool, **fields):
     (project_dir / params.info_json_name).write_text(json.dumps({
         "lab_name": "test", "machines": [], "instructor_mode": instructor_mode,
         "informations": texts['informations'] if instructor_mode else "Public text.",
-        "questions": _questions(texts) if instructor_mode else []}))
+        "questions": _questions(texts) if instructor_mode else [], **fields}))
 
 
 @LINUX_ONLY
@@ -145,6 +186,63 @@ class TestProjectWidget:
         widget.set_instructor_view(False)
         assert 'Solution' not in widget._info_view.toPlainText()
         assert widget._questions_view.list_widget.item(0).text() == "Gateway"
+
+    def _apply_tab_visible(self, widget) -> bool:
+        return widget._tabs.isTabVisible(widget._tabs.indexOf(widget._apply_config_view))
+
+    def test_states_follow_the_button(self, project_dir, texts):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, True, user_allowed_states=STATES, admin_only_states=['final'])
+        widget = ProjectWidget(project_dir)
+        assert self._apply_tab_visible(widget) and _listed(widget._apply_config_view) == [BROKEN]
+        widget.set_instructor_view(True)
+        assert self._apply_tab_visible(widget) and _listed(widget._apply_config_view) == [BROKEN, FINAL]
+        widget.set_instructor_view(False)
+        assert _listed(widget._apply_config_view) == [BROKEN]
+
+    def test_apply_tab_comes_with_the_button_when_no_state_is_user_allowed(self, project_dir, texts):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, True, user_allowed_states=STATES, admin_only_states=['broken', 'final'])
+        widget = ProjectWidget(project_dir)
+        assert not self._apply_tab_visible(widget)
+        widget.set_instructor_view(True)
+        assert self._apply_tab_visible(widget) and _listed(widget._apply_config_view) == [BROKEN, FINAL]
+        widget.set_exam_mode(True)      # like a debug project, the instructor's tab stays
+        assert self._apply_tab_visible(widget)
+        widget.set_exam_mode(False)
+        widget.set_instructor_view(False)
+        assert not self._apply_tab_visible(widget)
+
+    def test_states_of_a_mode_set_on_a_running_project(self, project_dir, texts):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, False, user_allowed_states={"broken": STATES["broken"]},
+                    admin_only_states=[])
+        widget = ProjectWidget(project_dir)
+        widget.set_instructor_view(True)
+        assert _listed(widget._apply_config_view) == [BROKEN]
+        os.utime(project_dir / params.info_json_name, (1, 1))
+        _write_info(project_dir, texts, True, user_allowed_states=STATES, admin_only_states=['final'])
+        assert widget.refresh() is True
+        assert _listed(widget._apply_config_view) == [BROKEN, FINAL]
+
+    def test_debug_project_lists_every_state_whatever_the_button(self, project_dir, texts):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, False, debug_project=True, user_allowed_states=STATES,
+                    admin_only_states=['final'])
+        widget = ProjectWidget(project_dir)
+        assert self._apply_tab_visible(widget) and _listed(widget._apply_config_view) == [BROKEN, FINAL]
+        widget.set_instructor_view(True)
+        widget.set_instructor_view(False)
+        assert _listed(widget._apply_config_view) == [BROKEN, FINAL]
+
+    def test_normal_project_states_and_exam_mode(self, project_dir, texts):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, False, user_allowed_states={"broken": STATES["broken"]},
+                    admin_only_states=[])
+        widget = ProjectWidget(project_dir)
+        assert self._apply_tab_visible(widget) and _listed(widget._apply_config_view) == [BROKEN]
+        widget.set_exam_mode(True)
+        assert not self._apply_tab_visible(widget)
 
     def test_mode_set_on_a_running_project_is_picked_up(self, project_dir, texts):
         from sysreseval.project_widget import ProjectWidget
