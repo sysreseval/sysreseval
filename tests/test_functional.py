@@ -13,6 +13,7 @@ MagicMock stub already installed by conftest.py.
 """
 import io
 import json
+import os
 import shutil
 import stat
 import tarfile
@@ -340,6 +341,30 @@ class TestEval:
 # ---------------------------------------------------------------------------
 # Tests: stop removes project
 # ---------------------------------------------------------------------------
+
+class TestArchiveDirCreation:
+    def test_dir_created_meanwhile_by_another_evaluation(self, started_lab, monkeypatch):
+        """Evaluations running at once (`sre eval-all`) may all find the archive directory
+        missing: the ones that lose the race to create it must still save their archive."""
+        archives_dir = Path(params.archive_dirs[0]).resolve()
+        assert not archives_dir.exists()
+        real_exists = Path.exists
+
+        def exists(self, *args, **kwargs):
+            if self == archives_dir and not real_exists(self):
+                os.mkdir(self, 0o700)  # another evaluation creates it right after our check
+                return False
+            return real_exists(self, *args, **kwargs)
+        monkeypatch.setattr(Path, 'exists', exists)
+
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=started_lab, print_result=False)
+        assert len(list(archives_dir.iterdir())) == 1
+
+    def test_dir_is_created_private(self, evaled_lab):
+        archives_dir = Path(params.archive_dirs[0])
+        assert stat.S_IMODE(archives_dir.stat().st_mode) == 0o700
+
 
 class TestStop:
 
