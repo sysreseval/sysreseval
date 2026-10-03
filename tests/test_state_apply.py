@@ -256,6 +256,14 @@ class TestOperationsLogApply:
         _run(ApplyScheme(MockData()), 'single', {'m1': FakeMachine(), 'm2': FakeMachine()})
         assert not Path(params.operations_log_filename(RUNNING_LAB)).exists()
 
+    def test_instructor_mode_logs_the_state(self, tmp_pub_dir):
+        from test_operations_log import make_instructor_project
+        log_path = make_instructor_project(RUNNING_LAB)
+        _run(ApplyScheme(MockData()), 'single', {'m1': FakeMachine({'echo a': ('a\n', 0)}), 'm2': FakeMachine()})
+        lines = log_path.read_text().split('\n')
+        assert lines[0].startswith('=== ') and lines[0].endswith('  state single')
+        assert 'step1 - on m1 : echo a' in lines
+
     def test_single_pass_entries(self, tmp_pub_dir):
         s, log_path = self._debug_scheme()
         m1 = FakeMachine({'echo a': ('a\n', 0)})

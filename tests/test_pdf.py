@@ -47,6 +47,11 @@ class TestMarkdownToHtml:
         assert '<pre><code>mount &lt;serveur&gt;:/export' in html
         assert '<table>' in html
 
+    def test_instructor_fragments_are_left_out(self):
+        from SRE.instructor_text import instructor, set_instructor_context
+        set_instructor_context(True)
+        assert markdown_to_html(instructor("**secret** ") + "public") == '<p>public</p>'
+
 
 @needs_fonts
 class TestUnicodeFonts:

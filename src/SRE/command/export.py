@@ -15,6 +15,7 @@ from graphviz import Graph
 
 from .. import params
 from ..common import InfoLab, QuestionType, TranslatedText
+from ..instructor_text import strip_instructor
 from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp
 from ..pdf import SrePDF, markdown_to_html
 from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, error_quit
@@ -220,7 +221,8 @@ def _build_info_pdf(running_lab_name: str) -> bytes:
     lang = _resolve_lang(running_lab_name, info_lab)
 
     def _r(v) -> str:
-        return TranslatedText.from_value(v).resolve(lang)
+        # the exported PDF is the student's document: no instructor fragment
+        return strip_instructor(TranslatedText.from_value(v).resolve(lang))
 
     pdf = SrePDF()
     pdf.set_margins(20, 20, 20)

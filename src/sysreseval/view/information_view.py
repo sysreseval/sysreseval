@@ -1,14 +1,8 @@
-import markdown as _md
-
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QTextBrowser, QTextEdit
 
+from SRE.instructor_text import markdown_to_html
 from sysreseval import settings
-
-
-def _to_html(text: str) -> str:
-    import textwrap
-    return _md.markdown(textwrap.dedent(text).strip(), extensions=["fenced_code", "tables"])
 
 
 class InformationsView(QTextBrowser):
@@ -16,6 +10,7 @@ class InformationsView(QTextBrowser):
         super().__init__(parent)
         self.setOpenExternalLinks(True)
         self._markdown_text = markdown_text
+        self._show_instructor = False  # instructor fragments drawn (instructor mode, button on)
         self._font_size = settings.get_content_font_size()
         self._render()
         settings.add_content_font_size_listener(self._on_font_size_changed)
@@ -24,7 +19,7 @@ class InformationsView(QTextBrowser):
         font = self.document().defaultFont()
         font.setPointSize(self._font_size)
         self.document().setDefaultFont(font)
-        self.setHtml(_to_html(self._markdown_text))
+        self.setHtml(markdown_to_html(self._markdown_text, show_instructor=self._show_instructor))
 
     def _on_font_size_changed(self, size: int):
         self._font_size = size
@@ -36,6 +31,11 @@ class InformationsView(QTextBrowser):
     def update_data(self, markdown_text: str):
         self._markdown_text = markdown_text
         self._render()
+
+    def set_instructor_view(self, show: bool):
+        if show != self._show_instructor:
+            self._show_instructor = show
+            self._render()
 
     def set_word_wrap(self, checked: bool):
         self.setLineWrapMode(

@@ -1,5 +1,6 @@
 """Tests for export.py: lab.conf generation, file collection logic and informations.pdf."""
 import io
+import json
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -305,6 +306,39 @@ class TestBuildInfoPdf:
 
     def test_missing_info_file(self, tmp_pub_dir):
         assert _build_info_pdf(RUNNING_LAB) == b''
+
+    def test_instructor_fragments_are_left_out(self, tmp_pub_dir, monkeypatch):
+        """`sre export` of a project in instructor mode: informations.pdf is the student's document."""
+        from SRE.command import export as export_cmd
+        from SRE.instructor_text import has_instructor, instructor, set_instructor_context
+        set_instructor_context(True)
+        info = InfoLab(
+            lab_name='test/mylab', lab_hash='abc123',
+            title=TranslatedText.from_value('Lab'),
+            informations=TranslatedText.from_value(instructor("## SECRET notes\n\n") + "Public text"),
+            export_kathara_project=True, allow_self_grade=True, machines=[],
+            questions=[QuestionText(title="Question" + instructor(" SECRET"),
+                                    description="Public description" + instructor(" SECRET"), order=1)],
+            delay_between_self_grade=60, eval_interval_without_exam_mode=0, eval_before_exit=False,
+            user_allowed_states={}, instructor_mode=True,
+        )
+        path = Path(params.info_filename(RUNNING_LAB))
+        path.parent.mkdir(parents=True)
+        path.write_text(info.to_json())
+        assert has_instructor(json.loads(path.read_text())['informations'])
+
+        written = []
+        for name in ('cell', 'multi_cell', 'write_html'):
+            original = getattr(export_cmd.SrePDF, name)
+
+            def spy(self, *args, _original=original, **kwargs):
+                written.append(' '.join(str(arg) for arg in args))
+                return _original(self, *args, **kwargs)
+            monkeypatch.setattr(export_cmd.SrePDF, name, spy)
+        assert _build_info_pdf(RUNNING_LAB).startswith(b'%PDF')
+        text = '\n'.join(written)
+        assert 'Public text' in text and 'Question' in text and 'Public description' in text
+        assert 'SECRET' not in text and not has_instructor(text)
 
 
 # ---------------------------------------------------------------------------

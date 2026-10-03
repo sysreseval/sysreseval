@@ -100,6 +100,9 @@ def action_start():
         error_quit("--set-flavor-name is not available in user mode")
     if getattr(SRE.args, 'debug_project', False) and in_user_mode():
         error_quit("--debug-project is not available in user mode")
+    instructor_mode = bool(getattr(SRE.args, 'instructor_mode', False))
+    if instructor_mode and in_user_mode():
+        error_quit("--instructor-mode is not available in user mode")
     xauth_file = getattr(SRE.args, 'xauth_file', None)
     if xauth_file is not None:
         if in_user_mode():
@@ -116,15 +119,16 @@ def action_start():
         if SRE.args.user is True:
             error_quit("--user and --path options are mutually exclusive")
         do_action_start(lab_cli_arg=SRE.args.lab, lab_cli_arg_is_path=True, data_file=SRE.args.data,
-                        register_progress=True)
+                        register_progress=True, instructor_mode=instructor_mode)
     else:
         do_action_start(lab_cli_arg=SRE.args.lab, lab_cli_arg_is_path=False, data_file=SRE.args.data,
-                        register_progress=True)
+                        register_progress=True, instructor_mode=instructor_mode)
 
 
 def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
                     data_file=None, register_progress=False, flavor_name=None,
-                    multi_project : bool = False, skip_flavor_form_at_startup: bool = False):
+                    multi_project : bool = False, skip_flavor_form_at_startup: bool = False,
+                    instructor_mode: bool = False):
     if lab_cli_arg_is_path:
         module_rvlab, lab_name, _, current_srelab_file = set_lab_dir_and_import_module(start_projet=True,
                                                                                        lab_cli_arg=None,
@@ -226,7 +230,8 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
     setup = ProjectSetup(running_lab_name=running_lab_name)
     try:
         create_project_directories(setup, module_rvlab, current_srelab_file,
-                                   debug_project=bool(getattr(SRE.args, 'debug_project', False)))
+                                   debug_project=bool(getattr(SRE.args, 'debug_project', False)),
+                                   instructor_mode=instructor_mode)
 
         net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)
         setup.net_scheme = net_scheme
@@ -270,9 +275,11 @@ def check_grade_class(module_rvlab, current_srelab_file):
         error_quit(f"'{current_srelab_file}': Grade class must define a grade() method")
 
 
-def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab_file, debug_project: bool):
+def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab_file, debug_project: bool,
+                               instructor_mode: bool = False):
     """Create the on-disk layout of a new project (public/private dirs, answers, files,
-    srelab symlink, user public dir, shared dir).  Fills ``setup`` as it goes."""
+    srelab symlink, user public dir, shared dir, debug / instructor-mode markers).  Fills
+    ``setup`` as it goes."""
     running_lab_name = setup.running_lab_name
     os.makedirs(params.sre_projects_dir, mode=0o755, exist_ok=True)
 
@@ -293,6 +300,8 @@ def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab
 
     if debug_project:
         Path(params.debug_project_marker_filename(running_lab_name)).touch(mode=0o600)
+    if instructor_mode:
+        Path(params.instructor_mode_marker_filename(running_lab_name)).touch(mode=0o600)
 
     files_dir = params.files_dir(running_lab_name)
     try:

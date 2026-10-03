@@ -31,11 +31,22 @@ During an exam, **Open Project** is disabled — only pre-authorised exam labs o
 | **Questions** | Three types: `question_text` (free text), `question_form` (inline `@@{field:regex}@@` or `@@{field:>opt1\|opt2}@@`), `question_dummy` (display only). Persisted to `answers/answers.json` on every edit. |
 | **Evaluation** | Last grade table + *Start evaluation* button. Letter grades (OK/MEH/FAIL) appear when the lab sets `no_mark_on_self_grade`. A countdown replaces the button while `delay_between_self_grade` is active. |
 | **Terminals** | Embedded terminals per machine, launched via `params.terminal_cmd_prefix`. |
-| **Log** | Debug projects only (`sre start --debug-project`). Live tail of the project's `operations.log`: one `=== <time>  state <name>` / `=== <time>  evaluation` header per run, then one `stepN - on <machine|host> : <operation>` line per operation executed (`cmd()`, `file()`, `append_to_file()`, `cp_from_host()`, `host_cmd()`, state files pushed, evaluation tests...), with the command output indented below it and its exit code last. File operations are followed by the content they wrote (text, capped; `(binary content not shown)` otherwise). An evaluation ends with one `grade - [<part>] <title> : <grade> / <max>` line per grade element and the two `total - self-eval` / `total - exo-eval` lines with the marks. *Clear* empties the display only. |
+| **Log** | Debug projects (`sre start --debug-project`), and instructor-mode projects while the *Instructor mode* button is on (states only). Live tail of the project's `operations.log`: one `=== <time>  state <name>` / `=== <time>  evaluation` header per run, then one `stepN - on <machine|host> : <operation>` line per operation executed (`cmd()`, `file()`, `append_to_file()`, `cp_from_host()`, `host_cmd()`, state files pushed, evaluation tests...), with the command output indented below it and its exit code last. File operations are followed by the content they wrote (text, capped; `(binary content not shown)` otherwise). An evaluation ends with one `grade - [<part>] <title> : <grade> / <max>` line per grade element and the two `total - self-eval` / `total - exo-eval` lines with the marks. *Clear* empties the display only. |
 
 `answers/answers.json` also carries metadata (`hostname`, `login`, `fullname`, `email`, `language`, `answers_updated_at`, plus `exam_*` fields in exam mode); see [Archive format](internals.md#archive-format) for the full schema.
 
 *Start evaluation* runs `sre eval --auto-eval` in a background thread. The periodic background eval (`eval_interval_without_exam_mode`) and `eval_before_exit` run plain `sre eval` (no cooldown, no log line, no stdout).
+
+## Instructor mode
+
+A project in instructor mode (`sre start --instructor-mode`, `sre restore --instructor-mode` or `sre set-instructor-mode`, all privileged) adds a checkable **Instructor mode** button (mortarboard icon) at the left of the Wrap / Settings / Language buttons. The button is visible only while the current tab is such a project; it is off when the GUI starts and its state is not saved.
+
+| Button | Informations / Questions | Log tab |
+|--------|--------------------------|---------|
+| off | Exactly what a student sees: the `instructor()` texts are not displayed. | Hidden. |
+| on | The `instructor()` texts are displayed in colour (`params.instructor_text_color` on `params.instructor_background_color`, or the colours given by the lab). | Shown, with what each applied state executed (no evaluation). |
+
+The button applies to every open project in instructor mode. Switching the mode of an open project with `sre set-instructor-mode` / `sre remove-instructor-mode` is picked up within a second.
 
 ## Exam mode
 

@@ -194,7 +194,59 @@ class TestInfoLab:
         del d['allow_save_restore']
         assert InfoLab.from_json(json.dumps(d)).allow_save_restore is False
 
+    def test_instructor_mode_default_false(self):
+        lab = _make_info_lab()
+        assert lab.instructor_mode is False
+        assert InfoLab.from_json(lab.to_json()).instructor_mode is False
+        # absent from an older info.json → False
+        d = json.loads(lab.to_json())
+        del d['instructor_mode']
+        assert InfoLab.from_json(json.dumps(d)).instructor_mode is False
+
+    def test_instructor_mode_roundtrip(self):
+        lab = _make_info_lab()
+        lab.instructor_mode = True
+        assert InfoLab.from_json(lab.to_json()).instructor_mode is True
+
     def test_allow_save_restore_roundtrip(self):
         lab = _make_info_lab()
         lab.allow_save_restore = True
         assert InfoLab.from_json(lab.to_json()).allow_save_restore is True
+
+
+# ---------------------------------------------------------------------------
+# Question hashes and instructor() fragments
+# ---------------------------------------------------------------------------
+
+class TestInstructorFragmentsInHashes:
+    """A question hash ignores the instructor() fragments of its texts: it is the same in and
+    out of the instructor mode, so the stored answers stay attached when the mode changes."""
+
+    TITLE = {'en': 'Gateway', 'fr': 'Passerelle'}
+    NOTE = {'en': ' (expected: 10.0.0.1)', 'fr': ' (attendu : 10.0.0.1)'}
+
+    def _texts(self, instructor_mode: bool):
+        from SRE.instructor_text import instructor, set_instructor_context
+        set_instructor_context(instructor_mode)
+        title = TranslatedText(self.TITLE) + instructor(TranslatedText(self.NOTE))
+        description = instructor('Hint.\n\n') + 'Answer: @@{x:[0-9]+}@@'
+        return title, description
+
+    def test_texts_differ_between_the_modes(self):
+        assert self._texts(True) != self._texts(False)
+
+    def test_question_text(self):
+        hashes = {QuestionText(*self._texts(mode)).question_hash for mode in (True, False)}
+        assert hashes == {QuestionText(TranslatedText(self.TITLE), '').question_hash}
+
+    def test_question_form(self):
+        hashes = {QuestionForm(*self._texts(mode)).question_hash for mode in (True, False)}
+        assert len(hashes) == 1
+
+    def test_question_dummy(self):
+        hashes = {QuestionDummy(*self._texts(mode)).question_hash for mode in (True, False)}
+        assert len(hashes) == 1
+
+    def test_public_text_still_counts(self):
+        title, description = self._texts(True)
+        assert QuestionForm(title, description).question_hash != QuestionForm(title, 'other').question_hash

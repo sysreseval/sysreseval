@@ -34,6 +34,7 @@ class ProjectWidget(QWidget):
         self.project_dir = project_dir
         self.info = load_info(project_dir)
         self._lang_priority = settings.get_language_priority()
+        self._instructor_view = False  # state of the main window's "Instructor mode" button
 
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
@@ -82,7 +83,8 @@ class ProjectWidget(QWidget):
         )
         tabs.addTab(self._apply_config_view, self.tr("Apply Configuration"))
 
-        # debug projects only: tail of the operations log written by `sre state` / `sre eval`
+        # debug projects, and instructor-mode projects while the "Instructor mode" button is on:
+        # tail of the operations log written by `sre state` / `sre eval`
         self._log_view = LogView(project_dir / params.operations_log_name)
         tabs.addTab(self._log_view, self.tr("Log"))
 
@@ -117,6 +119,20 @@ class ProjectWidget(QWidget):
         self._info_view.set_word_wrap(checked)
         self._questions_view.set_word_wrap(checked)
 
+    def _instructor_shown(self) -> bool:
+        """True when this project is in instructor mode and the "Instructor mode" button is on."""
+        return self._instructor_view and bool(self.info.get("instructor_mode", False))
+
+    def set_instructor_view(self, checked: bool):
+        self._instructor_view = checked
+        self._apply_instructor_view()
+
+    def _apply_instructor_view(self):
+        shown = self._instructor_shown()
+        self._info_view.set_instructor_view(shown)
+        self._questions_view.set_instructor_view(shown)
+        self._update_log_visibility()
+
     def set_language_priority(self, priority: list):
         self._lang_priority = priority
         self._info_view.update_data(self._resolve_tt(self.info.get("informations", "")))
@@ -141,7 +157,7 @@ class ProjectWidget(QWidget):
         self._tabs.setTabVisible(self._tabs.indexOf(self._apply_config_view), visible)
 
     def _update_log_visibility(self):
-        visible = bool(self.info.get("debug_project", False))
+        visible = bool(self.info.get("debug_project", False)) or self._instructor_shown()
         self._tabs.setTabVisible(self._tabs.indexOf(self._log_view), visible)
 
     def set_exam_mode(self, active: bool):
@@ -198,9 +214,9 @@ class ProjectWidget(QWidget):
             except Exception:
                 pass
 
-        # Tail the operations log of a debug project on every tick (the file grows while a state
-        # or an evaluation runs, independently of info.json)
-        if self.info.get("debug_project", False):
+        # Tail the operations log of a debug or instructor-mode project on every tick (the file
+        # grows while a state or an evaluation runs, independently of info.json)
+        if self.info.get("debug_project", False) or self.info.get("instructor_mode", False):
             self._log_view.refresh()
 
         info_path = self.project_dir / params.info_json_name
@@ -233,7 +249,7 @@ class ProjectWidget(QWidget):
                                             admin_only_states=self.info.get("admin_only_states", []))
         self._update_eval_visibility()
         self._update_apply_config_visibility()
-        self._update_log_visibility()
+        self._apply_instructor_view()
         new_interval = self.info.get("eval_interval_without_exam_mode", 0)
         if new_interval != self._bg_eval_interval:
             self._bg_eval_interval = new_interval

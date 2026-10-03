@@ -94,9 +94,10 @@ class TestLogView:
         assert view.plain_text() == "b\n"
 
 
-def _write_info(project_dir: Path, debug_project: bool):
+def _write_info(project_dir: Path, debug_project: bool, instructor_mode: bool = False):
     (project_dir / params.info_json_name).write_text(json.dumps({
-        "lab_name": "test", "machines": [], "questions": [], "debug_project": debug_project}))
+        "lab_name": "test", "machines": [], "questions": [], "debug_project": debug_project,
+        "instructor_mode": instructor_mode}))
 
 
 @pytest.mark.skipif(sys.platform != 'linux', reason="ProjectWidget's sibling views load libc.so.6: Linux only")
@@ -131,3 +132,35 @@ class TestProjectWidgetLogTab:
         _write_info(project_dir, True)
         assert widget.refresh() is True
         assert self._log_tab_visible(widget)
+
+    def test_instructor_project_shows_log_tab_while_the_button_is_on(self, project_dir):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, False, instructor_mode=True)
+        (project_dir / params.operations_log_name).write_text("=== t  state initial\n")
+        widget = ProjectWidget(project_dir)
+        assert not self._log_tab_visible(widget)
+        widget.set_instructor_view(True)
+        assert self._log_tab_visible(widget)
+        assert widget._log_view.plain_text() == "=== t  state initial\n"
+        _append(project_dir / params.operations_log_name, b"step1 - on m1 : true\n    exit code 0\n")
+        widget.refresh()
+        assert widget._log_view.plain_text().endswith("    exit code 0\n")
+        widget.set_instructor_view(False)
+        assert not self._log_tab_visible(widget)
+
+    def test_button_does_nothing_on_a_normal_project(self, project_dir):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, False)
+        widget = ProjectWidget(project_dir)
+        widget.set_instructor_view(True)
+        assert not self._log_tab_visible(widget)
+        # info.json rewritten by `sre set-instructor-mode` → the tab appears, the button being on
+        os.utime(project_dir / params.info_json_name, (1, 1))
+        _write_info(project_dir, False, instructor_mode=True)
+        assert widget.refresh() is True
+        assert self._log_tab_visible(widget)
+        # ... and disappears with `sre remove-instructor-mode`
+        os.utime(project_dir / params.info_json_name, (1, 1))
+        _write_info(project_dir, False)
+        assert widget.refresh() is True
+        assert not self._log_tab_visible(widget)

@@ -185,6 +185,16 @@ terminal_color_scheme = "black_on_white"  # "white_on_black" or "black_on_white"
 content_font_size = 12  # font size in points for information/questions views
 system_font_size = 10  # font size in points for menus, titles, labels
 
+# Instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`): default colours of the
+# texts wrapped in instructor(); a call may override them (instructor(text, color=, background=))
+instructor_text_color = "#b00020"
+instructor_background_color = "#ffe3e3"
+# Delimiters of an instructor fragment inside a text of info.json (private-use characters):
+# <begin><color>;<background><args end><content><end>
+instructor_begin_mark = "\ue000"
+instructor_args_end_mark = "\ue001"
+instructor_end_mark = "\ue002"
+
 graphicdir = main_sre_dir + "/graphics"
 thats_all_folks_svg = graphicdir + "/Thats_all_folks.svg"
 sysreseval_logo_svg = graphicdir + "/sysreseval.svg"
@@ -251,8 +261,10 @@ use_asciinema_for_records = True  # True: prefer asciinema (fall back to script 
 eval_in_progress_name = "eval_in_progress"
 auto_eval_log_name = "auto_eval.log"
 debug_project_marker_name = "debug_project"
-# Operations log of debug projects (GUI "Log" tab): every `sre state` / `sre eval` appends what it
-# executed; lives in the public project dir, never written for non-debug projects
+instructor_mode_marker_name = "instructor_mode"
+# Operations log (GUI "Log" tab): every `sre state` / `sre eval` of a debug project appends what it
+# executed, every `sre state` of an instructor-mode project too; lives in the public project dir,
+# never written for the other projects
 operations_log_name = "operations.log"
 operations_log_max_output_chars = 16384  # per command output written to operations.log
 operations_log_view_max_lines = 100000   # block cap of the GUI Log tab
@@ -457,6 +469,10 @@ def auto_eval_log_filename(running_lab_name: str) -> str:
 
 def debug_project_marker_filename(running_lab_name: str) -> str:
     return f"{private_lab_dir(running_lab_name)}/{debug_project_marker_name}"
+
+
+def instructor_mode_marker_filename(running_lab_name: str) -> str:
+    return f"{private_lab_dir(running_lab_name)}/{instructor_mode_marker_name}"
 
 
 def operations_log_filename(running_lab_name: str) -> str:

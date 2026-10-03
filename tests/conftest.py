@@ -35,9 +35,20 @@ def mock_sre_args():
     mock = MagicMock()
     mock.user = False
     mock.debug = False
+    mock.instructor_mode = False
     params.SRE.args = mock
     yield mock
     params.SRE.args = None
+
+
+@pytest.fixture(autouse=True)
+def reset_instructor_context():
+    """instructor() follows a thread-local flag set by NetScheme0 / Grade0: every test starts
+    and ends outside the instructor mode."""
+    from SRE.instructor_text import set_instructor_context
+    set_instructor_context(False)
+    yield
+    set_instructor_context(False)
 
 
 @pytest.fixture

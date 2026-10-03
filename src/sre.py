@@ -55,6 +55,7 @@ from SRE.command.end_exam import action_end_exam
 from SRE.command.outline import action_outline
 from SRE.command.save_records import action_save_records
 from SRE.command.preload_images import action_preload_images
+from SRE.command.instructor_mode import action_set_instructor_mode, action_remove_instructor_mode
 from SRE.params import SRE
 
 _CATEGORY_HEADERS = {
@@ -115,6 +116,9 @@ def parse_args():
     parser_start.add_argument('--debug-project', dest='debug_project', action='store_true',
                               help=_('start the project in debug mode (privileged only): exposes all grade scopes, '
                                      'lifts user-mode restrictions, surfaces every machine'))
+    parser_start.add_argument('--instructor-mode', dest='instructor_mode', action='store_true',
+                              help=_('start the project in instructor mode (privileged only): keeps the '
+                                     'instructor() texts of the lab and logs what the states execute'))
     parser_start.add_argument('--xauth-file', metavar='x-authority-file', dest='xauth_file',
                               default=None,
                               help=_('read the X11 magic cookie from this X authority file instead of '
@@ -133,6 +137,8 @@ def parse_args():
                              help=_('save full device images instead of filesystem diffs (privileged only)'))
 
     parser_restore = subparsers.add_parser('restore', help=_('Restore a saved project as a new running project'))
+    parser_restore.add_argument('--instructor-mode', dest='instructor_mode', action='store_true',
+                                help=_('restore the project in instructor mode (privileged only)'))
     parser_restore.add_argument('save_file', metavar='save_file',
                                 help=_("save file created by 'sre save' ('-' reads it from stdin; "
                                        "user mode accepts only '-')"))
@@ -166,6 +172,14 @@ def parse_args():
     parser_exec.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
     parser_exec.add_argument('device', help=_('target device'))
     parser_exec.add_argument('command', nargs=argparse.REMAINDER, help=_('command to execute'))
+
+    parser_set_instructor = subparsers.add_parser(
+        'set-instructor-mode', help=_('Put a running project in instructor mode (privileged only)'))
+    parser_set_instructor.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
+
+    parser_remove_instructor = subparsers.add_parser(
+        'remove-instructor-mode', help=_('Take a running project out of instructor mode (privileged only)'))
+    parser_remove_instructor.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
 
     parser_eval_all = subparsers.add_parser('eval-all', help=_('Evaluate all running projects concurrently'))
     parser_eval_all.add_argument('--display-grades', action=argparse.BooleanOptionalAction,
@@ -389,7 +403,8 @@ if uid == 0:
 if params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
                                                             'eval', 'eval-all',
                                                             'eval-exam', 'state', 'stop', 'wipe', 'del-exam',
-                                                            'save', 'restore'):
+                                                            'save', 'restore',
+                                                            'set-instructor-mode', 'remove-instructor-mode'):
     drop_privileges_temporarily()
 else:
     drop_privileges_permanently()
@@ -454,6 +469,10 @@ match SRE.args.action:
         action_save_records()
     case 'preload-images':
         action_preload_images()
+    case 'set-instructor-mode':
+        action_set_instructor_mode()
+    case 'remove-instructor-mode':
+        action_remove_instructor_mode()
 
 # lab = Lab(name='a', path="/home/etudiant/tp-arp")
 # Kathara.get_instance().deploy_lab(lab)

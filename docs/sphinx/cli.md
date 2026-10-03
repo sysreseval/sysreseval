@@ -19,7 +19,7 @@ Access is restricted to `root`, the `sre` user (`params.sre_uid = 1100`), member
 
 ## Dual commands
 
-### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] <lab> [data_version]`
+### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] [--instructor-mode] <lab> [data_version]`
 
 Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Imports `srelab.py`, runs `Data.generate(flavor)` (or loads `-d data.json`), builds `NetScheme`, pulls images, deploys via Kathara, applies the `initial` state, and writes `info.json` + `scheme.svg`. See [Internals](internals.md) for file-transfer and progress mechanics.
 
@@ -33,6 +33,7 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 | `--flavor-json <json>` | Flavor as JSON dict (used by the GUI). |
 | `--set-flavor-name <name>` | Use a named preset `Flavor` (privileged only). |
 | `--xauth-file <file>` | Read `SRE_XAUTH_COOKIE` from an X authority file instead of the env var (privileged only; for `x11_host=True` machines). |
+| `--instructor-mode` | Start the project in [instructor mode](#sre-set-instructor-mode-running_lab-and-sre-remove-instructor-mode-running_lab) (privileged only). |
 
 ### `sre stop <running_lab>`
 
@@ -49,11 +50,13 @@ Saves a running project into a single save file (`.sre`): the filesystem of ever
 
 In user mode (`--user`, i.e. from the GUI) the file is always written to stdout. When the lab defines `save_key`, the payload is encrypted. See [Save file format](internals.md#save-file-format).
 
-### `sre restore <save_file | ->`
+### `sre restore [--instructor-mode] <save_file | ->`
 
 Restores a save file as a **new** running project (fresh timestamp, current user): loads the lab module named in the header (`allow_save_restore` required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored `data.json` (fresh host ports, X11 cookie, volumes, `/shared`), redeploys the containers from the saved filesystems (`Kathara.restore_lab(…, lab=…)`, same `pull`/`deploy` progress events as `start`), refreshes `exetests.py`, applies the lab's `restore` state and writes `info.json`. On failure everything created so far is rolled back.
 
 `-` reads the save file from stdin — the only form accepted in user mode (the GUI opens the file as the student). Labs referenced by an absolute path (`sre start -p`) can only be restored by privileged users, unless the path lies inside the lab directory (`/opt/sre/lab`), in which case the save file is restored like any other lab of that directory. An encrypted file needs a lab with the same `save_key`; a cleartext file for a lab that defines `save_key` is refused in user mode (accepted with a warning otherwise).
+
+`--instructor-mode` (privileged only) puts the new project in instructor mode. A save file never carries the mode: without the option the restored project is a normal one, whatever the saved project was.
 
 ### `sre wipe`
 
@@ -86,6 +89,17 @@ Applies `NetScheme.<state_name>()` to a running lab. File operations registered 
 ### `sre exec [--shell <shell>] <running_lab> <device> <command…>`
 
 Runs `shell -c <command>` in a container and forwards stdout/stderr/exit code. Default shell is `params.default_exec_shell`.
+
+### `sre set-instructor-mode <running_lab>` and `sre remove-instructor-mode <running_lab>`
+
+Switch the **instructor mode** of a running project (`sre start --instructor-mode` and `sre restore --instructor-mode` set it from the beginning). The mode is meant for the instructor's own project and has two effects:
+
+- the texts the lab wraps in `instructor()` (see [Lab Authoring](lab-authoring.md)) are kept in `info.json`; for any other project they are dropped before the file is written, so students cannot read them;
+- every `sre state` appends what it executed to the project's `operations.log` (evaluations are not logged, unlike in a debug project).
+
+In the GUI both show only while the *Instructor mode* button is on (see [GUI](gui.md)). Nothing else changes: state permissions, hidden machines and grades are those of a normal project.
+
+Both commands write `info.json` again; the question hashes do not depend on the mode, so the answers already given stay attached. `remove-instructor-mode` also deletes `operations.log`, unless the project is a debug project.
 
 ### `sre eval-all [--display-grades / --no-display-grades]`
 

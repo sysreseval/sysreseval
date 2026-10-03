@@ -1,7 +1,8 @@
 """Per-project log of the operations executed by ``sre state`` and ``sre eval``.
 
 Written only for debug projects (``sre start --debug-project``, marker ``.private/debug_project``)
-into ``<project dir>/operations.log`` (:func:`params.operations_log_filename`), in the public
+and, states only, for instructor-mode projects (marker ``.private/instructor_mode``), into
+``<project dir>/operations.log`` (:func:`params.operations_log_filename`), in the public
 project directory so that the GUI (student uid) can tail it in its "Log" tab.
 
 Format: one header line per run, preceded by a blank line unless the file is empty::
@@ -157,12 +158,15 @@ class OperationsLog:
 
     ``enabled=False`` gives a null object whose methods return at once; the file is opened on
     the first write, so a disabled or never-written log leaves no file behind.
+    ``log_evaluations=False`` keeps the evaluations out of it (instructor-mode projects log
+    their states only).
     """
 
     HOST = HOST  # the ``where`` of host-side operations
 
-    def __init__(self, running_lab_name: str | None, enabled: bool):
+    def __init__(self, running_lab_name: str | None, enabled: bool, log_evaluations: bool = True):
         self._enabled = bool(enabled)
+        self._log_evaluations = bool(log_evaluations)
         self._path = params.operations_log_filename(running_lab_name) if self._enabled else None
         self._fd = None
         self._needs_separator = False  # True once the file has content (blank line before a header)
@@ -175,6 +179,10 @@ class OperationsLog:
     @property
     def enabled(self) -> bool:
         return self._enabled
+
+    @property
+    def log_evaluations(self) -> bool:
+        return self._log_evaluations
 
     @property
     def path(self) -> str | None:

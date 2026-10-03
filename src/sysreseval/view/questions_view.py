@@ -3,11 +3,9 @@ import json
 import pwd
 import re
 import socket
-import textwrap
 from datetime import datetime
 from pathlib import Path
 
-import markdown as _md
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import Qt, QFont
 from PySide6.QtWidgets import (
@@ -17,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from SRE import params
 from SRE.common import TranslatedText
+from SRE.instructor_text import markdown_to_html, strip_instructor, unwrap_instructor
 from SRE.utils import exam_remaining_seconds
 from sysreseval import settings
 from sysreseval.view.form_question_widget import FormQuestionWidget
@@ -61,10 +60,6 @@ def _get_exam_remaining_seconds() -> int | None:
     return exam_remaining_seconds(exam_data)
 
 
-def _to_html(text: str) -> str:
-    return _md.markdown(textwrap.dedent(text).strip(), extensions=["fenced_code", "tables"])
-
-
 class QuestionsView(QWidget):
     def __init__(self, questions: list, running_lab_name: str, parent=None):
         super().__init__(parent)
@@ -76,6 +71,7 @@ class QuestionsView(QWidget):
         self._font_size = settings.get_content_font_size()
         self._current_form_widget: FormQuestionWidget | None = None
         self._lang_priority = settings.get_language_priority()
+        self._show_instructor = False  # instructor fragments drawn (instructor mode, button on)
 
         self._load_answers()
         self._save_answers()
@@ -127,6 +123,20 @@ class QuestionsView(QWidget):
     # Font size
     # ------------------------------------------------------------------
 
+    def set_instructor_view(self, show: bool):
+        if show != self._show_instructor:
+            self._show_instructor = show
+            self.update_data(self._questions)
+
+    def _description_html(self, q: dict) -> str:
+        return markdown_to_html(self._resolve(q.get("description", "")),
+                                show_instructor=self._show_instructor)
+
+    def _title_text(self, q: dict) -> str:
+        """Title of the question list (plain text): instructor fragments kept or removed."""
+        title = self._resolve(q.get("title", self.tr("Untitled")))
+        return unwrap_instructor(title) if self._show_instructor else strip_instructor(title)
+
     def set_word_wrap(self, checked: bool):
         self._word_wrap = checked
         row = self.list_widget.currentRow()
@@ -146,7 +156,7 @@ class QuestionsView(QWidget):
             row = self.list_widget.currentRow()
             if 0 <= row < len(self._questions):
                 q = self._questions[row]
-                self.question_text.setHtml(_to_html(self._resolve(q.get("description", ""))))
+                self.question_text.setHtml(self._description_html(q))
 
     def _apply_font_size(self):
         font = QFont(self.answer_text.font())
@@ -236,7 +246,7 @@ class QuestionsView(QWidget):
         self._questions = questions
         self.list_widget.clear()
         for q in questions:
-            self.list_widget.addItem(self._resolve(q.get("title", self.tr("Untitled"))))
+            self.list_widget.addItem(self._title_text(q))
 
         restored = False
         if current_hash:
@@ -299,6 +309,7 @@ class QuestionsView(QWidget):
             current_answers=current,
             font_size=self._font_size,
             word_wrap=self._word_wrap,
+            show_instructor=self._show_instructor,
         )
         fw.answer_changed.connect(lambda s, h=q_hash: self._on_form_answer_changed(h, s))
         self._current_form_widget = fw
@@ -316,7 +327,7 @@ class QuestionsView(QWidget):
             return
 
         self._right_panel.setCurrentIndex(0)
-        self.question_text.setHtml(_to_html(self._resolve(q.get("description", ""))))
+        self.question_text.setHtml(self._description_html(q))
 
         is_dummy = q.get("question_type") == _DUMMY_TYPE
         self.question_text.setLineWrapMode(

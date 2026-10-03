@@ -5,13 +5,11 @@ The core fonts of fpdf (Helvetica, Courier) only accept Latin-1 text and raise o
 when they are installed (``make fonts``) and never raises on a character a font cannot draw.
 """
 import os
-import textwrap
 import unicodedata
 
-import markdown as _md
 from fpdf import FPDF
 
-from . import params
+from . import instructor_text, params
 
 _FONT_STYLES = ('', 'B', 'I', 'BI')
 _TEXT_FAMILY = 'srepdf'
@@ -47,8 +45,9 @@ def _latin1(text: str) -> str:
 
 
 def markdown_to_html(text: str) -> str:
-    """Convert lab markdown to HTML the way the GUI views do."""
-    return _md.markdown(textwrap.dedent(text).strip(), extensions=["fenced_code", "tables"])
+    """Convert lab markdown to HTML the way the GUI views do; a PDF never shows the instructor
+    fragments."""
+    return instructor_text.markdown_to_html(text)
 
 
 class SrePDF(FPDF):

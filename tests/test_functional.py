@@ -17,6 +17,8 @@ import os
 import shutil
 import stat
 import tarfile
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -771,3 +773,333 @@ class TestSaveRestore:
         info = json.loads((Path(params.sre_projects_dir) / started_lab / 'info.json').read_text())
         assert not set(params.lifecycle_state_names) & set(info['admin_only_states'])
         assert not set(params.lifecycle_state_names) & set(info['user_allowed_states'])
+
+
+# ---------------------------------------------------------------------------
+# Tests: instructor mode
+# ---------------------------------------------------------------------------
+
+_INSTRUCTOR_LAB_PATH = Path(__file__).parent / 'labs' / 'instructor_test_lab.py'
+
+
+@pytest.fixture
+def instructor_env(functional_env, mock_sre_args, monkeypatch):
+    """functional_env for the instructor-mode commands.  The projects are not debug projects
+    (an unset flag of the MagicMock args is truthy)."""
+    import SRE.command.instructor_mode as _instructor_cmd
+    monkeypatch.setattr(_instructor_cmd, 'drop_privileges_permanently_if_not_needed', lambda net_scheme: None)
+    monkeypatch.setattr(_instructor_cmd, 'set_sudo_uid_for_username', lambda username: None)
+    mock_sre_args.debug_project = False
+    return functional_env
+
+
+def _start_instructor_lab(instructor_mode: bool, lab: Path = _INSTRUCTOR_LAB_PATH) -> str:
+    before = set(_project_dirs()) if Path(params.sre_projects_dir).is_dir() else set()
+    do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True, instructor_mode=instructor_mode)
+    (running_lab_name,) = set(_project_dirs()) - before
+    return running_lab_name
+
+
+def _instructor_lab_copy(tmp_path, monkeypatch, name: str, transform=lambda text: text) -> Path:
+    """A copy of the instructor fixture lab under tmp_path (a lab of its own: another project
+    name, a file the test may edit), its text passed through *transform*."""
+    if str(tmp_path) not in params.authorized_src_dir:
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+    lab = tmp_path / 'labs' / name
+    lab.parent.mkdir(exist_ok=True)
+    lab.write_text(transform(_INSTRUCTOR_LAB_PATH.read_text()))
+    return lab
+
+
+def _replace_once(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, old
+    return text.replace(old, new)
+
+
+_LAB_IMPORT = "from SRE.lib_sre import Data0, NetScheme0, Grade0, instructor, make_tr\n"
+_LAB_GRADE = "class Grade(Grade0):\n    def grade(self):\n        super().grade()\n"
+# texts built while the lab module is imported: a title, and the description of a state
+_MODULE_LEVEL_TEXTS = ("title = instructor('SECRET title ') + 'Lab'\n"
+                       "allow_user_states = True\n")
+_STATE_WITH_INSTRUCTOR_TEXT = ("    @sre_state(user_allowed=True, description=instructor('SECRET state ') + 'Apply')\n"
+                               "    def fix(self):\n"
+                               "        pass\n\n\n")
+
+
+def _with_module_level_instructor_texts(text: str) -> str:
+    text = _replace_once(text, _LAB_IMPORT,
+                         _LAB_IMPORT.replace("make_tr", "make_tr, sre_state") + _MODULE_LEVEL_TEXTS)
+    return _replace_once(text, _LAB_GRADE, _STATE_WITH_INSTRUCTOR_TEXT + _LAB_GRADE)
+
+
+def _forcing_the_instructor_flag(text: str) -> str:
+    """The lab made to produce instructor fragments whatever the mode of its project: it turns
+    the flag on itself when it is imported, in NetScheme.__init__ and in grade()."""
+    force = "set_instructor_context(True)\n"
+    text = _replace_once(text, _LAB_IMPORT,
+                         _LAB_IMPORT.replace("make_tr", "make_tr, sre_state")
+                         + "from SRE.instructor_text import set_instructor_context\n" + force
+                         + _MODULE_LEVEL_TEXTS)
+    init = "        super().__init__(data=data, running_lab_name=running_lab_name)\n"
+    text = _replace_once(text, init, init + "        " + force)
+    return _replace_once(text, _LAB_GRADE, _STATE_WITH_INSTRUCTOR_TEXT + _LAB_GRADE + "        " + force)
+
+
+def _raw_info(running_lab_name: str) -> str:
+    return (Path(params.sre_projects_dir) / running_lab_name / 'info.json').read_text()
+
+
+def _info(running_lab_name: str) -> dict:
+    return json.loads((Path(params.sre_projects_dir) / running_lab_name / 'info.json').read_text())
+
+
+def _info_texts(info: dict) -> list:
+    """Every lab text of info.json a student can read."""
+    texts = [info['title'], info['informations']]
+    for question in info['questions']:
+        texts += [question['title'], question['description']]
+    return texts
+
+
+def _instructor_marker(running_lab_name: str) -> Path:
+    return Path(params.instructor_mode_marker_filename(running_lab_name))
+
+
+class TestInstructorMode:
+
+    def test_normal_project_holds_no_instructor_text(self, instructor_env):
+        from SRE.instructor_text import has_instructor
+        rln = _start_instructor_lab(False)
+        info = _info(rln)
+        assert info['instructor_mode'] is False
+        assert not _instructor_marker(rln).exists()
+        assert not any(has_instructor(text) for text in _info_texts(info))
+        raw = (Path(params.sre_projects_dir) / rln / 'info.json').read_text()
+        for secret in ('Solution', 'expected', 'attendu', 'Any notation', 'The mask is 24'):
+            assert secret not in raw
+        assert 'Configure the default route' in info['informations']['en']
+        assert info['questions'][0]['title'] == {'en': 'Gateway', 'fr': 'Passerelle'}
+        assert not Path(params.operations_log_filename(rln)).exists()
+
+    def test_instructor_project_keeps_the_instructor_text(self, instructor_env):
+        from SRE.instructor_text import has_instructor, strip_instructor, unwrap_instructor
+        rln = _start_instructor_lab(True)
+        info = _info(rln)
+        assert info['instructor_mode'] is True and info['debug_project'] is False
+        marker = _instructor_marker(rln)
+        assert marker.exists() and stat.S_IMODE(marker.stat().st_mode) == 0o600
+        assert has_instructor(info['informations'])
+        assert '## Solution' in unwrap_instructor(info['informations']['en'])
+        assert 'Solution' not in strip_instructor(info['informations']['en'])
+        question = info['questions'][0]
+        assert unwrap_instructor(question['title']) == {'en': 'Gateway (expected: 10.0.0.1)',
+                                                        'fr': 'Passerelle (attendu : 10.0.0.1)'}
+        assert strip_instructor(question['title']) == {'en': 'Gateway', 'fr': 'Passerelle'}
+        assert has_instructor(info['questions'][1]['description'])
+
+    def test_instructor_project_logs_the_states_only(self, instructor_env):
+        rln = _start_instructor_lab(True)
+        log_path = Path(params.operations_log_filename(rln))
+        assert log_path.read_text().rstrip('\n').endswith('  state initial')
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=rln, print_result=False)
+        assert 'evaluation' not in log_path.read_text()
+        # a project that is also a debug project logs its evaluations
+        Path(params.debug_project_marker_filename(rln)).touch()
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=rln, print_result=False)
+        assert '  evaluation\n' in log_path.read_text()
+
+    def test_set_and_remove_on_a_running_project(self, instructor_env, mock_sre_args):
+        from SRE.command.instructor_mode import action_remove_instructor_mode, action_set_instructor_mode
+        from SRE.instructor_text import has_instructor
+        rln = _start_instructor_lab(False)
+        hashes = [q['question_hash'] for q in _info(rln)['questions']]
+        mock_sre_args.running_lab = rln
+
+        action_set_instructor_mode()
+        info = _info(rln)
+        assert _instructor_marker(rln).exists() and info['instructor_mode'] is True
+        assert has_instructor(info['informations']) and has_instructor(info['questions'][0]['title'])
+        # the answers stay attached: same hashes in both modes
+        assert [q['question_hash'] for q in info['questions']] == hashes
+        action_set_instructor_mode()   # idempotent
+        assert _info(rln)['instructor_mode'] is True
+
+        log_path = Path(params.operations_log_filename(rln))
+        log_path.write_text('=== t  state final\n')
+        action_remove_instructor_mode()
+        info = _info(rln)
+        assert not _instructor_marker(rln).exists() and info['instructor_mode'] is False
+        assert not any(has_instructor(text) for text in _info_texts(info))
+        assert [q['question_hash'] for q in info['questions']] == hashes
+        assert not log_path.exists()
+        action_remove_instructor_mode()   # idempotent
+        assert _info(rln)['instructor_mode'] is False
+
+    def test_remove_keeps_the_log_of_a_debug_project(self, instructor_env, mock_sre_args):
+        from SRE.command.instructor_mode import action_remove_instructor_mode
+        rln = _start_instructor_lab(True)
+        Path(params.debug_project_marker_filename(rln)).touch()
+        mock_sre_args.running_lab = rln
+        action_remove_instructor_mode()
+        assert Path(params.operations_log_filename(rln)).exists()
+        assert _info(rln)['instructor_mode'] is False and _info(rln)['debug_project'] is True
+
+    def test_restore_takes_the_mode_from_its_flag_only(self, instructor_env, save_restore_env, tmp_path):
+        from SRE.instructor_text import has_instructor
+        rln = _start_instructor_lab(True)
+        out = tmp_path / 'p.sre'
+        do_action_save(rln, output=str(out))
+        with open(out, 'rb') as f:
+            plain = do_action_restore(f)
+        assert not _instructor_marker(plain).exists()
+        assert _info(plain)['instructor_mode'] is False
+        assert not any(has_instructor(text) for text in _info_texts(_info(plain)))
+        with open(out, 'rb') as f:
+            restored = do_action_restore(f, instructor_mode=True)
+        assert restored not in (rln, plain)
+        assert _instructor_marker(restored).exists()
+        assert _info(restored)['instructor_mode'] is True and has_instructor(_info(restored)['informations'])
+
+    def test_user_mode_refusals(self, instructor_env, mock_sre_args, capsys):
+        from SRE.command.instructor_mode import action_remove_instructor_mode, action_set_instructor_mode
+        from SRE.command.start import action_start
+        rln = _start_instructor_lab(False)
+        mock_sre_args.user = True
+        mock_sre_args.running_lab = rln
+        for action in (action_set_instructor_mode, action_remove_instructor_mode):
+            with pytest.raises(SystemExit):
+                action()
+        assert not _instructor_marker(rln).exists()
+
+        mock_sre_args.instructor_mode = True
+        mock_sre_args.lab = str(_INSTRUCTOR_LAB_PATH)
+        mock_sre_args.xauth_file = None
+        with pytest.raises(SystemExit):
+            action_start()
+        assert '--instructor-mode is not available in user mode' in capsys.readouterr().err
+        mock_sre_args.save_file = params.save_stdio_arg
+        with pytest.raises(SystemExit):
+            action_restore()
+        assert '--instructor-mode is not available in user mode' in capsys.readouterr().err
+        assert _project_dirs() == [rln]
+
+    def test_info_json_is_stripped_whatever_instructor_returned(self, instructor_env, tmp_path, monkeypatch):
+        """Safety net of save_lab_info(): the project of a lab that produces instructor fragments
+        outside the instructor mode still gets none in its info.json (students read that file)."""
+        from SRE.instructor_text import has_instructor
+        # the lab does produce fragments everywhere, title and state description included:
+        # seen in a project in instructor mode, where nothing is stripped
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'forced_shown.py', _forcing_the_instructor_flag)
+        info = _info(_start_instructor_lab(True, lab))
+        assert has_instructor(info['title']) and has_instructor(info['user_allowed_states']['fix'])
+        assert has_instructor(info['informations'])
+        assert has_instructor(info['questions'][0]['title']) and has_instructor(info['questions'][0]['description'])
+        assert has_instructor(info['questions'][1]['description'])
+
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'forced_hidden.py', _forcing_the_instructor_flag)
+        rln = _start_instructor_lab(False, lab)
+        info = _info(rln)
+        assert info['instructor_mode'] is False
+        assert not any(has_instructor(text) for text in _info_texts(info))
+        assert info['title'] == {'en': 'Lab'}
+        assert info['user_allowed_states'] == {'fix': {'en': 'Apply'}}
+        assert info['questions'][0]['title'] == {'en': 'Gateway', 'fr': 'Passerelle'}
+        assert 'Configure the default route' in info['informations']['en']
+        raw = _raw_info(rln)
+        for secret in ('SECRET', 'Solution', 'expected', 'attendu', 'Any notation', 'The mask is 24'):
+            assert secret not in raw
+        assert not has_instructor(json.loads(raw))
+
+    def test_module_level_instructor_calls_are_dropped(self, instructor_env, tmp_path, monkeypatch):
+        """The mode of a project is not known while its lab module is imported: instructor() then
+        gives nothing, even in a project in instructor mode and with the flag left on by a
+        project the thread handled before."""
+        from SRE.instructor_text import has_instructor, set_instructor_context
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'module_level.py', _with_module_level_instructor_texts)
+        set_instructor_context(True)
+        rln = _start_instructor_lab(True, lab)
+        info = _info(rln)
+        assert info['instructor_mode'] is True
+        assert info['title'] == {'en': 'Lab'}
+        assert info['user_allowed_states'] == {'fix': {'en': 'Apply'}}
+        assert 'SECRET' not in _raw_info(rln)
+        # the texts built in NetScheme.__init__ and in grade() are kept
+        assert has_instructor(info['informations']) and has_instructor(info['questions'][0]['title'])
+
+    def test_eval_rewrites_info_json_of_an_edited_lab(self, instructor_env, tmp_path, monkeypatch):
+        """`sre eval` writes info.json again when the lab file is newer: the instructor texts of
+        the edited lab reach the project in instructor mode, and only that one."""
+        from SRE.instructor_text import has_instructor, strip_instructor, unwrap_instructor
+        projects = {}
+        for instructor_mode, name in ((True, 'edited_instructor.py'), (False, 'edited_normal.py')):
+            lab = _instructor_lab_copy(tmp_path, monkeypatch, name)
+            projects[instructor_mode] = _start_instructor_lab(instructor_mode, lab)
+            lab.write_text(lab.read_text().replace('## Solution', '## New solution')
+                           .replace('Configure the default route', 'Set the default route'))
+            newer = time.time() + 60
+            os.utime(lab, (newer, newer))
+        assert 'New solution' not in _raw_info(projects[True]) + _raw_info(projects[False])
+
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            for rln in projects.values():
+                do_eval(running_lab_name=rln, print_result=False)
+
+        info = _info(projects[True])
+        assert info['instructor_mode'] is True and has_instructor(info['informations'])
+        assert '## New solution' in unwrap_instructor(info['informations']['en'])
+        assert 'Set the default route' in strip_instructor(info['informations']['en'])
+        info = _info(projects[False])
+        assert info['instructor_mode'] is False
+        assert not any(has_instructor(text) for text in _info_texts(info))
+        assert 'Set the default route' in info['informations']['en']
+        assert 'solution' not in _raw_info(projects[False]).lower()
+
+    def test_eval_leaves_info_json_alone_when_the_lab_is_not_newer(self, instructor_env):
+        rln = _start_instructor_lab(True)
+        info_path = Path(params.sre_projects_dir) / rln / 'info.json'
+        newer = time.time() + 60
+        os.utime(info_path, (newer, newer))
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=rln, print_result=False)
+        assert info_path.stat().st_mtime == newer
+
+    def test_eval_all_with_mixed_projects(self, instructor_env, mock_sre_args, tmp_path, monkeypatch):
+        """`sre eval-all` evaluates the projects in one process, one thread each: an instructor
+        project and a normal one evaluated at the same time each keep their own mode.  Both
+        info.json files are older than their lab file, so both are written again."""
+        import SRE.command.eval as _eval_cmd
+        from SRE.command.eval_all import action_eval_all
+        from SRE.instructor_text import has_instructor
+        instructor_project = _start_instructor_lab(True)
+        normal_project = _start_instructor_lab(False, _instructor_lab_copy(tmp_path, monkeypatch, 'other.py'))
+        info_paths = {rln: Path(params.sre_projects_dir) / rln / 'info.json'
+                      for rln in (instructor_project, normal_project)}
+        for info_path in info_paths.values():
+            os.utime(info_path, (1, 1))
+        # Both evaluations have built their NetScheme (which sets the instructor flag of its
+        # thread) before either goes on to Grade / save_lab_info(): they really overlap.
+        both_started = threading.Barrier(2, timeout=20)
+        threads = set()
+
+        def wait_for_the_other_evaluation(username):
+            threads.add(threading.get_ident())
+            both_started.wait()
+        monkeypatch.setattr(_eval_cmd, 'set_sudo_uid_for_username', wait_for_the_other_evaluation)
+        mock_sre_args.display_grades = False
+
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            action_eval_all()
+
+        assert len(threads) == 2 and not both_started.broken
+        assert all(info_path.stat().st_mtime != 1 for info_path in info_paths.values())
+        assert len(list(Path(params.archive_dirs[0]).iterdir())) == 2
+        info = _info(instructor_project)
+        assert info['instructor_mode'] is True
+        assert has_instructor(info['informations']) and has_instructor(info['questions'][0]['title'])
+        info = _info(normal_project)
+        assert info['instructor_mode'] is False
+        assert not any(has_instructor(text) for text in _info_texts(info))
+        for secret in ('Solution', 'expected', 'Any notation', 'The mask is 24'):
+            assert secret not in _raw_info(normal_project)

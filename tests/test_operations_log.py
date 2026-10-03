@@ -25,6 +25,14 @@ def make_debug_project(running_lab_name=RUNNING) -> Path:
     return Path(params.operations_log_filename(running_lab_name))
 
 
+def make_instructor_project(running_lab_name=RUNNING) -> Path:
+    """Create the project dir and its instructor-mode marker; return the operations log path."""
+    marker = Path(params.instructor_mode_marker_filename(running_lab_name))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.touch()
+    return Path(params.operations_log_filename(running_lab_name))
+
+
 @dataclass(slots=True)
 class MockData(Data0):
     x: int = 0
@@ -62,7 +70,34 @@ class TestEnabling:
 
     def test_netscheme_disabled_without_marker(self, tmp_pub_dir):
         Path(params.private_lab_dir(RUNNING)).mkdir(parents=True)
-        assert Scheme(MockData()).ops_log.enabled is False
+        scheme = Scheme(MockData())
+        assert scheme.ops_log.enabled is False
+        assert scheme.debug_project is False and scheme.instructor_mode is False
+
+    def test_netscheme_debug_logs_the_evaluations(self, tmp_pub_dir):
+        make_debug_project()
+        assert Scheme(MockData()).ops_log.log_evaluations is True
+
+    def test_netscheme_instructor_mode_logs_the_states_only(self, tmp_pub_dir):
+        make_instructor_project()
+        scheme = Scheme(MockData())
+        assert scheme.instructor_mode is True and scheme.debug_project is False
+        assert scheme.ops_log.enabled is True
+        assert scheme.ops_log.log_evaluations is False
+
+    def test_netscheme_debug_and_instructor_mode_log_everything(self, tmp_pub_dir):
+        make_debug_project()
+        make_instructor_project()
+        scheme = Scheme(MockData())
+        assert scheme.ops_log.enabled is True and scheme.ops_log.log_evaluations is True
+
+    def test_netscheme_sets_the_instructor_context(self, tmp_pub_dir):
+        from SRE.instructor_text import instructor_context
+        make_instructor_project()
+        Scheme(MockData())
+        assert instructor_context() is True
+        Scheme(MockData(), running_lab_name='20260101000000@@@test/other@@@user')
+        assert instructor_context() is False
 
 
 EXAMPLE = """\

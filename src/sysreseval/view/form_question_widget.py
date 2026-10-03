@@ -1,8 +1,6 @@
 import json
 import re
-import textwrap
 
-import markdown as _md
 from PySide6.QtCore import Signal, QEvent, QSize
 from PySide6.QtGui import Qt, QFont, QRegularExpressionValidator
 from PySide6.QtCore import QRegularExpression
@@ -11,13 +9,10 @@ from PySide6.QtWidgets import (
     QScrollArea, QTextBrowser, QFrame, QSizePolicy,
 )
 
+from SRE.instructor_text import markdown_to_html, rebalance_fragments, strip_instructor, unwrap_instructor
 from sysreseval import settings
 
 _FIELD_RE = re.compile(r'@@\{([^:}]+):([^}]*)\}@@')
-
-
-def _to_html(text: str) -> str:
-    return _md.markdown(textwrap.dedent(text).strip(), extensions=["fenced_code", "tables"])
 
 
 class _AutoBrowser(QTextBrowser):
@@ -26,6 +21,7 @@ class _AutoBrowser(QTextBrowser):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._markdown_text = ""
+        self._show_instructor = False
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -40,18 +36,19 @@ class _AutoBrowser(QTextBrowser):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff if wrap
                                           else Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-    def set_markdown(self, text: str, font_size: int):
+    def set_markdown(self, text: str, font_size: int, show_instructor: bool = False):
         self._markdown_text = text
+        self._show_instructor = show_instructor
         font = self.document().defaultFont()
         font.setPointSize(font_size)
         self.document().setDefaultFont(font)
-        self.setHtml(_to_html(text))
+        self.setHtml(markdown_to_html(text, show_instructor=show_instructor))
 
     def update_font_size(self, size: int):
         font = self.document().defaultFont()
         font.setPointSize(size)
         self.document().setDefaultFont(font)
-        self.setHtml(_to_html(self._markdown_text))
+        self.setHtml(markdown_to_html(self._markdown_text, show_instructor=self._show_instructor))
 
     def sizeHint(self):
         h = int(self.document().size().height()) + 6
@@ -65,7 +62,7 @@ class FormQuestionWidget(QWidget):
     answer_changed = Signal(str)  # JSON-encoded {field_name: value}
 
     def __init__(self, description: str, fields: list, current_answers: dict,
-                 font_size: int, word_wrap: bool = True, parent=None):
+                 font_size: int, word_wrap: bool = True, show_instructor: bool = False, parent=None):
         super().__init__(parent)
         self._font_size = font_size
         self._text_fields: dict[str, QLineEdit] = {}
@@ -92,6 +89,13 @@ class FormQuestionWidget(QWidget):
         # re.split with capturing groups gives:
         #   [text, name, regex, text, name, regex, ..., text]
         segments = _FIELD_RE.split(description)
+        # every text chunk is rendered on its own: an instructor fragment going across a field
+        # is closed and reopened around it
+        segments[0::3] = rebalance_fragments(segments[0::3])
+
+        def has_text(chunk: str) -> bool:
+            return bool((unwrap_instructor(chunk) if show_instructor else strip_instructor(chunk)).strip())
+
         i = 0
         while i < len(segments):
             text_chunk = segments[i]
@@ -108,12 +112,12 @@ class FormQuestionWidget(QWidget):
                     cb.setChecked(default)
                     cb.stateChanged.connect(self._emit_changed)
                     self._checkbox_fields[name] = cb
-                    if text_chunk.strip():
+                    if has_text(text_chunk):
                         row = QHBoxLayout()
                         row.setContentsMargins(0, 0, 0, 0)
                         browser = _AutoBrowser()
                         browser.setOpenExternalLinks(True)
-                        browser.set_markdown(text_chunk, font_size)
+                        browser.set_markdown(text_chunk, font_size, show_instructor)
                         browser.set_word_wrap(word_wrap)
                         row.addWidget(browser, 1)
                         row.addWidget(cb)
@@ -123,10 +127,10 @@ class FormQuestionWidget(QWidget):
                         layout.addWidget(cb)
                 else:
                     # Non-checkbox: text above, widget below
-                    if text_chunk.strip():
+                    if has_text(text_chunk):
                         browser = _AutoBrowser()
                         browser.setOpenExternalLinks(True)
-                        browser.set_markdown(text_chunk, font_size)
+                        browser.set_markdown(text_chunk, font_size, show_instructor)
                         browser.set_word_wrap(word_wrap)
                         layout.addWidget(browser)
                         self._browsers.append(browser)
@@ -161,10 +165,10 @@ class FormQuestionWidget(QWidget):
                         self._text_fields[name] = edit
             else:
                 # Last text chunk with no following field
-                if text_chunk.strip():
+                if has_text(text_chunk):
                     browser = _AutoBrowser()
                     browser.setOpenExternalLinks(True)
-                    browser.set_markdown(text_chunk, font_size)
+                    browser.set_markdown(text_chunk, font_size, show_instructor)
                     browser.set_word_wrap(word_wrap)
                     layout.addWidget(browser)
                     self._browsers.append(browser)

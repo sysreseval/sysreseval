@@ -836,6 +836,19 @@ class TestOperationsLogEval:
         assert lines[0].startswith('=== ') and lines[0].endswith('  evaluation')
         assert lines[1:5] == ['step1 - on host : uname -r', '    6.1.0', '    exit code 0', '']
 
+    def test_instructor_mode_log_keeps_the_evaluations_out(self, tmp_pub_dir):
+        """The log of an instructor-mode project (not a debug one) holds the states only."""
+        from SRE.operations_log import OperationsLog
+        from test_operations_log import make_instructor_project
+        log_path = make_instructor_project(self.RUNNING)
+        ns = make_net_scheme()
+        ns.ops_log = OperationsLog(self.RUNNING, enabled=True, log_evaluations=False)
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        g = GradeWithHostCmd(ns, 'uname -r')
+        with patch('SRE.lib_sre.subprocess.run', return_value=MagicMock(stdout='6.1.0\n', returncode=0)):
+            g.run_tests()
+        assert not log_path.exists()
+
     def test_machine_tests_logged_per_step(self, tmp_pub_dir):
         from test_state_apply import FakeMachine
         ops_log, log_path = self._enabled_log()

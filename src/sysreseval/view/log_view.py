@@ -1,4 +1,4 @@
-"""GUI "Log" tab of a debug project: a live tail of the project's ``operations.log``.
+"""GUI "Log" tab of a debug or instructor-mode project: a live tail of the project's ``operations.log``.
 
 The file is written by the CLI (``sre state`` / ``sre eval``, see ``SRE/operations_log.py``) and
 polled by :meth:`LogView.refresh` on the 1 s tick of :class:`ProjectWidget`; only the bytes

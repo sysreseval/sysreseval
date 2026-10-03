@@ -6,6 +6,8 @@ from typing import List
 import msgpack
 from enum import Enum
 
+from .instructor_text import strip_instructor
+
 
 class TranslatedText(dict):
     """A dict subclass holding translations keyed by language code (e.g. 'en', 'fr').
@@ -63,8 +65,9 @@ class TranslatedText(dict):
 
 
 def _tt_hash_str(v) -> str:
-    """Stable string representation of a TranslatedText (or plain str) for hashing."""
-    return json.dumps(dict(sorted(TranslatedText.from_value(v).items())), ensure_ascii=False)
+    """Stable string representation of a TranslatedText (or plain str) for hashing.  The
+    instructor fragments are left out: a hash is the same in and out of the instructor mode."""
+    return json.dumps(dict(sorted(strip_instructor(TranslatedText.from_value(v)).items())), ensure_ascii=False)
 
 
 class QuestionType(Enum):
@@ -348,6 +351,7 @@ class InfoLab:
     eval_before_exit: bool
     user_allowed_states: dict
     debug_project: bool = False
+    instructor_mode: bool = False
     allow_save_restore: bool = False
     admin_only_states: list = field(default_factory=list)
     default_language: str = ''
@@ -382,6 +386,7 @@ class InfoLab:
             export_kathara_project=d.get("export_kathara_project", True),
             allow_self_grade=d.get("allow_self_grade", False),
             debug_project=d.get("debug_project", False),
+            instructor_mode=d.get("instructor_mode", False),
             allow_save_restore=d.get("allow_save_restore", False),
             delay_between_self_grade=d.get("delay_between_self_grade", 0),
             eval_interval_without_exam_mode=d.get("eval_interval_without_exam_mode", 0),

@@ -60,7 +60,8 @@ class TestIsAllowedAction:
 
     @pytest.mark.parametrize('action', ['start', 'stop', 'exec', 'eval', 'eval-all', 'state',
                                         'wipe', 'set-exam', 'eval-exam', 'end-exam',
-                                        'preload-images', 'export', 'list', 'save', 'restore'])
+                                        'preload-images', 'export', 'list', 'save', 'restore',
+                                        'set-instructor-mode', 'remove-instructor-mode'])
     def test_admin_privileged_actions_refused(self, action):
         assert not access.is_allowed_action(1001, action, sre_uid=SRE_UID)
 

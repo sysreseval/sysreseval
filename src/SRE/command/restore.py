@@ -28,6 +28,9 @@ from ..utils_privileges import drop_privileges_permanently_if_not_needed, drop_p
 
 
 def action_restore():
+    instructor_mode = bool(getattr(SRE.args, 'instructor_mode', False))
+    if instructor_mode and in_user_mode():
+        error_quit("--instructor-mode is not available in user mode")
     user_not_allowed_in_exam_mode()
     save_file = SRE.args.save_file
     if save_file == params.save_stdio_arg:
@@ -42,13 +45,14 @@ def action_restore():
             error_quit(f"cannot open '{save_file}': {e}")
         finally:
             drop_privileges_temporarily()
-    running_lab_name = do_action_restore(source, register_progress=True)
+    running_lab_name = do_action_restore(source, register_progress=True, instructor_mode=instructor_mode)
     if not in_user_mode():
         print(running_lab_name)
 
 
-def do_action_restore(source, register_progress: bool = False) -> str:
-    """Restore the save file read from the binary stream *source*; return the new running lab name."""
+def do_action_restore(source, register_progress: bool = False, instructor_mode: bool = False) -> str:
+    """Restore the save file read from the binary stream *source*; return the new running lab name.
+    *instructor_mode* puts the new project in instructor mode (a save file does not carry it)."""
     meta, header_json = read_header(source)
 
     lab_cli_arg, is_path = lab_cli_arg_from_lab_name(meta.lab_name)
@@ -97,7 +101,8 @@ def do_action_restore(source, register_progress: bool = False) -> str:
 
         setup = ProjectSetup(running_lab_name=running_lab_name)
         try:
-            create_project_directories(setup, module_rvlab, current_srelab_file, debug_project=debug_project)
+            create_project_directories(setup, module_rvlab, current_srelab_file, debug_project=debug_project,
+                                       instructor_mode=instructor_mode)
             _copy_saved_project_files(tmp, setup)
             _fix_restored_permissions(setup)
 

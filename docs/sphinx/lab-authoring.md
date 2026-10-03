@@ -118,6 +118,7 @@ sre connect alice router      # disambiguate by username
 | `.private/records/` | Asciinema recordings of terminal sessions, if `record_sessions` is enabled. |
 | `.private/eval_in_progress` | PID lock created during `sre eval` to prevent concurrent evaluations. |
 | `.private/debug_project` | Marker dropped by `sre start --debug-project` (see above). |
+| `.private/instructor_mode` | Marker of the instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`; see [Instructor-only texts](#instructor-only-texts--instructor)). |
 | `.private/auto_eval.log` | One line per student-triggered self-eval; drives the `self.auto_eval_count` counter exposed to `Grade.grade()`. |
 
 Evaluation archives are **not** stored under the project directory — they go to `/var/lib/sre/archives/` (plus any extra `archive_dirs` declared at module level), named `{YYYYmmddHHMMSS}_{running_lab_name}.zst`.
@@ -399,6 +400,49 @@ class NetScheme(NetScheme0):
 | `volumes` | `{}` | Volume mounts |
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
+
+### Instructor-only texts — `instructor()`
+
+`instructor(text, color=None, background=None)` marks a text as meant for the instructor: notes, hints, the solution. It takes a plain string or a `tr()` text and combines with `+` like any other text:
+
+```python
+from SRE.lib_sre import NetScheme0, Grade0, instructor, make_tr
+
+class NetScheme(NetScheme0):
+    def __init__(self, data, running_lab_name):
+        super().__init__(data=data, running_lab_name=running_lab_name)
+        self.informations = instructor(tr("""
+            ### Solution
+            - add the default route on `client`;
+            - the `final` state does it.
+            """, fr="""
+            ### Corrigé
+            - ajouter la route par défaut sur `client` ;
+            - l'état `final` le fait.
+            """)) + tr("Configure the routing.", fr="Configurez le routage.")
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        self.question_text(
+            title=tr("Gateway") + instructor(" (10.0.0.1)"),
+            description=tr("Which gateway does the client use?")
+                        + instructor(tr("\n\nAny notation is accepted."), color="#1a4fa0", background="#e3edff"))
+```
+
+- In a normal project the function ignores its argument: it returns an empty text, and nothing of it is written to `info.json` (which students can read).
+- In a project in **instructor mode** (`sre start --instructor-mode <lab>`, `sre restore --instructor-mode <file>`, or `sre set-instructor-mode <running_lab>` on a running project — privileged only) the text is kept, and the GUI displays it in red on a light red background while its *Instructor mode* button is on. `color` / `background` (`'#rrggbb'` or a colour name) change the colours of one text; `params.instructor_text_color` / `params.instructor_background_color` are the defaults.
+- A question hash does not depend on the instructor texts: the answers stay attached when the mode is switched on a running project.
+
+Rules:
+
+- call `instructor()` from `NetScheme.__init__` (after `super().__init__()`) or from `Grade.grade()`. The mode of the project is not known while the module is imported, so a module-level call (`title`, `@sre_state(description=...)`, `Flavor.flavor_form`) always gives an empty text;
+- use it for `self.informations` and for the titles and descriptions of the questions. The other texts (grade elements, state descriptions, files pushed to the machines) are plain text and would show the raw marks in instructor mode;
+- a fragment is either inline text or one or several whole markdown blocks (paragraphs, lists, code blocks, tables). It is dedented on its own, so an indented triple-quoted block works whatever the indentation of the public text; it cannot be nested inside a list item of the public text;
+- no `@@{field:regex}@@` form field inside a fragment (a student would not get the field);
+- use `+` or `TranslatedText.format()` to combine texts, as with `tr()`: `%` and f-strings do not work on translated texts.
+
+In instructor mode the project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
 
 ## State methods
 

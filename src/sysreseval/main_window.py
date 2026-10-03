@@ -76,6 +76,13 @@ _LANGUAGE_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24
   <line x1="3.5" y1="15" x2="20.5" y2="15" stroke="#555" stroke-width="2"/>
 </svg>"""
 
+_INSTRUCTOR_ICON_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M2 9 L12 4 L22 9 L12 14 Z" stroke="#555" stroke-width="2"
+        fill="none" stroke-linejoin="round"/>
+  <path d="M6 11.5 V16 c0 1.5 3 3 6 3 s6 -1.5 6 -3 V11.5" stroke="#555" stroke-width="2"
+        fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="22" y1="9" x2="22" y2="15" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+</svg>"""
 
 
 def _make_icon(svg_bytes: bytes, size: int = 22) -> QIcon:
@@ -245,6 +252,17 @@ class MainWindow(QMainWindow):
         self._wrap_btn.setToolTip(self.tr("Wrap"))
         self._wrap_btn.toggled.connect(self._on_wrap_toggled)
 
+        # Shown only on a project in instructor mode; the instructor() texts and the journal of
+        # the states are displayed while it is on (off at launch: nothing shows on a projector)
+        self._instructor_view = False
+        self._instructor_btn = QToolButton()
+        self._instructor_btn.setIcon(_make_icon(_INSTRUCTOR_ICON_SVG))
+        self._instructor_btn.setCheckable(True)
+        self._instructor_btn.setFixedSize(28, 28)
+        self._instructor_btn.setToolTip(self.tr("Instructor mode"))
+        self._instructor_btn.setVisible(False)
+        self._instructor_btn.toggled.connect(self._on_instructor_toggled)
+
         self._settings_btn = QToolButton()
         self._settings_btn.setIcon(_make_icon(_SETTINGS_ICON_SVG))
         self._settings_btn.setFixedSize(28, 28)
@@ -261,6 +279,7 @@ class MainWindow(QMainWindow):
         _corner_layout = QHBoxLayout(_corner)
         _corner_layout.setContentsMargins(0, 0, 4, 0)
         _corner_layout.setSpacing(2)
+        _corner_layout.addWidget(self._instructor_btn)
         _corner_layout.addWidget(self._wrap_btn)
         _corner_layout.addWidget(self._settings_btn)
         _corner_layout.addWidget(self._language_btn)
@@ -397,6 +416,7 @@ class MainWindow(QMainWindow):
             widget.set_exam_mode(True)
         if self._word_wrap:
             widget.set_word_wrap(True)
+        widget.set_instructor_view(self._instructor_view)
 
         if switch_to:
             self.tabs.setCurrentIndex(plus_index)
@@ -502,6 +522,8 @@ class MainWindow(QMainWindow):
         can_export = (not in_exam and current_is_project and
                       current_widget.info.get("export_kathara_project", True))
         self._export_action.setEnabled(can_export)
+        self._instructor_btn.setVisible(
+            current_is_project and bool(current_widget.info.get("instructor_mode", False)))
 
     def _tab_title_for(self, widget: ProjectWidget) -> str:
         priority = settings.get_language_priority()
@@ -538,6 +560,11 @@ class MainWindow(QMainWindow):
         for pw in self._project_widgets():
             pw.set_word_wrap(checked)
 
+    def _on_instructor_toggled(self, checked: bool):
+        self._instructor_view = checked
+        for pw in self._project_widgets():
+            pw.set_instructor_view(checked)
+
     def changeEvent(self, event):
         if event.type() == QEvent.Type.LanguageChange:
             self._retranslate()
@@ -561,6 +588,7 @@ class MainWindow(QMainWindow):
         self._paste_action.setText(self.tr("Paste"))
         self._closing_label.setText(self.tr("closing in progress..."))
         self._wrap_btn.setToolTip(self.tr("Wrap"))
+        self._instructor_btn.setToolTip(self.tr("Instructor mode"))
         self._settings_btn.setToolTip(self.tr("Settings"))
         self._language_btn.setToolTip(self.tr("Language"))
         self._refresh_tab_titles()

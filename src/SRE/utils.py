@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .params import SRE
 from . import params
+from .instructor_text import set_instructor_context
 
 
 def error_quit(error):
@@ -169,6 +170,9 @@ def set_lab_dir_and_import_module(start_projet=False, lab_cli_arg=None, path=Non
         spec = importlib.util.spec_from_file_location(params.srelab_py_name.removesuffix(".py"), current_srelab_file)
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
+        # the mode of the project is only known once its NetScheme exists: instructor() texts
+        # built while the lab module is imported are always dropped
+        set_instructor_context(False)
         spec.loader.exec_module(module)
     except ImportError as e:
         missing = getattr(e, "name", None)

@@ -40,6 +40,7 @@ from . import params
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
+from .instructor_text import instructor, set_instructor_context, strip_instructor
 from .operations_log import OperationsLog, format_grade, format_total
 from .params import SRE
 
@@ -768,8 +769,13 @@ class NetScheme0:
         self.data = data
         self.running_lab_name = running_lab_name
         self.debug_project = os.path.exists(params.debug_project_marker_filename(running_lab_name))
-        # operations log of debug projects (`sre state` / `sre eval` → GUI "Log" tab), opened on first write
-        self.ops_log = OperationsLog(running_lab_name, enabled=self.debug_project)
+        self.instructor_mode = os.path.exists(params.instructor_mode_marker_filename(running_lab_name))
+        # instructor() texts of the lab's __init__ and grade() follow the mode of this project
+        set_instructor_context(self.instructor_mode)
+        # operations log (GUI "Log" tab), opened on first write: `sre state` / `sre eval` of a debug
+        # project, `sre state` only of an instructor-mode project
+        self.ops_log = OperationsLog(running_lab_name, enabled=self.debug_project or self.instructor_mode,
+                                     log_evaluations=self.debug_project)
         self.lab_name = params.get_lab_name_from_running_lab_name(running_lab_name)
         self.lab_hash = lab_hash
         self.current_srelab_file = params.get_current_srelab_file_from_running_lab_name(running_lab_name)
@@ -1543,6 +1549,8 @@ class Grade0:
 
     def reset_before_grade(self):
         """Clear questions, grade list, and section counters before each call to :meth:`grade`."""
+        # instructor() texts follow the mode of this project (`is True`: net_scheme may be a stand-in)
+        set_instructor_context(getattr(self.net_scheme, 'instructor_mode', False) is True)
         self._questions = dict()  # hash->Question
         self._questions_order = dict()  # order -> [Question1, Question2, ...]
         self._questions_current_order = 100
@@ -1749,8 +1757,12 @@ class Grade0:
         return self._host_tests[step][(command, timeout)]
 
     def _ops_log(self) -> OperationsLog:
-        """The project's :class:`OperationsLog` (a disabled one when ``net_scheme`` is a stand-in without it)."""
-        return getattr(self.net_scheme, 'ops_log', None) or OperationsLog.disabled()
+        """The project's :class:`OperationsLog` for an evaluation: a disabled one when ``net_scheme``
+        is a stand-in without it, or when the log keeps the states only (instructor mode)."""
+        ops_log = getattr(self.net_scheme, 'ops_log', None)
+        if not ops_log or getattr(ops_log, 'log_evaluations', True) is False:
+            return OperationsLog.disabled()
+        return ops_log
 
     def _log_grade_results(self, ops_log) -> None:
         """Append the grade elements of the last :meth:`grade` pass, then the totals and marks of
@@ -1968,6 +1980,9 @@ class Grade0:
         debug_project = os.path.exists(
             params.debug_project_marker_filename(self.net_scheme.running_lab_name)
         )
+        instructor_mode = os.path.exists(
+            params.instructor_mode_marker_filename(self.net_scheme.running_lab_name)
+        )
         if debug_project:
             visible_machines = list(self.net_scheme.get_machines())
         else:
@@ -2089,6 +2104,17 @@ class Grade0:
             for state, desc in user_allowed_states_raw.items()
         }
 
+        if not instructor_mode:
+            # info.json is readable by the students: whatever the instructor() calls returned,
+            # no instructor fragment leaves a project that is not in instructor mode
+            title = strip_instructor(title)
+            informations = strip_instructor(informations)
+            for q in questions:
+                q.title = strip_instructor(q.title)
+                q.description = strip_instructor(q.description)
+            user_allowed_states = {state: strip_instructor(desc)
+                                   for state, desc in user_allowed_states.items()}
+
         if debug_project:
             module_allows_user_states = getattr(module_rvlab, 'allow_user_states', False)
             admin_only_states = [
@@ -2104,6 +2130,7 @@ class Grade0:
                        questions=questions, informations=informations,
                        export_kathara_project=export_kathara_project, allow_self_grade=allow_self_grade,
                        debug_project=debug_project,
+                       instructor_mode=instructor_mode,
                        eval_interval_without_exam_mode=eval_interval_without_exam_mode,
                        eval_before_exit=eval_before_exit,
                        allow_save_restore=allow_save_restore,
