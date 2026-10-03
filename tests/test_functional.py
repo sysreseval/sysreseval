@@ -367,6 +367,15 @@ class TestArchiveDirCreation:
         archives_dir = Path(params.archive_dirs[0])
         assert stat.S_IMODE(archives_dir.stat().st_mode) == 0o700
 
+    def test_missing_parent_is_an_error(self, started_lab, tmp_path, monkeypatch, capsys):
+        """Only the archive directory itself is created: a wrong or unmounted path is reported,
+        not silently created (its parents would get a mode that depends on the umask)."""
+        monkeypatch.setattr(params, 'archive_dirs', [str(tmp_path / 'missing' / 'archives')])
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=started_lab, print_result=False)
+        assert not (tmp_path / 'missing').exists()
+        assert "can't save archive" in capsys.readouterr().err
+
 
 class TestStop:
 

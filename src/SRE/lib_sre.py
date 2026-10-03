@@ -2325,8 +2325,10 @@ class Grade0:
             d = Path(d1).expanduser().resolve()
             try:
                 if not d.exists():
-                    # exist_ok: evaluations running at once (sre eval-all) may create it together
-                    os.makedirs(d, 0o700, exist_ok=True)
+                    try:
+                        os.mkdir(d, 0o700)  # not makedirs: a missing parent stays an error
+                    except FileExistsError:
+                        pass  # created meanwhile by another evaluation (sre eval-all)
                 else:
                     os.listdir(d)  # trigger mount / catch stale handle early
                     permissions = os.stat(d).st_mode
