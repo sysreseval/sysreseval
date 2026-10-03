@@ -14,6 +14,7 @@ from SRE.lib_sre import (
     sre_state,
     make_tr,
     Flavor0, no_tr,
+    instructor,
 )
 from SRE.utils import error_quit
 from ips import random_ipv4networks, random_ipv4s, random_ips_from_topology
@@ -25,6 +26,7 @@ from net_config import (
     get_net_config_from_topology,
     get_ip_forward,
     set_persistent_net_config_entry,
+    render_persistent_net_config_entry,
 )
 from dataclasses import dataclass
 from ipaddress import IPv4Network, IPv4Interface
@@ -179,18 +181,19 @@ class Data(Data0):
             flavor = Flavor()
         data = cls()
 
-        # Generate disjoint /24 networks
-        nets = random_ipv4networks(
-            masks=[24] * len(data.topology.keys()),
-            from_private_network=True,
-            exclude=[IPv4Network("172.17.0.0/24"), IPv4Network("10.0.0.0/16")],
-        )
-        for i in range(len(data.topology.keys())):
-            setattr(data.nets, f"net{i}", nets[i])
-
         if flavor.ip_choice == "random":
+            # Generate disjoint /24 networks
+            nets = random_ipv4networks(
+                masks=[24] * len(data.topology.keys()),
+                from_private_network=True,
+                exclude=[IPv4Network("172.17.0.0/24"), IPv4Network("10.0.0.0/16")],
+            )
+            for i in range(len(data.topology.keys())):
+                setattr(data.nets, f"net{i}", nets[i])
             random_ips_from_topology(data, data.topology)
         else:
+            # A fixed set holds the addresses of the large network, named like those of
+            # random_ips_from_topology(): the smaller networks use a part of it.
             match flavor.ip_choice:
                 case "set1":
                     ip_dict = {
@@ -216,9 +219,39 @@ class Data(Data0):
                         "m7": IPv4Interface("172.17.47.163/24"),
                     }
                 case "set2":
-                    pass
+                    ip_dict = {
+                        "gw": IPv4Interface("10.118.56.97/24"),
+                        "m0": IPv4Interface("10.118.56.12/24"),
+                        "r1_net0": IPv4Interface("10.118.56.201/24"),
+                        "r1_net1": IPv4Interface("192.168.74.129/24"),
+                        "r1_net5": IPv4Interface("172.27.140.7/24"),
+                        "r2_net0": IPv4Interface("10.118.56.143/24"),
+                        "r2_net2": IPv4Interface("172.22.201.18/24"),
+                        "r2_net4": IPv4Interface("192.168.19.222/24"),
+                        "m1": IPv4Interface("192.168.74.33/24"),
+                        "r3_net1": IPv4Interface("192.168.74.240/24"),
+                        "r3_net3": IPv4Interface("10.203.9.66/24"),
+                        "r3_net7": IPv4Interface("192.168.250.101/24"),
+                        "m2": IPv4Interface("172.22.201.176/24"),
+                        "m3": IPv4Interface("10.203.9.151/24"),
+                        "m4": IPv4Interface("192.168.19.85/24"),
+                        "r4_net5": IPv4Interface("172.27.140.190/24"),
+                        "r4_net6": IPv4Interface("10.61.233.54/24"),
+                        "m5": IPv4Interface("172.27.140.112/24"),
+                        "m6": IPv4Interface("10.61.233.209/24"),
+                        "m7": IPv4Interface("192.168.250.28/24"),
+                    }
                 case _:
                     error_quit("Invalid choice for ip_choice")
+            machine_nets = {}
+            for net_name, machines in data.topology.items():
+                for m in machines:
+                    machine_nets.setdefault(m, []).append(net_name)
+            for net_name, machines in data.topology.items():
+                for m in machines:
+                    name = m if len(machine_nets[m]) == 1 else f"{m}_{net_name}"
+                    setattr(data.ips, name, ip_dict[name])
+                    setattr(data.nets, net_name, ip_dict[name].network)
         return data
 
 
@@ -487,13 +520,71 @@ class Grade(Grade0):
     def __init__(self, net_scheme):
         super().__init__(net_scheme)
 
+    def _solution_routers(self) -> List[str]:
+        """Routers of the lab, gw first."""
+        return ["gw"] + [m for m in self.get_data().routers if m != "gw"]
+
+    def _solution_route_commands(self) -> str:
+        """`ip route add` commands of the solution, machine by machine: the routes the `final`
+        state adds, each one followed by the same route written with names as a comment."""
+        data = self.get_data()
+        net_config_final = self.net_scheme.net_config_final
+        default = IPv4Network("0.0.0.0/0")
+        net_names = {getattr(data.nets, name): name for name in self.net_scheme.get_topology()}
+        owners = {
+            ip.ip: m
+            for m, nc_entry in net_config_final.items()
+            for nc in nc_entry if isinstance(nc, tuple)
+            for ip in nc[0]
+        }
+        solution = []  # (machine, [(command, comment), ...])
+        for m in self._solution_routers() + data.non_routers:
+            routes = [route for nc in net_config_final[m] if isinstance(nc, tuple) for route in nc[1]]
+            commands = []
+            for net, via in sorted(routes, key=lambda route: route[0] != default):
+                if net != default:
+                    commands.append((f"ip route add {net} via {via}", f"{net_names[net]} via {owners[via]}"))
+                elif m != "gw":  # gw keeps the default route Docker gave it
+                    commands.append((f"ip route add default via {via}", f"default via {owners[via]}"))
+            solution.append((m, commands))
+        width = max(len(command) for _, commands in solution for command, _ in commands)
+        lines = []
+        for m, commands in solution:
+            lines.append(f"# {m}")
+            lines += [f"{command:<{width}}  # {comment}" for command, comment in commands]
+        return "\n".join(lines)
+
+    def _solution_persistent_files(self) -> str:
+        """Markdown showing /etc/network/interfaces of every persistent machine, as the `final`
+        state writes it."""
+        net_config_final = self.net_scheme.net_config_final
+        return "\n\n".join(
+            f"**{m}**\n\n```\n{render_persistent_net_config_entry(net_config_final[m], m).strip()}\n```"
+            for m in self.get_data().persistent_machines
+        )
+
     def grade(self):
         super().grade()
 
         self.question_dummy(
             section=self.section(0),
             title=tr("Routage des paquets"),
-            description=tr("Autoriser le routage des paquets ipv4 pour les routeurs (et uniquement pour eux)."),
+            description=tr("Autoriser le routage des paquets ipv4 pour les routeurs (et uniquement pour eux).")
+            + instructor(tr("""
+
+**Solution.** Sur chaque routeur ({routers}) :
+
+```
+sysctl -w net.ipv4.ip_forward=1
+```
+
+- Équivalent : `echo 1 > /proc/sys/net/ipv4/ip_forward`.
+- Rien à faire sur les autres machines ({non_routers}) : `ip_forward` y vaut déjà 0 et doit le rester
+  (1 point de pénalité par machine où il est activé, 2 au plus).
+- Vérification : `sysctl net.ipv4.ip_forward` affiche 1 sur les routeurs, 0 ailleurs.
+- Seule la valeur courante est évaluée : la rendre persistante (`net.ipv4.ip_forward=1` dans
+  `/etc/sysctl.conf`) n'est pas noté.
+""").format(routers=", ".join(self._solution_routers()), non_routers=", ".join(self.get_data().non_routers))),
         )
 
         if len(self.get_data().persistent_machines) > 0:
@@ -504,8 +595,22 @@ De plus, pour les machines **{_arg0}** (en vert sur le schéma), la configuratio
 , c'est-à-dire que le fichier /etc/network/interfaces (ou des fichiers dans /etc/network/interfaces.d/)
 seront configurées.
 """).format(_arg0=", ".join(self.get_data().persistent_machines))
+            solution_persistent = tr("""
+Configuration persistante (machines en vert) : fichier `/etc/network/interfaces`, avec les mêmes routes
+et la route par défaut dans `gateway`.
+
+{files}
+
+- `up` convient comme `post-up` ; `ip route add default via …` y est en revanche compté comme une erreur
+  de syntaxe : utiliser `gateway` (ou `0.0.0.0/0`).
+- Un fichier de `/etc/network/interfaces.d/` n'est lu que si `/etc/network/interfaces` contient la ligne
+  `source /etc/network/interfaces.d/*`.
+- Seul le contenu des fichiers est évalué, pas son application : les commandes ci-dessus restent
+  nécessaires.
+""").format(files=self._solution_persistent_files())
         else:
             description_persistent = ""
+            solution_persistent = ""
 
         self.question_dummy(
             section=self.section(0),
@@ -517,12 +622,36 @@ Configurer le routage statique de toutes les machines afin que :
 - La route par défaut soit configurée sur toutes les machines (vers le routeur noté *Internet* sur le schéma) ;
 - Les paquets suivent toujours le ***chemin le plus court*** pour aller d'une machine à une autre
 """)
-            + description_persistent,
+            + description_persistent
+            + instructor(tr("""
+**Solution.** Sur chaque machine :
+
+- une route par défaut vers le voisin situé sur le plus court chemin vers `gw` (rien à ajouter sur `gw` :
+  sa route par défaut vers l'hôte existe déjà et n'est pas évaluée) ;
+- une route pour chaque réseau distant dont le plus court chemin ne passe pas par ce voisin. Les autres
+  réseaux sont couverts par la route par défaut : une route en trop, même redondante, est comptée comme
+  fausse.
+
+Configuration volatile (en commentaire, la même route écrite avec les noms) :
+
+```
+{commands}
+```
+
+Vérification : `ip route` sur chaque machine, puis `ping` et `traceroute` entre machines éloignées.
+""").format(commands=self._solution_route_commands())
+                         + solution_persistent
+                         + tr("""
+L'état `final` (onglet *Appliquer une configuration*) applique toute cette solution, routage des paquets
+compris.
+""")),
         )
 
+        forward_penalty = 0
         for m in self.net_scheme.get_accessible_machine_names():
             f = get_ip_forward(self, machine_name=m)
-            # we add 1 for routers well set and -1 for non routers set as routers...
+            # we add 1 for routers well set and -1 for non routers set as routers (-2 at most
+            # for the whole lab)...
             if m in self.get_data().routers:
                 max_grade = 1
                 grade = int(f) * max_grade
@@ -535,7 +664,8 @@ Configurer le routage statique de toutes les machines afin que :
                 )
             else:
                 max_grade = 0
-                grade = -1 * int(not f) * max_grade
+                grade = -int(f and forward_penalty > -2)
+                forward_penalty += grade
                 self.add_grade_element(
                     title=no_tr("ip_forward_{m}").format(m=m),
                     grade=grade,

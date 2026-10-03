@@ -740,8 +740,9 @@ def _static_stanza(interface: str, family: int, addresses: list, routes: list, e
     return lines
 
 
-def set_persistent_net_config_entry(net_scheme: NetScheme0, machine_name: str, nc_entry: NetConfigEntry):
-    """Write /etc/network/interfaces on *machine_name* from *nc_entry*.
+def render_persistent_net_config_entry(nc_entry: NetConfigEntry, machine_name: str = '') -> str:
+    """Content of /etc/network/interfaces for *nc_entry* (*machine_name* only names the machine
+    in the error raised for an interface without address).
 
     One 'inet static' stanza per interface with IPv4 addresses and one 'inet6 static' stanza
     per interface with IPv6 addresses (both for a dual-stack entry): the first address goes
@@ -772,7 +773,14 @@ def set_persistent_net_config_entry(net_scheme: NetScheme0, machine_name: str, n
             extra_routes = fam_routes[other] if other not in families else []
             lines += _static_stanza(interface, fam, addresses[fam], fam_routes[fam], extra_routes)
             lines.append('')
-    net_scheme.file(machine_name, '/etc/network/interfaces', '\n'.join(lines))
+    return '\n'.join(lines)
+
+
+def set_persistent_net_config_entry(net_scheme: NetScheme0, machine_name: str, nc_entry: NetConfigEntry):
+    """Write /etc/network/interfaces on *machine_name* from *nc_entry* (content:
+    render_persistent_net_config_entry())."""
+    net_scheme.file(machine_name, '/etc/network/interfaces',
+                    render_persistent_net_config_entry(nc_entry, machine_name))
 
 
 def set_net_config_entry(net_scheme: NetScheme0, machine_name: str, nc_entry: NetConfigEntry):
