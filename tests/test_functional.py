@@ -1219,3 +1219,17 @@ class TestInstructorMode:
             with pytest.raises(SystemExit):
                 _apply_state(rln, state)
             assert 'state changes are not allowed in user mode for this lab' in capsys.readouterr().err
+
+    def test_info_json_written_as_root_is_given_to_sre(self, instructor_env, mock_sre_args, monkeypatch):
+        """For a lab with privileged machines root is only dropped temporarily, and the Kathara
+        calls of save_lab_info() leave the effective uid at 0: `sre set-instructor-mode` then
+        wrote an info.json owned by root (seen with real containers, test_docker_lifecycle.py)."""
+        from SRE.command.instructor_mode import action_set_instructor_mode
+        rln = _start_instructor_lab(False)
+        mock_sre_args.running_lab = rln
+        chowned = []
+        monkeypatch.setattr(os, 'geteuid', lambda: 0)
+        monkeypatch.setattr(os, 'fchown', lambda fd, uid, gid: chowned.append((uid, gid)))
+        action_set_instructor_mode()
+        assert chowned == [(params.sre_uid, -1)]
+        assert _info(rln)['instructor_mode'] is True

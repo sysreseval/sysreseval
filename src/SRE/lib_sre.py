@@ -2170,6 +2170,10 @@ class Grade0:
             f.flush()
             os.fsync(f.fileno())
             os.chmod(temp_file.name, 0o644)
+            if os.geteuid() == 0:
+                # root is only dropped temporarily for a lab with privileged machines, and the
+                # Kathara calls above leave the euid at 0: info.json stays sre's
+                os.fchown(f.fileno(), params.sre_uid, -1)
         os.replace(temp_file.name, info_filename)
 
     def add_error(self, error, category=ErrorCategory.ERROR, step: int = 1):
