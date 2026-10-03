@@ -28,7 +28,8 @@ _sre() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="start stop wipe connect eval state exec eval-all check \
+    local commands="start stop save restore wipe connect eval state exec \
+set-instructor-mode remove-instructor-mode eval-all check \
 watch preload-images make-titles set-exam del-exam save-records cat \
 check-eval re-eval sheet outline list export eval-exam end-exam \
 pre-start-exam start-exam"
@@ -84,6 +85,14 @@ pre-start-exam start-exam"
             return ;;
         --start-after|--end-before)
             return ;;
+        -S|--start|--starting-time|-F|--finish)
+            return ;;  # free-form time (15:01 or 2026-09-10 15:01)
+        -H|--hostname-filter)
+            return ;;  # regexp
+        --path)
+            # A bare flag for `start`, a directory for `eval`.
+            if [[ "$cmd" == eval ]]; then _filedir -d; return; fi
+            ;;
         --labs)
             COMPREPLY=($(_sre_labs "$cur"))
             return ;;
@@ -115,17 +124,33 @@ pre-start-exam start-exam"
         start)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "-d --data -p --path --flavor \
---flavor-json --set-flavor-name --debug-project --xauth-file --help" -- "$cur"))
+--flavor-json --set-flavor-name --debug-project --instructor-mode \
+--xauth-file --help" -- "$cur"))
             else
                 COMPREPLY=($(_sre_labs "$cur"))
                 [[ ${#COMPREPLY[@]} -eq 0 ]] && _filedir
             fi
             ;;
-        stop)
+        stop|set-instructor-mode|remove-instructor-mode)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "--help" -- "$cur"))
             else
                 COMPREPLY=($(_sre_running_labs "$cur"))
+            fi
+            ;;
+        save)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-o --output --full-images --help" -- "$cur"))
+            else
+                COMPREPLY=($(_sre_running_labs "$cur"))
+            fi
+            ;;
+        restore)
+            # `-` (stdin) is also a valid save file; it is typed as is.
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--instructor-mode --help" -- "$cur"))
+            else
+                _filedir sre
             fi
             ;;
         connect)
@@ -198,7 +223,8 @@ pre-start-exam start-exam"
             ;;
         watch)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--timeout --interval --help" -- "$cur"))
+                COMPREPLY=($(compgen -W "--timeout --interval -H --hostname-filter \
+-S --starting-time -L --only-last-instances --help" -- "$cur"))
             else
                 _filedir -d
             fi
@@ -253,7 +279,8 @@ pre-start-exam start-exam"
             ;;
         sheet)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "-o --output -r --recursive --help" -- "$cur"))
+                COMPREPLY=($(compgen -W "-o --output -r --recursive -S --start \
+-F --finish --separate-instances --help" -- "$cur"))
             else
                 _sre_archives "$cur"
             fi
@@ -261,7 +288,8 @@ pre-start-exam start-exam"
         outline)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "-o --output-file -d --pdf-directory --lang \
--r --recursive --no-timeline --remaining-time --no-parts --users-file --help" -- "$cur"))
+-r --recursive -S --start -F --finish --no-timeline --remaining-time --no-parts \
+--separate-instances --users-file --help" -- "$cur"))
             else
                 _sre_archives "$cur"
             fi
