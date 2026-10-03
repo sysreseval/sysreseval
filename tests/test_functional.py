@@ -1233,3 +1233,32 @@ class TestInstructorMode:
         action_set_instructor_mode()
         assert chowned == [(params.sre_uid, -1)]
         assert _info(rln)['instructor_mode'] is True
+
+    # -- sbin/strip-instructor
+
+    def test_stripped_lab_is_the_normal_project(self, instructor_env, tmp_path, monkeypatch):
+        """sbin/strip-instructor: the lab file without its instructor() calls gives the info.json
+        of the original lab started as a normal project, same texts and same question hashes."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'tools'))
+        from strip_instructor import strip_source
+
+        def stripped(text: str) -> str:
+            result = strip_source(text.encode())
+            assert result.calls == 4 and result.import_removed and not result.warnings
+            return result.data.decode()
+
+        original = _info(_start_instructor_lab(False))
+        lab = _instructor_lab_copy(tmp_path, monkeypatch, 'stripped.py', stripped)
+        # (the docstring of the fixture lab still names the function: comments are not touched)
+        assert ' instructor, ' not in lab.read_text() and 'Solution' not in lab.read_text()
+        info = _info(_start_instructor_lab(False, lab))
+        for key in ('informations', 'questions', 'user_allowed_states', 'admin_only_states', 'instructor_mode'):
+            assert info[key] == original[key], key
+
+        # and it stays a normal project in instructor mode: there is nothing left to show
+        from SRE.instructor_text import has_instructor
+        in_mode = _info(_start_instructor_lab(True, _instructor_lab_copy(tmp_path, monkeypatch, 'stripped2.py', stripped)))
+        assert in_mode['instructor_mode'] is True
+        assert not any(has_instructor(text) for text in _info_texts(in_mode))
+        assert in_mode['questions'] == original['questions']

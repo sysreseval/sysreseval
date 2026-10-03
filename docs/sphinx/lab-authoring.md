@@ -442,6 +442,27 @@ Rules:
 - no `@@{field:regex}@@` form field inside a fragment (a student would not get the field);
 - use `+` or `TranslatedText.format()` to combine texts, as with `tr()`: `%` and f-strings do not work on translated texts.
 
+#### A lab file without the instructor texts — `sbin/strip-instructor`
+
+The running system keeps the instructor texts away from students, but the lab file itself still holds them. `sbin/strip-instructor` writes the file without its `instructor()` calls, for instance before handing a lab over:
+
+```bash
+sbin/strip-instructor lab/s4/mylab.py /tmp/mylab_public.py   # output file
+sbin/strip-instructor lab/s4/mylab.py /srv/public_labs/      # existing directory → /srv/public_labs/mylab.py
+sbin/strip-instructor -i /srv/public_labs/mylab.py           # replace the file itself
+```
+
+- an `instructor(...)` operand of a `+` disappears with its operator (`instructor(tr("note")) + tr("public")` → `tr("public")`); a call standing alone becomes `''`;
+- the `_TRANSLATIONS` entries of the `tr()` strings that only those calls used are deleted, in every language;
+- `instructor` is removed from its `from ... import` when nothing uses it any more;
+- formatting and comments are kept; the result is checked (it must parse and hold no `instructor()` call), otherwise nothing is written.
+
+The stripped lab behaves like the original outside the instructor mode. Limits:
+
+- a text kept in a variable is not followed: with `note = tr("...")` then `instructor(note)`, the definition of `note` stays in the file. The script warns about such variables; write `note = instructor(tr("..."))` to have the text removed;
+- comments are not examined, and only the lab file is processed (not the state directories of a directory lab);
+- a question keeps its hash as long as the removed text has no language that the text it was added to lacks (the usual case). Otherwise the archives of the stripped lab do not match the original lab in `sre re-eval`.
+
 In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
 
 ## State methods
