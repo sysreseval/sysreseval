@@ -40,7 +40,7 @@ from . import params
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
-from .operations_log import OperationsLog
+from .operations_log import OperationsLog, format_grade, format_total
 from .params import SRE
 
 
@@ -1752,6 +1752,27 @@ class Grade0:
         """The project's :class:`OperationsLog` (a disabled one when ``net_scheme`` is a stand-in without it)."""
         return getattr(self.net_scheme, 'ops_log', None) or OperationsLog.disabled()
 
+    def _log_grade_results(self, ops_log) -> None:
+        """Append the grade elements of the last :meth:`grade` pass, then the totals and marks of
+        both scopes, to the operations log (debug projects only; nothing without grade element)."""
+        if not ops_log.enabled or not self._grade_list:
+            return
+
+        def text(value):
+            return TranslatedText.from_value(value, self._default_language).resolve(self._default_language)
+
+        scope_labels = {params.SELF_EVAL_SCOPE: "self-eval only", params.EXO_EVAL_SCOPE: "exo-eval only"}
+        lines = [format_grade(text(g.title), g.grade, g.max_grade,
+                              part=text(g.grade_part) if g.grade_part else None,
+                              scope=scope_labels.get(g.scope))
+                 for g in self._grade_list]
+        maximum = self._maximum_mark if self._use_numerical_marks else None
+        lines.append(format_total("self-eval", self._total_grade_self_eval, self._total_max_self_eval,
+                                  self._mark_self_eval, maximum))
+        lines.append(format_total("exo-eval", self._total_grade_exo_eval, self._total_max_exo_eval,
+                                  self._mark_exo_eval, maximum))
+        ops_log.lines(lines)
+
     def test(self, machine_name, command, step=1, timeout: int = params.default_timeout, default_value='',
              default_code: int = 0, allow_error: bool = False):
         """Register and retrieve the result of a command executed inside *machine_name*.
@@ -2243,6 +2264,7 @@ class Grade0:
         self.compute_total()
         self._mark_self_eval = self.mark_self_eval()
         self._mark_exo_eval = self.mark_exo_eval()
+        self._log_grade_results(ops_log)
         # log_error(f"DEBUG _tests at save: {len(self._tests)} machine-step entries")
         # for (machine, step), cmds in self._tests.items():
         #     for (cmd, timeout), (result, code) in cmds.items():

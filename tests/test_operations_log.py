@@ -11,7 +11,8 @@ import pytest
 
 from SRE import params, operations_log
 from SRE.lib_sre import Data0, NetScheme0
-from SRE.operations_log import OperationsLog, describe_file, format_cmd
+from SRE.operations_log import (OperationsLog, describe_file, format_cmd, format_content, format_grade,
+                                format_total)
 
 RUNNING = '20260101000000@@@test/test1@@@user'
 
@@ -201,3 +202,80 @@ class TestFormatCmd:
 ])
 def test_describe_file(args, expected):
     assert describe_file(*args) == expected
+
+
+class TestFormatContent:
+    """Content of a file operation, written below its line."""
+
+    def test_text_bytes_indented_trailing_newline_stripped(self):
+        assert format_content(b'a\nb\n') == '    a\n    b\n'
+
+    def test_str_and_utf8(self):
+        assert format_content('x') == '    x\n'
+        assert format_content('caf\xe9\n'.encode()) == '    caf\xe9\n'
+
+    def test_inner_blank_lines_kept(self):
+        assert format_content(b'a\n\nb') == '    a\n    \n    b\n'
+
+    @pytest.mark.parametrize('content', [b'', '', b'\n'])
+    def test_empty_gives_nothing(self, content):
+        assert format_content(content) == ''
+
+    @pytest.mark.parametrize('content', [b'\xff\xfe\x01', b'abc\x00def', b'\x80', 'a\x00b'])
+    def test_binary_not_shown(self, content):
+        assert format_content(content) == '    (binary content not shown)\n'
+
+    def test_truncation(self, monkeypatch):
+        monkeypatch.setattr(params, 'operations_log_max_output_chars', 10)
+        assert format_content(b'abcdefghij' + b'K' * 5) == (
+            '    abcdefghij\n    ... (5 more characters truncated)\n')
+
+
+class TestOpContent:
+    def test_content_written_below_the_line(self, tmp_pub_dir):
+        log_path = make_debug_project()
+        log = OperationsLog(RUNNING, enabled=True)
+        log.op(1, 'm1', describe_file('file', '/a', 0o644, 'root:root', 4), content=b'a\nb\n')
+        log.op(1, 'm1', describe_file('file', '/bin/x', 0o755, 'root:root', 3), content=b'\x00\x01\xff')
+        assert log_path.read_text() == ('step1 - on m1 : file /a (0o644 root:root, 4 B)\n    a\n    b\n'
+                                        'step1 - on m1 : file /bin/x (0o755 root:root, 3 B)\n'
+                                        '    (binary content not shown)\n')
+
+    def test_without_or_with_empty_content_single_line(self, tmp_pub_dir):
+        log_path = make_debug_project()
+        log = OperationsLog(RUNNING, enabled=True)
+        log.op(1, 'host', 'callback cb')
+        log.op(1, 'm1', 'file /empty (0 B)', content=b'')
+        assert log_path.read_text() == 'step1 - on host : callback cb\nstep1 - on m1 : file /empty (0 B)\n'
+
+
+class TestGradeLines:
+    @pytest.mark.parametrize('args, kwargs, expected', [
+        (('/root/secret', 0, 2), {}, 'grade - /root/secret : 0 / 2\n'),
+        (('ttl', 3.0, 3), {'part': 'Routing', 'scope': 'self-eval only'},
+         'grade - [Routing] ttl : 3 / 3 (self-eval only)\n'),
+        (('half', 1.5, 2), {'part': None, 'scope': None}, 'grade - half : 1.5 / 2\n'),
+        (('two\nlines', None, None), {}, 'grade - two lines : ? / ?\n'),
+    ])
+    def test_format_grade(self, args, kwargs, expected):
+        assert format_grade(*args, **kwargs) == expected
+
+    @pytest.mark.parametrize('args, expected', [
+        (('self-eval', 3, 5, 12.0, 20), 'total - self-eval : 3 / 5, mark 12 / 20\n'),
+        (('exo-eval', 4.5, 5, 13.4, 20), 'total - exo-eval : 4.5 / 5, mark 13.4 / 20\n'),
+        (('exo-eval', 0, 0, None, 20), 'total - exo-eval : 0 / 0, no mark\n'),
+        (('self-eval', 9, 10, 'A+', None), 'total - self-eval : 9 / 10, mark A+\n'),
+    ])
+    def test_format_total(self, args, expected):
+        assert format_total(*args) == expected
+
+    def test_lines_written_as_one_block(self, tmp_pub_dir):
+        log_path = make_debug_project()
+        log = OperationsLog(RUNNING, enabled=True)
+        log.lines([format_grade('a', 1, 2), format_total('self-eval', 1, 2, 10.0, 20)])
+        assert log_path.read_text() == 'grade - a : 1 / 2\ntotal - self-eval : 1 / 2, mark 10 / 20\n'
+
+    def test_empty_lines_write_nothing(self, tmp_pub_dir):
+        log_path = make_debug_project()
+        OperationsLog(RUNNING, enabled=True).lines([])
+        assert not log_path.exists()

@@ -17,6 +17,13 @@ Format: one header line per run, preceded by a blank line unless the file is emp
 Every entry starts with ``step<N> - on <machine|host> : <operation>``; the output of a command is
 indented below it (capped at ``params.operations_log_max_output_chars``) and its exit code comes
 last (``-1`` = timeout, ``-2`` = error, ``no result`` when exetests returned nothing for it).
+A file operation (file, append, copy from/to host) is followed by the indented content it wrote
+(same cap; ``(binary content not shown)`` when it is not UTF-8 text).  An evaluation ends with
+the grade elements and the totals of both scopes::
+
+    grade - [Routing] default route on m1 : 1 / 2 (self-eval only)
+    total - self-eval : 3 / 5, mark 12 / 20
+    total - exo-eval : 2 / 3, mark 13.4 / 20
 
 Each entry is one ``write()`` on an ``O_APPEND`` descriptor, so entries of concurrent writers
 (``sre state`` and a background ``sre eval`` of the same project) interleave but never mix, and a
@@ -32,6 +39,7 @@ from .utils import log_error
 
 INDENT = "    "
 HOST = "host"
+BINARY_CONTENT = "(binary content not shown)"
 
 
 def _now() -> datetime.datetime:
@@ -60,24 +68,77 @@ def format_exit_code(code: int | None) -> str:
     return f"exit code {code}"
 
 
-def format_cmd(step: int, where: str, command: str, output, code: int | None, max_chars: int | None = None) -> str:
-    """Operation line of a command followed by its indented output and its exit code line."""
+def _indented(text: str, max_chars: int | None = None) -> list[str]:
+    """Lines of *text* indented for the log: trailing newlines stripped, text capped at *max_chars*
+    (``params.operations_log_max_output_chars`` by default) and followed by a truncation line."""
     if max_chars is None:
         max_chars = params.operations_log_max_output_chars
-    if isinstance(output, bytes):
-        output = output.decode('utf-8', 'replace')
-    text = (output or '').rstrip('\n')
+    text = (text or '').rstrip('\n')
     truncated = 0
     if max_chars is not None and len(text) > max_chars:
         truncated = len(text) - max_chars
         text = text[:max_chars]
-    lines = [format_op(step, where, command)]
-    if text:
-        lines.extend(f"{INDENT}{line}\n" for line in text.split('\n'))
+    lines = [f"{INDENT}{line}\n" for line in text.split('\n')] if text else []
     if truncated:
         lines.append(f"{INDENT}... ({truncated} more characters truncated)\n")
-    lines.append(f"{INDENT}{format_exit_code(code)}\n")
-    return ''.join(lines)
+    return lines
+
+
+def format_cmd(step: int, where: str, command: str, output, code: int | None, max_chars: int | None = None) -> str:
+    """Operation line of a command followed by its indented output and its exit code line."""
+    if isinstance(output, bytes):
+        output = output.decode('utf-8', 'replace')
+    return ''.join([format_op(step, where, command), *_indented(output, max_chars),
+                    f"{INDENT}{format_exit_code(code)}\n"])
+
+
+def format_content(content, max_chars: int | None = None) -> str:
+    """Indented text of a file content (bytes or str), written below the line of a file operation.
+    Content that is not UTF-8 text gives one ``(binary content not shown)`` line, empty content
+    nothing."""
+    if isinstance(content, (bytes, bytearray)):
+        try:
+            content = bytes(content).decode('utf-8')
+        except UnicodeDecodeError:
+            return f"{INDENT}{BINARY_CONTENT}\n"
+    if not content:
+        return ''
+    if '\x00' in content:
+        return f"{INDENT}{BINARY_CONTENT}\n"
+    return ''.join(_indented(content, max_chars))
+
+
+def _fmt_num(value) -> str:
+    """A grade value: whole numbers without decimal point, ``None`` as ``?``."""
+    if value is None:
+        return "?"
+    try:
+        if value == int(value):
+            return str(int(value))
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return str(value)
+
+
+def format_grade(title, grade, max_grade, part: str | None = None, scope: str | None = None) -> str:
+    """``grade - [<part>] <title> : <grade> / <max> (<scope>)`` line of a grade element; the part
+    and the scope label only when given."""
+    title = str(title).replace('\n', ' ')
+    head = f"[{str(part).replace(chr(10), ' ')}] " if part else ""
+    tail = f" ({scope})" if scope else ""
+    return f"grade - {head}{title} : {_fmt_num(grade)} / {_fmt_num(max_grade)}{tail}\n"
+
+
+def format_total(label: str, total, total_max, mark, maximum_mark=None) -> str:
+    """``total - <label> : <total> / <max>, mark <mark> / <maximum>`` line; a letter mark has no
+    maximum, ``no mark`` when there is nothing to grade (*mark* is ``None``)."""
+    if mark is None:
+        mark_text = "no mark"
+    elif maximum_mark is not None:
+        mark_text = f"mark {_fmt_num(mark)} / {_fmt_num(maximum_mark)}"
+    else:
+        mark_text = f"mark {mark}"
+    return f"total - {label} : {_fmt_num(total)} / {_fmt_num(total_max)}, {mark_text}\n"
 
 
 def describe_file(verb: str, filename: str, permissions: int | None, owner: str | None, size: int) -> str:
@@ -123,9 +184,11 @@ class OperationsLog:
         """Start a run: ``state <name>`` or ``evaluation``."""
         self._write(lambda: format_header(title, leading_newline=self._needs_separator))
 
-    def op(self, step: int, where: str, text: str) -> None:
-        """One operation without output (file, append, copy, callback, error...)."""
-        self._write(lambda: format_op(step, where, text))
+    def op(self, step: int, where: str, text: str, content=None) -> None:
+        """One operation without output (file, append, copy, callback, error...).  *content* (bytes
+        or str) is what a file operation wrote: it goes below the line, see :func:`format_content`."""
+        self._write(lambda: format_op(step, where, text)
+                    + (format_content(content) if content is not None else ''))
 
     def cmd(self, step: int, where: str, command: str, output, code: int | None) -> None:
         """One executed command with its output and exit code."""
@@ -138,6 +201,13 @@ class OperationsLog:
         if not entries:
             return
         self._write(lambda: ''.join(format_cmd(step, where, c, o, k) for c, o, k in entries))
+
+    def lines(self, lines) -> None:
+        """Preformatted lines (each one ending with a newline), written as one contiguous block."""
+        text = ''.join(lines)
+        if not text:
+            return
+        self._write(lambda: text)
 
     def close(self) -> None:
         with self._lock:

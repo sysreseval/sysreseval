@@ -898,3 +898,77 @@ class TestOperationsLogEval:
         with patch('SRE.lib_sre.subprocess.run', return_value=MagicMock(stdout='x', returncode=0)):
             g.run_tests()
         assert not Path(params.operations_log_filename(self.RUNNING)).exists()
+
+    # -- grade elements and totals at the end of the run --------------------------------------
+
+    @staticmethod
+    def _grade_with_elements():
+        from SRE.lib_sre import tr
+
+        class G(Grade0):
+            def grade(self):
+                super().grade()
+                part = self.add_grade_part('Routing')
+                self.add_grade_element('/root/secret', 2)
+                self.add_grade_element(tr('default route', fr='route par défaut'), 2, grade_part=part,
+                                       scope=params.SELF_EVAL_SCOPE)
+                self.add_grade_element('ttl', 3, grade_part=part, scope=params.EXO_EVAL_SCOPE)
+                self.set_grade('/root/secret', 1.5)
+                self.set_grade('ttl', 3)
+
+        return G
+
+    def test_grade_elements_and_totals_logged(self, tmp_pub_dir):
+        ops_log, log_path = self._enabled_log()
+        ns = make_net_scheme()
+        ns.ops_log = ops_log
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        self._grade_with_elements()(ns).run_tests()
+        lines = log_path.read_text().split('\n')
+        assert lines[0].endswith('  evaluation')
+        assert lines[1:] == ['grade - /root/secret : 1.5 / 2',
+                             'grade - [Routing] default route : 0 / 2 (self-eval only)',
+                             'grade - [Routing] ttl : 3 / 3 (exo-eval only)',
+                             'total - self-eval : 1.5 / 4, mark 7.5 / 20',
+                             'total - exo-eval : 4.5 / 5, mark 18 / 20',
+                             '']
+
+    def test_grade_lines_follow_the_commands(self, tmp_pub_dir):
+        ops_log, log_path = self._enabled_log()
+        ns = make_net_scheme()
+        ns.ops_log = ops_log
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+
+        class G(Grade0):
+            def grade(self):
+                super().grade()
+                out, _ = self.test_host('uname -r')
+                self.add_grade_element('kernel', 1, grade=1 if out.startswith('6') else 0)
+
+        with patch('SRE.lib_sre.subprocess.run', return_value=MagicMock(stdout='6.1.0\n', returncode=0)):
+            G(ns).run_tests()
+        lines = log_path.read_text().split('\n')
+        assert lines[1:] == ['step1 - on host : uname -r', '    6.1.0', '    exit code 0',
+                             'grade - kernel : 1 / 1',
+                             'total - self-eval : 1 / 1, mark 20 / 20',
+                             'total - exo-eval : 1 / 1, mark 20 / 20', '']
+
+    def test_letter_marks_and_default_language(self, tmp_pub_dir):
+        ops_log, log_path = self._enabled_log()
+        ns = make_net_scheme()
+        ns.ops_log = ops_log
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        g = self._grade_with_elements()(ns)
+        g._use_numerical_marks = False
+        g._default_language = 'fr'
+        g.run_tests()
+        lines = log_path.read_text().split('\n')
+        assert lines[2] == 'grade - [Routing] route par défaut : 0 / 2 (self-eval only)'
+        assert lines[4:6] == ['total - self-eval : 1.5 / 4, mark F', 'total - exo-eval : 4.5 / 5, mark A+']
+
+    def test_mock_ops_log_receives_one_block(self, tmp_pub_dir):
+        ns = make_net_scheme()   # ns.ops_log is an auto-created mock
+        ns.get_lab_from_kathara.return_value = _make_lab_no_machines()
+        self._grade_with_elements()(ns).run_tests()
+        ns.ops_log.lines.assert_called_once()
+        assert len(ns.ops_log.lines.call_args.args[0]) == 5

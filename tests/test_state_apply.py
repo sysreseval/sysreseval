@@ -103,6 +103,16 @@ class ApplyScheme(NetScheme0):
         self.append_to_file('m1', '/etc/hosts', 'abc')
         self.idempotent_append_to_file('m1', '/etc/hosts', 'abcd', permissions=0o644)
 
+    @sre_state
+    def binfile(self):
+        self.file('m1', '/usr/bin/x', b'\x00\x01\xff')
+        self.file('m1', '/etc/multi', 'l1\nl2\n')
+
+    @sre_state
+    def hostcopy(self):
+        self.cp_from_host('pub.key', 'm1', '/root/pub.key', permissions=0o600)
+        self.cp_to_host('m1', '/var/log/x', 'x.log')
+
 
 def _run(scheme, state, machines):
     lab = MagicMock()
@@ -269,9 +279,41 @@ class TestOperationsLogApply:
         s, log_path = self._debug_scheme()
         _run(s, 'fileops', {'m1': FakeMachine()})
         lines = log_path.read_text().split('\n')
-        assert lines[1:4] == ['step1 - on m1 : file /etc/x (0o600 sre:sre, 2 B)',
-                              'step1 - on m1 : append /etc/hosts (3 B)',
-                              'step1 - on m1 : idempotent append /etc/hosts (0o644, 4 B)']
+        assert lines[1:7] == ['step1 - on m1 : file /etc/x (0o600 sre:sre, 2 B)', '    xy',
+                              'step1 - on m1 : append /etc/hosts (3 B)', '    abc',
+                              'step1 - on m1 : idempotent append /etc/hosts (0o644, 4 B)', '    abcd']
+
+    def test_file_content_text_and_binary(self, tmp_pub_dir):
+        s, log_path = self._debug_scheme()
+        _run(s, 'binfile', {'m1': FakeMachine()})
+        lines = log_path.read_text().split('\n')
+        assert lines[1:6] == ['step1 - on m1 : file /usr/bin/x (0o644 root:root, 3 B)',
+                              '    (binary content not shown)',
+                              'step1 - on m1 : file /etc/multi (0o644 root:root, 6 B)', '    l1', '    l2']
+
+    def test_host_copies_show_content(self, tmp_pub_dir):
+        import io
+        import tarfile
+        s, log_path = self._debug_scheme()
+        files_dir = Path(params.files_dir(RUNNING_LAB))
+        files_dir.mkdir(parents=True)
+        (files_dir / 'pub.key').write_text('ssh-ed25519 AAAA key\n')
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode='w') as tar:
+            info = tarfile.TarInfo('x')
+            info.size = 9
+            tar.addfile(info, io.BytesIO(b'log line\n'))
+        m1 = FakeMachine()
+        m1.api_object.get_archive.return_value = ([buf.getvalue()], {})
+        with patch.object(state_cmd.os, 'chown'):
+            _run(s, 'hostcopy', {'m1': m1})
+        lines = log_path.read_text().split('\n')
+        assert lines[1:5] == [
+            f'step1 - on m1 : copy from host {files_dir / "pub.key"} -> /root/pub.key (0o600 root:root, 21 B)',
+            '    ssh-ed25519 AAAA key',
+            f'step1 - on m1 : copy to host /var/log/x -> {files_dir.resolve() / "x.log"} (9 B)',
+            '    log line']
+        assert (files_dir / 'x.log').read_bytes() == b'log line\n'
 
     def test_host_cmd_and_callback(self, tmp_pub_dir):
         s, log_path = self._debug_scheme()

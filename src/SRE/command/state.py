@@ -122,7 +122,8 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
                 permissions = op.permissions if op.permissions is not None else op.src_path.stat().st_mode & 0o7777
                 mtime = op.mtime if op.mtime is not None else _time.time()
                 ops_log.op(step, _machine_name, describe_file(f"copy from host {op.src_path} ->", op.dest,
-                                                              permissions, op.owner, len(content)))
+                                                              permissions, op.owner, len(content)),
+                           content=content)
                 put_file_in_container(machine.api_object, _FileOp(op.dest, content, permissions, op.owner, mtime))
             elif isinstance(op, _CpToHostOp):
                 import io as _io, tarfile as _tarfile
@@ -139,18 +140,22 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
                 if op.permissions is not None:
                     os.chmod(str(dest_path), op.permissions)
                 ops_log.op(step, _machine_name, describe_file(f"copy to host {op.src_path} ->", str(dest_path),
-                                                              op.permissions, None, len(data)))
+                                                              op.permissions, None, len(data)),
+                           content=data)
             elif isinstance(op, _FileOp):
                 ops_log.op(step, _machine_name,
-                           describe_file("file", op.filename, op.permissions, op.owner, len(op.content)))
+                           describe_file("file", op.filename, op.permissions, op.owner, len(op.content)),
+                           content=op.content)
                 put_file_in_container(machine.api_object, op)
             elif isinstance(op, _AppendOp):
                 ops_log.op(step, _machine_name,
-                           describe_file("append", op.filename, op.permissions, op.owner, len(op.content)))
+                           describe_file("append", op.filename, op.permissions, op.owner, len(op.content)),
+                           content=op.content)
                 append_to_file_in_container(machine.api_object, op)
             elif isinstance(op, _IdempotentAppendOp):
                 ops_log.op(step, _machine_name,
-                           describe_file("idempotent append", op.filename, op.permissions, op.owner, len(op.content)))
+                           describe_file("idempotent append", op.filename, op.permissions, op.owner, len(op.content)),
+                           content=op.content)
                 idempotent_append_to_file_in_container(machine.api_object, op)
             else:
                 error_quit(f"unknown state operation {op!r} for machine {_machine_name}")
