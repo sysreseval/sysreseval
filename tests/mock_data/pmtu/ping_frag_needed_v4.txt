@@ -1,0 +1,6 @@
+PING 10.157.39.91 (10.157.39.91) 1472(1500) bytes of data.
+From 172.28.219.115 icmp_seq=1 Frag needed and DF set (mtu = 1460)
+
+--- 10.157.39.91 ping statistics ---
+1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms
+
