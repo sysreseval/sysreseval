@@ -43,6 +43,7 @@ The author counterpart to `sre start`. Privileged only and incompatible with `--
 - **Restrictions lifted**: user-mode guards on `sre state` and `sre connect` (which normally refuse to touch hidden machines or apply `user_allowed=False` states) are bypassed.
 - **Grading**: when you `sre eval` a debug project, marks are always shown and every grade scope is surfaced — `no_mark_on_self_grade`, `hide_potential_penalty_grades_in_self_grade` and the periodic-eval gating are all ignored.
 - **Operations log**: every state application (`initial` at start, `sre state`, the `save`/`restore` lifecycle states) and every evaluation appends what it executed to `<project dir>/operations.log`: one header per run, then `stepN - on <machine|host> : <operation>` lines with the command output and exit code. File writes, appends and copies show the path, mode, owner and size, followed by the content written (text only, capped like command outputs). Each evaluation ends with its grade elements (`grade - [<part>] <title> : <grade> / <max>`, with `(self-eval only)` / `(exo-eval only)` when the scope is restricted) and the totals and marks of both scopes. The GUI shows it live in the *Log* tab. Never written for a normal project.
+- **Instructor texts**: the texts wrapped in [`instructor()`](#instructor-only-texts--instructor) are kept in `info.json`, as for a project in instructor mode, and the GUI shows its *Instructor mode* button on the project to display or hide them.
 - **`-p` is implicit**: `--debug-project` always treats the lab argument as a filesystem path, so you can point it directly at the `.py` you're editing (e.g. `~/labs/draft.py`) without copying it into `/opt/sre/lab/` first.
 
 The marker survives container restarts and is cleared when the project is `sre stop`ped or `sre wipe`d.
@@ -432,6 +433,7 @@ class Grade(Grade0):
 
 - In a normal project the function ignores its argument: it returns an empty text, and nothing of it is written to `info.json` (which students can read).
 - In a project in **instructor mode** (`sre start --instructor-mode <lab>`, `sre restore --instructor-mode <file>`, or `sre set-instructor-mode <running_lab>` on a running project — privileged only) the text is kept, and the GUI displays it in red on a light red background while its *Instructor mode* button is on. `color` / `background` (`'#rrggbb'` or a colour name) change the colours of one text; `params.instructor_text_color` / `params.instructor_background_color` are the defaults.
+- A **debug project** (`sre start --debug-project`) keeps the text as well: the same button displays or hides it, so the hints can be checked while the lab is being written.
 - A question hash does not depend on the instructor texts: the answers stay attached when the mode is switched on a running project.
 
 Rules:

@@ -3,7 +3,8 @@ instructor mode of a running project (privileged only; ``sre start --instructor-
 ``sre restore --instructor-mode`` set it from the beginning).
 
 The mode is the marker ``.private/instructor_mode``.  ``info.json`` is written again afterwards:
-it holds the instructor() texts of the lab only while the project is in instructor mode.
+it holds the instructor() texts of the lab only while the project is in instructor mode (a debug
+project keeps them whatever the mode).
 """
 from pathlib import Path
 

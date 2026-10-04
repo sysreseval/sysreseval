@@ -94,13 +94,13 @@ Runs `shell -c <command>` in a container and forwards stdout/stderr/exit code. D
 
 Switch the **instructor mode** of a running project (`sre start --instructor-mode` and `sre restore --instructor-mode` set it from the beginning). The mode is meant for the instructor's own project and has three effects:
 
-- the texts the lab wraps in `instructor()` (see [Lab Authoring](lab-authoring.md)) are kept in `info.json`; for any other project they are dropped before the file is written, so students cannot read them;
+- the texts the lab wraps in `instructor()` (see [Lab Authoring](lab-authoring.md)) are kept in `info.json`; for any other project but a debug project (`sre start --debug-project`, which keeps them too) they are dropped before the file is written, so students cannot read them;
 - every `sre state` appends what it executed to the project's `operations.log` (evaluations are not logged, unlike in a debug project);
 - every state can be applied, as to a debug project: `sre state` in user mode (what the GUI runs) no longer requires `allow_user_states` nor `@sre_state(user_allowed=True)`.
 
 In the GUI all three show only while the *Instructor mode* button is on (see [GUI](gui.md)). Nothing else changes: hidden machines and grades are those of a normal project.
 
-Both commands write `info.json` again; the question hashes do not depend on the mode, so the answers already given stay attached. `remove-instructor-mode` also deletes `operations.log`, unless the project is a debug project.
+Both commands write `info.json` again; the question hashes do not depend on the mode, so the answers already given stay attached. `remove-instructor-mode` also deletes `operations.log`, unless the project is a debug project (which also keeps its instructor texts).
 
 ### `sre eval-all [--display-grades / --no-display-grades]`
 

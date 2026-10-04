@@ -1,7 +1,8 @@
 """
 Instructor mode in the GUI: the Informations and Questions views draw the instructor() fragments
-of a project in instructor mode only while the main window's "Instructor mode" button is on, and
-show the student's view otherwise; the button itself is visible only on such a project.
+of a project in instructor mode, or of a debug project, only while the main window's "Instructor
+mode" button is on, and show the student's view otherwise; the button itself is visible only on
+such a project.
 Offscreen Qt.
 """
 import json
@@ -161,10 +162,13 @@ class TestApplyConfigView:
 
 
 def _write_info(project_dir: Path, texts, instructor_mode: bool, **fields):
+    """info.json as the CLI writes it: the instructor texts only for a project in instructor
+    mode or a debug project (`debug_project=True`)."""
+    with_texts = instructor_mode or fields.get("debug_project", False)
     (project_dir / params.info_json_name).write_text(json.dumps({
         "lab_name": "test", "machines": [], "instructor_mode": instructor_mode,
-        "informations": texts['informations'] if instructor_mode else "Public text.",
-        "questions": _questions(texts) if instructor_mode else [], **fields}))
+        "informations": texts['informations'] if with_texts else "Public text.",
+        "questions": _questions(texts) if with_texts else [], **fields}))
 
 
 @LINUX_ONLY
@@ -235,6 +239,36 @@ class TestProjectWidget:
         widget.set_instructor_view(False)
         assert _listed(widget._apply_config_view) == [BROKEN, FINAL]
 
+    def test_debug_project_texts_follow_the_button(self, project_dir, texts):
+        """On a debug project the button only switches the instructor texts: the states and
+        the Log tab are there whatever its position."""
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, False, debug_project=True, user_allowed_states=STATES,
+                    admin_only_states=['final'])
+        widget = ProjectWidget(project_dir)
+
+        def log_tab_visible() -> bool:
+            return widget._tabs.isTabVisible(widget._tabs.indexOf(widget._log_view))
+
+        assert widget.has_instructor_texts()
+        assert 'Solution' not in widget._info_view.toPlainText()
+        assert widget._questions_view.list_widget.item(0).text() == "Gateway"
+        assert log_tab_visible()
+        widget.set_instructor_view(True)
+        assert 'Solution' in widget._info_view.toPlainText()
+        assert params.instructor_text_color in widget._info_view.toHtml()
+        assert widget._questions_view.list_widget.item(0).text() == "Gateway (expected: 10.0.0.1)"
+        assert log_tab_visible() and _listed(widget._apply_config_view) == [BROKEN, FINAL]
+        widget.set_instructor_view(False)
+        assert 'Solution' not in widget._info_view.toPlainText()
+        assert widget._questions_view.list_widget.item(0).text() == "Gateway"
+        assert log_tab_visible() and _listed(widget._apply_config_view) == [BROKEN, FINAL]
+
+    def test_normal_project_has_no_instructor_texts(self, project_dir, texts):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, texts, False)
+        assert not ProjectWidget(project_dir).has_instructor_texts()
+
     def test_normal_project_states_and_exam_mode(self, project_dir, texts):
         from sysreseval.project_widget import ProjectWidget
         _write_info(project_dir, texts, False, user_allowed_states={"broken": STATES["broken"]},
@@ -269,12 +303,27 @@ class TestMainWindowButton:
         win.deleteLater()
         _app.processEvents()
 
-    def _add(self, window, texts, name: str, instructor_mode: bool):
+    def _add(self, window, texts, name: str, instructor_mode: bool, **fields):
         project_dir = Path(params.sre_projects_dir) / name
         project_dir.mkdir()
-        _write_info(project_dir, texts, instructor_mode)
+        _write_info(project_dir, texts, instructor_mode, **fields)
         window.add_project(project_dir)
         return window.tabs.currentWidget()
+
+    def test_button_on_a_debug_project(self, window, texts):
+        normal = self._add(window, texts, '20260101000000@@@normal@@@user', False)
+        assert window._instructor_btn.isHidden()
+        project = self._add(window, texts, '20260101000001@@@debug@@@user', False, debug_project=True)
+        assert not window._instructor_btn.isHidden() and not window._instructor_btn.isChecked()
+        assert 'Solution' not in project._info_view.toPlainText()
+        window._instructor_btn.setChecked(True)
+        assert 'Solution' in project._info_view.toPlainText()
+        assert 'Solution' not in normal._info_view.toPlainText()
+        window.tabs.setCurrentWidget(normal)
+        assert window._instructor_btn.isHidden()
+        window.tabs.setCurrentWidget(project)
+        window._instructor_btn.setChecked(False)
+        assert 'Solution' not in project._info_view.toPlainText()
 
     def test_button_only_on_an_instructor_project(self, window, texts):
         assert window._instructor_btn.isHidden() and not window._instructor_btn.isChecked()

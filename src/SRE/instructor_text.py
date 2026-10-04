@@ -5,9 +5,10 @@ string of ``self.informations`` or of a question::
 
     self.informations = instructor(tr("Solution: ...")) + tr("Public text")
 
-Outside the instructor mode (``sre start --instructor-mode``, ``sre set-instructor-mode``) the
-function returns an empty text, so nothing of it reaches ``info.json``, which students can read.
-In instructor mode the text is kept between private-use marks::
+Outside the instructor mode (``sre start --instructor-mode``, ``sre set-instructor-mode``) and the
+debug projects (``sre start --debug-project``) the function returns an empty text, so nothing of
+it reaches ``info.json``, which students can read.  In those two kinds of projects the text is
+kept between private-use marks::
 
     <begin><color>;<background><args end><content><end>      (``params.instructor_*_mark``)
 
@@ -50,7 +51,8 @@ _context = threading.local()
 
 
 def set_instructor_context(active: bool) -> None:
-    """Tell :func:`instructor` whether the project handled by this thread is in instructor mode."""
+    """Tell :func:`instructor` whether the project handled by this thread keeps the instructor
+    texts (project in instructor mode, or debug project)."""
     _context.active = bool(active)
 
 
@@ -70,9 +72,10 @@ def instructor(text, color: str | None = None, background: str | None = None):
     """Mark *text* (a ``str`` or a ``tr()`` text) as visible in instructor mode only.
 
     Outside the instructor mode the result is an empty text of the same kind, so the argument is
-    ignored.  In instructor mode the GUI shows the text in ``params.instructor_text_color`` on
-    ``params.instructor_background_color`` while its *Instructor mode* button is on; *color* and
-    *background* (``'#rrggbb'`` or a colour name) override them for this text.
+    ignored.  In instructor mode, and in a debug project, the GUI shows the text in
+    ``params.instructor_text_color`` on ``params.instructor_background_color`` while its
+    *Instructor mode* button is on; *color* and *background* (``'#rrggbb'`` or a colour name)
+    override them for this text.
 
     Call it from ``NetScheme.__init__`` (after ``super().__init__()``) or from ``Grade.grade()``:
     the mode is not known when the lab module is imported.  It is meant for ``self.informations``

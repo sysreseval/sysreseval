@@ -73,6 +73,7 @@ class TestEnabling:
         scheme = Scheme(MockData())
         assert scheme.ops_log.enabled is False
         assert scheme.debug_project is False and scheme.instructor_mode is False
+        assert scheme.instructor_texts is False
 
     def test_netscheme_debug_logs_the_evaluations(self, tmp_pub_dir):
         make_debug_project()
@@ -82,6 +83,7 @@ class TestEnabling:
         make_instructor_project()
         scheme = Scheme(MockData())
         assert scheme.instructor_mode is True and scheme.debug_project is False
+        assert scheme.instructor_texts is True
         assert scheme.ops_log.enabled is True
         assert scheme.ops_log.log_evaluations is False
 
@@ -98,6 +100,13 @@ class TestEnabling:
         assert instructor_context() is True
         Scheme(MockData(), running_lab_name='20260101000000@@@test/other@@@user')
         assert instructor_context() is False
+
+    def test_netscheme_of_a_debug_project_keeps_the_instructor_texts(self, tmp_pub_dir):
+        from SRE.instructor_text import instructor_context
+        make_debug_project()
+        scheme = Scheme(MockData())
+        assert scheme.debug_project is True and scheme.instructor_mode is False
+        assert scheme.instructor_texts is True and instructor_context() is True
 
 
 EXAMPLE = """\

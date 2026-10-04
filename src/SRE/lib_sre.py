@@ -770,8 +770,10 @@ class NetScheme0:
         self.running_lab_name = running_lab_name
         self.debug_project = os.path.exists(params.debug_project_marker_filename(running_lab_name))
         self.instructor_mode = os.path.exists(params.instructor_mode_marker_filename(running_lab_name))
-        # instructor() texts of the lab's __init__ and grade() follow the mode of this project
-        set_instructor_context(self.instructor_mode)
+        # instructor() texts of the lab's __init__ and grade() are kept for the projects of the
+        # instructor: instructor mode, or debug project
+        self.instructor_texts = self.debug_project or self.instructor_mode
+        set_instructor_context(self.instructor_texts)
         # operations log (GUI "Log" tab), opened on first write: `sre state` / `sre eval` of a debug
         # project, `sre state` only of an instructor-mode project
         self.ops_log = OperationsLog(running_lab_name, enabled=self.debug_project or self.instructor_mode,
@@ -1550,7 +1552,7 @@ class Grade0:
     def reset_before_grade(self):
         """Clear questions, grade list, and section counters before each call to :meth:`grade`."""
         # instructor() texts follow the mode of this project (`is True`: net_scheme may be a stand-in)
-        set_instructor_context(getattr(self.net_scheme, 'instructor_mode', False) is True)
+        set_instructor_context(getattr(self.net_scheme, 'instructor_texts', False) is True)
         self._questions = dict()  # hash->Question
         self._questions_order = dict()  # order -> [Question1, Question2, ...]
         self._questions_current_order = 100
@@ -2107,9 +2109,10 @@ class Grade0:
             for state, desc in user_allowed_states_raw.items()
         }
 
-        if not instructor_mode:
+        if not (instructor_mode or debug_project):
             # info.json is readable by the students: whatever the instructor() calls returned,
-            # no instructor fragment leaves a project that is not in instructor mode
+            # no instructor fragment leaves a project that is neither in instructor mode nor a
+            # debug project
             title = strip_instructor(title)
             informations = strip_instructor(informations)
             for q in questions:

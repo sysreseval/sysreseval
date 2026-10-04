@@ -252,8 +252,9 @@ class MainWindow(QMainWindow):
         self._wrap_btn.setToolTip(self.tr("Wrap"))
         self._wrap_btn.toggled.connect(self._on_wrap_toggled)
 
-        # Shown only on a project in instructor mode; the instructor() texts and the journal of
-        # the states are displayed while it is on (off at launch: nothing shows on a projector)
+        # Shown only on a project in instructor mode or a debug project; the instructor() texts
+        # (and, in instructor mode, the journal of the states) are displayed while it is on
+        # (off at launch: nothing shows on a projector)
         self._instructor_view = False
         self._instructor_btn = QToolButton()
         self._instructor_btn.setIcon(_make_icon(_INSTRUCTOR_ICON_SVG))
@@ -522,8 +523,7 @@ class MainWindow(QMainWindow):
         can_export = (not in_exam and current_is_project and
                       current_widget.info.get("export_kathara_project", True))
         self._export_action.setEnabled(can_export)
-        self._instructor_btn.setVisible(
-            current_is_project and bool(current_widget.info.get("instructor_mode", False)))
+        self._instructor_btn.setVisible(current_is_project and current_widget.has_instructor_texts())
 
     def _tab_title_for(self, widget: ProjectWidget) -> str:
         priority = settings.get_language_priority()

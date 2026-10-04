@@ -936,6 +936,27 @@ class TestInstructorMode:
         assert strip_instructor(question['title']) == {'en': 'Gateway', 'fr': 'Passerelle'}
         assert has_instructor(info['questions'][1]['description'])
 
+    def test_debug_project_keeps_the_instructor_text(self, instructor_env, mock_sre_args, tmp_path, monkeypatch):
+        """A debug project is not in instructor mode but its info.json holds the instructor
+        texts too (the GUI shows the "Instructor mode" button on it)."""
+        from SRE.instructor_text import has_instructor, strip_instructor, unwrap_instructor
+        normal = _start_instructor_lab(False, _instructor_lab_copy(tmp_path, monkeypatch, 'normal.py'))
+        hashes = [q['question_hash'] for q in _info(normal)['questions']]
+        mock_sre_args.debug_project = True
+        rln = _start_instructor_lab(False)
+        info = _info(rln)
+        assert info['debug_project'] is True and info['instructor_mode'] is False
+        assert not _instructor_marker(rln).exists()
+        assert has_instructor(info['informations'])
+        assert '## Solution' in unwrap_instructor(info['informations']['en'])
+        assert 'Solution' not in strip_instructor(info['informations']['en'])
+        question = info['questions'][0]
+        assert unwrap_instructor(question['title']) == {'en': 'Gateway (expected: 10.0.0.1)',
+                                                        'fr': 'Passerelle (attendu : 10.0.0.1)'}
+        assert has_instructor(info['questions'][1]['description'])
+        # same hashes as the normal project: the answers do not depend on the kind of project
+        assert [q['question_hash'] for q in info['questions']] == hashes
+
     def test_instructor_project_logs_the_states_only(self, instructor_env):
         rln = _start_instructor_lab(True)
         log_path = Path(params.operations_log_filename(rln))
@@ -976,14 +997,16 @@ class TestInstructorMode:
         action_remove_instructor_mode()   # idempotent
         assert _info(rln)['instructor_mode'] is False
 
-    def test_remove_keeps_the_log_of_a_debug_project(self, instructor_env, mock_sre_args):
+    def test_remove_keeps_the_log_and_the_texts_of_a_debug_project(self, instructor_env, mock_sre_args):
         from SRE.command.instructor_mode import action_remove_instructor_mode
+        from SRE.instructor_text import has_instructor
         rln = _start_instructor_lab(True)
         Path(params.debug_project_marker_filename(rln)).touch()
         mock_sre_args.running_lab = rln
         action_remove_instructor_mode()
         assert Path(params.operations_log_filename(rln)).exists()
         assert _info(rln)['instructor_mode'] is False and _info(rln)['debug_project'] is True
+        assert has_instructor(_info(rln)['informations'])
 
     def test_restore_takes_the_mode_from_its_flag_only(self, instructor_env, save_restore_env, tmp_path):
         from SRE.instructor_text import has_instructor

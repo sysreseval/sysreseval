@@ -120,9 +120,14 @@ class ProjectWidget(QWidget):
         self._info_view.set_word_wrap(checked)
         self._questions_view.set_word_wrap(checked)
 
+    def has_instructor_texts(self) -> bool:
+        """True when info.json holds the instructor() texts of the lab: project in instructor
+        mode, or debug project.  The main window then shows its "Instructor mode" button."""
+        return bool(self.info.get("instructor_mode", False) or self.info.get("debug_project", False))
+
     def _instructor_shown(self) -> bool:
-        """True when this project is in instructor mode and the "Instructor mode" button is on."""
-        return self._instructor_view and bool(self.info.get("instructor_mode", False))
+        """True when this project has instructor texts and the "Instructor mode" button is on."""
+        return self._instructor_view and self.has_instructor_texts()
 
     def set_instructor_view(self, checked: bool):
         self._instructor_view = checked
@@ -132,8 +137,8 @@ class ProjectWidget(QWidget):
         shown = self._instructor_shown()
         self._info_view.set_instructor_view(shown)
         self._questions_view.set_instructor_view(shown)
-        # the states a student could not apply: always for a debug project, with the button on
-        # for a project in instructor mode
+        # the states a student could not apply: always for a debug project (the button only
+        # switches its instructor texts), with the button on for a project in instructor mode
         self._apply_config_view.set_show_admin_only(bool(self.info.get("debug_project", False)) or shown)
         self._update_apply_config_visibility()
         self._update_log_visibility()
