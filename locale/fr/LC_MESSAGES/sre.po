@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 11:50+0200\n"
+"POT-Creation-Date: 2026-10-04 11:17+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -125,8 +125,10 @@ msgstr "répertoires à analyser pour les archives .zst"
 msgid "inactivity alert threshold (default: 90)"
 msgstr "seuil d'alerte d'inactivité (défaut : 90)"
 
-msgid "dashboard refresh interval (default: 3)"
-msgstr "intervalle de rafraîchissement du tableau de bord (défaut : 3)"
+#, python-format
+msgid "dashboard refresh interval (default: %(default)s)"
+msgstr ""
+"intervalle de rafraîchissement du tableau de bord (défaut : %(default)s)"
 
 msgid ""
 "show only hostnames matching this regexp (same as the R key in the dashboard)"
@@ -310,6 +312,31 @@ msgstr "écrit : {path}"
 msgid "saved: {path}"
 msgstr "sauvegardé : {path}"
 
+msgid ""
+"error: at least one of --output-file or --pdf-directory must be provided"
+msgstr ""
+"erreur : au moins une des options --output-file ou --pdf-directory doit être "
+"fournie"
+
+msgid "error: cannot create output directory {path}: {e}"
+msgstr "erreur : impossible de créer le répertoire de sortie {path} : {e}"
+
+msgid ""
+"error: output directory {path} is not writable by user {name} (uid {uid})"
+msgstr ""
+"erreur : le répertoire de sortie {path} n'est pas accessible en écriture "
+"pour l'utilisateur {name} (uid {uid})"
+
+msgid "error: cannot write {path}: {e}"
+msgstr "erreur : impossible d'écrire {path} : {e}"
+
+msgid "warning: cannot read aux file {path}: {e}"
+msgstr ""
+"avertissement : impossible de lire le fichier d'utilisateurs {path} : {e}"
+
+msgid "warning: login '{login}' not found in aux file"
+msgstr "avertissement : login '{login}' absent du fichier d'utilisateurs"
+
 msgid "Evaluation Report"
 msgstr "Rapport d'évaluation"
 
@@ -403,6 +430,12 @@ msgstr "note"
 msgid "maximum_mark"
 msgstr "note_maximale"
 
+msgid "name"
+msgstr "nom"
+
+msgid "email"
+msgstr "email"
+
 msgid "evaluations"
 msgstr "évaluations"
 
@@ -454,6 +487,9 @@ msgstr ""
 
 msgid "Total for {part}"
 msgstr "Total pour {part}"
+
+msgid "Total"
+msgstr "Total"
 
 msgid ""
 "user list file with columns: LOGIN NAME EMAIL (adds Name/Email to PDFs and "
@@ -598,11 +634,15 @@ msgid ""
 "read the X11 magic cookie from this X authority file instead of "
 "$SRE_XAUTH_COOKIE (privileged only)"
 msgstr ""
+"lire le cookie magique X11 dans ce fichier Xauthority plutôt que dans "
+"$SRE_XAUTH_COOKIE (privilégiés uniquement)"
 
 msgid ""
 "maximum exam duration in minutes; prefix with + or - to adjust the existing "
 "duration (e.g. +30, -15)"
 msgstr ""
+"durée maximale de l'examen en minutes ; préfixer par + ou - pour ajuster la "
+"durée existante (ex. +30, -15)"
 
 msgid "show this help message and exit"
 msgstr "afficher ce message d'aide et quitter"

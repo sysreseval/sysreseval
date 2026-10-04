@@ -197,8 +197,7 @@ def parse_args():
     parser_watch.add_argument('--interval', type=int,
                               default=params.default_dashboard_refresh_interval_in_watch_command,
                               metavar='seconds',
-                              help=_(
-                                  f'dashboard refresh interval (default: {params.default_dashboard_refresh_interval_in_watch_command})'))
+                              help=_('dashboard refresh interval (default: %(default)s)'))
     parser_watch.add_argument('-H', '--hostname-filter', metavar='regexp', default='',
                               help=_('show only hostnames matching this regexp (same as the R key in the dashboard)'))
     parser_watch.add_argument('-S', '--starting-time', metavar='time', default='',
