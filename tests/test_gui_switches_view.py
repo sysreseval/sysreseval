@@ -1,14 +1,17 @@
 """
 Switches tab of the GUI: one row per network of info.json `switches` with its type (hub, switch,
 manageable switch) and a Connect button on the manageable switches students may use, which opens
-`sre-wrapper connect <project> <switch>` in an external terminal.  The tab is shown only when a
-network is not a hub.
+`sre-wrapper connect <project> <switch>` in an external terminal.  The type of a manageable
+switch closed to the students is on a red background; a debug project can connect to it all the
+same (orange button, orange title in the Terminals tab).  The tab is shown only when a network is
+not a hub.
 Offscreen Qt; no terminal is started (subprocess.Popen is recorded).
 """
 import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +19,7 @@ pytest.importorskip('PySide6')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtCore import QTranslator  # noqa: E402
+from PySide6.QtGui import QColor  # noqa: E402
 from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 from SRE import params  # noqa: E402
@@ -39,6 +43,8 @@ SWITCHES = [
 HUBS = [{"name": "net1", "mode": "hub", "allow_connection": True},
         {"name": "net2", "mode": "hub", "allow_connection": True}]
 RED = "#f0c8c8"
+GREEN = "#c8f0c8"
+ORANGE = "#ffd9a0"
 
 
 class FakeProc:
@@ -62,7 +68,8 @@ def started(monkeypatch):
         procs.append(FakeProc(cmd))
         return procs[-1]
 
-    monkeypatch.setattr(util.subprocess, 'Popen', popen)
+    # only the launcher of the terminals: graphviz (schema of a ProjectWidget) starts processes too
+    monkeypatch.setattr(util, 'subprocess', SimpleNamespace(Popen=popen))
     monkeypatch.setattr(params, 'terminal_cmd_prefix', ['/usr/bin/term', '--'])
     monkeypatch.setattr(params, 'terminal_title_opt', '--title')
     monkeypatch.setattr(params, 'sre_wrapper', '/opt/sre/bin/sre-wrapper')
@@ -94,12 +101,24 @@ class TestSwitchesView:
         assert _button(view, 0) is not None and _button(view, 0).text() == 'Connect'
         assert [_button(view, row) for row in (1, 2, 3)] == [None, None, None]
 
-    def test_closed_manageable_switch_is_marked_red(self):
+    def _type_color(self, view, row):
+        return view.item(row, 1).background().color().name()
+
+    def test_type_of_a_closed_manageable_switch_is_red(self):
         view = SwitchesView(RUNNING, SWITCHES)
-        assert view.item(3, 2).background().color().name() == RED
-        # a hub or a plain switch has no console at all: nothing to mark
-        assert view.item(1, 2).background().color().name() != RED
-        assert view.item(2, 2).background().color().name() != RED
+        assert self._type_color(view, 3) == RED
+        # an open one, a plain switch and a hub are not marked
+        assert [self._type_color(view, row) != RED for row in (0, 1, 2)] == [True, True, True]
+
+    def test_connection_column_is_not_coloured(self):
+        view = SwitchesView(RUNNING, SWITCHES)
+        for row in (1, 2, 3):
+            assert view.item(row, 2).background().color().name() != RED
+            assert view.item(row, 2).text() == ''
+
+    def test_connect_button_of_an_open_switch_is_green(self):
+        view = SwitchesView(RUNNING, SWITCHES)
+        assert GREEN in _button(view, 0).styleSheet()
 
     def test_unknown_or_missing_mode_is_a_hub(self):
         view = SwitchesView(RUNNING, [{"name": "x"}])
@@ -132,11 +151,15 @@ class TestSwitchesView:
         view.update_data(SWITCHES)
         assert view.rowCount() == 4 and view.has_switches()
         assert _button(view, 0) is not None
-        # the console of lan gets closed: the button goes away
+        # the console of lan gets closed: the button goes away and its type turns red
         view.update_data([dict(SWITCHES[0], allow_connection=False)])
         assert view.rowCount() == 1
         assert _button(view, 0) is None
-        assert view.item(0, 2).background().color().name() == RED
+        assert view.item(0, 1).background().color().name() == RED
+        # and back
+        view.update_data([SWITCHES[0]])
+        assert _button(view, 0) is not None
+        assert view.item(0, 1).background().color().name() != RED
 
     @pytest.mark.skipif(not FR_QM.exists(), reason="translations not compiled")
     def test_french(self):
@@ -150,6 +173,34 @@ class TestSwitchesView:
             assert _button(view, 0).text() == 'Connecter'
         finally:
             _app.removeTranslator(translator)
+
+
+class TestSwitchesViewOfADebugProject:
+    """A debug project may open the console of the manageable switches the lab closed."""
+
+    def test_closed_manageable_switch_gets_a_connect_button(self, started):
+        view = SwitchesView(RUNNING, SWITCHES, debug_project=True)
+        button = _button(view, 3)
+        assert button is not None and button.text() == 'Connect'
+        button.click()
+        assert [p.cmd[-4:] for p in started] == [['/opt/sre/bin/sre-wrapper', 'connect', RUNNING, 'closed']]
+
+    def test_that_button_is_orange_and_the_type_stays_red(self):
+        view = SwitchesView(RUNNING, SWITCHES, debug_project=True)
+        assert ORANGE in _button(view, 3).styleSheet()
+        assert view.item(3, 1).background().color().name() == RED
+
+    def test_open_switch_keeps_its_green_button(self):
+        view = SwitchesView(RUNNING, SWITCHES, debug_project=True)
+        assert GREEN in _button(view, 0).styleSheet()
+        assert view.item(0, 1).background().color().name() != RED
+
+    def test_hub_and_plain_switch_still_have_no_button(self):
+        view = SwitchesView(RUNNING, SWITCHES, debug_project=True)
+        assert [_button(view, row) for row in (1, 2)] == [None, None]
+
+    def test_not_a_debug_project_by_default(self):
+        assert _button(SwitchesView(RUNNING, SWITCHES), 3) is None
 
 
 class TestMachinesViewStillConnects:
@@ -225,8 +276,31 @@ class TestProjectWidget:
         assert [terminals.tabText(i) for i in range(terminals.count())] == ['m1', 'lan']
 
     def test_terminals_tab_of_a_debug_project_has_every_manageable_switch(self, project_dir):
+        """The closed one too, its title in orange like a machine students cannot connect to."""
+        from sysreseval.project_widget import ProjectWidget
+        machines = [{"name": "m1", "allow_connection": True, "hidden": False, "interfaces": [], "ports": [],
+                     "bridged": False},
+                    {"name": "m2", "allow_connection": False, "hidden": False, "interfaces": [], "ports": [],
+                     "bridged": False}]
+        _write_info(project_dir, machines=machines, switches=SWITCHES, debug_project=True)
+        widget = ProjectWidget(project_dir)
+        terminals = widget._terminals_view
+        titles = [terminals.tabText(i) for i in range(terminals.count())]
+        assert titles == ['m1', 'm2', 'lan', 'closed']
+        color = {title: terminals.tabBar().tabTextColor(i) for i, title in enumerate(titles)}
+        assert color['closed'] == QColor("orange") == color['m2']
+        assert color['lan'] == color['m1'] != QColor("orange")
+
+    def test_switches_tab_of_a_debug_project_connects_to_a_closed_switch(self, project_dir, started):
         from sysreseval.project_widget import ProjectWidget
         _write_info(project_dir, switches=SWITCHES, debug_project=True)
         widget = ProjectWidget(project_dir)
-        terminals = widget._terminals_view
-        assert [terminals.tabText(i) for i in range(terminals.count())] == ['lan', 'closed']
+        _button(widget._switches_view, 3).click()
+        assert started[0].cmd[-2:] == [RUNNING, 'closed']
+
+    def test_switches_tab_of_a_normal_project_does_not(self, project_dir):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, switches=SWITCHES)
+        widget = ProjectWidget(project_dir)
+        assert _button(widget._switches_view, 3) is None
+        assert widget._switches_view.item(3, 1).background().color().name() == RED

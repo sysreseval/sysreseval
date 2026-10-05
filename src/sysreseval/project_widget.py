@@ -59,16 +59,17 @@ class ProjectWidget(QWidget):
         self._machines_view = MachinesView(project_dir.name, self.info.get("machines", []))
         tabs.addTab(self._machines_view, self.tr("Machines"))
 
+        debug_project = bool(self.info.get("debug_project", False))
+
         # networks with their type of switch; shown only when one of them is not a hub
-        self._switches_view = SwitchesView(project_dir.name, self.info.get("switches", []))
+        self._switches_view = SwitchesView(project_dir.name, self.info.get("switches", []),
+                                           debug_project=debug_project)
         tabs.addTab(self._switches_view, self.tr("Switches"))
 
         self._questions_view = QuestionsView(self.info.get("questions", []), project_dir.name)
         tabs.addTab(self._questions_view, self.tr("Questions"))
         tabs.setTabVisible(tabs.indexOf(self._questions_view),
                            bool(self.info.get("questions")))
-
-        debug_project = bool(self.info.get("debug_project", False))
 
         self._eval_view = EvaluationView(
             self.info.get("evaluation", []),
