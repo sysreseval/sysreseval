@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -273,6 +274,7 @@ def labs_dir():
     (d / 'instructor.py').write_text(INSTRUCTOR_LAB)
     (d / 'instructor_privileged.py').write_text(PRIVILEGED_INSTRUCTOR_LAB)
     shutil.copy(SWITCH_LAB, d / 'switch_modes.py')
+    (d / 'hubs.py').write_text(HUB_LAB)
     for f in d.iterdir():
         f.chmod(0o644)
     yield d
@@ -862,7 +864,43 @@ class TestInstructorMode:
 # ---------------------------------------------------------------------------
 
 SWITCH_MODE_OPTION = 'kathara.switch.mode'
-PC2, PC3, R1_VLAN10 = '10.99.0.2', '10.99.0.3', '10.99.0.254'
+PC1, PC2, PC3, R1_VLAN10 = '10.99.0.1', '10.99.0.2', '10.99.0.3', '10.99.0.254'
+DMZ_R1, DMZ_SRV, DMZ_PC1 = '10.99.1.1', '10.99.1.2', '10.99.1.3'  # the plain switch of the switch lab
+OLD_SRV, OLD_PC3 = '10.99.2.1', '10.99.2.2'                       # its hub (pc2 is the third machine)
+
+# Hubs only: `net1` is a hub because the lab says nothing (every lab written before the switch
+# types), `net2` because it says so.  Three machines on each: `c` watches what `a` sends to `b`.
+HUB_LAB = '''
+from dataclasses import dataclass
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state
+
+title = "docker lifecycle test (hubs)"
+
+
+@dataclass(slots=True)
+class Data(Data0):
+    @classmethod
+    def generate(cls):
+        return cls()
+
+
+class NetScheme(NetScheme0):
+    _machine_specs = {'a': {}, 'b': {}, 'c': {}}
+    _network_specs = {'net2': {'mode': 'hub'}}
+    _topology = {'net1': ['a', 'b', 'c'], 'net2': ['a', 'b', 'c']}
+
+    @sre_state()
+    def initial(self):
+        for host, name in enumerate(('a', 'b', 'c'), start=1):
+            self.cmd(name, f'ip addr add 10.98.1.{host}/24 dev eth0')
+            self.cmd(name, f'ip addr add 10.98.2.{host}/24 dev eth1')
+
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        self.add_grade_element(title='dummy', grade=0, max_grade=1)
+'''
 
 
 def _start_switch_lab(projects, labs_dir):
@@ -889,7 +927,78 @@ def _switch_modes(docker_client, lab_hash):
             for n in _networks(docker_client, lab_hash)}
 
 
+def _sees_traffic(sniffer, interface, source, source_ip, dest_ip):
+    """True when *sniffer* captures on *interface* an echo request that *source* (*source_ip*)
+    sends to *dest_ip*.  tcpdump (promiscuous) waits for one such packet while *source* pings:
+    it ends at once with status 0 when it gets one, after a timeout (status 124) otherwise."""
+    # a first exchange: ARP caches filled, and a switch has learnt where both machines are
+    assert _ping(source, dest_ip), f"{source_ip} does not reach {dest_ip}"
+    capture = (f"rm -f /tmp/sniff.code; timeout 8 tcpdump -n -i {interface} -c 1 "
+               f"'icmp[icmptype] == icmp-echo and src host {source_ip} and dst host {dest_ip}' >/dev/null 2>&1; "
+               f"echo $? > /tmp/sniff.code")
+    sniffer.exec_run(['sh', '-c', capture], detach=True)
+    time.sleep(1.5)  # tcpdump is listening
+    _exec(source, f'ping -c 8 -i 0.5 -w 5 {dest_ip}')
+    code = ''
+    for _ in range(40):
+        _rc, code = _exec(sniffer, 'cat /tmp/sniff.code 2>/dev/null')
+        if code.strip():
+            break
+        time.sleep(0.25)
+    assert code.strip() in ('0', '124'), f"capture on {interface} failed: status {code.strip()!r}"
+    return code.strip() == '0'
+
+
+class TestHub:
+
+    def test_third_machine_sees_the_traffic_of_a_hub(self, docker_client, labs_dir, projects):
+        """A network is a hub when the lab says nothing about it, and with an explicit
+        `'mode': 'hub'`: every frame reaches every machine, as before the switch types existed.
+        Runs with any network plugin (nothing is asked from it for a hub)."""
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'hubs.py')
+        assert _switch_modes(docker_client, lab_hash) == {'net1': 'hub', 'net2': 'hub'}
+        assert _info(running_lab_name)['switches'] == [
+            {'name': 'net2', 'mode': 'hub', 'allow_connection': True},
+            {'name': 'net1', 'mode': 'hub', 'allow_connection': True},
+        ]
+        a, c = _machine(docker_client, lab_hash, 'a'), _machine(docker_client, lab_hash, 'c')
+        for interface, subnet in (('eth0', '10.98.1'), ('eth1', '10.98.2')):
+            assert _sees_traffic(c, interface, a, f'{subnet}.1', f'{subnet}.2'), \
+                f"on a hub, c sees on {interface} what a sends to b"
+        r = _sre('exec', running_lab_name, 'net1', 'vlan/print')
+        assert r.returncode == 1 and 'device net1 is a hub: it has no console' in r.stderr, r.stderr
+
+        r = _sre('stop', running_lab_name)
+        assert r.returncode == 0, r.stderr
+        assert _containers(docker_client, lab_hash) == [] and _networks(docker_client, lab_hash) == []
+
+
 class TestSwitchModes:
+
+    def test_only_a_hub_shows_the_traffic_to_a_third_machine(self, docker_client, labs_dir, projects):
+        """What tells a hub from a switch: on the hub `old` a third machine captures the packets
+        two others exchange; on the plain switch `dmz`, and inside one VLAN of the managed switch
+        `lan`, it only captures the packets sent to itself."""
+        running_lab_name, lab_hash = _start_switch_lab(projects, labs_dir)
+        srv, r1, pc1, pc2, pc3 = (_machine(docker_client, lab_hash, name)
+                                  for name in ('srv', 'r1', 'pc1', 'pc2', 'pc3'))
+
+        # hub: pc2 sees what srv sends to pc3
+        assert _sees_traffic(pc2, 'eth1', srv, OLD_SRV, OLD_PC3), "a hub floods every frame"
+
+        # plain switch: pc1 captures what r1 sends to it (the capture works there), not what r1 sends to srv
+        assert _sees_traffic(pc1, 'eth1', r1, DMZ_R1, DMZ_PC1)
+        assert not _sees_traffic(pc1, 'eth1', r1, DMZ_R1, DMZ_SRV), "a switch sends a frame to its destination only"
+
+        # managed switch, the three PCs in VLAN 10: the same inside a VLAN
+        r = _sre('state', running_lab_name, 'move')
+        assert r.returncode == 0, r.stderr
+        assert _sees_traffic(pc3, 'eth0', pc1, PC1, PC3)
+        assert not _sees_traffic(pc3, 'eth0', pc1, PC1, PC2), "a managed switch is a switch inside a VLAN"
+
+        r = _sre('stop', running_lab_name)
+        assert r.returncode == 0, r.stderr
+        assert _containers(docker_client, lab_hash) == [] and _networks(docker_client, lab_hash) == []
 
     def test_modes_vlans_console_and_states(self, docker_client, labs_dir, projects, no_exam):
         """The types of switch reach Kathara, the declared VLANs separate the machines of a

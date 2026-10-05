@@ -1,7 +1,8 @@
 """Fixture lab for the switch-mode tests: a managed switch with VLANs (``lan``), a plain switch
 (``dmz``), a hub (``old``), two managed switches students cannot use (``closed``: console closed,
 ``hid``: network of a hidden machine), states running switch commands and a grade reading the
-switch."""
+switch.  The plain switch and the hub have three machines each, so that a third one can watch
+(or not) the traffic of the two others."""
 from dataclasses import dataclass
 
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state
@@ -11,6 +12,8 @@ allow_user_states = True
 allow_save_restore = True
 
 SUBNET = "10.99.0"
+SWITCH_SUBNET = "10.99.1"  # dmz: r1 .1, srv .2, pc1 .3
+HUB_SUBNET = "10.99.2"     # old: srv .1, pc3 .2, pc2 .3
 
 
 @dataclass(slots=True)
@@ -36,8 +39,8 @@ class NetScheme(NetScheme0):
     }
     _topology = {
         'lan': ['pc1', 'pc2', 'pc3', 'r1'],
-        'dmz': ['r1', 'srv'],
-        'old': ['srv', 'pc3'],  # no spec: a hub
+        'dmz': ['r1', 'srv', 'pc1'],     # eth1 of r1, eth0 of srv, eth1 of pc1
+        'old': ['srv', 'pc3', 'pc2'],    # no spec: a hub; eth1 of the three
         'closed': ['srv', 'pc2'],
         'hid': ['probe'],
     }
@@ -47,6 +50,11 @@ class NetScheme(NetScheme0):
         # one subnet for the three PCs: only the VLANs of the switch separate them
         for name, host in (('pc1', 1), ('pc2', 2), ('pc3', 3)):
             self.cmd(name, f"ip addr add {SUBNET}.{host}/24 dev eth0")
+        for name, interface, address in (('r1', 'eth1', f"{SWITCH_SUBNET}.1"), ('srv', 'eth0', f"{SWITCH_SUBNET}.2"),
+                                         ('pc1', 'eth1', f"{SWITCH_SUBNET}.3"),
+                                         ('srv', 'eth1', f"{HUB_SUBNET}.1"), ('pc3', 'eth1', f"{HUB_SUBNET}.2"),
+                                         ('pc2', 'eth1', f"{HUB_SUBNET}.3")):
+            self.cmd(name, f"ip addr add {address}/24 dev {interface}")
         # r1 reaches VLAN 10 through its trunk port (needs the 8021q module of the host)
         self.cmd('r1', f"ip link add link eth0 name eth0.10 type vlan id 10 && "
                        f"ip addr add {SUBNET}.254/24 dev eth0.10 && ip link set eth0.10 up", allow_error=True)
