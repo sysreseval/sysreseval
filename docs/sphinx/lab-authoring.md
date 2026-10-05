@@ -52,7 +52,7 @@ The marker survives container restarts and is cleared when the project is `sre s
 
 ### `sre connect <running_lab> <device>` and `sre exec <running_lab> <device> <command…>`
 
-`sre connect` opens an interactive shell inside `<device>` (using the machine's configured `shell`). `sre exec` runs a one-shot command and returns its stdout/stderr/exit code — useful for scripting checks against a running lab without holding a TTY. `sre exec` is privileged only; both honor the debug-project marker, so they can target hidden machines when the project was started with `--debug-project`.
+`sre connect` opens an interactive shell inside `<device>` (using the machine's configured `shell`), or the management console when `<device>` is a managed switch (a network with `'mode': 'managed'`, see [Switches and VLANs](#switches-and-vlans)). `sre exec` runs a one-shot command and returns its stdout/stderr/exit code — useful for scripting checks against a running lab without holding a TTY. On a managed switch `sre exec <running_lab> <network> <command…>` runs one console command (`vlan/print`, `port/setvlan @pc1 10`). `sre exec` is privileged only; both honor the debug-project marker, so they can target hidden machines when the project was started with `--debug-project`.
 
 `sre connect --exec <argument…>` is a hybrid: launches the machine's shell, runs the command, exits. Unlike `sre exec` it goes through the shell launcher and is available to students.
 
@@ -344,7 +344,7 @@ class NetScheme(NetScheme0):
         'hidden':  {'hidden': True, 'allow_connection': False},
     }
 
-    # Declare network display options
+    # Declare network options: display hints, type of switch (hub by default)
     _network_specs = {
         'lan':  {'color': 'yellow'},
         'mgmt': {'color': 'gray'},
@@ -371,7 +371,7 @@ class NetScheme(NetScheme0):
 | Attribute / Method | Description |
 |--------------------|-------------|
 | `_machine_specs` | Class-level dict: `{name: {Machine kwargs}}` |
-| `_network_specs` | Class-level dict: `{net_name: {display kwargs}}` |
+| `_network_specs` | Class-level dict: `{net_name: {Network kwargs}}` — display hints and type of switch, see [`Network` parameters](#network-parameters) |
 | `_topology` | Class-level dict: `{net_name: [machine,...]}` or `{net_name: {machine: iface_index}}` |
 | `self.data` | The `Data` instance |
 | `self.informations` | Markdown text (or `TranslatedText`) for the Informations tab |
@@ -401,6 +401,70 @@ class NetScheme(NetScheme0):
 | `volumes` | `{}` | Volume mounts |
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
+
+### `Network` parameters
+
+Each `_network_specs` entry gives the keyword arguments of one network; a network that only appears in `_topology` takes the defaults.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `color` | `None` | Node color in the schema |
+| `shape` | `None` | Node shape in the schema |
+| `mode` | `'hub'` | Type of switch the machines are plugged into: `'hub'` (every frame reaches every machine), `'switch'` (the switch learns the MAC addresses: a machine only receives its own traffic and the broadcasts) or `'managed'` (a switch with VLANs and a management console). See [Switches and VLANs](#switches-and-vlans) |
+| `allow_connection` | `True` | Managed switch only: students may open its console (*Connect* button of the **Switches** tab, `sre connect`) |
+| `vlans` | `{}` | Managed switch only: VLANs of the ports, by machine |
+
+### Switches and VLANs
+
+By default the machines of a network share a hub, as in every lab written before the switch types existed. `'mode': 'switch'` and `'mode': 'managed'` change that per network:
+
+```python
+_network_specs = {
+    'lan': {'mode': 'managed', 'allow_connection': False,
+            'vlans': {'pc1': 10,                             # access port: untagged frames in VLAN 10
+                      'pc2': 20,
+                      'r1': [10, 20],                        # trunk port: VLANs 10 and 20, tagged
+                      'r2': {'vlan': 1, 'trunk': [30]}}},    # native VLAN 1 + VLAN 30 tagged
+    'dmz': {'mode': 'switch'},
+}
+_topology = {'lan': ['pc1', 'pc2', 'r1', 'r2'], 'dmz': ['r1', 'srv'], 'old': ['srv', 'pc2']}   # 'old' is a hub
+```
+
+- VLAN IDs go from 1 to 4094. A machine that `vlans` does not name stays in the default VLAN of the switch (VLAN 0, untagged) with every other undeclared port; a trunk port without `vlan` keeps that default VLAN for its untagged frames.
+- On a trunk port the machine handles the tags itself, e.g. `ip link add link eth0 name eth0.10 type vlan id 10`.
+- A switch that is not a hub drops the 802.1Q frames of a VLAN the port is not a member of: a trunk between two machines needs a hub or a managed switch with trunk ports, not a plain `'switch'`.
+- An unknown `mode`, `vlans` on a network that is not managed, a machine that is not on the network or an invalid VLAN ID raise `ValueError` when the `NetScheme` is built, so `sre check` reports them.
+
+**Console.** A managed switch has the management console of `vde_switch`. `sre connect <running_lab> <network>` opens it (prompt `lan$ `; `exit`, `quit` or Ctrl-D leave); the GUI shows a *Connect* button for it in the **Switches** tab and a terminal in the **Terminals** tab. The useful commands:
+
+| Command | Effect |
+|---------|--------|
+| `port/print`, `port/allprint` | Ports in use / every port: untagged VLAN and what is plugged (`kathara <machine>:eth<N>`) |
+| `vlan/print`, `vlan/allprint` | VLANs and their ports (`tagged=0` or `1`) |
+| `vlan/create <vlan>`, `vlan/remove <vlan>` | Create / remove a VLAN |
+| `port/setvlan <port> <vlan>` | Untagged VLAN of a port (access port) |
+| `vlan/addport <vlan> <port>`, `vlan/delport <vlan> <port>` | Add / remove a port as tagged member of a VLAN (trunk) |
+| `hash/print` | MAC address table |
+| `fstp/setfstp <0\|1>`, `fstp/print` | Spanning tree on / off, and its state |
+
+Port numbers are given when the lab starts and are not predictable: read them with `port/print`.
+
+In user mode (what the GUI runs) only the commands of `params.switch_user_commands` reach the switch — the ones above, `help` and a few read-only ones — and any other is refused. `'allow_connection': False` closes the console to students altogether (refused by `sre connect` in user mode, except for a debug project), and a network whose machines are all hidden is unknown to them. Privileged users are not restricted.
+
+**From a state.** `self.switch_cmd(network, command, ...)` runs one console command (see [Switch operations](#switch-operations)); a word `@machine` stands for the number of the port of that machine:
+
+```python
+@sre_state(user_allowed=True, description="pc2 joins VLAN 10")
+def move(self):
+    self.switch_cmd('lan', 'vlan/create 10', allow_error=True)   # code 17 when the VLAN already exists
+    self.switch_cmd('lan', 'port/setvlan @pc2 10')
+```
+
+**From `grade()`.** `self.test_switch(network, command)` registers a console command like `self.test()` does for a machine, and `get_switch_ports()` gives the VLANs of the port of each machine (see *Switch helpers* in the Grading Library Reference).
+
+**Limits.** The type of a switch and the declared VLANs belong to the deployment: `sre save` / `sre restore` and `sre export` keep them (lab.conf lines `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`, `CD_MODE[lan]="managed"`, in the syntax of the Kathara fork SRE installs), but not what was changed on the console afterwards: re-apply it in the `restore` state when it matters. A mode other than `hub` needs the VDE network plugin of that fork, installed by `make network-plugin` (see [Installation](installation.md#network-plugin-for-the-switch-types)); `sre start` fails with Kathara's message and that reminder otherwise, and a lab with hubs only is not concerned.
+
+See `lab/sre/_DRAFT_dummy/switch_example.py` for a complete lab: the three types of network, access and trunk ports with a router on a stick, an open and a closed console, two states built on `switch_cmd()` and a grade reading the switch.
 
 ### Instructor-only texts — `instructor()`
 
@@ -536,6 +600,12 @@ These all register an op against a single machine and accept a `step=` parameter
 | `self.host_cmd(command, step=1, timeout=120, default_value='', default_code=0, allow_error=False)` | Run a shell command on the **host** (not inside any container). Returns `(stdout, exit_code)` with the same contract as `cmd()`. Refused if `params.execute_commands_on_host is False`. |
 | `self.host_callback(callable, step=1)` | Invoke a Python callable on the host at this step, with no arguments. Useful when the next steps need values computed in Python. |
 
+### Switch operations
+
+| Method | Description |
+|--------|-------------|
+| `self.switch_cmd(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Run one command on the management console of the managed switch `network` (a network with `'mode': 'managed'`; `ValueError` otherwise). A word `@machine` in `command` is replaced by the number of the port the machine is plugged into, e.g. `port/setvlan @pc1 10`. Returns `(output, code)` with the same contract as `host_cmd()`: `code` is `0`, the error number given by the switch (`17`: the VLAN already exists) or `-2` when the command could not be run. See [Switches and VLANs](#switches-and-vlans). |
+
 ### Multi-step state setup — the `step` parameter
 
 Every state-method operation accepts `step=N` (default `1`). When SRE applies a state it groups all registered ops by step and runs them in ascending order: every step-1 op finishes before any step-2 op starts. This matters when later ops depend on earlier ones being in place — for example writing a config file at step 1 and only restarting the service at step 2:
@@ -547,13 +617,13 @@ def initial(self):
     self.cmd('dns',  'systemctl restart unbound',    step=2)
 ```
 
-Inside a single step the per-machine op order is preserved, and ops on different machines run in parallel. `host_cmd` / `host_callback` for step `N` run *before* the container ops of step `N` (so a key generated on the host at step 1 can be copied into a machine at step 1).
+Inside a single step the per-machine op order is preserved, and ops on different machines run in parallel. `host_cmd` / `host_callback` / `switch_cmd` for step `N` run, in registration order, *before* the container ops of step `N` (so a key generated on the host at step 1 can be copied into a machine at step 1).
 
 Container commands registered with `self.cmd()` run under `sh` through `/usr/local/sbin/exetests.py`, the runner `Grade.test()` also uses: consecutive `cmd()` ops of one machine at one step are sent as a single batch, shell syntax such as `|`, `>>` or `&&` works, and each command is killed after `timeout` seconds (default `params.default_state_cmd_timeout`, 120 s; `0` disables the timeout; the exit code is then `-1`). A non-zero exit code is reported on stderr (hidden in `--user` mode) unless the call passes `allow_error=True`.
 
 ### Reading command results — `multi_pass=True`
 
-`self.cmd()` and `self.host_cmd()` return `(output, exit_code)` with the same register-then-resolve contract as `Grade.test()`: the value is the placeholder `(default_value, default_code)` until the command has actually run. By default a state method is called **once**, before anything runs, so it only ever sees placeholders.
+`self.cmd()`, `self.host_cmd()` and `self.switch_cmd()` return `(output, exit_code)` with the same register-then-resolve contract as `Grade.test()`: the value is the placeholder `(default_value, default_code)` until the command has actually run. By default a state method is called **once**, before anything runs, so it only ever sees placeholders.
 
 Decorate the state with `@sre_state(multi_pass=True)` to have SRE call the method again before each step: the call that registers the ops of step `N+1` sees the real results of steps `1..N`. The method runs `max_step + 1` times, like `grade()` during an evaluation: a final call after the last step sees the results of every command and is the natural place to copy them into `self.data`. Each call only contributes the ops of the step about to be applied; re-registering the ops of an earlier step is expected and harmless.
 
@@ -662,7 +732,7 @@ class Grade(Grade0):
    - `self.test(machine, cmd, step=N)` registers `cmd` under `(machine, N)` and returns `(default_value, default_code)` (i.e. placeholders) the *first* time it is seen.
    - If a call uses `step=K` larger than `self.max_step`, `max_step` is bumped to `K`, extending the loop.
    - `self.add_grade_element` / `self.set_grade` / `self.question_*` calls all register entries; they don't read any container state directly.
-4. `self.step` is incremented to `N`. All commands registered at step `N` are bundled per machine into one `EXETESTS@@@cmd1@@@cmd2@@@…` env var and run inside each container in parallel (16-worker `ThreadPoolExecutor`, via `/usr/local/sbin/exetests.py`). Host-side `test_host()` commands for step `N` run in parallel on the host.
+4. `self.step` is incremented to `N`. All commands registered at step `N` are bundled per machine into one `EXETESTS@@@cmd1@@@cmd2@@@…` env var and run inside each container in parallel (16-worker `ThreadPoolExecutor`, via `/usr/local/sbin/exetests.py`). The `test_switch()` commands for step `N` are then sent to the consoles of the managed switches, and the host-side `test_host()` commands run in parallel on the host.
 5. Results are stored back into `self._tests[(machine, N)]`. The loop returns to step 2. On this pass, the registration calls for step `N` find the entry already populated and return the **real** `(stdout, exit_code)`; the code paths gated on those results now execute.
 6. When `self.step > self.max_step`, the loop exits. The archive (zstd-compressed msgpack with all tests, answers, errors, and grade list) is written to `params.archives_dir` and to every directory in the module-level `archive_dirs`.
 
@@ -798,6 +868,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 |--------|-------------|
 | `self.test(machine, command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Register a command in a container; returns `(stdout, exit_code)` (placeholder on first pass, real result on subsequent passes). |
 | `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
+| `self.test_switch(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Same as `self.test` for one command of the management console of the managed switch `network` (`vlan/print`, `port/print @pc1`: `@machine` is the port number of the machine). The exit code is `0`, the error number given by the switch or `-2`. The result is archived with the tests of the machines, under the name of the network. See [Switches and VLANs](#switches-and-vlans). |
 | `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). |
 | `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question with inline `@@{field:regex}@@` (text), `@@{field:>opt1|opt2}@@` (dropdown), or `@@{field:?true}@@` (checkbox) fields. Returns the student's answers as `{field: value}`. |
 | `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). |
@@ -957,6 +1028,23 @@ from net_config import (get_ip_addresses, get_routes, get_sysctl_conf,
 | `none_interfaces_expected` | Count of `None` entries in expected |
 
 If `current` is `None`, `get_net_config_entry(grade, machine_name, step)` is called automatically.
+
+### Switch helpers (from `/opt/sre/lib/switch.py`)
+
+For the managed switches (see [Switches and VLANs](#switches-and-vlans)), on top of `Grade.test_switch()`:
+
+```python
+from switch import get_switch_ports, get_switch_vlans
+
+ports = get_switch_ports(self, 'lan')
+# {'pc1': {'port': 2, 'interface': 'eth0', 'vlan': 10, 'tagged_vlans': []},
+#  'r1':  {'port': 1, 'interface': 'eth0', 'vlan': 0,  'tagged_vlans': [10, 20]}}
+same_vlan = bool(ports) and ports['pc1']['vlan'] == ports['pc2']['vlan']
+
+vlans = get_switch_vlans(self, 'lan')      # {10: {'untagged': [2], 'tagged': [1]}, ...} (port numbers)
+```
+
+`vlan` is the VLAN of the untagged frames of the port (0: the default VLAN of the switch), `tagged_vlans` the VLANs of a trunk port. Both functions return `{}` on the registration pass and when the console failed; they take `step=` and `allow_error=` like `test_switch()`. `parse_switch_ports(port_allprint, vlan_allprint)` and `parse_switch_vlans(vlan_allprint)` are the underlying pure parsers.
 
 ### Ping helper (from `/opt/sre/lib/ping.py`)
 

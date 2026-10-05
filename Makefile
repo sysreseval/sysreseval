@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 
@@ -12,6 +12,16 @@ DEJAVU_URL := https://github.com/dejavu-fonts/dejavu-fonts/releases/download/ver
 DEJAVU_SHA256 := fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7
 DEJAVU_FILES := DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSans-Oblique.ttf DejaVuSans-BoldOblique.ttf DejaVuSansMono.ttf DejaVuSansMono-Bold.ttf
 FONT_DIR := ${ROOT_DIR}/graphics/fonts
+
+# Kathara network plugin (VDE) with the types of switch: `mode` 'switch' / 'managed' of a network.
+# Built from the fork and installed under the name Kathara looks for, in place of the stock plugin.
+NETWORK_PLUGIN_REPO ?= https://github.com/emotchane/NetworkPlugin.git
+NETWORK_PLUGIN_BRANCH ?= main
+NETWORK_PLUGIN_NAME ?= kathara/katharanp_vde
+# Published build of that plugin (Docker Hub): downloaded when it exists, so that nothing is compiled
+NETWORK_PLUGIN_IMAGE ?= sysreseval/katharanp_vde
+NETWORK_PLUGIN_MODES_ENV := KATHARA_SWITCH_MODES
+NETWORK_PLUGIN_DIR := ${ROOT_DIR}/build/NetworkPlugin
 
 # Minimal pkg_resources stub. The 'fs' library (a Kathara dependency) calls
 # pkg_resources.declare_namespace at import time, so we cannot simply uninstall
@@ -101,6 +111,48 @@ fonts:
 	install -m 644 "$$tmp/dejavu-fonts-ttf-$(DEJAVU_VERSION)/LICENSE" "$(FONT_DIR)/LICENSE"; \
 	echo "DejaVu fonts installed in $(FONT_DIR)"
 
+# Install the network plugin that knows the switch types (run as root or as a member of the
+# docker group): downloaded from $(NETWORK_PLUGIN_IMAGE) when it is published there, built from the
+# sources otherwise or with BUILD=1 (needs docker with buildx, git and python3).  Does nothing
+# when the installed plugin already has the switch types (FORCE=1 installs it again); refuses
+# while a Kathara network exists, since the stock plugin is removed first.
+network-plugin:
+	@set -e; \
+	case "$$(uname -m)" in \
+		x86_64) arch=amd64;; \
+		aarch64|arm64) arch=arm64;; \
+		*) echo "ERROR: unsupported architecture $$(uname -m)"; exit 1;; \
+	esac; \
+	plugin="$(NETWORK_PLUGIN_NAME):$$arch"; \
+	docker info >/dev/null 2>&1 || { echo "ERROR: the Docker daemon is not reachable"; exit 1; }; \
+	has_modes() { docker plugin inspect "$$plugin" --format '{{.Settings.Env}}' 2>/dev/null | grep -q "$(NETWORK_PLUGIN_MODES_ENV)="; }; \
+	if [ -z "$(FORCE)" ] && has_modes; then \
+		docker plugin enable "$$plugin" >/dev/null 2>&1 || true; \
+		echo "Network plugin $$plugin already has the switch types"; exit 0; \
+	fi; \
+	networks=$$(docker network ls -q --filter "driver=$$plugin" | wc -l); \
+	if [ "$$networks" -ne 0 ]; then \
+		echo "ERROR: $$networks network(s) use $$plugin: stop the running projects first (sre wipe)"; exit 1; \
+	fi; \
+	docker plugin rm -f "$$plugin" >/dev/null 2>&1 || true; \
+	if [ -z "$(BUILD)" ]; then \
+		image="$(NETWORK_PLUGIN_IMAGE):$$arch"; \
+		if docker plugin install --grant-all-permissions --alias "$$plugin" "$$image" && has_modes; then \
+			echo "Network plugin $$plugin installed from $$image: hub, switch and managed switch"; exit 0; \
+		fi; \
+		echo "No usable plugin published as $$image: building it from the sources"; \
+		docker plugin rm -f "$$plugin" >/dev/null 2>&1 || true; \
+	fi; \
+	rm -rf "$(NETWORK_PLUGIN_DIR)"; mkdir -p "$$(dirname "$(NETWORK_PLUGIN_DIR)")"; \
+	git clone --depth 1 --branch "$(NETWORK_PLUGIN_BRANCH)" "$(NETWORK_PLUGIN_REPO)" "$(NETWORK_PLUGIN_DIR)"; \
+	build="make -C $(NETWORK_PLUGIN_DIR)/vde all_$$arch PLUGIN_NAME=$(NETWORK_PLUGIN_NAME)"; \
+	echo "Building $$plugin (a few minutes)"; \
+	if [ -t 0 ]; then $$build; else script -qefc "$$build" /dev/null; fi; \
+	docker plugin enable "$$plugin"; \
+	rm -rf "$(NETWORK_PLUGIN_DIR)"; \
+	has_modes || { echo "ERROR: $$plugin does not advertise $(NETWORK_PLUGIN_MODES_ENV)"; exit 1; }; \
+	echo "Network plugin $$plugin built and installed: hub, switch and managed switch"
+
 venv: fonts
 	# Always start from a clean slate. `python3 -m venv` over an existing
 	# directory only partially refreshes it and won't rewrite shebangs whose
@@ -109,7 +161,7 @@ venv: fonts
 	rm -rf ${ROOT_DIR}/venv
 	python3.13 -m venv ${ROOT_DIR}/venv
 	${ROOT_DIR}/venv/bin/pip install setuptools
-	${ROOT_DIR}/venv/bin/pip install "kathara @ git+https://github.com/emotchane/Kathara.git@feature/save-restore-lab"
+	${ROOT_DIR}/venv/bin/pip install "kathara @ git+https://github.com/emotchane/Kathara.git@main"
 	${ROOT_DIR}/venv/bin/python3 -c 'import os, pathlib, site; sp = pathlib.Path(site.getsitepackages()[0]); pkg = sp / "pkg_resources"; pkg.mkdir(exist_ok=True); (pkg / "__init__.py").write_text(os.environ["PKG_RESOURCES_STUB"])'
 	${ROOT_DIR}/venv/bin/pip install graphviz
 	${ROOT_DIR}/venv/bin/pip install pyside6
@@ -135,6 +187,7 @@ translations:
 		src/sysreseval/flavor_form_dialog.py \
 		src/sysreseval/settings_dialog.py \
 		src/sysreseval/view/machines_view.py \
+		src/sysreseval/view/switches_view.py \
 		src/sysreseval/view/questions_view.py \
 		src/sysreseval/view/evaluations_view.py \
 		src/sysreseval/view/apply_config_view.py \

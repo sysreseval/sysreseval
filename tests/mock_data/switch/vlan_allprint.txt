@@ -1,0 +1,9 @@
+VLAN 0000
+ -- Port 0001 tagged=0 active=1 status=Forwarding
+ -- Port 0005 tagged=0 active=1 status=Forwarding
+VLAN 0010
+ -- Port 0001 tagged=1 active=1 status=Forwarding
+ -- Port 0002 tagged=0 active=1 status=Forwarding
+VLAN 0020
+ -- Port 0001 tagged=1 active=1 status=Forwarding
+ -- Port 0003 tagged=0 active=0 status=Forwarding

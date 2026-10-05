@@ -153,6 +153,31 @@ default_host_network_edge_relative_length = 1.0
 # True/False = force IPv6 on/off in every machine; Machine(ipv6=...) overrides it per machine.
 default_ipv6 = None
 
+# Switch type of a network (`mode` of a `_network_specs` entry, Kathara collision domain mode):
+# a hub sends every frame to every machine, a switch learns the MAC addresses, a managed switch
+# also has VLANs and a management console.
+network_mode_hub = "hub"
+network_mode_switch = "switch"
+network_mode_managed = "managed"
+network_modes = (network_mode_hub, network_mode_switch, network_mode_managed)
+default_network_mode = network_mode_hub
+min_vlan_id = 1
+max_vlan_id = 4094
+# `@machine` in a command of NetScheme.switch_cmd() / Grade.test_switch() stands for the number of
+# the switch port the machine is plugged into.
+switch_port_reference_prefix = "@"
+switch_cmd_error_code = -2  # exit code of a switch command that could not be run at all
+# Console commands (first word of the line) a student may run on a managed switch.  Everything
+# else (plugin/*, port/create, port/remove, port/epclose, debug/*, ...) is refused in user mode.
+switch_user_commands = (
+    "help", "showinfo",
+    "port/showinfo", "port/print", "port/allprint", "port/setvlan",
+    "vlan/create", "vlan/remove", "vlan/addport", "vlan/delport", "vlan/print", "vlan/allprint",
+    "hash/showinfo", "hash/print", "hash/find",
+    "fstp/showinfo", "fstp/print", "fstp/setfstp", "fstp/setedge", "fstp/bonus",
+)
+switch_console_exit_commands = ("exit", "quit", "logout")
+
 default_machine_shape = "box"
 default_network_shape = "ellipse"
 

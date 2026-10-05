@@ -34,6 +34,8 @@ from SRE import params
 pytestmark = pytest.mark.skipif(os.geteuid() != 0, reason="Docker lifecycle tests must run as root")
 
 SRE_PY = Path(params.__file__).resolve().parents[2] / 'src' / 'sre.py'
+# hub / switch / managed switch networks, VLANs, states and a grade using the switch console
+SWITCH_LAB = Path(__file__).parent / 'labs' / 'switch_test_lab.py'
 PROJECTS = Path(params.sre_projects_dir)
 
 NON_PRIVILEGED_LAB = '''
@@ -270,6 +272,7 @@ def labs_dir():
     (d / 'ipv6.py').write_text(IPV6_LAB)
     (d / 'instructor.py').write_text(INSTRUCTOR_LAB)
     (d / 'instructor_privileged.py').write_text(PRIVILEGED_INSTRUCTOR_LAB)
+    shutil.copy(SWITCH_LAB, d / 'switch_modes.py')
     for f in d.iterdir():
         f.chmod(0o644)
     yield d
@@ -626,13 +629,15 @@ class TestIpv6:
 STUDENT = 'student'
 
 
-def _sre_user(*args, stdin=None, timeout=600):
+def _sre_user(*args, stdin=None, input=None, timeout=600):
     """The student path: what sre-wrapper runs through sudo (`sre --user ...`), without sudo.
-    The process is the same one, with the user-mode checks of the actions."""
+    The process is the same one, with the user-mode checks of the actions.  *input* is typed
+    on its standard input (the lines of a switch console session)."""
     env = dict(os.environ, LOGNAME='root', SUDO_USER=STUDENT, USER_USERNAME=STUDENT)
     env.pop('SUDO_COMMAND', None)
+    feed = {'input': input} if input is not None else {'stdin': stdin}
     return subprocess.run([sys.executable, '-W', 'ignore', str(SRE_PY), '--user', *args],
-                          capture_output=True, text=True, timeout=timeout, env=env, stdin=stdin)
+                          capture_output=True, text=True, timeout=timeout, env=env, **feed)
 
 
 def _info(running_lab_name):
@@ -850,3 +855,142 @@ class TestInstructorMode:
         r = _sre_user('start', '--instructor-mode', 'no/such/lab')
         assert r.returncode == 1 and '--instructor-mode is not available in user mode' in r.stderr, r.stderr
         assert _project_dirs() == before
+
+
+# ---------------------------------------------------------------------------
+# Types of switch: hub / switch / managed switch with VLANs and a console
+# ---------------------------------------------------------------------------
+
+SWITCH_MODE_OPTION = 'kathara.switch.mode'
+PC2, PC3, R1_VLAN10 = '10.99.0.2', '10.99.0.3', '10.99.0.254'
+
+
+def _start_switch_lab(projects, labs_dir):
+    """Start the switch lab, or skip when this host cannot run it: Kathara or its network plugin
+    without switch modes (a lab with hubs only does not need them)."""
+    before = _project_dirs()
+    r = _sre('start', '-p', str(labs_dir / 'switch_modes.py'))
+    if r.returncode != 0 and ('does not support it' in r.stderr or 'needs a Kathara with switch modes' in r.stderr):
+        pytest.skip(f"no switch modes on this host: {r.stderr.strip().splitlines()[-1]}")
+    assert r.returncode == 0, f"sre start failed:\n{r.stderr[-3000:]}"
+    (running_lab_name,) = _project_dirs() - before
+    lab_hash = _lab_hash(running_lab_name)
+    projects.append((running_lab_name, lab_hash))
+    return running_lab_name, lab_hash
+
+
+def _ping(container, address):
+    rc, _out = _exec(container, f'ping -c 2 -w 4 {address}')
+    return rc == 0
+
+
+def _switch_modes(docker_client, lab_hash):
+    return {n.attrs['Labels']['name']: (n.attrs.get('Options') or {}).get(SWITCH_MODE_OPTION, 'hub')
+            for n in _networks(docker_client, lab_hash)}
+
+
+class TestSwitchModes:
+
+    def test_modes_vlans_console_and_states(self, docker_client, labs_dir, projects, no_exam):
+        """The types of switch reach Kathara, the declared VLANs separate the machines of a
+        managed switch, its console answers `sre exec` and the student path (allow-list,
+        closed and hidden switches refused), a state moves a port and the grade reads it."""
+        running_lab_name, lab_hash = _start_switch_lab(projects, labs_dir)
+        assert _switch_modes(docker_client, lab_hash) == {
+            'lan': 'managed', 'dmz': 'switch', 'old': 'hub', 'closed': 'managed', 'hid': 'managed'}
+        assert _info(running_lab_name)['switches'] == [
+            {'name': 'lan', 'mode': 'managed', 'allow_connection': True},
+            {'name': 'dmz', 'mode': 'switch', 'allow_connection': True},
+            {'name': 'closed', 'mode': 'managed', 'allow_connection': False},
+            {'name': 'old', 'mode': 'hub', 'allow_connection': True},
+        ]
+
+        # one IP subnet: only the VLANs separate pc2 (VLAN 20) from pc1 and pc3 (VLAN 10)
+        pc1 = _machine(docker_client, lab_hash, 'pc1')
+        assert _ping(pc1, PC3), "pc1 and pc3 are both in VLAN 10"
+        assert not _ping(pc1, PC2), "pc2 is in VLAN 20"
+        rc, _out = _exec(_machine(docker_client, lab_hash, 'r1'), 'ip link show eth0.10')
+        if rc == 0:  # the 8021q module of the host is available
+            assert _ping(pc1, R1_VLAN10), "r1 reaches VLAN 10 tagged on its trunk port"
+
+        # the console, for a privileged user
+        r = _sre('exec', running_lab_name, 'lan', 'vlan/print')
+        assert r.returncode == 0 and 'VLAN 0010' in r.stdout and 'VLAN 0020' in r.stdout, (r.stdout, r.stderr)
+        r = _sre('exec', running_lab_name, 'lan', 'vlan/create', '10')
+        assert r.returncode == 17 and 'error:' in r.stderr, (r.returncode, r.stderr)
+        r = _sre('exec', running_lab_name, 'dmz', 'vlan/print')
+        assert r.returncode == 1 and 'device dmz is a switch: it has no console' in r.stderr, r.stderr
+
+        # the console, for a student: the commands of the allow-list only
+        r = _sre_user('connect', running_lab_name, 'lan', input='vlan/print\nport/remove 1\nshutdown\nexit\n')
+        assert r.returncode == 0, r.stderr
+        assert 'VLAN 0010' in r.stdout, r.stdout
+        assert "command 'port/remove' is not allowed" in r.stderr, r.stderr
+        assert "command 'shutdown' is not allowed" in r.stderr, r.stderr
+        r = _sre('exec', running_lab_name, 'lan', 'port/print')
+        assert r.returncode == 0 and 'pc1:eth0' in r.stdout, "the refused commands did not reach the switch"
+        r = _sre_user('connect', running_lab_name, 'closed', input='vlan/print\n')
+        assert r.returncode == 1 and 'connection to device closed is not allowed' in r.stderr, r.stderr
+        r = _sre_user('connect', running_lab_name, 'hid', input='vlan/print\n')
+        assert r.returncode == 1 and 'device hid is unknown' in r.stderr, r.stderr
+
+        # a state runs a switch command: pc2 joins VLAN 10; the grade reads the switch
+        def grades():
+            r = _sre('eval', running_lab_name)
+            assert r.returncode == 0, r.stderr
+            return {g['title']: g['grade'] for g in json.loads(r.stdout)['grades']}
+
+        assert grades() == {'pc2 in the VLAN of pc1': 0, 'pc1 reaches pc2': 0}
+        r = _sre_user('state', running_lab_name, 'move')
+        assert r.returncode == 0, r.stderr
+        assert _ping(pc1, PC2), "the state moved the port of pc2 to VLAN 10"
+        assert grades() == {'pc2 in the VLAN of pc1': 1, 'pc1 reaches pc2': 1}
+        r = _sre('state', running_lab_name, 'back')
+        assert r.returncode == 0, r.stderr
+        assert not _ping(pc1, PC2)
+
+        r = _sre('export', running_lab_name)
+        assert r.returncode == 0, r.stderr
+        import base64
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(base64.b64decode(r.stdout))) as z:
+            lab_conf = next(z.read(n).decode() for n in z.namelist() if n.endswith('lab.conf'))
+        assert 'pc1[0]="lan/vlan=10"' in lab_conf and 'r1[0]="lan/trunk=10,20"' in lab_conf, lab_conf
+        assert 'CD_MODE[lan]="managed"' in lab_conf and 'CD_MODE[dmz]="switch"' in lab_conf, lab_conf
+        assert 'CD_MODE[old]' not in lab_conf, lab_conf
+
+        r = _sre('stop', running_lab_name)
+        assert r.returncode == 0, r.stderr
+        assert _containers(docker_client, lab_hash) == [] and _networks(docker_client, lab_hash) == []
+
+    def test_restore_keeps_the_declared_switch_configuration(self, docker_client, labs_dir, projects, tmp_path,
+                                                             no_exam):
+        """A save file gives back the types of switch and the declared VLANs; what was changed
+        on the console afterwards is not saved."""
+        running_lab_name, lab_hash = _start_switch_lab(projects, labs_dir)
+        r = _sre('state', running_lab_name, 'move')
+        assert r.returncode == 0, r.stderr
+        assert _ping(_machine(docker_client, lab_hash, 'pc1'), PC2)
+
+        save_file = tmp_path / 'switches.sre'
+        r = _sre('save', running_lab_name, '-o', str(save_file))
+        assert r.returncode == 0, r.stderr
+        before = _project_dirs()
+        r = _sre('restore', str(save_file))
+        assert r.returncode == 0, r.stderr[-3000:]
+        (restored,) = _project_dirs() - before
+        restored_hash = _lab_hash(restored)
+        projects.append((restored, restored_hash))
+
+        assert _switch_modes(docker_client, restored_hash) == _switch_modes(docker_client, lab_hash)
+        pc1 = _machine(docker_client, restored_hash, 'pc1')
+        assert _ping(pc1, PC3), "restore() configured the addresses again, pc3 is in VLAN 10"
+        assert not _ping(pc1, PC2), "pc2 is back in its declared VLAN 20"
+        r = _sre('exec', restored, 'lan', 'vlan/print')
+        assert r.returncode == 0 and 'VLAN 0020' in r.stdout, (r.stdout, r.stderr)
+
+        for name, h in ((restored, restored_hash), (running_lab_name, lab_hash)):
+            r = _sre('stop', name)
+            assert r.returncode == 0, r.stderr
+            assert _containers(docker_client, h) == [] and _networks(docker_client, h) == []

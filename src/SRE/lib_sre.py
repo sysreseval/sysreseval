@@ -38,11 +38,15 @@ from Kathara.model.Lab import Lab
 
 from . import params
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
-                     TranslatedText, _tt_hash_str)
+                     InfoSwitch, TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
 from .instructor_text import instructor, set_instructor_context, strip_instructor
 from .operations_log import OperationsLog, format_grade, format_total
+from .switch_console import SwitchConsole
 from .params import SRE
+
+# timeout slot of a switch test in Grade0._tests (the console of a switch has its own timeout)
+_SWITCH_TEST_TIMEOUT = 0
 
 
 class ErrorCategory(enum.Enum):
@@ -265,6 +269,18 @@ class _HostCmdOp:
     def __init__(self, command: str, timeout: int = 0):
         self.command = command
         self.timeout = timeout
+
+
+class _SwitchCmdOp:
+    """A console command of a managed switch registered via NetScheme0.switch_cmd().
+
+    Kept with the host operations of its step: it is run by ``sre`` itself, not in a container.
+    """
+    __slots__ = ('network', 'command')
+
+    def __init__(self, network: str, command: str):
+        self.network = network
+        self.command = command
 
 
 class _CpFromHostOp:
@@ -717,7 +733,9 @@ class NetScheme0:
     Class-level attributes:
 
     * ``_machine_specs`` — ``{name: {Machine kwargs}}`` — one entry per container.
-    * ``_network_specs`` — ``{net_name: {color: ...}}`` — optional display hints.
+    * ``_network_specs`` — ``{net_name: {Network kwargs}}`` — optional: display hints
+      (``color``, ``shape``) and type of switch (``mode``: ``'hub'`` by default, ``'switch'`` or
+      ``'managed'``; for a managed switch ``allow_connection`` and ``vlans``, see :class:`Network`).
     * ``_topology``      — ``{net_name: [machine, ...]}`` or ``{net_name: {machine: iface}}``
       — which machines connect to each network and on which interface.
 
@@ -737,7 +755,7 @@ class NetScheme0:
     """
 
     _machine_specs = {}
-    _network_specs = {}  # {net_name: {'color': ...}} — optional colors for networks
+    _network_specs = {}  # {net_name: {'color': ..., 'mode': ...}} — optional Network kwargs
     _topology = {}  # {net_name: [m, ...] or {m: iface, ...}} — mixed allowed
 
     def _resolve_spec(self, attr: str, data_attr: str):
@@ -820,8 +838,19 @@ class NetScheme0:
                 _iface_counter[mname] = max(_iface_counter.get(mname, 0), iface) + 1
                 NetAdapter(network=net, machine=machine, interface=iface, mac=mac)
 
+        # VLANs of the ports of the managed switches (`vlans` of their _network_specs entry)
+        for net in list(self.get_networks()):
+            for mname, spec in net.vlans.items():
+                machine = self.get_machine(mname)
+                adapter = net.net_adapters.get(machine) if machine is not None else None
+                if adapter is None:
+                    raise ValueError(f"network '{net.name}': 'vlans' names '{mname}', "
+                                     f"which is not a machine of this network")
+                adapter.vlan, adapter.tagged_vlans = parse_port_vlans(
+                    spec, f"network '{net.name}', machine '{mname}'")
+
         self._ops: dict[int, dict[str, list]] = {}  # step → machine → [_CmdOp | _FileOp, ...]
-        self._host_ops: dict[int, list] = {}
+        self._host_ops: dict[int, list] = {}  # step → [_HostCmdOp | _HostCallbackOp | _SwitchCmdOp, ...]
         self.reset_state_results()
 
         self.net_config = None
@@ -835,6 +864,8 @@ class NetScheme0:
         self._host_cmd_results = {}  # step -> {(command, timeout): (output, code)}
         self._allow_errors_in_cmds = {}  # (machine, step, command, timeout) -> True
         self._allow_errors_in_host_cmds = {}  # (step, command, timeout) -> True
+        self._switch_cmd_results = {}  # step -> {(network, command): (output, code)}
+        self._allow_errors_in_switch_cmds = {}  # (step, network, command) -> True
         self._once_cache = {}
 
     def once(self, key, factory):
@@ -977,6 +1008,12 @@ class NetScheme0:
             if isinstance(value, Network):
                 yield value
 
+    def get_visible_networks(self):
+        """Networks with at least one machine that is not hidden: the ones a student sees."""
+        for net in self.get_networks():
+            if any(not m.hidden for m in net.get_machines()):
+                yield net
+
     def get_topology(self):
         return self._resolve_spec('_topology', 'topology')
 
@@ -1043,6 +1080,43 @@ class NetScheme0:
 
     def is_host_cmd_error_allowed(self, step, command, timeout):
         return self._allow_errors_in_host_cmds.get((step, command, timeout), False)
+
+    def switch_cmd(self, network, command, step=1, default_value='', default_code: int = 0,
+                   allow_error: bool = False):
+        """Register a command of the management console of the managed switch *network* at *step*.
+
+        *network* is the name of a network declared with ``'mode': 'managed'`` in
+        ``_network_specs``; *command* is one line of the ``vde_switch`` console, e.g.
+        ``vlan/create 10``.  A word ``@machine`` stands for the number of the port *machine* is
+        plugged into: ``port/setvlan @pc1 10``.
+
+        Same contract as :meth:`host_cmd`: returns ``(output, code)``, the placeholder
+        ``(default_value, default_code)`` until the command has run.  *code* is ``0``, the error
+        number given by the switch (e.g. ``17``: the VLAN already exists) or ``-2`` when the
+        command could not be run at all.  A non-zero code is reported on stderr unless
+        *allow_error* is set.  The switch commands of a step run with its host operations, in
+        registration order, before the operations on the containers.
+        """
+        net = self.get_network(network)
+        if net is None or not net.is_managed():
+            raise ValueError(f"switch_cmd(): '{network}' is not a managed switch of this lab")
+        if self.max_step < step:
+            self.max_step = step
+        self._log_op(step, f"[switch {network}] CMD (step={step}): {command}")
+        self._host_ops.setdefault(step, []).append(_SwitchCmdOp(network, command))
+        if allow_error:
+            self._allow_errors_in_switch_cmds[(step, network, command)] = True
+        results = self._switch_cmd_results.setdefault(step, {})
+        if (network, command) not in results:
+            results[(network, command)] = (default_value, default_code)
+        return results[(network, command)]
+
+    def record_switch_cmd_result(self, step, network, command, output, code):
+        """Store the result of a switch command run at *step* (called by ``sre state``)."""
+        self._switch_cmd_results.setdefault(step, {})[(network, command)] = (output, code)
+
+    def is_switch_cmd_error_allowed(self, step, network, command):
+        return self._allow_errors_in_switch_cmds.get((step, network, command), False)
 
     def host_callback(self, callback, step=1):
         """Register a Python callable to invoke on the host at *step* (called with no arguments)."""
@@ -1202,6 +1276,17 @@ class NetScheme0:
 
     def get_new_lab_from_scheme(self):
         lab = Lab(name=self.running_lab_name)
+        # Type of switch of the networks.  Nothing is said about a hub, so that a lab with hubs
+        # only makes the same Kathara calls as before (it also runs with a Kathara or a network
+        # plugin that knows no switch mode).
+        for net in self.get_networks():
+            if net.mode == params.network_mode_hub or not net.net_adapters:
+                continue
+            try:
+                lab.get_or_new_link(net.name).mode = net.mode
+            except AttributeError:
+                error_quit(f"network '{net.name}': mode '{net.mode}' needs a Kathara with switch modes "
+                           f"(install it again with `make venv`)")
         abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self.running_lab_name)
         _used_ports: set = set()
         xauth_cookie = _resolve_xauth_cookie()
@@ -1266,9 +1351,16 @@ class NetScheme0:
                 machine_kwargs['ipv6'] = ipv6
             lab.new_machine(m.name, **machine_kwargs)
             for net, netAdapter in m.net_adapters.items():
+                # VLANs of a port of a managed switch: only passed when the lab declared some
+                vlan_kwargs = {}
+                if netAdapter.vlan is not None:
+                    vlan_kwargs['vlan'] = netAdapter.vlan
+                if netAdapter.tagged_vlans:
+                    vlan_kwargs['tagged_vlans'] = list(netAdapter.tagged_vlans)
                 lab.connect_machine_to_link(m.name, net.name, machine_iface_number=netAdapter.interface,
                                             mac_address=str(netAdapter.mac).replace('-',
-                                                                                    ':').lower() if netAdapter.mac is not None else None)
+                                                                                    ':').lower() if netAdapter.mac is not None else None,
+                                            **vlan_kwargs)
         self.lab_hash = lab.hash
         return lab
 
@@ -1331,16 +1423,89 @@ class NetAdapter:
         self.interface = interface
         self.mac = mac
         self.addresses = addresses
+        # port of a managed switch (`vlans` of the network): VLAN of the untagged frames, VLANs
+        # exchanged tagged; None / [] = default VLAN of the switch
+        self.vlan = None
+        self.tagged_vlans = []
         machine.net_adapters[network] = self
         network.net_adapters[machine] = self
 
+    def switch_port_label(self) -> str:
+        """Name of this interface on the port of a managed switch (``port/print``): ``m1:eth0``."""
+        return f"{self.machine.name}:eth{self.interface}"
+
+
+def _check_vlan_id(value, where):
+    if type(value) is not int or not params.min_vlan_id <= value <= params.max_vlan_id:
+        raise ValueError(f"{where}: VLAN {value!r} is invalid (an integer between {params.min_vlan_id} "
+                         f"and {params.max_vlan_id} is expected)")
+    return value
+
+
+def parse_port_vlans(spec, where: str) -> tuple:
+    """``(vlan, tagged_vlans)`` of one entry of the ``vlans`` dict of a managed network.
+
+    An int is an access port (VLAN of its untagged frames), a list / tuple / set a trunk port
+    (VLANs exchanged tagged), a dict ``{'vlan': 1, 'trunk': [10, 20]}`` gives both (native VLAN
+    and tagged VLANs).  *where* starts the message of the ``ValueError`` raised on a bad entry.
+    """
+    if isinstance(spec, dict):
+        unknown = sorted(set(spec) - {'vlan', 'trunk'})
+        if unknown:
+            raise ValueError(f"{where}: unknown key(s) {', '.join(map(repr, unknown))} "
+                             f"('vlan' and 'trunk' are expected)")
+        vlan, tagged = spec.get('vlan'), spec.get('trunk')
+    elif isinstance(spec, (list, tuple, set, frozenset)):
+        vlan, tagged = None, spec
+    else:
+        vlan, tagged = spec, None
+    if tagged is None:
+        tagged = []
+    elif not isinstance(tagged, (list, tuple, set, frozenset)):
+        tagged = [tagged]
+    if vlan is not None:
+        _check_vlan_id(vlan, where)
+    tagged = sorted({_check_vlan_id(v, where) for v in tagged})
+    if vlan is None and not tagged:
+        raise ValueError(f"{where}: no VLAN given")
+    if vlan in tagged:
+        raise ValueError(f"{where}: VLAN {vlan} cannot be both untagged and tagged")
+    return vlan, tagged
+
 
 class Network:
-    def __init__(self, name, color=None, shape=None):
+    """One network of the lab (built from a ``NetScheme._network_specs`` entry, or from its
+    ``_topology`` key alone).
+
+    * ``color`` / ``shape``: display hints of the schema.
+    * ``mode``: the type of switch the machines are plugged into: ``'hub'`` (default, every frame
+      goes to every machine), ``'switch'`` (it learns the MAC addresses) or ``'managed'`` (a
+      switch with VLANs and a management console).
+    * ``allow_connection``: students may open the console of a managed switch (``sre connect``,
+      *Connect* button of the Switches tab).  ``True`` by default.
+    * ``vlans``: ports of a managed switch, by machine: ``{'pc1': 10}`` (access port),
+      ``{'r1': [10, 20]}`` (trunk), ``{'r2': {'vlan': 1, 'trunk': [10, 20]}}`` (native VLAN and
+      trunk).  A machine that is not named stays in the default VLAN of the switch.
+    """
+
+    def __init__(self, name, color=None, shape=None, mode=None, allow_connection=True, vlans=None):
+        if mode is None:
+            mode = params.default_network_mode
+        if mode not in params.network_modes:
+            raise ValueError(f"network '{name}': mode {mode!r} is invalid "
+                             f"(one of {', '.join(params.network_modes)} is expected)")
+        if vlans and mode != params.network_mode_managed:
+            raise ValueError(f"network '{name}': 'vlans' needs 'mode': '{params.network_mode_managed}'")
         self.name = name
         self.color = color
         self.shape = shape
+        self.mode = mode
+        self.allow_connection = allow_connection
+        self.vlans = dict(vlans or {})
         self.net_adapters = {}
+
+    def is_managed(self) -> bool:
+        return self.mode == params.network_mode_managed
 
     def get_machines(self):
         for m in self.net_adapters.keys():
@@ -1543,6 +1708,7 @@ class Grade0:
         self.max_step = 1
         self._tests = {}  # keys : (machine,step)->(cmd, timeout)->(result, code))
         self._allow_errors_in_tests = {}
+        self._switch_tests = set()  # (network, step) keys of _tests registered by test_switch()
         self._host_tests = {}  # step -> {(command, timeout): (result, code)}
         self._allow_errors_in_host_tests = {}  # (step, command, timeout) -> True
         self._answers = {}  # hash -> answer
@@ -1633,6 +1799,8 @@ class Grade0:
         for (machine, step1) in self._tests.keys():
             if step != step1:
                 continue
+            if (machine, step1) in self._switch_tests:
+                continue  # console commands of a managed switch, not run through exetests
             result[machine] = build_exetests_string(self._tests[(machine, step)].keys())
         return result
 
@@ -1805,6 +1973,28 @@ class Grade0:
             self._tests[(machine_name, step)][(command, timeout)] = (default_value, default_code)
             return default_value, default_code
         return self._tests[(machine_name, step)][(command, timeout)]
+
+    def test_switch(self, network_name, command, step=1, default_value='', default_code: int = 0,
+                    allow_error: bool = False):
+        """Register and retrieve the result of a console command of the managed switch *network_name*.
+
+        *network_name* is a network declared with ``'mode': 'managed'``; *command* is one line of
+        its management console, e.g. ``vlan/print``.  A word ``@machine`` stands for the number of
+        the port *machine* is plugged into (``port/print @pc1``).
+
+        Same contract as :meth:`test`: *default_value* / *default_code* on the registration pass,
+        the actual ``(output, code)`` afterwards.  *code* is ``0``, the error number given by the
+        switch, or ``-2`` when the command could not be run.  The result is stored with the tests
+        of the machines (under the name of the network), so archives keep it.
+        """
+        get_network = getattr(self.net_scheme, 'get_network', None)
+        if get_network is not None:
+            net = get_network(network_name)
+            if net is None or not net.is_managed():
+                raise ValueError(f"test_switch(): '{network_name}' is not a managed switch of this lab")
+        self._switch_tests.add((network_name, step))
+        return self.test(network_name, command, step=step, timeout=_SWITCH_TEST_TIMEOUT,
+                         default_value=default_value, default_code=default_code, allow_error=allow_error)
 
     @staticmethod
     def _apply_section(section: str, title) -> TranslatedText:
@@ -2028,6 +2218,11 @@ class Grade0:
             for net in m.net_adapters
             if net.shape
         }
+        # the networks a student sees (every network of a debug project), as switches
+        visible_networks = (self.net_scheme.get_networks() if debug_project
+                            else self.net_scheme.get_visible_networks())
+        info_switches = [InfoSwitch(name=net.name, mode=net.mode, allow_connection=bool(net.allow_connection))
+                         for net in visible_networks if net.net_adapters]
 
         module_rvlab = sys.modules[params.srelab_py_name.removesuffix(".py")]
         default_language = getattr(module_rvlab, 'default_language', 'en')
@@ -2151,7 +2346,8 @@ class Grade0:
                        host_network_exploded=host_network_exploded,
                        host_network_edge_relative_length=host_network_edge_relative_length,
                        schema_splines=schema_splines,
-                       schema_overlap=schema_overlap)
+                       schema_overlap=schema_overlap,
+                       switches=info_switches)
 
         info_json = info.to_json()
         info_filename = params.info_filename(self.net_scheme.running_lab_name)
@@ -2210,6 +2406,7 @@ class Grade0:
         self._eval_date = datetime.datetime.now().isoformat()
         ops_log = self._ops_log()
         ops_log.begin("evaluation")
+        switch_console = SwitchConsole(self.net_scheme)
 
         while self.step <= self.max_step:
             self.reset_before_grade()
@@ -2274,6 +2471,23 @@ class Grade0:
                         result, code = self._tests[(machine_name, self.step)][cmd, timeout]
                         log_debug(result)
                         log_debug(f"-------- exit code {code}\n")
+
+            # console commands of the managed switches (test_switch()), run by sre itself
+            for network_name in sorted(n for n, s in self._switch_tests if s == self.step):
+                switch_cmds = self._tests.get((network_name, self.step), {})
+                entries = []
+                for cmd, timeout in list(switch_cmds):
+                    result, code = switch_console.run(network_name, cmd)
+                    if code != 0 and not self._allow_errors_in_tests.get(
+                            (network_name, self.step, cmd, timeout), False):
+                        self.add_error(f"test error on switch {network_name}:{cmd} code={code}", step=self.step)
+                    switch_cmds[(cmd, timeout)] = (result, code)
+                    entries.append((cmd, result, code))
+                    if SRE.args.debug:
+                        log_debug(f"switch {network_name} - step {self.step} - command {cmd}:")
+                        log_debug(result)
+                        log_debug(f"-------- exit code {code}\n")
+                ops_log.cmds(self.step, OperationsLog.switch(network_name), entries)
 
             host_step_cmds = self._host_tests.get(self.step, {})
             if host_step_cmds:

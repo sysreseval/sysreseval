@@ -9,6 +9,7 @@ from ..utils import error_quit, set_all_variables_for_action, user_not_allowed, 
     should_record_sessions
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, \
     drop_privileges_temporarily, gain_privileges_if_needed
+from ..switch_console import SwitchConsole, interactive, print_result
 from .. import params
 from ..params import SRE
 
@@ -30,6 +31,49 @@ def _exec_recorder(record_dir, device, env, cmd):
         os.execvpe("script", ["script", "-q", "-f", record_file, "-c", shlex.join(cmd)], env)
 
 
+def get_switch(net_scheme, device, debug_project):
+    """The managed switch (a ``Network``) named *device*, ``None`` when *device* is not a network.
+
+    Quits when the network has no console (hub, plain switch) or, in user mode, when the student
+    may not use it: network of hidden machines only (reported as unknown, like a hidden machine)
+    or ``allow_connection`` false.  A debug project lifts both user-mode restrictions.
+    """
+    network = net_scheme.get_network(device)
+    if network is None:
+        return None
+    if not network.net_adapters:
+        error_quit(f"device {device} is unknown")
+    if in_user_mode() and not debug_project and network not in net_scheme.get_visible_networks():
+        error_quit(f"device {device} is unknown")
+    if not network.is_managed():
+        error_quit(f"device {device} is a {network.mode}: it has no console")
+    if in_user_mode() and not debug_project and not network.allow_connection:
+        error_quit(f"connection to device {device} is not allowed")
+    return network
+
+
+def _connect_switch(net_scheme, network):
+    """Console of a managed switch: one command with ``--exec``, the prompt otherwise.  In user
+    mode only the commands of ``params.switch_user_commands`` reach the switch."""
+    if SRE.args.shell is not None:
+        error_quit("--shell does not apply to a switch")
+    restricted = in_user_mode()
+    console = SwitchConsole(net_scheme)
+
+    def run(command):
+        gain_privileges_if_needed(net_scheme)
+        try:
+            return console.run(network.name, command, resolve_ports=not restricted)
+        finally:
+            drop_privileges_temporarily()
+
+    if SRE.args.exec_cmd:
+        if restricted:
+            error_quit("--exec is not allowed in user mode")
+        sys.exit(print_result(*run(' '.join(SRE.args.exec_cmd))))
+    interactive(network.name, run, restricted)
+
+
 def action_connect():
     running_lab_name = resolve_running_lab_name(SRE.args.running_lab)
     module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=running_lab_name)
@@ -40,12 +84,15 @@ def action_connect():
     drop_privileges_temporarily()
     device = SRE.args.device
 
-    machine = net_scheme.get_machine(device)
-    if machine is None or device not in (machine.name for machine in net_scheme.get_machines()):
-        error_quit(f"device {device} is unknown")
     debug_project = os.path.exists(params.debug_project_marker_filename(running_lab_name))
-    if in_user_mode() and machine.hidden and not debug_project:
-        error_quit(f"device {device} is unknown")
+    machine = net_scheme.get_machine(device)
+    # a device is a machine or, for its management console, a managed switch (a network)
+    switch = get_switch(net_scheme, device, debug_project) if machine is None else None
+    if switch is None:
+        if machine is None or device not in (machine.name for machine in net_scheme.get_machines()):
+            error_quit(f"device {device} is unknown")
+        if in_user_mode() and machine.hidden and not debug_project:
+            error_quit(f"device {device} is unknown")
 
     no_records = getattr(SRE.args, 'no_records', False)
     if no_records and in_user_mode():
@@ -59,6 +106,10 @@ def action_connect():
         env['SRE_IN_RECORDER'] = '1'
         cmd = ([sys.executable, '-W', 'ignore'] + sys.argv) if sys.argv[0].endswith('.py') else sys.argv
         _exec_recorder(record_dir, device, env, cmd)
+
+    if switch is not None:
+        _connect_switch(net_scheme, switch)
+        return
 
     gain_privileges_if_needed(net_scheme)
     kathara = Kathara.get_instance()

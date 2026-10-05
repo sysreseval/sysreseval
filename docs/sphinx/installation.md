@@ -167,6 +167,8 @@ Install it system-wide:
    make install   # check-debug-mode + sre-wrapper + wrappers
    ```
 
+10. **(For labs with switches) Install the network plugin with the switch types:** `make network-plugin` — see [Network plugin for the switch types](#network-plugin-for-the-switch-types). Labs whose networks are all hubs do not need it.
+
 You can also run the CLI and GUI directly from source against the venv:
 
 ```bash
@@ -281,6 +283,7 @@ systemctl enable --now sre-preload-images.service
 | `make wrappers` | Marks `sbin/sre` and `bin/sysreseval` shell wrappers executable. Refuses to build while `params.debug_mode = True`. |
 | `make sre-wrapper` | `bin/sre-wrapper` (small C helper that escalates via `sudo`). |
 | `make install` | `check-debug-mode` + `sre-wrapper` + `wrappers`. |
+| `make network-plugin` | Kathara VDE network plugin with the switch types, built from the fork and installed in place of the stock plugin (see [Network plugin for the switch types](#network-plugin-for-the-switch-types)). |
 | `make translations` | Compile Qt `.ts → .qm` and gettext `.po → .mo`. |
 | `make docs` | API docs (pdoc) + main docs (Sphinx) → `docs/html/main/`, `docs/html/api/`, `docs/documentation.pdf`. |
 | `make set-debug-mode` / `make remove-debug-mode` | Flip `debug_mode` in `src/SRE/params.py`. |
@@ -313,13 +316,36 @@ make api_doc         # pdoc API → docs/html/api/
 
 The Sphinx targets pip-install `sphinx myst-parser furo` into the existing venv on demand; `api_doc` does the same for `pdoc`.
 
+### Network plugin for the switch types
+
+A lab may give each network a type of switch (`'mode': 'hub'`, `'switch'` or `'managed'` in its `_network_specs`). Hubs — the default, and the only type of every lab written before — work with the stock Kathara network plugin, the one Kathara downloads by itself on the first start. The two other types need the VDE plugin of the fork `emotchane/NetworkPlugin` (branch `main`), installed under the name Kathara uses (`kathara/katharanp_vde:<arch>`):
+
+```bash
+make network-plugin      # as root or a member of the docker group
+```
+
+The target installs the plugin **in place of the stock one** and enables it. It first tries the published build, `sysreseval/katharanp_vde:<arch>` on Docker Hub (`NETWORK_PLUGIN_IMAGE`), downloaded under the name Kathara uses; when that one is not available, or with `BUILD=1`, it clones the fork into `build/` and builds the plugin for the architecture of the host (a few minutes; needs `git`, `python3` and Docker with `buildx`). It does nothing when the installed plugin already knows the switch types (`FORCE=1` installs it again) and refuses to run while a Kathara network exists: stop the running projects first (`sre wipe`). The plugin belongs to Docker, not to the SRE tree: it is installed once per host and stays when SRE is reinstalled. `scripts/install.sh` offers to run the target.
+
+To publish a build (maintainers), from a clone of the fork on a host of the wanted architecture, in a terminal, after `docker login` with an account allowed to push to the organisation:
+
+```bash
+cd NetworkPlugin/vde
+make push_amd64 PLUGIN_NAME=sysreseval/katharanp_vde     # builds sysreseval/katharanp_vde:amd64 and pushes it
+``` A plugin that knows the switch types says so in its settings:
+
+```bash
+docker plugin inspect kathara/katharanp_vde:amd64 --format '{{.Settings.Env}}'   # ... KATHARA_SWITCH_MODES=hub,switch,managed
+```
+
+Without it `sre start` of a lab that uses a switch fails — Kathara's message (*the Kathara Network Plugin ... does not support it*) followed by the networks concerned and a reminder of `make network-plugin` — and nothing is left running. The management console of a managed switch is a unix socket the plugin gives to the group of `/var/run/docker.sock`: the `sre` user reaches it as it reaches Docker.
+
 ### Dependencies
 
 Installed by `make venv`:
 
 | Package | Purpose |
 |---------|---------|
-| `kathara` | Docker lab orchestration — installed from the fork `emotchane/Kathara`, branch `feature/save-restore-lab` (adds `save_lab()` / `restore_lab()` used by `sre save` / `sre restore`); `git` must be available when running `make venv` |
+| `kathara` | Docker lab orchestration — installed from the fork `emotchane/Kathara`, branch `main`, which adds `save_lab()` / `restore_lab()` (used by `sre save` / `sre restore`) and the switch modes of the collision domains (hub / switch / managed switch with VLANs, used by the `mode` of a network); `git` must be available when running `make venv` |
 | `cryptography` | AES-GCM encryption of save files for labs that define `save_key` |
 | `pyside6` | Qt6 GUI |
 | `msgpack` | Efficient binary serialization |

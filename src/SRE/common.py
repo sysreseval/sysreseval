@@ -331,6 +331,17 @@ class InfoMachine:
 
 
 @dataclass
+class InfoSwitch:
+    """One network of the lab seen as the switch its machines are plugged into (``switches`` of
+    ``info.json``).  ``mode`` is one of ``params.network_modes``; ``allow_connection`` tells
+    whether students may open the console of a managed switch."""
+
+    name: str
+    mode: str
+    allow_connection: bool = True
+
+
+@dataclass
 class InfoLab:
     """Full lab metadata written to ``info.json`` at ``sre start`` and polled by the GUI every second.
 
@@ -364,6 +375,7 @@ class InfoLab:
     host_network_edge_relative_length: float = 1.0
     schema_splines: str = 'curved'
     schema_overlap: str = 'prism'
+    switches: List[InfoSwitch] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=4)
@@ -404,6 +416,7 @@ class InfoLab:
             schema_splines=d.get("schema_splines", "curved"),
             schema_overlap=d.get("schema_overlap", "prism"),
             machines=[InfoMachine(**item) for item in d["machines"]],
+            switches=[InfoSwitch(**item) for item in d.get("switches", []) or []],
             questions=[
                 QuestionDummy(**_wrap_q(item)) if item.get("question_type") == QuestionType.DUMMY.value
                 else QuestionForm(**_wrap_q(item)) if item.get("question_type") == QuestionType.FORM.value

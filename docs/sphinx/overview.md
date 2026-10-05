@@ -26,10 +26,11 @@ The student starts the **sysreseval** GUI, then chooses and opens a *lab*.[^2] E
 - **Terminals** — an embedded shell for each machine the student is allowed to connect to. A lab may expose these as plain root shells or, for example, as a `login` prompt that restricts students to a particular user account.
 - **Machines** — a status table for each machine: state, NAT network, exposed ports. The students can use it to launch separate terminals sessions to
 a machine (useful when several terminal sessions are needed on one machine)
+- **Switches** — the networks of the lab with their type: hub, switch or manageable switch. A manageable switch has VLANs and a console, which the students may open from this tab when the lab allows it.
 - **Evaluations** — lets the student trigger an automated evaluation of their work and view the resulting grade table.
 - **Apply Configuration** — lets the student put the project into a predefined state, for example a partial correction.
 
-The **Questions**, **Evaluations**, and **Apply Configuration** tabs are optional 
+The **Questions**, **Switches**, **Evaluations**, and **Apply Configuration** tabs are optional 
 and are shown only when the lab defines them.
 
 **Multiple labs can be open at once**, letting a course be

@@ -15,7 +15,8 @@ Format: one header line per run, preceded by a blank line unless the file is emp
     step2 - on host : ./gen.sh
         exit code 0
 
-Every entry starts with ``step<N> - on <machine|host> : <operation>``; the output of a command is
+Every entry starts with ``step<N> - on <machine|host|switch <network>> : <operation>`` (a console
+command of a managed switch is ``on switch lan``); the output of a command is
 indented below it (capped at ``params.operations_log_max_output_chars``) and its exit code comes
 last (``-1`` = timeout, ``-2`` = error, ``no result`` when exetests returned nothing for it).
 A file operation (file, append, copy from/to host) is followed by the indented content it wrote
@@ -163,6 +164,11 @@ class OperationsLog:
     """
 
     HOST = HOST  # the ``where`` of host-side operations
+
+    @staticmethod
+    def switch(network_name: str) -> str:
+        """The ``where`` of a console command of the managed switch *network_name*."""
+        return f"switch {network_name}"
 
     def __init__(self, running_lab_name: str | None, enabled: bool, log_evaluations: bool = True):
         self._enabled = bool(enabled)

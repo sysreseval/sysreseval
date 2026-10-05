@@ -1285,3 +1285,130 @@ class TestInstructorMode:
         assert in_mode['instructor_mode'] is True
         assert not any(has_instructor(text) for text in _info_texts(in_mode))
         assert in_mode['questions'] == original['questions']
+
+
+# ---------------------------------------------------------------------------
+# Types of switch of the networks (hub / switch / managed switch)
+# ---------------------------------------------------------------------------
+
+_SWITCH_LAB_PATH = Path(__file__).parent / 'labs' / 'switch_test_lab.py'
+
+_SWITCH_PORTS = """Port 0001 untagged_vlan=0010 ACTIVE - NOT Unnamed Allocatable
+  -- endpoint ID 0003 module unix prog   : kathara pc1:eth0 user=0 pid=1
+Port 0002 untagged_vlan=0010 ACTIVE - NOT Unnamed Allocatable
+  -- endpoint ID 0004 module unix prog   : kathara pc2:eth0 user=0 pid=1"""
+_SWITCH_VLANS = """VLAN 0010
+ -- Port 0001 tagged=0 active=1 status=Forwarding
+ -- Port 0002 tagged=0 active=1 status=Forwarding"""
+
+
+class _FakeSwitchKathara:
+    """Kathara manager stand-in for the console of the managed switches."""
+
+    def __init__(self):
+        self.commands = []
+
+    def get_instance(self):
+        return self
+
+    def exec_link(self, link_name, command, lab_hash=None):
+        self.commands.append((link_name, command))
+        return {'port/allprint': _SWITCH_PORTS, 'vlan/allprint': _SWITCH_VLANS}.get(command, '')
+
+    def get_link_ports(self, link_name, lab_hash=None):
+        return {1: {'endpoints': ['pc1:eth0']}, 2: {'endpoints': ['pc2:eth0']}}
+
+
+@pytest.fixture
+def switch_console_kathara(monkeypatch):
+    from SRE import switch_console
+    fake = _FakeSwitchKathara()
+    monkeypatch.setattr(switch_console, 'Kathara', fake)
+    return fake
+
+
+class TestSwitchTypes:
+    def test_info_json_lists_the_networks_a_student_sees(self, instructor_env):
+        info = _info(_start_instructor_lab(False, _SWITCH_LAB_PATH))
+        assert info['switches'] == [
+            {'name': 'lan', 'mode': 'managed', 'allow_connection': True},
+            {'name': 'dmz', 'mode': 'switch', 'allow_connection': True},
+            {'name': 'closed', 'mode': 'managed', 'allow_connection': False},
+            {'name': 'old', 'mode': 'hub', 'allow_connection': True},
+        ]
+
+    def test_debug_project_lists_the_network_of_the_hidden_machine_too(self, instructor_env, mock_sre_args):
+        mock_sre_args.debug_project = True
+        info = _info(_start_instructor_lab(False, _SWITCH_LAB_PATH))
+        assert {s['name'] for s in info['switches']} == {'lan', 'dmz', 'closed', 'old', 'hid'}
+
+    def test_lab_without_network_mode_lists_hubs(self, instructor_env):
+        info = _info(_start_instructor_lab(False))
+        assert info['switches'] == [{'name': 'lan', 'mode': 'hub', 'allow_connection': True}]
+
+    def test_lab_deployed_with_modes_and_vlans(self, instructor_env):
+        from SRE import lib_sre as _lib_sre
+        lab = _lib_sre.Lab.return_value
+        lab.connect_machine_to_link.reset_mock()
+        _start_instructor_lab(False, _SWITCH_LAB_PATH)
+        connections = {(c.args[0], c.args[1]): c.kwargs for c in lab.connect_machine_to_link.call_args_list}
+        assert connections[('pc1', 'lan')]['vlan'] == 10
+        assert connections[('r1', 'lan')]['tagged_vlans'] == [10, 20]
+        assert 'vlan' not in connections[('r1', 'dmz')] and 'tagged_vlans' not in connections[('srv', 'old')]
+
+    def test_state_runs_its_switch_command(self, instructor_env, switch_console_kathara):
+        rln = _start_instructor_lab(False, _SWITCH_LAB_PATH)
+        _apply_state(rln, 'move')
+        assert switch_console_kathara.commands == [('lan', 'port/setvlan 2 10')]
+
+    def test_eval_reads_the_switch_and_archives_the_result(self, instructor_env, switch_console_kathara):
+        rln = _start_instructor_lab(False, _SWITCH_LAB_PATH)
+        with patch.object(Grade0, 'run_tests_on_machine', side_effect=_fake_run_tests_on_machine):
+            do_eval(running_lab_name=rln, print_result=False)
+        assert sorted(switch_console_kathara.commands) == [('lan', 'port/allprint'), ('lan', 'vlan/allprint')]
+        (archive_path,) = Path(params.archive_dirs[0]).iterdir()
+        archive = _read_archive(archive_path)
+        assert archive['tests'][('lan', 1)][('port/allprint', 0)] == (_SWITCH_PORTS, 0)
+        grades = {g['title']: g['grade'] for g in archive['grade_list']}
+        assert grades['pc2 in the VLAN of pc1'] == 1
+
+
+class DockerPluginError(Exception):
+    """Stand-in for Kathara's exception of the same name (recognised by its name)."""
+
+
+_NO_SWITCH_MODES = ("Collision domain `lan` cannot be deployed in `managed` mode: the Kathara Network Plugin "
+                    "`kathara/katharanp_vde:amd64` does not support it. Use an up-to-date VDE version of the plugin.")
+
+
+class TestStartWithoutSwitchModes:
+    """`sre start` on a host whose network plugin only knows hubs."""
+
+    @pytest.fixture
+    def failing_deploy(self, instructor_env, monkeypatch):
+        from SRE import lib_sre as _lib_sre
+
+        def fail_with(error):
+            monkeypatch.setattr(_lib_sre.Kathara.get_instance(), 'deploy_lab', MagicMock(side_effect=error))
+        return fail_with
+
+    def test_switch_lab_quits_with_what_to_install(self, failing_deploy, capsys):
+        failing_deploy(DockerPluginError(_NO_SWITCH_MODES))
+        with pytest.raises(SystemExit) as exc:
+            _start_instructor_lab(False, _SWITCH_LAB_PATH)
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "does not support it" in err  # Kathara's own message is kept
+        assert "networks that are not hubs (lan, dmz, closed, hid)" in err
+        assert "make network-plugin" in err
+        assert _project_dirs() == [], "the failed start is rolled back"
+
+    def test_lab_with_hubs_only_keeps_the_original_error(self, failing_deploy):
+        failing_deploy(DockerPluginError("Kathara Network Plugin not found on remote Docker connection."))
+        with pytest.raises(DockerPluginError):
+            _start_instructor_lab(False)
+
+    def test_other_errors_are_not_touched(self, failing_deploy):
+        failing_deploy(RuntimeError("boom"))
+        with pytest.raises(RuntimeError, match="boom"):
+            _start_instructor_lab(False, _SWITCH_LAB_PATH)

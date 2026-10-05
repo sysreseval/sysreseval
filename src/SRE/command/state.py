@@ -10,8 +10,10 @@ from ..utils_privileges import drop_privileges_permanently_if_not_needed, \
 from ..files_transfert import copy_state_files, put_file_in_container, append_to_file_in_container, \
     idempotent_append_to_file_in_container, deploy_exetests
 from ..lib_sre import (Grade0, _CmdOp, _FileOp, _AppendOp, _IdempotentAppendOp, _CpFromHostOp, _CpToHostOp,
-                       _HostCallbackOp, build_exetests_string, parse_exetests_output, run_host_command)
+                       _HostCallbackOp, _SwitchCmdOp, build_exetests_string, parse_exetests_output,
+                       run_host_command)
 from ..operations_log import OperationsLog, describe_file
+from ..switch_console import SwitchConsole
 from .. import params
 from ..params import SRE
 
@@ -163,14 +165,28 @@ def do_action_state(lab, state, net_scheme, project_has_directory):
                 error_quit(f"unknown state operation {op!r} for machine {_machine_name}")
         _run_cmd_batch(_machine_name, machine, step, batch)
 
+    switch_console = SwitchConsole(net_scheme)
+
     # iter_state_steps() calls the state method once (default) or once per step
-    # (@sre_state(multi_pass=True)); host ops of a step run before its container ops.
+    # (@sre_state(multi_pass=True)); host ops of a step (switch commands included) run before
+    # its container ops.
     for step, step_ops, host_ops in net_scheme.iter_state_steps(state):
         for host_op in host_ops:
             if isinstance(host_op, _HostCallbackOp):
                 ops_log.op(step, OperationsLog.HOST,
                            f"callback {getattr(host_op.callback, '__name__', repr(host_op.callback))}")
                 host_op.callback()
+            elif isinstance(host_op, _SwitchCmdOp):
+                output, code = switch_console.run(host_op.network, host_op.command)
+                net_scheme.record_switch_cmd_result(step, host_op.network, host_op.command, output, code)
+                ops_log.cmd(step, OperationsLog.switch(host_op.network), host_op.command, output, code)
+                if code != 0 and not net_scheme.is_switch_cmd_error_allowed(step, host_op.network,
+                                                                           host_op.command):
+                    log_error(f"switch cmd error on {host_op.network}:{host_op.command} code={code}")
+                if SRE.args.debug:
+                    log_debug(f"[state] switch {host_op.network} - step {step} - command {host_op.command}:")
+                    log_debug(output)
+                    log_debug(f"-------- exit code {code}\n")
             else:
                 os.makedirs(files_dir, exist_ok=True)
                 output, code = run_host_command(host_op.command, host_op.timeout, cwd=files_dir)

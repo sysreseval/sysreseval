@@ -7,6 +7,7 @@ from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from sysreseval.view.machines_view import MachinesView
+from sysreseval.view.switches_view import SwitchesView
 
 from sysreseval.view.information_view import InformationsView
 
@@ -58,6 +59,10 @@ class ProjectWidget(QWidget):
         self._machines_view = MachinesView(project_dir.name, self.info.get("machines", []))
         tabs.addTab(self._machines_view, self.tr("Machines"))
 
+        # networks with their type of switch; shown only when one of them is not a hub
+        self._switches_view = SwitchesView(project_dir.name, self.info.get("switches", []))
+        tabs.addTab(self._switches_view, self.tr("Switches"))
+
         self._questions_view = QuestionsView(self.info.get("questions", []), project_dir.name)
         tabs.addTab(self._questions_view, self.tr("Questions"))
         tabs.setTabVisible(tabs.indexOf(self._questions_view),
@@ -73,7 +78,7 @@ class ProjectWidget(QWidget):
         )
         tabs.addTab(self._eval_view, self.tr("Evaluation"))
 
-        self._terminals_view = TerminalsView(project_dir.name, self.info.get("machines", []),
+        self._terminals_view = TerminalsView(project_dir.name, self._terminal_devices(),
                                              debug_project=debug_project)
         tabs.addTab(self._terminals_view, self.tr("Terminals"))
 
@@ -93,6 +98,7 @@ class ProjectWidget(QWidget):
 
         self._exam_mode = False
         self._info_mtime = self._mtime(project_dir / params.info_json_name)
+        self._update_switches_visibility()
         self._update_eval_visibility()
         self._update_apply_config_visibility()
         self._update_log_visibility()
@@ -106,6 +112,7 @@ class ProjectWidget(QWidget):
             self._tabs.setTabText(self._tabs.indexOf(self._schema_view), self.tr("Schema"))
             self._tabs.setTabText(self._tabs.indexOf(self._info_view), self.tr("Informations"))
             self._tabs.setTabText(self._tabs.indexOf(self._machines_view), self.tr("Machines"))
+            self._tabs.setTabText(self._tabs.indexOf(self._switches_view), self.tr("Switches"))
             self._tabs.setTabText(self._tabs.indexOf(self._questions_view), self.tr("Questions"))
             self._tabs.setTabText(self._tabs.indexOf(self._eval_view), self.tr("Evaluation"))
             self._tabs.setTabText(self._tabs.indexOf(self._terminals_view), self.tr("Terminals"))
@@ -157,6 +164,17 @@ class ProjectWidget(QWidget):
         """Force-write answers.json for this project (e.g. on exam start)."""
         self._questions_view.save_answers()
 
+    def _terminal_devices(self) -> list:
+        """Devices of the Terminals tab: the machines, then the manageable switches (their
+        management console)."""
+        switches = [{"name": s.get("name", ""), "allow_connection": s.get("allow_connection", False)}
+                    for s in self.info.get("switches", [])
+                    if s.get("mode") == params.network_mode_managed]
+        return self.info.get("machines", []) + switches
+
+    def _update_switches_visibility(self):
+        self._tabs.setTabVisible(self._tabs.indexOf(self._switches_view), self._switches_view.has_switches())
+
     def _update_eval_visibility(self):
         visible = not self._exam_mode and self.info.get("allow_self_grade", True)
         self._tabs.setTabVisible(self._tabs.indexOf(self._eval_view), visible)
@@ -199,6 +217,7 @@ class ProjectWidget(QWidget):
 
     def kill_terminals(self):
         self._machines_view.kill_terminals()
+        self._switches_view.kill_terminals()
         self._terminals_view.kill_terminals()
 
     def active_terminal(self):
@@ -252,10 +271,12 @@ class ProjectWidget(QWidget):
                                       schema_overlap=self.info.get("schema_overlap", "prism"))
         self._info_view.update_data(self._resolve_tt(self.info.get("informations", "")))
         self._machines_view.update_data(machines)
+        self._switches_view.update_data(self.info.get("switches", []))
+        self._update_switches_visibility()
         questions = self.info.get("questions", [])
         self._questions_view.update_data(questions)
         self._tabs.setTabVisible(self._tabs.indexOf(self._questions_view), bool(questions))
-        self._terminals_view.update_data(machines)
+        self._terminals_view.update_data(self._terminal_devices())
         self._apply_config_view.update_data(self.info.get("user_allowed_states", {}),
                                             admin_only_states=self.info.get("admin_only_states", []))
         self._update_eval_visibility()

@@ -5,7 +5,7 @@ import pytest
 
 from SRE.common import (
     QuestionText, QuestionDummy, QuestionForm,
-    GradeElement, InfoLab, InfoMachine, InfoInterface,
+    GradeElement, InfoLab, InfoMachine, InfoInterface, InfoSwitch,
     QuestionType, TranslatedText,
 )
 
@@ -212,6 +212,27 @@ class TestInfoLab:
         lab = _make_info_lab()
         lab.allow_save_restore = True
         assert InfoLab.from_json(lab.to_json()).allow_save_restore is True
+
+    def test_switches_default_to_none(self):
+        lab = _make_info_lab()
+        assert lab.switches == []
+        assert json.loads(lab.to_json())['switches'] == []
+
+    def test_switches_absent_in_old_json(self):
+        d = json.loads(_make_info_lab().to_json())
+        del d['switches']
+        assert InfoLab.from_json(json.dumps(d)).switches == []
+
+    def test_switches_roundtrip(self):
+        lab = _make_info_lab()
+        lab.switches = [InfoSwitch(name='lan', mode='managed', allow_connection=False),
+                        InfoSwitch(name='dmz', mode='switch'),
+                        InfoSwitch(name='old', mode='hub')]
+        assert json.loads(lab.to_json())['switches'][0] == {'name': 'lan', 'mode': 'managed',
+                                                             'allow_connection': False}
+        lab2 = InfoLab.from_json(lab.to_json())
+        assert lab2.switches == lab.switches
+        assert lab2.switches[1].allow_connection is True
 
 
 # ---------------------------------------------------------------------------

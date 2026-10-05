@@ -373,3 +373,51 @@ class TestBuildLabConfIpv6:
     def test_machine_alone(self, monkeypatch):
         conf = self._conf(monkeypatch, m2_ipv6=True)
         assert 'm1[ipv6]' not in conf and 'm2[ipv6]="true"' in conf
+
+
+# ---------------------------------------------------------------------------
+# lab.conf: types of switch and VLANs
+# ---------------------------------------------------------------------------
+
+class SwitchScheme(NetScheme0):
+    _machine_specs = {'pc1': {}, 'pc2': {}, 'r1': {}}
+    _network_specs = {
+        'lan': {'mode': 'managed', 'vlans': {'pc1': 10, 'pc2': {'vlan': 20, 'trunk': [30]}, 'r1': [20, 10]}},
+        'dmz': {'mode': 'switch'},
+    }
+    _topology = {'lan': ['pc1', 'pc2', 'r1'], 'dmz': ['r1', 'pc1'], 'old': ['pc2', 'r1']}
+
+    def __init__(self):
+        super().__init__(data=MockData(), running_lab_name=RUNNING_LAB)
+
+
+class TestBuildLabConfSwitches:
+    def _conf(self, monkeypatch, scheme=None):
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        return _build_lab_conf(scheme or SwitchScheme(), {}, {})
+
+    def test_access_port(self, monkeypatch):
+        assert 'pc1[0]="lan/vlan=10"' in self._conf(monkeypatch)
+
+    def test_trunk_port(self, monkeypatch):
+        assert 'r1[0]="lan/trunk=10,20"' in self._conf(monkeypatch)
+
+    def test_native_vlan_and_trunk(self, monkeypatch):
+        assert 'pc2[0]="lan/vlan=20/trunk=30"' in self._conf(monkeypatch)
+
+    def test_other_interfaces_unchanged(self, monkeypatch):
+        conf = self._conf(monkeypatch)
+        assert 'r1[1]="dmz"' in conf and 'pc1[1]="dmz"' in conf
+        assert 'pc2[1]="old"' in conf and 'r1[2]="old"' in conf
+
+    def test_modes_of_the_networks_that_are_not_hubs(self, monkeypatch):
+        conf = self._conf(monkeypatch)
+        assert 'CD_MODE[lan]="managed"' in conf
+        assert 'CD_MODE[dmz]="switch"' in conf
+        assert 'CD_MODE[old]' not in conf
+        assert conf.index('CD_MODE[dmz]') < conf.index('CD_MODE[lan]')  # sorted by name
+
+    def test_nothing_new_with_hubs_only(self, monkeypatch):
+        conf = self._conf(monkeypatch, make_scheme())
+        assert 'CD_MODE' not in conf and '/vlan=' not in conf and '/trunk=' not in conf
+        assert conf.endswith('\n')

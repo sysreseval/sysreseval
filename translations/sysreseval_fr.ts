@@ -136,7 +136,7 @@
 <context>
     <name>MachinesView</name>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="45"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="41"/>
         <source>Name</source>
         <translation>Nom</translation>
     </message>
@@ -145,22 +145,22 @@
         <translation type="vanished">État</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="46"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="42"/>
         <source>NAT network to host</source>
         <translation>Réseau NAT vers hôte</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="47"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="43"/>
         <source>X11 host</source>
         <translation>Hôte X11</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="48"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="44"/>
         <source>Connection</source>
         <translation>Connexion</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="49"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="45"/>
         <source>Ports</source>
         <translation>Ports</translation>
     </message>
@@ -189,17 +189,17 @@
         <translation type="vanished">redémarrage</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="70"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="66"/>
         <source>Yes</source>
         <translation>Oui</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="71"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="67"/>
         <source>No</source>
         <translation>Non</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/machines_view.py" line="82"/>
+        <location filename="../src/sysreseval/view/machines_view.py" line="78"/>
         <source>Connect</source>
         <translation>Connecter</translation>
     </message>
@@ -213,74 +213,74 @@
         <translation>Retour ligne</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="300"/>
+        <location filename="../src/sysreseval/main_window.py" line="301"/>
         <location filename="../src/sysreseval/main_window.py" line="589"/>
         <source>closing in progress...</source>
         <translation>Fermeture en cours...</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="322"/>
+        <location filename="../src/sysreseval/main_window.py" line="323"/>
         <location filename="../src/sysreseval/main_window.py" line="574"/>
         <source>File</source>
         <translation>Fichier</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="325"/>
+        <location filename="../src/sysreseval/main_window.py" line="326"/>
         <location filename="../src/sysreseval/main_window.py" line="575"/>
         <source>Open Project</source>
         <translation>Ouvrir un projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="339"/>
-        <location filename="../src/sysreseval/main_window.py" line="427"/>
+        <location filename="../src/sysreseval/main_window.py" line="340"/>
+        <location filename="../src/sysreseval/main_window.py" line="428"/>
         <location filename="../src/sysreseval/main_window.py" line="578"/>
         <source>Close Project</source>
         <translation>Fermer le projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="345"/>
-        <location filename="../src/sysreseval/main_window.py" line="435"/>
+        <location filename="../src/sysreseval/main_window.py" line="346"/>
+        <location filename="../src/sysreseval/main_window.py" line="436"/>
         <location filename="../src/sysreseval/main_window.py" line="579"/>
         <source>Close All Projects</source>
         <translation>Fermer tous les projets</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="352"/>
+        <location filename="../src/sysreseval/main_window.py" line="353"/>
         <location filename="../src/sysreseval/main_window.py" line="580"/>
         <source>Export Kathara Project</source>
         <translation>Exporter le projet Kathara</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="269"/>
-        <location filename="../src/sysreseval/main_window.py" line="359"/>
+        <location filename="../src/sysreseval/main_window.py" line="270"/>
+        <location filename="../src/sysreseval/main_window.py" line="360"/>
         <location filename="../src/sysreseval/main_window.py" line="581"/>
         <location filename="../src/sysreseval/main_window.py" line="592"/>
         <source>Settings</source>
         <translation>Paramètres</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="262"/>
+        <location filename="../src/sysreseval/main_window.py" line="263"/>
         <location filename="../src/sysreseval/main_window.py" line="591"/>
         <source>Instructor mode</source>
         <translation>Mode enseignant</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="275"/>
-        <location filename="../src/sysreseval/main_window.py" line="363"/>
+        <location filename="../src/sysreseval/main_window.py" line="276"/>
+        <location filename="../src/sysreseval/main_window.py" line="364"/>
         <location filename="../src/sysreseval/main_window.py" line="582"/>
         <location filename="../src/sysreseval/main_window.py" line="593"/>
         <source>Language</source>
         <translation>Langue</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="330"/>
+        <location filename="../src/sysreseval/main_window.py" line="331"/>
         <location filename="../src/sysreseval/main_window.py" line="576"/>
         <location filename="../src/sysreseval/main_window.py" line="1189"/>
         <source>Restore Project</source>
         <translation>Restaurer un projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="334"/>
+        <location filename="../src/sysreseval/main_window.py" line="335"/>
         <location filename="../src/sysreseval/main_window.py" line="577"/>
         <location filename="../src/sysreseval/main_window.py" line="1176"/>
         <location filename="../src/sysreseval/main_window.py" line="1185"/>
@@ -288,80 +288,80 @@
         <translation>Enregistrer le projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="369"/>
+        <location filename="../src/sysreseval/main_window.py" line="370"/>
         <location filename="../src/sysreseval/main_window.py" line="583"/>
         <source>Quit</source>
         <translation>Quitter</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="375"/>
+        <location filename="../src/sysreseval/main_window.py" line="376"/>
         <location filename="../src/sysreseval/main_window.py" line="584"/>
         <source>Edit</source>
         <translation>Édition</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="379"/>
+        <location filename="../src/sysreseval/main_window.py" line="380"/>
         <location filename="../src/sysreseval/main_window.py" line="585"/>
         <source>Select All</source>
         <translation>Tout sélectionner</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="386"/>
+        <location filename="../src/sysreseval/main_window.py" line="387"/>
         <location filename="../src/sysreseval/main_window.py" line="586"/>
         <source>Cut</source>
         <translation>Couper</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="391"/>
+        <location filename="../src/sysreseval/main_window.py" line="392"/>
         <location filename="../src/sysreseval/main_window.py" line="587"/>
         <source>Copy</source>
         <translation>Copier</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="396"/>
+        <location filename="../src/sysreseval/main_window.py" line="397"/>
         <location filename="../src/sysreseval/main_window.py" line="588"/>
         <source>Paste</source>
         <translation>Coller</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="467"/>
+        <location filename="../src/sysreseval/main_window.py" line="468"/>
         <source>&apos;sre {cmd}&apos; failed (exit code {code}):
 {detail}</source>
         <translation>Échec de « sre {cmd} » (code de sortie {code}) :
 {detail}</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="468"/>
+        <location filename="../src/sysreseval/main_window.py" line="469"/>
         <source>(no output)</source>
         <translation>(aucune sortie)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="489"/>
-        <location filename="../src/sysreseval/main_window.py" line="497"/>
+        <location filename="../src/sysreseval/main_window.py" line="490"/>
+        <location filename="../src/sysreseval/main_window.py" line="498"/>
         <source>Export Error</source>
         <translation>Erreur d&apos;exportation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="490"/>
+        <location filename="../src/sysreseval/main_window.py" line="491"/>
         <source>Export failed:
 </source>
         <translation>L&apos;exportation a échoué :
 </translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="498"/>
+        <location filename="../src/sysreseval/main_window.py" line="499"/>
         <source>Failed to save file:
 </source>
         <translation>Erreur d&apos;enregistrement du fichier :
 </translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="501"/>
+        <location filename="../src/sysreseval/main_window.py" line="502"/>
         <source>Export</source>
         <translation>Exportation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="502"/>
+        <location filename="../src/sysreseval/main_window.py" line="503"/>
         <source>Project exported to </source>
         <translation>Le projet a été exporté vers </translation>
     </message>
@@ -442,50 +442,56 @@
 <context>
     <name>ProjectWidget</name>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="53"/>
-        <location filename="../src/sysreseval/project_widget.py" line="106"/>
+        <location filename="../src/sysreseval/project_widget.py" line="54"/>
+        <location filename="../src/sysreseval/project_widget.py" line="112"/>
         <source>Schema</source>
         <translation>Schéma</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="56"/>
-        <location filename="../src/sysreseval/project_widget.py" line="107"/>
+        <location filename="../src/sysreseval/project_widget.py" line="57"/>
+        <location filename="../src/sysreseval/project_widget.py" line="113"/>
         <source>Informations</source>
         <translation>Informations</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="59"/>
-        <location filename="../src/sysreseval/project_widget.py" line="108"/>
+        <location filename="../src/sysreseval/project_widget.py" line="60"/>
+        <location filename="../src/sysreseval/project_widget.py" line="114"/>
         <source>Machines</source>
         <translation>Machines</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="62"/>
-        <location filename="../src/sysreseval/project_widget.py" line="109"/>
+        <location filename="../src/sysreseval/project_widget.py" line="64"/>
+        <location filename="../src/sysreseval/project_widget.py" line="115"/>
+        <source>Switches</source>
+        <translation>Commutateurs</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/project_widget.py" line="67"/>
+        <location filename="../src/sysreseval/project_widget.py" line="116"/>
         <source>Questions</source>
         <translation>Questions</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="74"/>
-        <location filename="../src/sysreseval/project_widget.py" line="110"/>
+        <location filename="../src/sysreseval/project_widget.py" line="79"/>
+        <location filename="../src/sysreseval/project_widget.py" line="117"/>
         <source>Evaluation</source>
         <translation>Évaluation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="78"/>
-        <location filename="../src/sysreseval/project_widget.py" line="111"/>
+        <location filename="../src/sysreseval/project_widget.py" line="83"/>
+        <location filename="../src/sysreseval/project_widget.py" line="118"/>
         <source>Terminals</source>
         <translation>Terminaux</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="85"/>
-        <location filename="../src/sysreseval/project_widget.py" line="112"/>
+        <location filename="../src/sysreseval/project_widget.py" line="90"/>
+        <location filename="../src/sysreseval/project_widget.py" line="119"/>
         <source>Apply Configuration</source>
         <translation>Appliquer une configuration</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="90"/>
-        <location filename="../src/sysreseval/project_widget.py" line="113"/>
+        <location filename="../src/sysreseval/project_widget.py" line="95"/>
+        <location filename="../src/sysreseval/project_widget.py" line="120"/>
         <source>Log</source>
         <translation>Journal</translation>
     </message>
@@ -734,6 +740,44 @@
     <message>
         <source>Failed to start project (exit code {code}).</source>
         <translation type="vanished">Échec du démarrage du projet (code de sortie {code}).</translation>
+    </message>
+</context>
+<context>
+    <name>SwitchesView</name>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="32"/>
+        <source>Name</source>
+        <translation>Nom</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="33"/>
+        <source>Type</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="34"/>
+        <source>Connection</source>
+        <translation>Connexion</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="45"/>
+        <source>Manageable switch</source>
+        <translation>Commutateur administrable</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="47"/>
+        <source>Switch</source>
+        <translation>Commutateur</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="48"/>
+        <source>Hub</source>
+        <translation>Concentrateur (hub)</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/switches_view.py" line="68"/>
+        <source>Connect</source>
+        <translation>Connecter</translation>
     </message>
 </context>
 <context>

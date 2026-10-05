@@ -54,14 +54,42 @@ def _run_state_method(net_scheme, state_name: str) -> dict:
     method = getattr(net_scheme, state_name)
     if not callable(method):
         error_quit(f"'{state_name}' is not callable in NetScheme")
+    from ..lib_sre import _SwitchCmdOp
+    from ..operations_log import OperationsLog
     net_scheme._ops = {}
+    net_scheme._host_ops = {}
     method()
-    # Flatten {step: {machine: [ops]}} → {machine: [ops]} in step order for _print_ops().
+    # Flatten {step: {machine: [ops]}} → {machine: [ops]} in step order for _print_ops(); the
+    # console commands of the managed switches are listed with them, under "switch <network>".
     ops: dict = {}
-    for step in sorted(net_scheme._ops):
-        for machine, op_list in net_scheme._ops[step].items():
+    for step in sorted(set(net_scheme._ops) | set(net_scheme._host_ops)):
+        for host_op in net_scheme._host_ops.get(step, []):
+            if isinstance(host_op, _SwitchCmdOp):
+                ops.setdefault(OperationsLog.switch(host_op.network), []).append(host_op.command)
+        for machine, op_list in net_scheme._ops.get(step, {}).items():
             ops.setdefault(machine, []).extend(op_list)
     return ops
+
+
+def _network_details(net) -> str:
+    """Type of switch and declared VLANs of a network that is not a hub ('' for a hub)."""
+    if net.mode == params.network_mode_hub:
+        return ""
+    details = f"  mode: {net.mode}"
+    ports = []
+    for machine, adapter in net.net_adapters.items():
+        vlans = []
+        if adapter.vlan is not None:
+            vlans.append(f"vlan {adapter.vlan}")
+        if adapter.tagged_vlans:
+            vlans.append("trunk " + ",".join(map(str, adapter.tagged_vlans)))
+        if vlans:
+            ports.append(f"{machine.name}: {' '.join(vlans)}")
+    if ports:
+        details += "  ports: " + "; ".join(ports)
+    if net.is_managed() and not net.allow_connection:
+        details += "  (console closed to students)"
+    return details
 
 
 def _print_ops(ops: dict):
@@ -144,7 +172,7 @@ def action_check():
     for m in machines:
         print(f"         machine: {m.name}  image: {m.image}")
     for n in networks:
-        print(f"         network: {n.name}")
+        print(f"         network: {n.name}{_network_details(n)}")
 
     # ── Step 4: run initial state ──────────────────────────────────────
     # Call initial() directly instead of via compute_state_ops() so that

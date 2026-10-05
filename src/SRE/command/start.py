@@ -251,8 +251,9 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
         finalize_project(setup, module_rvlab, net_scheme, lab, data,
                          state=params.initial_state_name, multi_project=multi_project)
 
-    except BaseException:
+    except BaseException as e:
         rollback_project(setup, multi_project=multi_project)
+        quit_if_no_switch_modes(setup.net_scheme, e)
         raise
 
 
@@ -357,6 +358,22 @@ def finalize_project(setup: ProjectSetup, module_rvlab, net_scheme, lab, data, s
 
     grade = module_rvlab.Grade(net_scheme=net_scheme)
     grade.save_lab_info()
+
+
+def quit_if_no_switch_modes(net_scheme, error):
+    """A deployment failed and was rolled back: when Kathara's network plugin is the cause and
+    the lab has networks that are not hubs, quit with what is missing and how to get it instead
+    of Kathara's traceback (the stock plugin only knows hubs).  Returns otherwise."""
+    if net_scheme is None or type(error).__name__ != 'DockerPluginError':
+        return
+    switches = [net.name for net in net_scheme.get_networks()
+                if net.net_adapters and net.mode != params.network_mode_hub]
+    if not switches:
+        return
+    error_quit(f"{error}\n"
+               f"This lab has networks that are not hubs ({', '.join(switches)}): they need the Kathara "
+               f"network plugin with the switch types.\n"
+               f"Install it with `make network-plugin` in {params.main_sre_dir} (see the installation guide).")
 
 
 def rollback_project(setup: ProjectSetup, multi_project: bool = False):

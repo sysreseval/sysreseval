@@ -284,7 +284,13 @@ def _build_lab_conf(net_scheme, ops, extra_cmds) -> str:
     for machine in sorted(net_scheme.get_machines(), key=lambda m: m.name):
         # Network interfaces, sorted by interface index
         for net, adapter in sorted(machine.net_adapters.items(), key=lambda x: x[1].interface):
-            lines.append(f'{machine.name}[{adapter.interface}]="{net.name}"')
+            # port of a managed switch: /vlan=ID (untagged) and /trunk=ID,ID (tagged)
+            vlans = ''
+            if adapter.vlan is not None:
+                vlans += f'/vlan={adapter.vlan}'
+            if adapter.tagged_vlans:
+                vlans += '/trunk=' + ','.join(map(str, adapter.tagged_vlans))
+            lines.append(f'{machine.name}[{adapter.interface}]="{net.name}{vlans}"')
 
         lines.append(f'{machine.name}[image]="{machine.image}"')
 
@@ -312,6 +318,14 @@ def _build_lab_conf(net_scheme, ops, extra_cmds) -> str:
             lines.append(f'{machine.name}[exec]="{escaped}"')
 
         lines.append("")  # blank line between machines
+
+    # type of switch of the networks that are not hubs (Kathara's default)
+    switched = sorted((net for net in net_scheme.get_networks()
+                       if net.net_adapters and net.mode != params.network_mode_hub), key=lambda n: n.name)
+    for net in switched:
+        lines.append(f'CD_MODE[{net.name}]="{net.mode}"')
+    if switched:
+        lines.append("")
 
     return "\n".join(lines)
 

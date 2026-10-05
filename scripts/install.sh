@@ -542,6 +542,21 @@ make venv
 hr "Running make install"
 make install
 
+# ── network plugin with the switch types ───────────────────────────────────────
+
+# Labs may declare networks that are switches or managed switches (VLANs, console)
+# instead of hubs.  Those need the VDE network plugin of the Kathara fork, built
+# here and installed in place of the stock plugin (which only knows hubs and is
+# what Kathara downloads by itself).  Labs with hubs only work either way.
+hr "Kathara network plugin (switch types)"
+echo "Labs with 'switch' or 'managed' networks need the network plugin of the"
+echo "Kathara fork; it replaces the stock kathara/katharanp_vde plugin.  It is"
+echo "downloaded from Docker Hub, or built here (a few minutes) when it is not"
+echo "published.  Run 'make network-plugin' later otherwise."
+if confirm "Build and install it now?" "Y"; then
+    make network-plugin || warn "the network plugin was not installed — run 'make network-plugin' in $REPO_DIR once fixed."
+fi
+
 # ── symlinks in /usr/local/{bin,sbin} ──────────────────────────────────────────
 
 hr "Optional symlinks in /usr/local/{bin,sbin}"

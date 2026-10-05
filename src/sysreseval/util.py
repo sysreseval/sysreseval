@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,34 @@ def log_wrapper_cmd(cmd: list):
         "cmd": " ".join(str(a) for a in cmd),
     }
     print(json.dumps(data), file=sys.stderr, flush=True)
+
+
+class ExternalTerminals:
+    """External terminal windows opened on the devices of one project (*Connect* buttons of the
+    Machines and Switches tabs): each one runs ``sre-wrapper connect <project> <device>``."""
+
+    def __init__(self, project_name: str):
+        self._project_name = project_name
+        self._procs: list[subprocess.Popen] = []
+
+    def launch(self, device_name: str):
+        self._procs = [p for p in self._procs if p.poll() is None]
+        abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self._project_name)
+        title = f"{abb_lab_name} {device_name}"
+        cmd = (
+            params.terminal_cmd_prefix[:-1]
+            + [params.terminal_title_opt, title]
+            + params.terminal_cmd_prefix[-1:]
+            + [params.sre_wrapper, "connect", self._project_name, device_name]
+        )
+        log_wrapper_cmd(cmd)
+        self._procs.append(subprocess.Popen(cmd))
+
+    def kill(self):
+        for proc in self._procs:
+            if proc.poll() is None:
+                proc.kill()
+        self._procs.clear()
 
 
 def load_projects():

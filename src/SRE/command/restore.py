@@ -14,7 +14,7 @@ from Kathara.manager.Kathara import Kathara
 
 from .save import ensure_save_tmp_dir, get_save_key
 from .start import ProjectSetup, check_grade_class, create_project_directories, finalize_project, \
-    rollback_project
+    quit_if_no_switch_modes, rollback_project
 from .. import params
 from ..files_transfert import deploy_exetests
 from ..params import SRE
@@ -128,8 +128,9 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             # deploy_exetests: refresh exetests.py in the containers (lib may have changed since the save)
             finalize_project(setup, module_rvlab, net_scheme, lab, data,
                              state=params.restore_state_name, pre_state=deploy_exetests)
-        except BaseException:
+        except BaseException as e:
             rollback_project(setup)
+            quit_if_no_switch_modes(setup.net_scheme, e)
             raise
     return running_lab_name
 

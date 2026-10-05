@@ -36,6 +36,7 @@ It is developed at the **IUT d'Orsay, Université Paris-Saclay**.
   - **Terminals** — an embedded shell for each machine the student is allowed to connect to. A lab may expose these as plain root shells or, for example, as a `login` prompt that restricts students to a particular user account.
   - **Machines** — a status table for each machine: state, NAT network, exposed ports. The students can use it to launch separate terminals sessions to
   a machine (useful when several terminal sessions are needed on one machine)
+  - **Switches** — the networks of the lab with their type: hub, switch or manageable switch (with VLANs and a console the students may open when the lab allows it). Shown when a network is not a hub.
   - **Evaluations** — lets the student trigger an automated evaluation of their work and view the resulting grade table.
   - **Apply Configuration** — lets the student put the project into a predefined state, for example a partial correction.
 - **Multiple labs open at once.** Course content can be organised by topic rather than by session — students can keep several projects running and switch between them.

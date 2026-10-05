@@ -1,11 +1,7 @@
-import os
-import subprocess
-
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QPushButton, QHeaderView
 
-from SRE import params
 from sysreseval import util
 
 
@@ -26,7 +22,7 @@ class MachinesView(QTableWidget):
     def __init__(self, project_name: str, machines: list, parent=None):
         super().__init__(parent)
         self._project_name = project_name
-        self._terminal_procs: list[subprocess.Popen] = []
+        self._terminals = util.ExternalTerminals(project_name)
         self.setColumnCount(5)
         header = self.horizontalHeader()
         header.setStretchLastSection(False)
@@ -93,21 +89,7 @@ class MachinesView(QTableWidget):
             self.setItem(row, 4, QTableWidgetItem(_format_ports(ports)))
 
     def _launch_terminal(self, machine_name: str):
-        self._terminal_procs = [p for p in self._terminal_procs if p.poll() is None]
-        abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self._project_name)
-        title = f"{abb_lab_name} {machine_name}"
-        cmd = (
-            params.terminal_cmd_prefix[:-1]
-            + [params.terminal_title_opt, title]
-            + params.terminal_cmd_prefix[-1:]
-            + [params.sre_wrapper, "connect", self._project_name, machine_name]
-        )
-        util.log_wrapper_cmd(cmd)
-        proc = subprocess.Popen(cmd)
-        self._terminal_procs.append(proc)
+        self._terminals.launch(machine_name)
 
     def kill_terminals(self):
-        for proc in self._terminal_procs:
-            if proc.poll() is None:
-                proc.kill()
-        self._terminal_procs.clear()
+        self._terminals.kill()

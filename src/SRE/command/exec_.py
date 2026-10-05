@@ -5,6 +5,8 @@ from Kathara.manager.Kathara import Kathara
 from ..utils import error_quit, set_all_variables_for_action, in_user_mode, resolve_running_lab_name
 from ..utils_privileges import drop_privileges_permanently_if_not_needed, set_sudo_uid_for_username, \
     drop_privileges_temporarily, gain_privileges_if_needed
+from ..switch_console import SwitchConsole, print_result
+from .connect import get_switch
 from .. import params
 from ..params import SRE
 
@@ -22,6 +24,15 @@ def action_exec():
     device = SRE.args.device
 
     machine = net_scheme.get_machine(device)
+    switch = get_switch(net_scheme, device, debug_project=False) if machine is None else None
+    if switch is not None:
+        # one command of the management console of a managed switch
+        if not SRE.args.command:
+            error_quit("no command to execute")
+        gain_privileges_if_needed(net_scheme)
+        output, code = SwitchConsole(net_scheme).run(switch.name, ' '.join(SRE.args.command))
+        drop_privileges_temporarily()
+        sys.exit(print_result(output, code))
     if machine is None or device not in (machine.name for machine in net_scheme.get_machines()):
         error_quit(f"device {device} is unknown")
 

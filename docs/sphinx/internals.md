@@ -71,7 +71,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 │   ├── srelab              symlink to the lab's srelab.py
 │   ├── eval_in_progress    lock file (PID) during active eval
 │   └── auto_eval.log       one ISO timestamp per student self-evaluation
-├── info.json               public machine/question metadata (InfoLab)
+├── info.json               public machine/switch/question metadata (InfoLab; `switches`: the visible networks with their type)
 ├── scheme.svg              graphviz network diagram
 ├── operations.log          debug projects only: operations of every state / evaluation (GUI Log tab), mode 0o644
 ├── answers/
@@ -270,7 +270,7 @@ Payload members:
 | `user_public/` | Contents of the user public dir (`/home/sre/<lab>[_N]/`): `shared/` and the relative-path volume directories |
 | `mnt/` | `.private/mnt` (private volumes), when present |
 
-Not saved: `info.json` (regenerated), `records/`, the eval lock. Kathara's diff excludes `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`, `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/hosthome`, `/shared`, `/hostlab`; bind-mounted directories are covered by `user_public/` and `mnt/` instead.
+Not saved: `info.json` (regenerated), `records/`, the eval lock, and what was changed on the console of a managed switch after the start (the restored switches get their type and the VLANs the lab declares; the lab's `restore` state can re-apply more with `switch_cmd()`). Kathara's diff excludes `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`, `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/hosthome`, `/shared`, `/hostlab`; bind-mounted directories are covered by `user_public/` and `mnt/` instead.
 
 **Encryption** (`save_key`): the payload tar stream is cut into `params.save_cipher_chunk_size` chunks, each sealed with AES-256-GCM (key = PBKDF2-HMAC-SHA256 of `save_key` with the header's salt). Frame: `[4-byte length][1-byte last flag][12-byte nonce][ciphertext+tag]`; the associated data is `sha256(header) + chunk index + last flag`, so header tampering, reordering and truncation are detected. The `cryptography` package is imported lazily (only needed for encrypted files).
 

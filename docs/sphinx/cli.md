@@ -64,12 +64,12 @@ Stops every running Kathara lab and removes everything under `/var/lib/sre/proje
 
 ### `sre connect [--shell <shell>] [--exec <argument…>] [--no-records] <running_lab> <device>`
 
-Opens an external terminal connected to a container.
+Opens a terminal session on a device: the shell of a machine, or the management console of a managed switch when `<device>` is a network declared with `'mode': 'managed'` (prompt `<network>$ `, `exit` leaves). In user mode the console only accepts the commands of `params.switch_user_commands`, and it is refused when the lab sets `'allow_connection': False` on the switch.
 
 | Option | Description |
 |--------|-------------|
-| `--shell <shell>` | Override the machine default shell (privileged only). |
-| `--exec <argument…>` | Run one command via the shell and return (consumes rest of argv). |
+| `--shell <shell>` | Override the machine default shell (privileged only; not for a switch). |
+| `--exec <argument…>` | Run one command via the shell and return (consumes rest of argv). On a switch: one console command, privileged only. |
 | `--no-records` | Do not record the terminal session (privileged only). |
 
 ### `sre eval [-p path] [--auto-eval] <running_lab>`
@@ -89,6 +89,8 @@ Applies `NetScheme.<state_name>()` to a running lab. In user mode only the state
 ### `sre exec [--shell <shell>] <running_lab> <device> <command…>`
 
 Runs `shell -c <command>` in a container and forwards stdout/stderr/exit code. Default shell is `params.default_exec_shell`.
+
+When `<device>` is a managed switch (a network with `'mode': 'managed'`), `<command…>` is one command of its management console, e.g. `sre exec <running_lab> lan vlan/print` or `sre exec <running_lab> lan port/setvlan @pc1 10` (`@machine`: the port of that machine). The exit status is 0, or the error number given by the switch (17 when a VLAN already exists) with the message on stderr.
 
 ### `sre set-instructor-mode <running_lab>` and `sre remove-instructor-mode <running_lab>`
 
