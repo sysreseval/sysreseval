@@ -2,6 +2,9 @@
 allow-list of the student commands, prompt of `sre connect`), and the routing of `sre connect` /
 `sre exec` to a switch with the user-mode refusals.  No Docker: Kathara's manager is a stand-in."""
 import builtins
+import os
+import threading
+import time
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -229,6 +232,67 @@ class TestInteractive:
         assert 'error: File exists' in capsys.readouterr().err
 
 
+class TestSessionEndsWithTheProject:
+    """Nothing kills the prompt of a switch when its project is closed (the shell of a machine
+    dies with its container): the prompt watches the project and ends by itself."""
+
+    @pytest.fixture(autouse=True)
+    def fast_watch(self, monkeypatch):
+        monkeypatch.setattr(params, 'switch_console_watch_interval', 0.02)
+
+    @staticmethod
+    def _waiting_prompt(monkeypatch):
+        """input() of a user who types nothing: waits (interruptible), fails the test if it ever returns."""
+        def waiting_input(prompt):
+            time.sleep(20)
+            raise AssertionError("the prompt was not interrupted")
+        monkeypatch.setattr(builtins, 'input', waiting_input)
+
+    def test_idle_prompt_ends_when_the_project_is_closed(self, monkeypatch, capsys):
+        self._waiting_prompt(monkeypatch)
+        opened = time.monotonic()
+        started = time.monotonic()
+        interactive('lan', lambda command: ('', 0), True, still_open=lambda: time.monotonic() - opened < 0.2)
+        assert time.monotonic() - started < 5
+        assert "The project was closed: end of the session on lan." in capsys.readouterr().out
+
+    def test_ends_even_while_a_command_is_running(self, monkeypatch, capsys):
+        feed = iter(['vlan/print'])
+        monkeypatch.setattr(builtins, 'input', lambda prompt: next(feed))
+
+        def slow_command(command):
+            time.sleep(20)
+            return '', 0
+
+        started = time.monotonic()
+        interactive('lan', slow_command, False, still_open=lambda: False)
+        assert time.monotonic() - started < 5
+        assert "The project was closed" in capsys.readouterr().out
+
+    def test_open_project_does_not_disturb_the_session(self, monkeypatch, capsys):
+        ran = _session(monkeypatch, ['vlan/print', KeyboardInterrupt, 'vlan/create 10', 'exit'], restricted=True)
+        assert ran == ['vlan/print', 'vlan/create 10']
+        threads = threading.active_count()
+        feed = iter(['vlan/print', 'exit'])
+        monkeypatch.setattr(builtins, 'input', lambda prompt: next(feed))
+        polls = []
+        interactive('lan', lambda command: (time.sleep(0.1), ('', 0))[1], True,
+                    still_open=lambda: polls.append(1) or True)
+        assert polls, "the project is polled while the session lasts"
+        assert "The project was closed" not in capsys.readouterr().out
+        assert threading.active_count() == threads, "the watcher ends with the session"
+
+    def test_a_failing_check_does_not_end_the_session(self, monkeypatch, capsys):
+        feed = iter(['vlan/print', 'exit'])
+        monkeypatch.setattr(builtins, 'input', lambda prompt: next(feed))
+
+        def broken():
+            raise OSError("stat failed")
+
+        interactive('lan', lambda command: (time.sleep(0.1), ('', 0))[1], True, still_open=broken)
+        assert "The project was closed" not in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------------------
 # sre connect / sre exec on a switch
 # ---------------------------------------------------------------------------
@@ -246,8 +310,10 @@ def cli(monkeypatch, kathara, tmp_pub_dir):
         monkeypatch.setattr(module, 'set_sudo_uid_for_username', lambda u: None)
         monkeypatch.setattr(module, 'drop_privileges_temporarily', lambda: None)
         monkeypatch.setattr(module, 'gain_privileges_if_needed', lambda ns: None)
+    still_open = []
     monkeypatch.setattr(connect, 'interactive',
-                        lambda name, run, restricted: sessions.append((name, restricted, run)))
+                        lambda name, run, restricted, watch=None: (sessions.append((name, restricted, run)),
+                                                                   still_open.append(watch)))
     monkeypatch.delenv('SRE_IN_RECORDER', raising=False)
 
     def set_args(device, **overrides):
@@ -257,7 +323,7 @@ def cli(monkeypatch, kathara, tmp_pub_dir):
             setattr(SRE.args, key, value)
 
     return SimpleNamespace(scheme=scheme, sessions=sessions, set_args=set_args, kathara=kathara,
-                           module_rvlab=module_rvlab)
+                           module_rvlab=module_rvlab, still_open=still_open)
 
 
 def _quits(capsys, action):
@@ -271,6 +337,21 @@ class TestConnectSwitch:
         cli.set_args('lan')
         connect.action_connect()
         assert [(name, restricted) for name, restricted, _run in cli.sessions] == [('lan', False)]
+
+    def test_session_watches_the_project_directory(self, cli):
+        project_dir = params.public_lab_dir(RUNNING_LAB)
+        os.makedirs(project_dir)
+        cli.set_args('lan', user=True)
+        connect.action_connect()
+        (still_open,) = cli.still_open
+        assert still_open() is True
+        os.rmdir(project_dir)  # what sre stop does at the end
+        assert still_open() is False
+
+    def test_project_without_directory_is_not_watched(self, cli):
+        cli.set_args('lan')
+        connect.action_connect()
+        assert cli.still_open == [None]
 
     def test_student_console_is_restricted(self, cli):
         cli.set_args('lan', user=True)

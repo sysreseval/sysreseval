@@ -69,6 +69,7 @@ Things to know:
 - **VLAN 0 is the default VLAN** of the switch: a port the lab did not put in a VLAN is there, untagged, with every other such port.
 - **A command the switch refuses** prints its error after `error:` (for instance `error: File exists` when creating a VLAN that exists) and the session goes on.
 - **Students get a subset of the commands.** Through the GUI (user mode) only the commands of `params.switch_user_commands` reach the switch: those of the table above, `showinfo`, `port/showinfo`, `hash/showinfo`, `fstp/showinfo`, `fstp/setedge` and `fstp/bonus`. Any other one — creating or removing ports, loading plugins, shutting the switch down… — is answered `error: command '…' is not allowed` without being sent. A privileged user (`sre connect` from a root shell) is not restricted.
+- **The console ends with the project.** When the project is closed (**File → Close Project**, `sre stop`, `sre wipe`) an open console prints *The project was closed* and ends within a second, so its terminal closes like the terminal of a machine.
 - **What is typed on the console is not saved** with **File → Save Project**: a restored project gets the switches as the lab declares them (see [Limits](#limits)).
 
 ## In a lab

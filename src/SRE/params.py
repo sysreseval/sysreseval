@@ -177,6 +177,8 @@ switch_user_commands = (
     "fstp/showinfo", "fstp/print", "fstp/setfstp", "fstp/setedge", "fstp/bonus",
 )
 switch_console_exit_commands = ("exit", "quit", "logout")
+# An open console checks this often (seconds) that its project still exists, and ends when it does not
+switch_console_watch_interval = 1.0
 
 default_machine_shape = "box"
 default_network_shape = "ellipse"

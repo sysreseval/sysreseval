@@ -8,11 +8,15 @@ module is the one place where SRE talks to that console:
   (``NetScheme.switch_cmd()``, ``Grade.test_switch()``, ``sre exec``, ``sre connect --exec``);
 * :func:`interactive` is the prompt of ``sre connect <project> <switch>``; in user mode only the
   commands of ``params.switch_user_commands`` are passed on (:func:`is_user_command_allowed`).
+  Unlike the shell of a machine, which dies with its container, nothing ends this prompt when
+  the project is closed: it watches the project and ends by itself.
 
 The callers set the privileges and Kathara's user label as for any other Kathara call
 (``set_sudo_uid_for_username`` + ``gain_privileges_if_needed``).
 """
+import signal
 import sys
+import threading
 
 from Kathara.manager.Kathara import Kathara
 
@@ -102,33 +106,67 @@ class SwitchConsole:
         return output or '', 0
 
 
-def interactive(network_name: str, run, restricted: bool) -> None:
+def _watch_project(still_open, closed: threading.Event, done: threading.Event, prompt_thread: int) -> None:
+    """Thread of :func:`interactive`: when *still_open* says the project is gone, flag it and
+    interrupt the prompt *prompt_thread* is waiting at (SIGINT, as Ctrl-C would)."""
+    while not done.wait(params.switch_console_watch_interval):
+        try:
+            if still_open():
+                continue
+        except Exception:
+            continue
+        closed.set()
+        signal.pthread_kill(prompt_thread, signal.SIGINT)
+        return
+
+
+def interactive(network_name: str, run, restricted: bool, still_open=None) -> None:
     """Prompt of the management console of the managed switch *network_name*.
 
     *run* is called with each command line and returns ``(output, code)``.  With *restricted*
     (user mode) a command that is not in ``params.switch_user_commands`` is refused here and
     never reaches the switch.  ``exit``, ``quit``, ``logout`` or the end of the input leave.
+
+    *still_open*, when given, tells whether the project still exists: it is polled while the
+    prompt waits, and the session ends by itself once it answers False (the project was closed),
+    so that the terminal of the console closes like the one of a machine.  Must be called from
+    the main thread then.
     """
     try:
         import readline  # noqa: F401  (line editing and history for input())
     except ImportError:
         pass
+    closed, done = threading.Event(), threading.Event()
+    watcher = None
+    if still_open is not None:
+        watcher = threading.Thread(target=_watch_project, daemon=True,
+                                   args=(still_open, closed, done, threading.get_ident()))
+        watcher.start()
     print(f"Switch {network_name}: management console ('help' lists the commands, 'exit' leaves)")
-    while True:
+    try:
         try:
-            line = input(f"{network_name}$ ").strip()
-        except EOFError:
-            print()
-            return
-        except KeyboardInterrupt:
-            print()
-            continue
-        if not line:
-            continue
-        name = line.split()[0]
-        if name in params.switch_console_exit_commands:
-            return
-        if restricted and not is_user_command_allowed(line):
-            print(f"error: command '{name}' is not allowed", file=sys.stderr)
-            continue
-        print_result(*run(line))
+            while not closed.is_set():
+                try:
+                    line = input(f"{network_name}$ ").strip()
+                    if not line:
+                        continue
+                    name = line.split()[0]
+                    if name in params.switch_console_exit_commands:
+                        return
+                    if restricted and not is_user_command_allowed(line):
+                        print(f"error: command '{name}' is not allowed", file=sys.stderr)
+                        continue
+                    print_result(*run(line))
+                except EOFError:
+                    print()
+                    return
+                except KeyboardInterrupt:  # Ctrl-C: a new prompt; or the watcher: `closed` is set
+                    print()
+        finally:
+            done.set()
+            if watcher is not None:
+                watcher.join()  # no interrupt can come after this line
+    except KeyboardInterrupt:  # the interrupt of the watcher arrived while the session was ending
+        pass
+    if closed.is_set():
+        print(f"The project was closed: end of the session on {network_name}.")

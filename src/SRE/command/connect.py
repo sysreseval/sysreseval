@@ -71,7 +71,11 @@ def _connect_switch(net_scheme, network):
         if restricted:
             error_quit("--exec is not allowed in user mode")
         sys.exit(print_result(*run(' '.join(SRE.args.exec_cmd))))
-    interactive(network.name, run, restricted)
+    # the shell of a machine dies with its container; the console ends when the project directory
+    # goes away (sre stop, sre wipe), so that its terminal closes too
+    project_dir = net_scheme.get_public_lab_dir()
+    still_open = (lambda: os.path.isdir(project_dir)) if os.path.isdir(project_dir) else None
+    interactive(network.name, run, restricted, still_open)
 
 
 def action_connect():
