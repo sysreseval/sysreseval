@@ -60,6 +60,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 | `/var/lib/sre/archives/` | Default evaluation archive directory                                                                                                                                                                           |
 | `/var/lib/sre/last_self_grades/` | Self-grade cooldown timestamps                                                                                                                                                                                 |
 | `/home/sre/` | Shared directories for projects with `shared_path=True` (mode `0o777`, removed on stop/wipe)                                                                                                                   |
+| `/var/lib/sre/tmp/` | Temporary directories of `sre save` / `sre restore` (`params.save_tmp_dir`; not `/tmp`, which may be a small tmpfs) |
 
 ### Running lab directory
 
@@ -70,8 +71,9 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 │   ├── srelab              symlink to the lab's srelab.py
 │   ├── eval_in_progress    lock file (PID) during active eval
 │   └── auto_eval.log       one ISO timestamp per student self-evaluation
-├── info.json               public machine/question metadata (InfoLab)
+├── info.json               public machine/switch/question metadata (InfoLab; `switches`: the visible networks with their type)
 ├── scheme.svg              graphviz network diagram
+├── operations.log          debug projects only: operations of every state / evaluation (GUI Log tab), mode 0o644
 ├── answers/
 │   ├── answers.json        student answers (updated by GUI)
 │   └── cheat.json          instructor-provided answers (if any)
@@ -97,6 +99,8 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 | `terminal_color_scheme` | `"black_on_white"` | Default terminal colors |
 | `exam_only_affix` | `["_EXAM_", "_OLD_", "_DRAFT_", "_TESTS_"]` | Name substrings that hide labs from `sre list` |
 | `authorized_src_dir` | `['/opt/sre/lab', '/home/etudiant']` | Allowed lab source directories |
+| `default_network_mode` | `"hub"` | Type of switch of a network that declares no `mode` (`network_modes`: `hub`, `switch`, `managed`) |
+| `switch_user_commands` | `("help", "port/print", "port/setvlan", "vlan/create", …)` | Console commands a student may run on a managed switch; any other is refused in user mode |
 | `hostname_keyword` / `login_keyword` / `fullname_keyword` / `email_keyword` / `language_keyword` | `"hostname"` / `"login"` / `"fullname"` / `"email"` / `"language"` | Keys used in `answers.json` and archive `answers` dict |
 
 ### Environment variables
@@ -137,8 +141,11 @@ Each lab is loaded at runtime via `importlib.util.spec_from_file_location('srela
   "__type__": "srelab.Data",
   "data": {
     "secret": "changeme",
-    "ips":  {"router": "10.0.0.1/24"},
-    "nets": {"lan1": "10.0.0.0/24"}
+    "ips":   {"router": "10.0.0.1/24"},
+    "nets":  {"lan1": "10.0.0.0/24"},
+    "ips6":  {"router": "2001:db8::1/64"},
+    "nets6": {"lan1": "2001:db8::/64"},
+    "macs":  {}
   }
 }
 ```
@@ -147,9 +154,16 @@ Each lab is loaded at runtime via `importlib.util.spec_from_file_location('srela
 |-------|----------|
 | `IPv4Interface` inside `ips` container | `"10.0.0.1/24"` |
 | `IPv4Network` inside `nets` container | `"10.0.0.0/24"` |
-| `IPv4Address` (standalone field) | `{"__ip__": "10.0.0.1"}` |
-| `IPv4Network` (standalone field) | `{"__net__": "10.0.0.0/24"}` |
+| `IPv6Interface` inside `ips6` container | `"2001:db8::1/64"` |
+| `IPv6Network` inside `nets6` container | `"2001:db8::/64"` |
+| `EUI` inside `macs` container | `"00-11-22-33-44-55"` |
+| `IPv4Address` / `IPv6Address` (standalone field) | `{"__ip__": "10.0.0.1"}` |
+| `IPv4Interface` / `IPv6Interface` (standalone field) | `{"__iface__": "10.0.0.1/24"}` |
+| `IPv4Network` / `IPv6Network` (standalone field) | `{"__net__": "10.0.0.0/24"}` |
+| `EUI` (standalone field) | `{"__mac__": "00-11-22-33-44-55"}` |
 | Nested `Data0` subclass | `{"__type__": "module.ClassName", "data": {...}}` |
+
+The container keys and markers are the `params.data_json_*` constants. Files written before IPv6 support have no `ips6` / `nets6` keys: they load as empty containers.
 
 `data.json` is saved mode `0o600` inside `.private/` (mode `0o700`).
 
@@ -163,6 +177,18 @@ Each lab is loaded at runtime via `importlib.util.spec_from_file_location('srela
 4. Parse outputs into `self._tests[(machine, step)][(command, timeout)]`; repeat until `step > max_step`; call `grade()` a final time to compute grades.
 
 Up to 16 machines tested concurrently (`ThreadPoolExecutor`). Exit codes: `0`–`255` actual, `-1` = timeout.
+
+The console commands registered with `Grade.test_switch()` are stored in the same `self._tests`, under `(network, step)` and `(command, 0)`. They are not sent to `exetests.py`: after the containers of a step, `run_tests()` runs them one by one on the console of the managed switch (see [Switches](#switches)). Being ordinary entries of `tests`, they are archived and replayed by `sre re-eval` like the others.
+
+## Switches
+
+The type of a network (`Network.mode`: hub, switch, managed switch — see [Hubs, switches and VLANs](switches.md)) is the *mode* of its Kathara collision domain, a feature of the Kathara fork and of its VDE network plugin.
+
+- **Deployment.** `NetScheme0.get_new_lab_from_scheme()` sets the mode of the Kathara link of each network that is not a hub and passes the declared VLANs of a port (`vlan=`, `tagged_vlans=`) when a machine is connected to a managed switch. Nothing is said for a hub, so a lab with hubs only makes the same Kathara calls as before and runs with the stock plugin. Kathara refuses a non-hub mode when the plugin does not advertise it (`KATHARA_SWITCH_MODES` in the plugin settings): `sre start` / `sre restore` then roll back and `start.quit_if_no_switch_modes()` reports the networks concerned.
+- **Console.** A managed switch is a `vde_switch` started with a management socket, which Kathara reaches from the host (`Kathara.exec_link()`, one connection per command). `src/SRE/switch_console.py` is the only place where SRE uses it: `SwitchConsole.run(network, command)` returns `(output, code)` — `0`, the error number of the switch, or `-2` — and never raises; a word `@machine` is replaced by the port found with `Kathara.get_link_ports()` (ports are labelled `<machine>:eth<N>` by the plugin). It serves `NetScheme.switch_cmd()` (applied by `sre state` with the host operations of the step), `Grade.test_switch()`, `sre exec` and `sre connect`.
+- **Students.** `sre connect <project> <network>` in user mode is a prompt of SRE, not a raw access to the socket (which belongs to root and the Docker group): each line is checked against `params.switch_user_commands` before it is sent, and `connect.get_switch()` refuses a hub or a plain switch, a network of hidden machines only, and a switch closed by `allow_connection` (a debug project lifts the last two).
+- **GUI.** `Grade0.save_lab_info()` writes `switches` in `info.json`: `{name, mode, allow_connection}` for every network a student sees. `view/switches_view.py` draws the Switches tab from it, and the tab is hidden when every entry is a hub.
+- **Operations log.** Switch commands of states and evaluations are logged as `stepN - on switch <network> : <command>`.
 
 ## Progress reporting
 
@@ -192,6 +218,7 @@ Up to 16 machines tested concurrently (`ThreadPoolExecutor`). Exit codes: `0`–
 | Single GUI instance | PID file at `/tmp/sysreseval-{uid}.pid` kills the previous instance |
 | Student command restrictions | `user_not_allowed()` / `user_not_allowed_in_exam_mode()` |
 | State access control | `@sre_state(user_allowed=False)` blocks students from re-applying protected states |
+| Switch console | In user mode only the commands of `params.switch_user_commands` are sent to a managed switch (no port creation / removal, plugin loading, shutdown); `allow_connection` closes a console; the management socket itself is not readable by students |
 
 ## Archive format
 
@@ -234,3 +261,32 @@ archive = {
 ```
 
 Archives are written by `sre eval`, `eval-all`, `eval-exam`, `end-exam`, `re-eval`, and consumed by `sre cat`, `sheet`, `outline`, `check-eval`, `watch` — see [CLI Reference](cli.md).
+
+## Save file format
+
+`sre save` writes, and `sre restore` reads, a single `.sre` file (`src/SRE/save_archive.py`). The layout is sequential so that `sre restore -` can consume it from stdin:
+
+```
+SRESAVE1\n                       magic (params.save_file_magic)
+{"format_version": 1, …}\n       one-line cleartext JSON header (keys = params.save_meta_*)
+<payload>                        tar stream — encrypted when the lab defines save_key
+```
+
+Header fields: `format_version`, `sre_version`, `lab_name` (the `lab@path` form), `running_lab_name`, `srelab_file`, `username`, `saved_at`, `debug_project`, `full_images`, `shared_path`, `encrypted`, `kdf_salt`, `kdf_iterations`.
+
+Payload members:
+
+| Member | Content |
+|--------|---------|
+| `data.json` | `.private/data.json` of the saved instance |
+| `kathara.tar` | The patched Kathara `save_lab` archive: `manifest.json` (topology, `save_mode`, per-device `original_image`, `deletions`, saved image tag `kathara_save_<hash>:<device>`) and `images/<device>.diff.tar` (filesystem diff, default) or `images/<device>.tar` (full image, `--full-images`) |
+| `answers/` | Student answers and `cheat.json` |
+| `files/` | `.private/files` (host-side files of `cp_to_host()` / `host_cmd()`) |
+| `user_public/` | Contents of the user public dir (`/home/sre/<lab>[_N]/`): `shared/` and the relative-path volume directories |
+| `mnt/` | `.private/mnt` (private volumes), when present |
+
+Not saved: `info.json` (regenerated), `records/`, the eval lock, and what was changed on the console of a managed switch after the start (the restored switches get their type and the VLANs the lab declares; the lab's `restore` state can re-apply more with `switch_cmd()`). Kathara's diff excludes `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`, `/dev`, `/proc`, `/sys`, `/run`, `/tmp`, `/hosthome`, `/shared`, `/hostlab`; bind-mounted directories are covered by `user_public/` and `mnt/` instead.
+
+**Encryption** (`save_key`): the payload tar stream is cut into `params.save_cipher_chunk_size` chunks, each sealed with AES-256-GCM (key = PBKDF2-HMAC-SHA256 of `save_key` with the header's salt). Frame: `[4-byte length][1-byte last flag][12-byte nonce][ciphertext+tag]`; the associated data is `sha256(header) + chunk index + last flag`, so header tampering, reordering and truncation are detected. The `cryptography` package is imported lazily (only needed for encrypted files).
+
+**Restore** (`src/SRE/command/restore.py`): read the header → import the lab module (`allow_save_restore` required, `save_key` checked) → extract the payload into `/var/lib/sre/tmp` with `tarfile.data_filter` → recreate the project directories with the `start.py` helpers (`ProjectSetup`, `create_project_directories`), copy the saved project files back and give them to the student (answers `0o666`, `shared/` and volume dirs `0o777`) → build the Kathara lab from the restored `Data` (`get_new_lab_from_scheme()`: fresh host ports, X11 cookie, volumes, `/shared`) → `Kathara.restore_lab(kathara.tar, lab=…)` (images rebuilt from the base image + diff, deployed with the same `pull`/`deploy` progress events as `start`) → refresh `exetests.py` → `finalize_project` (lifecycle state `restore`, `data.json`, `info.json`). Any failure triggers `rollback_project` (undeploy + directory removal). Restored images (`kathara_save_<hash>:<device>`) are not garbage-collected; `docker image prune` removes the unused ones.

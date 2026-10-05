@@ -234,6 +234,7 @@
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-four-classes-at-a-glance">The four classes at a glance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ip-helper-functions-from-opt-sre-lib-ips-py">IP helper functions (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ips.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ipv6-labs">IPv6 labs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#compute-pre-generate-and-compute-post-generate"><code class="docutils literal notranslate"><span class="pre">compute_pre_generate</span></code> and <code class="docutils literal notranslate"><span class="pre">compute_post_generate</span></code></a></li>
 </ul>
 </li>
@@ -241,13 +242,18 @@
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#declarations-and-accessors">Declarations and accessors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#machine-constructor-parameters"><code class="docutils literal notranslate"><span class="pre">Machine</span></code> constructor parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-parameters"><code class="docutils literal notranslate"><span class="pre">Network</span></code> parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switches-and-vlans">Switches and VLANs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#instructor-only-texts-instructor">Instructor-only texts — <code class="docutils literal notranslate"><span class="pre">instructor()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#lifecycle-states-save-restore">Lifecycle states: <code class="docutils literal notranslate"><span class="pre">save</span></code> / <code class="docutils literal notranslate"><span class="pre">restore</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-decorator"><code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> decorator</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#per-machine-operations">Per-machine operations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#file-transfer-between-host-and-container">File transfer between host and container</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#host-side-operations">Host-side operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-operations">Switch operations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#reading-command-results-multi-pass-true">Reading command results — <code class="docutils literal notranslate"><span class="pre">multi_pass=True</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
@@ -269,9 +275,11 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bgp-helpers-from-opt-sre-lib-frr-py">BGP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py">Switch helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/switch.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ping-helper-from-opt-sre-lib-ping-py">Ping helper (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ping.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ssh-helpers-from-opt-sre-lib-ssh-py">SSH helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ssh.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#packet-capture-helpers-from-opt-sre-lib-pcap-gen-py">Packet capture helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/pcap_gen.py</span></code>)</a></li>
@@ -283,11 +291,31 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#automatic-evaluation">Automatic evaluation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#archives-and-recordings">Archives and recordings</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-machine-and-flavors">State machine and flavors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#networking">Networking</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#filesystem-and-export">Filesystem and export</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#schema-rendering">Schema rendering</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#complete-minimal-example">Complete Minimal Example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#in-the-gui">In the GUI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-switches-tab">The Switches tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#in-a-lab">In a lab</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#declaring-the-kind-of-a-network">Declaring the kind of a network</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#running-switch-commands-from-a-state">Running switch commands from a state</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#grading-the-configuration-of-a-switch">Grading the configuration of a switch</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#a-complete-example">A complete example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#on-the-command-line">On the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#limits">Limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#what-a-host-needs">What a host needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#tests">Tests</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
@@ -332,6 +360,7 @@
 <li class="toctree-l3"><a class="reference internal" href="installation.html#build-targets">Build targets</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#tests">Tests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#building-the-documentation">Building the documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#network-plugin-for-the-switch-types">Network plugin for the switch types</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#dependencies">Dependencies</a></li>
 </ul>
 </li>
@@ -343,7 +372,9 @@
 <li class="toctree-l1"><a class="reference internal" href="gui.html">GUI Reference — <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#saving-and-restoring-a-project">Saving and restoring a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#project-tabs">Project tabs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#exam-mode">Exam mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#settings">Settings</a></li>
 </ul>
@@ -351,8 +382,10 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#global-options">Global options</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#dual-commands">Dual commands</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
@@ -361,6 +394,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#admin-only-commands">Admin-only commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">remove-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
@@ -414,9 +448,11 @@
 <li class="toctree-l2"><a class="reference internal" href="internals.html#dynamic-module-loading">Dynamic module loading</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#switches">Switches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#progress-reporting">Progress reporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#security-model">Security model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#archive-format">Archive format</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#save-file-format">Save file format</a></li>
 </ul>
 </li>
 </ul>
@@ -487,8 +523,8 @@
 <hr class="docutils" />
 <section id="dual-commands">
 <h2>Dual commands<a class="headerlink" href="#dual-commands" title="Link to this heading">¶</a></h2>
-<section id="sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version">
-<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code><a class="headerlink" href="#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version" title="Link to this heading">¶</a></h3>
+<section id="sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code><a class="headerlink" href="#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version" title="Link to this heading">¶</a></h3>
 <p>Starts a new lab instance, named <code class="docutils literal notranslate"><span class="pre">{timestamp}&#64;&#64;&#64;{lab_name}&#64;&#64;&#64;{username}</span></code>. Imports <code class="docutils literal notranslate"><span class="pre">srelab.py</span></code>, runs <code class="docutils literal notranslate"><span class="pre">Data.generate(flavor)</span></code> (or loads <code class="docutils literal notranslate"><span class="pre">-d</span> <span class="pre">data.json</span></code>), builds <code class="docutils literal notranslate"><span class="pre">NetScheme</span></code>, pulls images, deploys via Kathara, applies the <code class="docutils literal notranslate"><span class="pre">initial</span></code> state, and writes <code class="docutils literal notranslate"><span class="pre">info.json</span></code> + <code class="docutils literal notranslate"><span class="pre">scheme.svg</span></code>. See <a class="reference internal" href="internals.html"><span class="std std-doc">Internals</span></a> for file-transfer and progress mechanics.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
@@ -522,13 +558,44 @@
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--xauth-file</span> <span class="pre">&lt;file&gt;</span></code></p></td>
 <td><p>Read <code class="docutils literal notranslate"><span class="pre">SRE_XAUTH_COOKIE</span></code> from an X authority file instead of the env var (privileged only; for <code class="docutils literal notranslate"><span class="pre">x11_host=True</span></code> machines).</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--instructor-mode</span></code></p></td>
+<td><p>Start the project in <a class="reference internal" href="#sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab">instructor mode</a> (privileged only).</p></td>
+</tr>
 </tbody>
 </table>
 </div>
 </section>
 <section id="sre-stop-running-lab">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code><a class="headerlink" href="#sre-stop-running-lab" title="Link to this heading">¶</a></h3>
-<p>Undeploys containers and removes the project directory from <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/projects/</span></code>.</p>
+<p>Undeploys containers and removes the project directory from <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/projects/</span></code>. Kathara only undeploys the containers whose <code class="docutils literal notranslate"><span class="pre">user</span></code> label matches the caller, so <code class="docutils literal notranslate"><span class="pre">stop</span></code> first aligns <code class="docutils literal notranslate"><span class="pre">SUDO_UID</span></code> with the label used at deploy time (<code class="docutils literal notranslate"><span class="pre">sre</span></code> for non-privileged labs, the project owner for privileged ones; both are tried when the lab is not loaded, as in <code class="docutils literal notranslate"><span class="pre">pre-start-exam</span></code>).</p>
+</section>
+<section id="sre-save-o-file-full-images-running-lab">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code><a class="headerlink" href="#sre-save-o-file-full-images-running-lab" title="Link to this heading">¶</a></h3>
+<p>Saves a running project into a single save file (<code class="docutils literal notranslate"><span class="pre">.sre</span></code>): the filesystem of every container (captured by the patched Kathara <code class="docutils literal notranslate"><span class="pre">save_lab</span></code>, as a diff against the base image by default) plus the project files (<code class="docutils literal notranslate"><span class="pre">data.json</span></code>, <code class="docutils literal notranslate"><span class="pre">answers/</span></code>, <code class="docutils literal notranslate"><span class="pre">.private/files</span></code>, the user public dir with <code class="docutils literal notranslate"><span class="pre">shared/</span></code> and the volume directories, <code class="docutils literal notranslate"><span class="pre">.private/mnt</span></code>). The lab must set <code class="docutils literal notranslate"><span class="pre">allow_save_restore</span> <span class="pre">=</span> <span class="pre">True</span></code>; the lab’s <code class="docutils literal notranslate"><span class="pre">save</span></code> state is applied first (see <a class="reference internal" href="lab-authoring.html#lifecycle-states-save-restore"><span class="std std-ref">Lifecycle states</span></a>). Only files are captured, not running processes.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-o</span></code> / <code class="docutils literal notranslate"><span class="pre">--output</span> <span class="pre">&lt;file&gt;</span></code></p></td>
+<td><p>Write the save file here instead of stdout (privileged only).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--full-images</span></code></p></td>
+<td><p>Store full committed device images instead of filesystem diffs — self-contained but large (privileged only).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>In user mode (<code class="docutils literal notranslate"><span class="pre">--user</span></code>, i.e. from the GUI) the file is always written to stdout. When the lab defines <code class="docutils literal notranslate"><span class="pre">save_key</span></code>, the payload is encrypted. See <a class="reference internal" href="internals.html#save-file-format"><span class="std std-ref">Save file format</span></a>.</p>
+</section>
+<section id="sre-restore-instructor-mode-save-file">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code><a class="headerlink" href="#sre-restore-instructor-mode-save-file" title="Link to this heading">¶</a></h3>
+<p>Restores a save file as a <strong>new</strong> running project (fresh timestamp, current user): loads the lab module named in the header (<code class="docutils literal notranslate"><span class="pre">allow_save_restore</span></code> required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored <code class="docutils literal notranslate"><span class="pre">data.json</span></code> (fresh host ports, X11 cookie, volumes, <code class="docutils literal notranslate"><span class="pre">/shared</span></code>), redeploys the containers from the saved filesystems (<code class="docutils literal notranslate"><span class="pre">Kathara.restore_lab(…,</span> <span class="pre">lab=…)</span></code>, same <code class="docutils literal notranslate"><span class="pre">pull</span></code>/<code class="docutils literal notranslate"><span class="pre">deploy</span></code> progress events as <code class="docutils literal notranslate"><span class="pre">start</span></code>), refreshes <code class="docutils literal notranslate"><span class="pre">exetests.py</span></code>, applies the lab’s <code class="docutils literal notranslate"><span class="pre">restore</span></code> state and writes <code class="docutils literal notranslate"><span class="pre">info.json</span></code>. On failure everything created so far is rolled back.</p>
+<p><code class="docutils literal notranslate"><span class="pre">-</span></code> reads the save file from stdin — the only form accepted in user mode (the GUI opens the file as the student). Labs referenced by an absolute path (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">-p</span></code>) can only be restored by privileged users, unless the path lies inside the lab directory (<code class="docutils literal notranslate"><span class="pre">/opt/sre/lab</span></code>), in which case the save file is restored like any other lab of that directory. An encrypted file needs a lab with the same <code class="docutils literal notranslate"><span class="pre">save_key</span></code>; a cleartext file for a lab that defines <code class="docutils literal notranslate"><span class="pre">save_key</span></code> is refused in user mode (accepted with a warning otherwise).</p>
+<p><code class="docutils literal notranslate"><span class="pre">--instructor-mode</span></code> (privileged only) puts the new project in instructor mode. A save file never carries the mode: without the option the restored project is a normal one, whatever the saved project was.</p>
 </section>
 <section id="sre-wipe">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code><a class="headerlink" href="#sre-wipe" title="Link to this heading">¶</a></h3>
@@ -536,7 +603,7 @@
 </section>
 <section id="sre-connect-shell-shell-exec-argument-no-records-running-lab-device">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code><a class="headerlink" href="#sre-connect-shell-shell-exec-argument-no-records-running-lab-device" title="Link to this heading">¶</a></h3>
-<p>Opens an external terminal connected to a container.</p>
+<p>Opens a terminal session on a device: the shell of a machine, or the management console of a managed switch when <code class="docutils literal notranslate"><span class="pre">&lt;device&gt;</span></code> is a network declared with <code class="docutils literal notranslate"><span class="pre">'mode':</span> <span class="pre">'managed'</span></code> (prompt <code class="docutils literal notranslate"><span class="pre">&lt;network&gt;$</span> </code>, <code class="docutils literal notranslate"><span class="pre">exit</span></code> leaves). In user mode the console only accepts the commands of <code class="docutils literal notranslate"><span class="pre">params.switch_user_commands</span></code>, and it is refused when the lab sets <code class="docutils literal notranslate"><span class="pre">'allow_connection':</span> <span class="pre">False</span></code> on the switch. The commands of the console are listed in <a class="reference internal" href="switches.html#the-console-of-a-manageable-switch"><span class="std std-ref">Hubs, switches and VLANs</span></a>.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -546,10 +613,10 @@
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--shell</span> <span class="pre">&lt;shell&gt;</span></code></p></td>
-<td><p>Override the machine default shell (privileged only).</p></td>
+<td><p>Override the machine default shell (privileged only; not for a switch).</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--exec</span> <span class="pre">&lt;argument…&gt;</span></code></p></td>
-<td><p>Run one command via the shell and return (consumes rest of argv).</p></td>
+<td><p>Run one command via the shell and return (consumes rest of argv). On a switch: one console command, privileged only.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-records</span></code></p></td>
 <td><p>Do not record the terminal session (privileged only).</p></td>
@@ -565,7 +632,7 @@
 </section>
 <section id="sre-state-running-lab-state-name">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code><a class="headerlink" href="#sre-state-running-lab-state-name" title="Link to this heading">¶</a></h3>
-<p>Applies <code class="docutils literal notranslate"><span class="pre">NetScheme.&lt;state_name&gt;()</span></code> to a running lab. File operations registered via <code class="docutils literal notranslate"><span class="pre">file()</span></code> / <code class="docutils literal notranslate"><span class="pre">append_to_file()</span></code> are injected via in-memory tar archives sent to <code class="docutils literal notranslate"><span class="pre">container.put_archive(&quot;/&quot;)</span></code>.</p>
+<p>Applies <code class="docutils literal notranslate"><span class="pre">NetScheme.&lt;state_name&gt;()</span></code> to a running lab. In user mode only the states declared <code class="docutils literal notranslate"><span class="pre">&#64;sre_state(user_allowed=True)</span></code> of a lab setting <code class="docutils literal notranslate"><span class="pre">allow_user_states</span> <span class="pre">=</span> <span class="pre">True</span></code> are accepted, except on a debug project or a project in instructor mode, where every state is. File operations registered via <code class="docutils literal notranslate"><span class="pre">file()</span></code> / <code class="docutils literal notranslate"><span class="pre">append_to_file()</span></code> are injected via in-memory tar archives sent to <code class="docutils literal notranslate"><span class="pre">container.put_archive(&quot;/&quot;)</span></code>.</p>
 </section>
 </section>
 <hr class="docutils" />
@@ -574,6 +641,18 @@
 <section id="sre-exec-shell-shell-running-lab-device-command">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code><a class="headerlink" href="#sre-exec-shell-shell-running-lab-device-command" title="Link to this heading">¶</a></h3>
 <p>Runs <code class="docutils literal notranslate"><span class="pre">shell</span> <span class="pre">-c</span> <span class="pre">&lt;command&gt;</span></code> in a container and forwards stdout/stderr/exit code. Default shell is <code class="docutils literal notranslate"><span class="pre">params.default_exec_shell</span></code>.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">&lt;device&gt;</span></code> is a managed switch (a network with <code class="docutils literal notranslate"><span class="pre">'mode':</span> <span class="pre">'managed'</span></code>), <code class="docutils literal notranslate"><span class="pre">&lt;command…&gt;</span></code> is one command of its management console, e.g. <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">lan</span> <span class="pre">vlan/print</span></code> or <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">lan</span> <span class="pre">port/setvlan</span> <span class="pre">&#64;pc1</span> <span class="pre">10</span></code> (<code class="docutils literal notranslate"><span class="pre">&#64;machine</span></code>: the port of that machine). The exit status is 0, or the error number given by the switch (17 when a VLAN already exists) with the message on stderr.</p>
+</section>
+<section id="sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab">
+<h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">remove-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code><a class="headerlink" href="#sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab" title="Link to this heading">¶</a></h3>
+<p>Switch the <strong>instructor mode</strong> of a running project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--instructor-mode</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">--instructor-mode</span></code> set it from the beginning). The mode is meant for the instructor’s own project and has three effects:</p>
+<ul class="simple">
+<li><p>the texts the lab wraps in <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> (see <a class="reference internal" href="lab-authoring.html"><span class="std std-doc">Lab Authoring</span></a>) are kept in <code class="docutils literal notranslate"><span class="pre">info.json</span></code>; for any other project but a debug project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>, which keeps them too) they are dropped before the file is written, so students cannot read them;</p></li>
+<li><p>every <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span></code> appends what it executed to the project’s <code class="docutils literal notranslate"><span class="pre">operations.log</span></code> (evaluations are not logged, unlike in a debug project);</p></li>
+<li><p>every state can be applied, as to a debug project: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span></code> in user mode (what the GUI runs) no longer requires <code class="docutils literal notranslate"><span class="pre">allow_user_states</span></code> nor <code class="docutils literal notranslate"><span class="pre">&#64;sre_state(user_allowed=True)</span></code>.</p></li>
+</ul>
+<p>In the GUI all three show only while the <em>Instructor mode</em> button is on (see <a class="reference internal" href="gui.html"><span class="std std-doc">GUI</span></a>). Nothing else changes: hidden machines and grades are those of a normal project.</p>
+<p>Both commands write <code class="docutils literal notranslate"><span class="pre">info.json</span></code> again; the question hashes do not depend on the mode, so the answers already given stay attached. <code class="docutils literal notranslate"><span class="pre">remove-instructor-mode</span></code> also deletes <code class="docutils literal notranslate"><span class="pre">operations.log</span></code>, unless the project is a debug project (which also keeps its instructor texts).</p>
 </section>
 <section id="sre-eval-all-display-grades-no-display-grades">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code><a class="headerlink" href="#sre-eval-all-display-grades-no-display-grades" title="Link to this heading">¶</a></h3>
@@ -581,7 +660,7 @@
 </section>
 <section id="sre-check-p-lab-state">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code><a class="headerlink" href="#sre-check-p-lab-state" title="Link to this heading">¶</a></h3>
-<p>Validates a lab module without deploying: imports it, runs <code class="docutils literal notranslate"><span class="pre">Data.generate()</span></code>, builds <code class="docutils literal notranslate"><span class="pre">NetScheme</span></code>, runs <code class="docutils literal notranslate"><span class="pre">initial()</span></code>, calls <code class="docutils literal notranslate"><span class="pre">Grade.grade()</span></code>. With <code class="docutils literal notranslate"><span class="pre">state</span></code>, also validates that state method.</p>
+<p>Validates a lab module without deploying: imports it, runs <code class="docutils literal notranslate"><span class="pre">Data.generate()</span></code>, checks that the <code class="docutils literal notranslate"><span class="pre">Data</span></code> instance survives the <code class="docutils literal notranslate"><span class="pre">data.json</span></code> round trip (<code class="docutils literal notranslate"><span class="pre">to_json()</span></code> / <code class="docutils literal notranslate"><span class="pre">from_json()</span></code>, <code class="docutils literal notranslate"><span class="pre">pack()</span></code> / <code class="docutils literal notranslate"><span class="pre">unpack()</span></code>), builds <code class="docutils literal notranslate"><span class="pre">NetScheme</span></code>, runs <code class="docutils literal notranslate"><span class="pre">initial()</span></code>, calls <code class="docutils literal notranslate"><span class="pre">Grade.grade()</span></code>. With <code class="docutils literal notranslate"><span class="pre">state</span></code>, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (<code class="docutils literal notranslate"><span class="pre">switch</span> <span class="pre">&lt;network&gt;:</span> <span class="pre">cmd</span> <span class="pre">…</span></code>).</p>
 </section>
 <section id="sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code><a class="headerlink" href="#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir" title="Link to this heading">¶</a></h3>
@@ -600,7 +679,7 @@
 <td><p><code class="docutils literal notranslate"><span class="pre">answers[&quot;hostname&quot;]</span></code> / <code class="docutils literal notranslate"><span class="pre">answers[&quot;login&quot;]</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p>LAB NAME</p></td>
-<td><p>Middle segment of <code class="docutils literal notranslate"><span class="pre">running_lab_name</span></code></p></td>
+<td><p>Middle segment of <code class="docutils literal notranslate"><span class="pre">running_lab_name</span></code>, its <code class="docutils literal notranslate"><span class="pre">&#64;</span></code> decoded back to <code class="docutils literal notranslate"><span class="pre">/</span></code> (the lab path given to <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code>)</p></td>
 </tr>
 <tr class="row-even"><td><p>STARTED</p></td>
 <td><p>First segment of <code class="docutils literal notranslate"><span class="pre">running_lab_name</span></code> (instance start; time only when today)</p></td>
@@ -914,7 +993,7 @@
 </section>
 <section id="sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code><a class="headerlink" href="#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n" title="Link to this heading">¶</a></h3>
-<p>Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: <code class="docutils literal notranslate"><span class="pre">--sep</span></code> 0–9 (default 3), <code class="docutils literal notranslate"><span class="pre">--curved</span></code> for curved edges, <code class="docutils literal notranslate"><span class="pre">--shapes</span></code> for geometric nodes, <code class="docutils literal notranslate"><span class="pre">--reverse</span></code> to flip insertion order, <code class="docutils literal notranslate"><span class="pre">--random-seed</span></code> for node-order permutation.</p>
+<p>Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: <code class="docutils literal notranslate"><span class="pre">--sep</span></code> 0–9 (default 3), <code class="docutils literal notranslate"><span class="pre">--curved</span></code> for curved edges, <code class="docutils literal notranslate"><span class="pre">--shapes</span></code> for geometric nodes, <code class="docutils literal notranslate"><span class="pre">--reverse</span></code> to flip insertion order, <code class="docutils literal notranslate"><span class="pre">--random-seed</span></code> for node-order permutation. The <code class="docutils literal notranslate"><span class="pre">lab.conf</span></code> of the archive carries the type of the networks that are not hubs and the VLANs of the ports (<code class="docutils literal notranslate"><span class="pre">CD_MODE[lan]=&quot;managed&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">pc1[0]=&quot;lan/vlan=10&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">r1[0]=&quot;lan/trunk=10,20&quot;</span></code>): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.</p>
 </section>
 <section id="sre-pre-start-exam">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code><a class="headerlink" href="#sre-pre-start-exam" title="Link to this heading">¶</a></h3>
@@ -993,8 +1072,10 @@
 <li><a class="reference internal" href="#">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
 <li><a class="reference internal" href="#global-options">Global options</a></li>
 <li><a class="reference internal" href="#dual-commands">Dual commands</a><ul>
-<li><a class="reference internal" href="#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li><a class="reference internal" href="#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li><a class="reference internal" href="#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li><a class="reference internal" href="#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li><a class="reference internal" href="#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
 <li><a class="reference internal" href="#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
@@ -1003,6 +1084,7 @@
 </li>
 <li><a class="reference internal" href="#admin-only-commands">Admin-only commands</a><ul>
 <li><a class="reference internal" href="#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li><a class="reference internal" href="#sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">remove-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li><a class="reference internal" href="#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
 <li><a class="reference internal" href="#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
 <li><a class="reference internal" href="#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>

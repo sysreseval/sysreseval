@@ -234,6 +234,7 @@
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-four-classes-at-a-glance">The four classes at a glance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ip-helper-functions-from-opt-sre-lib-ips-py">IP helper functions (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ips.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ipv6-labs">IPv6 labs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#compute-pre-generate-and-compute-post-generate"><code class="docutils literal notranslate"><span class="pre">compute_pre_generate</span></code> and <code class="docutils literal notranslate"><span class="pre">compute_post_generate</span></code></a></li>
 </ul>
 </li>
@@ -241,13 +242,18 @@
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#declarations-and-accessors">Declarations and accessors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#machine-constructor-parameters"><code class="docutils literal notranslate"><span class="pre">Machine</span></code> constructor parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-parameters"><code class="docutils literal notranslate"><span class="pre">Network</span></code> parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switches-and-vlans">Switches and VLANs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#instructor-only-texts-instructor">Instructor-only texts — <code class="docutils literal notranslate"><span class="pre">instructor()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#lifecycle-states-save-restore">Lifecycle states: <code class="docutils literal notranslate"><span class="pre">save</span></code> / <code class="docutils literal notranslate"><span class="pre">restore</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-decorator"><code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> decorator</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#per-machine-operations">Per-machine operations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#file-transfer-between-host-and-container">File transfer between host and container</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#host-side-operations">Host-side operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-operations">Switch operations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#reading-command-results-multi-pass-true">Reading command results — <code class="docutils literal notranslate"><span class="pre">multi_pass=True</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
@@ -269,9 +275,11 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bgp-helpers-from-opt-sre-lib-frr-py">BGP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py">Switch helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/switch.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ping-helper-from-opt-sre-lib-ping-py">Ping helper (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ping.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ssh-helpers-from-opt-sre-lib-ssh-py">SSH helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ssh.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#packet-capture-helpers-from-opt-sre-lib-pcap-gen-py">Packet capture helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/pcap_gen.py</span></code>)</a></li>
@@ -283,11 +291,31 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#automatic-evaluation">Automatic evaluation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#archives-and-recordings">Archives and recordings</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-machine-and-flavors">State machine and flavors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#networking">Networking</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#filesystem-and-export">Filesystem and export</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#schema-rendering">Schema rendering</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#complete-minimal-example">Complete Minimal Example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#in-the-gui">In the GUI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-switches-tab">The Switches tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#in-a-lab">In a lab</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#declaring-the-kind-of-a-network">Declaring the kind of a network</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#running-switch-commands-from-a-state">Running switch commands from a state</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#grading-the-configuration-of-a-switch">Grading the configuration of a switch</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#a-complete-example">A complete example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#on-the-command-line">On the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#limits">Limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#what-a-host-needs">What a host needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#tests">Tests</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
@@ -332,6 +360,7 @@
 <li class="toctree-l3"><a class="reference internal" href="installation.html#build-targets">Build targets</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#tests">Tests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#building-the-documentation">Building the documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#network-plugin-for-the-switch-types">Network plugin for the switch types</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#dependencies">Dependencies</a></li>
 </ul>
 </li>
@@ -343,7 +372,9 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">GUI Reference — <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#opening-a-project">Opening a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-and-restoring-a-project">Saving and restoring a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-tabs">Project tabs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#exam-mode">Exam mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#settings">Settings</a></li>
 </ul>
@@ -351,8 +382,10 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#global-options">Global options</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
@@ -361,6 +394,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">remove-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
@@ -414,9 +448,11 @@
 <li class="toctree-l2"><a class="reference internal" href="internals.html#dynamic-module-loading">Dynamic module loading</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#switches">Switches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#progress-reporting">Progress reporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#security-model">Security model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#archive-format">Archive format</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#save-file-format">Save file format</a></li>
 </ul>
 </li>
 </ul>
@@ -472,6 +508,11 @@ sysreseval<span class="w">                                              </span><
 <p><strong>File → Open Project</strong> (or the <code class="docutils literal notranslate"><span class="pre">+</span></code> tab) shows a dialog built from <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">--with-titles</span></code>. Leaves display each lab’s translated <code class="docutils literal notranslate"><span class="pre">title</span></code> (from per-directory <code class="docutils literal notranslate"><span class="pre">titles.json</span></code> sidecars, generated by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code>), falling back to the filename without <code class="docutils literal notranslate"><span class="pre">.py</span></code>. If the lab’s <code class="docutils literal notranslate"><span class="pre">Flavor</span></code> sets <code class="docutils literal notranslate"><span class="pre">flavor_form_at_startup</span> <span class="pre">=</span> <span class="pre">True</span></code>, a form runs first. A progress dialog then tracks image pulls and container starts (JSON on stderr from <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code>); the project tab appears when every machine is up.</p>
 <p>During an exam, <strong>Open Project</strong> is disabled — only pre-authorised exam labs open automatically.</p>
 </section>
+<section id="saving-and-restoring-a-project">
+<h2>Saving and restoring a project<a class="headerlink" href="#saving-and-restoring-a-project" title="Link to this heading">¶</a></h2>
+<p><strong>File → Save Project</strong> appears only when the current project’s lab sets <code class="docutils literal notranslate"><span class="pre">allow_save_restore</span> <span class="pre">=</span> <span class="pre">True</span></code>. A file dialog asks where to write the <code class="docutils literal notranslate"><span class="pre">.sre</span></code> save file (default <code class="docutils literal notranslate"><span class="pre">~/&lt;lab&gt;.sre</span></code>); the GUI then runs <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">save</span> <span class="pre">&lt;project&gt;</span></code> with its stdout redirected to that file, showing a progress dialog. The file contains the filesystem of every machine (as a diff against its base image) and the project files; it is encrypted when the lab defines <code class="docutils literal notranslate"><span class="pre">save_key</span></code>.</p>
+<p><strong>File → Restore Project</strong> (always available outside exam mode) asks for a <code class="docutils literal notranslate"><span class="pre">.sre</span></code> file and runs <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">restore</span> <span class="pre">-</span></code> with the file on stdin, showing the same image-pull / machine-start progress as <strong>Open Project</strong>. The saved project comes back as a <strong>new</strong> tab (new instance); the original one, if still open, is untouched. Only files are restored — the lab’s <code class="docutils literal notranslate"><span class="pre">restore</span></code> state relaunches its services.</p>
+</section>
 <section id="project-tabs">
 <h2>Project tabs<a class="headerlink" href="#project-tabs" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-auto docutils container">
@@ -491,14 +532,20 @@ sysreseval<span class="w">                                              </span><
 <tr class="row-even"><td><p><strong>Machines</strong></p></td>
 <td><p>Per-machine state (polled from Kathara every 1 s), NAT network, ports, plus a <em>Connect</em> button opening an external terminal.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Questions</strong></p></td>
+<tr class="row-odd"><td><p><strong>Switches</strong></p></td>
+<td><p>Shown only when a network of the lab is not a hub. One row per network with its type — <em>Hub</em>, <em>Switch</em> or <em>Manageable switch</em> — and, for a manageable switch the lab leaves open to students, a <em>Connect</em> button opening its management console in an external terminal (<code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">connect</span> <span class="pre">&lt;project&gt;</span> <span class="pre">&lt;network&gt;</span></code>; the cell is red when the lab closed the console). See <a class="reference internal" href="switches.html"><span class="std std-doc">Hubs, switches and VLANs</span></a> for the three types and the commands of the console.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Questions</strong></p></td>
 <td><p>Three types: <code class="docutils literal notranslate"><span class="pre">question_text</span></code> (free text), <code class="docutils literal notranslate"><span class="pre">question_form</span></code> (inline <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:regex}&#64;&#64;</span></code> or <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:&gt;opt1|opt2}&#64;&#64;</span></code>), <code class="docutils literal notranslate"><span class="pre">question_dummy</span></code> (display only). Persisted to <code class="docutils literal notranslate"><span class="pre">answers/answers.json</span></code> on every edit.</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Evaluation</strong></p></td>
+<tr class="row-odd"><td><p><strong>Evaluation</strong></p></td>
 <td><p>Last grade table + <em>Start evaluation</em> button. Letter grades (OK/MEH/FAIL) appear when the lab sets <code class="docutils literal notranslate"><span class="pre">no_mark_on_self_grade</span></code>. A countdown replaces the button while <code class="docutils literal notranslate"><span class="pre">delay_between_self_grade</span></code> is active.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Terminals</strong></p></td>
-<td><p>Embedded terminals per machine, launched via <code class="docutils literal notranslate"><span class="pre">params.terminal_cmd_prefix</span></code>.</p></td>
+<tr class="row-even"><td><p><strong>Terminals</strong></p></td>
+<td><p>Embedded terminals per machine, launched via <code class="docutils literal notranslate"><span class="pre">params.terminal_cmd_prefix</span></code>, plus one per manageable switch students may use (its console).</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Log</strong></p></td>
+<td><p>Debug projects (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>), and instructor-mode projects while the <em>Instructor mode</em> button is on (states only). Live tail of the project’s <code class="docutils literal notranslate"><span class="pre">operations.log</span></code>: one <code class="docutils literal notranslate"><span class="pre">===</span> <span class="pre">&lt;time&gt;</span>&#160; <span class="pre">state</span> <span class="pre">&lt;name&gt;</span></code> / <code class="docutils literal notranslate"><span class="pre">===</span> <span class="pre">&lt;time&gt;</span>&#160; <span class="pre">evaluation</span></code> header per run, then one `stepN - on &lt;machine</p></td>
 </tr>
 </tbody>
 </table>
@@ -506,9 +553,38 @@ sysreseval<span class="w">                                              </span><
 <p><code class="docutils literal notranslate"><span class="pre">answers/answers.json</span></code> also carries metadata (<code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">email</span></code>, <code class="docutils literal notranslate"><span class="pre">language</span></code>, <code class="docutils literal notranslate"><span class="pre">answers_updated_at</span></code>, plus <code class="docutils literal notranslate"><span class="pre">exam_*</span></code> fields in exam mode); see <a class="reference internal" href="internals.html#archive-format"><span class="std std-ref">Archive format</span></a> for the full schema.</p>
 <p><em>Start evaluation</em> runs <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">--auto-eval</span></code> in a background thread. The periodic background eval (<code class="docutils literal notranslate"><span class="pre">eval_interval_without_exam_mode</span></code>) and <code class="docutils literal notranslate"><span class="pre">eval_before_exit</span></code> run plain <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> (no cooldown, no log line, no stdout).</p>
 </section>
+<section id="instructor-mode">
+<h2>Instructor mode<a class="headerlink" href="#instructor-mode" title="Link to this heading">¶</a></h2>
+<p>A project in instructor mode (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--instructor-mode</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">--instructor-mode</span></code> or <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span></code>, all privileged) adds a checkable <strong>Instructor mode</strong> button (mortarboard icon) at the left of the Wrap / Settings / Language buttons. The button is visible only while the current tab is such a project; it is off when the GUI starts and its state is not saved.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Button</p></th>
+<th class="head"><p>Informations / Questions</p></th>
+<th class="head"><p>Apply Configuration</p></th>
+<th class="head"><p>Log tab</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>off</p></td>
+<td><p>Exactly what a student sees: the <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> texts are not displayed.</p></td>
+<td><p>Only the states a student may apply (the tab is hidden when there is none).</p></td>
+<td><p>Hidden.</p></td>
+</tr>
+<tr class="row-odd"><td><p>on</p></td>
+<td><p>The <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> texts are displayed in colour (<code class="docutils literal notranslate"><span class="pre">params.instructor_text_color</span></code> on <code class="docutils literal notranslate"><span class="pre">params.instructor_background_color</span></code>, or the colours given by the lab).</p></td>
+<td><p>Every state of the lab, those reserved to the instructor in red.</p></td>
+<td><p>Shown, with what each applied state executed (no evaluation).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The button applies to every open project in instructor mode. Switching the mode of an open project with <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">remove-instructor-mode</span></code> is picked up within a second.</p>
+<p>A <strong>debug project</strong> (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>) shows the same button: its <code class="docutils literal notranslate"><span class="pre">info.json</span></code> holds the <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> texts too. There the button only displays or hides those texts in the Informations and Questions views; every state and the Log tab are shown whatever its position, as in any debug project.</p>
+</section>
 <section id="exam-mode">
 <h2>Exam mode<a class="headerlink" href="#exam-mode" title="Link to this heading">¶</a></h2>
-<p>When <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/exam.json</span></code> exists, the GUI switches modes: File → Open / Close / Close All are disabled, and answers re-save with an updated <code class="docutils literal notranslate"><span class="pre">exam_time_remaining</span></code> on every exam-config change.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/exam.json</span></code> exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All are disabled, and answers re-save with an updated <code class="docutils literal notranslate"><span class="pre">exam_time_remaining</span></code> on every exam-config change.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -646,7 +722,9 @@ sysreseval<span class="w">                                              </span><
 <li><a class="reference internal" href="#">GUI Reference — <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code></a><ul>
 <li><a class="reference internal" href="#launching">Launching</a></li>
 <li><a class="reference internal" href="#opening-a-project">Opening a project</a></li>
+<li><a class="reference internal" href="#saving-and-restoring-a-project">Saving and restoring a project</a></li>
 <li><a class="reference internal" href="#project-tabs">Project tabs</a></li>
+<li><a class="reference internal" href="#instructor-mode">Instructor mode</a></li>
 <li><a class="reference internal" href="#exam-mode">Exam mode</a></li>
 <li><a class="reference internal" href="#settings">Settings</a></li>
 </ul>

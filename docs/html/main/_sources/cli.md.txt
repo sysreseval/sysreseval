@@ -19,7 +19,7 @@ Access is restricted to `root`, the `sre` user (`params.sre_uid = 1100`), member
 
 ## Dual commands
 
-### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] <lab> [data_version]`
+### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] [--instructor-mode] <lab> [data_version]`
 
 Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Imports `srelab.py`, runs `Data.generate(flavor)` (or loads `-d data.json`), builds `NetScheme`, pulls images, deploys via Kathara, applies the `initial` state, and writes `info.json` + `scheme.svg`. See [Internals](internals.md) for file-transfer and progress mechanics.
 
@@ -33,10 +33,30 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 | `--flavor-json <json>` | Flavor as JSON dict (used by the GUI). |
 | `--set-flavor-name <name>` | Use a named preset `Flavor` (privileged only). |
 | `--xauth-file <file>` | Read `SRE_XAUTH_COOKIE` from an X authority file instead of the env var (privileged only; for `x11_host=True` machines). |
+| `--instructor-mode` | Start the project in [instructor mode](#sre-set-instructor-mode-running_lab-and-sre-remove-instructor-mode-running_lab) (privileged only). |
 
 ### `sre stop <running_lab>`
 
-Undeploys containers and removes the project directory from `/var/lib/sre/projects/`.
+Undeploys containers and removes the project directory from `/var/lib/sre/projects/`. Kathara only undeploys the containers whose `user` label matches the caller, so `stop` first aligns `SUDO_UID` with the label used at deploy time (`sre` for non-privileged labs, the project owner for privileged ones; both are tried when the lab is not loaded, as in `pre-start-exam`).
+
+### `sre save [-o <file>] [--full-images] <running_lab>`
+
+Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the patched Kathara `save_lab`, as a diff against the base image by default) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save--restore)). Only files are captured, not running processes.
+
+| Option | Description |
+|--------|-------------|
+| `-o` / `--output <file>` | Write the save file here instead of stdout (privileged only). |
+| `--full-images` | Store full committed device images instead of filesystem diffs — self-contained but large (privileged only). |
+
+In user mode (`--user`, i.e. from the GUI) the file is always written to stdout. When the lab defines `save_key`, the payload is encrypted. See [Save file format](internals.md#save-file-format).
+
+### `sre restore [--instructor-mode] <save_file | ->`
+
+Restores a save file as a **new** running project (fresh timestamp, current user): loads the lab module named in the header (`allow_save_restore` required), recreates the project directories and copies the saved project files back, rebuilds the Kathara lab from the restored `data.json` (fresh host ports, X11 cookie, volumes, `/shared`), redeploys the containers from the saved filesystems (`Kathara.restore_lab(…, lab=…)`, same `pull`/`deploy` progress events as `start`), refreshes `exetests.py`, applies the lab's `restore` state and writes `info.json`. On failure everything created so far is rolled back.
+
+`-` reads the save file from stdin — the only form accepted in user mode (the GUI opens the file as the student). Labs referenced by an absolute path (`sre start -p`) can only be restored by privileged users, unless the path lies inside the lab directory (`/opt/sre/lab`), in which case the save file is restored like any other lab of that directory. An encrypted file needs a lab with the same `save_key`; a cleartext file for a lab that defines `save_key` is refused in user mode (accepted with a warning otherwise).
+
+`--instructor-mode` (privileged only) puts the new project in instructor mode. A save file never carries the mode: without the option the restored project is a normal one, whatever the saved project was.
 
 ### `sre wipe`
 
@@ -44,12 +64,12 @@ Stops every running Kathara lab and removes everything under `/var/lib/sre/proje
 
 ### `sre connect [--shell <shell>] [--exec <argument…>] [--no-records] <running_lab> <device>`
 
-Opens an external terminal connected to a container.
+Opens a terminal session on a device: the shell of a machine, or the management console of a managed switch when `<device>` is a network declared with `'mode': 'managed'` (prompt `<network>$ `, `exit` leaves). In user mode the console only accepts the commands of `params.switch_user_commands`, and it is refused when the lab sets `'allow_connection': False` on the switch. The commands of the console are listed in [Hubs, switches and VLANs](switches.md#the-console-of-a-manageable-switch).
 
 | Option | Description |
 |--------|-------------|
-| `--shell <shell>` | Override the machine default shell (privileged only). |
-| `--exec <argument…>` | Run one command via the shell and return (consumes rest of argv). |
+| `--shell <shell>` | Override the machine default shell (privileged only; not for a switch). |
+| `--exec <argument…>` | Run one command via the shell and return (consumes rest of argv). On a switch: one console command, privileged only. |
 | `--no-records` | Do not record the terminal session (privileged only). |
 
 ### `sre eval [-p path] [--auto-eval] <running_lab>`
@@ -60,7 +80,7 @@ Evaluates a running lab. The atomic lock file `.private/eval_in_progress` preven
 
 ### `sre state <running_lab> <state_name>`
 
-Applies `NetScheme.<state_name>()` to a running lab. File operations registered via `file()` / `append_to_file()` are injected via in-memory tar archives sent to `container.put_archive("/")`.
+Applies `NetScheme.<state_name>()` to a running lab. In user mode only the states declared `@sre_state(user_allowed=True)` of a lab setting `allow_user_states = True` are accepted, except on a debug project or a project in instructor mode, where every state is. File operations registered via `file()` / `append_to_file()` are injected via in-memory tar archives sent to `container.put_archive("/")`.
 
 ---
 
@@ -70,13 +90,27 @@ Applies `NetScheme.<state_name>()` to a running lab. File operations registered 
 
 Runs `shell -c <command>` in a container and forwards stdout/stderr/exit code. Default shell is `params.default_exec_shell`.
 
+When `<device>` is a managed switch (a network with `'mode': 'managed'`), `<command…>` is one command of its management console, e.g. `sre exec <running_lab> lan vlan/print` or `sre exec <running_lab> lan port/setvlan @pc1 10` (`@machine`: the port of that machine). The exit status is 0, or the error number given by the switch (17 when a VLAN already exists) with the message on stderr.
+
+### `sre set-instructor-mode <running_lab>` and `sre remove-instructor-mode <running_lab>`
+
+Switch the **instructor mode** of a running project (`sre start --instructor-mode` and `sre restore --instructor-mode` set it from the beginning). The mode is meant for the instructor's own project and has three effects:
+
+- the texts the lab wraps in `instructor()` (see [Lab Authoring](lab-authoring.md)) are kept in `info.json`; for any other project but a debug project (`sre start --debug-project`, which keeps them too) they are dropped before the file is written, so students cannot read them;
+- every `sre state` appends what it executed to the project's `operations.log` (evaluations are not logged, unlike in a debug project);
+- every state can be applied, as to a debug project: `sre state` in user mode (what the GUI runs) no longer requires `allow_user_states` nor `@sre_state(user_allowed=True)`.
+
+In the GUI all three show only while the *Instructor mode* button is on (see [GUI](gui.md)). Nothing else changes: hidden machines and grades are those of a normal project.
+
+Both commands write `info.json` again; the question hashes do not depend on the mode, so the answers already given stay attached. `remove-instructor-mode` also deletes `operations.log`, unless the project is a debug project (which also keeps its instructor texts).
+
 ### `sre eval-all [--display-grades / --no-display-grades]`
 
 Evaluates every running lab instance concurrently. `--no-display-grades` suppresses the per-lab grade summary.
 
 ### `sre check [-p] <lab> [<state>]`
 
-Validates a lab module without deploying: imports it, runs `Data.generate()`, builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method.
+Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (`switch <network>: cmd …`).
 
 ### `sre watch [--timeout <sec>] [--interval <sec>] [-H <regexp>] [-S <time>] [-L] <dir…>`
 
@@ -89,7 +123,7 @@ One row per **running project instance** on a host: hostname + lab + the start t
 | Column | Source |
 |--------|--------|
 | HOSTNAME / LOGIN | `answers["hostname"]` / `answers["login"]` |
-| LAB NAME | Middle segment of `running_lab_name` |
+| LAB NAME | Middle segment of `running_lab_name`, its `@` decoded back to `/` (the lab path given to `sre start`) |
 | STARTED | First segment of `running_lab_name` (instance start; time only when today) |
 | GRADE | `total_grade / total_max` |
 | ERR | Length of `errors` |
@@ -245,7 +279,7 @@ With `--with-titles`, output becomes `[{"name": <path>, "title": <dict|null>}, �
 
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 
-Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation.
+Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
 
 ### `sre pre-start-exam`
 

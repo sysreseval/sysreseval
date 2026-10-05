@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Runtime &amp; Internals" href="internals.html"><link rel="prev" title="CLI Reference — sre" href="cli.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Translating a Lab" href="translations.html"><link rel="prev" title="Lab Authoring Guide" href="lab-authoring.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Exam Reference - SRE / sysreseval</title>
+        <title>Hubs, switches and VLANs - SRE / sysreseval</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
@@ -219,7 +219,7 @@
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Authoring Labs</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="lab-authoring.html">Lab Authoring Guide</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
@@ -299,23 +299,23 @@
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#complete-minimal-example">Complete Minimal Example</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="switches.html#in-the-gui">In the GUI</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#the-switches-tab">The Switches tab</a></li>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Hubs, switches and VLANs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#in-the-gui">In the GUI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-switches-tab">The Switches tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="switches.html#in-a-lab">In a lab</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#declaring-the-kind-of-a-network">Declaring the kind of a network</a></li>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#running-switch-commands-from-a-state">Running switch commands from a state</a></li>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#grading-the-configuration-of-a-switch">Grading the configuration of a switch</a></li>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#a-complete-example">A complete example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#in-a-lab">In a lab</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#declaring-the-kind-of-a-network">Declaring the kind of a network</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-switch-commands-from-a-state">Running switch commands from a state</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#grading-the-configuration-of-a-switch">Grading the configuration of a switch</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-complete-example">A complete example</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="switches.html#on-the-command-line">On the command line</a></li>
-<li class="toctree-l2"><a class="reference internal" href="switches.html#limits">Limits</a></li>
-<li class="toctree-l2"><a class="reference internal" href="switches.html#what-a-host-needs">What a host needs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="switches.html#tests">Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#on-the-command-line">On the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#limits">Limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-host-needs">What a host needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#tests">Tests</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
@@ -368,7 +368,7 @@
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="gui.html">GUI Reference — <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code></a><ul>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
@@ -427,10 +427,10 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Exam Reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#exam-json-single-source-of-truth"><code class="docutils literal notranslate"><span class="pre">exam.json</span></code> — single source of truth</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#gui-exam-logic">GUI exam logic</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#commands">Commands</a></li>
+<li class="toctree-l1"><a class="reference internal" href="exam-reference.html">Exam Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="exam-reference.html#exam-json-single-source-of-truth"><code class="docutils literal notranslate"><span class="pre">exam.json</span></code> — single source of truth</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam-reference.html#gui-exam-logic">GUI exam logic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam-reference.html#commands">Commands</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="internals.html">Runtime &amp; Internals</a><ul>
@@ -475,7 +475,7 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="_sources/exam-reference.md.txt" title="View this page">
+  <a class="muted-link" href="_sources/switches.md.txt" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
@@ -493,113 +493,304 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="exam-reference">
-<h1>Exam Reference<a class="headerlink" href="#exam-reference" title="Link to this heading">¶</a></h1>
-<section id="exam-json-single-source-of-truth">
-<h2><code class="docutils literal notranslate"><span class="pre">exam.json</span></code> — single source of truth<a class="headerlink" href="#exam-json-single-source-of-truth" title="Link to this heading">¶</a></h2>
-<p>Lives at <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/exam.json</span></code> (<code class="docutils literal notranslate"><span class="pre">params.sre_pub_dir</span> <span class="pre">+</span> <span class="pre">&quot;/&quot;</span> <span class="pre">+</span> <span class="pre">params.exam_json_name</span></code>). The same file must exist on every student PC — distribute via NFS, rsync, or any deployment mechanism. All field names are exposed as <code class="docutils literal notranslate"><span class="pre">params.exam_*</span></code> constants; never hard-code them.</p>
+          <section id="hubs-switches-and-vlans">
+<h1>Hubs, switches and VLANs<a class="headerlink" href="#hubs-switches-and-vlans" title="Link to this heading">¶</a></h1>
+<p>Every network of a lab connects its machines through one of three kinds of equipment. The lab chooses the kind per network; a network the lab says nothing about is a hub, as all networks were before this choice existed.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Constant</p></th>
-<th class="head"><p>Type</p></th>
+<tr class="row-odd"><th class="head"><p>Kind</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">mode</span></code> in the lab</p></th>
+<th class="head"><p>Name in the GUI</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Hub</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'hub'</span></code> (default)</p></td>
+<td><p><em>Hub</em></p></td>
+<td><p>Every frame is sent to every machine of the network: any machine can capture the traffic of the others (<code class="docutils literal notranslate"><span class="pre">tcpdump</span></code>, Wireshark).</p></td>
+</tr>
+<tr class="row-odd"><td><p>Switch</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'switch'</span></code></p></td>
+<td><p><em>Switch</em></p></td>
+<td><p>The switch learns the MAC addresses and sends a frame to its destination only: a machine sees its own traffic and the broadcasts. No configuration, no console.</p></td>
+</tr>
+<tr class="row-even"><td><p>Manageable switch</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'managed'</span></code></p></td>
+<td><p><em>Manageable switch</em></p></td>
+<td><p>A switch with VLANs (access and trunk ports) and a management console, which the students may open unless the lab closes it.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>This page describes the feature as a whole. The reference tables of the lab API are in the <a class="reference internal" href="lab-authoring.html#network-parameters"><span class="std std-ref">Lab Authoring Guide</span></a>, the commands in the <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>, and the plugin a host needs for switches in <a class="reference internal" href="installation.html#network-plugin-for-the-switch-types"><span class="std std-ref">Installation</span></a>.</p>
+<section id="in-the-gui">
+<h2>In the GUI<a class="headerlink" href="#in-the-gui" title="Link to this heading">¶</a></h2>
+<section id="the-switches-tab">
+<h3>The Switches tab<a class="headerlink" href="#the-switches-tab" title="Link to this heading">¶</a></h3>
+<p>A project shows a <strong>Switches</strong> tab, after <strong>Machines</strong>, as soon as one of its networks is not a hub; a lab with hubs only looks exactly as before. The tab lists every network the student can see — hubs included — with three columns:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Column</p></th>
+<th class="head"><p>Content</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Name</strong></p></td>
+<td><p>Name of the network, as on the schema.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Type</strong></p></td>
+<td><p><em>Hub</em>, <em>Switch</em> or <em>Manageable switch</em>.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Connection</strong></p></td>
+<td><p>For a manageable switch: a green <em>Connect</em> button, or a red cell when the lab closed its console to the students. Empty for a hub or a plain switch, which have no console.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><em>Connect</em> opens the management console of the switch in an external terminal, like the <em>Connect</em> button of the <strong>Machines</strong> tab does for a machine. Each click opens a new terminal.</p>
+<p>The <strong>Terminals</strong> tab also holds one embedded terminal per manageable switch the students may use, next to those of the machines.</p>
+<p>A network that only connects hidden machines is not listed. In a debug project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>) every network is listed and the Terminals tab also holds the manageable switches the lab closed.</p>
+</section>
+<section id="the-console-of-a-manageable-switch">
+<h3>The console of a manageable switch<a class="headerlink" href="#the-console-of-a-manageable-switch" title="Link to this heading">¶</a></h3>
+<p>The console is the management console of the underlying <code class="docutils literal notranslate"><span class="pre">vde_switch</span></code>. The prompt is the name of the network; <code class="docutils literal notranslate"><span class="pre">exit</span></code>, <code class="docutils literal notranslate"><span class="pre">quit</span></code> or Ctrl-D leave it.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>lan$ vlan/print
+VLAN 0010
+ -- Port 0001 tagged=1 active=1 status=Forwarding
+ -- Port 0002 tagged=0 active=1 status=Forwarding
+VLAN 0020
+ -- Port 0001 tagged=1 active=1 status=Forwarding
+ -- Port 0003 tagged=0 active=1 status=Forwarding
+lan$ port/print
+Port 0001 untagged_vlan=0000 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0003 module unix prog   : kathara r1:eth0 user=0 pid=64086
+Port 0002 untagged_vlan=0010 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0008 module unix prog   : kathara pc1:eth0 user=0 pid=64086
+...
+lan$ port/setvlan 3 10
+lan$ exit
+</pre></div>
+</div>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>Effect</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">help</span></code></p></td>
+<td><p>List of the commands of the switch.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">port/print</span></code>, <code class="docutils literal notranslate"><span class="pre">port/allprint</span></code></p></td>
+<td><p>Ports in use / every port: the VLAN of its untagged frames (<code class="docutils literal notranslate"><span class="pre">untagged_vlan</span></code>) and what is plugged into it (<code class="docutils literal notranslate"><span class="pre">kathara</span> <span class="pre">&lt;machine&gt;:eth&lt;N&gt;</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vlan/print</span></code>, <code class="docutils literal notranslate"><span class="pre">vlan/allprint</span></code></p></td>
+<td><p>VLANs with their ports; <code class="docutils literal notranslate"><span class="pre">tagged=1</span></code> marks a trunk member, <code class="docutils literal notranslate"><span class="pre">tagged=0</span></code> an access port.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vlan/create</span> <span class="pre">&lt;vlan&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">vlan/remove</span> <span class="pre">&lt;vlan&gt;</span></code></p></td>
+<td><p>Create / remove a VLAN.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">port/setvlan</span> <span class="pre">&lt;port&gt;</span> <span class="pre">&lt;vlan&gt;</span></code></p></td>
+<td><p>Put a port in a VLAN for its untagged frames (access port).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vlan/addport</span> <span class="pre">&lt;vlan&gt;</span> <span class="pre">&lt;port&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">vlan/delport</span> <span class="pre">&lt;vlan&gt;</span> <span class="pre">&lt;port&gt;</span></code></p></td>
+<td><p>Add / remove a port as tagged member of a VLAN (trunk port).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hash/print</span></code>, <code class="docutils literal notranslate"><span class="pre">hash/find</span> <span class="pre">&lt;mac&gt;</span></code></p></td>
+<td><p>MAC address table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fstp/setfstp</span> <span class="pre">&lt;0|1&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">fstp/print</span></code></p></td>
+<td><p>Spanning tree on / off, and its state.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Things to know:</p>
+<ul class="simple">
+<li><p><strong>Port numbers are not predictable.</strong> They are given when the project starts: read them with <code class="docutils literal notranslate"><span class="pre">port/print</span></code>, where each port names the machine interface plugged into it.</p></li>
+<li><p><strong>VLAN 0 is the default VLAN</strong> of the switch: a port the lab did not put in a VLAN is there, untagged, with every other such port.</p></li>
+<li><p><strong>A command the switch refuses</strong> prints its error after <code class="docutils literal notranslate"><span class="pre">error:</span></code> (for instance <code class="docutils literal notranslate"><span class="pre">error:</span> <span class="pre">File</span> <span class="pre">exists</span></code> when creating a VLAN that exists) and the session goes on.</p></li>
+<li><p><strong>Students get a subset of the commands.</strong> Through the GUI (user mode) only the commands of <code class="docutils literal notranslate"><span class="pre">params.switch_user_commands</span></code> reach the switch: those of the table above, <code class="docutils literal notranslate"><span class="pre">showinfo</span></code>, <code class="docutils literal notranslate"><span class="pre">port/showinfo</span></code>, <code class="docutils literal notranslate"><span class="pre">hash/showinfo</span></code>, <code class="docutils literal notranslate"><span class="pre">fstp/showinfo</span></code>, <code class="docutils literal notranslate"><span class="pre">fstp/setedge</span></code> and <code class="docutils literal notranslate"><span class="pre">fstp/bonus</span></code>. Any other one — creating or removing ports, loading plugins, shutting the switch down… — is answered <code class="docutils literal notranslate"><span class="pre">error:</span> <span class="pre">command</span> <span class="pre">'…'</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">allowed</span></code> without being sent. A privileged user (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> from a root shell) is not restricted.</p></li>
+<li><p><strong>What is typed on the console is not saved</strong> with <strong>File → Save Project</strong>: a restored project gets the switches as the lab declares them (see <a class="reference internal" href="#limits">Limits</a>).</p></li>
+</ul>
+</section>
+</section>
+<section id="in-a-lab">
+<h2>In a lab<a class="headerlink" href="#in-a-lab" title="Link to this heading">¶</a></h2>
+<section id="declaring-the-kind-of-a-network">
+<h3>Declaring the kind of a network<a class="headerlink" href="#declaring-the-kind-of-a-network" title="Link to this heading">¶</a></h3>
+<p>The kind of a network and, for a manageable switch, its VLANs and the access to its console are given in <code class="docutils literal notranslate"><span class="pre">_network_specs</span></code>. <code class="docutils literal notranslate"><span class="pre">_topology</span></code> keeps its syntax, and a network without entry — or without <code class="docutils literal notranslate"><span class="pre">mode</span></code> — is a hub.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">NetScheme</span><span class="p">(</span><span class="n">NetScheme0</span><span class="p">):</span>
+    <span class="n">_machine_specs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;pc1&#39;</span><span class="p">:</span> <span class="p">{},</span> <span class="s1">&#39;pc2&#39;</span><span class="p">:</span> <span class="p">{},</span> <span class="s1">&#39;r1&#39;</span><span class="p">:</span> <span class="p">{},</span> <span class="s1">&#39;r2&#39;</span><span class="p">:</span> <span class="p">{},</span> <span class="s1">&#39;srv&#39;</span><span class="p">:</span> <span class="p">{}}</span>
+    <span class="n">_network_specs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;lan&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;mode&#39;</span><span class="p">:</span> <span class="s1">&#39;managed&#39;</span><span class="p">,</span>                           <span class="c1"># manageable switch</span>
+                <span class="s1">&#39;allow_connection&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>                   <span class="c1"># students may not open its console (default: True)</span>
+                <span class="s1">&#39;vlans&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;pc1&#39;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>                         <span class="c1"># access port: untagged frames in VLAN 10</span>
+                          <span class="s1">&#39;pc2&#39;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>
+                          <span class="s1">&#39;r1&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span>                    <span class="c1"># trunk port: VLANs 10 and 20, tagged</span>
+                          <span class="s1">&#39;r2&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;vlan&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;trunk&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">30</span><span class="p">]}}},</span>  <span class="c1"># native VLAN 1 + VLAN 30 tagged</span>
+        <span class="s1">&#39;dmz&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;mode&#39;</span><span class="p">:</span> <span class="s1">&#39;switch&#39;</span><span class="p">},</span>                           <span class="c1"># switch without VLAN nor console</span>
+    <span class="p">}</span>
+    <span class="n">_topology</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;lan&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;pc1&#39;</span><span class="p">,</span> <span class="s1">&#39;pc2&#39;</span><span class="p">,</span> <span class="s1">&#39;r1&#39;</span><span class="p">,</span> <span class="s1">&#39;r2&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;dmz&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;r1&#39;</span><span class="p">,</span> <span class="s1">&#39;srv&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;old&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;srv&#39;</span><span class="p">,</span> <span class="s1">&#39;pc2&#39;</span><span class="p">],</span>                               <span class="c1"># no entry in _network_specs: a hub</span>
+    <span class="p">}</span>
+</pre></div>
+</div>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Default</p></th>
 <th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">labs</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_labs</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">[[lab,</span> <span class="pre">flavor|null],</span> <span class="pre">...]</span></code></p></td>
-<td><p>Authorised labs + optional flavor preset (required)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'hub'</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'hub'</span></code>, <code class="docutils literal notranslate"><span class="pre">'switch'</span></code> or <code class="docutils literal notranslate"><span class="pre">'managed'</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">start_after</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_start_after</span></code></p></td>
-<td><p>ISO datetime</p></td>
-<td><p>Exam opens after this moment</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">allow_connection</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>Manageable switch only: the students may open its console. <code class="docutils literal notranslate"><span class="pre">False</span></code> shows a red cell in the Switches tab and makes <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> refuse them.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">end_before</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_end_before</span></code></p></td>
-<td><p>ISO datetime</p></td>
-<td><p>Exam closes before this moment</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duration</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_duration</span></code></p></td>
-<td><p>int (min)</p></td>
-<td><p>Max duration; default <code class="docutils literal notranslate"><span class="pre">params.default_exam_duration</span> <span class="pre">=</span> <span class="pre">90</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">eval_interval</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_eval_interval</span></code></p></td>
-<td><p>int (s)</p></td>
-<td><p>Auto-eval period; default <code class="docutils literal notranslate"><span class="pre">params.default_eval_interval_during_exams</span> <span class="pre">=</span> <span class="pre">60</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">record_sessions</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_record_sessions</span></code></p></td>
-<td><p>bool</p></td>
-<td><p>Record terminal sessions; default <code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_pre_start_date</span></code></p></td>
-<td><p>list[ISO]</p></td>
-<td><p>Written by <code class="docutils literal notranslate"><span class="pre">pre-start-exam</span></code>; one entry per call</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">started_at</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_started_at</span></code></p></td>
-<td><p>ISO datetime</p></td>
-<td><p>Written by <code class="docutils literal notranslate"><span class="pre">start-exam</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ended_at</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">params.exam_ended_at</span></code></p></td>
-<td><p>ISO datetime</p></td>
-<td><p>Written by <code class="docutils literal notranslate"><span class="pre">end-exam</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vlans</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
+<td><p>Manageable switch only: the VLANs of the ports, by machine name.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>The first six are set by the instructor (via <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span></code>); the last three are runtime state markers.</p>
-<p><code class="docutils literal notranslate"><span class="pre">labs</span></code> format: each entry is a two-element list <code class="docutils literal notranslate"><span class="pre">[lab_cli_arg,</span> <span class="pre">flavor_or_null]</span></code>, where <code class="docutils literal notranslate"><span class="pre">lab_cli_arg</span></code> is what <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code> would receive (e.g. <code class="docutils literal notranslate"><span class="pre">s4/tp_ssh</span></code>) and the second element is the name of a <code class="docutils literal notranslate"><span class="pre">Flavor</span></code> preset or <code class="docutils literal notranslate"><span class="pre">null</span></code>:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;labs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[[</span><span class="s2">&quot;s4/tp_ssh&quot;</span><span class="p">,</span><span class="w"> </span><span class="kc">null</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;s4/tp_dhcp&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;hard&quot;</span><span class="p">]]</span>
-</pre></div>
-</div>
-<p>Legacy plain-string entries are still accepted on read; always unpack via <code class="docutils literal notranslate"><span class="pre">params.parse_lab_entry(entry)</span></code>.</p>
-</section>
-<section id="gui-exam-logic">
-<h2>GUI exam logic<a class="headerlink" href="#gui-exam-logic" title="Link to this heading">¶</a></h2>
-<p>Each student GUI reads <code class="docutils literal notranslate"><span class="pre">exam.json</span></code> every second (<code class="docutils literal notranslate"><span class="pre">_update_exam_state</span></code>) and runs the same logic — there is no coordinator. The phase is computed from <code class="docutils literal notranslate"><span class="pre">exam.json</span></code> content alone (<code class="docutils literal notranslate"><span class="pre">_compute_exam_phase</span></code>):</p>
-<ul class="simple">
-<li><p><strong>Waiting</strong> — <code class="docutils literal notranslate"><span class="pre">start_after</span></code> set, <code class="docutils literal notranslate"><span class="pre">now</span> <span class="pre">&lt;</span> <span class="pre">start_after</span></code>, <code class="docutils literal notranslate"><span class="pre">started_at</span></code> not set.</p></li>
-<li><p><strong>Ended</strong> — <code class="docutils literal notranslate"><span class="pre">end_before</span></code> set and <code class="docutils literal notranslate"><span class="pre">now</span> <span class="pre">≥</span> <span class="pre">end_before</span></code>, <strong>or</strong> <code class="docutils literal notranslate"><span class="pre">started_at</span></code> set and <code class="docutils literal notranslate"><span class="pre">now</span> <span class="pre">≥</span> <span class="pre">started_at</span> <span class="pre">+</span> <span class="pre">duration</span></code> (duration defaults to <code class="docutils literal notranslate"><span class="pre">params.default_exam_duration</span> <span class="pre">=</span> <span class="pre">90</span></code>). The duration check fires only when <code class="docutils literal notranslate"><span class="pre">started_at</span></code> is set — without it, the exam was never formally started.</p></li>
-<li><p>Otherwise: <strong>Active</strong>.</p></li>
-</ul>
-<p><code class="docutils literal notranslate"><span class="pre">real_starting_time</span></code> (drives the countdown) = <code class="docutils literal notranslate"><span class="pre">started_at</span></code> if set, else <code class="docutils literal notranslate"><span class="pre">start_after</span></code> if set, else GUI process start time.</p>
+<p>The value given for a machine in <code class="docutils literal notranslate"><span class="pre">vlans</span></code> describes its port:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Phase</p></th>
-<th class="head"><p>Preconditions</p></th>
-<th class="head"><p>Actions</p></th>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Port</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Waiting</p></td>
-<td><p>—</p></td>
-<td><p>Show SRE logo + countdown to <code class="docutils literal notranslate"><span class="pre">start_after</span></code>. Once <code class="docutils literal notranslate"><span class="pre">now</span> <span class="pre">≥</span> <span class="pre">start_after</span> <span class="pre">−</span> <span class="pre">params.max_duration_between_exam_pre_start_and_start</span></code> (60 s) <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code> is absent, fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code> once (stops non-exam projects, starts exam labs, appends to <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code>).</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">10</span></code></p></td>
+<td><p>Access port: the untagged frames of the machine are in VLAN 10.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Active</p></td>
-<td><p>Exam containers up — one running project per lab in <code class="docutils literal notranslate"><span class="pre">labs</span></code>, no others (<code class="docutils literal notranslate"><span class="pre">_projects_ready</span></code>)</p></td>
-<td><p>Fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code> once (stamps <code class="docutils literal notranslate"><span class="pre">started_at</span></code>; calls <code class="docutils literal notranslate"><span class="pre">pre-start-exam</span></code> internally if <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code> is missing). Show tabs + countdown. Every <code class="docutils literal notranslate"><span class="pre">eval_interval</span></code> s, fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-exam</span></code> (skipped if previous still running). If <code class="docutils literal notranslate"><span class="pre">labs</span></code> changes, re-fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code>.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[10,</span> <span class="pre">20]</span></code></p></td>
+<td><p>Trunk port: the machine exchanges the frames of VLANs 10 and 20 with 802.1Q tags. Its untagged frames stay in the default VLAN.</p></td>
 </tr>
-<tr class="row-even"><td><p>Ended</p></td>
-<td><p>—</p></td>
-<td><p>Fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">end-exam</span></code> once (stamps <code class="docutils literal notranslate"><span class="pre">ended_at</span></code>, runs a final concurrent eval with <code class="docutils literal notranslate"><span class="pre">save-records</span> <span class="pre">--force</span></code>). Show “That’s All Folks” until the instructor runs <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">del-exam</span></code>.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">{'vlan':</span> <span class="pre">1,</span> <span class="pre">'trunk':</span> <span class="pre">[10,</span> <span class="pre">20]}</span></code></p></td>
+<td><p>Both: native (untagged) VLAN 1 and tagged VLANs 10 and 20.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>Rules:</p>
+<ul>
+<li><p>VLAN IDs go from 1 to 4094, and a VLAN cannot be both the untagged and a tagged VLAN of one port.</p></li>
+<li><p>A machine <code class="docutils literal notranslate"><span class="pre">vlans</span></code> does not name stays in the default VLAN of the switch (VLAN 0), with every other undeclared port.</p></li>
+<li><p>On a trunk port the machine handles the tags itself, typically with one sub-interface per VLAN — the classic <em>router on a stick</em>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="bp">self</span><span class="o">.</span><span class="n">cmd</span><span class="p">(</span><span class="s1">&#39;r1&#39;</span><span class="p">,</span> <span class="s1">&#39;ip link add link eth0 name eth0.10 type vlan id 10&#39;</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">cmd</span><span class="p">(</span><span class="s1">&#39;r1&#39;</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;ip addr add </span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">ips</span><span class="o">.</span><span class="n">r1_vlan10</span><span class="si">}</span><span class="s1"> dev eth0.10&#39;</span><span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">cmd</span><span class="p">(</span><span class="s1">&#39;r1&#39;</span><span class="p">,</span> <span class="s1">&#39;ip link set eth0.10 up&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+<li><p>A switch that is not a hub drops the tagged frames of a VLAN the port is not a member of: a trunk between two machines needs a hub, or a manageable switch with trunk ports — not a plain <code class="docutils literal notranslate"><span class="pre">'switch'</span></code>.</p></li>
+<li><p>An unknown <code class="docutils literal notranslate"><span class="pre">mode</span></code>, <code class="docutils literal notranslate"><span class="pre">vlans</span></code> on a network that is not manageable, a machine that is not on the network or an invalid VLAN ID raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> when the <code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> is built: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span></code> reports them before any start.</p></li>
+</ul>
 </section>
-<section id="commands">
-<h2>Commands<a class="headerlink" href="#commands" title="Link to this heading">¶</a></h2>
-<p>See <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a> for <code class="docutils literal notranslate"><span class="pre">set-exam</span></code>, <code class="docutils literal notranslate"><span class="pre">del-exam</span></code>, <code class="docutils literal notranslate"><span class="pre">pre-start-exam</span></code>, <code class="docutils literal notranslate"><span class="pre">start-exam</span></code>, <code class="docutils literal notranslate"><span class="pre">eval-exam</span></code>, <code class="docutils literal notranslate"><span class="pre">end-exam</span></code>, <code class="docutils literal notranslate"><span class="pre">save-records</span></code>, <code class="docutils literal notranslate"><span class="pre">watch</span></code>, <code class="docutils literal notranslate"><span class="pre">cat</span></code>, <code class="docutils literal notranslate"><span class="pre">check-eval</span></code>, <code class="docutils literal notranslate"><span class="pre">re-eval</span></code>, <code class="docutils literal notranslate"><span class="pre">sheet</span></code>, <code class="docutils literal notranslate"><span class="pre">outline</span></code>.</p>
+<section id="running-switch-commands-from-a-state">
+<h3>Running switch commands from a state<a class="headerlink" href="#running-switch-commands-from-a-state" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">self.switch_cmd(network,</span> <span class="pre">command,</span> <span class="pre">step=1,</span> <span class="pre">default_value='',</span> <span class="pre">default_code=0,</span> <span class="pre">allow_error=False)</span></code> runs one command of the console of a manageable switch when the state is applied. Since port numbers are not known in advance, a word <code class="docutils literal notranslate"><span class="pre">&#64;machine</span></code> in the command stands for the number of the port that machine is plugged into:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@sre_state</span><span class="p">(</span><span class="n">user_allowed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;pc2 joins VLAN 10&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">move</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">switch_cmd</span><span class="p">(</span><span class="s1">&#39;lan&#39;</span><span class="p">,</span> <span class="s1">&#39;vlan/create 10&#39;</span><span class="p">,</span> <span class="n">allow_error</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># code 17: the VLAN already exists</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">switch_cmd</span><span class="p">(</span><span class="s1">&#39;lan&#39;</span><span class="p">,</span> <span class="s1">&#39;port/setvlan @pc2 10&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>It follows the contract of <code class="docutils literal notranslate"><span class="pre">host_cmd()</span></code>: it returns <code class="docutils literal notranslate"><span class="pre">(output,</span> <span class="pre">code)</span></code>, a placeholder until the command has run (the real result is visible in a <code class="docutils literal notranslate"><span class="pre">multi_pass</span></code> state). <code class="docutils literal notranslate"><span class="pre">code</span></code> is <code class="docutils literal notranslate"><span class="pre">0</span></code>, the error number given by the switch, or <code class="docutils literal notranslate"><span class="pre">-2</span></code> when the command could not be run at all (console unreachable, unknown <code class="docutils literal notranslate"><span class="pre">&#64;machine</span></code>). The switch commands of a step run with its host operations, in registration order, before the operations on the containers. See <a class="reference internal" href="lab-authoring.html#switch-operations"><span class="std std-ref">Switch operations</span></a>.</p>
+</section>
+<section id="grading-the-configuration-of-a-switch">
+<h3>Grading the configuration of a switch<a class="headerlink" href="#grading-the-configuration-of-a-switch" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">self.test_switch(network,</span> <span class="pre">command,</span> <span class="pre">step=1,</span> <span class="pre">...)</span></code> registers a console command in <code class="docutils literal notranslate"><span class="pre">grade()</span></code> like <code class="docutils literal notranslate"><span class="pre">self.test()</span></code> does for a machine, and returns <code class="docutils literal notranslate"><span class="pre">(output,</span> <span class="pre">code)</span></code> on the following pass. The helpers of <code class="docutils literal notranslate"><span class="pre">lib/switch.py</span></code> turn the port and VLAN tables into something directly usable:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">switch</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_switch_ports</span><span class="p">,</span> <span class="n">get_switch_vlans</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Grade</span><span class="p">(</span><span class="n">Grade0</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">grade</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">grade</span><span class="p">()</span>
+        <span class="n">ports</span> <span class="o">=</span> <span class="n">get_switch_ports</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;lan&#39;</span><span class="p">)</span>
+        <span class="c1"># {&#39;pc1&#39;: {&#39;port&#39;: 2, &#39;interface&#39;: &#39;eth0&#39;, &#39;vlan&#39;: 10, &#39;tagged_vlans&#39;: []},</span>
+        <span class="c1">#  &#39;r1&#39;:  {&#39;port&#39;: 1, &#39;interface&#39;: &#39;eth0&#39;, &#39;vlan&#39;: 0,  &#39;tagged_vlans&#39;: [10, 20]}}</span>
+        <span class="n">in_vlan_10</span> <span class="o">=</span> <span class="n">ports</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pc2&#39;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;vlan&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">10</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">add_grade_element</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s1">&#39;pc2 in VLAN 10&#39;</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">in_vlan_10</span><span class="p">),</span> <span class="n">max_grade</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">vlans</span> <span class="o">=</span> <span class="n">get_switch_vlans</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;lan&#39;</span><span class="p">)</span>   <span class="c1"># {10: {&#39;untagged&#39;: [2], &#39;tagged&#39;: [1]}, ...} (port numbers)</span>
+</pre></div>
+</div>
+<p>Both helpers return <code class="docutils literal notranslate"><span class="pre">{}</span></code> on the registration pass and when the console failed. The results are archived with the tests of the machines, under the name of the network, so <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span></code> handle them like any other test. Behavioural checks (a ping between two machines of a VLAN, a capture on a third machine) remain the most robust way to grade what the students were asked to obtain; reading the switch tells <em>how</em> they obtained it. See <a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py"><span class="std std-ref">Switch helpers</span></a>.</p>
+</section>
+<section id="a-complete-example">
+<h3>A complete example<a class="headerlink" href="#a-complete-example" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">lab/sre/_DRAFT_dummy/switch_example.py</span></code> uses everything above in one small lab: a hub, a switch and two manageable switches (one open, one closed), access ports and a trunk port with a router on a stick, two states built on <code class="docutils literal notranslate"><span class="pre">switch_cmd()</span></code>, questions about what a third machine sees on the hub and on the switch, and a grade reading the VLANs from the switch. It is in a <code class="docutils literal notranslate"><span class="pre">_DRAFT_</span></code> directory: start it as a privileged user with <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">sre/_DRAFT_dummy/switch_example.py</span></code>.</p>
+</section>
+</section>
+<section id="on-the-command-line">
+<h2>On the command line<a class="headerlink" href="#on-the-command-line" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>With a switch</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;network&gt;</span></code></p></td>
+<td><p>Opens the console of a manageable switch. In user mode: the allowed commands only, and refused when the lab closed the console (<code class="docutils literal notranslate"><span class="pre">allow_connection</span></code>) or when the network only connects hidden machines — unless the project is a debug project.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;network&gt;</span> <span class="pre">&lt;command…&gt;</span></code></p></td>
+<td><p>Privileged: runs one console command and exits with 0 or the error number of the switch, e.g. <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">lan</span> <span class="pre">port/setvlan</span> <span class="pre">&#64;pc2</span> <span class="pre">10</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></p></td>
+<td><p>Prints the kind of each network that is not a hub with the declared VLANs, and the switch commands of the states.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span></code></p></td>
+<td><p>Writes the kinds and the VLANs in <code class="docutils literal notranslate"><span class="pre">lab.conf</span></code>: <code class="docutils literal notranslate"><span class="pre">pc1[0]=&quot;lan/vlan=10&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">r1[0]=&quot;lan/trunk=10,20&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">CD_MODE[lan]=&quot;managed&quot;</span></code>. This syntax is the one of the Kathara fork SRE installs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A hub or a plain switch has no console: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span></code> answer <code class="docutils literal notranslate"><span class="pre">device</span> <span class="pre">&lt;network&gt;</span> <span class="pre">is</span> <span class="pre">a</span> <span class="pre">hub:</span> <span class="pre">it</span> <span class="pre">has</span> <span class="pre">no</span> <span class="pre">console</span></code>.</p>
+<p>In a debug project, and for the states of a project in instructor mode, the <strong>Log</strong> tab shows the switch commands a state or an evaluation ran, as <code class="docutils literal notranslate"><span class="pre">stepN</span> <span class="pre">-</span> <span class="pre">on</span> <span class="pre">switch</span> <span class="pre">&lt;network&gt;</span> <span class="pre">:</span> <span class="pre">&lt;command&gt;</span></code> followed by the output and the exit code.</p>
+</section>
+<section id="limits">
+<h2>Limits<a class="headerlink" href="#limits" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Save and restore.</strong> A save file keeps the kind of each network and the declared VLANs, not what was changed on a console afterwards: a restored project starts again from the lab’s declaration. A lab for which this matters re-applies its own configuration in its <code class="docutils literal notranslate"><span class="pre">restore</span></code> state with <code class="docutils literal notranslate"><span class="pre">switch_cmd()</span></code>.</p></li>
+<li><p><strong>Schema.</strong> The schema draws every network the same way, whatever its kind; the Switches tab tells them apart.</p></li>
+<li><p><strong>Trunks through a plain switch.</strong> See the rules above: use a hub or a manageable switch.</p></li>
+<li><p><strong>Rates.</strong> Links are user-space switches (about 45–50 Mbit/s in TCP), whatever the kind.</p></li>
+</ul>
+</section>
+<section id="what-a-host-needs">
+<h2>What a host needs<a class="headerlink" href="#what-a-host-needs" title="Link to this heading">¶</a></h2>
+<p>Hubs work everywhere. Switches and manageable switches need the Kathara fork SRE installs (<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">venv</span></code>) and its VDE network plugin, which <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">network-plugin</span></code> installs in place of the stock plugin — once per host, see <a class="reference internal" href="installation.html#network-plugin-for-the-switch-types"><span class="std std-ref">Installation</span></a>. On a host that only has the stock plugin, starting a lab with a switch fails cleanly: nothing is left running and the message names the networks concerned and the command to run.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sre: Collision domain `sw` cannot be deployed in `switch` mode: the Kathara Network Plugin `kathara/katharanp_vde:amd64` does not support it. Use an up-to-date VDE version of the plugin.
+This lab has networks that are not hubs (lan, dmz, sw): they need the Kathara network plugin with the switch types.
+Install it with `make network-plugin` in /opt/sre (see the installation guide).
+</pre></div>
+</div>
+</section>
+<section id="tests">
+<h2>Tests<a class="headerlink" href="#tests" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Unit tests (no Docker): <code class="docutils literal notranslate"><span class="pre">tests/test_switch_modes.py</span></code> (declaration, deployment calls, <code class="docutils literal notranslate"><span class="pre">switch_cmd()</span></code>, <code class="docutils literal notranslate"><span class="pre">test_switch()</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_switch_console.py</span></code> (console, allowed commands, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_switch_lib.py</span></code> (helpers of <code class="docutils literal notranslate"><span class="pre">lib/switch.py</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_gui_switches_view.py</span></code> (Switches tab).</p></li>
+<li><p>Live tests (<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">docker-tests</span></code>, real containers): <code class="docutils literal notranslate"><span class="pre">TestHub</span></code> checks that a third machine captures the traffic of a hub — it runs with any plugin — and <code class="docutils literal notranslate"><span class="pre">TestSwitchModes</span></code> that it does not on a switch nor inside a VLAN of a manageable switch, plus VLAN isolation, the console, a state, grading, export and save / restore. <code class="docutils literal notranslate"><span class="pre">TestSwitchModes</span></code> is skipped on a host without the plugin with the switch types.</p></li>
+</ul>
 </section>
 </section>
 
@@ -608,23 +799,23 @@
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="internals.html">
+          <a class="next-page" href="translations.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Runtime &amp; Internals</div>
+                <div class="title">Translating a Lab</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="cli.html">
+          <a class="prev-page" href="lab-authoring.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></div>
+                <div class="title">Lab Authoring Guide</div>
                 
               </div>
             </a>
@@ -658,10 +849,23 @@
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Exam Reference</a><ul>
-<li><a class="reference internal" href="#exam-json-single-source-of-truth"><code class="docutils literal notranslate"><span class="pre">exam.json</span></code> — single source of truth</a></li>
-<li><a class="reference internal" href="#gui-exam-logic">GUI exam logic</a></li>
-<li><a class="reference internal" href="#commands">Commands</a></li>
+<li><a class="reference internal" href="#">Hubs, switches and VLANs</a><ul>
+<li><a class="reference internal" href="#in-the-gui">In the GUI</a><ul>
+<li><a class="reference internal" href="#the-switches-tab">The Switches tab</a></li>
+<li><a class="reference internal" href="#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#in-a-lab">In a lab</a><ul>
+<li><a class="reference internal" href="#declaring-the-kind-of-a-network">Declaring the kind of a network</a></li>
+<li><a class="reference internal" href="#running-switch-commands-from-a-state">Running switch commands from a state</a></li>
+<li><a class="reference internal" href="#grading-the-configuration-of-a-switch">Grading the configuration of a switch</a></li>
+<li><a class="reference internal" href="#a-complete-example">A complete example</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#on-the-command-line">On the command line</a></li>
+<li><a class="reference internal" href="#limits">Limits</a></li>
+<li><a class="reference internal" href="#what-a-host-needs">What a host needs</a></li>
+<li><a class="reference internal" href="#tests">Tests</a></li>
 </ul>
 </li>
 </ul>

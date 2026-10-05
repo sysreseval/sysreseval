@@ -33,7 +33,7 @@ While iterating on a `srelab.py`, you typically alternate between editing the mo
 
 ### `sre check [-p] <lab> [<state>]`
 
-Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab.
+Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`, as `sre start` and `sre eval` do), instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab.
 
 ### `sre start --debug-project [-p] <lab> [--xauth-file <path>]`
 
@@ -42,6 +42,8 @@ The author counterpart to `sre start`. Privileged only and incompatible with `--
 - **Topology**: every machine is shown in the GUI's *Machines* tab — even those declared `hidden=True` or `allow_connection=False`. *Connect* buttons are exposed for all of them so you can step inside infrastructure machines (DNS, monitors, helpers) to inspect their state.
 - **Restrictions lifted**: user-mode guards on `sre state` and `sre connect` (which normally refuse to touch hidden machines or apply `user_allowed=False` states) are bypassed.
 - **Grading**: when you `sre eval` a debug project, marks are always shown and every grade scope is surfaced — `no_mark_on_self_grade`, `hide_potential_penalty_grades_in_self_grade` and the periodic-eval gating are all ignored.
+- **Operations log**: every state application (`initial` at start, `sre state`, the `save`/`restore` lifecycle states) and every evaluation appends what it executed to `<project dir>/operations.log`: one header per run, then `stepN - on <machine|host> : <operation>` lines with the command output and exit code. File writes, appends and copies show the path, mode, owner and size, followed by the content written (text only, capped like command outputs). Each evaluation ends with its grade elements (`grade - [<part>] <title> : <grade> / <max>`, with `(self-eval only)` / `(exo-eval only)` when the scope is restricted) and the totals and marks of both scopes. The GUI shows it live in the *Log* tab. Never written for a normal project.
+- **Instructor texts**: the texts wrapped in [`instructor()`](#instructor-only-texts--instructor) are kept in `info.json`, as for a project in instructor mode, and the GUI shows its *Instructor mode* button on the project to display or hide them.
 - **`-p` is implicit**: `--debug-project` always treats the lab argument as a filesystem path, so you can point it directly at the `.py` you're editing (e.g. `~/labs/draft.py`) without copying it into `/opt/sre/lab/` first.
 
 The marker survives container restarts and is cleared when the project is `sre stop`ped or `sre wipe`d.
@@ -50,7 +52,7 @@ The marker survives container restarts and is cleared when the project is `sre s
 
 ### `sre connect <running_lab> <device>` and `sre exec <running_lab> <device> <command…>`
 
-`sre connect` opens an interactive shell inside `<device>` (using the machine's configured `shell`). `sre exec` runs a one-shot command and returns its stdout/stderr/exit code — useful for scripting checks against a running lab without holding a TTY. `sre exec` is privileged only; both honor the debug-project marker, so they can target hidden machines when the project was started with `--debug-project`.
+`sre connect` opens an interactive shell inside `<device>` (using the machine's configured `shell`), or the management console when `<device>` is a managed switch (a network with `'mode': 'managed'`, see [Switches and VLANs](#switches-and-vlans)). `sre exec` runs a one-shot command and returns its stdout/stderr/exit code — useful for scripting checks against a running lab without holding a TTY. On a managed switch `sre exec <running_lab> <network> <command…>` runs one console command (`vlan/print`, `port/setvlan @pc1 10`). `sre exec` is privileged only; both honor the debug-project marker, so they can target hidden machines when the project was started with `--debug-project`.
 
 `sre connect --exec <argument…>` is a hybrid: launches the machine's shell, runs the command, exits. Unlike `sre exec` it goes through the shell launcher and is available to students.
 
@@ -117,6 +119,7 @@ sre connect alice router      # disambiguate by username
 | `.private/records/` | Asciinema recordings of terminal sessions, if `record_sessions` is enabled. |
 | `.private/eval_in_progress` | PID lock created during `sre eval` to prevent concurrent evaluations. |
 | `.private/debug_project` | Marker dropped by `sre start --debug-project` (see above). |
+| `.private/instructor_mode` | Marker of the instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`; see [Instructor-only texts](#instructor-only-texts--instructor)). |
 | `.private/auto_eval.log` | One line per student-triggered self-eval; drives the `self.auto_eval_count` counter exposed to `Grade.grade()`. |
 
 Evaluation archives are **not** stored under the project directory — they go to `/var/lib/sre/archives/` (plus any extra `archive_dirs` declared at module level), named `{YYYYmmddHHMMSS}_{running_lab_name}.zst`.
@@ -152,33 +155,79 @@ class Data(Data0):
         data = cls(secret="changeme", vlan_id=42)
         # data.nets and data.ips are injected automatically by Data0.__post_init__
         data.nets.lan, data.nets.mgmt = random_ipv4networks([24, 24], from_private_network=True)
-        ip = random_ipv4s(data.nets.lan, 1)[0]
-        data.ips.router = IPv4Interface(f'{ip}/{data.nets.lan.prefixlen}')
+        data.ips.router = random_ipv4s(data.nets.lan, 1)[0]   # an IPv4Interface, prefix included
+        data.ips.printer = IPv4Interface('192.0.2.7/24')        # explicit values work too
         return data
 ```
 
 **Key points:**
 
-- `data.ips` holds `IPv4Interface` values (address + prefix length); `data.nets` holds `IPv4Network` values; `data.macs` holds `netaddr.EUI` (MAC address) values.
-- All three containers are injected automatically into every `Data0` subclass instance by `__post_init__` — no declaration needed.
-- The containers enforce their types: assigning a plain string to `data.ips` raises `TypeError`; always wrap with the correct type before assigning.
-- `data.ips` requires `IPv4Interface` (not bare `IPv4Address`) — always assign with a prefix, e.g. `IPv4Interface('10.0.0.1/24')`.
+- `data.ips` holds `IPv4Interface` values (address + prefix length); `data.nets` holds `IPv4Network` values; `data.ips6` holds `IPv6Interface` values; `data.nets6` holds `IPv6Network` values; `data.macs` holds `netaddr.EUI` (MAC address) values.
+- All five containers are injected automatically into every `Data0` subclass instance by `__post_init__` — no declaration needed (and do not declare fields with these names).
+- The containers enforce their types: assigning a plain string to `data.ips` raises `TypeError`; always wrap with the correct type before assigning. The families are kept apart: `data.ips` refuses an `IPv6Interface` and `data.ips6` an `IPv4Interface`.
+- `data.ips` requires `IPv4Interface` (not bare `IPv4Address`) — always assign with a prefix, e.g. `IPv4Interface('10.0.0.1/24')`; likewise `data.ips6` requires `IPv6Interface`, e.g. `IPv6Interface('2001:db8::1/64')`.
 - `Data.generate(flavor)` is called once at `sre start`; the result is saved to `data.json`.
-- Serialization handles `IPv4Interface`, `IPv4Network`, `EUI`, and nested `Data0` subclasses transparently.
+- Serialization: the containers are stored as strings; standalone fields of type `IPv4Address` / `IPv6Address`, `IPv4Interface` / `IPv6Interface`, `IPv4Network` / `IPv6Network`, `EUI` and nested `Data0` subclasses are encoded with markers and restored with their exact type. Any other field must be JSON-serialisable (`sre check` verifies the round trip).
 
 ### IP helper functions (from `/opt/sre/lib/ips.py`)
 
 ```python
-from ips import random_ipv4networks, random_ipv4s
+from ipaddress import IPv6Network
+from ips import (random_ipv4networks, random_ipv4s, random_ipv6networks, random_ipv6s,
+                 random_ips_from_topology)
 
-# Returns a list of n disjoint networks with the given prefix lengths:
+# n disjoint IPv4 networks with the given prefix lengths (RFC 1918 ranges with from_private_network=True):
 nets = random_ipv4networks([24, 28, 24], from_private_network=True)
+# n distinct random IPv4Interface values (prefix included) in a network;
+# the network and broadcast addresses are never returned:
+data.ips.host, data.ips.gw = random_ipv4s(nets[0], 2, exclude_nets=[nets[1]])
 
-# Returns n distinct random IPv4Address objects within a network:
-hosts = random_ipv4s(nets[0], 3, exclude_nets=[nets[1]])
-# Wrap as IPv4Interface before assigning to data.ips:
-data.ips.host = IPv4Interface(f'{hosts[0]}/{nets[0].prefixlen}')
+# IPv6 twins — search space: global unicast 2000::/3 by default, unique local fd00::/8 with
+# from_private_network=True, or anything with from_network=IPv6Network('2001:db8::/32'):
+data.nets6.lan, data.nets6.wan = random_ipv6networks([64, 64], from_private_network=True)
+# n distinct IPv6Interface values; offset 0 (the subnet-router anycast address) is never returned:
+data.ips6.host, data.ips6.gw = random_ipv6s(data.nets6.lan, 2)
+
+# Fill data.ips (and data.ips6 with ipv6=True) for every machine of a topology from
+# data.nets / data.nets6 — data.ips.m for single-homed machines, data.ips.m_net otherwise:
+random_ips_from_topology(data, NetScheme._topology, ipv6=True)   # ipv4=False, ipv6=True: IPv6-only lab
 ```
+
+`random_ipv4s_with_range` / `random_ipv6s_with_range` draw ordered address ranges (for DHCP pools), `random_mac_address` random unicast MAC addresses.
+
+### IPv6 labs
+
+Kathara starts every container with IPv6 **disabled** (`net.ipv6.conf.all.disable_ipv6=1`). A lab turns it on with the module-level option:
+
+```python
+ipv6 = True   # IPv6 enabled in every machine of the lab
+```
+
+`Machine(ipv6=False)` (an `'ipv6': False` entry in `_machine_specs`) opts one machine out, `Machine(ipv6=True)` opts one in when the module option is absent. With IPv6 enabled Kathara sets `disable_ipv6=0`, `net.ipv6.conf.all.forwarding=1` and `accept_ra=0` in the container (every interface gets its link-local address), so, as for IPv4 (`set_ip_forward`), the `initial` state turns forwarding off on the hosts with `set_ipv6_forward(self, m, False)`. `sre export` writes the effective flag as `m[ipv6]="true"` in `lab.conf`.
+
+A dual-stack lab keeps both families in the same `net_config` entry, IPv4 first:
+
+```python
+from ipaddress import IPv4Network, IPv6Network
+from net_config import get_net_config_from_topology, set_net_config_entry, set_ip_forward, set_ipv6_forward
+
+# by hand:
+self.net_config = {
+    'pc': [([d.ips.pc, d.ips6.pc], [(IPv4Network('0.0.0.0/0'), d.ips.gw), (IPv6Network('::/0'), d.ips6.gw)])],
+}
+# or from the topology (data.ips6 / data.nets6 follow the data.ips / data.nets naming; a machine
+# without an entry in data.ips6 — a SLAAC or IPv4-only host — simply gets no IPv6 part):
+self.net_config = get_net_config_from_topology(self, gateway='gw', ipv6=True)   # default_route6=... for a ::/0 on gw;
+# default_route (172.17.0.1, the Docker bridge, for a bridged=True gateway) / default_route=None: no 0.0.0.0/0 on gw
+
+# in initial(): set_net_config_entry() emits `ip addr add` / `ip route add` for both families
+set_net_config_entry(self, 'pc', self.net_config['pc'])
+set_ipv6_forward(self, 'pc', False)
+```
+
+Readers take `ipv6=True` to *also* return the IPv6 side (link-local and temporary addresses are left out): `get_ip_addresses`, `get_routes` (adds `ip -6 route`, `default` → `('::', 0)`), `get_net_config_entry`, `get_persistent_net_config_entry` (parses `iface ethN inet6 static` stanzas); `set_persistent_net_config_entry` writes one `inet` and one `inet6` stanza per interface; `eval_net_config` compares both families (`net_config_entry_family(entry, 6)` grades one family apart); `eval_ping(self, 'pc', 'srv', ipv6=True)` pings the IPv6 address of a machine named in `net_config` (an IPv6 literal needs no flag); `create_hosts_file(..., ipv6=True)` adds the IPv6 lines; `setup_simple_tcp_server(..., ipv6=True)` listens on `::`.
+
+Router advertisements / SLAAC: on the router `set_radvd(self, 'gw', {2: [d.nets6.lan]})` writes `/etc/radvd.conf` and starts radvd; on the hosts `set_slaac_client(self, 'pc')` sets `accept_ra=2` and `autoconf=1` (a forwarding host ignores RAs otherwise). Grade with `get_ip_addresses(self, 'pc', ipv6=True)` (the SLAAC address is in `d.nets6.lan`) and `get_routes(self, 'pc', ipv6=True)[('::', 0)]` (next hop `fe80::…`). The Docker bridge has no IPv6 unless the daemon is configured for it: no IPv6 reaches the outside through `bridged=True` machines, and `set_nat_gateway` stays IPv4. See `lab/sre/_DRAFT_dummy/ipv6_example.py` for a complete dual-stack lab.
 
 ### `compute_pre_generate` and `compute_post_generate`
 
@@ -295,7 +344,7 @@ class NetScheme(NetScheme0):
         'hidden':  {'hidden': True, 'allow_connection': False},
     }
 
-    # Declare network display options
+    # Declare network options: display hints, type of switch (hub by default)
     _network_specs = {
         'lan':  {'color': 'yellow'},
         'mgmt': {'color': 'gray'},
@@ -322,7 +371,7 @@ class NetScheme(NetScheme0):
 | Attribute / Method | Description |
 |--------------------|-------------|
 | `_machine_specs` | Class-level dict: `{name: {Machine kwargs}}` |
-| `_network_specs` | Class-level dict: `{net_name: {display kwargs}}` |
+| `_network_specs` | Class-level dict: `{net_name: {Network kwargs}}` — display hints and type of switch, see [`Network` parameters](#network-parameters) |
 | `_topology` | Class-level dict: `{net_name: [machine,...]}` or `{net_name: {machine: iface_index}}` |
 | `self.data` | The `Data` instance |
 | `self.informations` | Markdown text (or `TranslatedText`) for the Informations tab |
@@ -342,15 +391,119 @@ class NetScheme(NetScheme0):
 | `shell` | `None` | Shell launched by `sre connect` (interactive terminal session) |
 | `kathara_shell` | `None` | Shell Kathara uses to execute startup `exec_commands` inside the container |
 | `privileged` | `None` | Run the container in privileged mode. Refused at startup unless `params.allow_privileged_machines = True` |
+| `ipv6` | `None` | Enable IPv6 in the container. `None`: the module-level `ipv6` option decides (Kathara's own setting, off, when that one is absent too); `True` / `False`: per-machine override. See [IPv6 labs](#ipv6-labs) |
 | `color` | `None` | Node color in the SVG diagram |
 | `exec_commands` | `[]` | Commands run at container start |
-| `sysctls` | `{}` | Kernel parameters |
+| `sysctls` | `{}` | Kernel parameters, as an iterable of `"net.<key>=<value>"` strings (a dict is iterated over its keys, so `{"net.ipv6.conf.all.accept_ra=2": True}` works; a `{name: value}` dict is rejected by Kathara). Merged after Kathara's defaults, so they win |
 | `envs` | `{}` | Environment variables |
 | `ports` | `[]` | Port mappings, e.g. `["80XX:80/tcp"]` (X = wildcard digit) |
 | `ulimits` | `{}` | ulimit settings |
 | `volumes` | `{}` | Volume mounts |
 
 Port wildcards: `"80XX:80/tcp"` allocates the first free port in 8000–8099.
+
+### `Network` parameters
+
+Each `_network_specs` entry gives the keyword arguments of one network; a network that only appears in `_topology` takes the defaults.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `color` | `None` | Node color in the schema |
+| `shape` | `None` | Node shape in the schema |
+| `mode` | `'hub'` | Type of switch the machines are plugged into: `'hub'` (every frame reaches every machine), `'switch'` (the switch learns the MAC addresses: a machine only receives its own traffic and the broadcasts) or `'managed'` (a switch with VLANs and a management console). See [Switches and VLANs](#switches-and-vlans) |
+| `allow_connection` | `True` | Managed switch only: students may open its console (*Connect* button of the **Switches** tab, `sre connect`) |
+| `vlans` | `{}` | Managed switch only: VLANs of the ports, by machine |
+
+### Switches and VLANs
+
+By default the machines of a network share a hub, as in every lab written before the switch types existed. `'mode': 'switch'` and `'mode': 'managed'` change that per network — the whole feature (the Switches tab, the console and its commands, states, grading, limits) is described in [Hubs, switches and VLANs](switches.md):
+
+```python
+_network_specs = {
+    'lan': {'mode': 'managed', 'allow_connection': False,
+            'vlans': {'pc1': 10,                             # access port: untagged frames in VLAN 10
+                      'pc2': 20,
+                      'r1': [10, 20],                        # trunk port: VLANs 10 and 20, tagged
+                      'r2': {'vlan': 1, 'trunk': [30]}}},    # native VLAN 1 + VLAN 30 tagged
+    'dmz': {'mode': 'switch'},
+}
+_topology = {'lan': ['pc1', 'pc2', 'r1', 'r2'], 'dmz': ['r1', 'srv'], 'old': ['srv', 'pc2']}   # 'old' is a hub
+```
+
+- VLAN IDs go from 1 to 4094. A machine that `vlans` does not name stays in the default VLAN of the switch (VLAN 0, untagged) with every other undeclared port; a trunk port without `vlan` keeps that default VLAN for its untagged frames.
+- On a trunk port the machine handles the tags itself, e.g. `ip link add link eth0 name eth0.10 type vlan id 10`.
+- A switch that is not a hub drops the 802.1Q frames of a VLAN the port is not a member of: a trunk between two machines needs a hub or a managed switch with trunk ports, not a plain `'switch'`.
+- An unknown `mode`, `vlans` on a network that is not managed, a machine that is not on the network or an invalid VLAN ID raise `ValueError` when the `NetScheme` is built, so `sre check` reports them.
+- A managed switch has a management console: `sre connect <running_lab> <network>`, the *Connect* button of the **Switches** tab, a terminal in the **Terminals** tab. In user mode only the commands of `params.switch_user_commands` reach the switch, and `'allow_connection': False` closes the console to students.
+- A state runs console commands with `self.switch_cmd(network, command, ...)`, where `@machine` stands for the port of a machine (see [Switch operations](#switch-operations)); `grade()` reads the switch with `self.test_switch(network, command)` and `get_switch_ports()` (see *Switch helpers* in the Grading Library Reference).
+- A save file and `sre export` keep the type of each switch and the declared VLANs, not what was changed on a console afterwards. A mode other than `hub` needs the VDE network plugin of the Kathara fork, installed by `make network-plugin` (see [Installation](installation.md#network-plugin-for-the-switch-types)).
+
+See `lab/sre/_DRAFT_dummy/switch_example.py` for a complete lab: the three types of network, access and trunk ports with a router on a stick, an open and a closed console, two states built on `switch_cmd()` and a grade reading the switch.
+
+### Instructor-only texts — `instructor()`
+
+`instructor(text, color=None, background=None)` marks a text as meant for the instructor: notes, hints, the solution. It takes a plain string or a `tr()` text and combines with `+` like any other text:
+
+```python
+from SRE.lib_sre import NetScheme0, Grade0, instructor, make_tr
+
+class NetScheme(NetScheme0):
+    def __init__(self, data, running_lab_name):
+        super().__init__(data=data, running_lab_name=running_lab_name)
+        self.informations = instructor(tr("""
+            ### Solution
+            - add the default route on `client`;
+            - the `final` state does it.
+            """, fr="""
+            ### Corrigé
+            - ajouter la route par défaut sur `client` ;
+            - l'état `final` le fait.
+            """)) + tr("Configure the routing.", fr="Configurez le routage.")
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        self.question_text(
+            title=tr("Gateway") + instructor(" (10.0.0.1)"),
+            description=tr("Which gateway does the client use?")
+                        + instructor(tr("\n\nAny notation is accepted."), color="#1a4fa0", background="#e3edff"))
+```
+
+- In a normal project the function ignores its argument: it returns an empty text, and nothing of it is written to `info.json` (which students can read).
+- In a project in **instructor mode** (`sre start --instructor-mode <lab>`, `sre restore --instructor-mode <file>`, or `sre set-instructor-mode <running_lab>` on a running project — privileged only) the text is kept, and the GUI displays it in red on a light red background while its *Instructor mode* button is on. `color` / `background` (`'#rrggbb'` or a colour name) change the colours of one text; `params.instructor_text_color` / `params.instructor_background_color` are the defaults.
+- A **debug project** (`sre start --debug-project`) keeps the text as well: the same button displays or hides it, so the hints can be checked while the lab is being written.
+- A question hash does not depend on the instructor texts: the answers stay attached when the mode is switched on a running project.
+
+Rules:
+
+- call `instructor()` from `NetScheme.__init__` (after `super().__init__()`) or from `Grade.grade()`. The mode of the project is not known while the module is imported, so a module-level call (`title`, `@sre_state(description=...)`, `Flavor.flavor_form`) always gives an empty text;
+- use it for `self.informations` and for the titles and descriptions of the questions. The other texts (grade elements, state descriptions, files pushed to the machines) are plain text and would show the raw marks in instructor mode;
+- a fragment is either inline text or one or several whole markdown blocks (paragraphs, lists, code blocks, tables). It is dedented on its own, so an indented triple-quoted block works whatever the indentation of the public text; it cannot be nested inside a list item of the public text;
+- no `@@{field:regex}@@` form field inside a fragment (a student would not get the field);
+- use `+` or `TranslatedText.format()` to combine texts, as with `tr()`: `%` and f-strings do not work on translated texts.
+
+#### A lab file without the instructor texts — `sbin/strip-instructor`
+
+The running system keeps the instructor texts away from students, but the lab file itself still holds them. `sbin/strip-instructor` writes the file without its `instructor()` calls, for instance before handing a lab over:
+
+```bash
+sbin/strip-instructor lab/s4/mylab.py /tmp/mylab_public.py   # output file
+sbin/strip-instructor lab/s4/mylab.py /srv/public_labs/      # existing directory → /srv/public_labs/mylab.py
+sbin/strip-instructor -i /srv/public_labs/mylab.py           # replace the file itself
+```
+
+- an `instructor(...)` operand of a `+` disappears with its operator (`instructor(tr("note")) + tr("public")` → `tr("public")`); a call standing alone becomes `''`;
+- the `_TRANSLATIONS` entries of the `tr()` strings that only those calls used are deleted, in every language;
+- `instructor` is removed from its `from ... import` when nothing uses it any more;
+- formatting and comments are kept; the result is checked (it must parse and hold no `instructor()` call), otherwise nothing is written.
+
+The stripped lab behaves like the original outside the instructor mode. Limits:
+
+- a text kept in a variable is not followed: with `note = tr("...")` then `instructor(note)`, the definition of `note` stays in the file. The script warns about such variables; write `note = instructor(tr("..."))` to have the text removed;
+- comments are not examined, and only the lab file is processed (not the state directories of a directory lab);
+- a question keeps its hash as long as the removed text has no language that the text it was added to lacks (the usual case). Otherwise the archives of the stripped lab do not match the original lab in `sre re-eval`.
+
+In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
 
 ## State methods
 
@@ -372,6 +525,21 @@ def final(self):
     """Optional additional state; students can apply it via 'sre state'."""
     self.cmd('router', 'iptables -A FORWARD -j ACCEPT')
 ```
+
+### Lifecycle states: `save` / `restore`
+
+`NetScheme0` defines three *lifecycle* states that SRE applies itself: `initial` (at `sre start`), `save` (by `sre save`, just before the container filesystems are captured) and `restore` (by `sre restore`, on the new instance right after the containers have been redeployed from the saved filesystems). `save` and `restore` are empty by default and only matter for labs that set `allow_save_restore = True`.
+
+A save captures **files only**: a restored container starts from its saved filesystem but nothing that `initial()` launched with `cmd()` is running any more. Relaunch those daemons in `restore()`:
+
+```python
+@sre_state()
+def restore(self):
+    self.cmd('server', 'service ssh start')
+    self.cmd('server', 'service isc-dhcp-server start', allow_error=True)
+```
+
+Lifecycle states are never user-allowed, never listed in the GUI, and `sre check` runs `save()` / `restore()` when the lab allows save/restore. `<srelab_dir>/save/` and `<srelab_dir>/restore/` are therefore reserved state-file directories (see [State file transfer](internals.md)).
 
 ### `@sre_state` decorator
 
@@ -406,6 +574,12 @@ These all register an op against a single machine and accept a `step=` parameter
 | `self.host_cmd(command, step=1, timeout=120, default_value='', default_code=0, allow_error=False)` | Run a shell command on the **host** (not inside any container). Returns `(stdout, exit_code)` with the same contract as `cmd()`. Refused if `params.execute_commands_on_host is False`. |
 | `self.host_callback(callable, step=1)` | Invoke a Python callable on the host at this step, with no arguments. Useful when the next steps need values computed in Python. |
 
+### Switch operations
+
+| Method | Description |
+|--------|-------------|
+| `self.switch_cmd(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Run one command on the management console of the managed switch `network` (a network with `'mode': 'managed'`; `ValueError` otherwise). A word `@machine` in `command` is replaced by the number of the port the machine is plugged into, e.g. `port/setvlan @pc1 10`. Returns `(output, code)` with the same contract as `host_cmd()`: `code` is `0`, the error number given by the switch (`17`: the VLAN already exists) or `-2` when the command could not be run. See [Switches and VLANs](#switches-and-vlans). |
+
 ### Multi-step state setup — the `step` parameter
 
 Every state-method operation accepts `step=N` (default `1`). When SRE applies a state it groups all registered ops by step and runs them in ascending order: every step-1 op finishes before any step-2 op starts. This matters when later ops depend on earlier ones being in place — for example writing a config file at step 1 and only restarting the service at step 2:
@@ -417,13 +591,13 @@ def initial(self):
     self.cmd('dns',  'systemctl restart unbound',    step=2)
 ```
 
-Inside a single step the per-machine op order is preserved, and ops on different machines run in parallel. `host_cmd` / `host_callback` for step `N` run *before* the container ops of step `N` (so a key generated on the host at step 1 can be copied into a machine at step 1).
+Inside a single step the per-machine op order is preserved, and ops on different machines run in parallel. `host_cmd` / `host_callback` / `switch_cmd` for step `N` run, in registration order, *before* the container ops of step `N` (so a key generated on the host at step 1 can be copied into a machine at step 1).
 
 Container commands registered with `self.cmd()` run under `sh` through `/usr/local/sbin/exetests.py`, the runner `Grade.test()` also uses: consecutive `cmd()` ops of one machine at one step are sent as a single batch, shell syntax such as `|`, `>>` or `&&` works, and each command is killed after `timeout` seconds (default `params.default_state_cmd_timeout`, 120 s; `0` disables the timeout; the exit code is then `-1`). A non-zero exit code is reported on stderr (hidden in `--user` mode) unless the call passes `allow_error=True`.
 
 ### Reading command results — `multi_pass=True`
 
-`self.cmd()` and `self.host_cmd()` return `(output, exit_code)` with the same register-then-resolve contract as `Grade.test()`: the value is the placeholder `(default_value, default_code)` until the command has actually run. By default a state method is called **once**, before anything runs, so it only ever sees placeholders.
+`self.cmd()`, `self.host_cmd()` and `self.switch_cmd()` return `(output, exit_code)` with the same register-then-resolve contract as `Grade.test()`: the value is the placeholder `(default_value, default_code)` until the command has actually run. By default a state method is called **once**, before anything runs, so it only ever sees placeholders.
 
 Decorate the state with `@sre_state(multi_pass=True)` to have SRE call the method again before each step: the call that registers the ops of step `N+1` sees the real results of steps `1..N`. The method runs `max_step + 1` times, like `grade()` during an evaluation: a final call after the last step sees the results of every command and is the natural place to copy them into `self.data`. Each call only contributes the ops of the step about to be applied; re-registering the ops of an earlier step is expected and harmless.
 
@@ -455,9 +629,11 @@ set_net_config_entry(net_scheme=self, machine_name='router', nc_entry=[
 set_sysctl(net_scheme=self, machine_name='router', sysctl_config={'ipv4.ip_forward': 1})
 ```
 
-`NetConfig` is a list of interface entries; each entry is `([addresses], [(dest_network, gateway), ...])` or `'dhcp'` or `None`.
+`NetConfig` is a list of interface entries; each entry is `([addresses], [(dest_network, gateway), ...])` or `'dhcp'` or `None`. An entry may hold both families (`[d.ips.pc, d.ips6.pc]`, routes to `IPv4Network('0.0.0.0/0')` and `IPv6Network('::/0')`): `set_net_config_entry` dispatches on the address family, and `get_net_config_from_topology(..., ipv6=True)` builds such entries — see [IPv6 labs](#ipv6-labs).
 
-Persistent equivalents — these write to `/etc/network/interfaces` and `/etc/sysctl.d/99-sre.conf` so the config survives a container restart:
+`set_ip_forward(net_scheme, machine_name, ip_forward, step=1)` and `set_ipv6_forward(net_scheme, machine_name, ipv6_forward, step=1)` set `net.ipv4.ip_forward` / `net.ipv6.conf.all.forwarding` (Kathara starts every machine with forwarding on in both families).
+
+Persistent equivalents — these write to `/etc/network/interfaces` (one `inet static` and one `inet6 static` stanza per interface as needed) and `/etc/sysctl.d/99-sre.conf` so the config survives a container restart:
 
 - `set_persistent_net_config_entry(net_scheme, machine_name, nc_entry)`
 - `set_persistent_sysctl(net_scheme, machine_name, sysctl_config)`
@@ -469,7 +645,8 @@ Convenience functions called inside `@sre_state` methods:
 ```python
 from state_helpers import (set_unbound_server, set_basic_unbound_server,
                            change_password, create_user,
-                           hosts_file_content, create_hosts_file)
+                           hosts_file_content, create_hosts_file,
+                           setup_simple_tcp_server, set_radvd, set_slaac_client)
 ```
 
 | Function | Description |
@@ -478,8 +655,11 @@ from state_helpers import (set_unbound_server, set_basic_unbound_server,
 | `set_basic_unbound_server(net_scheme, machine)` | Same as above; explicit name when you want to make the "basic / permissive" intent obvious. |
 | `change_password(net_scheme, machine, username, password)` | Set a user's password via `chpasswd`. The password is written to a temporary file (never passed on the command line). |
 | `create_user(net_scheme, machine, username, password, uid=None, gid=None)` | Create a user with `useradd` (if not already present) and set its password. `uid`/`gid` are passed as integers. The password is written to a temporary file; the username is passed via an environment variable to prevent shell injection. |
-| `hosts_file_content(net_scheme, domain_extension, included=None, ips=None, separator="\t\t")` | Return `/etc/hosts` lines for a set of machines. Each machine gets one line per network it is connected to (two lines if multi-homed, with `machine_net` naming). Addresses are read from `net_scheme.data.ips.*` by convention (`machine` for single-homed, `machine_net` for multi-homed), or from the `ips` dict if provided. `included` defaults to all visible machines. |
-| `create_hosts_file(net_scheme, domain_extension, machine_list=None, included=None, ips=None, separator="\t\t")` | Write `/etc/hosts` to each machine in `machine_list` (defaults to all visible machines). Each file begins with standard loopback entries (`127.0.0.1 localhost`, `127.0.1.1 <machine>`) followed by the lines from `hosts_file_content()`. |
+| `hosts_file_content(net_scheme, domain_extension, included=None, ips=None, separator="\t\t", ipv6=False, ips6=None)` | Return `/etc/hosts` lines for a set of machines. Each machine gets one line per network it is connected to (two lines if multi-homed, with `machine_net` naming). Addresses are read from `net_scheme.data.ips.*` by convention (`machine` for single-homed, `machine_net` for multi-homed), or from the `ips` dict if provided. `included` defaults to all visible machines. `ipv6=True` adds, after each IPv4 line, the IPv6 line of the machines that have an address in `net_scheme.data.ips6.*` (or in the `ips6` dict). |
+| `create_hosts_file(net_scheme, domain_extension, machine_list=None, included=None, ips=None, separator="\t\t", ipv6=False, ips6=None)` | Write `/etc/hosts` to each machine in `machine_list` (defaults to all visible machines). Each file begins with standard loopback entries (`127.0.0.1 localhost`, `127.0.1.1 <machine>`, plus `::1` / `ff02::1` / `ff02::2` with `ipv6=True`) followed by the lines from `hosts_file_content()`. |
+| `setup_simple_tcp_server(net_scheme, machine, port, answer, ip=None, ipv6=False)` | Start an idempotent daemon that answers `answer` to every TCP connection on `port`, bound to `ip` (IPv4 or IPv6, prefix stripped), to `0.0.0.0`, or to `::` (dual stack) with `ipv6=True`. |
+| `set_radvd(net_scheme, machine, prefixes, step=1, *, rdnss=None, dnssl=None, min_rtr_adv_interval=3, max_rtr_adv_interval=10, adv_autonomous=True, adv_on_link=True, adv_router_addr=False, enable_forwarding=True)` | Write `/etc/radvd.conf` (`prefixes = {interface: [IPv6Network, ...]}`, interfaces as `'eth1'` or `1`, /64 prefixes for SLAAC) and start radvd, after enabling IPv6 forwarding. Returns the configuration text. |
+| `set_slaac_client(net_scheme, machine, interfaces=None, step=1)` | Make the machine configure itself from router advertisements: `accept_ra=2` and `autoconf=1` on `interfaces` (default: every interface of the topology). Needed because Kathara starts the machines with forwarding on, which makes the kernel ignore RAs. |
 
 ## `Grade` class
 
@@ -526,7 +706,7 @@ class Grade(Grade0):
    - `self.test(machine, cmd, step=N)` registers `cmd` under `(machine, N)` and returns `(default_value, default_code)` (i.e. placeholders) the *first* time it is seen.
    - If a call uses `step=K` larger than `self.max_step`, `max_step` is bumped to `K`, extending the loop.
    - `self.add_grade_element` / `self.set_grade` / `self.question_*` calls all register entries; they don't read any container state directly.
-4. `self.step` is incremented to `N`. All commands registered at step `N` are bundled per machine into one `EXETESTS@@@cmd1@@@cmd2@@@…` env var and run inside each container in parallel (16-worker `ThreadPoolExecutor`, via `/usr/local/sbin/exetests.py`). Host-side `test_host()` commands for step `N` run in parallel on the host.
+4. `self.step` is incremented to `N`. All commands registered at step `N` are bundled per machine into one `EXETESTS@@@cmd1@@@cmd2@@@…` env var and run inside each container in parallel (16-worker `ThreadPoolExecutor`, via `/usr/local/sbin/exetests.py`). The `test_switch()` commands for step `N` are then sent to the consoles of the managed switches, and the host-side `test_host()` commands run in parallel on the host.
 5. Results are stored back into `self._tests[(machine, N)]`. The loop returns to step 2. On this pass, the registration calls for step `N` find the entry already populated and return the **real** `(stdout, exit_code)`; the code paths gated on those results now execute.
 6. When `self.step > self.max_step`, the loop exits. The archive (zstd-compressed msgpack with all tests, answers, errors, and grade list) is written to `params.archives_dir` and to every directory in the module-level `archive_dirs`.
 
@@ -662,6 +842,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 |--------|-------------|
 | `self.test(machine, command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Register a command in a container; returns `(stdout, exit_code)` (placeholder on first pass, real result on subsequent passes). |
 | `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
+| `self.test_switch(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Same as `self.test` for one command of the management console of the managed switch `network` (`vlan/print`, `port/print @pc1`: `@machine` is the port number of the machine). The exit code is `0`, the error number given by the switch or `-2`. The result is archived with the tests of the machines, under the name of the network. See [Switches and VLANs](#switches-and-vlans). |
 | `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). |
 | `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question with inline `@@{field:regex}@@` (text), `@@{field:>opt1|opt2}@@` (dropdown), or `@@{field:?true}@@` (checkbox) fields. Returns the student's answers as `{field: value}`. |
 | `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). |
@@ -721,10 +902,12 @@ from tls import eval_rsa_private_key, set_rsa_private_key, eval_self_signed_cert
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python
-from grade_helpers import eval_tcp_server
+from grade_helpers import eval_tcp_server, test_dig
 ```
 
-`eval_tcp_server(grade, machine_name, port, step=1) → bool` — checks whether a process is listening on `port` (TCP) inside the container. Returns `True` if the port is bound.
+`eval_tcp_server(grade, machine_name, server_name, step=1) → list[int] | None` — returns the TCP ports in LISTEN state of the processes matching `server_name` (`pgrep -f`, `ss -tlnp`), whatever the local address form (`0.0.0.0:80`, `*:80`, `[::]:80`, `[fd00::1]:8080`, `127.0.0.53%lo:53`), or `None` when no such process runs.
+
+`test_dig(grade, machine_name, server_ip, *, proto='udp', port=53, request, timeout=2, step=1) → (stdout, exit_code)` — runs `dig +short` against `server_ip` (a string, an `IPv4Address` / `IPv6Address` or an `IPv4Interface` / `IPv6Interface`, prefix stripped).
 
 ### OSPF helpers (from `/opt/sre/lib/frr.py`)
 
@@ -733,6 +916,30 @@ from frr import get_ospf_interfaces
 ```
 
 `get_ospf_interfaces(grade, machine_name, step=1) → dict` — runs `vtysh -c "show ip ospf interface"` inside the container and parses the output. Returns a dict keyed by interface name, each value containing: `area`, `cost`, `state` (`DR`/`BDR`/`DROther`/…), `dr`, `bdr`, `neighbor_count`, `adj_neighbor_count`.
+
+### BGP helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_bgp_summary, get_bgp_neighbor, get_bgp_routes, get_bgp_prefix,
+                 get_bgp_advertised_routes, bgp_best_path, bgp_paths, is_bgp_protocol)
+```
+
+These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, each `get_*` registers one command through `grade.test()` (two-pass contract) and returns its empty shape (`{}`) on the registration pass, when BGP is not running or when the output cannot be decoded. Pass `allow_error=True` while BGP may not be configured yet.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_bgp_summary(grade, machine, step=1, allow_error=False)` | `dict` | `show bgp ipv4 unicast summary`: `router_id`, `as`, `peers: {ip: {remote_as, state, established, policy_blocked, pfx_rcd, pfx_snt, description, uptime}}`. `policy_blocked` is `True` for an eBGP peer without inbound/outbound policy (RFC 8212, `(Policy)` in the text output) |
+| `get_bgp_neighbor(grade, machine, peer, step=1, allow_error=False)` | `dict` | `show bgp neighbors <peer>`: `remote_as`, `local_as`, `state`, `established`, `link` (`external`/`internal`), negotiated `hold_time`/`keepalive` (seconds), `local_host`/`foreign_host`, `update_source`, `route_reflector_client`, `next_hop_self`, `default_originate`, `route_map_in`/`route_map_out`, `prefix_list_in`/`prefix_list_out`, `accepted_prefixes`, `sent_prefixes`; `{}` for an unknown neighbour |
+| `get_bgp_routes(grade, machine, step=1, allow_error=False)` | `dict[str, list[dict]]` | `show bgp ipv4 unicast`: `{prefix: [path, ...]}`; each path has `valid`, `best`, `reason` (FRR `selectionReason`), `path_from` (`external`/`internal`), `nexthop`, `peer`, `aspath` (`'65100 65000'`), `as_list` (`[65100, 65000]`), `locprf`, `med`, `weight`, `origin`, `local` |
+| `bgp_best_path(routes, prefix)` | `dict` | The best path of `prefix` in a `get_bgp_routes()` result (`{}` when none) |
+| `bgp_paths(routes, prefix, nexthop=None, peer=None, first_as=None, ends_with=None, path_from=None, valid=None)` | `list[dict]` | Paths of `prefix` matching every given criterion (`ends_with=[65001, 65300]` compares the end of `as_list`) |
+| `get_bgp_prefix(grade, machine, prefix, step=1, allow_error=False)` | `dict` | `show bgp ipv4 unicast <prefix>`: `{'prefix', 'paths': [...]}` with the fields above plus `accessible` (next-hop reachability), `peer_router_id`, `originator_id`, `cluster_list` (route reflection) and `communities` (`['65001:300']`) |
+| `get_bgp_advertised_routes(grade, machine, peer, step=1, allow_error=False)` | `dict` | `show bgp ipv4 unicast neighbors <peer> advertised-routes`: `{prefix: {nexthop, aspath, as_list, locprf, med, weight, origin}}`, i.e. what is really sent to that peer after the outbound policy |
+| `is_bgp_protocol(protocol)` | `bool` | `True` when a kernel route `protocol` (see `get_kernel_routes`) denotes a route installed by bgpd; `kernel_route_gateways(routes, prefix, protocols=BGP_ROUTE_PROTOCOLS)` lists the gateways of a BGP kernel route |
+
+`parse_frr_config` / `get_frr_running_config` also return the BGP configuration: `router_bgp` (`as`, `router_id`, `ebgp_requires_policy`, `network_import_check`, `bestpath`, `neighbors: {peer: {remote_as, description, update_source, timers, shutdown, password, next_hop_self, route_reflector_client, default_originate, route_map_in/out, prefix_list_in/out, ...}}`, `networks`, `aggregate_addresses`, `redistribute`), `prefix_lists`, `route_maps` (`{name: [{seq, action, match: [...], set: [...]}]}`), `as_path_lists`, `community_lists`; interface blocks expose their `ip address` lines in `addresses`.
+
+Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
 
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
@@ -761,22 +968,25 @@ These functions are used inside `Grade.grade()` to read live container state.
 ```python
 from net_config import (get_ip_addresses, get_routes, get_sysctl_conf,
                         get_net_config_entry, get_persistent_net_config_entry,
-                        eval_net_config, get_ip_forward, get_sys_parameter_bool,
+                        eval_net_config, net_config_entry_family,
+                        get_ip_forward, get_ipv6_forward, get_sys_parameter_bool,
                         get_sys_parameter)
 ```
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `get_ip_addresses(grade, machine, step=1)` | `dict[str, list[tuple[str,int]]]` | Run `ip a`; return `{iface: [(addr, prefixlen), ...]}` (sorted by prefix desc, addr asc) |
-| `get_routes(grade, machine, step=1)` | `dict[tuple[str,int], tuple[str,str,int]]` | Run `ip route`; return `{(net, mask): (via, dev, metric)}` — `default` maps to `('0.0.0.0', 0)` |
+| `get_ip_addresses(grade, machine, step=1, ipv6=False, link_local=False)` | `dict[str, list[tuple[str,int]]]` | Run `ip a`; return `{iface: [(addr, prefixlen), ...]}` (sorted by prefix desc, addr asc). `ipv6=True` adds the IPv6 addresses after the IPv4 ones (SLAAC addresses included, temporary ones excluded; link-local ones only with `link_local=True`) |
+| `get_routes(grade, machine, step=1, ipv6=False)` | `dict[tuple[str,int], tuple[str,str,int]]` | Run `ip route` (and `ip -6 route` with `ipv6=True`); return `{(net, mask): (via, dev, metric)}` — `default` maps to `('0.0.0.0', 0)` (`('::', 0)` in the IPv6 table) |
 | `get_sysctl_conf(grade, machine, step=1)` | `dict[str, str]` | Read `/etc/sysctl.conf` and `/etc/sysctl.d/*.conf`; return `{key: value}` |
 | `get_ip_forward(grade, machine, step=1)` | `bool` | Read `/proc/sys/net/ipv4/ip_forward`; return `True` if `1` |
+| `get_ipv6_forward(grade, machine, step=1)` | `bool` | Read `/proc/sys/net/ipv6/conf/all/forwarding`; return `True` if `1` |
 | `get_sys_parameter(grade, machine, param, step=1)` | `str \| None` | Read an arbitrary `/proc/sys/...` file (e.g. `'net.ipv4.ip_forward'`); return string value or `None` |
 | `get_sys_parameter_bool(grade, machine, param, step=1)` | `bool \| None` | Same as `get_sys_parameter` but cast to `bool` (`'1'` → `True`, `'0'` → `False`, else `None`) |
-| `get_net_config_entry(grade, machine, step=1)` | `NetConfigEntry` | Run `ip a` + `ip route`; reconstruct a `NetConfigEntry` from live state |
-| `get_persistent_net_config_entry(grade, machine, step=1)` | `tuple[NetConfigEntry, int]` | Parse `/etc/network/interfaces`; return `(entry, n_errors)` |
+| `get_net_config_entry(grade, machine, step=1, ipv6=False)` | `NetConfigEntry` | Run `ip a` + `ip route`; reconstruct a `NetConfigEntry` from live state. `ipv6=True` adds the IPv6 addresses and routes to the same entries (a SLAAC address counts as dynamic: an interface with only SLAAC addresses is `'dhcp'`; the RA default route has a `fe80::` next hop) |
+| `get_persistent_net_config_entry(grade, machine, step=1, ipv6=False)` | `tuple[NetConfigEntry, int]` | Parse `/etc/network/interfaces`; return `(entry, n_errors)`. `ipv6=True` also parses the `inet6 static` stanzas (`address`, `netmask <prefixlen>`, `gateway`, `post-up ip [-6] route add` / `ip addr add`; `inet6 auto|dhcp` count as dynamic) and merges them into the IPv4 entries |
+| `net_config_entry_family(entry, version)` | `NetConfigEntry` | Keep only the addresses and routes of IP `version` (4 or 6) in each tuple, to grade the two families of a dual-stack configuration apart |
 
-`eval_net_config(grade, expected, machine_name=None, current=None, step=1)` — compare a live or provided `NetConfigEntry` against an expected one. Returns an attribute-accessible dict with the following keys:
+`eval_net_config(grade, expected, machine_name=None, current=None, step=1)` — compare a live or provided `NetConfigEntry` against an expected one (`0.0.0.0/0` and `::/0` are both default routes). Returns an attribute-accessible dict with the following keys:
 
 | Key | Description |
 |-----|-------------|
@@ -793,18 +1003,35 @@ from net_config import (get_ip_addresses, get_routes, get_sysctl_conf,
 
 If `current` is `None`, `get_net_config_entry(grade, machine_name, step)` is called automatically.
 
+### Switch helpers (from `/opt/sre/lib/switch.py`)
+
+For the managed switches (see [Switches and VLANs](#switches-and-vlans)), on top of `Grade.test_switch()`:
+
+```python
+from switch import get_switch_ports, get_switch_vlans
+
+ports = get_switch_ports(self, 'lan')
+# {'pc1': {'port': 2, 'interface': 'eth0', 'vlan': 10, 'tagged_vlans': []},
+#  'r1':  {'port': 1, 'interface': 'eth0', 'vlan': 0,  'tagged_vlans': [10, 20]}}
+same_vlan = bool(ports) and ports['pc1']['vlan'] == ports['pc2']['vlan']
+
+vlans = get_switch_vlans(self, 'lan')      # {10: {'untagged': [2], 'tagged': [1]}, ...} (port numbers)
+```
+
+`vlan` is the VLAN of the untagged frames of the port (0: the default VLAN of the switch), `tagged_vlans` the VLANs of a trunk port. Both functions return `{}` on the registration pass and when the console failed; they take `step=` and `allow_error=` like `test_switch()`. `parse_switch_ports(port_allprint, vlan_allprint)` and `parse_switch_vlans(vlan_allprint)` are the underlying pure parsers.
+
 ### Ping helper (from `/opt/sre/lib/ping.py`)
 
 ```python
 from ping import eval_ping
 ```
 
-`eval_ping(grade, src, dest, step=1, net_config=None) → bool` — run `ping -c 1 -w 1 dest` from `src` machine; return `True` if `"bytes from"` appears in the output.
+`eval_ping(grade, src, dest, step=1, net_config=None, count=1, deadline=1, allow_error=False, ipv6=False) → bool` — run `ping -c count -w deadline dest` from `src` machine; return `True` if `"bytes from"` appears in the output. Raise `count` / `deadline` for multi-hop paths; `allow_error=True` keeps an expected failure out of the archive's errors.
 
 `src` and `dest` can each be:
-- An `IPv4Address` or valid IPv4 string — used directly; `src` is resolved by reverse-lookup in `net_config`
-- `"machine_name"` — machine name looked up in `net_config`; `dest` → first interface IP
-- `"machine_name:N"` or `"machine_name:ethN"` — resolves to interface index N of that machine
+- An `IPv4Address` / `IPv6Address` (or Interface) object, or a valid IPv4 / IPv6 literal — used directly (the literal decides the family); `src` is resolved by reverse-lookup in `net_config`
+- `"machine_name"` — machine name looked up in `net_config`; `dest` → first IPv4 address of the first interface, or first IPv6 address with `ipv6=True`
+- `"machine_name:N"` or `"machine_name:ethN"` — resolves to interface index N of that machine (same family rule)
 
 If `net_config` is not provided, `grade.net_scheme.net_config` is used. Raises `ValueError` on resolution failure.
 
@@ -936,12 +1163,20 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 | `allow_user_states` | `bool` | `False` | If `True`, students can apply states decorated with `@sre_state(user_allowed=True)` from the GUI. States decorated with `user_allowed=False` remain instructor-only |
 | `flavor_form_at_startup` | `bool` | `False` | If `True` and a `Flavor` subclass is defined, the GUI shows the flavor form before calling `sre start`, letting the student parameterize the lab |
 
+### Networking
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ipv6` | `bool` | `params.default_ipv6` (`None`: Kathara's own setting, off) | If `True`, IPv6 is enabled in every machine (`disable_ipv6=0`, forwarding and `accept_ra=0` set by Kathara); `Machine(ipv6=...)` overrides it per machine. The effective value is written to the `lab.conf` of `sre export`. See [IPv6 labs](#ipv6-labs) |
+
 ### Filesystem and export
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `shared_path` | `bool` | `False` | Create `/home/sre/{running_lab_name}/` (mode `0o777`) and bind-mount it into each container for file exchange between host and containers |
 | `export_kathara_project` | `bool` | `True` | If `False`, disable **File → Export** in the GUI and refuse `sre export` for this lab |
+| `allow_save_restore` | `bool` | `False` | If `True`, students may save a running project to a file (**File → Save Project**, `sre save`) and restore it later as a new instance (**File → Restore Project**, `sre restore`). The save file holds `data.json` and `.private/files` — in clear unless `save_key` is set — so enable it only for labs whose `Data` holds nothing the student must not read, or set `save_key` |
+| `save_key` | `str` | _(unset)_ | Non-empty secret string. When set, the payload of every save file is encrypted (AES-256-GCM, key derived from `save_key`); only a lab with the same key can restore it, and students cannot restore cleartext files. Keep the lab file unreadable by students |
 
 ### Schema rendering
 
@@ -984,12 +1219,8 @@ class Data(Data0):
     def generate(cls, flavor=None):
         d = cls()
         d.nets.lan1, d.nets.lan2 = random_ipv4networks([24, 24], from_private_network=True)
-        ips1 = random_ipv4s(d.nets.lan1, 2)
-        ips2 = random_ipv4s(d.nets.lan2, 2)
-        d.ips.router_lan1 = IPv4Interface(f'{ips1[0]}/{d.nets.lan1.prefixlen}')
-        d.ips.client1 = IPv4Interface(f'{ips1[1]}/{d.nets.lan1.prefixlen}')
-        d.ips.router_lan2 = IPv4Interface(f'{ips2[0]}/{d.nets.lan2.prefixlen}')
-        d.ips.client2 = IPv4Interface(f'{ips2[1]}/{d.nets.lan2.prefixlen}')
+        d.ips.router_lan1, d.ips.client1 = random_ipv4s(d.nets.lan1, 2)   # IPv4Interface values
+        d.ips.router_lan2, d.ips.client2 = random_ipv4s(d.nets.lan2, 2)
         return d
 
 

@@ -14,6 +14,7 @@ exam
 :caption: Authoring Labs
 
 lab-authoring
+switches
 translations
 ```
 
