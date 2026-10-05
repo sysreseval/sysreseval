@@ -443,55 +443,55 @@
     <name>ProjectWidget</name>
     <message>
         <location filename="../src/sysreseval/project_widget.py" line="54"/>
-        <location filename="../src/sysreseval/project_widget.py" line="112"/>
+        <location filename="../src/sysreseval/project_widget.py" line="113"/>
         <source>Schema</source>
         <translation>Schéma</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/project_widget.py" line="57"/>
-        <location filename="../src/sysreseval/project_widget.py" line="113"/>
+        <location filename="../src/sysreseval/project_widget.py" line="114"/>
         <source>Informations</source>
         <translation>Informations</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/project_widget.py" line="60"/>
-        <location filename="../src/sysreseval/project_widget.py" line="114"/>
+        <location filename="../src/sysreseval/project_widget.py" line="115"/>
         <source>Machines</source>
         <translation>Machines</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="64"/>
-        <location filename="../src/sysreseval/project_widget.py" line="115"/>
+        <location filename="../src/sysreseval/project_widget.py" line="67"/>
+        <location filename="../src/sysreseval/project_widget.py" line="116"/>
         <source>Switches</source>
         <translation>Switchs</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="67"/>
-        <location filename="../src/sysreseval/project_widget.py" line="116"/>
+        <location filename="../src/sysreseval/project_widget.py" line="70"/>
+        <location filename="../src/sysreseval/project_widget.py" line="117"/>
         <source>Questions</source>
         <translation>Questions</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="79"/>
-        <location filename="../src/sysreseval/project_widget.py" line="117"/>
+        <location filename="../src/sysreseval/project_widget.py" line="80"/>
+        <location filename="../src/sysreseval/project_widget.py" line="118"/>
         <source>Evaluation</source>
         <translation>Évaluation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="83"/>
-        <location filename="../src/sysreseval/project_widget.py" line="118"/>
+        <location filename="../src/sysreseval/project_widget.py" line="84"/>
+        <location filename="../src/sysreseval/project_widget.py" line="119"/>
         <source>Terminals</source>
         <translation>Terminaux</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="90"/>
-        <location filename="../src/sysreseval/project_widget.py" line="119"/>
+        <location filename="../src/sysreseval/project_widget.py" line="91"/>
+        <location filename="../src/sysreseval/project_widget.py" line="120"/>
         <source>Apply Configuration</source>
         <translation>Appliquer une configuration</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="95"/>
-        <location filename="../src/sysreseval/project_widget.py" line="120"/>
+        <location filename="../src/sysreseval/project_widget.py" line="96"/>
+        <location filename="../src/sysreseval/project_widget.py" line="121"/>
         <source>Log</source>
         <translation>Journal</translation>
     </message>
@@ -745,37 +745,37 @@
 <context>
     <name>SwitchesView</name>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="32"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="40"/>
         <source>Name</source>
         <translation>Nom</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="33"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="41"/>
         <source>Type</source>
         <translation>Type</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="34"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="42"/>
         <source>Connection</source>
         <translation>Connexion</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="45"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="53"/>
         <source>Manageable switch</source>
         <translation>Switch administrable</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="47"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="55"/>
         <source>Switch</source>
         <translation>Switch</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="48"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="56"/>
         <source>Hub</source>
         <translation>Hub</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="68"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="81"/>
         <source>Connect</source>
         <translation>Connecter</translation>
     </message>
