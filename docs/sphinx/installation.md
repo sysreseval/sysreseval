@@ -318,7 +318,7 @@ The Sphinx targets pip-install `sphinx myst-parser furo` into the existing venv 
 
 ### Network plugin for the switch types
 
-A lab may give each network a type of switch (`'mode': 'hub'`, `'switch'` or `'managed'` in its `_network_specs`). Hubs — the default, and the only type of every lab written before — work with the stock Kathara network plugin, the one Kathara downloads by itself on the first start. The two other types need the VDE plugin of the fork `emotchane/NetworkPlugin` (branch `main`), installed under the name Kathara uses (`kathara/katharanp_vde:<arch>`):
+A lab may give each network a type of switch (`'mode': 'hub'`, `'switch'` or `'managed'` in its `_network_specs`, see [Hubs, switches and VLANs](switches.md)). Hubs — the default, and the only type of every lab written before — work with the stock Kathara network plugin, the one Kathara downloads by itself on the first start. The two other types need the VDE plugin of the fork `emotchane/NetworkPlugin` (branch `main`), installed under the name Kathara uses (`kathara/katharanp_vde:<arch>`):
 
 ```bash
 make network-plugin      # as root or a member of the docker group
@@ -331,7 +331,9 @@ To publish a build (maintainers), from a clone of the fork on a host of the want
 ```bash
 cd NetworkPlugin/vde
 make push_amd64 PLUGIN_NAME=sysreseval/katharanp_vde     # builds sysreseval/katharanp_vde:amd64 and pushes it
-``` A plugin that knows the switch types says so in its settings:
+```
+
+A plugin that knows the switch types says so in its settings:
 
 ```bash
 docker plugin inspect kathara/katharanp_vde:amd64 --format '{{.Settings.Env}}'   # ... KATHARA_SWITCH_MODES=hub,switch,managed

@@ -42,6 +42,7 @@ pour ouvrir des terminaux supplémentaires vers une machine (utile lorsque plusi
   - **Switchs** — les réseaux du projet avec leur type : hub, switch ou switch administrable (avec des VLAN et une console que les étudiants peuvent ouvrir si le projet l'autorise). Affiché lorsqu'un réseau n'est pas un hub.
   - **Évaluations** — permet à l'étudiant de déclencher une évaluation automatique de son travail et de visualiser le tableau des notes obtenues.
   - **Appliquer une configuration** — permet à l'étudiant de placer le projet dans un état prédéfini, par exemple une correction partielle.
+- **Hubs, switchs et VLAN.** Chaque réseau d'un projet est un hub, un switch ou un switch administrable avec des VLAN (ports d'accès et ports *trunk*) et une console d'administration ; les états et l'évaluation peuvent piloter et lire les switchs.
 - **Plusieurs projets ouverts simultanément.** Le contenu d'un cours peut être organisé par thème plutôt que par séance — les étudiants peuvent garder plusieurs projets ouverts et basculer entre eux.
 - **Supervision en direct.** `sre watch` est un tableau de bord qui permet à l'enseignant d'obtenir la dernière évaluation de chaque étudiant et affiche les min/max/moyennes par item pour la classe.
 - **Examens à durée limitée.** `sysreseval` démarre le projet de chaque étudiant (immédiatement ou à une heure programmée), 
@@ -91,7 +92,7 @@ L'installation pas à pas, l'installation manuelle et les étapes post-installat
 - [Aperçu](https://sysreseval.github.io/sysreseval/html/main/overview.html)
 - [Installation & déploiement](https://sysreseval.github.io/sysreseval/html/main/installation.html)
 - [Faire passer un examen](https://sysreseval.github.io/sysreseval/html/main/exam.html) · [référence examen](https://sysreseval.github.io/sysreseval/html/main/exam-reference.html)
-- [Écrire des TP](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [traductions](https://sysreseval.github.io/sysreseval/html/main/translations.html)
+- [Écrire des TP](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [hubs, switchs et VLAN](https://sysreseval.github.io/sysreseval/html/main/switches.html) · [traductions](https://sysreseval.github.io/sysreseval/html/main/translations.html)
 - [Référence CLI](https://sysreseval.github.io/sysreseval/html/main/cli.html) · [Référence GUI](https://sysreseval.github.io/sysreseval/html/main/gui.html)
 - [Runtime & internes](https://sysreseval.github.io/sysreseval/html/main/internals.html)
 

@@ -416,7 +416,7 @@ Each `_network_specs` entry gives the keyword arguments of one network; a networ
 
 ### Switches and VLANs
 
-By default the machines of a network share a hub, as in every lab written before the switch types existed. `'mode': 'switch'` and `'mode': 'managed'` change that per network:
+By default the machines of a network share a hub, as in every lab written before the switch types existed. `'mode': 'switch'` and `'mode': 'managed'` change that per network — the whole feature (the Switches tab, the console and its commands, states, grading, limits) is described in [Hubs, switches and VLANs](switches.md):
 
 ```python
 _network_specs = {
@@ -434,35 +434,9 @@ _topology = {'lan': ['pc1', 'pc2', 'r1', 'r2'], 'dmz': ['r1', 'srv'], 'old': ['s
 - On a trunk port the machine handles the tags itself, e.g. `ip link add link eth0 name eth0.10 type vlan id 10`.
 - A switch that is not a hub drops the 802.1Q frames of a VLAN the port is not a member of: a trunk between two machines needs a hub or a managed switch with trunk ports, not a plain `'switch'`.
 - An unknown `mode`, `vlans` on a network that is not managed, a machine that is not on the network or an invalid VLAN ID raise `ValueError` when the `NetScheme` is built, so `sre check` reports them.
-
-**Console.** A managed switch has the management console of `vde_switch`. `sre connect <running_lab> <network>` opens it (prompt `lan$ `; `exit`, `quit` or Ctrl-D leave); the GUI shows a *Connect* button for it in the **Switches** tab and a terminal in the **Terminals** tab. The useful commands:
-
-| Command | Effect |
-|---------|--------|
-| `port/print`, `port/allprint` | Ports in use / every port: untagged VLAN and what is plugged (`kathara <machine>:eth<N>`) |
-| `vlan/print`, `vlan/allprint` | VLANs and their ports (`tagged=0` or `1`) |
-| `vlan/create <vlan>`, `vlan/remove <vlan>` | Create / remove a VLAN |
-| `port/setvlan <port> <vlan>` | Untagged VLAN of a port (access port) |
-| `vlan/addport <vlan> <port>`, `vlan/delport <vlan> <port>` | Add / remove a port as tagged member of a VLAN (trunk) |
-| `hash/print` | MAC address table |
-| `fstp/setfstp <0\|1>`, `fstp/print` | Spanning tree on / off, and its state |
-
-Port numbers are given when the lab starts and are not predictable: read them with `port/print`.
-
-In user mode (what the GUI runs) only the commands of `params.switch_user_commands` reach the switch — the ones above, `help` and a few read-only ones — and any other is refused. `'allow_connection': False` closes the console to students altogether (refused by `sre connect` in user mode, except for a debug project), and a network whose machines are all hidden is unknown to them. Privileged users are not restricted.
-
-**From a state.** `self.switch_cmd(network, command, ...)` runs one console command (see [Switch operations](#switch-operations)); a word `@machine` stands for the number of the port of that machine:
-
-```python
-@sre_state(user_allowed=True, description="pc2 joins VLAN 10")
-def move(self):
-    self.switch_cmd('lan', 'vlan/create 10', allow_error=True)   # code 17 when the VLAN already exists
-    self.switch_cmd('lan', 'port/setvlan @pc2 10')
-```
-
-**From `grade()`.** `self.test_switch(network, command)` registers a console command like `self.test()` does for a machine, and `get_switch_ports()` gives the VLANs of the port of each machine (see *Switch helpers* in the Grading Library Reference).
-
-**Limits.** The type of a switch and the declared VLANs belong to the deployment: `sre save` / `sre restore` and `sre export` keep them (lab.conf lines `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`, `CD_MODE[lan]="managed"`, in the syntax of the Kathara fork SRE installs), but not what was changed on the console afterwards: re-apply it in the `restore` state when it matters. A mode other than `hub` needs the VDE network plugin of that fork, installed by `make network-plugin` (see [Installation](installation.md#network-plugin-for-the-switch-types)); `sre start` fails with Kathara's message and that reminder otherwise, and a lab with hubs only is not concerned.
+- A managed switch has a management console: `sre connect <running_lab> <network>`, the *Connect* button of the **Switches** tab, a terminal in the **Terminals** tab. In user mode only the commands of `params.switch_user_commands` reach the switch, and `'allow_connection': False` closes the console to students.
+- A state runs console commands with `self.switch_cmd(network, command, ...)`, where `@machine` stands for the port of a machine (see [Switch operations](#switch-operations)); `grade()` reads the switch with `self.test_switch(network, command)` and `get_switch_ports()` (see *Switch helpers* in the Grading Library Reference).
+- A save file and `sre export` keep the type of each switch and the declared VLANs, not what was changed on a console afterwards. A mode other than `hub` needs the VDE network plugin of the Kathara fork, installed by `make network-plugin` (see [Installation](installation.md#network-plugin-for-the-switch-types)).
 
 See `lab/sre/_DRAFT_dummy/switch_example.py` for a complete lab: the three types of network, access and trunk ports with a router on a stick, an open and a closed console, two states built on `switch_cmd()` and a grade reading the switch.
 

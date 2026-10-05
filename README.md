@@ -39,6 +39,7 @@ It is developed at the **IUT d'Orsay, Université Paris-Saclay**.
   - **Switches** — the networks of the lab with their type: hub, switch or manageable switch (with VLANs and a console the students may open when the lab allows it). Shown when a network is not a hub.
   - **Evaluations** — lets the student trigger an automated evaluation of their work and view the resulting grade table.
   - **Apply Configuration** — lets the student put the project into a predefined state, for example a partial correction.
+- **Hubs, switches and VLANs.** Each network of a lab is a hub, a switch or a manageable switch with VLANs (access and trunk ports) and a management console; states and grading can drive and read the switches.
 - **Multiple labs open at once.** Course content can be organised by topic rather than by session — students can keep several projects running and switch between them.
 - **Live classroom monitoring.** Instructors can watch the whole class in real time, inspect each student's latest evaluation and grading errors, and see per-item min/max/average statistics across the class.
 - **Time-limited exams.** `sysreseval` starts each student's project (immediately or at a scheduled time), shows a countdown, runs periodic evaluations, and posts an end-of-exam banner. Duration can be adjusted on the fly — useful for accommodations.
@@ -84,7 +85,7 @@ Full step-by-step setup, manual install, and post-install steps are documented i
 - [Overview](https://sysreseval.github.io/sysreseval/html/main/overview.html)
 - [Installation & deployment](https://sysreseval.github.io/sysreseval/html/main/installation.html)
 - [Running exams](https://sysreseval.github.io/sysreseval/html/main/exam.html) · [exam reference](https://sysreseval.github.io/sysreseval/html/main/exam-reference.html)
-- [Authoring labs](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [translations](https://sysreseval.github.io/sysreseval/html/main/translations.html)
+- [Authoring labs](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [hubs, switches and VLANs](https://sysreseval.github.io/sysreseval/html/main/switches.html) · [translations](https://sysreseval.github.io/sysreseval/html/main/translations.html)
 - [CLI reference](https://sysreseval.github.io/sysreseval/html/main/cli.html) · [GUI reference](https://sysreseval.github.io/sysreseval/html/main/gui.html)
 - [Runtime & internals](https://sysreseval.github.io/sysreseval/html/main/internals.html)
 

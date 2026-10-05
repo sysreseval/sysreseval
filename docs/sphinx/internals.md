@@ -99,6 +99,8 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 | `terminal_color_scheme` | `"black_on_white"` | Default terminal colors |
 | `exam_only_affix` | `["_EXAM_", "_OLD_", "_DRAFT_", "_TESTS_"]` | Name substrings that hide labs from `sre list` |
 | `authorized_src_dir` | `['/opt/sre/lab', '/home/etudiant']` | Allowed lab source directories |
+| `default_network_mode` | `"hub"` | Type of switch of a network that declares no `mode` (`network_modes`: `hub`, `switch`, `managed`) |
+| `switch_user_commands` | `("help", "port/print", "port/setvlan", "vlan/create", …)` | Console commands a student may run on a managed switch; any other is refused in user mode |
 | `hostname_keyword` / `login_keyword` / `fullname_keyword` / `email_keyword` / `language_keyword` | `"hostname"` / `"login"` / `"fullname"` / `"email"` / `"language"` | Keys used in `answers.json` and archive `answers` dict |
 
 ### Environment variables
@@ -176,6 +178,18 @@ The container keys and markers are the `params.data_json_*` constants. Files wri
 
 Up to 16 machines tested concurrently (`ThreadPoolExecutor`). Exit codes: `0`–`255` actual, `-1` = timeout.
 
+The console commands registered with `Grade.test_switch()` are stored in the same `self._tests`, under `(network, step)` and `(command, 0)`. They are not sent to `exetests.py`: after the containers of a step, `run_tests()` runs them one by one on the console of the managed switch (see [Switches](#switches)). Being ordinary entries of `tests`, they are archived and replayed by `sre re-eval` like the others.
+
+## Switches
+
+The type of a network (`Network.mode`: hub, switch, managed switch — see [Hubs, switches and VLANs](switches.md)) is the *mode* of its Kathara collision domain, a feature of the Kathara fork and of its VDE network plugin.
+
+- **Deployment.** `NetScheme0.get_new_lab_from_scheme()` sets the mode of the Kathara link of each network that is not a hub and passes the declared VLANs of a port (`vlan=`, `tagged_vlans=`) when a machine is connected to a managed switch. Nothing is said for a hub, so a lab with hubs only makes the same Kathara calls as before and runs with the stock plugin. Kathara refuses a non-hub mode when the plugin does not advertise it (`KATHARA_SWITCH_MODES` in the plugin settings): `sre start` / `sre restore` then roll back and `start.quit_if_no_switch_modes()` reports the networks concerned.
+- **Console.** A managed switch is a `vde_switch` started with a management socket, which Kathara reaches from the host (`Kathara.exec_link()`, one connection per command). `src/SRE/switch_console.py` is the only place where SRE uses it: `SwitchConsole.run(network, command)` returns `(output, code)` — `0`, the error number of the switch, or `-2` — and never raises; a word `@machine` is replaced by the port found with `Kathara.get_link_ports()` (ports are labelled `<machine>:eth<N>` by the plugin). It serves `NetScheme.switch_cmd()` (applied by `sre state` with the host operations of the step), `Grade.test_switch()`, `sre exec` and `sre connect`.
+- **Students.** `sre connect <project> <network>` in user mode is a prompt of SRE, not a raw access to the socket (which belongs to root and the Docker group): each line is checked against `params.switch_user_commands` before it is sent, and `connect.get_switch()` refuses a hub or a plain switch, a network of hidden machines only, and a switch closed by `allow_connection` (a debug project lifts the last two).
+- **GUI.** `Grade0.save_lab_info()` writes `switches` in `info.json`: `{name, mode, allow_connection}` for every network a student sees. `view/switches_view.py` draws the Switches tab from it, and the tab is hidden when every entry is a hub.
+- **Operations log.** Switch commands of states and evaluations are logged as `stepN - on switch <network> : <command>`.
+
 ## Progress reporting
 
 `sre start` emits JSON lines to **stderr** so the GUI can render progress:
@@ -204,6 +218,7 @@ Up to 16 machines tested concurrently (`ThreadPoolExecutor`). Exit codes: `0`–
 | Single GUI instance | PID file at `/tmp/sysreseval-{uid}.pid` kills the previous instance |
 | Student command restrictions | `user_not_allowed()` / `user_not_allowed_in_exam_mode()` |
 | State access control | `@sre_state(user_allowed=False)` blocks students from re-applying protected states |
+| Switch console | In user mode only the commands of `params.switch_user_commands` are sent to a managed switch (no port creation / removal, plugin loading, shutdown); `allow_connection` closes a console; the management socket itself is not readable by students |
 
 ## Archive format
 

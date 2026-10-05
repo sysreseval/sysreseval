@@ -41,7 +41,7 @@ Undeploys containers and removes the project directory from `/var/lib/sre/projec
 
 ### `sre save [-o <file>] [--full-images] <running_lab>`
 
-Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the patched Kathara `save_lab`, as a diff against the base image by default) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save-restore)). Only files are captured, not running processes.
+Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the patched Kathara `save_lab`, as a diff against the base image by default) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save--restore)). Only files are captured, not running processes.
 
 | Option | Description |
 |--------|-------------|
@@ -64,7 +64,7 @@ Stops every running Kathara lab and removes everything under `/var/lib/sre/proje
 
 ### `sre connect [--shell <shell>] [--exec <argument…>] [--no-records] <running_lab> <device>`
 
-Opens a terminal session on a device: the shell of a machine, or the management console of a managed switch when `<device>` is a network declared with `'mode': 'managed'` (prompt `<network>$ `, `exit` leaves). In user mode the console only accepts the commands of `params.switch_user_commands`, and it is refused when the lab sets `'allow_connection': False` on the switch.
+Opens a terminal session on a device: the shell of a machine, or the management console of a managed switch when `<device>` is a network declared with `'mode': 'managed'` (prompt `<network>$ `, `exit` leaves). In user mode the console only accepts the commands of `params.switch_user_commands`, and it is refused when the lab sets `'allow_connection': False` on the switch. The commands of the console are listed in [Hubs, switches and VLANs](switches.md#the-console-of-a-manageable-switch).
 
 | Option | Description |
 |--------|-------------|
@@ -110,7 +110,7 @@ Evaluates every running lab instance concurrently. `--no-display-grades` suppres
 
 ### `sre check [-p] <lab> [<state>]`
 
-Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method.
+Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (`switch <network>: cmd …`).
 
 ### `sre watch [--timeout <sec>] [--interval <sec>] [-H <regexp>] [-S <time>] [-L] <dir…>`
 
@@ -279,7 +279,7 @@ With `--with-titles`, output becomes `[{"name": <path>, "title": <dict|null>}, �
 
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 
-Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation.
+Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
 
 ### `sre pre-start-exam`
 
