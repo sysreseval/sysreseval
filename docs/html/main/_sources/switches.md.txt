@@ -19,14 +19,16 @@ A project shows a **Switches** tab, after **Machines**, as soon as one of its ne
 | Column | Content |
 |--------|---------|
 | **Name** | Name of the network, as on the schema. |
-| **Type** | *Hub*, *Switch* or *Manageable switch*. |
-| **Connection** | For a manageable switch: a green *Connect* button, or a red cell when the lab closed its console to the students. Empty for a hub or a plain switch, which have no console. |
+| **Type** | *Hub*, *Switch* or *Manageable switch*. On a red background for a manageable switch whose console the lab closed to the students. |
+| **Connection** | A green *Connect* button for a manageable switch the students may use. Empty otherwise: a hub or a plain switch has no console, and a closed manageable switch is not offered. |
 
 *Connect* opens the management console of the switch in an external terminal, like the *Connect* button of the **Machines** tab does for a machine. Each click opens a new terminal.
 
 The **Terminals** tab also holds one embedded terminal per manageable switch the students may use, next to those of the machines.
 
-A network that only connects hidden machines is not listed. In a debug project (`sre start --debug-project`) every network is listed and the Terminals tab also holds the manageable switches the lab closed.
+A network that only connects hidden machines is not listed.
+
+In a debug project (`sre start --debug-project`) every network is listed, and the manageable switches the lab closed to the students can be used all the same: their type stays red, but they get an orange *Connect* button in the Switches tab and a terminal in the Terminals tab, whose title is orange like the title of a machine the students cannot connect to.
 
 ### The console of a manageable switch
 
@@ -100,7 +102,7 @@ class NetScheme(NetScheme0):
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `mode` | `'hub'` | `'hub'`, `'switch'` or `'managed'`. |
-| `allow_connection` | `True` | Manageable switch only: the students may open its console. `False` shows a red cell in the Switches tab and makes `sre connect` refuse them. |
+| `allow_connection` | `True` | Manageable switch only: the students may open its console. `False` shows the type of the switch in red in the Switches tab, without *Connect* button, and makes `sre connect` refuse them. |
 | `vlans` | `{}` | Manageable switch only: the VLANs of the ports, by machine name. |
 
 The value given for a machine in `vlans` describes its port:

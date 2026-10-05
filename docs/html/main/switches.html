@@ -542,17 +542,18 @@
 <td><p>Name of the network, as on the schema.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Type</strong></p></td>
-<td><p><em>Hub</em>, <em>Switch</em> or <em>Manageable switch</em>.</p></td>
+<td><p><em>Hub</em>, <em>Switch</em> or <em>Manageable switch</em>. On a red background for a manageable switch whose console the lab closed to the students.</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Connection</strong></p></td>
-<td><p>For a manageable switch: a green <em>Connect</em> button, or a red cell when the lab closed its console to the students. Empty for a hub or a plain switch, which have no console.</p></td>
+<td><p>A green <em>Connect</em> button for a manageable switch the students may use. Empty otherwise: a hub or a plain switch has no console, and a closed manageable switch is not offered.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <p><em>Connect</em> opens the management console of the switch in an external terminal, like the <em>Connect</em> button of the <strong>Machines</strong> tab does for a machine. Each click opens a new terminal.</p>
 <p>The <strong>Terminals</strong> tab also holds one embedded terminal per manageable switch the students may use, next to those of the machines.</p>
-<p>A network that only connects hidden machines is not listed. In a debug project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>) every network is listed and the Terminals tab also holds the manageable switches the lab closed.</p>
+<p>A network that only connects hidden machines is not listed.</p>
+<p>In a debug project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>) every network is listed, and the manageable switches the lab closed to the students can be used all the same: their type stays red, but they get an orange <em>Connect</em> button in the Switches tab and a terminal in the Terminals tab, whose title is orange like the title of a machine the students cannot connect to.</p>
 </section>
 <section id="the-console-of-a-manageable-switch">
 <h3>The console of a manageable switch<a class="headerlink" href="#the-console-of-a-manageable-switch" title="Link to this heading">¶</a></h3>
@@ -660,7 +661,7 @@ lan$ exit
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">allow_connection</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
-<td><p>Manageable switch only: the students may open its console. <code class="docutils literal notranslate"><span class="pre">False</span></code> shows a red cell in the Switches tab and makes <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> refuse them.</p></td>
+<td><p>Manageable switch only: the students may open its console. <code class="docutils literal notranslate"><span class="pre">False</span></code> shows the type of the switch in red in the Switches tab, without <em>Connect</em> button, and makes <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> refuse them.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vlans</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
