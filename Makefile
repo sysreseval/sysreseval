@@ -87,7 +87,7 @@ api_doc:
 		--output-dir ${ROOT_DIR}/docs/html/api \
 		--docformat google \
 		SRE.lib_sre SRE.common SRE.params \
-		lib.ips lib.net_config lib.dhcp lib.tls lib.grade_helpers lib.frr lib.state_helpers lib.utils
+		lib.ips lib.net_config lib.dhcp lib.tls lib.grade_helpers lib.frr lib.state_helpers lib.switch lib.utils
 	@echo "Docs written to ${ROOT_DIR}/docs/html/api"
 
 # Download the DejaVu fonts into graphics/fonts (nothing to do when they are already there).
