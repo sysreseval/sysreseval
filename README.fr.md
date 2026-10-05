@@ -39,7 +39,7 @@ L'interface graphique délègue à la CLI via un petit utilitaire setuid `sre-wr
 par exemple une invite `login` qui restreint l'étudiant à un compte utilisateur particulier.
   - **Machines** — un tableau d'état pour chaque machine : état, réseau NAT, ports exposés. Les étudiants peuvent l'utiliser
 pour ouvrir des terminaux supplémentaires vers une machine (utile lorsque plusieurs sessions sont nécessaires sur une même machine).
-  - **Commutateurs** — les réseaux du projet avec leur type : concentrateur (hub), commutateur ou commutateur administrable (avec des VLAN et une console que les étudiants peuvent ouvrir si le projet l'autorise). Affiché lorsqu'un réseau n'est pas un hub.
+  - **Switchs** — les réseaux du projet avec leur type : hub, switch ou switch administrable (avec des VLAN et une console que les étudiants peuvent ouvrir si le projet l'autorise). Affiché lorsqu'un réseau n'est pas un hub.
   - **Évaluations** — permet à l'étudiant de déclencher une évaluation automatique de son travail et de visualiser le tableau des notes obtenues.
   - **Appliquer une configuration** — permet à l'étudiant de placer le projet dans un état prédéfini, par exemple une correction partielle.
 - **Plusieurs projets ouverts simultanément.** Le contenu d'un cours peut être organisé par thème plutôt que par séance — les étudiants peuvent garder plusieurs projets ouverts et basculer entre eux.

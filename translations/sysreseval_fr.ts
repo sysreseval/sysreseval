@@ -463,7 +463,7 @@
         <location filename="../src/sysreseval/project_widget.py" line="64"/>
         <location filename="../src/sysreseval/project_widget.py" line="115"/>
         <source>Switches</source>
-        <translation>Commutateurs</translation>
+        <translation>Switchs</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/project_widget.py" line="67"/>
@@ -762,17 +762,17 @@
     <message>
         <location filename="../src/sysreseval/view/switches_view.py" line="45"/>
         <source>Manageable switch</source>
-        <translation>Commutateur administrable</translation>
+        <translation>Switch administrable</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/view/switches_view.py" line="47"/>
         <source>Switch</source>
-        <translation>Commutateur</translation>
+        <translation>Switch</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/view/switches_view.py" line="48"/>
         <source>Hub</source>
-        <translation>Concentrateur (hub)</translation>
+        <translation>Hub</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/view/switches_view.py" line="68"/>

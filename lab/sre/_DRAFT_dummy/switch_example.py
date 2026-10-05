@@ -35,7 +35,7 @@ eval_before_exit = False
 
 default_language = 'fr'
 tr = make_tr(default_language)
-title = tr("Exemple commutateurs et VLAN", en="Switches and VLANs example")
+title = tr("Exemple switchs et VLAN", en="Switches and VLANs example")
 
 VLAN_A = 10
 VLAN_B = 20
@@ -92,12 +92,12 @@ class NetScheme(NetScheme0):
         d = self.data
         self.informations = (
             no_tr("## ") + title + no_tr("\n\n")
-            + tr("Cinq machines et quatre réseaux, un de chaque type (onglet **Commutateurs**) :\n\n"
+            + tr("Cinq machines et quatre réseaux, un de chaque type (onglet **Switchs**) :\n\n"
                  "| Réseau | Type | Machines |\n|---|---|---|\n"
-                 "| `lan` | commutateur administrable | `pc1`, `pc2`, `pc3` (`eth0`), `r1` (`eth0`, port *trunk*) |\n"
-                 "| `dmz` | commutateur administrable, console fermée | `r1` (`eth1`), `srv` |\n"
-                 "| `hub` | concentrateur (hub) | `pc1`, `pc2`, `pc3` (`eth1`) |\n"
-                 "| `sw` | commutateur | `pc1`, `pc2`, `pc3` (`eth2`) |\n\n"
+                 "| `lan` | switch administrable | `pc1`, `pc2`, `pc3` (`eth0`), `r1` (`eth0`, port *trunk*) |\n"
+                 "| `dmz` | switch administrable, console fermée | `r1` (`eth1`), `srv` |\n"
+                 "| `hub` | hub | `pc1`, `pc2`, `pc3` (`eth1`) |\n"
+                 "| `sw` | switch | `pc1`, `pc2`, `pc3` (`eth2`) |\n\n"
                  "Les ports de `lan` sont répartis en deux VLAN, routés entre eux par `r1` "
                  f"(une sous-interface 802.1Q par VLAN : `eth0.{VLAN_A}` et `eth0.{VLAN_B}`).\n\n",
                  en="Five machines and four networks, one of each type (**Switches** tab):\n\n"
@@ -119,8 +119,8 @@ class NetScheme(NetScheme0):
                     f"`pc3` {d.ips.pc3_sw.ip} |\n\n")
             + tr(f"`pc3` a une adresse du VLAN {VLAN_B}, mais son port est dans le VLAN {VLAN_A} : il ne joint "
                  "ni `pc2` ni sa passerelle tant que son port n'est pas corrigé.\n\n"
-                 "### Console du commutateur `lan`\n\n"
-                 "Onglet **Commutateurs**, bouton *Connecter* (ou onglet **Terminaux**) :\n\n"
+                 "### Console du switch `lan`\n\n"
+                 "Onglet **Switchs**, bouton *Connecter* (ou onglet **Terminaux**) :\n\n"
                  "```\n"
                  "port/print                   ports utilisés : VLAN non étiqueté, machine branchée\n"
                  "vlan/print                   VLAN et leurs ports (tagged=1 : port trunk)\n"
@@ -211,15 +211,15 @@ class Grade(Grade0):
 
         # --- questions
         seen = self.question_form(
-            tr("Concentrateur et commutateur", en="Hub and switch"),
+            tr("Hub et switch", en="Hub and switch"),
             section=self.section(0),
             description=tr(
                 f"Sur `pc3`, lancer `tcpdump -n -i eth1 icmp` puis, sur `pc1`, `ping -c 3 {d.ips.pc2_hub.ip}` "
                 f"(réseau `hub`). Recommencer avec `tcpdump -n -i eth2 icmp` et `ping -c 3 {d.ips.pc2_sw.ip}` "
                 "(réseau `sw`).\n\n"
                 "`pc3` voit-il les paquets échangés entre `pc1` et `pc2` ?\n\n"
-                "* sur le concentrateur `hub` : @@{hub:>?>>>none|oui>>>yes|non>>>no}@@\n"
-                "* sur le commutateur `sw` : @@{sw:>?>>>none|oui>>>yes|non>>>no}@@",
+                "* sur le hub `hub` : @@{hub:>?>>>none|oui>>>yes|non>>>no}@@\n"
+                "* sur le switch `sw` : @@{sw:>?>>>none|oui>>>yes|non>>>no}@@",
                 en=f"On `pc3`, run `tcpdump -n -i eth1 icmp` then, on `pc1`, `ping -c 3 {d.ips.pc2_hub.ip}` "
                    f"(network `hub`). Do it again with `tcpdump -n -i eth2 icmp` and `ping -c 3 {d.ips.pc2_sw.ip}` "
                    "(network `sw`).\n\n"
@@ -233,7 +233,7 @@ class Grade(Grade0):
             tr("Port de pc3", en="Port of pc3"),
             section=self.section(0),
             description=tr(
-                "Ouvrir la console du commutateur `lan` et afficher ses ports (`port/print`).\n\n"
+                "Ouvrir la console du switch `lan` et afficher ses ports (`port/print`).\n\n"
                 "Numéro du port de `pc3` : @@{port:[0-9]+}@@",
                 en="Open the console of the switch `lan` and print its ports (`port/print`).\n\n"
                    "Number of the port of `pc3`: @@{port:[0-9]+}@@"),
@@ -243,7 +243,7 @@ class Grade(Grade0):
             section=self.section(0),
             description=tr(
                 f"`pc3` ({d.ips.pc3.ip}) ne joint ni `pc2` ({d.ips.pc2.ip}) ni `pc1` ({d.ips.pc1.ip}). "
-                f"Placer son port dans le VLAN {VLAN_B} depuis la console du commutateur `lan`.",
+                f"Placer son port dans le VLAN {VLAN_B} depuis la console du switch `lan`.",
                 en=f"`pc3` ({d.ips.pc3.ip}) reaches neither `pc2` ({d.ips.pc2.ip}) nor `pc1` ({d.ips.pc1.ip}). "
                    f"Put its port in VLAN {VLAN_B} from the console of the switch `lan`.")
             + instructor(tr(f"\n\n`port/setvlan <port> {VLAN_B}`, ou l'état *solution*.",
@@ -253,18 +253,18 @@ class Grade(Grade0):
         # --- grades
         part = self.add_grade_part(tr("Observation", en="Observation"))
         self.add_grade_element(title="hub", max_grade=1, grade=int(seen.get("hub") == "yes"),
-                               description=tr("Sur un concentrateur, pc3 voit le trafic de pc1 et pc2",
+                               description=tr("Sur un hub, pc3 voit le trafic de pc1 et pc2",
                                               en="On a hub, pc3 sees the traffic of pc1 and pc2"), grade_part=part)
         self.add_grade_element(title="switch", max_grade=1, grade=int(seen.get("sw") == "no"),
-                               description=tr("Sur un commutateur, pc3 ne le voit pas",
+                               description=tr("Sur un switch, pc3 ne le voit pas",
                                               en="On a switch, pc3 does not see it"), grade_part=part)
         pc3_port = ports.get("pc3", {}).get("port")
         self.add_grade_element(title="port pc3", max_grade=1,
                                grade=int(pc3_port is not None and port.get("port") == str(pc3_port)),
-                               description=tr("Numéro du port de pc3 lu sur le commutateur",
+                               description=tr("Numéro du port de pc3 lu sur le switch",
                                               en="Number of the port of pc3 read on the switch"), grade_part=part)
 
-        part = self.add_grade_part(tr("VLAN (lus sur le commutateur)", en="VLANs (read on the switch)"))
+        part = self.add_grade_part(tr("VLAN (lus sur le switch)", en="VLANs (read on the switch)"))
         self.add_grade_element(title=f"pc3 VLAN {VLAN_B}", max_grade=2, grade=2 if vlan("pc3") == VLAN_B else 0,
                                description=tr(f"Le port de pc3 est dans le VLAN {VLAN_B}",
                                               en=f"The port of pc3 is in VLAN {VLAN_B}"), grade_part=part)

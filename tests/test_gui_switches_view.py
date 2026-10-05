@@ -146,8 +146,7 @@ class TestSwitchesView:
         try:
             view = SwitchesView(RUNNING, SWITCHES)
             assert [view.horizontalHeaderItem(i).text() for i in range(3)] == ['Nom', 'Type', 'Connexion']
-            assert _column(view, 1) == ['Commutateur administrable', 'Commutateur', 'Concentrateur (hub)',
-                                        'Commutateur administrable']
+            assert _column(view, 1) == ['Switch administrable', 'Switch', 'Hub', 'Switch administrable']
             assert _button(view, 0).text() == 'Connecter'
         finally:
             _app.removeTranslator(translator)
