@@ -78,6 +78,7 @@ RUN apt install -y \
     nfs-kernel-server \
     systemd-resolved \
     openvpn \
+    wireguard \
     easy-rsa
 
 WORKDIR /tmp
