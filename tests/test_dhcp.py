@@ -751,6 +751,8 @@ from dhcp import (DHCP_PROBE_PATH, DhcpRelayParameters, _parse_dhcpd_cmdlines, _
                   dhcp_probe_query, get_dhclient_leases, get_dhcp_failover_state, get_dhcpd_interfaces,
                   install_dhcp_probe, parse_dhclient_leases, parse_dhcp_probe, parse_dhcpd_failover_state,
                   set_dhcp_relay)
+from dhcp import (CLASSLESS_ROUTES_DECLARATION, CLASSLESS_ROUTES_OPTION, parse_classless_routes,
+                  render_classless_routes)
 
 FIXTURES = Path(__file__).parent / 'mock_data' / 'dhcp'
 
@@ -809,6 +811,7 @@ class TestProbeFrames:
         assert opts[12] == b'sonde'
         assert struct.unpack('!I', opts[51])[0] == 4000000
         assert set(opts[55]) >= {1, 3, 6, 15, 51, 54}
+        assert 121 in opts[55]  # a server only sends the classless static routes to a client asking for them
         assert 50 not in opts
 
     def test_init_reboot_request(self):
@@ -845,6 +848,23 @@ class TestProbeFrames:
         assert reply['routers'] == ['10.0.0.254']
         assert reply['dns_servers'] == ['10.9.9.9', '10.8.8.8']
         assert reply['domain_name'] == 'tp.lan'
+
+    def test_parse_reply_classless_routes(self):
+        # 198.51.100.0/24 via 10.0.0.253, default via 10.0.0.254, 172.16.0.0/12 via 10.0.0.253
+        routes = bytes([24, 198, 51, 100, 10, 0, 0, 253, 0, 10, 0, 0, 254, 12, 172, 16, 10, 0, 0, 253])
+        reply = dhcp_probe.parse_reply(self._reply_frame(options=bytes([53, 1, 2, 121, len(routes)]) + routes))
+        assert reply['classless_routes'] == [['198.51.100.0/24', '10.0.0.253'], ['0.0.0.0/0', '10.0.0.254'],
+                                             ['172.16.0.0/12', '10.0.0.253']]
+        assert 121 in reply['options']
+
+    def test_parse_reply_without_classless_routes(self):
+        assert dhcp_probe.parse_reply(self._reply_frame(options=bytes([53, 1, 2])))['classless_routes'] == []
+
+    def test_truncated_classless_routes(self):
+        # the second route lacks a byte of its router: only the first one is kept
+        routes = bytes([24, 198, 51, 100, 10, 0, 0, 253, 0, 10, 0, 0])
+        reply = dhcp_probe.parse_reply(self._reply_frame(options=bytes([53, 1, 2, 121, len(routes)]) + routes))
+        assert reply['classless_routes'] == [['198.51.100.0/24', '10.0.0.253']]
 
     def test_parse_reply_ignores_requests_and_garbage(self):
         assert dhcp_probe.parse_reply(dhcp_probe.build_request(self.SRC, self.CHADDR, 1)) is None
@@ -897,6 +917,19 @@ class TestParseDhcpProbe:
         assert parse_dhcp_probe('Traceback (most recent call last):') == {}
         assert parse_dhcp_probe('{"errors": []}') == {}
         assert parse_dhcp_probe('{"replies": {"eth0": {"dyn": "x"}}}') == {'eth0': {'dyn': []}}
+
+    def test_classless_routes(self):
+        output = json.dumps({'errors': [], 'replies': {'eth0': {'dyn': [
+            {'msg_type': 'OFFER', 'classless_routes': [['198.51.100.0/24', '192.0.2.254'], ['0.0.0.0/0', '192.0.2.1'],
+                                                       ['not a network', '192.0.2.1'], 'garbage']}]}}})
+        reply = parse_dhcp_probe(output)['eth0']['dyn'][0]
+        assert reply.classless_routes == [(IPv4Network('198.51.100.0/24'), IPv4Address('192.0.2.254')),
+                                          (IPv4Network('0.0.0.0/0'), IPv4Address('192.0.2.1'))]
+
+    def test_no_classless_routes_in_the_captured_replies(self):
+        # captured before the probe asked for option 121
+        replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['dyn']
+        assert replies and all(r.classless_routes == [] for r in replies)
 
     def test_two_servers_on_lan1(self):
         replies = parse_dhcp_probe(load('probe_final.json'))['eth0']['dyn']
@@ -1045,3 +1078,52 @@ class TestDhclientLeases:
     def test_empty(self):
         assert parse_dhclient_leases('') == []
         assert get_dhclient_leases(make_output_grade('', 1), 'm3') == []
+
+
+class TestClasslessRoutes:
+    LAN3 = (IPv4Network('198.51.100.0/24'), IPv4Address('192.0.2.254'))
+    DEFAULT = (IPv4Network('0.0.0.0/0'), IPv4Address('192.0.2.1'))
+
+    def test_declaration(self):
+        assert CLASSLESS_ROUTES_OPTION == 'rfc3442-classless-static-routes'
+        assert CLASSLESS_ROUTES_DECLARATION == ('option rfc3442-classless-static-routes code 121 = '
+                                                'array of unsigned integer 8;')
+
+    def test_render(self):
+        assert render_classless_routes([self.LAN3, self.DEFAULT]) == '24, 198,51,100, 192,0,2,254, 0, 192,0,2,1'
+
+    @pytest.mark.parametrize('destination, encoded', [
+        ('10.0.0.0/8', '8, 10, 192,0,2,254'),
+        ('172.16.0.0/12', '12, 172,16, 192,0,2,254'),
+        ('192.168.4.0/22', '22, 192,168,4, 192,0,2,254'),
+        ('192.0.2.77/32', '32, 192,0,2,77, 192,0,2,254'),
+    ])
+    def test_render_keeps_the_significant_bytes_only(self, destination, encoded):
+        assert render_classless_routes([(destination, '192.0.2.254')]) == encoded
+
+    def test_parse_lease_file_value(self):
+        # as dhclient writes it in its lease file
+        assert parse_classless_routes('24,198,51,100,192,0,2,254,0,192,0,2,1') == [self.LAN3, self.DEFAULT]
+
+    def test_parse_accepts_spaces(self):
+        assert parse_classless_routes(' 0, 192,0,2,1,  24 198 51 100 192 0 2 254 ') == [self.DEFAULT, self.LAN3]
+
+    def test_round_trip(self):
+        routes = [self.LAN3, self.DEFAULT, (IPv4Network('10.0.0.0/8'), IPv4Address('192.0.2.254')),
+                  (IPv4Network('172.16.0.0/12'), IPv4Address('192.0.2.254'))]
+        assert parse_classless_routes(render_classless_routes(routes)) == routes
+
+    @pytest.mark.parametrize('value', [None, '', 'abc', '24,198,51,100,192,0,2', '33,1,2,3,4,5,1,2,3,4',
+                                       '24,198,51,300,192,0,2,254', '24,198,51,100,192,0,2,254,0'])
+    def test_parse_malformed(self, value):
+        assert parse_classless_routes(value) == []
+
+    def test_captured_lease(self):
+        # m1 after the `final` state of lab dhcp.py: lan3 through r2, and the default route, which
+        # the client takes from this option and no longer from `routers`
+        lease = parse_dhclient_leases(load('dhclient_m1_classless_routes.leases'))[0]
+        assert lease[CLASSLESS_ROUTES_OPTION] == '24,10,69,247,10,160,36,241,0,10,160,36,4'
+        assert parse_classless_routes(lease[CLASSLESS_ROUTES_OPTION]) == [
+            (IPv4Network('10.69.247.0/24'), IPv4Address('10.160.36.241')),
+            (IPv4Network('0.0.0.0/0'), IPv4Address('10.160.36.4'))]
+        assert lease['routers'] == '10.160.36.4'

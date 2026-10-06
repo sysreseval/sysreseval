@@ -1,4 +1,8 @@
 {
+  "dhcp.py": {
+    "en": "DHCP (*Dynamic Host Configuration Protocol*)",
+    "fr": "DHCP (*Dynamic Host Configuration Protocol*)"
+  },
   "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
   "smtp.py": {
     "en": "SMTP and electronic mail",

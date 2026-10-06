@@ -37,8 +37,9 @@ FLAG_BROADCAST = 0x8000
 DEFAULT_SECS = 120
 DEFAULT_WAIT = 2.5
 DEFAULT_LATE_WAIT = 1.5
-# subnet mask, routers, DNS, domain name, broadcast, lease time, server id, T1, T2
-PARAMETER_REQUEST_LIST = bytes([1, 3, 6, 15, 28, 51, 54, 58, 59])
+# subnet mask, routers, DNS, domain name, broadcast, lease time, server id, T1, T2,
+# classless static routes
+PARAMETER_REQUEST_LIST = bytes([1, 3, 6, 15, 28, 51, 54, 58, 59, 121])
 
 MSG_TYPES = {1: 'DISCOVER', 2: 'OFFER', 3: 'REQUEST', 4: 'DECLINE', 5: 'ACK', 6: 'NAK', 7: 'RELEASE', 8: 'INFORM'}
 QUERY_TYPES = {'discover': 1, 'request': 3}
@@ -103,6 +104,23 @@ def _ip_list(raw):
     return [socket.inet_ntoa(raw[i:i + 4]) for i in range(0, len(raw) - len(raw) % 4, 4)]
 
 
+def _classless_routes(raw):
+    """Decode option 121 (RFC 3442): [["a.b.c.d/len", "gateway"], ...].  Each route is the prefix
+    length, the significant bytes of the destination, then the 4 bytes of the router; decoding
+    stops at the first malformed route."""
+    routes, i = [], 0
+    while i < len(raw):
+        length = raw[i]
+        size = (length + 7) // 8
+        if length > 32 or i + 1 + size + 4 > len(raw):
+            break
+        destination = raw[i + 1:i + 1 + size] + b'\x00' * (4 - size)
+        gateway = raw[i + 1 + size:i + 5 + size]
+        routes.append([f"{socket.inet_ntoa(destination)}/{length}", socket.inet_ntoa(gateway)])
+        i += 5 + size
+    return routes
+
+
 def parse_reply(frame):
     """Decode an Ethernet frame holding a BOOTREPLY; return a dict, or None for anything else."""
     try:
@@ -134,7 +152,7 @@ def parse_reply(frame):
             'chaddr': _mac_str(bootp[28:34]),
             'msg_type': None, 'server_id': None, 'subnet_mask': None, 'routers': [], 'dns_servers': [],
             'domain_name': None, 'broadcast': None, 'lease_time': None, 'renewal_time': None,
-            'rebinding_time': None, 'message': None, 'options': [],
+            'rebinding_time': None, 'message': None, 'classless_routes': [], 'options': [],
         }
         opts = bootp[240:]
         i = 0
@@ -173,6 +191,8 @@ def parse_reply(frame):
                 reply['rebinding_time'] = struct.unpack('!I', value)[0]
             elif code == 56:
                 reply['message'] = value.rstrip(b'\x00').decode(errors='replace')
+            elif code == 121:
+                reply['classless_routes'] = _classless_routes(value)
         return reply
     except (struct.error, IndexError, OSError):
         return None

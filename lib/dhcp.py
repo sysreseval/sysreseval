@@ -622,13 +622,18 @@ class DhcpRelayParameters:
     options: str = ''                                       # OPTIONS, e.g. "-id eth2 -iu eth1"
 
 
+def render_dhcp_relay(relay_params: DhcpRelayParameters) -> str:
+    """Content of /etc/default/isc-dhcp-relay for *relay_params*."""
+    return (f'SERVERS="{" ".join(str(s) for s in relay_params.servers)}"\n'
+            f'INTERFACES="{" ".join(relay_params.interfaces)}"\n'
+            f'OPTIONS="{relay_params.options}"\n')
+
+
 def set_dhcp_relay(net_scheme: NetScheme0, machine: str,
                    relay_params: DhcpRelayParameters, step: int = 1) -> None:
-    """Write /etc/default/isc-dhcp-relay and (re)start the relay on *machine*."""
-    content = (f'SERVERS="{" ".join(str(s) for s in relay_params.servers)}"\n'
-               f'INTERFACES="{" ".join(relay_params.interfaces)}"\n'
-               f'OPTIONS="{relay_params.options}"\n')
-    net_scheme.file(machine, '/etc/default/isc-dhcp-relay', content, step=step)
+    """Write /etc/default/isc-dhcp-relay (content: render_dhcp_relay()) and (re)start the relay
+    on *machine*."""
+    net_scheme.file(machine, '/etc/default/isc-dhcp-relay', render_dhcp_relay(relay_params), step=step)
     net_scheme.cmd(machine, 'systemctl enable isc-dhcp-relay', step=step)
     net_scheme.cmd(machine, 'systemctl restart isc-dhcp-relay', step=step)
 
@@ -745,6 +750,55 @@ def get_dhclient_leases(grade: Grade0, machine: str, step: int = 1) -> list[dict
 
 
 # ---------------------------------------------------------------------------
+# Classless static routes (option 121, RFC 3442)
+# ---------------------------------------------------------------------------
+
+CLASSLESS_ROUTES_OPTION = 'rfc3442-classless-static-routes'   # the name Debian's dhclient gives it
+# dhcpd does not know option 121 by name: dhcpd.conf has to declare it before giving it a value
+CLASSLESS_ROUTES_DECLARATION = f'option {CLASSLESS_ROUTES_OPTION} code 121 = array of unsigned integer 8;'
+
+
+def render_classless_routes(routes) -> str:
+    """Value of option 121 in dhcpd.conf for *routes*, ``(destination network, router)`` pairs:
+    ``24, 198,51,100, 192,0,2,254, 0, 192,0,2,1`` (prefix length, significant bytes of the
+    destination, router).  The default route is the network ``0.0.0.0/0``."""
+    parts = []
+    for destination, gateway in routes:
+        destination = IPv4Network(destination)
+        length = destination.prefixlen
+        significant = destination.network_address.packed[:(length + 7) // 8]
+        parts.append(str(length))
+        if significant:     # none for the default route
+            parts.append(','.join(str(b) for b in significant))
+        parts.append(','.join(str(b) for b in IPv4Address(gateway).packed))
+    return ', '.join(parts)
+
+
+def parse_classless_routes(value) -> list[tuple[IPv4Network, IPv4Address]]:
+    """Decode a value of option 121 written as integers separated by commas and/or spaces, as in
+    dhcpd.conf and in a dhclient lease file (``24,198,51,100,192,0,2,254,0,192,0,2,1``).
+    Returns the ``(destination, router)`` pairs, or ``[]`` when the value is malformed."""
+    try:
+        numbers = [int(n) for n in re.split(r'[\s,]+', str(value or '').strip()) if n]
+    except ValueError:
+        return []
+    routes, i = [], 0
+    while i < len(numbers):
+        length = numbers[i]
+        size = (length + 7) // 8
+        fields = numbers[i + 1:i + 5 + size]
+        if not 0 <= length <= 32 or len(fields) != size + 4 or any(not 0 <= n <= 255 for n in fields):
+            return []
+        destination = bytes(fields[:size]) + bytes(4 - size)
+        try:
+            routes.append((IPv4Network((destination, length)), IPv4Address(bytes(fields[size:]))))
+        except ValueError:      # host bits set in the destination
+            return []
+        i += 5 + size
+    return routes
+
+
+# ---------------------------------------------------------------------------
 # Active probe (lib/dhcp_probe.py run inside a container)
 # ---------------------------------------------------------------------------
 
@@ -766,6 +820,8 @@ class DhcpProbeReply:
     dns_servers: list[IPv4Address] = field(default_factory=list)
     domain_name: str | None = None
     lease_time: int | None = None
+    # option 121 (RFC 3442): (destination, router) pairs, the default route being 0.0.0.0/0
+    classless_routes: list[tuple[IPv4Network, IPv4Address]] = field(default_factory=list)
     raw: dict = field(default_factory=dict)
 
 
@@ -811,6 +867,17 @@ def _probe_ip(value) -> IPv4Address | None:
     return None if int(ip) == 0 else ip
 
 
+def _probe_routes(value) -> list[tuple[IPv4Network, IPv4Address]]:
+    routes = []
+    for item in value if isinstance(value, list) else []:
+        try:
+            destination, gateway = item
+            routes.append((IPv4Network(destination, strict=False), IPv4Address(gateway)))
+        except (TypeError, ValueError):
+            continue
+    return routes
+
+
 def parse_dhcp_probe(output: str) -> dict[str, dict[str, list[DhcpProbeReply]]]:
     """Parse the JSON printed by the probe into ``{interface: {query_id: [DhcpProbeReply]}}``.
 
@@ -843,6 +910,7 @@ def parse_dhcp_probe(output: str) -> dict[str, dict[str, list[DhcpProbeReply]]]:
                     dns_servers=[ip for ip in map(_probe_ip, r.get('dns_servers') or []) if ip],
                     domain_name=r.get('domain_name'),
                     lease_time=lease_time if isinstance(lease_time, int) else None,
+                    classless_routes=_probe_routes(r.get('classless_routes')),
                     raw=r))
             result[iface][query_id] = parsed
     return result
