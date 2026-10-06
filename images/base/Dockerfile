@@ -76,7 +76,9 @@ RUN apt install -y \
     isc-dhcp-server-ldap \
     slapd \
     nfs-kernel-server \
-    systemd-resolved
+    systemd-resolved \
+    openvpn \
+    easy-rsa
 
 WORKDIR /tmp
 # web

@@ -1,0 +1,33 @@
+2026-10-06 12:36:31 Note: --cipher is not set. OpenVPN versions before 2.5 defaulted to BF-CBC as fallback when cipher negotiation failed in this case. If you need this fallback please add '--data-ciphers-fallback BF-CBC' to your configuration and/or add BF-CBC to --data-ciphers.
+2026-10-06 12:36:31 Note: Kernel support for ovpn-dco missing, disabling data channel offload.
+2026-10-06 12:36:31 OpenVPN 2.6.14 x86_64-pc-linux-gnu [SSL (OpenSSL)] [LZO] [LZ4] [EPOLL] [PKCS11] [MH/PKTINFO] [AEAD] [DCO]
+2026-10-06 12:36:31 library versions: OpenSSL 3.0.20 7 Apr 2026, LZO 2.10
+2026-10-06 12:36:31 DCO version: N/A
+2026-10-06 12:36:31 TCP/UDP: Preserving recently used remote address: [AF_INET]198.51.100.120:1194
+2026-10-06 12:36:31 Socket Buffers: R=[212992->212992] S=[212992->212992]
+2026-10-06 12:36:31 UDPv4 link local: (not bound)
+2026-10-06 12:36:31 UDPv4 link remote: [AF_INET]198.51.100.120:1194
+2026-10-06 12:36:31 TLS: Initial packet from [AF_INET]198.51.100.120:1194, sid=d323b915 0aa1fa72
+2026-10-06 12:36:31 VERIFY OK: depth=1, CN=ca-vpn.tp
+2026-10-06 12:36:31 VERIFY KU OK
+2026-10-06 12:36:31 Validating certificate extended key usage
+2026-10-06 12:36:31 ++ Certificate has EKU (str) TLS Web Server Authentication, expects TLS Web Server Authentication
+2026-10-06 12:36:31 VERIFY EKU OK
+2026-10-06 12:36:31 VERIFY OK: depth=0, CN=srv
+2026-10-06 12:36:41 TLS Error: TLS key negotiation failed to occur within 10 seconds (check your network connectivity)
+2026-10-06 12:36:41 TLS Error: TLS handshake failed
+2026-10-06 12:36:41 SIGUSR1[soft,tls-error] received, process restarting
+2026-10-06 12:36:41 Restart pause, 1 second(s)
+2026-10-06 12:36:42 TCP/UDP: Preserving recently used remote address: [AF_INET]198.51.100.120:1194
+2026-10-06 12:36:42 Socket Buffers: R=[212992->212992] S=[212992->212992]
+2026-10-06 12:36:42 UDPv4 link local: (not bound)
+2026-10-06 12:36:42 UDPv4 link remote: [AF_INET]198.51.100.120:1194
+2026-10-06 12:36:42 TLS: Initial packet from [AF_INET]198.51.100.120:1194, sid=89579b55 aa3e7f84
+2026-10-06 12:36:42 VERIFY OK: depth=1, CN=ca-vpn.tp
+2026-10-06 12:36:42 VERIFY KU OK
+2026-10-06 12:36:42 Validating certificate extended key usage
+2026-10-06 12:36:42 ++ Certificate has EKU (str) TLS Web Server Authentication, expects TLS Web Server Authentication
+2026-10-06 12:36:42 VERIFY EKU OK
+2026-10-06 12:36:42 VERIFY OK: depth=0, CN=srv
+2026-10-06 12:36:46 event_wait : Interrupted system call (fd=-1,code=4)
+2026-10-06 12:36:46 SIGTERM[hard,] received, process exiting

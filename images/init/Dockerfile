@@ -54,10 +54,16 @@ RUN rm -f /etc/systemd/system/bind9.service /etc/systemd/system/sshd.service \
     /etc/systemd/system/multi-user.target.wants/remote-fs.target \
     /etc/systemd/system/multi-user.target.wants/ssh.service \
     /etc/systemd/system/multi-user.target.wants/stubby.service \
+    /etc/systemd/system/multi-user.target.wants/openvpn.service \
     /etc/systemd/system/sysinit.target.wants/systemd-resolved.service \
     /etc/systemd/system/sockets.target.wants/rpcbind.socket
 
-RUN rm -f /etc/rc*/S*slapd* /etc/rc*/S*named* /etc/rc*/S*exim*
+# The openvpn package also ships a generator that starts an openvpn@<name> instance for every
+# /etc/openvpn/<name>.conf at boot (AUTOSTART="all"): the labs start their tunnels explicitly
+# (openvpn-server@ / openvpn-client@ on /etc/openvpn/{server,client}/).
+RUN rm -f /lib/systemd/system-generators/openvpn-generator
+
+RUN rm -f /etc/rc*/S*slapd* /etc/rc*/S*named* /etc/rc*/S*exim* /etc/rc*/S*openvpn*
 
 RUN rm -f /usr/local/bin/systemctl
 

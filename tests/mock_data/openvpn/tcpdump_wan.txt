@@ -1,0 +1,8 @@
+10:28:03.010226 IP 203.0.113.3 > 203.0.113.2: ICMP echo request, id 116, seq 1, length 64
+10:28:03.010274 IP 203.0.113.2 > 203.0.113.3: ICMP echo reply, id 116, seq 1, length 64
+10:12:04.086528 IP 203.0.113.3.44052 > 203.0.113.2.80: Flags [S], seq 289752976, win 64240, options [mss 1460,sackOK,TS val 2052237029 ecr 0,nop,wscale 7], length 0
+10:12:04.086548 IP 203.0.113.2.80 > 203.0.113.3.44052: Flags [R.], seq 0, ack 289752977, win 0, length 0
+10:28:05.100001 IP 203.0.113.3.42287 > 203.0.113.2.1194: UDP, length 86
+10:28:05.100500 IP 203.0.113.2.1194 > 203.0.113.3.42287: UDP, length 1200
+10:28:06.000000 ARP, Request who-has 203.0.113.2 tell 203.0.113.3, length 28
+10:28:06.000100 IP6 fe80::1 > ff02::2: ICMP6, router solicitation, length 16
