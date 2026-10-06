@@ -1,9 +1,9 @@
 SHELL := /bin/bash
 
-VERSION   ?= 1.28
+VERSION   ?= 1.30
 NAMESPACE ?= sysreseval
 
-IMAGES := base init frr
+IMAGES := base init frr mail
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -24,6 +24,11 @@ frr: base
 		-t $(NAMESPACE)/frr:$(VERSION) \
 		frr
 
+mail: init
+	docker build --build-arg VERSION=$(VERSION) \
+		-t $(NAMESPACE)/mail:$(VERSION) \
+		mail
+
 PUSH_TARGETS := $(addprefix push-,$(IMAGES))
 
 push: $(PUSH_TARGETS)
@@ -33,8 +38,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base + init + frr"
-	@echo "  base | init | frr build one image (deps included)"
+	@echo "  all (default)     build base + init + frr + mail"
+	@echo "  base | init | frr | mail  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

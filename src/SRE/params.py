@@ -103,7 +103,7 @@ authorized_src_dir = [main_sre_dir + '/lab', '/home']
 #################################################################################
 
 sre_version = "0.9.1"
-default_docker_image_version = "1.28"
+default_docker_image_version = "1.30"
 sre_docker_namespace = "sysreseval"
 
 def sre_docker_image(image_name: str = "base") -> str:
