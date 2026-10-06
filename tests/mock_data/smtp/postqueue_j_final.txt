@@ -1,0 +1,2 @@
+{"queue_name": "deferred", "queue_id": "AC30E189112", "arrival_time": 1791287859, "message_size": 431, "forced_expire": false, "sender": "alice@alpha.tp", "recipients": [{"address": "x@delta.tp", "delay_reason": "connect to mail.delta.tp[172.22.188.174]:25: Connection refused"}]}
+{"queue_name": "deferred", "queue_id": "4B87F18972A", "arrival_time": 1791290450, "message_size": 431, "forced_expire": false, "sender": "alice@alpha.tp", "recipients": [{"address": "x@delta.tp", "delay_reason": "connect to mail.delta.tp[172.22.188.174]:25: Connection refused"}]}

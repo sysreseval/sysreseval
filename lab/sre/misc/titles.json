@@ -1,3 +1,7 @@
 {
-  "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site"
+  "openvpn.py": "OpenVPN : tunnels, PKI, accès distant, site à site",
+  "smtp.py": {
+    "en": "SMTP and electronic mail",
+    "fr": "SMTP et le courrier électronique"
+  }
 }

@@ -1,0 +1,47 @@
+# 2.3.19.1 (9b53102964): /etc/dovecot/dovecot.conf
+# Pigeonhole version 0.5.19 (4eae2f79)
+# OS: Linux 6.12.107+deb13-amd64 x86_64 Debian 12.14 
+# Hostname: mx1
+auth_mechanisms = plain login
+disable_plaintext_auth = no
+listen = *
+mail_location = maildir:~/Maildir
+mail_privileged_group = mail
+namespace inbox {
+  inbox = yes
+  location = 
+  mailbox Drafts {
+    special_use = \Drafts
+  }
+  mailbox Junk {
+    special_use = \Junk
+  }
+  mailbox Sent {
+    special_use = \Sent
+  }
+  mailbox "Sent Messages" {
+    special_use = \Sent
+  }
+  mailbox Trash {
+    special_use = \Trash
+  }
+  prefix = 
+}
+passdb {
+  driver = pam
+}
+protocols = imap
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    group = postfix
+    mode = 0660
+    user = postfix
+  }
+}
+ssl_cert = </etc/ssl/certs/mx1.crt
+ssl_client_ca_dir = /etc/ssl/certs
+ssl_dh = # hidden, use -P to show it
+ssl_key = # hidden, use -P to show it
+userdb {
+  driver = passwd
+}

@@ -575,14 +575,17 @@ def eval_pkcs12(grade: Grade0, machine_name: str, p12_file: str, password: str,
 
 def get_tls_server_certificate(grade: Grade0, machine_name: str, server_ip: str,
                                port: int = 443, servername: str | None = None,
-                               step: int = 1) -> dict | None:
+                               step: int = 1, starttls: str | None = None) -> dict | None:
     """Certificate presented by the TLS server at *server_ip*:*port* (SNI *servername*),
     as ``{'subject', 'issuer', 'common_name', 'fingerprint'}``; ``None`` when no
-    certificate could be read."""
+    certificate could be read.  *starttls* names the protocol of an opportunistic TLS
+    server (``'smtp'``, ``'imap'``, ``'pop3'``...: ``openssl s_client -starttls``)."""
     sni = f" -servername {shlex.quote(servername)}" if servername else ""
+    opportunistic = f" -starttls {shlex.quote(starttls)}" if starttls else ""
     out, code = grade.test(
         machine_name=machine_name,
-        command=f"openssl s_client -connect {_host_port(server_ip, int(port))}{sni} </dev/null 2>/dev/null"
+        command=f"openssl s_client -connect {_host_port(server_ip, int(port))}{sni}{opportunistic}"
+                f" </dev/null 2>/dev/null"
                 f" | openssl x509 -noout -subject -issuer -fingerprint -sha256",
         step=step,
         allow_error=True,

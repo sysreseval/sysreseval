@@ -1,0 +1,1 @@
+{"errors": [], "results": {"imap_alice": {"connected": false, "count": null, "error": "ConnectionRefusedError: [Errno 111] Connection refused", "login": null, "messages": []}}}

@@ -1,0 +1,1 @@
+{"errors": [], "results": {"lan_relay": {"auth": null, "banner": null, "connected": false, "data": null, "ehlo": null, "error": "ConnectionRefusedError: [Errno 111] Connection refused", "extensions": null, "extensions_tls": null, "mail": null, "queue_id": null, "rcpt": {}, "starttls": null, "tls_version": null}}}

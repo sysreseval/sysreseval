@@ -1,0 +1,5 @@
+myhostname = pc1.localdomain
+myorigin = /etc/mailname
+mydestination = pc1.localdomain, localhost.localdomain, localhost, localhost.localdomain, localhost
+inet_interfaces = all
+relayhost =

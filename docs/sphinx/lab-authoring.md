@@ -881,6 +881,64 @@ from dhcp import DhcpParameters, DhcpSubnet, set_dhcp_server, get_dhcp_server, c
 
 `check_running_dhcp_server(grade, machine) → (bool, list[str])` — checks whether `isc-dhcp-server` is currently active. Returns `(running, interfaces)` where `interfaces` is the list of interface names dhcpd is bound to (e.g. `["eth0"]`), or `["*"]` if it listens on all interfaces. Interfaces are read from the live process command line, not from the config file.
 
+### Mail helpers (from `/opt/sre/lib/smtp.py`)
+
+```python
+from smtp import (install_smtp_probe, smtp_probe, smtp_query, imap_query, get_postconf, get_master_services,
+                  get_mailq, deferred_to, get_maildir_messages, find_messages, received_hops, parse_dsn,
+                  parse_received_spf, parse_authentication_results, parse_dkim_signature, get_doveconf,
+                  render_unbound_records, spf_record_ok, dkim_txt_record, generate_dkim_keypair)
+```
+
+Helpers of the SMTP labs (Postfix, Dovecot, OpenDKIM, SPF). The evaluation is behavioural: a
+hidden machine runs an **active probe** (`lib/smtp_probe.py`, standard library only) that
+dialogues with the student's servers, and what must arrive is read in the Maildirs.
+
+**Functions used in `NetScheme` (state setup):**
+
+`install_smtp_probe(net_scheme, machine, step=1)` — copies the probe script into *machine*.
+
+`render_unbound_records([(name, type, value), ...])` — `local-data:` lines for an unbound
+configuration (a TXT value is quoted and split into 255-character strings, `(address, 'PTR', name)`
+becomes `local-data-ptr:`); `dkim_txt_record(public_key_b64)` and `generate_dkim_keypair(bits)`
+(the private key as `opendkim-genkey` writes it) let `Data.generate()` carry the solution key.
+
+**Functions used in `Grade` (evaluation):**
+
+`smtp_probe(grade, machine, spec, step=1, timeout=45) → {query_id: ProbeResult}` — runs the probe
+with `spec = {'timeout': 5, 'queries': [...]}` built from `smtp_query(id, host, port=25, helo=,
+mail_from=, rcpt_to=[...], starttls=False, auth=(user, password), token=, subject=, body=)` and
+`imap_query(id, host, user, password, token=, poll=)`. A `ProbeResult` records every reply as
+`[code, text]` (`banner`, `ehlo`, `starttls`, `auth`, `mail`, `data`, `rcpt[address]`), the EHLO
+extensions before (`extensions`) and after STARTTLS (`extensions_tls`), the `queue_id`, and for IMAP
+`login`, `count` and `messages`; use `code(reply)`, `accepted(address)`, `sent`, `logged_in`. The
+spec must depend on lab data only (same command on every grade pass); the messages sent carry
+`X-SRE-Probe: token` and `X-SRE-Probe-Query: id`.
+
+`get_postconf(grade, machine, params=POSTCONF_PARAMS, step=1) → {name: value}` (`postconf -x`),
+`mynetworks_covers(value, network)`, `relayhost_target(value) → (host, port)`,
+`get_master_services(grade, machine) → {'submission/inet': {..., 'options': {...}}}` (`postconf -M`),
+`get_mailq(grade, machine) → [MailqEntry]` (`postqueue -j`) and `deferred_to(entries, domain)`.
+
+`get_maildir_messages(grade, machine, paths, step=, token=, expected=, max_wait=) → [MaildirMessage]`
+— every file of `new/` and `cur/` of the Maildirs *paths* in one base64 dump, after waiting at most
+*max_wait* seconds for *expected* files containing *token* (the deliveries of what the probe has
+just sent). Then `find_messages(messages, token, query=)`, `body_contains(msg, sentence)`,
+`received_hops(msg)` (most recent first: `from`, `from_ip`, `by`, `with`, `id`, `for`),
+`is_bounce(msg)` / `parse_dsn(msg)`, `parse_received_spf`, `parse_authentication_results`,
+`parse_dkim_signature`; `maildir_cleanup_command(paths, token)` removes the probe's messages at a
+later step, `queue_cleanup_command(sender)` its queued ones.
+
+`get_doveconf(grade, machine)` (`doveconf -n` as nested dicts), `doveconf_listener(conf, path)`,
+`doveconf_value(conf, key)`; `parse_txt_strings(dig_output)`, `parse_spf`, `spf_record_ok(record,
+mx_ip=, mx_name=)`, `parse_dkim_txt`; `tls.get_tls_server_certificate(..., starttls='smtp')` reads
+the certificate of a STARTTLS server.
+
+Facts verified on the mail image: OpenDKIM resolves with its own libunbound starting from the
+root, so a closed lab needs `Nameservers <dns>` in `opendkim.conf`; policyd-spf's `TestOnly = 1`
+still rejects on a `-all` fail (`Mail_From_reject = False` and `HELO_reject = False` give a header-only
+check); `nobody` is a valid local recipient of Postfix.
+
 ### TLS helpers (from `/opt/sre/lib/tls.py`)
 
 ```python

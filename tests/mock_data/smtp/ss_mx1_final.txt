@@ -1,0 +1,7 @@
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess                                                                                                   
+LISTEN 0      4096       127.0.0.1:8891       0.0.0.0:*    users:(("opendkim",pid=1626,fd=3))                                                                       
+LISTEN 0      100          0.0.0.0:587        0.0.0.0:*    users:(("smtpd",pid=1861,fd=6),("master",pid=1621,fd=109))                                               
+LISTEN 0      4096      127.0.0.11:34385      0.0.0.0:*                                                                                                             
+LISTEN 0      100          0.0.0.0:993        0.0.0.0:*    users:(("dovecot",pid=1634,fd=35))                                                                       
+LISTEN 0      100          0.0.0.0:25         0.0.0.0:*    users:(("smtpd",pid=1877,fd=6),("smtpd",pid=1874,fd=6),("smtpd",pid=1873,fd=6),("master",pid=1621,fd=13))
+LISTEN 0      100          0.0.0.0:143        0.0.0.0:*    users:(("dovecot",pid=1634,fd=34))                                                                       

@@ -1,0 +1,5 @@
+myhostname = pc1.alpha.tp
+myorigin = alpha.tp
+mydestination =
+inet_interfaces = loopback-only
+relayhost = [mx1.alpha.tp]
