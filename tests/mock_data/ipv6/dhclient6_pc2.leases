@@ -1,0 +1,18 @@
+default-duid "\000\003\000\001\002SRI\010@";
+lease6 {
+  interface "eth0";
+  ia-na 52:49:08:40 {
+    starts 1791371064;
+    renew 0;
+    rebind 0;
+    iaaddr fd3b:6241:31dc:2::8e1 {
+      starts 1791371064;
+      preferred-life 750;
+      max-life 1200;
+    }
+  }
+  option dhcp6.client-id 0:3:0:1:2:53:52:49:8:40;
+  option dhcp6.server-id 0:1:0:1:32:58:e3:b1:fe:ba:ae:2b:7c:15;
+  option dhcp6.name-servers fd3b:6241:31dc:2::73;
+  option dhcp6.domain-search "tp-ipv6.lan.";
+}

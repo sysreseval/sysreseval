@@ -724,3 +724,50 @@ class TestSetSlaacClient:
         assert _cmd_ops(s, 'pc', step=2) == ['sysctl -w net.ipv6.conf.eth1.accept_ra=2', 'sysctl -w net.ipv6.conf.eth1.autoconf=1',
                                              'sysctl -w net.ipv6.conf.eth3.accept_ra=2', 'sysctl -w net.ipv6.conf.eth3.autoconf=1']
         assert _cmd_ops(s, 'pc', step=1) == ['mount -o rw,remount /proc/sys']
+
+
+class TestRadvdFlags:
+    """M / O flags of the advertisements and the pure render_radvd_conf() (IPv6 lab)."""
+
+    def test_render_equals_set_radvd_content(self):
+        from state_helpers import render_radvd_conf
+        s = _make_bare()
+        content = set_radvd(s, 'host', {2: ['fd00:2::/64']}, rdnss=['fd00:2::53'], dnssl=['lab.example'],
+                            adv_managed=True, adv_other_config=True)
+        assert content == render_radvd_conf({2: ['fd00:2::/64']}, rdnss=['fd00:2::53'], dnssl=['lab.example'],
+                                            adv_managed=True, adv_other_config=True)
+        op = next(op for op in _file_ops(s, 'host') if op.filename == '/etc/radvd.conf')
+        assert (op.content.decode() if isinstance(op.content, bytes) else op.content) == content
+        assert _cmd_ops(s, 'host')[-2:] == ['systemctl enable radvd', 'systemctl restart radvd']
+
+    def test_flags_written_only_when_set(self):
+        from state_helpers import render_radvd_conf
+        plain = render_radvd_conf({0: ['fd00:1::/64']})
+        assert 'AdvManagedFlag' not in plain and 'AdvOtherConfigFlag' not in plain
+        other = render_radvd_conf({0: ['fd00:1::/64']}, adv_other_config=True)
+        assert '    AdvOtherConfigFlag on;\n' in other and 'AdvManagedFlag' not in other
+        both = render_radvd_conf({0: ['fd00:1::/64']}, adv_managed=True, adv_other_config=True)
+        assert both.index('AdvManagedFlag on;') < both.index('AdvOtherConfigFlag on;') < both.index('prefix fd00:1::/64')
+        assert both == """\
+interface eth0
+{
+    AdvSendAdvert on;
+    MinRtrAdvInterval 3;
+    MaxRtrAdvInterval 10;
+    AdvManagedFlag on;
+    AdvOtherConfigFlag on;
+    prefix fd00:1::/64
+    {
+        AdvOnLink on;
+        AdvAutonomous on;
+        AdvRouterAddr off;
+    };
+};
+"""
+
+    def test_render_validates_like_set_radvd(self):
+        from state_helpers import render_radvd_conf
+        with pytest.raises(ValueError):
+            render_radvd_conf({})
+        with pytest.raises(ValueError, match='/64'):
+            render_radvd_conf({0: ['fd00:1::/48']})

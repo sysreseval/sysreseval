@@ -1,0 +1,1 @@
+[{"dst":"fd3b:6241:31dc:2::/64","dev":"eth0","protocol":"kernel","metric":256,"flags":[],"expires":86397,"pref":"medium"},{"dst":"fe80::/64","dev":"eth0","protocol":"kernel","metric":256,"flags":[],"pref":"medium"},{"dst":"default","gateway":"fe80::53:52ff:fe2e:5f1a","dev":"eth0","protocol":"ra","metric":1024,"flags":[],"expires":27,"metrics":[{"hoplimit":64}],"pref":"medium"}]

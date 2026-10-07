@@ -262,29 +262,15 @@ def _plain_v6(addr) -> str:
     return str(addr).split('/')[0]
 
 
-def set_radvd(net_scheme: NetScheme0, machine: str, prefixes: dict, step: int = 1, *,
-              rdnss=None, dnssl=None, min_rtr_adv_interval: int = 3, max_rtr_adv_interval: int = 10,
-              adv_autonomous: bool = True, adv_on_link: bool = True, adv_router_addr: bool = False,
-              enable_forwarding: bool = True) -> str:
-    """Write /etc/radvd.conf on *machine* and (re)start radvd: the machine then announces the
-    given prefixes in router advertisements, so the hosts of those LANs configure themselves
-    with SLAAC (see set_slaac_client()) and learn it as their default router.
+def render_radvd_conf(prefixes: dict, *, rdnss=None, dnssl=None, min_rtr_adv_interval: int = 3,
+                      max_rtr_adv_interval: int = 10, adv_autonomous: bool = True, adv_on_link: bool = True,
+                      adv_router_addr: bool = False, adv_managed: bool = False,
+                      adv_other_config: bool = False) -> str:
+    """Text of /etc/radvd.conf announcing *prefixes* (see set_radvd() for the arguments).
 
-    Args:
-        prefixes: ``{interface: [prefix, ...]}`` — the interface as ``'eth1'`` or ``1``, each
-                  prefix as an ``IPv6Network``, an ``IPv6Interface`` (its network is used) or
-                  a string; with *adv_autonomous* every prefix must be a /64 (SLAAC).
-        rdnss: optional list of recursive DNS server addresses announced in the RAs.
-        dnssl: optional list of DNS search domains announced in the RAs.
-        min_rtr_adv_interval, max_rtr_adv_interval: radvd timers in seconds (short by
-                  default so that hosts configure themselves within seconds of the state).
-        adv_autonomous, adv_on_link, adv_router_addr: the prefix flags (radvd.conf(5)).
-        enable_forwarding: also set net.ipv6.conf.all.forwarding=1 (radvd requires it and a
-                  router advertising a prefix forwards anyway); False to leave it as is.
-
-    Returns the radvd.conf text.  Hosts must accept RAs: Kathara starts every machine with
-    forwarding enabled, which makes the kernel ignore RAs unless accept_ra=2 — call
-    set_slaac_client() on them.
+    *adv_managed* / *adv_other_config* set the M / O flags of the advertisements
+    (``AdvManagedFlag on;`` / ``AdvOtherConfigFlag on;``: addresses / the other parameters are
+    to be obtained by DHCPv6); the lines are written only when True.
     """
     if not prefixes:
         raise ValueError("set_radvd: no prefix to advertise")
@@ -306,6 +292,10 @@ def set_radvd(net_scheme: NetScheme0, machine: str, prefixes: dict, step: int = 
             f"    MinRtrAdvInterval {int(min_rtr_adv_interval)};",
             f"    MaxRtrAdvInterval {int(max_rtr_adv_interval)};",
         ]
+        if adv_managed:
+            lines.append("    AdvManagedFlag on;")
+        if adv_other_config:
+            lines.append("    AdvOtherConfigFlag on;")
         for net in nets:
             lines += [
                 f"    prefix {net}",
@@ -321,7 +311,40 @@ def set_radvd(net_scheme: NetScheme0, machine: str, prefixes: dict, step: int = 
             lines.append(f"    DNSSL {' '.join(str(d) for d in dnssl)} {{ }};")
         lines.append("};")
         blocks.append('\n'.join(lines))
-    content = '\n\n'.join(blocks) + '\n'
+    return '\n\n'.join(blocks) + '\n'
+
+
+def set_radvd(net_scheme: NetScheme0, machine: str, prefixes: dict, step: int = 1, *,
+              rdnss=None, dnssl=None, min_rtr_adv_interval: int = 3, max_rtr_adv_interval: int = 10,
+              adv_autonomous: bool = True, adv_on_link: bool = True, adv_router_addr: bool = False,
+              adv_managed: bool = False, adv_other_config: bool = False,
+              enable_forwarding: bool = True) -> str:
+    """Write /etc/radvd.conf on *machine* and (re)start radvd: the machine then announces the
+    given prefixes in router advertisements, so the hosts of those LANs configure themselves
+    with SLAAC (see set_slaac_client()) and learn it as their default router.
+
+    Args:
+        prefixes: ``{interface: [prefix, ...]}`` — the interface as ``'eth1'`` or ``1``, each
+                  prefix as an ``IPv6Network``, an ``IPv6Interface`` (its network is used) or
+                  a string; with *adv_autonomous* every prefix must be a /64 (SLAAC).
+        rdnss: optional list of recursive DNS server addresses announced in the RAs.
+        dnssl: optional list of DNS search domains announced in the RAs.
+        min_rtr_adv_interval, max_rtr_adv_interval: radvd timers in seconds (short by
+                  default so that hosts configure themselves within seconds of the state).
+        adv_autonomous, adv_on_link, adv_router_addr: the prefix flags (radvd.conf(5)).
+        adv_managed, adv_other_config: the M and O flags of the advertisements (the hosts
+                  are to get their addresses / their other parameters from DHCPv6).
+        enable_forwarding: also set net.ipv6.conf.all.forwarding=1 (radvd requires it and a
+                  router advertising a prefix forwards anyway); False to leave it as is.
+
+    Returns the radvd.conf text (render_radvd_conf() gives it without applying it).  Hosts must
+    accept RAs: Kathara starts every machine with forwarding enabled, which makes the kernel
+    ignore RAs unless accept_ra=2 — call set_slaac_client() on them.
+    """
+    content = render_radvd_conf(prefixes, rdnss=rdnss, dnssl=dnssl, min_rtr_adv_interval=min_rtr_adv_interval,
+                                max_rtr_adv_interval=max_rtr_adv_interval, adv_autonomous=adv_autonomous,
+                                adv_on_link=adv_on_link, adv_router_addr=adv_router_addr,
+                                adv_managed=adv_managed, adv_other_config=adv_other_config)
     net_scheme.file(machine=machine, filename='/etc/radvd.conf', content=content, permissions=0o644, step=step)
     if enable_forwarding:
         set_ipv6_forward(net_scheme, machine, True, step=step)
