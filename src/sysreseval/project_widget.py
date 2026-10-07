@@ -61,10 +61,10 @@ class ProjectWidget(QWidget):
 
         debug_project = bool(self.info.get("debug_project", False))
 
-        # networks with their type of switch; shown only when one of them is not a hub
+        # Networks tab: every network with its type of switch (hubs included)
         self._switches_view = SwitchesView(project_dir.name, self.info.get("switches", []),
                                            debug_project=debug_project)
-        tabs.addTab(self._switches_view, self.tr("Switches"))
+        tabs.addTab(self._switches_view, self.tr("Networks"))
 
         self._questions_view = QuestionsView(self.info.get("questions", []), project_dir.name)
         tabs.addTab(self._questions_view, self.tr("Questions"))
@@ -99,7 +99,6 @@ class ProjectWidget(QWidget):
 
         self._exam_mode = False
         self._info_mtime = self._mtime(project_dir / params.info_json_name)
-        self._update_switches_visibility()
         self._update_eval_visibility()
         self._update_apply_config_visibility()
         self._update_log_visibility()
@@ -113,7 +112,7 @@ class ProjectWidget(QWidget):
             self._tabs.setTabText(self._tabs.indexOf(self._schema_view), self.tr("Schema"))
             self._tabs.setTabText(self._tabs.indexOf(self._info_view), self.tr("Informations"))
             self._tabs.setTabText(self._tabs.indexOf(self._machines_view), self.tr("Machines"))
-            self._tabs.setTabText(self._tabs.indexOf(self._switches_view), self.tr("Switches"))
+            self._tabs.setTabText(self._tabs.indexOf(self._switches_view), self.tr("Networks"))
             self._tabs.setTabText(self._tabs.indexOf(self._questions_view), self.tr("Questions"))
             self._tabs.setTabText(self._tabs.indexOf(self._eval_view), self.tr("Evaluation"))
             self._tabs.setTabText(self._tabs.indexOf(self._terminals_view), self.tr("Terminals"))
@@ -172,9 +171,6 @@ class ProjectWidget(QWidget):
                     for s in self.info.get("switches", [])
                     if s.get("mode") == params.network_mode_managed]
         return self.info.get("machines", []) + switches
-
-    def _update_switches_visibility(self):
-        self._tabs.setTabVisible(self._tabs.indexOf(self._switches_view), self._switches_view.has_switches())
 
     def _update_eval_visibility(self):
         visible = not self._exam_mode and self.info.get("allow_self_grade", True)
@@ -273,7 +269,6 @@ class ProjectWidget(QWidget):
         self._info_view.update_data(self._resolve_tt(self.info.get("informations", "")))
         self._machines_view.update_data(machines)
         self._switches_view.update_data(self.info.get("switches", []))
-        self._update_switches_visibility()
         questions = self.info.get("questions", [])
         self._questions_view.update_data(questions)
         self._tabs.setTabVisible(self._tabs.indexOf(self._questions_view), bool(questions))

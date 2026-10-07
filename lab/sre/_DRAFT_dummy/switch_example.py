@@ -6,7 +6,7 @@ Shows every switch facility of SRE in one place:
   default: no entry needed), a switch (``sw``) and two managed switches (``lan``, ``dmz``);
 * the VLANs of the ports of a managed switch (``vlans``): access ports (``pc1``: 10) and a trunk
   port (``r1``: [10, 20], a router on a stick with one 802.1Q sub-interface per VLAN);
-* ``allow_connection``: the console of ``lan`` is open to the students (Switches tab, Terminals
+* ``allow_connection``: the console of ``lan`` is open to the students (Networks tab, Terminals
   tab, ``sre connect <project> lan``), the console of ``dmz`` is not;
 * states running console commands with ``switch_cmd()``, a machine being named by ``@machine``
   instead of its port number (``solution`` and ``fault``, both applicable from the GUI);
@@ -92,7 +92,7 @@ class NetScheme(NetScheme0):
         d = self.data
         self.informations = (
             no_tr("## ") + title + no_tr("\n\n")
-            + tr("Cinq machines et quatre réseaux, un de chaque type (onglet **Switchs**) :\n\n"
+            + tr("Cinq machines et quatre réseaux, un de chaque type (onglet **Réseaux**) :\n\n"
                  "| Réseau | Type | Machines |\n|---|---|---|\n"
                  "| `lan` | switch administrable | `pc1`, `pc2`, `pc3` (`eth0`), `r1` (`eth0`, port *trunk*) |\n"
                  "| `dmz` | switch administrable, console fermée | `r1` (`eth1`), `srv` |\n"
@@ -100,7 +100,7 @@ class NetScheme(NetScheme0):
                  "| `sw` | switch | `pc1`, `pc2`, `pc3` (`eth2`) |\n\n"
                  "Les ports de `lan` sont répartis en deux VLAN, routés entre eux par `r1` "
                  f"(une sous-interface 802.1Q par VLAN : `eth0.{VLAN_A}` et `eth0.{VLAN_B}`).\n\n",
-                 en="Five machines and four networks, one of each type (**Switches** tab):\n\n"
+                 en="Five machines and four networks, one of each type (**Networks** tab):\n\n"
                     "| Network | Type | Machines |\n|---|---|---|\n"
                     "| `lan` | manageable switch | `pc1`, `pc2`, `pc3` (`eth0`), `r1` (`eth0`, trunk port) |\n"
                     "| `dmz` | manageable switch, console closed | `r1` (`eth1`), `srv` |\n"
@@ -120,7 +120,7 @@ class NetScheme(NetScheme0):
             + tr(f"`pc3` a une adresse du VLAN {VLAN_B}, mais son port est dans le VLAN {VLAN_A} : il ne joint "
                  "ni `pc2` ni sa passerelle tant que son port n'est pas corrigé.\n\n"
                  "### Console du switch `lan`\n\n"
-                 "Onglet **Switchs**, bouton *Connecter* (ou onglet **Terminaux**) :\n\n"
+                 "Onglet **Réseaux**, bouton *Connecter* (ou onglet **Terminaux**) :\n\n"
                  "```\n"
                  "port/print                   ports utilisés : VLAN non étiqueté, machine branchée\n"
                  "vlan/print                   VLAN et leurs ports (tagged=1 : port trunk)\n"
@@ -133,7 +133,7 @@ class NetScheme(NetScheme0):
                  en=f"`pc3` has an address of VLAN {VLAN_B}, but its port is in VLAN {VLAN_A}: it reaches "
                     "neither `pc2` nor its gateway until its port is fixed.\n\n"
                     "### Console of the switch `lan`\n\n"
-                    "**Switches** tab, *Connect* button (or the **Terminals** tab):\n\n"
+                    "**Networks** tab, *Connect* button (or the **Terminals** tab):\n\n"
                     "```\n"
                     "port/print                   ports in use: untagged VLAN, machine plugged\n"
                     "vlan/print                   VLANs and their ports (tagged=1: trunk port)\n"

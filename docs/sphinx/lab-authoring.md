@@ -411,12 +411,12 @@ Each `_network_specs` entry gives the keyword arguments of one network; a networ
 | `color` | `None` | Node color in the schema |
 | `shape` | `None` | Node shape in the schema |
 | `mode` | `'hub'` | Type of switch the machines are plugged into: `'hub'` (every frame reaches every machine), `'switch'` (the switch learns the MAC addresses: a machine only receives its own traffic and the broadcasts) or `'managed'` (a switch with VLANs and a management console). See [Switches and VLANs](#switches-and-vlans) |
-| `allow_connection` | `True` | Managed switch only: students may open its console (*Connect* button of the **Switches** tab, `sre connect`) |
+| `allow_connection` | `True` | Managed switch only: students may open its console (*Connect* button of the **Networks** tab, `sre connect`) |
 | `vlans` | `{}` | Managed switch only: VLANs of the ports, by machine |
 
 ### Switches and VLANs
 
-By default the machines of a network share a hub, as in every lab written before the switch types existed. `'mode': 'switch'` and `'mode': 'managed'` change that per network — the whole feature (the Switches tab, the console and its commands, states, grading, limits) is described in [Hubs, switches and VLANs](switches.md):
+By default the machines of a network share a hub, as in every lab written before the switch types existed. `'mode': 'switch'` and `'mode': 'managed'` change that per network — the whole feature (the Networks tab, the console and its commands, states, grading, limits) is described in [Hubs, switches and VLANs](switches.md):
 
 ```python
 _network_specs = {
@@ -434,7 +434,7 @@ _topology = {'lan': ['pc1', 'pc2', 'r1', 'r2'], 'dmz': ['r1', 'srv'], 'old': ['s
 - On a trunk port the machine handles the tags itself, e.g. `ip link add link eth0 name eth0.10 type vlan id 10`.
 - A switch that is not a hub drops the 802.1Q frames of a VLAN the port is not a member of: a trunk between two machines needs a hub or a managed switch with trunk ports, not a plain `'switch'`.
 - An unknown `mode`, `vlans` on a network that is not managed, a machine that is not on the network or an invalid VLAN ID raise `ValueError` when the `NetScheme` is built, so `sre check` reports them.
-- A managed switch has a management console: `sre connect <running_lab> <network>`, the *Connect* button of the **Switches** tab, a terminal in the **Terminals** tab. In user mode only the commands of `params.switch_user_commands` reach the switch, and `'allow_connection': False` closes the console to students.
+- A managed switch has a management console: `sre connect <running_lab> <network>`, the *Connect* button of the **Networks** tab, a terminal in the **Terminals** tab. In user mode only the commands of `params.switch_user_commands` reach the switch, and `'allow_connection': False` closes the console to students.
 - A state runs console commands with `self.switch_cmd(network, command, ...)`, where `@machine` stands for the port of a machine (see [Switch operations](#switch-operations)); `grade()` reads the switch with `self.test_switch(network, command)` and `get_switch_ports()` (see *Switch helpers* in the Grading Library Reference).
 - A save file and `sre export` keep the type of each switch and the declared VLANs, not what was changed on a console afterwards. A mode other than `hub` needs the VDE network plugin of the Kathara fork, installed by `make network-plugin` (see [Installation](installation.md#network-plugin-for-the-switch-types)).
 

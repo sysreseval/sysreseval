@@ -12,11 +12,11 @@ DEBUG_CONNECT_COLOR = "#ffd9a0"  # Connect button a student would not have (debu
 
 
 class SwitchesView(QTableWidget):
-    """The networks of a project seen as switches (``switches`` of info.json): name, type (hub,
-    switch, manageable switch) and, for a manageable switch the students may use, a button
-    opening its management console in a terminal.  The type of a manageable switch the lab
-    closed to the students is on a red background; in a debug project such a switch gets a
-    Connect button all the same (orange: `sre connect` lets a debug project in)."""
+    """The Networks tab: the networks of a project seen as switches (``switches`` of info.json):
+    name, type (hub, switch, manageable switch) and, for a manageable switch the students may
+    use, a button opening its management console in a terminal.  The type of a manageable switch
+    the lab closed to the students is on a red background; in a debug project such a switch gets
+    a Connect button all the same (orange: `sre connect` lets a debug project in)."""
 
     def __init__(self, project_name: str, switches: list, debug_project: bool = False, parent=None):
         super().__init__(parent)
@@ -54,10 +54,6 @@ class SwitchesView(QTableWidget):
         if mode == params.network_mode_switch:
             return self.tr("Switch")
         return self.tr("Hub")
-
-    def has_switches(self) -> bool:
-        """True when a network is not a hub: the tab is only shown then."""
-        return any(s.get("mode", params.network_mode_hub) != params.network_mode_hub for s in self._switches)
 
     def update_data(self, switches: list):
         self._switches = switches

@@ -1482,7 +1482,7 @@ class Network:
       goes to every machine), ``'switch'`` (it learns the MAC addresses) or ``'managed'`` (a
       switch with VLANs and a management console).
     * ``allow_connection``: students may open the console of a managed switch (``sre connect``,
-      *Connect* button of the Switches tab).  ``True`` by default.
+      *Connect* button of the Networks tab).  ``True`` by default.
     * ``vlans``: ports of a managed switch, by machine: ``{'pc1': 10}`` (access port),
       ``{'r1': [10, 20]}`` (trunk), ``{'r2': {'vlan': 1, 'trunk': [10, 20]}}`` (native VLAN and
       trunk).  A machine that is not named stays in the default VLAN of the switch.

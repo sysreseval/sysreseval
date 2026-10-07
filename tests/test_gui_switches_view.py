@@ -1,10 +1,10 @@
 """
-Switches tab of the GUI: one row per network of info.json `switches` with its type (hub, switch,
+Networks tab of the GUI: one row per network of info.json `switches` with its type (hub, switch,
 manageable switch) and a Connect button on the manageable switches students may use, which opens
 `sre-wrapper connect <project> <switch>` in an external terminal.  The type of a manageable
 switch closed to the students is on a red background; a debug project can connect to it all the
-same (orange button, orange title in the Terminals tab).  The tab is shown only when a network is
-not a hub.
+same (orange button, orange title in the Terminals tab).  The tab is always shown, hubs only or
+not.
 Offscreen Qt; no terminal is started (subprocess.Popen is recorded).
 """
 import json
@@ -124,13 +124,6 @@ class TestSwitchesView:
         view = SwitchesView(RUNNING, [{"name": "x"}])
         assert _column(view, 1) == ['Hub']
         assert _button(view, 0) is None
-        assert not view.has_switches()
-
-    def test_has_switches(self):
-        assert SwitchesView(RUNNING, SWITCHES).has_switches()
-        assert SwitchesView(RUNNING, [SWITCHES[1]]).has_switches()
-        assert not SwitchesView(RUNNING, HUBS).has_switches()
-        assert not SwitchesView(RUNNING, []).has_switches()
 
     def test_connect_opens_the_console_of_the_switch(self, started):
         view = SwitchesView(RUNNING, SWITCHES)
@@ -149,7 +142,7 @@ class TestSwitchesView:
     def test_update_data(self):
         view = SwitchesView(RUNNING, HUBS)
         view.update_data(SWITCHES)
-        assert view.rowCount() == 4 and view.has_switches()
+        assert view.rowCount() == 4
         assert _button(view, 0) is not None
         # the console of lan gets closed: the button goes away and its type turns red
         view.update_data([dict(SWITCHES[0], allow_connection=False)])
@@ -204,7 +197,7 @@ class TestSwitchesViewOfADebugProject:
 
 
 class TestMachinesViewStillConnects:
-    """The Machines tab shares the terminal launcher with the Switches tab."""
+    """The Machines tab shares the terminal launcher with the Networks tab."""
 
     MACHINES = [{"name": "m1", "allow_connection": True, "bridged": False, "x11_host": False, "ports": []},
                 {"name": "m2", "allow_connection": False, "bridged": False, "x11_host": False, "ports": []}]
@@ -239,15 +232,19 @@ class TestProjectWidget:
     def _tab_visible(self, widget) -> bool:
         return widget._tabs.isTabVisible(widget._tabs.indexOf(widget._switches_view))
 
-    def test_tab_hidden_without_switches_key(self, project_dir):
+    def test_tab_shown_empty_without_switches_key(self, project_dir):
         from sysreseval.project_widget import ProjectWidget
         _write_info(project_dir)  # info.json written before the switch types existed
-        assert not self._tab_visible(ProjectWidget(project_dir))
+        widget = ProjectWidget(project_dir)
+        assert self._tab_visible(widget)
+        assert widget._switches_view.rowCount() == 0
 
-    def test_tab_hidden_with_hubs_only(self, project_dir):
+    def test_tab_shown_with_hubs_only(self, project_dir):
         from sysreseval.project_widget import ProjectWidget
         _write_info(project_dir, switches=HUBS)
-        assert not self._tab_visible(ProjectWidget(project_dir))
+        widget = ProjectWidget(project_dir)
+        assert self._tab_visible(widget)
+        assert _column(widget._switches_view, 1) == ['Hub', 'Hub']
 
     def test_tab_shown_with_a_switch_and_lists_every_network(self, project_dir):
         from sysreseval.project_widget import ProjectWidget
@@ -265,6 +262,7 @@ class TestProjectWidget:
         _write_info(project_dir, switches=SWITCHES)
         assert widget.refresh() is True
         assert self._tab_visible(widget)
+        assert widget._switches_view.rowCount() == 4
 
     def test_terminals_tab_has_the_open_manageable_switches(self, project_dir):
         from sysreseval.project_widget import ProjectWidget

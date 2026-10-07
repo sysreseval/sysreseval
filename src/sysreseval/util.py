@@ -24,7 +24,7 @@ def log_wrapper_cmd(cmd: list):
 
 class ExternalTerminals:
     """External terminal windows opened on the devices of one project (*Connect* buttons of the
-    Machines and Switches tabs): each one runs ``sre-wrapper connect <project> <device>``."""
+    Machines and Networks tabs): each one runs ``sre-wrapper connect <project> <device>``."""
 
     def __init__(self, project_name: str):
         self._project_name = project_name
