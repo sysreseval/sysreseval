@@ -1,0 +1,5 @@
+net.ipv4.tcp_congestion_control = reno
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.ip_local_port_range = 50000	59999
+net.mptcp.enabled = 1
+net.ipv4.tcp_autocorking = 0

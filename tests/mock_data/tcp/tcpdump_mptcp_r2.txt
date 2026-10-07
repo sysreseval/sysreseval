@@ -1,0 +1,5 @@
+12:40:57.591060 IP 192.168.224.216.55617 > 192.168.238.237.5302: Flags [S], seq 2893375589, win 64240, options [mss 1460,sackOK,TS val 2432372956 ecr 0,nop,wscale 7,mptcp 12 join id 2 token 0x37265316 nonce 0x7786fe20], length 0
+12:40:57.633563 IP 192.168.238.237.5302 > 192.168.224.216.55617: Flags [S.], seq 3695144319, ack 2893375590, win 64896, options [mss 1260,sackOK,TS val 3143223895 ecr 2432372956,nop,wscale 7,mptcp 16 join id 2 hmac 0xc5d747ce431f1b43 nonce 0x22b029c9], length 0
+12:40:57.634326 IP 192.168.224.216.55617 > 192.168.238.237.5302: Flags [.], ack 1, win 502, options [nop,nop,TS val 2432372999 ecr 3143223895,mptcp 24 join hmac 0xd0cc920d756c93f0c3f30f6310152cb7e5c29698], length 0
+12:40:57.654965 IP 192.168.238.237.5302 > 192.168.224.216.55617: Flags [.], ack 1, win 503, options [nop,nop,TS val 3143223916 ecr 2432372999,mptcp 12 dss ack 12620805862914308232], length 0
+12:40:57.692593 IP 192.168.238.237.5302 > 192.168.224.216.55617: Flags [P.], seq 1:2, ack 1, win 503, options [nop,nop,TS val 3143223954 ecr 2432372999,mptcp 26 dss ack 12620805862914308232 seq 15488307370254743575 subseq 1 len 1,nop,nop], length 1

@@ -1,0 +1,3 @@
+qdisc noqueue 0: dev lo root refcnt 2 
+qdisc netem 8002: dev eth0 root refcnt 2 limit 1000 delay 20ms seed 8373053001487933293
+qdisc netem 8003: dev eth1 root refcnt 2 limit 1000 delay 20ms seed 4512147192328953779

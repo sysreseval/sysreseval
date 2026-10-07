@@ -1,0 +1,24 @@
+===S
+{"command": "sink", "error": null, "ok": true, "ports": {"22481": {"bytes": 110, "connections": 1}, "23560": {"bytes": 110, "connections": 1}}}
+===C
+done
+===M
+{"accepted": 1, "bytes": 13074312, "command": "mptcp-server", "connections": [["192.168.238.169", 26777, "192.168.224.216", 57152], ["192.168.35.104", 26777, "172.24.129.7", 52985]], "error": null, "local_addresses": ["192.168.238.169", "192.168.35.104"], "ok": true, "peer_addresses": ["172.24.129.7", "192.168.224.216"], "samples": 61, "subflows": 2}
+===K
+{"bytes": 53739360, "command": "mptcp-client", "connected": true, "connections": [["192.168.238.169", 59752, "192.168.238.237", 24188]], "error": null, "local_addresses": ["192.168.238.169"], "ok": true, "peer_addresses": ["192.168.238.237"], "samples": 25, "subflows": 1}
+===P
+PING 172.24.129.7 (172.24.129.7) 56(84) bytes of data.
+64 bytes from 172.24.129.7: icmp_seq=1 ttl=63 time=211 ms
+64 bytes from 172.24.129.7: icmp_seq=2 ttl=63 time=211 ms
+64 bytes from 172.24.129.7: icmp_seq=3 ttl=63 time=212 ms
+64 bytes from 172.24.129.7: icmp_seq=4 ttl=63 time=212 ms
+64 bytes from 172.24.129.7: icmp_seq=5 ttl=63 time=212 ms
+64 bytes from 172.24.129.7: icmp_seq=6 ttl=63 time=211 ms
+64 bytes from 172.24.129.7: icmp_seq=7 ttl=63 time=211 ms
+64 bytes from 172.24.129.7: icmp_seq=10 ttl=63 time=247 ms
+64 bytes from 172.24.129.7: icmp_seq=11 ttl=63 time=260 ms
+64 bytes from 172.24.129.7: icmp_seq=12 ttl=63 time=269 ms
+
+--- 172.24.129.7 ping statistics ---
+13 packets transmitted, 10 received, 23.0769% packet loss, time 2414ms
+rtt min/avg/max/mdev = 210.800/225.552/269.494/22.361 ms, pipe 2

@@ -1,75 +1,224 @@
 import os
 import random
 import struct
+from typing import Iterator, Optional
 
 from SRE import params
 from SRE.lib_sre import Grade0, NetScheme0
+
+# TCP flag bits
+TCP_FIN = 0x01
+TCP_SYN = 0x02
+TCP_RST = 0x04
+TCP_PSH = 0x08
+TCP_ACK = 0x10
+
+# MPTCP option subtypes (RFC 8684)
+MPTCP_CAPABLE = 0
+MPTCP_JOIN = 1
+MPTCP_DSS = 2
+MPTCP_ADD_ADDR = 3
+
+_SEQ_MASK = 0xFFFFFFFF
+
+
+# ── pcap / pcapng readers ─────────────────────────────────────────────────────
+#
+# Every reader of this module goes through _iter_packets(), which understands the
+# classic pcap format (microsecond and nanosecond magics, both byte orders) and
+# pcapng (the default output of Wireshark and dumpcap): Section Header, Interface
+# Description (link type and timestamp resolution per interface), Enhanced Packet,
+# Simple Packet and the obsolete Packet blocks.  Frame numbers are 1-based in the
+# order of the file, as Wireshark shows them.
+
+_PCAP_MAGICS = {
+    0xa1b2c3d4: ('<', 1e-6), 0xd4c3b2a1: ('>', 1e-6),   # microseconds
+    0xa1b23c4d: ('<', 1e-9), 0x4d3cb2a1: ('>', 1e-9),   # nanoseconds
+}
+_PCAPNG_MAGIC = 0x0a0d0d0a
+_PCAPNG_BYTE_ORDER = 0x1a2b3c4d
+
+
+def pcap_format(pcap_bytes: bytes) -> Optional[str]:
+    """``'pcap'``, ``'pcapng'`` or ``None`` (not a capture file)."""
+    if len(pcap_bytes) < 4:
+        return None
+    magic, = struct.unpack_from('<I', pcap_bytes, 0)
+    if magic in _PCAP_MAGICS:
+        return 'pcap'
+    if magic == _PCAPNG_MAGIC:
+        return 'pcapng'
+    return None
+
+
+def _iter_pcap(pcap_bytes: bytes) -> Iterator[tuple]:
+    magic, = struct.unpack_from('<I', pcap_bytes, 0)
+    endian, unit = _PCAP_MAGICS[magic]
+    if len(pcap_bytes) < 24:
+        return
+    linktype, = struct.unpack_from(f'{endian}I', pcap_bytes, 20)
+    offset = 24
+    frame_num = 0
+    while offset + 16 <= len(pcap_bytes):
+        ts_sec, ts_frac, incl_len, orig_len = struct.unpack_from(f'{endian}IIII', pcap_bytes, offset)
+        pkt_start = offset + 16
+        pkt_end = pkt_start + incl_len
+        if pkt_end > len(pcap_bytes):
+            break
+        frame_num += 1
+        yield frame_num, ts_sec + ts_frac * unit, incl_len, orig_len, linktype, pcap_bytes[pkt_start:pkt_end]
+        offset = pkt_end
+
+
+def _pcapng_tsresol(options: bytes, endian: str) -> float:
+    """Timestamp unit of an Interface Description Block (``if_tsresol``, default 1e-6)."""
+    i = 0
+    while i + 4 <= len(options):
+        code, length = struct.unpack_from(f'{endian}HH', options, i)
+        if code == 0:
+            break
+        value = options[i + 4:i + 4 + length]
+        if code == 9 and len(value) >= 1:
+            if value[0] & 0x80:
+                return 2.0 ** -(value[0] & 0x7f)
+            return 10.0 ** -(value[0])
+        i += 4 + ((length + 3) & ~3)
+    return 1e-6
+
+
+def _iter_pcapng(pcap_bytes: bytes) -> Iterator[tuple]:
+    offset = 0
+    endian = '<'
+    interfaces = []     # (linktype, snaplen, tsresol) per interface of the current section
+    frame_num = 0
+    size = len(pcap_bytes)
+    while offset + 12 <= size:
+        block_type, = struct.unpack_from(f'{endian}I', pcap_bytes, offset)
+        if block_type == _PCAPNG_MAGIC:
+            # Section Header Block: its byte-order magic sets the endianness of the section
+            bom, = struct.unpack_from('<I', pcap_bytes, offset + 8)
+            endian = '<' if bom == _PCAPNG_BYTE_ORDER else '>'
+            interfaces = []
+        block_len, = struct.unpack_from(f'{endian}I', pcap_bytes, offset + 4)
+        if block_len < 12 or offset + block_len > size:
+            break
+        body = pcap_bytes[offset + 8:offset + block_len - 4]
+        if block_type == 1 and len(body) >= 8:                       # Interface Description Block
+            linktype, _reserved, snaplen = struct.unpack_from(f'{endian}HHI', body, 0)
+            interfaces.append((linktype, snaplen, _pcapng_tsresol(body[8:], endian)))
+        elif block_type == 6 and len(body) >= 20:                    # Enhanced Packet Block
+            iface, ts_high, ts_low, incl_len, orig_len = struct.unpack_from(f'{endian}IIIII', body, 0)
+            pkt = body[20:20 + incl_len]
+            if len(pkt) == incl_len and iface < len(interfaces):
+                frame_num += 1
+                linktype, _snaplen, tsresol = interfaces[iface]
+                yield frame_num, ((ts_high << 32) | ts_low) * tsresol, incl_len, orig_len, linktype, pkt
+        elif block_type == 3 and len(body) >= 4 and interfaces:      # Simple Packet Block
+            orig_len, = struct.unpack_from(f'{endian}I', body, 0)
+            linktype, snaplen, _tsresol = interfaces[0]
+            incl_len = min(orig_len, snaplen) if snaplen else orig_len
+            pkt = body[4:4 + incl_len]
+            if len(pkt) == incl_len:
+                frame_num += 1
+                yield frame_num, 0.0, incl_len, orig_len, linktype, pkt
+        elif block_type == 2 and len(body) >= 20:                    # obsolete Packet Block
+            iface, _drops, ts_high, ts_low, incl_len, orig_len = struct.unpack_from(f'{endian}HHIIII', body, 0)
+            pkt = body[20:20 + incl_len]
+            if len(pkt) == incl_len and iface < len(interfaces):
+                frame_num += 1
+                linktype, _snaplen, tsresol = interfaces[iface]
+                yield frame_num, ((ts_high << 32) | ts_low) * tsresol, incl_len, orig_len, linktype, pkt
+        offset += block_len
+
+
+def _iter_packets(pcap_bytes: bytes) -> Iterator[tuple]:
+    """Yield ``(frame_num, timestamp, incl_len, orig_len, linktype, packet_bytes)`` for every
+    packet of a pcap or pcapng file (nothing for an unknown format or a truncated header)."""
+    fmt = pcap_format(pcap_bytes)
+    if fmt == 'pcap':
+        yield from _iter_pcap(pcap_bytes)
+    elif fmt == 'pcapng':
+        yield from _iter_pcapng(pcap_bytes)
+
+
+def _ip_start(pkt: bytes, linktype: int):
+    """``(ethertype, offset of the network header)`` or ``None`` for a frame this module
+    does not decode (link types other than Ethernet and Linux cooked)."""
+    if linktype == 1:           # Ethernet
+        if len(pkt) < 14:
+            return None
+        ethertype, = struct.unpack_from('>H', pkt, 12)
+        return ethertype, 14
+    if linktype == 113:         # Linux cooked (SLL) — tcpdump -i any
+        if len(pkt) < 16:
+            return None
+        ethertype, = struct.unpack_from('>H', pkt, 14)
+        return ethertype, 16
+    return None
+
+
+# ── TCP options ───────────────────────────────────────────────────────────────
+
+
+def parse_tcp_options(pkt: bytes, tcp_off: int, tcp_hdrlen: int) -> dict:
+    """Decode the options of the TCP header starting at *tcp_off* (*tcp_hdrlen* bytes).
+
+    Returns ``{'kinds': [...], 'mss': int|None, 'wscale': int|None, 'sack_permitted': bool,
+    'sack_blocks': [(left, right), ...], 'timestamps': (tsval, tsecr)|None,
+    'mptcp': [subtype, ...], 'truncated': bool}``.  *truncated* is set when the capture
+    (snaplen) or a malformed length cuts the options short; what was decoded is kept.
+    """
+    result = {'kinds': [], 'mss': None, 'wscale': None, 'sack_permitted': False,
+              'sack_blocks': [], 'timestamps': None, 'mptcp': [], 'truncated': False}
+    end = tcp_off + tcp_hdrlen
+    if end > len(pkt):
+        result['truncated'] = True
+        end = len(pkt)
+    i = tcp_off + 20
+    while i < end:
+        kind = pkt[i]
+        if kind == 0:                       # end of option list
+            break
+        if kind == 1:                       # no-operation
+            result['kinds'].append(1)
+            i += 1
+            continue
+        if i + 1 >= end:
+            result['truncated'] = True
+            break
+        length = pkt[i + 1]
+        if length < 2 or i + length > end:
+            result['truncated'] = True
+            break
+        body = pkt[i + 2:i + length]
+        result['kinds'].append(kind)
+        if kind == 2 and len(body) == 2:
+            result['mss'], = struct.unpack('>H', body)
+        elif kind == 3 and len(body) == 1:
+            result['wscale'] = body[0]
+        elif kind == 4:
+            result['sack_permitted'] = True
+        elif kind == 5:
+            for j in range(0, len(body) - len(body) % 8, 8):
+                left, right = struct.unpack_from('>II', body, j)
+                result['sack_blocks'].append((left, right))
+        elif kind == 8 and len(body) == 8:
+            result['timestamps'] = struct.unpack('>II', body)
+        elif kind == 30 and len(body) >= 1:
+            result['mptcp'].append(body[0] >> 4)
+        i += length
+    return result
 
 
 def _parse_pcap_tcp_frames_by_src_port(pcap_bytes, src_port):
     """Return list of (frame_number, tcp_window, tcp_seq, tcp_ack) for TCP frames
     where source port == src_port.  SYN and RST frames are excluded.
     Frame numbers are 1-based (as in Wireshark).
-    Handles linktype 1 (Ethernet) and 113 (Linux cooked / -i any).
+    Handles linktype 1 (Ethernet) and 113 (Linux cooked / -i any), pcap and pcapng.
     """
-    if len(pcap_bytes) < 24:
-        return []
-    magic, = struct.unpack_from('<I', pcap_bytes, 0)
-    if magic == 0xa1b2c3d4:
-        endian = '<'
-    elif magic == 0xd4c3b2a1:
-        endian = '>'
-    else:
-        return []
-    linktype, = struct.unpack_from(f'{endian}I', pcap_bytes, 20)
-
-    results = []
-    offset = 24
-    frame_num = 0
-    while offset + 16 <= len(pcap_bytes):
-        frame_num += 1
-        incl_len, = struct.unpack_from(f'{endian}I', pcap_bytes, offset + 8)
-        pkt_start = offset + 16
-        pkt_end   = pkt_start + incl_len
-        if pkt_end > len(pcap_bytes):
-            break
-        pkt    = pcap_bytes[pkt_start:pkt_end]
-        offset = pkt_end
-
-        if linktype == 1:       # Ethernet
-            if len(pkt) < 14:
-                continue
-            ethertype, = struct.unpack_from('>H', pkt, 12)
-            ip_start = 14
-        elif linktype == 113:   # Linux cooked (SLL) — used by tcpdump -i any
-            if len(pkt) < 16:
-                continue
-            ethertype, = struct.unpack_from('>H', pkt, 14)
-            ip_start = 16
-        else:
-            continue
-
-        if ethertype != 0x0800:
-            continue
-        if len(pkt) < ip_start + 20:
-            continue
-        ip_ihl   = (pkt[ip_start] & 0x0f) * 4
-        ip_proto = pkt[ip_start + 9]
-        if ip_proto != 6:
-            continue
-        tcp_off = ip_start + ip_ihl
-        if len(pkt) < tcp_off + 20:
-            continue
-        tcp_src_port, = struct.unpack_from('>H', pkt, tcp_off)
-        tcp_seq,      = struct.unpack_from('>I', pkt, tcp_off + 4)
-        tcp_ack,      = struct.unpack_from('>I', pkt, tcp_off + 8)
-        tcp_flags     = pkt[tcp_off + 13]
-        tcp_window,   = struct.unpack_from('>H', pkt, tcp_off + 14)
-
-        if tcp_src_port == src_port and not (tcp_flags & 0x06):  # exclude SYN, RST
-            results.append((frame_num, tcp_window, tcp_seq, tcp_ack))
-
-    return results
+    return [(f['frame_num'], f['window'], f['seq'], f['ack'])
+            for f in _parse_all_tcp_frames(pcap_bytes)
+            if f['src_port'] == src_port and not (f['flags'] & (TCP_SYN | TCP_RST))]
 
 
 def generate_pcap_tcp_example(
@@ -385,55 +534,30 @@ while True:
     return {'server_port': server_port, 'client_port': client_port}
 
 
+
 def _parse_all_tcp_frames(pcap_bytes: bytes) -> list[dict]:
-    """Parse all TCP frames from a pcap byte string.
+    """Parse all TCP frames from a pcap / pcapng byte string.
 
     Returns a list of dicts (one per TCP frame, in capture order) with keys:
-      frame_num   – 1-based frame number
+      frame_num   – 1-based frame number (every packet of the file counts)
+      ts          – timestamp in seconds (float; 0.0 for a Simple Packet Block)
       src_ip, dst_ip  – dotted-decimal strings
       src_port, dst_port – ints
       seq, ack    – 32-bit unsigned ints
       flags       – TCP flags byte
       window      – advertised receive window (unscaled)
-      payload_len – number of TCP data bytes
+      payload_len – number of TCP data bytes (from the IP total length: right even
+                    when the capture truncated the frame)
+      hdrlen      – TCP header length in bytes
+      kinds, mss, wscale, sack_permitted, sack_blocks, timestamps, mptcp, truncated
+                  – the TCP options (see parse_tcp_options())
     """
-    if len(pcap_bytes) < 24:
-        return []
-    magic, = struct.unpack_from('<I', pcap_bytes, 0)
-    if magic == 0xa1b2c3d4:
-        endian = '<'
-    elif magic == 0xd4c3b2a1:
-        endian = '>'
-    else:
-        return []
-    linktype, = struct.unpack_from(f'{endian}I', pcap_bytes, 20)
-
     results = []
-    offset = 24
-    frame_num = 0
-    while offset + 16 <= len(pcap_bytes):
-        frame_num += 1
-        incl_len, = struct.unpack_from(f'{endian}I', pcap_bytes, offset + 8)
-        pkt_start = offset + 16
-        pkt_end   = pkt_start + incl_len
-        if pkt_end > len(pcap_bytes):
-            break
-        pkt    = pcap_bytes[pkt_start:pkt_end]
-        offset = pkt_end
-
-        if linktype == 1:       # Ethernet
-            if len(pkt) < 14:
-                continue
-            ethertype, = struct.unpack_from('>H', pkt, 12)
-            ip_start = 14
-        elif linktype == 113:   # Linux cooked (SLL)
-            if len(pkt) < 16:
-                continue
-            ethertype, = struct.unpack_from('>H', pkt, 14)
-            ip_start = 16
-        else:
+    for frame_num, ts, _incl_len, _orig_len, linktype, pkt in _iter_packets(pcap_bytes):
+        head = _ip_start(pkt, linktype)
+        if head is None:
             continue
-
+        ethertype, ip_start = head
         if ethertype != 0x0800:
             continue
         if len(pkt) < ip_start + 20:
@@ -457,52 +581,56 @@ def _parse_all_tcp_frames(pcap_bytes: bytes) -> list[dict]:
         window,     = struct.unpack_from('>H', pkt, tcp_off + 14)
         payload_len = ip_total - ip_ihl - tcp_hdrlen
 
-        results.append(dict(
-            frame_num=frame_num,
+        frame = dict(
+            frame_num=frame_num, ts=ts,
             src_ip=src_ip, dst_ip=dst_ip,
             src_port=src_port, dst_port=dst_port,
             seq=seq, ack=ack,
             flags=flags, window=window,
             payload_len=max(0, payload_len),
-        ))
+            hdrlen=tcp_hdrlen,
+        )
+        frame.update(parse_tcp_options(pkt, tcp_off, tcp_hdrlen))
+        results.append(frame)
 
     return results
 
 
-def check_zero_window_probe(grade: Grade0, file: str, max_length: int, packet_number: int) -> bool:
-    """Return True if packet_number in the pcap file is a TCP Zero Window Probe.
-
-    Args:
-        grade:         Grade0 instance (used to locate the project shared directory).
-        file:          filename relative to the project shared directory.
-        max_length:    maximum allowed file size in kibibytes; returns False if exceeded.
-        packet_number: 1-based packet number to inspect (as shown by Wireshark).
-
-    Returns True when all of the following hold for the target packet:
-      - the file exists, is a valid pcap, and is within max_length KiB;
-      - the target packet has 0 or 1 bytes of TCP payload;
-      - a prior packet in the reverse direction of the same stream advertised window=0;
-      - the target packet's SEQ is SND.UNA or SND.UNA-1 (Linux sends SEQ=SND.UNA-1
-        for 0-byte probes, retransmitting the last ACK'd position).
-    """
-    host_path = os.path.join(grade.net_scheme.get_shared_dir(), file)
-
+def _read_pcap_file(host_path: str, max_length: int):
+    """Bytes of the capture at *host_path* when it exists, is readable and at most
+    *max_length* KiB; ``None`` otherwise."""
     try:
         size = os.path.getsize(host_path)
     except OSError:
-        return False
+        return None
     if size > max_length * 1024:
-        return False
-
+        return None
     try:
-        pcap_bytes = open(host_path, 'rb').read()
+        with open(host_path, 'rb') as f:
+            return f.read()
     except OSError:
-        return False
+        return None
 
-    frames = _parse_all_tcp_frames(pcap_bytes)
-    if not frames:
-        return False
 
+def load_frames(host_path: str, max_length: int) -> list[dict] | None:
+    """The TCP frames (see _parse_all_tcp_frames()) of the capture at *host_path*, or
+    ``None`` when the file is missing, unreadable, larger than *max_length* KiB or not a
+    pcap / pcapng file."""
+    pcap_bytes = _read_pcap_file(host_path, max_length)
+    if pcap_bytes is None or pcap_format(pcap_bytes) is None:
+        return None
+    return _parse_all_tcp_frames(pcap_bytes)
+
+
+def is_zero_window_probe(frames: list[dict], packet_number: int) -> bool:
+    """True when frame *packet_number* of *frames* is a TCP Zero Window Probe:
+
+      - the target packet has 0 or 1 bytes of TCP payload;
+      - a prior packet in the reverse direction of the same stream advertised window=0;
+      - the target packet's SEQ is SND.UNA or SND.UNA-1 (Linux sends SEQ=SND.UNA-1
+        for 0-byte probes, retransmitting the last ACK'd position; Wireshark may
+        label those *TCP Keep-Alive*).
+    """
     target = next((f for f in frames if f['frame_num'] == packet_number), None)
     if target is None:
         return False
@@ -521,11 +649,11 @@ def check_zero_window_probe(grade: Grade0, file: str, max_length: int, packet_nu
                 f['dst_ip']   == target['src_ip']   and
                 f['src_port'] == target['dst_port'] and
                 f['dst_port'] == target['src_port'] and
-                not (f['flags'] & 0x04)):            # ignore RST
+                not (f['flags'] & TCP_RST)):            # ignore RST
             continue
         if f['window'] == 0:
             saw_zero_window = True
-        if f['flags'] & 0x10:                        # ACK flag
+        if f['flags'] & TCP_ACK:                        # ACK flag
             last_ack = f['ack']
 
     # Condition 2: receiver previously advertised a zero window
@@ -539,8 +667,27 @@ def check_zero_window_probe(grade: Grade0, file: str, max_length: int, packet_nu
         return False
 
     if target['payload_len'] == 0:
-        return (last_ack - target['seq']) & 0xFFFFFFFF <= 1
+        return (last_ack - target['seq']) & _SEQ_MASK <= 1
     return target['seq'] == last_ack
+
+
+def check_zero_window_probe(grade: Grade0, file: str, max_length: int, packet_number: int) -> bool:
+    """Return True if packet_number in the pcap file is a TCP Zero Window Probe.
+
+    Args:
+        grade:         Grade0 instance (used to locate the project shared directory).
+        file:          filename relative to the project shared directory.
+        max_length:    maximum allowed file size in kibibytes; returns False if exceeded.
+        packet_number: 1-based packet number to inspect (as shown by Wireshark).
+
+    Returns True when the file exists, is a valid pcap / pcapng within max_length KiB and
+    is_zero_window_probe() holds for the target packet.
+    """
+    host_path = os.path.join(grade.net_scheme.get_shared_dir(), file)
+    frames = load_frames(host_path, max_length)
+    if not frames:
+        return False
+    return is_zero_window_probe(frames, packet_number)
 
 
 # ── Lookup tables ─────────────────────────────────────────────────────────────
@@ -576,6 +723,7 @@ def _fmt_ip4(b: bytes, off: int) -> str:
 
 def _fmt_ip6(b: bytes, off: int) -> str:
     return ':'.join(f'{struct.unpack_from(">H", b, off + i)[0]:04x}' for i in range(0, 16, 2))
+
 
 
 def _parse_frame(pkt: bytes, linktype: int, frame_number: int,
@@ -671,6 +819,16 @@ def _parse_frame(pkt: bytes, linktype: int, frame_number: int,
             info['tcp_flag_ack']       = bool(tcp_flags & 0x10)
             info['tcp_flag_urg']       = bool(tcp_flags & 0x20)
             info['tcp_payload_length'] = max(0, ip_total - ip_ihl - tcp_hdrlen)
+            info['tcp_header_length']  = tcp_hdrlen
+            opts = parse_tcp_options(pkt, l4, tcp_hdrlen)
+            info['tcp_options']        = opts['kinds']
+            info['tcp_mss']            = opts['mss']
+            info['tcp_wscale']         = opts['wscale']
+            info['tcp_sack_permitted'] = opts['sack_permitted']
+            info['tcp_sack_blocks']    = opts['sack_blocks']
+            info['tcp_timestamps']     = opts['timestamps']
+            info['tcp_mptcp_subtypes'] = opts['mptcp']
+            info['tcp_options_truncated'] = opts['truncated']
 
         elif ip_proto == 17 and len(pkt) >= l4 + 8:        # UDP
             udp_length, = struct.unpack_from('>H', pkt, l4 + 4)
@@ -695,8 +853,20 @@ def _parse_frame(pkt: bytes, linktype: int, frame_number: int,
     return info
 
 
+def frame_info(pcap_bytes: bytes, frame_number: int) -> dict | None:
+    """get_frame_info() on an in-memory capture (``None`` when the frame does not exist)."""
+    for num, ts, incl_len, orig_len, linktype, pkt in _iter_packets(pcap_bytes):
+        if num == frame_number:
+            ts_sec = int(ts)
+            return _parse_frame(pkt, linktype, frame_number, ts_sec, int(round((ts - ts_sec) * 1e6)),
+                                incl_len, orig_len)
+        if num > frame_number:
+            break
+    return None
+
+
 def get_frame_info(grade: Grade0, filename: str, max_length: int, frame_number: int) -> dict | None:
-    """Open a pcap file and return all available information about one frame.
+    """Open a pcap / pcapng file and return all available information about one frame.
 
     Args:
         grade:        Grade0 instance (used to locate the project shared directory).
@@ -706,7 +876,7 @@ def get_frame_info(grade: Grade0, filename: str, max_length: int, frame_number: 
 
     Returns:
         None if the file cannot be read, exceeds max_length KiB, is not a valid
-        pcap, or frame_number does not exist.  Otherwise a dict whose keys depend
+        capture, or frame_number does not exist.  Otherwise a dict whose keys depend
         on the frame contents:
 
         Always present:
@@ -724,49 +894,212 @@ def get_frame_info(grade: Grade0, filename: str, max_length: int, frame_number: 
         ICMP:           icmp_type, icmp_code, icmp_type_name
         TCP:            tcp_src_port, tcp_dst_port, tcp_seq, tcp_ack, tcp_window,
                         tcp_flag_fin, tcp_flag_syn, tcp_flag_rst, tcp_flag_psh,
-                        tcp_flag_ack, tcp_flag_urg, tcp_payload_length
+                        tcp_flag_ack, tcp_flag_urg, tcp_payload_length, tcp_header_length,
+                        tcp_options (kinds), tcp_mss, tcp_wscale, tcp_sack_permitted,
+                        tcp_sack_blocks, tcp_timestamps, tcp_mptcp_subtypes,
+                        tcp_options_truncated
         UDP:            udp_src_port, udp_dst_port, udp_payload_length
     """
     host_path = os.path.join(grade.net_scheme.get_shared_dir(), filename)
+    pcap_bytes = _read_pcap_file(host_path, max_length)
+    if pcap_bytes is None:
+        return None
+    return frame_info(pcap_bytes, frame_number)
 
+
+# ── TCP analysis of a frames list (output of _parse_all_tcp_frames / load_frames) ──
+#
+# Pure functions on the frame dicts, for the grading of student captures: they return
+# frame numbers (1-based, as Wireshark) and never raise on an empty or odd capture.
+
+
+def _seq_lt(a: int, b: int) -> bool:
+    """``a < b`` modulo 2**32 (sequence-number arithmetic)."""
+    return ((a - b) & _SEQ_MASK) > 0x7FFFFFFF
+
+
+def _stream_key(f: dict) -> tuple:
+    return f['src_ip'], f['src_port'], f['dst_ip'], f['dst_port']
+
+
+def _reverse_key(f: dict) -> tuple:
+    return f['dst_ip'], f['dst_port'], f['src_ip'], f['src_port']
+
+
+def _match_endpoint(f: dict, src_ip=None, dst_ip=None, src_port=None, dst_port=None) -> bool:
+    if src_ip is not None and f['src_ip'] != str(src_ip).split('/')[0]:
+        return False
+    if dst_ip is not None and f['dst_ip'] != str(dst_ip).split('/')[0]:
+        return False
+    if src_port is not None and f['src_port'] != int(src_port):
+        return False
+    if dst_port is not None and f['dst_port'] != int(dst_port):
+        return False
+    return True
+
+
+def frame_by_number(frames: list[dict], number) -> dict | None:
+    """The TCP frame dict numbered *number* (``None`` when absent or not TCP)."""
     try:
-        size = os.path.getsize(host_path)
-    except OSError:
+        n = int(number)
+    except (TypeError, ValueError):
         return None
-    if size > max_length * 1024:
-        return None
+    return next((f for f in frames if f['frame_num'] == n), None)
 
-    try:
-        pcap_bytes = open(host_path, 'rb').read()
-    except OSError:
-        return None
 
-    if len(pcap_bytes) < 24:
-        return None
-    magic, = struct.unpack_from('<I', pcap_bytes, 0)
-    if magic == 0xa1b2c3d4:
-        endian = '<'
-    elif magic == 0xd4c3b2a1:
-        endian = '>'
-    else:
-        return None
-    linktype, = struct.unpack_from(f'{endian}I', pcap_bytes, 20)
+def frames_to(frames: list[dict], server_ip=None, server_port=None) -> list[dict]:
+    """The frames of the streams whose server side is *server_ip* / *server_port* (both
+    directions)."""
+    result = []
+    for f in frames:
+        if _match_endpoint(f, dst_ip=server_ip, dst_port=server_port) or \
+                _match_endpoint(f, src_ip=server_ip, src_port=server_port):
+            result.append(f)
+    return result
 
-    offset = 24
-    cur_frame = 0
-    while offset + 16 <= len(pcap_bytes):
-        cur_frame += 1
-        ts_sec,  = struct.unpack_from(f'{endian}I', pcap_bytes, offset)
-        ts_usec, = struct.unpack_from(f'{endian}I', pcap_bytes, offset + 4)
-        incl_len, = struct.unpack_from(f'{endian}I', pcap_bytes, offset + 8)
-        orig_len, = struct.unpack_from(f'{endian}I', pcap_bytes, offset + 12)
-        pkt_start = offset + 16
-        pkt_end   = pkt_start + incl_len
-        if pkt_end > len(pcap_bytes):
-            break
-        if cur_frame == frame_number:
-            return _parse_frame(pcap_bytes[pkt_start:pkt_end], linktype,
-                                frame_number, ts_sec, ts_usec, incl_len, orig_len)
-        offset = pkt_end
 
+def find_handshake(frames: list[dict], server_ip=None, server_port=None,
+                   client_ip=None) -> tuple[int, int, int] | None:
+    """Frame numbers ``(syn, synack, ack)`` of the first complete three-way handshake
+    toward *server_ip* / *server_port* (``None`` when there is none).  A SYN that got no
+    SYN-ACK (lost, retransmitted) is skipped."""
+    for i, syn in enumerate(frames):
+        if syn['flags'] & TCP_SYN and not syn['flags'] & TCP_ACK and \
+                _match_endpoint(syn, src_ip=client_ip, dst_ip=server_ip, dst_port=server_port):
+            key = _stream_key(syn)
+            rkey = _reverse_key(syn)
+            synack = None
+            j = i + 1
+            for j in range(i + 1, len(frames)):
+                f = frames[j]
+                if _stream_key(f) == rkey and (f['flags'] & (TCP_SYN | TCP_ACK)) == (TCP_SYN | TCP_ACK) \
+                        and f['ack'] == (syn['seq'] + 1) & _SEQ_MASK:
+                    synack = f
+                    break
+            if synack is None:
+                continue
+            for f in frames[j + 1:]:
+                if _stream_key(f) == key and f['flags'] & TCP_ACK and not f['flags'] & TCP_SYN \
+                        and f['seq'] == (syn['seq'] + 1) & _SEQ_MASK \
+                        and f['ack'] == (synack['seq'] + 1) & _SEQ_MASK:
+                    return syn['frame_num'], synack['frame_num'], f['frame_num']
     return None
+
+
+def handshake_frames_ok(frames: list[dict], syn_n, synack_n, ack_n,
+                        server_ip=None, server_port=None) -> dict:
+    """Check three frame numbers given by a student against the capture.
+
+    Returns ``{'syn': bool, 'synack': bool, 'ack': bool, 'relation': bool}``: the SYN is a
+    SYN without ACK toward the server, the SYN-ACK comes back from the server on the
+    same stream, the ACK is a plain ACK of the client, and the sequence / acknowledgement
+    numbers of the three frames are consistent (``ack = seq + 1`` twice)."""
+    syn, synack, ack = (frame_by_number(frames, n) for n in (syn_n, synack_n, ack_n))
+    result = {'syn': False, 'synack': False, 'ack': False, 'relation': False}
+    if syn is not None:
+        result['syn'] = bool(syn['flags'] & TCP_SYN) and not syn['flags'] & TCP_ACK and \
+            _match_endpoint(syn, dst_ip=server_ip, dst_port=server_port)
+    if syn is not None and synack is not None:
+        result['synack'] = (synack['flags'] & (TCP_SYN | TCP_ACK)) == (TCP_SYN | TCP_ACK) and \
+            _stream_key(synack) == _reverse_key(syn)
+    if syn is not None and ack is not None:
+        result['ack'] = bool(ack['flags'] & TCP_ACK) and not ack['flags'] & TCP_SYN and \
+            _stream_key(ack) == _stream_key(syn) and ack['payload_len'] == 0
+    if result['syn'] and result['synack'] and result['ack']:
+        result['relation'] = synack['ack'] == (syn['seq'] + 1) & _SEQ_MASK and \
+            ack['ack'] == (synack['seq'] + 1) & _SEQ_MASK and ack['seq'] == (syn['seq'] + 1) & _SEQ_MASK
+    return result
+
+
+def find_first_fin(frames: list[dict], server_ip=None, server_port=None) -> dict | None:
+    """The first frame carrying FIN in the streams toward *server_ip* / *server_port*
+    (``None`` when there is none)."""
+    for f in frames_to(frames, server_ip, server_port):
+        if f['flags'] & TCP_FIN:
+            return f
+    return None
+
+
+def find_zero_window(frames: list[dict], src_ip=None, src_port=None) -> list[int]:
+    """Frame numbers of the segments advertising a zero window (SYN and RST excluded),
+    optionally from *src_ip* / *src_port* only."""
+    return [f['frame_num'] for f in frames
+            if f['window'] == 0 and not f['flags'] & (TCP_SYN | TCP_RST)
+            and _match_endpoint(f, src_ip=src_ip, src_port=src_port)]
+
+
+def _probe_segments(frames: list[dict], src_ip=None, require_zero_window: bool = True) -> list[int]:
+    """Frames of at most 1 byte sent at SND.UNA-1 (0 bytes) or SND.UNA (1 byte) while the
+    peer last acknowledged SND.UNA: zero window probes (when the peer advertised a zero
+    window before) or keepalive probes (otherwise)."""
+    last_ack: dict = {}         # stream key -> last ack number sent on that stream
+    zero_seen: set = set()      # stream keys that advertised window 0
+    result = []
+    for f in frames:
+        key = _stream_key(f)
+        rkey = _reverse_key(f)
+        if f['flags'] & TCP_RST:
+            continue
+        if not f['flags'] & (TCP_SYN | TCP_FIN) and f['payload_len'] <= 1 \
+                and rkey in last_ack and (not require_zero_window or rkey in zero_seen) \
+                and _match_endpoint(f, src_ip=src_ip):
+            una = last_ack[rkey]
+            if (f['payload_len'] == 0 and f['seq'] == (una - 1) & _SEQ_MASK) or \
+                    (f['payload_len'] == 1 and f['seq'] == una):
+                result.append(f['frame_num'])
+        if f['window'] == 0 and not f['flags'] & TCP_SYN:
+            zero_seen.add(key)
+        if f['flags'] & TCP_ACK:
+            last_ack[key] = f['ack']
+    return result
+
+
+def find_zero_window_probes(frames: list[dict], src_ip=None) -> list[int]:
+    """Frame numbers of the Zero Window Probes of the capture (Linux shape: 0-byte segment
+    at SND.UNA-1, or a 1-byte segment at SND.UNA, after the peer advertised a zero
+    window); each of them satisfies is_zero_window_probe()."""
+    return _probe_segments(frames, src_ip, require_zero_window=True)
+
+
+def find_keepalives(frames: list[dict], src_ip=None) -> list[int]:
+    """Frame numbers of the keepalive probes of the capture: same shape as a zero window
+    probe (0-byte segment at SND.UNA-1) without any zero window advertised by the peer."""
+    return _probe_segments(frames, src_ip, require_zero_window=False)
+
+
+def frame_intervals(frames: list[dict], numbers: list[int]) -> list[float]:
+    """Seconds between consecutive frames of *numbers* (from the capture timestamps)."""
+    times = [f['ts'] for n in numbers for f in [frame_by_number(frames, n)] if f is not None]
+    return [round(b - a, 3) for a, b in zip(times, times[1:])]
+
+
+def find_retransmissions(frames: list[dict], src_ip=None) -> list[int]:
+    """Frame numbers of the data segments that repeat bytes already sent on their stream
+    (``seq`` below the highest ``seq + length`` seen so far): retransmissions, which
+    Wireshark flags as *Retransmission* / *Fast Retransmission* / *Spurious
+    Retransmission*; an out-of-order segment matches too."""
+    highest: dict = {}      # stream key -> highest seq + payload_len seen
+    result = []
+    for f in frames:
+        if f['flags'] & TCP_RST:
+            continue
+        key = _stream_key(f)
+        end = (f['seq'] + f['payload_len'] + (1 if f['flags'] & TCP_SYN else 0)) & _SEQ_MASK
+        if f['payload_len'] > 0 and not f['flags'] & TCP_SYN and key in highest \
+                and _seq_lt(f['seq'], highest[key]) and _match_endpoint(f, src_ip=src_ip):
+            result.append(f['frame_num'])
+        if key not in highest or _seq_lt(highest[key], end):
+            highest[key] = end
+    return result
+
+
+def find_sack_frames(frames: list[dict], src_ip=None) -> list[int]:
+    """Frame numbers of the segments carrying at least one SACK block."""
+    return [f['frame_num'] for f in frames if f['sack_blocks'] and _match_endpoint(f, src_ip=src_ip)]
+
+
+def find_mptcp(frames: list[dict], subtype: int | None = None) -> list[int]:
+    """Frame numbers of the segments carrying an MPTCP option (of *subtype* when given:
+    MPTCP_CAPABLE, MPTCP_JOIN, MPTCP_DSS, MPTCP_ADD_ADDR)."""
+    return [f['frame_num'] for f in frames
+            if f['mptcp'] and (subtype is None or subtype in f['mptcp'])]

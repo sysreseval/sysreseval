@@ -1,0 +1,7 @@
+===N
+Debut de l'envoi...
+Envoi termine en 0.0003 secondes.
+Debut de l'envoi...
+Envoi termine en 0.0003 secondes.
+===M
+{"bytes": 13074312, "command": "mptcp-client", "connected": true, "connections": [["192.168.224.216", 57152, "192.168.238.169", 26777]], "error": null, "local_addresses": ["192.168.224.216"], "ok": true, "peer_addresses": ["192.168.238.169"], "samples": 27, "subflows": 1}

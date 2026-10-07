@@ -1,0 +1,15 @@
+qdisc noqueue 0: dev lo root refcnt 2 
+qdisc netem 8007: dev eth0 root refcnt 2 limit 1000 delay 100ms loss 5% seed 4253473324653133275
+qdisc netem 8008: dev eth1 root refcnt 2 limit 1000 delay 100ms loss 5% seed 5978076567445901042
+===CLASS eth0
+===FILTER eth0
+===INGRESS eth0
+===CLASS eth1
+===FILTER eth1
+===INGRESS eth1
+===CLASS lo
+===FILTER lo
+===INGRESS lo
+===CLASS sit0
+===FILTER sit0
+===INGRESS sit0
