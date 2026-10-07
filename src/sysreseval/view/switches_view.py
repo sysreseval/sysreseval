@@ -9,6 +9,7 @@ from sysreseval import util
 CLOSED_COLOR = "#f0c8c8"        # type of a manageable switch whose console is closed to the students
 CONNECT_COLOR = "#c8f0c8"       # Connect button
 DEBUG_CONNECT_COLOR = "#ffd9a0"  # Connect button a student would not have (debug project)
+COLUMN_EXTRA_WIDTH = 30          # pixels of room added to each column beyond its content
 
 
 class SwitchesView(QTableWidget):
@@ -26,7 +27,7 @@ class SwitchesView(QTableWidget):
         self.setColumnCount(3)
         header = self.horizontalHeader()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # widths set by _fit_columns()
         bold = QFont()
         bold.setBold(True)
         header.setFont(bold)
@@ -83,6 +84,13 @@ class SwitchesView(QTableWidget):
             else:
                 self.removeCellWidget(row, 2)
                 self.setItem(row, 2, QTableWidgetItem(""))
+        self._fit_columns()
+
+    def _fit_columns(self):
+        """Width of each column: its content (header, texts, buttons) plus some room."""
+        self.resizeColumnsToContents()
+        for column in range(self.columnCount()):
+            self.setColumnWidth(column, self.columnWidth(column) + COLUMN_EXTRA_WIDTH)
 
     def _launch_terminal(self, switch_name: str):
         self._terminals.launch(switch_name)

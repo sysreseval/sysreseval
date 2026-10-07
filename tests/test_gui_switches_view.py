@@ -25,7 +25,7 @@ from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 from SRE import params  # noqa: E402
 from sysreseval import util  # noqa: E402
 from sysreseval.view.machines_view import MachinesView  # noqa: E402
-from sysreseval.view.switches_view import SwitchesView  # noqa: E402
+from sysreseval.view.switches_view import SwitchesView, COLUMN_EXTRA_WIDTH  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -124,6 +124,16 @@ class TestSwitchesView:
         view = SwitchesView(RUNNING, [{"name": "x"}])
         assert _column(view, 1) == ['Hub']
         assert _button(view, 0) is None
+
+    def test_columns_are_wider_than_their_content(self):
+        view = SwitchesView(RUNNING, SWITCHES)
+        for column in range(view.columnCount()):
+            assert view.columnWidth(column) >= view.sizeHintForColumn(column) + COLUMN_EXTRA_WIDTH
+        # and they follow the content: a longer name widens the first column
+        before = view.columnWidth(0)
+        view.update_data([dict(SWITCHES[0], name="a-much-longer-network-name")])
+        assert view.columnWidth(0) > before
+        assert view.columnWidth(0) >= view.sizeHintForColumn(0) + COLUMN_EXTRA_WIDTH
 
     def test_connect_opens_the_console_of_the_switch(self, started):
         view = SwitchesView(RUNNING, SWITCHES)
