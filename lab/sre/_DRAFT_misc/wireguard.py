@@ -1,22 +1,22 @@
-"""TP WireGuard : clés et premier tunnel à la main, wg-quick et systemd, poste nomade derrière un
-NAT (concentrateur), accès au LAN, site à site, tunnel complet + NAT, clé pré-partagée et retrait
-d'un pair.
+"""WireGuard lab: keys and a first tunnel by hand, wg-quick and systemd, a roaming laptop behind a
+NAT box (srv as concentrator), access to a LAN, site to site, full tunnel + NAT, preshared key and
+removal of a peer.
 
-Un réseau « Internet » `wan` relie la passerelle du site A `srv` (le concentrateur WireGuard), la
-passerelle du site B `gwb`, la box `box` d'un hôtel (NAT devant le poste `nomade`), le routeur du
-fournisseur d'accès `inet` (derrière lui, le serveur web `web` du « reste d'Internet ») et la sonde
-cachée `sonde`.  Derrière `srv` : `lana` avec le serveur interne `m1` ; derrière `gwb` : `lanb`
-avec `m2`.  `srv`, `gwb` et `nomade` tournent avec systemd (image `init`, privilégiés : un
-tunnel complet de wg-quick écrit dans `/proc/sys`).
+An "Internet" network `wan` links the site A gateway `srv` (the WireGuard concentrator), the site B
+gateway `gwb`, the box of a hotel `box` (NAT in front of the roaming `laptop`), the ISP router `inet`
+(behind it, the web server `web` of "the rest of the Internet") and the hidden `probe`.  Behind
+`srv`: `lana` with the internal server `m1`; behind `gwb`: `lanb` with `m2`.  `srv`, `gwb` and
+`laptop` run systemd (`init` image, privileged: a wg-quick full tunnel writes in `/proc/sys`).
 
-La sonde observe le trafic du `wan` pendant l'évaluation (``tcpdump``), puis se connecte au
-concentrateur avec les clés de deux postes dont l'étudiant n'a reçu que la clé publique :
-`collegue` (doit passer) et `ancien` (retiré en partie 7, ne doit plus passer).  L'état ``final``
-applique la solution de référence.  Chaque question se termine par sa solution dans un bloc
-``instructor()`` (mode enseignant).
+The probe watches the `wan` traffic during the evaluation (``tcpdump``), then connects to the
+concentrator with the keys of two laptops whose public key alone is given to the students:
+`colleague` (must pass) and `oldpc` (removed in part 7, must not pass any more).  The ``final``
+state applies the reference solution.  Every question ends with its solution in an
+``instructor()`` block (instructor mode).  The texts are French (``tr()``), the identifiers
+English.
 
-Les images Docker doivent contenir le paquet ``wireguard`` (images ≥ 1.30).  Les archives
-d'évaluation contiennent la sortie de ``wg show all dump``, donc les clés privées (jetables) du TP.
+The Docker images must ship the ``wireguard`` package (images >= 1.30).  The evaluation archives
+hold the output of ``wg show all dump``, hence the (throw-away) private keys of the lab.
 """
 import random
 import re
@@ -55,13 +55,13 @@ eval_interval_without_exam_mode = 120
 eval_before_exit = True
 record_sessions = False
 
-DOMAIN = "tp"
+DOMAIN = "lab"
 CONF = f"{WG_DIR}/wg0.conf"
 PRIVATE_KEY_FILE = f"{WG_DIR}/private.key"
 PUBLIC_KEY_FILE = f"{WG_DIR}/public.key"
 UNIT = "wg-quick@wg0"
 KEEPALIVE = 25
-SYSTEMD_MACHINES = ("srv", "gwb", "nomade")
+SYSTEMD_MACHINES = ("srv", "gwb", "laptop")
 INIT_MACHINE = {'image': sre_docker_image("init"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the "Internet": one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
@@ -72,11 +72,11 @@ PHP_PAGE = ('<?php header("Content-Type: text/plain"); '
             'echo "client=" . $_SERVER["REMOTE_ADDR"] . "\\nserver=" . $_SERVER["SERVER_ADDR"] . "\\n";\n')
 
 _TOPOLOGY = {
-    'wan': {'srv': 0, 'gwb': 0, 'box': 0, 'inet': 0, 'sonde': 0},
+    'wan': {'srv': 0, 'gwb': 0, 'box': 0, 'inet': 0, 'probe': 0},
     # "the rest of the Internet", behind the ISP router: a web server off every LAN
     'internet': {'inet': 1, 'web': 0},
     # the hotel: a private network behind the NAT of the box
-    'hotel': {'box': 1, 'nomade': 0},
+    'hotel': {'box': 1, 'laptop': 0},
     'lana': {'srv': 1, 'm1': 0},
     'lanb': {'gwb': 1, 'm2': 0},
 }
@@ -89,24 +89,24 @@ _TOPOLOGY = {
 
 @dataclass(slots=True)
 class Data(Data0):
-    # Key pairs of the reference solution (srv, gwb, nomade: the students make their own) and of
-    # the two laptops whose public key alone is given to the students (collegue, ancien): the
+    # Key pairs of the reference solution (srv, gwb, laptop: the students make their own) and of
+    # the two laptops whose public key alone is given to the students (colleague, oldpc): the
     # hidden probe plays those two.
     priv_srv: str = ""
     priv_gwb: str = ""
-    priv_nomade: str = ""
-    priv_collegue: str = ""
-    priv_ancien: str = ""
-    psk_nomade: str = ""      # partie 7 : clé pré-partagée srv ↔ nomade de la solution
-    secret_m1: str = ""       # partie 4 : phrase servie par http://m1/secret.txt
-    secret_m2: str = ""       # partie 5 : phrase servie par http://m2/secret.txt
+    priv_laptop: str = ""
+    priv_colleague: str = ""
+    priv_oldpc: str = ""
+    psk_laptop: str = ""      # part 7: preshared key srv <-> laptop of the reference solution
+    secret_m1: str = ""       # part 4: sentence served by http://m1/secret.txt
+    secret_m2: str = ""       # part 5: sentence served by http://m2/secret.txt
 
     @classmethod
     def generate(cls):
         data = cls()
-        (data.priv_srv, data.priv_gwb, data.priv_nomade, data.priv_collegue,
-         data.priv_ancien) = (generate_private_key() for _ in range(5))
-        data.psk_nomade = generate_preshared_key()
+        (data.priv_srv, data.priv_gwb, data.priv_laptop, data.priv_colleague,
+         data.priv_oldpc) = (generate_private_key() for _ in range(5))
+        data.psk_laptop = generate_preshared_key()
         # plain words only: the students retype one of these sentences
         data.secret_m1, data.secret_m2 = (random_sentence(4).replace(',', '') for _ in range(2))
         data.nets.wan, data.nets.internet = random.sample(WAN_NETWORKS, 2)
@@ -114,20 +114,20 @@ class Data(Data0):
         data.nets.lana, data.nets.lanb, data.nets.hotel, data.nets.vpn = random_ipv4networks(
             masks=[24, 24, 24, 24], from_private_network=True, exclude=exclude)
         (data.ips.srv_wan, data.ips.gwb_wan, data.ips.box_wan, data.ips.inet_wan,
-         data.ips.sonde) = random_ipv4s(data.nets.wan, 5)
+         data.ips.probe) = random_ipv4s(data.nets.wan, 5)
         data.ips.inet_internet, data.ips.web = random_ipv4s(data.nets.internet, 2)
         data.ips.srv_lana, data.ips.m1 = random_ipv4s(data.nets.lana, 2)
         data.ips.gwb_lanb, data.ips.m2 = random_ipv4s(data.nets.lanb, 2)
-        data.ips.box_hotel, data.ips.nomade = random_ipv4s(data.nets.hotel, 2)
+        data.ips.box_hotel, data.ips.laptop = random_ipv4s(data.nets.hotel, 2)
         # the concentrator takes the first address of the VPN network, the peers random ones
         data.ips.vpn_srv = IPv4Interface(f"{next(data.nets.vpn.hosts())}/24")
-        (data.ips.vpn_gwb, data.ips.vpn_nomade, data.ips.vpn_collegue,
-         data.ips.vpn_ancien) = random_ipv4s(data.nets.vpn, 4, exclude_ips=[data.ips.vpn_srv])
+        (data.ips.vpn_gwb, data.ips.vpn_laptop, data.ips.vpn_colleague,
+         data.ips.vpn_oldpc) = random_ipv4s(data.nets.vpn, 4, exclude_ips=[data.ips.vpn_srv])
         return data
 
 
 def _pub(data, name: str) -> str:
-    """Public key of one of the key pairs of the data (``'srv'``, ``'collegue'``...)."""
+    """Public key of one of the key pairs of the data (``'srv'``, ``'colleague'``...)."""
     return public_key(getattr(data, f"priv_{name}"))
 
 
@@ -141,7 +141,7 @@ class NetScheme(NetScheme0):
     _machine_specs = {
         'srv': {**INIT_MACHINE, 'color': 'lightblue'},
         'gwb': {**INIT_MACHINE, 'color': 'lightblue'},
-        'nomade': {**INIT_MACHINE, 'color': 'lightyellow'},
+        'laptop': {**INIT_MACHINE, 'color': 'lightyellow'},
         'm1': {'color': 'lightgrey'},
         'm2': {'color': 'lightgrey'},
         # Pre-configured: the hotel box (NAT), the ISP router and a web server of "the Internet".
@@ -149,8 +149,8 @@ class NetScheme(NetScheme0):
         'inet': {'color': 'lightgrey'},
         'web': {'color': 'lightgrey'},
         # Hidden helper used only by the auto-grader: it captures the wan traffic and connects
-        # to the student's concentrator with the keys of collegue and ancien.
-        'sonde': {'hidden': True, 'allow_connection': False},
+        # to the student's concentrator with the keys of colleague and oldpc.
+        'probe': {'hidden': True, 'allow_connection': False},
     }
     _network_specs = {
         'wan': {'color': 'lightyellow'},
@@ -168,10 +168,10 @@ class NetScheme(NetScheme0):
             'srv': [([d.ips.srv_wan], [(default, d.ips.inet_wan.ip)]), ([d.ips.srv_lana], [])],
             'gwb': [([d.ips.gwb_wan], [(default, d.ips.inet_wan.ip)]), ([d.ips.gwb_lanb], [])],
             'box': [([d.ips.box_wan], [(default, d.ips.inet_wan.ip)]), ([d.ips.box_hotel], [])],
-            'nomade': [([d.ips.nomade], [(default, d.ips.box_hotel.ip)])],
+            'laptop': [([d.ips.laptop], [(default, d.ips.box_hotel.ip)])],
             'inet': [([d.ips.inet_wan], []), ([d.ips.inet_internet], [])],
             'web': [([d.ips.web], [(default, d.ips.inet_internet.ip)])],
-            'sonde': [([d.ips.sonde], [(default, d.ips.inet_wan.ip)])],
+            'probe': [([d.ips.probe], [(default, d.ips.inet_wan.ip)])],
             'm1': [([d.ips.m1], [(default, d.ips.srv_lana.ip)])],
             'm2': [([d.ips.m2], [(default, d.ips.gwb_lanb.ip)])],
         }
@@ -446,7 +446,7 @@ derrière un NAT ne peuvent pas se joindre sans relais (ou redirection de port s
             + tr("""
 ## 8. Observation et diagnostic
 
-- `wg show` : le premier réflexe. `latest handshake` absent ou ancien (> 3 min) = pas de
+- `wg show` : le premier réflexe. `latest handshake` absent ou oldpc (> 3 min) = pas de
   session ; `transfer` qui n'augmente qu'en émission = l'autre côté ne répond pas ou nous jette.
   `endpoint` dit où le pair a été vu pour la dernière fois.
 - `ip -br a` (adresse de `wg0`), `ip route` (une route par préfixe des `AllowedIPs`), `ip rule`
@@ -507,12 +507,12 @@ toujours une affaire de clés, d'adresses ou d'`AllowedIPs`.
 
 1. **Clés et premier tunnel** entre `srv` et `gwb`, à la main (`wg genkey`, `ip link`, `wg set`) ;
 2. **Configuration persistante** avec `wg-quick` (`/etc/wireguard/wg0.conf`) et systemd ;
-3. **Poste nomade** derrière le NAT de l'hôtel : `srv` concentrateur, `PersistentKeepalive`,
-   deux autres postes connus par leur clé publique (`collegue`, `ancien`) ;
+3. **Poste nomade** (`laptop`) derrière le NAT de l'hôtel : `srv` concentrateur, `PersistentKeepalive`,
+   deux autres postes connus par leur clé publique (`colleague`, `oldpc`) ;
 4. **Accès au LAN** du site A depuis le nomade (`AllowedIPs`, forwarding) ;
 5. **Site à site** : `lanb` ↔ `lana`, le nomade vers `lanb` en passant par `srv` ;
 6. **Tunnel complet** pour le nomade (`0.0.0.0/0`, routage par politique) et NAT sur `srv` ;
-7. **Clé pré-partagée** et **retrait** du pair `ancien`.
+7. **Clé pré-partagée** et **retrait** du pair `oldpc`.
 
 Les parties sont à faire **dans l'ordre** et la configuration d'une partie terminée reste en
 place. Les fichiers sont attendus aux emplacements indiqués ; les adresses, clés et valeurs
@@ -539,40 +539,40 @@ demandées sont propres à votre instance du TP (onglet *Questions*, première q
                 f"ip address add {d.ips.vpn_gwb.ip}/24 dev wg0\nip link set wg0 up\n")
 
     def wg_conf_srv(self, part: int = 7) -> str:
-        """wg0.conf of srv after *part* (2: gwb only, 3: + nomade, collegue, ancien, 5: lanb behind
-        gwb, 7: preshared key for nomade, ancien removed)."""
+        """wg0.conf of srv after *part* (2: gwb only, 3: + laptop, colleague, oldpc, 5: lanb behind
+        gwb, 7: preshared key for laptop, oldpc removed)."""
         d = self.data
         text = (f"[Interface]\nPrivateKey = {d.priv_srv}\nAddress = {d.ips.vpn_srv.ip}/24\nListenPort = {WG_PORT}\n"
-                f"\n# gwb : passerelle du site B\n[Peer]\nPublicKey = {_pub(d, 'gwb')}\n"
+                f"\n# gwb: site B gateway\n[Peer]\nPublicKey = {_pub(d, 'gwb')}\n"
                 f"Endpoint = {d.ips.gwb_wan.ip}:{WG_PORT}\n"
                 f"AllowedIPs = {d.ips.vpn_gwb.ip}/32" + (f", {d.nets.lanb}" if part >= 5 else "") + "\n")
         if part >= 3:
-            text += f"\n# nomade\n[Peer]\nPublicKey = {_pub(d, 'nomade')}\n"
+            text += f"\n# laptop\n[Peer]\nPublicKey = {_pub(d, 'laptop')}\n"
             if part >= 7:
-                text += f"PresharedKey = {d.psk_nomade}\n"
-            text += (f"AllowedIPs = {d.ips.vpn_nomade.ip}/32\n"
-                     f"\n# collegue\n[Peer]\nPublicKey = {_pub(d, 'collegue')}\nAllowedIPs = {d.ips.vpn_collegue.ip}/32\n")
+                text += f"PresharedKey = {d.psk_laptop}\n"
+            text += (f"AllowedIPs = {d.ips.vpn_laptop.ip}/32\n"
+                     f"\n# colleague\n[Peer]\nPublicKey = {_pub(d, 'colleague')}\nAllowedIPs = {d.ips.vpn_colleague.ip}/32\n")
             if part < 7:
-                text += f"\n# ancien\n[Peer]\nPublicKey = {_pub(d, 'ancien')}\nAllowedIPs = {d.ips.vpn_ancien.ip}/32\n"
+                text += f"\n# oldpc\n[Peer]\nPublicKey = {_pub(d, 'oldpc')}\nAllowedIPs = {d.ips.vpn_oldpc.ip}/32\n"
         return text
 
     def wg_conf_gwb(self, part: int = 7) -> str:
         d = self.data
         allowed = f"{d.nets.vpn}, {d.nets.lana}" if part >= 5 else f"{d.ips.vpn_srv.ip}/32"
         return (f"[Interface]\nPrivateKey = {d.priv_gwb}\nAddress = {d.ips.vpn_gwb.ip}/24\nListenPort = {WG_PORT}\n"
-                f"\n# srv : passerelle du site A, concentrateur\n[Peer]\nPublicKey = {_pub(d, 'srv')}\n"
+                f"\n# srv: site A gateway, the concentrator\n[Peer]\nPublicKey = {_pub(d, 'srv')}\n"
                 f"Endpoint = {d.ips.srv_wan.ip}:{WG_PORT}\nAllowedIPs = {allowed}\n")
 
-    def wg_conf_nomade(self, part: int = 7) -> str:
+    def wg_conf_laptop(self, part: int = 7) -> str:
         d = self.data
         if part >= 6:
             allowed = "0.0.0.0/0"
         else:
             allowed = str(d.nets.vpn) + (f", {d.nets.lana}" if part >= 4 else "") + (f", {d.nets.lanb}" if part >= 5 else "")
-        text = (f"[Interface]\nPrivateKey = {d.priv_nomade}\nAddress = {d.ips.vpn_nomade.ip}/24\n"
-                f"\n# srv : le concentrateur\n[Peer]\nPublicKey = {_pub(d, 'srv')}\n")
+        text = (f"[Interface]\nPrivateKey = {d.priv_laptop}\nAddress = {d.ips.vpn_laptop.ip}/24\n"
+                f"\n# srv: the concentrator\n[Peer]\nPublicKey = {_pub(d, 'srv')}\n")
         if part >= 7:
-            text += f"PresharedKey = {d.psk_nomade}\n"
+            text += f"PresharedKey = {d.psk_laptop}\n"
         text += f"Endpoint = {d.ips.srv_wan.ip}:{WG_PORT}\nAllowedIPs = {allowed}\nPersistentKeepalive = {KEEPALIVE}\n"
         return text
 
@@ -615,7 +615,7 @@ demandées sont propres à votre instance du TP (onglet *Questions*, première q
     def final(self):
         """Reference solution of the seven parts.
 
-        Step 1: clean start on srv, gwb and nomade (unit, interface, files, nftables).  Step 2:
+        Step 1: clean start on srv, gwb and laptop (unit, interface, files, nftables).  Step 2:
         the key files of part 1, the three wg0.conf of part 7, forwarding, NAT, the units.
         Step 3: pings through the tunnels so that an immediate evaluation sees fresh handshakes.
         Forms are filled through cheat_answers.
@@ -625,12 +625,12 @@ demandées sont propres à votre instance du TP (onglet *Questions*, première q
             self.cmd(m, f"systemctl disable --now {UNIT} >/dev/null 2>&1; ip link del wg0 2>/dev/null; "
                         f"rm -rf {WG_DIR}/* /etc/sysctl.d/99-vpn.conf; mkdir -p {WG_DIR}; chmod 700 {WG_DIR}; "
                         "nft flush ruleset; true")
-        for m, priv in (('srv', d.priv_srv), ('gwb', d.priv_gwb), ('nomade', d.priv_nomade)):
+        for m, priv in (('srv', d.priv_srv), ('gwb', d.priv_gwb), ('laptop', d.priv_laptop)):
             self.file(m, PRIVATE_KEY_FILE, priv + "\n", permissions=0o600, step=2)
             self.file(m, PUBLIC_KEY_FILE, public_key(priv) + "\n", permissions=0o600, step=2)
         self.file('srv', CONF, self.wg_conf_srv(), permissions=0o600, step=2)
         self.file('gwb', CONF, self.wg_conf_gwb(), permissions=0o600, step=2)
-        self.file('nomade', CONF, self.wg_conf_nomade(), permissions=0o600, step=2)
+        self.file('laptop', CONF, self.wg_conf_laptop(), permissions=0o600, step=2)
         for m in ('srv', 'gwb'):
             self.cmd(m, "sysctl -w net.ipv4.ip_forward=1 >/dev/null && "
                         "echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-vpn.conf", step=2)
@@ -640,7 +640,7 @@ demandées sont propres à votre instance du TP (onglet *Questions*, première q
             self.cmd(m, f"systemctl enable --now {UNIT} >/dev/null 2>&1 || systemctl status {UNIT} --no-pager", step=2)
         # step 3: bring the sessions up
         self.cmd('gwb', f"ping -c 2 -w 5 {d.ips.vpn_srv.ip} >/dev/null 2>&1; true", step=3)
-        self.cmd('nomade', f"ping -c 2 -w 5 {d.ips.vpn_srv.ip} >/dev/null 2>&1; ping -c 1 -w 3 {d.ips.m2.ip} >/dev/null 2>&1; "
+        self.cmd('laptop', f"ping -c 2 -w 5 {d.ips.vpn_srv.ip} >/dev/null 2>&1; ping -c 1 -w 3 {d.ips.m2.ip} >/dev/null 2>&1; "
                            f"curl -s --max-time 5 http://{d.ips.web.ip}/ >/dev/null 2>&1; true", step=3)
         self.cmd('m2', f"ping -c 2 -w 5 {d.ips.m1.ip} >/dev/null 2>&1; true", step=3)
 
@@ -721,7 +721,7 @@ class Grade(Grade0):
         super().grade()
         d = self.get_data()
         vpn, lana, lanb, wan, hotel = d.nets.vpn, d.nets.lana, d.nets.lanb, d.nets.wan, d.nets.hotel
-        pub_collegue, pub_ancien = _pub(d, 'collegue'), _pub(d, 'ancien')
+        pub_colleague, pub_oldpc = _pub(d, 'colleague'), _pub(d, 'oldpc')
         endpoint_srv = f"{d.ips.srv_wan.ip}:{WG_PORT}"
 
         # ---------------- diagnostics kept in the archive ---------------------------------
@@ -731,7 +731,7 @@ class Grade(Grade0):
                 self.test(m, c, allow_error=True)
         for c in ("ip route show table 51820", "nft list ruleset", "iptables-save -t nat", "cat /etc/sysctl.d/*.conf"):
             self.test('srv', c, allow_error=True)
-        self.test('nomade', "ip route show table 51820", allow_error=True)
+        self.test('laptop', "ip route show table 51820", allow_error=True)
 
         # ---------------- step 1: running state, files, routes -----------------------------
         st1 = {m: get_wg_state(self, m, step=1) for m in SYSTEMD_MACHINES}
@@ -745,80 +745,85 @@ class Grade(Grade0):
         addrs = {m: get_ip_addresses_json(self, m) for m in SYSTEMD_MACHINES}
         routes = {m: get_routes(self, m) for m in SYSTEMD_MACHINES}
         forward = {m: get_ip_forward(self, m) for m in ('srv', 'gwb')}
-        rules_nomade = get_ip_rules(self, 'nomade')
-        table_nomade = get_routes_table(self, 'nomade', 51820)
-        rget = {name: get_route_get(self, 'nomade', ip) for name, ip in (('m1', d.ips.m1), ('m2', d.ips.m2), ('web', d.ips.web))}
+        rules_laptop = get_ip_rules(self, 'laptop')
+        table_laptop = get_routes_table(self, 'laptop', 51820)
+        rget = {name: get_route_get(self, 'laptop', ip) for name, ip in (('m1', d.ips.m1), ('m2', d.ips.m2), ('web', d.ips.web))}
         ruleset = get_ruleset(self, 'srv')
         iptables_nat, _ = self.test('srv', "iptables-save -t nat 2>/dev/null", allow_error=True)
 
         # ---------------- step 2: traffic through the tunnels, captured on the wan ---------
         # The probe captures for 8 s while the other machines generate the traffic (the steps
         # of every machine run concurrently): the generators wait 1 s so that tcpdump listens.
-        self.test('sonde', tcpdump_capture_cmd(PCAP, seconds=8), step=2, timeout=20, allow_error=True)
-        for m in ('nomade', 'm1', 'm2', 'srv', 'gwb'):
+        self.test('probe', tcpdump_capture_cmd(PCAP, seconds=8), step=2, timeout=20, allow_error=True)
+        for m in ('laptop', 'm1', 'm2', 'srv', 'gwb'):
             self.test(m, "sleep 1", step=2, allow_error=True)
-        ping_nomade_srv = eval_ping(self, 'nomade', d.ips.vpn_srv.ip, step=2, count=2, deadline=3, allow_error=True)
-        ping_nomade_m1 = eval_ping(self, 'nomade', d.ips.m1.ip, step=2, count=2, deadline=3, allow_error=True)
-        ping_nomade_m2 = eval_ping(self, 'nomade', d.ips.m2.ip, step=2, count=2, deadline=3, allow_error=True)
-        curl_m1, _ = self.test('nomade', f"curl -s --max-time 5 http://{d.ips.m1.ip}/", step=2, allow_error=True)
-        curl_web, _ = self.test('nomade', f"curl -s --max-time 5 http://{d.ips.web.ip}/", step=2, allow_error=True)
+        ping_laptop_srv = eval_ping(self, 'laptop', d.ips.vpn_srv.ip, step=2, count=2, deadline=3, allow_error=True)
+        ping_laptop_m1 = eval_ping(self, 'laptop', d.ips.m1.ip, step=2, count=2, deadline=3, allow_error=True)
+        ping_laptop_m2 = eval_ping(self, 'laptop', d.ips.m2.ip, step=2, count=2, deadline=3, allow_error=True)
+        curl_m1, _ = self.test('laptop', f"curl -s --max-time 5 http://{d.ips.m1.ip}/", step=2, allow_error=True)
+        curl_web, _ = self.test('laptop', f"curl -s --max-time 5 http://{d.ips.web.ip}/", step=2, allow_error=True)
         ping_m2_m1 = eval_ping(self, 'm2', d.ips.m1.ip, step=2, count=2, deadline=3, allow_error=True)
         ping_m1_m2 = eval_ping(self, 'm1', d.ips.m2.ip, step=2, count=2, deadline=3, allow_error=True)
         ping_srv_gwb = eval_ping(self, 'srv', d.ips.vpn_gwb.ip, step=2, count=2, deadline=3, allow_error=True)
         ping_gwb_srv = eval_ping(self, 'gwb', d.ips.vpn_srv.ip, step=2, count=2, deadline=3, allow_error=True)
 
         # ---------------- step 3: capture read, handshakes, probe connections --------------
-        cap_text, _ = self.test('sonde', tcpdump_read_cmd(PCAP), step=3, allow_error=True)
+        cap_text, _ = self.test('probe', tcpdump_read_cmd(PCAP), step=3, allow_error=True)
         frames = parse_tcpdump(cap_text)
         st3 = {m: get_wg_state(self, m, step=3) for m in SYSTEMD_MACHINES}
         if3 = {m: wg_interface(st3[m]) for m in SYSTEMD_MACHINES}
-        probe_collegue = {"handshake": False, "ping": False}
-        probe_ancien = {"handshake": True, "ping": True}
+        probe_colleague = {"handshake": False, "ping": False}
+        probe_oldpc = {"handshake": True, "ping": True}
         if pub['srv']:
             # The probe plays the two laptops whose public key alone was given to the student:
             # nothing is registered before the concentrator's key is known (stable command keys).
             port = (if1['srv'] or {}).get('listen_port') or WG_PORT
             endpoint = f"{d.ips.srv_wan.ip}:{port}"
-            out, _ = self.test('sonde', wg_probe_cmd(d.priv_collegue, d.ips.vpn_collegue, pub['srv'], endpoint,
+            out, _ = self.test('probe', wg_probe_cmd(d.priv_colleague, d.ips.vpn_colleague, pub['srv'], endpoint,
                                                      [f"{d.ips.vpn_srv.ip}/32"], d.ips.vpn_srv.ip, interface=PROBE_IF),
                                step=3, timeout=30, allow_error=True)
-            probe_collegue = parse_wg_probe(out, PROBE_IF)
-            out, _ = self.test('sonde', wg_probe_cmd(d.priv_ancien, d.ips.vpn_ancien, pub['srv'], endpoint,
+            probe_colleague = parse_wg_probe(out, PROBE_IF)
+            out, _ = self.test('probe', wg_probe_cmd(d.priv_oldpc, d.ips.vpn_oldpc, pub['srv'], endpoint,
                                                      [f"{d.ips.vpn_srv.ip}/32"], d.ips.vpn_srv.ip, interface=PROBE_IF),
                                step=3, timeout=30, allow_error=True)
-            probe_ancien = parse_wg_probe(out, PROBE_IF)
+            probe_oldpc = parse_wg_probe(out, PROBE_IF)
 
         # peers as seen at step 3 (after the pings: fresh handshakes)
         srv_peer_gwb = wg_peer(if3['srv'], pub['gwb'])
-        srv_peer_nomade = wg_peer(if3['srv'], pub['nomade'])
-        srv_peer_collegue = wg_peer(if3['srv'], pub_collegue)
-        srv_peer_ancien = wg_peer(if3['srv'], pub_ancien)
+        srv_peer_laptop = wg_peer(if3['srv'], pub['laptop'])
+        srv_peer_colleague = wg_peer(if3['srv'], pub_colleague)
+        srv_peer_oldpc = wg_peer(if3['srv'], pub_oldpc)
         gwb_peer_srv = wg_peer(if3['gwb'], pub['srv'])
-        nomade_peer_srv = wg_peer(if3['nomade'], pub['srv'])
+        laptop_peer_srv = wg_peer(if3['laptop'], pub['srv'])
 
         # The texts of a question are not indented: the first one starts at the margin, so an
         # indented one would be drawn as a code block.
-        addressing = no_tr(f"""
+        addressing = tr("""
 | réseau | préfixe | machines |
 |--------|---------|----------|
-| `wan` (« Internet ») | `{wan}` | `srv` eth0 (`{d.ips.srv_wan.ip}`), `gwb` eth0 (`{d.ips.gwb_wan.ip}`), `box` eth0 (`{d.ips.box_wan.ip}`), `inet` eth0 (`{d.ips.inet_wan.ip}`, routeur par défaut du wan) |
-| `internet` (« le reste d'Internet ») | `{d.nets.internet}` | `inet` eth1 (`{d.ips.inet_internet.ip}`), `web` (`{d.ips.web.ip}`, serveur web) |
-| `hotel` (derrière le NAT de la box) | `{hotel}` | `box` eth1 (`{d.ips.box_hotel.ip}`, routeur par défaut), `nomade` (`{d.ips.nomade.ip}`) |
-| `lana` (site A) | `{lana}` | `srv` eth1 (`{d.ips.srv_lana.ip}`, routeur par défaut), `m1` (`{d.ips.m1.ip}`, serveur web) |
-| `lanb` (site B) | `{lanb}` | `gwb` eth1 (`{d.ips.gwb_lanb.ip}`, routeur par défaut), `m2` (`{d.ips.m2.ip}`, serveur web) |
-""")
-        values = no_tr(f"""
+| `wan` (« Internet ») | `{wan}` | `srv` eth0 (`{srv_wan}`), `gwb` eth0 (`{gwb_wan}`), `box` eth0 (`{box_wan}`), `inet` eth0 (`{inet_wan}`, routeur par défaut du wan) |
+| `internet` (« le reste d'Internet ») | `{internet}` | `inet` eth1 (`{inet_internet}`), `web` (`{web}`, serveur web) |
+| `hotel` (derrière le NAT de la box) | `{hotel}` | `box` eth1 (`{box_hotel}`, routeur par défaut), `laptop` (`{laptop}`) |
+| `lana` (site A) | `{lana}` | `srv` eth1 (`{srv_lana}`, routeur par défaut), `m1` (`{m1}`, serveur web) |
+| `lanb` (site B) | `{lanb}` | `gwb` eth1 (`{gwb_lanb}`, routeur par défaut), `m2` (`{m2}`, serveur web) |
+""").format(wan=wan, srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip, box_wan=d.ips.box_wan.ip,
+            inet_wan=d.ips.inet_wan.ip, internet=d.nets.internet, inet_internet=d.ips.inet_internet.ip,
+            web=d.ips.web.ip, hotel=hotel, box_hotel=d.ips.box_hotel.ip, laptop=d.ips.laptop.ip, lana=lana,
+            srv_lana=d.ips.srv_lana.ip, m1=d.ips.m1.ip, lanb=lanb, gwb_lanb=d.ips.gwb_lanb.ip, m2=d.ips.m2.ip)
+        values = tr("""
 | paramètre | valeur pour **votre** instance |
 |-----------|--------------------------------|
-| réseau du VPN | **`{vpn}`**, port UDP **`{WG_PORT}`** |
-| adresse VPN de `srv` (concentrateur) | **`{d.ips.vpn_srv.ip}`** |
-| adresse VPN de `gwb` | **`{d.ips.vpn_gwb.ip}`** |
-| adresse VPN de `nomade` | **`{d.ips.vpn_nomade.ip}`** |
-| poste `collegue` : clé publique, adresse VPN | `{pub_collegue}`, **`{d.ips.vpn_collegue.ip}`** |
-| poste `ancien` : clé publique, adresse VPN | `{pub_ancien}`, **`{d.ips.vpn_ancien.ip}`** |
-| phrase servie par `http://m1/secret.txt` (partie 4) | à lire depuis `nomade` |
-| phrase servie par `http://m2/secret.txt` (partie 5) | à lire depuis `nomade` |
-""")
+| réseau du VPN | **`{vpn}`**, port UDP **`{port}`** |
+| adresse VPN de `srv` (concentrateur) | **`{vpn_srv}`** |
+| adresse VPN de `gwb` | **`{vpn_gwb}`** |
+| adresse VPN de `laptop` | **`{vpn_laptop}`** |
+| poste `colleague` : clé publique, adresse VPN | `{pub_colleague}`, **`{vpn_colleague}`** |
+| poste `oldpc` : clé publique, adresse VPN | `{pub_oldpc}`, **`{vpn_oldpc}`** |
+| phrase servie par `http://m1/secret.txt` (partie 4) | à lire depuis `laptop` |
+| phrase servie par `http://m2/secret.txt` (partie 5) | à lire depuis `laptop` |
+""").format(vpn=vpn, port=WG_PORT, vpn_srv=d.ips.vpn_srv.ip, vpn_gwb=d.ips.vpn_gwb.ip, vpn_laptop=d.ips.vpn_laptop.ip,
+            pub_colleague=pub_colleague, vpn_colleague=d.ips.vpn_colleague.ip, pub_oldpc=pub_oldpc,
+            vpn_oldpc=d.ips.vpn_oldpc.ip)
 
         self.question_dummy(
             title=tr("Organisation du TP"),
@@ -828,7 +833,7 @@ les outils `wg` et `wg-quick`, le routage et le diagnostic.
 
 Ce TP met en place des tunnels **WireGuard** entre trois sites reliés par un réseau `wan` qui
 joue le rôle d'Internet : le **site A** (passerelle et concentrateur `srv`, serveur interne
-`m1`), le **site B** (passerelle `gwb`, machine `m2`) et un poste **nomade** à l'hôtel, derrière
+`m1`), le **site B** (passerelle `gwb`, machine `m2`) et un poste **nomade** (`laptop`) à l'hôtel, derrière
 la `box` de l'hôtel qui fait du NAT. Le routeur `inet` (le fournisseur d'accès) est le routeur par
 défaut du `wan` ; derrière lui, le réseau `internet` représente le reste d'Internet avec le
 serveur web `web`.
@@ -836,10 +841,10 @@ serveur web `web`.
             + addressing
             + tr("""
 Déjà en place (ne pas modifier) : adresses, routes par défaut, le NAT de la `box`, `/etc/hosts`
-(les noms `srv_wan`, `srv_lana`, `gwb_wan`, `gwb_lanb`, `box_wan`, `box_hotel`, `nomade`,
+(les noms `srv_wan`, `srv_lana`, `gwb_wan`, `gwb_lanb`, `box_wan`, `box_hotel`, `laptop`,
 `inet_wan`, `inet_internet`, `web`, `m1`, `m2`), les serveurs web de `m1`, `m2` et `web` (la page
 `/` affiche l'adresse du client telle que le serveur la voit, `/secret.txt` une phrase). Il n'y a
-**pas de DNS**. `srv`, `gwb` et `nomade` tournent avec systemd (`systemctl`, `journalctl`) ;
+**pas de DNS**. `srv`, `gwb` et `laptop` tournent avec systemd (`systemctl`, `journalctl`) ;
 `/shared` est un répertoire commun à toutes les machines pour échanger des fichiers (les clés
 publiques !).
 
@@ -858,7 +863,7 @@ Règles valables pour tout le TP :
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet ; les fichiers de configuration complets y figurent, avec les clés de l'état `final`
-(celles des étudiants sont différentes, évidemment ; `collegue` et `ancien` ont les clés publiques
+(celles des étudiants sont différentes, évidemment ; `colleague` et `oldpc` ont les clés publiques
 de l'énoncé).
 
 - L'état `final` (onglet *Appliquer une configuration*) applique toute la solution et remplit les
@@ -867,21 +872,21 @@ de l'énoncé).
 - L'évaluation lit `wg show all dump` (clés, pairs, `AllowedIPs`, *endpoints*, poignées de main),
   les fichiers `wg0.conf` (la clé privée du fichier doit être celle de l'interface), les unités,
   les routes (`ip route`, `ip rule`, `ip route get`), puis fait des `ping` et des `curl` **à travers
-  les tunnels** (de `nomade`, `m1`, `m2`, `srv`, `gwb`) pendant que la machine cachée `sonde`, sur
+  les tunnels** (de `laptop`, `m1`, `m2`, `srv`, `gwb`) pendant que la machine cachée `probe`, sur
   le `wan`, capture le trafic : on vérifie que le trafic du nomade n'apparaît qu'en UDP {port}
   depuis la box et que ses requêtes web sortent avec l'adresse publique de `srv`.
-- La sonde se connecte ensuite au concentrateur avec la clé privée de `collegue` (doit obtenir une
-  poignée de main et un `ping`), puis avec celle de `ancien` (ne doit plus rien obtenir après la
+- La sonde se connecte ensuite au concentrateur avec la clé privée de `colleague` (doit obtenir une
+  poignée de main et un `ping`), puis avec celle de `oldpc` (ne doit plus rien obtenir après la
   partie 7). Ces tentatives apparaissent dans `wg show` sur `srv` (*endpoint* de ces pairs =
-  adresse de la sonde, `{sonde}`).
-- Une évaluation dure environ 25 s (capture de 8 s, deux connexions de sonde).
-""").format(port=WG_PORT, sonde=d.ips.sonde.ip)),
+  adresse de la sonde, `{probe}`).
+- Une évaluation dure environ 25 s (capture de 8 s, deux connexions de la sonde).
+""").format(port=WG_PORT, probe=d.ips.probe.ip)),
         )
 
         # =====================================================================
-        # Partie 1 — Clés et premier tunnel à la main
+        # Part 1 — keys and a first tunnel by hand
         # =====================================================================
-        part1 = self.add_grade_part(no_tr("partie1"), tr("Partie 1 — Clés et premier tunnel srv ↔ gwb à la main"))
+        part1 = self.add_grade_part(no_tr("part1"), tr("Partie 1 — Clés et premier tunnel srv ↔ gwb à la main"))
         q1_answers = {"proto": "UDP", "port": str(WG_PORT), "icmp_wan": "non, il est chiffré dans les datagrammes UDP",
                       "auth": "sa clé publique, connue à l'avance de l'autre pair",
                       "handshake": "quand il y a un paquet à envoyer, puis toutes les deux minutes tant que le trafic dure",
@@ -923,16 +928,16 @@ wg show
 
 **4.** Depuis `gwb` : `ping {vpn_srv}`. Observez `wg show` des deux côtés (*latest handshake*,
 *transfer*), puis lancez `tcpdump -ni eth0 udp` sur `srv` pendant un nouveau `ping`. Attendez
-trois minutes sans trafic et relisez `wg show`. Essayez enfin `ping {vpn_nomade}` depuis `gwb` :
+trois minutes sans trafic et relisez `wg show`. Essayez enfin `ping {vpn_laptop}` depuis `gwb` :
 que dit `ping` ?
-""").format(port=WG_PORT, vpn_srv=d.ips.vpn_srv.ip, vpn_gwb=d.ips.vpn_gwb.ip, vpn_nomade=d.ips.vpn_nomade.ip,
+""").format(port=WG_PORT, vpn_srv=d.ips.vpn_srv.ip, vpn_gwb=d.ips.vpn_gwb.ip, vpn_laptop=d.ips.vpn_laptop.ip,
             srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip)
             + tr("""
 - protocole et port vus sur le `wan` pendant le `ping` : @@{proto:>UDP|TCP|ICMP|ESP}@@ @@{port:[0-9]+}@@
 - le `ping` (ICMP) est-il visible en clair sur le `wan` ? @@{icmp_wan:>non, il est chiffré dans les datagrammes UDP|oui, entre les deux adresses du tunnel|oui, entre les deux adresses publiques}@@
 - ce qui authentifie le pair : @@{auth:>sa clé publique, connue à l'avance de l'autre pair|une autorité de certification commune|un mot de passe|son adresse IP}@@
 - quand a lieu une poignée de main ? @@{handshake:>quand il y a un paquet à envoyer, puis toutes les deux minutes tant que le trafic dure|une seule fois, à la création de l'interface|toutes les secondes, en permanence}@@
-- `ping` de l'adresse VPN du nomade depuis `gwb` : @@{nopeer:>Required key not available : aucun pair n'a cette destination dans ses AllowedIPs|Destination address required : le pair n'a pas d'endpoint|le ping part vers srv qui le jette en silence}@@
+- `ping` de l'adresse VPN de `laptop` depuis `gwb` : @@{nopeer:>Required key not available : aucun pair n'a cette destination dans ses AllowedIPs|Destination address required : le pair n'a pas d'endpoint|le ping part vers srv qui le jette en silence}@@
 """)
             + instructor(tr("""
 **Solution.** Sur `srv` (clés de l'état `final`) :
@@ -950,39 +955,39 @@ Sur `gwb` :
   32 d'en-tête). `tcpdump -ni wg0` montre l'ICMP en clair. Après trois minutes sans trafic, `latest
   handshake` vieillit et aucun paquet ne circule : il n'y a pas de session « ouverte », la prochaine
   donnée relancera une poignée de main.
-- `ping {vpn_nomade}` depuis `gwb` : la route `{vpn}` envoie le paquet dans `wg0` mais aucun pair ne
+- `ping {vpn_laptop}` depuis `gwb` : la route `{vpn}` envoie le paquet dans `wg0` mais aucun pair ne
   contient cette adresse dans ses `AllowedIPs` : `ping: sendmsg: Required key not available`.
 - L'évaluation lit `wg show all dump` (clé publique de l'interface = celle dérivée de
   `/etc/wireguard/private.key`, mode 600 ; chaque pair connaît l'autre avec la bonne `AllowedIPs` ; `srv`
   écoute en UDP {port}), l'adresse de `wg0`, une poignée de main récente et un `ping` dans chaque sens.
 - Réponses : {proto} {port_answer} ; {icmp_wan} ; {auth} ; {handshake} ; {nopeer}.
 """).format(set_srv=self.net_scheme.wg_set_srv(), set_gwb=self.net_scheme.wg_set_gwb(), port=WG_PORT,
-            srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip, vpn_nomade=d.ips.vpn_nomade.ip, vpn=vpn,
+            srv_wan=d.ips.srv_wan.ip, gwb_wan=d.ips.gwb_wan.ip, vpn_laptop=d.ips.vpn_laptop.ip, vpn=vpn,
             port_answer=q1_answers["port"], **{k: v for k, v in q1_answers.items() if k != "port"})),
             cheat_answers={"final": q1_answers},
         )
 
         self.add_grade_element(
-            title=no_tr("cles_privees"), max_grade=2, grade_part=part1,
+            title=no_tr("private_keys"), max_grade=2, grade_part=part1,
             grade=int(_key_file_ok(key_text['srv'], key_mode['srv'], if1['srv']))
                   + int(_key_file_ok(key_text['gwb'], key_mode['gwb'], if1['gwb'])),
             description=tr("/etc/wireguard/private.key (mode 600) sur srv et sur gwb : la clé de l'interface wg0"),
         )
         self.add_grade_element(
-            title=no_tr("pairs_srv_gwb"), max_grade=2, grade_part=part1,
+            title=no_tr("peers_srv_gwb"), max_grade=2, grade_part=part1,
             grade=int(srv_peer_gwb is not None and allowed_ips_cover(srv_peer_gwb, d.ips.vpn_gwb.ip))
                   + int(gwb_peer_srv is not None and allowed_ips_cover(gwb_peer_srv, d.ips.vpn_srv.ip)),
             description=tr("wg0 de srv connaît la clé publique de gwb (AllowedIPs {gwb}), et réciproquement ({srv})").format(
                 gwb=d.ips.vpn_gwb.ip, srv=d.ips.vpn_srv.ip),
         )
         self.add_grade_element(
-            title=no_tr("adresses_wg0"), max_grade=1, grade_part=part1,
+            title=no_tr("wg0_addresses"), max_grade=1, grade_part=part1,
             grade=int((interface_of_address(addrs['srv'], d.ips.vpn_srv.ip) or '').startswith('wg')
                       and (interface_of_address(addrs['gwb'], d.ips.vpn_gwb.ip) or '').startswith('wg')),
             description=tr("wg0 porte {srv} sur srv et {gwb} sur gwb").format(srv=d.ips.vpn_srv.ip, gwb=d.ips.vpn_gwb.ip),
         )
         self.add_grade_element(
-            title=no_tr("srv_ecoute"), max_grade=1, grade_part=part1,
+            title=no_tr("srv_listens"), max_grade=1, grade_part=part1,
             grade=int((if1['srv'] or {}).get('listen_port') == WG_PORT),
             description=tr("wg0 de srv écoute en UDP {port}").format(port=WG_PORT),
         )
@@ -997,7 +1002,7 @@ Sur `gwb` :
             description=tr("ping à travers le tunnel dans les deux sens"),
         )
         self.add_grade_element(
-            title=no_tr("q_premier_tunnel"), max_grade=2, grade_part=part1,
+            title=no_tr("q_first_tunnel"), max_grade=2, grade_part=part1,
             grade=int(_norm(q1.get("proto")) == "udp" and _digits(q1.get("port")) == str(WG_PORT)
                       and _norm(q1.get("icmp_wan")).startswith("non"))
                   + int(_norm(q1.get("auth")).startswith("sa clé publique") and _norm(q1.get("handshake")).startswith("quand il y a")
@@ -1006,9 +1011,9 @@ Sur `gwb` :
         )
 
         # =====================================================================
-        # Partie 2 — wg-quick et systemd
+        # Part 2 — wg-quick and systemd
         # =====================================================================
-        part2 = self.add_grade_part(no_tr("partie2"), tr("Partie 2 — Configuration persistante : wg-quick et systemd"))
+        part2 = self.add_grade_part(no_tr("part2"), tr("Partie 2 — Configuration persistante : wg-quick et systemd"))
         q2_answers = {"strip": "les clés propres à wg-quick (Address, DNS, MTU, Table, PostUp…), que wg ne connaît pas",
                       "route": "la route du réseau de l'Address, plus une route par préfixe des AllowedIPs",
                       "reload": "wg syncconf wg0 <(wg-quick strip wg0)",
@@ -1109,7 +1114,7 @@ puis, sur chaque machine, `ip link del wg0` (interface de la partie 1), `chmod 6
             description=tr("wg0.conf en mode 600 sur srv et gwb"),
         )
         self.add_grade_element(
-            title=no_tr("unites_srv_gwb"), max_grade=2, grade_part=part2,
+            title=no_tr("units_srv_gwb"), max_grade=2, grade_part=part2,
             grade=sum(int(units[m]['active'] == 'active' and units[m]['enabled'] == 'enabled') for m in ('srv', 'gwb')),
             description=tr("wg-quick@wg0 active et activée au démarrage sur srv et sur gwb"),
         )
@@ -1122,29 +1127,29 @@ puis, sur chaque machine, `ip link del wg0` (interface de la partie 1), `chmod 6
         )
 
         # =====================================================================
-        # Partie 3 — Le poste nomade derrière le NAT de l'hôtel
+        # Part 3 — the roaming laptop behind the hotel NAT
         # =====================================================================
-        part3 = self.add_grade_part(no_tr("partie3"), tr("Partie 3 — Le poste nomade derrière un NAT, srv concentrateur"))
+        part3 = self.add_grade_part(no_tr("part3"), tr("Partie 3 — Le poste nomade derrière un NAT, srv concentrateur"))
         q3_answers = {"endpoint": "l'adresse publique de la box et un port choisi par son NAT",
                       "keepalive": "garder ouverte la traduction NAT de la box pour que srv puisse joindre le nomade à tout moment",
                       "listenport": "non : le nomade appelle, il ne reçoit pas d'appel ; un port aléatoire suffit",
                       "initiator": "seul le nomade : srv ne connaît son endpoint qu'après son premier paquet",
-                      "collegue_key": "sa clé publique seulement, et on lui donne celle de srv"}
+                      "colleague_key": "sa clé publique seulement, et on lui donne celle de srv"}
         q3 = self.question_form(
             section=self.section(0),
             title=tr("Le nomade, PersistentKeepalive, d'autres pairs"),
             description=tr("""
-Le poste `nomade` est à l'hôtel, derrière la `box` qui fait du NAT : il n'a pas d'adresse publique
+Le poste `laptop` est à l'hôtel, derrière la `box` qui fait du NAT : il n'a pas d'adresse publique
 et personne ne peut l'appeler. `srv` devient le **concentrateur** : chaque poste de l'entreprise
 est un pair de son `wg0`.
 
-**1.** Sur `nomade`, créez la paire de clés (`umask 077 ; cd /etc/wireguard ; wg genkey | tee
+**1.** Sur `laptop`, créez la paire de clés (`umask 077 ; cd /etc/wireguard ; wg genkey | tee
 private.key | wg pubkey > public.key`) puis `/etc/wireguard/wg0.conf` :
 
 ```
 [Interface]
 PrivateKey = CLÉ_PRIVÉE_DE_NOMADE
-Address = {vpn_nomade}/24
+Address = {vpn_laptop}/24
 
 [Peer]
 # srv, le concentrateur
@@ -1156,30 +1161,30 @@ PersistentKeepalive = 25
 
 Pas de `ListenPort` : le nomade appelle, il ne reçoit pas d'appel.
 
-**2.** Sur `srv`, ajoutez à `wg0.conf` le pair `nomade` (sa `PublicKey`, `AllowedIPs =
-{vpn_nomade}/32`, pas d'`Endpoint` : il sera appris) et appliquez (`wg syncconf wg0 <(wg-quick
+**2.** Sur `srv`, ajoutez à `wg0.conf` le pair `laptop` (sa `PublicKey`, `AllowedIPs =
+{vpn_laptop}/32`, pas d'`Endpoint` : il sera appris) et appliquez (`wg syncconf wg0 <(wg-quick
 strip wg0)`). Ajoutez de même deux autres postes de l'entreprise dont vous ne connaissez que la
-clé publique (première question) : `collegue` (`AllowedIPs = {vpn_collegue}/32`) et `ancien`
-(`AllowedIPs = {vpn_ancien}/32`).
+clé publique (première question) : `colleague` (`AllowedIPs = {vpn_colleague}/32`) et `oldpc`
+(`AllowedIPs = {vpn_oldpc}/32`).
 
-**3.** Sur `nomade` : `systemctl enable --now wg-quick@wg0`, `ping {vpn_srv}`, `wg show`. Sur
-`srv`, `wg show` : quel *endpoint* est affiché pour le nomade ? Sur `nomade`, `tcpdump -ni eth0
-udp` pendant une minute sans autre trafic : les *keepalives*. Sur `srv`, `ping {vpn_nomade}` :
+**3.** Sur `laptop` : `systemctl enable --now wg-quick@wg0`, `ping {vpn_srv}`, `wg show`. Sur
+`srv`, `wg show` : quel *endpoint* est affiché pour `laptop` ? Sur `laptop`, `tcpdump -ni eth0
+udp` pendant une minute sans autre trafic : les *keepalives*. Sur `srv`, `ping {vpn_laptop}` :
 le concentrateur joint le poste derrière le NAT.
-""").format(port=WG_PORT, vpn=vpn, vpn_srv=d.ips.vpn_srv.ip, vpn_nomade=d.ips.vpn_nomade.ip, srv_wan=d.ips.srv_wan.ip,
-            vpn_collegue=d.ips.vpn_collegue.ip, vpn_ancien=d.ips.vpn_ancien.ip)
+""").format(port=WG_PORT, vpn=vpn, vpn_srv=d.ips.vpn_srv.ip, vpn_laptop=d.ips.vpn_laptop.ip, srv_wan=d.ips.srv_wan.ip,
+            vpn_colleague=d.ips.vpn_colleague.ip, vpn_oldpc=d.ips.vpn_oldpc.ip)
             + tr("""
 - l'*endpoint* du nomade affiché par `wg show` sur `srv` : @@{endpoint:>l'adresse publique de la box et un port choisi par son NAT|l'adresse du nomade dans le réseau de l'hôtel et le port 51820|l'adresse VPN du nomade}@@
 - `PersistentKeepalive = 25` sert à : @@{keepalive:>garder ouverte la traduction NAT de la box pour que srv puisse joindre le nomade à tout moment|renouveler les clés de session toutes les 25 secondes|mesurer le délai aller-retour}@@
 - le nomade a-t-il besoin d'un `ListenPort` ? @@{listenport:>non : le nomade appelle, il ne reçoit pas d'appel ; un port aléatoire suffit|oui, le même que srv|oui, il doit être redirigé sur la box}@@
 - qui peut initier la poignée de main ? @@{initiator:>seul le nomade : srv ne connaît son endpoint qu'après son premier paquet|seul srv : c'est le serveur|l'un ou l'autre, indifféremment}@@
-- pour ajouter le portable d'un collègue, on lui demande : @@{collegue_key:>sa clé publique seulement, et on lui donne celle de srv|sa clé privée, pour la mettre dans wg0.conf de srv|un mot de passe}@@
+- pour ajouter le portable d'un collègue, on lui demande : @@{colleague_key:>sa clé publique seulement, et on lui donne celle de srv|sa clé privée, pour la mettre dans wg0.conf de srv|un mot de passe}@@
 """)
             + instructor(tr("""
-**Solution.** `/etc/wireguard/wg0.conf` sur `nomade` (fin de partie 3) :
+**Solution.** `/etc/wireguard/wg0.conf` sur `laptop` (fin de partie 3) :
 
 ```
-{conf_nomade}```
+{conf_laptop}```
 
 et sur `srv`, trois sections ajoutées à `wg0.conf` (fin de partie 3) :
 
@@ -1187,82 +1192,82 @@ et sur `srv`, trois sections ajoutées à `wg0.conf` (fin de partie 3) :
 {conf_srv}```
 
 puis `wg syncconf wg0 <(wg-quick strip wg0)` sur `srv` et `systemctl enable --now wg-quick@wg0`
-sur `nomade`.
+sur `laptop`.
 
-- Sur `srv`, `wg show` montre pour le nomade `endpoint: {box_wan}:PORT` (la box) et des keepalives
-  (`transfer` qui augmente de 32 octets toutes les 25 s). `ping {vpn_nomade}` depuis `srv` marche tant que
+- Sur `srv`, `wg show` montre pour `laptop` `endpoint: {box_wan}:PORT` (la box) et des keepalives
+  (`transfer` qui augmente de 32 octets toutes les 25 s). `ping {vpn_laptop}` depuis `srv` marche tant que
   la traduction est ouverte : sans keepalive, elle expire après ~30 s d'inactivité.
-- Évalué : `wg0.conf` du nomade (clé, `Address`, pair `srv` avec `Endpoint` et `AllowedIPs`),
-  `PersistentKeepalive` sur l'interface ; sur `srv`, le pair nomade (`AllowedIPs` {vpn_nomade}/32) avec
-  un *endpoint* à l'adresse de la box, le pair `collegue` ({vpn_collegue}/32, aussi dans le fichier) ;
-  poignée de main récente ; `ping` du nomade ; la sonde connectée avec la clé de `collegue` obtient
+- Évalué : `wg0.conf` de `laptop` (clé, `Address`, pair `srv` avec `Endpoint` et `AllowedIPs`),
+  `PersistentKeepalive` sur l'interface ; sur `srv`, le pair `laptop` (`AllowedIPs` {vpn_laptop}/32) avec
+  un *endpoint* à l'adresse de la box, le pair `colleague` ({vpn_colleague}/32, aussi dans le fichier) ;
+  poignée de main récente ; `ping` de `laptop` ; la sonde connectée avec la clé de `colleague` obtient
   une poignée de main et un `ping` ; sur le `wan`, de l'UDP {port} de la box vers `srv` et aucun ICMP
   en clair de la box vers le VPN ou les LAN.
-- Réponses : {endpoint} ; {keepalive} ; {listenport} ; {initiator} ; {collegue_key}.
-""").format(conf_nomade=self.net_scheme.wg_conf_nomade(part=3), conf_srv=self.net_scheme.wg_conf_srv(part=3),
-            box_wan=d.ips.box_wan.ip, vpn_nomade=d.ips.vpn_nomade.ip, vpn_collegue=d.ips.vpn_collegue.ip, port=WG_PORT,
+- Réponses : {endpoint} ; {keepalive} ; {listenport} ; {initiator} ; {colleague_key}.
+""").format(conf_laptop=self.net_scheme.wg_conf_laptop(part=3), conf_srv=self.net_scheme.wg_conf_srv(part=3),
+            box_wan=d.ips.box_wan.ip, vpn_laptop=d.ips.vpn_laptop.ip, vpn_colleague=d.ips.vpn_colleague.ip, port=WG_PORT,
             **q3_answers)),
             cheat_answers={"final": q3_answers},
         )
 
-        nomade_conf_srv = config_peer(conf['nomade'], pub['srv'])
-        srv_conf_collegue = config_peer(conf['srv'], pub_collegue)
+        laptop_conf_srv = config_peer(conf['laptop'], pub['srv'])
+        srv_conf_colleague = config_peer(conf['srv'], pub_colleague)
         udp_from_box = frames_matching(frames, src=d.ips.box_wan.ip, dst=d.ips.srv_wan.ip, proto='UDP', dport=WG_PORT)
         clear_icmp = [f for f in frames_matching(frames, src=d.ips.box_wan.ip, proto='ICMP') if _in_net(f.dst, vpn, lana, lanb)]
         self.add_grade_element(
-            title=no_tr("conf_nomade"), max_grade=3, grade_part=part3,
-            grade=int(_conf_key_ok(conf['nomade'], if1['nomade']) and _addr_is(conf['nomade']['interface'], d.ips.vpn_nomade))
-                  + int(nomade_conf_srv is not None and allowed_ips_cover(config_list(nomade_conf_srv, 'allowedips'), d.ips.vpn_srv.ip)
-                        and _endpoint_is(nomade_conf_srv, d.ips.srv_wan, WG_PORT))
-                  + int(nomade_peer_srv is not None and nomade_peer_srv['persistent_keepalive'] > 0),
-            description=tr("wg0.conf de nomade : PrivateKey de l'interface et Address ; pair srv avec Endpoint et AllowedIPs ; PersistentKeepalive"),
+            title=no_tr("conf_laptop"), max_grade=3, grade_part=part3,
+            grade=int(_conf_key_ok(conf['laptop'], if1['laptop']) and _addr_is(conf['laptop']['interface'], d.ips.vpn_laptop))
+                  + int(laptop_conf_srv is not None and allowed_ips_cover(config_list(laptop_conf_srv, 'allowedips'), d.ips.vpn_srv.ip)
+                        and _endpoint_is(laptop_conf_srv, d.ips.srv_wan, WG_PORT))
+                  + int(laptop_peer_srv is not None and laptop_peer_srv['persistent_keepalive'] > 0),
+            description=tr("wg0.conf de laptop : PrivateKey de l'interface et Address ; pair srv avec Endpoint et AllowedIPs ; PersistentKeepalive"),
         )
         self.add_grade_element(
-            title=no_tr("srv_pair_nomade"), max_grade=2, grade_part=part3,
-            grade=int(srv_peer_nomade is not None and allowed_ips_cover(srv_peer_nomade, d.ips.vpn_nomade.ip))
-                  + int(srv_peer_nomade is not None and endpoint_host(srv_peer_nomade) == str(d.ips.box_wan.ip)),
-            description=tr("wg0 de srv connaît le nomade (AllowedIPs {ip}) et l'a vu derrière la box ({box})").format(
-                ip=d.ips.vpn_nomade.ip, box=d.ips.box_wan.ip),
+            title=no_tr("srv_peer_laptop"), max_grade=2, grade_part=part3,
+            grade=int(srv_peer_laptop is not None and allowed_ips_cover(srv_peer_laptop, d.ips.vpn_laptop.ip))
+                  + int(srv_peer_laptop is not None and endpoint_host(srv_peer_laptop) == str(d.ips.box_wan.ip)),
+            description=tr("wg0 de srv connaît laptop (AllowedIPs {ip}) et l'a vu derrière la box ({box})").format(
+                ip=d.ips.vpn_laptop.ip, box=d.ips.box_wan.ip),
         )
         self.add_grade_element(
-            title=no_tr("srv_pair_collegue"), max_grade=2, grade_part=part3,
-            grade=int(srv_peer_collegue is not None and allowed_ips_cover(srv_peer_collegue, d.ips.vpn_collegue.ip))
-                  + int(srv_conf_collegue is not None and allowed_ips_cover(config_list(srv_conf_collegue, 'allowedips'), d.ips.vpn_collegue.ip)),
-            description=tr("le pair collegue (clé publique de l'énoncé, AllowedIPs {ip}) sur wg0 de srv et dans wg0.conf").format(
-                ip=d.ips.vpn_collegue.ip),
+            title=no_tr("srv_peer_colleague"), max_grade=2, grade_part=part3,
+            grade=int(srv_peer_colleague is not None and allowed_ips_cover(srv_peer_colleague, d.ips.vpn_colleague.ip))
+                  + int(srv_conf_colleague is not None and allowed_ips_cover(config_list(srv_conf_colleague, 'allowedips'), d.ips.vpn_colleague.ip)),
+            description=tr("le pair colleague (clé publique de l'énoncé, AllowedIPs {ip}) sur wg0 de srv et dans wg0.conf").format(
+                ip=d.ips.vpn_colleague.ip),
         )
         self.add_grade_element(
-            title=no_tr("handshake_nomade"), max_grade=1, grade_part=part3,
-            grade=int(recent_handshake(st3['srv'], srv_peer_nomade)),
-            description=tr("poignée de main récente entre srv et le nomade"),
+            title=no_tr("handshake_laptop"), max_grade=1, grade_part=part3,
+            grade=int(recent_handshake(st3['srv'], srv_peer_laptop)),
+            description=tr("poignée de main récente entre srv et laptop"),
         )
         self.add_grade_element(
-            title=no_tr("nomade_ping_srv"), max_grade=2, grade_part=part3,
-            grade=2 * int(ping_nomade_srv),
-            description=tr("ping du nomade vers l'adresse VPN de srv"),
+            title=no_tr("laptop_ping_srv"), max_grade=2, grade_part=part3,
+            grade=2 * int(ping_laptop_srv),
+            description=tr("ping de laptop vers l'adresse VPN de srv"),
         )
         self.add_grade_element(
-            title=no_tr("sonde_collegue"), max_grade=3, grade_part=part3,
-            grade=2 * int(probe_collegue['handshake']) + int(probe_collegue['handshake'] and probe_collegue['ping']),
-            description=tr("un poste muni de la clé privée de collegue obtient une poignée de main et un ping avec srv"),
+            title=no_tr("probe_colleague"), max_grade=3, grade_part=part3,
+            grade=2 * int(probe_colleague['handshake']) + int(probe_colleague['handshake'] and probe_colleague['ping']),
+            description=tr("un poste muni de la clé privée de colleague obtient une poignée de main et un ping avec srv"),
         )
         self.add_grade_element(
-            title=no_tr("wan_chiffre"), max_grade=2, grade_part=part3,
+            title=no_tr("wan_encrypted"), max_grade=2, grade_part=part3,
             grade=int(bool(udp_from_box)) + int(bool(udp_from_box) and not clear_icmp),
             description=tr("sur le wan : trafic UDP {port} de la box vers srv, aucun ICMP en clair de la box vers le VPN ou les LAN").format(port=WG_PORT),
         )
         self.add_grade_element(
-            title=no_tr("q_nomade"), max_grade=3, grade_part=part3,
+            title=no_tr("q_laptop"), max_grade=3, grade_part=part3,
             grade=int(_norm(q3.get("endpoint")).startswith("l'adresse publique de la box") and _norm(q3.get("keepalive")).startswith("garder ouverte"))
                   + int(_norm(q3.get("listenport")).startswith("non") and _norm(q3.get("initiator")).startswith("seul le nomade"))
-                  + int(_norm(q3.get("collegue_key")).startswith("sa clé publique")),
+                  + int(_norm(q3.get("colleague_key")).startswith("sa clé publique")),
             description=tr("endpoint vu du concentrateur, keepalive, ListenPort, initiateur, clé à demander"),
         )
 
         # =====================================================================
-        # Partie 4 — Accès au LAN du site A
+        # Part 4 — access to the site A LAN
         # =====================================================================
-        part4 = self.add_grade_part(no_tr("partie4"), tr("Partie 4 — Accès au réseau du site A depuis le nomade"))
+        part4 = self.add_grade_part(no_tr("part4"), tr("Partie 4 — Accès au réseau du site A depuis le nomade"))
         q4_answers = {"secret": d.secret_m1, "src_seen": "l'adresse VPN du nomade",
                       "allowed_role": "les paquets vers lana partent dans le tunnel vers srv, et les paquets venus de srv avec une source dans lana sont acceptés",
                       "missing": "il suit la route par défaut du nomade (la box) et se perd : lana est un réseau privé",
@@ -1271,14 +1276,14 @@ sur `nomade`.
             section=self.section(0),
             title=tr("AllowedIPs et forwarding"),
             description=tr("""
-Le nomade doit atteindre les machines du site A (`m1`, réseau `{lana}`).
+Le poste `laptop` doit atteindre les machines du site A (`m1`, réseau `{lana}`).
 
-1. Sur `nomade`, `ping {m1}` : le paquet part… par où ? (`ip route get {m1}`). Ajoutez `{lana}`
+1. Sur `laptop`, `ping {m1}` : le paquet part… par où ? (`ip route get {m1}`). Ajoutez `{lana}`
    aux `AllowedIPs` du pair `srv` (`AllowedIPs = {vpn}, {lana}`) et relancez l'unité
    (`systemctl restart wg-quick@wg0`) ; regardez `ip route` et `ip route get {m1}`.
 2. `ping {m1}` de nouveau : pourquoi cela ne marche-t-il pas encore ? Activez le routage sur
    `srv` : `sysctl -w net.ipv4.ip_forward=1` (et rendez-le persistant dans `/etc/sysctl.d/`).
-3. Depuis `nomade` : `curl http://{m1}/secret.txt` et `curl http://{m1}/` (la page affiche
+3. Depuis `laptop` : `curl http://{m1}/secret.txt` et `curl http://{m1}/` (la page affiche
    l'adresse du client telle que `m1` la voit).
 """).format(lana=lana, m1=d.ips.m1.ip, vpn=vpn)
             + tr("""
@@ -1290,7 +1295,7 @@ Le nomade doit atteindre les machines du site A (`m1`, réseau `{lana}`).
   @@{return:>srv est le routeur par défaut de m1 et son wg0 porte le réseau du VPN : le pair nomade a cette adresse dans ses AllowedIPs|srv fait du NAT vers lana|le nomade est directement sur lana}@@
 """)
             + instructor(tr("""
-**Solution.** Sur `nomade`, `AllowedIPs = {vpn}, {lana}` pour le pair `srv` et `systemctl restart
+**Solution.** Sur `laptop`, `AllowedIPs = {vpn}, {lana}` pour le pair `srv` et `systemctl restart
 wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.ipv4.ip_forward=1` et
 `echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-vpn.conf`.
 
@@ -1300,14 +1305,14 @@ wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.i
 - Sans forwarding, `srv` reçoit les paquets du nomade pour `m1` sur `wg0` mais ne les transmet pas sur
   `eth1`. Le retour marche parce que `m1` envoie sa réponse à son routeur par défaut `srv` ({srv_lana}),
   qui a `{vpn}` sur `wg0` ; le *cryptokey routing* choisit le pair dont les `AllowedIPs` contiennent
-  `{vpn_nomade}` : le nomade.
-- `m1` voit l'adresse **VPN** du nomade ({vpn_nomade}) : pas de NAT à cette étape.
-- Évalué : `AllowedIPs` du pair `srv` sur le nomade couvrant `{lana}`, `ip route get {m1}` → `wg0`,
-  `ip_forward` sur `srv`, un `ping` de `nomade` vers `m1`, et la page `http://{m1}/` vue du nomade
+  `{vpn_laptop}` : `laptop`.
+- `m1` voit l'adresse **VPN** du nomade ({vpn_laptop}) : pas de NAT à cette étape.
+- Évalué : `AllowedIPs` du pair `srv` sur `laptop` couvrant `{lana}`, `ip route get {m1}` → `wg0`,
+  `ip_forward` sur `srv`, un `ping` de `laptop` vers `m1`, et la page `http://{m1}/` vue du nomade
   (adresse client dans `{vpn}`).
 - Phrase secrète : « {secret} ».
 """).format(vpn=vpn, lana=lana, m1=d.ips.m1.ip, box_hotel=d.ips.box_hotel.ip, srv_lana=d.ips.srv_lana.ip,
-            vpn_nomade=d.ips.vpn_nomade.ip, secret=d.secret_m1)),
+            vpn_laptop=d.ips.vpn_laptop.ip, secret=d.secret_m1)),
             cheat_answers={"final": q4_answers},
         )
 
@@ -1315,9 +1320,9 @@ wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.i
         m1_sees_vpn = m1_client is not None and _in_net(m1_client.group(1), vpn)
         self.add_grade_element(
             title=no_tr("allowedips_lana"), max_grade=2, grade_part=part4,
-            grade=int(nomade_peer_srv is not None and allowed_ips_cover(nomade_peer_srv, lana))
+            grade=int(laptop_peer_srv is not None and allowed_ips_cover(laptop_peer_srv, lana))
                   + int(rget['m1']['dev'].startswith('wg')),
-            description=tr("sur nomade, les AllowedIPs du pair srv couvrent {lana} et ip route get m1 répond wg0").format(lana=lana),
+            description=tr("sur laptop, les AllowedIPs du pair srv couvrent {lana} et ip route get m1 répond wg0").format(lana=lana),
         )
         self.add_grade_element(
             title=no_tr("srv_forward"), max_grade=1, grade_part=part4,
@@ -1325,14 +1330,14 @@ wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.i
             description=tr("routage des paquets (ip_forward) activé sur srv"),
         )
         self.add_grade_element(
-            title=no_tr("nomade_ping_m1"), max_grade=2, grade_part=part4,
-            grade=2 * int(ping_nomade_m1),
-            description=tr("ping de nomade vers m1 à travers le tunnel"),
+            title=no_tr("laptop_ping_m1"), max_grade=2, grade_part=part4,
+            grade=2 * int(ping_laptop_m1),
+            description=tr("ping de laptop vers m1 à travers le tunnel"),
         )
         self.add_grade_element(
-            title=no_tr("m1_voit_adresse_vpn"), max_grade=1, grade_part=part4,
+            title=no_tr("m1_sees_vpn_address"), max_grade=1, grade_part=part4,
             grade=int(m1_sees_vpn),
-            description=tr("http://m1/ vu du nomade affiche son adresse VPN (pas de NAT vers lana)"),
+            description=tr("http://m1/ vu de laptop affiche son adresse VPN (pas de NAT vers lana)"),
         )
         self.add_grade_element(
             title=no_tr("q_lan"), max_grade=3, grade_part=part4,
@@ -1343,9 +1348,9 @@ wg-quick@wg0` (`wg-quick` ajoute `{lana} dev wg0`) ; sur `srv`, `sysctl -w net.i
         )
 
         # =====================================================================
-        # Partie 5 — Site à site
+        # Part 5 — site to site
         # =====================================================================
-        part5 = self.add_grade_part(no_tr("partie5"), tr("Partie 5 — Site à site : le réseau du site B"))
+        part5 = self.add_grade_part(no_tr("part5"), tr("Partie 5 — Site à site : le réseau du site B"))
         q5_answers = {"secret": d.secret_m2,
                       "gwb_allowed": "pour accepter les paquets du nomade (source dans le VPN) venant par srv, et lui répondre par le tunnel",
                       "srv_lanb": "le cryptokey routing : les paquets pour lanb sont chiffrés vers gwb, ceux venant de gwb avec une source dans lanb sont acceptés (et wg-quick ajoute la route)",
@@ -1364,13 +1369,13 @@ se trouvent derrière l'autre, et à router.
    nomade) et le site A sont derrière `srv`. Appliquez, puis activez le routage sur `gwb`
    (`ip_forward`, persistant).
 3. Testez `ping {m1}` depuis `m2` et `ping {m2}` depuis `m1`.
-4. Le nomade doit aussi joindre le site B : sur `nomade`, ajoutez `{lanb}` aux `AllowedIPs` du
-   pair `srv`, relancez l'unité, puis depuis `nomade` : `ping {m2}` et `curl http://{m2}/secret.txt`.
-   Essayez de mettre `{lanb}` aussi dans les `AllowedIPs` du pair `nomade` sur `srv` (`wg set`) et
+4. Le nomade doit aussi joindre le site B : sur `laptop`, ajoutez `{lanb}` aux `AllowedIPs` du
+   pair `srv`, relancez l'unité, puis depuis `laptop` : `ping {m2}` et `curl http://{m2}/secret.txt`.
+   Essayez de mettre `{lanb}` aussi dans les `AllowedIPs` du pair `laptop` sur `srv` (`wg set`) et
    regardez `wg show` : à qui appartient le préfixe ?
 """).format(vpn=vpn, vpn_gwb=d.ips.vpn_gwb.ip, lana=lana, lanb=lanb, m1=d.ips.m1.ip, m2=d.ips.m2.ip)
             + tr("""
-- phrase lue dans `http://m2/secret.txt` depuis `nomade` : @@{secret:.+}@@
+- phrase lue dans `http://m2/secret.txt` depuis `laptop` : @@{secret:.+}@@
 - pourquoi `gwb` doit-il avoir tout le réseau du VPN (et pas seulement l'adresse de `srv`) dans les `AllowedIPs` du pair `srv` ?
   @@{gwb_allowed:>pour accepter les paquets du nomade (source dans le VPN) venant par srv, et lui répondre par le tunnel|parce que srv a plusieurs adresses VPN|pour que gwb puisse appeler directement le nomade}@@
 - `lanb` dans les `AllowedIPs` du pair `gwb` sur `srv` produit : @@{srv_lanb:>le cryptokey routing : les paquets pour lanb sont chiffrés vers gwb, ceux venant de gwb avec une source dans lanb sont acceptés (et wg-quick ajoute la route)|seulement une route du noyau vers wg0|une annonce de route envoyée à gwb}@@
@@ -1383,23 +1388,23 @@ se trouvent derrière l'autre, et à router.
 ```
 {conf_gwb}```
 
-`sysctl -w net.ipv4.ip_forward=1` (+ `/etc/sysctl.d/99-vpn.conf`) sur `gwb` ; sur `nomade`,
+`sysctl -w net.ipv4.ip_forward=1` (+ `/etc/sysctl.d/99-vpn.conf`) sur `gwb` ; sur `laptop`,
 `AllowedIPs = {vpn}, {lana}, {lanb}` ; `systemctl restart wg-quick@wg0` partout où les `AllowedIPs`
 ont changé (routes).
 
 - `m2` → `m1` : `gwb` (routeur par défaut de `m2`) a la route `{lana} dev wg0` et le pair `srv` accepte
   `{lana}` ; `srv` accepte la source `{lanb}` (pair `gwb`) et route vers `eth1`. Retour : `srv`
   (routeur par défaut de `m1`) a la route `{lanb} dev wg0` → pair `gwb` → `gwb` accepte la source `{lana}`.
-- `nomade` → `m2` : route `{lanb} dev wg0` sur le nomade → `srv` (forwarding) → pair `gwb` → `gwb`
-  accepte la source `{vpn_nomade}` parce que ses `AllowedIPs` pour `srv` couvrent `{vpn}`. Sans cela, le
+- `laptop` → `m2` : route `{lanb} dev wg0` sur `laptop` → `srv` (forwarding) → pair `gwb` → `gwb`
+  accepte la source `{vpn_laptop}` parce que ses `AllowedIPs` pour `srv` couvrent `{vpn}`. Sans cela, le
   paquet est jeté silencieusement (`wg show` compte les octets reçus mais `ping` reste muet).
-- Ajouter `{lanb}` au pair `nomade` sur `srv` le **retire** au pair `gwb` (`wg show` le montre) : le site B
+- Ajouter `{lanb}` au pair `laptop` sur `srv` le **retire** au pair `gwb` (`wg show` le montre) : le site B
   devient injoignable. Un préfixe n'a qu'un propriétaire.
 - Évalué : `AllowedIPs` de `gwb` sur `srv` couvrant `{lanb}` et route de `srv` vers `{lanb}` par `wg0` ;
-  `AllowedIPs` de `srv` sur `gwb` couvrant `{lana}` et `{vpn}` ; `ip_forward` sur `gwb` ; `AllowedIPs` du
-  nomade couvrant `{lanb}` ; les trois `ping` (`m2`→`m1`, `m1`→`m2`, `nomade`→`m2`).
+  `AllowedIPs` de `srv` sur `gwb` couvrant `{lana}` et `{vpn}` ; `ip_forward` sur `gwb` ; `AllowedIPs` de
+  `laptop` couvrant `{lanb}` ; les trois `ping` (`m2`→`m1`, `m1`→`m2`, `laptop`→`m2`).
 - Phrase secrète de `m2` : « {secret} ».
-""").format(vpn=vpn, vpn_gwb=d.ips.vpn_gwb.ip, vpn_nomade=d.ips.vpn_nomade.ip, lana=lana, lanb=lanb,
+""").format(vpn=vpn, vpn_gwb=d.ips.vpn_gwb.ip, vpn_laptop=d.ips.vpn_laptop.ip, lana=lana, lanb=lanb,
             conf_gwb=self.net_scheme.wg_conf_gwb(part=5), secret=d.secret_m2)),
             cheat_answers={"final": q5_answers},
         )
@@ -1422,14 +1427,14 @@ ont changé (routes).
             description=tr("routage des paquets (ip_forward) activé sur gwb"),
         )
         self.add_grade_element(
-            title=no_tr("nomade_allowedips_lanb"), max_grade=1, grade_part=part5,
-            grade=int(nomade_peer_srv is not None and allowed_ips_cover(nomade_peer_srv, lanb)),
-            description=tr("sur nomade, les AllowedIPs du pair srv couvrent {lanb}").format(lanb=lanb),
+            title=no_tr("laptop_allowedips_lanb"), max_grade=1, grade_part=part5,
+            grade=int(laptop_peer_srv is not None and allowed_ips_cover(laptop_peer_srv, lanb)),
+            description=tr("sur laptop, les AllowedIPs du pair srv couvrent {lanb}").format(lanb=lanb),
         )
         self.add_grade_element(
-            title=no_tr("ping_site_a_site"), max_grade=6, grade_part=part5,
-            grade=2 * int(ping_m2_m1) + 2 * int(ping_m1_m2) + 2 * int(ping_nomade_m2),
-            description=tr("ping m2 → m1, m1 → m2 et nomade → m2 à travers les tunnels"),
+            title=no_tr("ping_site_to_site"), max_grade=6, grade_part=part5,
+            grade=2 * int(ping_m2_m1) + 2 * int(ping_m1_m2) + 2 * int(ping_laptop_m2),
+            description=tr("ping m2 → m1, m1 → m2 et laptop → m2 à travers les tunnels"),
         )
         self.add_grade_element(
             title=no_tr("q_site"), max_grade=2, grade_part=part5,
@@ -1440,9 +1445,9 @@ ont changé (routes).
         )
 
         # =====================================================================
-        # Partie 6 — Tunnel complet et NAT
+        # Part 6 — full tunnel and NAT
         # =====================================================================
-        part6 = self.add_grade_part(no_tr("partie6"), tr("Partie 6 — Tunnel complet pour le nomade et NAT"))
+        part6 = self.add_grade_part(no_tr("part6"), tr("Partie 6 — Tunnel complet pour le nomade et NAT"))
         q6_answers = {"fwmark": "ils portent la marque 51820 : la règle « not fwmark 51820 » ne les envoie pas dans la table 51820, ils suivent la table main",
                       "suppress": "consulter la table main d'abord, mais en ignorant sa route par défaut : le réseau de l'hôtel reste joignable directement",
                       "web_sees": str(d.ips.srv_wan.ip),
@@ -1455,10 +1460,10 @@ ont changé (routes).
 Depuis l'hôtel, le nomade veut que **tout** son trafic, y compris vers Internet (`web`, `{web}`,
 derrière le routeur `inet` du fournisseur d'accès), passe par le VPN de l'entreprise.
 
-**1.** Depuis `nomade`, `curl http://{web}/` : quelle adresse client `web` voit-il ? Notez
+**1.** Depuis `laptop`, `curl http://{web}/` : quelle adresse client `web` voit-il ? Notez
 `ip route` et `ip rule`.
 
-**2.** Sur `nomade`, remplacez les `AllowedIPs` du pair `srv` par `0.0.0.0/0` et relancez
+**2.** Sur `laptop`, remplacez les `AllowedIPs` du pair `srv` par `0.0.0.0/0` et relancez
 `wg-quick@wg0` ; lisez `journalctl -u wg-quick@wg0` (les commandes exécutées), puis `ip rule`,
 `ip route show table {port}`, `wg show wg0 fwmark`, `ip route get {web}` et `ip route get
 {srv_wan}`. Refaites le `curl` : pourquoi échoue-t-il ?
@@ -1472,21 +1477,21 @@ nft add rule ip nat postrouting ip saddr {vpn} oifname eth0 masquerade
 ```
 
 (ou écrivez ces règles dans `/etc/nftables.conf` et chargez-le avec `nft -f`). Refaites le
-`curl` depuis `nomade` et vérifiez que `gwb` a toujours sa route par défaut.
+`curl` depuis `laptop` et vérifiez que `gwb` a toujours sa route par défaut.
 """).format(web=d.ips.web.ip, vpn=vpn, port=WG_PORT, srv_wan=d.ips.srv_wan.ip)
             + tr("""
 - comment les datagrammes UDP chiffrés émis par WireGuard évitent-ils de repasser dans `wg0` ?
   @@{fwmark:>ils portent la marque 51820 : la règle « not fwmark 51820 » ne les envoie pas dans la table 51820, ils suivent la table main|wg-quick ajoute une route hôte vers srv par la box|le noyau sait qu'ils viennent de wg0}@@
 - la règle `from all lookup main suppress_prefixlength 0` sert à : @@{suppress:>consulter la table main d'abord, mais en ignorant sa route par défaut : le réseau de l'hôtel reste joignable directement|supprimer la route par défaut de la table main|empêcher les paquets de longueur nulle}@@
-- adresse client affichée par `http://web/` depuis `nomade` une fois le tunnel complet et le NAT en place : @@{web_sees:[0-9.]+}@@
+- adresse client affichée par `http://web/` depuis `laptop` une fois le tunnel complet et le NAT en place : @@{web_sees:[0-9.]+}@@
 - pourquoi le NAT est-il nécessaire ? @@{nat:>Internet n'a pas de route vers le réseau du VPN : les réponses ne reviendraient pas|WireGuard ne peut pas chiffrer les paquets vers Internet|le nomade n'a pas de route par défaut}@@
 - routeur par défaut de `gwb` après cette partie : @@{gwb_default:[0-9.]+}@@
 """)
             + instructor(tr("""
-**Solution.** `wg0.conf` du nomade (fin de partie 6) :
+**Solution.** `wg0.conf` de `laptop` (fin de partie 6) :
 
 ```
-{conf_nomade}```
+{conf_laptop}```
 
 et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.conf`) :
 
@@ -1499,18 +1504,18 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
   `sysctl net.ipv4.conf.all.src_valid_mark=1` et une table nftables `wg-quick-wg0`. `ip route get {web}`
   répond `dev wg0 table {port}`, `ip route get {srv_wan}` aussi — mais les datagrammes que WireGuard
   émet vers `{srv_wan}` sont marqués et prennent `via {box_hotel} dev eth0`. Sans NAT, `web` reçoit des
-  paquets de source `{vpn_nomade}` et ni lui ni `inet` n'ont de route de retour ; avec le `masquerade`,
+  paquets de source `{vpn_laptop}` et ni lui ni `inet` n'ont de route de retour ; avec le `masquerade`,
   `web` voit `{srv_wan}`.
 - `gwb` garde `default via {inet}` : rien n'a changé pour le site B.
-- Évalué : `0.0.0.0/0` dans les `AllowedIPs` du pair `srv` sur le nomade ; les deux règles `ip rule` et la
+- Évalué : `0.0.0.0/0` dans les `AllowedIPs` du pair `srv` sur `laptop` ; les deux règles `ip rule` et la
   route par défaut de la table {port} par `wg0` (`ip route get {web}` → `wg0`) ; la route par défaut
   intacte sur `gwb` ; une règle `masquerade` (ou `snat` vers une adresse) sur `srv` ; `curl http://{web}/`
-  depuis `nomade` affichant `client={srv_wan}` ; sur le `wan`, des requêtes TCP 80 vers `web` depuis
+  depuis `laptop` affichant `client={srv_wan}` ; sur le `wan`, des requêtes TCP 80 vers `web` depuis
   `{srv_wan}` et aucune depuis `{box_wan}`.
 - Réponses : {fwmark} ; {suppress} ; {web_sees} ; {nat} ; {gwb_default}.
-""").format(conf_nomade=self.net_scheme.wg_conf_nomade(part=6), nft=self.net_scheme.nft_nat(), box_wan=d.ips.box_wan.ip,
+""").format(conf_laptop=self.net_scheme.wg_conf_laptop(part=6), nft=self.net_scheme.nft_nat(), box_wan=d.ips.box_wan.ip,
             port=WG_PORT, web=d.ips.web.ip, srv_wan=d.ips.srv_wan.ip, box_hotel=d.ips.box_hotel.ip,
-            vpn_nomade=d.ips.vpn_nomade.ip, inet=d.ips.inet_wan.ip, **q6_answers)),
+            vpn_laptop=d.ips.vpn_laptop.ip, inet=d.ips.inet_wan.ip, **q6_answers)),
             cheat_answers={"final": q6_answers},
         )
 
@@ -1524,18 +1529,18 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
         http_from_box = frames_matching(frames, src=d.ips.box_wan.ip, dst=d.ips.web.ip, proto='TCP', dport=80)
         http_from_srv = frames_matching(frames, src=d.ips.srv_wan.ip, dst=d.ips.web.ip, proto='TCP', dport=80)
         self.add_grade_element(
-            title=no_tr("nomade_allowedips_default"), max_grade=2, grade_part=part6,
-            grade=2 * int(nomade_peer_srv is not None and '0.0.0.0/0' in nomade_peer_srv['allowed_ips']),
-            description=tr("sur nomade, les AllowedIPs du pair srv contiennent 0.0.0.0/0"),
+            title=no_tr("laptop_allowedips_default"), max_grade=2, grade_part=part6,
+            grade=2 * int(laptop_peer_srv is not None and '0.0.0.0/0' in laptop_peer_srv['allowed_ips']),
+            description=tr("sur laptop, les AllowedIPs du pair srv contiennent 0.0.0.0/0"),
         )
         self.add_grade_element(
-            title=no_tr("nomade_policy_routing"), max_grade=2, grade_part=part6,
-            grade=int(fwmark_rule(rules_nomade) is not None and suppress_prefix_rule(rules_nomade) is not None)
-                  + int(default_route_dev(table_nomade).startswith('wg') and rget['web']['dev'].startswith('wg')),
-            description=tr("règles ip rule (not fwmark 51820, suppress_prefixlength 0) et route par défaut de la table 51820 par wg0 sur nomade"),
+            title=no_tr("laptop_policy_routing"), max_grade=2, grade_part=part6,
+            grade=int(fwmark_rule(rules_laptop) is not None and suppress_prefix_rule(rules_laptop) is not None)
+                  + int(default_route_dev(table_laptop).startswith('wg') and rget['web']['dev'].startswith('wg')),
+            description=tr("règles ip rule (not fwmark 51820, suppress_prefixlength 0) et route par défaut de la table 51820 par wg0 sur laptop"),
         )
         self.add_grade_element(
-            title=no_tr("gwb_route_defaut"), max_grade=1, grade_part=part6,
+            title=no_tr("gwb_default_route"), max_grade=1, grade_part=part6,
             grade=int(gwb_default[0] == str(d.ips.inet_wan.ip)),
             description=tr("gwb a gardé sa route par défaut vers inet (pas de tunnel complet pour le site B)"),
         )
@@ -1545,9 +1550,9 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
             description=tr("règle masquerade (nftables ou iptables) sur srv"),
         )
         self.add_grade_element(
-            title=no_tr("nomade_internet_via_vpn"), max_grade=3, grade_part=part6,
+            title=no_tr("laptop_internet_via_vpn"), max_grade=3, grade_part=part6,
             grade=3 * int(web_client is not None and _same_ip(web_client.group(1), d.ips.srv_wan)),
-            description=tr("http://web/ vu du nomade affiche l'adresse publique de srv : tout le trafic passe par le VPN"),
+            description=tr("http://web/ vu de laptop affiche l'adresse publique de srv : tout le trafic passe par le VPN"),
         )
         self.add_grade_element(
             title=no_tr("wan_http_tunnel"), max_grade=2, grade_part=part6,
@@ -1563,26 +1568,26 @@ et sur `srv` (fichier `/etc/nftables.conf`, chargé par `nft -f /etc/nftables.co
         )
 
         # =====================================================================
-        # Partie 7 — Clé pré-partagée et retrait d'un pair
+        # Part 7 — preshared key and removal of a peer
         # =====================================================================
-        part7 = self.add_grade_part(no_tr("partie7"), tr("Partie 7 — Clé pré-partagée et retrait d'un pair"))
+        part7 = self.add_grade_part(no_tr("part7"), tr("Partie 7 — Clé pré-partagée et retrait d'un pair"))
         q7_answers = {"psk": "une clé symétrique mélangée à la poignée de main, propre à ce couple de pairs : protection contre un futur ordinateur quantique",
                       "psk_effect": "rien tout de suite : la session en cours continue, la prochaine poignée de main (dans les deux minutes) échoue",
                       "revoke": "retirer son pair (wg set wg0 peer CLÉ remove, ou supprimer sa section et wg syncconf) : effet immédiat",
                       "expire": "non : une clé est valable tant qu'elle est configurée, il n'y a ni date d'expiration ni CRL"}
         q7 = self.question_form(
             section=self.section(0),
-            title=tr("PresharedKey et retrait du pair ancien"),
+            title=tr("PresharedKey et retrait du pair oldpc"),
             description=tr("""
-**1. Clé pré-partagée.** Sur `srv` : `wg genpsk`. Mettez cette clé dans le pair `nomade` de `srv`
+**1. Clé pré-partagée.** Sur `srv` : `wg genpsk`. Mettez cette clé dans le pair `laptop` de `srv`
 (`PresharedKey = …`) et appliquez (`wg syncconf wg0 <(wg-quick strip wg0)`) ; d'abord sans rien
-changer sur `nomade` : le `ping` passe-t-il encore ? Pendant combien de temps (`wg show`) ? Mettez
-ensuite la même clé dans le pair `srv` de `nomade`, appliquez, puis vérifiez
+changer sur `laptop` : le `ping` passe-t-il encore ? Pendant combien de temps (`wg show`) ? Mettez
+ensuite la même clé dans le pair `srv` de `laptop`, appliquez, puis vérifiez
 `wg show wg0 preshared-keys` des deux côtés et le `ping`.
 
-**2. Retrait d'un pair.** Le portable `ancien` a été volé : retirez sa section de `wg0.conf` sur
-`srv` et appliquez (`wg syncconf wg0 <(wg-quick strip wg0)`, ou `wg set wg0 peer CLÉ_DE_ANCIEN
-remove` pour l'effet immédiat). Vérifiez avec `wg show` que `collegue`, `nomade` et `gwb` sont
+**2. Retrait d'un pair.** Le portable `oldpc` a été volé : retirez sa section de `wg0.conf` sur
+`srv` et appliquez (`wg syncconf wg0 <(wg-quick strip wg0)`, ou `wg set wg0 peer CLÉ_DE_OLDPC
+remove` pour l'effet immédiat). Vérifiez avec `wg show` que `colleague`, `laptop` et `gwb` sont
 toujours là.
 """)
             + tr("""
@@ -1593,8 +1598,8 @@ toujours là.
 """)
             + instructor(tr("""
 **Solution.** Sur `srv`, `wg genpsk` donne une clé (celle de l'état `final` : `{psk}`) à mettre dans
-le pair `nomade` ; sur `nomade`, la même dans le pair `srv` ; `wg syncconf wg0 <(wg-quick strip wg0)`
-des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `ancien` supprimé) :
+le pair `laptop` ; sur `laptop`, la même dans le pair `srv` ; `wg syncconf wg0 <(wg-quick strip wg0)`
+des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `oldpc` supprimé) :
 
 ```
 {conf_srv}```
@@ -1602,37 +1607,37 @@ des deux côtés. `wg0.conf` de `srv` à la fin du TP (pair `ancien` supprimé) 
 - Clé d'un seul côté : la session en cours (clés de session déjà négociées) continue jusqu'à la
   prochaine poignée de main, au plus deux minutes avec du trafic ; ensuite les initiations sont
   rejetées (`latest handshake` n'avance plus, `transfer` n'augmente qu'en émission).
-- `wg set wg0 peer {pub_ancien} remove` détruit la session de `ancien` sur-le-champ ; sans date
+- `wg set wg0 peer {pub_oldpc} remove` détruit la session de `oldpc` sur-le-champ ; sans date
   d'expiration ni CRL, c'est la seule révocation possible, d'où l'importance d'un inventaire des clés.
 - Évalué : clé pré-partagée présente et identique des deux côtés (`wg show all dump`), `PresharedKey`
-  dans les deux fichiers ; `collegue` toujours pair de `srv` et `ancien` absent (interface et fichier) ;
-  la sonde : refusée avec la clé de `ancien` (aucune poignée de main), acceptée avec celle de `collegue`.
+  dans les deux fichiers ; `colleague` toujours pair de `srv` et `oldpc` absent (interface et fichier) ;
+  la sonde : refusée avec la clé de `oldpc` (aucune poignée de main), acceptée avec celle de `colleague`.
 - Réponses : {psk_answer} ; {psk_effect} ; {revoke} ; {expire}.
-""").format(psk=d.psk_nomade, conf_srv=self.net_scheme.wg_conf_srv(part=7), pub_ancien=pub_ancien,
+""").format(psk=d.psk_laptop, conf_srv=self.net_scheme.wg_conf_srv(part=7), pub_oldpc=pub_oldpc,
             psk_answer=q7_answers["psk"], **{k: v for k, v in q7_answers.items() if k != "psk"})),
             cheat_answers={"final": q7_answers},
         )
 
-        psk_srv = (srv_peer_nomade or {}).get('preshared_key', '')
-        psk_nomade = (nomade_peer_srv or {}).get('preshared_key', '')
-        srv_conf_nomade = config_peer(conf['srv'], pub['nomade'])
+        psk_on_srv = (srv_peer_laptop or {}).get('preshared_key', '')
+        psk_on_laptop = (laptop_peer_srv or {}).get('preshared_key', '')
+        srv_conf_laptop = config_peer(conf['srv'], pub['laptop'])
         self.add_grade_element(
-            title=no_tr("psk_nomade"), max_grade=3, grade_part=part7,
-            grade=int(is_wg_key(psk_srv)) + int(is_wg_key(psk_srv) and psk_srv == psk_nomade)
-                  + int(is_wg_key(config_value(srv_conf_nomade, 'presharedkey') or '')
-                        and is_wg_key(config_value(nomade_conf_srv, 'presharedkey') or '')),
-            description=tr("clé pré-partagée sur le pair nomade de srv, identique sur le pair srv de nomade, dans les deux wg0.conf"),
+            title=no_tr("psk_laptop"), max_grade=3, grade_part=part7,
+            grade=int(is_wg_key(psk_on_srv)) + int(is_wg_key(psk_on_srv) and psk_on_srv == psk_on_laptop)
+                  + int(is_wg_key(config_value(srv_conf_laptop, 'presharedkey') or '')
+                        and is_wg_key(config_value(laptop_conf_srv, 'presharedkey') or '')),
+            description=tr("clé pré-partagée sur le pair laptop de srv, identique sur le pair srv de laptop, dans les deux wg0.conf"),
         )
         self.add_grade_element(
-            title=no_tr("ancien_retire"), max_grade=2, grade_part=part7,
-            grade=int(srv_peer_collegue is not None and srv_peer_ancien is None)
-                  + int(srv_conf_collegue is not None and config_peer(conf['srv'], pub_ancien) is None),
-            description=tr("le pair ancien a disparu de wg0 et de wg0.conf sur srv (collegue y est toujours)"),
+            title=no_tr("oldpc_removed"), max_grade=2, grade_part=part7,
+            grade=int(srv_peer_colleague is not None and srv_peer_oldpc is None)
+                  + int(srv_conf_colleague is not None and config_peer(conf['srv'], pub_oldpc) is None),
+            description=tr("le pair oldpc a disparu de wg0 et de wg0.conf sur srv (colleague y est toujours)"),
         )
         self.add_grade_element(
-            title=no_tr("sonde_ancien_refuse"), max_grade=3, grade_part=part7,
-            grade=3 * int(probe_collegue['handshake'] and not probe_ancien['handshake']),
-            description=tr("srv n'accorde plus de poignée de main à la clé de ancien (et toujours à celle de collegue)"),
+            title=no_tr("probe_oldpc_refused"), max_grade=3, grade_part=part7,
+            grade=3 * int(probe_colleague['handshake'] and not probe_oldpc['handshake']),
+            description=tr("srv n'accorde plus de poignée de main à la clé de oldpc (et toujours à celle de colleague)"),
         )
         self.add_grade_element(
             title=no_tr("q_revocation"), max_grade=2, grade_part=part7,

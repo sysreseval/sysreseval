@@ -93,7 +93,7 @@ def test_key_validation_and_generation():
 
 
 def test_parse_wg_config_wg_quick_file():
-    conf = parse_wg_config(fixture('wg0_nomade.conf'))
+    conf = parse_wg_config(fixture('wg0_laptop.conf'))
     iface = conf['interface']
     assert config_value(iface, 'PrivateKey') == "KLe4xKbXyg2aev81zrEGJEcI7l8B9LCFMUydFSOFvGk="
     assert public_key(config_value(iface, 'privatekey')) == PAIRS[2][1]
@@ -129,10 +129,10 @@ def test_parse_wg_config_showconf_and_garbage():
 
 
 def test_get_wg_config_wrapper():
-    grade = make_grade({"cat /etc/wireguard/wg0.conf 2>/dev/null": (fixture('wg0_nomade.conf'), 0),
+    grade = make_grade({"cat /etc/wireguard/wg0.conf 2>/dev/null": (fixture('wg0_laptop.conf'), 0),
                         "cat /etc/wireguard/missing.conf 2>/dev/null": ('', 1)})
-    assert len(get_wg_config(grade, 'nomade')['peers']) == 2
-    assert get_wg_config(grade, 'nomade', '/etc/wireguard/missing.conf') == {'interface': {}, 'peers': []}
+    assert len(get_wg_config(grade, 'laptop')['peers']) == 2
+    assert get_wg_config(grade, 'laptop', '/etc/wireguard/missing.conf') == {'interface': {}, 'peers': []}
 
 
 # ---------------------------------------------------------------------------
@@ -249,10 +249,10 @@ def test_ip_rules_of_a_full_tunnel():
 
 def test_route_table_and_route_get():
     routes = get_routes_table(make_grade({"ip -j route show table 51820 2>/dev/null":
-                                          (fixture('route_table_51820.json'), 0)}), 'nomade')
+                                          (fixture('route_table_51820.json'), 0)}), 'laptop')
     assert default_route_dev(routes) == 'wg0'
     assert default_route_dev([]) == ''
-    assert get_routes_table(make_grade({}), 'nomade') == []
+    assert get_routes_table(make_grade({}), 'laptop') == []
     assert parse_route_get(fixture('route_get_full_tunnel.json')) == {
         'dev': 'wg0', 'via': '', 'table': '51820', 'src': '10.96.0.2'}
     assert parse_route_get(fixture('route_get_direct.json'))['dev'] == 'eth0'
@@ -261,11 +261,11 @@ def test_route_table_and_route_get():
     assert parse_route_get("") == {'dev': '', 'via': '', 'table': '', 'src': ''}
     grade = make_grade({"ip -j route get 8.8.8.8 2>/dev/null": (fixture('route_get_full_tunnel.json'), 0),
                         "ip -j rule 2>/dev/null": (fixture('ip_rule_full_tunnel.json'), 0)})
-    assert get_route_get(grade, 'nomade', '8.8.8.8/32')['dev'] == 'wg0'
-    assert get_route_get(grade, 'nomade', IPv4Interface('8.8.8.8/32'))['table'] == '51820'
-    assert get_route_get(grade, 'nomade', '1.1.1.1')['dev'] == ''
-    assert fwmark_rule(get_ip_rules(grade, 'nomade')) is not None
-    assert get_ip_rules(make_grade({}), 'nomade') == []
+    assert get_route_get(grade, 'laptop', '8.8.8.8/32')['dev'] == 'wg0'
+    assert get_route_get(grade, 'laptop', IPv4Interface('8.8.8.8/32'))['table'] == '51820'
+    assert get_route_get(grade, 'laptop', '1.1.1.1')['dev'] == ''
+    assert fwmark_rule(get_ip_rules(grade, 'laptop')) is not None
+    assert get_ip_rules(make_grade({}), 'laptop') == []
 
 
 def test_unit_state():
