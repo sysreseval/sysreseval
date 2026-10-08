@@ -1,0 +1,8 @@
+[Interface]
+ListenPort = 51820
+PrivateKey = oCGWsW6SQ3b4j1yBs9HSYtPWpXTOV7nSaSfYYH9cWmg=
+
+[Peer]
+PublicKey = UXKFIDFbNI6yy+Narbrs7P1fGDjCyD44rcJy6FouqkM=
+AllowedIPs = 10.99.0.2/32
+Endpoint = 172.18.0.3:56475

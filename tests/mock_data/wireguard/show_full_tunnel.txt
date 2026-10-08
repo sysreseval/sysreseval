@@ -1,0 +1,12 @@
+interface: wg0
+  public key: 8CiAoFGmY23YVitoLDNvhdZCTtHW2dFlNntI73cbuVM=
+  private key: (hidden)
+  listening port: 48141
+  fwmark: 0xca6c
+
+peer: TEK9K2pfGbgbx9OXXwrG9t4DB9bMc4P+qyA4DTsXJ1A=
+  preshared key: (hidden)
+  endpoint: 172.18.0.2:51820
+  allowed ips: 0.0.0.0/0
+  transfer: 0 B received, 148 B sent
+  persistent keepalive: every 25 seconds

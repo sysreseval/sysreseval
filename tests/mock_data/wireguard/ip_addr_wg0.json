@@ -1,0 +1,1 @@
+[{"ifindex":8,"ifname":"wg0","flags":["POINTOPOINT","NOARP","UP","LOWER_UP"],"mtu":1420,"qdisc":"noqueue","operstate":"UNKNOWN","group":"default","txqlen":1000,"addr_info":[{"family":"inet","local":"10.96.0.2","prefixlen":32,"scope":"global","label":"wg0","valid_life_time":4294967295,"preferred_life_time":4294967295}]}]

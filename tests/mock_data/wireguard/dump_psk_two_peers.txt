@@ -1,0 +1,3 @@
+wg0	oCGWsW6SQ3b4j1yBs9HSYtPWpXTOV7nSaSfYYH9cWmg=	JV48Q1t07KFukCKXFUVjHz6lOdjm7GReOJHXSq3shAs=	51820	off
+wg0	UXKFIDFbNI6yy+Narbrs7P1fGDjCyD44rcJy6FouqkM=	ljmFuB/lHUtBywb2ydKca7Q1djo4mXbdc8krdEUH3cE=	172.18.0.3:56475	10.99.0.2/32	1791300158	692	604	off
+wg0	wuOGKaNsjOfziGJUUuRhzAltxd4YlvrvXUn/CAuqkkQ=	(none)	(none)	10.99.0.3/32	0	0	0	off
