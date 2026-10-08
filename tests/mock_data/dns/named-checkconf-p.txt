@@ -1,0 +1,108 @@
+/tmp/named.conf:12: 'inline-signing' default changed to 'yes' in 9.20. Before upgrading, explicitly set 'inline-signing no;' to your dnssec-policy or zone configuration
+/tmp/named.conf:16: 'inline-signing' default changed to 'yes' in 9.20. Before upgrading, explicitly set 'inline-signing no;' to your dnssec-policy or zone configuration
+controls {
+	inet 127.0.0.1 port 953 allow {
+		127.0.0.1/32;
+	} keys {
+		"rndc-key";
+	};
+};
+dnssec-policy "lab" {
+	keys {
+		csk key-directory lifetime unlimited algorithm ecdsa256;
+	};
+	signatures-validity 2592000;
+};
+logging {
+	channel "f" {
+		file "/tmp/named.log";
+		severity info;
+		print-time yes;
+		print-category yes;
+	};
+	category "default" {
+		"f";
+	};
+	category "xfer-in" {
+		"f";
+	};
+	category "xfer-out" {
+		"f";
+	};
+	category "notify" {
+		"f";
+	};
+	category "update" {
+		"f";
+	};
+	category "dnssec" {
+		"f";
+	};
+	category "security" {
+		"f";
+	};
+};
+options {
+	directory "/var/cache/bind";
+	listen-on  {
+		127.0.0.1/32;
+	};
+	listen-on-v6  {
+		"none";
+	};
+	dnssec-validation no;
+	recursion no;
+	key-directory "/var/cache/bind";
+};
+view "internal" {
+	match-clients {
+		127.0.0.0/8;
+	};
+	zone "example.test" {
+		type primary;
+		file "/tmp/zones/db.example.test.internal";
+		update-policy {
+			grant "ddns" zonesub "ANY";
+		};
+		allow-transfer  {
+			"none";
+		};
+		dnssec-policy "lab";
+	};
+};
+view "external" {
+	match-clients {
+		"any";
+	};
+	zone "example.test" {
+		type primary;
+		file "/tmp/zones/db.example.test.external";
+		update-policy {
+			grant "ddns" zonesub "ANY";
+		};
+		allow-transfer  {
+			key "xfer";
+		};
+		also-notify {
+			127.0.0.2;
+		};
+		dnssec-policy "lab";
+		notify explicit;
+	};
+	zone "plain.test" {
+		type primary;
+		file "/tmp/zones/db.plain";
+	};
+};
+key "xfer" {
+	algorithm "hmac-sha256";
+	secret "eYhNzFoZlrF6Czrwx0W8ggvj1pNkV/ZcXm316IBXPSk=";
+};
+key "ddns" {
+	algorithm "hmac-sha256";
+	secret "awyIFZ/0kyZj8dZt1bSJCcZa+erxuqDBv/3grnODu6Y=";
+};
+key "rndc-key" {
+	algorithm "hmac-sha256";
+	secret "awyIFZ/0kyZj8dZt1bSJCcZa+erxuqDBv/3grnODu6Y=";
+};

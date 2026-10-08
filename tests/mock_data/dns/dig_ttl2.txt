@@ -1,0 +1,1 @@
+www.partner.tp.		296	IN	A	198.51.100.80

@@ -1,0 +1,29 @@
+options {
+	directory "/var/cache/bind";
+	listen-on port 5353 {
+		127.0.0.1/32;
+	};
+	listen-on-v6  {
+		"none";
+	};
+	dnssec-validation no;
+	recursion no;
+	allow-transfer  {
+		"none";
+	};
+};
+key "xfer" {
+	algorithm "hmac-sha256";
+	secret "0AHkuNBDgFCn7dmYfy1EBcytDBShHFKxUBUjnuyFVwQ=";
+};
+zone "partner.test" {
+	type primary;
+	file "/tmp/zones/db.partner";
+};
+zone "example.test" {
+	type primary;
+	file "/tmp/zones/db.example";
+	allow-transfer  {
+		key "xfer";
+	};
+};

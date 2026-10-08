@@ -1,0 +1,25 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 +norecurse www.sub.example.test A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 52203
+;; flags: qr; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 19e2e3c69f39d422010000006ac65230b9f29ae0b988c22f (good)
+;; QUESTION SECTION:
+;www.sub.example.test.		IN	A
+
+;; AUTHORITY SECTION:
+sub.example.test.	300	IN	NS	ns.sub.example.test.
+
+;; ADDITIONAL SECTION:
+ns.sub.example.test.	300	IN	A	203.0.113.53
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:44 UTC 2026
+;; MSG SIZE  rcvd: 110
+

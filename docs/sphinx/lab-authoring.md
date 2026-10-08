@@ -957,6 +957,39 @@ from tls import eval_rsa_private_key, set_rsa_private_key, eval_self_signed_cert
 
 `eval_certificate(grade, machine_name, key_file, cert_file, ca_file, step=1) → dict` — checks that `cert_file` is a valid certificate signed by `ca_file` and whose public key matches `key_file`. Returns the same dict as `eval_self_signed_certificate`.
 
+### DNS helpers (from `/opt/sre/lib/dns.py`)
+
+Used by `lab/sre/_DRAFT_misc/dns2.py` (private root, resolver, delegation, TSIG transfers,
+dynamic updates, DNSSEC, DoT/DoH, views, RPZ). Pure functions first, then `(grade, machine, …)`
+wrappers; fixtures in `tests/mock_data/dns/`.
+
+- **Queries.** `dig_query(grade, m, server, "www.example.tp A", step=1, dnssec=True, cd=True,
+  norecurse=True, tcp=True, key=(name, secret))` returns a `DigResult`: `status`, `flags`
+  (`has_flag('ad')`), `answer` / `authority` / `additional` lists of `RR(name, ttl, rclass, rtype,
+  rdata)`, `rdata('A')`, `soa_serial()`, `ttl()`, `error` (`'timeout'`, `'transfer failed'`,
+  `'connection refused'`), `xfr_records` for AXFR listings; `referral(result)` gives the NS names
+  and the glue of a referral. `kdig_query(grade, m, server, name, tls=True|https=True, ca_file=,
+  hostname=)` → `KdigResult(session 'TLS'|'HTTPS', http_status, …)`. `nsupdate_run(grade, m, server,
+  zone, ["update add host.example.tp. 300 A 10.0.0.9"], key=)` → `(ok, rcode)`; the same
+  `nsupdate_cmd()` text serves in states (one `printf | nsupdate -y` line: exetests needs
+  single-line commands).
+- **DNSSEC.** `ecdsa_p256_keypair()` gives `(private_b64, public_b64)` to keep in `Data`;
+  `render_bind_key_files(owner, priv, pub)` writes them as `dnssec-keygen` would (named adopts them
+  with `dnssec-policy`); `ds_rdata(owner, dnskey_rdata)`, `keytag_of()`, `ds_covers_keys(ds_rdatas,
+  dnskey_rdatas, owner)` check a published DS against the keys a server serves;
+  `trust_anchor_line()` (unbound) and `render_bind_trust_anchors()` (`delv -a`) write the anchor.
+- **Configurations.** `get_named_conf(grade, m)` parses `named-checkconf -p` (keys, options, zones,
+  views); `get_unbound_conf(grade, m)` the concatenated `unbound.conf.d/*.conf`
+  (`unbound_values(conf, 'server', 'access-control')`, `unbound_clauses(conf, 'rpz')`);
+  `get_stubby_conf`, `get_firefox_doh` (policies.json or `network.trr.*` prefs), `get_zone_status(…,
+  view=)` / `get_dnssec_status` (`rndc`), `get_named_journal` / `get_unbound_log` (events of
+  `journalctl`: transfers, notifies, updates, RPZ hits), `get_unbound_list(…, 'forwards'|'stubs')`.
+  `unbound_default_local_zone(net)` names the built-in local zone a resolver must declare
+  `nodefault` before it can resolve a private reverse zone.
+- **Renderers** for states and instructor texts: `render_zone_file`, `render_tsig_key`,
+  `render_root_hints`, `render_rpz_zone`, `render_stubby_yml`, `reverse_zone_name` / `reverse_label`,
+  `spki_pin`, `random_tsig_secret`; `tls.generate_ca_pem(cn)` for a lab-provided CA.
+
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python

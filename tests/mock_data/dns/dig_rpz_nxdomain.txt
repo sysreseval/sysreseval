@@ -1,0 +1,18 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 pub.partner.tp A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 41547
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+;; QUESTION SECTION:
+;pub.partner.tp.			IN	A
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:19:13 UTC 2026
+;; MSG SIZE  rcvd: 43
+

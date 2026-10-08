@@ -1,0 +1,80 @@
+Oct 07 15:05:10 ns1 named[1149]: listening on IPv4 interface eth0, 192.168.253.101#53
+Oct 07 15:05:10 ns1 named[1149]: generating session key for dynamic DNS
+Oct 07 15:05:10 ns1 named[1149]: sizing zone task pool based on 6 zones
+Oct 07 15:05:10 ns1 named[1149]: set up managed keys zone for view internal, file 'internal.mkeys'
+Oct 07 15:05:10 ns1 named[1149]: set up managed keys zone for view external, file 'external.mkeys'
+Oct 07 15:05:10 ns1 named[1149]: configuring command channel from '/etc/bind/rndc.key'
+Oct 07 15:05:10 ns1 named[1149]: command channel listening on 127.0.0.1#953
+Oct 07 15:05:10 ns1 named[1149]: configuring command channel from '/etc/bind/rndc.key'
+Oct 07 15:05:10 ns1 named[1149]: command channel listening on ::1#953
+Oct 07 15:05:10 ns1 named[1149]: managed-keys-zone/internal: loaded serial 0
+Oct 07 15:05:10 ns1 named[1149]: managed-keys-zone/external: loaded serial 0
+Oct 07 15:05:10 ns1 named[1149]: zone 127.in-addr.arpa/IN/internal: loaded serial 1
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/external: loaded serial 2026100701
+Oct 07 15:05:10 ns1 named[1149]: zone 253.168.192.in-addr.arpa/IN/internal: loaded serial 2026100701
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/external: sending notifies (serial 2026100701)
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/external: reconfiguring zone keys
+Oct 07 15:05:10 ns1 named[1149]: keymgr: DNSKEY example.tp/ECDSAP256SHA256/37443 (CSK) created for policy default
+Oct 07 15:05:10 ns1 named[1149]: zone localhost/IN/internal: loaded serial 2
+Oct 07 15:05:10 ns1 named[1149]: zone 253.168.192.in-addr.arpa/IN/external: loaded serial 2026100701
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/internal: loaded serial 2026100701
+Oct 07 15:05:10 ns1 named[1149]: all zones loaded
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/internal: sending notifies (serial 2026100701)
+Oct 07 15:05:10 ns1 systemd[1]: Started named.service - BIND Domain Name Server.
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/internal: reconfiguring zone keys
+Oct 07 15:05:10 ns1 named[1149]: running
+Oct 07 15:05:10 ns1 named[1149]: Fetching example.tp/ECDSAP256SHA256/37443 (CSK) from key repository.
+Oct 07 15:05:10 ns1 named[1149]: DNSKEY example.tp/ECDSAP256SHA256/37443 (CSK) is now published
+Oct 07 15:05:10 ns1 named[1149]: DNSKEY example.tp/ECDSAP256SHA256/37443 (CSK) is now active
+Oct 07 15:05:10 ns1 named[1149]: Fetching example.tp/ECDSAP256SHA256/37443 (CSK) from key repository.
+Oct 07 15:05:10 ns1 named[1149]: DNSKEY example.tp/ECDSAP256SHA256/37443 (CSK) is now published
+Oct 07 15:05:10 ns1 named[1149]: DNSKEY example.tp/ECDSAP256SHA256/37443 (CSK) is now active
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/external: next key event: 07-Oct-2026 17:10:10.489
+Oct 07 15:05:10 ns1 named[1149]: zone 253.168.192.in-addr.arpa/IN/external: sending notifies (serial 2026100701)
+Oct 07 15:05:10 ns1 named[1149]: zone 253.168.192.in-addr.arpa/IN/internal: sending notifies (serial 2026100701)
+Oct 07 15:05:10 ns1 named[1149]: zone example.tp/IN/internal: next key event: 07-Oct-2026 17:10:10.493
+Oct 07 15:05:10 ns1 named[1149]: client @0x7f3706e9dc98 10.61.41.249#44107/key ddns-example-tp: view external: updating zone 'example.tp/IN': deleting rrset at 'printer75.example.tp' A
+Oct 07 15:05:10 ns1 named[1149]: client @0x7f3706e9dc98 10.61.41.249#44107/key ddns-example-tp: view external: updating zone 'example.tp/IN': adding an RR at 'printer75.example.tp' A 192.168.253.83
+Oct 07 15:05:10 ns1 named[1149]: client @0x7f3706e9c098 192.168.253.107#40893/key ddns-example-tp: view internal: updating zone 'example.tp/IN': deleting rrset at 'printer75.example.tp' A
+Oct 07 15:05:10 ns1 named[1149]: client @0x7f3706e9c098 192.168.253.107#40893/key ddns-example-tp: view internal: updating zone 'example.tp/IN': adding an RR at 'printer75.example.tp' A 192.168.253.83
+Oct 07 15:05:10 ns1 named[1149]: client @0x7f3706ea1498 10.61.41.185#37371/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR started: TSIG transfer-example-tp (serial 2026100704)
+Oct 07 15:05:10 ns1 named[1149]: client @0x7f3706ea1498 10.61.41.185#37371/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR ended: 1 messages, 35 records, 2369 bytes, 0.003 secs (789666 bytes/sec) (serial 2026100704)
+Oct 07 15:05:11 ns1 named[1149]: client @0x7f3706e9f898 10.61.41.185#37441/key transfer-example-tp (253.168.192.in-addr.arpa): view external: transfer of '253.168.192.in-addr.arpa/IN': AXFR started: TSIG transfer-example-tp (serial 2026100701)
+Oct 07 15:05:11 ns1 named[1149]: client @0x7f3706e9f898 10.61.41.185#37441/key transfer-example-tp (253.168.192.in-addr.arpa): view external: transfer of '253.168.192.in-addr.arpa/IN': AXFR ended: 1 messages, 8 records, 345 bytes, 0.001 secs (345000 bytes/sec) (serial 2026100701)
+Oct 07 15:05:11 ns1 named[1149]: client @0x7f3701935c98 10.61.41.185#39439/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR started: TSIG transfer-example-tp (serial 2026100704 -> 2026100705)
+Oct 07 15:05:11 ns1 named[1149]: client @0x7f3701935c98 10.61.41.185#39439/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR ended: 1 messages, 15 records, 1162 bytes, 0.001 secs (1162000 bytes/sec) (serial 2026100705)
+Oct 07 15:05:12 ns1 named[1149]: received control channel command 'dnssec -checkds published example.tp IN internal'
+Oct 07 15:05:12 ns1 named[1149]: keymgr: checkds DS for key example.tp/ECDSAP256SHA256/37443 seen published at Wed Oct  7 15:05:12 2026
+Oct 07 15:05:12 ns1 named[1149]: zone example.tp/IN/internal: reconfiguring zone keys
+Oct 07 15:05:12 ns1 named[1149]: CDNSKEY for key example.tp/ECDSAP256SHA256/37443 is now published
+Oct 07 15:05:12 ns1 named[1149]: CDS for key example.tp/ECDSAP256SHA256/37443 is now published
+Oct 07 15:05:12 ns1 named[1149]: zone example.tp/IN/internal: next key event: 07-Oct-2026 17:10:10.813
+Oct 07 15:05:12 ns1 named[1149]: received control channel command 'dnssec -checkds published example.tp IN external'
+Oct 07 15:05:12 ns1 named[1149]: keymgr: checkds DS for key example.tp/ECDSAP256SHA256/37443 seen published at Wed Oct  7 15:05:12 2026
+Oct 07 15:05:12 ns1 named[1149]: zone example.tp/IN/external: reconfiguring zone keys
+Oct 07 15:05:12 ns1 named[1149]: CDNSKEY for key example.tp/ECDSAP256SHA256/37443 is now published
+Oct 07 15:05:12 ns1 named[1149]: CDS for key example.tp/ECDSAP256SHA256/37443 is now published
+Oct 07 15:05:13 ns1 named[1149]: zone example.tp/IN/external: next key event: 07-Oct-2026 17:10:10.969
+Oct 07 15:05:15 ns1 named[1149]: zone example.tp/IN/external: sending notifies (serial 2026100706)
+Oct 07 15:05:15 ns1 named[1149]: client @0x7f3701934098 10.61.41.185#35401/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR started: TSIG transfer-example-tp (serial 2026100705 -> 2026100706)
+Oct 07 15:05:15 ns1 named[1149]: client @0x7f3701934098 10.61.41.185#35401/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR ended: 1 messages, 16 records, 1398 bytes, 0.001 secs (1398000 bytes/sec) (serial 2026100706)
+Oct 07 15:05:15 ns1 named[1149]: zone example.tp/IN/internal: sending notifies (serial 2026100706)
+Oct 07 15:05:39 ns1 named[1149]: received control channel command 'zonestatus example.tp IN internal'
+Oct 07 15:05:39 ns1 named[1149]: received control channel command 'zonestatus example.tp IN external'
+Oct 07 15:05:39 ns1 named[1149]: received control channel command 'zonestatus example.tp'
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3701935c98 10.61.41.53#44439 (example.tp): view external: zone transfer 'example.tp/AXFR/IN' denied
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3701934098 10.61.41.53#32787/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR started: TSIG transfer-example-tp (serial 2026100706)
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3701934098 10.61.41.53#32787/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': AXFR ended: 1 messages, 44 records, 3166 bytes, 0.001 secs (3166000 bytes/sec) (serial 2026100706)
+Oct 07 15:05:39 ns1 named[1149]: received control channel command 'dnssec -status example.tp IN internal'
+Oct 07 15:05:39 ns1 named[1149]: received control channel command 'dnssec -status example.tp IN external'
+Oct 07 15:05:39 ns1 named[1149]: received control channel command 'dnssec -status example.tp'
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3705c1c098 10.61.41.53#58181: view external: update 'example.tp/IN' denied
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3708ad7098 10.61.41.53#49851/key ddns-example-tp: view external: updating zone 'example.tp/IN': deleting rrset at 'probe.example.tp' TXT
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3708ad7098 10.61.41.53#49851/key ddns-example-tp: view external: updating zone 'example.tp/IN': adding an RR at 'probe.example.tp' TXT "69164c66ff5d6785"
+Oct 07 15:05:39 ns1 named[1149]: zone example.tp/IN/external: sending notifies (serial 2026100707)
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3706ea1498 10.61.41.185#39475/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR started: TSIG transfer-example-tp (serial 2026100706 -> 2026100707)
+Oct 07 15:05:39 ns1 named[1149]: client @0x7f3706ea1498 10.61.41.185#39475/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR ended: 1 messages, 14 records, 1070 bytes, 0.001 secs (1070000 bytes/sec) (serial 2026100707)
+Oct 07 15:05:44 ns1 named[1149]: client @0x7f3705c1c098 10.61.41.53#57087/key ddns-example-tp: view external: updating zone 'example.tp/IN': deleting rrset at 'probe.example.tp' TXT
+Oct 07 15:05:44 ns1 named[1149]: zone example.tp/IN/external: sending notifies (serial 2026100708)
+Oct 07 15:05:44 ns1 named[1149]: client @0x7f3705c1f898 10.61.41.185#45503/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR started: TSIG transfer-example-tp (serial 2026100707 -> 2026100708)
+Oct 07 15:05:44 ns1 named[1149]: client @0x7f3705c1f898 10.61.41.185#45503/key transfer-example-tp (example.tp): view external: transfer of 'example.tp/IN': IXFR ended: 1 messages, 14 records, 1070 bytes, 0.001 secs (1070000 bytes/sec) (serial 2026100708)

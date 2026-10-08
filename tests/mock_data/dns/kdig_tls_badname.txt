@@ -1,0 +1,3 @@
+;; WARNING: TLS, handshake failed (Error in the certificate.)
+;; ERROR: failed to query server 127.0.0.1@853(TCP)
+rc=1

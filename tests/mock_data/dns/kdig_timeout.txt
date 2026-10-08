@@ -1,0 +1,3 @@
+;; WARNING: response timeout for 10.255.255.254@53(UDP)
+;; ERROR: failed to query server 10.255.255.254@53(UDP)
+rc=1

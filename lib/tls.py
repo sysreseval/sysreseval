@@ -725,6 +725,33 @@ def eval_firefox_certificate(grade: Grade0, machine_name: str, cert_pem: str,
 # step-ca
 # ---------------------------------------------------------------------------
 
+def generate_ca_pem(common_name: str, days: int = 3650, key_size: int = 2048) -> tuple[str, str]:
+    """``(certificate_pem, private_key_pem)`` of a fresh self-signed RSA certification authority
+    (``CA:TRUE``, keyCertSign / cRLSign, subject key identifier), for labs that hand a ready CA
+    to the students (the DNS lab's ``ca.tp`` signing the DoT / DoH certificate)."""
+    from datetime import datetime, timedelta, timezone
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+    now = datetime.now(timezone.utc) - timedelta(days=1)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now)
+            .not_valid_after(now + timedelta(days=days))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
+                                         data_encipherment=False, key_agreement=False, key_cert_sign=True,
+                                         crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+            .sign(key, hashes.SHA256()))
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+    key_pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                serialization.NoEncryption()).decode()
+    return cert_pem, key_pem
+
+
 def parse_stepca_config(text: str) -> dict | None:
     """Summary of a step-ca ``ca.json``: ``{'address', 'dns_names', 'root', 'provisioners':
     [{'name', 'type'}, ...]}``; ``None`` when the text is not a JSON object."""

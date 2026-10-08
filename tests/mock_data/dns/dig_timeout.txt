@@ -1,0 +1,6 @@
+;; communications error to 10.255.255.254#53: timed out
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=1 +tries=1 @10.255.255.254 example.test A
+; (1 server found)
+;; global options: +cmd
+;; no servers could be reached

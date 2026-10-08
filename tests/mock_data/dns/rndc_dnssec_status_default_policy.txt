@@ -1,0 +1,15 @@
+dnssec-policy: default
+current time:  Wed Oct  7 15:07:36 2026
+
+key: 37443 (ECDSAP256SHA256), CSK
+  published:      yes - since Wed Oct  7 15:05:10 2026
+  key signing:    yes - since Wed Oct  7 15:05:10 2026
+  zone signing:   yes - since Wed Oct  7 15:05:10 2026
+
+  No rollover scheduled
+  - goal:           omnipresent
+  - dnskey:         rumoured
+  - ds:             rumoured
+  - zone rrsig:     rumoured
+  - key rrsig:      rumoured
+

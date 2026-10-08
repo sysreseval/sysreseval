@@ -1,0 +1,15 @@
+resolution_type: GETDNS_RESOLUTION_STUB
+dns_transport_list:
+  - GETDNS_TRANSPORT_TLS
+tls_authentication: GETDNS_AUTHENTICATION_REQUIRED
+tls_query_padding_blocksize: 128
+edns_client_subnet_private: 1
+round_robin_upstreams: 1
+idle_timeout: 10000
+tls_ca_file: "/etc/ssl/certs/ca.tp.pem"
+listen_addresses:
+  - 127.0.0.1
+upstream_recursive_servers:
+  - address_data: 192.168.253.120
+    tls_port: 853
+    tls_auth_name: "dns.example.tp"

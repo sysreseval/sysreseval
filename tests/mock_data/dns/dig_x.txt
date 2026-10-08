@@ -1,0 +1,20 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 -x 10.10.10.10
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: REFUSED, id: 35707
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: f1d08fcad75cbc10010000006ac6523222c359c17bdade64 (good)
+;; QUESTION SECTION:
+;10.10.10.10.in-addr.arpa.	IN	PTR
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:46 UTC 2026
+;; MSG SIZE  rcvd: 81
+

@@ -1,0 +1,60 @@
+Oct 07 15:02:44 resolver unbound[657]: [657:0] info: generate keytag query _ta-b2b1. NULL IN
+Oct 07 15:02:46 resolver unbound[657]: [657:0] info: validation failure <www.bogus.tp. A IN>: No DNSKEY record from 10.61.41.104 for key bogus.tp. while building chain of trust
+Oct 07 15:02:47 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@58624 pub.partner.tp. A IN
+Oct 07 15:02:58 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@40298 pub.partner.tp. A IN
+Oct 07 15:03:11 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 127.0.0.1@41410 pub.partner.tp. A IN
+Oct 07 15:04:18 resolver unbound[657]: [657:0] info: validation failure <www.bogus.tp. A IN>: No DNSKEY record from 10.61.41.104 for key bogus.tp. while building chain of trust
+Oct 07 15:04:18 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@46714 pub.partner.tp. A IN
+Oct 07 15:04:29 resolver unbound[657]: [657:0] info: validation failure <www.example.tp. A IN>: no keys have a DS with algorithm ECDSAP256SHA256 from 192.168.253.101 for key example.tp. while building chain of trust
+Oct 07 15:04:30 resolver unbound[657]: [657:0] info: validation failure <www.bogus.tp. A IN>: No DNSKEY record from 10.61.41.104 for key bogus.tp. while building chain of trust
+Oct 07 15:04:30 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@49742 pub.partner.tp. A IN
+Oct 07 15:04:42 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@39677 pub.partner.tp. A IN
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: service stopped (unbound 1.17.1).
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: server stats for thread 0: 120 queries, 88 answers from cache, 32 recursions, 0 prefetch, 0 rejected by ip ratelimiting
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: server stats for thread 0: requestlist max 0 avg 0 exceeded 0 jostled 0
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: average recursion processing time 0.004707 sec
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: histogram of recursion processing times
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: [25%]=7.27273e-07 median[50%]=0.00170667 [75%]=0.006144
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: lower(secs) upper(secs) recursions
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.000000    0.000001 11
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.000256    0.000512 2
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.000512    0.001024 1
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.001024    0.002048 3
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.002048    0.004096 5
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.004096    0.008192 4
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.008192    0.016384 2
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info:    0.016384    0.032768 4
+Oct 07 15:04:46 resolver unbound[657]: [657:0] notice: Restart of unbound 1.17.1.
+Oct 07 15:04:46 resolver unbound[657]: [657:0] notice: init module 0: respip
+Oct 07 15:04:46 resolver unbound[657]: [657:0] notice: init module 1: validator
+Oct 07 15:04:46 resolver unbound[657]: [657:0] notice: init module 2: iterator
+Oct 07 15:04:46 resolver unbound[657]: [657:0] info: start of service (unbound 1.17.1).
+Oct 07 15:04:57 resolver unbound[657]: [657:0] info: generate keytag query _ta-b2b1. NULL IN
+Oct 07 15:04:57 resolver unbound[657]: [657:0] info: validation failure <www.example.tp. A IN>: no keys have a DS with algorithm ECDSAP256SHA256 from 192.168.253.101 for key example.tp. while building chain of trust
+Oct 07 15:04:58 resolver unbound[657]: [657:0] info: validation failure <www.bogus.tp. A IN>: No DNSKEY record from 10.61.41.104 for key bogus.tp. while building chain of trust
+Oct 07 15:05:05 resolver unbound[657]: [657:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@45352 pub.partner.tp. A IN
+Oct 07 15:05:09 resolver systemd[1]: Stopping unbound.service - Unbound DNS server...
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: service stopped (unbound 1.17.1).
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: server stats for thread 0: 18 queries, 4 answers from cache, 14 recursions, 0 prefetch, 0 rejected by ip ratelimiting
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: server stats for thread 0: requestlist max 3 avg 2.57143 exceeded 6 jostled 0
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: average recursion processing time 0.092952 sec
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: histogram of recursion processing times
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: [25%]=0.003072 median[50%]=0.008192 [75%]=0.014336
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info: lower(secs) upper(secs) recursions
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info:    0.001024    0.002048 1
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info:    0.002048    0.004096 1
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info:    0.004096    0.008192 1
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info:    0.008192    0.016384 2
+Oct 07 15:05:09 resolver unbound[657]: [657:0] info:    0.262144    0.524288 1
+Oct 07 15:05:09 resolver systemd[1]: unbound.service: Deactivated successfully.
+Oct 07 15:05:09 resolver systemd[1]: Stopped unbound.service - Unbound DNS server.
+Oct 07 15:05:10 resolver systemd[1]: Starting unbound.service - Unbound DNS server...
+Oct 07 15:05:10 resolver unbound[1094]: [1094:0] notice: init module 0: respip
+Oct 07 15:05:10 resolver unbound[1094]: [1094:0] notice: init module 1: validator
+Oct 07 15:05:10 resolver unbound[1094]: [1094:0] notice: init module 2: iterator
+Oct 07 15:05:10 resolver systemd[1]: Started unbound.service - Unbound DNS server.
+Oct 07 15:05:10 resolver unbound[1094]: [1094:0] info: start of service (unbound 1.17.1).
+Oct 07 15:05:39 resolver unbound[1094]: [1094:0] info: generate keytag query _ta-b2b1. NULL IN
+Oct 07 15:05:41 resolver unbound[1094]: [1094:0] info: validation failure <www.bogus.tp. A IN>: No DNSKEY record from 10.61.41.104 for key bogus.tp. while building chain of trust
+Oct 07 15:05:42 resolver unbound[1094]: [1094:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 192.168.253.144@47192 pub.partner.tp. A IN
+Oct 07 15:05:46 resolver unbound[1094]: [1094:0] info: generate keytag query _ta-b2b1. NULL IN

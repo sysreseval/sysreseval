@@ -1,0 +1,2 @@
+update failed: REFUSED
+rc=2

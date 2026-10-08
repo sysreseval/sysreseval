@@ -1,0 +1,18 @@
+;; TLS session (TLS1.3)-(ECDHE-SECP256R1)-(RSA-PSS-RSAE-SHA256)-(AES-256-GCM)
+;; HTTP session (HTTP/2-POST)-(dns.example.test/dns-query)-(status: 200)
+;; ->>HEADER<<- opcode: QUERY; status: NOERROR; id: 0
+;; Flags: qr aa rd ra; QUERY: 1; ANSWER: 1; AUTHORITY: 0; ADDITIONAL: 1
+
+;; EDNS PSEUDOSECTION:
+;; Version: 0; flags: ; UDP size: 1232 B; ext-rcode: NOERROR
+
+;; QUESTION SECTION:
+;; www.local.test.     		IN	A
+
+;; ANSWER SECTION:
+www.local.test.     	3600	IN	A	192.0.2.80
+
+;; Received 59 B
+;; Time 2026-10-07 14:07:53 UTC
+;; From 127.0.0.1@8443(TCP) in 3.2 ms
+rc=0

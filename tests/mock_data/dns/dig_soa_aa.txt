@@ -1,0 +1,23 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 example.test SOA
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 46701
+;; flags: qr aa rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: df3ae4d4aa83e761010000006ac65230358a54119c3bfa39 (good)
+;; QUESTION SECTION:
+;example.test.			IN	SOA
+
+;; ANSWER SECTION:
+example.test.		300	IN	SOA	ns1.example.test. admin.example.test. 2026100704 3600 900 604800 300
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:44 UTC 2026
+;; MSG SIZE  rcvd: 115
+

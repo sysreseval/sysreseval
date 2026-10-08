@@ -1,0 +1,24 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 www.example.test A +dnssec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 44390
+;; flags: qr aa rd; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags: do; udp: 1232
+; COOKIE: bbced441b5d92464010000006ac652307cecafa7e09552b8 (good)
+;; QUESTION SECTION:
+;www.example.test.		IN	A
+
+;; ANSWER SECTION:
+www.example.test.	300	IN	A	10.10.10.10
+www.example.test.	300	IN	RRSIG	A 13 3 300 20261106083248 20261007130739 60454 example.test. /WizSMaDGzzH9C1Z7NTpAfc4j+rcfCnkyi5jAtQsd1PzpphIRwX1/KHN VNctxEE+Nm1qXwwyz7L1kUz+KJp+hA==
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:44 UTC 2026
+;; MSG SIZE  rcvd: 197
+

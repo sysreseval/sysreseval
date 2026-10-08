@@ -1,0 +1,5 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @192.168.253.101 example.tp AXFR
+; (1 server found)
+;; global options: +cmd
+; Transfer failed.

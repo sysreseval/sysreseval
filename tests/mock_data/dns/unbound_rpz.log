@@ -1,0 +1,5 @@
+[1791382751] unbound[47:0] info: start of service (unbound 1.17.1).
+[1791382753] unbound[47:0] info: 127.0.0.1 www.partner.tp. A IN NOERROR 0.000320 0 59
+[1791382753] unbound[47:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 127.0.0.1@40776 pub.partner.tp. A IN
+[1791382753] unbound[47:0] info: rpz: applied [lab-rpz] *.pub.partner.tp. rpz-nxdomain 127.0.0.1@47868 x.pub.partner.tp. A IN
+[1791382759] unbound[47:0] info: rpz: applied [lab-rpz] pub.partner.tp. rpz-nxdomain 127.0.0.1@36774 pub.partner.tp. A IN

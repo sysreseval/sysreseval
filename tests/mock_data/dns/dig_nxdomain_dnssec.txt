@@ -1,0 +1,28 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 +dnssec nx.example.test A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 56323
+;; flags: qr aa rd; QUERY: 1, ANSWER: 0, AUTHORITY: 6, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags: do; udp: 1232
+; COOKIE: 0eebc5bf8ce56c1d010000006ac652304f75d94a3b92f3aa (good)
+;; QUESTION SECTION:
+;nx.example.test.		IN	A
+
+;; AUTHORITY SECTION:
+example.test.		300	IN	SOA	ns1.example.test. admin.example.test. 2026100704 3600 900 604800 300
+example.test.		300	IN	RRSIG	SOA 13 2 300 20261106140739 20261007130739 60454 example.test. iCX4UoGdgCjLyPbRg16ii8wPNGd+hTqdJz+pymXHi9TMIbjk5e/EXytj 8DcVbVs9loSfi0PGXKuJVq1Wyn3EoQ==
+example.test.		300	IN	NSEC	mail.example.test. NS SOA MX TXT RRSIG NSEC DNSKEY TYPE65534
+example.test.		300	IN	RRSIG	NSEC 13 2 300 20261106083248 20261007130739 60454 example.test. PRjhjWRgGbquMWvr2s/h+5ALp8OcoqTRGyax9kBbQ5660FZQ8AWMGhh7 /C8GKA1BjHhZZVoFFOAWwpnDmPGJYA==
+ns2.example.test.	300	IN	NSEC	sub.example.test. A RRSIG NSEC
+ns2.example.test.	300	IN	RRSIG	NSEC 13 3 300 20261106115841 20261007130739 60454 example.test. 4UKPPyW2YCb+O7ZFPRqDPtQcLLDXKmWITFkdewwUM/pbD+XhsiV93ykg wEMC1RJ6oOS4rTpzN7J9kJ6StCIR9A==
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:44 UTC 2026
+;; MSG SIZE  rcvd: 558
+

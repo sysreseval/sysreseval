@@ -1,0 +1,12 @@
+;; ->>HEADER<<- opcode: QUERY; status: NOERROR; id: 28262
+;; Flags: qr aa rd ra; QUERY: 1; ANSWER: 1; AUTHORITY: 0; ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;; www.local.test.     		IN	A
+
+;; ANSWER SECTION:
+www.local.test.     	3600	IN	A	192.0.2.80
+
+;; Received 48 B
+;; Time 2026-10-07 14:07:53 UTC
+;; From 127.0.0.1@53(UDP) in 0.2 ms

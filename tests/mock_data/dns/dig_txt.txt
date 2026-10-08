@@ -1,0 +1,23 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 example.test TXT
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 50221
+;; flags: qr aa rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 8e35c73ae030571a010000006ac6523160619ff66f40843e (good)
+;; QUESTION SECTION:
+;example.test.			IN	TXT
+
+;; ANSWER SECTION:
+example.test.		300	IN	TXT	"internal-view"
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:45 UTC 2026
+;; MSG SIZE  rcvd: 95
+

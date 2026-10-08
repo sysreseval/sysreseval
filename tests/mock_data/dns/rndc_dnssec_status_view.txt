@@ -1,0 +1,15 @@
+dnssec-policy: lab
+current time:  Wed Oct  7 14:07:42 2026
+
+key: 60454 (ECDSAP256SHA256), CSK
+  published:      yes - since Wed Oct  7 14:07:39 2026
+  key signing:    yes - since Wed Oct  7 14:07:39 2026
+  zone signing:   yes - since Wed Oct  7 14:07:39 2026
+
+  No rollover scheduled
+  - goal:           omnipresent
+  - dnskey:         rumoured
+  - ds:             hidden
+  - zone rrsig:     rumoured
+  - key rrsig:      rumoured
+

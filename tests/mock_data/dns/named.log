@@ -1,0 +1,77 @@
+07-Oct-2026 14:07:39.421 zoneload: managed-keys-zone/internal: loaded serial 0
+07-Oct-2026 14:07:39.421 zoneload: managed-keys-zone/external: loaded serial 0
+07-Oct-2026 14:07:39.421 zoneload: zone example.test/IN/internal: loaded serial 2026100701
+07-Oct-2026 14:07:39.421 zoneload: zone example.test/IN/external: loaded serial 2026100701
+07-Oct-2026 14:07:39.421 notify: zone example.test/IN/external: sending notifies (serial 2026100701)
+07-Oct-2026 14:07:39.421 dnssec: zone example.test/IN/external: reconfiguring zone keys
+07-Oct-2026 14:07:39.421 zoneload: zone plain.test/IN/external: loaded serial 1
+07-Oct-2026 14:07:39.421 general: all zones loaded
+07-Oct-2026 14:07:39.421 general: running
+07-Oct-2026 14:07:39.421 notify: zone example.test/IN/internal: sending notifies (serial 2026100701)
+07-Oct-2026 14:07:39.421 dnssec: zone example.test/IN/internal: reconfiguring zone keys
+07-Oct-2026 14:07:39.421 dnssec: keymgr: DNSKEY example.test/ECDSAP256SHA256/60454 (CSK) created for policy lab
+07-Oct-2026 14:07:39.421 dnssec: Fetching example.test/ECDSAP256SHA256/60454 (CSK) from key repository.
+07-Oct-2026 14:07:39.421 dnssec: DNSKEY example.test/ECDSAP256SHA256/60454 (CSK) is now published
+07-Oct-2026 14:07:39.421 dnssec: DNSKEY example.test/ECDSAP256SHA256/60454 (CSK) is now active
+07-Oct-2026 14:07:39.421 dnssec: Fetching example.test/ECDSAP256SHA256/60454 (CSK) from key repository.
+07-Oct-2026 14:07:39.421 dnssec: DNSKEY example.test/ECDSAP256SHA256/60454 (CSK) is now published
+07-Oct-2026 14:07:39.421 dnssec: DNSKEY example.test/ECDSAP256SHA256/60454 (CSK) is now active
+07-Oct-2026 14:07:39.509 dnssec: zone example.test/IN/internal: next key event: 07-Oct-2026 16:12:39.421
+07-Oct-2026 14:07:39.509 dnssec: zone example.test/IN/external: next key event: 07-Oct-2026 16:12:39.421
+07-Oct-2026 14:07:42.449 general: received control channel command 'zonestatus example.test IN external'
+07-Oct-2026 14:07:42.457 general: received control channel command 'zonestatus example.test'
+07-Oct-2026 14:07:42.469 general: received control channel command 'zonestatus plain.test'
+07-Oct-2026 14:07:42.493 general: received control channel command 'dnssec -status example.test IN external'
+07-Oct-2026 14:07:42.505 general: received control channel command 'dnssec -status example.test'
+07-Oct-2026 14:07:42.517 general: received control channel command 'dnssec -status plain.test'
+07-Oct-2026 14:07:44.425 notify: zone example.test/IN/internal: sending notifies (serial 2026100704)
+07-Oct-2026 14:07:44.425 notify: zone example.test/IN/external: sending notifies (serial 2026100704)
+07-Oct-2026 14:07:44.541 general: received control channel command 'dnssec -checkds published example.test IN external'
+07-Oct-2026 14:07:44.545 dnssec: keymgr: checkds DS for key example.test/ECDSAP256SHA256/60454 seen published at Wed Oct  7 14:07:44 2026
+07-Oct-2026 14:07:44.545 dnssec: zone example.test/IN/external: reconfiguring zone keys
+07-Oct-2026 14:07:44.545 general: CDNSKEY for key example.test/ECDSAP256SHA256/60454 is now published
+07-Oct-2026 14:07:44.545 general: CDS for key example.test/ECDSAP256SHA256/60454 is now published
+07-Oct-2026 14:07:44.617 dnssec: zone example.test/IN/external: next key event: 07-Oct-2026 16:12:39.545
+07-Oct-2026 14:07:45.037 security: client @0x7f10b22d6898 127.0.0.1#45585 (example.test): view internal: zone transfer 'example.test/AXFR/IN' denied
+07-Oct-2026 14:07:45.065 security: client @0x7f10b30c2898 127.0.0.1#39389/key xfer (example.test): view internal: zone transfer 'example.test/AXFR/IN' denied
+07-Oct-2026 14:07:45.089 security: client @0x7f10b40ae898 127.0.0.2#42743 (example.test): view internal: zone transfer 'example.test/AXFR/IN' denied
+07-Oct-2026 14:07:45.113 security: client @0x7f10b40ab098 127.0.0.2#36541/key xfer (example.test): view internal: zone transfer 'example.test/AXFR/IN' denied
+07-Oct-2026 14:07:45.141 security: client @0x7f10b30c0c98 127.0.0.2#44139 (example.test): view internal: zone transfer 'example.test/AXFR/IN' denied
+07-Oct-2026 14:07:46.397 update-security: client @0x7f10b22d3098 127.0.0.1#39369: view internal: update 'example.test/IN' denied
+07-Oct-2026 14:07:46.445 update: client @0x7f10b22d3098 127.0.0.1#47478/key ddns: view internal: updating zone 'example.test/IN': deleting rrset at 'probe.example.test' TXT
+07-Oct-2026 14:07:46.445 update: client @0x7f10b22d3098 127.0.0.1#47478/key ddns: view internal: updating zone 'example.test/IN': adding an RR at 'probe.example.test' TXT "token-1234"
+07-Oct-2026 14:07:46.553 update-security: client @0x7f10abb1a098 127.0.0.1#40443: view internal: update 'example.test/IN' denied
+07-Oct-2026 14:07:46.577 update: client @0x7f10b22d3098 127.0.0.1#48793/key ddns: view internal: update failed: plain.test: not authoritative for update zone (NOTAUTH)
+07-Oct-2026 14:07:47.649 general: received control channel command 'freeze example.test IN internal'
+07-Oct-2026 14:07:47.649 general: freezing zone 'example.test/IN' internal: success
+07-Oct-2026 14:07:47.673 general: received control channel command 'freeze example.test'
+07-Oct-2026 14:07:47.685 update: client @0x7f10b30bf098 127.0.0.1#41497/key ddns: view internal: updating zone 'example.test/IN': update failed: dynamic update temporarily disabled because the zone is frozen.  Use 'rndc thaw' to re-enable updates. (REFUSED)
+07-Oct-2026 14:07:47.709 general: received control channel command 'zonestatus example.test IN internal'
+07-Oct-2026 14:07:47.721 general: received control channel command 'thaw example.test IN internal'
+07-Oct-2026 14:07:47.721 general: thawing zone 'example.test/IN' internal: success
+07-Oct-2026 14:07:47.721 zoneload: zone example.test/IN/internal: zone serial (2026100705) unchanged. zone may fail to transfer to secondaries.
+07-Oct-2026 14:07:47.721 zoneload: zone example.test/IN/internal: loaded serial 2026100705 (DNSSEC signed)
+07-Oct-2026 14:07:47.721 dnssec: zone example.test/IN/internal: reconfiguring zone keys
+07-Oct-2026 14:07:47.725 general: CDNSKEY for key example.test/ECDSAP256SHA256/60454 is now published
+07-Oct-2026 14:07:47.725 general: CDS for key example.test/ECDSAP256SHA256/60454 is now published
+07-Oct-2026 14:07:47.733 general: received control channel command 'sync -clean example.test IN internal'
+07-Oct-2026 14:07:47.809 dnssec: zone example.test/IN/internal: next key event: 07-Oct-2026 16:12:39.721
+07-Oct-2026 14:07:47.809 general: sync: dumping zone 'example.test/IN' internal, removing journal file: success
+07-Oct-2026 14:07:47.885 general: received control channel command 'reload'
+07-Oct-2026 14:07:47.885 general: loading configuration from '/tmp/named.conf'
+07-Oct-2026 14:07:47.885 general: the working directory is now '/var/cache/bind'
+07-Oct-2026 14:07:47.885 config: /tmp/named.conf:12: 'inline-signing' default changed to 'yes' in 9.20. Before upgrading, explicitly set 'inline-signing no;' to your dnssec-policy or zone configuration
+07-Oct-2026 14:07:47.885 config: /tmp/named.conf:16: 'inline-signing' default changed to 'yes' in 9.20. Before upgrading, explicitly set 'inline-signing no;' to your dnssec-policy or zone configuration
+07-Oct-2026 14:07:47.885 general: reading built-in trust anchors from file '/etc/bind/bind.keys'
+07-Oct-2026 14:07:47.885 general: looking for GeoIP2 databases in '/usr/share/GeoIP'
+07-Oct-2026 14:07:47.885 general: using default UDP/IPv4 port range: [32768, 60999]
+07-Oct-2026 14:07:47.885 general: using default UDP/IPv6 port range: [32768, 60999]
+07-Oct-2026 14:07:47.889 general: sizing zone task pool based on 3 zones
+07-Oct-2026 14:07:47.917 dnssec: zone example.test/IN/internal: reconfiguring zone keys
+07-Oct-2026 14:07:47.917 dnssec: zone example.test/IN/external: reconfiguring zone keys
+07-Oct-2026 14:07:47.917 general: reloading configuration succeeded
+07-Oct-2026 14:07:47.921 dnssec: zone example.test/IN/internal: next key event: 07-Oct-2026 16:12:39.917
+07-Oct-2026 14:07:47.925 dnssec: zone example.test/IN/external: next key event: 07-Oct-2026 16:12:39.917
+07-Oct-2026 14:07:47.925 general: reloading zones succeeded
+07-Oct-2026 14:07:47.933 general: all zones loaded
+07-Oct-2026 14:07:47.933 general: running

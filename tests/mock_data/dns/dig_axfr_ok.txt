@@ -1,0 +1,21 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 -p 5353 -y hmac-sha256:xfer:0AHkuNBDgFCn7dmYfy1EBcytDBShHFKxUBUjnuyFVwQ= @127.0.0.1 example.test AXFR
+; (1 server found)
+;; global options: +cmd
+example.test.		300	IN	SOA	ns1.example.test. admin.example.test. 2026100701 3600 900 604800 300
+example.test.		300	IN	TXT	"secret-token"
+example.test.		300	IN	MX	10 mail.example.test.
+example.test.		300	IN	NS	ns1.example.test.
+example.test.		300	IN	NS	ns2.example.test.
+dns.example.test.	300	IN	A	10.0.0.53
+mail.example.test.	300	IN	A	203.0.113.25
+ns1.example.test.	300	IN	A	127.0.0.1
+ns2.example.test.	300	IN	A	127.0.0.2
+www.example.test.	300	IN	A	203.0.113.80
+example.test.		300	IN	SOA	ns1.example.test. admin.example.test. 2026100701 3600 900 604800 300
+xfer.			0	ANY	TSIG	hmac-sha256. 1791382629 300 32 UMTjmXwaYazWUpqa3Nj9EgjAwZDF3u1YEja13BltJ0A= 59289 NOERROR 0 
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#5353(127.0.0.1) (TCP)
+;; WHEN: Wed Oct 07 14:17:09 UTC 2026
+;; XFR size: 11 records (messages 1, bytes 394)
+

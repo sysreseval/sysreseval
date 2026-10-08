@@ -1,0 +1,27 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> @127.0.0.1 example.tp NS +norecurse
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 27553
+;; flags: qr; QUERY: 1, ANSWER: 0, AUTHORITY: 2, ADDITIONAL: 3
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 5dc032c507368fef010000006ac6603844a026057d461c03 (good)
+;; QUESTION SECTION:
+;example.tp.			IN	NS
+
+;; AUTHORITY SECTION:
+example.tp.		300	IN	NS	ns2.example.tp.
+example.tp.		300	IN	NS	ns1.example.tp.
+
+;; ADDITIONAL SECTION:
+ns2.example.tp.		300	IN	A	10.61.41.185
+ns1.example.tp.		300	IN	A	192.168.253.101
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 15:07:36 UTC 2026
+;; MSG SIZE  rcvd: 135
+

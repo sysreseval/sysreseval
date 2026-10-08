@@ -1,0 +1,60 @@
+Oct 07 15:05:10 ns2 named[653]: zone localhost/IN: loaded serial 2
+Oct 07 15:05:10 ns2 named[653]: zone 127.in-addr.arpa/IN: loaded serial 1
+Oct 07 15:05:10 ns2 named[653]: zone 0.in-addr.arpa/IN: loaded serial 1
+Oct 07 15:05:10 ns2 named[653]: zone 255.in-addr.arpa/IN: loaded serial 1
+Oct 07 15:05:10 ns2 named[653]: all zones loaded
+Oct 07 15:05:10 ns2 named[653]: running
+Oct 07 15:05:10 ns2 systemd[1]: Started named.service - BIND Domain Name Server.
+Oct 07 15:05:10 ns2 named[653]: zone 253.168.192.in-addr.arpa/IN: refresh: failure trying primary 192.168.253.101#53 (source 0.0.0.0#0): connection refused
+Oct 07 15:05:10 ns2 named[653]: client @0x7fbd62c40098 192.168.253.101#49934: received notify for zone 'example.tp'
+Oct 07 15:05:10 ns2 named[653]: zone example.tp/IN: notify from 192.168.253.101#49934: refresh in progress, refresh check queued
+Oct 07 15:05:10 ns2 named[653]: zone example.tp/IN: Transfer started.
+Oct 07 15:05:10 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: connected using 192.168.253.101#53 TSIG transfer-example-tp
+Oct 07 15:05:10 ns2 named[653]: zone example.tp/IN: transferred serial 2026100704: TSIG 'transfer-example-tp'
+Oct 07 15:05:10 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer status: success
+Oct 07 15:05:10 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer completed: 1 messages, 35 records, 2369 bytes, 0.163 secs (14533 bytes/sec) (serial 2026100704)
+Oct 07 15:05:10 ns2 named[653]: zone example.tp/IN: sending notifies (serial 2026100704)
+Oct 07 15:05:11 ns2 named[653]: client @0x7fbd63a6d098 192.168.253.101#59727: received notify for zone 'example.tp'
+Oct 07 15:05:11 ns2 named[653]: zone example.tp/IN: notify from 192.168.253.101#59727: serial 2026100705: refresh in progress, refresh check queued
+Oct 07 15:05:11 ns2 named[653]: client @0x7fbd62c40098 192.168.253.101#40255: received notify for zone '253.168.192.in-addr.arpa'
+Oct 07 15:05:11 ns2 named[653]: zone 253.168.192.in-addr.arpa/IN: notify from 192.168.253.101#40255: no serial
+Oct 07 15:05:11 ns2 named[653]: client @0x7fbd64cac098 192.168.253.101#47728: received notify for zone '253.168.192.in-addr.arpa'
+Oct 07 15:05:11 ns2 named[653]: zone 253.168.192.in-addr.arpa/IN: notify from 192.168.253.101#47728: refresh in progress, refresh check queued
+Oct 07 15:05:11 ns2 named[653]: zone example.tp/IN: Transfer started.
+Oct 07 15:05:11 ns2 named[653]: zone 253.168.192.in-addr.arpa/IN: Transfer started.
+Oct 07 15:05:11 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: connected using 192.168.253.101#53 TSIG transfer-example-tp
+Oct 07 15:05:11 ns2 named[653]: transfer of '253.168.192.in-addr.arpa/IN' from 192.168.253.101#53: connected using 192.168.253.101#53 TSIG transfer-example-tp
+Oct 07 15:05:11 ns2 named[653]: zone 253.168.192.in-addr.arpa/IN: transferred serial 2026100701: TSIG 'transfer-example-tp'
+Oct 07 15:05:11 ns2 named[653]: transfer of '253.168.192.in-addr.arpa/IN' from 192.168.253.101#53: Transfer status: success
+Oct 07 15:05:11 ns2 named[653]: transfer of '253.168.192.in-addr.arpa/IN' from 192.168.253.101#53: Transfer completed: 1 messages, 8 records, 345 bytes, 0.004 secs (86250 bytes/sec) (serial 2026100701)
+Oct 07 15:05:11 ns2 named[653]: zone 253.168.192.in-addr.arpa/IN: sending notifies (serial 2026100701)
+Oct 07 15:05:11 ns2 named[653]: zone example.tp/IN: transferred serial 2026100705: TSIG 'transfer-example-tp'
+Oct 07 15:05:11 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer status: success
+Oct 07 15:05:11 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer completed: 1 messages, 15 records, 1162 bytes, 0.103 secs (11281 bytes/sec) (serial 2026100705)
+Oct 07 15:05:15 ns2 named[653]: client @0x7fbd62c40098 192.168.253.101#33645: received notify for zone 'example.tp'
+Oct 07 15:05:15 ns2 named[653]: zone example.tp/IN: notify from 192.168.253.101#33645: serial 2026100706
+Oct 07 15:05:15 ns2 named[653]: zone example.tp/IN: Transfer started.
+Oct 07 15:05:15 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: connected using 192.168.253.101#53 TSIG transfer-example-tp
+Oct 07 15:05:15 ns2 named[653]: zone example.tp/IN: transferred serial 2026100706: TSIG 'transfer-example-tp'
+Oct 07 15:05:15 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer status: success
+Oct 07 15:05:15 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer completed: 1 messages, 16 records, 1398 bytes, 0.091 secs (15362 bytes/sec) (serial 2026100706)
+Oct 07 15:05:15 ns2 named[653]: zone example.tp/IN: sending notifies (serial 2026100706)
+Oct 07 15:05:16 ns2 named[653]: client @0x7fbd63a6d098 192.168.253.101#40790: received notify for zone 'example.tp'
+Oct 07 15:05:16 ns2 named[653]: zone example.tp/IN: notify from 192.168.253.101#40790: zone is up to date
+Oct 07 15:05:39 ns2 named[653]: received control channel command 'zonestatus example.tp'
+Oct 07 15:05:39 ns2 named[653]: client @0x7fbd62c40098 192.168.253.101#44384: received notify for zone 'example.tp'
+Oct 07 15:05:39 ns2 named[653]: zone example.tp/IN: notify from 192.168.253.101#44384: serial 2026100707
+Oct 07 15:05:39 ns2 named[653]: zone example.tp/IN: Transfer started.
+Oct 07 15:05:39 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: connected using 192.168.253.101#53 TSIG transfer-example-tp
+Oct 07 15:05:39 ns2 named[653]: zone example.tp/IN: transferred serial 2026100707: TSIG 'transfer-example-tp'
+Oct 07 15:05:39 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer status: success
+Oct 07 15:05:39 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer completed: 1 messages, 14 records, 1070 bytes, 0.095 secs (11263 bytes/sec) (serial 2026100707)
+Oct 07 15:05:39 ns2 named[653]: zone example.tp/IN: sending notifies (serial 2026100707)
+Oct 07 15:05:44 ns2 named[653]: client @0x7fbd64cac098 192.168.253.101#34860: received notify for zone 'example.tp'
+Oct 07 15:05:44 ns2 named[653]: zone example.tp/IN: notify from 192.168.253.101#34860: serial 2026100708
+Oct 07 15:05:44 ns2 named[653]: zone example.tp/IN: Transfer started.
+Oct 07 15:05:44 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: connected using 192.168.253.101#53 TSIG transfer-example-tp
+Oct 07 15:05:44 ns2 named[653]: zone example.tp/IN: transferred serial 2026100708: TSIG 'transfer-example-tp'
+Oct 07 15:05:44 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer status: success
+Oct 07 15:05:44 ns2 named[653]: transfer of 'example.tp/IN' from 192.168.253.101#53: Transfer completed: 1 messages, 14 records, 1070 bytes, 0.087 secs (12298 bytes/sec) (serial 2026100708)
+Oct 07 15:05:44 ns2 named[653]: zone example.tp/IN: sending notifies (serial 2026100708)

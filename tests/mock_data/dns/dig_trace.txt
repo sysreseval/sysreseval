@@ -1,0 +1,25 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +trace www.example.tp
+;; global options: +cmd
+.			3491	IN	NS	ns.root.
+.			3491	IN	RRSIG	NS 13 0 3600 20261021113519 20261007140152 45745 . E8pbpOhdGaT2ov6utU6nZhjqNNpwaJOYpr7zuPigOnWpVfFjYymlg/O3 YUOjkAnakQgLP9JWAHh57HA0hGLcnQ==
+;; Received 142 bytes from 127.0.0.1#53(127.0.0.1) in 0 ms
+
+tp.			3600	IN	NS	ns.nic.tp.
+tp.			3600	IN	DS	13743 13 2 B350DE85CD579E17E50886252E7782EA21511734A3CA2F6D3D2369AA 65D1B3F7
+tp.			3600	IN	RRSIG	DS 13 1 3600 20261021113519 20261007140152 45745 . BMif+AgZy2QOgq44uoMALKvaLu1P7Syr+4zC2dZxJbFDNgQ/yPj8MDZy WjP1j3nu6xjFfJ2iR9cI+jgi0lqsjQ==
+;; Received 255 bytes from 10.61.41.124#53(ns.root) in 0 ms
+
+example.tp.		300	IN	NS	ns2.example.tp.
+example.tp.		300	IN	NS	ns1.example.tp.
+example.tp.		300	IN	DS	37443 13 2 ADADBB6C0FDD08A8C497A6C9F3C3B63A9798D1AE5611E8B96ED5797A DCE9F927
+example.tp.		300	IN	RRSIG	DS 13 2 300 20261021073059 20261007140512 13743 tp. 7BAWQZD8oHOZWinwnTqunP0DoRmFUJP3J/XCqUiwofq/OETRH6hEd3YB bGifcdcra/IEjt0p/mlJ+x52+SuIZw==
+;; Received 285 bytes from 10.61.41.104#53(ns.nic.tp) in 0 ms
+
+www.example.tp.		3600	IN	A	192.168.253.33
+www.example.tp.		3600	IN	RRSIG	A 13 3 3600 20261021145520 20261007140510 37443 example.tp. TLO9X4ctw8oZy0TX/CqbtWmHAApS57GAJZMZJPi4Bj/l6/8SX9usJ7Q9 A+xtnUfBQHiayo4ds70Vcdn3sWcCIw==
+example.tp.		3600	IN	NS	ns2.example.tp.
+example.tp.		3600	IN	NS	ns1.example.tp.
+example.tp.		3600	IN	RRSIG	NS 13 2 3600 20261021131121 20261007140510 37443 example.tp. aV7GfyhtuKMdiMZ7bUlnMcG1/yg30YJrJhFHhy3zXfnKves2IZicZdlB RtIHs3cpwRIrYuB0KyM4btsKGu2noQ==
+;; Received 579 bytes from 192.168.253.101#53(ns1.example.tp) in 0 ms
+

@@ -897,3 +897,16 @@ class TestEvalHttpsServerIPv6:
         with _patch_der():
             assert eval_https_server(grade, 'r1', 'https://example.com/', IPv6Interface('fd00::1/64'), FAKE_PEM,
                                      server_port=8443) is True
+
+
+def test_generate_ca_pem():
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+    from tls import generate_ca_pem
+    cert_pem, key_pem = generate_ca_pem("ca.tp", days=30)
+    cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    assert cert.subject.rfc4514_string() == "CN=ca.tp" and cert.issuer == cert.subject
+    assert cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca is True
+    key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+    assert key.public_key().public_numbers() == cert.public_key().public_numbers()
+    assert cert_pem.startswith("-----BEGIN CERTIFICATE-----") and key_pem.startswith("-----BEGIN RSA PRIVATE KEY-----")

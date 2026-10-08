@@ -1,0 +1,24 @@
+
+; <<>> DiG 9.18.49-1~deb12u2-Debian <<>> +time=2 +tries=1 @127.0.0.1 example.test DNSKEY +dnssec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 13985
+;; flags: qr aa rd; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags: do; udp: 1232
+; COOKIE: 90cfc2fa141807f3010000006ac652309188589d95020aac (good)
+;; QUESTION SECTION:
+;example.test.			IN	DNSKEY
+
+;; ANSWER SECTION:
+example.test.		3600	IN	DNSKEY	257 3 13 ytSrnq+i64pGrLSlD0jhN9WyGDpO9MvWcjbP74P2Fb/GKflSKMsGiH8u OSFg8u59OJfN9764fMKa7q5epKnfgA==
+example.test.		3600	IN	RRSIG	DNSKEY 13 2 3600 20261021140739 20261007130739 60454 example.test. CjGY0VQ0PDpn4oCjv7/4WL20+J2dyS7vxu+v1okMy9svjHmuo9yjnJE8 X934u7Id1A3QdC7tjzCitZp5kdW56g==
+
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1) (UDP)
+;; WHEN: Wed Oct 07 14:07:44 UTC 2026
+;; MSG SIZE  rcvd: 257
+

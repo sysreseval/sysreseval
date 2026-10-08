@@ -1,0 +1,2 @@
+rndc: 'zonestatus' failed: multiple
+zone 'example.test' was found in multiple views

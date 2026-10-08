@@ -1,0 +1,17 @@
+;; TLS session (TLS1.3)-(ECDHE-SECP256R1)-(RSA-PSS-RSAE-SHA256)-(AES-256-GCM)
+;; HTTP session (HTTP/2-POST)-(dns.example.tp/dns-query)-(status: 200)
+;; ->>HEADER<<- opcode: QUERY; status: NOERROR; id: 0
+;; Flags: qr rd ra ad; QUERY: 1; ANSWER: 1; AUTHORITY: 0; ADDITIONAL: 1
+
+;; EDNS PSEUDOSECTION:
+;; Version: 0; flags: ; UDP size: 1232 B; ext-rcode: NOERROR
+
+;; QUESTION SECTION:
+;; www.partner.tp.     		IN	A
+
+;; ANSWER SECTION:
+www.partner.tp.     	3594	IN	A	198.51.100.95
+
+;; Received 59 B
+;; Time 2026-10-07 15:07:35 UTC
+;; From 192.168.253.120@443(TCP) in 5.1 ms

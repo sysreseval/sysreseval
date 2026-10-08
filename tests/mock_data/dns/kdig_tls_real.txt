@@ -1,0 +1,17 @@
+;; TLS session (TLS1.3)-(ECDHE-SECP256R1)-(RSA-PSS-RSAE-SHA256)-(AES-256-GCM)
+;; ->>HEADER<<- opcode: QUERY; status: NOERROR; id: 45568
+;; Flags: qr rd ra ad; QUERY: 1; ANSWER: 1; AUTHORITY: 0; ADDITIONAL: 1
+
+;; EDNS PSEUDOSECTION:
+;; Version: 0; flags: ; UDP size: 1232 B; ext-rcode: NOERROR
+;; PADDING: 405 B
+
+;; QUESTION SECTION:
+;; www.example.tp.     		IN	A
+
+;; ANSWER SECTION:
+www.example.tp.     	3600	IN	A	192.168.253.33
+
+;; Received 468 B
+;; Time 2026-10-07 15:07:35 UTC
+;; From 192.168.253.120@853(TCP) in 46.1 ms
