@@ -79,29 +79,35 @@
         <translation>ERREUR</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="386"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="352"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="549"/>
+        <source>Bonus</source>
+        <translation>Bonus</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="389"/>
         <source>Total</source>
         <translation>Total</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="397"/>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="623"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="400"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="629"/>
         <source>Mark</source>
         <translation>Note</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="607"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="613"/>
         <source>Total (self)</source>
         <translation>Total (auto)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="614"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="620"/>
         <source>Total (exo)</source>
         <translation>Total (exo)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="372"/>
-        <location filename="../src/sysreseval/view/evaluations_view.py" line="582"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="375"/>
+        <location filename="../src/sysreseval/view/evaluations_view.py" line="588"/>
         <source>Total for {part}</source>
         <translation>Total pour {part}</translation>
     </message>
@@ -745,37 +751,37 @@
 <context>
     <name>SwitchesView</name>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="40"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="41"/>
         <source>Name</source>
         <translation>Nom</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="41"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="42"/>
         <source>Type</source>
         <translation>Type</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="42"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="43"/>
         <source>Connection</source>
         <translation>Connexion</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="53"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="54"/>
         <source>Manageable switch</source>
         <translation>Switch administrable</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="55"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="56"/>
         <source>Switch</source>
         <translation>Switch</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="56"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="57"/>
         <source>Hub</source>
         <translation>Hub</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/switches_view.py" line="77"/>
+        <location filename="../src/sysreseval/view/switches_view.py" line="78"/>
         <source>Connect</source>
         <translation>Connecter</translation>
     </message>

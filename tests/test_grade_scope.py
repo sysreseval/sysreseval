@@ -228,3 +228,115 @@ class TestLegacyArchiveFallback:
         assert max_ == 15
         assert mark == 16.0
         assert len(gl) == 1  # legacy element with no scope → treated as BOTH
+
+
+# ---------------------------------------------------------------------------
+# Bonus elements: grade counted, max_grade not, mark capped
+# ---------------------------------------------------------------------------
+
+class TestBonusElements:
+    def _make(self, **bonus_kwargs):
+        g = make_grade()
+        g.grade()
+        g.add_grade_element('A', max_grade=4, grade=4, scope=BOTH)
+        g.add_grade_element('B', max_grade=6, grade=3, scope=BOTH)
+        g.add_grade_element('X', max_grade=2, grade=2, **bonus_kwargs)
+        g.compute_total()
+        return g
+
+    def test_bonus_defaults_to_false(self):
+        g = self._make()
+        assert g._grade_list[-1].bonus is False
+        assert g._total_max_exo_eval == 12
+        assert g._bonus_in_exo_eval is False
+
+    def test_bonus_is_stored_as_a_bool(self):
+        g = self._make(bonus=1)
+        assert g._grade_list[-1].bonus is True
+
+    def test_grade_counts_but_max_does_not(self):
+        g = self._make(bonus=True)
+        assert g._total_grade_exo_eval == 9
+        assert g._total_max_exo_eval == 10
+        assert g._total_grade_self_eval == 9
+        assert g._total_max_self_eval == 10
+        assert g._bonus_in_exo_eval is True and g._bonus_in_self_eval is True
+
+    def test_bonus_follows_its_scope(self):
+        g = make_grade()
+        g.grade()
+        g.add_grade_element('A', max_grade=10, grade=5, scope=BOTH)
+        g.add_grade_element('S', max_grade=2, grade=2, scope=SELF, bonus=True)
+        g.compute_total()
+        assert (g._total_grade_self_eval, g._total_max_self_eval) == (7, 10)
+        assert (g._total_grade_exo_eval, g._total_max_exo_eval) == (5, 10)
+        assert g._bonus_in_self_eval is True
+        assert g._bonus_in_exo_eval is False
+
+    def test_mark_capped_at_the_maximum_mark_with_bonus(self):
+        g = make_grade()
+        g.grade()
+        g.add_grade_element('A', max_grade=10, grade=10)
+        g.add_grade_element('X', max_grade=2, grade=2, bonus=True)
+        g.compute_total()
+        assert g._total_grade_exo_eval == 12 and g._total_max_exo_eval == 10
+        assert g.mark_exo_eval() == g._maximum_mark
+        assert g.mark_self_eval() == g._maximum_mark
+
+    def test_bonus_makes_up_for_lost_points(self):
+        g = make_grade()
+        g.grade()
+        g._maximum_mark = 20
+        g.add_grade_element('A', max_grade=10, grade=8)
+        g.add_grade_element('X', max_grade=2, grade=2, bonus=True)
+        g.compute_total()
+        assert g.mark_exo_eval() == 20.0
+
+    def test_no_cap_without_bonus(self):
+        """A lab whose grades exceed max_grade keeps its uncapped mark (old behaviour)."""
+        g = make_grade()
+        g.grade()
+        g._maximum_mark = 20
+        g.add_grade_element('A', max_grade=10, grade=12)
+        g.compute_total()
+        assert g.mark_exo_eval() == 24.0
+
+    def test_cap_only_in_the_scope_holding_the_bonus(self):
+        g = make_grade()
+        g.grade()
+        g._maximum_mark = 20
+        g.add_grade_element('A', max_grade=10, grade=12, scope=BOTH)
+        g.add_grade_element('S', max_grade=1, grade=0, scope=SELF, bonus=True)
+        g.compute_total()
+        assert g.mark_self_eval() == 20.0
+        assert g.mark_exo_eval() == 24.0
+
+    def test_letter_mode_unaffected(self):
+        g = make_grade()
+        g.grade()
+        g._use_numerical_marks = False
+        g.add_grade_element('A', max_grade=10, grade=10)
+        g.add_grade_element('X', max_grade=2, grade=2, bonus=True)
+        g.compute_total()
+        assert g.mark_exo_eval() == 'A+'
+
+    def test_only_bonus_elements_give_no_mark(self):
+        g = make_grade()
+        g.grade()
+        g.add_grade_element('X', max_grade=2, grade=2, bonus=True)
+        g.compute_total()
+        assert g._total_max_exo_eval == 0
+        assert g.mark_exo_eval() is None
+
+    def test_compute_total_twice_resets_the_flags(self):
+        g = self._make(bonus=True)
+        g.compute_total()
+        assert g._total_max_exo_eval == 10
+        g.grade()  # new pass without any element
+        g.compute_total()
+        assert g._bonus_in_exo_eval is False and g._bonus_in_self_eval is False
+
+    def test_bonus_in_the_archive_dict(self):
+        g = self._make(bonus=True)
+        d = [GradeElement.from_dict(e.to_dict()) for e in g._grade_list]
+        assert [e.bonus for e in d] == [False, False, True]

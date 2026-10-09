@@ -16,6 +16,7 @@ from odf.table import Table, TableRow, TableCell
 from odf.text import P
 
 from .. import params
+from ..common import bonus_texts
 from ..params import SRE
 from ..pdf import SrePDF
 from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args, format_instance_start
@@ -187,12 +188,13 @@ def _read_aux_file(path: str) -> dict[str, dict]:
 def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
               no_timeline: bool = False, user_info: dict | None = None,
               show_remaining: bool = False, show_parts: bool = True,
-              show_instance: bool = False):
+              show_instance: bool = False, bonus_in_prefix: bool = False):
     """Write the PDF report of one group of records (see _group_records).
     The best archive is taken across every record; the evaluation history
     gets one table per running project instance when the records span
     several.  *show_instance* adds the instance start to the header (one
-    report per instance)."""
+    report per instance).  A bonus element shows "Bonus" next to its maximum,
+    or before its label with *bonus_in_prefix*."""
     if not records:
         return
 
@@ -294,7 +296,8 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
     grade_list = best['grade_list']
     if grade_list:
         w_g = 18
-        w_m = 18
+        # room for "2 (Bonus)" when a bonus element shows the word in the Max column
+        w_m = 28 if any(e.get('bonus') for e in grade_list) and not bonus_in_prefix else 18
         w_title = _PAGE_W - w_g - w_m
 
         pdf.set_font(pdf.text_font, 'B', 9)
@@ -312,6 +315,7 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
             grade_str = '' if grade is None else str(grade)
             max_str = '' if max_grade is None else str(max_grade)
             label = desc if desc else title
+            label, max_str = bonus_texts(label, max_str, bool(elem.get('bonus')), bonus_in_prefix, t('Bonus'))
             pdf.cell(w_title, 6, _pdf_fit(pdf, label, w_title), border=1)
             pdf.cell(w_g, 6, grade_str, border=1, align='C')
             pdf.cell(w_m, 6, max_str, border=1, align='C')
@@ -354,7 +358,8 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
                 for elem in items:
                     _emit_grade_row(elem)
                 part_grade = sum(e.get('grade') or 0 for e in items if e.get('grade') is not None)
-                part_max = sum(e.get('max_grade') or 0 for e in items if e.get('max_grade') is not None)
+                part_max = sum(e.get('max_grade') or 0 for e in items
+                               if e.get('max_grade') is not None and not e.get('bonus'))
                 if any(e.get('grade') is not None for e in items):
                     part_label = (_tt_str(part.get('description') or '', lang)
                                   or _tt_str(part.get('title', ''), lang))
@@ -579,7 +584,8 @@ def action_outline():
             try:
                 _make_pdf(recs, pdf_path, forced_lang=args.lang, no_timeline=args.no_timeline,
                           user_info=user_info, show_remaining=args.remaining_time,
-                          show_parts=not args.no_parts, show_instance=separate)
+                          show_parts=not args.no_parts, show_instance=separate,
+                          bonus_in_prefix=bool(args.bonus_in_prefix))
             except OSError as e:
                 print(_("error: cannot write {path}: {e}").format(path=pdf_path, e=e), file=sys.stderr)
                 continue

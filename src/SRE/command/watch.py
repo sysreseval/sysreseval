@@ -16,6 +16,7 @@ import msgpack
 import zstandard as zstd
 
 from .. import params
+from ..common import bonus_texts
 from ..params import SRE
 from ..utils import user_not_allowed, exam_remaining_seconds, error_quit, parse_time_or_datetime
 
@@ -677,36 +678,46 @@ def _resolve_title(v) -> str:
 
 
 def _show_grades_screen(rec: Record, grade_list: list, grade_parts: list,
-                        total_grade: float, total_max: float, old_settings) -> None:
+                        total_grade: float, total_max: float, old_settings,
+                        bonus_in_prefix: bool = False) -> None:
     """Display a full-screen grade-elements table for *rec*.  Any key returns.
 
     When *grade_parts* is non-empty and at least one element references a
     known part, elements are grouped under each part (in registration order)
     with a per-part subtotal row — matching the layout used by the
     ``Evaluations`` tab in ``sysreseval`` and the PDFs from ``sre outline``.
+    A bonus element reads ``1.0/1.0 (Bonus)``, or ``Bonus: label`` with
+    *bonus_in_prefix*; its maximum is left out of the subtotals.
     """
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
     try:
         scroll = 0
         grade_str = f"{total_grade:.1f}/{total_max:.1f}" if total_max else f"{total_grade:.1f}/?"
 
-        def _label(e) -> str:
+        def _texts(e) -> tuple[str, str]:
+            """(label, value) of an element row, "Bonus" placed."""
             desc = _resolve_title(e.get('description', ''))
-            return desc if desc else _resolve_title(e.get('title', ''))
+            label = desc if desc else _resolve_title(e.get('title', ''))
+            g  = e.get('grade')
+            mg = e.get('max_grade')
+            gl = e.get('grade_letter')
+            if gl:
+                val = f"[{gl}]"
+            elif mg is not None:
+                val = f"{g:.1f}/{mg:.1f}" if g is not None else f"?/{mg:.1f}"
+            else:
+                val = f"{g:.1f}" if g is not None else "?"
+            return bonus_texts(label, val, bool(e.get('bonus')), bonus_in_prefix)
+
+        def _label(e) -> str:
+            return _texts(e)[0]
 
         def _part_label(p) -> str:
             desc = _resolve_title(p.get('description', ''))
             return desc if desc else _resolve_title(p.get('title', ''))
 
         def _fmt_val(e) -> str:
-            g  = e.get('grade')
-            mg = e.get('max_grade')
-            gl = e.get('grade_letter')
-            if gl:
-                return f"[{gl}]"
-            if mg is not None:
-                return f"{g:.1f}/{mg:.1f}" if g is not None else f"?/{mg:.1f}"
-            return f"{g:.1f}" if g is not None else "?"
+            return _texts(e)[1]
 
         # Bucket elements by GradePart (mirrors outline.py / evaluations_view.py).
         groups: dict[str, list] = {p.get('title', ''): [] for p in grade_parts}
@@ -729,7 +740,8 @@ def _show_grades_screen(rec: Record, grade_list: list, grade_parts: list,
                 if not items or not any(e.get('grade') is not None for e in items):
                     continue
                 pg = sum(e.get('grade') or 0 for e in items if e.get('grade') is not None)
-                pm = sum(e.get('max_grade') or 0 for e in items if e.get('max_grade') is not None)
+                pm = sum(e.get('max_grade') or 0 for e in items
+                         if e.get('max_grade') is not None and not e.get('bonus'))
                 subtotal_by_title[p.get('title', '')] = (
                     f"{pg:.1f}/{pm:.1f}",
                     f"Subtotal for {_part_label(p)}",
@@ -871,6 +883,7 @@ def _aggregate_grade_lists(grade_lists: list[list]) -> list[dict]:
     Returns one summary dict per element index, each with keys:
       - label    : `description` (fallback `title`) — first non-empty wins
       - mode     : 'letter' if first user's element has `grade_letter`, else 'numeric'
+      - bonus    : True when any user's element is a bonus element
       - tot      : max_grade (any user; None in letter mode or when all-None)
       - max,min,avg : computed over non-None numeric grades (None in letter mode)
       - dist     : compact distribution string, e.g. "1(5) 1.5(2) 2(7)" or
@@ -889,6 +902,7 @@ def _aggregate_grade_lists(grade_lists: list[list]) -> list[dict]:
                 break
 
         is_letter = bool(entries[0].get('grade_letter')) if entries else False
+        bonus = any(e.get('bonus') for e in entries)
 
         if is_letter:
             letters = [e.get('grade_letter') for e in entries if e.get('grade_letter')]
@@ -900,7 +914,7 @@ def _aggregate_grade_lists(grade_lists: list[list]) -> list[dict]:
                     items.append((k, c))
             dist = " ".join(f"{k}({c})" for k, c in items)
             aggregated.append({
-                'label': label, 'mode': 'letter',
+                'label': label, 'mode': 'letter', 'bonus': bonus,
                 'tot': None, 'max': None, 'min': None, 'avg': None,
                 'dist': dist,
             })
@@ -915,7 +929,7 @@ def _aggregate_grade_lists(grade_lists: list[list]) -> list[dict]:
             items = sorted(counter.items(), key=lambda x: x[0])
             dist = " ".join(f"{v:g}({c})" for v, c in items)
             aggregated.append({
-                'label': label, 'mode': 'numeric',
+                'label': label, 'mode': 'numeric', 'bonus': bonus,
                 'tot': tot, 'max': gmax, 'min': gmin, 'avg': gavg,
                 'dist': dist,
             })
@@ -937,8 +951,9 @@ def _aggregate_part_subtotals(
     - ``part_subtotals[part_title]`` is the per-part summary computed by
       summing each user's grades inside the part and then aggregating those
       per-user totals across users. Keys: ``label`` (``Subtotal for …``),
-      ``tot`` (sum of element ``max_grade``\\ s in the part, ``None`` if all
-      missing), ``max``/``min``/``avg`` over per-user part totals, ``dist``
+      ``tot`` (sum of element ``max_grade``\\ s in the part, bonus elements
+      left out, ``None`` if all missing), ``max``/``min``/``avg`` over
+      per-user part totals, ``dist``
       (compact distribution of per-user part totals).  A part is included
       only if at least one user has at least one non-``None`` grade in it.
     """
@@ -967,7 +982,7 @@ def _aggregate_part_subtotals(
         for i in indices:
             if i < len(ref):
                 mg = ref[i].get('max_grade')
-                if mg is not None:
+                if mg is not None and not ref[i].get('bonus'):
                     tot += mg
                     has_tot = True
         user_subs: list[float] = []
@@ -1000,13 +1015,16 @@ def _aggregate_part_subtotals(
     return element_part_titles, part_subtotals
 
 
-def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
+def _show_lab_summary_screen(lab_name: str, recs: list, old_settings,
+                             bonus_in_prefix: bool = False) -> None:
     """Per-grade-element aggregation across every cached archive in *recs*.
 
     When the archives expose ``grade_parts`` and at least one element
     references a registered part, elements are grouped under each part (in
     registration order) with a per-part subtotal row — matching the layout
-    used by :func:`_show_grades_screen` and ``sre outline`` PDFs.
+    used by :func:`_show_grades_screen` and ``sre outline`` PDFs.  A bonus
+    element reads "Bonus" in its ``tot`` column, or before its label with
+    *bonus_in_prefix*.
 
     Any non-arrow key returns to the dashboard."""
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
@@ -1039,6 +1057,10 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
         def _fmt_avg(v) -> str:
             return "—" if v is None else f"{v:.1f}"
 
+        def _texts(a: dict) -> tuple[str, str]:
+            """(label, tot) texts of an aggregated row, "Bonus" placed."""
+            return bonus_texts(a['label'], _fmt(a['tot']), bool(a.get('bonus')), bonus_in_prefix)
+
         def _part_label(p: dict) -> str:
             return (_resolve_title(p.get('description', ''))
                     or _resolve_title(p.get('title', '')))
@@ -1058,7 +1080,7 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
             ]
 
             col_idx   = max(len(str(n_elements)), 1)
-            col_tot   = max((len(_fmt(a['tot']))     for a in aggregated), default=3)
+            col_tot   = max((len(_texts(a)[1])       for a in aggregated), default=3)
             col_max   = max((len(_fmt(a['max']))     for a in aggregated), default=3)
             col_min   = max((len(_fmt(a['min']))     for a in aggregated), default=3)
             col_avg   = max((len(_fmt_avg(a['avg'])) for a in aggregated), default=3)
@@ -1071,7 +1093,7 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
             col_max   = max(col_max, len("max"))
             col_min   = max(col_min, len("min"))
             col_avg   = max(col_avg, len("avg"))
-            label_widths = [len(a['label']) for a in aggregated]
+            label_widths = [len(_texts(a)[0]) for a in aggregated]
             label_widths += [len(ps['label']) for ps in part_subtotals.values()]
             label_widths += [len(_part_label(p)) + 6 for p in grouped_parts]
             col_label = min(40, max(20, max(label_widths, default=20)))
@@ -1085,8 +1107,9 @@ def _show_lab_summary_screen(lab_name: str, recs: list, old_settings) -> None:
             lines.append(sep)
 
             def _emit(idx_str: str, a: dict) -> str:
-                label = a['label'][:col_label]
-                return (f"  {idx_str:>{col_idx}}  {_fmt(a['tot']):>{col_tot}}  "
+                label, tot = _texts(a)
+                label = label[:col_label]
+                return (f"  {idx_str:>{col_idx}}  {tot:>{col_tot}}  "
                         f"{_fmt(a['max']):>{col_max}}  {_fmt(a['min']):>{col_min}}  "
                         f"{_fmt_avg(a['avg']):>{col_avg}}  {label:<{col_label}}  "
                         f"{a.get('dist', '')}")
@@ -1154,6 +1177,7 @@ def action_watch():
     except ValueError as exc:
         error_quit(f"invalid starting time {args.starting_time!r}: {exc}")
     _only_last_instances = bool(args.only_last_instances)
+    bonus_in_prefix = bool(args.bonus_in_prefix)
 
     is_tty = sys.stdin.isatty()
     old_settings = None
@@ -1248,10 +1272,12 @@ def action_watch():
                             total_grade = float(raw.get('total_grade_exo_eval', raw.get('total_grade', 0)) or 0)
                             total_max = float(raw.get('total_max_exo_eval', raw.get('total_max', 0)) or 0)
                             _show_grades_screen(rec, grade_list, grade_parts,
-                                                total_grade, total_max, old_settings)
+                                                total_grade, total_max, old_settings,
+                                                bonus_in_prefix=bonus_in_prefix)
                     elif entry[0] == 'lab':
                         _, lab_name, recs = entry
-                        _show_lab_summary_screen(lab_name, recs, old_settings)
+                        _show_lab_summary_screen(lab_name, recs, old_settings,
+                                                 bonus_in_prefix=bonus_in_prefix)
                     needs_render = True
                 elif key in ('p', 'P') and selectable_rows:
                     entry = selectable_rows[proj_cursor]

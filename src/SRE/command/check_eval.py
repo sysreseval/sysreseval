@@ -32,6 +32,8 @@ def _compare_and_print(archive_path, old_list, new_list, old_total, new_total, o
             differences.append(f"  - '{title}': grade {old_e.grade} → {new_e.grade}")
         if old_e.max_grade != new_e.max_grade:
             differences.append(f"  - '{title}': max_grade {old_e.max_grade} → {new_e.max_grade}")
+        if old_e.bonus != new_e.bonus:
+            differences.append(f"  - '{title}': bonus {old_e.bonus} → {new_e.bonus}")
 
     if old_total != new_total:
         differences.append(f"  - total_grade: {old_total} → {new_total}")

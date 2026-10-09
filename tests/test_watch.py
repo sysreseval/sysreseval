@@ -66,7 +66,7 @@ def clean_watch_globals():
 
 
 def _ge(*, title='', description='', grade=None, max_grade=None, grade_letter=None,
-        grade_part=None) -> dict:
+        grade_part=None, bonus=False) -> dict:
     """Build a grade-element dict matching the archive serialization."""
     return {
         'title': title,
@@ -75,6 +75,7 @@ def _ge(*, title='', description='', grade=None, max_grade=None, grade_letter=No
         'max_grade': max_grade,
         'grade_letter': grade_letter,
         'grade_part': grade_part,
+        'bonus': bonus,
     }
 
 
@@ -201,6 +202,20 @@ class TestAggregateNumeric:
 
 
 class TestAggregateLetter:
+    def test_bonus_flag_from_any_user(self):
+        out = _aggregate_grade_lists([
+            [_ge(title='A', grade=1.0, max_grade=2.0)],
+            [_ge(title='A', grade=2.0, max_grade=2.0, bonus=True)],
+        ])
+        assert out[0]['bonus'] is True
+        assert out[0]['tot'] == 2.0      # the maximum itself stays numeric
+        assert _aggregate_grade_lists([[_ge(title='A', grade=1.0, max_grade=2.0)]])[0]['bonus'] is False
+
+    def test_legacy_element_without_bonus_key(self):
+        e = _ge(title='A', grade=1.0, max_grade=2.0)
+        del e['bonus']
+        assert _aggregate_grade_lists([[e]])[0]['bonus'] is False
+
     def test_basic_letter_aggregation(self):
         out = _aggregate_grade_lists([
             [_ge(title='B', grade_letter='OK')],
@@ -318,6 +333,19 @@ class TestAggregatePartSubtotals:
         assert p2['max'] == 10.0
         assert p2['min'] == 1.0
         assert p2['avg'] == pytest.approx(5.5)
+
+    def test_bonus_max_left_out_of_the_part_total(self):
+        gls = [
+            [_ge(title='A', grade=2.0, max_grade=5.0, grade_part='Part1'),
+             _ge(title='X', grade=1.0, max_grade=2.0, grade_part='Part1', bonus=True)],
+            [_ge(title='A', grade=5.0, max_grade=5.0, grade_part='Part1'),
+             _ge(title='X', grade=2.0, max_grade=2.0, grade_part='Part1', bonus=True)],
+        ]
+        _titles, subs = _aggregate_part_subtotals(gls, [_gp('Part1')])
+        p1 = subs['Part1']
+        assert p1['tot'] == 5.0          # the bonus maximum is not counted
+        assert p1['max'] == 7.0          # the bonus grades are
+        assert p1['min'] == 3.0
 
     def test_element_with_unknown_part_is_ungrouped(self):
         """An element whose ``grade_part`` is not in ``grade_parts`` falls

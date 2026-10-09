@@ -122,12 +122,14 @@ def _fmt_num(value) -> str:
     return str(value)
 
 
-def format_grade(title, grade, max_grade, part: str | None = None, scope: str | None = None) -> str:
-    """``grade - [<part>] <title> : <grade> / <max> (<scope>)`` line of a grade element; the part
-    and the scope label only when given."""
+def format_grade(title, grade, max_grade, part: str | None = None, scope: str | None = None,
+                 bonus: bool = False) -> str:
+    """``grade - [<part>] <title> : <grade> / <max> (bonus, <scope>)`` line of a grade element; the
+    part, ``bonus`` and the scope label only when given."""
     title = str(title).replace('\n', ' ')
     head = f"[{str(part).replace(chr(10), ' ')}] " if part else ""
-    tail = f" ({scope})" if scope else ""
+    notes = [n for n in (("bonus" if bonus else None), scope) if n]
+    tail = f" ({', '.join(notes)})" if notes else ""
     return f"grade - {head}{title} : {_fmt_num(grade)} / {_fmt_num(max_grade)}{tail}\n"
 
 

@@ -806,6 +806,16 @@ By default, marks are numeric, scaled to `params.default_maximum_mark`, and roun
 
 Per-element letter conversion (`OK` / `MEH` / `FAIL`) is also available via `GradeElement.to_grade_letter()` — full marks → OK, partial → MEH, zero → FAIL.
 
+### Bonus elements
+
+`self.add_grade_element(..., bonus=True)` registers a *bonus* element: its grade counts in the totals, but its `max_grade` does not (neither in the grand total nor in the subtotal of its `GradePart`), so the mark is computed against the non-bonus maximum only. As soon as a scope holds a bonus element, its mark is capped at `_maximum_mark`: bonus points make up for lost points but never push the mark above the maximum (a lab without bonus elements keeps its usual, uncapped mark). The reports still show the `max_grade` of a bonus element, with the word "Bonus": `2 (Bonus)` in the Max column of the GUI Evaluations tab, of the `sre outline` PDFs, of the `sre sheet` Questions sheet and of the `sre watch` screens; the `--bonus-in-prefix` flag of `sre outline` / `sre sheet` / `sre watch` writes `Bonus: <label>` before the label instead and leaves the Max column numeric.
+
+```python
+part = self.add_grade_part('ebgp', tr("Part 2: eBGP sessions"))
+self.add_grade_element('ebgp_md5', max_grade=1, grade=int(md5_ok), grade_part=part, bonus=True,
+                       description=tr("bonus: the r3-ispb session is MD5-authenticated on both sides"))
+```
+
 ### Overriding `mark_exo_eval()` to adjust the overall mark
 
 The overall mark stored in the archive (and surfaced by `sre outline`, `sre sheet`, and `sre cat`) is produced by `Grade.mark_exo_eval()`. The default implementation is:
@@ -832,7 +842,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
                      math.ceil(10 * self._maximum_mark * self._total_grade_exo_eval / 39) / 10)
   ```
 
-- **Bonus / penalty handling.** When penalty rubrics are registered with `max_grade=0` (so they only subtract), they don't enlarge the denominator — but if you want them to *not* subtract below zero either, clamp `total_grade` before scaling.
+- **Bonus / penalty handling.** Bonus questions are better registered with `bonus=True` (see [Bonus elements](#bonus-elements)): no override needed. Penalty rubrics registered with `max_grade=0` (so they only subtract) don't enlarge the denominator either — but if you want them to *not* subtract below zero, clamp `total_grade` before scaling.
 
 `mark_exo_eval()` is called once at the end of `run_tests()`, after every pass of `grade()` and after `compute_total()`. By that time `self._grade_list`, `self._total_grade_exo_eval` / `_total_max_exo_eval`, `self._maximum_mark`, and `self._use_numerical_marks` are all final, so the override is free to read them. Return `None` to signal "no mark" (shown as blank), a `float` for a numeric mark, or a string for a letter grade.
 
@@ -847,7 +857,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 | `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question with inline `@@{field:regex}@@` (text), `@@{field:>opt1|opt2}@@` (dropdown), or `@@{field:?true}@@` (checkbox) fields. Returns the student's answers as `{field: value}`. |
 | `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). |
 | `self.add_grade_part(title, description='')` | Register a named group of grade elements and return the resulting `GradePart`. Pass it to `add_grade_element(..., grade_part=...)` to associate elements with this group; parts render in registration order with a subtotal row per part in the GUI Evaluations view and in `sre outline` PDFs. |
-| `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. |
+| `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None, bonus=False)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. `bonus=True` makes a bonus element: its grade counts, its `max_grade` is shown (with "Bonus") but not counted, and the mark is capped at the maximum (see [Bonus elements](#bonus-elements)). |
 | `self.set_grade(title, grade)` | Set the score of a previously registered element. |
 | `self.section(level=0, fmt=None, show=None, pad=None)` | Increment the section counter at `level` and return its formatted label (e.g. `"I."`, `"I.1."`) — for grouping questions under numbered headings. |
 | `self.current_section(level=0, fmt=None, show=None, pad=None)` | Same formatting as `section()` but without incrementing — read the current label for the same level. |

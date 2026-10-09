@@ -9,7 +9,7 @@ from odf import teletype
 from odf.opendocument import OpenDocumentSpreadsheet
 from odf.table import Table, TableRow
 
-from archive_helpers import archive_name, rln, write_archive, write_two_instances
+from archive_helpers import archive_name, rln, write_archive, write_bonus_archive, write_two_instances
 from SRE.command import sheet
 
 
@@ -111,3 +111,56 @@ class TestSessionsSheet:
         assert lines[0].startswith('login | hostname | project start | max score')
         assert lines[1].startswith('bob | hb | 2026-09-10 10:00:00 | 5.0')
         assert lines[2].startswith('bob | hb | 2026-09-10 11:00:00 | 9.0')
+
+
+# ---------------------------------------------------------------------------
+# Bonus elements: "2 (Bonus)" in the max_grade cell, or "Bonus: title" with --bonus-in-prefix
+# ---------------------------------------------------------------------------
+
+def _rows_of(table) -> list[list[str]]:
+    return [[teletype.extractText(c) for c in tr.childNodes] for tr in table.getElementsByType(TableRow)]
+
+
+def _questions(rows, bonus_in_prefix: bool) -> list[list[str]]:
+    doc = OpenDocumentSpreadsheet()
+    sname = sheet._make_header_style(doc).getAttribute('name')
+    sheet._add_questions_sheet(doc, sname, 'lab@x.py', rows, sheet._grade_titles_for(rows), bonus_in_prefix)
+    return _rows_of(doc.spreadsheet.getElementsByType(Table)[-1])
+
+
+class TestBonusSheets:
+    def test_bonus_titles(self, tmp_path):
+        write_bonus_archive(tmp_path)
+        rows = sheet._collect_archives(_args(tmp_path))
+        assert sheet._grade_titles_for(rows) == ['plain', 'extra']
+        assert sheet._bonus_titles_for(rows) == {'extra'}
+
+    def test_questions_sheet_max_column_by_default(self, tmp_path):
+        write_bonus_archive(tmp_path)
+        q = _questions(sheet._collect_archives(_args(tmp_path)), bonus_in_prefix=False)
+        assert q[1][:2] == ['plain', '4']
+        assert q[2][:2] == ['extra', '2 (Bonus)']
+
+    def test_questions_sheet_prefix(self, tmp_path):
+        write_bonus_archive(tmp_path)
+        q = _questions(sheet._collect_archives(_args(tmp_path)), bonus_in_prefix=True)
+        assert q[1][:2] == ['plain', '4']
+        assert q[2][:2] == ['Bonus: extra', '2']
+
+    def test_sessions_headers(self, tmp_path):
+        write_bonus_archive(tmp_path)
+        rows = sheet._collect_archives(_args(tmp_path))
+        doc = OpenDocumentSpreadsheet()
+        sname = sheet._make_header_style(doc).getAttribute('name')
+        titles = sheet._grade_titles_for(rows)
+        sheet._add_sessions_sheet(doc, sname, 'lab@x.py', rows, titles, False, bonus_in_prefix=False)
+        sheet._add_sessions_sheet(doc, sname, 'lab@x.py', rows, titles, False, bonus_in_prefix=True)
+        default, prefixed = doc.spreadsheet.getElementsByType(Table)[-2:]
+        assert _rows_of(default)[0][-2:] == ['plain', 'extra']            # grade columns: no marker
+        assert _rows_of(prefixed)[0][-2:] == ['plain', 'Bonus: extra']
+        assert _rows_of(prefixed)[1][-2:] == ['3', '2']                   # matching by the plain title
+
+    def test_title_header(self):
+        assert sheet._title_header('extra', {'extra'}, False) == 'extra'
+        assert sheet._title_header('extra', {'extra'}, True) == 'Bonus: extra'
+        assert sheet._title_header('plain', {'extra'}, True) == 'plain'

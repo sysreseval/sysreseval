@@ -300,6 +300,10 @@ class TestGradeLines:
          'grade - [Routing] ttl : 3 / 3 (self-eval only)\n'),
         (('half', 1.5, 2), {'part': None, 'scope': None}, 'grade - half : 1.5 / 2\n'),
         (('two\nlines', None, None), {}, 'grade - two lines : ? / ?\n'),
+        (('extra', 1, 1), {'bonus': True}, 'grade - extra : 1 / 1 (bonus)\n'),
+        (('extra', 1, 1), {'part': 'P', 'scope': 'exo-eval only', 'bonus': True},
+         'grade - [P] extra : 1 / 1 (bonus, exo-eval only)\n'),
+        (('plain', 1, 1), {'bonus': False}, 'grade - plain : 1 / 1\n'),
     ])
     def test_format_grade(self, args, kwargs, expected):
         assert format_grade(*args, **kwargs) == expected

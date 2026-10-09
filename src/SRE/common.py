@@ -211,6 +211,7 @@ class GradeElement:
     description: TranslatedText | str = ""
     scope: int = 3
     grade_part: str | None = None
+    bonus: bool = False  # the grade counts in the totals, the max_grade does not
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -248,7 +249,24 @@ class GradeElement:
             letter = "FAIL"
         return GradeElement(title=self.title, max_grade=None, grade=None, grade_letter=letter,
                             description=self.description, scope=self.scope,
-                            grade_part=self.grade_part)
+                            grade_part=self.grade_part, bonus=self.bonus)
+
+
+def bonus_texts(label: str, max_text: str, bonus: bool, in_prefix: bool = False,
+                word: str = "Bonus") -> tuple[str, str]:
+    """The ``(label, max)`` texts of the row of a grade element in a report.
+
+    Unchanged unless *bonus*: then the maximum reads ``"2 (Bonus)"`` (``"(Bonus)"`` when
+    *max_text* is empty, e.g. in letter mode), or, with *in_prefix*, the label reads
+    ``"Bonus: label"`` and the maximum is left untouched (``--bonus-in-prefix`` of
+    ``sre outline`` / ``sre sheet`` / ``sre watch``).  *word* is the already translated
+    "Bonus" of the caller (gettext, ``QObject.tr``).
+    """
+    if not bonus:
+        return label, max_text
+    if in_prefix:
+        return f"{word}: {label}", max_text
+    return label, f"{max_text} ({word})".strip()
 
 
 @dataclass

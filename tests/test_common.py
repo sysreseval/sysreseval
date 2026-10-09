@@ -7,6 +7,7 @@ from SRE.common import (
     QuestionText, QuestionDummy, QuestionForm,
     GradeElement, InfoLab, InfoMachine, InfoInterface, InfoSwitch,
     QuestionType, TranslatedText,
+    bonus_texts
 )
 
 
@@ -130,6 +131,40 @@ class TestGradeElement:
         e2 = GradeElement.unpack(e.pack())
         assert e2.title == 'z'
         assert e2.grade == 1
+
+    def test_bonus_defaults_to_false(self):
+        assert GradeElement(title='t', max_grade=5, grade=5).bonus is False
+
+    def test_bonus_round_trips(self):
+        e = GradeElement(title='b', max_grade=2, grade=1, bonus=True)
+        assert GradeElement.from_dict(e.to_dict()).bonus is True
+        assert GradeElement.from_json(e.to_json()).bonus is True
+        assert GradeElement.unpack(e.pack()).bonus is True
+
+    def test_legacy_dict_without_bonus(self):
+        e = GradeElement.from_dict({'title': 'old', 'max_grade': 2, 'grade': 1})
+        assert e.bonus is False
+
+    def test_to_grade_letter_keeps_bonus(self):
+        e = GradeElement(title='b', max_grade=2, grade=2, bonus=True)
+        letter = e.to_grade_letter()
+        assert letter.grade_letter == 'OK'
+        assert letter.bonus is True
+        assert GradeElement(title='n', max_grade=2, grade=2).to_grade_letter().bonus is False
+
+
+class TestBonusTexts:
+    @pytest.mark.parametrize('args, kwargs, expected', [
+        (('label', '2', False), {}, ('label', '2')),                          # not a bonus: untouched
+        (('label', '2', False, True), {}, ('label', '2')),
+        (('label', '2', True), {}, ('label', '2 (Bonus)')),                   # default: the max column
+        (('label', '', True), {}, ('label', '(Bonus)')),                      # letter mode: no maximum
+        (('label', '2', True, True), {}, ('Bonus: label', '2')),              # --bonus-in-prefix
+        (('label', '1.0/1.0', True), {'word': 'Bonus'}, ('label', '1.0/1.0 (Bonus)')),
+        (('label', '2', True, True), {'word': 'Prime'}, ('Prime: label', '2')),  # translated word
+    ])
+    def test_bonus_texts(self, args, kwargs, expected):
+        assert bonus_texts(*args, **kwargs) == expected
 
 
 # ---------------------------------------------------------------------------

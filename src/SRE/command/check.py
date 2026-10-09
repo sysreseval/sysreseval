@@ -219,6 +219,6 @@ def action_check():
         raise
     _ok(f"grade() registered {len(grade.get_grade_list())} grade element(s)")
     for elem in grade.get_grade_list():
-        print(f"         {elem.title!r}  max={elem.max_grade}")
+        print(f"         {elem.title!r}  max={elem.max_grade}{'  bonus' if elem.bonus else ''}")
 
     print("\nAll checks passed.")

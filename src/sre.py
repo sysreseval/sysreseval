@@ -206,6 +206,8 @@ def parse_args():
     parser_watch.add_argument('-L', '--only-last-instances', action='store_true',
                               help=_('show only the most recently started instance of each lab on each host '
                                      '(same as the L key in the dashboard)'))
+    parser_watch.add_argument('--bonus-in-prefix', action='store_true',
+                              help=_('write "Bonus" before the label of the bonus elements instead of next to their maximum'))
 
     parser_preload = subparsers.add_parser('preload-images',
                                            help=_('Pre-pull Docker images referenced by lab files'))
@@ -292,6 +294,8 @@ def parse_args():
                               help=_('only consider archives created at or before this time (15:01 for today, or 2026-09-10 15:01; a bare date means midnight)'))
     parser_sheet.add_argument('--separate-instances', action='store_true',
                               help=_('one Sessions row per running instance of a lab instead of one per student'))
+    parser_sheet.add_argument('--bonus-in-prefix', action='store_true',
+                              help=_('write "Bonus" before the label of the bonus elements instead of next to their maximum'))
     parser_sheet.add_argument('files', nargs='+', metavar='file_or_dir',
                               help=_('archive file(s) or director(ies) of .zst archives'))
 
@@ -317,6 +321,8 @@ def parse_args():
                                 help=_('do not group PDF grade rows by GradePart (flat list, no subtotals)'))
     parser_outline.add_argument('--separate-instances', action='store_true',
                                 help=_('one PDF report and one ODS row per running instance of a lab instead of one per student'))
+    parser_outline.add_argument('--bonus-in-prefix', action='store_true',
+                                help=_('write "Bonus" before the label of the bonus elements instead of next to their maximum'))
     parser_outline.add_argument('--users-file', metavar='users_file', default=None,
                                 help=_(
                                     'user list file with columns: LOGIN NAME EMAIL (adds Name/Email to PDFs and ODS)'))

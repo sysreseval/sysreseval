@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from SRE import params
-from SRE.common import TranslatedText
+from SRE.common import TranslatedText, bonus_texts
 from sysreseval import settings, util
 
 def _fmt_num(v: float) -> str:
@@ -339,7 +339,8 @@ class EvaluationView(QWidget):
                         total_grade += grade
                         part_grade += grade
                         part_has_numeric = True
-                    if max_grade is not None:
+                    if max_grade is not None and not e.get("bonus"):
+                        # the max_grade of a bonus element is shown but not counted
                         total_max += max_grade
                         part_max += max_grade
 
@@ -347,6 +348,8 @@ class EvaluationView(QWidget):
                 title_tt = TranslatedText.from_value(e.get("title", ""))
                 label = (desc_tt.resolve_priority(self._lang_priority)
                          or title_tt.resolve_priority(self._lang_priority))
+                label, max_display = bonus_texts(label, max_display, bool(e.get("bonus")),
+                                                 word=self.tr("Bonus"))
 
                 self._table.setItem(row, 0, _row_item(label, alt_idx))
 
@@ -519,13 +522,14 @@ class EvaluationView(QWidget):
 
                 in_self = bool(scope & params.SELF_EVAL_SCOPE)
                 in_exo = bool(scope & params.EXO_EVAL_SCOPE)
+                bonus = bool(e.get("bonus"))  # max_grade shown but not counted
 
                 if in_self:
                     if grade is not None:
                         total_self_grade += grade
                         part_self_grade += grade
                         part_has_self = True
-                    if max_grade is not None:
+                    if max_grade is not None and not bonus:
                         total_self_max += max_grade
                         part_self_max += max_grade
                 if in_exo:
@@ -533,7 +537,7 @@ class EvaluationView(QWidget):
                         total_exo_grade += grade
                         part_exo_grade += grade
                         part_has_exo = True
-                    if max_grade is not None:
+                    if max_grade is not None and not bonus:
                         total_exo_max += max_grade
                         part_exo_max += max_grade
 
@@ -541,6 +545,8 @@ class EvaluationView(QWidget):
                 title_tt = TranslatedText.from_value(e.get("title", ""))
                 label = (desc_tt.resolve_priority(self._lang_priority)
                          or title_tt.resolve_priority(self._lang_priority))
+                max_display = "" if max_grade is None else _fmt_num(max_grade)
+                label, max_display = bonus_texts(label, max_display, bonus, word=self.tr("Bonus"))
 
                 label_item = QTableWidgetItem(label)
                 _shade(label_item, alt_idx)
@@ -566,7 +572,7 @@ class EvaluationView(QWidget):
                     exo_item.setBackground(color)
                 self._table.setItem(row, 3, exo_item)
 
-                max_item = QTableWidgetItem("" if max_grade is None else _fmt_num(max_grade))
+                max_item = QTableWidgetItem(max_display)
                 _shade(max_item, alt_idx)
                 self._table.setItem(row, 4, max_item)
 

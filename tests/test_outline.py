@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from archive_helpers import archive_name, rln, write_archive, write_two_instances
+from archive_helpers import archive_name, rln, write_archive, write_bonus_archive, write_two_instances
 from SRE import params
 from SRE.command import outline
 
@@ -186,3 +186,63 @@ class TestPdfFit:
         assert fitted.endswith('...') and len(fitted) < 200
         assert pdf.get_string_width(fitted) <= 150 - 2 * pdf.c_margin
         assert pdf.get_string_width('W' + fitted) > 150 - 2 * pdf.c_margin
+
+
+class TestMakePdfBonus:
+    @pytest.fixture
+    def cells(self, monkeypatch):
+        """Every text handed to SrePDF.cell, in order."""
+        texts: list[str] = []
+
+        class Recording(outline.SrePDF):
+            def cell(self, w=None, h=None, text='', *args, **kwargs):
+                texts.append(str(text))
+                return super().cell(w, h, text, *args, **kwargs)
+
+        monkeypatch.setattr(outline, 'SrePDF', Recording)
+        return texts
+
+    def _rows(self, cells, first_label):
+        """The (label, score, max) triples of the grade table from *first_label* to the Total row."""
+        i = cells.index(first_label)
+        rows = []
+        while True:
+            rows.append(tuple(cells[i:i + 3]))
+            if cells[i] == 'Total':
+                return rows
+            i += 3
+
+    def test_bonus_in_the_max_column_by_default(self, tmp_path, cells):
+        write_bonus_archive(tmp_path)
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), tmp_path / 'bob.pdf', forced_lang='en')
+        assert self._rows(cells, 'Plain element') == [
+            ('Plain element', '3', '4'),
+            ('Extra element', '2', '2 (Bonus)'),
+            ('Total for Part one', '5', '4'),       # the bonus maximum is left out of the subtotal
+            ('Total', '5.0', '4.0'),                # the archive's totals
+        ]
+        assert 'Raw grade:' in cells and '5.0 / 4.0' in cells
+
+    def test_bonus_in_prefix(self, tmp_path, cells):
+        write_bonus_archive(tmp_path)
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), tmp_path / 'bob.pdf', forced_lang='en',
+                          bonus_in_prefix=True)
+        assert self._rows(cells, 'Plain element') == [
+            ('Plain element', '3', '4'),
+            ('Bonus: Extra element', '2', '2'),
+            ('Total for Part one', '5', '4'),
+            ('Total', '5.0', '4.0'),
+        ]
+
+    def test_flat_list_without_parts(self, tmp_path, cells):
+        write_bonus_archive(tmp_path)
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), tmp_path / 'bob.pdf', forced_lang='en',
+                          show_parts=False)
+        assert ('Extra element', '2', '2 (Bonus)') in self._rows(cells, 'Plain element')
+        assert not any(c.startswith('Total for') for c in cells)
+
+    def test_translated_word(self, tmp_path, cells):
+        write_bonus_archive(tmp_path)
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), tmp_path / 'bob.pdf', forced_lang='fr')
+        assert '2 (Bonus)' in cells          # same word in French
+        assert 'Total pour Part one' in cells

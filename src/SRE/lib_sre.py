@@ -1688,6 +1688,8 @@ class Grade0:
         self._total_max_self_eval = 0
         self._total_grade_exo_eval = 0
         self._total_max_exo_eval = 0
+        self._bonus_in_self_eval = False  # a bonus element is in the scope: the mark is capped
+        self._bonus_in_exo_eval = False
         self._maximum_mark = params.default_maximum_mark
         self._use_numerical_marks = params.use_numerical_marks_by_default
         self._display_marks_in_auto_evaluations = params.display_marks_in_auto_evaluations_by_default
@@ -1739,15 +1741,19 @@ class Grade0:
         self._grade_list = []
         self._grade_parts = []
 
-    def _compute_mark(self, total_grade, total_max):
+    def _compute_mark(self, total_grade, total_max, cap=False):
         """Compute a mark from a ``(total_grade, total_max)`` pair.
 
         Returns ``None`` if ``total_max == 0``.
         Numerical mode (default): rounded to one decimal, scaled to ``_maximum_mark``.
         Letter mode: A+/A/B/C/D/F.
+        With *cap* (bonus elements in the scope), *total_grade* is clamped to *total_max*:
+        the mark never exceeds ``_maximum_mark``.
         """
         if total_max == 0:
             return None
+        if cap:
+            total_grade = min(total_grade, total_max)
         if self._use_numerical_marks:
             return math.ceil(10 * self._maximum_mark * total_grade / total_max) / 10
         else:
@@ -1767,11 +1773,13 @@ class Grade0:
 
     def mark_self_eval(self):
         """Final mark over elements visible in self-eval (scope & SELF_EVAL_SCOPE)."""
-        return self._compute_mark(self._total_grade_self_eval, self._total_max_self_eval)
+        return self._compute_mark(self._total_grade_self_eval, self._total_max_self_eval,
+                                  cap=self._bonus_in_self_eval)
 
     def mark_exo_eval(self):
         """Final mark over elements visible in non-auto eval / outline / sheet."""
-        return self._compute_mark(self._total_grade_exo_eval, self._total_max_exo_eval)
+        return self._compute_mark(self._total_grade_exo_eval, self._total_max_exo_eval,
+                                  cap=self._bonus_in_exo_eval)
 
     def get_data(self):
         return self.net_scheme.get_data()
@@ -1946,7 +1954,7 @@ class Grade0:
         scope_labels = {params.SELF_EVAL_SCOPE: "self-eval only", params.EXO_EVAL_SCOPE: "exo-eval only"}
         lines = [format_grade(text(g.title), g.grade, g.max_grade,
                               part=text(g.grade_part) if g.grade_part else None,
-                              scope=scope_labels.get(g.scope))
+                              scope=scope_labels.get(g.scope), bonus=g.bonus)
                  for g in self._grade_list]
         maximum = self._maximum_mark if self._use_numerical_marks else None
         lines.append(format_total("self-eval", self._total_grade_self_eval, self._total_max_self_eval,
@@ -2135,7 +2143,7 @@ class Grade0:
         return gp
 
     def add_grade_element(self, title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE,
-                          grade_part=None):
+                          grade_part=None, bonus=False):
         """Add a graded rubric item.  Initial *grade* defaults to 0; use :meth:`set_grade` to update it.
 
         ``scope`` is a bitmask: ``SELF_EVAL_SCOPE`` (1) for self-eval only,
@@ -2144,6 +2152,11 @@ class Grade0:
 
         ``grade_part`` optionally associates this element with a
         :class:`GradePart` previously returned by :meth:`add_grade_part`.
+
+        ``bonus`` makes a bonus element: its grade counts in the totals but its
+        *max_grade* does not (neither in the total nor in the subtotal of its part),
+        and the mark is capped at the maximum mark.  The reports still show its
+        *max_grade*, with the word "Bonus".
         """
         if scope not in params.grade_scopes:
             raise ValueError(f"Invalid scope {scope!r}; expected one of {params.grade_scopes}")
@@ -2157,7 +2170,7 @@ class Grade0:
                 write_error(f"Unregistered grade part {grade_part.title!r} passed to add_grade_element")
             grade_part_title = grade_part.title
         g = GradeElement(title=title, max_grade=max_grade, description=description, grade=grade, scope=scope,
-                         grade_part=grade_part_title)
+                         grade_part=grade_part_title, bonus=bool(bonus))
         self._grade_list.append(g)
         key = _tt_hash_str(title)
         if key in self._grades:
@@ -2522,18 +2535,29 @@ class Grade0:
         #         log_error(f"  [{machine}][step={step}] cmd={cmd!r} result_len={len(result)} code={code}")
 
     def compute_total(self):
-        """Accumulate per-scope totals in one pass; BOTH-scope elements contribute to both."""
+        """Accumulate per-scope totals in one pass; BOTH-scope elements contribute to both.
+
+        The grade of a bonus element counts, its max_grade does not; the scope then
+        remembers it has bonus elements (its mark is capped at the maximum mark)."""
         self._total_grade_self_eval = 0
         self._total_max_self_eval = 0
         self._total_grade_exo_eval = 0
         self._total_max_exo_eval = 0
+        self._bonus_in_self_eval = False
+        self._bonus_in_exo_eval = False
         for g in self._grade_list:
             if g.scope & params.SELF_EVAL_SCOPE:
                 self._total_grade_self_eval += g.grade
-                self._total_max_self_eval += g.max_grade
+                if g.bonus:
+                    self._bonus_in_self_eval = True
+                else:
+                    self._total_max_self_eval += g.max_grade
             if g.scope & params.EXO_EVAL_SCOPE:
                 self._total_grade_exo_eval += g.grade
-                self._total_max_exo_eval += g.max_grade
+                if g.bonus:
+                    self._bonus_in_exo_eval = True
+                else:
+                    self._total_max_exo_eval += g.max_grade
 
     def save_tests(self):
         now = datetime.datetime.now()

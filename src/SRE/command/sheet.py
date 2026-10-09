@@ -10,6 +10,7 @@ from odf.table import Table, TableRow, TableCell
 from odf.text import P
 
 from .. import params
+from ..common import bonus_texts
 from ..params import SRE
 from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval_args, format_instance_start
 
@@ -112,7 +113,29 @@ def _grade_titles_for(rows: list) -> list[str]:
     return list(grade_titles)
 
 
-def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles_list: list):
+def _bonus_titles_for(rows: list) -> set[str]:
+    """The titles (as _grade_titles_for gives them) of the bonus grade elements."""
+    bonus_titles: set[str] = set()
+    for row in rows:
+        lang = row.get('language', 'en')
+        for elem in row['grade_list']:
+            if elem.get('bonus'):
+                title = _tt_str(elem.get('title', ''), lang)
+                if title:
+                    bonus_titles.add(title)
+    return bonus_titles
+
+
+def _title_header(title: str, bonus_titles: set, bonus_in_prefix: bool) -> str:
+    """The header of a grade element column: ``Bonus: title`` for a bonus element with
+    --bonus-in-prefix (those columns hold grades, not maxima: nothing to mark otherwise)."""
+    if bonus_in_prefix and title in bonus_titles:
+        return bonus_texts(title, '', True, True, _('Bonus'))[0]
+    return title
+
+
+def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles_list: list,
+                         bonus_in_prefix: bool = False):
     sheet = Table(name=_safe_sheet_name(f"Questions {lab_name}"))
     doc.spreadsheet.addElement(sheet)
 
@@ -124,6 +147,7 @@ def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_title
     for title in grade_titles_list:
         grades = []
         max_grade_val = None
+        bonus = False
         for row in rows:
             lang = row.get('language', 'en')
             for elem in row['grade_list']:
@@ -133,6 +157,7 @@ def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_title
                         grades.append(g)
                     if max_grade_val is None:
                         max_grade_val = elem.get('max_grade')
+                    bonus = bonus or bool(elem.get('bonus'))
                     break
 
         n = len(grades)
@@ -141,8 +166,14 @@ def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_title
         n_zero = sum(1 for g in grades if g == 0)
 
         tr = TableRow()
-        tr.addElement(_str_cell(title))
-        tr.addElement(_num_cell(max_grade_val))
+        if bonus and not bonus_in_prefix:
+            # "2 (Bonus)" in the max_grade column (a text cell), the question untouched
+            max_text = '' if max_grade_val is None else str(max_grade_val)
+            tr.addElement(_str_cell(title))
+            tr.addElement(_str_cell(bonus_texts(title, max_text, True, False, _('Bonus'))[1]))
+        else:
+            tr.addElement(_str_cell(bonus_texts(title, '', bonus, True, _('Bonus'))[0]))
+            tr.addElement(_num_cell(max_grade_val))
         tr.addElement(_num_cell(maximum))
         tr.addElement(_num_cell(average))
         tr.addElement(_num_cell(n))
@@ -151,10 +182,11 @@ def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_title
 
 
 def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles_list: list,
-                        separate_instances: bool = False):
+                        separate_instances: bool = False, bonus_in_prefix: bool = False):
     """One row per session: per (login, hostname), i.e. the best of every
     archive of that student, or per running project instance of the lab
     (adding the instance start) with *separate_instances*."""
+    bonus_titles = _bonus_titles_for(rows)
     sheet = Table(name=_safe_sheet_name(f"Sessions {lab_name}"))
     doc.spreadsheet.addElement(sheet)
 
@@ -166,7 +198,7 @@ def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles
 
     header_row = TableRow()
     cols = ['login', 'hostname'] + (['project start'] if separate_instances else []) + ['max score', 'sum of maxima']
-    for col in cols + grade_titles_list:
+    for col in cols + [_title_header(t, bonus_titles, bonus_in_prefix) for t in grade_titles_list]:
         header_row.addElement(_header_cell(col, sname))
     sheet.addElement(header_row)
 
@@ -250,6 +282,7 @@ def action_sheet():
     user_not_allowed()
     args = SRE.args
     start, finish = parse_time_interval_args(args.start, args.finish)
+    bonus_in_prefix = bool(args.bonus_in_prefix)
 
     records = _collect_archives(args, start, finish)
     if not records:
@@ -269,14 +302,16 @@ def action_sheet():
         # Each running project instance's evaluations contiguous, in order
         rows = sorted(rows, key=lambda r: (r['login'], r['hostname'], r['instance_start'], r['eval_date'] or ''))
         grade_titles_list = _grade_titles_for(rows)
+        bonus_titles = _bonus_titles_for(rows)
 
         sheet = Table(name=_safe_sheet_name(lab_name))
         doc.spreadsheet.addElement(sheet)
 
         # Header row
         header_row = TableRow()
-        for col in ['login', 'fullname', 'email', 'hostname', 'project_start', 'eval_date', 'errors',
-                    'total_grade', 'total_max', _('mark'), _('maximum_mark')] + grade_titles_list:
+        for col in (['login', 'fullname', 'email', 'hostname', 'project_start', 'eval_date', 'errors',
+                     'total_grade', 'total_max', _('mark'), _('maximum_mark')]
+                    + [_title_header(t, bonus_titles, bonus_in_prefix) for t in grade_titles_list]):
             header_row.addElement(_header_cell(col, sname))
         sheet.addElement(header_row)
 
@@ -301,8 +336,9 @@ def action_sheet():
                 tr.addElement(_num_cell(grade_by_title.get(title)))
             sheet.addElement(tr)
 
-        _add_questions_sheet(doc, sname, lab_name, rows, grade_titles_list)
-        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, bool(args.separate_instances))
+        _add_questions_sheet(doc, sname, lab_name, rows, grade_titles_list, bonus_in_prefix)
+        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, bool(args.separate_instances),
+                            bonus_in_prefix)
 
     doc.save(args.output)
     print(f"saved: {args.output}")

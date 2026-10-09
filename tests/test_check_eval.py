@@ -461,3 +461,24 @@ class TestMultipleFiles:
         out, err = capsys.readouterr()
         assert 'cannot read' in err
         assert 'identical' in out
+
+
+class TestCompareBonus:
+    def test_bonus_change_is_reported(self, capsys):
+        from SRE.command.check_eval import _compare_and_print
+        from SRE.common import GradeElement
+        old = [GradeElement(title='x', max_grade=2, grade=1)]
+        new = [GradeElement(title='x', max_grade=2, grade=1, bonus=True)]
+        _compare_and_print('a.zst', old, new, 1, 1, 2, 0)
+        out = capsys.readouterr().out
+        assert 'a.zst: DIFFERS' in out
+        assert "'x': bonus False → True" in out
+        assert 'total_max: 2 → 0' in out
+
+    def test_same_bonus_is_identical(self, capsys):
+        from SRE.command.check_eval import _compare_and_print
+        from SRE.common import GradeElement
+        old = [GradeElement(title='x', max_grade=2, grade=1, bonus=True)]
+        new = [GradeElement(title='x', max_grade=2, grade=1, bonus=True)]
+        _compare_and_print('a.zst', old, new, 1, 1, 0, 0)
+        assert capsys.readouterr().out == 'a.zst: identical\n'

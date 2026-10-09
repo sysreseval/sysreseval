@@ -22,7 +22,7 @@ def archive_name(running_lab_name: str, eval_date: str) -> str:
 
 def write_archive(path, *, hostname, login, running_lab_name,
                   eval_date='20260516120000', grade=10.0, max_grade=10.0,
-                  errors=(), grade_list=(), mtime=None) -> str:
+                  errors=(), grade_list=(), grade_parts=(), mtime=None) -> str:
     """Write a real zstd+msgpack archive laid out like Grade0.save_tests_on_file.
     Returns the path as a string."""
     archive = {
@@ -31,7 +31,7 @@ def write_archive(path, *, hostname, login, running_lab_name,
         'answers': {params.hostname_keyword: hostname, params.login_keyword: login},
         'errors': list(errors),
         'grade_list': list(grade_list),
-        'grade_parts': [],
+        'grade_parts': list(grade_parts),
         'total_grade_exo_eval': grade,
         'total_max_exo_eval': max_grade,
     }
@@ -43,6 +43,24 @@ def write_archive(path, *, hostname, login, running_lab_name,
     if mtime is not None:
         os.utime(path, (mtime, mtime))
     return str(path)
+
+
+# A rubric with a part holding a normal element and a bonus one: total 5 / 4
+# (the bonus maximum is not counted), part subtotal 5 / 4 as well.
+BONUS_PARTS = [{'title': 'p1', 'description': 'Part one'}]
+BONUS_GRADE_LIST = [
+    {'title': 'plain', 'description': 'Plain element', 'grade': 3, 'max_grade': 4, 'grade_part': 'p1'},
+    {'title': 'extra', 'description': 'Extra element', 'grade': 2, 'max_grade': 2, 'grade_part': 'p1',
+     'bonus': True},
+]
+
+
+def write_bonus_archive(root, *, lab=LAB, login='bob', hostname='hb') -> str:
+    """One archive of BONUS_GRADE_LIST / BONUS_PARTS under *root*."""
+    r = rln(start_ts='20260910100000', lab=lab, user=login)
+    return write_archive(Path(root) / archive_name(r, '20260910100500'), hostname=hostname, login=login,
+                         running_lab_name=r, eval_date='2026-09-10T10:05:00', grade=5.0, max_grade=4.0,
+                         grade_list=BONUS_GRADE_LIST, grade_parts=BONUS_PARTS)
 
 
 # One student ('bob' on host 'hb') who opened LAB twice on 2026-09-10, at
