@@ -46,7 +46,7 @@ from ips import random_ipv4networks
 from net_config import get_ip_forward, get_routes, set_ip_forward
 from state_helpers import create_hosts_file
 from switch import get_switch_ports
-from vlan import (
+from bridging import (
     addresses_of, bridge_ports, broute_rules_for, get_http_echo, get_ip_addresses_json, get_ip_links,
     get_mangle_rules, get_sysctl_int, install_http_echo, interface_of_address, parse_broute_rules, ttl_rules,
     vlan_links,

@@ -1,4 +1,4 @@
-"""Tests for lib/vlan.py and lib/http_echo.py (fixtures captured on 2026-10-09 in the running VLAN
+"""Tests for lib/bridging.py and lib/http_echo.py (fixtures captured on 2026-10-09 in the running VLAN
 lab after its `final` state: sysreseval/base:1.30, iproute2 6.19, nftables 1.0.6, iptables 1.8.9
 nft, Linux 6.12; tests/mock_data/vlan/)."""
 import socket
@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 import http_echo  # noqa: E402
 from switch import get_switch_ports  # noqa: E402
-from vlan import (  # noqa: E402
+from bridging import (  # noqa: E402
     ECHO_PATH, ECHO_PID_FILE, MANGLE_RULES_CMD, addresses_of, bridge_ports, broute_rules_for, echo_start_cmd,
     get_broute_rules, get_http_echo, get_ip_links, get_mangle_rules, get_sysctl_int, http_echo_cmd,
     interface_of_address, link_address, link_master, link_up, links_by_name, parse_broute_rules, parse_http_echo,
@@ -107,7 +107,7 @@ def test_install_http_echo_script_is_self_contained():
     source = (Path(__file__).parent.parent / 'lib' / 'http_echo.py').read_text()
     assert source.startswith("#!/usr/bin/env python3") and "if __name__ == '__main__':" in source
     assert all(f"import {mod}" in source for mod in ('socket', 'struct', 'threading'))
-    assert 'from SRE' not in source and 'import vlan' not in source
+    assert 'from SRE' not in source and 'import bridging' not in source
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Helpers of the VLAN / bridges / brouter lab (``lab/sre/_DRAFT_misc/vlan.py``).
+"""Linux bridging helpers of the VLAN / bridges / brouter lab (``lab/sre/_DRAFT_misc/vlan.py``).
 
 State side: :func:`install_http_echo` copies ``lib/http_echo.py`` (an HTTP server echoing the
 client address and the TTL of its SYN) into a machine and starts it on several ports.  Grade

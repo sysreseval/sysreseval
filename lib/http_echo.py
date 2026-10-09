@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HTTP echo server of the SRE labs, copied into a container by ``vlan.install_http_echo()``
+"""HTTP echo server of the SRE labs, copied into a container by ``bridging.install_http_echo()``
 (standard library only, Python 3.11 of the images)::
 
     python3 sre_http_echo.py NAME PORT [PORT...]
