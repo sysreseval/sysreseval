@@ -1,0 +1,15 @@
+Port 0001 untagged_vlan=0000 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0003 module unix prog   : kathara b2:eth0 user=0 pid=2160
+Port 0002 untagged_vlan=0000 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0008 module unix prog   : kathara b1:eth0 user=0 pid=2160
+Port 0003 untagged_vlan=0000 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0010 module unix prog   : kathara router:eth1 user=0 pid=2160
+Port 0004 untagged_vlan=0000 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0012 module unix prog   : kathara router2:eth1 user=0 pid=2160
+Port 0005 untagged_vlan=0111 ACTIVE - NOT Unnamed Allocatable
+ Current User: root Access Control: (User: NONE - Group: NONE)
+  -- endpoint ID 0014 module unix prog   : kathara m7:eth0 user=0 pid=2160

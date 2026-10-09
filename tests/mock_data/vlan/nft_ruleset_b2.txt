@@ -1,0 +1,34 @@
+table ip nat {
+	chain DOCKER_OUTPUT {
+		ip daddr 127.0.0.11 tcp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:38099
+		ip daddr 127.0.0.11 udp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:46498
+	}
+
+	chain OUTPUT {
+		type nat hook output priority -100; policy accept;
+		ip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_OUTPUT
+	}
+
+	chain DOCKER_POSTROUTING {
+		ip saddr 127.0.0.11 tcp sport 38099 counter packets 0 bytes 0 snat to :53
+		ip saddr 127.0.0.11 udp sport 46498 counter packets 0 bytes 0 snat to :53
+	}
+
+	chain POSTROUTING {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_POSTROUTING
+	}
+}
+table ip mangle {
+	chain PREROUTING {
+		type filter hook prerouting priority mangle; policy accept;
+		ip saddr 192.168.100.3 counter packets 16 bytes 1184 xt target TTL
+	}
+}
+table bridge brouter {
+	chain prerouting {
+		type filter hook prerouting priority dstnat; policy accept;
+		iifname "eth1" ip saddr 192.168.100.3 meta pkttype set host ether daddr set 1a:0a:93:41:14:f3
+		iifname "eth1" ip daddr 10.193.51.52 tcp dport 8080 meta pkttype set host ether daddr set 1a:0a:93:41:14:f3
+	}
+}
