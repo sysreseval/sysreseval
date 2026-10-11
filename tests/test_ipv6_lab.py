@@ -448,9 +448,15 @@ class TestTexts:
             assert '@@{' not in text or where != 'informations'
             markdown_to_html(text, show_instructor=True)
             markdown_to_html(text, show_instructor=False)
-        informations = _text(ns1.informations)
-        for section in ('## 7. La découverte de voisins', '## 9. DHCPv6', '## 12. MTU', '## 17. Plan du TP'):
+        # the course is numbered by the lib/informations.py markers, resolved by save_lab_info()
+        from SRE.informations import resolve_informations
+        resolved, numbering = resolve_informations(ns1.informations)
+        informations = _text(resolved)
+        for section in ('## <a id="ndp"></a>7. La découverte de voisins', '## <a id="dhcpv6"></a>9. DHCPv6',
+                        '## <a id="mtu"></a>12. MTU', '## <a id="plan"></a>17. Plan du TP'):
             assert section in informations
+        assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 18)]
+        assert '- [9. DHCPv6](#dhcpv6)' in informations and '(section [9](#dhcpv6))' in informations
 
     def test_student_texts_never_show_the_operator_mtu(self, lab, data, tmp_pub_dir):
         """The same project rendered with two MTU values gives the same student texts (the MTU

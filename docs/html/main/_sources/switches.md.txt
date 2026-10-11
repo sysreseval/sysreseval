@@ -12,9 +12,9 @@ This page describes the feature as a whole. The reference tables of the lab API 
 
 ## In the GUI
 
-### The Switches tab
+### The Networks tab
 
-A project shows a **Switches** tab, after **Machines**, as soon as one of its networks is not a hub; a lab with hubs only looks exactly as before. The tab lists every network the student can see — hubs included — with three columns:
+A project always shows a **Networks** tab, after **Machines**, whatever the types of its networks. The tab lists every network the student can see — hubs included — with three columns:
 
 | Column | Content |
 |--------|---------|
@@ -28,7 +28,7 @@ The **Terminals** tab also holds one embedded terminal per manageable switch the
 
 A network that only connects hidden machines is not listed.
 
-In a debug project (`sre start --debug-project`) every network is listed, and the manageable switches the lab closed to the students can be used all the same: their type stays red, but they get an orange *Connect* button in the Switches tab and a terminal in the Terminals tab, whose title is orange like the title of a machine the students cannot connect to.
+In a debug project (`sre start --debug-project`) every network is listed, and the manageable switches the lab closed to the students can be used all the same: their type stays red, but they get an orange *Connect* button in the Networks tab and a terminal in the Terminals tab, whose title is orange like the title of a machine the students cannot connect to.
 
 ### The console of a manageable switch
 
@@ -102,7 +102,7 @@ class NetScheme(NetScheme0):
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `mode` | `'hub'` | `'hub'`, `'switch'` or `'managed'`. |
-| `allow_connection` | `True` | Manageable switch only: the students may open its console. `False` shows the type of the switch in red in the Switches tab, without *Connect* button, and makes `sre connect` refuse them. |
+| `allow_connection` | `True` | Manageable switch only: the students may open its console. `False` shows the type of the switch in red in the Networks tab, without *Connect* button, and makes `sre connect` refuse them. |
 | `vlans` | `{}` | Manageable switch only: the VLANs of the ports, by machine name. |
 
 The value given for a machine in `vlans` describes its port:
@@ -180,7 +180,7 @@ In a debug project, and for the states of a project in instructor mode, the **Lo
 ## Limits
 
 - **Save and restore.** A save file keeps the kind of each network and the declared VLANs, not what was changed on a console afterwards: a restored project starts again from the lab's declaration. A lab for which this matters re-applies its own configuration in its `restore` state with `switch_cmd()`.
-- **Schema.** The schema draws every network the same way, whatever its kind; the Switches tab tells them apart.
+- **Schema.** The schema draws every network the same way, whatever its kind; the Networks tab tells them apart.
 - **Trunks through a plain switch.** See the rules above: use a hub or a manageable switch.
 - **Rates.** Links are user-space switches (about 45–50 Mbit/s in TCP), whatever the kind.
 
@@ -196,5 +196,5 @@ Install it with `make network-plugin` in /opt/sre (see the installation guide).
 
 ## Tests
 
-- Unit tests (no Docker): `tests/test_switch_modes.py` (declaration, deployment calls, `switch_cmd()`, `test_switch()`), `tests/test_switch_console.py` (console, allowed commands, `sre connect` / `sre exec`), `tests/test_switch_lib.py` (helpers of `lib/switch.py`), `tests/test_gui_switches_view.py` (Switches tab).
+- Unit tests (no Docker): `tests/test_switch_modes.py` (declaration, deployment calls, `switch_cmd()`, `test_switch()`), `tests/test_switch_console.py` (console, allowed commands, `sre connect` / `sre exec`), `tests/test_switch_lib.py` (helpers of `lib/switch.py`), `tests/test_gui_switches_view.py` (Networks tab).
 - Live tests (`make docker-tests`, real containers): `TestHub` checks that a third machine captures the traffic of a hub — it runs with any plugin — and `TestSwitchModes` that it does not on a switch nor inside a VLAN of a manageable switch, plus VLAN isolation, the console, a state, grading, export and save / restore. `TestSwitchModes` is skipped on a host without the plugin with the switch types.

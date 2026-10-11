@@ -110,7 +110,7 @@ Evaluates every running lab instance concurrently. `--no-display-grades` suppres
 
 ### `sre check [-p] <lab> [<state>]`
 
-Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (`switch <network>: cmd …`).
+Validates a lab module without deploying: imports it, runs `Data.generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`), builds `NetScheme`, runs `initial()`, calls `Grade.grade()`. With `state`, also validates that state method. The networks that are not hubs are printed with their type and the VLANs of their ports, and the console commands a state sends to a managed switch are listed with its other operations (`switch <network>: cmd …`). The numbered sections of `informations` (`lib/informations.py` markers) are resolved as at `sre start` and printed as an outline (number, title, tag), and the `@@ref@@` references of the question texts are checked: a marker outside a header, a level jump, a tag defined twice or unknown, or languages whose sections differ, is a `FAIL`.
 
 ### `sre watch [--timeout <sec>] [--interval <sec>] [-H <regexp>] [-S <time>] [-L] <dir…>`
 

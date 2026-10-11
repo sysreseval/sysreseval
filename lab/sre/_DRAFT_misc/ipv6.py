@@ -39,6 +39,7 @@ from ipv6 import (
     normalize_duid, parse_ipv6, radvd_running, render_dhcpd6_conf, same_ipv6, slaac_address, small_ipv6s,
     solicited_node_multicast,
 )
+from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ipv6networks, random_ips_from_topology, random_mac_address
 from net_config import (
     NetConfigEntry, eval_net_config, get_ipv6_forward, get_net_config_entry, get_persistent_net_config_entry,
@@ -240,29 +241,9 @@ class NetScheme(NetScheme0):
 
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Pourquoi IPv6"), tag="why")
             + tr("""
-**Sommaire**
-
-1. Pourquoi IPv6
-2. L'écriture des adresses
-3. Les types d'adresses
-4. Le plan d'adressage et l'identifiant d'interface
-5. L'en-tête IPv6 et les en-têtes d'extension
-6. ICMPv6
-7. La découverte de voisins (NDP)
-8. Les routeurs et leurs annonces : SLAAC
-9. DHCPv6
-10. Le routage statique
-11. Les noms et la double pile
-12. MTU, fragmentation et découverte du PMTU
-13. Tunnels et transition
-14. Pare-feu
-15. Outils
-16. Dépannage
-17. Plan du TP
-""")
-            + tr("""
-## 1. Pourquoi IPv6
 
 IPv4 numérote les machines sur **32 bits** : 4 milliards d'adresses, une par machine en théorie,
 beaucoup moins en pratique à cause du découpage en réseaux. Les derniers blocs libres ont été
@@ -291,8 +272,8 @@ pendant une transition commencée il y a vingt ans. En 2026, un peu moins de la 
 Google se font en IPv6 ; les opérateurs mobiles et les grands hébergeurs l'utilisent en interne, et
 de plus en plus de réseaux sont **IPv6 seulement** avec une traduction (NAT64) vers le vieux monde.
 """)
+            + info_subtitle(tr("L'écriture des adresses"), tag="notation")
             + tr("""
-## 2. L'écriture des adresses
 
 Une adresse IPv6 s'écrit en **hexadécimal**, en huit groupes de 16 bits séparés par deux-points :
 
@@ -311,7 +292,7 @@ Le **préfixe** se note comme en IPv4 : `2001:db8:1::/64` est le réseau, `2001:
 adresse avec la longueur de son préfixe (il n'y a plus de masque écrit en long).
 
 Comme les deux-points servent déjà, une adresse suivie d'un port se met entre **crochets** :
-`http://[2001:db8::1]:8080/`, `[2001:db8::1]:22`. Enfin une adresse de lien local (section 3) ne
+`http://[2001:db8::1]:8080/`, `[2001:db8::1]:22`. Enfin une adresse de lien local (section @@ref:types@@) ne
 désigne une machine qu'avec le nom de l'interface par laquelle on la joint, après `%` :
 `ping fe80::1%eth0`, `ssh root@fe80::1%eth0`.
 
@@ -325,8 +306,8 @@ Quelques formes rencontrées dans ce TP :
 | `ff02::1` | le groupe multicast « tous les nœuds du lien » |
 | `::/0` | la route par défaut (`default` dans `ip -6 route`) |
 """)
+            + info_subtitle(tr("Les types d'adresses"), tag="types")
             + tr("""
-## 3. Les types d'adresses
 
 Les premiers bits d'une adresse disent à quoi elle sert (RFC 4291) :
 
@@ -346,7 +327,7 @@ Une interface a **toujours plusieurs adresses** : son adresse de lien local, une
 adresses globales ou ULA, et les adresses des groupes multicast auxquels elle appartient. Le
 TP emploie des adresses **ULA** (`fd00::/8`), ce qui ne change rien aux mécanismes.
 
-### Multicast
+### @@sec@@ Multicast
 
 Il n'y a plus de diffusion en IPv6 : tout ce qui s'adresse « à tout le monde » passe par un groupe
 multicast, et seules les machines inscrites traitent la trame. Le quatrième chiffre hexadécimal de
@@ -363,14 +344,14 @@ l'adresse est sa **portée** : `ff01` (interface), `ff02` (**lien**), `ff05` (si
 Une adresse multicast se transporte dans une trame Ethernet dont l'adresse MAC de destination est
 `33:33` suivi des quatre derniers octets de l'adresse IPv6 (`ff02::1` → `33:33:00:00:00:01`).
 
-### Anycast
+### @@sec@@ Anycast
 
 Une même adresse peut être portée par plusieurs machines : un paquet est remis à la plus proche.
 Chaque préfixe réserve ainsi son adresse `::0` (*subnet-router anycast*, tous les routeurs du
 réseau) : c'est pourquoi la première adresse d'un réseau n'est pas donnée à une machine.
 """)
+            + info_subtitle(tr("Le plan d'adressage et l'identifiant d'interface"), tag="addressing")
             + tr("""
-## 4. Le plan d'adressage et l'identifiant d'interface
 
 Une adresse unicast se découpe en un **préfixe de réseau** et un **identifiant d'interface**
 (*interface ID*). Sur un réseau où les machines se configurent seules, le préfixe fait **64 bits**
@@ -388,7 +369,7 @@ fd12:3456:789a:0001:0000:0000:0000:0042
  site /48   réseau n° 1 du site
 ```
 
-### D'où vient l'identifiant d'interface ?
+### @@sec@@ D'où vient l'identifiant d'interface ?
 
 | méthode | identifiant | où |
 |---|---|---|
@@ -396,13 +377,13 @@ fd12:3456:789a:0001:0000:0000:0000:0042
 | **EUI-64 modifié** (RFC 4291) | déduit de l'adresse MAC : on insère `ff:fe` au milieu des 6 octets et on inverse le bit *universal/local* (le 2ᵉ bit de poids faible du premier octet) : `02:53:52:aa:bb:cc` → `0053:52ff:feaa:bbcc` | adresses de lien local de Linux, SLAAC par défaut dans un conteneur |
 | **stable et opaque** (RFC 7217) | haché à partir du préfixe, de l'interface et d'un secret : stable sur un réseau donné, différent d'un réseau à l'autre, sans révéler l'adresse MAC | SLAAC des systèmes modernes (`addr_gen_mode=2` ou `3` sous Linux) |
 | **temporaire** (RFC 8981, *privacy extensions*) | tiré au sort et renouvelé (un jour) : les connexions sortantes ne sont pas traçables | postes clients ; `use_tempaddr` sous Linux |
-| **DHCPv6** | choisi par le serveur | section 9 |
+| **DHCPv6** | choisi par le serveur | section @@ref:dhcpv6@@ |
 
 Dans ce TP, le sysctl `net.ipv6.conf.*.addr_gen_mode` vaut 0 : les identifiants automatiques sont
 en **EUI-64**, donc calculables à partir de l'adresse MAC (`ip link show eth0`).
 """)
+            + info_subtitle(tr("L'en-tête IPv6 et les en-têtes d'extension"), tag="header")
             + tr("""
-## 5. L'en-tête IPv6 et les en-têtes d'extension
 
 L'en-tête fait **40 octets, toujours** : pas d'options, pas de somme de contrôle (celles de TCP,
 UDP et ICMPv6 couvrent l'adresse), pas de champs de fragmentation.
@@ -425,7 +406,7 @@ Tout ce qui était optionnel en IPv4 passe dans des **en-têtes d'extension**, c
 |---|---|---|
 | *hop-by-hop options* | 0 | examinée par chaque routeur (alertes, jumbogrammes) |
 | *routing* | 43 | routage par la source, segment routing |
-| **fragment** | **44** | fragmentation par la source (section 12) |
+| **fragment** | **44** | fragmentation par la source (section @@ref:mtu@@) |
 | ESP, AH | 50, 51 | IPsec |
 | *destination options* | 60 | options pour le destinataire |
 
@@ -433,17 +414,17 @@ Tout ce qui était optionnel en IPv4 passe dans des **en-têtes d'extension**, c
 recalcule aucune somme de contrôle et ne fragmente jamais : il ne fait que décrémenter *hop limit*
 et transmettre.
 """)
+            + info_subtitle(tr("ICMPv6"), tag="icmpv6")
             + tr("""
-## 6. ICMPv6
 
 ICMPv6 (RFC 4443, *next header* 58) fait beaucoup plus que signaler des erreurs : il porte la
-**découverte de voisins** (section 7), les **annonces de routeur** (section 8) et la gestion des
+**découverte de voisins** (section @@ref:ndp@@), les **annonces de routeur** (section @@ref:slaac@@) et la gestion des
 groupes multicast (MLD). Le filtrer en bloc casse IPv6.
 
 | type | nom | rôle |
 |---|---|---|
 | 1 | *destination unreachable* | code 0 pas de route, 1 interdit, 3 adresse injoignable, 4 port injoignable |
-| 2 | **packet too big** | le paquet dépasse le MTU du lien suivant (section 12) ; il porte ce MTU |
+| 2 | **packet too big** | le paquet dépasse le MTU du lien suivant (section @@ref:mtu@@) ; il porte ce MTU |
 | 3 | *time exceeded* | *hop limit* tombé à 0 (`traceroute`) |
 | 4 | *parameter problem* | en-tête incompréhensible |
 | 128, 129 | *echo request*, *echo reply* | `ping` |
@@ -459,8 +440,8 @@ arrive avec moins a traversé un routeur et est ignoré (ils ne quittent jamais 
 `tcpdump -n -v -i eth0 icmp6` les affiche tous ; `icmp6 and ip6[40] == 134` ne garde que les RA
 (le type est le premier octet après les 40 de l'en-tête).
 """)
+            + info_subtitle(tr("La découverte de voisins (NDP)"), tag="ndp")
             + tr("""
-## 7. La découverte de voisins (NDP)
 
 Le protocole de découverte de voisins (*Neighbor Discovery*, RFC 4861) remplace ARP et une partie
 de DHCP. Pour envoyer un paquet à une adresse du lien, une machine doit connaître l'adresse MAC
@@ -478,14 +459,14 @@ correspondante :
 - le **NA** répond en unicast, avec l'adresse MAC dans une option ; le drapeau *override* (O) force
   la mise à jour du cache, le drapeau *router* (R) dit si l'émetteur est un routeur.
 
-### Le cache de voisins
+### @@sec@@ Le cache de voisins
 
 `ip -6 neigh` montre les correspondances adresse → MAC et leur état (`REACHABLE`, `STALE` : à
 reconfirmer au prochain envoi, `DELAY`, `PROBE`, `FAILED`). Une entrée `STALE` est réutilisée tout
 de suite et vérifiée en arrière-plan : la découverte de voisins vérifie en permanence que le voisin
 répond encore (*Neighbor Unreachability Detection*), ce qu'ARP ne faisait pas.
 
-### La détection d'adresse dupliquée (DAD)
+### @@sec@@ La détection d'adresse dupliquée (DAD)
 
 Avant d'utiliser une adresse (manuelle, automatique ou de lien local), une machine envoie un **NS**
 pour sa propre adresse, avec l'adresse source **non spécifiée** `::`. Si un NA revient, l'adresse est
@@ -493,14 +474,14 @@ déjà prise : elle est marquée `dadfailed` et n'est pas utilisée. Pendant la 
 seconde), `ip -6 addr` la montre `tentative`. C'est pourquoi une adresse tout juste ajoutée ne
 répond pas immédiatement.
 
-### La redirection
+### @@sec@@ La redirection
 
 Quand un routeur reçoit un paquet qu'il renvoie sur le lien d'où il vient, il envoie à la source un
 *redirect* (type 137) : « pour cette destination, passe plutôt par ce voisin ». Les hôtes mettent à
 jour leur cache de destinations (`ip -6 route get`).
 """)
+            + info_subtitle(tr("Les routeurs et leurs annonces : SLAAC"), tag="slaac")
             + tr("""
-## 8. Les routeurs et leurs annonces : SLAAC
 
 En IPv6 ce sont les **routeurs** qui renseignent les machines sur leur réseau, par des **annonces de
 routeur** (RA, ICMPv6 type 134) envoyées périodiquement à `ff02::1` (toutes les quelques minutes) et
@@ -519,25 +500,25 @@ annonce contient :
 | option *source link-layer address* | l'adresse MAC du routeur (entrée du cache de voisins) |
 | *cur hop limit*, *reachable time*, *retrans timer* | paramètres de la pile |
 
-### L'autoconfiguration sans état (SLAAC, RFC 4862)
+### @@sec@@ L'autoconfiguration sans état (SLAAC, RFC 4862)
 
 Une machine qui démarre :
 
 1. se fabrique son adresse de **lien local** (`fe80::` + identifiant d'interface) et la vérifie (DAD) ;
 2. envoie un **RS** et reçoit les **RA** ;
 3. pour chaque préfixe annoncé avec le drapeau **A**, forme une adresse **préfixe + identifiant
-   d'interface** (EUI-64 ou autre, section 4), la vérifie (DAD), et l'utilise avec les durées de
+   d'interface** (EUI-64 ou autre, section @@ref:addressing@@), la vérifie (DAD), et l'utilise avec les durées de
    vie annoncées (`valid_lft`, `preferred_lft` dans `ip -6 addr`, qui décroissent entre deux annonces) ;
 4. installe une **route par défaut** vers l'adresse **de lien local** du routeur (`default via
    fe80::… dev eth0 proto ra expires …`) pour la durée de vie du routeur ;
-5. selon M et O, interroge un serveur DHCPv6 (section 9).
+5. selon M et O, interroge un serveur DHCPv6 (section @@ref:dhcpv6@@).
 
 Aucun serveur, aucun état : chaque machine se débrouille avec ce que le routeur annonce. Le prix :
 le routeur ne sait pas qui a quelle adresse, et la machine n'obtient ses serveurs DNS que si le
 routeur les annonce (RDNSS) **et** si son système sait lire cette option (sous Linux : `rdnssd`,
 NetworkManager, systemd-networkd ; pas le noyau seul).
 
-### Côté Linux
+### @@sec@@ Côté Linux
 
 | sysctl `net.ipv6.conf.<iface>.` | rôle |
 |---|---|
@@ -552,7 +533,7 @@ ne la propage pas, il faut la régler par interface. Dans ce TP les machines à 
 ont `accept_ra=0` : elles ignorent les annonces ; `pc1` (`accept_ra=2`, `autoconf=1`) et `pc2`
 (`accept_ra=2`, `autoconf=0` : route par défaut, pas d'adresse automatique) les écoutent.
 
-### Le démon radvd
+### @@sec@@ Le démon radvd
 
 Un routeur Linux annonce ses préfixes avec **radvd** (`/etc/radvd.conf`) :
 
@@ -584,8 +565,8 @@ radvd exige que le routage IPv6 soit actif (`net.ipv6.conf.all.forwarding=1`). P
 qu'il annonce : `tcpdump -n -v -i eth2 'icmp6 and ip6[40] == 134'` sur le routeur, ou sur un hôte
 `ip -6 addr` / `ip -6 route` quelques secondes plus tard.
 """)
+            + info_subtitle(tr("DHCPv6"), tag="dhcpv6")
             + tr("""
-## 9. DHCPv6
 
 **DHCPv6** (RFC 8415) est un protocole distinct de DHCP, qui ne partage avec lui ni le format ni les
 ports. Il complète SLAAC dans deux situations :
@@ -599,7 +580,7 @@ Dans les deux cas **la route par défaut vient du RA**, jamais de DHCPv6 : un r�
 d'un routeur qui s'annonce (avec les drapeaux M ou O, et un préfixe sans le drapeau A si l'on veut
 que les adresses viennent du serveur seul).
 
-### Transport et messages
+### @@sec@@ Transport et messages
 
 | | DHCP (IPv4) | DHCPv6 |
 |---|---|---|
@@ -617,7 +598,7 @@ que les adresses viennent du serveur seul).
 confirme par `REQUEST` ; `REPLY` accorde le bail. L'option *rapid commit* réduit l'échange à
 SOLICIT / REPLY.
 
-### Le DUID
+### @@sec@@ Le DUID
 
 Chaque client et chaque serveur a un identifiant **stable**, choisi une fois pour toutes et
 indépendant de l'interface :
@@ -635,7 +616,7 @@ le serveur délègue un préfixe entier, par exemple le /56 d'un abonné à sa *
 IAID choisi par le client. Une réservation se fait donc sur le **DUID** (et éventuellement l'IAID), pas
 sur l'adresse MAC.
 
-### Les options
+### @@sec@@ Les options
 
 | code | option (nom ISC) | contenu |
 |---|---|---|
@@ -656,7 +637,7 @@ Les adresses n'ont pas une « durée de bail » mais deux durées, comme en SLAA
 **valide** (*valid lifetime*, après quoi elle est retirée). T1 et T2 sont les instants des
 renouvellements.
 
-### Le serveur ISC : dhcpd -6
+### @@sec@@ Le serveur ISC : dhcpd -6
 
 Le même programme que pour IPv4, lancé avec `-6`, avec sa propre configuration et son propre
 registre :
@@ -699,7 +680,7 @@ journalctl -u isc-dhcp-server -f          # journal : "Solicit message from fe80
 ps -C dhcpd -o pid,args                   # le processus et ses arguments (-6, interface)
 ```
 
-### Le client ISC : dhclient -6
+### @@sec@@ Le client ISC : dhclient -6
 
 ```
 dhclient -6 -S -v eth0          # sans état : INFORMATION-REQUEST, ne demande pas d'adresse
@@ -720,8 +701,8 @@ L'adresse obtenue est posée avec un préfixe `/128` et les durées du bail (`ip
 Dans une capture : `tcpdump -n -v -i eth0 'udp port 546 or udp port 547'` montre les messages, leur
 identifiant de transaction et leurs options.
 """)
+            + info_subtitle(tr("Le routage statique"), tag="routing")
             + tr("""
-## 10. Le routage statique
 
 Le routage IPv6 est le routage IPv4 avec une table de plus (`ip -6 route`) : une route par
 préfixe, la plus longue qui correspond l'emporte, `::/0` est la route par défaut.
@@ -750,7 +731,7 @@ Particularités :
 - l'opérateur ne connaît qu'un **agrégat** par site (`/48`) : à l'intérieur du site, ce sont les
   routeurs du site qui connaissent les `/64`.
 
-### Configuration persistante (ifupdown)
+### @@sec@@ Configuration persistante (ifupdown)
 
 Dans `/etc/network/interfaces`, une interface double pile a deux blocs, `inet` et `inet6` :
 
@@ -770,8 +751,8 @@ iface eth0 inet6 static
 existent aussi dans un bloc `inet6`.) `ifup eth0` applique les deux blocs ; `ifdown eth0` les
 retire. Les routes supplémentaires passent par `post-up`.
 """)
+            + info_subtitle(tr("Les noms et la double pile"), tag="names")
             + tr("""
-## 11. Les noms et la double pile
 
 Le DNS associe à un nom une adresse IPv4 par un enregistrement **A** et une adresse IPv6 par un
 enregistrement **AAAA** ; la résolution inverse d'IPv6 vit sous `ip6.arpa`. Dans `/etc/hosts`, un
@@ -791,8 +772,8 @@ IPv4 presque simultanées, la première qui aboutit l'emporte. Pour forcer une f
 Un serveur DNS s'interroge aussi bien en IPv6 : `nameserver 2001:db8:1::53` dans `/etc/resolv.conf`
 fonctionne comme son équivalent IPv4, et c'est ce que RDNSS ou `dhcp6.name-servers` y mettent.
 """)
+            + info_subtitle(tr("MTU, fragmentation et découverte du PMTU"), tag="mtu")
             + tr("""
-## 12. MTU, fragmentation et découverte du PMTU
 
 Le **MTU** d'un lien (1500 sur Ethernet) borne la taille des paquets. En IPv4 un routeur
 **fragmente** un paquet trop grand pour le lien suivant, sauf si le bit **DF** est positionné : il le
@@ -800,7 +781,7 @@ jette alors et renvoie **ICMP type 3 code 4** (*fragmentation needed*) avec le M
 l'émetteur mémorise ce **PMTU** par destination (`ip route get`, 10 min) et adapte ses paquets
 (RFC 1191). `ping -4 -M do -s 1472` (1472 + 20 + 8 = 1500 octets) sonde le chemin.
 
-### En IPv6, la source seule fragmente
+### @@sec@@ En IPv6, la source seule fragmente
 
 Un routeur IPv6 **ne fragmente jamais**. Un paquet trop grand pour le lien suivant est jeté et le
 routeur renvoie à la source un message **ICMPv6 type 2, *Packet Too Big*** qui contient le MTU du
@@ -834,7 +815,7 @@ avec `next-header Fragment (44)`, déjà découpés par la source avant de parti
 | charge utile max. de `ping -s` sur Ethernet | 1472 | 1452 |
 | MSS = MTU − | 40 | 60 |
 
-### TCP, MSS et trou noir
+### @@sec@@ TCP, MSS et trou noir
 
 Le **MSS** annoncé dans le SYN vaut MTU − 40 en IPv4 (1460) et **MTU − 60** en IPv6 (1440 ; `ss -ti`
 affiche la valeur effective, 12 octets de moins avec l'option *timestamps*). Comme IPv6 ne fragmente
@@ -860,8 +841,8 @@ intact. Remèdes côté routeurs, identiques dans les deux familles :
 - Côté hôtes seulement : `net.ipv4.tcp_mtu_probing=1` (vaut aussi pour TCP sur IPv6), routes avec
   `mtu` : ne corrigent que la machine réglée.
 """)
+            + info_subtitle(tr("Tunnels et transition"), tag="tunnels")
             + tr("""
-## 13. Tunnels et transition
 
 Tant que les deux familles coexistent, il faut faire passer l'une à travers l'autre :
 
@@ -888,8 +869,8 @@ Le chargement du module crée aussi `sit0@NONE`, à ignorer. On teste le MTU du 
 `ping -6 -M do -s` vers l'adresse du routeur distant ; `tcpdump -n -i eth1 'ip proto 41'` montre
 les paquets encapsulés.
 """)
+            + info_subtitle(tr("Pare-feu"), tag="firewall")
             + tr("""
-## 14. Pare-feu
 
 nftables filtre IPv6 dans une table `ip6`, ou les deux familles dans une table `inet`. Trois
 différences avec IPv4 :
@@ -907,8 +888,8 @@ différences avec IPv4 :
 En IPv4 comme en IPv6, les en-têtes d'extension et la fragmentation par la source compliquent
 l'inspection : un pare-feu peut rejeter les fragments autres que le premier (`exthdr frag`).
 """)
+            + info_subtitle(tr("Outils"), tag="tools")
             + tr("""
-## 15. Outils
 
 | outil | usage |
 |---|---|
@@ -930,8 +911,8 @@ l'inspection : un pare-feu peut rejeter les fragments autres que le premier (`ex
 | `nft list ruleset` | règles nftables du routeur |
 | `iperf3 -s` / `iperf3 -6 -c SERVEUR -t 5` | transfert TCP de test (`-R` : sens inverse ; `-4` / `-6`) |
 """)
+            + info_subtitle(tr("Dépannage"), tag="troubleshooting")
             + tr("""
-## 16. Dépannage
 
 | symptôme | cause probable | à vérifier |
 |---|---|---|
@@ -954,8 +935,8 @@ l'inspection : un pare-feu peut rejeter les fragments autres que le premier (`ex
 | `ip link set … mtu 1200` : plus d'adresse IPv6 | MTU sous 1280 : IPv6 désactivé sur l'interface | |
 | `ping -6` à travers `sit1` muet | `local`/`remote` inversés, ou MTU du tunnel trop grand sous `trou_noir` | |
 """)
+            + info_subtitle(tr("Plan du TP"), tag="plan")
             + tr("""
-## 17. Plan du TP
 
 Six parties, à faire dans l'ordre (énoncés détaillés dans l'onglet **Questions**, plan d'adressage
 dans la première question) :
@@ -2084,7 +2065,7 @@ puis `systemctl restart isc-dhcp-server` ; sur `pc2`, `dhclient -6 -D LL -r eth0
             title=tr("Découverte du PMTU en IPv6"),
             description=tr("""
 Les liens de l'opérateur (`wan`) ont un MTU inférieur à 1500. Dans cette partie et la suivante,
-`m1`, `m2`, `r1` et `r2` sont les machines des deux sites (cours, sections 12 et 13).
+`m1`, `m2`, `r1` et `r2` sont les machines des deux sites (cours, sections @@ref:mtu@@ et @@ref:tunnels@@).
 
 1. Sur `m1`, lancez `tcpdump -n -v -i eth0 icmp6` dans un second terminal, puis
    `ping -6 -c 3 -M do -s 1452 m2`. Relevez le message d'erreur, la machine qui l'émet et le MTU

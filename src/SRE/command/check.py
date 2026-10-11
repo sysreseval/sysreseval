@@ -5,6 +5,8 @@ from pathlib import Path
 from .. import params
 from ..params import SRE
 from ..utils import user_not_allowed, error_quit
+from ..common import TranslatedText
+from ..informations import resolve_informations, resolve_text, outline
 
 
 def _resolve_srelab_path(lab_cli_arg: str) -> tuple[str, str]:
@@ -173,6 +175,19 @@ def action_check():
         print(f"         machine: {m.name}  image: {m.image}")
     for n in networks:
         print(f"         network: {n.name}{_network_details(n)}")
+    # the numbered sections / references / table of contents of the course (lib/informations.py
+    # markers), resolved as save_lab_info() does when it writes info.json
+    default_language = getattr(module, 'default_language', 'en')
+    try:
+        _, numbering = resolve_informations(
+            TranslatedText.from_value(net_scheme.informations, default_language))
+    except ValueError as exc:
+        _fail(f"informations: {exc}")
+        raise
+    for line in outline(numbering, default_language):
+        print(f"         {line}")
+    _ok(f"informations: {len(numbering.sections(default_language))} numbered section(s), "
+        f"{len(numbering.targets(default_language))} tag(s)")
 
     # ── Step 4: run initial state ──────────────────────────────────────
     # Call initial() directly instead of via compute_state_ops() so that
@@ -220,5 +235,14 @@ def action_check():
     _ok(f"grade() registered {len(grade.get_grade_list())} grade element(s)")
     for elem in grade.get_grade_list():
         print(f"         {elem.title!r}  max={elem.max_grade}{'  bonus' if elem.bonus else ''}")
+    for q in grade.get_questions_ordered():
+        for field in ('title', 'description'):
+            try:
+                resolve_text(TranslatedText.from_value(getattr(q, field), default_language), numbering)
+            except ValueError as exc:
+                _fail(f"question {TranslatedText.from_value(q.title, default_language).resolve(default_language)!r}, "
+                      f"{field}: {exc}")
+                raise
+    _ok(f"{len(grade.get_questions_ordered())} question(s): references to the course resolved")
 
     print("\nAll checks passed.")

@@ -35,6 +35,7 @@ from dhcp import (
     parse_classless_routes,
     render_classless_routes,
 )
+from informations import info_subtitle, info_toc
 from ips import (
     random_ipv4networks,
     random_ipv4s,
@@ -263,23 +264,9 @@ class NetScheme(NetScheme0):
             no_tr("## ")
             + title
             + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("À quoi sert DHCP"), tag="why")
             + tr("""
-**Sommaire**
-
-1. À quoi sert DHCP
-2. L'obtention d'un bail : quatre messages
-3. Le format des messages et les options
-4. La vie d'un bail
-5. Le client : `dhclient` et `ifupdown`
-6. Le serveur : `dhcpd`
-7. Distribuer d'autres routes
-8. Plusieurs serveurs sur un même réseau
-9. Le relais DHCP
-10. Observation et diagnostic
-11. Sécurité
-""")
-            + tr("""
-## 1. À quoi sert DHCP
 
 Pour communiquer en IPv4, une machine a besoin d'au moins quatre informations : son **adresse**,
 le **masque** de son réseau, l'adresse du **routeur par défaut** et celle d'un **serveur DNS**.
@@ -312,8 +299,8 @@ dont il garde le format de message et les ports UDP : c'est pourquoi les outils 
 parlent de `BOOTP/DHCP`. Textes de référence actuels : RFC 2131 (le protocole, 1997), RFC 2132
 (les options, 1997), RFC 3046 (l'option ajoutée par les relais, 2001).
 """)
+            + info_subtitle(tr("L'obtention d'un bail : quatre messages"), tag="dora")
             + tr("""
-## 2. L'obtention d'un bail : quatre messages
 
 Une machine qui démarre sans configuration ne connaît ni son adresse, ni son réseau, ni même
 l'adresse d'un serveur : elle ne peut que **diffuser** une demande sur son réseau local.
@@ -341,7 +328,7 @@ plusieurs serveurs répondent, il reçoit plusieurs offres et en retient une, en
 première. Une adresse proposée reste mise de côté par le serveur pendant deux minutes environ : si
 le client ne la confirme pas, elle redevient disponible.
 
-### Transport et adresses
+### @@sec@@ Transport et adresses
 
 DHCP est transporté par **UDP** : le serveur (comme le relais) écoute sur le port **67**, le
 client sur le port **68**. Tant que le client n'a pas d'adresse :
@@ -355,7 +342,7 @@ client sur le port **68**. Tant que le client n'a pas d'adresse :
 - le `DHCPREQUEST` est encore **diffusé**, alors que le client sait à quel serveur il s'adresse :
   c'est ainsi que les **autres** serveurs apprennent que leur offre n'est pas retenue.
 
-### Les autres messages
+### @@sec@@ Les autres messages
 
 | message | émetteur | rôle |
 |---------|----------|------|
@@ -364,8 +351,8 @@ client sur le port **68**. Tant que le client n'a pas d'adresse :
 | `DHCPRELEASE` | client | rend son adresse avant la fin du bail (arrêt propre de l'interface) |
 | `DHCPINFORM` | client | demande seulement des paramètres (DNS, domaine…) pour une adresse qu'il a déjà, configurée à la main |
 """)
+            + info_subtitle(tr("Le format des messages et les options"), tag="format")
             + tr("""
-## 3. Le format des messages et les options
 
 Tous les messages ont le même format, hérité de BOOTP : des champs fixes, puis une liste
 d'**options**.
@@ -398,21 +385,21 @@ serveur lui renvoie ceux qu'il connaît.
 | 12 | `host-name` | nom de la machine | `Hostname` |
 | 15 | `domain-name` | domaine DNS, qui complète les noms courts (`ping srv1`) | `Domain-Name` |
 | 28 | `broadcast-address` | adresse de diffusion du réseau | `BR` |
-| 33 | `static-routes` | routes vers des adresses, sans masque (section 7) | `Static-Route` |
+| 33 | `static-routes` | routes vers des adresses, sans masque (section @@ref:routes@@) | `Static-Route` |
 | 42 | `ntp-servers` | serveurs de temps | `NTP` |
 | 50 | `dhcp-requested-address` | adresse que le client souhaite obtenir | `Requested-IP` |
 | 51 | `dhcp-lease-time` | durée du bail, en secondes | `Lease-Time` |
 | 53 | `dhcp-message-type` | type du message (`DHCPDISCOVER`, `DHCPOFFER`…) | `DHCP-Message` |
 | 54 | `dhcp-server-identifier` | adresse du serveur qui fait l'offre, ou que le client retient | `Server-ID` |
 | 55 | `dhcp-parameter-request-list` | liste des options demandées par le client | `Parameter-Request` |
-| 58 | `dhcp-renewal-time` | instant T1 (section 4) | `RN` |
-| 59 | `dhcp-rebinding-time` | instant T2 (section 4) | `RB` |
+| 58 | `dhcp-renewal-time` | instant T1 (section @@ref:lease@@) | `RN` |
+| 59 | `dhcp-rebinding-time` | instant T2 (section @@ref:lease@@) | `RB` |
 | 61 | `dhcp-client-identifier` | identifiant du client, quand il n'utilise pas son adresse MAC | `Client-ID` |
 | 82 | (ajoutée par un relais) | informations sur le point de raccordement du client | `Agent-Information` |
-| 121 | `rfc3442-classless-static-routes` (à déclarer) | routes vers des réseaux, en plus de la route par défaut (section 7) | `Classless-Static-Route` |
+| 121 | `rfc3442-classless-static-routes` (à déclarer) | routes vers des réseaux, en plus de la route par défaut (section @@ref:routes@@) | `Classless-Static-Route` |
 """)
+            + info_subtitle(tr("La vie d'un bail"), tag="lease")
             + tr("""
-## 4. La vie d'un bail
 
 L'adresse n'est pas donnée mais **louée** : le bail a une durée (option 51), au terme de
 laquelle le client doit cesser d'utiliser l'adresse s'il n'a pas obtenu de prolongation.
@@ -437,7 +424,7 @@ En fonctionnement normal un bail est donc prolongé bien avant son terme et la m
 même adresse indéfiniment : elle ne la perd que si aucun serveur ne lui répond pendant toute la
 seconde moitié du bail.
 
-### Libération, redémarrage, changement de réseau
+### @@sec@@ Libération, redémarrage, changement de réseau
 
 - **Libération** : un client qui s'arrête proprement envoie un `DHCPRELEASE` et le serveur peut
   réattribuer l'adresse aussitôt. Un client éteint brutalement n'envoie rien : son adresse reste
@@ -450,7 +437,7 @@ seconde moitié du bail.
   (`authoritative`) répond `DHCPNAK` ; le client abandonne cette adresse et recommence par un
   `DHCPDISCOVER`. Sans ce refus, il attend inutilement avant de s'y résoudre.
 
-### Éviter les doublons
+### @@sec@@ Éviter les doublons
 
 Une adresse de la plage peut être utilisée par une machine configurée à la main, que le serveur
 ne connaît pas. Deux garde-fous :
@@ -462,7 +449,7 @@ ne connaît pas. Deux garde-fous :
 - le client peut vérifier de son côté, par une requête ARP, que personne n'utilise l'adresse
   reçue, et la refuser par un `DHCPDECLINE`.
 
-### Quelle durée de bail ?
+### @@sec@@ Quelle durée de bail ?
 
 | bail court (quelques minutes) | bail long (plusieurs jours) |
 |-------------------------------|------------------------------|
@@ -470,8 +457,8 @@ ne connaît pas. Deux garde-fous :
 | un changement de configuration (nouveau serveur DNS…) est vite pris en compte | un changement de configuration met longtemps à atteindre tous les postes |
 | beaucoup de trafic DHCP ; une panne du serveur prive vite les postes de leur adresse | peu de trafic ; les postes traversent sans dommage une longue panne du serveur |
 """)
+            + info_subtitle(tr("Le client : dhclient et ifupdown"), tag="client")
             + tr("""
-## 5. Le client : dhclient et ifupdown
 
 ```
 dhclient -v eth0       # demande un bail, configure l'interface, puis reste en arrière-plan
@@ -499,7 +486,7 @@ restante est affichée (`valid_lft`).
 | `/var/lib/dhcp/dhclient.leases` | baux obtenus par un `dhclient` lancé à la main |
 | `/var/lib/dhcp/dhclient.eth0.leases` | baux obtenus par `ifup eth0` |
 
-### Le fichier de baux du client
+### @@sec@@ Le fichier de baux du client
 
 `dhclient` y inscrit chaque bail obtenu ou prolongé ; le dernier bloc est le bail en cours.
 
@@ -522,7 +509,7 @@ lease {
 
 Les dates sont en temps universel (UTC), précédées du numéro du jour de la semaine.
 
-### Les réglages du client
+### @@sec@@ Les réglages du client
 
 | instruction de `dhclient.conf` | effet |
 |--------------------------------|-------|
@@ -532,7 +519,7 @@ Les dates sont en temps universel (UTC), précédées du numéro du jour de la s
 | `prepend domain-name-servers 192.0.2.53;` | valeur placée avant celles du serveur |
 | `timeout 60;` | secondes de recherche avant d'abandonner (60 par défaut) |
 
-### Configuration persistante : ifupdown
+### @@sec@@ Configuration persistante : ifupdown
 
 Pour une configuration **persistante** (appliquée à chaque démarrage), on déclare
 l'interface dans `/etc/network/interfaces` :
@@ -547,8 +534,8 @@ bail). `ifup` lance son propre `dhclient`, avec son propre fichier de baux
 (`/var/lib/dhcp/dhclient.eth0.leases`) : libérez d'abord un bail obtenu à la main
 (`dhclient -r eth0`) et n'utilisez ensuite plus que `ifup` / `ifdown`.
 """)
+            + info_subtitle(tr("Le serveur : dhcpd"), tag="server")
             + tr("""
-## 6. Le serveur : dhcpd
 
 | fichier | rôle |
 |---------|------|
@@ -556,7 +543,7 @@ bail). `ifup` lance son propre `dhclient`, avec son propre fichier de baux
 | `/etc/dhcp/dhcpd.conf` | configuration |
 | `/var/lib/dhcp/dhcpd.leases` | baux accordés (écrit par `dhcpd`, à ne pas modifier) |
 
-### Structure de dhcpd.conf
+### @@sec@@ Structure de dhcpd.conf
 
 Le fichier contient des **paramètres** et des **déclarations**. Chaque instruction se termine
 par `;`, un bloc est délimité par des accolades, un commentaire commence par `#`.
@@ -581,7 +568,7 @@ la portée **la plus précise** qui l'emporte : `host`, puis `class`, `pool`, `s
 qui vaut partout (serveur DNS, domaine, durées de bail) et dans chaque `subnet` ce qui lui est
 propre (le routeur).
 
-### Un exemple
+### @@sec@@ Un exemple
 
 ```
 authoritative;                         # ce serveur fait autorité sur ses réseaux
@@ -606,7 +593,7 @@ host imprimante {                      # adresse fixe (réservation) pour une ma
 `DHCPNAK` à un client qui redemande une adresse étrangère au réseau (machine venant d'un autre
 réseau) : sans cela le client attend inutilement.
 
-### Les durées de bail
+### @@sec@@ Les durées de bail
 
 | paramètre | rôle | sans réglage |
 |-----------|------|--------------|
@@ -614,7 +601,7 @@ réseau) : sans cela le client attend inutilement.
 | `max-lease-time` | plafond appliqué à un client qui demande une durée | 86400 s (24 h) |
 | `min-lease-time` | plancher : aucun bail plus court n'est accordé | 300 s |
 
-### Les adresses fixes
+### @@sec@@ Les adresses fixes
 
 Une réservation (bloc `host`) identifie le client par son **adresse MAC** (`ip link show eth0`
 sur le client) et lui donne toujours la même adresse :
@@ -626,13 +613,13 @@ sur le client) et lui donne toujours la même adresse :
   ajouter dans le bloc `host` ;
 - le nom donné au bloc `host` est libre : c'est l'adresse MAC qui désigne la machine.
 
-### Choisir les clients servis
+### @@sec@@ Choisir les clients servis
 
 Par défaut `dhcpd` sert toute machine qui se présente. `deny unknown-clients;`, dans un `subnet`
 ou un `pool`, réserve les adresses dynamiques aux machines déclarées par un bloc `host`. Dans ce
 TP, ne l'utilisez pas : la sonde de l'évaluation serait ignorée.
 
-### Le registre des baux : dhcpd.leases
+### @@sec@@ Le registre des baux : dhcpd.leases
 
 `dhcpd` note dans `/var/lib/dhcp/dhcpd.leases` les baux des adresses de ses plages dynamiques,
 pour les retrouver après un redémarrage. C'est un journal : chaque changement **ajoute** un bloc,
@@ -661,7 +648,7 @@ lease 192.0.2.101 {
 Une offre n'est pas un bail : rien n'est écrit tant que le client n'a pas confirmé par un
 `DHCPREQUEST`. La commande `dhcp-lease-list` donne un résumé lisible des baux en cours.
 
-### Lancer et contrôler le serveur
+### @@sec@@ Lancer et contrôler le serveur
 
 ```
 dhcpd -t -cf /etc/dhcp/dhcpd.conf      # vérifie la syntaxe sans lancer le serveur
@@ -688,8 +675,8 @@ Si `INTERFACESv4` est vide, le service est déclaré en échec alors qu'un `dhcp
 tourner sur toutes les interfaces : corrigez le fichier, tuez ce processus (`pkill dhcpd`)
 puis relancez le service.
 """)
+            + info_subtitle(tr("Distribuer d'autres routes"), tag="routes")
             + tr("""
-## 7. Distribuer d'autres routes
 
 L'option `routers` ne donne au client qu'une **route par défaut**. Elle ne suffit plus quand le
 réseau a plusieurs routeurs et que le routeur par défaut ne connaît pas tous les réseaux : pour
@@ -701,7 +688,7 @@ distribuer ces routes.
 | `static-routes` | 33 | des routes sans masque, vers des adresses : conçue avant les réseaux sans classe, à éviter |
 | routes sans classe (*classless static routes*) | 121 | des routes vers des réseaux de préfixe quelconque (RFC 3442, 2002) : c'est elle qu'on utilise |
 
-### Le codage de l'option 121
+### @@sec@@ Le codage de l'option 121
 
 L'option est une suite d'octets. Chaque route s'y écrit : la **longueur du préfixe**, puis les
 seuls **octets significatifs** de l'adresse du réseau (ceux que couvre le préfixe), puis les
@@ -714,7 +701,7 @@ seuls **octets significatifs** de l'adresse du réseau (ceux que couvre le préf
 | `10.0.0.0/8` par `192.0.2.254` | `8, 10, 192,0,2,254` |
 | route par défaut par `192.0.2.1` | `0, 192,0,2,1` |
 
-### Sur le serveur
+### @@sec@@ Sur le serveur
 
 `dhcpd` ne connaît pas cette option par son nom : il faut la **déclarer**, une fois et hors de
 tout bloc, avant de lui donner une valeur dans le `subnet` concerné.
@@ -741,7 +728,7 @@ Trois règles :
 Le nom donné à l'option est libre, puisque seul le code 121 voyage. Celui de l'exemple est le nom
 qu'emploie `dhclient`.
 
-### Sur le client
+### @@sec@@ Sur le client
 
 `dhclient` installe les routes reçues **à l'obtention d'un bail**, pas lors d'un simple
 renouvellement : après une modification sur le serveur, redemandez un bail (`ifdown eth0` puis
@@ -758,8 +745,8 @@ Dans le fichier de baux, l'option apparaît telle que le serveur l'a envoyée :
   option rfc3442-classless-static-routes 24,198,51,100,192,0,2,254,0,192,0,2,1;
 ```
 """)
+            + info_subtitle(tr("Plusieurs serveurs sur un même réseau"), tag="servers")
             + tr("""
-## 8. Plusieurs serveurs sur un même réseau
 
 Un serveur unique est un point de défaillance : s'il tombe, les machines déjà configurées
 gardent leur adresse jusqu'à la fin de leur bail, mais les nouvelles n'obtiennent rien. Rien
@@ -774,14 +761,14 @@ façons d'en tirer une **redondance** :
 - **failover** : les deux serveurs partagent **la même plage** et se synchronisent par une
   connexion TCP.
 
-### Plages disjointes
+### @@sec@@ Plages disjointes
 
 C'est la solution la plus simple, et elle fonctionne avec n'importe quels serveurs. Ses limites :
 chaque serveur ne dispose que de sa part des adresses (si l'un tombe, l'autre doit pouvoir
 servir seul toutes les machines), toute modification est à reporter à la main sur les deux, et
 une machine peut changer d'adresse en changeant de serveur.
 
-### Failover
+### @@sec@@ Failover
 
 La plage est placée dans un `pool` rattaché à une relation `failover peer` déclarée sur les
 deux serveurs (l'un `primary`, l'autre `secondary`) :
@@ -839,8 +826,8 @@ quand il est seul. L'état de la relation est noté dans le journal et dans `dhc
 Les deux serveurs doivent déclarer le même `pool`, et leurs horloges doivent être à la même
 heure.
 """)
+            + info_subtitle(tr("Le relais DHCP"), tag="relay")
             + tr("""
-## 9. Le relais DHCP
 
 Une diffusion ne traverse pas un routeur : un client ne peut pas atteindre un serveur situé
 sur un autre réseau. Un **agent de relais**, placé sur le routeur, écoute les diffusions des
@@ -894,10 +881,10 @@ dhcrelay -d -i eth1 -i eth2 192.0.2.2  # au premier plan, avec les messages (Ctr
 
 `systemctl` annonce le service actif même quand `dhcrelay` a refusé de démarrer.
 """)
+            + info_subtitle(tr("Observation et diagnostic"), tag="diagnostic")
             + tr("""
-## 10. Observation et diagnostic
 
-### Capturer les échanges
+### @@sec@@ Capturer les échanges
 
 ```
 tcpdump -n -e -v -i eth0 port 67 or port 68
@@ -930,7 +917,7 @@ laisser la capture tourner pendant vos essais. Début d'un message (extrait simp
 | serveur qui répond, ou serveur retenu par le client | option `Server-ID` |
 | durée du bail | option `Lease-Time` |
 
-### Particularités de la maquette
+### @@sec@@ Particularités de la maquette
 
 - le réseau virtuel se comporte comme un **concentrateur** (*hub*) : une capture sur
   n'importe quelle machine montre **toutes** les trames de son réseau, y compris les
@@ -941,7 +928,7 @@ laisser la capture tourner pendant vos essais. Début d'un message (extrait simp
   captures ; elles ne sont jamais suivies d'un `DHCPREQUEST`, donc aucun bail n'est
   enregistré.
 
-### Chercher une panne
+### @@sec@@ Chercher une panne
 
 Suivez le trajet du message, un point à la fois :
 
@@ -964,8 +951,8 @@ Suivez le trajet du message, un point à la fois :
 | à travers un relais : les demandes partent, rien ne revient | le relais n'écoute pas l'interface côté serveur, ou le serveur n'a pas de route vers `giaddr` | `ps -C dhcrelay -o pid,args`, capture sur le réseau du serveur |
 | le client reçoit un `DHCPNAK` | il redemande une adresse qui n'est pas de ce réseau, ou qui a été réattribuée | rien : il repart de lui-même en `DHCPDISCOVER` |
 """)
+            + info_subtitle(tr("Sécurité"), tag="security")
             + tr("""
-## 11. Sécurité
 
 DHCP ne comporte **aucune authentification** : le client fait confiance au premier serveur qui
 lui répond, et le serveur à l'adresse MAC que le client annonce.
@@ -2095,7 +2082,7 @@ trouve le serveur `srv3`. Le routeur `r1` ne connaît pas `lan3` : avec leur seu
 défaut, les machines de `lan1` ne peuvent pas joindre `srv3` (essayez `ping srv3` sur `m1`).
 
 Un serveur DHCP peut distribuer d'autres routes que la route par défaut, par l'option 121
-(voir l'onglet Informations, section 7) :
+(voir l'onglet Informations, section @@ref:routes@@) :
 
 1. sur `srv1`, faites distribuer aux clients de `lan1`, et à eux seuls, la route vers `{lan3}`
    par `{r2}`, **en plus** de la route par défaut par `{r1}`, puis relancez le service ;
@@ -2596,7 +2583,7 @@ puis `systemctl restart isc-dhcp-relay` et `ps -C dhcrelay -o pid,args`. Sur `m3
             description=tr("""
 `lan2` ne dépend encore que de `srv1`. Plutôt que de découper sa plage, faites
 partager **la même plage** (`{c_min}` à `{c_max}`) à `srv1` et `srv2` par le protocole
-**failover** (voir l'onglet Informations, section 8) :
+**failover** (voir l'onglet Informations, section @@ref:servers@@) :
 
 1. sur `srv1` (**primaire**) et `srv2` (**secondaire**), déclarez la relation
    `failover peer` avec le port 647 des deux côtés, `load balance max seconds 3`, et sur le

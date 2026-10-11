@@ -25,6 +25,7 @@ from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, in
 from SRE.params import sre_docker_image
 from firewall import get_ruleset, ruleset_mentions
 from grade_helpers import transplant_files
+from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ipv4s
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward, get_ip_forward, get_routes
 from openvpn import (
@@ -187,22 +188,9 @@ class NetScheme(NetScheme0):
         # The course: one tr() text per section (the lab itself is presented by the first question).
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Pourquoi un VPN ?"), tag="why")
             + tr("""
-**Sommaire**
-
-1. Pourquoi un VPN ?
-2. Le tunnel : encapsulation, `tun` et `tap`
-3. OpenVPN : canal de contrôle et canal de données
-4. Deux modes : point à point et serveur multi-clients
-5. La PKI avec easy-rsa
-6. Fichiers de configuration et systemd
-7. Routage : atteindre les réseaux derrière le tunnel
-8. Observation et diagnostic
-9. Sécurité
-10. Plan du TP
-""")
-            + tr("""
-## 1. Pourquoi un VPN ?
 
 Un **réseau privé virtuel** (VPN, *Virtual Private Network*) relie des machines ou des réseaux
 à travers un réseau que l'on ne contrôle pas — Internet — comme s'ils étaient sur un même réseau
@@ -237,8 +225,8 @@ chaque paquet. Il n'a besoin que d'un **seul port** (UDP 1194 par défaut, TCP p
 TCP 443 pour passer un pare-feu), traverse le NAT, tourne sur tous les systèmes et fonctionne aussi
 bien en point à point qu'en serveur pour des centaines de clients. Debian fournit la version 2.6.
 """)
+            + info_subtitle(tr("Le tunnel : encapsulation, `tun` et `tap`"), tag="tunnel")
             + tr("""
-## 2. Le tunnel : encapsulation, `tun` et `tap`
 
 OpenVPN crée une **interface réseau virtuelle** : `tun0` (niveau 3, transporte des paquets IP) ou
 `tap0` (niveau 2, transporte des trames Ethernet). Pour le système, c'est une interface comme une
@@ -267,8 +255,8 @@ Dans ce TP tous les tunnels sont de niveau 3 (`dev tun`). Un tunnel `tap` sert l
 transporter autre chose qu'IP ou étendre un domaine de diffusion (jeux en réseau, protocoles
 non routables) : il coûte plus cher (diffusions, ARP dans le tunnel).
 """)
+            + info_subtitle(tr("OpenVPN : canal de contrôle et canal de données"), tag="channels")
             + tr("""
-## 3. OpenVPN : canal de contrôle et canal de données
 
 OpenVPN multiplexe deux flux sur le même port UDP :
 
@@ -305,8 +293,8 @@ serveur. L'option symétrique `remote-cert-tls client` existe côté serveur.
 `dh none` : les échanges de clés utilisent les courbes elliptiques (ECDH) et aucun fichier de
 paramètres Diffie-Hellman (`dh2048.pem`, long à produire) n'est nécessaire.
 """)
+            + info_subtitle(tr("Deux modes : point à point et serveur multi-clients"), tag="modes")
             + tr("""
-## 4. Deux modes : point à point et serveur multi-clients
 
 **Point à point** : deux pairs, une interface `tun` de chaque côté, adressée par
 `ifconfig ADRESSE_LOCALE ADRESSE_DISTANTE`. Un côté est `tls-server` (il écoute, `port 1195`),
@@ -324,7 +312,7 @@ connecte et lui **pousse** sa configuration (`push`). Les clients se déclarent 
 | `server 10.8.0.0 255.255.255.0` | réseau du VPN ; le serveur prend `.1` |
 | `topology subnet` | une adresse par client dans un seul /24 (le mode historique `net30` consommait un /30 par client ; `subnet` deviendra la valeur par défaut dans la version 2.7) |
 | `push "route RÉSEAU MASQUE"` | route ajoutée chez chaque client (vers un réseau derrière le serveur) |
-| `push "redirect-gateway def1"` | tout le trafic du client passe par le VPN (§ 7) |
+| `push "redirect-gateway def1"` | tout le trafic du client passe par le VPN (§ @@ref:routing@@) |
 | `push "dhcp-option DNS ADRESSE"` | serveur DNS à utiliser (appliqué automatiquement sous Windows, par un script sous Linux) |
 | `client-config-dir ccd` | un fichier par client, nommé d'après le **Common Name** de son certificat, lu à sa connexion |
 | `iroute RÉSEAU MASQUE` (dans `ccd/NOM`) | « ce réseau est derrière ce client » : routage interne d'OpenVPN vers un client passerelle |
@@ -345,15 +333,15 @@ connecte et lui **pousse** sa configuration (`push`). Les clients se déclarent 
 | `nobind` | ne pas réserver de port source |
 | `resolv-retry infinite` | réessayer la résolution du nom du serveur sans fin |
 | `ca`, `cert`, `key`, `tls-crypt` | la PKI et la clé partagée |
-| `remote-cert-tls server` | n'accepter qu'un certificat de serveur (§ 3) |
+| `remote-cert-tls server` | n'accepter qu'un certificat de serveur (§ @@ref:channels@@) |
 | `route-nopull` | ignorer les routes poussées (tests) |
 
 Un fichier de configuration peut **inclure** les clés et certificats entre balises
 (`<ca> … </ca>`, `<cert>`, `<key>`, `<tls-crypt>`) : c'est le format « tout en un » des fichiers
 `.ovpn` distribués aux utilisateurs.
 """)
+            + info_subtitle(tr("La PKI avec easy-rsa"), tag="pki")
             + tr("""
-## 5. La PKI avec easy-rsa
 
 **easy-rsa** (paquet `easy-rsa`) est le jeu de scripts d'OpenVPN autour d'`openssl` pour tenir une
 petite autorité de certification. On travaille dans un répertoire de travail créé par
@@ -402,8 +390,8 @@ voyagent par un canal sûr (`scp`, clé USB) ; dans ce TP, le répertoire `/shar
 toutes les machines et sert de boîte aux lettres (`cp pki/ca.crt /shared/`, puis `cp /shared/ca.crt
 /etc/openvpn/server/` sur l'autre machine).
 """)
+            + info_subtitle(tr("Fichiers de configuration et systemd"), tag="config")
             + tr("""
-## 6. Fichiers de configuration et systemd
 
 Le paquet Debian `openvpn` fournit des **unités modèles** systemd : le nom après `@` désigne le
 fichier de configuration.
@@ -437,8 +425,8 @@ privilèges lors d'une renégociation ou d'un redémarrage interne (`SIGUSR1`). 
 gestion** (`management 127.0.0.1 7505`) permet d'interroger le processus (`status`, `kill NOM`)
 avec `telnet` ou `nc`.
 """)
+            + info_subtitle(tr("Routage : atteindre les réseaux derrière le tunnel"), tag="routing")
             + tr("""
-## 7. Routage : atteindre les réseaux derrière le tunnel
 
 Un tunnel monté ne transporte que ce que les **routes** y envoient, dans les deux sens.
 
@@ -478,8 +466,8 @@ Le DNS suit la même logique : `push "dhcp-option DNS ADRESSE"` ; sous Linux un 
 (`update-resolv-conf` fourni dans `/etc/openvpn/`, ou `update-systemd-resolved`) l'applique avec
 `script-security 2`.
 """)
+            + info_subtitle(tr("Observation et diagnostic"), tag="diagnostic")
             + tr("""
-## 8. Observation et diagnostic
 
 - **Sur le réseau public** : `tcpdump -ni eth0 udp port 1194` ne montre que des datagrammes UDP
   entre les deux adresses publiques ; ni les adresses internes ni les protocoles transportés ne sont
@@ -507,8 +495,8 @@ fichiers de clés illisibles après le passage à `user nobody` (CRL, scripts), 
 UDP 1194, routage asymétrique (chemin du retour oublié), MTU (grands paquets perdus : `ping -s 1400
 -M do`, baisser `tun-mtu` ou utiliser `mssfix`).
 """)
+            + info_subtitle(tr("Sécurité"), tag="security")
             + tr("""
-## 9. Sécurité
 
 - **Authentification forte** : certificats par machine ou par utilisateur, jamais partagés ;
   `remote-cert-tls server` côté client ; `verify-x509-name` pour épingler le nom du serveur ;
@@ -529,8 +517,8 @@ UDP 1194, routage asymétrique (chemin du retour oublié), MTU (grands paquets p
   authentification par mot de passe ; IPsec est le standard des équipements réseau ; OpenVPN reste
   le plus souple (TCP 443, proxy HTTP, authentifications variées, un seul port).
 """)
+            + info_subtitle(tr("Plan du TP"), tag="plan")
             + tr("""
-## 10. Plan du TP
 
 1. **Premier tunnel** point à point entre `srv` et `gwb`, authentifié par empreintes
    (`peer-fingerprint`), sans CA ;

@@ -42,6 +42,7 @@ from typing import Dict, List
 from SRE import params
 from SRE.lib_sre import Data0, Flavor0, Grade0, NetScheme0, instructor, make_tr, no_tr, sre_state
 from firewall import get_ruleset
+from informations import info_subtitle, info_toc
 from ips import random_ipv4networks
 from net_config import get_ip_forward, get_routes, set_ip_forward
 from state_helpers import create_hosts_file
@@ -194,23 +195,9 @@ class NetScheme(NetScheme0):
         # The course: one tr() text per section (the lab itself is presented by the first question).
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Rappels : hub, switch, domaine de diffusion"), tag="recap")
             + tr("""
-**Sommaire**
-
-1. Rappels : hub, switch, domaine de diffusion
-2. Les VLAN et l'étiquetage 802.1Q
-3. Les VLAN sous Linux : sous-interfaces
-4. Les ponts (*bridges*) Linux
-5. Routage entre VLAN : le routeur « on a stick »
-6. Traduction d'adresses source (NAT)
-7. Le switch administrable et sa console
-8. Le *brouter* : ponter ou router ?
-9. Le TTL
-10. Aide-mémoire
-11. Plan du TP
-""")
-            + tr("""
-## 1. Rappels : hub, switch, domaine de diffusion
 
 Un **hub** répète chaque trame sur tous ses ports : toutes les machines voient tout le trafic.
 Un **switch** (commutateur) apprend, pour chaque port, les adresses MAC des machines qui y sont
@@ -221,8 +208,8 @@ les machines reliées par des hubs et des switchs forment un seul **domaine de d
 réseau IP (un préfixe, `192.168.11.0/24`) occupe normalement un domaine de diffusion. Pour
 séparer deux réseaux IP, il faut soit deux switchs physiques, soit... des VLAN.
 """)
+            + info_subtitle(tr("Les VLAN et l'étiquetage 802.1Q"), tag="vlans")
             + tr("""
-## 2. Les VLAN et l'étiquetage 802.1Q
 
 Un **VLAN** (*Virtual LAN*) découpe un switch physique en plusieurs switchs logiques : chaque
 port appartient à un VLAN et une trame n'est jamais transmise d'un VLAN à un autre. Deux
@@ -256,8 +243,8 @@ Une trame Ethernet étiquetée peut donc faire 1522 octets au lieu de 1518. Un p
 Un switch **administrable** (*managed*) est un switch que l'on configure (ports, VLAN, table
 MAC...) par une console ; un switch non administrable n'a qu'un seul VLAN.
 """)
+            + info_subtitle(tr("Les VLAN sous Linux : sous-interfaces"), tag="subinterfaces")
             + tr("""
-## 3. Les VLAN sous Linux : sous-interfaces
 
 Linux sait étiqueter et désétiqueter lui-même (module `8021q`) : une **sous-interface** VLAN
 est une interface virtuelle au-dessus d'une interface physique, qui émet des trames étiquetées
@@ -282,8 +269,8 @@ filtre `vlan` et champ *802.1Q Virtual LAN* ; le module `vlan` de Debian permet 
 configuration persistante dans `/etc/network/interfaces` (`iface eth0.111 inet static` avec
 `vlan-raw-device eth0`).
 """)
+            + info_subtitle(tr("Les ponts (*bridges*) Linux"), tag="bridges")
             + tr("""
-## 4. Les ponts (*bridges*) Linux
 
 Un **pont** Linux est un switch logiciel : une interface virtuelle `brX` à laquelle on rattache
 des **ports** (des interfaces physiques ou virtuelles). Les trames reçues sur un port sont
@@ -313,8 +300,8 @@ adresse dans ce VLAN, l'adresse va sur le **pont** (pas sur `eth0.222`, devenue 
 La configuration persistante (`/etc/network/interfaces`, `bridge_ports eth2 eth0.222`) est
 du ressort du paquet `bridge-utils`.
 """)
+            + info_subtitle(tr("Routage entre VLAN : le routeur « on a stick »"), tag="router-on-a-stick")
             + tr("""
-## 5. Routage entre VLAN : le routeur « on a stick »
 
 Deux VLAN sont deux réseaux IP : pour qu'ils communiquent, un routeur doit avoir une interface
 (une adresse) dans chacun. Plutôt qu'un câble par VLAN, un seul port **trunk** suffit : le
@@ -331,8 +318,8 @@ sysctl -w net.ipv4.ip_forward=1          # activer le routage (volatile ; /etc/s
 Sans `ip_forward=1`, un hôte Linux reçoit les paquets destinés à d'autres mais ne les retransmet
 pas. Les machines des deux VLAN doivent avoir ce routeur comme route par défaut (`ip route`).
 """)
+            + info_subtitle(tr("Traduction d'adresses source (NAT)"), tag="nat")
             + tr("""
-## 6. Traduction d'adresses source (NAT)
 
 Les réseaux internes utilisent des adresses privées (RFC 1918) que l'extérieur ne sait pas
 router. Le routeur de sortie réécrit l'adresse **source** des paquets sortants avec la sienne
@@ -359,8 +346,8 @@ qui affiche l'adresse du client **telle que le serveur la voit** (`CLIENT_IP=`) 
 NAT, c'est l'adresse du routeur qui apparaît, ce qui permet de savoir par quel routeur une
 requête est sortie. La page donne aussi le `TTL=` du paquet reçu (partie 9).
 """)
+            + info_subtitle(tr("Le switch administrable et sa console"), tag="switch")
             + tr("""
-## 7. Le switch administrable et sa console
 
 Le réseau `trunk` est un switch administrable (un `vde_switch`) : onglet **Réseaux**, bouton
 *Connecter* (ou onglet **Terminaux**) ouvre sa console. Les commandes utiles :
@@ -382,8 +369,8 @@ exit                         ferme la console
 port** n'est pas prévisible, lisez-le dans cette sortie. Le VLAN `0000` est le VLAN par défaut
 du switch (les ports non configurés et les trames non étiquetées des trunks).
 """)
+            + info_subtitle(tr("Le *brouter* : ponter ou router ?"), tag="brouter")
             + tr("""
-## 8. Le *brouter* : ponter ou router ?
 
 Une machine qui a un pont **et** des adresses IP fait les deux : pour chaque trame reçue sur un
 port du pont, elle regarde l'adresse MAC de destination. Si c'est celle du pont (ou d'un de ses
@@ -426,8 +413,8 @@ Historiquement c'est le rôle de la table `broute` d'`ebtables` (chaîne `BROUTI
 réimplémentation sur nftables sans cette table, et `meta broute set 1` n'existe que dans les
 nftables récents (≥ 1.0.7). Le mécanisme ci-dessus est l'équivalent de la cible `redirect`.
 """)
+            + info_subtitle(tr("Le TTL"), tag="ttl")
             + tr("""
-## 9. Le TTL
 
 Le champ **TTL** (*Time To Live*, 8 bits) d'un paquet IPv4 est décrémenté par **chaque routeur**
 traversé ; à zéro, le paquet est détruit et un message ICMP *Time exceeded* est renvoyé à
@@ -453,8 +440,8 @@ iptables -t mangle -S
 jamais. On ne le fait que pour masquer un saut (ici, le brouter) et jamais sur un routeur
 d'Internet. (nftables sait seulement fixer une valeur : `ip ttl set 64`.)
 """)
+            + info_subtitle(tr("Aide-mémoire"), tag="cheatsheet")
             + tr("""
-## 10. Aide-mémoire
 
 | besoin | commande |
 |--------|----------|
@@ -470,8 +457,8 @@ d'Internet. (nftables sait seulement fixer une valeur : `ip ttl set 64`.)
 | TTL | `iptables -t mangle -A PREROUTING -s X -j TTL --ttl-inc 1`, `sysctl -w net.ipv4.ip_default_ttl=90` |
 | console du switch | onglet *Réseaux* → *Connecter* : `port/print`, `port/setvlan <port> <vlan>`, `vlan/print` |
 """)
+            + info_subtitle(tr("Plan du TP"), tag="plan")
             + tr("""
-## 11. Plan du TP
 
 1. **Vérification** du réseau `trunk` (b1, b2, router) ;
 2. **VLAN 111 et 222** sur `eth0` de b1 et b2, capture sur `eth0` et `eth0.111` ;
@@ -776,7 +763,7 @@ L'évaluation lit `ip -d link` / `ip addr` (sous-interfaces, ponts et leurs port
 (`port/allprint`, `vlan/allprint` : VLAN du port de `m7`), puis des `ping` entre les machines et des
 `curl` vers les pages de `ext1` / `ext2` depuis `m1`... `m7` et `b2` : `CLIENT_IP` dit par quel
 routeur la requête est sortie, `TTL` combien de routeurs elle a traversés. Une évaluation dure
-une dizaine de secondes. Le brouter est en nftables (famille `bridge`), voir la section 8 des
+une dizaine de secondes. Le brouter est en nftables (famille `bridge`), voir la section @@ref:brouter@@ des
 Informations : l'`ebtables` de l'image (1.8.9, nft) n'a pas de table `broute`.
 """).format(vlan_odd=VLAN_ODD)),
         )
@@ -812,7 +799,7 @@ le VLAN `0000` (tous les ports, `tagged=0`) et les VLAN `0111` / `0222` avec les
             title=tr("VLAN {odd} et {even} sur b1 et b2").format(odd=VLAN_ODD, even=VLAN_EVEN),
             description=tr("""
 Sur l'interface `eth0` de `b1` et de `b2`, créez les deux sous-interfaces VLAN `eth0.{odd}` et
-`eth0.{even}` (section 3 des Informations), attribuez les adresses :
+`eth0.{even}` (section @@ref:subinterfaces@@ des Informations), attribuez les adresses :
 
 - `{b1_odd}` à `eth0.{odd}` sur `b1`,
 - `{b2_odd}` à `eth0.{odd}` sur `b2`.
@@ -880,7 +867,7 @@ trames qu'aux ports membres du VLAN {odd}.
             section=self.section(0),
             title=tr("Pont breven : m2 joint m4 et m6"),
             description=tr("""
-Créez sur chacune des machines `b1` et `b2` un pont nommé **`breven`** (section 4 des
+Créez sur chacune des machines `b1` et `b2` un pont nommé **`breven`** (section @@ref:bridges@@ des
 Informations), ajoutez-lui les interfaces `eth2` et `eth0.{even}`, montez toutes les interfaces
 (y compris les nouveaux ponts) et vérifiez que `m2` (`{m2}`) peut joindre `m4` (`{m4}`) et
 `m6` (`{m6}`). Observez `bridge fdb show br breven` sur `b1` après ces pings.
@@ -992,7 +979,7 @@ vers `m6`.
             section=self.section(0),
             title=tr("NAT source sur router"),
             description=tr("""
-Mettez en place sur `router` la traduction d'adresses source (NAT source, *masquerade*, section 6
+Mettez en place sur `router` la traduction d'adresses source (NAT source, *masquerade*, section @@ref:nat@@
 des Informations) afin que le trafic provenant des réseaux internes semble provenir de `router`
 (`{router_ext}`). Vérifiez que les machines `m1` à `m6` peuvent joindre `ext1` (`{ext1}`) et
 `ext2` (`{ext2}`) : `curl http://ext1/` depuis `m5` doit afficher `CLIENT_IP={router_ext}`.
@@ -1112,7 +1099,7 @@ Changez la **route par défaut de `b2`** pour que le trafic émis par `b2` soit 
 `eth1.{even}` avec les adresses `{router2_odd}` et `{router2_even}`. Vérifiez que `router2` est
 joignable depuis `m3` et depuis `m4`.
 
-**(c)** Lisez la section 8 des Informations. Activez le routage sur `b2`, puis ajoutez sur `b2`
+**(c)** Lisez la section @@ref:brouter@@ des Informations. Activez le routage sur `b2`, puis ajoutez sur `b2`
 une règle nftables (famille `bridge`, hook `prerouting`) pour que les paquets IPv4 provenant de
 `m3` (`{m3}`) soient **routés** par `b2` au lieu d'être pontés. Vérifiez par `curl http://ext1/`
 que le trafic de `m3` sort maintenant par `router2` (`CLIENT_IP={router2_ext}`) alors que celui
@@ -1223,7 +1210,7 @@ depuis `m5` (la page affiche aussi `TTL=`). Regardez le **TTL** des paquets semb
             + tr("""
 **(b)** Sur `b2`, ajoutez avec `iptables` une règle dans la table `mangle` pour que tous les
 paquets qui transitent par `b2` et proviennent de `m3` (`{m3}`) aient leur TTL **augmenté de 1**
-(cible `TTL`, voir `man iptables-extensions` et la section 9 des Informations). Vérifiez sur
+(cible `TTL`, voir `man iptables-extensions` et la section @@ref:ttl@@ des Informations). Vérifiez sur
 `ext1` que les paquets provenant de `m3` et ceux provenant de `m5` ont de nouveau le même TTL.
 *Remarque* : il est dangereux en général d'augmenter le TTL ainsi (paquets tournant
 indéfiniment en cas de boucle) !

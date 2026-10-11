@@ -52,6 +52,23 @@ class TestMarkdownToHtml:
         set_instructor_context(True)
         assert markdown_to_html(instructor("**secret** ") + "public") == '<p>public</p>'
 
+    def test_anchors_and_in_document_links_become_plain_text(self):
+        """fpdf2 raises on an <a> without href and on a link to a named destination it does not
+        know: the anchors and the links of a numbered course are stripped, the numbers stay."""
+        from SRE.informations import resolve_informations
+        course, _ = resolve_informations("**TOC**\n\n@@toc@@\n\n## @@sec:a@@ Title `code`\n\nsee @@ref:a@@ and "
+                                         "[external](https://example.org/)")
+        html = markdown_to_html(course)
+        assert '<a id=' not in html and 'href="#' not in html
+        assert '<h2>1. Title <code>code</code></h2>' in html
+        assert '<li>1. Title <code>code</code></li>' in html
+        assert '<p>see 1 and <a href="https://example.org/">external</a></p>' in html
+        pdf = SrePDF()
+        pdf.add_page()
+        pdf.set_font(pdf.text_font, size=11)
+        pdf.write_html(html, tag_styles=pdf.html_tag_styles())
+        assert bytes(pdf.output()).startswith(b'%PDF')
+
 
 @needs_fonts
 class TestUnicodeFonts:

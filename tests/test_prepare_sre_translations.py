@@ -533,6 +533,22 @@ class TestIntegration:
         result = _run(p)
         assert 'tr("Section title")' in result
 
+    def test_wraps_info_subtitle_first_arg(self, tmp_path):
+        """info_subtitle(title, level, tag) of lib/informations.py: the title is prose."""
+        p = _lab(tmp_path, """
+            from SRE.lib_sre import make_tr
+            from informations import info_subtitle
+            default_language = 'en'
+            tr = make_tr(default_language)
+            _TRANSLATIONS = {'fr': {}}
+            class N:
+                def initial(self):
+                    self.informations = info_subtitle("Section title", tag="intro") + info_subtitle("Other one", 2)
+        """)
+        result = _run(p)
+        assert 'info_subtitle(tr("Section title"), tag="intro")' in result
+        assert 'info_subtitle(tr("Other one"), 2)' in result
+
     def test_wraps_question_dummy_description_kwarg(self, tmp_path):
         p = _lab(tmp_path, """
             from SRE.lib_sre import make_tr

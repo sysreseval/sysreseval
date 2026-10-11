@@ -245,6 +245,7 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-parameters"><code class="docutils literal notranslate"><span class="pre">Network</span></code> parameters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switches-and-vlans">Switches and VLANs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#instructor-only-texts-instructor">Instructor-only texts — <code class="docutils literal notranslate"><span class="pre">instructor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#numbered-sections-references-and-table-of-contents-lib-informations-py">Numbered sections, references and table of contents — <code class="docutils literal notranslate"><span class="pre">lib/informations.py</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
@@ -266,17 +267,21 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#cheat-answers">Cheat answers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bonus-elements">Bonus elements</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-methods">Grade methods</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#mail-helpers-from-opt-sre-lib-smtp-py">Mail helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/smtp.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dns-helpers-from-opt-sre-lib-dns-py">DNS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dns.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bgp-helpers-from-opt-sre-lib-frr-py">BGP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#course-text-helpers-from-opt-sre-lib-informations-py">Course text helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/informations.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py">Switch helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/switch.py</span></code>)</a></li>
@@ -301,7 +306,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="switches.html#in-the-gui">In the GUI</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#the-switches-tab">The Switches tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-networks-tab">The Networks tab</a></li>
 <li class="toctree-l3"><a class="reference internal" href="switches.html#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
 </ul>
 </li>
@@ -449,6 +454,7 @@
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#switches">Switches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#course-text-informations">Course text (<code class="docutils literal notranslate"><span class="pre">informations</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#progress-reporting">Progress reporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#security-model">Security model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#archive-format">Archive format</a></li>
@@ -552,6 +558,7 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-parameters"><code class="docutils literal notranslate"><span class="pre">Network</span></code> parameters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switches-and-vlans">Switches and VLANs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#instructor-only-texts-instructor">Instructor-only texts — <code class="docutils literal notranslate"><span class="pre">instructor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#numbered-sections-references-and-table-of-contents-lib-informations-py">Numbered sections, references and table of contents — <code class="docutils literal notranslate"><span class="pre">lib/informations.py</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
@@ -573,17 +580,21 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#cheat-answers">Cheat answers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bonus-elements">Bonus elements</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-methods">Grade methods</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#mail-helpers-from-opt-sre-lib-smtp-py">Mail helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/smtp.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dns-helpers-from-opt-sre-lib-dns-py">DNS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dns.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bgp-helpers-from-opt-sre-lib-frr-py">BGP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#course-text-helpers-from-opt-sre-lib-informations-py">Course text helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/informations.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py">Switch helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/switch.py</span></code>)</a></li>
@@ -608,7 +619,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="switches.html#in-the-gui">In the GUI</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="switches.html#the-switches-tab">The Switches tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-networks-tab">The Networks tab</a></li>
 <li class="toctree-l3"><a class="reference internal" href="switches.html#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
 </ul>
 </li>
@@ -760,6 +771,7 @@
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#switches">Switches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#course-text-informations">Course text (<code class="docutils literal notranslate"><span class="pre">informations</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#progress-reporting">Progress reporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#security-model">Security model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#archive-format">Archive format</a></li>

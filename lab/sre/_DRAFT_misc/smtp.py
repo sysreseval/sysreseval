@@ -23,6 +23,7 @@ from SRE import params
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
 from SRE.params import sre_docker_image
 from grade_helpers import eval_tcp_server, test_dig
+from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ipv4s
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward
 from smtp import (
@@ -189,24 +190,9 @@ class NetScheme(NetScheme0):
             no_tr("## ")
             + title
             + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Les acteurs du courrier électronique"), tag="actors")
             + tr("""
-**Sommaire**
-
-1. Les acteurs du courrier électronique
-2. Le protocole SMTP
-3. Le message
-4. DNS et courrier : les enregistrements MX
-5. Postfix
-6. Relais et relais ouvert
-7. Alias et redirections
-8. File d'attente et rapports d'erreur
-9. Lire son courrier : POP3, IMAP et Dovecot
-10. Soumission, chiffrement et authentification
-11. SPF, DKIM et DMARC : lutter contre l'usurpation
-12. Observation et diagnostic
-""")
-            + tr("""
-## 1. Les acteurs du courrier électronique
 
 Une adresse `alice@alpha.tp` désigne une **boîte aux lettres** (`alice`) hébergée par un
 **domaine** (`alpha.tp`). Le courrier électronique est un système **à relais** : le message est
@@ -244,11 +230,11 @@ protocole de lecture, **IMAP** (ou l'ancien **POP3**). Ports à connaître :
 
 SMTP date de 1982 (RFC 821, Jon Postel) ; le texte de référence actuel est la RFC 5321 (2008),
 accompagné de la RFC 5322 pour le format des messages. Le protocole d'origine n'a ni
-chiffrement, ni authentification, ni vérification de l'expéditeur : tout ce que les sections 10
-et 11 ajoutent par-dessus vient de là.
+chiffrement, ni authentification, ni vérification de l'expéditeur : tout ce que les sections @@ref:submission@@
+et @@ref:spf-dkim@@ ajoutent par-dessus vient de là.
 """)
+            + info_subtitle(tr("Le protocole SMTP"), tag="smtp")
             + tr(r"""
-## 2. Le protocole SMTP
 
 SMTP est un protocole **texte** sur TCP : le client envoie des commandes, le serveur répond par un
 **code à trois chiffres** suivi d'un texte libre. Un envoi complet, tel qu'on peut le taper avec
@@ -285,7 +271,7 @@ S: 221 2.0.0 Bye
 | `RCPT TO:<adresse>` | un destinataire ; répétée pour chaque destinataire |
 | `DATA` | le message lui-même, terminé par une ligne ne contenant qu'un point |
 | `RSET`, `NOOP`, `QUIT` | abandonner le message en cours, ne rien faire, fermer |
-| `STARTTLS`, `AUTH` | passer en TLS, s'authentifier (extensions, section 10) |
+| `STARTTLS`, `AUTH` | passer en TLS, s'authentifier (extensions, section @@ref:submission@@) |
 
 **Les codes de réponse** (RFC 5321) : le premier chiffre suffit à décider la suite.
 
@@ -312,8 +298,8 @@ Pour envoyer un message sans tout taper : `swaks --to bob@beta.tp --from alice@a
 --server mx2.beta.tp --body "bonjour"` affiche le dialogue complet (`-->` envoyé, `<--` reçu) ;
 `mail -s sujet bob@beta.tp` (paquet `bsd-mailx`) passe par le serveur local de la machine.
 """)
+            + info_subtitle(tr("Le message"), tag="message")
             + tr(r"""
-## 3. Le message
 
 Un message (RFC 5322) est du texte : des **en-têtes** `Nom: valeur` (une ligne suivie
 éventuellement de lignes de continuation commençant par un espace), une **ligne vide**, puis le
@@ -347,10 +333,10 @@ et quand : c'est la trace de référence pour tout diagnostic.
 **MIME** (RFC 2045 à 2049) permet les pièces jointes et les caractères non ASCII : les en-têtes
 `Content-Type:` (`text/plain; charset=utf-8`, `multipart/mixed; boundary=...`) et
 `Content-Transfer-Encoding:` (`base64`, `quoted-printable`) décrivent chaque partie. Un rapport
-d'erreur (section 8) est lui-même un message `multipart/report`.
+d'erreur (section @@ref:queue@@) est lui-même un message `multipart/report`.
 """)
+            + info_subtitle(tr("DNS et courrier : les enregistrements MX"), tag="mx")
             + tr(r"""
-## 4. DNS et courrier : les enregistrements MX
 
 Pour remettre un message à `bob@beta.tp`, le serveur `mx1` demande au DNS **quel serveur reçoit
 le courrier de `beta.tp`** : c'est l'enregistrement **MX** (*Mail eXchanger*) du domaine, qui
@@ -368,7 +354,7 @@ courrier est tenté sur l'adresse A du domaine lui-même (RFC 5321). Un MX doit 
 ayant un enregistrement A, jamais vers un CNAME ni une adresse IP. L'enregistrement **PTR**
 (résolution inverse) de l'adresse du serveur est contrôlé par beaucoup de destinataires : un
 serveur sans nom inverse passe pour suspect. Enfin les enregistrements **TXT** du domaine portent
-les politiques SPF et DKIM (section 11).
+les politiques SPF et DKIM (section @@ref:spf-dkim@@).
 
 Commandes : `dig MX beta.tp`, `dig +short MX beta.tp`, `dig -x 198.51.100.25`,
 `dig TXT alpha.tp`, `dig @dns1 ...` pour interroger un serveur précis.
@@ -387,8 +373,8 @@ server:
 
 Après une modification : `unbound-control reload`, puis vérification avec `dig`.
 """)
+            + info_subtitle(tr("Postfix"), tag="postfix")
             + tr(r"""
-## 5. Postfix
 
 **Postfix** (Wietse Venema, 1998) est le MTA de référence des distributions Linux : rapide, sûr,
 et découpé en petits démons que le processus `master` lance à la demande, chacun avec le minimum
@@ -429,7 +415,7 @@ Paramètres essentiels de `main.cf` :
 | `relayhost` | serveur auquel confier **tout** le courrier sortant (`[mx1.alpha.tp]`, crochets = pas de requête MX) |
 | `home_mailbox` | `Maildir/` pour des boîtes au format Maildir dans le répertoire personnel (sinon mbox `/var/mail/$user`) |
 | `alias_maps` | table des alias (`hash:/etc/aliases`) |
-| `smtpd_relay_restrictions` | qui peut relayer (section 6) |
+| `smtpd_relay_restrictions` | qui peut relayer (section @@ref:relay@@) |
 
 Format d'une ligne de `master.cf` : `nom type private unpriv chroot wakeup maxproc commande`,
 par exemple `smtp inet n - y - - smtpd` (le service `smtp` écoute sur le port TCP `smtp` = 25 et
@@ -442,8 +428,8 @@ signale les erreurs de configuration. **Journal** : `/var/log/mail.log` (ou `jou
 postfix`), une ligne par étape, l'identifiant de file (`4D3F1188285`) reliant les lignes d'un même
 message : `grep 4D3F /var/log/mail.log`.
 """)
+            + info_subtitle(tr("Relais et relais ouvert"), tag="relay")
             + tr(r"""
-## 6. Relais et relais ouvert
 
 Un serveur SMTP qui reçoit `RCPT TO:<bob@beta.tp>` a deux attitudes possibles : si `beta.tp` est
 l'un de ses domaines (`mydestination`), il **accepte** et remet le message localement ; sinon il
@@ -457,7 +443,7 @@ smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_una
 ```
 
 - `permit_mynetworks` : les clients de `mynetworks` peuvent relayer ;
-- `permit_sasl_authenticated` : les clients authentifiés aussi (section 10) ;
+- `permit_sasl_authenticated` : les clients authentifiés aussi (section @@ref:submission@@) ;
 - `defer_unauth_destination` / `reject_unauth_destination` : tout autre destinataire étranger est
   refusé (`454 4.7.1 Relay access denied` temporaire, ou `554 5.7.1` permanent).
 
@@ -471,8 +457,8 @@ avec `relayhost = [mx1.alpha.tp]`, n'écoute que sur `localhost` (`inet_interfac
 loopback-only`) et ne reçoit rien (`mydestination =` vide). Les commandes `mail` et `sendmail`
 de ce poste passent alors par `mx1`.
 """)
+            + info_subtitle(tr("Alias et redirections"), tag="aliases")
             + tr(r"""
-## 7. Alias et redirections
 
 Un **alias** fait correspondre une adresse locale à une ou plusieurs autres, sans créer de compte.
 Le fichier `/etc/aliases` :
@@ -493,13 +479,13 @@ obligatoire (RFC 5321) : c'est l'adresse à laquelle on signale les problèmes d
 Un utilisateur redirige lui-même son courrier avec le fichier **`~/.forward`**, qui contient les
 adresses de destination (une par ligne, `\carol` pour garder aussi une copie locale). Le message
 redirigé repart avec l'**enveloppe d'origine** : l'expéditeur réel reste `MAIL FROM`, ce qui
-compte pour SPF (section 11).
+compte pour SPF (section @@ref:spf-dkim@@).
 
 Pour des domaines **virtuels** (plusieurs domaines sur un serveur, adresses sans compte Unix),
 Postfix utilise `virtual_alias_domains` et `virtual_alias_maps` (`info@beta.tp bob`).
 """)
+            + info_subtitle(tr("File d'attente et rapports d'erreur"), tag="queue")
             + tr(r"""
-## 8. File d'attente et rapports d'erreur
 
 Postfix ne remet rien en direct : tout message accepté entre dans la **file d'attente**
 (`/var/spool/postfix/`), d'où `qmgr` le fait remettre :
@@ -533,8 +519,8 @@ rapport sur un rapport : c'est ce qui évite les boucles).
 Dans le journal, chaque tentative se termine par `status=sent`, `status=deferred (raison)` ou
 `status=bounced (raison)`.
 """)
+            + info_subtitle(tr("Lire son courrier : POP3, IMAP et Dovecot"), tag="imap")
             + tr(r"""
-## 9. Lire son courrier : POP3, IMAP et Dovecot
 
 Le MDA a rangé le message dans la boîte ; le MUA de l'utilisateur vient le chercher avec l'un
 des deux protocoles d'accès :
@@ -571,8 +557,8 @@ Clients : `mutt -f imap://alice@mx1.alpha.tp/` (ou `mutt -f ~/Maildir` sur le se
 `nc mx1.alpha.tp 143` puis `a LOGIN alice motdepasse`, `b SELECT INBOX`, `c FETCH 1 BODY[HEADER]`,
 `d LOGOUT` (chaque commande IMAP commence par une étiquette).
 """)
+            + info_subtitle(tr("Soumission, chiffrement et authentification"), tag="submission")
             + tr(r"""
-## 10. Soumission, chiffrement et authentification
 
 SMTP d'origine transporte tout en clair et accepte n'importe quel `MAIL FROM`. Trois mécanismes
 corrigent cela pour le **dépôt** des messages par les utilisateurs :
@@ -625,8 +611,8 @@ smtpd_sasl_auth_enable = yes                   mode = 0660
 authentifié est relayé par `permit_sasl_authenticated` quel que soit son réseau. Test :
 `swaks --server mx1.alpha.tp:587 --tls --auth PLAIN --auth-user alice --to bob@beta.tp`.
 """)
+            + info_subtitle(tr("SPF, DKIM et DMARC : lutter contre l'usurpation"), tag="spf-dkim")
             + tr(r"""
-## 11. SPF, DKIM et DMARC : lutter contre l'usurpation
 
 N'importe quel serveur peut annoncer `MAIL FROM:<alice@alpha.tp>` : rien dans SMTP ne le vérifie.
 Trois mécanismes publiés dans le **DNS** du domaine expéditeur permettent au destinataire de
@@ -694,8 +680,8 @@ Autres défenses courantes : listes noires d'adresses (DNSBL, `reject_rbl_client
 nom inverse et d'un `EHLO` valides, *greylisting* (refus temporaire 4xx à la première tentative :
 les robots ne reviennent pas), filtres de contenu (rspamd, SpamAssassin), limitation de débit.
 """)
+            + info_subtitle(tr("Observation et diagnostic"), tag="diagnostic")
             + tr(r"""
-## 12. Observation et diagnostic
 
 **Le journal d'abord.** `/var/log/mail.log` (ou `journalctl -u postfix -f`) raconte chaque message
 en quatre à six lignes reliées par l'identifiant de file :
@@ -1322,7 +1308,7 @@ Le serveur `mx2.beta.tp` reçoit le courrier de `beta.tp`. Depuis `pc1` :
 
 1. vérifiez que `dig +short MX beta.tp` puis `dig +short mx2.beta.tp` désignent bien `mx2` ;
 2. ouvrez une connexion SMTP **à la main** avec `nc mx2.beta.tp 25` et envoyez un message à
-   `bob@beta.tp` de la part de `alice@alpha.tp` (section 2 de l'onglet Informations). Le corps du
+   `bob@beta.tp` de la part de `alice@alpha.tp` (section @@ref:smtp@@ de l'onglet Informations). Le corps du
    message doit contenir la phrase secrète ci-dessous. Notez le code de chaque réponse ;
 3. essayez ensuite `RCPT TO:<inconnu@beta.tp>` puis `RCPT TO:<bob@alpha.tp>` et observez les réponses ;
 4. sur `pc2`, lisez le message avec `mutt` (ou `curl --url imap://mx2.beta.tp/INBOX -u bob`), ou
@@ -1408,7 +1394,7 @@ ports `{port_smtp}`, `{port_submission}`, `{port_imap}`, `{port_imaps}`.
             section=self.section(0),
             title=tr("Postfix sur mx1 : recevoir et relayer le courrier de alpha.tp"),
             description=tr("""
-Faites de `mx1` le serveur de courrier de `alpha.tp` (section 5 de l'onglet Informations) :
+Faites de `mx1` le serveur de courrier de `alpha.tp` (section @@ref:postfix@@ de l'onglet Informations) :
 
 1. créez les comptes `alice` et `carol` (`adduser`, mots de passe du tableau de la première
    question) ;
@@ -1519,7 +1505,7 @@ systemctl restart postfix
             section=self.section(0),
             title=tr("Alias, redirection, file d'attente et rapports d'erreur"),
             description=tr("""
-Sur `mx1` (sections 7 et 8 de l'onglet Informations) :
+Sur `mx1` (sections @@ref:aliases@@ et @@ref:queue@@ de l'onglet Informations) :
 
 1. dans `/etc/aliases`, faites de `postmaster` et `root` des alias d'`alice`, et créez l'alias
    **`{alias}`** remis à la fois à `alice` et à `carol` ; compilez la table ;
@@ -1613,7 +1599,7 @@ unknown`) ; rapport envoyé par `{exp_rebond}`.
             section=self.section(0),
             title=tr("Lire les boîtes avec IMAP : Dovecot sur mx1"),
             description=tr("""
-Dovecot est installé sur `mx1` mais arrêté (section 9 de l'onglet Informations) :
+Dovecot est installé sur `mx1` mais arrêté (section @@ref:imap@@ de l'onglet Informations) :
 
 1. configurez-le (`/etc/dovecot/local.conf` ou les fichiers de `conf.d/`) : protocole `imap`, écoute
    sur le réseau, boîtes au format **Maildir** dans le répertoire personnel (le même que Postfix),
@@ -1698,7 +1684,7 @@ message dans `new/` puis `cur/`).
             title=tr("Soumission authentifiée et chiffrée : port 587, STARTTLS, SASL"),
             description=tr("""
 Alice doit pouvoir envoyer du courrier par `mx1` **depuis n'importe où** (par exemple depuis `pc2`,
-sur `lan2`), sans que `mx1` devienne un relais ouvert (section 10 de l'onglet Informations) :
+sur `lan2`), sans que `mx1` devienne un relais ouvert (section @@ref:submission@@ de l'onglet Informations) :
 
 1. créez un certificat auto-signé pour `mx1.alpha.tp` (`openssl req -x509 ...`) et déclarez-le à
    Postfix (`smtpd_tls_cert_file`, `smtpd_tls_key_file`) ; vérifiez `STARTTLS` sur le port 25
@@ -1795,7 +1781,7 @@ puis `systemctl restart dovecot postfix`.
             title=tr("SPF et DKIM : authentifier le courrier de alpha.tp"),
             description=tr("""
 `mx2` vérifie SPF (en-tête `Received-SPF:`) et DKIM (en-tête `Authentication-Results:`) sur les
-messages qu'il reçoit (section 11 de l'onglet Informations). Regardez ces deux en-têtes sur un
+messages qu'il reçoit (section @@ref:spf-dkim@@ de l'onglet Informations). Regardez ces deux en-têtes sur un
 message reçu par Bob avant de commencer.
 
 1. **SPF** : publiez sur `dns1` (fichier `/etc/unbound/unbound.conf.d/alpha-tp.conf`, puis

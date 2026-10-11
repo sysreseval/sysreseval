@@ -33,7 +33,7 @@ While iterating on a `srelab.py`, you typically alternate between editing the mo
 
 ### `sre check [-p] <lab> [<state>]`
 
-Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`, as `sre start` and `sre eval` do), instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab.
+Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`, as `sre start` and `sre eval` do), instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab. The numbered sections of `informations` are resolved and printed as an outline, and the `@@ref@@` references of the question texts are checked (see [Numbered sections](#numbered-sections-references-and-table-of-contents--libinformationspy)).
 
 ### `sre start --debug-project [-p] <lab> [--xauth-file <path>]`
 
@@ -359,7 +359,8 @@ class NetScheme(NetScheme0):
     def __init__(self, data, running_lab_name):
         super().__init__(data=data, running_lab_name=running_lab_name)
 
-        # Markdown text for the Informations tab (supports make_tr for i18n)
+        # Markdown text for the Informations tab (supports make_tr for i18n); see
+        # "Numbered sections, references and table of contents" for the numbering helpers
         self.informations = tr(
             "## Lab description\nConfigure routing.",
             fr="## Description\nConfigurez le routage.",
@@ -504,6 +505,72 @@ The stripped lab behaves like the original outside the instructor mode. Limits:
 - a question keeps its hash as long as the removed text has no language that the text it was added to lacks (the usual case). Otherwise the archives of the stripped lab do not match the original lab in `sre re-eval`.
 
 In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
+
+### Numbered sections, references and table of contents — `lib/informations.py`
+
+The headers of a course, its table of contents and the mentions of a section (`see section 7`) are computed, so that inserting a section renumbers nothing by hand. The four functions of `/opt/sre/lib/informations.py` emit plain-text *markers*; the numbers, the links and the table of contents are resolved when `info.json` is written, in every language, so there is nothing else to call:
+
+```python
+from SRE.lib_sre import NetScheme0, Grade0, make_tr, no_tr
+from informations import info_subtitle, info_tag, info_ref, info_toc
+
+tr = make_tr('fr')
+
+class NetScheme(NetScheme0):
+    def __init__(self, data, running_lab_name):
+        super().__init__(data=data, running_lab_name=running_lab_name)
+        self.informations = (
+            no_tr("## ") + title + no_tr("\n")
+            + tr("**Sommaire**\n", en="**Contents**\n") + info_toc()
+            + info_subtitle(tr("À quoi sert DHCP", en="What DHCP is for"), tag="why")
+            + tr("""
+Un serveur prête une adresse pour la durée d'un **bail** (section @@ref:lease@@).
+
+### @@sec@@ Les acteurs
+
+Trois rôles : @@tag:roles@@ client, serveur, relais.
+""", en="""
+A server lends an address for the duration of a **lease** (section @@ref:lease@@).
+
+### @@sec@@ The actors
+
+Three roles: @@tag:roles@@ client, server, relay.
+""")
+            + info_subtitle(tr("La vie d'un bail", en="The life of a lease"), tag="lease")
+            + tr("""...""")
+        )
+
+class Grade(Grade0):
+    def grade(self):
+        super().grade()
+        self.question_text(
+            title=tr("Le bail", en="The lease"),
+            description=tr("Lisez la section @@ref:lease@@ des Informations (les rôles : @@ref:roles:title@@).",
+                           en="Read section @@ref:lease@@ of the Informations tab (the roles: @@ref:roles:title@@)."))
+```
+
+The student sees a **Sommaire** listing *1. À quoi sert DHCP*, *1.1. Les acteurs* and *2. La vie d'un bail* as links, the headers `## 1. À quoi sert DHCP`, `### 1.1. Les acteurs`, `## 2. La vie d'un bail`, the sentence *(section 2)* where the number is a link that scrolls the tab to the section, and in the question *Lisez la section 2 des Informations (les rôles : 1. À quoi sert DHCP)*.
+
+| function | marker it returns | resolved form in the course |
+|---|---|---|
+| `info_subtitle(title, level=1, tag="")` | `\n\n## @@sec@@ Title\n\n` (`###` for `level=2`…), `## @@sec:tag@@ Title` with a tag | `## <a id="tag"></a>2. Title` (an untagged section gets the id `sec.2`) |
+| `info_tag(tag)` | `@@tag:tag@@` | `<a id="tag"></a>`; a reference to it gives the number of the section it stands in and scrolls to the spot |
+| `info_ref(tag)` / `info_ref(tag, title=True)` | `@@ref:tag@@` / `@@ref:tag:title@@` | `[2.1](#tag)` / `[2.1. Title](#tag)`; in a question text: `2.1` / `2.1. Title` (its browser has no anchor) |
+| `info_toc(depth=None)` | `\n\n@@toc@@\n\n`, `@@toc:1@@` with a depth | a nested bullet list of `[2.1. Title](#tag)` links, every level or the first *depth* levels |
+
+The functions return plain strings (a `tr()` title keeps its languages) that combine with `+` like any text. The markers may just as well be typed inside a `tr()` block — the natural form for a sub-section or a reference in the middle of a long text, and the only one inside a block holding literal braces, which `TranslatedText.format()` would refuse: `### @@sec@@ Sub-title` is numbered by its number of `#` (`##`: level 1, `###`: level 2…), `(section @@ref:lease@@)` becomes a link.
+
+Rules:
+
+- a header without a marker is not numbered, and a `#` header (the lab title) never is;
+- a tag is made of letters, digits, `_` and `-`, in English like the identifiers of the lab, and is unique; a level cannot be skipped (no `####` right after a `##`);
+- a question text may hold `@@ref@@` markers only; they give bare numbers;
+- the headers read `1.`, `2.1.`, `2.1.3.`, a reference drops the final dot; a marker inside a fenced code block is left as it is;
+- do not number a header inside `instructor()`: the numbers must be the same in and out of the instructor mode, so a `@@sec@@`, `@@tag@@` or `@@toc@@` standing inside an instructor fragment is dropped (a `@@ref@@` there is resolved);
+- the languages of a `tr()` course must declare the same sections and tags in the same order;
+- a question hash is computed from the marked title, so renumbering the course never detaches the stored answers.
+
+`sre check` resolves the course as `sre start` does, prints its outline (number, title, tag of every section) and reports a bad marker, a level jump, a tag defined twice or unknown — in the course or in a question — and languages whose sections differ, as a `FAIL`. The `sre export` PDF keeps the numbers and the table of contents without the links.
 
 ## State methods
 
@@ -1050,6 +1117,10 @@ Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires
 - `sysctls`: dict of kernel parameter names to values.
 
 Compared to calling `set_net_config` and `set_sysctl` directly, `machine_config` resolves network names through the `NetScheme` topology automatically.
+
+### Course text helpers (from `/opt/sre/lib/informations.py`)
+
+`info_subtitle(title, level=1, tag="")`, `info_tag(tag)`, `info_ref(tag, title=False)` and `info_toc(depth=None)` number the sections of `self.informations`, build its table of contents and resolve the references to its sections, in the course and in the question texts: see [Numbered sections, references and table of contents](#numbered-sections-references-and-table-of-contents--libinformationspy).
 
 ### Miscellaneous generators (from `/opt/sre/lib/utils.py`)
 

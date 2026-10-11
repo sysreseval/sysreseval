@@ -191,6 +191,16 @@ The type of a network (`Network.mode`: hub, switch, managed switch — see [Hubs
 - **GUI.** `Grade0.save_lab_info()` writes `switches` in `info.json`: `{name, mode, allow_connection}` for every network a student sees. `view/switches_view.py` draws the Networks tab from it; the tab is always shown, hubs only or not.
 - **Operations log.** Switch commands of states and evaluations are logged as `stepN - on switch <network> : <command>`.
 
+## Course text (`informations`)
+
+The course of a lab and its question texts may hold the plain-text markers of `lib/informations.py` (`## @@sec:tag@@ Title`, `@@tag:name@@`, `@@ref:tag@@` / `@@ref:tag:title@@`, `@@toc@@` / `@@toc:depth@@`), emitted by `info_subtitle()`, `info_tag()`, `info_ref()`, `info_toc()` or typed inside a `tr()` block. The engine is `src/SRE/informations.py` (imports `instructor_text` only):
+
+- `Grade0.save_lab_info()` calls `resolve_informations()` on the `TranslatedText` of `informations` (language by language; the languages must declare the same sections and tags, in the same order) and `resolve_text()` on the question titles and descriptions and on the state descriptions with the resulting `Numbering`, before `strip_instructor()`. The GUI, `sre export` and the archives only ever see resolved text; `sre check` runs the same resolution and prints `outline()`.
+- Resolved forms: a header becomes `## <a id="tag"></a>2.1. Title` (an untagged section gets the id `sec.2.1`, which no tag can equal), an anchor `<a id="tag"></a>`, a reference `[2.1](#tag)` in the course and the bare `2.1` in a question (the browser of a question has no anchor), the table of contents a nested markdown bullet list of such links, indented like the line of its marker so that the `dedent()` of `markdown_to_html()` still finds the common margin. Markers inside fenced code blocks are left untouched.
+- The `@@sec@@`, `@@tag@@` and `@@toc@@` markers standing inside an instructor fragment are dropped (`@@ref@@` is resolved), so that a project in instructor mode is numbered like a student's one. A question hash is computed at registration from the marked title (`_tt_hash_str`), so a renumbering of the course never detaches stored answers.
+- QTextBrowser knows the `id` anchors and scrolls to them on a `#tag` link without leaving the document. fpdf2 raises on an `<a>` without `href` and on a `#tag` link to a named destination it does not know: `pdf.markdown_to_html()` removes the anchors and unwraps those links (the numbers stay) before `write_html()`.
+- Errors are `ValueError` with a lab-facing message (`sre check` prints them as `FAIL`).
+
 ## Progress reporting
 
 `sre start` emits JSON lines to **stderr** so the GUI can render progress:

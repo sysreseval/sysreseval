@@ -41,6 +41,7 @@ from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoM
                      InfoSwitch, TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
 from .instructor_text import instructor, set_instructor_context, strip_instructor
+from .informations import resolve_informations, resolve_text
 from .operations_log import OperationsLog, format_grade, format_total
 from .switch_console import SwitchConsole
 from .params import SRE
@@ -2290,6 +2291,12 @@ class Grade0:
         for q in questions:
             q.title = TranslatedText.from_value(q.title, default_language)
             q.description = TranslatedText.from_value(q.description, default_language)
+        # numbered sections, references and table of contents (markers of lib/informations.py):
+        # the numbers come from the course, the questions refer to them (bare numbers, no link)
+        informations, numbering = resolve_informations(informations)
+        for q in questions:
+            q.title = resolve_text(q.title, numbering)
+            q.description = resolve_text(q.description, numbering)
 
         net_scheme_cls = type(self.net_scheme)
         # debug and instructor-mode projects: every state can be applied; the ones a student
@@ -2313,7 +2320,7 @@ class Grade0:
                 if getattr(module_rvlab, 'allow_user_states', False) else {}
             )
         user_allowed_states = {
-            state: TranslatedText.from_value(desc, default_language) if desc else desc
+            state: resolve_text(TranslatedText.from_value(desc, default_language), numbering) if desc else desc
             for state, desc in user_allowed_states_raw.items()
         }
 

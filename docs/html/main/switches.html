@@ -245,6 +245,7 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-parameters"><code class="docutils literal notranslate"><span class="pre">Network</span></code> parameters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switches-and-vlans">Switches and VLANs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#instructor-only-texts-instructor">Instructor-only texts — <code class="docutils literal notranslate"><span class="pre">instructor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#numbered-sections-references-and-table-of-contents-lib-informations-py">Numbered sections, references and table of contents — <code class="docutils literal notranslate"><span class="pre">lib/informations.py</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
@@ -266,17 +267,21 @@
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#cheat-answers">Cheat answers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bonus-elements">Bonus elements</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-methods">Grade methods</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#mail-helpers-from-opt-sre-lib-smtp-py">Mail helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/smtp.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dns-helpers-from-opt-sre-lib-dns-py">DNS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dns.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bgp-helpers-from-opt-sre-lib-frr-py">BGP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#course-text-helpers-from-opt-sre-lib-informations-py">Course text helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/informations.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py">Switch helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/switch.py</span></code>)</a></li>
@@ -301,7 +306,7 @@
 </li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Hubs, switches and VLANs</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#in-the-gui">In the GUI</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-switches-tab">The Switches tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-networks-tab">The Networks tab</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
 </ul>
 </li>
@@ -449,6 +454,7 @@
 <li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#switches">Switches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#course-text-informations">Course text (<code class="docutils literal notranslate"><span class="pre">informations</span></code>)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#progress-reporting">Progress reporting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#security-model">Security model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="internals.html#archive-format">Archive format</a></li>
@@ -527,9 +533,9 @@
 <p>This page describes the feature as a whole. The reference tables of the lab API are in the <a class="reference internal" href="lab-authoring.html#network-parameters"><span class="std std-ref">Lab Authoring Guide</span></a>, the commands in the <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>, and the plugin a host needs for switches in <a class="reference internal" href="installation.html#network-plugin-for-the-switch-types"><span class="std std-ref">Installation</span></a>.</p>
 <section id="in-the-gui">
 <h2>In the GUI<a class="headerlink" href="#in-the-gui" title="Link to this heading">¶</a></h2>
-<section id="the-switches-tab">
-<h3>The Switches tab<a class="headerlink" href="#the-switches-tab" title="Link to this heading">¶</a></h3>
-<p>A project shows a <strong>Switches</strong> tab, after <strong>Machines</strong>, as soon as one of its networks is not a hub; a lab with hubs only looks exactly as before. The tab lists every network the student can see — hubs included — with three columns:</p>
+<section id="the-networks-tab">
+<h3>The Networks tab<a class="headerlink" href="#the-networks-tab" title="Link to this heading">¶</a></h3>
+<p>A project always shows a <strong>Networks</strong> tab, after <strong>Machines</strong>, whatever the types of its networks. The tab lists every network the student can see — hubs included — with three columns:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -553,7 +559,7 @@
 <p><em>Connect</em> opens the management console of the switch in an external terminal, like the <em>Connect</em> button of the <strong>Machines</strong> tab does for a machine. Each click opens a new terminal.</p>
 <p>The <strong>Terminals</strong> tab also holds one embedded terminal per manageable switch the students may use, next to those of the machines.</p>
 <p>A network that only connects hidden machines is not listed.</p>
-<p>In a debug project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>) every network is listed, and the manageable switches the lab closed to the students can be used all the same: their type stays red, but they get an orange <em>Connect</em> button in the Switches tab and a terminal in the Terminals tab, whose title is orange like the title of a machine the students cannot connect to.</p>
+<p>In a debug project (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code>) every network is listed, and the manageable switches the lab closed to the students can be used all the same: their type stays red, but they get an orange <em>Connect</em> button in the Networks tab and a terminal in the Terminals tab, whose title is orange like the title of a machine the students cannot connect to.</p>
 </section>
 <section id="the-console-of-a-manageable-switch">
 <h3>The console of a manageable switch<a class="headerlink" href="#the-console-of-a-manageable-switch" title="Link to this heading">¶</a></h3>
@@ -661,7 +667,7 @@ lan$ exit
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">allow_connection</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
-<td><p>Manageable switch only: the students may open its console. <code class="docutils literal notranslate"><span class="pre">False</span></code> shows the type of the switch in red in the Switches tab, without <em>Connect</em> button, and makes <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> refuse them.</p></td>
+<td><p>Manageable switch only: the students may open its console. <code class="docutils literal notranslate"><span class="pre">False</span></code> shows the type of the switch in red in the Networks tab, without <em>Connect</em> button, and makes <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> refuse them.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vlans</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></td>
@@ -773,7 +779,7 @@ lan$ exit
 <h2>Limits<a class="headerlink" href="#limits" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><strong>Save and restore.</strong> A save file keeps the kind of each network and the declared VLANs, not what was changed on a console afterwards: a restored project starts again from the lab’s declaration. A lab for which this matters re-applies its own configuration in its <code class="docutils literal notranslate"><span class="pre">restore</span></code> state with <code class="docutils literal notranslate"><span class="pre">switch_cmd()</span></code>.</p></li>
-<li><p><strong>Schema.</strong> The schema draws every network the same way, whatever its kind; the Switches tab tells them apart.</p></li>
+<li><p><strong>Schema.</strong> The schema draws every network the same way, whatever its kind; the Networks tab tells them apart.</p></li>
 <li><p><strong>Trunks through a plain switch.</strong> See the rules above: use a hub or a manageable switch.</p></li>
 <li><p><strong>Rates.</strong> Links are user-space switches (about 45–50 Mbit/s in TCP), whatever the kind.</p></li>
 </ul>
@@ -790,7 +796,7 @@ Install it with `make network-plugin` in /opt/sre (see the installation guide).
 <section id="tests">
 <h2>Tests<a class="headerlink" href="#tests" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p>Unit tests (no Docker): <code class="docutils literal notranslate"><span class="pre">tests/test_switch_modes.py</span></code> (declaration, deployment calls, <code class="docutils literal notranslate"><span class="pre">switch_cmd()</span></code>, <code class="docutils literal notranslate"><span class="pre">test_switch()</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_switch_console.py</span></code> (console, allowed commands, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_switch_lib.py</span></code> (helpers of <code class="docutils literal notranslate"><span class="pre">lib/switch.py</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_gui_switches_view.py</span></code> (Switches tab).</p></li>
+<li><p>Unit tests (no Docker): <code class="docutils literal notranslate"><span class="pre">tests/test_switch_modes.py</span></code> (declaration, deployment calls, <code class="docutils literal notranslate"><span class="pre">switch_cmd()</span></code>, <code class="docutils literal notranslate"><span class="pre">test_switch()</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_switch_console.py</span></code> (console, allowed commands, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_switch_lib.py</span></code> (helpers of <code class="docutils literal notranslate"><span class="pre">lib/switch.py</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_gui_switches_view.py</span></code> (Networks tab).</p></li>
 <li><p>Live tests (<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">docker-tests</span></code>, real containers): <code class="docutils literal notranslate"><span class="pre">TestHub</span></code> checks that a third machine captures the traffic of a hub — it runs with any plugin — and <code class="docutils literal notranslate"><span class="pre">TestSwitchModes</span></code> that it does not on a switch nor inside a VLAN of a manageable switch, plus VLAN isolation, the console, a state, grading, export and save / restore. <code class="docutils literal notranslate"><span class="pre">TestSwitchModes</span></code> is skipped on a host without the plugin with the switch types.</p></li>
 </ul>
 </section>
@@ -853,7 +859,7 @@ Install it with `make network-plugin` in /opt/sre (see the installation guide).
             <ul>
 <li><a class="reference internal" href="#">Hubs, switches and VLANs</a><ul>
 <li><a class="reference internal" href="#in-the-gui">In the GUI</a><ul>
-<li><a class="reference internal" href="#the-switches-tab">The Switches tab</a></li>
+<li><a class="reference internal" href="#the-networks-tab">The Networks tab</a></li>
 <li><a class="reference internal" href="#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
 </ul>
 </li>

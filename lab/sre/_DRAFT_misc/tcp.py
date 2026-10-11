@@ -20,6 +20,7 @@ from typing import Dict
 
 from SRE import params
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
+from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ips_from_topology
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward, remount_proc_sys
 import tc
@@ -158,22 +159,9 @@ class NetScheme(NetScheme0):
         # The course: one tr() text per section (the lab itself is presented by the first question).
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Le segment TCP et la connexion"), tag="segment")
             + tr("""
-**Sommaire**
-
-1. Le segment TCP et la connexion
-2. Établissement et fin de connexion, états
-3. Fiabilité : acquittements, retransmissions, SACK
-4. Contrôle de flux : la fenêtre de réception
-5. L'algorithme de Nagle et l'ACK retardé
-6. Contrôle de congestion
-7. Multipath TCP (MPTCP)
-8. Compléments : keepalive, ports éphémères, file d'attente des connexions, offload
-9. Les outils : tcpdump, Wireshark, ss, nc, iperf3
-10. Plan du TP
-""")
-            + tr("""
-## 1. Le segment TCP et la connexion
 
 TCP (RFC 9293) offre aux applications un **flot d'octets fiable et ordonné** entre deux
 extrémités, au-dessus d'IP qui ne garantit rien. Une **connexion** est identifiée par le
@@ -190,7 +178,7 @@ Un **segment** TCP est transporté dans un paquet IP. Son en-tête (20 octets sa
   précède a été reçu (*acquittement cumulatif*) ;
 - les **drapeaux** `SYN`, `ACK`, `FIN`, `RST`, `PSH`, `URG` (et `ECE`/`CWR` pour l'ECN) ;
 - la **fenêtre** (*window*) : le nombre d'octets que l'émetteur du segment est prêt à recevoir
-  (contrôle de flux, § 4), multiplié par le facteur d'échelle négocié à l'ouverture ;
+  (contrôle de flux, § @@ref:flow-control@@), multiplié par le facteur d'échelle négocié à l'ouverture ;
 - une **somme de contrôle** et des **options** (MSS, échelle de fenêtre, SACK, horodatages,
   MPTCP…), surtout dans les `SYN`.
 
@@ -202,8 +190,8 @@ données par segment que l'émetteur du `SYN` accepte de recevoir : MTU de son i
 octets), les segments de données font 12 octets de moins que le MSS annoncé (`ss -ti` montre
 `mss:1448` pour un MSS annoncé de 1460).
 """)
+            + info_subtitle(tr("Établissement et fin de connexion, états"), tag="connection")
             + tr("""
-## 2. Établissement et fin de connexion, états
 
 **Ouverture en trois temps** (*three-way handshake*) : le client envoie `SYN` (seq = ISN du
 client, options), le serveur répond `SYN, ACK` (seq = ISN du serveur, ack = ISN client + 1,
@@ -229,12 +217,12 @@ retransmettre avec un délai doublé à chaque fois : 1 s, 2 s, 4 s, 8 s… jusq
 avant `Connection timed out`). Les états se lisent avec `ss -tan` (`-l` pour les sockets en
 écoute, `-p` pour le processus, `-i` pour les paramètres internes, `-n` pour ne pas résoudre).
 """)
+            + info_subtitle(tr("Fiabilité : acquittements, retransmissions, SACK"), tag="reliability")
             + tr("""
-## 3. Fiabilité : acquittements, retransmissions, SACK
 
 Chaque segment de données doit être acquitté ; l'émetteur garde une copie jusque là. Un
 acquittement est **cumulatif** : `ack = n` signifie « j'ai tout reçu jusqu'à n − 1 ». Le récepteur
-peut acquitter plusieurs segments d'un coup et retarde souvent son `ACK` (§ 5).
+peut acquitter plusieurs segments d'un coup et retarde souvent son `ACK` (§ @@ref:nagle@@).
 
 Deux mécanismes déclenchent une **retransmission** :
 
@@ -253,8 +241,8 @@ expert*, ou les filtres `tcp.analysis.retransmission`, `tcp.analysis.fast_retran
 les horodatages (`TS val/ecr`), chaque `ACK` indique quel segment il acquitte vraiment (RTT exact,
 protection contre les anciens numéros de séquence : PAWS).
 """)
+            + info_subtitle(tr("Contrôle de flux : la fenêtre de réception"), tag="flow-control")
             + tr("""
-## 4. Contrôle de flux : la fenêtre de réception
 
 Le récepteur annonce dans chaque segment sa **fenêtre de réception** (*rwnd*) : la place
 disponible dans son tampon de réception. L'émetteur ne peut avoir « en vol » (envoyé, non
@@ -281,8 +269,8 @@ fenêtre (*Zero Window Probe Ack*) ; quand l'application relit, il envoie un **W
 le transfert repart. Le graphique *Statistiques → Graphique d'E/S* ou *Graphiques des flux TCP →
 Window Scaling* montre bien l'épisode.
 """)
+            + info_subtitle(tr("L'algorithme de Nagle et l'ACK retardé"), tag="nagle")
             + tr("""
-## 5. L'algorithme de Nagle et l'ACK retardé
 
 Une application qui écrit octet par octet produirait un segment par octet (41 octets d'en-têtes
 pour 1 octet utile). L'**algorithme de Nagle** (RFC 896, actif par défaut) l'évite : tant qu'un
@@ -293,7 +281,7 @@ premier octet part donc tout de suite, les suivants attendent un aller-retour : 
 L'option de socket **`TCP_NODELAY`** désactive Nagle : chaque `send()` donne un segment d'un
 octet, ce que veulent les applications interactives ou à faible latence (SSH, jeux, RPC) qui
 préfèrent le surcoût à l'attente. Une autre limite apparaît alors : la **fenêtre de congestion**
-initiale (§ 6) n'autorise que dix segments en vol ; les octets suivants attendent le premier `ACK`
+initiale (§ @@ref:congestion@@) n'autorise que dix segments en vol ; les octets suivants attendent le premier `ACK`
 et partent ensemble (dix segments d'un octet, puis un segment de cent octets).
 
 Le récepteur, lui, pratique l'**ACK retardé** (*delayed ACK*, jusqu'à 40 ms sous Linux) : il
@@ -304,8 +292,8 @@ l'*autocorking* (`net.ipv4.tcp_autocorking`) : même avec `TCP_NODELAY`, de peti
 rapprochées peuvent être fusionnées tant que le segment précédent n'a pas quitté la file de la
 carte.
 """)
+            + info_subtitle(tr("Contrôle de congestion"), tag="congestion")
             + tr("""
-## 6. Contrôle de congestion
 
 Le contrôle de flux protège le récepteur ; le **contrôle de congestion** protège le réseau. L'émetteur
 maintient une **fenêtre de congestion** (*cwnd*, en segments dans `ss -ti`) : il n'envoie jamais
@@ -330,8 +318,8 @@ centaines de kbit/s (la loi de Mathis l'approxime par MSS / (RTT × √p)). Dans
 perte le débit n'est limité que par la fenêtre de réception, le lien ou la file d'attente (où
 l'excès se traduit par un RTT qui grimpe : le *bufferbloat*).
 """)
+            + info_subtitle(tr("Multipath TCP (MPTCP)"), tag="mptcp")
             + tr("""
-## 7. Multipath TCP (MPTCP)
 
 **MPTCP** (RFC 8684) est une extension de TCP qui répartit une connexion sur **plusieurs
 sous-flux** (*subflows*) TCP, un par chemin (par exemple Wi-Fi + 4G sur un téléphone, ou ici
@@ -361,8 +349,8 @@ chemins. `ss -tiM` montre les sockets MPTCP (`subflows:2`), `ss -ti` les sous-fl
 (`tcp-ulp-mptcp`), `nstat -z | grep MPTcp` les compteurs ; `tshark` sur chaque routeur
 (`-Y tcp.options.mptcp`) montre quel chemin porte quoi.
 """)
+            + info_subtitle(tr("Compléments : keepalive, ports éphémères, file d'attente des connexions, offload"), tag="extras")
             + tr("""
-## 8. Compléments : keepalive, ports éphémères, file d'attente des connexions, offload
 
 - **Keepalive** : une connexion sans trafic peut rester établie indéfiniment (rien ne circule).
   Si l'application active `SO_KEEPALIVE`, le noyau envoie, après `net.ipv4.tcp_keepalive_time`
@@ -389,8 +377,8 @@ chemins. `ss -tiM` montre les sockets MPTCP (`subflows:2`), `ss -ti` les sous-fl
   le MSS annoncé dans le `SYN` et les règles de *MSS clamping* limitent la taille des segments
   (voir le TP MTU).
 """)
+            + info_subtitle(tr("Les outils : tcpdump, Wireshark, ss, nc, iperf3"), tag="tools")
             + tr("""
-## 9. Les outils : tcpdump, Wireshark, ss, nc, iperf3
 
 - `tcpdump -ni eth0 -s 128 -w /shared/NOM.pcap tcp port N` enregistre dans un fichier pcap les
   128 premiers octets de chaque trame (tous les en-têtes et options, pas les données : le fichier
@@ -416,8 +404,8 @@ chemins. `ss -tiM` montre les sockets MPTCP (`subflows:2`), `ss -ti` les sous-fl
   peu fiable en sortie de l'interface ; `tc qdisc show`, `tc qdisc del dev eth0 root`),
   `sysctl -w net.ipv4.XXX=…` (`/proc/sys` est monté en écriture sur `m1` et `serveur1`).
 """)
+            + info_subtitle(tr("Plan du TP"), tag="plan")
             + tr("""
-## 10. Plan du TP
 
 1. **Établissement et fin de connexion** : capture d'une connexion vers un service de
    `serveur1`, options du `SYN`, fin, états (`ss -tan`), port fermé, port filtré ;

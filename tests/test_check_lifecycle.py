@@ -91,3 +91,64 @@ class TestCheckDataRoundTrip:
         with pytest.raises(TypeError):
             action_check()
         assert 'FAIL  Data does not survive the data.json round trip' in capsys.readouterr().out
+
+
+_COURSE = '''
+        self.informations = (
+            no_tr("## Lab\\n") + info_toc()
+            + info_subtitle(tr("Routing", fr="Routage"), tag="routing")
+            + tr("""
+### @@sec@@ The default route
+
+See section @@ref:checks@@.
+""")
+            + info_subtitle(tr("Checks"), tag="checks")
+        )
+'''
+
+_QUESTION = '''
+        self.question_text(title="Gateway", description=tr("See section @@ref:%s@@ of the Informations tab."))
+'''
+
+
+def _with_course(ref: str):
+    def transform(text):
+        text = text.replace(
+            'from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state',
+            'from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr\n'
+            'from informations import info_subtitle, info_toc\n'
+            "tr = make_tr('en')")
+        marker = "    def __init__(self, data, running_lab_name):\n        super().__init__(data=data, running_lab_name=running_lab_name)\n"
+        assert marker in text
+        text = text.replace(marker, marker + _COURSE)
+        grade_marker = "        super().grade()\n"
+        assert grade_marker in text
+        return text.replace(grade_marker, grade_marker + _QUESTION % ref)
+    return transform
+
+
+class TestCheckInformations:
+    """`sre check` resolves the numbered sections of informations (lib/informations.py) and the
+    references of the questions as save_lab_info() does."""
+
+    def test_outline_is_printed(self, check_env, capsys):
+        check_env('course.py', _with_course('checks'))
+        action_check()
+        out = capsys.readouterr().out
+        assert '         1. Routing  [routing]\n' in out
+        assert '             1.1. The default route\n' in out
+        assert '         2. Checks  [checks]\n' in out
+        assert 'ok  informations: 3 numbered section(s), 2 tag(s)' in out
+        assert 'ok  1 question(s): references to the course resolved' in out
+
+    def test_unknown_tag_in_a_question_is_reported(self, check_env, capsys):
+        check_env('course.py', _with_course('nowhere'))
+        with pytest.raises(ValueError, match="unknown tag 'nowhere'"):
+            action_check()
+        assert "FAIL  question 'Gateway', description: unknown tag 'nowhere'" in capsys.readouterr().out
+
+    def test_bad_course_is_reported(self, check_env, capsys):
+        check_env('course.py', lambda text: _with_course('checks')(text).replace('### @@sec@@', '#### @@sec@@'))
+        with pytest.raises(ValueError, match='level 3 but no level 2'):
+            action_check()
+        assert 'FAIL  informations: section' in capsys.readouterr().out

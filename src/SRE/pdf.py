@@ -5,6 +5,7 @@ The core fonts of fpdf (Helvetica, Courier) only accept Latin-1 text and raise o
 when they are installed (``make fonts``) and never raises on a character a font cannot draw.
 """
 import os
+import re
 import unicodedata
 
 from fpdf import FPDF
@@ -44,10 +45,18 @@ def _latin1(text: str) -> str:
     return ''.join(out)
 
 
+# the anchors and the in-document links of a numbered course (SRE.informations): fpdf2 raises on
+# an <a> without href and on a link to a named destination it does not know
+_ANCHOR_RE = re.compile(r'<a id="[^"]*"></a>')
+_FRAGMENT_LINK_RE = re.compile(r'<a href="#[^"]*">(.*?)</a>', re.DOTALL)
+
+
 def markdown_to_html(text: str) -> str:
     """Convert lab markdown to HTML the way the GUI views do; a PDF never shows the instructor
-    fragments."""
-    return instructor_text.markdown_to_html(text)
+    fragments, and the anchors / in-document links of the numbered sections become plain text
+    (the numbers stay)."""
+    html = instructor_text.markdown_to_html(text)
+    return _FRAGMENT_LINK_RE.sub(r'\1', _ANCHOR_RE.sub('', html))
 
 
 class SrePDF(FPDF):

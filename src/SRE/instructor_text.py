@@ -97,6 +97,11 @@ def _wrap(text, args: str) -> str:
     return f"{_BEGIN}{args}{_ARGS_END}{text}{_END}"
 
 
+def fragment_spans(text: str) -> list:
+    """``(start, end)`` of every instructor fragment of *text*, marks included, in text order."""
+    return [match.span() for match in _FRAGMENT_RE.finditer(text)]
+
+
 def has_instructor(text) -> bool:
     """True when *text* (``str`` or dict of strings) holds an instructor mark."""
     if isinstance(text, dict):

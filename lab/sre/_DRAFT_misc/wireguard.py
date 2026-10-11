@@ -27,6 +27,7 @@ from typing import Dict
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
 from SRE.params import sre_docker_image
 from firewall import get_ruleset, ruleset_mentions
+from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ipv4s
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward, get_ip_forward, get_routes
 from ping import eval_ping
@@ -179,22 +180,9 @@ class NetScheme(NetScheme0):
         # The course: one tr() text per section (the lab itself is presented by the first question).
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Pourquoi WireGuard ?"), tag="why")
             + tr("""
-**Sommaire**
-
-1. Pourquoi WireGuard ?
-2. Le modèle : une interface, des clés, des pairs
-3. Le routage par clés (*cryptokey routing*) : `AllowedIPs`
-4. Le protocole : poignée de main, sessions, paquets
-5. Les outils : `wg`, `wg-quick`, systemd
-6. Routage : derrière le tunnel, site à site, tunnel complet
-7. NAT, *keepalive* et mobilité
-8. Observation et diagnostic
-9. Sécurité et limites
-10. Plan du TP
-""")
-            + tr("""
-## 1. Pourquoi WireGuard ?
 
 Un **VPN** (*Virtual Private Network*) relie des machines ou des réseaux à travers un réseau que
 l'on ne contrôle pas — Internet — comme s'ils étaient sur un même réseau privé : les paquets IP
@@ -229,8 +217,8 @@ utilisateur `wireguard-go` et `boringtun`). Debian fournit le paquet `wireguard`
 | configuration | quelques lignes | dizaines de directives | complexe |
 | révocation | retirer le pair | CRL | CRL |
 """)
+            + info_subtitle(tr("Le modèle : une interface, des clés, des pairs"), tag="model")
             + tr("""
-## 2. Le modèle : une interface, des clés, des pairs
 
 Sur chaque machine, un tunnel WireGuard est une **interface réseau** virtuelle (`wg0`) qui
 porte une adresse du réseau privé et vers laquelle pointent des routes. L'interface a une **clé
@@ -240,10 +228,10 @@ privée** (32 octets, écrite en base64 : 44 caractères) et, éventuellement, u
 | paramètre | rôle |
 |-----------|------|
 | `PublicKey` | l'identité du pair : la clé publique dérivée de sa clé privée (`wg pubkey`) |
-| `AllowedIPs` | les adresses ou réseaux qui se trouvent **derrière ce pair** (§ 3) |
+| `AllowedIPs` | les adresses ou réseaux qui se trouvent **derrière ce pair** (§ @@ref:allowed-ips@@) |
 | `Endpoint` | adresse publique et port du pair, s'ils sont connus et fixes (facultatif : appris sinon) |
-| `PersistentKeepalive` | envoyer un paquet vide toutes les *n* secondes (NAT, § 7) |
-| `PresharedKey` | clé symétrique supplémentaire, propre à ce couple de pairs (§ 9) |
+| `PersistentKeepalive` | envoyer un paquet vide toutes les *n* secondes (NAT, § @@ref:nat@@) |
+| `PresharedKey` | clé symétrique supplémentaire, propre à ce couple de pairs (§ @@ref:security@@) |
 
 Il n'y a **pas de client ni de serveur** : les deux extrémités ont la même configuration, à ceci
 près que l'une connaît l'`Endpoint` de l'autre (celle qui a une adresse publique fixe). Un
@@ -262,8 +250,8 @@ dialogue ; l'échange des clés publiques se fait hors ligne, par un canal de co
 TP, le répertoire `/shared` commun à toutes les machines ou un copier-coller). La clé privée ne
 quitte jamais sa machine.
 """)
+            + info_subtitle(tr("Le routage par clés (*cryptokey routing*) : `AllowedIPs`"), tag="allowed-ips")
             + tr("""
-## 3. Le routage par clés (*cryptokey routing*) : `AllowedIPs`
 
 C'est **l'idée centrale** de WireGuard. Chaque interface tient une table qui associe la clé
 publique de chaque pair à une liste de préfixes IP, ses `AllowedIPs`. Cette table sert dans les
@@ -288,12 +276,12 @@ un second pair le retire au premier.
 | une passerelle de site (vue du concentrateur) | son adresse VPN et son LAN : `10.8.0.2/32, 192.168.2.0/24` |
 | tout le trafic (tunnel complet) | `0.0.0.0/0` |
 
-`wg-quick` déduit les **routes** du noyau des `AllowedIPs` (§ 5) : avec `wg` seul, il faut les
+`wg-quick` déduit les **routes** du noyau des `AllowedIPs` (§ @@ref:tools@@) : avec `wg` seul, il faut les
 ajouter soi-même (`ip route add RÉSEAU dev wg0`). Les deux doivent être cohérents : la route
 envoie le paquet dans `wg0`, les `AllowedIPs` choisissent le pair.
 """)
+            + info_subtitle(tr("Le protocole : poignée de main, sessions, paquets"), tag="protocol")
             + tr("""
-## 4. Le protocole : poignée de main, sessions, paquets
 
 WireGuard repose sur le cadre **Noise** (motif *IKpsk2*). Une **poignée de main** en un seul
 aller-retour établit les clés de session :
@@ -327,8 +315,8 @@ Enfin, l'`Endpoint` d'un pair est **mis à jour à chaque paquet authentifié** 
 portable qui change de réseau (Wi-Fi → 4G) garde sa session, le serveur apprend sa nouvelle
 adresse au premier paquet. C'est la **mobilité** (*roaming*) intégrée.
 """)
+            + info_subtitle(tr("Les outils : `wg`, `wg-quick`, systemd"), tag="tools")
             + tr("""
-## 5. Les outils : `wg`, `wg-quick`, systemd
 
 **`wg`** configure et interroge le noyau :
 
@@ -368,7 +356,7 @@ PersistentKeepalive = 25
 
 `wg-quick up wg0` : `ip link add`, `wg setconf` (avec le fichier débarrassé des clés de wg-quick,
 que montre `wg-quick strip wg0`), `ip address add`, MTU, `ip link set up`, puis **une route par
-préfixe des `AllowedIPs`** (et le mécanisme du tunnel complet pour `0.0.0.0/0`, § 6).
+préfixe des `AllowedIPs`** (et le mécanisme du tunnel complet pour `0.0.0.0/0`, § @@ref:routing@@).
 `wg-quick down wg0` défait tout. L'unité systemd **`wg-quick@wg0`** lance `wg-quick up wg0` au
 démarrage : `systemctl enable --now wg-quick@wg0`. Deux pièges : `wg-quick up` refuse une
 interface qui existe déjà (`wg0' already exists`), et `systemctl start` échoue de même (unité
@@ -376,8 +364,8 @@ interface qui existe déjà (`wg0' already exists`), et `systemctl start` échou
 modification du fichier **sans couper le tunnel** : `wg syncconf wg0 <(wg-quick strip wg0)` ;
 `systemctl restart wg-quick@wg0` coupe et remonte (nouvelles routes comprises).
 """)
+            + info_subtitle(tr("Routage : derrière le tunnel, site à site, tunnel complet"), tag="routing")
             + tr("""
-## 6. Routage : derrière le tunnel, site à site, tunnel complet
 
 Un tunnel ne transporte que ce que les **routes** y envoient, et WireGuard n'accepte que ce que
 les `AllowedIPs` autorisent : chaque réseau à joindre doit figurer, de chaque côté, dans les
@@ -419,8 +407,8 @@ ADRESSE` montrent le résultat ; `wg show wg0 fwmark` vaut `0xca6c` (51820). Cô
 le trafic du poste vers Internet doit être **traduit** (NAT, `masquerade` en sortie de `eth0`) :
 Internet n'a pas de route vers le réseau du VPN. Le DNS suit (`DNS = …` dans `[Interface]`).
 """)
+            + info_subtitle(tr("NAT, *keepalive* et mobilité"), tag="nat")
             + tr("""
-## 7. NAT, *keepalive* et mobilité
 
 Un poste **derrière un NAT** (box, hôtel, 4G) n'a pas d'adresse publique : personne ne peut
 l'appeler. Il n'a donc pas besoin de `ListenPort` (un port aléatoire est choisi) et c'est lui qui
@@ -438,13 +426,13 @@ le concentrateur garde un `Endpoint` valable. Inutile entre deux machines à adr
 (et coûteux sur batterie), indispensable derrière un NAT quand le trafic doit pouvoir venir de
 l'autre côté.
 
-La **mobilité** découle du § 4 : l'`Endpoint` est réappris à chaque paquet authentifié. Le poste
+La **mobilité** découle du § @@ref:protocol@@ : l'`Endpoint` est réappris à chaque paquet authentifié. Le poste
 qui change de réseau continue d'émettre vers le concentrateur, qui voit la nouvelle adresse et
 répond au bon endroit — sans renégociation, sans coupure visible. Deux pairs **tous deux**
 derrière un NAT ne peuvent pas se joindre sans relais (ou redirection de port sur une box).
 """)
+            + info_subtitle(tr("Observation et diagnostic"), tag="diagnostic")
             + tr("""
-## 8. Observation et diagnostic
 
 - `wg show` : le premier réflexe. `latest handshake` absent ou oldpc (> 3 min) = pas de
   session ; `transfer` qui n'augmente qu'en émission = l'autre côté ne répond pas ou nous jette.
@@ -475,8 +463,8 @@ WireGuard n'exige pas d'horloges synchronisées (l'horodatage de la poignée de 
 rejeter un rejeu), ni de DNS, ni de certificats valides : un tunnel qui ne monte pas est presque
 toujours une affaire de clés, d'adresses ou d'`AllowedIPs`.
 """)
+            + info_subtitle(tr("Sécurité et limites"), tag="security")
             + tr("""
-## 9. Sécurité et limites
 
 - **Clés privées** : créées avec `umask 077`, fichiers en mode `600` dans `/etc/wireguard`
   (mode `700`), jamais copiées ; une clé **par appareil**, jamais partagée entre deux machines
@@ -494,7 +482,7 @@ toujours une affaire de clés, d'adresses ou d'`AllowedIPs`.
   tous les pairs.
 - **Surface d'attaque** minime : pas de négociation, pas de réponse aux inconnus (furtivité), code
   court audité, protocole vérifié formellement (Tamarin). Les pairs ne peuvent pas usurper
-  d'adresse (§ 3) : les `AllowedIPs` sont un pare-feu par construction ; on filtre le reste sur
+  d'adresse (§ @@ref:allowed-ips@@) : les `AllowedIPs` sont un pare-feu par construction ; on filtre le reste sur
   `wg0` (`nft … iifname "wg0" …`).
 - **Ce que WireGuard ne fait pas** : authentifier un *utilisateur* (mot de passe, second
   facteur), attribuer des adresses (chaque poste a la sienne, fixe, dans sa configuration),
@@ -502,8 +490,8 @@ toujours une affaire de clés, d'adresses ou d'`AllowedIPs`.
   `wstunnel`…), cacher qu'un tunnel existe (métadonnées visibles : adresses, volumes, rythme
   des keepalives).
 """)
+            + info_subtitle(tr("Plan du TP"), tag="plan")
             + tr("""
-## 10. Plan du TP
 
 1. **Clés et premier tunnel** entre `srv` et `gwb`, à la main (`wg genkey`, `ip link`, `wg set`) ;
 2. **Configuration persistante** avec `wg-quick` (`/etc/wireguard/wg0.conf`) et systemd ;

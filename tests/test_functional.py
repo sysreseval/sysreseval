@@ -957,6 +957,42 @@ class TestInstructorMode:
         # same hashes as the normal project: the answers do not depend on the kind of project
         assert [q['question_hash'] for q in info['questions']] == hashes
 
+    def test_numbered_course_is_resolved_in_both_modes(self, instructor_env, tmp_path, monkeypatch):
+        """The lib/informations.py markers of the course and of the questions are resolved in
+        info.json (save_lab_info), with the same numbers in and out of the instructor mode: a
+        section numbered inside an instructor() fragment is dropped."""
+        from SRE.informations import has_markers
+        from SRE.instructor_text import strip_instructor, unwrap_instructor
+
+        def transform(text):
+            text = _replace_once(text, 'from SRE.lib_sre import Data0, NetScheme0, Grade0, instructor, make_tr',
+                                 'from SRE.lib_sre import Data0, NetScheme0, Grade0, instructor, make_tr, no_tr\n'
+                                 'from informations import info_subtitle, info_toc')
+            text = _replace_once(text, '        self.informations = instructor(tr("""\n            ## Solution',
+                                 '        self.informations = no_tr("## Lab\\n") + info_toc() + instructor(tr("""\n'
+                                 '            ### @@sec@@ Solution (see @@ref:route@@)')
+            text = _replace_once(text, '            ## Solution\n            Lancer',
+                                 '            ### @@sec@@ Solution (see @@ref:route@@)\n            Lancer')
+            text = _replace_once(text, '            """)) + tr("""\n            Configure the default route of the client.',
+                                 '            """)) + info_subtitle(tr("Route", fr="Route"), tag="route") + tr("""\n'
+                                 '            Configure the default route of the client (@@ref:route:title@@).')
+            return _replace_once(text, 'description=tr("Which gateway does the client use?")',
+                                 'description=tr("Which gateway does the client use (section @@ref:route@@)?")')
+
+        # two copies: two projects started in the same second would share their name
+        infos = [_info(_start_instructor_lab(mode, _instructor_lab_copy(tmp_path, monkeypatch, name, transform)))
+                 for mode, name in ((False, 'numbered.py'), (True, 'numbered_instructor.py'))]
+        for info in infos:
+            assert not any(has_markers(unwrap_instructor(text)) for text in _info_texts(info))
+            course = strip_instructor(info['informations']['en'])
+            assert '- [1. Route](#route)\n' in course
+            assert '## <a id="route"></a>1. Route' in course
+            assert 'Configure the default route of the client ([1. Route](#route)).' in course
+            assert '1.1' not in course
+            assert strip_instructor(info['questions'][0]['description']['en']) == 'Which gateway does the client use (section 1)?'
+        secret = unwrap_instructor(infos[1]['informations']['en'])
+        assert '### Solution (see [1](#route))' in secret and '1.1' not in secret
+
     def test_instructor_project_logs_the_states_only(self, instructor_env):
         rln = _start_instructor_lab(True)
         log_path = Path(params.operations_log_filename(rln))
