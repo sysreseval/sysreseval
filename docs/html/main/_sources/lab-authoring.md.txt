@@ -33,7 +33,7 @@ While iterating on a `srelab.py`, you typically alternate between editing the mo
 
 ### `sre check [-p] <lab> [<state>]`
 
-Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`, as `sre start` and `sre eval` do), instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab. The numbered sections of `informations` are resolved and printed as an outline, and the `@@ref@@` references of the question texts are checked (see [Numbered sections](#numbered-sections-references-and-table-of-contents--libinformationspy)).
+Static validation, no containers deployed. Imports the module, runs `Data.compute_pre_generate()` → `Data.generate()` → `data.compute_post_generate()`, checks that the `Data` instance survives the `data.json` round trip (`to_json()` / `from_json()`, `pack()` / `unpack()`, as `sre start` and `sre eval` do), instantiates `NetScheme`, applies `initial()` (op registration only), then calls `Grade.grade()` once. Catches import errors, missing fields, bad topology, and exceptions raised at registration time. With a trailing `<state>` argument, the named `@sre_state` method is also exercised. Run this first after every non-trivial edit — it's much faster than starting a real lab. The numbered sections of `informations` are resolved and printed as an outline, and the `@@ref@@` references of the question texts are checked (see [Numbered sections](#numbered-sections-references-and-table-of-contents--info_subtitle-info_toc)).
 
 ### `sre start --debug-project [-p] <lab> [--xauth-file <path>]`
 
@@ -506,13 +506,12 @@ The stripped lab behaves like the original outside the instructor mode. Limits:
 
 In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.
 
-### Numbered sections, references and table of contents — `lib/informations.py`
+### Numbered sections, references and table of contents — `info_subtitle()`, `info_toc()`
 
-The headers of a course, its table of contents and the mentions of a section (`see section 7`) are computed, so that inserting a section renumbers nothing by hand. The four functions of `/opt/sre/lib/informations.py` emit plain-text *markers*; the numbers, the links and the table of contents are resolved when `info.json` is written, in every language, so there is nothing else to call:
+The headers of a course, its table of contents and the mentions of a section (`see section 7`) are computed, so that inserting a section renumbers nothing by hand. Four functions imported from `SRE.lib_sre`, like `tr()` and `instructor()`, emit plain-text *markers*; the numbers, the links and the table of contents are resolved when `info.json` is written, in every language, so there is nothing else to call:
 
 ```python
-from SRE.lib_sre import NetScheme0, Grade0, make_tr, no_tr
-from informations import info_subtitle, info_tag, info_ref, info_toc
+from SRE.lib_sre import NetScheme0, Grade0, make_tr, no_tr, info_subtitle, info_tag, info_ref, info_toc
 
 tr = make_tr('fr')
 
@@ -1117,10 +1116,6 @@ Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires
 - `sysctls`: dict of kernel parameter names to values.
 
 Compared to calling `set_net_config` and `set_sysctl` directly, `machine_config` resolves network names through the `NetScheme` topology automatically.
-
-### Course text helpers (from `/opt/sre/lib/informations.py`)
-
-`info_subtitle(title, level=1, tag="")`, `info_tag(tag)`, `info_ref(tag, title=False)` and `info_toc(depth=None)` number the sections of `self.informations`, build its table of contents and resolve the references to its sections, in the course and in the question texts: see [Numbered sections, references and table of contents](#numbered-sections-references-and-table-of-contents--libinformationspy).
 
 ### Miscellaneous generators (from `/opt/sre/lib/utils.py`)
 

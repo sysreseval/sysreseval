@@ -29,7 +29,7 @@ from typing import Dict
 import pmtu
 import tc
 from SRE import params
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ipv6 import (
     DHCPD6_CONF, DHCPD6_DEFAULTS, DHCPD6_LEASES, DHCPD6_UNIT, MAC_PREFIX,
@@ -39,7 +39,6 @@ from ipv6 import (
     normalize_duid, parse_ipv6, radvd_running, render_dhcpd6_conf, same_ipv6, slaac_address, small_ipv6s,
     solicited_node_multicast,
 )
-from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ipv6networks, random_ips_from_topology, random_mac_address
 from net_config import (
     NetConfigEntry, eval_net_config, get_ipv6_forward, get_net_config_entry, get_persistent_net_config_entry,

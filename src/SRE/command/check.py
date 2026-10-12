@@ -175,7 +175,7 @@ def action_check():
         print(f"         machine: {m.name}  image: {m.image}")
     for n in networks:
         print(f"         network: {n.name}{_network_details(n)}")
-    # the numbered sections / references / table of contents of the course (lib/informations.py
+    # the numbered sections / references / table of contents of the course (SRE.informations
     # markers), resolved as save_lab_info() does when it writes info.json
     default_language = getattr(module, 'default_language', 'en')
     try:

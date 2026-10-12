@@ -115,8 +115,7 @@ def _with_course(ref: str):
     def transform(text):
         text = text.replace(
             'from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state',
-            'from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr\n'
-            'from informations import info_subtitle, info_toc\n'
+            'from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, info_subtitle, info_toc\n'
             "tr = make_tr('en')")
         marker = "    def __init__(self, data, running_lab_name):\n        super().__init__(data=data, running_lab_name=running_lab_name)\n"
         assert marker in text
@@ -128,7 +127,7 @@ def _with_course(ref: str):
 
 
 class TestCheckInformations:
-    """`sre check` resolves the numbered sections of informations (lib/informations.py) and the
+    """`sre check` resolves the numbered sections of informations (SRE.informations markers) and the
     references of the questions as save_lab_info() does."""
 
     def test_outline_is_printed(self, check_env, capsys):

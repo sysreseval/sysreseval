@@ -19,8 +19,7 @@ from ipaddress import IPv4Network
 from typing import Dict
 
 from SRE import params
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
-from informations import info_subtitle, info_toc
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from ips import random_ipv4networks, random_ips_from_topology
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward, remount_proc_sys
 import tc

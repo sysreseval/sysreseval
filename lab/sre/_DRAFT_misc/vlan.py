@@ -40,9 +40,8 @@ from ipaddress import IPv4Interface, IPv4Network
 from typing import Dict, List
 
 from SRE import params
-from SRE.lib_sre import Data0, Flavor0, Grade0, NetScheme0, instructor, make_tr, no_tr, sre_state
+from SRE.lib_sre import Data0, Flavor0, Grade0, NetScheme0, instructor, make_tr, no_tr, sre_state, info_subtitle, info_toc
 from firewall import get_ruleset
-from informations import info_subtitle, info_toc
 from ips import random_ipv4networks
 from net_config import get_ip_forward, get_routes, set_ip_forward
 from state_helpers import create_hosts_file

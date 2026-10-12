@@ -24,10 +24,9 @@ from dataclasses import dataclass
 from ipaddress import IPv4Interface, IPv4Network
 from typing import Dict
 
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from firewall import get_ruleset, ruleset_mentions
-from informations import info_subtitle, info_toc
 from ips import random_ipv4networks, random_ipv4s
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward, get_ip_forward, get_routes
 from ping import eval_ping

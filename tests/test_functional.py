@@ -958,7 +958,7 @@ class TestInstructorMode:
         assert [q['question_hash'] for q in info['questions']] == hashes
 
     def test_numbered_course_is_resolved_in_both_modes(self, instructor_env, tmp_path, monkeypatch):
-        """The lib/informations.py markers of the course and of the questions are resolved in
+        """The SRE.informations markers of the course and of the questions are resolved in
         info.json (save_lab_info), with the same numbers in and out of the instructor mode: a
         section numbered inside an instructor() fragment is dropped."""
         from SRE.informations import has_markers
@@ -966,8 +966,7 @@ class TestInstructorMode:
 
         def transform(text):
             text = _replace_once(text, 'from SRE.lib_sre import Data0, NetScheme0, Grade0, instructor, make_tr',
-                                 'from SRE.lib_sre import Data0, NetScheme0, Grade0, instructor, make_tr, no_tr\n'
-                                 'from informations import info_subtitle, info_toc')
+                                 'from SRE.lib_sre import Data0, NetScheme0, Grade0, instructor, make_tr, no_tr, info_subtitle, info_toc')
             text = _replace_once(text, '        self.informations = instructor(tr("""\n            ## Solution',
                                  '        self.informations = no_tr("## Lab\\n") + info_toc() + instructor(tr("""\n'
                                  '            ### @@sec@@ Solution (see @@ref:route@@)')

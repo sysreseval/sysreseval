@@ -1,6 +1,6 @@
 """Tests for SRE.informations (the engine numbering the sections of a course, resolving the
-references and building the table of contents) and lib/informations.py (the functions a lab
-calls, which only emit the markers)."""
+references and building the table of contents) and the functions a lab calls, re-exported by
+SRE.lib_sre, which only emit the markers."""
 import textwrap
 
 import pytest
@@ -8,8 +8,7 @@ import pytest
 from SRE.common import TranslatedText
 from SRE.informations import (Numbering, has_markers, outline, resolve_informations, resolve_text)
 from SRE.instructor_text import instructor, set_instructor_context
-from SRE.lib_sre import make_tr, no_tr
-from informations import info_ref, info_subtitle, info_tag, info_toc
+from SRE.lib_sre import info_ref, info_subtitle, info_tag, info_toc, make_tr, no_tr
 
 tr = make_tr('fr')
 

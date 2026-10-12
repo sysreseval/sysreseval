@@ -85,7 +85,7 @@ QUESTION_FUNC_POSITIONAL = {
     'question_form':     (0, 2),   # title, description
     'add_grade_element': (0, 2),   # title, description
     'add_grade_part':    (0, 1),   # title, description
-    'info_subtitle':     (0,),     # title (lib/informations.py)
+    'info_subtitle':     (0,),     # title (SRE.informations, re-exported by SRE.lib_sre)
 }
 
 # ---------------------------------------------------------------------------

@@ -534,10 +534,9 @@ class TestIntegration:
         assert 'tr("Section title")' in result
 
     def test_wraps_info_subtitle_first_arg(self, tmp_path):
-        """info_subtitle(title, level, tag) of lib/informations.py: the title is prose."""
+        """info_subtitle(title, level, tag) of SRE.lib_sre: the title is prose."""
         p = _lab(tmp_path, """
-            from SRE.lib_sre import make_tr
-            from informations import info_subtitle
+            from SRE.lib_sre import make_tr, info_subtitle
             default_language = 'en'
             tr = make_tr(default_language)
             _TRANSLATIONS = {'fr': {}}

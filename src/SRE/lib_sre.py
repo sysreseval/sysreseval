@@ -41,7 +41,7 @@ from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoM
                      InfoSwitch, TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
 from .instructor_text import instructor, set_instructor_context, strip_instructor
-from .informations import resolve_informations, resolve_text
+from .informations import resolve_informations, resolve_text, info_subtitle, info_tag, info_ref, info_toc  # noqa: F401 (the info_* functions are re-exported for the labs)
 from .operations_log import OperationsLog, format_grade, format_total
 from .switch_console import SwitchConsole
 from .params import SRE
@@ -2291,7 +2291,7 @@ class Grade0:
         for q in questions:
             q.title = TranslatedText.from_value(q.title, default_language)
             q.description = TranslatedText.from_value(q.description, default_language)
-        # numbered sections, references and table of contents (markers of lib/informations.py):
+        # numbered sections, references and table of contents (markers of SRE.informations):
         # the numbers come from the course, the questions refer to them (bare numbers, no link)
         informations, numbering = resolve_informations(informations)
         for q in questions:

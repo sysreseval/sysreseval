@@ -448,7 +448,7 @@ class TestTexts:
             assert '@@{' not in text or where != 'informations'
             markdown_to_html(text, show_instructor=True)
             markdown_to_html(text, show_instructor=False)
-        # the course is numbered by the lib/informations.py markers, resolved by save_lab_info()
+        # the course is numbered by the SRE.informations markers, resolved by save_lab_info()
         from SRE.informations import resolve_informations
         resolved, numbering = resolve_informations(ns1.informations)
         informations = _text(resolved)
