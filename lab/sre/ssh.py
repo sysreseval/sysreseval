@@ -453,13 +453,13 @@ L'option `-c` (*concurrent*) déclenche l'exécution simultanée sur toutes les 
         # remove all accounts except admin on m0
         change_password(
             net_scheme=self,
-            machine="mo",
+            machine="m0",
             username="etudiant",
             password=self.data.root_password,
         )
         change_password(
             net_scheme=self,
-            machine="mo",
+            machine="m0",
             username="student",
             password=self.data.root_password,
         )
@@ -928,7 +928,7 @@ et la présence de la clé publique dans `authorized_keys` de `alpha` sur les tr
             section=self.section(0),
             title=tr("Suppression de la connnection ssh par mot de passe"),
             description=tr(r"""
-- Interdisez la connection par mot de passe sur `m3` (vous pourrez utilise `sur` pour devenir administrateur de la machine).
+- Interdisez la connection par mot de passe sur `m3` (vous pourrez utiliser `su` ou `sudo` pour devenir administrateur de la machine).
 - Vérifiez ensuite que vous pouvez toujours vous connecter à `m3` avec une clé et que ce n'est plus possible de se connecter avec un mot de passe.
                 """)
             + instructor(tr("""
@@ -1490,10 +1490,10 @@ Client side: `ssh` command, configuration in `~/.ssh/config` (or `/etc/ssh/ssh_c
 @@{secret:.+}@@
         """,
         """
-- Interdisez la connection par mot de passe sur `m3` (vous pourrez utilise `sur` pour devenir administrateur de la machine).
+- Interdisez la connection par mot de passe sur `m3` (vous pourrez utiliser `su` ou `sudo` pour devenir administrateur de la machine).
 - Vérifiez ensuite que vous pouvez toujours vous connecter à `m3` avec une clé et que ce n'est plus possible de se connecter avec un mot de passe.
                 """: """
-- Disable password authentication on `m3` (you can use `sur` to become the machine's administrator).
+- Disable password authentication on `m3` (you can use `su` or `sudo` to become the machine's administrator).
 - Then verify that you can still connect to `m3` with a key, and that connecting with a password is no longer possible.
                 """,
         """

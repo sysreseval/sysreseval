@@ -467,7 +467,7 @@ ci-dessous sont tirées du fichier (trame choisie au démarrage, relue à chaque
         q_capture = self.question_form(
             section=self.section(1),
             title=tr("Eléments d'une trame"),
-            description=tr("On considère la trame numéro {_arg0} du fichier`{_arg1}/{_arg2}`.\nEntrez les éléments suivants :\n\nadresse IP de la machine source : @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@adresse IP de la machine destinataire : @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@port source : @@{{port_src:[0-9]+}}@@port destinataire : @@{{port_dest:[0-9]+}}@@taille en octets de la fenêtre de réception: @@{{rcpt:[0-9]+}}@@numéro de séquence (absolu) : @@{{seq:[0-9]+}}@@numéro d'acquittement (absolu) : @@{{ack:[0-9]+}}@@").format(_arg0=pcap.packet_src_to_dst, _arg1=self.net_scheme.get_shared_dir(), _arg2=self.get_data().pcap_file.split('/')[-1])
+            description=tr("On considère la trame numéro {_arg0} du fichier`{_arg1}/{_arg2}`.\nEntrez les éléments suivants :\n\nadresse IP de la machine source : @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+}}@@adresse IP de la machine destinataire : @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+}}@@port source : @@{{port_src:[0-9]+}}@@port destinataire : @@{{port_dest:[0-9]+}}@@taille en octets de la fenêtre de réception: @@{{rcpt:[0-9]+}}@@numéro de séquence (absolu) : @@{{seq:[0-9]+}}@@numéro d'acquittement (absolu) : @@{{ack:[0-9]+}}@@").format(_arg0=pcap.packet_src_to_dst, _arg1=self.net_scheme.get_shared_dir(), _arg2=self.get_data().pcap_file.split('/')[-1])
             + instructor(tr("""
 **Solution.** Sélectionner la trame {frame} (filtre `frame.number == {frame}`) et lire les sections
 *Internet Protocol* et *Transmission Control Protocol* ; pour les numéros absolus, désactiver *Relative
@@ -484,7 +484,7 @@ et `Acknowledgment Number (raw)`.
 | numéro de séquence (absolu) | `{seq}` |
 | numéro d'acquittement (absolu) | `{ack}` |
 
-Les adresses s'entrent sans préfixe. La trame va de `h1` vers `h2` : la fenêtre est celle que `h1` annonce
+La trame va de `h1` vers `h2` : la fenêtre est celle que `h1` annonce
 (le *window scaling* est désactivé sur les deux machines, la valeur brute est la vraie).
 """).format(frame=pcap.packet_src_to_dst, ip_src=str(self.get_data().ips.h1.ip),
                                                     ip_dest=str(self.get_data().ips.h2.ip), port_src=pcap.client_port,
@@ -1268,10 +1268,10 @@ In another terminal, use `lsof -n -i -P` or `ss -ln` to check that this server i
         """On considère la trame numéro {_arg0} du fichier`{_arg1}/{_arg2}`.
 Entrez les éléments suivants :
 
-adresse IP de la machine source : @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@adresse IP de la machine destinataire : @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@port source : @@{{port_src:[0-9]+}}@@port destinataire : @@{{port_dest:[0-9]+}}@@taille en octets de la fenêtre de réception: @@{{rcpt:[0-9]+}}@@numéro de séquence (absolu) : @@{{seq:[0-9]+}}@@numéro d'acquittement (absolu) : @@{{ack:[0-9]+}}@@""": """Consider frame number {_arg0} of file `{_arg1}/{_arg2}`.
+adresse IP de la machine source : @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+}}@@adresse IP de la machine destinataire : @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+}}@@port source : @@{{port_src:[0-9]+}}@@port destinataire : @@{{port_dest:[0-9]+}}@@taille en octets de la fenêtre de réception: @@{{rcpt:[0-9]+}}@@numéro de séquence (absolu) : @@{{seq:[0-9]+}}@@numéro d'acquittement (absolu) : @@{{ack:[0-9]+}}@@""": """Consider frame number {_arg0} of file `{_arg1}/{_arg2}`.
 Enter the following items:
 
-source machine IP address: @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@destination machine IP address: @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@source port: @@{{port_src:[0-9]+}}@@destination port: @@{{port_dest:[0-9]+}}@@receive window size in bytes: @@{{rcpt:[0-9]+}}@@sequence number (absolute): @@{{seq:[0-9]+}}@@acknowledgement number (absolute): @@{{ack:[0-9]+}}@@""",
+source machine IP address: @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+}}@@destination machine IP address: @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+}}@@source port: @@{{port_src:[0-9]+}}@@destination port: @@{{port_dest:[0-9]+}}@@receive window size in bytes: @@{{rcpt:[0-9]+}}@@sequence number (absolute): @@{{seq:[0-9]+}}@@acknowledgement number (absolute): @@{{ack:[0-9]+}}@@""",
         """Pour la trame numéro {_arg0} du fichier `{pcap_filename}`, dépliez les sections **Ethernet II** et **Internet Protocol** :
 
 adresse MAC source (format `xx:xx:xx:xx:xx:xx`) : @@{{mac_src:[0-9a-fA-F:]+}}@@adresse MAC destination : @@{{mac_dst:[0-9a-fA-F:]+}}@@valeur du champ `Time To Live` : @@{{ttl:[0-9]+}}@@numéro du protocole encapsulé dans IP (champ `Protocol`) : @@{{proto:[0-9]+}}@@""": """For frame number {_arg0} in file `{pcap_filename}`, expand the **Ethernet II** and **Internet Protocol** sections:
@@ -1418,7 +1418,7 @@ et `Acknowledgment Number (raw)`.
 | numéro de séquence (absolu) | `{seq}` |
 | numéro d'acquittement (absolu) | `{ack}` |
 
-Les adresses s'entrent sans préfixe. La trame va de `h1` vers `h2` : la fenêtre est celle que `h1` annonce
+La trame va de `h1` vers `h2` : la fenêtre est celle que `h1` annonce
 (le *window scaling* est désactivé sur les deux machines, la valeur brute est la vraie).
 """: """
 **Solution.** Select frame {frame} (filter `frame.number == {frame}`) and read the *Internet Protocol*
@@ -1436,7 +1436,7 @@ and *Transmission Control Protocol* sections; for absolute numbers, turn off *Re
 | sequence number (absolute) | `{seq}` |
 | acknowledgement number (absolute) | `{ack}` |
 
-Addresses are entered without a prefix. The frame goes from `h1` to `h2`: the window is the one `h1`
+The frame goes from `h1` to `h2`: the window is the one `h1`
 advertises (window scaling is disabled on both machines, the raw value is the real one).
 """,
         """
