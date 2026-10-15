@@ -814,12 +814,23 @@ def set_persistent_sysctl(net_scheme: NetScheme0, machine_name: str, sysctl_conf
         remount_proc_sys(net_scheme, machine_name)
         net_scheme.cmd(machine_name, 'sysctl -p')
 
+# Docker bind-mounts /proc/sys read-only in a non-privileged container: it must be remounted
+# before any sysctl write.  A privileged container has no such mount (Docker applies no read-only
+# path there), and remounting a path that is not a mount point fails with exit status 32
+# ("mount point not mounted or bad option"): the remount is therefore conditional.  As root,
+# `test -w` on a sysctl *file* is false on a read-only bind mount (access(2) answers EROFS) and
+# true on writable procfs; a sysctl *directory* would not do (0555, write refused to root too).
+REMOUNT_PROC_SYS_CMD = 'test -w /proc/sys/net/ipv4/ip_forward || mount -o rw,remount /proc/sys'
+
+
 def remount_proc_sys(net_scheme: NetScheme0, machine_name: str):
+    """Make ``/proc/sys`` writable on *machine_name* when it is not (once per machine and
+    NetScheme instance): ``REMOUNT_PROC_SYS_CMD``, a no-op on a privileged machine."""
     if not hasattr(net_scheme, "remount_proc_sys_done"):
         net_scheme.remount_proc_sys_done = {}
     if net_scheme.remount_proc_sys_done.get(machine_name):
         return
-    net_scheme.cmd(machine_name, "mount -o rw,remount /proc/sys")
+    net_scheme.cmd(machine_name, REMOUNT_PROC_SYS_CMD)
     net_scheme.remount_proc_sys_done[machine_name] = True
 
 

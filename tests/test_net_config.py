@@ -25,6 +25,7 @@ sys.modules['Kathara.model.Lab'].Lab = MagicMock()
 from types import SimpleNamespace
 
 from net_config import (
+    REMOUNT_PROC_SYS_CMD,
     eval_net_config,
     get_ip_addresses,
     get_ip_forward,
@@ -1042,7 +1043,7 @@ class TestSetPersistentSysctl:
         cmds = [c.args[1] for c in ns.cmd.call_args_list]
         assert any('net.ipv4.ip_forward=1' in c for c in cmds)
         assert 'sysctl -p' in cmds
-        assert 'mount -o rw,remount /proc/sys' in cmds
+        assert REMOUNT_PROC_SYS_CMD in cmds
 
     def test_empty_config_no_cmds(self):
         ns = make_net_scheme()
@@ -1066,7 +1067,7 @@ class TestSetSysctl:
         ns = make_net_scheme()
         set_sysctl(ns, 'r1', {'net.ipv4.ip_forward': 1})
         cmds = [c.args[1] for c in ns.cmd.call_args_list]
-        assert 'mount -o rw,remount /proc/sys' in cmds
+        assert REMOUNT_PROC_SYS_CMD in cmds
         assert 'sysctl -w net.ipv4.ip_forward=1' in cmds
 
     def test_empty_config_no_cmds(self):
@@ -1084,19 +1085,19 @@ class TestSetIpForward:
         ns = make_net_scheme()
         set_ip_forward(ns, 'r1', True)
         ns.cmd.assert_called_with('r1', 'sysctl -w net.ipv4.ip_forward=1', step=1)
-        assert ns.cmd.call_args_list[0] == call('r1', 'mount -o rw,remount /proc/sys')
+        assert ns.cmd.call_args_list[0] == call('r1', REMOUNT_PROC_SYS_CMD)
 
     def test_disable(self):
         ns = make_net_scheme()
         set_ip_forward(ns, 'r1', False)
         ns.cmd.assert_called_with('r1', 'sysctl -w net.ipv4.ip_forward=0', step=1)
-        assert ns.cmd.call_args_list[0] == call('r1', 'mount -o rw,remount /proc/sys')
+        assert ns.cmd.call_args_list[0] == call('r1', REMOUNT_PROC_SYS_CMD)
 
     def test_custom_step(self):
         ns = make_net_scheme()
         set_ip_forward(ns, 'r1', True, step=3)
         ns.cmd.assert_called_with('r1', 'sysctl -w net.ipv4.ip_forward=1', step=3)
-        assert ns.cmd.call_args_list[0] == call('r1', 'mount -o rw,remount /proc/sys')
+        assert ns.cmd.call_args_list[0] == call('r1', REMOUNT_PROC_SYS_CMD)
 
 
 # ---------------------------------------------------------------------------
@@ -1811,7 +1812,7 @@ class TestIpv6Forward:
     def test_set(self):
         ns = make_net_scheme()
         set_ipv6_forward(ns, 'r1', True, step=2)
-        assert ns.cmd.call_args_list[0].args[1] == 'mount -o rw,remount /proc/sys'
+        assert ns.cmd.call_args_list[0].args[1] == REMOUNT_PROC_SYS_CMD
         assert ns.cmd.call_args_list[1] == call('r1', 'sysctl -w net.ipv6.conf.all.forwarding=1', step=2)
         ns = make_net_scheme()
         set_ipv6_forward(ns, 'r1', False)

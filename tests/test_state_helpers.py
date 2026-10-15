@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from ipaddress import IPv4Interface, IPv4Address
 
 from SRE.lib_sre import Data0, NetScheme0, _FileOp
+from net_config import REMOUNT_PROC_SYS_CMD
 from state_helpers import (
     hosts_file_content, create_hosts_file, set_basic_unbound_server,
     change_password, create_user, setup_simple_tcp_server,
@@ -678,7 +679,7 @@ interface eth1
     };
 };
 """
-        assert _cmd_ops(s, 'host') == ['mount -o rw,remount /proc/sys', 'sysctl -w net.ipv6.conf.all.forwarding=1',
+        assert _cmd_ops(s, 'host') == [REMOUNT_PROC_SYS_CMD, 'sysctl -w net.ipv6.conf.all.forwarding=1',
                                        'systemctl enable radvd', 'systemctl restart radvd']
 
     def test_string_interface_prefix_forms_rdnss_dnssl(self):
@@ -714,7 +715,7 @@ class TestSetSlaacClient:
     def test_default_interfaces_from_topology(self):
         s = _make_multi()
         set_slaac_client(s, 'router')
-        assert _cmd_ops(s, 'router') == ['mount -o rw,remount /proc/sys',
+        assert _cmd_ops(s, 'router') == [REMOUNT_PROC_SYS_CMD,
                                          'sysctl -w net.ipv6.conf.eth0.accept_ra=2', 'sysctl -w net.ipv6.conf.eth0.autoconf=1',
                                          'sysctl -w net.ipv6.conf.eth1.accept_ra=2', 'sysctl -w net.ipv6.conf.eth1.autoconf=1']
 
@@ -723,7 +724,7 @@ class TestSetSlaacClient:
         set_slaac_client(s, 'pc', interfaces=[1, 'eth3'], step=2)
         assert _cmd_ops(s, 'pc', step=2) == ['sysctl -w net.ipv6.conf.eth1.accept_ra=2', 'sysctl -w net.ipv6.conf.eth1.autoconf=1',
                                              'sysctl -w net.ipv6.conf.eth3.accept_ra=2', 'sysctl -w net.ipv6.conf.eth3.autoconf=1']
-        assert _cmd_ops(s, 'pc', step=1) == ['mount -o rw,remount /proc/sys']
+        assert _cmd_ops(s, 'pc', step=1) == [REMOUNT_PROC_SYS_CMD]
 
 
 class TestRadvdFlags:
