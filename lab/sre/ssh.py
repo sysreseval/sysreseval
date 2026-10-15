@@ -10,6 +10,7 @@ from SRE.lib_sre import (
     Data0,
     Grade0,
     no_tr,
+    instructor,
     sre_state, make_tr,
 )
 from ips import random_ipv4networks, random_ipv4s
@@ -698,7 +699,20 @@ class Grade(Grade0):
 **`admin`** (mot de passe **`admin`**).
 
 - Les fichiers **`/etc/hosts`** (sur toutes les machines) contiennent les adresses IP des différentes machines.
-        """),
+        """)
+            + instructor(tr("""
+**Pour l'enseignant.** Chaque question se termine par sa solution.
+
+- L'état `final` (onglet *Appliquer une configuration*) réalise toute la solution depuis `m0` sous `admin`
+  (connexions, agent, clé `key2`, `PasswordAuthentication no` sur `m3`, fichiers `HELLO`) et remplit le
+  formulaire ; compter quelques secondes avant l'évaluation.
+- Comptes : `admin` / `admin` (`sudo`) sauf sur `r1` et `m5` ; `alpha` / `alpha1` sur `m1` à `m4` ; `alpha` et
+  `beta` sur `r1`, `beta` sur `m5`, par clé seulement (`/home/admin/key1`, phrase secrète `abcde`) ; `root` :
+  `root` sur `m1` à `m4`, `{root_password}` sur `m0`, `r1` et `m5` (mot de passe de `admin` aussi sur `r1` et `m5`).
+- Les connexions sont lues dans `/var/log/auth.log` des machines cibles (`Accepted password` /
+  `Accepted publickey`) ; sur `r1` et `m5`, un démon note dans `/var/log/.ssh_monitor.log` les clés de
+  l'agent transféré à chaque ouverture de session.
+""").format(root_password=self.get_data().root_password)),
         )
 
         self.question_dummy(
@@ -706,7 +720,17 @@ class Grade(Grade0):
             title=tr("Connection ssh avec un mot de passe"),
             description=tr(r"""
 Connectez-vous avec ssh vers la machine `m1` sous l'identifiant **`alpha`** et le mot de passe **`alpha1`**
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Depuis `m0` (session `admin`) :
+
+```
+ssh alpha@m1          # mot de passe : alpha1
+```
+
+Accepter l'empreinte de la clé d'hôte de `m1` à la première connexion (`yes`). L'évaluation cherche une
+ligne `Accepted password for alpha` dans `/var/log/auth.log` de `m1`.
+""")),
         )
         ssh_vers_m1_avec_mdp = eval_ssh_connection_with_password(
             grade=self, machine_name="m1", username="alpha"
@@ -723,7 +747,18 @@ Connectez-vous avec ssh vers la machine `m1` sous l'identifiant **`alpha`** et l
             title=tr("Connection ssh avec une clé"),
             description=tr(r"""
 Connectez-vous avec ssh vers la machine `r1` sous l'identifiant **`alpha`** et la clé privée `/home/admin/key1` dont le mot de passe est **`abcde`**
-        """),
+        """)
+            + instructor(tr("""
+**Solution.**
+
+```
+ssh -i /home/admin/key1 alpha@r1     # phrase secrète de la clé : abcde
+```
+
+`r1` n'accepte pas les mots de passe (`PasswordAuthentication no`) : sans `-i`, `ssh` n'essaie que les
+clés par défaut (`~/.ssh/id_*`) et la connexion est refusée (`Permission denied (publickey)`). L'évaluation
+cherche `Accepted publickey for alpha` dans `/var/log/auth.log` de `r1`.
+""")),
         )
 
         ssh_vers_r1_avec_cle = eval_ssh_connection_with_key(
@@ -744,7 +779,31 @@ Connectez-vous avec ssh vers la machine `r1` sous l'identifiant **`alpha`** et l
 - Utiliser l'agent pour vous connecter à `r1` sous l'identifiant **`beta`** puis à `m5` sous l'identifiant **`beta`**.
 - Copiez dans la case réponse ci-dessous le contenu du fichier `/home/beta/secret` :
 @@{secret:.+}@@
-        """),
+        """)
+            + instructor(tr("""
+**Solution.** Sur `m0` :
+
+```
+eval $(ssh-agent)             # lance l'agent, exporte SSH_AUTH_SOCK et SSH_AGENT_PID
+ssh-add /home/admin/key1      # phrase secrète : abcde
+ssh-add -l                    # la clé est chargée
+ssh beta@r1                   # ForwardAgent yes est déjà configuré sur m0 et r1 ; sinon ssh -A
+```
+
+puis, depuis `r1` :
+
+```
+ssh beta@m5                   # la clé est fournie par l'agent de m0, transféré
+cat /home/beta/secret
+```
+
+Réponse attendue : `{secret}`.
+
+L'évaluation vérifie un processus `ssh-agent` de `admin` sur `m0`, la présence de `key1` dans un de ses
+agents (`ssh-add -L` sur les sockets `/tmp/ssh-*/agent.*`) et, dans le journal du démon de `r1` **et** de
+`m5`, une session de `beta` ouverte avec `key1` dans l'agent transféré. Il faut donc une vraie session sur
+`r1` puis un rebond vers `m5` : `ssh -J beta@r1 beta@m5` n'ouvre pas de session avec agent sur `r1`.
+""").format(secret=self.get_data().secret)),
             cheat_answers={"final": {"secret": self.get_data().secret}},
         )
 
@@ -817,7 +876,21 @@ Connectez-vous avec ssh vers la machine `r1` sous l'identifiant **`alpha`** et l
 - Créez sur `m0` une clé ssh RSA de 4096 bits nommée '/home/admin/key2' et pourvue du mot de passe `123456`
 - Transférez cette clé sur le compte de l'utilisateur `alpha` (mot de passe : `alpha1`) sur les machines `m2`, `m3`, `m4`.
 - Testez que vous pouvez bien vous connecter sur ces 3 machines sous le compte `alpha` à partir de `m0` en utilisant cette clé
-                """),
+                """)
+            + instructor(tr("""
+**Solution.** Sur `m0` :
+
+```
+ssh-keygen -t rsa -b 4096 -f /home/admin/key2                 # phrase secrète : 123456
+for m in m2 m3 m4; do ssh-copy-id -i /home/admin/key2.pub alpha@$m; done   # mot de passe : alpha1
+ssh-add /home/admin/key2                                       # facultatif : la phrase secrète n'est plus demandée
+ssh alpha@m2; ssh alpha@m3; ssh alpha@m4                       # ou ssh -i /home/admin/key2 alpha@m2 …
+```
+
+`ssh-copy-id` ajoute la clé publique à `~alpha/.ssh/authorized_keys` en créant `~/.ssh` avec les bons
+droits. L'évaluation vérifie `/home/admin/key2.pub` (RSA, 4096 bits), la phrase secrète de la clé privée
+et la présence de la clé publique dans `authorized_keys` de `alpha` sur les trois machines.
+""")),
         )
 
         cle_ssh_sur_m0 = check_ssh_key(
@@ -857,7 +930,27 @@ Connectez-vous avec ssh vers la machine `r1` sous l'identifiant **`alpha`** et l
             description=tr(r"""
 - Interdisez la connection par mot de passe sur `m3` (vous pourrez utilise `sur` pour devenir administrateur de la machine).
 - Vérifiez ensuite que vous pouvez toujours vous connecter à `m3` avec une clé et que ce n'est plus possible de se connecter avec un mot de passe.
-                """),
+                """)
+            + instructor(tr("""
+**Solution.** Devenir `root` sur `m3` : `ssh alpha@m3` puis `su -` (mot de passe de `root` sur `m3` :
+`root`), ou `ssh admin@m3` (mot de passe `admin`) puis `sudo -i`. Ensuite :
+
+```
+sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart ssh
+```
+
+(ou une ligne `PasswordAuthentication no` dans un fichier `/etc/ssh/sshd_config.d/*.conf`, lu avant le
+reste). Vérification depuis `m0` :
+
+```
+ssh -o PubkeyAuthentication=no alpha@m3     # Permission denied (publickey)
+ssh alpha@m3                                # par la clé key2 : OK
+```
+
+L'évaluation tente depuis `m0` une connexion par mot de passe vers `m3` (`PreferredAuthentications=password`,
+`BatchMode=yes`) et attend un refus dont la liste des méthodes ne contient plus `password`.
+""")),
         )
 
         ssh_avec_mdp_ok_sur_m3 = eval_ssh_possible_with_password_authentification(
@@ -875,7 +968,20 @@ Connectez-vous avec ssh vers la machine `r1` sous l'identifiant **`alpha`** et l
             title=tr("Utilisation de dsh"),
             description=tr(r"Utiliser `dsh` pour créer ***simultanément*** sur `m2`, `m3` et `m4` un fichier nommé "
             """`/home/alpha/HELLO` et contenant le mot "Hello"
-                            """),
+                            """)
+            + instructor(tr("""
+**Solution.** Depuis `m0`, avec `key2` chargée dans l'agent (`ssh-add /home/admin/key2`) pour qu'aucune
+phrase secrète ne soit demandée :
+
+```
+dsh -c -m alpha@m2,alpha@m3,alpha@m4 -- 'echo Hello > /home/alpha/HELLO'
+```
+
+`-c` (*concurrent*) lance les trois commandes en parallèle ; `/etc/dsh/dsh.conf` (`remoteshell = ssh`)
+rend `-r ssh` inutile. L'évaluation exige le même contenu et la **même date de modification** (à la seconde
+près) sur les trois machines : une exécution séquentielle, sans `-c` ou par trois `ssh` à la main, donne en
+général des dates différentes.
+""")),
         )
 
         fichier_synchronise_entre_machines, _ = eval_synchronized_file(
@@ -1443,5 +1549,208 @@ Log in via ssh to machine `r1` as user **`alpha`** using the private key `/home/
         'ssh_vers_r1_avec_cle': 'ssh_vers_r1_avec_cle',
         'ssh_vers_r1_avec_cle_et_agent': 'ssh_vers_r1_avec_cle_et_agent',
         'suprression_connexion_avec_pass_sur_m3': 'suprression_connexion_avec_pass_sur_m3',
+        """
+**Pour l'enseignant.** Chaque question se termine par sa solution.
+
+- L'état `final` (onglet *Appliquer une configuration*) réalise toute la solution depuis `m0` sous `admin`
+  (connexions, agent, clé `key2`, `PasswordAuthentication no` sur `m3`, fichiers `HELLO`) et remplit le
+  formulaire ; compter quelques secondes avant l'évaluation.
+- Comptes : `admin` / `admin` (`sudo`) sauf sur `r1` et `m5` ; `alpha` / `alpha1` sur `m1` à `m4` ; `alpha` et
+  `beta` sur `r1`, `beta` sur `m5`, par clé seulement (`/home/admin/key1`, phrase secrète `abcde`) ; `root` :
+  `root` sur `m1` à `m4`, `{root_password}` sur `m0`, `r1` et `m5` (mot de passe de `admin` aussi sur `r1` et `m5`).
+- Les connexions sont lues dans `/var/log/auth.log` des machines cibles (`Accepted password` /
+  `Accepted publickey`) ; sur `r1` et `m5`, un démon note dans `/var/log/.ssh_monitor.log` les clés de
+  l'agent transféré à chaque ouverture de session.
+""": """
+**For the instructor.** Every question ends with its solution.
+
+- The `final` state (*Apply configuration* tab) performs the whole solution from `m0` as `admin`
+  (connections, agent, `key2`, `PasswordAuthentication no` on `m3`, `HELLO` files) and fills in the
+  form; allow a few seconds before evaluating.
+- Accounts: `admin` / `admin` (`sudo`) except on `r1` and `m5`; `alpha` / `alpha1` on `m1` to `m4`; `alpha`
+  and `beta` on `r1`, `beta` on `m5`, by key only (`/home/admin/key1`, passphrase `abcde`); `root`: `root`
+  on `m1` to `m4`, `{root_password}` on `m0`, `r1` and `m5` (password of `admin` too on `r1` and `m5`).
+- Logins are read from `/var/log/auth.log` of the target machines (`Accepted password` /
+  `Accepted publickey`); on `r1` and `m5`, a daemon records in `/var/log/.ssh_monitor.log` the keys of
+  the forwarded agent at every session opening.
+""",
+        """
+**Solution.** Depuis `m0` (session `admin`) :
+
+```
+ssh alpha@m1          # mot de passe : alpha1
+```
+
+Accepter l'empreinte de la clé d'hôte de `m1` à la première connexion (`yes`). L'évaluation cherche une
+ligne `Accepted password for alpha` dans `/var/log/auth.log` de `m1`.
+""": """
+**Solution.** From `m0` (`admin` session):
+
+```
+ssh alpha@m1          # password: alpha1
+```
+
+Accept the fingerprint of `m1`'s host key on first connection (`yes`). The evaluation looks for an
+`Accepted password for alpha` line in `/var/log/auth.log` on `m1`.
+""",
+        """
+**Solution.**
+
+```
+ssh -i /home/admin/key1 alpha@r1     # phrase secrète de la clé : abcde
+```
+
+`r1` n'accepte pas les mots de passe (`PasswordAuthentication no`) : sans `-i`, `ssh` n'essaie que les
+clés par défaut (`~/.ssh/id_*`) et la connexion est refusée (`Permission denied (publickey)`). L'évaluation
+cherche `Accepted publickey for alpha` dans `/var/log/auth.log` de `r1`.
+""": """
+**Solution.**
+
+```
+ssh -i /home/admin/key1 alpha@r1     # passphrase of the key: abcde
+```
+
+`r1` does not accept passwords (`PasswordAuthentication no`): without `-i`, `ssh` only tries the default
+keys (`~/.ssh/id_*`) and the connection is refused (`Permission denied (publickey)`). The evaluation
+looks for `Accepted publickey for alpha` in `/var/log/auth.log` on `r1`.
+""",
+        """
+**Solution.** Sur `m0` :
+
+```
+eval $(ssh-agent)             # lance l'agent, exporte SSH_AUTH_SOCK et SSH_AGENT_PID
+ssh-add /home/admin/key1      # phrase secrète : abcde
+ssh-add -l                    # la clé est chargée
+ssh beta@r1                   # ForwardAgent yes est déjà configuré sur m0 et r1 ; sinon ssh -A
+```
+
+puis, depuis `r1` :
+
+```
+ssh beta@m5                   # la clé est fournie par l'agent de m0, transféré
+cat /home/beta/secret
+```
+
+Réponse attendue : `{secret}`.
+
+L'évaluation vérifie un processus `ssh-agent` de `admin` sur `m0`, la présence de `key1` dans un de ses
+agents (`ssh-add -L` sur les sockets `/tmp/ssh-*/agent.*`) et, dans le journal du démon de `r1` **et** de
+`m5`, une session de `beta` ouverte avec `key1` dans l'agent transféré. Il faut donc une vraie session sur
+`r1` puis un rebond vers `m5` : `ssh -J beta@r1 beta@m5` n'ouvre pas de session avec agent sur `r1`.
+""": """
+**Solution.** On `m0`:
+
+```
+eval $(ssh-agent)             # starts the agent, exports SSH_AUTH_SOCK and SSH_AGENT_PID
+ssh-add /home/admin/key1      # passphrase: abcde
+ssh-add -l                    # the key is loaded
+ssh beta@r1                   # ForwardAgent yes is already configured on m0 and r1; otherwise ssh -A
+```
+
+then, from `r1`:
+
+```
+ssh beta@m5                   # the key is supplied by m0's agent, forwarded
+cat /home/beta/secret
+```
+
+Expected answer: `{secret}`.
+
+The evaluation checks for an `ssh-agent` process of `admin` on `m0`, for `key1` in one of its agents
+(`ssh-add -L` on the `/tmp/ssh-*/agent.*` sockets) and, in the daemon log of `r1` **and** of `m5`, for
+a session of `beta` opened with `key1` in the forwarded agent. So a real session on `r1` followed by a
+hop to `m5` is required: `ssh -J beta@r1 beta@m5` opens no session with an agent on `r1`.
+""",
+        """
+**Solution.** Sur `m0` :
+
+```
+ssh-keygen -t rsa -b 4096 -f /home/admin/key2                 # phrase secrète : 123456
+for m in m2 m3 m4; do ssh-copy-id -i /home/admin/key2.pub alpha@$m; done   # mot de passe : alpha1
+ssh-add /home/admin/key2                                       # facultatif : la phrase secrète n'est plus demandée
+ssh alpha@m2; ssh alpha@m3; ssh alpha@m4                       # ou ssh -i /home/admin/key2 alpha@m2 …
+```
+
+`ssh-copy-id` ajoute la clé publique à `~alpha/.ssh/authorized_keys` en créant `~/.ssh` avec les bons
+droits. L'évaluation vérifie `/home/admin/key2.pub` (RSA, 4096 bits), la phrase secrète de la clé privée
+et la présence de la clé publique dans `authorized_keys` de `alpha` sur les trois machines.
+""": """
+**Solution.** On `m0`:
+
+```
+ssh-keygen -t rsa -b 4096 -f /home/admin/key2                 # passphrase: 123456
+for m in m2 m3 m4; do ssh-copy-id -i /home/admin/key2.pub alpha@$m; done   # password: alpha1
+ssh-add /home/admin/key2                                       # optional: the passphrase is no longer asked
+ssh alpha@m2; ssh alpha@m3; ssh alpha@m4                       # or ssh -i /home/admin/key2 alpha@m2 …
+```
+
+`ssh-copy-id` appends the public key to `~alpha/.ssh/authorized_keys`, creating `~/.ssh` with the right
+permissions. The evaluation checks `/home/admin/key2.pub` (RSA, 4096 bits), the passphrase of the private
+key and the presence of the public key in `alpha`'s `authorized_keys` on the three machines.
+""",
+        """
+**Solution.** Devenir `root` sur `m3` : `ssh alpha@m3` puis `su -` (mot de passe de `root` sur `m3` :
+`root`), ou `ssh admin@m3` (mot de passe `admin`) puis `sudo -i`. Ensuite :
+
+```
+sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart ssh
+```
+
+(ou une ligne `PasswordAuthentication no` dans un fichier `/etc/ssh/sshd_config.d/*.conf`, lu avant le
+reste). Vérification depuis `m0` :
+
+```
+ssh -o PubkeyAuthentication=no alpha@m3     # Permission denied (publickey)
+ssh alpha@m3                                # par la clé key2 : OK
+```
+
+L'évaluation tente depuis `m0` une connexion par mot de passe vers `m3` (`PreferredAuthentications=password`,
+`BatchMode=yes`) et attend un refus dont la liste des méthodes ne contient plus `password`.
+""": """
+**Solution.** Become `root` on `m3`: `ssh alpha@m3` then `su -` (password of `root` on `m3`: `root`),
+or `ssh admin@m3` (password `admin`) then `sudo -i`. Then:
+
+```
+sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart ssh
+```
+
+(or a `PasswordAuthentication no` line in a `/etc/ssh/sshd_config.d/*.conf` file, read before the rest).
+Check from `m0`:
+
+```
+ssh -o PubkeyAuthentication=no alpha@m3     # Permission denied (publickey)
+ssh alpha@m3                                # with key key2: OK
+```
+
+The evaluation attempts a password login from `m0` to `m3` (`PreferredAuthentications=password`,
+`BatchMode=yes`) and expects a refusal whose list of methods no longer contains `password`.
+""",
+        """
+**Solution.** Depuis `m0`, avec `key2` chargée dans l'agent (`ssh-add /home/admin/key2`) pour qu'aucune
+phrase secrète ne soit demandée :
+
+```
+dsh -c -m alpha@m2,alpha@m3,alpha@m4 -- 'echo Hello > /home/alpha/HELLO'
+```
+
+`-c` (*concurrent*) lance les trois commandes en parallèle ; `/etc/dsh/dsh.conf` (`remoteshell = ssh`)
+rend `-r ssh` inutile. L'évaluation exige le même contenu et la **même date de modification** (à la seconde
+près) sur les trois machines : une exécution séquentielle, sans `-c` ou par trois `ssh` à la main, donne en
+général des dates différentes.
+""": """
+**Solution.** From `m0`, with `key2` loaded in the agent (`ssh-add /home/admin/key2`) so that no
+passphrase is asked:
+
+```
+dsh -c -m alpha@m2,alpha@m3,alpha@m4 -- 'echo Hello > /home/alpha/HELLO'
+```
+
+`-c` (*concurrent*) runs the three commands in parallel; `/etc/dsh/dsh.conf` (`remoteshell = ssh`) makes
+`-r ssh` unnecessary. The evaluation requires the same content and the **same modification time** (to
+the second) on the three machines: a sequential run, without `-c` or with three `ssh` by hand, usually
+gives different times.
+""",
     },
 }

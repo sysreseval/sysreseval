@@ -3,7 +3,7 @@ from ipaddress import IPv4Network, IPv4Interface
 from typing import Dict
 
 import utils
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
 from SRE.params import sre_docker_image
 from grade_helpers import eval_tcp_server, test_dig
 from ips import random_ipv4networks, random_ipv4s
@@ -688,17 +688,17 @@ server:
         # Make sure ns1/ns2 do not start a DNS server before the student configures one.
         # Also stop systemd-resolved — it listens on 127.0.0.53:53 and would block
         # any later 0.0.0.0:53 / "any" bind by unbound or named.
-        # Wrapped in `sh -c` so that 2>/dev/null and || true are actually shell-evaluated
-        # (cmd() goes via exec_run+shlex.split, which would otherwise treat them as argv).
+        # cmd() runs its command line under sh (exetests.py): the redirections and
+        # `|| true` below are shell-evaluated as they are, no `sh -c` wrapper needed.
         for m in ("ns1", "ns2"):
             self.cmd(
                 m,
-                "sh -c 'systemctl stop systemd-resolved 2>/dev/null || true; "
-                "systemctl mask systemd-resolved 2>/dev/null || true'",
+                "systemctl stop systemd-resolved 2>/dev/null || true; "
+                "systemctl mask systemd-resolved 2>/dev/null || true",
             )
-            self.cmd(m, "sh -c 'systemctl stop unbound 2>/dev/null || true'")
-            self.cmd(m, "sh -c 'systemctl stop named   2>/dev/null || true'")
-            self.cmd(m, "sh -c 'systemctl stop bind9   2>/dev/null || true'")
+            self.cmd(m, "systemctl stop unbound 2>/dev/null || true")
+            self.cmd(m, "systemctl stop named   2>/dev/null || true")
+            self.cmd(m, "systemctl stop bind9   2>/dev/null || true")
 
     @sre_state(user_allowed=False)
     def final(self):
@@ -737,8 +737,6 @@ forward-zone:
             filename="/etc/unbound/unbound.conf.d/lab.conf",
             content=ns1_lab_conf,
         )
-        # All systemctl steps wrapped in sh -c so the redirections/|| are actually
-        # interpreted by a shell (cmd() goes through exec_run+shlex.split otherwise).
         # Stop systemd-resolved here too in case the running lab was started before
         # initial() began handling it.
         self.cmd("ns1", "systemctl stop systemd-resolved")
@@ -796,18 +794,18 @@ mail IN  A    {d.part3.bind_mail_ip}
         )
 
         # The systemd unit may be called `named` (recent Debian) or `bind9`
-        # (older releases). chgrp/reset-failed/restart all run in one sh -c so
-        # error masking actually works. Stop systemd-resolved first so it does
-        # not hold 127.0.0.53:53 against named's `listen-on { any; }`.
+        # (older releases). chgrp/reset-failed/restart all run in one command line
+        # (cmd() runs it under sh) so the error masking works. Stop systemd-resolved
+        # first so it does not hold 127.0.0.53:53 against named's `listen-on { any; }`.
         self.cmd(
             "ns2",
-            f"sh -c 'systemctl stop systemd-resolved 2>/dev/null || true; "
+            "systemctl stop systemd-resolved 2>/dev/null || true; "
             "systemctl mask systemd-resolved 2>/dev/null || true; "
             f"chgrp bind /etc/bind/db.{BIND_ZONE} 2>/dev/null || true; "
             "systemctl daemon-reload; "
             "systemctl reset-failed named 2>/dev/null || true; "
             "systemctl reset-failed bind9 2>/dev/null || true; "
-            "systemctl restart named 2>/dev/null || systemctl restart bind9'",
+            "systemctl restart named 2>/dev/null || systemctl restart bind9",
         )
 
 
@@ -855,7 +853,17 @@ l'ordre :
 2. **Serveur DNS *cache* — `unbound`** : mise en place sur `ns1` d'un
    serveur `unbound` qui transfère (*forward*) les requêtes vers `gw`.
 3. **Serveur DNS *autoritatif* — `bind9`** : mise en place sur `ns2`
-   d'un serveur `bind9` faisant autorité sur la zone `{BIND_ZONE}`.""").format(LAB_ZONE=LAB_ZONE, BIND_ZONE=BIND_ZONE),
+   d'un serveur `bind9` faisant autorité sur la zone `{BIND_ZONE}`.""").format(LAB_ZONE=LAB_ZONE, BIND_ZONE=BIND_ZONE)
+            + instructor(tr("""
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour ce projet.
+
+- L'état `final` (onglet *Appliquer une configuration*) configure `unbound` sur `ns1` et `bind9` sur `ns2`
+  et remplit le formulaire de la partie 1 ; compter quelques secondes avant l'évaluation.
+- Le serveur de `gw` (`{gw_ip}`) est un `unbound` dont `/etc/unbound/unbound.conf` porte la zone
+  `{LAB_ZONE}` en `local-data` (et la zone inverse `113.0.203.in-addr.arpa`).
+- Les requêtes de l'évaluation partent de deux machines cachées : `h1` (`{h1_ip}`, dans `net1`) et `h2`
+  (`{h2_ip}`, dans `net2`) ; la configuration de `m1` et `m2` n'intervient pas.
+""").format(gw_ip=gw_ip, LAB_ZONE=LAB_ZONE, h1_ip=str(d.ips.h1.ip), h2_ip=str(d.ips.h2.ip))),
         )
 
         # =================================================================
@@ -880,7 +888,24 @@ Utilisez `dig` pour interroger ce serveur et répondre aux questions ci-dessous 
 - priorité du champ MX : @@{{mx_priority:[0-9]+}}@@
 - valeur du champ TXT du domaine `{LAB_ZONE}` (sans les guillemets) : @@{{txt:.+}}@@
 - nom (PTR) associé à l'adresse `{_arg0}` (FQDN, sans le point final) : @@{{ptr:[A-Za-z0-9._-]+}}@@
-""").format(gw_ip=gw_ip, LAB_ZONE=LAB_ZONE, _arg0=d.part1.host1_ip),
+""").format(gw_ip=gw_ip, LAB_ZONE=LAB_ZONE, _arg0=d.part1.host1_ip)
+            + instructor(tr("""
+**Solution.** Depuis `m1` (`gw` est le serveur de `/etc/resolv.conf` : `@{gw_ip}` est facultatif) :
+
+```
+dig +short host1.{LAB_ZONE} A          # {host1_ip}
+dig +short host2.{LAB_ZONE} A          # {host2_ip}
+dig +short www.{LAB_ZONE} CNAME        # host1.{LAB_ZONE}.
+dig +short {LAB_ZONE} MX               # {mx_priority} mail.{LAB_ZONE}.
+dig +short {LAB_ZONE} TXT              # "{txt}"
+dig +short -x {host1_ip}               # host1.{LAB_ZONE}.
+```
+
+Réponses : `{host1_ip}`, `{host2_ip}`, `host1.{LAB_ZONE}`, `mail.{LAB_ZONE}`, `{mx_priority}`, `{txt}`,
+`host1.{LAB_ZONE}` (l'évaluation ignore le point final et les guillemets).
+""").format(gw_ip=gw_ip, LAB_ZONE=LAB_ZONE, host1_ip=d.part1.host1_ip,
+                                                     host2_ip=d.part1.host2_ip, mx_priority=d.part1.mx_priority,
+                                                     txt=d.part1.txt_secret)),
             cheat_answers={
                 "final": {
                     "host1_a": d.part1.host1_ip,
@@ -997,7 +1022,36 @@ Démarrez le service avec `systemctl start unbound`. Vérifiez avec
 
 Testez ensuite le serveur en effectuant des requêtes avec `dig` depuis `m1` (qui est dans `net1`, donc autorisé)  et
 depuis `m2` (qui doit donné un statut `REFUSED`).
-""").format(ns1_ip=ns1_ip, _arg0=d.nets.net1, gw_ip=gw_ip, LAB_ZONE=LAB_ZONE),
+""").format(ns1_ip=ns1_ip, _arg0=d.nets.net1, gw_ip=gw_ip, LAB_ZONE=LAB_ZONE)
+            + instructor(tr("""
+**Solution.** `/etc/unbound/unbound.conf.d/lab.conf` sur `ns1` :
+
+```
+server:
+    interface: 0.0.0.0
+    access-control: 127.0.0.0/8 allow
+    access-control: {net1} allow
+    domain-insecure: "{LAB_ZONE}"
+
+forward-zone:
+    name: "."
+    forward-addr: {gw_ip}
+```
+
+puis `unbound-checkconf` et `systemctl restart unbound` (`ss -tulnp | grep :53` montre `unbound` en UDP et
+en TCP). Par défaut `unbound` n'écoute que sur `127.0.0.1` et refuse (`REFUSED`) toute adresse absente de
+`access-control`, ce qui couvre `net2`. Vérification :
+
+```
+dig @{ns1_ip} host1.{LAB_ZONE}     # depuis m1 : NOERROR, {host1_ip}
+dig @{ns1_ip} host1.{LAB_ZONE}     # depuis m2 : status: REFUSED
+```
+
+Sans `domain-insecure`, la réponse est `SERVFAIL` (validation DNSSEC d'une zone inconnue de la racine).
+L'évaluation interroge `ns1` depuis `h1` (`net1`) pour `host1.{LAB_ZONE} A` et `{LAB_ZONE} TXT`, et
+depuis `h2` (`net2`) en attendant `REFUSED`.
+""").format(net1=d.nets.net1, LAB_ZONE=LAB_ZONE, gw_ip=gw_ip, ns1_ip=ns1_ip,
+                                                     host1_ip=d.part1.host1_ip)),
         )
 
         # 2.a — unbound écoute sur le port 53 de ns1
@@ -1104,7 +1158,53 @@ Marche à suivre (`bind9` est déjà installé sur la machine) :
 
 Testez le serveur depuis `m1` en effectuant des requêtes avec `dig`.
 """).format(BIND_ZONE=BIND_ZONE, ns2_ip=ns2_ip, _arg0=d.part3.bind_www_ip, _arg1=d.part3.bind_mail_ip,
-            _arg2=d.part3.bind_mx_priority, _arg3=d.part3.bind_txt_secret),
+            _arg2=d.part3.bind_mx_priority, _arg3=d.part3.bind_txt_secret)
+            + instructor(tr("""
+**Solution.** Sur `ns2`, `/etc/bind/named.conf.local` :
+
+```
+zone "{BIND_ZONE}" {{
+    type master;
+    file "/etc/bind/db.{BIND_ZONE}";
+}};
+```
+
+`/etc/bind/db.{BIND_ZONE}` :
+
+```
+$TTL 3600
+@   IN  SOA  ns2.{BIND_ZONE}. admin.{BIND_ZONE}. (
+                 2026010101 ; serial
+                 3600       ; refresh
+                 1800       ; retry
+                 604800     ; expire
+                 86400 )    ; minimum TTL
+@    IN  NS   ns2.{BIND_ZONE}.
+ns2  IN  A    {ns2_ip}
+www  IN  A    {www_ip}
+mail IN  A    {mail_ip}
+@    IN  MX   {mx_priority} mail.{BIND_ZONE}.
+@    IN  TXT  "{txt}"
+```
+
+puis :
+
+```
+named-checkconf
+named-checkzone {BIND_ZONE} /etc/bind/db.{BIND_ZONE}
+systemctl restart named            # ou bind9
+dig @{ns2_ip} {BIND_ZONE} SOA       # "flags: qr aa ..."
+```
+
+Pièges : un nom sans point final est complété par le nom de la zone (`mail.{BIND_ZONE}` sans point dans
+le `MX` donnerait `mail.{BIND_ZONE}.{BIND_ZONE}.`) ; le fichier doit être lisible par l'utilisateur `bind` ;
+`journalctl -u named` explique un démarrage refusé. L'état `final` écrit aussi
+`/etc/bind/named.conf.options` (`listen-on {{ any; }}`, `allow-query {{ any; }}`, `recursion no`,
+`dnssec-validation no`), facultatif ici : les valeurs par défaut servent déjà la zone à tout le monde.
+L'évaluation interroge `ns2` depuis `h1` : `SOA` avec le drapeau `aa`, les trois `A`, le `MX` et le `TXT`.
+""").format(BIND_ZONE=BIND_ZONE, ns2_ip=ns2_ip, www_ip=d.part3.bind_www_ip,
+                                                     mail_ip=d.part3.bind_mail_ip, mx_priority=d.part3.bind_mx_priority,
+                                                     txt=d.part3.bind_txt_secret)),
         )
 
         # 3.a — named écoute sur le port 53 de ns2
@@ -2334,5 +2434,195 @@ l'ordre :
         'ns1 répond pour {LAB_ZONE} (TXT)': 'ns1 answers queries for {LAB_ZONE} (TXT)',
         'ns2 fait autorité (flag aa) sur la zone {BIND_ZONE}': 'ns2 is authoritative (flag aa) for the zone {BIND_ZONE}',
         'unbound écoute sur le port 53 de ns1': 'unbound listens on port 53 on ns1',
+        """
+**Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour ce projet.
+
+- L'état `final` (onglet *Appliquer une configuration*) configure `unbound` sur `ns1` et `bind9` sur `ns2`
+  et remplit le formulaire de la partie 1 ; compter quelques secondes avant l'évaluation.
+- Le serveur de `gw` (`{gw_ip}`) est un `unbound` dont `/etc/unbound/unbound.conf` porte la zone
+  `{LAB_ZONE}` en `local-data` (et la zone inverse `113.0.203.in-addr.arpa`).
+- Les requêtes de l'évaluation partent de deux machines cachées : `h1` (`{h1_ip}`, dans `net1`) et `h2`
+  (`{h2_ip}`, dans `net2`) ; la configuration de `m1` et `m2` n'intervient pas.
+""": """
+**For the instructor.** Every question ends with its solution, computed for this project.
+
+- The `final` state (*Apply configuration* tab) configures `unbound` on `ns1` and `bind9` on `ns2` and
+  fills in the form of part 1; allow a few seconds before evaluating.
+- The server on `gw` (`{gw_ip}`) is an `unbound` whose `/etc/unbound/unbound.conf` holds the
+  `{LAB_ZONE}` zone as `local-data` (and the reverse zone `113.0.203.in-addr.arpa`).
+- The evaluation queries come from two hidden machines: `h1` (`{h1_ip}`, in `net1`) and `h2`
+  (`{h2_ip}`, in `net2`); the configuration of `m1` and `m2` plays no part.
+""",
+        """
+**Solution.** Depuis `m1` (`gw` est le serveur de `/etc/resolv.conf` : `@{gw_ip}` est facultatif) :
+
+```
+dig +short host1.{LAB_ZONE} A          # {host1_ip}
+dig +short host2.{LAB_ZONE} A          # {host2_ip}
+dig +short www.{LAB_ZONE} CNAME        # host1.{LAB_ZONE}.
+dig +short {LAB_ZONE} MX               # {mx_priority} mail.{LAB_ZONE}.
+dig +short {LAB_ZONE} TXT              # "{txt}"
+dig +short -x {host1_ip}               # host1.{LAB_ZONE}.
+```
+
+Réponses : `{host1_ip}`, `{host2_ip}`, `host1.{LAB_ZONE}`, `mail.{LAB_ZONE}`, `{mx_priority}`, `{txt}`,
+`host1.{LAB_ZONE}` (l'évaluation ignore le point final et les guillemets).
+""": """
+**Solution.** From `m1` (`gw` is the server of `/etc/resolv.conf`: `@{gw_ip}` is optional):
+
+```
+dig +short host1.{LAB_ZONE} A          # {host1_ip}
+dig +short host2.{LAB_ZONE} A          # {host2_ip}
+dig +short www.{LAB_ZONE} CNAME        # host1.{LAB_ZONE}.
+dig +short {LAB_ZONE} MX               # {mx_priority} mail.{LAB_ZONE}.
+dig +short {LAB_ZONE} TXT              # "{txt}"
+dig +short -x {host1_ip}               # host1.{LAB_ZONE}.
+```
+
+Answers: `{host1_ip}`, `{host2_ip}`, `host1.{LAB_ZONE}`, `mail.{LAB_ZONE}`, `{mx_priority}`, `{txt}`,
+`host1.{LAB_ZONE}` (the evaluation ignores the trailing dot and the quotes).
+""",
+        """
+**Solution.** `/etc/unbound/unbound.conf.d/lab.conf` sur `ns1` :
+
+```
+server:
+    interface: 0.0.0.0
+    access-control: 127.0.0.0/8 allow
+    access-control: {net1} allow
+    domain-insecure: "{LAB_ZONE}"
+
+forward-zone:
+    name: "."
+    forward-addr: {gw_ip}
+```
+
+puis `unbound-checkconf` et `systemctl restart unbound` (`ss -tulnp | grep :53` montre `unbound` en UDP et
+en TCP). Par défaut `unbound` n'écoute que sur `127.0.0.1` et refuse (`REFUSED`) toute adresse absente de
+`access-control`, ce qui couvre `net2`. Vérification :
+
+```
+dig @{ns1_ip} host1.{LAB_ZONE}     # depuis m1 : NOERROR, {host1_ip}
+dig @{ns1_ip} host1.{LAB_ZONE}     # depuis m2 : status: REFUSED
+```
+
+Sans `domain-insecure`, la réponse est `SERVFAIL` (validation DNSSEC d'une zone inconnue de la racine).
+L'évaluation interroge `ns1` depuis `h1` (`net1`) pour `host1.{LAB_ZONE} A` et `{LAB_ZONE} TXT`, et
+depuis `h2` (`net2`) en attendant `REFUSED`.
+""": """
+**Solution.** `/etc/unbound/unbound.conf.d/lab.conf` on `ns1`:
+
+```
+server:
+    interface: 0.0.0.0
+    access-control: 127.0.0.0/8 allow
+    access-control: {net1} allow
+    domain-insecure: "{LAB_ZONE}"
+
+forward-zone:
+    name: "."
+    forward-addr: {gw_ip}
+```
+
+then `unbound-checkconf` and `systemctl restart unbound` (`ss -tulnp | grep :53` shows `unbound` on UDP
+and TCP). By default `unbound` listens on `127.0.0.1` only and refuses (`REFUSED`) every address missing
+from `access-control`, which covers `net2`. Check:
+
+```
+dig @{ns1_ip} host1.{LAB_ZONE}     # from m1: NOERROR, {host1_ip}
+dig @{ns1_ip} host1.{LAB_ZONE}     # from m2: status: REFUSED
+```
+
+Without `domain-insecure`, the answer is `SERVFAIL` (DNSSEC validation of a zone unknown to the root).
+The evaluation queries `ns1` from `h1` (`net1`) for `host1.{LAB_ZONE} A` and `{LAB_ZONE} TXT`, and from
+`h2` (`net2`) expecting `REFUSED`.
+""",
+        """
+**Solution.** Sur `ns2`, `/etc/bind/named.conf.local` :
+
+```
+zone "{BIND_ZONE}" {{
+    type master;
+    file "/etc/bind/db.{BIND_ZONE}";
+}};
+```
+
+`/etc/bind/db.{BIND_ZONE}` :
+
+```
+$TTL 3600
+@   IN  SOA  ns2.{BIND_ZONE}. admin.{BIND_ZONE}. (
+                 2026010101 ; serial
+                 3600       ; refresh
+                 1800       ; retry
+                 604800     ; expire
+                 86400 )    ; minimum TTL
+@    IN  NS   ns2.{BIND_ZONE}.
+ns2  IN  A    {ns2_ip}
+www  IN  A    {www_ip}
+mail IN  A    {mail_ip}
+@    IN  MX   {mx_priority} mail.{BIND_ZONE}.
+@    IN  TXT  "{txt}"
+```
+
+puis :
+
+```
+named-checkconf
+named-checkzone {BIND_ZONE} /etc/bind/db.{BIND_ZONE}
+systemctl restart named            # ou bind9
+dig @{ns2_ip} {BIND_ZONE} SOA       # "flags: qr aa ..."
+```
+
+Pièges : un nom sans point final est complété par le nom de la zone (`mail.{BIND_ZONE}` sans point dans
+le `MX` donnerait `mail.{BIND_ZONE}.{BIND_ZONE}.`) ; le fichier doit être lisible par l'utilisateur `bind` ;
+`journalctl -u named` explique un démarrage refusé. L'état `final` écrit aussi
+`/etc/bind/named.conf.options` (`listen-on {{ any; }}`, `allow-query {{ any; }}`, `recursion no`,
+`dnssec-validation no`), facultatif ici : les valeurs par défaut servent déjà la zone à tout le monde.
+L'évaluation interroge `ns2` depuis `h1` : `SOA` avec le drapeau `aa`, les trois `A`, le `MX` et le `TXT`.
+""": """
+**Solution.** On `ns2`, `/etc/bind/named.conf.local`:
+
+```
+zone "{BIND_ZONE}" {{
+    type master;
+    file "/etc/bind/db.{BIND_ZONE}";
+}};
+```
+
+`/etc/bind/db.{BIND_ZONE}`:
+
+```
+$TTL 3600
+@   IN  SOA  ns2.{BIND_ZONE}. admin.{BIND_ZONE}. (
+                 2026010101 ; serial
+                 3600       ; refresh
+                 1800       ; retry
+                 604800     ; expire
+                 86400 )    ; minimum TTL
+@    IN  NS   ns2.{BIND_ZONE}.
+ns2  IN  A    {ns2_ip}
+www  IN  A    {www_ip}
+mail IN  A    {mail_ip}
+@    IN  MX   {mx_priority} mail.{BIND_ZONE}.
+@    IN  TXT  "{txt}"
+```
+
+then:
+
+```
+named-checkconf
+named-checkzone {BIND_ZONE} /etc/bind/db.{BIND_ZONE}
+systemctl restart named            # or bind9
+dig @{ns2_ip} {BIND_ZONE} SOA       # "flags: qr aa ..."
+```
+
+Pitfalls: a name without a trailing dot gets the zone name appended (`mail.{BIND_ZONE}` without a dot in
+the `MX` would give `mail.{BIND_ZONE}.{BIND_ZONE}.`); the file must be readable by the `bind` user;
+`journalctl -u named` explains a refused start. The `final` state also writes
+`/etc/bind/named.conf.options` (`listen-on {{ any; }}`, `allow-query {{ any; }}`, `recursion no`,
+`dnssec-validation no`), optional here: the default values already serve the zone to everyone.
+The evaluation queries `ns2` from `h1`: `SOA` with the `aa` flag, the three `A`, the `MX` and the `TXT`.
+""",
     },
 }

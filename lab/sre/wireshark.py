@@ -11,6 +11,7 @@ from SRE.lib_sre import (
     Grade0,
     sre_state,
     no_tr, make_tr,
+    instructor,
 )
 from ips import random_ipv4networks, random_ipv4s
 from pcap_gen import generate_pcap_tcp_example, setup_tcp_client_server, get_frame_info
@@ -437,18 +438,59 @@ class Grade(Grade0):
 Sur un autre terminal vérifier par `lsof -n -i -P` ou `ss -ln` que ce serveur fonctionne
 3. Utiliser `nc IP PORT` sur `m2` pour vous connecter au serveur que vous venez de mettre en place.
 4. Recommencer en faisant une capture de trame. 
-                            """),
+                            """)
+            + instructor(tr("""
+**Pour l'enseignant.** Cette question n'est pas évaluée : elle sert de prise en main. Les suivantes portent
+sur le fichier `{pcap_file}` (généré au démarrage par un transfert TCP entre les machines cachées `h1` et
+`h2`) et sur le trafic de `net2` (machines cachées `h5` et `h6`, derrière `m3`). L'état `final` ne configure
+rien (tout est en place dès le départ) mais remplit les formulaires avec les réponses attendues ; chaque
+question se termine par sa solution, calculée pour ce projet.
+
+Exemple : sur `m1`, `nc -l -p 4444` puis, dans un autre terminal, `ss -ltn` (ou `lsof -n -i -P`) ; sur `m2`,
+`nc {m1_ip} 4444` ; capture sur `m1` avec `wireshark` (ou `dumpcap -i eth0 -w /shared/nc.pcap`), filtre
+d'affichage `tcp.port == 4444`.
+""").format(pcap_file=self.get_data().pcap_file, m1_ip=str(self.get_data().ips.m1.ip))),
         )
 
         self.question_dummy(
             section=self.section(0),
             title=tr("Analyse d'une capture de trames"),
-            description=tr('Pour répondre aux questions suivantes, ouvrez avec wireshark **sur votre poste de travail** le fichier\n\n**`{_arg0}/{_arg1}`**\n').format(_arg0=self.net_scheme.get_shared_dir(), _arg1=self.get_data().pcap_file.split('/')[-1]),
+            description=tr('Pour répondre aux questions suivantes, ouvrez avec wireshark **sur votre poste de travail** le fichier\n\n**`{_arg0}/{_arg1}`**\n').format(_arg0=self.net_scheme.get_shared_dir(), _arg1=self.get_data().pcap_file.split('/')[-1])
+            + instructor(tr("""
+**Pour l'enseignant.** `{pcap_file}` est un transfert TCP de 100 Kio de `h1` (`{h1_ip}`, port client
+{client_port}) vers `h2` (`{h2_ip}`, port serveur {server_port}), capturé sur `h2` ; les valeurs attendues
+ci-dessous sont tirées du fichier (trame choisie au démarrage, relue à chaque évaluation).
+""").format(pcap_file=self.get_data().pcap_file, h1_ip=str(self.get_data().ips.h1.ip),
+                                                    h2_ip=str(self.get_data().ips.h2.ip), client_port=pcap.client_port,
+                                                    server_port=pcap.server_port)),
         )
         q_capture = self.question_form(
             section=self.section(1),
             title=tr("Eléments d'une trame"),
-            description=tr("On considère la trame numéro {_arg0} du fichier`{_arg1}/{_arg2}`.\nEntrez les éléments suivants :\n\nadresse IP de la machine source : @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@adresse IP de la machine destinataire : @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@port source : @@{{port_src:[0-9]+}}@@port destinataire : @@{{port_dest:[0-9]+}}@@taille en octets de la fenêtre de réception: @@{{rcpt:[0-9]+}}@@numéro de séquence (absolu) : @@{{seq:[0-9]+}}@@numéro d'acquittement (absolu) : @@{{ack:[0-9]+}}@@").format(_arg0=pcap.packet_src_to_dst, _arg1=self.net_scheme.get_shared_dir(), _arg2=self.get_data().pcap_file.split('/')[-1]),
+            description=tr("On considère la trame numéro {_arg0} du fichier`{_arg1}/{_arg2}`.\nEntrez les éléments suivants :\n\nadresse IP de la machine source : @@{{ip_src:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@adresse IP de la machine destinataire : @@{{ip_dest:[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+}}@@port source : @@{{port_src:[0-9]+}}@@port destinataire : @@{{port_dest:[0-9]+}}@@taille en octets de la fenêtre de réception: @@{{rcpt:[0-9]+}}@@numéro de séquence (absolu) : @@{{seq:[0-9]+}}@@numéro d'acquittement (absolu) : @@{{ack:[0-9]+}}@@").format(_arg0=pcap.packet_src_to_dst, _arg1=self.net_scheme.get_shared_dir(), _arg2=self.get_data().pcap_file.split('/')[-1])
+            + instructor(tr("""
+**Solution.** Sélectionner la trame {frame} (filtre `frame.number == {frame}`) et lire les sections
+*Internet Protocol* et *Transmission Control Protocol* ; pour les numéros absolus, désactiver *Relative
+sequence numbers* (clic droit sur la section TCP → *Protocol Preferences*) ou lire `Sequence Number (raw)`
+et `Acknowledgment Number (raw)`.
+
+| champ | valeur |
+|---|---|
+| IP source | `{ip_src}` |
+| IP destination | `{ip_dest}` |
+| port source | `{port_src}` |
+| port destination | `{port_dest}` |
+| fenêtre de réception | `{window}` |
+| numéro de séquence (absolu) | `{seq}` |
+| numéro d'acquittement (absolu) | `{ack}` |
+
+Les adresses s'entrent sans préfixe. La trame va de `h1` vers `h2` : la fenêtre est celle que `h1` annonce
+(le *window scaling* est désactivé sur les deux machines, la valeur brute est la vraie).
+""").format(frame=pcap.packet_src_to_dst, ip_src=str(self.get_data().ips.h1.ip),
+                                                    ip_dest=str(self.get_data().ips.h2.ip), port_src=pcap.client_port,
+                                                    port_dest=pcap.server_port, window=pcap.packet_src_to_dst_tcp_window,
+                                                    seq=pcap.packet_src_to_dst_absolute_seq_number,
+                                                    ack=pcap.packet_src_to_dst_absolute_ack_number)),
             cheat_answers={
                 "final": {
                     "ip_src": str(self.get_data().ips.h1.ip),
@@ -554,6 +596,14 @@ Sur un autre terminal vérifier par `lsof -n -i -P` ou `ss -ln` que ce serveur f
             title=tr("Couches Ethernet et IP"),
             description=(
                 tr('Pour la trame numéro {_arg0} du fichier `{pcap_filename}`, dépliez les sections **Ethernet II** et **Internet Protocol** :\n\nadresse MAC source (format `xx:xx:xx:xx:xx:xx`) : @@{{mac_src:[0-9a-fA-F:]+}}@@adresse MAC destination : @@{{mac_dst:[0-9a-fA-F:]+}}@@valeur du champ `Time To Live` : @@{{ttl:[0-9]+}}@@numéro du protocole encapsulé dans IP (champ `Protocol`) : @@{{proto:[0-9]+}}@@').format(_arg0=pcap.packet_src_to_dst, pcap_filename=pcap_filename)
+                + instructor(tr("""
+**Solution.** Même trame {frame}, sections *Ethernet II* et *Internet Protocol* : MAC source `{mac_src}`
+(carte de `h1`), MAC destination `{mac_dst}` (carte de `h2`), `Time To Live` {ttl} (`h1` et `h2` sont sur
+le même réseau : la valeur initiale de Linux, 64, n'a été décrémentée par aucun routeur), `Protocol`
+{proto} (TCP).
+""").format(frame=pcap.packet_src_to_dst, mac_src=ref_info.get("mac_src", "?"),
+                                                        mac_dst=ref_info.get("mac_dst", "?"), ttl=ref_info.get("ip_ttl", "?"),
+                                                        proto=ref_info.get("ip_proto", "?")))
             ),
             cheat_answers={
                 "final": {
@@ -604,6 +654,12 @@ Sur un autre terminal vérifier par `lsof -n -i -P` ou `ss -ln` que ce serveur f
             title=tr("Établissement et fermeture de la connexion TCP"),
             description=(
                 tr('Toujours sur le fichier `{_arg0}/{pcap_filename}`.\n\nIdentifiez les trames clés du *3-way handshake* et de la fermeture.\n\nAstuce : utilisez le filtre `tcp.flags.syn == 1` ou `tcp.flags.fin == 1`.\n\nnuméro de trame du `SYN` initial (SYN seul, sans ACK) : @@{{syn:[0-9]+}}@@numéro de trame du `SYN/ACK` : @@{{synack:[0-9]+}}@@numéro de la première trame portant le drapeau `FIN` : @@{{fin:[0-9]+}}@@').format(_arg0=self.net_scheme.get_shared_dir(), pcap_filename=pcap_filename)
+                + instructor(tr("""
+**Solution.** Filtre `tcp.flags.syn == 1` : le `SYN` seul est la trame {syn} et le `SYN/ACK` la trame
+{synack} (l'`ACK` qui termine le *3-way handshake* suit). Filtre `tcp.flags.fin == 1` : la première trame
+`FIN` est la {fin}, envoyée par le client `h1` une fois ses 100 Kio transmis ; `h2` acquitte puis envoie
+son propre `FIN`.
+""").format(syn=syn_frame or "?", synack=synack_frame or "?", fin=fin_frame or "?"))
             ),
             cheat_answers={
                 "final": {
@@ -758,6 +814,30 @@ Sur un autre terminal vérifier par `lsof -n -i -P` ou `ss -ln` que ce serveur f
                 "chemin demandé (avec le `/` initial) : @@{path:/[^\\s]+}@@"
                 "code de statut de la réponse : @@{status:[0-9]+}@@"
                 "contenu du corps de la réponse (texte exact) : @@{body:.*}@@")
+                + instructor(tr("""
+**Solution.** Sur `m3` : `dumpcap -i eth1 -w /shared/http.pcap` pendant une vingtaine de secondes
+(`Ctrl-C`), `chmod a+r /shared/http.pcap`, puis ouvrir le fichier sur le poste de travail (méthode A de
+l'onglet *Informations* ; les méthodes B et C conviennent aussi). Toutes les 7 s, `h5` (`{h5_ip}`) envoie
+`curl http://{h6_ip}:{port}{path}` au serveur `python3 -m http.server` de `h6`. Filtre `http`, clic droit
+→ *Follow* → *HTTP Stream* :
+
+```
+GET {path} HTTP/1.1
+Host: {h6_ip}:{port}
+User-Agent: curl/...
+Accept: */*
+
+HTTP/1.0 200 OK
+Server: SimpleHTTP/0.6 Python/3...
+Content-type: text/plain
+Content-Length: ...
+
+{secret}
+```
+
+Réponses : `GET`, `{path}`, `200`, `{secret}`.
+""").format(h5_ip=str(self.get_data().ips.h5.ip), h6_ip=str(self.get_data().ips.h6.ip),
+                                                        port=http["port"], path=http["path"], secret=http["secret"]))
             ),
             cheat_answers={
                 "final": {
@@ -809,6 +889,15 @@ Sur un autre terminal vérifier par `lsof -n -i -P` ou `ss -ln` que ce serveur f
                 "nom de domaine interrogé (sans point final) : @@{qname:[^\\s]+}@@"
                 "type d'enregistrement demandé (A, AAAA, MX, …) : @@{qtype:[A-Z]+}@@"
                 "adresse IP retournée dans la réponse : @@{answer:[0-9.]+}@@")
+                + instructor(tr("""
+**Solution.** Même capture (`eth1` de `m3`), filtre `dns`. Toutes les 11 s, `h6` (`{h6_ip}`) interroge le
+serveur `unbound` de `h5` (`{h5_ip}`) : `dig @{h5_ip} {name}`. La requête part en UDP vers le port {port}
+(section *User Datagram Protocol*, `Dst Port: {port}`) ; *Queries* donne `{name}: type A, class IN` et la
+réponse (`Standard query response`) porte dans *Answers* `{name}: type A, class IN, addr {answer}`.
+
+Réponses : `UDP`, `{port}`, `{name}`, `A`, `{answer}`.
+""").format(h5_ip=str(self.get_data().ips.h5.ip), h6_ip=str(self.get_data().ips.h6.ip),
+                                                        port=dns["port"], name=dns["name"], answer=dns["answer_ip"]))
             ),
             cheat_answers={
                 "final": {
@@ -870,6 +959,16 @@ Sur un autre terminal vérifier par `lsof -n -i -P` ou `ss -ln` que ce serveur f
                 "puis répondez aux questions suivantes :\n\n"
                 "port TCP de destination du flux avec retransmissions : @@{port:[0-9]+}@@"
                 "le flux HTTP (port 80) montre-t-il aussi des retransmissions ? : @@{http_ok:>oui|non}@@")
+                + instructor(tr("""
+**Solution.** Même capture, filtre `tcp.analysis.retransmission` (ou *Analyze* → *Expert Information*,
+entrées *Retransmission*, *Fast retransmission*, *Dup ACK*). Toutes les 5 s, `h5` (`{h5_ip}`) ouvre une
+connexion vers le port {port} de `h6` (`{h6_ip}`) ; sur `h5`, une discipline `tc` (`prio` + `netem loss 30%`,
+filtre `u32` sur ce port de destination) perd 30 % des segments de ce seul flux. Les retransmissions ne
+concernent que le port {port} ; le flux HTTP (port 80) n'en montre aucune.
+
+Réponses : `{port}`, `non`.
+""").format(h5_ip=str(self.get_data().ips.h5.ip), h6_ip=str(self.get_data().ips.h6.ip),
+                                                        port=lossy_port))
             ),
             cheat_answers={
                 "final": {
@@ -1273,5 +1372,170 @@ frame number of the initial `SYN` (SYN only, no ACK): @@{{syn:[0-9]+}}@@frame nu
         '{_arg0}Retransmissions - HTTP non affecté': '{_arg0}Retransmissions - HTTP not affected',
         '{_arg0}Retransmissions - Port concerné': '{_arg0}Retransmissions - Port involved',
         'Établissement et fermeture de la connexion TCP': 'TCP connection setup and teardown',
+        """
+**Pour l'enseignant.** Cette question n'est pas évaluée : elle sert de prise en main. Les suivantes portent
+sur le fichier `{pcap_file}` (généré au démarrage par un transfert TCP entre les machines cachées `h1` et
+`h2`) et sur le trafic de `net2` (machines cachées `h5` et `h6`, derrière `m3`). L'état `final` ne configure
+rien (tout est en place dès le départ) mais remplit les formulaires avec les réponses attendues ; chaque
+question se termine par sa solution, calculée pour ce projet.
+
+Exemple : sur `m1`, `nc -l -p 4444` puis, dans un autre terminal, `ss -ltn` (ou `lsof -n -i -P`) ; sur `m2`,
+`nc {m1_ip} 4444` ; capture sur `m1` avec `wireshark` (ou `dumpcap -i eth0 -w /shared/nc.pcap`), filtre
+d'affichage `tcp.port == 4444`.
+""": """
+**For the instructor.** This question is not graded: it is a warm-up. The next ones deal with the file
+`{pcap_file}` (generated at start-up by a TCP transfer between the hidden machines `h1` and `h2`) and
+with the traffic of `net2` (hidden machines `h5` and `h6`, behind `m3`). The `final` state configures
+nothing (everything is in place from the start) but fills in the forms with the expected answers; every
+question ends with its solution, computed for this project.
+
+Example: on `m1`, `nc -l -p 4444` then, in another terminal, `ss -ltn` (or `lsof -n -i -P`); on `m2`,
+`nc {m1_ip} 4444`; capture on `m1` with `wireshark` (or `dumpcap -i eth0 -w /shared/nc.pcap`), display
+filter `tcp.port == 4444`.
+""",
+        """
+**Pour l'enseignant.** `{pcap_file}` est un transfert TCP de 100 Kio de `h1` (`{h1_ip}`, port client
+{client_port}) vers `h2` (`{h2_ip}`, port serveur {server_port}), capturé sur `h2` ; les valeurs attendues
+ci-dessous sont tirées du fichier (trame choisie au démarrage, relue à chaque évaluation).
+""": """
+**For the instructor.** `{pcap_file}` is a 100 KiB TCP transfer from `h1` (`{h1_ip}`, client port
+{client_port}) to `h2` (`{h2_ip}`, server port {server_port}), captured on `h2`; the expected values below
+are taken from the file (frame chosen at start-up, read again at every evaluation).
+""",
+        """
+**Solution.** Sélectionner la trame {frame} (filtre `frame.number == {frame}`) et lire les sections
+*Internet Protocol* et *Transmission Control Protocol* ; pour les numéros absolus, désactiver *Relative
+sequence numbers* (clic droit sur la section TCP → *Protocol Preferences*) ou lire `Sequence Number (raw)`
+et `Acknowledgment Number (raw)`.
+
+| champ | valeur |
+|---|---|
+| IP source | `{ip_src}` |
+| IP destination | `{ip_dest}` |
+| port source | `{port_src}` |
+| port destination | `{port_dest}` |
+| fenêtre de réception | `{window}` |
+| numéro de séquence (absolu) | `{seq}` |
+| numéro d'acquittement (absolu) | `{ack}` |
+
+Les adresses s'entrent sans préfixe. La trame va de `h1` vers `h2` : la fenêtre est celle que `h1` annonce
+(le *window scaling* est désactivé sur les deux machines, la valeur brute est la vraie).
+""": """
+**Solution.** Select frame {frame} (filter `frame.number == {frame}`) and read the *Internet Protocol*
+and *Transmission Control Protocol* sections; for absolute numbers, turn off *Relative sequence numbers*
+(right-click on the TCP section → *Protocol Preferences*) or read `Sequence Number (raw)` and
+`Acknowledgment Number (raw)`.
+
+| field | value |
+|---|---|
+| source IP | `{ip_src}` |
+| destination IP | `{ip_dest}` |
+| source port | `{port_src}` |
+| destination port | `{port_dest}` |
+| receive window | `{window}` |
+| sequence number (absolute) | `{seq}` |
+| acknowledgement number (absolute) | `{ack}` |
+
+Addresses are entered without a prefix. The frame goes from `h1` to `h2`: the window is the one `h1`
+advertises (window scaling is disabled on both machines, the raw value is the real one).
+""",
+        """
+**Solution.** Même trame {frame}, sections *Ethernet II* et *Internet Protocol* : MAC source `{mac_src}`
+(carte de `h1`), MAC destination `{mac_dst}` (carte de `h2`), `Time To Live` {ttl} (`h1` et `h2` sont sur
+le même réseau : la valeur initiale de Linux, 64, n'a été décrémentée par aucun routeur), `Protocol`
+{proto} (TCP).
+""": """
+**Solution.** Same frame {frame}, *Ethernet II* and *Internet Protocol* sections: source MAC `{mac_src}`
+(`h1`'s interface), destination MAC `{mac_dst}` (`h2`'s interface), `Time To Live` {ttl} (`h1` and `h2`
+are on the same network: Linux's initial value, 64, was decremented by no router), `Protocol` {proto}
+(TCP).
+""",
+        """
+**Solution.** Filtre `tcp.flags.syn == 1` : le `SYN` seul est la trame {syn} et le `SYN/ACK` la trame
+{synack} (l'`ACK` qui termine le *3-way handshake* suit). Filtre `tcp.flags.fin == 1` : la première trame
+`FIN` est la {fin}, envoyée par le client `h1` une fois ses 100 Kio transmis ; `h2` acquitte puis envoie
+son propre `FIN`.
+""": """
+**Solution.** Filter `tcp.flags.syn == 1`: the lone `SYN` is frame {syn} and the `SYN/ACK` frame
+{synack} (the `ACK` completing the *3-way handshake* follows). Filter `tcp.flags.fin == 1`: the first
+`FIN` frame is {fin}, sent by the client `h1` once its 100 KiB are transmitted; `h2` acknowledges and
+then sends its own `FIN`.
+""",
+        """
+**Solution.** Sur `m3` : `dumpcap -i eth1 -w /shared/http.pcap` pendant une vingtaine de secondes
+(`Ctrl-C`), `chmod a+r /shared/http.pcap`, puis ouvrir le fichier sur le poste de travail (méthode A de
+l'onglet *Informations* ; les méthodes B et C conviennent aussi). Toutes les 7 s, `h5` (`{h5_ip}`) envoie
+`curl http://{h6_ip}:{port}{path}` au serveur `python3 -m http.server` de `h6`. Filtre `http`, clic droit
+→ *Follow* → *HTTP Stream* :
+
+```
+GET {path} HTTP/1.1
+Host: {h6_ip}:{port}
+User-Agent: curl/...
+Accept: */*
+
+HTTP/1.0 200 OK
+Server: SimpleHTTP/0.6 Python/3...
+Content-type: text/plain
+Content-Length: ...
+
+{secret}
+```
+
+Réponses : `GET`, `{path}`, `200`, `{secret}`.
+""": """
+**Solution.** On `m3`: `dumpcap -i eth1 -w /shared/http.pcap` for about twenty seconds (`Ctrl-C`),
+`chmod a+r /shared/http.pcap`, then open the file on the workstation (method A of the *Information*
+tab; methods B and C work as well). Every 7 s, `h5` (`{h5_ip}`) sends `curl http://{h6_ip}:{port}{path}`
+to the `python3 -m http.server` of `h6`. Filter `http`, right-click → *Follow* → *HTTP Stream*:
+
+```
+GET {path} HTTP/1.1
+Host: {h6_ip}:{port}
+User-Agent: curl/...
+Accept: */*
+
+HTTP/1.0 200 OK
+Server: SimpleHTTP/0.6 Python/3...
+Content-type: text/plain
+Content-Length: ...
+
+{secret}
+```
+
+Answers: `GET`, `{path}`, `200`, `{secret}`.
+""",
+        """
+**Solution.** Même capture (`eth1` de `m3`), filtre `dns`. Toutes les 11 s, `h6` (`{h6_ip}`) interroge le
+serveur `unbound` de `h5` (`{h5_ip}`) : `dig @{h5_ip} {name}`. La requête part en UDP vers le port {port}
+(section *User Datagram Protocol*, `Dst Port: {port}`) ; *Queries* donne `{name}: type A, class IN` et la
+réponse (`Standard query response`) porte dans *Answers* `{name}: type A, class IN, addr {answer}`.
+
+Réponses : `UDP`, `{port}`, `{name}`, `A`, `{answer}`.
+""": """
+**Solution.** Same capture (`eth1` of `m3`), filter `dns`. Every 11 s, `h6` (`{h6_ip}`) queries the
+`unbound` server of `h5` (`{h5_ip}`): `dig @{h5_ip} {name}`. The query goes over UDP to port {port}
+(*User Datagram Protocol* section, `Dst Port: {port}`); *Queries* shows `{name}: type A, class IN` and the
+response (`Standard query response`) carries in *Answers* `{name}: type A, class IN, addr {answer}`.
+
+Answers: `UDP`, `{port}`, `{name}`, `A`, `{answer}`.
+""",
+        """
+**Solution.** Même capture, filtre `tcp.analysis.retransmission` (ou *Analyze* → *Expert Information*,
+entrées *Retransmission*, *Fast retransmission*, *Dup ACK*). Toutes les 5 s, `h5` (`{h5_ip}`) ouvre une
+connexion vers le port {port} de `h6` (`{h6_ip}`) ; sur `h5`, une discipline `tc` (`prio` + `netem loss 30%`,
+filtre `u32` sur ce port de destination) perd 30 % des segments de ce seul flux. Les retransmissions ne
+concernent que le port {port} ; le flux HTTP (port 80) n'en montre aucune.
+
+Réponses : `{port}`, `non`.
+""": """
+**Solution.** Same capture, filter `tcp.analysis.retransmission` (or *Analyze* → *Expert Information*,
+*Retransmission*, *Fast retransmission*, *Dup ACK* entries). Every 5 s, `h5` (`{h5_ip}`) opens a
+connection to port {port} of `h6` (`{h6_ip}`); on `h5`, a `tc` discipline (`prio` + `netem loss 30%`,
+`u32` filter on that destination port) drops 30 % of the segments of this one flow. Retransmissions
+only concern port {port}; the HTTP flow (port 80) shows none.
+
+Answers: `{port}`, `no`.
+""",
     },
 }
