@@ -1,0 +1,2 @@
+17:04:04.779906 STP 802.1d, Config, Flags [Topology change], bridge-id 1000.02:53:52:60:ea:b6.8001, length 35
+17:04:06.795980 STP 802.1d, Config, Flags [Topology change], bridge-id 1000.02:53:52:60:ea:b6.8001, length 35

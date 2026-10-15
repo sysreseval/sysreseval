@@ -1,0 +1,27 @@
+table ip nat {
+	chain DOCKER_OUTPUT {
+		ip daddr 127.0.0.11 tcp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:35729
+		ip daddr 127.0.0.11 udp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:53091
+	}
+
+	chain OUTPUT {
+		type nat hook output priority -100; policy accept;
+		ip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_OUTPUT
+	}
+
+	chain DOCKER_POSTROUTING {
+		ip saddr 127.0.0.11 tcp sport 35729 counter packets 0 bytes 0 snat to :53
+		ip saddr 127.0.0.11 udp sport 53091 counter packets 0 bytes 0 snat to :53
+	}
+
+	chain POSTROUTING {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_POSTROUTING
+	}
+}
+table bridge filter {
+	chain forward {
+		type filter hook forward priority 0; policy accept;
+		ether daddr 02:53:52:2c:49:cf ether saddr 02:53:52:69:6c:6a drop
+	}
+}

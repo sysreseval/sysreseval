@@ -354,8 +354,8 @@ def test_initial_ops(lab, data):
         assert any('ip_forward=0' in c for c in cmds) and not any('ip_forward=1' in c for c in cmds), m
         assert lab.ECHO_PATH if hasattr(lab, 'ECHO_PATH') else True
         files = _files(ops, 1, m)
-        assert '/usr/local/sbin/sre_http_echo.py' in files and 'def parse_syn' in files['/usr/local/sbin/sre_http_echo.py']
-        assert any('sre_http_echo.py' in c and ' 80 8080' in c for c in cmds), m
+        assert '/usr/local/sbin/sre_server_echo.py' in files and 'def parse_syn' in files['/usr/local/sbin/sre_server_echo.py']
+        assert any('sre_server_echo.py' in c and ' 80 8080' in c for c in cmds), m
         assert files['/etc/resolv.conf'] == ""
         hosts = files['/etc/hosts']
         assert f"{_ip(d.ips.ext1)}\t\text1" in hosts and f"{_ip(d.ips.router2_trunk)}\t\trouter2_trunk" in hosts

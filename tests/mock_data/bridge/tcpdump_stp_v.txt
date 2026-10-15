@@ -1,0 +1,6 @@
+17:04:00.779839 STP 802.1d, Config, Flags [Topology change], bridge-id 1000.02:53:52:60:ea:b6.8001, length 35
+	message-age 0.00s, max-age 20.00s, hello-time 2.00s, forwarding-delay 15.00s
+	root-id 1000.02:53:52:60:ea:b6, root-pathcost 0
+17:04:02.795874 STP 802.1d, Config, Flags [Topology change], bridge-id 1000.02:53:52:60:ea:b6.8001, length 35
+	message-age 0.00s, max-age 20.00s, hello-time 2.00s, forwarding-delay 15.00s
+	root-id 1000.02:53:52:60:ea:b6, root-pathcost 0

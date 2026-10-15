@@ -21,7 +21,7 @@ default VLAN of the switch (the `trunk` network); `m7` is plugged on a free port
 VLAN.  The odd machines m1, m3, m5 share the `odd` network, the even ones m2, m4, m6 the `even`
 network; the bridges `brodd` / `breven` of b1 and b2 (`brimpair` / `brpair` of the handout)
 extend the two VLANs to them.  Every machine runs an HTTP echo server on ports 80 and 8080
-(`lib/http_echo.py`: the page shows the client address the server sees and the TTL of its SYN),
+(`lib/server_echo.py`: the page shows the client address the server sees and the TTL of its SYN),
 which the students and the grader use to tell which router a request went through.
 
 The addressing is chosen by a startup form (``Flavor``): random private networks (default) or the
@@ -46,10 +46,10 @@ from ips import random_ipv4networks
 from net_config import get_ip_forward, get_routes, set_ip_forward
 from state_helpers import create_hosts_file
 from switch import get_switch_ports
+from server_echo_helpers import get_http_echo, install_echo_server
 from bridging import (
-    addresses_of, bridge_ports, broute_rules_for, get_http_echo, get_ip_addresses_json, get_ip_links,
-    get_mangle_rules, get_sysctl_int, install_http_echo, interface_of_address, parse_broute_rules, ttl_rules,
-    vlan_links,
+    addresses_of, bridge_ports, broute_rules_for, get_ip_addresses_json, get_ip_links, get_mangle_rules,
+    get_sysctl_int, interface_of_address, parse_broute_rules, ttl_rules, vlan_links,
 )
 
 default_language = 'fr'
@@ -570,7 +570,7 @@ un redémarrage d'une machine.
         for m in self.get_machine_names():
             # no DNS in the lab: an empty resolver fails fast instead of timing out
             self.file(m, "/etc/resolv.conf", "")
-            install_http_echo(net_scheme=self, machine=m, name=m, ports=HTTP_PORTS)
+            install_echo_server(net_scheme=self, machine=m, name=m, ports=HTTP_PORTS)
 
     @sre_state(user_allowed=False)
     def final(self):
