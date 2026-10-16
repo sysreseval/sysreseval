@@ -17,7 +17,7 @@ from SRE import params
 from SRE.common import TranslatedText
 from SRE.instructor_text import markdown_to_html, strip_instructor, unwrap_instructor
 from SRE.utils import exam_remaining_seconds
-from sysreseval import settings
+from sysreseval import settings, util
 from sysreseval.view.form_question_widget import FormQuestionWidget
 
 _FORM_TYPE = 2   # QuestionType.FORM.value
@@ -93,6 +93,7 @@ class QuestionsView(QWidget):
         right_splitter = QSplitter(Qt.Vertical)
         self.question_text = QTextBrowser()
         self.question_text.setOpenExternalLinks(True)
+        util.style_content_document(self.question_text)
 
         self.answer_text = QTextEdit()
         self.answer_text.setPlaceholderText(self.tr("Write your answer here..."))

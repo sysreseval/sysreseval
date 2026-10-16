@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from SRE.instructor_text import markdown_to_html, rebalance_fragments, strip_instructor, unwrap_instructor
-from sysreseval import settings
+from sysreseval import settings, util
 
 _FIELD_RE = re.compile(r'@@\{([^:}]+):([^}]*)\}@@')
 
@@ -22,6 +22,7 @@ class _AutoBrowser(QTextBrowser):
         super().__init__(parent)
         self._markdown_text = ""
         self._show_instructor = False
+        util.style_content_document(self)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)

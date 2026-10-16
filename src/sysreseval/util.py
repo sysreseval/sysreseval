@@ -11,6 +11,12 @@ from SRE import params
 _debug = False
 
 
+def style_content_document(browser):
+    """Apply params.content_style_sheet to the document of a QTextBrowser drawing lab markdown
+    (Informations, Questions, form questions); to call before the first setHtml()."""
+    browser.document().setDefaultStyleSheet(params.content_style_sheet)
+
+
 def log_wrapper_cmd(cmd: list):
     if not _debug:
         return

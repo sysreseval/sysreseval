@@ -2,7 +2,7 @@ from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QTextBrowser, QTextEdit
 
 from SRE.instructor_text import markdown_to_html
-from sysreseval import settings
+from sysreseval import settings, util
 
 
 class InformationsView(QTextBrowser):
@@ -12,6 +12,7 @@ class InformationsView(QTextBrowser):
         self._markdown_text = markdown_text
         self._show_instructor = False  # instructor fragments drawn (instructor mode, button on)
         self._font_size = settings.get_content_font_size()
+        util.style_content_document(self)
         self._render()
         settings.add_content_font_size_listener(self._on_font_size_changed)
 

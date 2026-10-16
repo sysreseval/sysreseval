@@ -210,6 +210,9 @@ terminal_title_opt = "--title"
 terminal_font_size = 12  # font size in points
 terminal_color_scheme = "black_on_white"  # "white_on_black" or "black_on_white"
 content_font_size = 12  # font size in points for information/questions views
+# default stylesheet of the documents drawn from lab markdown (Informations, Questions, form
+# questions): Qt draws the tables without cell padding, the columns touch each other otherwise
+content_style_sheet = "th, td { padding: 2px 8px; }"
 system_font_size = 10  # font size in points for menus, titles, labels
 
 # Instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`): default colours of the
