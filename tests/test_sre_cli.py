@@ -25,6 +25,7 @@ SRE_PY = Path(__file__).parent.parent / 'src' / 'sre.py'
 _ACTION_IMPORT_RE = re.compile(r'^from (SRE\.command\.\w+) import (.+)$', re.MULTILINE)
 
 SET, REMOVE = 'set-instructor-mode', 'remove-instructor-mode'
+UPDATE = 'update'
 
 
 @pytest.fixture
@@ -135,6 +136,35 @@ class TestParsing:
         assert sre_cli(['start', '--help']).code == 0
         assert 'en mode enseignant' in ' '.join(capsys.readouterr().out.split())
 
+    def test_update_options(self, sre_cli):
+        result = sre_cli([UPDATE])
+        assert result.code == 0 and result.events[-1] == 'action_update'
+        args = result.args
+        assert (args.main, args.ref, args.check, args.force, args.yes, args.venv) == (False, None, False, False,
+                                                                                     False, False)
+        result = sre_cli([UPDATE, '--main', '--force', '-y', '--venv'])
+        assert (result.args.main, result.args.force, result.args.yes, result.args.venv) == (True, True, True, True)
+        assert sre_cli([UPDATE, '--ref', '0.10.0', '--check', '--yes']).args.ref == '0.10.0'
+        assert sre_cli([UPDATE, '--ref', '0.10.0', '--check']).args.check is True
+
+    @pytest.mark.parametrize('argv', [[UPDATE, '--main', '--ref', 'x'], [UPDATE, '--check', '--force'],
+                                      [UPDATE, 'extra']])
+    def test_update_exclusive_options(self, sre_cli, capsys, argv):
+        result = sre_cli(argv)
+        assert result.code == 2 and result.events == []
+
+    def test_update_help(self, sre_cli, capsys, monkeypatch):
+        assert sre_cli(['--help']).code == 0
+        assert 'Update the installation from GitHub (privileged only' in ' '.join(capsys.readouterr().out.split())
+        assert sre_cli([UPDATE, '--help']).code == 0
+        text = ' '.join(capsys.readouterr().out.split())
+        assert '--main' in text and '--ref' in text and '--check' in text and '--venv' in text
+        monkeypatch.setenv('LANGUAGE', 'fr')
+        assert sre_cli(['--help']).code == 0
+        assert 'Mettre à jour l\'installation depuis GitHub' in ' '.join(capsys.readouterr().out.split())
+        assert sre_cli([UPDATE, '--help']).code == 0
+        assert 'dernière version publiée' in ' '.join(capsys.readouterr().out.split())
+
 
 class TestDispatch:
     def test_set(self, sre_cli):
@@ -154,6 +184,9 @@ class TestDispatch:
         """The sre user (not root) is the other privileged caller."""
         result = sre_cli([SET, 'PROJECT'], uid=params.sre_uid)
         assert result.code == 0 and result.events[-1] == 'action_set_instructor_mode'
+
+    def test_update(self, sre_cli):
+        assert sre_cli([UPDATE, '--check']).events == ['temporary drop', 'action_update']
 
 
 class TestPrivilegeList:
@@ -178,14 +211,20 @@ class TestPrivilegeList:
         assert sre_cli([command, 'PROJECT']).events == [
             'permanent drop', f"action_{command.replace('-', '_')}"]
 
+    def test_update_keeps_root_whatever_the_setting(self, sre_cli, monkeypatch):
+        """`update` writes the root-owned tree: the temporary drop even without privileged machines."""
+        assert sre_cli([UPDATE]).events[0] == 'temporary drop'
+        monkeypatch.setattr(params, 'allow_privileged_machines', False)
+        assert sre_cli([UPDATE]).events == ['temporary drop', 'action_update']
+
 
 class TestRefusals:
-    @pytest.mark.parametrize('command', [SET, REMOVE])
+    @pytest.mark.parametrize('command', [SET, REMOVE, UPDATE])
     def test_admin_users_are_refused(self, sre_cli, capsys, monkeypatch, command):
         """Admins only run the read-only archive tools (access.ADMIN_ACTIONS)."""
         monkeypatch.setattr(params, 'admin_uids', [4242])
         assert sre_cli(['cat', 'x.zst'], uid=4242).events == ['permanent drop', 'action_cat']
-        result = sre_cli([command, 'PROJECT'], uid=4242)
+        result = sre_cli([command] + ([] if command == UPDATE else ['PROJECT']), uid=4242)
         assert result.code == 1 and result.events == []
         assert 'illegal userid' in capsys.readouterr().err
 
@@ -203,6 +242,7 @@ class TestRefusals:
          '--instructor-mode is not available in user mode'),
         (['restore', '--instructor-mode', '-'], 'action_restore',
          '--instructor-mode is not available in user mode'),
+        ([UPDATE], 'action_update', "you're not allowed to run this command"),
     ])
     def test_user_mode_is_refused_by_the_action(self, sre_cli, capsys, monkeypatch, tmp_pub_dir,
                                                 argv, action, message):

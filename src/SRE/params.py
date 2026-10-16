@@ -72,6 +72,16 @@ max_duration_between_exam_pre_start_and_start = 60  # duration in seconds
 
 default_exec_shell = "/bin/bash"
 
+# `sre update`: where the new versions of SRE come from (a GitHub repository) and what the
+# command refreshes in lab/ (the other entries of lab/ are the site's own labs and are kept)
+update_github_repository = "sysreseval/sysreseval"
+update_github_api_url = "https://api.github.com"
+update_tarball_url = "https://codeload.github.com/{repository}/tar.gz/{commit}"
+update_default_branch = "main"       # followed by `sre update --main` (the default is the latest release)
+update_http_timeout = 60             # seconds, per request
+update_lab_subdirs = ["sre"]         # entries of lab/ owned by the repository, reinstalled by `sre update`
+docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this host (`sre update` skips the wipe)
+
 #################################################################################
 #
 # Security settings
@@ -114,6 +124,22 @@ default_docker_image = sre_docker_image()
 sre_wrapper = main_sre_dir + "/bin/sre-wrapper"
 sysreseval_exe = main_sre_dir + "/bin/sysreseval"
 sre_exe = main_sre_dir + "/sbin/sre"
+
+# `sre update`: state file of the installed version (commit, manifest of the installed files, pristine
+# upstream values of params.py), lock and temporary directory, all in main_sre_dir
+update_state_file_name = ".sre-update.json"
+update_lock_file_name = ".sre-update.lock"
+update_tmp_prefix = ".sre-update-"
+update_params_follow_new = ("sre_version", "default_docker_image_version")  # always take the new value
+update_params_backup_suffix = ".bak."   # params.py.bak.<YYYYmmdd-HHMMSS>, like scripts/install.sh
+update_system_templates_dir = "scripts/etc"   # files installed by hand on every host (sudoers, .desktop...)
+# keys of the state file
+update_state_commit = "commit"
+update_state_ref = "ref"
+update_state_updated_at = "updated_at"
+update_state_previous_commit = "previous_commit"
+update_state_files = "files"
+update_state_params_upstream = "params_upstream"
 
 if debug_mode:
     sre_wrapper = os.environ.get("SRE_WRAPPER", sre_wrapper)

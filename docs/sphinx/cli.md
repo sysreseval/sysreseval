@@ -173,6 +173,37 @@ Output keys match `sre list`: `"<name>.py"` for file labs, `"<dirname>"` for dir
 
 Typical usage: `sudo /opt/sre/sbin/sre make-titles -r /opt/sre/lab`.
 
+### `sre update [--main | --ref <tag|branch|commit>] [--check | --force] [-y] [--venv]`
+
+Updates the installation (`params.main_sre_dir`, `/opt/sre`) from the GitHub repository `sysreseval/sysreseval` (`params.update_github_repository`). Privileged only, and root only: the tree is root-owned. By default the latest published release is installed. The installed version is the commit recorded by the previous update in `<main_sre_dir>/.sre-update.json` (or the checked-out commit of a `git clone`), so an unchanged repository means "already up to date".
+
+| Option | Description |
+|--------|-------------|
+| `--main` | Follow the head of the `main` branch instead of the latest release. |
+| `--ref <tag\|branch\|commit>` | Install this tag, branch or commit, e.g. the previous commit printed by the last update, to go back. |
+| `--check` | Only report the installed and the available versions; nothing is changed. |
+| `--force` | Install again even when the requested commit is already installed. |
+| `-y, --yes` | No question: every customised parameter of `params.py` is kept and no confirmation is asked (required when stdin is not a terminal). |
+| `--venv` | Rebuild the Python virtual environment (`make venv`, a few minutes) as the last step. |
+
+What an update does, in order:
+
+1. Checks: no exam configured (`sre del-exam` first), a writable tree (on a read-only NFS mount, run it on the server), one update at a time.
+2. Downloads the source archive of the commit into a temporary directory of the tree and decides everything before touching anything: which files change, which are deleted, what `params.py` becomes, and that the new code compiles with the venv's Python.
+3. Prints a summary and asks for a confirmation (unless `--yes`).
+4. Runs `sre wipe`: every running project is stopped and removed, since the new code may not handle projects started by the old one. Without a Docker daemon on the host (`params.docker_socket_path` missing, e.g. an NFS server), the wipe is skipped with a warning: run `sre wipe` on the client hosts.
+5. Replaces the files and reapplies the ownership and modes of `scripts/install.sh` (root, world-readable; the entries of `lab/` and `lib/` to the `sre` user, not world-readable), removes the stale `__pycache__` directories, then runs `make fonts sre-wrapper` and makes `sbin/sre` and `bin/sysreseval` executable again.
+
+What is installed, kept and deleted:
+
+- `lab/`: only `lab/sre/` (`params.update_lab_subdirs`) is refreshed, and reinstalled in full; every other entry of `lab/` is the site's own and is left alone.
+- `lib/`: the files of the repository are refreshed; the site's extra files are kept.
+- Files the repository dropped are deleted only when a previous update (or the git index of a cloned tree) installed them: the first update of a tree that was not cloned deletes nothing.
+- Never touched: `venv/`, `build/`, `graphics/fonts/`, `bin/sre-wrapper`, `.git/`, the `params.py` backups.
+- `src/SRE/params.py` is merged, not copied. The installed file is backed up as `params.py.bak.<timestamp>` first. A parameter the site never changed takes the new value; a parameter customised here that the new version does not change keeps its value; a parameter both customised here and changed upstream is asked about, the installed value being the default (kept with `--yes`). `sre_version` and `default_docker_image_version` always take the new value; new parameters are added, dropped ones removed. The pristine upstream values come from the state file (or `git show` on a cloned tree); without them, every difference is asked about. The merged file must compile and run before anything is replaced.
+
+The state file `.sre-update.json` records the commit, the ref, the date, the previous commit, the manifest of the installed files and the pristine parameter values. Hints printed at the end: the command to go back (`sre update --ref <previous commit>`), `make venv` when the `venv` recipe of the Makefile changed, the `scripts/etc/` templates that changed (system files to reinstall by hand), and the reminder that replicated hosts need their own `sre update` and NFS clients their own `sre wipe`.
+
 ---
 
 ## Exam management

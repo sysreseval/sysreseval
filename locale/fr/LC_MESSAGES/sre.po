@@ -700,3 +700,34 @@ msgid ""
 msgstr ""
 "écrire « Bonus » devant le libellé des éléments bonus plutôt qu'à côté de "
 "leur maximum"
+
+msgid ""
+"Update the installation from GitHub (privileged only; stops every running "
+"project first)"
+msgstr ""
+"Mettre à jour l'installation depuis GitHub (privilégiés uniquement ; arrête "
+"d'abord tous les projets en cours)"
+
+msgid "follow the head of the main branch instead of the latest release"
+msgstr "suivre la tête de la branche main plutôt que la dernière version publiée"
+
+msgid ""
+"install this tag, branch or commit (e.g. a previous release to go back to)"
+msgstr ""
+"installer ce tag, cette branche ou ce commit (p. ex. une version précédente "
+"pour revenir en arrière)"
+
+msgid "only report whether a newer version is available"
+msgstr "indiquer seulement si une version plus récente est disponible"
+
+msgid "install again even when the requested commit is already installed"
+msgstr "réinstaller même si le commit demandé est déjà installé"
+
+msgid ""
+"no question: keep every customised parameter of params.py, no confirmation"
+msgstr ""
+"aucune question : conserver tous les paramètres personnalisés de params.py, "
+"pas de confirmation"
+
+msgid "rebuild the Python virtual environment (make venv) as the last step"
+msgstr "reconstruire l'environnement virtuel Python (make venv) en dernière étape"

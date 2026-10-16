@@ -55,6 +55,12 @@ The `/opt/sre` tree must contain `lab/`, `lib/`, `graphics/`, `translations/`, `
 
 If you'd rather build in a separate working checkout (CI runner, personal dev tree) and move the result over afterwards, `rsync` or bind-mount the built tree into `/opt/sre` once `make install` has finished, then continue with the [Post-install steps](#post-install-steps).
 
+## Updating
+
+`sudo sre update` refreshes an installed tree from the GitHub repository: the latest release by default, `--main` for the head of `main`, `--check` to only see whether a newer version exists. It downloads the sources, merges `src/SRE/params.py` with the site's settings (customised parameters are kept; the questions concern only the parameters both customised here and changed upstream), replaces the files, keeps the site's own labs (everything in `lab/` but `lab/sre/`) and extra `lib/` files, rebuilds `bin/sre-wrapper` and records the installed commit in `<main_sre_dir>/.sre-update.json`. See the [CLI reference](cli.md) for the details.
+
+Before it replaces anything it runs `sre wipe`: run it outside class hours, every running project is stopped. It must run on the host that owns the tree: the NFS server in the read-only export topology (without a Docker daemon there, the wipe is skipped and `sre wipe` has to be run on the client hosts), and every workstation of the "replicate per workstation" topology. The per-host bits listed above are not touched; when the templates of `scripts/etc/` changed, the update says so and they have to be reinstalled by hand. The venv is rebuilt only with `--venv` (or `make venv` afterwards; the update says when the recipe changed). To go back to the previous version: `sudo sre update --ref <previous commit>`, printed at the end of each update. The sample labs of `lab/sre/` are reinstalled in full at every update.
+
 ## Running the installer
 
 ```bash

@@ -56,6 +56,7 @@ from SRE.command.outline import action_outline
 from SRE.command.save_records import action_save_records
 from SRE.command.preload_images import action_preload_images
 from SRE.command.instructor_mode import action_set_instructor_mode, action_remove_instructor_mode
+from SRE.command.update import action_update
 from SRE.params import SRE
 
 _CATEGORY_HEADERS = {
@@ -225,6 +226,23 @@ def parse_args():
                            help=_('write all titles to FILE instead of <directory>/titles.json'))
     _mt_group.add_argument('-r', '--recursive', action='store_true',
                            help=_('recursively scan subdirectories, writing one titles.json per directory'))
+
+    parser_update = subparsers.add_parser(
+        'update', help=_('Update the installation from GitHub (privileged only; stops every running project first)'))
+    _upd_source = parser_update.add_mutually_exclusive_group()
+    _upd_source.add_argument('--main', action='store_true',
+                             help=_('follow the head of the main branch instead of the latest release'))
+    _upd_source.add_argument('--ref', metavar='tag|branch|commit', default=None,
+                             help=_('install this tag, branch or commit (e.g. a previous release to go back to)'))
+    _upd_mode = parser_update.add_mutually_exclusive_group()
+    _upd_mode.add_argument('--check', action='store_true',
+                           help=_('only report whether a newer version is available'))
+    _upd_mode.add_argument('--force', action='store_true',
+                           help=_('install again even when the requested commit is already installed'))
+    parser_update.add_argument('-y', '--yes', action='store_true',
+                               help=_('no question: keep every customised parameter of params.py, no confirmation'))
+    parser_update.add_argument('--venv', action='store_true',
+                               help=_('rebuild the Python virtual environment (make venv) as the last step'))
 
     # --- exam management ---
     parser_set_exam = subparsers.add_parser('set-exam', help=_('Create or update the exam configuration'))
@@ -405,11 +423,13 @@ if uid == 0:
 
     PrivilegeHandler.get_instance()
 
-if params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
-                                                            'eval', 'eval-all',
-                                                            'eval-exam', 'state', 'stop', 'wipe', 'del-exam',
-                                                            'save', 'restore',
-                                                            'set-instructor-mode', 'remove-instructor-mode'):
+# `update` writes the root-owned tree: root stays available to it whatever allow_privileged_machines says
+if SRE.args.action == 'update' or (
+        params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
+                                                                 'eval', 'eval-all',
+                                                                 'eval-exam', 'state', 'stop', 'wipe', 'del-exam',
+                                                                 'save', 'restore',
+                                                                 'set-instructor-mode', 'remove-instructor-mode')):
     drop_privileges_temporarily()
 else:
     drop_privileges_permanently()
@@ -478,6 +498,8 @@ match SRE.args.action:
         action_set_instructor_mode()
     case 'remove-instructor-mode':
         action_remove_instructor_mode()
+    case 'update':
+        action_update()
 
 # lab = Lab(name='a', path="/home/etudiant/tp-arp")
 # Kathara.get_instance().deploy_lab(lab)

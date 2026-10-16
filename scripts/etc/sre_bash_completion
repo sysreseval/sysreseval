@@ -30,7 +30,7 @@ _sre() {
 
     local commands="start stop save restore wipe connect eval state exec \
 set-instructor-mode remove-instructor-mode eval-all check \
-watch preload-images make-titles set-exam del-exam save-records cat \
+watch preload-images make-titles update set-exam del-exam save-records cat \
 check-eval re-eval sheet outline list export eval-exam end-exam \
 pre-start-exam start-exam"
 
@@ -242,6 +242,9 @@ pre-start-exam start-exam"
             else
                 _filedir -d
             fi
+            ;;
+        update)
+            COMPREPLY=($(compgen -W "--main --ref --check --force -y --yes --venv --help" -- "$cur"))
             ;;
         set-exam)
             COMPREPLY=($(compgen -W "--labs --start-after --end-before --duration \
