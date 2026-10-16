@@ -1,4 +1,8 @@
 {
+  "dhcp.py": {
+    "en": "DHCP (Dynamic Host Configuration Protocol)",
+    "fr": "DHCP (Dynamic Host Configuration Protocol)"
+  },
   "dns1.py": "DNS 1",
   "ssh.py": "SSH",
   "static_routing.py": {
