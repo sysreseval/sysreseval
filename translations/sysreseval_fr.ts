@@ -448,56 +448,62 @@
 <context>
     <name>ProjectWidget</name>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="54"/>
-        <location filename="../src/sysreseval/project_widget.py" line="112"/>
+        <location filename="../src/sysreseval/project_widget.py" line="48"/>
+        <location filename="../src/sysreseval/project_widget.py" line="113"/>
         <source>Schema</source>
         <translation>Schéma</translation>
     </message>
     <message>
         <location filename="../src/sysreseval/project_widget.py" line="57"/>
-        <location filename="../src/sysreseval/project_widget.py" line="113"/>
+        <location filename="../src/sysreseval/project_widget.py" line="115"/>
+        <source>Full Schema</source>
+        <translation>Schéma complet</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/project_widget.py" line="60"/>
+        <location filename="../src/sysreseval/project_widget.py" line="116"/>
         <source>Informations</source>
         <translation>Informations</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="60"/>
-        <location filename="../src/sysreseval/project_widget.py" line="114"/>
+        <location filename="../src/sysreseval/project_widget.py" line="63"/>
+        <location filename="../src/sysreseval/project_widget.py" line="117"/>
         <source>Machines</source>
         <translation>Machines</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="67"/>
-        <location filename="../src/sysreseval/project_widget.py" line="115"/>
+        <location filename="../src/sysreseval/project_widget.py" line="68"/>
+        <location filename="../src/sysreseval/project_widget.py" line="118"/>
         <source>Networks</source>
         <translation>Réseaux</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="70"/>
-        <location filename="../src/sysreseval/project_widget.py" line="116"/>
+        <location filename="../src/sysreseval/project_widget.py" line="71"/>
+        <location filename="../src/sysreseval/project_widget.py" line="119"/>
         <source>Questions</source>
         <translation>Questions</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="80"/>
-        <location filename="../src/sysreseval/project_widget.py" line="117"/>
+        <location filename="../src/sysreseval/project_widget.py" line="81"/>
+        <location filename="../src/sysreseval/project_widget.py" line="120"/>
         <source>Evaluation</source>
         <translation>Évaluation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="84"/>
-        <location filename="../src/sysreseval/project_widget.py" line="118"/>
+        <location filename="../src/sysreseval/project_widget.py" line="85"/>
+        <location filename="../src/sysreseval/project_widget.py" line="121"/>
         <source>Terminals</source>
         <translation>Terminaux</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="91"/>
-        <location filename="../src/sysreseval/project_widget.py" line="119"/>
+        <location filename="../src/sysreseval/project_widget.py" line="92"/>
+        <location filename="../src/sysreseval/project_widget.py" line="122"/>
         <source>Apply Configuration</source>
         <translation>Appliquer une configuration</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/project_widget.py" line="96"/>
-        <location filename="../src/sysreseval/project_widget.py" line="120"/>
+        <location filename="../src/sysreseval/project_widget.py" line="97"/>
+        <location filename="../src/sysreseval/project_widget.py" line="123"/>
         <source>Log</source>
         <translation>Journal</translation>
     </message>
@@ -505,12 +511,12 @@
 <context>
     <name>QuestionsView</name>
     <message>
-        <location filename="../src/sysreseval/view/questions_view.py" line="98"/>
+        <location filename="../src/sysreseval/view/questions_view.py" line="99"/>
         <source>Write your answer here...</source>
         <translation>Écrivez votre réponse ici…</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/questions_view.py" line="137"/>
+        <location filename="../src/sysreseval/view/questions_view.py" line="138"/>
         <source>Untitled</source>
         <translation>Sans titre</translation>
     </message>
@@ -554,62 +560,62 @@
 <context>
     <name>SchemaView</name>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="277"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="340"/>
         <source>Lines:</source>
         <translation>Liaisons :</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="278"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="341"/>
         <source>Straight</source>
         <translation>Droites</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="279"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="342"/>
         <source>Curved</source>
         <translation>Courbées</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="291"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="354"/>
         <source>Compact</source>
         <translation>Compact</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="295"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="358"/>
         <source>Spread</source>
         <translation>Écarté</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="301"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="364"/>
         <source>Order:</source>
         <translation>Ordre :</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="302"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="365"/>
         <source>→</source>
         <translation>→</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="303"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="366"/>
         <source>←</source>
         <translation>←</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="304"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="367"/>
         <source>random</source>
         <translation>aléatoire</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="321"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="384"/>
         <source>Nodes:</source>
         <translation>Nœuds :</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="322"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="385"/>
         <source>Icons</source>
         <translation>Icônes</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/schema_view.py" line="323"/>
+        <location filename="../src/sysreseval/view/schema_view.py" line="386"/>
         <source>Shapes</source>
         <translation>Formes</translation>
     </message>

@@ -25,7 +25,8 @@ During an exam, **Open Project** is disabled — only pre-authorised exam labs o
 
 | Tab | Content |
 |-----|---------|
-| **Schema** | SVG topology rendered by graphviz at lab start. Scroll = zoom, click-drag = pan. |
+| **Schema** | Topology drawn by graphviz from the machines of `info.json`, without the hidden machines. Scroll = zoom, click-drag = pan. |
+| **Full Schema** | Debug projects only (`sre start --debug-project`). The same drawing and controls with every machine: the hidden machines, their links and the networks only they use are in red, like the titles of the hidden machines in the Terminals tab. The Schema tab keeps showing what a student sees. |
 | **Informations** | Markdown lab description from `self.informations` in `NetScheme.__init__()`. |
 | **Machines** | Per-machine state (polled from Kathara every 1 s), NAT network, ports, plus a *Connect* button opening an external terminal. |
 | **Networks** | Always shown. One row per network with its type — *Hub*, *Switch* or *Manageable switch* — and, for a manageable switch the lab leaves open to students, a *Connect* button opening its management console in an external terminal (`sre-wrapper connect <project> <network>`). The type of a manageable switch the lab closed is on a red background and has no button — except in a debug project, where it gets an orange *Connect* button and an orange-titled terminal in the Terminals tab. See [Hubs, switches and VLANs](switches.md) for the three types and the commands of the console. |

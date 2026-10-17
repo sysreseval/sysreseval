@@ -41,25 +41,26 @@ class ProjectWidget(QWidget):
         tabs = QTabWidget()
         self._tabs = tabs
 
-        self._schema_view = SchemaView(self.info.get("machines", []),
-                                       network_colors=self.info.get("network_colors", {}),
-                                       network_shapes=self.info.get("network_shapes", {}),
-                                       show_nat_network=self.info.get("show_nat_network", False),
-                                       nat_network_name=self.info.get("nat_network_name", ''),
-                                       nat_network_color=self.info.get("nat_network_color", ''),
-                                       host_network_exploded=self.info.get("host_network_exploded", False),
-                                       host_network_edge_relative_length=float(self.info.get("host_network_edge_relative_length", 1.0)),
-                                       schema_splines=self.info.get("schema_splines", "curved"),
-                                       schema_overlap=self.info.get("schema_overlap", "prism"))
+        debug_project = bool(self.info.get("debug_project", False))
+        machines = self.info.get("machines", [])
+
+        self._schema_view = SchemaView(machines, **self._schema_kwargs())
         tabs.addTab(self._schema_view, self.tr("Schema"))
+
+        # debug projects: the topology with the hidden machines too (info.json lists them there),
+        # in red like their titles in the Terminals tab.  Built for debug projects only, not
+        # hidden with setTabVisible like the Log tab: the marker never changes after the start,
+        # and every SchemaView rendering runs graphviz (at each rewrite of info.json)
+        self._full_schema_view: SchemaView | None = None
+        if debug_project:
+            self._full_schema_view = SchemaView(machines, include_hidden=True, **self._schema_kwargs())
+            tabs.addTab(self._full_schema_view, self.tr("Full Schema"))
 
         self._info_view = InformationsView(self._resolve_tt(self.info.get("informations", "")))
         tabs.addTab(self._info_view, self.tr("Informations"))
 
-        self._machines_view = MachinesView(project_dir.name, self.info.get("machines", []))
+        self._machines_view = MachinesView(project_dir.name, machines)
         tabs.addTab(self._machines_view, self.tr("Machines"))
-
-        debug_project = bool(self.info.get("debug_project", False))
 
         # Networks tab: every network with its type of switch (hubs included)
         self._switches_view = SwitchesView(project_dir.name, self.info.get("switches", []),
@@ -110,6 +111,8 @@ class ProjectWidget(QWidget):
     def changeEvent(self, event):
         if event.type() == QEvent.Type.LanguageChange:
             self._tabs.setTabText(self._tabs.indexOf(self._schema_view), self.tr("Schema"))
+            if self._full_schema_view is not None:
+                self._tabs.setTabText(self._tabs.indexOf(self._full_schema_view), self.tr("Full Schema"))
             self._tabs.setTabText(self._tabs.indexOf(self._info_view), self.tr("Informations"))
             self._tabs.setTabText(self._tabs.indexOf(self._machines_view), self.tr("Machines"))
             self._tabs.setTabText(self._tabs.indexOf(self._switches_view), self.tr("Networks"))
@@ -122,6 +125,18 @@ class ProjectWidget(QWidget):
 
     def _resolve_tt(self, v) -> str:
         return TranslatedText.from_value(v).resolve_priority(self._lang_priority)
+
+    def _schema_kwargs(self) -> dict:
+        """Drawing parameters of the Schema views, from info.json."""
+        return dict(network_colors=self.info.get("network_colors", {}),
+                    network_shapes=self.info.get("network_shapes", {}),
+                    show_nat_network=self.info.get("show_nat_network", False),
+                    nat_network_name=self.info.get("nat_network_name", ''),
+                    nat_network_color=self.info.get("nat_network_color", ''),
+                    host_network_exploded=self.info.get("host_network_exploded", False),
+                    host_network_edge_relative_length=float(self.info.get("host_network_edge_relative_length", 1.0)),
+                    schema_splines=self.info.get("schema_splines", "curved"),
+                    schema_overlap=self.info.get("schema_overlap", "prism"))
 
     def set_word_wrap(self, checked: bool):
         self._info_view.set_word_wrap(checked)
@@ -256,16 +271,9 @@ class ProjectWidget(QWidget):
         except Exception:
             return False
         machines = self.info.get("machines", [])
-        self._schema_view.update_data(machines,
-                                      network_colors=self.info.get("network_colors", {}),
-                                      network_shapes=self.info.get("network_shapes", {}),
-                                      show_nat_network=self.info.get("show_nat_network", False),
-                                      nat_network_name=self.info.get("nat_network_name", ''),
-                                      nat_network_color=self.info.get("nat_network_color", ''),
-                                      host_network_exploded=self.info.get("host_network_exploded", False),
-                                      host_network_edge_relative_length=float(self.info.get("host_network_edge_relative_length", 1.0)),
-                                      schema_splines=self.info.get("schema_splines", "curved"),
-                                      schema_overlap=self.info.get("schema_overlap", "prism"))
+        self._schema_view.update_data(machines, **self._schema_kwargs())
+        if self._full_schema_view is not None:
+            self._full_schema_view.update_data(machines, **self._schema_kwargs())
         self._info_view.update_data(self._resolve_tt(self.info.get("informations", "")))
         self._machines_view.update_data(machines)
         self._switches_view.update_data(self.info.get("switches", []))

@@ -17,6 +17,10 @@ from sysreseval import settings
 
 _svg_href_re = re.compile(r'(xlink:href|href)="([^"]+\.svg)"')
 
+# the hidden machines of a debug project in its Full Schema (their names, their links and the
+# networks only they use): the red of their titles in the Terminals tab
+HIDDEN_COLOR = "red"
+
 
 def _svg_file_to_png_data_uri(path: str) -> str | None:
     renderer = QSvgRenderer(path)
@@ -52,6 +56,175 @@ def _inline_svg_images(content: str) -> QByteArray:
     return QByteArray(_svg_href_re.sub(replace, content).encode("utf-8"))
 
 
+def _build_graph(
+    machines: list,
+    curved: bool = True,
+    sep_pos: int = 3,
+    use_icons: bool = True,
+    reverse: bool = False,
+    random_seed: int | None = None,
+    network_colors: dict[str, str] = {},
+    network_shapes: dict[str, str] = {},
+    show_nat_network: bool = False,
+    nat_network_name: str = '',
+    nat_network_color: str = '',
+    host_network_exploded: bool = False,
+    host_network_edge_relative_length: float = 1.0,
+    schema_splines: str = 'curved',
+    schema_overlap: str = 'prism',
+    include_hidden: bool = False,
+) -> Graph:
+    """Build the graphviz graph of the topology from the machines list in info.json.
+
+    The hidden machines are left out unless ``include_hidden`` (the Full Schema of a debug
+    project, whose info.json lists them): they, their links and the networks only they use are
+    then drawn in ``HIDDEN_COLOR``."""
+    sep = f"+{sep_pos * 10}"
+
+    g = Graph(name="network", engine="neato", format="svg")
+    g.attr(
+        overlap=schema_overlap,
+        sep=sep,
+        splines=schema_splines if curved else "line",
+    )
+
+    shown = machines if include_hidden else [m for m in machines if not m.get("hidden", False)]
+    hidden_names = {m["name"] for m in shown if m.get("hidden", False)}
+
+    networks: set[str] = set()
+    for m in shown:
+        for iface in m.get("interfaces", []):
+            networks.add(iface["network"])
+    # the networks only hidden machines use: unknown to the students, drawn like those machines
+    hidden_networks = networks - {iface["network"] for m in shown if m["name"] not in hidden_names
+                                  for iface in m.get("interfaces", [])}
+    hidden_nodes = hidden_names | hidden_networks
+
+    def node(name: str, **attrs):
+        if name in hidden_nodes:
+            attrs["fontcolor"] = HIDDEN_COLOR
+        g.node(name, **attrs)
+
+    def edge_attrs(machine_name: str) -> dict:
+        return {"color": HIDDEN_COLOR, "fontcolor": HIDDEN_COLOR} if machine_name in hidden_names else {}
+
+    # Build the combined node list and apply the requested permutation.
+    # When host_network_exploded is true, we render one host vertex per
+    # bridged machine using a unique node id ("Internet__<machine>") and a
+    # shared display label.
+    _show_nat = show_nat_network and nat_network_name and any(m.get("bridged") for m in shown)
+
+    def _nat_node_id(machine_name: str) -> str:
+        return f"{nat_network_name}__{machine_name}"
+
+    exploded_nat_ids: list[str] = []
+    if _show_nat and host_network_exploded:
+        exploded_nat_ids = [_nat_node_id(m["name"])
+                            for m in sorted(shown, key=lambda mm: mm["name"])
+                            if m.get("bridged")]
+
+    node_names: list[str] = sorted(networks) + [m["name"] for m in shown]
+    if _show_nat:
+        if host_network_exploded:
+            node_names.extend(exploded_nat_ids)
+        else:
+            node_names.append(nat_network_name)
+    if reverse:
+        node_names = list(reversed(node_names))
+    elif random_seed is not None:
+        _random.Random(random_seed).shuffle(node_names)
+
+    machine_by_name = {m["name"]: m for m in shown}
+    exploded_nat_set = set(exploded_nat_ids)
+
+    for name in node_names:
+        if _show_nat and name == nat_network_name:
+            node(name, label=f'<<B> {name} </B>>',
+                 shape=params.default_host_network_shape, style="filled",
+                 fillcolor=nat_network_color or params.default_host_network_color,
+                 width="1.0", height="1.0", fixedsize="true",
+                 fontsize="14")
+        elif name in exploded_nat_set:
+            node(name, label=f'<<B> {nat_network_name} </B>>',
+                 shape=params.default_host_network_shape, style="filled",
+                 fillcolor=nat_network_color or params.default_host_network_color,
+                 width="1.0", height="1.0", fixedsize="true",
+                 fontsize="14")
+        elif name in networks:
+            net_color = network_colors.get(name)
+            net_shape = network_shapes.get(name)
+            if net_shape:
+                node(name, label=f'<<B> {name} </B>>', shape=net_shape,
+                     style="filled", fillcolor=net_color if net_color else "lightblue",
+                     fontsize="14")
+            elif use_icons:
+                if net_color:
+                    node(name, label=f'<<B> {name} </B>>', shape="box",
+                         style="filled", fillcolor=net_color,
+                         image=params.switch_icon_svg_file, labelloc="b",
+                         width="0.5", height="0.5", fixedsize="true", imagescale="true",
+                         fontsize="16")
+                else:
+                    node(name, label=f'<<B> {name} </B>>', shape="none",
+                         image=params.switch_icon_svg_file, labelloc="b",
+                         width="0.5", height="0.5", fixedsize="true", imagescale="true",
+                         fontsize="16")
+            else:
+                node(name, label=f'<<B> {name} </B>>', shape=params.default_network_shape,
+                     style="filled", fillcolor=net_color if net_color else "lightblue",
+                     fontsize="14")
+        else:
+            m = machine_by_name[name]
+            machine_color = m.get("color") or ""
+            machine_shape = m.get("shape") or ""
+            if machine_shape:
+                fillcolor = machine_color if machine_color else ("white" if m.get("allow_connection", False) else "tomato")
+                node(name, label=f'<<B> {name} </B>>', shape=machine_shape,
+                     style="filled", fillcolor=fillcolor, fontsize="14")
+            elif use_icons:
+                if machine_color:
+                    node(name, label=f'<<B> {name} </B>>', shape="box",
+                         style="filled", fillcolor=machine_color,
+                         image=params.machine_icon_svg_file, labelloc="b",
+                         width="0.65", height="0.65", fixedsize="true", imagescale="true",
+                         fontsize="16")
+                else:
+                    icon = (
+                        params.machine_icon_svg_file
+                        if m.get("allow_connection", False)
+                        else params.machine_forbidden_icon_svg_file
+                    )
+                    node(name, label=f'<<B> {name} </B>>', shape="none",
+                         image=icon, labelloc="b",
+                         width="0.65", height="0.65", fixedsize="true", imagescale="true",
+                         fontsize="16")
+            else:
+                if machine_color:
+                    fillcolor = machine_color
+                else:
+                    fillcolor = "white" if m.get("allow_connection", False) else "tomato"
+                node(name, label=f'<<B> {name} </B>>', shape=params.default_machine_shape,
+                     style="filled", fillcolor=fillcolor, fontsize="14")
+
+    for m in shown:
+        for iface in m.get("interfaces", []):
+            g.edge(m["name"], iface["network"],
+                   taillabel=iface["interface_name"], weight="2", **edge_attrs(m["name"]))
+
+    if _show_nat:
+        host_edge_len = str(host_network_edge_relative_length)
+        for m in shown:
+            if m.get("bridged"):
+                ifaces = m.get("interfaces", [])
+                max_iface = max((int(iface["interface_name"][3:]) for iface in ifaces), default=-1)
+                target = _nat_node_id(m["name"]) if host_network_exploded else nat_network_name
+                g.edge(m["name"], target,
+                       taillabel=f"eth{max_iface + 1}", weight="2",
+                       len=host_edge_len, **edge_attrs(m["name"]))
+
+    return g
+
+
 def _build_svg_from_machines(
     machines: list,
     curved: bool = True,
@@ -68,138 +241,27 @@ def _build_svg_from_machines(
     host_network_edge_relative_length: float = 1.0,
     schema_splines: str = 'curved',
     schema_overlap: str = 'prism',
+    include_hidden: bool = False,
 ) -> QByteArray:
-    """Generate a network topology SVG from the machines list in info.json."""
-    sep = f"+{sep_pos * 10}"
-
-    g = Graph(name="network", engine="neato", format="svg")
-    g.attr(
-        overlap=schema_overlap,
-        sep=sep,
-        splines=schema_splines if curved else "line",
+    """Generate a network topology SVG from the machines list in info.json (see ``_build_graph``)."""
+    g = _build_graph(
+        machines,
+        curved=curved,
+        sep_pos=sep_pos,
+        use_icons=use_icons,
+        reverse=reverse,
+        random_seed=random_seed,
+        network_colors=network_colors,
+        network_shapes=network_shapes,
+        show_nat_network=show_nat_network,
+        nat_network_name=nat_network_name,
+        nat_network_color=nat_network_color,
+        host_network_exploded=host_network_exploded,
+        host_network_edge_relative_length=host_network_edge_relative_length,
+        schema_splines=schema_splines,
+        schema_overlap=schema_overlap,
+        include_hidden=include_hidden,
     )
-
-    visible = [m for m in machines if not m.get("hidden", False)]
-
-    networks: set[str] = set()
-    for m in visible:
-        for iface in m.get("interfaces", []):
-            networks.add(iface["network"])
-
-    # Build the combined node list and apply the requested permutation.
-    # When host_network_exploded is true, we render one host vertex per
-    # bridged machine using a unique node id ("Internet__<machine>") and a
-    # shared display label.
-    _show_nat = show_nat_network and nat_network_name and any(m.get("bridged") for m in visible)
-
-    def _nat_node_id(machine_name: str) -> str:
-        return f"{nat_network_name}__{machine_name}"
-
-    exploded_nat_ids: list[str] = []
-    if _show_nat and host_network_exploded:
-        exploded_nat_ids = [_nat_node_id(m["name"])
-                            for m in sorted(visible, key=lambda mm: mm["name"])
-                            if m.get("bridged")]
-
-    node_names: list[str] = sorted(networks) + [m["name"] for m in visible]
-    if _show_nat:
-        if host_network_exploded:
-            node_names.extend(exploded_nat_ids)
-        else:
-            node_names.append(nat_network_name)
-    if reverse:
-        node_names = list(reversed(node_names))
-    elif random_seed is not None:
-        _random.Random(random_seed).shuffle(node_names)
-
-    machine_by_name = {m["name"]: m for m in visible}
-    exploded_nat_set = set(exploded_nat_ids)
-
-    for name in node_names:
-        if _show_nat and name == nat_network_name:
-            g.node(name, label=f'<<B> {name} </B>>',
-                   shape=params.default_host_network_shape, style="filled",
-                   fillcolor=nat_network_color or params.default_host_network_color,
-                   width="1.0", height="1.0", fixedsize="true",
-                   fontsize="14")
-        elif name in exploded_nat_set:
-            g.node(name, label=f'<<B> {nat_network_name} </B>>',
-                   shape=params.default_host_network_shape, style="filled",
-                   fillcolor=nat_network_color or params.default_host_network_color,
-                   width="1.0", height="1.0", fixedsize="true",
-                   fontsize="14")
-        elif name in networks:
-            net_color = network_colors.get(name)
-            net_shape = network_shapes.get(name)
-            if net_shape:
-                g.node(name, label=f'<<B> {name} </B>>', shape=net_shape,
-                       style="filled", fillcolor=net_color if net_color else "lightblue",
-                       fontsize="14")
-            elif use_icons:
-                if net_color:
-                    g.node(name, label=f'<<B> {name} </B>>', shape="box",
-                           style="filled", fillcolor=net_color,
-                           image=params.switch_icon_svg_file, labelloc="b",
-                           width="0.5", height="0.5", fixedsize="true", imagescale="true",
-                           fontsize="16")
-                else:
-                    g.node(name, label=f'<<B> {name} </B>>', shape="none",
-                           image=params.switch_icon_svg_file, labelloc="b",
-                           width="0.5", height="0.5", fixedsize="true", imagescale="true",
-                           fontsize="16")
-            else:
-                g.node(name, label=f'<<B> {name} </B>>', shape=params.default_network_shape,
-                       style="filled", fillcolor=net_color if net_color else "lightblue",
-                       fontsize="14")
-        else:
-            m = machine_by_name[name]
-            machine_color = m.get("color") or ""
-            machine_shape = m.get("shape") or ""
-            if machine_shape:
-                fillcolor = machine_color if machine_color else ("white" if m.get("allow_connection", False) else "tomato")
-                g.node(name, label=f'<<B> {name} </B>>', shape=machine_shape,
-                       style="filled", fillcolor=fillcolor, fontsize="14")
-            elif use_icons:
-                if machine_color:
-                    g.node(name, label=f'<<B> {name} </B>>', shape="box",
-                           style="filled", fillcolor=machine_color,
-                           image=params.machine_icon_svg_file, labelloc="b",
-                           width="0.65", height="0.65", fixedsize="true", imagescale="true",
-                           fontsize="16")
-                else:
-                    icon = (
-                        params.machine_icon_svg_file
-                        if m.get("allow_connection", False)
-                        else params.machine_forbidden_icon_svg_file
-                    )
-                    g.node(name, label=f'<<B> {name} </B>>', shape="none",
-                           image=icon, labelloc="b",
-                           width="0.65", height="0.65", fixedsize="true", imagescale="true",
-                           fontsize="16")
-            else:
-                if machine_color:
-                    fillcolor = machine_color
-                else:
-                    fillcolor = "white" if m.get("allow_connection", False) else "tomato"
-                g.node(name, label=f'<<B> {name} </B>>', shape=params.default_machine_shape,
-                       style="filled", fillcolor=fillcolor, fontsize="14")
-
-    for m in visible:
-        for iface in m.get("interfaces", []):
-            g.edge(m["name"], iface["network"],
-                   taillabel=iface["interface_name"], weight="2")
-
-    if _show_nat:
-        host_edge_len = str(host_network_edge_relative_length)
-        for m in visible:
-            if m.get("bridged"):
-                ifaces = m.get("interfaces", [])
-                max_iface = max((int(iface["interface_name"][3:]) for iface in ifaces), default=-1)
-                target = _nat_node_id(m["name"]) if host_network_exploded else nat_network_name
-                g.edge(m["name"], target,
-                       taillabel=f"eth{max_iface + 1}", weight="2",
-                       len=host_edge_len)
-
     svg_str = g.pipe(format="svg").decode("utf-8")
     if use_icons:
         return _inline_svg_images(svg_str)
@@ -243,10 +305,11 @@ class SchemaView(QWidget):
                  host_network_exploded: bool = False,
                  host_network_edge_relative_length: float = 1.0,
                  schema_splines: str = 'curved', schema_overlap: str = 'prism',
-                 parent=None):
+                 include_hidden: bool = False, parent=None):
         super().__init__(parent)
 
         self._machines = machines
+        self._include_hidden = include_hidden  # the Full Schema of a debug project
         self._network_colors = network_colors
         self._network_shapes = network_shapes
         self._show_nat_network = show_nat_network
@@ -392,6 +455,7 @@ class SchemaView(QWidget):
             host_network_edge_relative_length=self._host_network_edge_relative_length,
             schema_splines=self._schema_splines,
             schema_overlap=self._schema_overlap,
+            include_hidden=self._include_hidden,
         )
         self._view.load_svg(data)
 
