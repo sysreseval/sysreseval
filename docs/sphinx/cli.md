@@ -21,7 +21,7 @@ Access is restricted to `root`, the `sre` user (`params.sre_uid = 1100`), member
 
 ### `sre start [-d data] [-p] [--flavor … | --flavor-json … | --set-flavor-name …] [--xauth-file <file>] [--instructor-mode] <lab> [data_version]`
 
-Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Imports `srelab.py`, runs `Data.generate(flavor)` (or loads `-d data.json`), builds `NetScheme`, pulls images, deploys via Kathara, applies the `initial` state, and writes `info.json` + `scheme.svg`. See [Internals](internals.md) for file-transfer and progress mechanics.
+Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Imports `srelab.py`, runs `Data.generate(flavor)` (or loads `-d data.json`), builds `NetScheme`, pulls images, deploys via Kathara, applies the `initial` state, and writes `info.json`. See [Internals](internals.md) for file-transfer and progress mechanics.
 
 | Argument / Option | Description |
 |-------------------|-------------|

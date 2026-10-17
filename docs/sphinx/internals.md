@@ -73,7 +73,6 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 │   ├── eval_in_progress    lock file (PID) during active eval
 │   └── auto_eval.log       one ISO timestamp per student self-evaluation
 ├── info.json               public machine/switch/question metadata (InfoLab; `switches`: the visible networks with their type)
-├── scheme.svg              graphviz network diagram
 ├── operations.log          debug projects only: operations of every state / evaluation (GUI Log tab), mode 0o644
 ├── answers/
 │   ├── answers.json        student answers (updated by GUI)

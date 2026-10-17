@@ -384,8 +384,6 @@ save_cipher_chunk_size = 16 * 1024 * 1024
 
 self_grade_timestamp_dir = sre_pub_dir + "/last_self_grades"
 
-svg_graph_name = "scheme.svg"
-
 srelab_link_name = "srelab"
 
 graphviz_default_nodesep = 0.8
@@ -565,10 +563,6 @@ def records_dir(running_lab_name: str) -> str:
 
 def srelab_link_filename(running_lab_name: str) -> str:
     return f"{private_lab_dir(running_lab_name)}/{srelab_link_name}"
-
-
-def graph_filename(running_lab_name: str) -> str:
-    return f"{sre_projects_dir}/{running_lab_name}/{svg_graph_name}"
 
 
 def answers_filename(running_lab_name: str) -> str:

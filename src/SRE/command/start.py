@@ -354,7 +354,6 @@ def finalize_project(setup: ProjectSetup, module_rvlab, net_scheme, lab, data, s
 
     # we save data only after executing the lifecycle state to allow it to modify the data object
     data.save_to_json_file(params.data_filename(setup.running_lab_name))
-    # net_scheme.render_svg_scheme()
 
     grade = module_rvlab.Grade(net_scheme=net_scheme)
     grade.save_lab_info()
