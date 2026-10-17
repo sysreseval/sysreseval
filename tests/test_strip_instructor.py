@@ -13,7 +13,7 @@ import pytest
 # The tool lives in src/tools/, outside the normal package tree.
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / 'src' / 'tools'))
-from strip_instructor import StripError, main, strip_source  # noqa: E402
+from strip_instructor import StripError, _instructor_names, _is_instructor_call, main, strip_source  # noqa: E402
 
 TOOL = ROOT / 'src' / 'tools' / 'strip_instructor.py'
 WRAPPER = ROOT / 'sbin' / 'strip-instructor'
@@ -353,8 +353,12 @@ class TestRealFiles:
         if result.calls == 0:
             assert result.data == data
         else:
-            ast.parse(result.data)
-            assert b'instructor(' not in result.data
+            # no call is left in the code: a docstring or a comment may still say "instructor()"
+            # (the module docstring of lab/sre/dhcp.py does), so the stripped tree is checked,
+            # not the bytes
+            names = _instructor_names(ast.parse(data))
+            stripped = ast.parse(result.data)
+            assert not any(_is_instructor_call(node, names) for node in ast.walk(stripped))
 
 
 # ---------------------------------------------------------------------------
