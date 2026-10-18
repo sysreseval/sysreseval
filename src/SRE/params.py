@@ -276,7 +276,7 @@ del _fhs, _root
 #
 #################################################################################
 
-sre_version = "0.9.1"
+sre_version = "0.13.1"
 default_docker_image_version = "1.30"
 sre_docker_namespace = "sysreseval"
 
@@ -388,6 +388,10 @@ sysreseval_logo_svg = graphicdir + "/sysreseval.svg"
 machine_icon_svg_file = graphicdir + "/machine.svg"
 machine_forbidden_icon_svg_file = graphicdir + "/machine-forbidden.svg"
 switch_icon_svg_file = graphicdir + "/switch.svg"
+cloud_icon_svg_file = graphicdir + "/cloud.svg"
+# the `shape` values of a network (`_network_specs`) drawn as an icon by the GUI schema and the export
+# PDF when icons are on (as the default network shape otherwise) instead of a graphviz node shape
+network_shape_icons = {"cloud": cloud_icon_svg_file}
 
 # TrueType fonts embedded in the PDFs of "sre export" and "sre outline" (downloaded by "make fonts"
 # into fontdir, the fonts-dejavu packages in the fhs layout): {style: file} with the styles ''
