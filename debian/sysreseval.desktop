@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SysResEval
+GenericName=SysResEval
+Comment=Network and system administration labs on Docker machines
+Icon=sysreseval
+Exec=sysreseval
+Terminal=false
+Categories=Education;Science;Development;Qt;
+Keywords=Education;Science;Development;Qt;network;
+StartupNotify=true

@@ -329,11 +329,20 @@ def lab_cli_arg_from_lab_name(lab_name: str) -> tuple[str, bool]:
     path = lab_name.replace('@', '/')
     if not path.startswith('/'):
         return path, False
-    lab_dir = os.path.realpath(params.lab_dir)
-    try:
-        rel = os.path.relpath(os.path.realpath(path), lab_dir)
-    except ValueError:      # different drives (Windows only)
-        rel = '..'
+    # the path as given first (a lab reached through a symbolic link of the lab directory keeps
+    # its name), then with its links resolved; the lab directory itself may be a link
+    rel = '..'
+    for candidate in (os.path.normpath(path), os.path.realpath(path)):
+        for lab_dir in (os.path.abspath(params.lab_dir), os.path.realpath(params.lab_dir)):
+            try:
+                rel = os.path.relpath(candidate, lab_dir)
+            except ValueError:      # different drives (Windows only)
+                rel = '..'
+            if not (rel == '..' or rel.startswith('../') or rel == '.'):
+                break
+        else:
+            continue
+        break
     if rel == '..' or rel.startswith('../') or rel == '.':
         return path, True
     if os.path.basename(rel) == params.srelab_py_name:

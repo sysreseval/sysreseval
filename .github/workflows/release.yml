@@ -1,0 +1,64 @@
+# Debian packages of a release: on every tag (0.12.0...), scripts/build-deb.sh builds python3-kathara,
+# sysreseval and sysreseval-doc (and python3-fs on forky) for each Debian release, installs them in a
+# fresh container, then the files are attached to the GitHub release of the tag (created when the
+# tag was pushed without one).
+name: release
+on:
+  push:
+    tags: ['[0-9]*']
+
+jobs:
+  deb:
+    name: Debian packages (${{ matrix.dist }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dist: [trixie, forky]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build and test the packages
+        run: scripts/build-deb.sh --dist ${{ matrix.dist }} --ref "$GITHUB_REF_NAME" --arch amd64 --out build/deb --test-install
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.dist }}
+          path: |
+            build/deb/${{ matrix.dist }}/*/*.deb
+            build/deb/${{ matrix.dist }}/*/*.changes
+            build/deb/${{ matrix.dist }}/*/*.buildinfo
+            build/deb/${{ matrix.dist }}/*.log
+            build/deb/${{ matrix.dist }}/lintian.txt
+          if-no-files-found: error
+
+  release:
+    name: Attach the packages to the release
+    needs: deb
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: build/deb
+          pattern: deb-*
+      - name: Create the release if the tag has none, upload the packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          # the packages of each distribution are renamed with it: trixie and forky builds carry the
+          # distribution in their version already, the logs do not
+          for dist in trixie forky; do
+            d="build/deb/deb-$dist"
+            [ -d "$d" ] || continue
+            for f in "$d"/*/*.deb "$d"/*/*.changes "$d"/*/*.buildinfo; do
+              [ -f "$f" ] && gh release upload --clobber "$TAG" "$f"
+            done
+            for f in "$d"/*.log "$d"/lintian.txt; do
+              [ -f "$f" ] && gh release upload --clobber "$TAG" "$f#$dist-$(basename "$f")"
+            done
+          done

@@ -1,0 +1,7 @@
+kathara (3.8.3+git20261005.88a4a55-1) unstable; urgency=medium
+
+  * SysResEval fork of Kathara 3.8.3 (emotchane/Kathara, commit 88a4a55):
+    switch modes of the collision domains, save_lab() / restore_lab(),
+    exec_link().  Packaged as a plain Python library.
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Sun, 18 Oct 2026 21:05:05 +0200

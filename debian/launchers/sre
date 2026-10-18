@@ -1,0 +1,3 @@
+#!/bin/sh
+# SysResEval command-line interface (Debian package layout: the code is in /usr/lib/sysreseval)
+exec /usr/bin/python3 -W ignore /usr/lib/sysreseval/sre.py "$@"

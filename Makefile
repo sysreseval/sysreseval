@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts network-plugin translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin deb translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 
@@ -116,42 +116,21 @@ fonts:
 # sources otherwise or with BUILD=1 (needs docker with buildx, git and python3).  Does nothing
 # when the installed plugin already has the switch types (FORCE=1 installs it again); refuses
 # while a Kathara network exists, since the stock plugin is removed first.
+# The recipe is scripts/network-plugin.sh (also /usr/sbin/sysreseval-network-plugin of the package).
 network-plugin:
-	@set -e; \
-	case "$$(uname -m)" in \
-		x86_64) arch=amd64;; \
-		aarch64|arm64) arch=arm64;; \
-		*) echo "ERROR: unsupported architecture $$(uname -m)"; exit 1;; \
-	esac; \
-	plugin="$(NETWORK_PLUGIN_NAME):$$arch"; \
-	docker info >/dev/null 2>&1 || { echo "ERROR: the Docker daemon is not reachable"; exit 1; }; \
-	has_modes() { docker plugin inspect "$$plugin" --format '{{.Settings.Env}}' 2>/dev/null | grep -q "$(NETWORK_PLUGIN_MODES_ENV)="; }; \
-	if [ -z "$(FORCE)" ] && has_modes; then \
-		docker plugin enable "$$plugin" >/dev/null 2>&1 || true; \
-		echo "Network plugin $$plugin already has the switch types"; exit 0; \
-	fi; \
-	networks=$$(docker network ls -q --filter "driver=$$plugin" | wc -l); \
-	if [ "$$networks" -ne 0 ]; then \
-		echo "ERROR: $$networks network(s) use $$plugin: stop the running projects first (sre wipe)"; exit 1; \
-	fi; \
-	docker plugin rm -f "$$plugin" >/dev/null 2>&1 || true; \
-	if [ -z "$(BUILD)" ]; then \
-		image="$(NETWORK_PLUGIN_IMAGE):$$arch"; \
-		if docker plugin install --grant-all-permissions --alias "$$plugin" "$$image" && has_modes; then \
-			echo "Network plugin $$plugin installed from $$image: hub, switch and managed switch"; exit 0; \
-		fi; \
-		echo "No usable plugin published as $$image: building it from the sources"; \
-		docker plugin rm -f "$$plugin" >/dev/null 2>&1 || true; \
-	fi; \
-	rm -rf "$(NETWORK_PLUGIN_DIR)"; mkdir -p "$$(dirname "$(NETWORK_PLUGIN_DIR)")"; \
-	git clone --depth 1 --branch "$(NETWORK_PLUGIN_BRANCH)" "$(NETWORK_PLUGIN_REPO)" "$(NETWORK_PLUGIN_DIR)"; \
-	build="make -C $(NETWORK_PLUGIN_DIR)/vde all_$$arch PLUGIN_NAME=$(NETWORK_PLUGIN_NAME)"; \
-	echo "Building $$plugin (a few minutes)"; \
-	if [ -t 0 ]; then $$build; else script -qefc "$$build" /dev/null; fi; \
-	docker plugin enable "$$plugin"; \
-	rm -rf "$(NETWORK_PLUGIN_DIR)"; \
-	has_modes || { echo "ERROR: $$plugin does not advertise $(NETWORK_PLUGIN_MODES_ENV)"; exit 1; }; \
-	echo "Network plugin $$plugin built and installed: hub, switch and managed switch"
+	@NETWORK_PLUGIN_REPO="$(NETWORK_PLUGIN_REPO)" NETWORK_PLUGIN_BRANCH="$(NETWORK_PLUGIN_BRANCH)" \
+	NETWORK_PLUGIN_NAME="$(NETWORK_PLUGIN_NAME)" NETWORK_PLUGIN_IMAGE="$(NETWORK_PLUGIN_IMAGE)" \
+	NETWORK_PLUGIN_MODES_ENV="$(NETWORK_PLUGIN_MODES_ENV)" NETWORK_PLUGIN_DIR="$(NETWORK_PLUGIN_DIR)" \
+	FORCE="$(FORCE)" BUILD="$(BUILD)" $(ROOT_DIR)/scripts/network-plugin.sh
+
+# Debian packages (python3-kathara, sysreseval, sysreseval-doc, and python3-fs on forky) built in
+# a debian:$(DIST) container by scripts/build-deb.sh and checked by an installation in a second
+# container: `make deb DIST=trixie` packages the working tree, `make deb DIST=forky REF=0.12.0`
+# the release tagged 0.12.0 on GitHub.  Output in build/deb/$(DIST)/.
+DIST ?= trixie
+REF ?=
+deb:
+	$(ROOT_DIR)/scripts/build-deb.sh --dist $(DIST) $(if $(REF),--ref $(REF),--local) --test-install
 
 venv: fonts
 	# Always start from a clean slate. `python3 -m venv` over an existing

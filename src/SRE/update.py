@@ -47,6 +47,8 @@ PRIVATE_TOP_DIRS = (LAB_DIR_NAME, LIB_DIR_NAME)   # owned by the sre user, not r
 # manifest says (venv, build, downloaded fonts, compiled wrapper, git checkout, params.py backups)
 PROTECTED_DIRS = ("venv", "build", ".git", "graphics/fonts")
 PROTECTED_FILES = ("bin/sre-wrapper",)
+# Packaging sources of the repository (Debian): not runtime files, never installed
+PACKAGING_DIRS = ("debian", "packaging")
 PYCACHE_SUBDIRS = ("src", LIB_DIR_NAME) + tuple(f"{LAB_DIR_NAME}/{d}" for d in params.update_lab_subdirs)
 
 # `Target.kind`
@@ -386,6 +388,8 @@ def include_member(rel: str) -> bool:
     if PYCACHE_DIR in parts or rel.endswith(('.pyc', '.pyo')):
         return False
     if rel == PARAMS_REL_PATH or rel in PROTECTED_FILES or any(rel.startswith(d + '/') for d in PROTECTED_DIRS):
+        return False
+    if parts[0] in PACKAGING_DIRS:
         return False
     if parts[0] in (params.update_state_file_name, params.update_lock_file_name) \
             or parts[0].startswith(params.update_tmp_prefix) or params.update_params_backup_suffix in parts[-1]:

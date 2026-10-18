@@ -1,0 +1,16 @@
+# Preload the Docker images of the labs when the machine starts, after a random delay of up to 120 s
+# so that a room of hosts does not download them all at once.  Disabled by default:
+# systemctl enable sysreseval-preload-images.service
+[Unit]
+Description=Preload the SysResEval Docker images into the local cache
+Documentation=file:///usr/share/doc/sysreseval/README.Debian
+Requires=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/sre preload-images --random-delay 120 /usr/share/sysreseval/lab /var/lib/sre/lab
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

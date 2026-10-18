@@ -1,0 +1,71 @@
+#!/usr/bin/make -f
+# Debian packaging of SysResEval: the Python code of src/ and lib/ as private modules in
+# /usr/lib/sysreseval, the labs in /usr/share/sysreseval/lab, the C wrapper in /usr/bin, the site
+# parameters in /etc/sysreseval/params.py (see README.Debian).  The top-level Makefile is the
+# developer's (venv, docs, Docker images): it is not used here.
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/buildflags.mk
+
+BUILD = debian/build
+PKG = debian/sysreseval
+LIBDIR = $(PKG)/usr/lib/sysreseval
+PARAMS = $(LIBDIR)/SRE/params.py
+UPSTREAM_VERSION = $(shell dpkg-parsechangelog -S Version | sed 's/-[^-]*$$//')
+
+%:
+	dh $@ --with python3,bash-completion
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+	mkdir -p $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $(BUILD)/sre-wrapper src/sre-wrapper/sre-wrapper.c
+	/usr/lib/qt6/bin/lrelease translations/sysreseval_fr.ts -qm $(BUILD)/sysreseval_fr.qm
+	msgfmt locale/fr/LC_MESSAGES/sre.po -o $(BUILD)/sre.mo
+
+# the unit tests of the repository (what `make tests` runs), without Docker
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	mkdir -p $(BUILD)/home graphics/fonts
+	# the fonts `make fonts` downloads on a checkout: those of the fonts-dejavu packages (test_pdf.py)
+	for f in /usr/share/fonts/truetype/dejavu/DejaVuSans*.ttf; do ln -sf $$f graphics/fonts/; done
+	HOME=$(CURDIR)/$(BUILD)/home QT_QPA_PLATFORM=offscreen PYTHONDONTWRITEBYTECODE=1 \
+		python3 -m pytest tests -q -p no:cacheprovider \
+		--ignore=tests/test_exam_mode.py --ignore=tests/test_docker_lifecycle.py
+endif
+
+override_dh_auto_install:
+
+override_dh_auto_clean:
+	rm -rf $(BUILD)
+	find graphics/fonts -type l -delete 2>/dev/null || true
+
+execute_after_dh_install:
+	# what the tests above may have compiled in the tree (dh_python3 byte-compiles at install time)
+	find $(PKG) -name __pycache__ -type d -prune -exec rm -rf {} +
+	install -D -m 0755 scripts/network-plugin.sh $(PKG)/usr/sbin/sysreseval-network-plugin
+	install -D -m 0644 scripts/etc/sre-inotify.conf $(PKG)/usr/lib/sysctl.d/60-sysreseval.conf
+	install -D -m 0644 graphics/logo_sre.svg $(PKG)/usr/share/icons/hicolor/scalable/apps/sysreseval.svg
+	install -D -m 0440 debian/sysreseval.sudoers $(PKG)/etc/sudoers.d/sysreseval
+	install -D -m 0644 debian/site-params.py $(PKG)/etc/sysreseval/params.py
+	# the installed copy of params.py is the fhs layout, the ids come from the accounts, the version
+	# from this changelog
+	debian/set-param $(PARAMS) install_layout '"fhs"'
+	debian/set-param $(PARAMS) sre_uid None
+	debian/set-param $(PARAMS) sre_gid None
+	debian/set-param $(PARAMS) docker_gid None
+	debian/set-param $(PARAMS) sre_version '"$(UPSTREAM_VERSION)"'
+	! grep -qE '^debug_mode[[:space:]]*=[[:space:]]*True' $(PARAMS)
+
+# the Sphinx build cache committed with the HTML pages
+execute_after_dh_installdocs:
+	rm -rf debian/sysreseval-doc/usr/share/doc/sysreseval/html/main/.doctrees
+
+override_dh_python3:
+	dh_python3 /usr/lib/sysreseval
+
+override_dh_installsystemd:
+	dh_installsystemd --name=sysreseval-preload-images --no-enable --no-start
+
+execute_after_dh_fixperms:
+	chmod 0440 $(PKG)/etc/sudoers.d/sysreseval

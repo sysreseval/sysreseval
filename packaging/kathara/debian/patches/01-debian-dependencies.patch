@@ -1,0 +1,58 @@
+Description: Debian dependencies of the SysResEval build
+ kubernetes is only imported by the Kubernetes manager (python3-kubernetes is a Suggests),
+ setuptools<81 only provides pkg_resources to upstream fs (Debian's python3-fs needs none),
+ libtmux is only used by the terminal of the kathara command (not shipped), the others are
+ for macOS and Windows.  The build-system pin on setuptools<81 is dropped for the same reason.
+Author: SysResEval
+Forwarded: not-needed
+
+--- a/pyproject.toml	2026-10-18 21:02:48
++++ b/pyproject.toml	2026-10-18 21:02:48
+@@ -32,17 +32,11 @@
+ dependencies = [
+     "binaryornot>=0.4.4",
+     "docker>=7.0.0",
+-    "kubernetes>=23.3.0",
+     "requests>=2.22.0",
+     "pyroute2",
+     "rich",
+-    "setuptools<81",
+     "fs>=2.4.16",
+-    "chardet<6.0.0",
+-    "libtmux>=0.8.2; platform_system == 'darwin' or platform_system == 'linux'",
+-    "appscript>=1.1.0; platform_system == 'darwin'",
+-    "pypiwin32>=223; platform_system == 'win32'",
+-    "windows-curses>=2.1.0; platform_system == 'win32'"
++    "chardet<6.0.0"
+ ]
+ 
+ [project.optional-dependencies]
+@@ -54,5 +48,5 @@
+ "Source" = "https://github.com/KatharaFramework/Kathara"
+ 
+ [build-system]
+-requires = ["setuptools<81.0.0", "wheel"]
++requires = ["setuptools", "wheel"]
+ build-backend = "setuptools.build_meta"
+\ No newline at end of file
+--- a/setup.py	2026-10-18 21:02:48
++++ b/setup.py	2026-10-18 21:02:48
+@@ -16,17 +16,11 @@
+     install_requires=[
+         "binaryornot>=0.4.4",
+         "docker>=7.0.0",
+-        "kubernetes>=23.3.0",
+         "requests>=2.22.0",
+         "pyroute2",
+         "rich",
+-        "setuptools<81",
+         "fs>=2.4.16",
+-        "chardet<6.0.0",
+-        "libtmux>=0.8.2; platform_system == 'darwin' or platform_system == 'linux'",
+-        "appscript>=1.1.0; platform_system == 'darwin'",
+-        "pypiwin32>=223; platform_system == 'win32'",
+-        "windows-curses>=2.1.0; platform_system == 'win32'"
++        "chardet<6.0.0"
+     ],
+     extras_require={
+         'test': ["pytest"],

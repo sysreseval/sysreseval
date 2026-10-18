@@ -413,6 +413,10 @@ class TestPlan:
     def test_include_member(self, rel, included):
         assert upd.include_member(rel) is included
 
+    def test_packaging_sources_are_not_installed(self):
+        assert not upd.include_member('debian/control') and not upd.include_member('debian/rules')
+        assert not upd.include_member('packaging/kathara/debian/rules')
+
     def test_plan(self, upstream_tree, installed):
         plan = upd.plan_install(upstream_tree, installed, INSTALLED_MANIFEST)
         assert plan.params_src == upstream_tree / 'src' / 'SRE' / 'params.py'
@@ -544,9 +548,12 @@ class TestParams:
         values = upd.extract_params(text)
         for name in ('sre_uid', 'main_sre_dir', 'debug_mode', 'execute_commands_on_host', 'authorized_src_dir',
                      'switch_user_commands', 'pdf_font_files', 'terminal_cmd_prefix', 'update_github_repository',
-                     'sre_version'):
-            assert name in values and values[name].keepable
-        assert '_candidate' not in values and 'SRE' not in values
+                     'sre_version', 'install_layout', 'sre_user', 'docker_group', 'lab_dir', 'shipped_lab_dir',
+                     'fontdir', 'sre_wrapper', 'sre_exe', 'archive_dirs', 'self_update_allowed', 'site_params_file'):
+            assert name in values and values[name].keepable, name
+        # the derived values of the layout are not parameters: one top-level assignment per name
+        assert '_candidate' not in values and '_fhs' not in values and 'SRE' not in values
+        assert values['lab_dir'].value_repr == 'None' and values['install_layout'].value_repr == "'checkout'"
         assert upd.merge_params(text, text, set(values)) == text
         upd.check_params(text, Path(params.main_sre_dir) / upd.PARAMS_REL_PATH)
 
@@ -731,6 +738,12 @@ class TestActionUpdate:
         update_env.args.user = True
         assert run_update(update_env) == 1
         assert "not allowed" in capsys.readouterr().err and update_env.events == []
+
+    def test_refused_on_a_packaged_install(self, update_env, monkeypatch, capsys):
+        """The Debian package sets self_update_allowed to False: apt updates it."""
+        monkeypatch.setattr(params, 'self_update_allowed', False)
+        assert run_update(update_env) == 1
+        assert 'apt' in capsys.readouterr().err and update_env.events == []
 
     def test_not_root(self, update_env, monkeypatch, capsys):
         monkeypatch.setattr(update_cmd.os, 'geteuid', lambda: 1100)

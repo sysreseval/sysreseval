@@ -1,0 +1,52 @@
+#!/bin/sh
+# postinst of sysreseval: the sre system user, the state directories of /var/lib/sre, the link of
+# the shipped labs, and the permissions of the grading code and of the labs (not readable by the
+# students), applied again at every upgrade since dpkg unpacks the files root 0644.
+set -e
+
+SRE_USER=sre
+STATE_DIR=/var/lib/sre
+SHIPPED_LABS=/usr/share/sysreseval/lab/sre
+
+case "$1" in
+    configure)
+        # kept when it exists: an administrator may create it beforehand with a fixed uid, e.g.
+        # when $STATE_DIR or the archives are shared over NFS between hosts
+        if ! getent passwd "$SRE_USER" >/dev/null; then
+            adduser --system --group --home "$STATE_DIR" --no-create-home \
+                --shell /usr/sbin/nologin --gecos "SysResEval" "$SRE_USER"
+        fi
+        if getent group docker >/dev/null; then
+            adduser --quiet "$SRE_USER" docker
+        fi
+        SRE_GROUP=$(id -gn "$SRE_USER")
+        for spec in "$STATE_DIR:0755" "$STATE_DIR/lab:0750" "$STATE_DIR/home:0755"; do
+            d=${spec%:*}; m=${spec#*:}
+            mkdir -p "$d"
+            chown "$SRE_USER:$SRE_GROUP" "$d"
+            chmod "$m" "$d"
+        done
+        # the labs of the package appear in the lab directory next to the site's own labs
+        if [ ! -e "$STATE_DIR/lab/sre" ] && [ ! -L "$STATE_DIR/lab/sre" ]; then
+            ln -s "$SHIPPED_LABS" "$STATE_DIR/lab/sre"
+        fi
+        if ! visudo -cqf /etc/sudoers.d/sysreseval; then
+            echo "sysreseval: /etc/sudoers.d/sysreseval is refused by visudo: the students cannot run sre" >&2
+        fi
+        sysctl -q -p /usr/lib/sysctl.d/60-sysreseval.conf >/dev/null 2>&1 || true
+        ;;
+esac
+
+#DEBHELPER#
+
+case "$1" in
+    configure)
+        SRE_GROUP=$(id -gn "$SRE_USER")
+        for d in /usr/lib/sysreseval/lib "$SHIPPED_LABS"; do
+            chown -R "$SRE_USER:$SRE_GROUP" "$d"
+            chmod -R u=rX,g=rX,o= "$d"
+        done
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,9 @@
+#!/bin/sh
+# set-param FILE NAME VALUE: replace the top-level line `NAME = ...` of a params.py (the anchor
+# must exist once) by `NAME = VALUE`, like update_param() of scripts/install.sh.
+set -e
+file="$1" name="$2" value="$3"
+n=$(grep -cE "^${name} = " "$file" || true)
+[ "$n" = 1 ] || { echo "set-param: $file: ${name} found $n times" >&2; exit 1; }
+sed -i.set-param "s|^${name} = .*|${name} = ${value}|" "$file" && rm -f "$file.set-param"
+grep -qxF "${name} = ${value}" "$file" || { echo "set-param: $file: ${name} not set" >&2; exit 1; }

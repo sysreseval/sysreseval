@@ -321,3 +321,23 @@ class TestLabCliArg:
         assert sa.lab_cli_arg_from_lab_name(f'{prefix}') == (str(lab_dir), True)
         assert sa.lab_cli_arg_from_lab_name(f'{prefix}_other@lab.py') == (f'{lab_dir}_other/lab.py', True)
         assert sa.lab_cli_arg_from_lab_name('@home@etudiant@lab.py') == ('/home/etudiant/lab.py', True)
+
+    def test_path_through_a_link_of_the_lab_dir(self, tmp_path, monkeypatch):
+        """The Debian package links its labs into the lab directory: a lab started by that path
+        keeps its lab name, whatever the link resolves to."""
+        lab_dir = tmp_path / 'labs'
+        shipped = tmp_path / 'shipped' / 'sre'
+        shipped.mkdir(parents=True)
+        lab_dir.mkdir()
+        (lab_dir / 'sre').symlink_to(shipped)
+        monkeypatch.setattr(params, 'lab_dir', str(lab_dir))
+        prefix = str(lab_dir).replace('/', '@')
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}@sre@dhcp.py') == ('sre/dhcp.py', False)
+        # the lab directory itself may be a link
+        link = tmp_path / 'link'
+        link.symlink_to(lab_dir)
+        monkeypatch.setattr(params, 'lab_dir', str(link))
+        assert sa.lab_cli_arg_from_lab_name(f'{prefix}@sre@dhcp.py') == ('sre/dhcp.py', False)
+        # the target of the link is not inside the lab directory: an absolute-path lab
+        resolved = str(shipped).replace('/', '@')
+        assert sa.lab_cli_arg_from_lab_name(f'{resolved}@dhcp.py') == (str(shipped / 'dhcp.py'), True)

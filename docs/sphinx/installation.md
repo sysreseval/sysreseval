@@ -55,6 +55,27 @@ The `/opt/sre` tree must contain `lab/`, `lib/`, `graphics/`, `translations/`, `
 
 If you'd rather build in a separate working checkout (CI runner, personal dev tree) and move the result over afterwards, `rsync` or bind-mount the built tree into `/opt/sre` once `make install` has finished, then continue with the [Post-install steps](#post-install-steps).
 
+## Debian package
+
+On Debian 13 (trixie) and 14 (forky) SRE can be installed from Debian packages instead of a checkout: `python3-kathara` (the SRE fork of Kathara as a Python library), `sysreseval` and `sysreseval-doc`, plus `python3-fs` on forky (rebuilt from the trixie source package, since forky dropped it). Every other dependency is a Debian package. The packages of a release are attached to it on GitHub by the `release` workflow; `apt install ./python3-kathara_*.deb ./sysreseval_*.deb` installs them with their dependencies.
+
+The package follows the FHS instead of the `/opt/sre` tree:
+
+| Path | Content |
+|---|---|
+| `/usr/sbin/sre`, `/usr/bin/sysreseval`, `/usr/bin/sre-wrapper` | the CLI, the GUI, the wrapper (`sudo /usr/sbin/sre --user`) |
+| `/usr/bin/strip-instructor`, `/usr/bin/*-sre-translations` | the lab-authoring tools |
+| `/usr/sbin/sysreseval-network-plugin` | `make network-plugin` of a checkout (`scripts/network-plugin.sh`) |
+| `/usr/lib/sysreseval/` | the Python code (`src/`), `lib/` readable by the `sre` user only |
+| `/usr/share/sysreseval/lab/sre/` | the labs of the project, linked as `/var/lib/sre/lab/sre` |
+| `/var/lib/sre/` | projects, archives, `exam.json`, `home/` (the directories shared with the machines), `lab/` (the site's own labs next to the `sre` link) |
+| `/etc/sysreseval/params.py` | the site parameters (a conffile) |
+| `/etc/sudoers.d/sysreseval`, `/usr/lib/sysctl.d/60-sysreseval.conf`, the `.desktop` file, the bash completion, `sysreseval-preload-images.service` (disabled) | the per-host bits of the list above |
+
+`params.py` is not edited on a packaged host: `/etc/sysreseval/params.py` (Python syntax) sets the site's values of any parameter (`admin_gids`, `terminal_cmd_prefix`, `allow_privileged_machines`, `archive_dirs`, `sre_user_public_dir`...). It is executed after the base parameters and before the derived ones, so a changed `sre_pub_dir` moves the projects, archives and labs with it. The `sre` system user is created with a dynamic uid unless it exists already (create it beforehand with a fixed uid when `/var/lib/sre` or the archives are shared over NFS); its uid, gid and the `docker` gid are read from the accounts at run time. `sre update` is disabled on a packaged host (apt updates it), `apt purge` keeps `/var/lib/sre` and the user. `sysreseval-network-plugin` still has to be run once per Docker host for the labs with switch types, and the X server must accept TCP connections (post-install steps 2 below).
+
+**Building the packages.** `scripts/build-deb.sh --dist trixie --ref 0.12.0 --test-install` builds the packages of the release tagged `0.12.0` in a `debian:trixie` container (Docker on the build host, which may be a Mac or a CI runner), checks them with lintian and installs them in a second container where it exercises `sre` (`sre list` through the link, `sre check` of a shipped lab, a student running `sre-wrapper`, the purge). `--local` packages the working tree instead (`make deb DIST=forky`); `--arch arm64` builds for that architecture; the result is in `build/deb/<dist>/`. The packaging lives in `debian/` (sysreseval), `packaging/kathara/` (the overlay applied to the fork tarball at the commit of `pin.sh`) and `packaging/python-fs/` (the forky rebuild). `debian/rules` sets `install_layout = "fhs"` and the version in the installed `params.py`; the unit tests of the repository run during the build unless `DEB_BUILD_OPTIONS=nocheck` (`--no-check`). The GitHub workflow `.github/workflows/release.yml` runs the script for trixie and forky on every tag and attaches the `.deb` files to the release.
+
 ## Updating
 
 `sudo sre update` refreshes an installed tree from the GitHub repository: the latest release by default, `--main` for the head of `main`, `--check` to only see whether a newer version exists. It downloads the sources, merges `src/SRE/params.py` with the site's settings (customised parameters are kept; the questions concern only the parameters both customised here and changed upstream), replaces the files, keeps the site's own labs (everything in `lab/` but `lab/sre/`) and extra `lib/` files, rebuilds `bin/sre-wrapper` and records the installed commit in `<main_sre_dir>/.sre-update.json`. See the [CLI reference](cli.md) for the details.

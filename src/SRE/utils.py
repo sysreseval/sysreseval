@@ -213,9 +213,19 @@ def _iter_labs(lab_dir, *, include_exam_only_labs, recursive=True):
     lab_dir_abs = os.path.abspath(lab_dir)
 
     if recursive:
-        for dirpath, dirnames, filenames in os.walk(lab_dir_abs):
+        # Symbolic links to directories are followed (the Debian package links the labs it ships
+        # into the lab directory); a directory already walked is never entered again (loops)
+        seen = {os.path.realpath(lab_dir_abs)}
+        for dirpath, dirnames, filenames in os.walk(lab_dir_abs, followlinks=True):
             if not include_exam_only_labs:
                 dirnames[:] = [d for d in dirnames if not _is_exam_only(d)]
+            kept = []
+            for d in dirnames:
+                real = os.path.realpath(os.path.join(dirpath, d))
+                if real not in seen:
+                    seen.add(real)
+                    kept.append(d)
+            dirnames[:] = kept
 
             # Directory containing srelab.py is itself a lab; stop recursion.
             if dirpath != lab_dir_abs and params.srelab_py_name in filenames:

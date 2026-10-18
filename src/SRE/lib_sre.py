@@ -1287,7 +1287,7 @@ class NetScheme0:
                 lab.get_or_new_link(net.name).mode = net.mode
             except AttributeError:
                 error_quit(f"network '{net.name}': mode '{net.mode}' needs a Kathara with switch modes "
-                           f"(install it again with `make venv`)")
+                           f"({params.kathara_hint})")
         abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self.running_lab_name)
         _used_ports: set = set()
         xauth_cookie = _resolve_xauth_cookie()

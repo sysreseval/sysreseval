@@ -1,0 +1,22 @@
+#!/bin/sh
+# postrm of sysreseval: on purge, the link of the shipped labs and the empty state directories go;
+# the data (projects, archives, the site's labs in /var/lib/sre/lab) and the sre user are kept.
+set -e
+
+case "$1" in
+    purge)
+        if [ -L /var/lib/sre/lab/sre ]; then
+            rm -f /var/lib/sre/lab/sre
+        fi
+        for d in /var/lib/sre/lab /var/lib/sre/home /var/lib/sre; do
+            if [ -d "$d" ]; then
+                rmdir --ignore-fail-on-non-empty "$d"
+            fi
+        done
+        rm -rf /etc/sysreseval
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

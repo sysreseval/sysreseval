@@ -1,0 +1,8 @@
+#!/usr/bin/make -f
+# python3-kathara: the SysResEval fork of Kathara as a plain Python library (the Kathara project
+# ships a frozen binary instead).  The tests of upstream need Docker.
+export PYBUILD_NAME = kathara
+export PYBUILD_DISABLE = test
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild

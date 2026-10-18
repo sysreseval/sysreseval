@@ -131,6 +131,13 @@ class TestLaunchedBySudo:
         env = {'SUDO_USER': 'alice', 'SUDO_COMMAND': f'{sre_dir}/sbin/sre'}
         assert access.launched_by_sudo(env, f'{sre_dir}/sbin/sre')
 
+    def test_fhs_layout(self, tmp_path):
+        """The Debian package: /usr/bin/sre-wrapper runs sudo /usr/sbin/sre (its ../sbin/sre)."""
+        (tmp_path / 'usr' / 'sbin').mkdir(parents=True)
+        (tmp_path / 'usr' / 'sbin' / 'sre').write_text('#!/bin/sh\n')
+        env = {'SUDO_USER': 'alice', 'SUDO_COMMAND': f'{tmp_path}/usr/bin/../sbin/sre --user list'}
+        assert access.launched_by_sudo(env, f'{tmp_path}/usr/sbin/sre')
+
     def test_sudo_i_login_shell(self, install):
         sre_dir, _ = install
         env = {'SUDO_USER': 'admin', 'SUDO_COMMAND': '/bin/bash'}

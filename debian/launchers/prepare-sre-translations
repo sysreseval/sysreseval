@@ -1,0 +1,3 @@
+#!/bin/sh
+# SysResEval lab-authoring tool (Debian package layout: the code is in /usr/lib/sysreseval)
+exec /usr/bin/python3 /usr/lib/sysreseval/tools/prepare_sre_translations.py "$@"

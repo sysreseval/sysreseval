@@ -1,0 +1,28 @@
+Source: kathara
+Section: python
+Priority: optional
+Maintainer: emotchane <emmanuel.motchane@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               pybuild-plugin-pyproject,
+               python3-all,
+               python3-setuptools
+Standards-Version: 4.7.2
+Homepage: https://github.com/emotchane/Kathara
+Rules-Requires-Root: no
+
+Package: python3-kathara
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}
+Recommends: docker.io | docker-ce
+Suggests: python3-kubernetes
+Description: container-based network emulation framework (SysResEval fork)
+ Kathara is a lightweight network emulation system based on Docker
+ containers: a lab is a set of machines connected by collision domains,
+ deployed and managed through a Python API.
+ .
+ This package is the fork used by SysResEval, as a plain Python library (the
+ Kathara project ships a frozen binary): it adds the switch modes of the
+ collision domains (hub, switch, managed switch with VLANs and a console),
+ save_lab() / restore_lab() of the machines' filesystems and exec_link().
+ The Kubernetes manager works with python3-kubernetes installed.

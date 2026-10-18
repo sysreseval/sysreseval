@@ -1,4 +1,4 @@
-#!/opt/SRE/venv/bin/python3
+#!/usr/bin/python3
 import argparse
 import gettext
 import os
@@ -16,9 +16,10 @@ from SRE.utils_privileges import drop_privileges_temporarily, drop_privileges_pe
 
 
 # i18n — load French translations when LANG is set to a French locale.
-# Searches <repo>/locale/ (development) then <main_sre_dir>/locale/ (production).
+# Searches params.locale_dirs: <repo>/locale/ then <main_sre_dir>/locale/ on a checkout,
+# /usr/share/locale for the Debian package.
 def _setup_i18n():
-    for _d in [Path(__file__).resolve().parent.parent / 'locale', Path(params.main_sre_dir) / 'locale']:
+    for _d in params.locale_dirs:
         try:
             return gettext.translation('sre', localedir=str(_d)).gettext
         except FileNotFoundError:

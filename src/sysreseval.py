@@ -44,10 +44,7 @@ if __name__ == "__main__":
     _apply_system_font(settings.get_system_font_size())
     settings.add_system_font_size_listener(_apply_system_font)
 
-    translations_dirs = [
-        Path(__file__).resolve().parent.parent / "translations",
-        Path(params.main_sre_dir) / "translations",
-    ]
+    translations_dirs = [Path(d) for d in params.translations_dirs]
     qt_translations = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
 
     app_translator = QTranslator(app)

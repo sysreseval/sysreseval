@@ -1,0 +1,47 @@
+SysResEval for Debian
+=====================
+
+Layout of the package
+---------------------
+  /usr/sbin/sre                          command-line interface (run by root, or by the students
+                                         through /usr/bin/sre-wrapper and the sudoers rule)
+  /usr/bin/sysreseval                    graphical interface of the students and instructors
+  /usr/bin/sre-wrapper                   what the GUI and the students call: sudo /usr/sbin/sre --user
+  /usr/lib/sysreseval/                   the Python code; lib/ (grading helpers) is readable by the
+                                         sre user only
+  /usr/share/sysreseval/lab/sre/         the labs of the package (readable by the sre user only)
+  /var/lib/sre/                          projects, archives, exam.json, home/ (the directories
+                                         shared with the machines), lab/ (the lab directory:
+                                         lab/sre is a link to the labs above, add the site's own
+                                         labs next to it, e.g. /var/lib/sre/lab/s4/tp_ssh/srelab.py)
+  /etc/sysreseval/params.py              site parameters (see below)
+  /etc/sudoers.d/sysreseval              the rule that lets every user run `sre --user` as root:
+                                         restrict it to the students' group on a shared host
+  /usr/lib/systemd/system/sysreseval-preload-images.service
+                                         pre-pulls the Docker images at boot; disabled by default
+
+Site parameters
+---------------
+The parameters of /usr/lib/sysreseval/SRE/params.py are the defaults; /etc/sysreseval/params.py
+(a conffile, Python syntax) sets the values of this host: the groups allowed to run the archive
+tools (admin_gids), the terminal emulator of the GUI (terminal_cmd_prefix), whether privileged
+machines are allowed, where the archives go...  The file lists them.  Do not edit params.py
+itself: it is replaced at every upgrade.
+
+The sre user
+------------
+The package creates the system user `sre` (dynamic uid) and adds it to the `docker` group.  When
+/var/lib/sre or the archives are shared over NFS between hosts, create the user yourself before
+installing the package, with the same uid everywhere; the package keeps an existing user.
+
+After the installation
+----------------------
+1. Labs with 'switch' or 'managed' networks need the Kathara network plugin that knows the
+   switch types: run `sysreseval-network-plugin` once per Docker host (as root, with the Docker
+   daemon running and network access).
+2. The machines of the labs display their graphical programs on the X server of the host, which
+   must accept TCP connections on port 6000 (GDM: DisallowTCP=false, LightDM:
+   xserver-allow-tcp=true); see the installation guide of sysreseval-doc.
+3. `sre update` is disabled: the package is updated with apt.
+4. Removing the package keeps /var/lib/sre (projects, archives, site labs) and the sre user;
+   `apt purge` removes only the empty directories and /etc/sysreseval.

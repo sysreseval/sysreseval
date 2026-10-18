@@ -1,0 +1,19 @@
+Description: no upper bound on the platformdirs dependency
+ Debian's platformdirs.patch requires platformdirs~=4.3.6, which dh_python3 turns into
+ python3-platformdirs (<< 4.4); forky ships platformdirs 4.10 and the API fs uses
+ (PlatformDirs and its *_dir properties) is unchanged.
+Author: SysResEval
+Forwarded: not-needed
+Index: python-fs-2.4.16/setup.cfg
+===================================================================
+--- python-fs-2.4.16.orig/setup.cfg
++++ python-fs-2.4.16/setup.cfg
+@@ -42,7 +42,7 @@ packages = find:
+ setup_requires =
+     setuptools >=38.3.0
+ install_requires =
+-    platformdirs~=4.3.6
++    platformdirs>=4.3.6
+     enum34 ~=1.1.6      ;  python_version < '3.4'
+     typing ~=3.6        ;  python_version < '3.6'
+     backports.os ~=0.1  ;  python_version < '3.0'

@@ -97,7 +97,7 @@ class SwitchConsole:
         try:
             kathara = Kathara.get_instance()
             if not hasattr(kathara, 'exec_link'):
-                raise RuntimeError("this Kathara has no switch console (install it again with `make venv`)")
+                raise RuntimeError(f"this Kathara has no switch console ({params.kathara_hint})")
             if resolve_ports:
                 command = self.resolve(network_name, command)
             output = kathara.exec_link(network_name, command, lab_hash=self._net_scheme.get_lab_hash())

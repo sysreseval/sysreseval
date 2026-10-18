@@ -23,7 +23,7 @@ from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval
 
 # i18n — same lookup as sre.py
 def _setup_i18n(lang: str | None = None):
-    for _d in [Path(__file__).resolve().parent.parent.parent.parent / 'locale', Path(params.main_sre_dir) / 'locale']:
+    for _d in params.locale_dirs:
         try:
             languages = [lang] if lang else None
             return gettext.translation('sre', localedir=str(_d), languages=languages).gettext

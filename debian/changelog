@@ -1,0 +1,7 @@
+sysreseval (0.9.1-1) unstable; urgency=medium
+
+  * Debian packaging: python3-kathara (the SysResEval fork of Kathara) and
+    sysreseval with the FHS layout (/usr/lib/sysreseval, /usr/share/sysreseval,
+    /etc/sysreseval/params.py, /var/lib/sre).
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Sun, 18 Oct 2026 21:05:05 +0200

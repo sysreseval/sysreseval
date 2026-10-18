@@ -1,0 +1,5 @@
+# SysResEval: the students run the privileged `sre --user ...` commands through /usr/bin/sre-wrapper,
+# which calls sudo with this rule.  On a host with other users, replace the first ALL by the
+# students' group (e.g. %students).
+Defaults!/usr/sbin/sre env_keep += "USER_USERNAME SRE_XAUTH_COOKIE"
+ALL  ALL= NOPASSWD: /usr/sbin/sre --user *

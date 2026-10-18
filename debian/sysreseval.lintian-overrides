@@ -1,0 +1,14 @@
+# no manual pages yet: `sre --help` and the documentation of sysreseval-doc describe the commands
+sysreseval: no-manual-page [usr/bin/add-sre-translations]
+sysreseval: no-manual-page [usr/bin/check-sre-translations]
+sysreseval: no-manual-page [usr/bin/prepare-sre-translations]
+sysreseval: no-manual-page [usr/bin/sre-wrapper]
+sysreseval: no-manual-page [usr/bin/strip-instructor]
+sysreseval: no-manual-page [usr/bin/sysreseval]
+sysreseval: no-manual-page [usr/sbin/sre]
+sysreseval: no-manual-page [usr/sbin/sysreseval-network-plugin]
+# postinst gives lib/ and the shipped labs to the sre user after every unpack (dpkg unpacks them
+# root 0644): the trees are under /usr, owned by root and not writable by the students, who thus
+# cannot plant the hard links the tag warns about
+sysreseval: recursive-privilege-change "chown -R" [postinst:*]
+sysreseval: recursive-privilege-change "chmod -R" [postinst:*]

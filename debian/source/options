@@ -1,0 +1,2 @@
+# a build from a working tree: what is never part of the sources
+extend-diff-ignore = "^(venv|build|misc0|\.idea|\.claude|graphics/fonts|bin/sre-wrapper)(/|$)|__pycache__|\.py[co]$|\.DS_Store$"

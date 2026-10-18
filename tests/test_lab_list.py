@@ -163,3 +163,24 @@ class TestGetLabListWithTitles:
             (tmp_lab_dir / name).touch()
         names = [e["name"] for e in get_lab_list_with_titles()]
         assert names == sorted(names)
+
+
+class TestSymbolicLinks:
+    """The Debian package links its labs into the lab directory: /var/lib/sre/lab/sre."""
+
+    def test_symlinked_subdirectory_is_walked(self, tmp_lab_dir, tmp_path):
+        shipped = tmp_path / 'shipped' / 'sre'
+        shipped.mkdir(parents=True)
+        (shipped / 'dhcp.py').touch()
+        (shipped / 'tp').mkdir()
+        (shipped / 'tp' / 'srelab.py').touch()
+        (tmp_lab_dir / 'sre').symlink_to(shipped)
+        (tmp_lab_dir / 'site').mkdir()
+        (tmp_lab_dir / 'site' / 'own.py').touch()
+        assert get_lab_list() == ['site/own.py', 'sre/dhcp.py', 'sre/tp']
+
+    def test_symlink_loop_ends(self, tmp_lab_dir):
+        (tmp_lab_dir / 'a').mkdir()
+        (tmp_lab_dir / 'a' / 'x.py').touch()
+        (tmp_lab_dir / 'a' / 'loop').symlink_to(tmp_lab_dir)
+        assert get_lab_list() == ['a/x.py']

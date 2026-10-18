@@ -1,0 +1,99 @@
+Source: sysreseval
+Section: admin
+Priority: optional
+Maintainer: emotchane <emmanuel.motchane@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3,
+               gcc,
+               gettext,
+               qt6-l10n-tools,
+               bash-completion,
+               fonts-dejavu-core <!nocheck>,
+               fonts-dejavu-extra <!nocheck>,
+               fonts-dejavu-mono <!nocheck>,
+               graphviz <!nocheck>,
+               libgvplugin-neato-layout8 <!nocheck> | graphviz (<< 14) <!nocheck>,
+               python3-cryptography <!nocheck>,
+               python3-docker <!nocheck>,
+               python3-fpdf (>= 2.8.0) <!nocheck>,
+               python3-graphviz <!nocheck>,
+               python3-markdown <!nocheck>,
+               python3-msgpack <!nocheck>,
+               python3-netaddr <!nocheck>,
+               python3-odf <!nocheck>,
+               python3-pyside6.qtcore <!nocheck>,
+               python3-pyside6.qtgui <!nocheck>,
+               python3-pyside6.qtsvg <!nocheck>,
+               python3-pyside6.qtsvgwidgets <!nocheck>,
+               python3-pyside6.qtwidgets <!nocheck>,
+               python3-pytest <!nocheck>,
+               python3-urllib3 <!nocheck>,
+               python3-zstandard <!nocheck>,
+               qt6-qpa-plugins <!nocheck>
+Standards-Version: 4.7.2
+Homepage: https://github.com/sysreseval/sysreseval
+Vcs-Git: https://github.com/sysreseval/sysreseval.git
+Vcs-Browser: https://github.com/sysreseval/sysreseval
+Rules-Requires-Root: no
+
+Package: sysreseval
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         ${python3:Depends},
+         adduser,
+         docker.io | docker-ce,
+         docker-cli | docker-ce-cli,
+         fonts-dejavu-core,
+         fonts-dejavu-extra,
+         fonts-dejavu-mono,
+         graphviz,
+         libgvplugin-neato-layout8 | graphviz (<< 14),
+         libx11-6,
+         procps,
+         python3-cryptography,
+         python3-docker,
+         python3-fpdf (>= 2.8.0),
+         python3-graphviz,
+         python3-kathara,
+         python3-markdown,
+         python3-msgpack,
+         python3-netaddr,
+         python3-odf,
+         python3-pyside6.qtcore,
+         python3-pyside6.qtgui,
+         python3-pyside6.qtsvg,
+         python3-pyside6.qtsvgwidgets,
+         python3-pyside6.qtwidgets,
+         python3-urllib3,
+         python3-zstandard,
+         qt6-qpa-plugins,
+         sudo,
+         xauth,
+         xterm
+Recommends: asciinema,
+            bash-completion,
+            libxtst6,
+            mate-terminal | x-terminal-emulator,
+            qt6-translations-l10n
+Suggests: git, sysreseval-doc
+Description: network and system administration labs on Docker machines
+ SysResEval (sre) runs teaching labs made of Docker machines wired by the
+ Kathara framework: a lab file describes the machines, the networks, the
+ initial configuration and the automatic evaluation of what the students did.
+ The students work in the sysreseval graphical interface (terminals on the
+ machines, course text, questions, evaluations); the instructors write the
+ labs, run exams and collect the evaluation archives with the sre command.
+ .
+ The labs of the project are in /usr/share/sysreseval/lab, the site's own
+ labs go in /var/lib/sre/lab; the site parameters are in /etc/sysreseval.
+
+Package: sysreseval-doc
+Architecture: all
+Section: doc
+Depends: ${misc:Depends}
+Description: documentation of SysResEval
+ The HTML and PDF documentation of SysResEval: installation and setup, the
+ graphical interface, the sre command, lab authoring, the exam mode, the
+ archive format and the API of the lab libraries.

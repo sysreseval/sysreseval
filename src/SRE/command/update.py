@@ -153,6 +153,8 @@ def _run_make(main_dir: Path, targets: list[str]) -> bool:
 
 def action_update():
     user_not_allowed()
+    if not params.self_update_allowed:
+        error_quit("sre was installed by the package manager: update it with apt (sre update is disabled on this host)")
     args = SRE.args
     check_only = bool(args.check)
     main_dir = Path(params.main_sre_dir)

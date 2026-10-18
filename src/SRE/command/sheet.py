@@ -16,7 +16,7 @@ from ..utils import user_not_allowed, collect_archive_paths, parse_time_interval
 
 
 def _setup_i18n():
-    for _d in [Path(__file__).resolve().parent.parent.parent.parent / 'locale', Path(params.main_sre_dir) / 'locale']:
+    for _d in params.locale_dirs:
         try:
             return gettext.translation('sre', localedir=str(_d)).gettext
         except FileNotFoundError:

@@ -372,7 +372,7 @@ def quit_if_no_switch_modes(net_scheme, error):
     error_quit(f"{error}\n"
                f"This lab has networks that are not hubs ({', '.join(switches)}): they need the Kathara "
                f"network plugin with the switch types.\n"
-               f"Install it with `make network-plugin` in {params.main_sre_dir} (see the installation guide).")
+               f"{params.network_plugin_hint}")
 
 
 def rollback_project(setup: ProjectSetup, multi_project: bool = False):

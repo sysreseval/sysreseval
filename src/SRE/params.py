@@ -1,14 +1,34 @@
+import grp
 import os
+import pwd
 import re
+import stat
 from datetime import datetime
 from typing import Literal
 
 from pathlib import Path
 
-sre_uid = 1100
-sre_gid = 1100
+#################################################################################
+#
+# Layout and site parameters
+#
+# Plain top-level assignments: scripts/install.sh patches them, `sre update` merges them (the
+# values of the site are kept) and the site parameters file (site_params_file below) may set any
+# of them.  A value of None means "the default of the installation layout", computed in the
+# "Derived parameters" block below, after the site parameters file has been read.
+#
+#################################################################################
+
+# "checkout": a git tree (/opt/sre, scripts/install.sh, the venv); "fhs": the Debian package
+# (set by debian/rules on the installed copy: /usr/lib/sysreseval, /usr/share/sysreseval,
+# /etc/sysreseval, /var/lib/sre)
+install_layout = "checkout"
+
 sre_user = "sre"
-docker_gid = 988
+sre_uid = 1100          # None: the uid of sre_user
+sre_gid = 1100          # None: the gid of sre_user
+docker_group = "docker"
+docker_gid = 988        # None: the gid of docker_group, else of docker_socket_path, else sre_gid
 
 admin_uids = []
 admin_gids = [2000]
@@ -27,13 +47,28 @@ if (_candidate / "src" / "sre.py").is_file():
     main_sre_dir = str(_candidate)
 del _candidate
 sre_pub_dir = "/var/lib/sre"
-sre_user_public_dir = "/home/sre"
+sre_user_public_dir = None   # None: /home/sre (checkout), sre_pub_dir/home (fhs)
 
-lab_dir = main_sre_dir + "/lab"
-lib_dir = main_sre_dir + "/lib"
-
-
-
+lab_dir = None               # None: main_sre_dir/lab (checkout), sre_pub_dir/lab (fhs)
+shipped_lab_dir = None       # None: lab_dir (checkout), /usr/share/sysreseval/lab (fhs): the labs of the package
+lib_dir = None               # None: main_sre_dir/lib
+graphicdir = None            # None: main_sre_dir/graphics (checkout), /usr/share/sysreseval/graphics (fhs)
+fontdir = None               # None: graphicdir/fonts (checkout), /usr/share/fonts/truetype/dejavu (fhs)
+translations_dirs = None     # None: [<root>/translations, main_sre_dir/translations] (checkout), [/usr/share/sysreseval/translations] (fhs)
+locale_dirs = None           # None: [<root>/locale, main_sre_dir/locale] (checkout), [/usr/share/locale] (fhs)
+archive_dirs = None          # None: [sre_pub_dir/archives]
+sre_wrapper = None           # None: main_sre_dir/bin/sre-wrapper (checkout), /usr/bin/sre-wrapper (fhs)
+sysreseval_exe = None        # None: main_sre_dir/bin/sysreseval (checkout), /usr/bin/sysreseval (fhs)
+sre_exe = None               # None: main_sre_dir/sbin/sre (checkout), /usr/sbin/sre (fhs)
+docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this host (`sre update` skips the wipe)
+self_update_allowed = None   # None: True (checkout), False (fhs: the package is updated with apt); `sre update`
+network_plugin_hint = None   # None: how to install the network plugin with the switch types, by layout
+kathara_hint = None          # None: how to get a Kathara with the switch modes, by layout
+# Site parameters file: a Python file executed into this module after the parameters above (any
+# of them may be set there) and before the derived ones.  It must be owned by root (or by the
+# user running the program) and not writable by the group or others.  None: /etc/sysreseval/params.py
+# in the fhs layout (shipped by the Debian package), no file on a checkout.
+site_params_file = None
 
 # debug_mode:
 # - allow environment variables SRE_WRAPPER and SRE_PUB_DIR to overcome the default value (insecure)
@@ -80,7 +115,6 @@ update_tarball_url = "https://codeload.github.com/{repository}/tar.gz/{commit}"
 update_default_branch = "main"       # followed by `sre update --main` (the default is the latest release)
 update_http_timeout = 60             # seconds, per request
 update_lab_subdirs = ["sre"]         # entries of lab/ owned by the repository, reinstalled by `sre update`
-docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this host (`sre update` skips the wipe)
 
 #################################################################################
 #
@@ -103,7 +137,137 @@ use_sudo_user_for_username = True
 execute_commands_on_host: Literal["shell", "split", False] = "shell"
 
 
-authorized_src_dir = [main_sre_dir + '/lab', '/home']
+authorized_src_dir = None    # None: [lab_dir, shipped_lab_dir, '/home']
+
+# External terminal emulator used to open machine connections.
+# The command is built as: terminal_cmd_prefix[:-1] + [terminal_title_opt, title] + terminal_cmd_prefix[-1:] + [sre_wrapper, "connect", project, machine]
+# The title is passed as a two-token pair (terminal_title_opt, title), so only
+# terminals that accept a separate "--title TITLE"-style option work here.
+# Uncomment ONE pair below (binary path may differ on your host; check with `command -v`):
+#   gnome-terminal:
+#     terminal_cmd_prefix = ["/usr/bin/gnome-terminal", "--"]
+#     terminal_title_opt = "--title"
+#   xfce4-terminal:
+#     terminal_cmd_prefix = ["/usr/bin/xfce4-terminal", "-x"]
+#     terminal_title_opt = "--title"
+#   xterm:
+#     terminal_cmd_prefix = ["/usr/bin/xterm", "-e"]
+#     terminal_title_opt = "-title"
+#   terminator:
+#     terminal_cmd_prefix = ["/usr/bin/terminator", "-x"]
+#     terminal_title_opt = "-T"
+terminal_cmd_prefix = ["/usr/bin/mate-terminal", "--"]
+terminal_title_opt = "--title"
+
+
+#################################################################################
+#
+# Site parameters file
+#
+#################################################################################
+
+def _load_site_params(path: str, namespace: dict) -> None:
+    """Execute the site parameters file *path* into *namespace* (the globals of this module).
+    The file is refused when it is not owned by root or by the current user, or when its group or
+    others may write it: `sre` runs it as root.  A failure stops the program with the file name
+    and the line."""
+    try:
+        st = os.stat(path)
+        if st.st_uid not in (0, os.geteuid()):
+            raise PermissionError(f"not owned by root (uid {st.st_uid})")
+        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise PermissionError("writable by the group or others")
+        with open(path, encoding='utf-8') as f:
+            code = compile(f.read(), path, 'exec')
+    except SyntaxError as e:
+        raise SystemExit(f"sre: {path}:{e.lineno}: {e.msg}") from e
+    except OSError as e:
+        raise SystemExit(f"sre: {path}: {e}") from e
+    try:
+        exec(code, namespace)
+    except SystemExit:
+        raise
+    except Exception as e:
+        lineno = e.__traceback__.tb_next.tb_lineno if e.__traceback__ and e.__traceback__.tb_next else '?'
+        raise SystemExit(f"sre: {path}:{lineno}: {type(e).__name__}: {e}") from e
+
+
+if site_params_file is None and install_layout == "fhs":
+    site_params_file = "/etc/sysreseval/params.py"
+if debug_mode:
+    site_params_file = os.environ.get("SRE_SITE_PARAMS", site_params_file) or None
+if site_params_file and os.path.isfile(site_params_file):
+    _load_site_params(site_params_file, globals())
+
+if debug_mode:
+    sre_wrapper = os.environ.get("SRE_WRAPPER", sre_wrapper)
+    sre_pub_dir = os.environ.get("SRE_PUB_DIR", sre_pub_dir)
+
+
+#################################################################################
+#
+# Derived parameters: the defaults of the installation layout for the parameters left to None
+# above (an `if` block each: not parameters of their own for `sre update`)
+#
+#################################################################################
+
+_fhs = install_layout == "fhs"
+_root = Path(__file__).resolve().parent.parent.parent   # the checkout (<root>/src/SRE/params.py)
+if _fhs:
+    main_sre_dir = "/usr/lib/sysreseval"
+if sre_uid is None:
+    try:
+        sre_uid = pwd.getpwnam(sre_user).pw_uid
+    except KeyError:
+        sre_uid = 1100
+if sre_gid is None:
+    try:
+        sre_gid = pwd.getpwnam(sre_user).pw_gid
+    except KeyError:
+        sre_gid = 1100
+if docker_gid is None:
+    try:
+        docker_gid = grp.getgrnam(docker_group).gr_gid
+    except KeyError:
+        try:
+            docker_gid = os.stat(docker_socket_path).st_gid
+        except OSError:
+            docker_gid = sre_gid
+if sre_user_public_dir is None:
+    sre_user_public_dir = sre_pub_dir + "/home" if _fhs else "/home/sre"
+if lab_dir is None:
+    lab_dir = sre_pub_dir + "/lab" if _fhs else main_sre_dir + "/lab"
+if shipped_lab_dir is None:
+    shipped_lab_dir = "/usr/share/sysreseval/lab" if _fhs else lab_dir
+if lib_dir is None:
+    lib_dir = main_sre_dir + "/lib"
+if graphicdir is None:
+    graphicdir = "/usr/share/sysreseval/graphics" if _fhs else main_sre_dir + "/graphics"
+if fontdir is None:
+    fontdir = "/usr/share/fonts/truetype/dejavu" if _fhs else graphicdir + "/fonts"
+if translations_dirs is None:
+    translations_dirs = ["/usr/share/sysreseval/translations"] if _fhs \
+        else [str(_root / "translations"), main_sre_dir + "/translations"]
+if locale_dirs is None:
+    locale_dirs = ["/usr/share/locale"] if _fhs else [str(_root / "locale"), main_sre_dir + "/locale"]
+if archive_dirs is None:
+    archive_dirs = [sre_pub_dir + '/archives']
+if sre_wrapper is None:
+    sre_wrapper = "/usr/bin/sre-wrapper" if _fhs else main_sre_dir + "/bin/sre-wrapper"
+if sysreseval_exe is None:
+    sysreseval_exe = "/usr/bin/sysreseval" if _fhs else main_sre_dir + "/bin/sysreseval"
+if sre_exe is None:
+    sre_exe = "/usr/sbin/sre" if _fhs else main_sre_dir + "/sbin/sre"
+if authorized_src_dir is None:
+    authorized_src_dir = list(dict.fromkeys([lab_dir, shipped_lab_dir, '/home']))
+if self_update_allowed is None:
+    self_update_allowed = not _fhs
+if network_plugin_hint is None:
+    network_plugin_hint = ("Install it with `sysreseval-network-plugin` (see the installation guide)." if _fhs
+                           else f"Install it with `make network-plugin` in {main_sre_dir} (see the installation guide).")
+if kathara_hint is None:
+    kathara_hint = "upgrade the python3-kathara package" if _fhs else "install it again with `make venv`"
+del _fhs, _root
 
 
 #################################################################################
@@ -121,10 +285,6 @@ def sre_docker_image(image_name: str = "base") -> str:
 
 default_docker_image = sre_docker_image()
 
-sre_wrapper = main_sre_dir + "/bin/sre-wrapper"
-sysreseval_exe = main_sre_dir + "/bin/sysreseval"
-sre_exe = main_sre_dir + "/sbin/sre"
-
 # `sre update`: state file of the installed version (commit, manifest of the installed files, pristine
 # upstream values of params.py), lock and temporary directory, all in main_sre_dir
 update_state_file_name = ".sre-update.json"
@@ -141,16 +301,7 @@ update_state_previous_commit = "previous_commit"
 update_state_files = "files"
 update_state_params_upstream = "params_upstream"
 
-if debug_mode:
-    sre_wrapper = os.environ.get("SRE_WRAPPER", sre_wrapper)
-    sre_pub_dir = os.environ.get("SRE_PUB_DIR", sre_pub_dir)
-
 sre_projects_dir = sre_pub_dir + "/projects"
-
-
-
-
-archive_dirs = [sre_pub_dir + '/archives']
 
 sre_name_env_variable = "SRE_LAB_NAME"
 sre_xauth_cookie_env_variable = "SRE_XAUTH_COOKIE"
@@ -212,26 +363,6 @@ default_network_shape = "ellipse"
 pdf_schema_file = "schema.pdf"
 pdf_info_file = "informations.pdf"
 
-# External terminal emulator used to open machine connections.
-# The command is built as: terminal_cmd_prefix[:-1] + [terminal_title_opt, title] + terminal_cmd_prefix[-1:] + [sre_wrapper, "connect", project, machine]
-# The title is passed as a two-token pair (terminal_title_opt, title), so only
-# terminals that accept a separate "--title TITLE"-style option work here.
-# Uncomment ONE pair below (binary path may differ on your host; check with `command -v`):
-#   gnome-terminal:
-#     terminal_cmd_prefix = ["/usr/bin/gnome-terminal", "--"]
-#     terminal_title_opt = "--title"
-#   xfce4-terminal:
-#     terminal_cmd_prefix = ["/usr/bin/xfce4-terminal", "-x"]
-#     terminal_title_opt = "--title"
-#   xterm:
-#     terminal_cmd_prefix = ["/usr/bin/xterm", "-e"]
-#     terminal_title_opt = "-title"
-#   terminator:
-#     terminal_cmd_prefix = ["/usr/bin/terminator", "-x"]
-#     terminal_title_opt = "-T"
-terminal_cmd_prefix = ["/usr/bin/mate-terminal", "--"]
-terminal_title_opt = "--title"
-
 # Terminal appearance defaults (overridable via ~/.config/sysreseval)
 terminal_font_size = 12  # font size in points
 terminal_color_scheme = "black_on_white"  # "white_on_black" or "black_on_white"
@@ -252,18 +383,16 @@ instructor_begin_mark = "\ue000"
 instructor_args_end_mark = "\ue001"
 instructor_end_mark = "\ue002"
 
-graphicdir = main_sre_dir + "/graphics"
 thats_all_folks_svg = graphicdir + "/Thats_all_folks.svg"
 sysreseval_logo_svg = graphicdir + "/sysreseval.svg"
 machine_icon_svg_file = graphicdir + "/machine.svg"
 machine_forbidden_icon_svg_file = graphicdir + "/machine-forbidden.svg"
 switch_icon_svg_file = graphicdir + "/switch.svg"
 
-# TrueType fonts embedded in the PDFs of "sre export" and "sre outline" (downloaded by "make fonts"):
-# {style: file} with the styles '' (regular), 'B', 'I' and 'BI'. A missing style uses the regular
-# file. If the regular file cannot be loaded, the core Helvetica/Courier fonts are used and the
-# text is reduced to Latin-1.
-fontdir = graphicdir + "/fonts"
+# TrueType fonts embedded in the PDFs of "sre export" and "sre outline" (downloaded by "make fonts"
+# into fontdir, the fonts-dejavu packages in the fhs layout): {style: file} with the styles ''
+# (regular), 'B', 'I' and 'BI'. A missing style uses the regular file. If the regular file cannot
+# be loaded, the core Helvetica/Courier fonts are used and the text is reduced to Latin-1.
 pdf_font_files = {
     '': fontdir + "/DejaVuSans.ttf",
     'B': fontdir + "/DejaVuSans-Bold.ttf",

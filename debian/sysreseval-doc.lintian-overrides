@@ -1,0 +1,3 @@
+# the HTML documentation is the Sphinx (furo theme) and pdoc output committed in the repository
+sysreseval-doc: embedded-javascript-library *
+sysreseval-doc: privacy-breach-generic *
