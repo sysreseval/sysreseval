@@ -1,7 +1,8 @@
 # Debian packages of a release: on every tag (0.12.0...), scripts/build-deb.sh builds python3-kathara,
 # sysreseval and sysreseval-doc (and python3-fs on forky) for each Debian release, installs them in a
 # fresh container, then the files are attached to the GitHub release of the tag (created when the
-# tag was pushed without one).
+# tag was pushed without one; scripts/release.sh creates it first).  The pages workflow then
+# publishes the apt repository from the assets of every release.
 name: release
 on:
   push:
@@ -50,15 +51,20 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
-          # the packages of each distribution are renamed with it: trixie and forky builds carry the
-          # distribution in their version already, the logs do not
+          # the packages carry the distribution in their version; the logs are renamed with it
+          # (the -dbgsym packages are of no use to the users and are left out)
           for dist in trixie forky; do
             d="build/deb/deb-$dist"
             [ -d "$d" ] || continue
             for f in "$d"/*/*.deb "$d"/*/*.changes "$d"/*/*.buildinfo; do
-              [ -f "$f" ] && gh release upload --clobber "$TAG" "$f"
+              [ -f "$f" ] || continue
+              case "$f" in *-dbgsym_*) continue;; esac
+              gh release upload --clobber "$TAG" "$f"
             done
+            mkdir -p "$d/renamed"
             for f in "$d"/*.log "$d"/lintian.txt; do
-              [ -f "$f" ] && gh release upload --clobber "$TAG" "$f#$dist-$(basename "$f")"
+              [ -f "$f" ] || continue
+              cp "$f" "$d/renamed/$dist-$(basename "$f")"
+              gh release upload --clobber "$TAG" "$d/renamed/$dist-$(basename "$f")"
             done
           done

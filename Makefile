@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts network-plugin deb translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 
@@ -131,6 +131,17 @@ DIST ?= trixie
 REF ?=
 deb:
 	$(ROOT_DIR)/scripts/build-deb.sh --dist $(DIST) $(if $(REF),--ref $(REF),--local) --test-install
+
+# A release: `make release VERSION=0.13.2` bumps sre_version and debian/changelog, commits, tags,
+# pushes, creates the GitHub release and waits for the release (packages) and pages (apt repository)
+# workflows; `make release-setup` once for the signing key and GitHub Pages (scripts/release.sh).
+VERSION ?=
+release:
+	@[ -n "$(VERSION)" ] || { echo "usage: make release VERSION=0.13.2"; exit 1; }
+	$(ROOT_DIR)/scripts/release.sh $(VERSION)
+
+release-setup:
+	$(ROOT_DIR)/scripts/release.sh --setup
 
 venv: fonts
 	# Always start from a clean slate. `python3 -m venv` over an existing

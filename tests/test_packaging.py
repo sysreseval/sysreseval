@@ -106,10 +106,41 @@ class TestFiles:
         date = re.search(r'^KATHARA_DATE=(\d{8})', text, re.M).group(1)
         assert changelog.startswith(f'kathara (3.8.3+git{date}.{sha}-1)')
 
-    @pytest.mark.parametrize('script', ['scripts/build-deb.sh', 'scripts/network-plugin.sh',
-                                        'debian/sysreseval.postinst', 'debian/sysreseval.postrm', 'debian/set-param'])
+    @pytest.mark.parametrize('script', ['scripts/build-deb.sh', 'scripts/network-plugin.sh', 'scripts/release.sh',
+                                        'scripts/apt-repo.sh', 'debian/sysreseval.postinst',
+                                        'debian/sysreseval.postrm', 'debian/set-param'])
     def test_shell_syntax(self, script):
         subprocess.run(['bash', '-n', str(ROOT / script)], check=True)
+
+
+class TestRelease:
+    """scripts/release.sh: the version comparison and the changelog entry it writes (its helper
+    modes; the git / gh steps are not run here)."""
+    SCRIPT = str(ROOT / 'scripts' / 'release.sh')
+
+    @pytest.mark.parametrize('old, new, greater', [
+        ('0.13.1', '0.13.2', True), ('0.13.1', '0.14.0', True), ('0.9', '0.10.0', True), ('0.13.1', '1.0', True),
+        ('0.13.1', '0.13.1', False), ('0.13.2', '0.13.1', False), ('0.10.0', '0.9.9', False),
+    ])
+    def test_compare(self, old, new, greater):
+        rc = subprocess.run([self.SCRIPT, '--compare', old, new]).returncode
+        assert (rc == 0) is greater
+
+    def test_changelog_entry(self):
+        out = subprocess.run([self.SCRIPT, '--changelog-entry', '0.13.2'], capture_output=True, text=True,
+                             check=True).stdout
+        lines = out.splitlines()
+        assert lines[0] == 'sysreseval (0.13.2-1) unstable; urgency=medium'
+        assert lines[1] == '' and lines[2] == '  * Release 0.13.2.' and lines[3] == ''
+        maintainer = re.search(r'^ -- (.*>)  ', (DEBIAN / 'changelog').read_text(), re.M).group(1)
+        assert lines[4].startswith(f' -- {maintainer}  ')
+        assert re.search(r'  \w{3}, \d{1,2} \w{3} \d{4} \d\d:\d\d:\d\d [+-]\d{4}$', lines[4])
+
+    def test_workflows(self):
+        release = (ROOT / '.github' / 'workflows' / 'release.yml').read_text()
+        pages = (ROOT / '.github' / 'workflows' / 'pages.yml').read_text()
+        assert '-dbgsym_' in release and 'scripts/build-deb.sh' in release
+        assert 'scripts/apt-repo.sh' in pages and 'APT_SIGNING_KEY' in pages and 'workflows: [release]' in pages
 
     def test_makefile_calls_the_script(self):
         text = (ROOT / 'Makefile').read_text()

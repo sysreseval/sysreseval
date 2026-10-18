@@ -1,0 +1,68 @@
+# GitHub Pages of the repository: the documentation of docs/ (as the legacy Pages build served it)
+# plus the apt repository of the packages attached to the GitHub releases, rebuilt from scratch by
+# scripts/apt-repo.sh at every run (nothing binary in git: the releases are the only state) and
+# signed with the secret APT_SIGNING_KEY when it is set (scripts/release.sh --setup).
+# Runs after every successful release workflow, on a change of docs/ on main, or by hand.
+name: pages
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the repository tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends apt-utils dpkg-dev gnupg
+      - name: Download the packages of every release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p debs
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 200 --json tagName --jq '.[].tagName'); do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir "debs/$tag" 2>/dev/null \
+              || echo "release $tag: no package"
+          done
+          find debs -name '*.deb' | sort
+      - name: Build the site
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p site
+          cp -a docs/. site/
+          url=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url 2>/dev/null || true)
+          [ -n "$url" ] || url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          sign=""
+          [ -n "$APT_SIGNING_KEY" ] && sign=--sign || echo "APT_SIGNING_KEY is not set: the repository is unsigned"
+          scripts/apt-repo.sh --out site/apt --url "${url%/}/apt" $sign debs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

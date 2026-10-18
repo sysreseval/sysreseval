@@ -1,6 +1,17 @@
 SysResEval for Debian
 =====================
 
+Installing from the apt repository
+----------------------------------
+The packages of the GitHub releases are served, signed, by the apt repository of the project
+(<dist> is trixie or forky):
+
+  sudo curl -fsSL -o /usr/share/keyrings/sysreseval-archive-keyring.gpg \
+      https://sysreseval.github.io/sysreseval/apt/sysreseval-archive-keyring.gpg
+  sudo curl -fsSL -o /etc/apt/sources.list.d/sysreseval.sources \
+      https://sysreseval.github.io/sysreseval/apt/sysreseval-<dist>.sources
+  sudo apt update && sudo apt install sysreseval
+
 Layout of the package
 ---------------------
   /usr/sbin/sre                          command-line interface (run by root, or by the students
