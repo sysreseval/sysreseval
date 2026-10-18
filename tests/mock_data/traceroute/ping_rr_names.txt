@@ -1,0 +1,16 @@
+PING target (192.168.197.81) 56(124) bytes of data.
+64 bytes from target (192.168.197.81): icmp_seq=1 ttl=56 time=1.53 ms
+RR: 	m1 (192.168.226.55)
+	172.26.62.78
+	172.28.101.200
+	192.168.208.196
+	192.168.171.125
+	172.18.132.34
+	10.99.41.166
+	172.30.78.47
+	192.168.197.25
+
+
+--- target ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 1.526/1.526/1.526/0.000 ms

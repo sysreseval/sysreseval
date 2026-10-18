@@ -1,0 +1,11 @@
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+15:00:46.979233 IP (tos 0x0, ttl 2, id 28883, offset 0, flags [DF], proto ICMP (1), length 84)
+    192.168.226.55 > 192.168.197.81: ICMP echo request, id 16, seq 1, length 64
+15:00:46.980678 IP (tos 0xc0, ttl 63, id 28842, offset 0, flags [none], proto ICMP (1), length 112)
+    172.26.62.250 > 192.168.226.55: ICMP time exceeded in-transit, length 92
+	IP (tos 0x0, ttl 1, id 28883, offset 0, flags [DF], proto ICMP (1), length 84)
+    192.168.226.55 > 192.168.197.81: ICMP echo request, id 16, seq 1, length 64
+
+2 packets captured
+2 packets received by filter
+0 packets dropped by kernel

@@ -1,0 +1,5 @@
+PING target (192.168.197.81) 56(84) bytes of data.
+
+--- target ping statistics ---
+1 packets transmitted, 0 received, 100% packet loss, time 0ms
+

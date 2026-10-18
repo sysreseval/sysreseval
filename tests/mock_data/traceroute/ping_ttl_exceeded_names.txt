@@ -1,0 +1,6 @@
+PING target.tp-trace.lan (10.60.0.2) 56(84) bytes of data.
+From gw.tp-trace.lan (192.168.30.1) icmp_seq=1 Time to live exceeded
+
+--- target.tp-trace.lan ping statistics ---
+1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms
+

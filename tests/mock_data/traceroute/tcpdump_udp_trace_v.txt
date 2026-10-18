@@ -1,0 +1,13 @@
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+21:17:32.008490 IP (tos 0xc0, ttl 63, id 22805, offset 0, flags [none], proto ICMP (1), length 57)
+    192.168.187.2 > 192.168.241.64: ICMP time exceeded in-transit, length 37
+	IP (tos 0x0, ttl 1, id 54708, offset 0, flags [DF], proto UDP (17), length 29)
+    192.168.241.64.58607 > 10.86.81.159.33434: UDP, length 1
+21:17:33.017003 IP (tos 0xc0, ttl 58, id 58011, offset 0, flags [none], proto ICMP (1), length 57)
+    10.86.81.159 > 192.168.241.64: ICMP 10.86.81.159 udp port 33434 unreachable, length 37
+	IP (tos 0x0, ttl 1, id 61809, offset 0, flags [DF], proto UDP (17), length 29)
+    192.168.241.64.52478 > 10.86.81.159.33434: UDP, length 1
+
+2 packets captured
+2 packets received by filter
+0 packets dropped by kernel

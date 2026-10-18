@@ -1,0 +1,13 @@
+Running as user "root" and group "root". This could be dangerous.
+Capturing on 'eth0'
+ ** (tshark:129) 21:17:38.372472 [Main MESSAGE] -- Capture started.
+ ** (tshark:129) 21:17:38.372535 [Main MESSAGE] -- File: "/tmp/wireshark_eth0UD9FX3.pcapng"
+    1 0.000000000 192.168.241.56 → 192.168.241.64 ICMP 71 Time-to-live exceeded (Time to live exceeded in transit)
+    2 1.009548026 192.168.187.2 → 192.168.241.64 ICMP 71 Time-to-live exceeded (Time to live exceeded in transit)
+    3 2.019033882 10.242.117.219 → 192.168.241.64 ICMP 71 Time-to-live exceeded (Time to live exceeded in transit)
+    4 3.028407019 10.64.163.175 → 192.168.241.64 ICMP 71 Time-to-live exceeded (Time to live exceeded in transit)
+    5 4.037876093 10.132.27.63 → 192.168.241.64 ICMP 71 Time-to-live exceeded (Time to live exceeded in transit)
+    6 5.047181552 10.25.217.181 → 192.168.241.64 ICMP 71 Time-to-live exceeded (Time to live exceeded in transit)
+    7 6.056722640 10.86.81.159 → 192.168.241.64 ICMP 71 Destination unreachable (Port unreachable)
+tshark: 
+7 packets captured

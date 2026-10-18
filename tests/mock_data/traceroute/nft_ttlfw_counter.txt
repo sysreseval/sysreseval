@@ -1,0 +1,8 @@
+table ip ttlfw {
+	chain prerouting {
+		type filter hook prerouting priority raw; policy accept;
+		iifname "eth0" icmp type echo-request ip ttl < 12 drop
+		iifname "eth0" icmp type echo-request ip hdrlength > 5 drop
+		iifname "eth0" ip ttl < 8 counter packets 22 bytes 669 comment "probes"
+	}
+}
