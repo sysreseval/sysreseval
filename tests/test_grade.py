@@ -196,6 +196,24 @@ class TestQuestionForm:
         q = g.get_questions_ordered()[0]
         assert [f['name'] for f in q.fields] == ['ip']
 
+    def test_multiline_fields_extracted(self):
+        # '+' / '+N': a multi-line free-text field of N lines (params.default_form_field_lines
+        # without N), stored as {"name", "lines"} instead of {"name", "regex"}
+        g = make_grade()
+        g.grade()
+        g.question_form(title='F', description='A: @@{notes:+}@@ B: @@{more:+8}@@ C: @@{n:[0-9]+}@@')
+        q = g.get_questions_ordered()[0]
+        assert q.fields == [{'name': 'notes', 'lines': params.default_form_field_lines},
+                            {'name': 'more', 'lines': 8}, {'name': 'n', 'regex': '[0-9]+'}]
+
+    def test_multiline_answer_round_trip(self):
+        desc = 'Notes: @@{notes:+6}@@'
+        h = hashlib.sha256((_tt_hash_str('Config') + '--' + _tt_hash_str(desc)).encode()).hexdigest()
+        g = make_grade()
+        g._answers[h] = json.dumps({'notes': 'line 1\nline 2'})
+        g.grade()
+        assert g.question_form(title='Config', description=desc) == {'notes': 'line 1\nline 2'}
+
 
 # ---------------------------------------------------------------------------
 # Question ordering

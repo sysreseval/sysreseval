@@ -21,7 +21,7 @@ The student starts the **sysreseval** GUI, then chooses and opens a *lab*.[^2] E
 - **Informations** — general background and instructions, written in Markdown.
 - **Questions** — a list of items the student must complete. Each question is one of:
   - a Markdown text describing a task to perform on the machines (e.g. *configure the network on m1*),
-  - a form whose fields capture specific facts (e.g. *what is the MTU of `eth0` on m1?*); fields may be free-text validated by a regexp (e.g. an IPv4 address), a dropdown, or a checkbox,
+  - a form whose fields capture specific facts (e.g. *what is the MTU of `eth0` on m1?*); fields may be free-text validated by a regexp (e.g. an IPv4 address), a multi-line text area, a dropdown, or a checkbox,
   - a free-form multi-line text answer.
 - **Terminals** — an embedded shell for each machine the student is allowed to connect to. A lab may expose these as plain root shells or, for example, as a `login` prompt that restricts students to a particular user account.
 - **Machines** — a status table for each machine: state, NAT network, exposed ports. The students can use it to launch separate terminals sessions to

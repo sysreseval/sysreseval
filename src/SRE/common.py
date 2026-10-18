@@ -1,11 +1,13 @@
 import hashlib
 import json
+import re
 from dataclasses import dataclass, asdict, field
 from typing import List
 
 import msgpack
 from enum import Enum
 
+from . import params
 from .instructor_text import strip_instructor
 
 
@@ -154,10 +156,12 @@ class QuestionDummy(Question):
 
 @dataclass
 class QuestionForm(Question):
-    """A structured-form question with ``@@{field:regex}@@`` inline markers.
+    """A structured-form question with ``@@{field:spec}@@`` inline markers.
 
-    ``fields`` is a list of dicts, each either ``{"name": str, "regex": str}``
-    for a text input or ``{"name": str, "choices": [...]}`` for a dropdown.
+    ``fields`` is a list of dicts, one per marker: ``{"name": str, "regex": str}`` for a
+    single-line text input, ``{"name": str, "lines": int}`` for a multi-line text input
+    (spec ``+`` or ``+N``, see ``form_field_lines()``), ``{"name": str, "choices": [...]}`` for
+    a dropdown and ``{"name": str, "checkbox": bool}`` for a checkbox (its default state).
     """
 
     title: TranslatedText | str
@@ -189,6 +193,21 @@ class QuestionForm(Question):
         if isinstance(d.get('description'), dict):
             d['description'] = TranslatedText(d['description'])
         return cls(**d)
+
+
+FORM_MULTILINE_PREFIX = '+'
+
+
+def form_field_lines(spec: str) -> int | None:
+    """Visible lines of a multi-line form field spec (``+`` or ``+N``), None for any other spec.
+
+    ``+`` and ``+0`` give ``params.default_form_field_lines``; what follows the digits is ignored.
+    The one definition of the grammar, shared by ``Grade0.question_form()`` and the GUI forms.
+    """
+    if not spec.startswith(FORM_MULTILINE_PREFIX):
+        return None
+    m = re.match(r'\s*(\d*)', spec[len(FORM_MULTILINE_PREFIX):])
+    return int(m.group(1) or 0) or params.default_form_field_lines
 
 
 @dataclass

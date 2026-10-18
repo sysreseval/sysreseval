@@ -3,8 +3,9 @@ import json
 
 import pytest
 
+from SRE import params
 from SRE.common import (
-    QuestionText, QuestionDummy, QuestionForm,
+    QuestionText, QuestionDummy, QuestionForm, form_field_lines,
     GradeElement, InfoLab, InfoMachine, InfoInterface, InfoSwitch,
     QuestionType, TranslatedText,
     bonus_texts
@@ -306,3 +307,19 @@ class TestInstructorFragmentsInHashes:
     def test_public_text_still_counts(self):
         title, description = self._texts(True)
         assert QuestionForm(title, description).question_hash != QuestionForm(title, 'other').question_hash
+
+
+# ---------------------------------------------------------------------------
+# form_field_lines: the `+` / `+N` spec of a multi-line form field
+# ---------------------------------------------------------------------------
+
+class TestFormFieldLines:
+    def test_lines(self):
+        assert form_field_lines('+8') == 8
+        assert form_field_lines('+ 3') == 3
+        assert form_field_lines('+') == params.default_form_field_lines
+        assert form_field_lines('+0') == params.default_form_field_lines
+        assert form_field_lines('+abc') == params.default_form_field_lines
+
+    def test_other_specs_are_not_multiline(self):
+        assert [form_field_lines(s) for s in ('[0-9]+', '>a|b', '?', '?true', '', 'a+')] == [None] * 6

@@ -4,11 +4,12 @@ from PySide6.QtCore import QRegularExpression
 from PySide6.QtGui import QFont, QRegularExpressionValidator, QValidator
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QCheckBox, QPushButton,
-    QScrollArea, QWidget, QFrame,
+    QScrollArea, QWidget, QFrame, QPlainTextEdit, QSizePolicy,
 )
 
+from SRE.common import form_field_lines
 from sysreseval import settings
-from sysreseval.view.form_question_widget import _FIELD_RE, _AutoBrowser
+from sysreseval.view.form_question_widget import _FIELD_RE, _AutoBrowser, FormQuestionWidget
 
 
 class FlavorFormDialog(QDialog):
@@ -16,7 +17,9 @@ class FlavorFormDialog(QDialog):
 
     Field types:
       @@{name:regex}@@      — QLineEdit with optional regex validator
-      @@{name:>A|B|C}@@     — QComboBox with choices
+      @@{name:+N}@@         — QPlainTextEdit of N lines, free text ('+' alone: default height)
+      @@{name:>A|B|C}@@     — QComboBox with choices (a choice 'Label>>>value' shows the label)
+      @@{name:?}@@          — QCheckBox ('?true': checked by default)
       @@{name::Label}@@     — QPushButton that submits the form (spec starts with ':')
 
     If no submit button is present in the form text, a default "Submit" button is
@@ -33,6 +36,7 @@ class FlavorFormDialog(QDialog):
         self.resize(w, h)
 
         self._text_fields: dict[str, QLineEdit] = {}
+        self._multiline_fields: dict[str, QPlainTextEdit] = {}
         self._combo_fields: dict[str, QComboBox] = {}
         self._combo_values: dict[str, list[str]] = {}
         self._checkbox_fields: dict[str, QCheckBox] = {}
@@ -117,6 +121,15 @@ class FlavorFormDialog(QDialog):
                         layout.addWidget(combo)
                         self._combo_fields[name] = combo
                         self._combo_values[name] = [value for _, value in pairs]
+                    elif (lines := form_field_lines(spec)) is not None:
+                        # Multi-line free text, never validated
+                        edit = QPlainTextEdit()
+                        edit.setFont(font)
+                        edit.setTabChangesFocus(True)
+                        edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                        FormQuestionWidget._set_multiline_height(edit, lines)
+                        layout.addWidget(edit)
+                        self._multiline_fields[name] = edit
                     else:
                         edit = QLineEdit()
                         edit.setFont(font)
@@ -180,6 +193,10 @@ class FlavorFormDialog(QDialog):
             edit.blockSignals(True)
             edit.setText(str(answers.get(name, "")))
             edit.blockSignals(False)
+        for name, edit in self._multiline_fields.items():
+            edit.blockSignals(True)
+            edit.setPlainText(str(answers.get(name, "")))
+            edit.blockSignals(False)
         for name, combo in self._combo_fields.items():
             saved = str(answers.get(name, ""))
             values = self._combo_values.get(name, [])
@@ -216,6 +233,7 @@ class FlavorFormDialog(QDialog):
     def get_flavor_json(self) -> str:
         answers: dict = {}
         answers.update({name: edit.text() for name, edit in self._text_fields.items()})
+        answers.update({name: edit.toPlainText() for name, edit in self._multiline_fields.items()})
         answers.update({
             name: (self._combo_values[name][combo.currentIndex()]
                    if combo.currentIndex() >= 0 else "")

@@ -282,8 +282,10 @@ def _write_info(running_lab_name):
         export_kathara_project=True, allow_self_grade=True, machines=[],
         questions=[
             QuestionText(title='Quelle est l’adresse… ?', description='Réponse **en → gras** `x ─ y`', order=1),
-            QuestionForm(title='Formulaire œ', description='Adresse → @@{addr:[0-9.]+}@@ …', order=2,
-                         fields=[{'name': 'addr →', 'regex': '[0-9.]+'}]),
+            QuestionForm(title='Formulaire œ',
+                         description='Adresse → @@{addr:[0-9.]+}@@ … Notes @@{notes:+40}@@', order=2,
+                         # a multi-line field: a box of 40 lines, taller than a page (clamped, new page)
+                         fields=[{'name': 'addr →', 'regex': '[0-9.]+'}, {'name': 'notes', 'lines': 40}]),
             QuestionDummy(title='Note …', description='ignorée', order=3),
         ],
         delay_between_self_grade=60, eval_interval_without_exam_mode=0, eval_before_exit=False,

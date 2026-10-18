@@ -2049,15 +2049,18 @@ class Grade0:
     _FORM_FIELD_RE = _re.compile(r'@@\{([^:}]+):([^}]*)\}@@')
 
     def question_form(self, title, section='', description='', hash=None, order=None, cheat_answers=None):
-        """Register a form question with inline @@{field_name:regex}@@ fields.
+        """Register a form question with inline @@{field_name:spec}@@ fields.
 
+        spec: a regex (single-line text input), '>a|b' or 'Label>>>value|...' (dropdown),
+        '?' / '?true' (checkbox), '+' / '+N' (multi-line free text of N visible lines,
+        params.default_form_field_lines by default).
         Returns the student's answers as a dict {field_name: value}, or {} if none yet.
         cheat_answers format: {state_name: {field_name: value, ...}}
         """
         title = self._apply_section(section, title)
-        from .common import QuestionForm
+        from .common import QuestionForm, form_field_lines
 
-        # The @@{field:regex}@@ markers are language-independent, so when the
+        # The @@{field:spec}@@ markers are language-independent, so when the
         # description is a TranslatedText (wrapped in tr()) extract fields from
         # its resolved string. The full TranslatedText is still stored on the
         # question for per-language rendering.
@@ -2076,6 +2079,8 @@ class Grade0:
             elif spec.startswith('?'):
                 default = spec[1:].strip().lower() not in ('', 'false')
                 fields.append({"name": name, "checkbox": default})
+            elif (lines := form_field_lines(spec)) is not None:
+                fields.append({"name": name, "lines": lines})
             else:
                 fields.append({"name": name, "regex": spec})
 

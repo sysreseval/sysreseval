@@ -269,11 +269,17 @@ def _build_info_pdf(running_lab_name: str) -> bytes:
                 label_w = 60
                 box_w = w - label_w
                 for field in q.fields:
+                    # one 8 mm box per field, 6 mm per visible line of a multi-line field
+                    lines = field.get("lines")
+                    box_h = 8 if lines is None else max(8, 6 * lines)
+                    box_h = min(box_h, pdf.page_break_trigger - pdf.t_margin - 10)
+                    if pdf.get_y() + box_h > pdf.page_break_trigger:  # rect() never breaks the page
+                        pdf.add_page()
                     pdf.set_x(pdf.l_margin)
                     pdf.set_font(pdf.text_font, size=11)
                     pdf.cell(label_w, 8, field.get("name", "") + " :", new_x="END", new_y="LAST")
-                    pdf.rect(pdf.get_x(), pdf.get_y(), box_w, 8)
-                    pdf.ln(10)
+                    pdf.rect(pdf.get_x(), pdf.get_y(), box_w, box_h)
+                    pdf.ln(box_h + 2)
             pdf.ln(3)
 
     return bytes(pdf.output())

@@ -6,9 +6,10 @@ from PySide6.QtGui import Qt, QFont, QRegularExpressionValidator
 from PySide6.QtCore import QRegularExpression
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QCheckBox,
-    QScrollArea, QTextBrowser, QFrame, QSizePolicy,
+    QScrollArea, QTextBrowser, QFrame, QSizePolicy, QPlainTextEdit,
 )
 
+from SRE.common import form_field_lines
 from SRE.instructor_text import markdown_to_html, rebalance_fragments, strip_instructor, unwrap_instructor
 from sysreseval import settings, util
 
@@ -67,6 +68,8 @@ class FormQuestionWidget(QWidget):
         super().__init__(parent)
         self._font_size = font_size
         self._text_fields: dict[str, QLineEdit] = {}
+        self._multiline_fields: dict[str, QPlainTextEdit] = {}
+        self._multiline_lines: dict[str, int] = {}
         self._combo_fields: dict[str, QComboBox] = {}
         self._combo_values: dict[str, list[str]] = {}
         self._checkbox_fields: dict[str, QCheckBox] = {}
@@ -88,7 +91,7 @@ class FormQuestionWidget(QWidget):
         font.setPointSize(font_size)
 
         # re.split with capturing groups gives:
-        #   [text, name, regex, text, name, regex, ..., text]
+        #   [text, name, spec, text, name, spec, ..., text]
         segments = _FIELD_RE.split(description)
         # every text chunk is rendered on its own: an instructor fragment going across a field
         # is closed and reopened around it
@@ -153,6 +156,18 @@ class FormQuestionWidget(QWidget):
                         layout.addWidget(combo)
                         self._combo_fields[name] = combo
                         self._combo_values[name] = [value for _, value in pairs]
+                    elif (lines := form_field_lines(spec)) is not None:
+                        # Multi-line free text: a box of N lines, the text scrolls beyond
+                        edit = QPlainTextEdit()
+                        edit.setFont(font)
+                        edit.setTabChangesFocus(True)  # Tab moves to the next field, as in a QLineEdit
+                        edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                        self._set_multiline_height(edit, lines)
+                        edit.textChanged.connect(self._emit_changed)
+                        edit.installEventFilter(self)
+                        layout.addWidget(edit)
+                        self._multiline_fields[name] = edit
+                        self._multiline_lines[name] = lines
                     else:
                         edit = QLineEdit()
                         edit.setFont(font)
@@ -187,8 +202,15 @@ class FormQuestionWidget(QWidget):
     def _emit_changed(self):
         self.answer_changed.emit(json.dumps(self.get_answers(), ensure_ascii=False))
 
+    @staticmethod
+    def _set_multiline_height(edit: QPlainTextEdit, lines: int):
+        """Fix the height of a multi-line field to `lines` lines of its current font."""
+        edit.setFixedHeight(lines * edit.fontMetrics().lineSpacing()
+                            + int(2 * edit.document().documentMargin()) + 2 * edit.frameWidth())
+
     def get_answers(self) -> dict:
         result = {name: edit.text() for name, edit in self._text_fields.items()}
+        result.update({name: edit.toPlainText() for name, edit in self._multiline_fields.items()})
         result.update({
             name: (self._combo_values[name][combo.currentIndex()]
                    if combo.currentIndex() >= 0 else "")
@@ -201,6 +223,10 @@ class FormQuestionWidget(QWidget):
         for name, edit in self._text_fields.items():
             edit.blockSignals(True)
             edit.setText(answers.get(name, ""))
+            edit.blockSignals(False)
+        for name, edit in self._multiline_fields.items():
+            edit.blockSignals(True)
+            edit.setPlainText(answers.get(name, ""))
             edit.blockSignals(False)
         for name, combo in self._combo_fields.items():
             combo.blockSignals(True)
@@ -230,6 +256,9 @@ class FormQuestionWidget(QWidget):
             browser.update_font_size(size)
         for edit in self._text_fields.values():
             edit.setFont(font)
+        for name, edit in self._multiline_fields.items():
+            edit.setFont(font)
+            self._set_multiline_height(edit, self._multiline_lines[name])
         for combo in self._combo_fields.values():
             combo.setFont(font)
         for cb in self._checkbox_fields.values():
@@ -238,7 +267,7 @@ class FormQuestionWidget(QWidget):
             label.setFont(font)
 
     def eventFilter(self, obj, event):
-        if isinstance(obj, QLineEdit):
+        if isinstance(obj, (QLineEdit, QPlainTextEdit)):
             if event.type() == QEvent.Type.KeyPress:
                 if event.modifiers() & Qt.ControlModifier:
                     key = event.key()
