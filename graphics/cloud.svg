@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="120" viewBox="0 0 200 120"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Cloud: a network whose far side is unknown -->
+  <path d="M 52 100
+           C 28 100, 14 78, 30 62
+           C 18 40, 48 24, 68 38
+           C 78 12, 128 10, 140 36
+           C 166 26, 192 50, 176 70
+           C 196 84, 182 102, 160 100
+           Z"
+        fill="#eceff1" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+</svg>

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from SRE import params
+from SRE.common import NETWORK_ICON_SIZE, SWITCH_ICON_SIZE, icon_node_attrs
 from sysreseval import settings
 
 _svg_href_re = re.compile(r'(xlink:href|href)="([^"]+\.svg)"')
@@ -153,22 +154,17 @@ def _build_graph(
         elif name in networks:
             net_color = network_colors.get(name)
             net_shape = network_shapes.get(name)
-            if net_shape:
+            # a shape of params.network_shape_icons (a cloud) is an icon, any other a graphviz shape
+            net_icon = params.network_shape_icons.get(net_shape) if net_shape else None
+            if net_icon and use_icons:
+                node(name, label=f'<<B> {name} </B>>', **icon_node_attrs(net_icon, net_color, *NETWORK_ICON_SIZE))
+            elif net_shape and not net_icon:
                 node(name, label=f'<<B> {name} </B>>', shape=net_shape,
                      style="filled", fillcolor=net_color if net_color else "lightblue",
                      fontsize="14")
             elif use_icons:
-                if net_color:
-                    node(name, label=f'<<B> {name} </B>>', shape="box",
-                         style="filled", fillcolor=net_color,
-                         image=params.switch_icon_svg_file, labelloc="b",
-                         width="0.5", height="0.5", fixedsize="true", imagescale="true",
-                         fontsize="16")
-                else:
-                    node(name, label=f'<<B> {name} </B>>', shape="none",
-                         image=params.switch_icon_svg_file, labelloc="b",
-                         width="0.5", height="0.5", fixedsize="true", imagescale="true",
-                         fontsize="16")
+                node(name, label=f'<<B> {name} </B>>',
+                     **icon_node_attrs(params.switch_icon_svg_file, net_color, *SWITCH_ICON_SIZE))
             else:
                 node(name, label=f'<<B> {name} </B>>', shape=params.default_network_shape,
                      style="filled", fillcolor=net_color if net_color else "lightblue",

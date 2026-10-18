@@ -10,6 +10,22 @@ from enum import Enum
 from . import params
 from .instructor_text import strip_instructor
 
+# graphviz node sizes (inches) of the icons of the schema (GUI and export PDF)
+SWITCH_ICON_SIZE = ("0.5", "0.5")
+NETWORK_ICON_SIZE = ("1.0", "0.6")      # a network drawn as an icon of params.network_shape_icons (a cloud)
+
+
+def icon_node_attrs(image: str, color: str | None, width: str, height: str) -> dict:
+    """Graphviz attributes of a network drawn as an icon with its label below: a box filled with
+    its colour behind the image when it has one, nothing otherwise."""
+    attrs = {"image": image, "labelloc": "b", "width": width, "height": height,
+             "fixedsize": "true", "imagescale": "true", "fontsize": "16"}
+    if color:
+        attrs.update(shape="box", style="filled", fillcolor=color)
+    else:
+        attrs["shape"] = "none"
+    return attrs
+
 
 class TranslatedText(dict):
     """A dict subclass holding translations keyed by language code (e.g. 'en', 'fr').

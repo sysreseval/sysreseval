@@ -423,3 +423,49 @@ class TestBuildLabConfSwitches:
         conf = self._conf(monkeypatch, make_scheme())
         assert 'CD_MODE' not in conf and '/vlan=' not in conf and '/trunk=' not in conf
         assert conf.endswith('\n')
+
+
+# ---------------------------------------------------------------------------
+# _build_schema_graph: the network shapes of the schema PDF
+# ---------------------------------------------------------------------------
+
+from SRE.command.export import _build_schema_graph  # noqa: E402
+
+
+class CloudScheme(NetScheme0):
+    """A gateway between a coloured lan, a cloud (an icon) and a hexagon (a graphviz shape)."""
+
+    def __init__(self, data):
+        super().__init__(data=data, running_lab_name=RUNNING_LAB)
+        self.lan = Network(name='lan', color='lightyellow')
+        self.core = Network(name='core', shape='cloud')
+        self.hexa = Network(name='hexa', shape='hexagon')
+        self.gw = Machine(name='gw')
+        NetAdapter(machine=self.gw, network=self.lan, interface=0)
+        NetAdapter(machine=self.gw, network=self.core, interface=1)
+        NetAdapter(machine=self.gw, network=self.hexa, interface=2)
+
+
+def _node_attrs(g, name):
+    lines = [line for line in g.body if line.startswith(f"\t{name} [")]
+    assert len(lines) == 1, g.body
+    return lines[0]
+
+
+class TestBuildSchemaGraph:
+    def _graph(self, use_icons):
+        return _build_schema_graph(CloudScheme(MockData()), False, use_icons, False, None, "+30",
+                                   icon=lambda path: path + ".png")
+
+    def test_a_cloud_network_is_the_cloud_icon_when_icons_are_on(self):
+        g = self._graph(use_icons=True)
+        core, lan, hexa = _node_attrs(g, 'core'), _node_attrs(g, 'lan'), _node_attrs(g, 'hexa')
+        assert params.cloud_icon_svg_file + ".png" in core and "shape=none" in core and "labelloc=b" in core
+        assert params.switch_icon_svg_file + ".png" in lan and "fillcolor=lightyellow" in lan and "shape=box" in lan
+        assert "shape=hexagon" in hexa and "image" not in hexa
+
+    def test_without_icons_a_cloud_is_the_default_network_shape(self):
+        g = self._graph(use_icons=False)
+        core = _node_attrs(g, 'core')
+        assert f"shape={params.default_network_shape}" in core and "image" not in core
+        assert "shape=hexagon" in _node_attrs(g, 'hexa') and "image" not in _node_attrs(g, 'lan')

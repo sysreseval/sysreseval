@@ -14,7 +14,7 @@ from pathlib import Path
 from graphviz import Graph
 
 from .. import params
-from ..common import InfoLab, QuestionType, TranslatedText
+from ..common import NETWORK_ICON_SIZE, SWITCH_ICON_SIZE, InfoLab, QuestionType, TranslatedText, icon_node_attrs
 from ..instructor_text import strip_instructor
 from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp
 from ..pdf import SrePDF, markdown_to_html
@@ -81,9 +81,24 @@ def _build_schema_pdf_impl(net_scheme, curved, sep_pos, use_icons, reverse,
     def png(svg_path):
         return _svg_to_png(svg_path, tmp_dir) or svg_path
 
-    icon_switch    = png(params.switch_icon_svg_file)
-    icon_machine   = png(params.machine_icon_svg_file)
-    icon_forbidden = png(params.machine_forbidden_icon_svg_file)
+    g = _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, sep, icon=png,
+                            show_nat_network=show_nat_network, nat_network_name=nat_network_name,
+                            nat_network_color=nat_network_color, host_network_exploded=host_network_exploded,
+                            host_network_edge_relative_length=host_network_edge_relative_length,
+                            schema_splines=schema_splines, schema_overlap=schema_overlap)
+    return g.pipe(format="pdf")
+
+
+def _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, sep, icon=lambda path: path,
+                        show_nat_network=False, nat_network_name='', nat_network_color='',
+                        host_network_exploded=False, host_network_edge_relative_length=1.0,
+                        schema_splines='curved', schema_overlap='prism') -> Graph:
+    """The graphviz graph of the visible topology of *net_scheme* (the export's twin of the GUI's
+    ``schema_view._build_graph``); *icon* maps an SVG icon file to the file graphviz embeds."""
+    icon_switch    = icon(params.switch_icon_svg_file)
+    icon_machine   = icon(params.machine_icon_svg_file)
+    icon_forbidden = icon(params.machine_forbidden_icon_svg_file)
+    shape_icons = {shape: icon(file) for shape, file in params.network_shape_icons.items()}
 
     g = Graph(name="network", engine="neato", format="pdf")
     g.attr(overlap=schema_overlap, sep=sep, splines=schema_splines if curved else "line")
@@ -124,22 +139,18 @@ def _build_schema_pdf_impl(net_scheme, curved, sep_pos, use_icons, reverse,
                    fontsize="14")
         elif kind == 'net':
             net = obj
-            if net.shape:
+            # a shape of params.network_shape_icons (a cloud) is an icon, any other a graphviz shape
+            net_icon = shape_icons.get(net.shape) if net.shape else None
+            if net_icon and use_icons:
+                g.node(net.name, label=f'<<B> {net.name} </B>>',
+                       **icon_node_attrs(net_icon, net.color, *NETWORK_ICON_SIZE))
+            elif net.shape and not net_icon:
                 g.node(net.name, label=f'<<B> {net.name} </B>>', shape=net.shape,
                        style="filled", fillcolor=net.color if net.color else "lightblue",
                        fontsize="14")
             elif use_icons:
-                if net.color:
-                    g.node(net.name, label=f'<<B> {net.name} </B>>', shape="box",
-                           style="filled", fillcolor=net.color,
-                           image=icon_switch, labelloc="b",
-                           width="0.5", height="0.5", fixedsize="true", imagescale="true",
-                           fontsize="16")
-                else:
-                    g.node(net.name, label=f'<<B> {net.name} </B>>', shape="none",
-                           image=icon_switch, labelloc="b",
-                           width="0.5", height="0.5", fixedsize="true", imagescale="true",
-                           fontsize="16")
+                g.node(net.name, label=f'<<B> {net.name} </B>>',
+                       **icon_node_attrs(icon_switch, net.color, *SWITCH_ICON_SIZE))
             else:
                 g.node(net.name, label=f'<<B> {net.name} </B>>', shape=params.default_network_shape,
                        style="filled", fillcolor=net.color if net.color else "lightblue",
@@ -185,7 +196,7 @@ def _build_schema_pdf_impl(net_scheme, curved, sep_pos, use_icons, reverse,
                        taillabel=f"eth{max_iface + 1}", weight="2",
                        len=host_edge_len)
 
-    return g.pipe(format="pdf")
+    return g
 
 
 def _lab_display_name(running_lab_name: str) -> str:

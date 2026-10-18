@@ -22,7 +22,8 @@ from PySide6.QtCore import QTranslator  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from SRE import params  # noqa: E402
-from sysreseval.view.schema_view import HIDDEN_COLOR, _build_graph, _build_svg_from_machines  # noqa: E402
+from sysreseval.view.schema_view import (HIDDEN_COLOR, _build_graph, _build_svg_from_machines,  # noqa: E402
+                                         _svg_file_to_png_data_uri)
 
 _app = QApplication.instance() or QApplication([])
 
@@ -185,3 +186,49 @@ class TestProjectWidget:
             assert self._titles(widget)[:2] == ["Schéma", "Schéma complet"]
         finally:
             _app.removeTranslator(translator)
+
+
+# ---------------------------------------------------------------------------
+# network shapes: a graphviz shape, or an icon (params.network_shape_icons: the cloud)
+# ---------------------------------------------------------------------------
+
+GRAPHICS = Path(__file__).parent.parent / 'graphics'
+CLOUD_SVG = str(GRAPHICS / 'cloud.svg')
+GATEWAY = [_machine("gw", ["lan", "core"])]
+
+
+class TestNetworkShapes:
+    def test_a_cloud_network_is_drawn_as_the_cloud_icon(self):
+        g = _build_graph(GATEWAY, use_icons=True, network_shapes={"core": "cloud"})
+        core = _attrs(g, "core")
+        assert params.cloud_icon_svg_file in core and "shape=none" in core and "labelloc=b" in core
+        assert "fillcolor" not in core
+        assert params.switch_icon_svg_file in _attrs(g, "lan")      # the other network keeps the switch icon
+
+    def test_a_coloured_cloud_gets_a_filled_box_behind_it_like_a_switch(self):
+        g = _build_graph(GATEWAY, use_icons=True, network_shapes={"core": "cloud"},
+                         network_colors={"core": "pink", "lan": "lightyellow"})
+        core, lan = _attrs(g, "core"), _attrs(g, "lan")
+        assert params.cloud_icon_svg_file in core and "shape=box" in core and "fillcolor=pink" in core
+        assert params.switch_icon_svg_file in lan and "shape=box" in lan and "fillcolor=lightyellow" in lan
+
+    def test_without_icons_a_cloud_is_the_default_network_shape(self):
+        g = _build_graph(GATEWAY, use_icons=False, network_shapes={"core": "cloud"})
+        core = _attrs(g, "core")
+        assert f"shape={params.default_network_shape}" in core and "image" not in core and "cloud" not in core
+
+    @pytest.mark.parametrize("use_icons", [False, True])
+    def test_a_graphviz_shape_is_passed_through(self, use_icons):
+        g = _build_graph(GATEWAY, use_icons=use_icons, network_shapes={"core": "hexagon"})
+        core = _attrs(g, "core")
+        assert "shape=hexagon" in core and "image" not in core
+
+    def test_the_cloud_icon_is_a_valid_svg_inlined_in_the_schema(self, monkeypatch):
+        assert _svg_file_to_png_data_uri(CLOUD_SVG) is not None
+        if not shutil.which("neato"):
+            pytest.skip("graphviz not installed")
+        monkeypatch.setattr(params, "network_shape_icons", {"cloud": CLOUD_SVG})
+        monkeypatch.setattr(params, "switch_icon_svg_file", str(GRAPHICS / 'switch.svg'))
+        monkeypatch.setattr(params, "machine_icon_svg_file", str(GRAPHICS / 'machine.svg'))
+        svg = bytes(_build_svg_from_machines(GATEWAY, use_icons=True, network_shapes={"core": "cloud"}))
+        assert b"data:image/png;base64" in svg and b"cloud.svg" not in svg
