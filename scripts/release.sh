@@ -3,6 +3,7 @@
 #
 #   scripts/release.sh <version>            e.g. scripts/release.sh 0.13.2  (make release VERSION=0.13.2)
 #
+#   0. shows the current and the new version and asks for a confirmation (-y / --yes skips it)
 #   1. sre_version = "<version>" in src/SRE/params.py and a <version>-1 entry in debian/changelog
 #   2. make tests (--no-check skips it)
 #   3. commit "Release <version>", tag <version>, push main and the tag to the upstream remote
@@ -167,12 +168,21 @@ GEN
 
 # --- the release ---------------------------------------------------------------------------------
 release() {
-    local version="$1" check="$2" wait="$3" current remote dirty release_url started_at
+    local version="$1" check="$2" wait="$3" yes="$4" current remote dirty release_url started_at answer
     started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "version '$version' is not of the form 0.13.2"
     current=$(current_version)
     [ -n "$current" ] || die "no sre_version line in $PARAMS"
     version_gt "$current" "$version" || die "version $version is not greater than the current $current"
+    # nothing before the confirmation
+    echo "SysResEval: current version $current, new release $version"
+    echo "  $version will be written to src/SRE/params.py and debian/changelog, committed, tagged,"
+    echo "  pushed to the upstream remote and published as a GitHub release (then packaged)."
+    if [ "$yes" != 1 ]; then
+        [ -t 0 ] || die "stdin is not a terminal: use --yes to confirm the version $version"
+        read -r -p "Is the version $version correct? [y/N] " answer
+        case "$answer" in y|Y|yes|YES|Yes) ;; *) echo "release: aborted, nothing done"; exit 1;; esac
+    fi
     command -v gh >/dev/null || die "gh is not installed"
     gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
     GH_REPO=$(github_repo)
@@ -243,15 +253,16 @@ PY
 }
 
 # --- command line ----------------------------------------------------------------------------------
-VERSION=""; CHECK=1; WAIT=1; MODE=release
+VERSION=""; CHECK=1; WAIT=1; YES=0; MODE=release
 while [ $# -gt 0 ]; do
     case "$1" in
         --setup) MODE=setup; shift;;
         --no-check) CHECK=0; shift;;
         --no-wait) WAIT=0; shift;;
+        -y|--yes) YES=1; shift;;
         --compare) version_gt "$2" "$3"; exit $?;;
         --changelog-entry) changelog_entry "$2"; exit 0;;
-        -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         -*) die "unknown option $1 (see --help)";;
         *) [ -z "$VERSION" ] || die "one version only"; VERSION="$1"; shift;;
     esac
@@ -259,5 +270,5 @@ done
 mkdir -p "$REPO_DIR/build"
 case "$MODE" in
     setup) [ -z "$VERSION" ] || die "--setup takes no version"; setup;;
-    release) [ -n "$VERSION" ] || die "usage: scripts/release.sh <version> | --setup (see --help)"; release "$VERSION" "$CHECK" "$WAIT";;
+    release) [ -n "$VERSION" ] || die "usage: scripts/release.sh <version> | --setup (see --help)"; release "$VERSION" "$CHECK" "$WAIT" "$YES";;
 esac
