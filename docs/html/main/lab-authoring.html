@@ -350,6 +350,8 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#deployment-layout">Deployment layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#debian-package">Debian package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#updating">Updating</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-installer">Running the installer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-manually">Install manually</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a><ul>
@@ -404,6 +406,7 @@
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-update-main-ref-tag-branch-commit-check-force-y-venv"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">update</span> <span class="pre">[--main</span> <span class="pre">|</span> <span class="pre">--ref</span> <span class="pre">&lt;tag|branch|commit&gt;]</span> <span class="pre">[--check</span> <span class="pre">|</span> <span class="pre">--force]</span> <span class="pre">[-y]</span> <span class="pre">[--venv]</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a><ul>
@@ -532,7 +535,7 @@ a large data file, or anything else you don’t want to download from the Intern
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;path&gt;]</span></code><a class="headerlink" href="#sre-start-debug-project-p-lab-xauth-file-path" title="Link to this heading">¶</a></h3>
 <p>The author counterpart to <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code>. Privileged only and incompatible with <code class="docutils literal notranslate"><span class="pre">--user</span></code>. Deploys the lab exactly like a normal start, then drops a <code class="docutils literal notranslate"><span class="pre">.private/debug_project</span></code> marker that the rest of the runtime keys on. Effect:</p>
 <ul class="simple">
-<li><p><strong>Topology</strong>: every machine is shown in the GUI’s <em>Machines</em> tab — even those declared <code class="docutils literal notranslate"><span class="pre">hidden=True</span></code> or <code class="docutils literal notranslate"><span class="pre">allow_connection=False</span></code>. <em>Connect</em> buttons are exposed for all of them so you can step inside infrastructure machines (DNS, monitors, helpers) to inspect their state.</p></li>
+<li><p><strong>Topology</strong>: every machine is shown in the GUI’s <em>Machines</em> tab — even those declared <code class="docutils literal notranslate"><span class="pre">hidden=True</span></code> or <code class="docutils literal notranslate"><span class="pre">allow_connection=False</span></code>. <em>Connect</em> buttons are exposed for all of them so you can step inside infrastructure machines (DNS, monitors, helpers) to inspect their state. A <em>Full Schema</em> tab, right after <em>Schema</em>, draws the topology with the hidden machines too: they, their links and the networks only they use are in red (the <em>Schema</em> tab stays the student’s view).</p></li>
 <li><p><strong>Restrictions lifted</strong>: user-mode guards on <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> (which normally refuse to touch hidden machines or apply <code class="docutils literal notranslate"><span class="pre">user_allowed=False</span></code> states) are bypassed.</p></li>
 <li><p><strong>Grading</strong>: when you <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> a debug project, marks are always shown and every grade scope is surfaced — <code class="docutils literal notranslate"><span class="pre">no_mark_on_self_grade</span></code>, <code class="docutils literal notranslate"><span class="pre">hide_potential_penalty_grades_in_self_grade</span></code> and the periodic-eval gating are all ignored.</p></li>
 <li><p><strong>Operations log</strong>: every state application (<code class="docutils literal notranslate"><span class="pre">initial</span></code> at start, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span></code>, the <code class="docutils literal notranslate"><span class="pre">save</span></code>/<code class="docutils literal notranslate"><span class="pre">restore</span></code> lifecycle states) and every evaluation appends what it executed to <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">dir&gt;/operations.log</span></code>: one header per run, then <code class="docutils literal notranslate"><span class="pre">stepN</span> <span class="pre">-</span> <span class="pre">on</span> <span class="pre">&lt;machine|host&gt;</span> <span class="pre">:</span> <span class="pre">&lt;operation&gt;</span></code> lines with the command output and exit code. File writes, appends and copies show the path, mode, owner and size, followed by the content written (text only, capped like command outputs). Each evaluation ends with its grade elements (<code class="docutils literal notranslate"><span class="pre">grade</span> <span class="pre">-</span> <span class="pre">[&lt;part&gt;]</span> <span class="pre">&lt;title&gt;</span> <span class="pre">:</span> <span class="pre">&lt;grade&gt;</span> <span class="pre">/</span> <span class="pre">&lt;max&gt;</span></code>, with <code class="docutils literal notranslate"><span class="pre">(self-eval</span> <span class="pre">only)</span></code> / <code class="docutils literal notranslate"><span class="pre">(exo-eval</span> <span class="pre">only)</span></code> when the scope is restricted) and the totals and marks of both scopes. The GUI shows it live in the <em>Log</em> tab. Never written for a normal project.</p></li>
@@ -599,43 +602,40 @@ sre<span class="w"> </span>connect<span class="w"> </span>alice<span class="w"> 
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">info.json</span></code></p></td>
 <td><p>Public metadata read by the GUI: lab title, <code class="docutils literal notranslate"><span class="pre">informations</span></code>, machine list, question list. Written at <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code> and refreshed on <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scheme.svg</span></code></p></td>
-<td><p>The topology diagram rendered with graphviz.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">answers/answers.json</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">answers/answers.json</span></code></p></td>
 <td><p>Student answers to <code class="docutils literal notranslate"><span class="pre">question_text</span></code> / <code class="docutils literal notranslate"><span class="pre">question_form</span></code> blocks.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">answers/cheat.json</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">answers/cheat.json</span></code></p></td>
 <td><p>Optional instructor-provided cheat answers keyed by state name (used by <code class="docutils literal notranslate"><span class="pre">cheat_answers=</span></code>).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">shared/</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">shared/</span></code></p></td>
 <td><p>Bind-mounted into every container as <code class="docutils literal notranslate"><span class="pre">/home/sre/{running_lab_name}/</span></code> when the module sets <code class="docutils literal notranslate"><span class="pre">shared_path</span> <span class="pre">=</span> <span class="pre">True</span></code>. The host-side path for file exchange.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/</span></code></p></td>
 <td><p>Mode <code class="docutils literal notranslate"><span class="pre">0o700</span></code>. Holds everything the runtime needs but students shouldn’t touch.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/data.json</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/data.json</span></code></p></td>
 <td><p>The serialized <code class="docutils literal notranslate"><span class="pre">Data</span></code> instance, reloaded on every later operation.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/srelab</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/srelab</span></code></p></td>
 <td><p>Symlink to the lab’s <code class="docutils literal notranslate"><span class="pre">.py</span></code> file (whatever <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code> was pointed at).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/files/</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/files/</span></code></p></td>
 <td><p>Target of <code class="docutils literal notranslate"><span class="pre">self.cp_from_host()</span></code> / <code class="docutils literal notranslate"><span class="pre">self.cp_to_host()</span></code> — also where <code class="docutils literal notranslate"><span class="pre">cp_from_host</span></code> resolves relative source paths.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/records/</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/records/</span></code></p></td>
 <td><p>Asciinema recordings of terminal sessions, if <code class="docutils literal notranslate"><span class="pre">record_sessions</span></code> is enabled.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/eval_in_progress</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/eval_in_progress</span></code></p></td>
 <td><p>PID lock created during <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> to prevent concurrent evaluations.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/debug_project</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/debug_project</span></code></p></td>
 <td><p>Marker dropped by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code> (see above).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/instructor_mode</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/instructor_mode</span></code></p></td>
 <td><p>Marker of the instructor mode (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--instructor-mode</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span></code>; see <a class="reference internal" href="#instructor-only-texts-instructor">Instructor-only texts</a>).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.private/auto_eval.log</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.private/auto_eval.log</span></code></p></td>
 <td><p>One line per student-triggered self-eval; drives the <code class="docutils literal notranslate"><span class="pre">self.auto_eval_count</span></code> counter exposed to <code class="docutils literal notranslate"><span class="pre">Grade.grade()</span></code>.</p></td>
 </tr>
 </tbody>
@@ -833,6 +833,9 @@ in a supervised classroom, the instructor may want every student to share the sa
 <span class="n">Flavor</span><span class="o">.</span><span class="n">hard</span> <span class="o">=</span> <span class="n">Flavor</span><span class="p">(</span><span class="n">nb</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>The form takes the same fields as <code class="docutils literal notranslate"><span class="pre">question_form()</span></code> (<code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:regex}&#64;&#64;</span></code> single-line text,
+<code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:+N}&#64;&#64;</span></code> multi-line text of N lines, <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:&gt;a|b}&#64;&#64;</span></code> dropdown, <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:?}&#64;&#64;</span></code>
+checkbox), plus <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{name::Label}&#64;&#64;</span></code>, a button that submits the form.</p>
 <p>Module-level control:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">flavor_form_at_startup</span> <span class="o">=</span> <span class="kc">True</span>   <span class="c1"># show the flavor form when the student opens the lab</span>
 </pre></div>
@@ -1668,7 +1671,7 @@ During the instructor’s evaluation, only the three <code class="docutils liter
 <td><p>Register a free-text question; returns the student’s answer (or <code class="docutils literal notranslate"><span class="pre">default_answer</span></code>).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">self.question_form(title,</span> <span class="pre">section='',</span> <span class="pre">description='',</span> <span class="pre">hash=None,</span> <span class="pre">order=None,</span> <span class="pre">cheat_answers=None)</span></code></p></td>
-<td><p>Register a form question with inline <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:regex}&#64;&#64;</span></code> (text), `&#64;&#64;{field:&gt;opt1</p></td>
+<td><p>Register a form question with inline <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:regex}&#64;&#64;</span></code> (single-line text), <code class="docutils literal notranslate"><span class="pre">&#64;&#64;{field:+N}&#64;&#64;</span></code> (multi-line free text of N lines, <code class="docutils literal notranslate"><span class="pre">params.default_form_field_lines</span></code> without N), `&#64;&#64;{field:&gt;opt1</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">self.question_dummy(title,</span> <span class="pre">section='',</span> <span class="pre">description='',</span> <span class="pre">hash=None,</span> <span class="pre">order=None)</span></code></p></td>
 <td><p>Display-only block (no input shown to the student).</p></td>

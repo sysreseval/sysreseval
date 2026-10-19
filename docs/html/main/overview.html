@@ -350,6 +350,8 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#deployment-layout">Deployment layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#debian-package">Debian package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#updating">Updating</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-installer">Running the installer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-manually">Install manually</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a><ul>
@@ -404,6 +406,7 @@
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-update-main-ref-tag-branch-commit-check-force-y-venv"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">update</span> <span class="pre">[--main</span> <span class="pre">|</span> <span class="pre">--ref</span> <span class="pre">&lt;tag|branch|commit&gt;]</span> <span class="pre">[--check</span> <span class="pre">|</span> <span class="pre">--force]</span> <span class="pre">[-y]</span> <span class="pre">[--venv]</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a><ul>
@@ -516,7 +519,7 @@ launch an eval, etc…</p>
 <li><p><strong>Questions</strong> — a list of items the student must complete. Each question is one of:</p>
 <ul>
 <li><p>a Markdown text describing a task to perform on the machines (e.g. <em>configure the network on m1</em>),</p></li>
-<li><p>a form whose fields capture specific facts (e.g. <em>what is the MTU of <code class="docutils literal notranslate"><span class="pre">eth0</span></code> on m1?</em>); fields may be free-text validated by a regexp (e.g. an IPv4 address), a dropdown, or a checkbox,</p></li>
+<li><p>a form whose fields capture specific facts (e.g. <em>what is the MTU of <code class="docutils literal notranslate"><span class="pre">eth0</span></code> on m1?</em>); fields may be free-text validated by a regexp (e.g. an IPv4 address), a multi-line text area, a dropdown, or a checkbox,</p></li>
 <li><p>a free-form multi-line text answer.</p></li>
 </ul>
 </li>
