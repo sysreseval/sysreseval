@@ -17,7 +17,8 @@
 #   4. the GitHub release of the tag (gh release create, notes generated from the commits)
 #   5. wait for the "release" workflow (the trixie and forky packages, attached to the release)
 #      and for the "pages" workflow (the documentation and the apt repository on GitHub Pages);
-#      --no-wait returns right after the release is created
+#      --no-wait returns right after the release is created.  A run that stopped after the
+#      tag was made (push or GitHub unreachable) is resumed by running the same command again
 #
 #   scripts/release.sh --setup              once: the signing key of the apt repository (generated
 #      with gpg in your keyring, or in a debian container without gpg) stored as the repository
@@ -88,8 +89,10 @@ for item in items:
 
 read_notes() {           # the release notes typed on the terminal, an empty line ends them
     local line notes=""
-    echo "Release notes (markdown, one line per item, an empty line ends; nothing = the generated notes only):"
-    while IFS= read -r -p "> " line; do
+    # (called in a command substitution: everything meant for the eyes goes to stderr)
+    echo "Release notes: one item per line, an empty line ends them (nothing: only the notes GitHub" >&2
+    echo "generates from the commits). They go to debian/changelog, the commit and the release page." >&2
+    while IFS= read -r -p "note> " line; do
         [ -n "$line" ] || break
         notes="${notes:+$notes
 }$line"
@@ -248,11 +251,16 @@ GEN
 # --- the release ---------------------------------------------------------------------------------
 release() {
     local version="$1" check="$2" wait="$3" yes="$4" notes="$5" current remote dirty dirty_release_files release_url started_at answer
+    local resume="" remote_tag same_version=0
     started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "version '$version' is not of the form 0.13.2"
     current=$(current_version)
     [ -n "$current" ] || die "no sre_version line in $PARAMS"
-    version_gt "$current" "$version" || die "version $version is not greater than the current $current"
+    if [ "$current" = "$version" ]; then
+        same_version=1       # a previous run bumped the tree: the checks below say where to resume
+    else
+        version_gt "$current" "$version" || die "version $version is not greater than the current $current"
+    fi
     # nothing before the confirmation
     echo "SysResEval: current version $current, new release $version"
     echo "  $version will be written to src/SRE/params.py and debian/changelog, committed, tagged,"
@@ -296,13 +304,28 @@ release() {
     if [ "$(git rev-list --count "HEAD..$remote/main")" != 0 ]; then
         die "main is behind $remote/main: pull first"
     fi
-    git rev-parse -q --verify "refs/tags/$version" >/dev/null && die "the tag $version exists locally"
-    [ -z "$(git ls-remote --tags "$remote" "refs/tags/$version")" ] || die "the tag $version exists on $remote"
     if gh release view "$version" --repo "$GH_REPO" >/dev/null 2>&1; then
         die "the release $version exists on GitHub"
     fi
-    echo "current version $current, releasing $version on $remote/main"
+    # a previous run may have stopped after the tag (push or GitHub unreachable...): go on from there
+    remote_tag=$(git ls-remote --tags "$remote" "refs/tags/$version^{}" "refs/tags/$version" | awk '{print $1}' | tail -1)
+    if [ -n "$remote_tag" ]; then
+        [ "$remote_tag" = "$(git rev-parse HEAD)" ] || die "the tag $version exists on $remote and is not HEAD"
+        [ "$same_version" = 1 ] || die "the tag $version exists on $remote but sre_version is $current"
+        resume=release
+        echo "the tag $version is on $remote at HEAD without a release: resuming at the GitHub release"
+    elif git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+        [ "$(git rev-parse "refs/tags/$version^{}")" = "$(git rev-parse HEAD)" ] && [ "$same_version" = 1 ] \
+            || die "the tag $version exists locally and is not the release of HEAD (git tag -d $version)"
+        resume=push
+        echo "the tag $version is at HEAD and not on $remote: resuming at the push"
+    elif [ "$same_version" = 1 ]; then
+        die "sre_version is already $version in the tree but no tag $version exists: set it back or tag by hand"
+    else
+        echo "current version $current, releasing $version on $remote/main"
+    fi
 
+    if [ -z "$resume" ]; then
     log "version bump"
     python3 - "$PARAMS" "$version" <<'PY'
 import re, sys
@@ -333,8 +356,11 @@ PY
         git commit -q -m "Release $version"
         git tag -a "$version" -m "Release $version"
     fi
-    git push "$remote" main "refs/tags/$version"
+    fi
+    if [ "$resume" != release ]; then
+    git push -q "$remote" main "refs/tags/$version"
     echo "pushed $(git rev-parse --short HEAD) and the tag $version to $remote"
+    fi
 
     log "GitHub release $version"
     # the given notes come first, the notes gh generates from the commits follow (after one newline:
@@ -374,7 +400,7 @@ while [ $# -gt 0 ]; do
         --notes-file) [ $# -ge 2 ] && [ -f "$2" ] || die "--notes-file needs a readable file"; NOTES="$(cat "$2")"; shift 2;;
         --compare) MODE=compare; ARGS=("$2" "$3"); shift 3;;
         --changelog-entry) MODE=changelog; ARGS=("$2"); shift 2;;
-        -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+        -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         -*) die "unknown option $1 (see --help)";;
         *) [ -z "$VERSION" ] || die "one version only"; VERSION="$1"; shift;;
     esac
