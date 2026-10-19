@@ -300,7 +300,9 @@ release() {
     GH_REPO=$(github_repo)
     remote=$(upstream_remote)
     log "checks against $remote ($GH_REPO)"
-    git fetch --quiet "$remote" main --tags
+    # main only: a --tags fetch fails when a local tag differs from the remote's (a rewritten
+    # history), and the one tag that matters is looked up on the remote below
+    git fetch --quiet "$remote" main || die "git fetch $remote main failed"
     if [ "$(git rev-list --count "HEAD..$remote/main")" != 0 ]; then
         die "main is behind $remote/main: pull first"
     fi
