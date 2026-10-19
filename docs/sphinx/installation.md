@@ -7,6 +7,7 @@ on anything else you must install the prerequisites yourself.
 - **Root** access. The installer refuses to start unless `EUID == 0` (run with `sudo`).
 - The **Docker daemon running**, with `/var/run/docker.sock` present. The installer reads the socket's GID and grants the `sre` user access to it; if the socket is missing it aborts with a hint to start the daemon.
 - **Python 3.13**. On Ubuntu < 24.04 you may need the `deadsnakes` PPA; on Debian < 13 you need to upgrade or build it from source. The installer will offer to `apt-get install python3.13` on Debian-likes.
+- **AppArmor** (on by default on Debian and Ubuntu) needs no action: the Kathara fork runs the non-privileged machines with the Docker option `apparmor=unconfined`, because Docker's `docker-default` profile denies the remount of `/proc/sys` and every write under `/proc/sys/net/` (the `initial` state of a lab could not reset `ip_forward`, and the students could not set it either; Docker runs the privileged machines unconfined by itself). With a stock Kathara, boot the host with `apparmor=0` on the kernel command line instead.
 
 These tools must already be on `PATH` (always present on a POSIX system): `sed grep stat getent useradd groupadd usermod install`.
 

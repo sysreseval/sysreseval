@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 
 from SRE import params
+from net_config import REMOUNT_PROC_SYS_CMD
 
 pytestmark = pytest.mark.skipif(os.geteuid() != 0, reason="Docker lifecycle tests must run as root")
 
@@ -1103,3 +1104,26 @@ class TestSwitchModes:
             r = _sre('stop', name)
             assert r.returncode == 0, r.stderr
             assert _containers(docker_client, h) == [] and _networks(docker_client, h) == []
+
+
+# ---------------------------------------------------------------------------
+# sysctl writes in a non-privileged machine
+# ---------------------------------------------------------------------------
+
+class TestSysctlWritable:
+    """The states (`lib/net_config.py`: `REMOUNT_PROC_SYS_CMD`, then `sysctl -w`) and the students
+    write `net.*` sysctls in non-privileged machines.  Docker's `docker-default` AppArmor profile
+    (enforced on a stock Debian / Ubuntu host) denies the remount of /proc/sys and every write
+    under /proc/sys/net/ without any audit line; the Kathara fork therefore runs the non-privileged
+    devices with `apparmor=unconfined`.  Without it, `initial` left `ip_forward=1` on every machine
+    and the first evaluation of the static routing lab credited the routers (2026-10-19)."""
+
+    def test_non_privileged_machine_can_write_net_sysctl(self, docker_client, labs_dir, projects):
+        running_lab_name, lab_hash = _start(projects, labs_dir / 'non_privileged.py')
+        router = _machine(docker_client, lab_hash, 'router')
+        assert not router.attrs['HostConfig']['Privileged']
+        rc, out = _exec(router, f'{REMOUNT_PROC_SYS_CMD} && sysctl -w net.ipv4.ip_forward=1 '
+                                '&& sysctl -w net.ipv4.ip_forward=0 && cat /proc/sys/net/ipv4/ip_forward')
+        profile = router.attrs.get('AppArmorProfile') or 'none'
+        assert rc == 0 and out.strip().endswith('0'), \
+            f"sysctl writes refused in a non-privileged machine (AppArmor profile: {profile}):\n{out}"
