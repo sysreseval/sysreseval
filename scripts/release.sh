@@ -15,7 +15,9 @@
 #   scripts/release.sh --setup              once: the signing key of the apt repository (generated
 #      with gpg in your keyring, or in a debian container without gpg) stored as the repository
 #      secret APT_SIGNING_KEY, and GitHub Pages switched to the Actions deployment of
-#      .github/workflows/pages.yml
+#      .github/workflows/pages.yml.  An existing secret is kept (--replace-key uploads the key of
+#      your keyring again: the workflow signs unattended, so a passphrase-protected key is copied
+#      without its passphrase into the secret, the keyring copy keeps it)
 #
 # Needs git, gh (logged in), python3 and make; nothing is built here: the packages are built by
 # .github/workflows/release.yml.  Helpers of the tests: --compare A B (exit 0 when B is a greater
@@ -88,6 +90,33 @@ wait_run() {       # wait_run <workflow file> <jq filter on a run> <label>: find
 }
 
 # --- setup: the signing key and GitHub Pages ------------------------------------------------------
+# key_signs_unattended KEY: the armored private key signs in batch mode without any passphrase
+key_signs_unattended() {
+    local home
+    home=$(mktemp -d)
+    chmod 700 "$home"
+    ( printf '%s\n' "$1" | GNUPGHOME="$home" gpg --batch --quiet --import 2>/dev/null \
+      && echo x | GNUPGHOME="$home" gpg --batch --pinentry-mode error --detach-sign >/dev/null 2>&1 )
+    local status=$?
+    rm -rf "$home"
+    return $status
+}
+
+# unprotected_copy FPR: the key FPR of the keyring exported without its passphrase, through a
+# temporary keyring where the passphrase is removed (interactive: the current one is asked, then
+# an empty new one twice); the keyring copy is untouched
+unprotected_copy() {
+    local home
+    home=$(mktemp -d)
+    chmod 700 "$home"
+    echo "the key $1 is passphrase-protected in your keyring: making the unprotected copy the workflow needs" >&2
+    echo "(enter its passphrase, then leave the new one empty twice and confirm)" >&2
+    gpg --batch --export-secret-keys "$1" | GNUPGHOME="$home" gpg --batch --quiet --import 2>/dev/null
+    GNUPGHOME="$home" gpg --change-passphrase "$1" >&2 || { rm -rf "$home"; die "the passphrase was not removed"; }
+    GNUPGHOME="$home" gpg --batch --armor --export-secret-keys "$1"
+    rm -rf "$home"
+}
+
 setup() {
     local email key fpr pages_url
     email=$(maintainer | sed -n 's/.*<\(.*\)>.*/\1/p')
@@ -96,7 +125,9 @@ setup() {
     gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
 
     log "signing key of the apt repository"
-    if command -v gpg >/dev/null; then
+    if [ "$REPLACE_KEY" = 0 ] && gh secret list --repo "$GH_REPO" --json name --jq '.[].name' | grep -qx "$SECRET_NAME"; then
+        echo "secret $SECRET_NAME exists on $GH_REPO: kept (--replace-key uploads the key of your keyring again)"
+    elif command -v gpg >/dev/null; then
         # (gpg exits 2 when no key matches: not an error here)
         fpr=$( (gpg --batch --with-colons --list-secret-keys "=$KEY_UID_NAME <$email>" 2>/dev/null || true) \
               | awk -F: '/^fpr/ {print $10; exit}')
@@ -119,7 +150,11 @@ GEN
             [ -n "$fpr" ] || die "the key was not generated"
             echo "key $fpr generated; back up your keyring (gpg --export-secret-keys $fpr)"
         fi
-        key=$(gpg --batch --armor --export-secret-keys "$fpr")
+        key=$(gpg --batch --pinentry-mode error --armor --export-secret-keys "$fpr" 2>/dev/null || true)
+        if [ -z "$key" ] || ! key_signs_unattended "$key"; then
+            key=$(unprotected_copy "$fpr")
+            key_signs_unattended "$key" || die "the exported key still needs a passphrase"
+        fi
     else
         if [ -f "$KEY_FILE" ]; then
             echo "gpg is not installed: the key of $KEY_FILE is reused"
@@ -150,8 +185,10 @@ GEN
         fi
         key=$(cat "$KEY_FILE")
     fi
-    printf '%s\n' "$key" | gh secret set "$SECRET_NAME" --repo "$GH_REPO"
-    echo "secret $SECRET_NAME set on $GH_REPO (the pages workflow signs the repository with it)"
+    if [ -n "${key:-}" ]; then
+        printf '%s\n' "$key" | gh secret set "$SECRET_NAME" --repo "$GH_REPO"
+        echo "secret $SECRET_NAME set on $GH_REPO (the pages workflow signs the repository with it)"
+    fi
 
     log "GitHub Pages: deployment by the pages workflow"
     if gh api "repos/$GH_REPO/pages" >/dev/null 2>&1; then
@@ -253,16 +290,17 @@ PY
 }
 
 # --- command line ----------------------------------------------------------------------------------
-VERSION=""; CHECK=1; WAIT=1; YES=0; MODE=release
+VERSION=""; CHECK=1; WAIT=1; YES=0; REPLACE_KEY=0; MODE=release
 while [ $# -gt 0 ]; do
     case "$1" in
         --setup) MODE=setup; shift;;
+        --replace-key) REPLACE_KEY=1; shift;;
         --no-check) CHECK=0; shift;;
         --no-wait) WAIT=0; shift;;
         -y|--yes) YES=1; shift;;
         --compare) version_gt "$2" "$3"; exit $?;;
         --changelog-entry) changelog_entry "$2"; exit 0;;
-        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         -*) die "unknown option $1 (see --help)";;
         *) [ -z "$VERSION" ] || die "one version only"; VERSION="$1"; shift;;
     esac
