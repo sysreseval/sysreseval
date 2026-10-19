@@ -136,6 +136,15 @@ class TestRelease:
         assert lines[4].startswith(f' -- {maintainer}  ')
         assert re.search(r'  \w{3}, \d{1,2} \w{3} \d{4} \d\d:\d\d:\d\d [+-]\d{4}$', lines[4])
 
+    def test_changelog_entry_with_notes(self):
+        notes = "Debian packages for trixie and forky, published in the apt repository of the project on GitHub Pages.\n- new `make release` target\n  (and `make release-setup`)\n* fixes\n"
+        out = subprocess.run([self.SCRIPT, '--changelog-entry', '0.13.2', '-m', notes], capture_output=True, text=True,
+                             check=True).stdout.splitlines()
+        assert out[2] == '  * Debian packages for trixie and forky, published in the apt repository of the'
+        assert out[3] == '    project on GitHub Pages.'
+        assert out[4] == '  * new `make release` target (and `make release-setup`)'
+        assert out[5] == '  * fixes' and out[6] == '' and out[7].startswith(' -- ')
+
     def test_workflows(self):
         release = (ROOT / '.github' / 'workflows' / 'release.yml').read_text()
         pages = (ROOT / '.github' / 'workflows' / 'pages.yml').read_text()

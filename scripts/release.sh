@@ -1,11 +1,16 @@
 #!/bin/bash
 # Release SysResEval:
 #
-#   scripts/release.sh <version>            e.g. scripts/release.sh 0.13.2  (make release VERSION=0.13.2)
-#
+#   scripts/release.sh <version> [-m NOTES | --notes-file FILE]     e.g. scripts/release.sh 0.13.2
+#                                                                   (make release VERSION=0.13.2)
 #   0. shows the current and the new version and asks for a confirmation; uncommitted changes are
 #      listed and confirmed too (those of params.py and debian/changelog go into the release
-#      commit, the rest stays out: leftover work is fine); -y / --yes skips both questions
+#      commit, the rest stays out: leftover work is fine); -y / --yes skips both questions.
+#      The release notes (one item per line, "- " markers optional, an indented line continues
+#      the previous one) come from -m / --notes (repeatable), --notes-file, or are asked on the terminal (an empty line ends them,
+#      nothing = the notes GitHub generates from the commits only): they become the bullets of the
+#      debian/changelog entry, the body of the release commit and tag, and the top of the GitHub
+#      release notes, above the generated list of commits
 #   1. sre_version = "<version>" in src/SRE/params.py and a <version>-1 entry in debian/changelog
 #   2. make tests (--no-check skips it)
 #   3. commit "Release <version>", tag <version>, push main and the tag to the upstream remote
@@ -23,7 +28,8 @@
 #
 # Needs git, gh (logged in), python3 and make; nothing is built here: the packages are built by
 # .github/workflows/release.yml.  Helpers of the tests: --compare A B (exit 0 when B is a greater
-# version than A), --changelog-entry V (prints the entry that would be added to debian/changelog).
+# version than A), --changelog-entry V [-m NOTES] (prints the entry that would be added to
+# debian/changelog).
 set -euo pipefail
 
 die() { echo "release: $*" >&2; exit 1; }
@@ -52,9 +58,43 @@ maintainer() {     # the maintainer of the last changelog entry: "Name <email>"
     sed -n 's/^ -- \(.*>\)  .*/\1/p' "$CHANGELOG" | head -1
 }
 
-changelog_entry() {
-    printf 'sysreseval (%s-1) unstable; urgency=medium\n\n  * Release %s.\n\n -- %s  %s\n' \
-        "$1" "$1" "$(maintainer)" "$(date -R)"
+changelog_entry() {      # changelog_entry VERSION [NOTES]: the entry; the notes' paragraphs and list items are its bullets
+    printf 'sysreseval (%s-1) unstable; urgency=medium\n\n' "$1"
+    if [ -n "${2:-}" ]; then
+        # one item per line ("- " / "* " markers dropped), an indented line continues the previous item
+        NOTES="$2" python3 -c '
+import os, re
+items = []
+for line in os.environ["NOTES"].splitlines():
+    if not line.strip():
+        continue
+    if line[0] in " \t" and items:
+        items[-1] += " " + line.strip()
+    else:
+        items.append(re.sub(r"^[-*+] +", "", line.strip()))
+for item in items:
+    words, lines, width = item.split(), [], 76
+    for word in words:
+        if lines and len(lines[-1]) + 1 + len(word) <= width: lines[-1] += " " + word
+        else: lines.append(word)
+    print("  * " + lines[0])
+    for extra in lines[1:]: print("    " + extra)
+'
+    else
+        printf '  * Release %s.\n' "$1"
+    fi
+    printf '\n -- %s  %s\n' "$(maintainer)" "$(date -R)"
+}
+
+read_notes() {           # the release notes typed on the terminal, an empty line ends them
+    local line notes=""
+    echo "Release notes (markdown, one line per item, an empty line ends; nothing = the generated notes only):"
+    while IFS= read -r -p "> " line; do
+        [ -n "$line" ] || break
+        notes="${notes:+$notes
+}$line"
+    done
+    printf '%s' "$notes"
 }
 
 github_repo() {    # owner/name from the url of the upstream remote (an ssh alias is fine)
@@ -207,7 +247,7 @@ GEN
 
 # --- the release ---------------------------------------------------------------------------------
 release() {
-    local version="$1" check="$2" wait="$3" yes="$4" current remote dirty dirty_release_files release_url started_at answer
+    local version="$1" check="$2" wait="$3" yes="$4" notes="$5" current remote dirty dirty_release_files release_url started_at answer
     started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "version '$version' is not of the form 0.13.2"
     current=$(current_version)
@@ -244,6 +284,9 @@ release() {
             case "$answer" in y|Y|yes|YES|Yes) ;; *) echo "release: aborted, nothing done"; exit 1;; esac
         fi
     fi
+    if [ -z "$notes" ] && [ "$yes" != 1 ]; then
+        notes=$(read_notes)
+    fi
     command -v gh >/dev/null || die "gh is not installed"
     gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
     GH_REPO=$(github_repo)
@@ -269,9 +312,10 @@ lines = re.findall(r'^sre_version = .*$', text, re.M)
 assert len(lines) == 1, lines
 open(path, 'w').write(text.replace(lines[0], f'sre_version = "{version}"'))
 PY
-    { changelog_entry "$version"; echo; cat "$CHANGELOG"; } > "$CHANGELOG.new"
+    { changelog_entry "$version" "$notes"; echo; cat "$CHANGELOG"; } > "$CHANGELOG.new"
     mv "$CHANGELOG.new" "$CHANGELOG"
-    echo "sre_version = \"$version\", debian/changelog: $(head -1 "$CHANGELOG")"
+    echo "sre_version = \"$version\", debian/changelog:"
+    sed -n '1,/^ -- /p' "$CHANGELOG" | sed 's/^/    /'
 
     if [ "$check" = 1 ]; then
         log "make tests"
@@ -282,13 +326,24 @@ PY
 
     log "commit, tag, push"
     git add -- "$PARAMS" "$CHANGELOG"
-    git commit -q -m "Release $version"
-    git tag -a "$version" -m "Release $version"
+    if [ -n "$notes" ]; then
+        git commit -q -m "Release $version" -m "$notes"
+        git tag -a "$version" -m "Release $version" -m "$notes"
+    else
+        git commit -q -m "Release $version"
+        git tag -a "$version" -m "Release $version"
+    fi
     git push "$remote" main "refs/tags/$version"
     echo "pushed $(git rev-parse --short HEAD) and the tag $version to $remote"
 
     log "GitHub release $version"
-    release_url=$(gh release create "$version" --repo "$GH_REPO" --verify-tag --title "$version" --generate-notes)
+    # the given notes come first, the notes gh generates from the commits follow (after one newline:
+    # the trailing one here makes it a blank line before their "What's Changed" heading)
+    if [ -n "$notes" ]; then
+        release_url=$(gh release create "$version" --repo "$GH_REPO" --verify-tag --title "$version" --generate-notes --notes "$notes"$'\n')
+    else
+        release_url=$(gh release create "$version" --repo "$GH_REPO" --verify-tag --title "$version" --generate-notes)
+    fi
     echo "$release_url"
 
     if [ "$wait" = 1 ]; then
@@ -305,7 +360,7 @@ PY
 }
 
 # --- command line ----------------------------------------------------------------------------------
-VERSION=""; CHECK=1; WAIT=1; YES=0; REPLACE_KEY=0; MODE=release
+VERSION=""; CHECK=1; WAIT=1; YES=0; REPLACE_KEY=0; NOTES=""; MODE=release; ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --setup) MODE=setup; shift;;
@@ -313,15 +368,21 @@ while [ $# -gt 0 ]; do
         --no-check) CHECK=0; shift;;
         --no-wait) WAIT=0; shift;;
         -y|--yes) YES=1; shift;;
-        --compare) version_gt "$2" "$3"; exit $?;;
-        --changelog-entry) changelog_entry "$2"; exit 0;;
-        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+        -m|--notes) [ $# -ge 2 ] || die "$1 needs a text"; NOTES="${NOTES:+$NOTES
+
+}$2"; shift 2;;
+        --notes-file) [ $# -ge 2 ] && [ -f "$2" ] || die "--notes-file needs a readable file"; NOTES="$(cat "$2")"; shift 2;;
+        --compare) MODE=compare; ARGS=("$2" "$3"); shift 3;;
+        --changelog-entry) MODE=changelog; ARGS=("$2"); shift 2;;
+        -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         -*) die "unknown option $1 (see --help)";;
         *) [ -z "$VERSION" ] || die "one version only"; VERSION="$1"; shift;;
     esac
 done
 mkdir -p "$REPO_DIR/build"
 case "$MODE" in
+    compare) version_gt "${ARGS[0]}" "${ARGS[1]}";;
+    changelog) changelog_entry "${ARGS[0]}" "$NOTES";;
     setup) [ -z "$VERSION" ] || die "--setup takes no version"; setup;;
-    release) [ -n "$VERSION" ] || die "usage: scripts/release.sh <version> | --setup (see --help)"; release "$VERSION" "$CHECK" "$WAIT" "$YES";;
+    release) [ -n "$VERSION" ] || die "usage: scripts/release.sh <version> | --setup (see --help)"; release "$VERSION" "$CHECK" "$WAIT" "$YES" "$NOTES";;
 esac
