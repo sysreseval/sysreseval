@@ -3,7 +3,9 @@
 #
 #   scripts/release.sh <version>            e.g. scripts/release.sh 0.13.2  (make release VERSION=0.13.2)
 #
-#   0. shows the current and the new version and asks for a confirmation (-y / --yes skips it)
+#   0. shows the current and the new version and asks for a confirmation; uncommitted changes are
+#      listed and confirmed too (those of params.py and debian/changelog go into the release
+#      commit, the rest stays out: leftover work is fine); -y / --yes skips both questions
 #   1. sre_version = "<version>" in src/SRE/params.py and a <version>-1 entry in debian/changelog
 #   2. make tests (--no-check skips it)
 #   3. commit "Release <version>", tag <version>, push main and the tag to the upstream remote
@@ -205,7 +207,7 @@ GEN
 
 # --- the release ---------------------------------------------------------------------------------
 release() {
-    local version="$1" check="$2" wait="$3" yes="$4" current remote dirty release_url started_at answer
+    local version="$1" check="$2" wait="$3" yes="$4" current remote dirty dirty_release_files release_url started_at answer
     started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "version '$version' is not of the form 0.13.2"
     current=$(current_version)
@@ -220,19 +222,32 @@ release() {
         read -r -p "Is the version $version correct? [y/N] " answer
         case "$answer" in y|Y|yes|YES|Yes) ;; *) echo "release: aborted, nothing done"; exit 1;; esac
     fi
+    cd "$REPO_DIR"
+    [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || die "not on the main branch"
+    grep -qE '^debug_mode[[:space:]]*=[[:space:]]*True' "$PARAMS" && die "debug_mode is True in src/SRE/params.py: not releasable"
+    # uncommitted changes: the two files of the bump are committed as they are (their changes go
+    # into the release commit), everything else is left out; leftover work is allowed, once seen
+    dirty_release_files=$(git status --porcelain -- "$PARAMS" "$CHANGELOG")
+    dirty=$(git status --porcelain --untracked-files=normal | grep -v '^.. \(src/SRE/params.py\|debian/changelog\)$' || true)
+    if [ -n "$dirty_release_files" ] || [ -n "$dirty" ]; then
+        echo "release: the tree has uncommitted changes:"
+        if [ -n "$dirty_release_files" ]; then
+            echo "  committed with the release (the files the release edits):"
+            echo "$dirty_release_files" | sed 's/^/    /'
+        fi
+        if [ -n "$dirty" ]; then
+            echo "  left out of the release (neither committed nor released):"
+            echo "$dirty" | sed 's/^/    /'
+        fi
+        if [ "$yes" != 1 ]; then
+            read -r -p "Release $version with these leftovers? [y/N] " answer
+            case "$answer" in y|Y|yes|YES|Yes) ;; *) echo "release: aborted, nothing done"; exit 1;; esac
+        fi
+    fi
     command -v gh >/dev/null || die "gh is not installed"
     gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
     GH_REPO=$(github_repo)
     remote=$(upstream_remote)
-    cd "$REPO_DIR"
-    [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || die "not on the main branch"
-    [ -z "$(git status --porcelain -- "$PARAMS" "$CHANGELOG")" ] \
-        || die "src/SRE/params.py or debian/changelog has uncommitted changes: commit or stash them first"
-    dirty=$(git status --porcelain --untracked-files=no | grep -v '^.. \(src/SRE/params.py\|debian/changelog\)$' || true)
-    if [ -n "$dirty" ]; then
-        echo "release: warning: other uncommitted changes are left out of the release commit:" >&2
-        echo "$dirty" | sed 's/^/    /' >&2
-    fi
     log "checks against $remote ($GH_REPO)"
     git fetch --quiet "$remote" main --tags
     if [ "$(git rev-list --count "HEAD..$remote/main")" != 0 ]; then
@@ -300,7 +315,7 @@ while [ $# -gt 0 ]; do
         -y|--yes) YES=1; shift;;
         --compare) version_gt "$2" "$3"; exit $?;;
         --changelog-entry) changelog_entry "$2"; exit 0;;
-        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         -*) die "unknown option $1 (see --help)";;
         *) [ -z "$VERSION" ] || die "one version only"; VERSION="$1"; shift;;
     esac
