@@ -1,3 +1,15 @@
+sysreseval (0.13.2-1) unstable; urgency=medium
+
+  * Release 0.13.2.
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Tue, 20 Oct 2026 00:17:51 +0200
+
+sysreseval (0.13.2-1) unstable; urgency=medium
+
+  * Release 0.13.2.
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Tue, 20 Oct 2026 00:15:29 +0200
+
 sysreseval (0.13.1-1) unstable; urgency=medium
 
   * Release 0.13.1 (the first with the Debian packages built by the release workflow).
