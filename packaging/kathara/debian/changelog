@@ -1,3 +1,11 @@
+kathara (3.8.3+git20261019.b4f5f4b-1) unstable; urgency=medium
+
+  * Fork commit b4f5f4b: the non-privileged devices run with
+    apparmor=unconfined (the stock Docker profile denied the /proc/sys
+    remount and the net.* sysctl writes).
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Mon, 19 Oct 2026 20:15:21 +0200
+
 kathara (3.8.3+git20261005.88a4a55-1) unstable; urgency=medium
 
   * SysResEval fork of Kathara 3.8.3 (emotchane/Kathara, commit 88a4a55):
