@@ -214,8 +214,8 @@ class AgentConfig:
     sre_exe: str = ''                 # '' : params.sre_exe of the host
     poll_interval: float = 1.0        # scan of the projects directory (like the Qt GUI)
     max_idle: float = 24 * 3600.0     # default idle timeout of a project (the portal may give its own)
-    terminals_per_project: int = 8
-    terminals_per_device: int = 2
+    terminals_per_project: int = 16
+    terminals_per_device: int = 4     # each Connect of the web opens a new terminal on the machine
     max_concurrent_starts: int = 2
     max_concurrent_evals: int = 2
     lab_list_cache_ttl: float = 60.0

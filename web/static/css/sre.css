@@ -396,6 +396,11 @@ table.grid.states td:first-child { width: 100%; }
 }
 .terminal-tabs [role="tab"][aria-selected="true"] { background: #fff; font-weight: bold; }
 .terminal-tabs [role="tab"]:disabled { cursor: default; }
+.terminal-tabs [role="tab"] .close { margin-left: 8px; color: #777; font-weight: normal; }
+.terminal-tabs [role="tab"] .close:hover { color: var(--danger); }
+.ctrl-bar select.new-terminal { margin-left: 6px; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; background: #ececec; }
+option.hidden-device { color: var(--hidden-color); }
+option.closed-device { color: var(--closed-color); }
 .terminal-host { flex: 1; min-height: 0; position: relative; }
 .terminal-box { position: absolute; inset: 0; display: flex; flex-direction: column; }
 .terminal-box .xterm-wrap { flex: 1; min-height: 0; padding: 2px; }

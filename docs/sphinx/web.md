@@ -81,7 +81,7 @@ user and protects `web.toml` when it exists.
 | `sre_exe` | the installation's `sre` | the command run for the users |
 | `poll_interval` | `1` | seconds between two scans of the projects directory (the Qt GUI polls every second too) |
 | `max_idle` | `24h` | default idle timeout of a project (the portal gives its own per user); `0` = never |
-| `terminals_per_project`, `terminals_per_device` | `8`, `2` | caps on the open terminals |
+| `terminals_per_project`, `terminals_per_device` | `16`, `4` | caps on the open terminals (every Connect opens a new terminal on the machine) |
 | `max_concurrent_starts`, `max_concurrent_evals` | `2`, `2` | concurrent `sre start` / `sre eval` on the host |
 | `lab_list_cache_ttl` | `60` | seconds the output of `sre list` is cached |
 | `state_dir` | `/var/lib/sre/web-agent` | the idle clocks of the projects, kept across restarts |
@@ -119,8 +119,10 @@ answers file of the projects like the GECOS fields do on a workstation, so `sre 
 - **A project**: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
   same options (lines, spacing, order, icons); the questions and the forms are the same; the
   evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
-  `xterm.js` windows on `sre connect`, one per device (the machines open to the students and the
-  managed switches); the Log tab appears for debug projects. Save and Export download the files.
+  `xterm.js` windows on `sre connect`: every Connect button opens a new one on its machine (like
+  a new xterm in the Qt GUI: `gw`, `gw (2)`, …), the select of the Terminals tab opens one on
+  any device (the machines open to the students and the managed switches), the × of a sub-tab
+  closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. Save and Export download the files.
   Session recording (`asciinema`) applies as on a workstation, since it happens in `sre connect`.
 - The answers are saved as the user types (debounced), with the identity of the session.
 
@@ -145,7 +147,7 @@ answers file of the projects like the GECOS fields do on a workstation, so `sre 
   later phase, as are the instructor role (instructor-mode projects, the instructor view, every
   project of the pool), the reconnection of a terminal after a network cut, and the save of the
   terminal sessions across a restart of the agent.
-- A terminal is lost when the agent restarts; the page reconnects by itself.
+- A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.
 
 ## Development
 

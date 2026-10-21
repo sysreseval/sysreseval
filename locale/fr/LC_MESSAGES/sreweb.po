@@ -350,6 +350,15 @@ msgstr "Trop de terminaux sont ouverts."
 msgid "The host does not answer."
 msgstr "L'hôte ne répond pas."
 
+msgid "New terminal…"
+msgstr "Nouveau terminal…"
+
+msgid "Close terminal"
+msgstr "Fermer le terminal"
+
+msgid "{device} ({n})"
+msgstr "{device} ({n})"
+
 # --- tabs/states.js, tabs/log.js ------------------------------------------------------------
 
 msgid "Apply"

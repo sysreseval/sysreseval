@@ -9,9 +9,10 @@ token = "change-me-to-a-long-random-string"
 # sre_exe = "/opt/sre/sbin/sre"
 # Default idle timeout of a project nobody touched (the portal gives its own per user): "24h", "0" = never.
 max_idle = "24h"
-# Terminals per project and per device, concurrent starts and evaluations on this host.
-terminals_per_project = 8
-terminals_per_device = 2
+# Terminals per project and per device (each Connect opens a new terminal on the machine),
+# concurrent starts and evaluations on this host.
+terminals_per_project = 16
+terminals_per_device = 4
 max_concurrent_starts = 2
 max_concurrent_evals = 2
 # Seconds the lab list is cached.

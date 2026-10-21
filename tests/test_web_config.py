@@ -95,7 +95,7 @@ class TestAgentConfig:
         cfg = agent_config_from_dict({'token': 't' * 32}, sre_exe='/opt/sre/sbin/sre', state_dir='/var/lib/sre/web-agent')
         assert cfg.listen == ('127.0.0.1', 8451) and cfg.sre_exe == '/opt/sre/sbin/sre'
         assert cfg.state_dir == '/var/lib/sre/web-agent' and cfg.timeouts == DEFAULT_TIMEOUTS
-        assert cfg.max_idle == 86400 and cfg.terminals_per_project == 8
+        assert cfg.max_idle == 86400 and cfg.terminals_per_project == 16 and cfg.terminals_per_device == 4
 
     def test_values(self):
         cfg = agent_config_from_dict({'token': 't' * 32, 'listen': '10.0.0.11:8451', 'sre_exe': '/usr/sbin/sre',

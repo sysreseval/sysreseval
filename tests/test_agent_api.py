@@ -317,6 +317,33 @@ class TestWebSockets:
                 assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
         run(go())
 
+    def test_two_terminals_on_one_device(self, tmp_path):
+        """Every Connect of the web opens a new terminal: two live sessions on the same machine."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                terms = []
+                for _ in range(2):
+                    ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                   protocols=(TERMINAL_SUBPROTOCOL,))
+                    assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                    terms.append(ws)
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 2
+                for n, ws in enumerate(terms):
+                    await ws.send_bytes(f'echo MARK{n}\n'.encode())
+                    out = b''
+                    async with asyncio.timeout(10):
+                        while f'MARK{n}'.encode() not in out.split(b'echo MARK')[-1]:
+                            msg = await ws.receive()
+                            assert msg.type == aiohttp.WSMsgType.BINARY, msg
+                            out += msg.data
+                await terms[0].close()
+                await asyncio.sleep(0.3)
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']] * 2
+                await terms[1].close()
+        run(go())
+
     def test_terminal_refusals(self, tmp_path):
         async def go():
             async with Harness(tmp_path, terminals_per_device=1) as h:

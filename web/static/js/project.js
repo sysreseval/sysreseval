@@ -69,7 +69,7 @@ const ctx = {
     }
   },
   openTerminal(device) {
-    tabs.terminals.open(device);
+    tabs.terminals.openNew(device);   // a new terminal every time, like a new xterm in the Qt GUI
   },
   selectTab,
   onSchemaOptions(query) {
