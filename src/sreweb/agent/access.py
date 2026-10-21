@@ -5,6 +5,7 @@ The ``sre`` CLI checks none of these: any ``--user`` caller may act on any proje
 ``allow_self_grade`` or the user-allowed states are enforced by the Qt GUI only.  The agent
 therefore checks, before spawning anything: the exact running lab name, its owner, the visibility
 of a device, the state, and the flags of the lab.
+Save and restore are not offered on the web: no endpoint, no rule.
 """
 import os
 import re
@@ -102,11 +103,6 @@ def check_state(info: dict, state: str, identity: Identity):
 def check_self_grade(info: dict):
     if not info.get('allow_self_grade', True):
         raise AccessError(403, "self-evaluation is not allowed for this lab")
-
-
-def check_save(info: dict):
-    if not info.get('allow_save_restore', False):
-        raise AccessError(403, "this lab cannot be saved")
 
 
 def check_export(info: dict):

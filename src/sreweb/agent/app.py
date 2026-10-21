@@ -3,9 +3,9 @@
 Every request carries the bearer token of the agent and the ``X-SRE-*`` identity headers of the
 web user (``sreweb.identity``); the handlers check the access rules (``access.py``) and drive
 ``sre`` through the runner, the registry, the answers store and the schedulers.  Long
-operations stream: ``start`` / ``restore`` answer NDJSON (one JSON object per line, the events
-of ``SRE/progress.py`` then a final ``result`` line), ``save`` / ``export`` stream the bytes, the
-events and the terminals are WebSockets.
+operations stream: ``start`` answers NDJSON (one JSON object per line, the events of
+``SRE/progress.py`` then a final ``result`` line), ``export`` streams the bytes, the events and
+the terminals are WebSockets.  Save and restore are not offered on the web.
 """
 import asyncio
 import base64
@@ -53,7 +53,7 @@ WS_LIMIT = 4409
 MAX_TERMINAL_COLS, MAX_TERMINAL_ROWS = 500, 300
 EARLY_INPUT_MAX = 4096       # keystrokes held until the first output of the terminal
 EARLY_INPUT_HOLD = 20.0      # seconds after which they go through anyway
-CLIENT_MAX_SIZE = 1 << 30        # a restore upload
+CLIENT_MAX_SIZE = 4 << 20        # the answers of a PUT (the portal caps them lower)
 WS_HEARTBEAT = 30.0
 
 
@@ -131,7 +131,6 @@ class Agent:
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_post(f'{p}/projects', self.projects_create)
-        app.router.add_post(f'{p}/projects/restore', self.projects_restore)
         app.router.add_get(f'{p}/projects/{{rln}}', self.project_get)
         app.router.add_delete(f'{p}/projects/{{rln}}', self.project_close)
         app.router.add_get(f'{p}/projects/{{rln}}/events', self.events_ws)
@@ -142,7 +141,6 @@ class Agent:
         app.router.add_get(f'{p}/projects/{{rln}}/terminals/{{device}}', self.terminal_ws)
         app.router.add_get(f'{p}/projects/{{rln}}/log', self.log_get)
         app.router.add_post(f'{p}/projects/{{rln}}/touch', self.touch)
-        app.router.add_get(f'{p}/projects/{{rln}}/save', self.save_get)
         app.router.add_get(f'{p}/projects/{{rln}}/export', self.export_get)
         app.on_startup.append(self._on_startup)
         app.on_shutdown.append(self._on_shutdown)
@@ -248,18 +246,8 @@ class Agent:
         args.append(lab)
         return await self._stream_creation(request, identity, args, body.get('idle_timeout'))
 
-    async def projects_restore(self, request):
-        identity = request[IDENTITY_KEY]
-        access.check_not_exam(self.pub_dir)
-        data = await request.read()
-        magic = params.save_file_magic if isinstance(params.save_file_magic, bytes) else params.save_file_magic.encode()
-        if not data.startswith(magic):
-            raise AccessError(400, "not a save file")
-        idle = request.query.get('idle_timeout')
-        return await self._stream_creation(request, identity, ['restore', '-'], idle, stdin=data)
-
-    async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, stdin=None):
-        """``sre start`` / ``sre restore`` as an NDJSON stream."""
+    async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout):
+        """``sre start`` as an NDJSON stream."""
         try:
             idle = None if idle_timeout is None else max(0.0, float(idle_timeout))
         except (TypeError, ValueError):
@@ -271,7 +259,7 @@ class Agent:
             await resp.write(json.dumps(obj).encode('utf-8') + b'\n')
 
         try:
-            run = await self.runner.stream(identity.login, args, stdin=stdin, lang=identity.language)
+            run = await self.runner.stream(identity.login, args, lang=identity.language)
             async for event in run.events():
                 await line(event)
             run.result()
@@ -403,21 +391,7 @@ class Agent:
             answers = self.answers.read(project)
         return web.json_response({'ok': True, 'answers': AnswersStore.public(answers, project)})
 
-    # -- save / export --------------------------------------------------------------------------
-
-    async def save_get(self, request):
-        project = self._project(request)
-        access.check_save(project.info)
-        access.check_not_exam(self.pub_dir)
-        name = params.get_abbreviated_lab_name_from_running_lab_name(project.rln)
-        resp = web.StreamResponse(headers={'Content-Type': 'application/octet-stream',
-                                           'Content-Disposition': f'attachment; filename="{name}.sre"'})
-        await resp.prepare(request)
-        async with project.lock:
-            async for chunk in self.runner.stream_stdout(project.owner, ['save', project.rln]):
-                await resp.write(chunk)
-        await resp.write_eof()
-        return resp
+    # -- export ---------------------------------------------------------------------------------
 
     async def export_get(self, request):
         project = self._project(request)

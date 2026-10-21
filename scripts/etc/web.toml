@@ -48,7 +48,6 @@ eval_interval = 10        # seconds between two self-evaluations of one user
 start_interval = 30       # seconds between two starts of one user
 login_per_minute = 5      # login attempts per client address
 max_answer_bytes = 1048576
-max_restore_mb = 512
 
 # One entry per pool host: the URL of its agent, the token of its agent.toml, and how many
 # projects it takes (a classroom workstation holds about thirty).

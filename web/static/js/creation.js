@@ -1,5 +1,5 @@
-// The progress of a project creation (POST /api/projects, POST /api/projects/restore): the
-// NDJSON events of `sre start` / `sre restore` (SRE/progress.py) shown like the Qt
+// The progress of a project creation (POST /api/projects): the
+// NDJSON events of `sre start` (SRE/progress.py) shown like the Qt
 // StartProgressDialog, and the final "result" line.
 
 import * as api from './api.js';

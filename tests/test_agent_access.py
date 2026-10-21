@@ -101,13 +101,10 @@ class TestStates:
 
 
 class TestFlags:
-    def test_self_grade_save_export(self):
+    def test_self_grade_and_export(self):
         A.check_self_grade(info())
         with pytest.raises(AccessError):
             A.check_self_grade(info(allow_self_grade=False))
-        with pytest.raises(AccessError):
-            A.check_save(info())
-        A.check_save(info(allow_save_restore=True))
         A.check_export(info())
         with pytest.raises(AccessError):
             A.check_export(info(export_kathara_project=False))

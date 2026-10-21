@@ -246,19 +246,14 @@ class TestProject:
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 403
         run(go())
 
-    def test_save_restore_export(self, tmp_path):
+    def test_export_and_no_save_restore(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:
                 rln = await h.started()
-                resp = await h.client.get(f'/v1/projects/{rln}/save', headers=headers())
-                data = await resp.read()
-                assert resp.status == 200 and data.startswith(params.save_file_magic)
-                assert resp.headers['Content-Disposition'].endswith('.sre"')
-                resp = await h.client.post('/v1/projects/restore', data=data, headers=headers())
-                lines = [json.loads(l) for l in (await resp.text()).splitlines()]
-                assert lines[-1]['status'] == 'created' and lines[-1]['running_lab_name'] != rln
-                resp = await h.client.post('/v1/projects/restore', data=b'junk', headers=headers())
-                assert resp.status == 400
+                # save and restore are not offered on the web
+                assert (await h.client.get(f'/v1/projects/{rln}/save', headers=headers())).status == 404
+                # the URL now matches the {rln} route, which has no POST: 405 (404 when no route matches at all)
+                assert (await h.client.post('/v1/projects/restore', data=b'x', headers=headers())).status in (404, 405)
                 resp = await h.client.get(f'/v1/projects/{rln}/export?curved=1&sep=4', headers=headers())
                 blob = await resp.read()
                 assert resp.status == 200 and blob.startswith(b'PK')

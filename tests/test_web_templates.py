@@ -121,7 +121,7 @@ class TestTemplates:
     def test_projects_page(self):
         html = render('projects.html')
         assert 'Running projects' in html and 'href="/open"' in html
-        assert 'id="restore-file"' in html and 'id="projects"' in html
+        assert 'id="projects"' in html and 'restore' not in html.lower()
         assert '/static/js/projects.js' in html
         assert 'Alice Martin' in html and 'action="/logout"' in html
         assert '<html lang="fr">' in html
@@ -136,10 +136,10 @@ class TestTemplates:
         assert 'data-rln="20261021153000@@@sre@dhcp.py@@@alice"' in html
         assert 'data-instructor="true"' in html
         assert 'id="tabbar"' in html and 'id="panes"' in html and 'id="closed-banner"' in html
-        for control in ('instructor-toggle', 'wrap-toggle', 'font-minus', 'font-plus', 'save-link', 'export-link',
+        for control in ('instructor-toggle', 'wrap-toggle', 'font-minus', 'font-plus', 'export-link',
                         'close-project'):
             assert f'id="{control}"' in html
-        assert f'href="{API_BASE}/save"' in html and f'href="{API_BASE}/export"' in html
+        assert f'href="{API_BASE}/export"' in html and f'{API_BASE}/save' not in html
         assert '/static/vendor/xterm/xterm.js' in html and '/static/vendor/xterm/addon-fit.js' in html
         assert '/static/vendor/xterm/xterm.css' in html and '/static/js/project.js' in html
         assert 'Instructor mode' in html

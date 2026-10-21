@@ -51,13 +51,13 @@ class TestWebConfig:
                                               'instructor_groups': ['cn=teachers,ou=groups,dc=example,dc=org'],
                                               'timeout': '5s'}},
             'pool': {'idle_timeout_anonymous': '1h', 'idle_timeout_authenticated': 0, 'poll_interval': 3},
-            'limits': {'eval_interval': '20s', 'max_restore_mb': 100},
+            'limits': {'eval_interval': '20s', 'max_answer_bytes': 100},
             'hosts': [HOST, dict(HOST, name='h01', url='http://10.0.0.12:8451')],
         })
         assert cfg.listen == ('::', 8000) and cfg.auth.mode == 'ldap' and cfg.auth.ldap.timeout == 5
         assert cfg.auth.ldap.instructor_groups == ['cn=teachers,ou=groups,dc=example,dc=org']
         assert cfg.pool.idle_timeout_anonymous == 3600 and cfg.pool.idle_timeout_authenticated == 0
-        assert cfg.pool.poll_interval == 3 and cfg.limits.eval_interval == 20 and cfg.limits.max_restore_mb == 100
+        assert cfg.pool.poll_interval == 3 and cfg.limits.eval_interval == 20 and cfg.limits.max_answer_bytes == 100
         assert [h.name for h in cfg.hosts] == ['a01', 'h01']
 
     @pytest.mark.parametrize('data, fragment', [

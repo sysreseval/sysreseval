@@ -34,7 +34,7 @@ PHASE_FLAVOR_FORM = 'flavor_form'
 PHASE_FLAVOR_ERROR = 'flavor_error'
 
 #: Commands sharing the "start" and the "eval" concurrency limits.
-START_LIKE = frozenset({'start', 'restore'})
+START_LIKE = frozenset({'start'})
 EVAL_LIKE = frozenset({'eval', 'state'})
 
 STREAM_LINE_LIMIT = 1 << 22     # a flavor form (JSON on one stderr line) can be long
@@ -313,7 +313,7 @@ class SreRunner:
 
     async def stream_stdout(self, user: str, args, *, privileged: bool = False, timeout: float | None = None,
                             chunk_size: int = 1 << 16) -> AsyncIterator[bytes]:
-        """The stdout of ``sre`` chunk by chunk (``save``, ``export``); :class:`CommandError`
+        """The stdout of ``sre`` chunk by chunk (``export``); :class:`CommandError`
         at the end when it failed."""
         held = await self._acquire(user, args)
         try:

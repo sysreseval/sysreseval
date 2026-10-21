@@ -64,7 +64,7 @@ class Relay:
 
     async def forward_ndjson(self, request: web.Request, host: HostConfig, identity: Identity, method: str,
                              path: str, *, data=None, params=None, headers=None) -> web.StreamResponse:
-        """Relay a request whose answer is an NDJSON stream (``start``, ``restore``), line by
+        """Relay a request whose answer is an NDJSON stream (``start``), line by
         line: the ``result`` line names the host as the browser knows it (``host.name``), not as
         the agent calls itself."""
         request_headers = self.pool.headers(host, identity)

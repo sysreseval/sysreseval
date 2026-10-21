@@ -1,6 +1,6 @@
 // The project page: the tab bar and its panes (tabs/*.js), the data of GET {api_base} (the
 // sanitised view of the project and the answers), the events WebSocket ({api_base}/events)
-// refreshing them, the corner controls (instructor view, word wrap, content font size, Save /
+// refreshing them, the corner controls (instructor view, word wrap, content font size,
 // Export links, Close project) and the touch keeping the project alive every minute.
 
 import './base.js';
@@ -33,7 +33,6 @@ const instructorToggle = document.getElementById('instructor-toggle');
 const wrapToggle = document.getElementById('wrap-toggle');
 const fontMinus = document.getElementById('font-minus');
 const fontPlus = document.getElementById('font-plus');
-const saveLink = document.getElementById('save-link');
 const exportLink = document.getElementById('export-link');
 const closeButton = document.getElementById('close-project');
 const closedBanner = document.getElementById('closed-banner');
@@ -176,9 +175,7 @@ function applyProject(project) {
   }
   instructorToggle.hidden = !(isInstructor && project.has_instructor_texts);
   instructorToggle.setAttribute('aria-pressed', state.instructorView ? 'true' : 'false');
-  saveLink.hidden = !project.allow_save_restore;
   exportLink.hidden = !project.export_kathara_project;
-  saveLink.href = ctx.url('/save');
   updateExportLink();
 }
 

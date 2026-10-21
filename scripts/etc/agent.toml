@@ -23,10 +23,8 @@ lab_list_cache_ttl = 60
 # Timeouts of the sre commands, in seconds.
 [timeouts]
 start = 900
-restore = 900
 eval = 600
 state = 600
 stop = 300
-save = 900
 export = 600
 list = 30

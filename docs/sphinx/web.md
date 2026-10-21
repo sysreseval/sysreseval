@@ -40,7 +40,7 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
 The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
 (a user only reaches their own projects; the `wipe`, `exec` and exam commands have no endpoint),
 `allow_connection` of the devices, `allow_self_grade`, the user-allowed states, the
-`allow_save_restore` and `export_kathara_project` flags.
+`export_kathara_project` flag. Save and restore are not offered on the web.
 
 ## Installation
 
@@ -86,7 +86,7 @@ user and protects `web.toml` when it exists.
 | `lab_list_cache_ttl` | `60` | seconds the output of `sre list` is cached |
 | `state_dir` | `/var/lib/sre/web-agent` | the idle clocks of the projects, kept across restarts |
 | `tls_cert`, `tls_key` | none | TLS between the portal and this agent |
-| `[timeouts]` | `start = 900`, `restore = 900`, `eval = 600`, `state = 600`, `stop = 300`, `save = 900`, `export = 600`, `list = 30` | seconds, per `sre` command |
+| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `export = 600`, `list = 30` | seconds, per `sre` command |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
 
@@ -103,7 +103,7 @@ Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown ke
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`); `start_tls`; `timeout` |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents |
-| `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes`, `max_restore_mb` |
+| `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`) |
 
 The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
@@ -115,14 +115,14 @@ answers file of the projects like the GECOS fields do on a workstation, so `sre 
 - **Login**: the directory account, or (anonymous mode) a display name and a language.
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
   lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
-  deploys), "Restore a project" from a save file.
+  deploys).
 - **A project**: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
   same options (lines, spacing, order, icons); the questions and the forms are the same; the
   evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
   `xterm.js` windows on `sre connect`: every Connect button opens a new one on its machine (like
   a new xterm in the Qt GUI: `gw`, `gw (2)`, …), the select of the Terminals tab opens one on
   any device (the machines open to the students and the managed switches), the × of a sub-tab
-  closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. Save and Export download the files.
+  closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. Export downloads the Kathara zip.
   Session recording (`asciinema`) applies as on a workstation, since it happens in `sre connect`.
 - The answers are saved as the user types (debounced), with the identity of the session.
 
@@ -133,8 +133,8 @@ answers file of the projects like the GECOS fields do on a workstation, so `sre 
 - The session cookie is signed (HMAC-SHA256), `HttpOnly`, `SameSite=Strict`, `Secure` behind
   HTTPS; the state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
   matching `Origin`; the pages carry a `Content-Security-Policy`.
-- Rate limits per user (evaluations, starts) and per client address (logins); the sizes of the
-  answers and of the save files are capped.
+- Rate limits per user (evaluations, starts) and per client address (logins); the size of the
+  answers is capped.
 - A project's owner is the third field of its running lab name; the portal and the agent both
   check it. Instructors (phase 5) will be the members of an LDAP group.
 

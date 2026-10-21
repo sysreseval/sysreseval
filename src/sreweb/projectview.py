@@ -84,7 +84,6 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False) -> dict
         'states': states,
         'tabs': common.visible_tabs(info, exam_mode=exam_mode, instructor_shown=show_instructor),
         'allow_self_grade': bool(info.get('allow_self_grade', True)),
-        'allow_save_restore': bool(info.get('allow_save_restore', False)),
         'export_kathara_project': bool(info.get('export_kathara_project', True)),
         'delay_between_self_grade': info.get('delay_between_self_grade', 0) or 0,
         'debug_project': bool(info.get('debug_project', False)),

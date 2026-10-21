@@ -1,5 +1,5 @@
 // The calls of the browser to the portal: JSON requests with the CSRF header, the errors as
-// ApiError, the NDJSON streams of a start / restore read line by line, the WebSocket URLs.
+// ApiError, the NDJSON stream of a start read line by line, the WebSocket URLs.
 
 // The portal refuses every non-GET /api request and every WebSocket without this header
 // (the WebSockets are checked on their Origin instead: nothing to add there).
@@ -16,7 +16,7 @@ export class ApiError extends Error {
 }
 
 // A request whose Response is returned as is (the NDJSON streams, the SVG of the schema).
-// `json` is sent as the JSON body, `body` as is (a File for a restore).  A non-2xx answer is
+// `json` is sent as the JSON body, `body` as is.  A non-2xx answer is
 // raised as an ApiError built from the JSON body of the portal; 401 goes back to the login page.
 export async function fetchRaw(method, url, {json, body, headers} = {}) {
   const options = {method, headers: {...(headers || {})}, credentials: 'same-origin'};

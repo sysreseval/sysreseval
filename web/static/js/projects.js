@@ -1,19 +1,16 @@
 // The Projects page: the running projects of the user (GET /api/projects every 5 s), one card
-// per project with its Open link and Close button, and the Restore of a save file (POST
-// /api/projects/restore, an NDJSON stream like a start).
+// per project with its Open link and Close button.
 
 import './base.js';
 import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, resolveText} from './i18n.js';
 import {el, clear, toast, formatTimestamp} from './ui.js';
-import {ProgressBox, runCreation, projectUrl} from './creation.js';
+import {projectUrl} from './creation.js';
 
 const REFRESH_INTERVAL = 5000;
 
 const list = document.getElementById('projects');
-const progress = new ProgressBox(document.getElementById('progress'));
-const restoreInput = document.getElementById('restore-file');
 const closing = new Set();   // running lab names whose close is in progress
 
 function projectApi(project) {
@@ -74,28 +71,8 @@ async function refresh() {
   }
 }
 
-async function restore(file) {
-  const result = await runCreation(progress, _('Restoring project…'), 'POST', '/api/projects/restore',
-                                   {body: file, headers: {'Content-Type': 'application/octet-stream'}});
-  if (result.status === 'created') {
-    window.location.href = projectUrl(result.host, result.running_lab_name);
-    return;
-  }
-  progress.showError(result.message || _('The restore failed.'),
-                     {onRetry: () => restore(file), retryAfter: result.retry_after || 0});
-}
-
 async function main() {
   await i18n.init();
-  if (restoreInput) {
-    restoreInput.addEventListener('change', () => {
-      const file = restoreInput.files && restoreInput.files[0];
-      restoreInput.value = '';
-      if (file) {
-        restore(file);
-      }
-    });
-  }
   await refresh();
   window.setInterval(refresh, REFRESH_INTERVAL);
 }

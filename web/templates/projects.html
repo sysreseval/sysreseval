@@ -5,11 +5,7 @@
 <div class="toolbar">
   <h1>{{ _("Running projects") }}</h1>
   <a class="button primary" href="/open">{{ _("Open a lab") }}</a>
-  <label class="button">{{ _("Restore a project") }}
-    <input type="file" id="restore-file" accept=".sre" hidden>
-  </label>
 </div>
-<div id="progress" class="progress-box" hidden></div>
 <div id="projects" class="cards"><p class="muted">{{ _("Loading…") }}</p></div>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/projects.js"></script>{% endblock %}

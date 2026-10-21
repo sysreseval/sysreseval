@@ -54,7 +54,6 @@ class Routes:
         r.add_get('/api/pool', self.api_pool)
         r.add_get('/api/projects', self.api_projects)
         r.add_post('/api/projects', self.api_projects_create)
-        r.add_post('/api/projects/restore', self.api_projects_restore)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
         r.add_get('/api/projects/{host}/{rln}/events', self.api_events)
@@ -65,7 +64,6 @@ class Routes:
         r.add_get('/api/projects/{host}/{rln}/terminals/{device}', self.api_terminal)
         r.add_get('/api/projects/{host}/{rln}/log', self.api_log)
         r.add_post('/api/projects/{host}/{rln}/touch', self.api_touch)
-        r.add_get('/api/projects/{host}/{rln}/save', self.api_save)
         r.add_get('/api/projects/{host}/{rln}/export', self.api_export)
 
     # -- helpers --------------------------------------------------------------------------------
@@ -266,21 +264,6 @@ class Routes:
                                                data=json.dumps(payload).encode('utf-8'),
                                                headers={'Content-Type': 'application/json'})
 
-    async def api_projects_restore(self, request):
-        identity = self._require_identity(request)
-        if request.content_length and request.content_length > self.cfg.limits.max_restore_mb << 20:
-            return json_error(413, "save file too large")
-        wait = self.limiter.allow_every('start', identity.login, self.cfg.limits.start_interval)
-        if wait:
-            return json_error(429, "please wait before starting another project", retry_after=round(wait))
-        host, reservation = self.pool.pick()
-        try:
-            return await self.relay.forward_ndjson(request, host, identity, 'POST', '/projects/restore',
-                                                   data=request.content,
-                                                   params={'idle_timeout': str(self._idle_timeout(identity))})
-        finally:
-            self.pool.release(reservation)
-
     # -- one project -----------------------------------------------------------------------------
 
     def _path(self, rln: str, suffix: str = '') -> str:
@@ -332,10 +315,6 @@ class Routes:
     async def api_state(self, request):
         state = request.match_info['state']
         return await self._relay_json(request, 'POST', f"/states/{urllib.parse.quote(state, safe='')}", timeout=900)
-
-    async def api_save(self, request):
-        host, rln, identity = self._target(request)
-        return await self.relay.forward(request, host, identity, 'GET', self._path(rln, '/save'))
 
     async def api_export(self, request):
         host, rln, identity = self._target(request)

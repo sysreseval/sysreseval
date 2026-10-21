@@ -34,7 +34,7 @@ class Portal:
 
     def make_app(self) -> web.Application:
         app = web.Application(middlewares=[self.identity_middleware, self.csrf_middleware, self.error_middleware],
-                              client_max_size=max(1 << 20, self.cfg.limits.max_restore_mb << 20))
+                              client_max_size=max(1 << 20, self.cfg.limits.max_answer_bytes))
         app[PORTAL_KEY] = self
         aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(self.web_dir / 'templates')), autoescape=True)
         # the client session is created at startup, inside the running loop (aiohttp requires it)

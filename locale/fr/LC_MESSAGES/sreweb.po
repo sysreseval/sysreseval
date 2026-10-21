@@ -54,8 +54,6 @@ msgstr "Projets en cours"
 msgid "Open a lab"
 msgstr "Ouvrir un TP"
 
-msgid "Restore a project"
-msgstr "Restaurer un projet"
 
 msgid "Loading…"
 msgstr "Chargement…"
@@ -84,11 +82,7 @@ msgstr "Fermer ce projet ? Ses machines seront arrêtées."
 msgid "closing in progress..."
 msgstr "Fermeture en cours..."
 
-msgid "Restoring project…"
-msgstr "Restauration du projet…"
 
-msgid "The restore failed."
-msgstr "La restauration a échoué."
 
 # --- open.html, open.js, tree.js, creation.js, form.js --------------------------------------
 
@@ -169,8 +163,6 @@ msgstr "Texte plus petit"
 msgid "Larger text"
 msgstr "Texte plus grand"
 
-msgid "Save Project"
-msgstr "Enregistrer le projet"
 
 msgid "Export Kathara Project"
 msgstr "Exporter le projet Kathara"

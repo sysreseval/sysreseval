@@ -226,9 +226,7 @@ class TestProjectsThroughThePortal:
                 if shutil.which('neato'):
                     resp = await h.client.get(f'{base}/schema.svg?curved=1')
                     assert resp.status == 200 and resp.content_type == 'image/svg+xml'
-                resp = await h.client.get(f'{base}/save')
-                assert resp.status == 200 and resp.headers['Content-Disposition'].endswith('.sre"')
-                saved = await resp.read()
+                assert (await h.client.get(f'{base}/save')).status == 404   # not offered on the web
                 resp = await h.client.get(f'{base}/export?sep=2')
                 assert resp.status == 200 and (await resp.read()).startswith(b'PK')
                 # websockets through the relay
@@ -248,17 +246,11 @@ class TestProjectsThroughThePortal:
                         assert msg.type == aiohttp.WSMsgType.BINARY, msg
                         out += msg.data
                 await term.close()
-                # restore through the portal (a new project), then close both
-                resp = await h.client.post('/api/projects/restore', data=saved, headers=CSRF)
-                assert resp.status == 429   # the start rate limit
-                h.portal.routes.limiter._last.clear()
-                resp = await h.client.post('/api/projects/restore', data=saved, headers=CSRF)
-                lines = [json.loads(l) for l in (await resp.text()).splitlines()]
-                assert lines[-1]['status'] == 'created'
+                assert (await h.client.post('/api/projects/restore', data=b'x', headers=CSRF)).status == 404
                 resp = await h.client.delete(base, headers=CSRF)
                 assert resp.status == 200
                 await asyncio.sleep(0.2)
-                assert len(await (await h.client.get('/api/projects')).json()) == 1
+                assert await (await h.client.get('/api/projects')).json() == []
         run(go())
 
     def test_ownership_at_the_portal(self, tmp_path):

@@ -128,7 +128,6 @@ class LimitsConfig:
     start_interval: float = 30.0       # seconds between two starts of one user
     login_per_minute: int = 5          # per client address
     max_answer_bytes: int = 1 << 20
-    max_restore_mb: int = 512
 
 
 @dataclass
@@ -203,8 +202,7 @@ def load_web_config(path) -> WebConfig:
 # ---------------------------------------------------------------------------------------------
 
 #: Timeouts (seconds) of the sre commands, by command.
-DEFAULT_TIMEOUTS = {'start': 900.0, 'restore': 900.0, 'eval': 600.0, 'state': 600.0, 'stop': 300.0,
-                    'save': 900.0, 'export': 600.0, 'list': 30.0}
+DEFAULT_TIMEOUTS = {'start': 900.0, 'eval': 600.0, 'state': 600.0, 'stop': 300.0, 'export': 600.0, 'list': 30.0}
 
 
 @dataclass
