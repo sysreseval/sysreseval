@@ -1,0 +1,65 @@
+# /opt/sre/etc/web.toml (checkout) or /etc/sysreseval/web.toml (Debian package): the SRE web site
+# (sre-web).  Owned by root, group sre-web, mode 0640: it holds the secret and the tokens.
+#
+# Behind a reverse proxy doing TLS (nginx, caddy): listen on the loopback and give public_url.
+listen = "127.0.0.1:8450"
+public_url = "https://sre.example.org"
+# Signs the session cookies (32+ random characters; changing it logs everybody out).
+secret = "change-me-to-a-long-random-string"
+# The proxies whose X-Forwarded-For / X-Forwarded-Proto headers are trusted.
+trusted_proxies = ["127.0.0.1"]
+# Languages offered on the login page, the first one is the default.
+languages = ["fr", "en"]
+# Own TLS instead of a proxy (optional).
+# tls_cert = "/etc/sysreseval/web.crt"
+# tls_key = "/etc/sysreseval/web.key"
+
+[auth]
+# "anonymous": every browser gets a pseudonym guest-xxxxxxxx (and may give a display name);
+# "ldap": the users log in with their directory account.
+mode = "anonymous"
+
+[auth.ldap]
+uri = "ldaps://ldap.example.org"
+# Either bind as the user with a DN template...
+bind_dn_template = "uid={login},ou=people,dc=example,dc=org"
+# ... or search the user first (a service account, or an anonymous search), then bind as the user.
+# search_base = "ou=people,dc=example,dc=org"
+# search_filter = "(uid={login})"
+# bind_dn = "cn=sre-web,ou=services,dc=example,dc=org"
+# bind_password = "..."
+attr_fullname = "cn"
+attr_mail = "mail"
+# The members of these groups get the instructor role (memberOf, or group_filter = "(member={dn})").
+instructor_groups = []
+# group_filter = "(member={dn})"
+start_tls = false
+timeout = 10
+
+[pool]
+# A project nobody touched for this long is evaluated (if the lab asks) and closed.
+idle_timeout_anonymous = "2h"
+idle_timeout_authenticated = "24h"
+# Seconds between two polls of the agents.
+poll_interval = 2
+
+[limits]
+eval_interval = 10        # seconds between two self-evaluations of one user
+start_interval = 30       # seconds between two starts of one user
+login_per_minute = 5      # login attempts per client address
+max_answer_bytes = 1048576
+max_restore_mb = 512
+
+# One entry per pool host: the URL of its agent, the token of its agent.toml, and how many
+# projects it takes (a classroom workstation holds about thirty).
+[[hosts]]
+name = "a01"
+url = "http://10.0.0.11:8451"
+token = "change-me-to-a-long-random-string"
+max_projects = 25
+
+# [[hosts]]
+# name = "a02"
+# url = "http://10.0.0.12:8451"
+# token = "..."
+# max_projects = 25

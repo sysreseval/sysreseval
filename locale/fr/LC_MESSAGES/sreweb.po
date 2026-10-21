@@ -1,0 +1,359 @@
+# French translation of the SRE web front-end (the templates of web/templates and the
+# JavaScript of web/static/js; domain "sreweb", src/sreweb/i18n.py).
+# Hand-maintained like sre.po: `make web-translations` merges the strings of the Python and
+# JavaScript sources with xgettext; the strings of the Jinja2 templates are added by hand.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sysreseval\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-21 12:00+0200\n"
+"PO-Revision-Date: 2026-10-21 12:00+0200\n"
+"Last-Translator: \n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+# --- base.html, login.html ------------------------------------------------------------------
+
+msgid "Language"
+msgstr "Langue"
+
+msgid "Logout"
+msgstr "Déconnexion"
+
+msgid "Sign in"
+msgstr "Connexion"
+
+msgid "Login"
+msgstr "Identifiant"
+
+msgid "Password"
+msgstr "Mot de passe"
+
+msgid "Display name (optional)"
+msgstr "Nom affiché (facultatif)"
+
+msgid "You get a pseudonym; the name you give here goes into your answer files."
+msgstr "Vous recevez un pseudonyme ; le nom donné ici est inscrit dans vos fichiers de réponses."
+
+msgid "Continue"
+msgstr "Continuer"
+
+# --- projects.html, projects.js -------------------------------------------------------------
+
+msgid "Projects"
+msgstr "Projets"
+
+msgid "Running projects"
+msgstr "Projets en cours"
+
+msgid "Open a lab"
+msgstr "Ouvrir un TP"
+
+msgid "Restore a project"
+msgstr "Restaurer un projet"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "No running project."
+msgstr "Aucun projet en cours."
+
+msgid "Lab: "
+msgstr "TP : "
+
+msgid "Host: "
+msgstr "Hôte : "
+
+msgid "Started: "
+msgstr "Démarré : "
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Close Project"
+msgstr "Fermer le projet"
+
+msgid "Close this project? Its machines will be stopped."
+msgstr "Fermer ce projet ? Ses machines seront arrêtées."
+
+msgid "closing in progress..."
+msgstr "Fermeture en cours..."
+
+msgid "Restoring project…"
+msgstr "Restauration du projet…"
+
+msgid "The restore failed."
+msgstr "La restauration a échoué."
+
+# --- open.html, open.js, tree.js, creation.js, form.js --------------------------------------
+
+msgid "Back to the projects"
+msgstr "Retour aux projets"
+
+msgid "Loading available labs…"
+msgstr "Chargement des TP disponibles…"
+
+msgid "Start"
+msgstr "Démarrer"
+
+msgid "No lab is available."
+msgstr "Aucun TP n'est disponible."
+
+msgid "Starting…"
+msgstr "Démarrage…"
+
+msgid "Project created, opening it…"
+msgstr "Projet créé, ouverture…"
+
+msgid "The start failed."
+msgstr "Le démarrage a échoué."
+
+msgid "Lab configuration"
+msgstr "Configuration du TP"
+
+msgid "This flavor is not allowed."
+msgstr "Ce paramétrage n'est pas autorisé."
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Submit"
+msgstr "Valider"
+
+msgid "Downloading images…"
+msgstr "Téléchargement des images…"
+
+msgid "Downloading images: {pct}%"
+msgstr "Téléchargement des images : {pct}%"
+
+msgid "Images ready."
+msgstr "Images prêtes."
+
+msgid "Starting {n} machine(s)…"
+msgstr "Démarrage de {n} machine(s)…"
+
+msgid "Starting machines: {cur}/{tot}"
+msgstr "Démarrage des machines : {cur}/{tot}"
+
+msgid "All machines started."
+msgstr "Toutes les machines démarrées."
+
+msgid "Retry"
+msgstr "Réessayer"
+
+msgid "Retry in {n} s"
+msgstr "Réessayer dans {n} s"
+
+msgid "The connection was closed before the end."
+msgstr "La connexion a été fermée avant la fin."
+
+# --- project.html, project.js ---------------------------------------------------------------
+
+msgid "Instructor mode"
+msgstr "Mode enseignant"
+
+msgid "Show the instructor texts and every state"
+msgstr "Afficher les textes enseignant et tous les états"
+
+msgid "Wrap"
+msgstr "Retour ligne"
+
+msgid "Smaller text"
+msgstr "Texte plus petit"
+
+msgid "Larger text"
+msgstr "Texte plus grand"
+
+msgid "Save Project"
+msgstr "Enregistrer le projet"
+
+msgid "Export Kathara Project"
+msgstr "Exporter le projet Kathara"
+
+msgid "This project is closed."
+msgstr "Ce projet est fermé."
+
+msgid "Schema"
+msgstr "Schéma"
+
+msgid "Full Schema"
+msgstr "Schéma complet"
+
+msgid "Informations"
+msgstr "Informations"
+
+msgid "Machines"
+msgstr "Machines"
+
+msgid "Networks"
+msgstr "Réseaux"
+
+msgid "Questions"
+msgstr "Questions"
+
+msgid "Evaluation"
+msgstr "Évaluation"
+
+msgid "Terminals"
+msgstr "Terminaux"
+
+msgid "Apply Configuration"
+msgstr "Appliquer une configuration"
+
+msgid "Log"
+msgstr "Journal"
+
+# --- tabs/schema.js -------------------------------------------------------------------------
+
+msgid "Lines:"
+msgstr "Liaisons :"
+
+msgid "Straight"
+msgstr "Droites"
+
+msgid "Curved"
+msgstr "Courbées"
+
+msgid "Compact"
+msgstr "Compact"
+
+msgid "Spread"
+msgstr "Écarté"
+
+msgid "Order:"
+msgstr "Ordre :"
+
+msgid "random"
+msgstr "aléatoire"
+
+msgid "Nodes:"
+msgstr "Nœuds :"
+
+msgid "Icons"
+msgstr "Icônes"
+
+msgid "Shapes"
+msgstr "Formes"
+
+# --- tabs/machines.js, tabs/networks.js -----------------------------------------------------
+
+msgid "Name"
+msgstr "Nom"
+
+msgid "NAT network to host"
+msgstr "Réseau NAT vers hôte"
+
+msgid "Connection"
+msgstr "Connexion"
+
+msgid "Ports"
+msgstr "Ports"
+
+msgid "Yes"
+msgstr "Oui"
+
+msgid "No"
+msgstr "Non"
+
+msgid "Connect"
+msgstr "Connecter"
+
+msgid "Type"
+msgstr "Type"
+
+msgid "Manageable switch"
+msgstr "Switch administrable"
+
+msgid "Switch"
+msgstr "Switch"
+
+msgid "Hub"
+msgstr "Hub"
+
+# --- tabs/questions.js ----------------------------------------------------------------------
+
+msgid "Write your answer here..."
+msgstr "Écrivez votre réponse ici…"
+
+msgid "Untitled"
+msgstr "Sans titre"
+
+# --- tabs/evaluation.js ---------------------------------------------------------------------
+
+msgid "Start evaluation"
+msgstr "Lancer l'évaluation"
+
+msgid "Next evaluation allowed in {n} s"
+msgstr "Prochaine évaluation autorisée dans {n} s"
+
+msgid "Error: {error}"
+msgstr "Erreur : {error}"
+
+msgid "The project is busy, try again later."
+msgstr "Le projet est occupé, réessayez plus tard."
+
+# --- tabs/terminals.js, terminal.js ---------------------------------------------------------
+
+msgid "Color scheme"
+msgstr "Schéma de couleurs"
+
+msgid "Black on White"
+msgstr "Noir sur blanc"
+
+msgid "White on Black"
+msgstr "Blanc sur noir"
+
+msgid "Smaller terminal font"
+msgstr "Police du terminal plus petite"
+
+msgid "Larger terminal font"
+msgstr "Police du terminal plus grande"
+
+msgid "Reconnect"
+msgstr "Reconnecter"
+
+msgid "Connecting…"
+msgstr "Connexion…"
+
+msgid "Connected."
+msgstr "Connecté."
+
+msgid "Disconnected"
+msgstr "Déconnecté"
+
+msgid "Disconnected."
+msgstr "Déconnecté."
+
+msgid "Disconnected (exit code {code})."
+msgstr "Déconnecté (code de sortie {code})."
+
+msgid "Error"
+msgstr "Erreur"
+
+msgid "Not logged in."
+msgstr "Vous n'êtes pas connecté."
+
+msgid "Connection to this device is not allowed."
+msgstr "La connexion à cet équipement n'est pas autorisée."
+
+msgid "The project is gone."
+msgstr "Le projet n'existe plus."
+
+msgid "Too many terminals are open."
+msgstr "Trop de terminaux sont ouverts."
+
+msgid "The host does not answer."
+msgstr "L'hôte ne répond pas."
+
+# --- tabs/states.js, tabs/log.js ------------------------------------------------------------
+
+msgid "Apply"
+msgstr "Appliquer"
+
+msgid "Clear"
+msgstr "Effacer"

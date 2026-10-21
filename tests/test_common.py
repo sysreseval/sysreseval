@@ -323,3 +323,106 @@ class TestFormFieldLines:
 
     def test_other_specs_are_not_multiline(self):
         assert [form_field_lines(s) for s in ('[0-9]+', '>a|b', '?', '?true', '', 'a+')] == [None] * 6
+
+
+# ---------------------------------------------------------------------------
+# Display helpers shared by the GUI and the web front-end
+# ---------------------------------------------------------------------------
+
+from SRE.common import (  # noqa: E402
+    format_port, format_ports, terminal_devices, info_languages, project_title, listed_states,
+    state_rows, visible_tabs, resolve_text, TAB_SCHEMA, TAB_FULL_SCHEMA, TAB_INFORMATIONS,
+    TAB_MACHINES, TAB_NETWORKS, TAB_QUESTIONS, TAB_EVALUATION, TAB_TERMINALS, TAB_APPLY_CONFIG,
+    TAB_LOG, TAB_ORDER,
+)
+
+
+def _info(**over):
+    info = {
+        "lab_name": "sre/dhcp.py",
+        "title": {"en": "DHCP", "fr": "Le DHCP"},
+        "informations": {"en": "# Hi", "fr": "# Salut"},
+        "machines": [{"name": "pc1", "allow_connection": True}, {"name": "srv", "allow_connection": False}],
+        "switches": [{"name": "lan", "mode": "managed", "allow_connection": True},
+                     {"name": "dmz", "mode": "switch", "allow_connection": True},
+                     {"name": "hub", "mode": "hub", "allow_connection": True}],
+        "questions": [{"title": {"en": "Q1", "de": "F1"}, "description": {"es": "d"}}],
+        "user_allowed_states": {"final": {"en": "The solution", "fr": "La solution"}, "fault": ""},
+        "admin_only_states": ["fault"],
+        "allow_self_grade": True,
+        "debug_project": False,
+    }
+    info.update(over)
+    return info
+
+
+class TestDisplayHelpers:
+    def test_format_ports(self):
+        assert format_port("8080:80/tcp") == "8080 -> 80 (tcp)"
+        assert format_port("5353:53/udp") == "5353 -> 53 (udp)"
+        assert format_port("2222:22") == "2222 -> 22 (tcp)"
+        assert format_ports(["8080:80/tcp", "2222:22"]) == "8080 -> 80 (tcp)  -  2222 -> 22 (tcp)"
+        assert format_ports([]) == ""
+        assert format_ports(None) == ""
+
+    def test_terminal_devices_machines_then_managed_switches(self):
+        devices = terminal_devices(_info())
+        assert [d["name"] for d in devices] == ["pc1", "srv", "lan"]
+        assert devices[2] == {"name": "lan", "allow_connection": True}
+        assert terminal_devices({}) == []
+
+    def test_info_languages(self):
+        assert info_languages(_info()) == {"en", "fr", "de", "es"}
+        assert info_languages({"title": "plain", "questions": [{"title": "q"}]}) == set()
+
+    def test_project_title(self):
+        assert project_title(_info(), ["fr", "en"]) == "Le DHCP"
+        assert project_title(_info(), ["de", "en"]) == "DHCP"
+        assert project_title({"lab_name": "s4/tp_ssh.py"}, ["en"]) == "s4/tp_ssh"
+        assert project_title({}, ["en"], fallback="20260101000000@@@x@@@u") == "20260101000000@@@x@@@u"
+
+    def test_resolve_text(self):
+        marked = {"en": "Public " + params.instructor_begin_mark + ";" + params.instructor_args_end_mark
+                  + "secret" + params.instructor_end_mark, "fr": "Publique"}
+        assert resolve_text(marked, ["en"]) == "Public "
+        assert resolve_text(marked, ["en"], show_instructor=True) == "Public secret"
+        assert resolve_text(marked, ["fr"]) == "Publique"
+        assert resolve_text("plain", ["fr"]) == "plain"
+
+    def test_listed_states_and_rows(self):
+        info = _info()
+        assert listed_states(info["user_allowed_states"], info["admin_only_states"], show_admin_only=False) == \
+            {"final": {"en": "The solution", "fr": "La solution"}}
+        assert list(listed_states(info["user_allowed_states"], info["admin_only_states"],
+                                  show_admin_only=True)) == ["final", "fault"]
+        rows = state_rows(info["user_allowed_states"], info["admin_only_states"],
+                          show_admin_only=True, lang_priority=["fr", "en"])
+        assert rows == [("final", "La solution", False), ("fault", "fault", True)]
+        assert state_rows({}, None, show_admin_only=True, lang_priority=["en"]) == []
+
+    def test_visible_tabs_student(self):
+        tabs = visible_tabs(_info(), exam_mode=False, instructor_shown=False)
+        assert tabs == [TAB_SCHEMA, TAB_INFORMATIONS, TAB_MACHINES, TAB_NETWORKS, TAB_QUESTIONS,
+                        TAB_EVALUATION, TAB_TERMINALS, TAB_APPLY_CONFIG]
+        assert [t for t in TAB_ORDER if t in tabs] == tabs
+
+    def test_visible_tabs_exam_mode(self):
+        tabs = visible_tabs(_info(), exam_mode=True, instructor_shown=False)
+        assert TAB_EVALUATION not in tabs and TAB_APPLY_CONFIG not in tabs and TAB_LOG not in tabs
+        # the instructor view lifts the exam restriction of the Apply Configuration tab
+        tabs = visible_tabs(_info(), exam_mode=True, instructor_shown=True)
+        assert TAB_APPLY_CONFIG in tabs and TAB_LOG in tabs and TAB_EVALUATION not in tabs
+
+    def test_visible_tabs_no_states_no_questions_no_self_grade(self):
+        info = _info(user_allowed_states={"fault": ""}, questions=[], allow_self_grade=False)
+        tabs = visible_tabs(info, exam_mode=False, instructor_shown=False)
+        assert tabs == [TAB_SCHEMA, TAB_INFORMATIONS, TAB_MACHINES, TAB_NETWORKS, TAB_TERMINALS]
+        # the admin-only state is listed with the instructor view
+        assert TAB_APPLY_CONFIG in visible_tabs(info, exam_mode=False, instructor_shown=True)
+
+    def test_visible_tabs_debug_project(self):
+        info = _info(user_allowed_states={}, questions=[])
+        info["debug_project"] = True
+        tabs = visible_tabs(info, exam_mode=True, instructor_shown=False)
+        assert TAB_FULL_SCHEMA in tabs and TAB_APPLY_CONFIG in tabs and TAB_LOG in tabs
+        assert tabs.index(TAB_FULL_SCHEMA) == tabs.index(TAB_SCHEMA) + 1

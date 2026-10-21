@@ -19,28 +19,39 @@ IMPORT_TO_PACKAGE = {
     'docker': 'python3-docker', 'fpdf': 'python3-fpdf', 'graphviz': 'python3-graphviz',
     'markdown': 'python3-markdown', 'msgpack': 'python3-msgpack', 'netaddr': 'python3-netaddr',
     'odf': 'python3-odf', 'urllib3': 'python3-urllib3', 'zstandard': 'python3-zstandard',
+    'aiohttp': 'python3-aiohttp', 'aiohttp_jinja2': 'python3-aiohttp-jinja2', 'jinja2': 'python3-jinja2',
+    'ldap3': 'python3-ldap3',
 }
-LOCAL_MODULES = {'SRE', 'sysreseval'} | {p.stem for p in (ROOT / 'lib').glob('*.py')}
+LOCAL_MODULES = {'SRE', 'sysreseval', 'sreweb'} | {p.stem for p in (ROOT / 'lib').glob('*.py')}
+# the Python code of each binary package: what src/ holds, minus the web front-end (sysreseval-web
+# ships src/sreweb: its agent subpackage imports SRE, which sysreseval-agent depends on)
+PACKAGE_SOURCES = {'sysreseval': ('src', ('tools', 'sreweb')), 'sysreseval-web': ('src/sreweb', ())}
 
 
-def _imported_modules():
+def _imported_modules(subtree='src', excluded=('tools', 'sreweb')):
     found = set()
-    for path in (ROOT / 'src').rglob('*.py'):
-        if 'tools' in path.relative_to(ROOT / 'src').parts:
+    for path in (ROOT / subtree).rglob('*.py'):
+        if set(excluded) & set(path.relative_to(ROOT / subtree).parts):
             continue
         for m in re.finditer(r'^(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)', path.read_text(), re.M):
             found.add(m.group(1))
     return found - set(sys.stdlib_module_names) - LOCAL_MODULES
 
 
+def _stanza(package: str) -> str:
+    return CONTROL.split(f'Package: {package}\n', 1)[1].split('\nPackage: ', 1)[0]
+
+
 class TestControl:
-    def test_every_third_party_import_has_a_package(self):
-        modules = _imported_modules()
+    @pytest.mark.parametrize('package', sorted(PACKAGE_SOURCES))
+    def test_every_third_party_import_has_a_package(self, package):
+        subtree, excluded = PACKAGE_SOURCES[package]
+        modules = _imported_modules(subtree, excluded)
         unknown = modules - set(IMPORT_TO_PACKAGE)
         assert not unknown, f"imports without a Debian package in tests/test_packaging.py: {sorted(unknown)}"
-        depends = CONTROL.split('Package: sysreseval\n', 1)[1].split('Package: sysreseval-doc', 1)[0]
+        stanza = _stanza(package)
         for module in modules:
-            assert IMPORT_TO_PACKAGE[module] in depends, module
+            assert IMPORT_TO_PACKAGE[module] in stanza, (package, module)
 
     def test_pyside6_modules(self):
         used = set()
@@ -58,9 +69,13 @@ class TestControl:
         assert {'kubernetes', 'setuptools', 'libtmux', 'appscript', 'pypiwin32', 'windows-curses'} <= set(removed)
 
 
+SBIN_LAUNCHERS = {'sre': 'sysreseval', 'sre-web': 'sysreseval-web', 'sre-agent': 'sysreseval-agent'}
+
+
 class TestFiles:
-    def test_install_sources_exist(self):
-        for line in (DEBIAN / 'sysreseval.install').read_text().splitlines():
+    @pytest.mark.parametrize('install', sorted(p.name for p in DEBIAN.glob('*.install')))
+    def test_install_sources_exist(self, install):
+        for line in (DEBIAN / install).read_text().splitlines():
             src = line.split()[0]
             if src.startswith('debian/build/'):
                 continue        # built by debian/rules
@@ -72,8 +87,19 @@ class TestFiles:
             text = launcher.read_text()
             target = re.search(r'/usr/lib/sysreseval/(\S+\.py)', text).group(1)
             assert (ROOT / 'src' / target).is_file(), launcher.name
-            assert f'[usr/{"sbin" if launcher.name == "sre" else "bin"}/{launcher.name}]' in \
-                (DEBIAN / 'sysreseval.lintian-overrides').read_text(), launcher.name
+            package = SBIN_LAUNCHERS.get(launcher.name, 'sysreseval')
+            bindir = 'sbin' if launcher.name in SBIN_LAUNCHERS else 'bin'
+            assert f'[usr/{bindir}/{launcher.name}]' in (DEBIAN / f'{package}.lintian-overrides').read_text(), \
+                launcher.name
+            install = (DEBIAN / f'{package}.install').read_text()
+            assert f'debian/launchers/{launcher.name} usr/{bindir}/' in install, launcher.name
+
+    def test_units_of_the_web_packages(self):
+        for package, unit in (('sysreseval-web', 'sysreseval-web'), ('sysreseval-agent', 'sysreseval-agent')):
+            text = (DEBIAN / f'{package}.{unit}.service').read_text()
+            assert f'ExecStart=/usr/sbin/{unit.replace("sysreseval-", "sre-")}' in text
+            assert f'dh_installsystemd -p {package} --name={unit} --no-enable --no-start' in (DEBIAN / 'rules').read_text()
+        assert 'Depends: ${misc:Depends},\n         sysreseval (>= ${source:Version}),' in _stanza('sysreseval-agent')
 
     def test_sudoers_rule_names_the_fhs_paths(self):
         text = (DEBIAN / 'sysreseval.sudoers').read_text()

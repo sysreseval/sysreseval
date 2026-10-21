@@ -1,0 +1,22 @@
+# The SRE web site: the pages, the sessions, the pool of hosts.  Runs as the unprivileged sre-web
+# user; needs neither Docker nor the labs.  Configuration: /etc/sysreseval/web.toml.
+# Disabled by default: systemctl enable --now sysreseval-web.service
+[Unit]
+Description=SysResEval web site
+Documentation=file:///usr/share/doc/sysreseval-web/README.Debian
+After=network-online.target
+
+[Service]
+Type=simple
+User=sre-web
+Group=sre-web
+ExecStart=/usr/sbin/sre-web
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

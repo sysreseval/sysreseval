@@ -18,7 +18,7 @@ from .start import ProjectSetup, check_grade_class, create_project_directories, 
 from .. import params
 from ..files_transfert import deploy_exetests
 from ..params import SRE
-from ..progress import register_progress_handlers
+from ..progress import register_progress_handlers, emit_project_created
 from ..save_archive import DecryptingReader, derive_key, extract_payload, header_aad, \
     lab_cli_arg_from_lab_name, read_header
 from ..utils import error_quit, in_user_mode, log_error, set_lab_dir_and_import_module, \
@@ -128,6 +128,7 @@ def do_action_restore(source, register_progress: bool = False, instructor_mode: 
             # deploy_exetests: refresh exetests.py in the containers (lib may have changed since the save)
             finalize_project(setup, module_rvlab, net_scheme, lab, data,
                              state=params.restore_state_name, pre_state=deploy_exetests)
+            emit_project_created(running_lab_name)
         except BaseException as e:
             rollback_project(setup)
             quit_if_no_switch_modes(setup.net_scheme, e)

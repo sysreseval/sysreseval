@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 from SRE import params
-from SRE.common import TranslatedText
+from SRE.common import listed_states, state_rows
 from sysreseval import settings, util
 
 
@@ -60,10 +60,8 @@ class ApplyConfigView(QWidget):
         self._populate()
 
     def _listed_states(self) -> dict:
-        if self._show_admin_only:
-            return self._user_allowed_states
-        return {state: description for state, description in self._user_allowed_states.items()
-                if state not in self._admin_only_states}
+        return listed_states(self._user_allowed_states, self._admin_only_states,
+                             show_admin_only=self._show_admin_only)
 
     def has_states(self) -> bool:
         return bool(self._listed_states())
@@ -77,13 +75,13 @@ class ApplyConfigView(QWidget):
         self._table.setRowCount(0)
         self._buttons.clear()
 
-        for state, description in self._listed_states().items():
+        for state, label, admin_only in state_rows(self._user_allowed_states, self._admin_only_states,
+                                                   show_admin_only=self._show_admin_only,
+                                                   lang_priority=self._lang_priority):
             row = self._table.rowCount()
             self._table.insertRow(row)
-            resolved = TranslatedText.from_value(description).resolve_priority(self._lang_priority) if description else ''
-            label = resolved if resolved else state
             label_item = QTableWidgetItem(label)
-            if state in self._admin_only_states:
+            if admin_only:
                 label_item.setForeground(QColor("red"))
             self._table.setItem(row, 0, label_item)
             btn = QPushButton(self.tr("Apply"))

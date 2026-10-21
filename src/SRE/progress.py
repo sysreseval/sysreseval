@@ -10,6 +10,7 @@ Format:
   {"phase": "deploy", "status": "start",    "total": N}
   {"phase": "deploy", "status": "progress", "current": N, "total": N, "machine": "..."}
   {"phase": "deploy", "status": "end"}
+  {"phase": "project", "status": "created", "running_lab_name": "..."}   (end of `sre start` / `sre restore`)
 """
 
 import json
@@ -87,6 +88,13 @@ class _DeployHandler:
 
     def ended(self, **kwargs):
         _emit({"phase": "deploy", "status": "end"})
+
+
+def emit_project_created(running_lab_name: str):
+    """The new running project is ready (its ``info.json`` is written): the last event of
+    ``sre start`` and ``sre restore``, so that a caller streaming stderr learns the project name
+    without scanning the projects directory."""
+    _emit({"phase": "project", "status": "created", "running_lab_name": running_lab_name})
 
 
 def register_progress_handlers():

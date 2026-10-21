@@ -1,0 +1,111 @@
+"""The aiohttp application of the portal: middlewares (session, CSRF, errors, security headers),
+Jinja2 templates, static files, the pool refresh task."""
+import logging
+import urllib.parse
+from pathlib import Path
+
+import aiohttp
+import aiohttp_jinja2
+import jinja2
+from aiohttp import web
+
+from . import session as S
+from .pool import Pool, PoolError
+from .relay import Relay
+from .routes import Routes, json_error
+from ..identity import IDENTITY_KEY
+from ..config import WebConfig
+
+log = logging.getLogger('sreweb.portal')
+
+PORTAL_KEY = web.AppKey('portal', object)
+CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+
+
+class Portal:
+    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs):
+        self.cfg = cfg
+        self.web_dir = Path(web_dir)
+        self.localedirs = list(localedirs)
+        self.session: aiohttp.ClientSession | None = None
+        self.pool: Pool | None = None
+        self.relay: Relay | None = None
+        self.routes: Routes | None = None
+
+    def make_app(self) -> web.Application:
+        app = web.Application(middlewares=[self.identity_middleware, self.csrf_middleware, self.error_middleware],
+                              client_max_size=max(1 << 20, self.cfg.limits.max_restore_mb << 20))
+        app[PORTAL_KEY] = self
+        aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(self.web_dir / 'templates')), autoescape=True)
+        # the client session is created at startup, inside the running loop (aiohttp requires it)
+        self.pool = Pool(self.cfg.hosts, None, poll_interval=self.cfg.pool.poll_interval)
+        self.relay = Relay(self.pool, None)
+        self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs)
+        self.routes.register(app)
+        static = self.web_dir / 'static'
+        if static.is_dir():
+            app.router.add_static('/static/', str(static), name='static')
+        app.on_startup.append(self._on_startup)
+        app.on_cleanup.append(self._on_cleanup)
+        return app
+
+    async def _on_startup(self, app):
+        self.session = aiohttp.ClientSession()
+        self.pool.session = self.session
+        self.relay.session = self.session
+        await self.pool.refresh()
+        self.pool.start()
+
+    async def _on_cleanup(self, app):
+        await self.pool.stop()
+        await self.session.close()
+
+    # -- middlewares ----------------------------------------------------------------------------
+
+    @web.middleware
+    async def identity_middleware(self, request, handler):
+        request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)
+        response = await handler(request)
+        response.headers.setdefault('Content-Security-Policy', CSP)
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('Referrer-Policy', 'same-origin')
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        return response
+
+    def _same_origin(self, request) -> bool:
+        origin = request.headers.get('Origin')
+        if not origin:
+            return True
+        allowed = {request.host}
+        if self.cfg.public_url:
+            allowed.add(urllib.parse.urlsplit(self.cfg.public_url).netloc)
+        return urllib.parse.urlsplit(origin).netloc in allowed
+
+    @web.middleware
+    async def csrf_middleware(self, request, handler):
+        if request.path.startswith('/api/'):
+            upgrade = request.headers.get('Upgrade', '').lower() == 'websocket'
+            if request.method not in ('GET', 'HEAD', 'OPTIONS') or upgrade:
+                if not self._same_origin(request):
+                    return json_error(403, "bad origin")
+                if not upgrade and request.headers.get(S.CSRF_HEADER) != S.CSRF_VALUE:
+                    return json_error(403, f"missing {S.CSRF_HEADER} header")
+        elif request.method == 'POST' and not self._same_origin(request):
+            raise web.HTTPForbidden(text="bad origin")
+        return await handler(request)
+
+    @web.middleware
+    async def error_middleware(self, request, handler):
+        try:
+            return await handler(request)
+        except PoolError as e:
+            if request.path.startswith('/api/'):
+                return json_error(e.status, e.message)
+            return web.Response(status=e.status, text=e.message)
+        except web.HTTPException:
+            raise
+        except Exception:
+            log.exception("unhandled error on %s %s", request.method, request.path)
+            if request.path.startswith('/api/'):
+                return json_error(500, "internal error")
+            raise

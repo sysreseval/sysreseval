@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Sign in") }} - SRE{% endblock %}
+{% block content %}
+<div class="login-box">
+  <h1>{{ _("Sign in") }}</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    {% if auth_mode == "ldap" %}
+    <label>{{ _("Login") }}
+      <input name="login" required autofocus autocomplete="username">
+    </label>
+    <label>{{ _("Password") }}
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    {% else %}
+    <label>{{ _("Display name (optional)") }}
+      <input name="display_name" autofocus maxlength="64">
+    </label>
+    <p class="hint">{{ _("You get a pseudonym; the name you give here goes into your answer files.") }}</p>
+    {% endif %}
+    <label>{{ _("Language") }}
+      <select name="language">
+        {% for code, name in languages %}
+        <option value="{{ code }}"{% if code == language %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="primary">{% if auth_mode == "ldap" %}{{ _("Sign in") }}{% else %}{{ _("Continue") }}{% endif %}</button>
+  </form>
+</div>
+{% endblock %}

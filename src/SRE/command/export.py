@@ -14,10 +14,11 @@ from pathlib import Path
 from graphviz import Graph
 
 from .. import params
-from ..common import NETWORK_ICON_SIZE, SWITCH_ICON_SIZE, InfoLab, QuestionType, TranslatedText, icon_node_attrs
+from ..common import InfoLab, QuestionType, TranslatedText
 from ..instructor_text import strip_instructor
 from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp
 from ..pdf import SrePDF, markdown_to_html
+from ..schema_graph import build_graph, topology_from_net_scheme
 from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, error_quit
 from ..params import SRE
 
@@ -44,159 +45,29 @@ def _svg_to_png(svg_path: str, out_dir: str) -> str | None:
 
 
 def _build_schema_pdf(net_scheme, curved=False, sep_pos=3, use_icons=True,
-                      reverse=False, random_seed=None,
-                      show_nat_network=False, nat_network_name='',
-                      nat_network_color='',
-                      host_network_exploded=False,
-                      host_network_edge_relative_length=1.0,
-                      schema_splines='curved', schema_overlap='prism') -> bytes:
-    sep = f"+{sep_pos * 10}"
-
+                      reverse=False, random_seed=None, **options) -> bytes:
+    """The schema PDF of *net_scheme*; *options* are the display options of the lab (see
+    ``_build_schema_graph``)."""
     # Graphviz PDF output requires raster images; SVG icons are not reliably
     # embedded in PDF without librsvg. Pre-convert them to PNG in a temp dir.
     tmp_dir = tempfile.mkdtemp()
     try:
-        return _build_schema_pdf_impl(
-            net_scheme, curved, sep_pos, use_icons, reverse, random_seed,
-            sep, tmp_dir,
-            show_nat_network=show_nat_network,
-            nat_network_name=nat_network_name,
-            nat_network_color=nat_network_color,
-            host_network_exploded=host_network_exploded,
-            host_network_edge_relative_length=host_network_edge_relative_length,
-            schema_splines=schema_splines,
-            schema_overlap=schema_overlap,
-        )
+        g = _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, f"+{sep_pos * 10}",
+                                icon=lambda svg_path: _svg_to_png(svg_path, tmp_dir) or svg_path, **options)
+        return g.pipe(format="pdf")
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _build_schema_pdf_impl(net_scheme, curved, sep_pos, use_icons, reverse,
-                            random_seed, sep, tmp_dir,
-                            show_nat_network=False, nat_network_name='',
-                            nat_network_color='',
-                            host_network_exploded=False,
-                            host_network_edge_relative_length=1.0,
-                            schema_splines='curved', schema_overlap='prism') -> bytes:
-    def png(svg_path):
-        return _svg_to_png(svg_path, tmp_dir) or svg_path
-
-    g = _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, sep, icon=png,
-                            show_nat_network=show_nat_network, nat_network_name=nat_network_name,
-                            nat_network_color=nat_network_color, host_network_exploded=host_network_exploded,
-                            host_network_edge_relative_length=host_network_edge_relative_length,
-                            schema_splines=schema_splines, schema_overlap=schema_overlap)
-    return g.pipe(format="pdf")
-
-
-def _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, sep, icon=lambda path: path,
-                        show_nat_network=False, nat_network_name='', nat_network_color='',
-                        host_network_exploded=False, host_network_edge_relative_length=1.0,
-                        schema_splines='curved', schema_overlap='prism') -> Graph:
-    """The graphviz graph of the visible topology of *net_scheme* (the export's twin of the GUI's
-    ``schema_view._build_graph``); *icon* maps an SVG icon file to the file graphviz embeds."""
-    icon_switch    = icon(params.switch_icon_svg_file)
-    icon_machine   = icon(params.machine_icon_svg_file)
-    icon_forbidden = icon(params.machine_forbidden_icon_svg_file)
-    shape_icons = {shape: icon(file) for shape, file in params.network_shape_icons.items()}
-
-    g = Graph(name="network", engine="neato", format="pdf")
-    g.attr(overlap=schema_overlap, sep=sep, splines=schema_splines if curved else "line")
-
-    visible = [m for m in net_scheme.get_machines() if not m.hidden]
-
-    networks: set = set()
-    for machine in visible:
-        for net in machine.net_adapters:
-            networks.add(net)
-
-    # Combined node list: sorted networks then sorted machines
-    _show_nat = show_nat_network and nat_network_name and any(m.bridged for m in visible)
-    all_items = (
-        [('net', net) for net in sorted(networks, key=lambda n: n.name)] +
-        [('machine', m) for m in sorted(visible, key=lambda m: m.name)]
-    )
-    if _show_nat:
-        if host_network_exploded:
-            for m in sorted((mm for mm in visible if mm.bridged), key=lambda mm: mm.name):
-                all_items.append(('nat', m))
-        else:
-            all_items.append(('nat', None))
-    if reverse:
-        all_items = list(reversed(all_items))
-    elif random_seed is not None:
-        random.Random(random_seed).shuffle(all_items)
-
-    def _nat_node_id(machine):
-        return f"{nat_network_name}__{machine.name}" if machine is not None else nat_network_name
-
-    for kind, obj in all_items:
-        if kind == 'nat':
-            g.node(_nat_node_id(obj), label=f'<<B> {nat_network_name} </B>>',
-                   shape=params.default_host_network_shape, style="filled",
-                   fillcolor=nat_network_color or params.default_host_network_color,
-                   width="1.0", height="1.0", fixedsize="true",
-                   fontsize="14")
-        elif kind == 'net':
-            net = obj
-            # a shape of params.network_shape_icons (a cloud) is an icon, any other a graphviz shape
-            net_icon = shape_icons.get(net.shape) if net.shape else None
-            if net_icon and use_icons:
-                g.node(net.name, label=f'<<B> {net.name} </B>>',
-                       **icon_node_attrs(net_icon, net.color, *NETWORK_ICON_SIZE))
-            elif net.shape and not net_icon:
-                g.node(net.name, label=f'<<B> {net.name} </B>>', shape=net.shape,
-                       style="filled", fillcolor=net.color if net.color else "lightblue",
-                       fontsize="14")
-            elif use_icons:
-                g.node(net.name, label=f'<<B> {net.name} </B>>',
-                       **icon_node_attrs(icon_switch, net.color, *SWITCH_ICON_SIZE))
-            else:
-                g.node(net.name, label=f'<<B> {net.name} </B>>', shape=params.default_network_shape,
-                       style="filled", fillcolor=net.color if net.color else "lightblue",
-                       fontsize="14")
-        else:
-            machine = obj
-            if machine.shape:
-                fillcolor = machine.color if machine.color else ("white" if machine.allow_connection else "tomato")
-                g.node(machine.name, label=f'<<B> {machine.name} </B>>', shape=machine.shape,
-                       style="filled", fillcolor=fillcolor, fontsize="14")
-            elif use_icons:
-                if machine.color:
-                    g.node(machine.name, label=f'<<B> {machine.name} </B>>', shape="box",
-                           style="filled", fillcolor=machine.color,
-                           image=icon_machine, labelloc="b",
-                           width="0.65", height="0.65", fixedsize="true", imagescale="true",
-                           fontsize="16")
-                else:
-                    icon = icon_machine if machine.allow_connection else icon_forbidden
-                    g.node(machine.name, label=f'<<B> {machine.name} </B>>', shape="none",
-                           image=icon, labelloc="b",
-                           width="0.65", height="0.65", fixedsize="true", imagescale="true",
-                           fontsize="16")
-            else:
-                if machine.color:
-                    fillcolor = machine.color
-                else:
-                    fillcolor = "white" if machine.allow_connection else "tomato"
-                g.node(machine.name, label=f'<<B> {machine.name} </B>>', shape=params.default_machine_shape,
-                       style="filled", fillcolor=fillcolor, fontsize="14")
-
-    for machine in visible:
-        for net, adapter in machine.net_adapters.items():
-            g.edge(machine.name, net.name, taillabel=f"eth{adapter.interface}", weight="2")
-
-    if _show_nat:
-        host_edge_len = str(host_network_edge_relative_length)
-        for machine in visible:
-            if machine.bridged:
-                max_iface = max((a.interface for a in machine.net_adapters.values()), default=-1)
-                target = _nat_node_id(machine) if host_network_exploded else nat_network_name
-                g.edge(machine.name, target,
-                       taillabel=f"eth{max_iface + 1}", weight="2",
-                       len=host_edge_len)
-
-    return g
+def _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, sep, icon=None, **options) -> Graph:
+    """The graphviz graph of the visible topology of *net_scheme*: ``schema_graph.build_graph`` (the
+    GUI's graph) with the machine nodes sorted by name, the order of the schema PDF.  *sep* is the
+    graphviz value ``+10N`` of the Compact / Spread position N; *icon* maps an SVG icon file to the
+    file graphviz embeds; *options* are the display options of the lab (``show_nat_network``,
+    ``nat_network_name``, ... see ``schema_graph.topology_from_net_scheme``)."""
+    topo = topology_from_net_scheme(net_scheme, **options)
+    return build_graph(topo, curved=curved, sep_pos=int(sep.lstrip('+')) // 10, use_icons=use_icons,
+                       reverse=reverse, random_seed=random_seed, sort_machines=True, icon=icon, fmt="pdf")
 
 
 def _lab_display_name(running_lab_name: str) -> str:

@@ -64,6 +64,9 @@ docker_socket_path = "/var/run/docker.sock"   # absent: no Docker daemon on this
 self_update_allowed = None   # None: True (checkout), False (fhs: the package is updated with apt); `sre update`
 network_plugin_hint = None   # None: how to install the network plugin with the switch types, by layout
 kathara_hint = None          # None: how to get a Kathara with the switch modes, by layout
+web_dir = None               # None: main_sre_dir/web (checkout), /usr/share/sysreseval/web (fhs): templates and static files of sre-web
+web_config_file = None       # None: main_sre_dir/etc/web.toml (checkout), /etc/sysreseval/web.toml (fhs): configuration of sre-web
+agent_config_file = None     # None: main_sre_dir/etc/agent.toml (checkout), /etc/sysreseval/agent.toml (fhs): configuration of sre-agent
 # Site parameters file: a Python file executed into this module after the parameters above (any
 # of them may be set there) and before the derived ones.  It must be owned by root (or by the
 # user running the program) and not writable by the group or others.  None: /etc/sysreseval/params.py
@@ -267,6 +270,12 @@ if network_plugin_hint is None:
                            else f"Install it with `make network-plugin` in {main_sre_dir} (see the installation guide).")
 if kathara_hint is None:
     kathara_hint = "upgrade the python3-kathara package" if _fhs else "install it again with `make venv`"
+if web_dir is None:
+    web_dir = "/usr/share/sysreseval/web" if _fhs else main_sre_dir + "/web"
+if web_config_file is None:
+    web_config_file = "/etc/sysreseval/web.toml" if _fhs else main_sre_dir + "/etc/web.toml"
+if agent_config_file is None:
+    agent_config_file = "/etc/sysreseval/agent.toml" if _fhs else main_sre_dir + "/etc/agent.toml"
 del _fhs, _root
 
 
@@ -711,7 +720,12 @@ def answers_dir(running_lab_name: str) -> str:
     return f"{sre_projects_dir}/{running_lab_name}/{answer_dir_name}"
 
 
-def self_grade_timestamp_file(lab_name: str) -> str:
+def self_grade_timestamp_file(lab_name: str, username: str | None = None) -> str:
+    """The cooldown file of the self-evaluations of a lab: one per lab and owner (``sre eval``
+    passes the owner of the project), so that the students of a shared host do not block each
+    other; the old per-lab file is used when *username* is not given."""
+    if username:
+        return f"{self_grade_timestamp_dir}/{lab_name}@@@{username}"
     return f"{self_grade_timestamp_dir}/{lab_name}"
 
 

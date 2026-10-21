@@ -88,7 +88,9 @@ def do_eval(running_lab_name, multiples_evals=False, print_result=False):
 
     auto_eval = getattr(SRE.args, 'auto_eval', False)
     if SRE.args.user and auto_eval and delay_between_self_grade > 0 and not exam_mode_is_on():
-        ts_file = params.self_grade_timestamp_file(lab_name=net_scheme.lab_name)
+        ts_file = params.self_grade_timestamp_file(
+            lab_name=net_scheme.lab_name,
+            username=params.get_username_from_running_lab_name(running_lab_name))
         if os.path.exists(ts_file):
             diff = time.time() - os.stat(ts_file).st_mtime
             if diff < delay_between_self_grade:

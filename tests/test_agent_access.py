@@ -1,0 +1,121 @@
+"""Tests of sreweb.agent.access: what the agent refuses before spawning sre."""
+import pytest
+
+from SRE import params
+from sreweb.agent import access as A
+from sreweb.agent.access import AccessError
+from sreweb.identity import Identity
+
+STUDENT = Identity(login='alice')
+OTHER = Identity(login='bob')
+PROF = Identity(login='prof', role='instructor')
+PROF_VIEW = Identity(login='prof', role='instructor', view='instructor')
+RLN = '20260910100000@@@sre@dhcp.py@@@alice'
+
+
+def info(**over):
+    d = {
+        'machines': [{'name': 'pc1', 'allow_connection': True}, {'name': 'srv', 'allow_connection': False},
+                     {'name': 'probe', 'allow_connection': True, 'hidden': True}],
+        'switches': [{'name': 'lan', 'mode': 'managed', 'allow_connection': True},
+                     {'name': 'closed', 'mode': 'managed', 'allow_connection': False},
+                     {'name': 'dmz', 'mode': 'switch', 'allow_connection': True}],
+        'user_allowed_states': {'final': 'Solution', 'fault': 'Fault'}, 'admin_only_states': ['fault'],
+        'allow_self_grade': True, 'allow_save_restore': False, 'export_kathara_project': True,
+        'debug_project': False, 'instructor_mode': False,
+    }
+    d.update(over)
+    return d
+
+
+class TestRunningLabName:
+    def test_exact_form_only(self):
+        assert A.check_running_lab_name(RLN) == RLN
+        for bad in ('', 'dhcp', '../x', 'a/b', RLN + '/..', '20260910100000@@@lab', '.', '..', 'x@@@y@@@z/'):
+            with pytest.raises(AccessError) as e:
+                A.check_running_lab_name(bad)
+            assert e.value.status == 404
+
+    def test_owner(self):
+        assert A.owner_of(RLN) == 'alice'
+        A.check_owner(RLN, STUDENT)
+        A.check_owner(RLN, PROF)
+        with pytest.raises(AccessError) as e:
+            A.check_owner(RLN, OTHER)
+        assert e.value.status == 403
+
+
+class TestDevices:
+    def test_student_sees_no_hidden_machine(self):
+        assert [m['name'] for m in A.visible_machines(info(), STUDENT)] == ['pc1', 'srv']
+        assert [m['name'] for m in A.visible_machines(info(), PROF)] == ['pc1', 'srv', 'probe']
+
+    def test_machine(self):
+        assert A.check_device(info(), 'pc1', STUDENT) == A.DEVICE_MACHINE
+        with pytest.raises(AccessError) as e:
+            A.check_device(info(), 'srv', STUDENT)
+        assert e.value.status == 403
+        with pytest.raises(AccessError) as e:
+            A.check_device(info(), 'probe', STUDENT)   # hidden: unknown
+        assert e.value.status == 404
+        assert A.check_device(info(), 'probe', PROF) == A.DEVICE_MACHINE
+        with pytest.raises(AccessError) as e:
+            A.check_device(info(), 'nope', PROF)
+        assert e.value.status == 404
+
+    def test_switch(self):
+        assert A.check_device(info(), 'lan', STUDENT) == A.DEVICE_SWITCH
+        for name in ('closed', 'dmz'):
+            with pytest.raises(AccessError) as e:
+                A.check_device(info(), name, STUDENT)
+            assert e.value.status == 403
+
+    def test_debug_project_opens_everything(self):
+        d = info(debug_project=True)
+        assert A.check_device(d, 'srv', STUDENT) == A.DEVICE_MACHINE
+        assert A.check_device(d, 'closed', STUDENT) == A.DEVICE_SWITCH
+        with pytest.raises(AccessError):
+            A.check_device(d, 'dmz', STUDENT)   # a plain switch still has no console
+
+
+class TestStates:
+    def test_student(self):
+        assert A.allowed_states(info(), STUDENT) == {'final': 'Solution'}
+        A.check_state(info(), 'final', STUDENT)
+        for s in ('fault', 'initial', '', 'nope'):
+            with pytest.raises(AccessError) as e:
+                A.check_state(info(), s, STUDENT)
+            assert e.value.status == 403
+
+    def test_instructor_view_on_an_instructor_project(self):
+        assert A.allowed_states(info(), PROF_VIEW) == {'final': 'Solution'}   # not an instructor-mode project
+        assert A.allowed_states(info(instructor_mode=True), PROF_VIEW) == {'final': 'Solution', 'fault': 'Fault'}
+        assert A.allowed_states(info(instructor_mode=True), PROF) == {'final': 'Solution'}   # view off
+        assert A.allowed_states(info(debug_project=True), STUDENT) == {'final': 'Solution', 'fault': 'Fault'}
+
+    def test_instructor_view_allowed(self):
+        assert not A.instructor_view_allowed(info(), PROF_VIEW)
+        assert A.instructor_view_allowed(info(instructor_mode=True), PROF_VIEW)
+        assert A.instructor_view_allowed(info(debug_project=True), PROF_VIEW)
+        assert not A.instructor_view_allowed(info(instructor_mode=True), PROF)
+
+
+class TestFlags:
+    def test_self_grade_save_export(self):
+        A.check_self_grade(info())
+        with pytest.raises(AccessError):
+            A.check_self_grade(info(allow_self_grade=False))
+        with pytest.raises(AccessError):
+            A.check_save(info())
+        A.check_save(info(allow_save_restore=True))
+        A.check_export(info())
+        with pytest.raises(AccessError):
+            A.check_export(info(export_kathara_project=False))
+
+    def test_exam_mode(self, tmp_path):
+        A.check_not_exam(str(tmp_path))
+        (tmp_path / params.exam_json_name).write_text('{}')
+        assert A.exam_mode_on(str(tmp_path))
+        with pytest.raises(AccessError) as e:
+            A.check_not_exam(str(tmp_path))
+        assert e.value.status == 409

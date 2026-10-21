@@ -1,0 +1,31 @@
+# /opt/sre/etc/agent.toml (checkout) or /etc/sysreseval/agent.toml (Debian package): the agent of
+# a pool host of the SRE web site (sre-agent).  Owned by root, mode 0600: it holds the token.
+#
+# The agent listens on a management address the portal reaches; never expose it to the students.
+listen = "10.0.0.11:8451"
+# Shared secret of this host, repeated in the [[hosts]] entry of the portal's web.toml (32+ characters).
+token = "change-me-to-a-long-random-string"
+# The sre command (default: the one of this installation).
+# sre_exe = "/opt/sre/sbin/sre"
+# Default idle timeout of a project nobody touched (the portal gives its own per user): "24h", "0" = never.
+max_idle = "24h"
+# Terminals per project and per device, concurrent starts and evaluations on this host.
+terminals_per_project = 8
+terminals_per_device = 2
+max_concurrent_starts = 2
+max_concurrent_evals = 2
+# Seconds the lab list is cached.
+lab_list_cache_ttl = 60
+# TLS between the portal and this agent (optional; the files must be readable by root only).
+# tls_cert = "/etc/sysreseval/agent.crt"
+# tls_key = "/etc/sysreseval/agent.key"
+# Timeouts of the sre commands, in seconds.
+[timeouts]
+start = 900
+restore = 900
+eval = 600
+state = 600
+stop = 300
+save = 900
+export = 600
+list = 30

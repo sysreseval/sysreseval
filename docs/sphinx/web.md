@@ -1,0 +1,158 @@
+# Web site (remote use)
+
+The web site lets the students work on the labs from a browser, without the Qt interface and
+without a remote desktop: the projects run on a **pool of Docker hosts**, every tab of the
+graphical interface (Schema, Informations, Machines, Networks, Questions, Evaluation, Terminals,
+Apply Configuration, Log) is rendered in the browser and the terminals go through WebSockets.
+The users log in with an LDAP directory, or everybody is anonymous.
+
+Nothing of a lab ever reaches the browser but what a student sees today: the content of
+`info.json` (resolved to the user's language, the instructor texts stripped), the outputs of the
+`sre --user` commands (the schema, the grades of a self-evaluation, the console of a machine).
+The lab files, `data.json`, the hidden machines and the archives stay on the pool hosts.
+
+## Architecture
+
+```
+browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sre-agent (one per pool host) ──► sre --user …
+```
+
+- **`sre-web`**, the portal, is the web site the browsers talk to. It authenticates the users,
+  keeps a signed session cookie, knows the pool of hosts and relays every request about a project
+  to the agent of the host running it. It runs as an unprivileged user, needs neither Docker,
+  Kathara nor the labs, and may run anywhere on the network (the Debian package `sysreseval-web`
+  installs alone).
+- **`sre-agent`** runs on every pool host, as root, next to `sre`. It drives the `sre` CLI in user
+  mode on behalf of the web users exactly as `sre-wrapper` + `sudo` do for the students of a
+  workstation (`sre --user <cmd>` with `SUDO_USER=<login>`), owns the terminals (a pseudo-terminal
+  per `sre connect`), writes the answers file with the user's identity, merges the cheat answers
+  of the states, tails the operations log and schedules what the Qt GUI used to schedule: the
+  periodic evaluations of a lab (`eval_interval_without_exam_mode`), the evaluation before a
+  project is closed (`eval_before_exit`), and an idle reaper closing the projects nobody touched
+  for the configured time.
+- The pool hosts share the lab tree as today (NFS, rsync or the Debian package) and, if the
+  instructor wants `sre watch` / `sre sheet` / `sre outline` across the pool, an `archive_dirs`
+  entry on a shared directory. The `hostname` of the archives is the pool host.
+- Placement: a new project goes to the reachable host with the lowest `projects / max_projects`
+  (then the lowest load); a host in exam mode is never used. A classroom workstation holds about
+  thirty projects (210 containers in 3.4 GB).
+
+The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
+(a user only reaches their own projects; the `wipe`, `exec` and exam commands have no endpoint),
+`allow_connection` of the devices, `allow_self_grade`, the user-allowed states, the
+`allow_save_restore` and `export_kathara_project` flags.
+
+## Installation
+
+### From a checkout
+
+`make venv` installs the Python dependencies (`aiohttp`, `jinja2`, `aiohttp-jinja2`, `ldap3`);
+`make xterm` (run by `make install`) downloads the terminal library of the browser into
+`web/static/vendor/` (checksum-pinned, not committed). `scripts/install.sh` offers to install the
+systemd units `sre-agent.service` and `sre-web.service` (disabled) and the example configuration
+files `etc/agent.toml` and `etc/web.toml` under the installation directory.
+
+On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with the listen address
+of a management interface and a long random token, then `systemctl enable --now sre-agent`.
+
+On the portal host: create the `sre-web` system user (`adduser --system --group --no-create-home
+--shell /usr/sbin/nologin sre-web`), write `/opt/sre/etc/web.toml` (root:sre-web, mode 0640:
+it holds the cookie secret and the agent tokens), then `systemctl enable --now sre-web`. Put a
+reverse proxy doing TLS in front (`scripts/etc/sre-web-nginx.conf` is an nginx example), or
+give the portal its own certificate (`tls_cert` / `tls_key`).
+
+### Debian packages
+
+`sysreseval-agent` on every pool host (it depends on `sysreseval` and `sysreseval-web`, whose
+code it shares), `sysreseval-web` on the portal host (it depends on nothing of SysResEval). The
+units are `sysreseval-agent.service` and `sysreseval-web.service`, disabled by default; the
+configuration files are `/etc/sysreseval/agent.toml` and `/etc/sysreseval/web.toml` (examples in
+`/usr/share/doc/sysreseval-*/examples/`); the postinst of `sysreseval-web` creates the `sre-web`
+user and protects `web.toml` when it exists.
+
+## Configuration
+
+### `agent.toml`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `listen` | `127.0.0.1:8451` | the address the portal reaches (a management interface, never the students' network) |
+| `token` | required | the shared secret of this host, repeated in the portal's `[[hosts]]` entry (32+ characters) |
+| `sre_exe` | the installation's `sre` | the command run for the users |
+| `poll_interval` | `1` | seconds between two scans of the projects directory (the Qt GUI polls every second too) |
+| `max_idle` | `24h` | default idle timeout of a project (the portal gives its own per user); `0` = never |
+| `terminals_per_project`, `terminals_per_device` | `8`, `2` | caps on the open terminals |
+| `max_concurrent_starts`, `max_concurrent_evals` | `2`, `2` | concurrent `sre start` / `sre eval` on the host |
+| `lab_list_cache_ttl` | `60` | seconds the output of `sre list` is cached |
+| `state_dir` | `/var/lib/sre/web-agent` | the idle clocks of the projects, kept across restarts |
+| `tls_cert`, `tls_key` | none | TLS between the portal and this agent |
+| `[timeouts]` | `start = 900`, `restore = 900`, `eval = 600`, `state = 600`, `stop = 300`, `save = 900`, `export = 600`, `list = 30` | seconds, per `sre` command |
+
+Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
+
+### `web.toml`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `listen` | `127.0.0.1:8450` | behind a reverse proxy: the loopback |
+| `public_url` | none | the URL the users type (the `Origin` of the WebSockets is checked against it) |
+| `secret` | required | signs the session cookies (32+ random characters) |
+| `trusted_proxies` | `[]` | the proxies whose `X-Forwarded-*` headers are trusted |
+| `languages` | `["en", "fr"]` | the languages offered at login, the first one by default |
+| `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
+| `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account |
+| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`); `start_tls`; `timeout` |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents |
+| `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes`, `max_restore_mb` |
+| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`) |
+
+The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
+answers file of the projects like the GECOS fields do on a workstation, so `sre outline` and
+`sre sheet` show them; an anonymous user is identified by the pseudonym and the display name.
+
+## What the users see
+
+- **Login**: the directory account, or (anonymous mode) a display name and a language.
+- **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
+  lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
+  deploys), "Restore a project" from a save file.
+- **A project**: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
+  same options (lines, spacing, order, icons); the questions and the forms are the same; the
+  evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
+  `xterm.js` windows on `sre connect`, one per device (the machines open to the students and the
+  managed switches); the Log tab appears for debug projects. Save and Export download the files.
+  Session recording (`asciinema`) applies as on a workstation, since it happens in `sre connect`.
+- The answers are saved as the user types (debounced), with the identity of the session.
+
+## Security
+
+- The agent listens on a management address and refuses every request without its bearer token
+  and the identity headers the portal adds (`X-SRE-Login`, …); the browser never talks to it.
+- The session cookie is signed (HMAC-SHA256), `HttpOnly`, `SameSite=Strict`, `Secure` behind
+  HTTPS; the state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
+  matching `Origin`; the pages carry a `Content-Security-Policy`.
+- Rate limits per user (evaluations, starts) and per client address (logins); the sizes of the
+  answers and of the save files are capped.
+- A project's owner is the third field of its running lab name; the portal and the agent both
+  check it. Instructors (phase 5) will be the members of an LDAP group.
+
+## Limitations
+
+- `x11_host` machines (GUI applications displayed on the student's X server, e.g. the Wireshark
+  lab) have no display on a pool host: not supported by the web site.
+- The `ports` of the bridged machines are bound on the pool host and shown with its name.
+- A host in exam mode (`exam.json`) is excluded from the pool: the exam mode of the web site is a
+  later phase, as are the instructor role (instructor-mode projects, the instructor view, every
+  project of the pool), the reconnection of a terminal after a network cut, and the save of the
+  terminal sessions across a restart of the agent.
+- A terminal is lost when the agent restarts; the page reconnects by itself.
+
+## Development
+
+`make web-tests` runs the offline tests of the web front-end: the agent against a fake `sre`
+(`tests/mock_sre.py`), the portal against that agent, the templates. `python3 -m sreweb.agent
+--config agent.toml --listen 127.0.0.1:8451` and `python3 -m sreweb.portal --config web.toml
+--listen 127.0.0.1:8450 --web-dir web` (from `src/`, in the venv) run both locally; with
+`sre_exe` pointed at a wrapper of `tests/mock_sre.py` (`SRE_PUB_DIR` exported in the wrapper),
+the whole site works without Docker. The French catalog is `locale/fr/LC_MESSAGES/sreweb.po`
+(hand-maintained, `make web-translations`).

@@ -16,3 +16,6 @@ bin/sre-wrapper
 
 # downloaded by "make fonts"
 /graphics/fonts/
+
+# downloaded by "make xterm" (xterm.js of the web front-end)
+/web/static/vendor/

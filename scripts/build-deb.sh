@@ -110,6 +110,27 @@ with tarfile.open(out, "w:gz") as tar:
 ' "$REPO_DIR" "${SRC_PACKAGE}-${UPSTREAM_VERSION}" "$sources/${SRC_PACKAGE}_${UPSTREAM_VERSION}.orig.tar.gz" "$sources/.files"
         rm -f "$sources/.files"
     fi
+    # xterm.js is not in git nor in the tag tarball (`make xterm` downloads it): vendor it into the
+    # orig tarball, where debian/sysreseval-web.install expects web/static/vendor/
+    log "xterm.js of the web front-end"
+    make -C "$REPO_DIR" xterm >/dev/null || die "make xterm failed"
+    python3 -I -c '
+import io, os, sys, tarfile
+tarball, prefix, vendor = sys.argv[1:4]
+tmp = tarball + ".tmp"
+with tarfile.open(tarball, "r:gz") as src, tarfile.open(tmp, "w:gz") as dst:
+    for member in src:
+        if member.name.startswith(f"{prefix}/web/static/vendor/"):
+            continue
+        dst.addfile(member, src.extractfile(member) if member.isfile() else None)
+    for root, dirs, files in os.walk(vendor):
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            arcname = f"{prefix}/web/static/vendor/{os.path.relpath(path, vendor)}"
+            dst.add(path, arcname=arcname, recursive=False)
+os.replace(tmp, tarball)
+' "$sources/${SRC_PACKAGE}_${UPSTREAM_VERSION}.orig.tar.gz" "${SRC_PACKAGE}-${UPSTREAM_VERSION}" \
+        "$REPO_DIR/web/static/vendor" || die "cannot add xterm.js to the sources"
     if [ "$SKIP_KATHARA" = 0 ]; then
         log "sources of kathara ($KATHARA_VERSION)"
         local kurl="https://codeload.github.com/$KATHARA_REPOSITORY/tar.gz/$KATHARA_COMMIT"

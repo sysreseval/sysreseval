@@ -163,6 +163,13 @@ venv: fonts
 	${ROOT_DIR}/venv/bin/pip install pytest
 	${ROOT_DIR}/venv/bin/pip install netaddr
 	${ROOT_DIR}/venv/bin/pip install cryptography
+	# the web front-end (sre-web, sre-agent)
+	${ROOT_DIR}/venv/bin/pip install aiohttp
+	${ROOT_DIR}/venv/bin/pip install jinja2
+	${ROOT_DIR}/venv/bin/pip install aiohttp-jinja2
+	${ROOT_DIR}/venv/bin/pip install ldap3
+	# the JavaScript syntax check of the web tests (pure Python; not in Debian trixie: the package build skips that test)
+	${ROOT_DIR}/venv/bin/pip install esprima
 
 #	python3 -m pip install pyuv; \
 #   python3 -m pip install graphviz;
@@ -191,11 +198,12 @@ translations:
 		-o locale/fr/LC_MESSAGES/sre.po \
 		src/sre.py
 	msgfmt locale/fr/LC_MESSAGES/sre.po -o locale/fr/LC_MESSAGES/sre.mo
+	$(MAKE) -C ${ROOT_DIR} web-translations
 
 wrappers:
 	@grep -qP '^debug_mode\s*=\s*True' ${ROOT_DIR}/src/SRE/params.py \
 		&& { echo "ERROR: debug_mode is True in params.py — refusing to build"; exit 1; } || true
-	chmod 755 ${ROOT_DIR}/sbin/sre ${ROOT_DIR}/bin/sysreseval
+	chmod 755 ${ROOT_DIR}/sbin/sre ${ROOT_DIR}/bin/sysreseval ${ROOT_DIR}/sbin/sre-agent ${ROOT_DIR}/sbin/sre-web
 
 sre-wrapper:
 	gcc -O2 -Wall -o ${ROOT_DIR}/bin/sre-wrapper ${ROOT_DIR}/src/sre-wrapper/sre-wrapper.c
@@ -203,7 +211,7 @@ sre-wrapper:
 	chmod 711 ${ROOT_DIR}/bin/sre-wrapper
 
 
-install: check-debug-mode fonts sre-wrapper wrappers
+install: check-debug-mode fonts xterm sre-wrapper wrappers
 
 check-debug-mode:
 	@grep -qP '^debug_mode\s*=\s*True' ${ROOT_DIR}/src/SRE/params.py \
@@ -223,6 +231,14 @@ remove-debug-mode:
 
 tests:
 	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/ -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_docker_lifecycle.py
+
+# The tests of the web front-end only (part of `make tests`): the agent on the fake sre of
+# tests/mock_sre.py, the portal in front of it, the pty, the templates
+web-tests:
+	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_mock_sre.py ${ROOT_DIR}/tests/test_agent_runner.py \
+		${ROOT_DIR}/tests/test_agent_pty.py ${ROOT_DIR}/tests/test_agent_access.py ${ROOT_DIR}/tests/test_agent_registry.py \
+		${ROOT_DIR}/tests/test_agent_api.py ${ROOT_DIR}/tests/test_web_config.py ${ROOT_DIR}/tests/test_web_identity.py \
+		${ROOT_DIR}/tests/test_web_portal.py ${ROOT_DIR}/tests/test_web_templates.py -v -p no:cacheprovider
 
 # Run a single test file: make test FILE=test_net_config.py
 FILE ?=
@@ -264,3 +280,70 @@ images:
 	@sed -i 's|^default_docker_image_version[[:space:]]*=.*|default_docker_image_version = "$(IMAGES_VERSION)"|' ${ROOT_DIR}/src/SRE/params.py
 	@grep '^default_docker_image_version' ${ROOT_DIR}/src/SRE/params.py
 
+
+# ---------------------------------------------------------------------------------------------
+# Web front-end (src/sreweb, web/): translations and the vendored xterm.js
+# ---------------------------------------------------------------------------------------------
+
+.PHONY: web-translations xterm
+
+# The gettext catalog of the web front-end (domain "sreweb", src/sreweb/i18n.py): the strings
+# of the Python sources and of the JavaScript modules are merged into the hand-maintained .po
+# by xgettext.  xgettext cannot read the Jinja2 templates (web/templates/*.html): their
+# _("...") strings are added to locale/fr/LC_MESSAGES/sreweb.po by hand (tests/test_web_templates.py
+# checks that every string of the templates and of the JavaScript has a translation).
+web-translations:
+	xgettext --language=Python --keyword=_ --join-existing --no-location --from-code=UTF-8 \
+		-o locale/fr/LC_MESSAGES/sreweb.po \
+		src/sreweb/*.py src/sreweb/portal/*.py
+	xgettext --language=JavaScript --keyword=_ --join-existing --no-location --from-code=UTF-8 \
+		-o locale/fr/LC_MESSAGES/sreweb.po \
+		web/static/js/*.js web/static/js/tabs/*.js
+	msgfmt -o locale/fr/LC_MESSAGES/sreweb.mo locale/fr/LC_MESSAGES/sreweb.po
+
+# xterm.js and its fit addon, vendored into web/static/vendor/xterm (the terminals of the web
+# front-end; UMD builds loaded by web/templates/project.html).  Downloaded from unpkg at pinned
+# versions and checked against their SHA-256, like the fonts; nothing to do when the files are
+# already there.  Not committed: `make install` and the Debian build run this target.
+XTERM_VERSION := 5.5.0
+XTERM_FIT_VERSION := 0.10.0
+XTERM_DIR := ${ROOT_DIR}/web/static/vendor/xterm
+XTERM_BASE_URL := https://unpkg.com/@xterm/xterm@$(XTERM_VERSION)
+XTERM_FIT_BASE_URL := https://unpkg.com/@xterm/addon-fit@$(XTERM_FIT_VERSION)
+# file name, URL and SHA-256 of each vendored file (the LICENSE of the addon is the same MIT text
+# with its own copyright line, kept as LICENSE-addon-fit)
+XTERM_FILES := xterm.js xterm.css LICENSE addon-fit.js LICENSE-addon-fit
+XTERM_URL_xterm.js := $(XTERM_BASE_URL)/lib/xterm.js
+XTERM_URL_xterm.css := $(XTERM_BASE_URL)/css/xterm.css
+XTERM_URL_LICENSE := $(XTERM_BASE_URL)/LICENSE
+XTERM_URL_addon-fit.js := $(XTERM_FIT_BASE_URL)/lib/addon-fit.js
+XTERM_URL_LICENSE-addon-fit := $(XTERM_FIT_BASE_URL)/LICENSE
+XTERM_SHA256_xterm.js := 1f991ac3b4b283ebf96e60ae23a00a52765dd3a2e46fa6fdda9f1aab032f7495
+XTERM_SHA256_xterm.css := ba8e6985669488981ccf40c0cefe3aba80722cb6c92de7ad628b0bd717faf2b6
+XTERM_SHA256_LICENSE := b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd
+XTERM_SHA256_addon-fit.js := bdaefa370b1bfc42ee88d46fe6072400902a4d4b2d45cd93438dda9b23c97089
+XTERM_SHA256_LICENSE-addon-fit := e256f01188af527e4d06d21d06fbf785ae9c50d4b328bf03cbe0ba7f0aa4228f
+
+xterm:
+	@set -e; \
+	missing=0; for f in $(XTERM_FILES); do [ -s "$(XTERM_DIR)/$$f" ] || missing=1; done; \
+	if [ $$missing -eq 0 ]; then echo "xterm.js $(XTERM_VERSION) already in $(XTERM_DIR)"; exit 0; fi; \
+	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	echo "Downloading xterm.js $(XTERM_VERSION) and addon-fit $(XTERM_FIT_VERSION)"; \
+	for f in $(XTERM_FILES); do \
+		case $$f in \
+			xterm.js) url="$(XTERM_URL_xterm.js)"; sha="$(XTERM_SHA256_xterm.js)";; \
+			xterm.css) url="$(XTERM_URL_xterm.css)"; sha="$(XTERM_SHA256_xterm.css)";; \
+			LICENSE) url="$(XTERM_URL_LICENSE)"; sha="$(XTERM_SHA256_LICENSE)";; \
+			addon-fit.js) url="$(XTERM_URL_addon-fit.js)"; sha="$(XTERM_SHA256_addon-fit.js)";; \
+			LICENSE-addon-fit) url="$(XTERM_URL_LICENSE-addon-fit)"; sha="$(XTERM_SHA256_LICENSE-addon-fit)";; \
+		esac; \
+		curl -fsSL -o "$$tmp/$$f" "$$url"; \
+		if command -v sha256sum >/dev/null 2>&1; then sum=$$(sha256sum "$$tmp/$$f"); \
+		else sum=$$(shasum -a 256 "$$tmp/$$f"); fi; \
+		[ "$${sum%% *}" = "$$sha" ] \
+			|| { echo "ERROR: unexpected SHA-256 for $$url: $${sum%% *}"; exit 1; }; \
+	done; \
+	mkdir -p "$(XTERM_DIR)"; \
+	for f in $(XTERM_FILES); do install -m 644 "$$tmp/$$f" "$(XTERM_DIR)/$$f"; done; \
+	echo "xterm.js installed in $(XTERM_DIR)"

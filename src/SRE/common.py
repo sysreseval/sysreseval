@@ -8,7 +8,7 @@ import msgpack
 from enum import Enum
 
 from . import params
-from .instructor_text import strip_instructor
+from .instructor_text import strip_instructor, unwrap_instructor
 
 # graphviz node sizes (inches) of the icons of the schema (GUI and export PDF)
 SWITCH_ICON_SIZE = ("0.5", "0.5")
@@ -477,3 +477,127 @@ class InfoLab:
                 for item in d["questions"]
             ],
         )
+
+
+# ---------------------------------------------------------------------------------------------
+# Display helpers shared by the Qt GUI (sysreseval) and the web front-end (sreweb): pure
+# functions of the info.json dict, so that both show a project the same way.
+# ---------------------------------------------------------------------------------------------
+
+#: Identifiers of the tabs of a project, in display order.
+TAB_SCHEMA = "schema"
+TAB_FULL_SCHEMA = "full_schema"
+TAB_INFORMATIONS = "informations"
+TAB_MACHINES = "machines"
+TAB_NETWORKS = "networks"
+TAB_QUESTIONS = "questions"
+TAB_EVALUATION = "evaluation"
+TAB_TERMINALS = "terminals"
+TAB_APPLY_CONFIG = "apply_config"
+TAB_LOG = "log"
+TAB_ORDER = (TAB_SCHEMA, TAB_FULL_SCHEMA, TAB_INFORMATIONS, TAB_MACHINES, TAB_NETWORKS, TAB_QUESTIONS,
+             TAB_EVALUATION, TAB_TERMINALS, TAB_APPLY_CONFIG, TAB_LOG)
+
+
+def resolve_text(value, lang_priority: list, *, show_instructor: bool = False) -> str:
+    """A text of info.json (a string or a ``{lang: text}`` dict) in the first language of
+    *lang_priority* it has, as plain text: the instructor fragments are removed, or kept without
+    their marks with *show_instructor*."""
+    text = TranslatedText.from_value(value).resolve_priority(lang_priority)
+    return unwrap_instructor(text) if show_instructor else strip_instructor(text)
+
+
+def format_port(entry: str) -> str:
+    """Format ``host:machine/proto`` of ``InfoMachine.ports`` as ``host -> machine (proto)``."""
+    proto = "tcp"
+    if "/" in entry:
+        entry, proto = entry.rsplit("/", 1)
+    host_port, _, machine_port = entry.partition(":")
+    return f"{host_port} -> {machine_port} ({proto})"
+
+
+def format_ports(ports: list) -> str:
+    return "  -  ".join(format_port(p) for p in ports or [])
+
+
+def terminal_devices(info: dict) -> list:
+    """The devices of the Terminals tab: the machines of info.json, then the manageable switches
+    (their management console) as ``{name, allow_connection}`` dicts."""
+    switches = [{"name": s.get("name", ""), "allow_connection": s.get("allow_connection", False)}
+                for s in info.get("switches", []) or []
+                if s.get("mode") == params.network_mode_managed]
+    return list(info.get("machines", []) or []) + switches
+
+
+def info_languages(info: dict) -> set:
+    """The language codes of the translated texts of a project (title, informations, questions)."""
+    langs = set()
+    for key in ('title', 'informations'):
+        v = info.get(key)
+        if isinstance(v, dict):
+            langs.update(v.keys())
+    for q in info.get('questions', []) or []:
+        for field_name in ('title', 'description'):
+            v = q.get(field_name)
+            if isinstance(v, dict):
+                langs.update(v.keys())
+    return langs
+
+
+def project_title(info: dict, lang_priority: list, fallback: str = '') -> str:
+    """The title of a project tab: ``title`` of info.json in the user's language, else the lab
+    name without ``.py``, else *fallback* (the running lab name)."""
+    raw = info.get("title", info.get("lab_name", fallback).removesuffix('.py'))
+    return TranslatedText.from_value(raw).resolve_priority(lang_priority) or str(raw)
+
+
+def listed_states(user_allowed_states: dict, admin_only_states, *, show_admin_only: bool) -> dict:
+    """The states of the Apply Configuration tab: every state of ``user_allowed_states``, or only
+    those a student could apply when *show_admin_only* is false (project in instructor mode while
+    the "Instructor mode" button is off)."""
+    if show_admin_only:
+        return dict(user_allowed_states or {})
+    admin_only = set(admin_only_states or [])
+    return {state: description for state, description in (user_allowed_states or {}).items()
+            if state not in admin_only}
+
+
+def state_rows(user_allowed_states: dict, admin_only_states, *, show_admin_only: bool,
+               lang_priority: list) -> list:
+    """The rows of the Apply Configuration tab: ``(state, label, admin_only)`` tuples, the label
+    being the description of the state in the user's language, else the state name."""
+    admin_only = set(admin_only_states or [])
+    rows = []
+    for state, description in listed_states(user_allowed_states, admin_only_states,
+                                            show_admin_only=show_admin_only).items():
+        resolved = (TranslatedText.from_value(description).resolve_priority(lang_priority)
+                    if description else '')
+        rows.append((state, resolved if resolved else state, state in admin_only))
+    return rows
+
+
+def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool) -> list:
+    """The tabs shown for a project, in display order (the ``TAB_*`` identifiers).
+
+    *instructor_shown*: the project has instructor texts (instructor mode or debug project) and
+    the "Instructor mode" button is on.  A debug project always gets the Full Schema, every state
+    and the Log; the Evaluation tab is hidden in exam mode and when the lab does not allow
+    self-evaluation; the Apply Configuration tab needs listed states (and not an exam, unless the
+    instructor view is on)."""
+    debug = bool(info.get("debug_project", False))
+    tabs = [TAB_SCHEMA]
+    if debug:
+        tabs.append(TAB_FULL_SCHEMA)
+    tabs += [TAB_INFORMATIONS, TAB_MACHINES, TAB_NETWORKS]
+    if info.get("questions"):
+        tabs.append(TAB_QUESTIONS)
+    if not exam_mode and info.get("allow_self_grade", True):
+        tabs.append(TAB_EVALUATION)
+    tabs.append(TAB_TERMINALS)
+    states = listed_states(info.get("user_allowed_states", {}), info.get("admin_only_states", []),
+                           show_admin_only=debug or instructor_shown)
+    if debug or ((instructor_shown or not exam_mode) and bool(states)):
+        tabs.append(TAB_APPLY_CONFIG)
+    if debug or instructor_shown:
+        tabs.append(TAB_LOG)
+    return tabs

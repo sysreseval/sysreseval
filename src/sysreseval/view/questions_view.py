@@ -1,10 +1,4 @@
-import getpass
 import json
-import pwd
-import re
-import socket
-from datetime import datetime
-from pathlib import Path
 
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import Qt, QFont
@@ -14,50 +8,20 @@ from PySide6.QtWidgets import (
 )
 
 from SRE import params
+from SRE.answers import (
+    load_answers, merge_cheat, read_exam_json, save_answers, session_identity, with_metadata,
+)
 from SRE.common import TranslatedText
 from SRE.instructor_text import markdown_to_html, strip_instructor, unwrap_instructor
-from SRE.utils import exam_remaining_seconds
 from sysreseval import settings, util
 from sysreseval.view.form_question_widget import FormQuestionWidget
 
 _FORM_TYPE = 2   # QuestionType.FORM.value
 _DUMMY_TYPE = 0  # QuestionType.DUMMY.value
 
-_SESSION_LOGIN    = getpass.getuser()
-_SESSION_HOSTNAME = socket.gethostname()
-try:
-    _gecos = pwd.getpwnam(_SESSION_LOGIN).pw_gecos
-except Exception:
-    _gecos = ''
-_SESSION_FULLNAME = re.sub(r'[\x00-\x1f\x7f,]', '', _gecos.split(',')[0]).strip() if _gecos else ''
-_SESSION_EMAIL    = re.sub(r'[\x00-\x1f\x7f]', '', _gecos.split(',')[-1]).strip() if _gecos else ''
-
-
-def _get_exam_fields() -> dict:
-    """Return exam answer fields from exam.json. Always includes exam_mode (bool)."""
-    path = Path(params.sre_pub_dir) / params.exam_json_name
-    try:
-        with open(path) as f:
-            exam_data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {params.sysreseval_exam_mode: False}
-    result = {params.sysreseval_exam_mode: True}
-    if params.exam_started_at in exam_data:
-        result[params.sysreseval_exam_started_at] = exam_data[params.exam_started_at]
-    if params.exam_duration in exam_data:
-        result[params.sysreseval_exam_duration] = exam_data[params.exam_duration]
-    return result
-
-
-def _get_exam_remaining_seconds() -> int | None:
-    """Return remaining exam seconds if the exam is active, else None."""
-    path = Path(params.sre_pub_dir) / params.exam_json_name
-    try:
-        with open(path) as f:
-            exam_data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return None
-    return exam_remaining_seconds(exam_data)
+# the identity keys of the answers file (hostname, login, full name, email), those of the
+# desktop session running the GUI: read once
+_SESSION_IDENTITY = session_identity()
 
 
 class QuestionsView(QWidget):
@@ -191,33 +155,25 @@ class QuestionsView(QWidget):
     # ------------------------------------------------------------------
 
     def _load_answers(self):
-        path = Path(params.answers_filename(self._running_lab_name))
-        try:
-            self._answers = json.loads(path.read_text())
-        except Exception:
-            self._answers = {}
-        self._answers[params.hostname_keyword] = _SESSION_HOSTNAME
-        self._answers[params.login_keyword]    = _SESSION_LOGIN
-        self._answers[params.fullname_keyword] = _SESSION_FULLNAME
-        if params.email_in_gecos_last_field:
-            self._answers[params.email_keyword] = _SESSION_EMAIL
+        self._answers = load_answers(params.answers_filename(self._running_lab_name))
+        self._answers.update(_SESSION_IDENTITY)
 
     def save_answers(self):
         """Public entry point — force-write answers.json (e.g. on exam start)."""
         self._save_answers()
 
     def _save_answers(self):
-        path = Path(params.answers_filename(self._running_lab_name))
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            data = dict(self._answers)
-            data[params.sysreseval_answers_updated_at] = params.datetime_to_string(datetime.now())
-            data[params.language_keyword] = self._lang_priority[0] if self._lang_priority else 'en'
-            data.update(_get_exam_fields())
-            remaining = _get_exam_remaining_seconds()
-            if remaining is not None:
-                data[params.sysreseval_exam_time_remaining] = remaining
-            path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            data = with_metadata(
+                self._answers,
+                hostname=_SESSION_IDENTITY[params.hostname_keyword],
+                login=_SESSION_IDENTITY[params.login_keyword],
+                fullname=_SESSION_IDENTITY[params.fullname_keyword],
+                email=_SESSION_IDENTITY.get(params.email_keyword),
+                language=self._lang_priority[0] if self._lang_priority else 'en',
+                exam_data=read_exam_json(params.sre_pub_dir),
+            )
+            save_answers(params.answers_filename(self._running_lab_name), data)
         except Exception:
             pass
 
@@ -266,8 +222,7 @@ class QuestionsView(QWidget):
 
     def apply_cheat(self, cheat: dict):
         """Populate answers from cheat dict (question_hash -> answer) and persist."""
-        for q_hash, answer in cheat.items():
-            self._answers[q_hash] = answer
+        self._answers = merge_cheat(self._answers, cheat)
         self._save_answers()
         row = self.list_widget.currentRow()
         if 0 <= row < len(self._questions):

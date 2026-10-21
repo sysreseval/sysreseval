@@ -22,7 +22,7 @@ from sysreseval.util import load_projects, log_wrapper_cmd
 from sysreseval.wrapper_progress_dialog import SaveProjectDialog, RestoreProjectDialog
 from sysreseval import util, settings
 from SRE import params
-from SRE.common import TranslatedText
+from SRE.common import info_languages, project_title
 
 
 def _parse_dt(s: str) -> datetime:
@@ -526,9 +526,7 @@ class MainWindow(QMainWindow):
         self._instructor_btn.setVisible(current_is_project and current_widget.has_instructor_texts())
 
     def _tab_title_for(self, widget: ProjectWidget) -> str:
-        priority = settings.get_language_priority()
-        raw = widget.info.get("title", widget.info.get("lab_name", widget.project_dir.name).removesuffix('.py'))
-        return TranslatedText.from_value(raw).resolve_priority(priority) or str(raw)
+        return project_title(widget.info, settings.get_language_priority(), fallback=widget.project_dir.name)
 
     def _refresh_tab_titles(self):
         """Set each project tab's title to the project title, with a number suffix when
@@ -610,16 +608,7 @@ class MainWindow(QMainWindow):
         """Gather all language codes present in open projects."""
         langs = set()
         for pw in self._project_widgets():
-            info = pw.info
-            for key in ('title', 'informations'):
-                v = info.get(key)
-                if isinstance(v, dict):
-                    langs.update(v.keys())
-            for q in info.get('questions', []):
-                for field in ('title', 'description'):
-                    v = q.get(field)
-                    if isinstance(v, dict):
-                        langs.update(v.keys())
+            langs |= info_languages(pw.info)
         return langs
 
     def _update_stacked_page(self):

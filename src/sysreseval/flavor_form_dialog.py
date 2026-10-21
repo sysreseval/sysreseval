@@ -7,9 +7,9 @@ from PySide6.QtWidgets import (
     QScrollArea, QWidget, QFrame, QPlainTextEdit, QSizePolicy,
 )
 
-from SRE.common import form_field_lines
+from SRE.form_spec import TextChunk, parse_form_description
 from sysreseval import settings
-from sysreseval.view.form_question_widget import _FIELD_RE, _AutoBrowser, FormQuestionWidget
+from sysreseval.view.form_question_widget import _AutoBrowser, FormQuestionWidget
 
 
 class FlavorFormDialog(QDialog):
@@ -58,97 +58,79 @@ class FlavorFormDialog(QDialog):
         layout.setSpacing(6)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        # re.split with capturing groups gives:
-        #   [text, name, spec, text, name, spec, ..., text]
-        segments = _FIELD_RE.split(form_text)
+        def new_browser(text_chunk: TextChunk) -> _AutoBrowser:
+            browser = _AutoBrowser()
+            browser.setOpenExternalLinks(True)
+            browser.set_markdown(text_chunk.text, font_size)
+            return browser
+
+        # the chunks alternate: a text (possibly empty) before every field, one after the last
         has_submit = False
-        i = 0
-        while i < len(segments):
-            text_chunk = segments[i]
+        text_chunk = None
+        for chunk in parse_form_description(form_text, allow_submit=True):
+            if isinstance(chunk, TextChunk):
+                text_chunk = chunk
+                continue
+            name = chunk.name
 
-            if i + 2 < len(segments):
-                name = segments[i + 1]
-                spec = segments[i + 2]
-
-                if spec.startswith('?'):
-                    # Checkbox: render inline with the preceding text in an HBox
-                    default = spec[1:].strip().lower() not in ('', 'false')
-                    cb = QCheckBox()
-                    cb.setFont(font)
-                    cb.setChecked(default)
-                    self._checkbox_fields[name] = cb
-                    if text_chunk.strip():
-                        row = QHBoxLayout()
-                        row.setContentsMargins(0, 0, 0, 0)
-                        browser = _AutoBrowser()
-                        browser.setOpenExternalLinks(True)
-                        browser.set_markdown(text_chunk, font_size)
-                        row.addWidget(browser, 1)
-                        row.addWidget(cb)
-                        layout.addLayout(row)
-                    else:
-                        layout.addWidget(cb)
+            if chunk.kind == 'checkbox':
+                # Checkbox: render inline with the preceding text in an HBox
+                cb = QCheckBox()
+                cb.setFont(font)
+                cb.setChecked(chunk.default)
+                self._checkbox_fields[name] = cb
+                if text_chunk.has_text():
+                    row = QHBoxLayout()
+                    row.setContentsMargins(0, 0, 0, 0)
+                    row.addWidget(new_browser(text_chunk), 1)
+                    row.addWidget(cb)
+                    layout.addLayout(row)
                 else:
-                    # Non-checkbox: text above, widget below
-                    if text_chunk.strip():
-                        browser = _AutoBrowser()
-                        browser.setOpenExternalLinks(True)
-                        browser.set_markdown(text_chunk, font_size)
-                        layout.addWidget(browser)
-
-                    if spec.startswith(':'):
-                        # Submit button
-                        label = spec[1:].strip() or name
-                        btn = QPushButton(label)
-                        btn.setFont(font)
-                        btn.clicked.connect(lambda checked, n=name: self._on_submit(n))
-                        layout.addWidget(btn)
-                        self._submit_fields[name] = btn
-                        has_submit = True
-                    elif spec.startswith('>') or '>>>' in spec:
-                        raw = spec[1:] if spec.startswith('>') else spec
-                        pairs = []
-                        for c in raw.split('|'):
-                            c = c.strip()
-                            if '>>>' in c:
-                                label, value = c.split('>>>', 1)
-                                pairs.append((label.strip(), value.strip()))
-                            else:
-                                pairs.append((c, c))
-                        combo = QComboBox()
-                        combo.setFont(font)
-                        combo.addItems([label for label, _ in pairs])
-                        layout.addWidget(combo)
-                        self._combo_fields[name] = combo
-                        self._combo_values[name] = [value for _, value in pairs]
-                    elif (lines := form_field_lines(spec)) is not None:
-                        # Multi-line free text, never validated
-                        edit = QPlainTextEdit()
-                        edit.setFont(font)
-                        edit.setTabChangesFocus(True)
-                        edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                        FormQuestionWidget._set_multiline_height(edit, lines)
-                        layout.addWidget(edit)
-                        self._multiline_fields[name] = edit
-                    else:
-                        edit = QLineEdit()
-                        edit.setFont(font)
-                        if spec:
-                            edit.setValidator(
-                                QRegularExpressionValidator(QRegularExpression(spec))
-                            )
-                            edit.textChanged.connect(lambda _, e=edit: self._clear_error(e))
-                        layout.addWidget(edit)
-                        self._text_fields[name] = edit
+                    layout.addWidget(cb)
             else:
-                # Last text chunk with no following field
-                if text_chunk.strip():
-                    browser = _AutoBrowser()
-                    browser.setOpenExternalLinks(True)
-                    browser.set_markdown(text_chunk, font_size)
-                    layout.addWidget(browser)
+                # Non-checkbox: text above, widget below
+                if text_chunk.has_text():
+                    layout.addWidget(new_browser(text_chunk))
 
-            i += 3
+                if chunk.kind == 'submit':
+                    # Submit button
+                    btn = QPushButton(chunk.label)
+                    btn.setFont(font)
+                    btn.clicked.connect(lambda checked, n=name: self._on_submit(n))
+                    layout.addWidget(btn)
+                    self._submit_fields[name] = btn
+                    has_submit = True
+                elif chunk.kind == 'select':
+                    combo = QComboBox()
+                    combo.setFont(font)
+                    combo.addItems(chunk.labels)
+                    layout.addWidget(combo)
+                    self._combo_fields[name] = combo
+                    self._combo_values[name] = chunk.values
+                elif chunk.kind == 'multiline':
+                    # Multi-line free text, never validated
+                    edit = QPlainTextEdit()
+                    edit.setFont(font)
+                    edit.setTabChangesFocus(True)
+                    edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                    FormQuestionWidget._set_multiline_height(edit, chunk.lines)
+                    layout.addWidget(edit)
+                    self._multiline_fields[name] = edit
+                else:
+                    edit = QLineEdit()
+                    edit.setFont(font)
+                    if chunk.regex:
+                        edit.setValidator(
+                            QRegularExpressionValidator(QRegularExpression(chunk.regex))
+                        )
+                        edit.textChanged.connect(lambda _, e=edit: self._clear_error(e))
+                    layout.addWidget(edit)
+                    self._text_fields[name] = edit
+            text_chunk = None
+
+        # Last text chunk with no following field
+        if text_chunk is not None and text_chunk.has_text():
+            layout.addWidget(new_browser(text_chunk))
 
         layout.addStretch()
         scroll.setWidget(container)

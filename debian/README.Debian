@@ -12,6 +12,16 @@ The packages of the GitHub releases are served, signed, by the apt repository of
       https://sysreseval.github.io/sysreseval/apt/sysreseval-<dist>.sources
   sudo apt update && sudo apt install sysreseval
 
+The web site
+------------
+sysreseval-web (the portal, on any host: no Docker needed) and sysreseval-agent (on every pool
+host, next to sysreseval) make the web site of the project: the students work from a browser on
+projects running on the pool.  Both units are disabled by default; copy and edit the examples
+of /usr/share/doc/sysreseval-web/examples/web.toml (root:sre-web 0640) and
+/usr/share/doc/sysreseval-agent/examples/agent.toml (root 0600) to /etc/sysreseval/, then
+`systemctl enable --now sysreseval-web` / `sysreseval-agent`.  See the "Web site" page of the
+documentation.
+
 Layout of the package
 ---------------------
   /usr/sbin/sre                          command-line interface (run by root, or by the students

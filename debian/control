@@ -28,6 +28,9 @@ Build-Depends: debhelper-compat (= 13),
                python3-pyside6.qtsvgwidgets <!nocheck>,
                python3-pyside6.qtwidgets <!nocheck>,
                python3-pytest <!nocheck>,
+               python3-aiohttp <!nocheck>,
+               python3-aiohttp-jinja2 <!nocheck>,
+               python3-jinja2 <!nocheck>,
                python3-urllib3 <!nocheck>,
                python3-zstandard <!nocheck>,
                qt6-qpa-plugins <!nocheck>
@@ -88,6 +91,36 @@ Description: network and system administration labs on Docker machines
  .
  The labs of the project are in /usr/share/sysreseval/lab, the site's own
  labs go in /var/lib/sre/lab; the site parameters are in /etc/sysreseval.
+
+Package: sysreseval-web
+Architecture: all
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         adduser,
+         python3-aiohttp,
+         python3-aiohttp-jinja2,
+         python3-jinja2
+Recommends: python3-ldap3
+Suggests: nginx | caddy, sysreseval-agent
+Description: web site of SysResEval
+ The web site through which the students work on the labs from a browser: the
+ projects run on a pool of hosts (sysreseval-agent), every tab of the graphical
+ interface is rendered in the browser and the terminals go through WebSockets.
+ The users log in with an LDAP directory, or everybody is anonymous.
+ .
+ This host needs neither Docker nor the labs.  Configuration: /etc/sysreseval/web.toml
+ (see /usr/share/doc/sysreseval-web/examples/).
+
+Package: sysreseval-agent
+Architecture: all
+Depends: ${misc:Depends},
+         sysreseval (>= ${source:Version}),
+         sysreseval-web (= ${binary:Version})
+Description: pool-host agent of the SysResEval web site
+ The daemon of a host of the pool behind sysreseval-web: it runs sre on behalf
+ of the web users, exactly as the graphical interface does for the students of
+ a workstation, owns their terminals and schedules their evaluations.
+ Configuration: /etc/sysreseval/agent.toml (see /usr/share/doc/sysreseval-agent/examples/).
 
 Package: sysreseval-doc
 Architecture: all

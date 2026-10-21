@@ -2,20 +2,11 @@ from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QPushButton, QHeaderView
 
+from SRE.common import format_port, format_ports
 from sysreseval import util
 
-
-def _format_port(entry: str) -> str:
-    """Format 'host:machine/proto' → 'host -> machine (proto)'."""
-    proto = "tcp"
-    if "/" in entry:
-        entry, proto = entry.rsplit("/", 1)
-    host_port, _, machine_port = entry.partition(":")
-    return f"{host_port} -> {machine_port} ({proto})"
-
-
-def _format_ports(ports: list) -> str:
-    return "  -  ".join(_format_port(p) for p in ports)
+_format_port = format_port    # kept for the callers of the old private names
+_format_ports = format_ports
 
 
 class MachinesView(QTableWidget):

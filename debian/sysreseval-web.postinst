@@ -1,0 +1,23 @@
+#!/bin/sh
+# postinst of sysreseval-web: the unprivileged user the web site runs as.
+set -e
+
+WEB_USER=sre-web
+
+case "$1" in
+    configure)
+        if ! getent passwd "$WEB_USER" >/dev/null; then
+            adduser --system --group --home /nonexistent --no-create-home \
+                --shell /usr/sbin/nologin --gecos "SysResEval web site" "$WEB_USER"
+        fi
+        # the configuration holds the secret and the agent tokens: readable by the service only
+        if [ -f /etc/sysreseval/web.toml ]; then
+            chown root:"$WEB_USER" /etc/sysreseval/web.toml
+            chmod 0640 /etc/sysreseval/web.toml
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

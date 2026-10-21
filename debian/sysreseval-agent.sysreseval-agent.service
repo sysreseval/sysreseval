@@ -1,0 +1,22 @@
+# The agent of a pool host of the SRE web site: runs sre on behalf of the web users (as root, like
+# sudo does for the students of the Qt GUI), owns their terminals and schedules their evaluations.
+# Configuration: /etc/sysreseval/agent.toml.  Disabled by default:
+# systemctl enable --now sysreseval-agent.service
+[Unit]
+Description=SysResEval web agent of this pool host
+Documentation=file:///usr/share/doc/sysreseval-agent/README.Debian
+Requires=docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+# root: sre drops to the sre user itself and needs root for the privileged machines and `sre stop`
+User=root
+ExecStart=/usr/sbin/sre-agent
+Restart=on-failure
+RestartSec=5
+ProtectSystem=full
+ReadWritePaths=/var/lib/sre /var/run/docker.sock
+
+[Install]
+WantedBy=multi-user.target

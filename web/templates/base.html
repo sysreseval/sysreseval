@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}SRE{% endblock %}</title>
+<link rel="icon" href="/static/img/logo_sre.svg">
+<link rel="stylesheet" href="/static/css/sre.css">
+{% block head %}{% endblock %}
+</head>
+<body data-language="{{ language }}" data-auth-mode="{{ auth_mode }}" data-instructor="{{ 'true' if instructor else 'false' }}" {% block body_attrs %}{% endblock %}>
+<header class="topbar">
+  <a class="brand" href="/projects"><img src="/static/img/logo_sre.svg" alt=""><span>SRE</span></a>
+  <nav class="topbar-nav">{% block nav %}{% endblock %}</nav>
+  <div class="topbar-right">
+    {% if identity %}
+      <span class="user" title="{{ identity.login }}">{{ identity.fullname or identity.login }}</span>
+      <select id="language-select" title="{{ _("Language") }}">
+        {% for code, name in languages %}
+        <option value="{{ code }}"{% if code == language %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+      <form method="post" action="/logout" class="inline"><button type="submit">{{ _("Logout") }}</button></form>
+    {% else %}
+      <span class="languages">
+        {% for code, name in languages %}
+        {% if code == language %}<b>{{ name }}</b>{% else %}<a href="?lang={{ code }}">{{ name }}</a>{% endif %}
+        {% endfor %}
+      </span>
+    {% endif %}
+  </div>
+</header>
+<main class="page {% block main_class %}{% endblock %}">
+{% block content %}{% endblock %}
+</main>
+<footer class="footer">{% block footer %}{% endblock %}</footer>
+<div id="toasts" class="toasts"></div>
+<script type="module" src="/static/js/base.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

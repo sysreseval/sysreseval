@@ -1,5 +1,4 @@
 import json
-import re
 
 from PySide6.QtCore import Signal, QEvent, QSize
 from PySide6.QtGui import Qt, QFont, QRegularExpressionValidator
@@ -9,11 +8,11 @@ from PySide6.QtWidgets import (
     QScrollArea, QTextBrowser, QFrame, QSizePolicy, QPlainTextEdit,
 )
 
-from SRE.common import form_field_lines
-from SRE.instructor_text import markdown_to_html, rebalance_fragments, strip_instructor, unwrap_instructor
+from SRE.form_spec import FIELD_RE, TextChunk, parse_form_description
+from SRE.instructor_text import markdown_to_html
 from sysreseval import settings, util
 
-_FIELD_RE = re.compile(r'@@\{([^:}]+):([^}]*)\}@@')
+_FIELD_RE = FIELD_RE  # the one regex of the @@{field:spec}@@ grammar (SRE.form_spec)
 
 
 class _AutoBrowser(QTextBrowser):
@@ -90,106 +89,80 @@ class FormQuestionWidget(QWidget):
         font = QFont()
         font.setPointSize(font_size)
 
-        # re.split with capturing groups gives:
-        #   [text, name, spec, text, name, spec, ..., text]
-        segments = _FIELD_RE.split(description)
-        # every text chunk is rendered on its own: an instructor fragment going across a field
-        # is closed and reopened around it
-        segments[0::3] = rebalance_fragments(segments[0::3])
+        def new_browser(text_chunk: TextChunk) -> _AutoBrowser:
+            browser = _AutoBrowser()
+            browser.setOpenExternalLinks(True)
+            browser.set_markdown(text_chunk.text, font_size, show_instructor)
+            browser.set_word_wrap(word_wrap)
+            self._browsers.append(browser)
+            return browser
 
-        def has_text(chunk: str) -> bool:
-            return bool((unwrap_instructor(chunk) if show_instructor else strip_instructor(chunk)).strip())
+        # the chunks alternate: a text (possibly empty) before every field, one after the last;
+        # every text chunk is rendered on its own (an instructor fragment going across a field
+        # is closed and reopened around it)
+        text_chunk = None
+        for chunk in parse_form_description(description):
+            if isinstance(chunk, TextChunk):
+                text_chunk = chunk
+                continue
+            name = chunk.name
 
-        i = 0
-        while i < len(segments):
-            text_chunk = segments[i]
-
-            if i + 2 < len(segments):
-                name = segments[i + 1]
-                spec = segments[i + 2]
-
-                if spec.startswith('?'):
-                    # Checkbox: render inline with the preceding text in an HBox
-                    default = spec[1:].strip().lower() not in ('', 'false')
-                    cb = QCheckBox()
-                    cb.setFont(font)
-                    cb.setChecked(default)
-                    cb.stateChanged.connect(self._emit_changed)
-                    self._checkbox_fields[name] = cb
-                    if has_text(text_chunk):
-                        row = QHBoxLayout()
-                        row.setContentsMargins(0, 0, 0, 0)
-                        browser = _AutoBrowser()
-                        browser.setOpenExternalLinks(True)
-                        browser.set_markdown(text_chunk, font_size, show_instructor)
-                        browser.set_word_wrap(word_wrap)
-                        row.addWidget(browser, 1)
-                        row.addWidget(cb)
-                        layout.addLayout(row)
-                        self._browsers.append(browser)
-                    else:
-                        layout.addWidget(cb)
+            if chunk.kind == 'checkbox':
+                # Checkbox: render inline with the preceding text in an HBox
+                cb = QCheckBox()
+                cb.setFont(font)
+                cb.setChecked(chunk.default)
+                cb.stateChanged.connect(self._emit_changed)
+                self._checkbox_fields[name] = cb
+                if text_chunk.has_text(show_instructor):
+                    row = QHBoxLayout()
+                    row.setContentsMargins(0, 0, 0, 0)
+                    row.addWidget(new_browser(text_chunk), 1)
+                    row.addWidget(cb)
+                    layout.addLayout(row)
                 else:
-                    # Non-checkbox: text above, widget below
-                    if has_text(text_chunk):
-                        browser = _AutoBrowser()
-                        browser.setOpenExternalLinks(True)
-                        browser.set_markdown(text_chunk, font_size, show_instructor)
-                        browser.set_word_wrap(word_wrap)
-                        layout.addWidget(browser)
-                        self._browsers.append(browser)
-
-                    if spec.startswith('>') or '>>>' in spec:
-                        raw = spec[1:] if spec.startswith('>') else spec
-                        pairs = []
-                        for c in raw.split('|'):
-                            c = c.strip()
-                            if '>>>' in c:
-                                label, value = c.split('>>>', 1)
-                                pairs.append((label.strip(), value.strip()))
-                            else:
-                                pairs.append((c, c))
-                        combo = QComboBox()
-                        combo.setFont(font)
-                        combo.addItems([label for label, _ in pairs])
-                        combo.currentIndexChanged.connect(self._emit_changed)
-                        layout.addWidget(combo)
-                        self._combo_fields[name] = combo
-                        self._combo_values[name] = [value for _, value in pairs]
-                    elif (lines := form_field_lines(spec)) is not None:
-                        # Multi-line free text: a box of N lines, the text scrolls beyond
-                        edit = QPlainTextEdit()
-                        edit.setFont(font)
-                        edit.setTabChangesFocus(True)  # Tab moves to the next field, as in a QLineEdit
-                        edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                        self._set_multiline_height(edit, lines)
-                        edit.textChanged.connect(self._emit_changed)
-                        edit.installEventFilter(self)
-                        layout.addWidget(edit)
-                        self._multiline_fields[name] = edit
-                        self._multiline_lines[name] = lines
-                    else:
-                        edit = QLineEdit()
-                        edit.setFont(font)
-                        if spec:
-                            edit.setValidator(
-                                QRegularExpressionValidator(QRegularExpression(spec))
-                            )
-                        edit.textChanged.connect(self._emit_changed)
-                        edit.installEventFilter(self)
-                        layout.addWidget(edit)
-                        self._text_fields[name] = edit
+                    layout.addWidget(cb)
             else:
-                # Last text chunk with no following field
-                if has_text(text_chunk):
-                    browser = _AutoBrowser()
-                    browser.setOpenExternalLinks(True)
-                    browser.set_markdown(text_chunk, font_size, show_instructor)
-                    browser.set_word_wrap(word_wrap)
-                    layout.addWidget(browser)
-                    self._browsers.append(browser)
+                # Non-checkbox: text above, widget below
+                if text_chunk.has_text(show_instructor):
+                    layout.addWidget(new_browser(text_chunk))
 
-            i += 3
+                if chunk.kind == 'select':
+                    combo = QComboBox()
+                    combo.setFont(font)
+                    combo.addItems(chunk.labels)
+                    combo.currentIndexChanged.connect(self._emit_changed)
+                    layout.addWidget(combo)
+                    self._combo_fields[name] = combo
+                    self._combo_values[name] = chunk.values
+                elif chunk.kind == 'multiline':
+                    # Multi-line free text: a box of N lines, the text scrolls beyond
+                    edit = QPlainTextEdit()
+                    edit.setFont(font)
+                    edit.setTabChangesFocus(True)  # Tab moves to the next field, as in a QLineEdit
+                    edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                    self._set_multiline_height(edit, chunk.lines)
+                    edit.textChanged.connect(self._emit_changed)
+                    edit.installEventFilter(self)
+                    layout.addWidget(edit)
+                    self._multiline_fields[name] = edit
+                    self._multiline_lines[name] = chunk.lines
+                else:
+                    edit = QLineEdit()
+                    edit.setFont(font)
+                    if chunk.regex:
+                        edit.setValidator(
+                            QRegularExpressionValidator(QRegularExpression(chunk.regex))
+                        )
+                    edit.textChanged.connect(self._emit_changed)
+                    edit.installEventFilter(self)
+                    layout.addWidget(edit)
+                    self._text_fields[name] = edit
+            text_chunk = None
+
+        # Last text chunk with no following field
+        if text_chunk is not None and text_chunk.has_text(show_instructor):
+            layout.addWidget(new_browser(text_chunk))
 
         layout.addStretch()
         scroll.setWidget(container)

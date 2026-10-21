@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Open a lab") }} - SRE{% endblock %}
+{% block nav %}<a href="/projects">{{ _("Running projects") }}</a>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ _("Open a lab") }}</h1>
+  <a class="button" href="/projects">{{ _("Back to the projects") }}</a>
+</div>
+<div id="labs" class="lab-tree"><p class="muted">{{ _("Loading available labs…") }}</p></div>
+<div class="start-row">
+  <span id="selected-lab" class="selected"></span>
+  <button type="button" id="start-button" class="primary" disabled>{{ _("Start") }}</button>
+</div>
+<div id="progress" class="progress-box" hidden></div>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/open.js"></script>{% endblock %}

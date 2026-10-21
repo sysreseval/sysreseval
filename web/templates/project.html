@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ rln }} - SRE{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
+<script defer src="/static/vendor/xterm/xterm.js"></script>
+<script defer src="/static/vendor/xterm/addon-fit.js"></script>
+{% endblock %}
+{% block body_attrs %}data-api-base="{{ api_base }}" data-host="{{ host }}" data-rln="{{ rln }}"{% endblock %}
+{% block main_class %}project{% endblock %}
+{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block content %}
+<div class="project-bar">
+  <h1 id="project-title" class="project-title" title="{{ rln }} ({{ host }})">{{ rln }}</h1>
+  <div class="corner">
+    <button type="button" id="instructor-toggle" class="toggle" aria-pressed="false" hidden title="{{ _("Show the instructor texts and every state") }}">{{ _("Instructor mode") }}</button>
+    <button type="button" id="wrap-toggle" class="toggle" aria-pressed="true" title="{{ _("Wrap") }}">&#8629;</button>
+    <button type="button" id="font-minus" title="{{ _("Smaller text") }}">A&minus;</button>
+    <button type="button" id="font-plus" title="{{ _("Larger text") }}">A+</button>
+    <a id="save-link" class="button" hidden href="{{ api_base }}/save" download>{{ _("Save Project") }}</a>
+    <a id="export-link" class="button" hidden href="{{ api_base }}/export" download>{{ _("Export Kathara Project") }}</a>
+    <button type="button" id="close-project" class="danger">{{ _("Close Project") }}</button>
+  </div>
+</div>
+<div id="tabbar" class="tabbar" role="tablist"></div>
+<div id="panes" class="panes"></div>
+<div id="closed-banner" class="banner" hidden>
+  <p>{{ _("This project is closed.") }} <a href="/projects">{{ _("Back to the projects") }}</a></p>
+</div>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/project.js"></script>{% endblock %}

@@ -407,10 +407,11 @@ while [ $# -gt 0 ]; do
         *) [ -z "$VERSION" ] || die "one version only"; VERSION="$1"; shift;;
     esac
 done
-mkdir -p "$REPO_DIR/build"
 case "$MODE" in
+    # the helper modes of the tests touch nothing (they may run on a tree the user cannot write)
     compare) version_gt "${ARGS[0]}" "${ARGS[1]}";;
     changelog) changelog_entry "${ARGS[0]}" "$NOTES";;
-    setup) [ -z "$VERSION" ] || die "--setup takes no version"; setup;;
-    release) [ -n "$VERSION" ] || die "usage: scripts/release.sh <version> | --setup (see --help)"; release "$VERSION" "$CHECK" "$WAIT" "$YES" "$NOTES";;
+    setup) [ -z "$VERSION" ] || die "--setup takes no version"; mkdir -p "$REPO_DIR/build"; setup;;
+    release) [ -n "$VERSION" ] || die "usage: scripts/release.sh <version> | --setup (see --help)"
+             mkdir -p "$REPO_DIR/build"; release "$VERSION" "$CHECK" "$WAIT" "$YES" "$NOTES";;
 esac

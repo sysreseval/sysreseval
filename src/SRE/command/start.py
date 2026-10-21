@@ -14,7 +14,7 @@ from Kathara.manager.Kathara import Kathara
 from .state import do_action_state
 from .. import params
 from ..params import SRE
-from ..progress import register_progress_handlers
+from ..progress import register_progress_handlers, emit_project_created
 
 from ..utils import error_quit, in_user_mode, log_error, set_lab_dir_and_import_module, should_record_sessions, \
     user_not_allowed_in_exam_mode
@@ -250,6 +250,7 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
 
         finalize_project(setup, module_rvlab, net_scheme, lab, data,
                          state=params.initial_state_name, multi_project=multi_project)
+        emit_project_created(running_lab_name)
 
     except BaseException as e:
         rollback_project(setup, multi_project=multi_project)

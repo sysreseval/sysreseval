@@ -27,11 +27,21 @@ def _set(text, **values):
     return text
 
 
+# the site lines scripts/install.sh (and the sync scripts of a production host) rewrite in place:
+# their shipped values, so that these tests check the derivations of params.py whatever the tree
+SHIPPED_SITE_LINES = {
+    'debug_mode': 'False', 'sre_uid': '1100', 'sre_gid': '1100', 'docker_gid': '988', 'admin_uids': '[]',
+    'admin_gids': '[2000]', 'sre_pub_dir': '"/var/lib/sre"', 'sre_user_public_dir': 'None', 'lab_dir': 'None',
+    'authorized_src_dir': 'None', 'archive_dirs': 'None', 'install_layout': '"checkout"', 'site_params_file': 'None',
+}
+
+
 def _checkout(**values):
-    """The params.py text of the checkout with debug_mode off whatever the tree says (a test host
-    runs with debug_mode = True: the SRE_* environment must not leak into these tests) and the
-    top-level lines of *values* replaced."""
-    return _set(PARAMS_FILE.read_text(), **{'debug_mode': 'False', **values})
+    """The params.py text of the checkout with the site lines at their shipped values whatever the
+    tree says (a test host runs with debug_mode = True and its own archive_dirs: the SRE_*
+    environment and the site's values must not leak into these tests) and the top-level lines of
+    *values* replaced."""
+    return _set(PARAMS_FILE.read_text(), **{**SHIPPED_SITE_LINES, **values})
 
 
 def _run(text, file=str(PARAMS_FILE)):
@@ -152,6 +162,31 @@ class TestArchiveName:
         assert params.get_date_from_archive_name('20261399000000_x@@@lab@@@u.zst') is None
 
 
+class TestSelfGradeTimestampFile:
+    """The cooldown file of the self-evaluations: per lab and owner (what `sre eval` uses), the
+    old per-lab file without a username."""
+
+    def test_per_lab_and_owner(self, monkeypatch):
+        monkeypatch.setattr(params, 'self_grade_timestamp_dir', '/var/lib/sre/last_self_grades')
+        assert params.self_grade_timestamp_file('s4/tp_ssh', 'alice') == \
+            '/var/lib/sre/last_self_grades/s4/tp_ssh@@@alice'
+        assert params.self_grade_timestamp_file('s4/tp_ssh', 'bob') != \
+            params.self_grade_timestamp_file('s4/tp_ssh', 'alice')
+
+    def test_without_username(self, monkeypatch):
+        monkeypatch.setattr(params, 'self_grade_timestamp_dir', '/var/lib/sre/last_self_grades')
+        assert params.self_grade_timestamp_file('s4/tp_ssh') == '/var/lib/sre/last_self_grades/s4/tp_ssh'
+        assert params.self_grade_timestamp_file('s4/tp_ssh', None) == '/var/lib/sre/last_self_grades/s4/tp_ssh'
+        assert params.self_grade_timestamp_file('s4/tp_ssh', '') == '/var/lib/sre/last_self_grades/s4/tp_ssh'
+
+    def test_owner_of_a_running_lab_name(self, monkeypatch):
+        monkeypatch.setattr(params, 'self_grade_timestamp_dir', '/x')
+        rln = '20260910100000@@@sre@dhcp.py@@@alice'
+        assert params.self_grade_timestamp_file(params.get_lab_name_from_running_lab_name(rln),
+                                                params.get_username_from_running_lab_name(rln)) == \
+            '/x/sre@dhcp.py@@@alice'
+
+
 # --- layout and site parameters ---------------------------------------------------------------
 
 class TestCheckoutDefaults:
@@ -174,6 +209,8 @@ class TestCheckoutDefaults:
         assert p.sre_uid == 1100 and p.sre_gid == 1100 and p.docker_gid == 988
         assert p.self_update_allowed is True and p.site_params_file is None
         assert 'make network-plugin' in p.network_plugin_hint and 'make venv' in p.kathara_hint
+        assert p.web_dir == root + '/web' and p.web_config_file == root + '/etc/web.toml'
+        assert p.agent_config_file == root + '/etc/agent.toml'
 
     def test_site_values_patched_in_place_win(self):
         """scripts/install.sh replaces the lines: a literal is never overridden by the derivation."""
@@ -217,6 +254,8 @@ class TestFhsLayout:
         assert p.exetests_path == '/usr/lib/sysreseval/lib/exetests.py'
         assert p.self_update_allowed is False
         assert 'sysreseval-network-plugin' in p.network_plugin_hint and 'python3-kathara' in p.kathara_hint
+        assert p.web_dir == '/usr/share/sysreseval/web' and p.web_config_file == '/etc/sysreseval/web.toml'
+        assert p.agent_config_file == '/etc/sysreseval/agent.toml'
 
     def test_ids_from_the_accounts(self, fhs):
         p = _run(fhs, file=FHS_FILE)

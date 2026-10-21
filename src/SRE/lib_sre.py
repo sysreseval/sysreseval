@@ -37,6 +37,7 @@ from Kathara.manager.Kathara import Kathara
 from Kathara.model.Lab import Lab
 
 from . import params
+from .form_spec import FIELD_RE as _FORM_SPEC_FIELD_RE, form_fields as _form_fields
 from .common import (QuestionText, QuestionDummy, GradeElement, GradePart, InfoMachine, InfoLab, InfoInterface,
                      InfoSwitch, TranslatedText, _tt_hash_str)
 from .utils import log_error, error_quit, log_debug
@@ -2046,43 +2047,24 @@ class Grade0:
             return self._answers[q.question_hash]
         return default_answer
 
-    _FORM_FIELD_RE = _re.compile(r'@@\{([^:}]+):([^}]*)\}@@')
+    _FORM_FIELD_RE = _FORM_SPEC_FIELD_RE  # the one regex of the grammar (SRE.form_spec.FIELD_RE)
 
     def question_form(self, title, section='', description='', hash=None, order=None, cheat_answers=None):
         """Register a form question with inline @@{field_name:spec}@@ fields.
 
         spec: a regex (single-line text input), '>a|b' or 'Label>>>value|...' (dropdown),
         '?' / '?true' (checkbox), '+' / '+N' (multi-line free text of N visible lines,
-        params.default_form_field_lines by default).
+        params.default_form_field_lines by default); the grammar is that of SRE.form_spec.
         Returns the student's answers as a dict {field_name: value}, or {} if none yet.
         cheat_answers format: {state_name: {field_name: value, ...}}
         """
         title = self._apply_section(section, title)
-        from .common import QuestionForm, form_field_lines
+        from .common import QuestionForm
 
-        # The @@{field:spec}@@ markers are language-independent, so when the
-        # description is a TranslatedText (wrapped in tr()) extract fields from
-        # its resolved string. The full TranslatedText is still stored on the
-        # question for per-language rendering.
-        desc_str = (description.resolve('')
-                    if isinstance(description, TranslatedText) else description)
-
-        fields = []
-        for m in self._FORM_FIELD_RE.finditer(desc_str):
-            name, spec = m.group(1), m.group(2)
-            if spec.startswith('>') or '>>>' in spec:
-                raw = spec[1:] if spec.startswith('>') else spec
-                fields.append({"name": name, "choices": [
-                    c.strip().split('>>>')[1].strip() if '>>>' in c.strip() else c.strip()
-                    for c in raw.split('|')
-                ]})
-            elif spec.startswith('?'):
-                default = spec[1:].strip().lower() not in ('', 'false')
-                fields.append({"name": name, "checkbox": default})
-            elif (lines := form_field_lines(spec)) is not None:
-                fields.append({"name": name, "lines": lines})
-            else:
-                fields.append({"name": name, "regex": spec})
+        # The @@{field:spec}@@ markers are language-independent, so when the description is a
+        # TranslatedText (wrapped in tr()) the fields come from one of its values.  The full
+        # TranslatedText is still stored on the question for per-language rendering.
+        fields = _form_fields(description)
 
         if order is None:
             order1 = self._questions_current_order

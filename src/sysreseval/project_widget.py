@@ -1,4 +1,3 @@
-import json
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,6 +24,9 @@ from sysreseval.util import load_info
 from sysreseval import settings, util
 
 from SRE import params
+from SRE.common import (terminal_devices, visible_tabs, TAB_EVALUATION, TAB_APPLY_CONFIG,
+                        TAB_LOG)
+from SRE.answers import consume_cheat_file
 from SRE.common import TranslatedText
 
 
@@ -182,24 +184,22 @@ class ProjectWidget(QWidget):
     def _terminal_devices(self) -> list:
         """Devices of the Terminals tab: the machines, then the manageable switches (their
         management console)."""
-        switches = [{"name": s.get("name", ""), "allow_connection": s.get("allow_connection", False)}
-                    for s in self.info.get("switches", [])
-                    if s.get("mode") == params.network_mode_managed]
-        return self.info.get("machines", []) + switches
+        return terminal_devices(self.info)
+
+    def _visible_tabs(self) -> list:
+        """The tabs shown for this project (``common.visible_tabs``, shared with the web
+        front-end)."""
+        return visible_tabs(self.info, exam_mode=self._exam_mode, instructor_shown=self._instructor_shown())
 
     def _update_eval_visibility(self):
-        visible = not self._exam_mode and self.info.get("allow_self_grade", True)
-        self._tabs.setTabVisible(self._tabs.indexOf(self._eval_view), visible)
+        self._tabs.setTabVisible(self._tabs.indexOf(self._eval_view), TAB_EVALUATION in self._visible_tabs())
 
     def _update_apply_config_visibility(self):
-        debug = bool(self.info.get("debug_project", False))
-        visible = debug or ((self._instructor_shown() or not self._exam_mode)
-                            and self._apply_config_view.has_states())
-        self._tabs.setTabVisible(self._tabs.indexOf(self._apply_config_view), visible)
+        self._tabs.setTabVisible(self._tabs.indexOf(self._apply_config_view),
+                                 TAB_APPLY_CONFIG in self._visible_tabs())
 
     def _update_log_visibility(self):
-        visible = bool(self.info.get("debug_project", False)) or self._instructor_shown()
-        self._tabs.setTabVisible(self._tabs.indexOf(self._log_view), visible)
+        self._tabs.setTabVisible(self._tabs.indexOf(self._log_view), TAB_LOG in self._visible_tabs())
 
     def set_exam_mode(self, active: bool):
         self._exam_mode = active
@@ -247,14 +247,12 @@ class ProjectWidget(QWidget):
     def refresh(self) -> bool:
         """Reload from info.json if it changed. Returns True if an update occurred."""
         # Consume cheat.json on every tick regardless of info.json state
-        cheat_path = Path(params.cheat_filename(self.project_dir.name))
-        if cheat_path.exists():
-            try:
-                cheat = json.loads(cheat_path.read_text())
-                cheat_path.unlink()
+        try:
+            cheat = consume_cheat_file(params.cheat_filename(self.project_dir.name))
+            if cheat is not None:
                 self._questions_view.apply_cheat(cheat)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         # Tail the operations log of a debug or instructor-mode project on every tick (the file
         # grows while a state or an evaluation runs, independently of info.json)
