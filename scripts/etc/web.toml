@@ -42,6 +42,11 @@ idle_timeout_anonymous = "2h"
 idle_timeout_authenticated = "24h"
 # Seconds between two polls of the agents.
 poll_interval = 2
+# Mutual TLS with the agents (scripts/web-tls.sh): the CA of the agents' certificates and the
+# client certificate of the portal, which the agents require with their tls_ca.
+# ca = "/etc/sysreseval/tls/ca.crt"
+# client_cert = "/etc/sysreseval/tls/portal.crt"
+# client_key = "/etc/sysreseval/tls/portal.key"
 
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user
@@ -53,7 +58,7 @@ max_answer_bytes = 1048576
 # projects it takes (a classroom workstation holds about thirty).
 [[hosts]]
 name = "a01"
-url = "http://10.0.0.11:8451"
+url = "https://10.0.0.11:8451"       # http:// without TLS on the agent
 token = "change-me-to-a-long-random-string"
 max_projects = 25
 

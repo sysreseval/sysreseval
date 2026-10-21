@@ -99,6 +99,18 @@ class TestAuth:
         run(go())
 
 
+class TestAllowedClients:
+    def test_refused_and_allowed_addresses(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, allowed_clients=['10.0.0.0/8']) as h:
+                resp = await h.client.get('/v1/status', headers=headers())
+                assert resp.status == 403 and 'address' in (await resp.json())['error']
+                assert (await h.client.get('/v1/labs', headers=headers())).status == 403
+            async with Harness(tmp_path / 'b', allowed_clients=['127.0.0.1', '::1']) as h:
+                assert (await h.client.get('/v1/status', headers=headers())).status == 200
+        run(go())
+
+
 class TestLabsAndStart:
     def test_labs_cached(self, tmp_path):
         async def go():

@@ -30,10 +30,21 @@ def main(argv=None) -> int:
     except ConfigError as e:
         print(f"sre-agent: {e}", file=sys.stderr)
         return 1
+    log = logging.getLogger('sreweb.agent')
     ssl_context = None
     if cfg.tls_cert:
-        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=cfg.tls_ca or None)
         ssl_context.load_cert_chain(cfg.tls_cert, cfg.tls_key)
+        if cfg.tls_ca:
+            # only a client holding a certificate of that CA (the portal) gets past the handshake
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+            log.info("TLS: mutual (client certificates of %s)", cfg.tls_ca)
+        else:
+            log.info("TLS: server certificate only (any client with the token)")
+    elif cfg.listen[0] not in ('127.0.0.1', '::1', 'localhost'):
+        log.warning("plain HTTP on %s: the token and the terminals cross the network in clear", cfg.listen[0])
+    if cfg.allowed_clients:
+        log.info("clients allowed: %s", ', '.join(str(n) for n in cfg.allowed_clients))
     if args.pub_dir:
         pub_dir = os.path.abspath(args.pub_dir)
         os.makedirs(os.path.join(pub_dir, 'projects'), exist_ok=True)

@@ -3,6 +3,7 @@ dataclasses with defaults and validation.  Unknown keys are refused (a typo must
 leave a default in place).  Durations are written as ``"2h"``, ``"30m"``, ``"90s"`` or a number
 of seconds; ``listen`` as ``"host:port"`` (an IPv6 address between brackets)."""
 import dataclasses
+import ipaddress
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -48,6 +49,20 @@ def parse_listen(value, key='listen') -> tuple[str, int]:
     if not port.isdigit() or not 0 < int(port) < 65536:
         raise ConfigError(f"{key}: bad port in {value!r}")
     return host or '0.0.0.0', int(port)
+
+
+def parse_networks(values, key='allowed_clients') -> list:
+    """The addresses / networks of an allow-list (``"10.0.0.5"``, ``"10.0.0.0/24"``, ``"::1"``)
+    as ``ipaddress`` networks."""
+    if not isinstance(values, list):
+        raise ConfigError(f"{key}: a list of addresses or networks is expected")
+    networks = []
+    for value in values:
+        try:
+            networks.append(ipaddress.ip_network(str(value).strip(), strict=False))
+        except ValueError:
+            raise ConfigError(f"{key}: bad address or network {value!r}") from None
+    return networks
 
 
 def _section(data, key, path) -> dict:
@@ -120,6 +135,11 @@ class PoolConfig:
     idle_timeout_anonymous: float = 2 * 3600.0      # seconds; 0 = never reaped
     idle_timeout_authenticated: float = 24 * 3600.0
     poll_interval: float = 2.0                      # status refresh of the agents
+    # mutual TLS with the agents: the CA their certificates are verified against (instead of the
+    # system store), and the client certificate of the portal presented to every agent
+    ca: str = ''
+    client_cert: str = ''
+    client_key: str = ''
 
 
 @dataclass
@@ -162,6 +182,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     pool = _build(PoolConfig, pool_data, f"{path}: [pool]",
                   **{k: parse_duration(pool_data[k], f'pool.{k}') for k in
                      ('idle_timeout_anonymous', 'idle_timeout_authenticated', 'poll_interval') if k in pool_data})
+    if bool(pool.client_cert) != bool(pool.client_key):
+        raise ConfigError(f"{path}: pool.client_cert and pool.client_key go together")
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
@@ -218,8 +240,10 @@ class AgentConfig:
     max_concurrent_evals: int = 2
     lab_list_cache_ttl: float = 60.0
     state_dir: str = ''               # '' : <sre_pub_dir>/web-agent
-    tls_cert: str = ''
+    tls_cert: str = ''                # the certificate and key of the agent (both or none)
     tls_key: str = ''
+    tls_ca: str = ''                  # when set: a client certificate signed by this CA is required (the portal's)
+    allowed_clients: list = field(default_factory=list)   # ipaddress networks; empty = any address
     timeouts: dict = field(default_factory=lambda: dict(DEFAULT_TIMEOUTS))
 
 
@@ -238,7 +262,7 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     top = {k: v for k, v in data.items() if k != 'timeouts'}
     converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl') if k in top}
     cfg = _build(AgentConfig, top, path, timeouts=timeouts, listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
-                 **converted)
+                 allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: token must have at least {MIN_SECRET_LENGTH} characters")
     if not cfg.sre_exe:
@@ -252,6 +276,8 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
         raise ConfigError(f"{path}: poll_interval must be positive")
     if bool(cfg.tls_cert) != bool(cfg.tls_key):
         raise ConfigError(f"{path}: tls_cert and tls_key go together")
+    if cfg.tls_ca and not cfg.tls_cert:
+        raise ConfigError(f"{path}: tls_ca needs tls_cert and tls_key")
     return cfg
 
 

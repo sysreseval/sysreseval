@@ -1,6 +1,7 @@
 """The aiohttp application of the portal: middlewares (session, CSRF, errors, security headers),
 Jinja2 templates, static files, the pool refresh task."""
 import logging
+import ssl
 import urllib.parse
 from pathlib import Path
 
@@ -49,8 +50,24 @@ class Portal:
         app.on_cleanup.append(self._on_cleanup)
         return app
 
+    def client_ssl_context(self):
+        """The TLS context of the calls to the agents: their certificates verified against
+        ``[pool] ca`` (the system store without it), the portal's client certificate presented
+        when ``[pool] client_cert`` is set.  ``None`` keeps aiohttp's defaults."""
+        pool = self.cfg.pool
+        if not pool.ca and not pool.client_cert:
+            return None
+        context = ssl.create_default_context(cafile=pool.ca or None)
+        if pool.client_cert:
+            context.load_cert_chain(pool.client_cert, pool.client_key)
+        return context
+
     async def _on_startup(self, app):
-        self.session = aiohttp.ClientSession()
+        context = self.client_ssl_context()
+        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=context) if context else None)
+        if context is not None:
+            log.info("TLS to the agents: CA %s, client certificate %s", self.cfg.pool.ca or '(system store)',
+                     self.cfg.pool.client_cert or '(none)')
         self.pool.session = self.session
         self.relay.session = self.session
         await self.pool.refresh()

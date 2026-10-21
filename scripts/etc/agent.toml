@@ -17,9 +17,14 @@ max_concurrent_starts = 2
 max_concurrent_evals = 2
 # Seconds the lab list is cached.
 lab_list_cache_ttl = 60
-# TLS between the portal and this agent (optional; the files must be readable by root only).
-# tls_cert = "/etc/sysreseval/agent.crt"
-# tls_key = "/etc/sysreseval/agent.key"
+# TLS between the portal and this agent: the certificate of this host, and with tls_ca the CA
+# whose client certificate the portal must present (mutual TLS; scripts/web-tls.sh makes the CA
+# and the certificates).  The files must be readable by root only.
+# tls_cert = "/etc/sysreseval/tls/a01.crt"
+# tls_key = "/etc/sysreseval/tls/a01.key"
+# tls_ca = "/etc/sysreseval/tls/ca.crt"
+# The addresses or networks the agent answers (empty: any); the portal's.
+# allowed_clients = ["10.0.0.1"]
 # Timeouts of the sre commands, in seconds.
 [timeouts]
 start = 900

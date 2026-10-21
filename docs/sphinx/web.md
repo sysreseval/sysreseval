@@ -85,7 +85,9 @@ user and protects `web.toml` when it exists.
 | `max_concurrent_starts`, `max_concurrent_evals` | `2`, `2` | concurrent `sre start` / `sre eval` on the host |
 | `lab_list_cache_ttl` | `60` | seconds the output of `sre list` is cached |
 | `state_dir` | `/var/lib/sre/web-agent` | the idle clocks of the projects, kept across restarts |
-| `tls_cert`, `tls_key` | none | TLS between the portal and this agent |
+| `tls_cert`, `tls_key` | none | the certificate and key of this agent (TLS to the portal) |
+| `tls_ca` | none | the CA a **client certificate** must be signed by: only the portal gets past the handshake (mutual TLS) |
+| `allowed_clients` | `[]` (any) | the addresses or networks the agent answers, e.g. `["10.0.0.1", "10.0.1.0/24"]` |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `export = 600`, `list = 30` | seconds, per `sre` command |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
@@ -102,13 +104,35 @@ Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown ke
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`); `start_tls`; `timeout` |
-| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`) |
 
 The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
 answers file of the projects like the GECOS fields do on a workstation, so `sre outline` and
 `sre sheet` show them; an anonymous user is identified by the pseudonym and the display name.
+
+### Securing the pool (mutual TLS)
+
+The portal and the agents can authenticate each other with certificates of one private CA, on
+top of the token: the agent serves TLS and requires a client certificate of that CA, the portal
+verifies the agents against the same CA and presents its client certificate.
+`scripts/web-tls.sh` makes the files with `openssl`:
+
+```
+scripts/web-tls.sh init-ca /root/sre-tls                      # ca.key, ca.crt (10 years)
+scripts/web-tls.sh agent /root/sre-tls a01 IP:10.0.0.11 DNS:a01.example.org   # a01.key, a01.crt
+scripts/web-tls.sh portal /root/sre-tls                       # portal.key, portal.crt
+```
+
+On each pool host, `agent.toml` gets its own certificate and the CA
+(`tls_cert = ".../a01.crt"`, `tls_key = ".../a01.key"`, `tls_ca = ".../ca.crt"`, files readable
+by root only) and, as a second fence, `allowed_clients = ["<address of the portal>"]`. On the
+portal host, `web.toml` gets `[pool] ca = ".../ca.crt"`, `client_cert = ".../portal.crt"`,
+`client_key = ".../portal.key"` (readable by `sre-web`), and every `[[hosts]]` URL becomes
+`https://<name or address in the certificate's SANs>:8451`. The portal then logs
+`TLS to the agents: CA …, client certificate …` and each host as reachable; an agent without
+the right certificate, or a client without one, fails at the handshake, before any request.
 
 ## What the users see
 
@@ -130,6 +154,10 @@ answers file of the projects like the GECOS fields do on a workstation, so `sre 
 
 - The agent listens on a management address and refuses every request without its bearer token
   and the identity headers the portal adds (`X-SRE-Login`, …); the browser never talks to it.
+  With mutual TLS (above) only the holder of a client certificate of the CA reaches the token
+  check, the traffic to the agents is encrypted, and `allowed_clients` refuses every other
+  address with 403. Without TLS the token and the terminals cross the network in clear: keep the
+  agents on a trusted management network or behind a tunnel (the agent warns at startup).
 - The session cookie is signed (HMAC-SHA256), `HttpOnly`, `SameSite=Strict`, `Secure` behind
   HTTPS; the state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
   matching `Origin`; the pages carry a `Content-Security-Policy`.

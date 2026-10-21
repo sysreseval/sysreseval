@@ -79,6 +79,13 @@ class TestWebConfig:
         with pytest.raises(ConfigError, match=fragment):
             web_config_from_dict(data)
 
+    def test_pool_tls(self):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],
+                                    'pool': {'ca': '/x/ca.crt', 'client_cert': '/x/p.crt', 'client_key': '/x/p.key'}})
+        assert cfg.pool.ca == '/x/ca.crt' and cfg.pool.client_cert == '/x/p.crt' and cfg.pool.client_key == '/x/p.key'
+        with pytest.raises(ConfigError, match='client_cert'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'client_cert': '/x/p.crt'}})
+
     def test_load_file(self, tmp_path):
         f = tmp_path / 'web.toml'
         f.write_text(f'secret = "{SECRET}"\n[[hosts]]\nname = "a01"\nurl = "http://a01:8451"\ntoken = "{"t" * 32}"\n')
@@ -104,8 +111,21 @@ class TestAgentConfig:
         assert cfg.sre_exe == '/usr/sbin/sre' and cfg.max_idle == 7200
         assert cfg.timeouts['start'] == 900 and cfg.timeouts['eval'] == 30 and cfg.timeouts['stop'] == 300
 
+    def test_tls_and_allowed_clients(self):
+        import ipaddress
+        cfg = agent_config_from_dict({'token': 't' * 32, 'tls_cert': '/x/a.crt', 'tls_key': '/x/a.key',
+                                      'tls_ca': '/x/ca.crt', 'allowed_clients': ['10.0.0.5', '10.0.1.0/24', '::1']},
+                                     sre_exe='/x', state_dir='/y')
+        assert cfg.tls_ca == '/x/ca.crt'
+        assert cfg.allowed_clients == [ipaddress.ip_network('10.0.0.5/32'), ipaddress.ip_network('10.0.1.0/24'),
+                                       ipaddress.ip_network('::1/128')]
+        assert agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y').allowed_clients == []
+
     @pytest.mark.parametrize('data, fragment', [
         ({}, 'token'),
+        ({'token': 't' * 32, 'tls_ca': '/x/ca.crt'}, 'tls_ca'),
+        ({'token': 't' * 32, 'allowed_clients': ['10.0.0.300']}, '10.0.0.300'),
+        ({'token': 't' * 32, 'allowed_clients': '10.0.0.1'}, 'allowed_clients'),
         ({'token': 't' * 32, 'timeouts': {'bogus': 1}}, 'bogus'),
         ({'token': 't' * 32, 'terminals_per_device': 0}, 'terminals_per_device'),
         ({'token': 't' * 32, 'poll_interval': 0}, 'poll_interval'),

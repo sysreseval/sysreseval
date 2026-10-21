@@ -109,6 +109,15 @@ class TestFlags:
         with pytest.raises(AccessError):
             A.check_export(info(export_kathara_project=False))
 
+    def test_client_allowed(self):
+        import ipaddress
+        nets = [ipaddress.ip_network('10.0.0.5/32'), ipaddress.ip_network('10.0.1.0/24'), ipaddress.ip_network('::1/128')]
+        assert A.client_allowed('10.0.0.5', nets) and A.client_allowed('10.0.1.77', nets) and A.client_allowed('::1', nets)
+        assert A.client_allowed('::ffff:10.0.0.5', nets)       # IPv4-mapped
+        assert not A.client_allowed('10.0.0.6', nets) and not A.client_allowed('10.0.2.1', nets)
+        assert not A.client_allowed('garbage', nets) and not A.client_allowed(None, nets) and not A.client_allowed('', nets)
+        assert A.client_allowed('203.0.113.9', []) and A.client_allowed(None, [])
+
     def test_exam_mode(self, tmp_path):
         A.check_not_exam(str(tmp_path))
         (tmp_path / params.exam_json_name).write_text('{}')

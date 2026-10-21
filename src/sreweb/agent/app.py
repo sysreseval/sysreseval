@@ -89,6 +89,7 @@ class Agent:
                                      default_idle_timeout=cfg.max_idle)
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
+        self._refused_clients: set = set()
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -157,6 +158,11 @@ class Agent:
 
     @web.middleware
     async def auth_middleware(self, request, handler):
+        if not access.client_allowed(request.remote, self.cfg.allowed_clients):
+            if request.remote not in self._refused_clients:
+                self._refused_clients.add(request.remote)
+                log.warning("client %s refused: not in allowed_clients", request.remote)
+            return json_error(403, "client address not allowed")
         auth = request.headers.get('Authorization', '')
         scheme, _, token = auth.partition(' ')
         if scheme.lower() != 'bearer' or not hmac.compare_digest(token.strip(), self.cfg.token):
