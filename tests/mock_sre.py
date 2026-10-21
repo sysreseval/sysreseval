@@ -528,6 +528,14 @@ class Mock:
             error_quit("Machine not running")
         sys.stdout.flush()
         sys.stderr.flush()
+        if self.env.get('MOCK_CONNECT_WAIT_INPUT'):
+            # like Kathara on a machine whose startup never ends: nothing is printed until the
+            # user "requests the control", i.e. until stdin becomes readable (nothing is read)
+            import select
+            while not select.select([0], [], [], 0.1)[0]:
+                pass
+            import termios
+            termios.tcflush(0, termios.TCIFLUSH)   # the raw switch of Kathara discards the queue
         os.execve('/bin/sh', ['sh', '-i'], dict(os.environ, PS1=SHELL_PROMPT))
 
     def switch_console(self, network: str, running_lab_name: str):

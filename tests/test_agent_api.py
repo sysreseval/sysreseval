@@ -12,7 +12,7 @@ aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the w
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from SRE import params
-from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL
+from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, PROBE_DELAY
 from sreweb.config import agent_config_from_dict
 from sreweb.identity import Identity
 
@@ -349,6 +349,42 @@ class TestWebSockets:
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
                 assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']] * 2
                 await terms[1].close()
+        run(go())
+
+    def test_terminal_waiting_for_the_user(self, tmp_path):
+        """A machine whose startup never ends shows nothing until stdin is readable (Kathara's
+        "the user requests the control"): the agent probes it with a newline, on the first
+        keystroke and after a few seconds of silence anyway."""
+        async def go():
+            async with Harness(tmp_path, {'MOCK_CONNECT_WAIT_INPUT': '1'}) as h:
+                rln = await h.started()
+                # silence: the automatic probe brings the prompt
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                               protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                out = b''
+                async with asyncio.timeout(PROBE_DELAY + 10):
+                    while b'mock$' not in out:
+                        msg = await ws.receive()
+                        assert msg.type == aiohttp.WSMsgType.BINARY, msg
+                        out += msg.data
+                await ws.send_bytes(b'exit\n')
+                await ws.close()
+                # a keystroke right away: the probe is immediate and the keystrokes are kept
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                               protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                t0 = asyncio.get_running_loop().time()
+                await ws.send_bytes(b'echo hi\n')
+                out = b''
+                async with asyncio.timeout(PROBE_DELAY):
+                    while b'hi' not in out.split(b'echo hi')[-1]:
+                        msg = await ws.receive()
+                        assert msg.type == aiohttp.WSMsgType.BINARY, msg
+                        out += msg.data
+                assert asyncio.get_running_loop().time() - t0 < PROBE_DELAY
+                await ws.send_bytes(b'exit\n')
+                await ws.close()
         run(go())
 
     def test_terminal_refusals(self, tmp_path):

@@ -53,6 +53,7 @@ WS_LIMIT = 4409
 MAX_TERMINAL_COLS, MAX_TERMINAL_ROWS = 500, 300
 EARLY_INPUT_MAX = 4096       # keystrokes held until the first output of the terminal
 EARLY_INPUT_HOLD = 20.0      # seconds after which they go through anyway
+PROBE_DELAY = 5.0            # seconds of silence after which a newline is sent to the terminal (below)
 CLIENT_MAX_SIZE = 4 << 20        # the answers of a PUT (the portal caps them lower)
 WS_HEARTBEAT = 30.0
 
@@ -480,12 +481,24 @@ class Agent:
         exited = asyncio.Event()
         exit_code = [None]
         # Keystrokes typed before the shell shows up are held: Kathara switches the pty to raw
-        # mode with TCSAFLUSH when it attaches, which discards whatever is queued on it.
+        # mode with TCSAFLUSH when it attaches, which discards whatever is queued on it.  But a
+        # machine whose startup never ends (an /sbin/init machine without /tmp/EOS) shows nothing
+        # until "the user requests the control", which Kathara detects as a readable stdin: a
+        # newline is written to the pty at the first keystroke, and after PROBE_DELAY seconds of
+        # silence anyway (in an xterm the student would press Enter); it is discarded by the raw
+        # switch, or reaches the shell as an empty line.
         started = asyncio.Event()
         early_input = bytearray()
+        probed = [False]
+
+        def probe():
+            if not probed[0] and not started.is_set():
+                probed[0] = True
+                session.write(b'\n')
 
         def on_output(data: bytes):
-            if not started.is_set():
+            # the echo of the probe newline (bare line ends) is not the shell showing up
+            if not started.is_set() and (not probed[0] or data.strip(b'\r\n')):
                 started.set()
                 if early_input:
                     session.write(bytes(early_input))
@@ -533,13 +546,21 @@ class Agent:
         def type_in(data: bytes):
             if started.is_set():
                 session.write(data)
-            elif len(early_input) < EARLY_INPUT_MAX:
-                early_input.extend(data)
+            else:
+                if len(early_input) < EARLY_INPUT_MAX:
+                    early_input.extend(data)
+                probe()
 
         async def release_early_input():
-            # a shell that prints nothing: the held keystrokes go through after a while anyway
+            # a silent terminal gets the probe newline; a shell that prints nothing even then:
+            # the held keystrokes go through after a while anyway
             try:
-                await asyncio.wait_for(started.wait(), EARLY_INPUT_HOLD)
+                await asyncio.wait_for(started.wait(), PROBE_DELAY)
+                return
+            except TimeoutError:
+                probe()
+            try:
+                await asyncio.wait_for(started.wait(), EARLY_INPUT_HOLD - PROBE_DELAY)
             except TimeoutError:
                 if not started.is_set():
                     started.set()
