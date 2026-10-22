@@ -229,6 +229,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
@@ -575,7 +576,9 @@ thirty projects (210 containers in 3.4 GB).</p></li>
 systemd units <code class="docutils literal notranslate"><span class="pre">sre-agent.service</span></code> and <code class="docutils literal notranslate"><span class="pre">sre-web.service</span></code> (disabled) and the example configuration
 files <code class="docutils literal notranslate"><span class="pre">etc/agent.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">etc/web.toml</span></code> under the installation directory.</p>
 <p>On every pool host: write <code class="docutils literal notranslate"><span class="pre">/opt/sre/etc/agent.toml</span></code> (root, mode 0600) with the listen address
-of a management interface and a long random token, then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-agent</span></code>.</p>
+of a management interface and a long random token, then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-agent</span></code>.
+For a whole classroom, <code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code> (see <em>A whole site at once</em> below) writes
+the tokens, the certificates and the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entries from a list of machines.</p>
 <p>On the portal host: create the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code> system user (<code class="docutils literal notranslate"><span class="pre">adduser</span> <span class="pre">--system</span> <span class="pre">--group</span> <span class="pre">--no-create-home</span> <span class="pre">--shell</span> <span class="pre">/usr/sbin/nologin</span> <span class="pre">sre-web</span></code>), write <code class="docutils literal notranslate"><span class="pre">/opt/sre/etc/web.toml</span></code> (root:sre-web, mode 0640:
 it holds the cookie secret and the agent tokens; the files it imports likewise), then
 <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-web</span></code>. Put a
@@ -827,6 +830,39 @@ portal host, <code class="docutils literal notranslate"><span class="pre">web.to
 <code class="docutils literal notranslate"><span class="pre">TLS</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">agents:</span> <span class="pre">CA</span> <span class="pre">…,</span> <span class="pre">client</span> <span class="pre">certificate</span> <span class="pre">…</span></code> and each host as reachable; an agent without
 the right certificate, or a client without one, fails at the handshake, before any request.</p>
 </section>
+<section id="a-whole-site-at-once-scripts-make-web-hosts-sh">
+<h3>A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)<a class="headerlink" href="#a-whole-site-at-once-scripts-make-web-hosts-sh" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code> writes everything the previous section asks for, for every pool
+host of a site, from a list of its machines:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">IP_MAC_FILE</span><span class="o">=</span><span class="n">ip_mac</span><span class="o">.</span><span class="n">txt</span> <span class="n">OUT_DIR</span><span class="o">=/</span><span class="n">root</span><span class="o">/</span><span class="n">sre</span><span class="o">-</span><span class="n">pool</span> <span class="n">REGEXP</span><span class="o">=</span><span class="s1">&#39;^([a-z])[0-9]+$&#39;</span> <span class="n">ROOMS</span><span class="o">=</span><span class="s2">&quot;a h&quot;</span> <span class="n">DISABLED_ROOMS</span><span class="o">=</span><span class="n">h</span> \
+    <span class="n">scripts</span><span class="o">/</span><span class="n">make</span><span class="o">-</span><span class="n">web</span><span class="o">-</span><span class="n">hosts</span><span class="o">.</span><span class="n">sh</span>
+</pre></div>
+</div>
+<p>The list has one <code class="docutils literal notranslate"><span class="pre">mac;ip;name</span></code> line per machine (<code class="docutils literal notranslate"><span class="pre">e4:54:e8:d1:6c:1c;10.0.128.1;a01</span></code>: the MAC
+address for Wake-on-LAN, the IPv4 address the agent listens on, the name). A machine gets an
+agent when its lower-cased name matches <code class="docutils literal notranslate"><span class="pre">REGEXP</span></code>; the first group of the expression, when there
+is one, is its room, so that <code class="docutils literal notranslate"><span class="pre">ROOMS</span></code> selects the rooms joining the pool (empty: every qualified
+machine) and <code class="docutils literal notranslate"><span class="pre">DISABLED_ROOMS</span></code> those whose hosts start with <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code> (polled, no project
+placed there until <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">enable</span></code>). These five variables are required and have no
+default; <code class="docutils literal notranslate"><span class="pre">AGENT_PORT</span></code> (8451), <code class="docutils literal notranslate"><span class="pre">MAX_PROJECTS</span></code> (25), <code class="docutils literal notranslate"><span class="pre">POWER</span></code> (<code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> in the entries and
+<code class="docutils literal notranslate"><span class="pre">allow_power_off</span> <span class="pre">=</span> <span class="pre">true</span></code> on the agents), <code class="docutils literal notranslate"><span class="pre">DOMAIN</span></code> (a <code class="docutils literal notranslate"><span class="pre">DNS:&lt;name&gt;.&lt;domain&gt;</span></code> SAN too),
+<code class="docutils literal notranslate"><span class="pre">PORTAL_ADDRESS</span></code> (<code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> of the agents) and <code class="docutils literal notranslate"><span class="pre">TLS_DIR_ON_HOSTS</span></code> (<code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/tls</span></code>,
+the paths written in the files) are optional.</p>
+<p>In <code class="docutils literal notranslate"><span class="pre">OUT_DIR</span></code> (private keys and tokens: outside any repository) it writes, through <code class="docutils literal notranslate"><span class="pre">web-tls.sh</span></code>,
+the CA and the portal’s client certificate once, then per host a key and a certificate (SANs
+<code class="docutils literal notranslate"><span class="pre">IP:&lt;ip&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">DNS:&lt;name&gt;</span></code>), a token drawn once and kept in <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.token</span></code>, and:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">hosts.toml</span></code>: the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entries, one room after the other, with the three <code class="docutils literal notranslate"><span class="pre">[pool]</span></code> TLS
+lines of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> in its header; a file of <code class="docutils literal notranslate"><span class="pre">web.d/</span></code> (<code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">=</span> <span class="pre">[&quot;web.d&quot;]</span></code>) or pasted at the
+end of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">agent-&lt;name&gt;.toml</span></code>: the host-specific lines of that host’s <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> (<code class="docutils literal notranslate"><span class="pre">listen</span></code>, <code class="docutils literal notranslate"><span class="pre">token</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tls_*</span></code>), to complete with the example file.</p></li>
+</ul>
+<p>Copy <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.crt</span></code>, <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.key</span></code> and <code class="docutils literal notranslate"><span class="pre">ca.crt</span></code> to <code class="docutils literal notranslate"><span class="pre">TLS_DIR_ON_HOSTS</span></code> of each host, and <code class="docutils literal notranslate"><span class="pre">ca.crt</span></code>,
+<code class="docutils literal notranslate"><span class="pre">portal.crt</span></code>, <code class="docutils literal notranslate"><span class="pre">portal.key</span></code> to the portal’s. A second run keeps every key, certificate and token
+already there, adds the new hosts and rewrites <code class="docutils literal notranslate"><span class="pre">hosts.toml</span></code> and the agent files, so the rooms may
+change at any time; a kept certificate that no longer names the address of its host is reported.</p>
+</section>
 <section id="a-pool-of-workstations">
 <h3>A pool of workstations<a class="headerlink" href="#a-pool-of-workstations" title="Link to this heading">¶</a></h3>
 <p>The pool hosts are typically classroom workstations: off when nobody needs them (a nightly cron
@@ -1037,6 +1073,7 @@ the whole site works without Docker. The French catalog is <code class="docutils
 <li><a class="reference internal" href="#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li><a class="reference internal" href="#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
 <li><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
+<li><a class="reference internal" href="#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
