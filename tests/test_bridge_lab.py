@@ -334,7 +334,7 @@ def test_b1_gets_the_highest_macs(lab):
     others = [key for key in set(lab.MAC_KEYS.values()) if key not in lab.B1_MAC_KEYS]
     assert set(lab.B1_MAC_KEYS) == {'b1_eth0', 'b1_eth1'} and len(others) == 9
     lowest_b1 = set()
-    for _ in range(8):
+    for _ in range(40):           # 8 draws failed one run in 128 (all on the same side); 40: one in 10^12
         d = lab.Data.generate()
         assert min(int(d.macs.b1_eth0), int(d.macs.b1_eth1)) > max(int(getattr(d.macs, key)) for key in others)
         assert set(lab.stp_roots(d)) == {'b2', 'b3'}
