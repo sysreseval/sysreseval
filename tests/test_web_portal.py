@@ -1,5 +1,6 @@
-"""Tests of the portal (sreweb.portal): session cookie, anonymous login, CSRF, ownership, pool
-placement, rate limits, and the relay to a real agent running the fake sre of tests/mock_sre.py."""
+"""Tests of the portal (sreweb.portal): session cookie, anonymous login, the proxy mode (the
+identity in the headers of a trusted reverse proxy), CSRF, ownership, pool placement, rate
+limits, and the relay to a real agent running the fake sre of tests/mock_sre.py."""
 import asyncio
 import json
 import stat
@@ -26,6 +27,10 @@ TOKEN = 't' * 32
 SECRET = 's' * 32
 CSRF = {S.CSRF_HEADER: S.CSRF_VALUE}
 TEXT_HASH = 'cfc140584d209e6d8ed82f6db72c91a210cb1f2ded6a6b66f81c17e16ac2b857'
+TEACHERS = 'cn=teachers,ou=groups,dc=example,dc=org'
+# proxy mode: the test client is the trusted peer (TestServer binds 127.0.0.1); web_over replaces the whole auth dict
+PROXY_OVER = {'auth': {'mode': 'proxy', 'proxy': {'instructor_groups': [TEACHERS]}},
+              'trusted_proxies': ['127.0.0.1', '::1']}
 
 TEMPLATES = {
     'login.html': '<html lang="{{ language }}"><title>Login</title>{{ auth_mode }} {{ error }}'
@@ -38,6 +43,11 @@ TEMPLATES = {
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def who(login, fullname='', email='', groups='') -> dict:
+    """The identity headers Apache sets in proxy mode (the defaults of [auth.proxy])."""
+    return {'X-Remote-User': login, 'X-Remote-Name': fullname, 'X-Remote-Email': email, 'X-Remote-Groups': groups}
 
 
 class Harness:
@@ -297,6 +307,125 @@ class TestProjectsThroughThePortal:
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers=CSRF)
                 assert resp.status == 503
                 assert len(await (await h.client.get('/api/projects')).json()) == 3
+        run(go())
+
+
+class TestProxyMode:
+    def test_identity_from_the_headers(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                me = who('alice', 'Émile Dupont', 'alice@example.org', f'cn=students,ou=groups,dc=example,dc=org; {TEACHERS}')
+                resp = await h.client.get('/api/me', headers=me)
+                data = await resp.json()
+                assert data['auth_mode'] == 'proxy' and S.COOKIE_NAME not in resp.cookies
+                assert data['identity'] == {'login': 'alice', 'fullname': 'Émile Dupont', 'email': 'alice@example.org',
+                                            'role': 'instructor', 'language': 'en', 'anonymous': False}
+                student = (await (await h.client.get('/api/me', headers=who('bob'))).json())['identity']
+                assert student['login'] == 'bob' and student['role'] == 'student' and student['fullname'] == ''
+                for path in ('/', '/login'):
+                    resp = await h.client.get(path, headers=me, allow_redirects=False)
+                    assert resp.status == 302 and resp.headers['Location'] == '/projects'
+                resp = await h.client.get('/projects', headers=me)
+                assert resp.status == 200 and 'alice' in await resp.text() and not resp.cookies
+        run(go())
+
+    def test_without_headers_or_from_an_untrusted_peer(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                assert (await (await h.client.get('/api/me')).json())['identity'] is None
+                assert (await h.client.get('/api/projects')).status == 401
+                resp = await h.client.get('/', allow_redirects=False)
+                assert resp.status == 302 and resp.headers['Location'] == '/login'
+                resp = await h.client.get('/login')
+                assert resp.status == 200 and 'proxy' in await resp.text()
+                assert not h.portal._proxy_warned
+            untrusted = dict(PROXY_OVER, trusted_proxies=['10.0.0.0/8'])
+            async with Harness(tmp_path / 'untrusted', web_over=untrusted) as h:
+                assert (await (await h.client.get('/api/me', headers=who('alice'))).json())['identity'] is None
+                assert (await h.client.get('/api/projects', headers=who('alice'))).status == 401
+                assert h.portal._proxy_warned == {('peer', '127.0.0.1')}
+        run(go())
+
+    def test_bad_login_and_no_login_endpoints(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                for _ in range(2):
+                    assert (await h.client.get('/api/projects', headers=who('../x'))).status == 401
+                assert len(h.portal._proxy_warned) == 1
+                resp = await h.client.post('/api/login', json={'login': 'alice', 'password': 'x'},
+                                           headers={**who('alice'), **CSRF})
+                assert resp.status == 403 and 'reverse proxy' in await resp.text()
+                resp = await h.client.post('/login', data={'display_name': 'x'}, allow_redirects=False)
+                assert resp.status == 302 and resp.headers['Location'].startswith('/login?error=')
+        run(go())
+
+    def test_language_cookie(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                resp = await h.client.post('/api/language', json={'language': 'fr'}, headers={**who('alice'), **CSRF})
+                assert resp.status == 200 and (await resp.json())['identity']['language'] == 'fr'
+                assert S.LANG_COOKIE in resp.cookies and S.COOKIE_NAME not in resp.cookies
+                me = await (await h.client.get('/api/me', headers=who('alice'))).json()
+                assert me['identity']['language'] == 'fr'
+                me = await (await h.client.get('/api/me?lang=en', headers=who('alice'))).json()
+                assert me['identity']['language'] == 'en'
+                resp = await h.client.get('/login')            # no identity: the page in the cookie's language
+                assert '<html lang="fr">' in await resp.text()
+        run(go())
+
+    def test_logout(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                resp = await h.client.post('/logout', headers=who('alice'), allow_redirects=False)
+                assert resp.status == 302 and resp.headers['Location'] == '/login'
+                resp = await h.client.post('/api/logout', headers={**who('alice'), **CSRF})
+                assert await resp.json() == {'ok': True, 'logout_url': ''}
+            over = dict(PROXY_OVER, auth={'mode': 'proxy', 'proxy': {'logout_url': '/apache-logout'}})
+            async with Harness(tmp_path / 'out', web_over=over) as h:
+                resp = await h.client.post('/logout', headers=who('alice'), allow_redirects=False)
+                assert resp.status == 302 and resp.headers['Location'] == '/apache-logout'
+                resp = await h.client.post('/api/logout', headers={**who('alice'), **CSRF})
+                assert (await resp.json())['logout_url'] == '/apache-logout'
+        run(go())
+
+    def test_stale_session_cookie_is_ignored(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                stale = {S.COOKIE_NAME: S.encode(Identity(login='ghost', anonymous=True), SECRET)}
+                assert (await (await h.client.get('/api/me', cookies=stale)).json())['identity'] is None
+                me = await (await h.client.get('/api/me', cookies=stale, headers=who('alice'))).json()
+                assert me['identity']['login'] == 'alice'
+        run(go())
+
+    def test_projects_with_the_proxy_identity(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=PROXY_OVER) as h:
+                alice = who('alice', 'Émile Dupont', 'alice@example.org')
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
+                assert resp.status == 200, await resp.text()
+                result = json.loads((await resp.text()).splitlines()[-1])
+                assert result['status'] == 'created'
+                rln = result['running_lab_name']
+                assert rln.endswith('@@@alice')
+                base = f'/api/projects/a01/{rln}'
+                assert (await h.client.get(base, headers=alice)).status == 200
+                resp = await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'gw'}}, headers={**alice, **CSRF})
+                assert resp.status == 200
+                on_disk = json.loads((h.pub / 'projects' / rln / 'answers' / 'answers.json').read_text())
+                assert (on_disk['login'], on_disk['fullname'], on_disk['email']) == ('alice', 'Émile Dupont', 'alice@example.org')
+                ws = await h.client.ws_connect(f'{base}/events', headers=alice)
+                await h.client.post(f'{base}/states/final', headers={**alice, **CSRF})
+                assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'answers'
+                await ws.close()
+                # ownership and the instructor role, at the portal and at the agent
+                bob, prof = who('bob'), who('prof', groups=TEACHERS)
+                assert (await h.client.get(base, headers=bob)).status == 403
+                assert (await h.client.get(f'/projects/a01/{rln}', headers=bob)).status == 403
+                assert await (await h.client.get('/api/projects', headers=bob)).json() == []
+                assert (await h.client.get('/api/pool', headers=bob)).status == 403
+                assert (await h.client.get(base, headers=prof)).status == 200
+                assert (await h.client.get('/api/pool', headers=prof)).status == 200
+                assert (await h.client.delete(base, headers={**alice, **CSRF})).status == 200
         run(go())
 
 

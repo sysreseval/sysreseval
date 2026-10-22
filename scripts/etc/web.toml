@@ -6,8 +6,9 @@ listen = "127.0.0.1:8450"
 public_url = "https://sre.example.org"
 # Signs the session cookies (32+ random characters; changing it logs everybody out).
 secret = "change-me-to-a-long-random-string"
-# The proxies whose X-Forwarded-For / X-Forwarded-Proto headers are trusted.
-trusted_proxies = ["127.0.0.1"]
+# Proxy mode (see [auth]): the addresses or networks of the reverse proxy, the only peers whose
+# identity headers are trusted.  The portal reads no X-Forwarded-* header.
+trusted_proxies = ["127.0.0.1", "::1"]
 # Languages offered on the login page, the first one is the default.
 languages = ["fr", "en"]
 # Own TLS instead of a proxy (optional).
@@ -16,7 +17,9 @@ languages = ["fr", "en"]
 
 [auth]
 # "anonymous": every browser gets a pseudonym guest-xxxxxxxx (and may give a display name);
-# "ldap": the users log in with their directory account.
+# "ldap": the users log in with their directory account;
+# "proxy": the reverse proxy authenticates the users itself (Apache mod_authnz_ldap, see
+#          sre-web-apache.conf) and passes their identity in request headers ([auth.proxy]).
 mode = "anonymous"
 
 [auth.ldap]
@@ -35,6 +38,20 @@ instructor_groups = []
 # group_filter = "(member={dn})"
 start_tls = false
 timeout = 10
+
+[auth.proxy]
+# The headers the reverse proxy sets on every request (sre-web-apache.conf sets these four from
+# REMOTE_USER and the LDAP attributes).  The groups header holds the values of an attribute
+# (memberOf...) joined by groups_separator; the members of instructor_groups are instructors.
+header_login = "X-Remote-User"
+header_fullname = "X-Remote-Name"
+header_email = "X-Remote-Email"
+header_groups = "X-Remote-Groups"
+groups_separator = ";"
+instructor_groups = []
+# Where Logout sends the browser (the logout handler of a mod_auth_form login); empty: no Logout
+# button (an HTTP Basic authentication cannot be logged out of).
+logout_url = ""
 
 [pool]
 # A project nobody touched for this long is evaluated (if the lab asks) and closed.

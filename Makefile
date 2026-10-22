@@ -238,7 +238,8 @@ web-tests:
 	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_mock_sre.py ${ROOT_DIR}/tests/test_agent_runner.py \
 		${ROOT_DIR}/tests/test_agent_pty.py ${ROOT_DIR}/tests/test_agent_access.py ${ROOT_DIR}/tests/test_agent_registry.py \
 		${ROOT_DIR}/tests/test_agent_api.py ${ROOT_DIR}/tests/test_agent_occupancy.py ${ROOT_DIR}/tests/test_web_config.py \
-		${ROOT_DIR}/tests/test_web_identity.py ${ROOT_DIR}/tests/test_web_portal.py ${ROOT_DIR}/tests/test_pool_manager.py \
+		${ROOT_DIR}/tests/test_web_identity.py ${ROOT_DIR}/tests/test_web_auth_proxy.py ${ROOT_DIR}/tests/test_web_portal.py \
+		${ROOT_DIR}/tests/test_pool_manager.py \
 		${ROOT_DIR}/tests/test_pool_admin.py ${ROOT_DIR}/tests/test_web_templates.py ${ROOT_DIR}/tests/test_web_tls.py \
 		-v -p no:cacheprovider
 

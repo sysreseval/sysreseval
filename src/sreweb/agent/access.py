@@ -7,11 +7,11 @@ therefore checks, before spawning anything: the exact running lab name, its owne
 of a device, the state, and the flags of the lab.
 Save and restore are not offered on the web: no endpoint, no rule.
 """
-import ipaddress
 import os
 import re
 
 from SRE import params
+from ..config import client_allowed   # noqa: F401  (re-exported: the peer check of ``allowed_clients``)
 from ..identity import Identity, ROLE_INSTRUCTOR
 
 _RLN = re.compile(params.running_lab_name_match_pattern)
@@ -109,24 +109,6 @@ def check_self_grade(info: dict):
 def check_export(info: dict):
     if not info.get('export_kathara_project', True):
         raise AccessError(403, "this lab cannot be exported")
-
-
-def client_allowed(remote, networks) -> bool:
-    """Whether the peer address *remote* (what aiohttp's ``request.remote`` gives) belongs to one
-    of the ``ipaddress`` *networks* of ``allowed_clients``; an empty list allows every address, an
-    unparsable one is refused.  An IPv4-mapped IPv6 address counts as its IPv4 address."""
-    if not networks:
-        return True
-    try:
-        address = ipaddress.ip_address(str(remote or '').split('%', 1)[0])
-    except ValueError:
-        return False
-    candidates = [address]
-    mapped = getattr(address, 'ipv4_mapped', None)
-    if mapped is not None:
-        candidates.append(mapped)
-    return any(candidate in network for network in networks for candidate in candidates
-               if candidate.version == network.version)
 
 
 def exam_mode_on(pub_dir: str = None) -> bool:

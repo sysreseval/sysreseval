@@ -43,6 +43,12 @@ msgstr "Vous recevez un pseudonyme ; le nom donné ici est inscrit dans vos fich
 msgid "Continue"
 msgstr "Continuer"
 
+msgid "The web server passed no identity."
+msgstr "Le serveur web n'a transmis aucune identité."
+
+msgid "The sign-in is done by the web server in front of this site: check its configuration."
+msgstr "L'authentification est faite par le serveur web placé devant ce site : vérifiez sa configuration."
+
 # --- projects.html, projects.js -------------------------------------------------------------
 
 msgid "Projects"

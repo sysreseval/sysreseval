@@ -4,7 +4,8 @@ The web site lets the students work on the labs from a browser, without the Qt i
 without a remote desktop: the projects run on a **pool of Docker hosts**, every tab of the
 graphical interface (Schema, Informations, Machines, Networks, Questions, Evaluation, Terminals,
 Apply Configuration, Log) is rendered in the browser and the terminals go through WebSockets.
-The users log in with an LDAP directory, or everybody is anonymous.
+The users log in with an LDAP directory (the portal binds to it, or an Apache reverse proxy in
+front authenticates them), or everybody is anonymous.
 
 Nothing of a lab ever reaches the browser but what a student sees today: the content of
 `info.json` (resolved to the user's language, the instructor texts stripped), the outputs of the
@@ -58,7 +59,8 @@ of a management interface and a long random token, then `systemctl enable --now 
 On the portal host: create the `sre-web` system user (`adduser --system --group --no-create-home
 --shell /usr/sbin/nologin sre-web`), write `/opt/sre/etc/web.toml` (root:sre-web, mode 0640:
 it holds the cookie secret and the agent tokens), then `systemctl enable --now sre-web`. Put a
-reverse proxy doing TLS in front (`scripts/etc/sre-web-nginx.conf` is an nginx example), or
+reverse proxy doing TLS in front (`scripts/etc/sre-web-nginx.conf` is an nginx example,
+`sre-web-apache.conf` an Apache one that also authenticates the users: the proxy mode below), or
 give the portal its own certificate (`tls_cert` / `tls_key`).
 
 ### Debian packages
@@ -102,11 +104,12 @@ Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown ke
 | `listen` | `127.0.0.1:8450` | behind a reverse proxy: the loopback |
 | `public_url` | none | the URL the users type (the `Origin` of the WebSockets is checked against it) |
 | `secret` | required | signs the session cookies (32+ random characters) |
-| `trusted_proxies` | `[]` | the proxies whose `X-Forwarded-*` headers are trusted |
+| `trusted_proxies` | `[]` | proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never `X-Forwarded-For`); required in that mode |
 | `languages` | `["en", "fr"]` | the languages offered at login, the first one by default |
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
-| `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account |
+| `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`); `start_tls`; `timeout` |
+| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `instructor_groups`: the values of the groups header giving the instructor role; `logout_url`: where Logout sends the browser (none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web pool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
@@ -115,6 +118,58 @@ Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown ke
 The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
 answers file of the projects like the GECOS fields do on a workstation, so `sre outline` and
 `sre sheet` show them; an anonymous user is identified by the pseudonym and the display name.
+
+### Authentication by the reverse proxy
+
+With `[auth] mode = "proxy"` the portal has no login page: the reverse proxy in front
+authenticates the users itself and names them in request headers, which the portal reads on
+every request (pages, API calls, the NDJSON streams of the starts, the WebSockets of the
+terminals). Nothing is stored in a cookie: the proxy's session is the session, and a request
+that does not come from a peer of `trusted_proxies` has no identity whatever its headers.
+`scripts/etc/sre-web-apache.conf` is the Apache 2.4 example (`mod_authnz_ldap` + `mod_proxy`):
+
+```apache
+<Location "/">
+    AuthType Basic
+    AuthName "SRE"
+    AuthBasicProvider ldap
+    AuthLDAPURL "ldaps://ldap.example.org/ou=people,dc=example,dc=org?uid,cn,mail,memberOf?sub?(objectClass=inetOrgPerson)"
+    AuthLDAPRemoteUserAttribute uid
+    Require valid-user
+    RequestHeader set X-Remote-User "expr=%{REMOTE_USER}"
+    RequestHeader unset X-Remote-Name
+    RequestHeader set X-Remote-Name "%{AUTHENTICATE_CN}e" env=AUTHENTICATE_CN
+    RequestHeader unset X-Remote-Email
+    RequestHeader set X-Remote-Email "%{AUTHENTICATE_MAIL}e" env=AUTHENTICATE_MAIL
+    RequestHeader unset X-Remote-Groups
+    RequestHeader set X-Remote-Groups "%{AUTHENTICATE_MEMBEROF}e" env=AUTHENTICATE_MEMBEROF
+    RequestHeader unset Authorization
+</Location>
+ProxyPreserveHost On
+ProxyPass        "/" "http://127.0.0.1:8450/" upgrade=websocket timeout=3600
+ProxyPassReverse "/" "http://127.0.0.1:8450/"
+```
+
+The rules that keep this safe:
+
+- The portal listens on the loopback (or on an address only the proxy reaches) and
+  `trusted_proxies` holds the proxy's address as the portal sees it (`127.0.0.1` and `::1` for
+  a proxy on the same host); the portal takes the TCP peer address, never `X-Forwarded-For`.
+- The proxy sets the four headers on **every** request, replacing whatever the browser sent
+  (`RequestHeader set` does; never pass a client header through), after the authentication
+  (not `early`). An optional header is removed when the attribute is missing, or `mod_headers`
+  writes the literal `(null)`, which the portal treats as empty.
+- The attributes exported by `mod_authnz_ldap` (`AUTHENTICATE_CN`...) are those listed in the
+  `AuthLDAPURL`; a multi-valued one is joined with `; ` (hence `groups_separator = ";"`). The
+  groups header may carry any attribute, `memberOf` DNs or `eduPersonAffiliation` values:
+  `instructor_groups` lists the values giving the instructor role. A long list of groups can
+  exceed Apache's `LimitRequestFieldSize` (8190 bytes): raise it or export fewer attributes.
+- `public_url` must be the `https://` URL the users type (the `Secure` flag of the language
+  cookie, the `Origin` check of the WebSockets together with `ProxyPreserveHost On`).
+- HTTP Basic authentication cannot be logged out of: the Logout button is hidden unless
+  `logout_url` names a logout handler (`mod_auth_form`, sketched at the end of the example).
+- `sre-web pool …` talks to the loopback port directly, never through the proxy (the Basic
+  authentication would refuse its bearer token).
 
 ### Securing the pool (mutual TLS)
 
@@ -194,7 +249,8 @@ config host removed by hand comes back with `enable`. `--json` gives the raw row
 
 ## What the users see
 
-- **Login**: the directory account, or (anonymous mode) a display name and a language.
+- **Login**: the directory account, or (anonymous mode) a display name and a language; in
+  proxy mode the web server in front has already asked, there is no login page.
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
   lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
   deploys).
@@ -219,10 +275,14 @@ config host removed by hand comes back with `enable`. `--json` gives the raw row
 - The session cookie is signed (HMAC-SHA256), `HttpOnly`, `SameSite=Strict`, `Secure` behind
   HTTPS; the state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
   matching `Origin`; the pages carry a `Content-Security-Policy`.
+- In proxy mode nothing is stored in a cookie: every request carries the identity set by the
+  reverse proxy, accepted from the peers of `trusted_proxies` only (a request reaching the
+  portal from anywhere else has no identity, headers or not).
 - Rate limits per user (evaluations, starts) and per client address (logins); the size of the
   answers is capped.
 - A project's owner is the third field of its running lab name; the portal and the agent both
-  check it. Instructors (phase 5) will be the members of an LDAP group.
+  check it. Instructors are the members of `instructor_groups` (of `[auth.ldap]`, or of the
+  groups header in proxy mode); the rest of the instructor role is phase 5.
 
 ## Limitations
 

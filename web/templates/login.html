@@ -4,6 +4,10 @@
 <div class="login-box">
   <h1>{{ _("Sign in") }}</h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if auth_mode == "proxy" %}
+  <p class="error">{{ _("The web server passed no identity.") }}</p>
+  <p class="hint">{{ _("The sign-in is done by the web server in front of this site: check its configuration.") }}</p>
+  {% else %}
   <form method="post" action="/login">
     {% if auth_mode == "ldap" %}
     <label>{{ _("Login") }}
@@ -27,5 +31,6 @@
     </label>
     <button type="submit" class="primary">{% if auth_mode == "ldap" %}{{ _("Sign in") }}{% else %}{{ _("Continue") }}{% endif %}</button>
   </form>
+  {% endif %}
 </div>
 {% endblock %}

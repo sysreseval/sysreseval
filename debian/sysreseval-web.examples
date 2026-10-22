@@ -1,2 +1,3 @@
 scripts/etc/web.toml
 scripts/etc/sre-web-nginx.conf
+scripts/etc/sre-web-apache.conf

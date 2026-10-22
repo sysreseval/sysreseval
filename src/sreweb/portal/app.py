@@ -11,16 +11,19 @@ import jinja2
 from aiohttp import web
 
 from . import session as S
+from .auth_proxy import identity_from_headers
 from .manager import PoolManager
 from .pool import Pool, PoolError
 from .relay import Relay
 from .routes import Routes, json_error
-from ..identity import IDENTITY_KEY
-from ..config import WebConfig
+from ..identity import IDENTITY_KEY, IdentityError
+from ..config import WebConfig, AUTH_PROXY, client_allowed
 
 log = logging.getLogger('sreweb.portal')
 
 PORTAL_KEY = web.AppKey('portal', object)
+#: Proxy mode: how many distinct peers / bad logins are warned about once (then every time).
+PROXY_WARNINGS_MAX = 100
 CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
 
 
@@ -34,6 +37,7 @@ class Portal:
         self.manager: PoolManager | None = None
         self.relay: Relay | None = None
         self.routes: Routes | None = None
+        self._proxy_warned: set = set()
 
     def make_app(self) -> web.Application:
         app = web.Application(middlewares=[self.identity_middleware, self.csrf_middleware, self.error_middleware],
@@ -87,13 +91,44 @@ class Portal:
 
     @web.middleware
     async def identity_middleware(self, request, handler):
-        request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)
+        if self.cfg.auth.mode == AUTH_PROXY:
+            request[IDENTITY_KEY] = self._proxy_identity(request)
+        else:
+            request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)
         response = await handler(request)
         response.headers.setdefault('Content-Security-Policy', CSP)
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('Referrer-Policy', 'same-origin')
         response.headers.setdefault('X-Frame-Options', 'DENY')
         return response
+
+    def _proxy_identity(self, request):
+        """Proxy mode: the identity of the request headers, from a peer of ``trusted_proxies``
+        only; the session cookie is not consulted.  ``None`` (no identity) when the peer is not
+        trusted, sends no login header or a bad one, warned once per peer / per message."""
+        proxy = self.cfg.auth.proxy
+        if not client_allowed(request.remote, self.cfg.trusted_proxies):
+            if request.headers.get(proxy.header_login):
+                self._warn_once(('peer', request.remote),
+                                "proxy mode: identity headers from %s ignored (not in trusted_proxies)", request.remote)
+            return None
+        language = S.choose_language((request.query.get('lang'), request.cookies.get(S.LANG_COOKIE)),
+                                     self.cfg.languages)
+        try:
+            identity = identity_from_headers(proxy, request.headers, language)
+        except IdentityError as e:
+            self._warn_once(('login', str(e)), "proxy mode: %s (from %s)", e, request.remote)
+            return None
+        if identity is None:
+            log.debug("proxy mode: no %s header from %s", proxy.header_login, request.remote)
+        return identity
+
+    def _warn_once(self, key, message, *args):
+        if key in self._proxy_warned:
+            return
+        if len(self._proxy_warned) < PROXY_WARNINGS_MAX:
+            self._proxy_warned.add(key)
+        log.warning(message, *args)
 
     def _same_origin(self, request) -> bool:
         origin = request.headers.get('Origin')

@@ -1,4 +1,6 @@
 """Tests of sreweb.config: the TOML configuration of sre-web and sre-agent."""
+import ipaddress
+
 import pytest
 
 from sreweb import config
@@ -41,6 +43,7 @@ class TestWebConfig:
         assert cfg.pool.idle_timeout_anonymous == 7200 and cfg.pool.idle_timeout_authenticated == 86400
         assert cfg.hosts[0].name == 'a01' and cfg.hosts[0].max_projects == 10
         assert cfg.languages == ['en', 'fr'] and cfg.limits.eval_interval == 10
+        assert cfg.trusted_proxies == [] and cfg.auth.proxy.header_login == 'X-Remote-User'
 
     def test_full(self):
         cfg = web_config_from_dict({
@@ -56,6 +59,7 @@ class TestWebConfig:
         })
         assert cfg.listen == ('::', 8000) and cfg.auth.mode == 'ldap' and cfg.auth.ldap.timeout == 5
         assert cfg.auth.ldap.instructor_groups == ['cn=teachers,ou=groups,dc=example,dc=org']
+        assert cfg.trusted_proxies == [ipaddress.ip_network('127.0.0.1/32')]
         assert cfg.pool.idle_timeout_anonymous == 3600 and cfg.pool.idle_timeout_authenticated == 0
         assert cfg.pool.poll_interval == 3 and cfg.limits.eval_interval == 20 and cfg.limits.max_answer_bytes == 100
         assert [h.name for h in cfg.hosts] == ['a01', 'h01']
@@ -74,10 +78,36 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'tls_cert': '/c.pem'}, 'tls'),
         ({'secret': SECRET, 'hosts': [HOST], 'listen': 'nowhere'}, 'listen'),
         ({'secret': SECRET, 'hosts': 'a01'}, 'hosts'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'mode': 'proxy'}}, 'trusted_proxies'),
+        ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
+          'auth': {'mode': 'proxy', 'proxy': {'header_login': ' '}}}, 'header_login'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'groups_separator': ''}}}, 'groups_separator'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'typo': 1}}}, 'typo'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'logout_url': 'javascript:x'}}}, 'logout_url'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_groups': 'cn=x'}}}, 'instructor_groups'),
+        ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['10.0.0.300']}, '10.0.0.300'),
+        ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': '127.0.0.1'}, 'trusted_proxies'),
     ])
     def test_refused(self, data, fragment):
         with pytest.raises(ConfigError, match=fragment):
             web_config_from_dict(data)
+
+    def test_proxy_mode(self):
+        proxy = {'header_login': 'Remote-User', 'instructor_groups': ['cn=teachers,ou=groups,dc=example,dc=org'],
+                 'logout_url': '/apache-logout'}
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1', '10.0.0.0/24'],
+                                    'auth': {'mode': 'proxy', 'proxy': proxy}})
+        assert cfg.auth.mode == config.AUTH_PROXY
+        assert cfg.trusted_proxies == [ipaddress.ip_network('127.0.0.1/32'), ipaddress.ip_network('10.0.0.0/24')]
+        assert config.client_allowed('10.0.0.7', cfg.trusted_proxies) and config.client_allowed('::ffff:127.0.0.1', cfg.trusted_proxies)
+        assert not config.client_allowed('10.0.1.7', cfg.trusted_proxies) and not config.client_allowed('::1', cfg.trusted_proxies)
+        p = cfg.auth.proxy
+        assert p.header_login == 'Remote-User' and p.header_fullname == 'X-Remote-Name'
+        assert p.header_email == 'X-Remote-Email' and p.header_groups == 'X-Remote-Groups' and p.groups_separator == ';'
+        assert p.instructor_groups == ['cn=teachers,ou=groups,dc=example,dc=org'] and p.logout_url == '/apache-logout'
+        # the section is read in every mode: a typo must not wait for the switch to proxy mode
+        anonymous = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'logout_url': 'https://x/out'}}})
+        assert anonymous.auth.mode == config.AUTH_ANONYMOUS and anonymous.auth.proxy.logout_url == 'https://x/out'
 
     def test_hosts_wake_and_power(self):
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [

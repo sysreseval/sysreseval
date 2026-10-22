@@ -9,7 +9,7 @@ from pathlib import Path
 from aiohttp import web
 
 from .app import Portal
-from ..config import load_web_config, parse_listen, ConfigError
+from ..config import load_web_config, parse_listen, ConfigError, AUTH_PROXY
 
 FHS_WEB_DIR = '/usr/share/sysreseval/web'
 FHS_CONFIG = '/etc/sysreseval/web.toml'
@@ -70,8 +70,10 @@ def main(argv=None) -> int:
         ssl_context.load_cert_chain(cfg.tls_cert, cfg.tls_key)
     portal = Portal(cfg, web_dir=args.web_dir, localedirs=default_locale_dirs())
     host, port = cfg.listen
-    logging.getLogger('sreweb.portal').info("listening on %s:%d, %d host(s), auth %s", host, port, len(cfg.hosts),
-                                            cfg.auth.mode)
+    logger = logging.getLogger('sreweb.portal')
+    logger.info("listening on %s:%d, %d host(s), auth %s", host, port, len(cfg.hosts), cfg.auth.mode)
+    if cfg.auth.mode == AUTH_PROXY:
+        logger.info("identity headers trusted from %s", ', '.join(str(n) for n in cfg.trusted_proxies))
     web.run_app(portal.make_app(), host=host, port=port, ssl_context=ssl_context, print=None)
     return 0
 

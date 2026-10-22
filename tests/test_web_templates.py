@@ -39,7 +39,7 @@ def environment() -> jinja2.Environment:
 def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
-            'language': 'fr', 'instructor': False}
+            'language': 'fr', 'instructor': False, 'logout_url': ''}
     base.update(extra)
     return base
 
@@ -100,19 +100,31 @@ class TestTemplates:
     def test_the_four_pages_exist(self):
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html'} <= set(template_names())
 
-    @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap'])
+    @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
         html = render('login.html', identity=None, auth_mode=auth_mode, error='wrong login or password')
-        assert '<form method="post" action="/login">' in html
-        assert 'name="language"' in html and 'value="fr" selected' in html
         assert 'wrong login or password' in html
-        if auth_mode == 'ldap':
-            assert 'name="login"' in html and 'name="password"' in html and 'display_name' not in html
+        if auth_mode == 'proxy':
+            # the reverse proxy authenticates: no form, a message (the page is only seen on a misconfiguration)
+            assert 'action="/login"' not in html and 'name="language"' not in html
+            assert 'name="login"' not in html and 'display_name' not in html
+            assert 'The web server passed no identity.' in html
         else:
-            assert 'name="display_name"' in html and 'name="password"' not in html
+            assert '<form method="post" action="/login">' in html
+            assert 'name="language"' in html and 'value="fr" selected' in html
+            if auth_mode == 'ldap':
+                assert 'name="login"' in html and 'name="password"' in html and 'display_name' not in html
+            else:
+                assert 'name="display_name"' in html and 'name="password"' not in html
         # no session: the language links, no logout form
         assert 'action="/logout"' not in html and 'href="?lang=en"' in html
         assert '<script' not in html.split('<main')[0]   # the page works without JavaScript
+
+    def test_logout_button(self):
+        # proxy mode: Basic auth cannot log out, the button only appears with a logout_url (mod_auth_form)
+        assert 'action="/logout"' in render('projects.html')
+        assert 'action="/logout"' not in render('projects.html', auth_mode='proxy')
+        assert 'action="/logout"' in render('projects.html', auth_mode='proxy', logout_url='/apache-logout')
 
     def test_login_error_is_escaped(self):
         html = render('login.html', identity=None, error='<script>alert(1)</script>')

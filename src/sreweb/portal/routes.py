@@ -1,10 +1,12 @@
 """The handlers of the portal: the pages (Jinja2) and the ``/api/...`` endpoints relayed to the
-agents (``relay.py``).  Every ``/api`` call needs the session cookie; the non-GET ones and the
-WebSockets need the ``X-Requested-With: sre-web`` header (CSRF)."""
+agents (``relay.py``).  Every ``/api`` call needs the session cookie (in proxy mode, the identity
+headers of the reverse proxy); the non-GET ones and the WebSockets need the
+``X-Requested-With: sre-web`` header (CSRF)."""
 import hmac
 import json
 import logging
 import urllib.parse
+from dataclasses import replace
 
 import aiohttp_jinja2
 from aiohttp import web
@@ -14,7 +16,7 @@ from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .ratelimit import RateLimiter
 from .relay import Relay
-from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, host_config_from_dict, ConfigError
+from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
 from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
 from ..i18n import translator, catalog
 
@@ -74,6 +76,11 @@ class Routes:
 
     # -- helpers --------------------------------------------------------------------------------
 
+    @property
+    def proxy_mode(self) -> bool:
+        """The reverse proxy authenticates and passes the identity in headers (no login page)."""
+        return self.cfg.auth.mode == AUTH_PROXY
+
     def _secure(self, request) -> bool:
         return self.cfg.public_url.lower().startswith('https://') or request.scheme == 'https'
 
@@ -81,8 +88,7 @@ class Routes:
         identity = request.get(IDENTITY_KEY)
         if identity is not None:
             return identity.language
-        lang = request.query.get('lang') or request.cookies.get('sreweb_lang', '')
-        return lang if lang in self.cfg.languages else self.cfg.languages[0]
+        return S.choose_language((request.query.get('lang'), request.cookies.get(S.LANG_COOKIE)), self.cfg.languages)
 
     def _translate(self, request):
         return translator(self._language(request), self.localedirs)
@@ -96,6 +102,7 @@ class Routes:
             'languages': [(code, LANGUAGE_NAMES.get(code, code)) for code in self.cfg.languages],
             'language': self._language(request),
             'instructor': bool(identity and identity.role == ROLE_INSTRUCTOR),
+            'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             **extra,
         }
 
@@ -136,6 +143,8 @@ class Routes:
                                               self._page_context(request, error=request.query.get('error', '')))
 
     async def _authenticate(self, request, data: dict) -> Identity:
+        if self.proxy_mode:
+            raise PoolError(403, "the authentication is done by the reverse proxy")
         language = self._check_language(str(data.get('language', '') or self._language(request)))
         if self.cfg.auth.mode == AUTH_ANONYMOUS:
             return auth_anon.new_guest(str(data.get('display_name', '')), language)
@@ -163,10 +172,13 @@ class Routes:
         raise response
 
     async def logout(self, request):
+        """Clears the session cookie (a stale cookie of a previous mode too); in proxy mode the
+        browser is sent to ``logout_url`` (the logout handler of the proxy) when there is one."""
+        target = self.cfg.auth.proxy.logout_url if self.proxy_mode else ''
         if request.path.startswith('/api/'):
-            response = web.json_response({'ok': True})
+            response = web.json_response({'ok': True, 'logout_url': target})
         else:
-            response = web.HTTPFound('/login')
+            response = web.HTTPFound(target or '/login')
         S.clear_cookie(response)
         if isinstance(response, web.HTTPException):
             raise response
@@ -219,10 +231,11 @@ class Routes:
         except ValueError:
             return json_error(400, "a JSON body is expected")
         language = self._check_language(str((data or {}).get('language', '')))
-        from dataclasses import replace
         identity = replace(identity, language=language)
         response = web.json_response({'identity': identity.to_dict()})
-        S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request))
+        S.set_language_cookie(response, language, secure=self._secure(request))
+        if not self.proxy_mode:       # the session cookie carries the language; proxy mode has none
+            S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request))
         return response
 
     # -- labs, pool, projects -------------------------------------------------------------------

@@ -13,6 +13,8 @@ COOKIE_NAME = 'sreweb_session'
 CSRF_HEADER = 'X-Requested-With'
 CSRF_VALUE = 'sre-web'
 MAX_AGE = 14 * 24 * 3600
+LANG_COOKIE = 'sreweb_lang'          # the language outside the session (proxy mode has no session cookie)
+LANG_MAX_AGE = 365 * 24 * 3600
 
 
 def _sign(secret: str, payload: bytes) -> str:
@@ -61,3 +63,17 @@ def set_cookie(response, identity: Identity, secret: str, *, secure: bool):
 
 def clear_cookie(response):
     response.del_cookie(COOKIE_NAME, path='/')
+
+
+def choose_language(candidates, languages) -> str:
+    """The first of *candidates* (``?lang=``, the language cookie...) among *languages*, else
+    the first language."""
+    for candidate in candidates:
+        if candidate and candidate in languages:
+            return candidate
+    return languages[0]
+
+
+def set_language_cookie(response, language: str, *, secure: bool):
+    response.set_cookie(LANG_COOKIE, language, max_age=LANG_MAX_AGE, httponly=True, secure=secure,
+                        samesite='Lax', path='/')

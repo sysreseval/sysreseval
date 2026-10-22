@@ -99,6 +99,25 @@ def parse_networks(values, key='allowed_clients') -> list:
     return networks
 
 
+def client_allowed(remote, networks) -> bool:
+    """Whether the peer address *remote* (what aiohttp's ``request.remote`` gives) belongs to one
+    of the ``ipaddress`` *networks* (``allowed_clients`` of the agent, ``trusted_proxies`` of the
+    portal); an empty list allows every address, an unparsable one is refused.  An IPv4-mapped
+    IPv6 address counts as its IPv4 address."""
+    if not networks:
+        return True
+    try:
+        address = ipaddress.ip_address(str(remote or '').split('%', 1)[0])
+    except ValueError:
+        return False
+    candidates = [address]
+    mapped = getattr(address, 'ipv4_mapped', None)
+    if mapped is not None:
+        candidates.append(mapped)
+    return any(candidate in network for network in networks for candidate in candidates
+               if candidate.version == network.version)
+
+
 def _section(data, key, path) -> dict:
     value = data.get(key, {})
     if not isinstance(value, dict):
@@ -131,6 +150,8 @@ def _build(cls, data: dict, where: str, **converted):
 
 AUTH_ANONYMOUS = 'anonymous'
 AUTH_LDAP = 'ldap'
+AUTH_PROXY = 'proxy'
+AUTH_MODES = (AUTH_ANONYMOUS, AUTH_LDAP, AUTH_PROXY)
 
 
 @dataclass
@@ -169,9 +190,23 @@ class LdapConfig:
 
 
 @dataclass
+class ProxyAuthConfig:
+    """``[auth.proxy]``: the request headers a reverse proxy of ``trusted_proxies`` passes the
+    identity in, once it has authenticated the browser itself (Apache ``mod_authnz_ldap``...)."""
+    header_login: str = 'X-Remote-User'
+    header_fullname: str = 'X-Remote-Name'
+    header_email: str = 'X-Remote-Email'
+    header_groups: str = 'X-Remote-Groups'
+    groups_separator: str = ';'       # mod_authnz_ldap joins the values of an attribute with "; "
+    instructor_groups: list = field(default_factory=list)   # values of the groups header giving the role
+    logout_url: str = ''              # where Logout sends the browser; '' = no Logout button
+
+
+@dataclass
 class AuthConfig:
     mode: str = AUTH_ANONYMOUS
     ldap: LdapConfig = field(default_factory=LdapConfig)
+    proxy: ProxyAuthConfig = field(default_factory=ProxyAuthConfig)
 
 
 @dataclass
@@ -221,7 +256,7 @@ class WebConfig:
     listen: tuple = ('127.0.0.1', 8450)
     public_url: str = ''
     secret: str = ''
-    trusted_proxies: list = field(default_factory=list)
+    trusted_proxies: list = field(default_factory=list)   # ipaddress networks: the peers trusted in proxy mode
     tls_cert: str = ''
     tls_key: str = ''
     languages: list = field(default_factory=lambda: ['en', 'fr'])
@@ -255,14 +290,24 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     ldap_data = _section(auth_data, 'ldap', path)
     ldap = _build(LdapConfig, ldap_data, f"{path}: [auth.ldap]",
                   timeout=parse_duration(ldap_data.get('timeout', 10.0), 'auth.ldap.timeout'))
-    auth = _build(AuthConfig, {k: v for k, v in auth_data.items() if k != 'ldap'}, f"{path}: [auth]", ldap=ldap)
-    if auth.mode not in (AUTH_ANONYMOUS, AUTH_LDAP):
-        raise ConfigError(f"{path}: auth.mode must be '{AUTH_ANONYMOUS}' or '{AUTH_LDAP}'")
+    proxy = _build(ProxyAuthConfig, _section(auth_data, 'proxy', path), f"{path}: [auth.proxy]")
+    auth = _build(AuthConfig, {k: v for k, v in auth_data.items() if k not in ('ldap', 'proxy')}, f"{path}: [auth]",
+                  ldap=ldap, proxy=proxy)
+    if auth.mode not in AUTH_MODES:
+        raise ConfigError(f"{path}: auth.mode must be " + ', '.join(f"'{m}'" for m in AUTH_MODES[:-1])
+                          + f" or '{AUTH_MODES[-1]}'")
     if auth.mode == AUTH_LDAP:
         if not ldap.uri:
             raise ConfigError(f"{path}: auth.ldap.uri is required in ldap mode")
         if not ldap.bind_dn_template and not ldap.search_base:
             raise ConfigError(f"{path}: auth.ldap needs bind_dn_template or search_base")
+    for name in ('header_login', 'header_fullname', 'header_email', 'header_groups', 'groups_separator'):
+        if not str(getattr(proxy, name)).strip():
+            raise ConfigError(f"{path}: auth.proxy.{name} cannot be empty")
+    if not isinstance(proxy.instructor_groups, list):
+        raise ConfigError(f"{path}: auth.proxy.instructor_groups must be a list")
+    if proxy.logout_url and not proxy.logout_url.startswith(('/', 'http://', 'https://')):
+        raise ConfigError(f"{path}: auth.proxy.logout_url must be a path or an absolute URL")
     pool_data = _section(data, 'pool', path)
     pool = _build(PoolConfig, pool_data, f"{path}: [pool]",
                   **{k: parse_duration(pool_data[k], f'pool.{k}') for k in
@@ -289,7 +334,10 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items() if k not in ('auth', 'pool', 'limits', 'admin', 'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, hosts=hosts,
-                 listen=parse_listen(top.get('listen', '127.0.0.1:8450')))
+                 listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
+                 trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
+    if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:
+        raise ConfigError(f"{path}: trusted_proxies is required in proxy mode (the address of the reverse proxy)")
     if len(cfg.secret) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: secret must have at least {MIN_SECRET_LENGTH} characters")
     if bool(cfg.tls_cert) != bool(cfg.tls_key):
