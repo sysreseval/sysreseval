@@ -2,11 +2,23 @@
 # sudo does for the students of the Qt GUI), owns their terminals and schedules their evaluations.
 # Configuration: /etc/sysreseval/agent.toml.  Disabled by default:
 # systemctl enable --now sysreseval-agent.service
+# A host that must not run the agent although the unit is enabled (one image for a whole
+# classroom): no configuration file, or the marker file /etc/sysreseval/DO_NOT_START_AGENT.
 [Unit]
 Description=SysResEval web agent of this pool host
 Documentation=file:///usr/share/doc/sysreseval-agent/README.Debian
 Requires=docker.service
 After=network-online.target docker.service
+# Without the configuration file, or with the marker, the start is skipped: the unit stays
+# inactive, nothing fails, nothing is restarted.  Checked at boot and on `systemctl start` /
+# `restart`, not on the automatic restarts below (a marker written while the agent loops needs
+# one `systemctl restart`).
+ConditionPathExists=/etc/sysreseval/agent.toml
+ConditionPathExists=!/etc/sysreseval/DO_NOT_START_AGENT
+# Five failed starts within five minutes (about 25 s with RestartSec=5) and the unit stays failed
+# until the next boot or `systemctl reset-failed sysreseval-agent`: no endless loop whatever the error.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -15,6 +27,9 @@ User=root
 ExecStart=/usr/sbin/sre-agent
 Restart=on-failure
 RestartSec=5
+# exit status 78 (EX_CONFIG): a configuration error (a bad agent.toml, a missing certificate), not
+# restarted; fix the file, then `systemctl restart sysreseval-agent`
+RestartPreventExitStatus=78
 # at a shutdown the agent evaluates and stops the web projects first (close_projects_on_stop):
 # SIGTERM to the agent only, time for the sre commands, SIGKILL to what is left afterwards
 KillMode=mixed

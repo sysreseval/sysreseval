@@ -55,6 +55,13 @@ files `etc/agent.toml` and `etc/web.toml` under the installation directory.
 
 On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with the listen address
 of a management interface and a long random token, then `systemctl enable --now sre-agent`.
+The unit starts the agent only when that file exists and `/etc/sysreseval/DO_NOT_START_AGENT`
+does not (`ConditionPathExists=`: one image for a whole classroom may ship the unit enabled, the
+hosts without a configuration file, or with the marker, skip it without any failure; checked at
+boot and on `systemctl start` / `restart`), and it does not restart the agent after a
+configuration error (exit status 78, `EX_CONFIG`: a bad `agent.toml`, a missing certificate;
+the message is in the journal, fix the file then `systemctl restart sre-agent`); five failed
+starts within five minutes leave it stopped until the next boot or `systemctl reset-failed`.
 For the Display tab (below), install `tigervnc-standalone-server` and `openbox`, create the
 `sreweb-x11` system user (`scripts/install.sh` offers it) and set `[display] enabled = true`.
 For a whole classroom, `scripts/make-web-hosts.sh` (see *A whole site at once* below) writes
@@ -72,7 +79,9 @@ give the portal its own certificate (`tls_cert` / `tls_key`).
 
 `sysreseval-agent` on every pool host (it depends on `sysreseval` and `sysreseval-web`, whose
 code it shares), `sysreseval-web` on the portal host (it depends on nothing of SysResEval). The
-units are `sysreseval-agent.service` and `sysreseval-web.service`, disabled by default; the
+units are `sysreseval-agent.service` and `sysreseval-web.service`, disabled by default (the
+agent's with the conditions and restart rules above, on `/etc/sysreseval/agent.toml` and
+`/etc/sysreseval/DO_NOT_START_AGENT`); the
 configuration files are `/etc/sysreseval/agent.toml` and `/etc/sysreseval/web.toml` (examples in
 `/usr/share/doc/sysreseval-*/examples/`); the postinst of `sysreseval-web` creates the `sre-web`
 user and protects `web.toml` and `web.d/*.toml` when they exist.

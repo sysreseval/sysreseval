@@ -1,4 +1,8 @@
-"""``python3 -m sreweb.agent [--config FILE] [--listen HOST:PORT]``: run the agent of a pool host."""
+"""``python3 -m sreweb.agent [--config FILE] [--listen HOST:PORT]``: run the agent of a pool host.
+
+Exit status: ``os.EX_CONFIG`` (78) on a configuration error (no configuration file, a bad
+key, a missing certificate...), which the systemd unit does not restart
+(``RestartPreventExitStatus=78``); anything else that fails exits 1 and is restarted."""
 import argparse
 import logging
 import os
@@ -29,12 +33,21 @@ def main(argv=None) -> int:
             cfg.listen = parse_listen(args.listen)
     except ConfigError as e:
         print(f"sre-agent: {e}", file=sys.stderr)
-        return 1
+        return os.EX_CONFIG
     log = logging.getLogger('sreweb.agent')
     ssl_context = None
     if cfg.tls_cert:
-        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=cfg.tls_ca or None)
-        ssl_context.load_cert_chain(cfg.tls_cert, cfg.tls_key)
+        for key, file in (('tls_cert', cfg.tls_cert), ('tls_key', cfg.tls_key), ('tls_ca', cfg.tls_ca)):
+            if file and not os.path.isfile(file):
+                print(f"sre-agent: {key}: {file}: no such file", file=sys.stderr)
+                return os.EX_CONFIG
+        try:
+            ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=cfg.tls_ca or None)
+            ssl_context.load_cert_chain(cfg.tls_cert, cfg.tls_key)
+        except OSError as e:          # unreadable file, not a PEM file, key and certificate that do not match (SSLError)
+            print(f"sre-agent: TLS ({cfg.tls_cert}, {cfg.tls_key}{', ' + cfg.tls_ca if cfg.tls_ca else ''}): {e}",
+                  file=sys.stderr)
+            return os.EX_CONFIG
         if cfg.tls_ca:
             # only a client holding a certificate of that CA (the portal) gets past the handshake
             ssl_context.verify_mode = ssl.CERT_REQUIRED

@@ -1,5 +1,7 @@
 # /opt/sre/etc/agent.toml (checkout) or /etc/sysreseval/agent.toml (Debian package): the agent of
 # a pool host of the SRE web site (sre-agent).  Owned by root, mode 0600: it holds the token.
+# The systemd unit starts the agent only when this file exists and the marker file
+# /etc/sysreseval/DO_NOT_START_AGENT does not; a configuration error (exit status 78) is not retried.
 #
 # The agent listens on a management address the portal reaches; never expose it to the students.
 listen = "10.0.0.11:8451"

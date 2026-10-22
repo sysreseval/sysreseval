@@ -20,7 +20,10 @@ projects running on the pool.  Both units are disabled by default; copy and edit
 of /usr/share/doc/sysreseval-web/examples/web.toml (root:sre-web 0640, like the web.d/*.toml
 files it may import) and
 /usr/share/doc/sysreseval-agent/examples/agent.toml (root 0600) to /etc/sysreseval/, then
-`systemctl enable --now sysreseval-web` / `sysreseval-agent`.  The reverse proxy examples
+`systemctl enable --now sysreseval-web` / `sysreseval-agent`.  The agent's unit starts the
+agent only when /etc/sysreseval/agent.toml exists and /etc/sysreseval/DO_NOT_START_AGENT does
+not (one image for a whole classroom may ship it enabled), and does not restart it after a
+configuration error (exit status 78: fix the file, then `systemctl restart`).  The reverse proxy examples
 sre-web-nginx.conf and sre-web-apache.conf (this one authenticates the users against the LDAP
 directory itself) are next to web.toml.  See the "Web site" page of the documentation.
 
