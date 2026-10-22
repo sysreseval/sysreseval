@@ -1,0 +1,19 @@
+#!/bin/sh
+# postinst of sysreseval-agent: the unprivileged user the virtual X desktops of the web site run
+# as (the Xvnc and the window manager of each project, [display] of agent.toml).
+set -e
+
+X11_USER=sreweb-x11
+
+case "$1" in
+    configure)
+        if ! getent passwd "$X11_USER" >/dev/null; then
+            adduser --system --group --home /nonexistent --no-create-home \
+                --shell /usr/sbin/nologin --gecos "SysResEval web X displays" "$X11_USER"
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

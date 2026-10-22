@@ -332,8 +332,8 @@ class TestFormFieldLines:
 from SRE.common import (  # noqa: E402
     format_port, format_ports, terminal_devices, info_languages, project_title, listed_states,
     state_rows, visible_tabs, resolve_text, TAB_SCHEMA, TAB_FULL_SCHEMA, TAB_INFORMATIONS,
-    TAB_MACHINES, TAB_NETWORKS, TAB_QUESTIONS, TAB_EVALUATION, TAB_TERMINALS, TAB_APPLY_CONFIG,
-    TAB_LOG, TAB_ORDER,
+    TAB_MACHINES, TAB_NETWORKS, TAB_QUESTIONS, TAB_EVALUATION, TAB_TERMINALS, TAB_DISPLAY,
+    TAB_APPLY_CONFIG, TAB_LOG, TAB_ORDER,
 )
 
 
@@ -426,3 +426,16 @@ class TestDisplayHelpers:
         tabs = visible_tabs(info, exam_mode=True, instructor_shown=False)
         assert TAB_FULL_SCHEMA in tabs and TAB_APPLY_CONFIG in tabs and TAB_LOG in tabs
         assert tabs.index(TAB_FULL_SCHEMA) == tabs.index(TAB_SCHEMA) + 1
+
+    def test_visible_tabs_display_is_an_opt_in_of_the_web(self):
+        # the Qt GUI never passes display=: its lists are unchanged
+        for exam_mode, instructor_shown in ((False, False), (True, False), (False, True)):
+            tabs = visible_tabs(_info(), exam_mode=exam_mode, instructor_shown=instructor_shown)
+            assert TAB_DISPLAY not in tabs
+            assert tabs == visible_tabs(_info(), exam_mode=exam_mode, instructor_shown=instructor_shown,
+                                        display=False)
+            with_display = visible_tabs(_info(), exam_mode=exam_mode, instructor_shown=instructor_shown,
+                                        display=True)
+            assert with_display.index(TAB_DISPLAY) == with_display.index(TAB_TERMINALS) + 1
+            assert [t for t in with_display if t != TAB_DISPLAY] == tabs
+            assert [t for t in TAB_ORDER if t in with_display] == with_display

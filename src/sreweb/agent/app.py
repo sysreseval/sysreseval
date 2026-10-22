@@ -5,7 +5,8 @@ web user (``sreweb.identity``); the handlers check the access rules (``access.py
 ``sre`` through the runner, the registry, the answers store and the schedulers.  Long
 operations stream: ``start`` answers NDJSON (one JSON object per line, the events of
 ``SRE/progress.py`` then a final ``result`` line), ``export`` streams the bytes, the events and
-the terminals are WebSockets.  Save and restore are not offered on the web.
+the terminals are WebSockets, like the virtual X desktop of a project (``display.py``: raw RFB
+bytes for noVNC).  Save and restore are not offered on the web.
 """
 import asyncio
 import base64
@@ -31,6 +32,7 @@ from SRE.form_spec import parse_form_description, chunks_to_json
 from . import access, occupancy
 from .access import AccessError
 from .answers import AnswersStore
+from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED
 from .pty_session import PtySession
 from .registry import Registry, Project, EVENT_INFO
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
@@ -46,6 +48,8 @@ log = logging.getLogger('sreweb.agent')
 API_PREFIX = '/v1'
 AGENT_KEY = web.AppKey('agent', object)
 TERMINAL_SUBPROTOCOL = 'sre-term.v1'
+DISPLAY_SUBPROTOCOL = 'sre-display.v1'
+DISPLAY_CHUNK = 1 << 16      # bytes read from the X server per WebSocket frame (the relay caps frames at 1 MiB)
 NDJSON = 'application/x-ndjson'
 #: Close codes of the terminal WebSocket.
 WS_UNAUTHENTICATED = 4401
@@ -108,6 +112,7 @@ class Agent:
                                 max_concurrent_evals=cfg.max_concurrent_evals, extra_env=extra_env)
         self.registry = Registry(self.projects_dir, poll_interval=cfg.poll_interval, state_dir=cfg.state_dir)
         self.registry.info_event = self._info_event
+        self.displays = DisplayManager(cfg.display, registry=self.registry)
         self.answers = AnswersStore(self.registry, hostname=self.hostname, pub_dir=self.pub_dir)
         self.schedulers = Schedulers(self.registry, self.runner, exam_mode=self.exam_mode,
                                      default_idle_timeout=cfg.max_idle)
@@ -126,7 +131,11 @@ class Agent:
         return access.exam_mode_on(self.pub_dir)
 
     def _info_event(self, project: Project, identity: Identity) -> dict:
-        return {'t': EVENT_INFO, 'project': sanitise(project.info, identity, exam_mode=self.exam_mode())}
+        return {'t': EVENT_INFO, 'project': self._view(project, identity)}
+
+    def _view(self, project: Project, identity: Identity) -> dict:
+        return sanitise(project.info, identity, exam_mode=self.exam_mode(),
+                        display_enabled=self.displays.offered(project))
 
     def _project(self, request) -> Project:
         rln = access.check_running_lab_name(request.match_info.get('rln', ''))
@@ -170,6 +179,9 @@ class Agent:
         app.router.add_post(f'{p}/projects/{{rln}}/eval', self.eval_post)
         app.router.add_post(f'{p}/projects/{{rln}}/states/{{state}}', self.state_post)
         app.router.add_get(f'{p}/projects/{{rln}}/terminals/{{device}}', self.terminal_ws)
+        app.router.add_get(f'{p}/projects/{{rln}}/display', self.display_get)
+        app.router.add_post(f'{p}/projects/{{rln}}/display', self.display_post)
+        app.router.add_get(f'{p}/projects/{{rln}}/display/ws', self.display_ws)
         app.router.add_get(f'{p}/projects/{{rln}}/log', self.log_get)
         app.router.add_post(f'{p}/projects/{{rln}}/touch', self.touch)
         app.router.add_get(f'{p}/projects/{{rln}}/export', self.export_get)
@@ -178,12 +190,14 @@ class Agent:
         return app
 
     async def _on_startup(self, app):
+        self.displays.prepare()
         await self.registry.tick()
         self.registry.start()
 
     async def _on_shutdown(self, app):
         await self.close_managed_projects()
         await self.registry.stop()
+        await self.displays.stop_all()
 
     async def close_managed_projects(self):
         """On the stop of the agent: the projects it created are evaluated (when their lab asks)
@@ -273,6 +287,7 @@ class Agent:
             'projects': self.registry.count(), 'managed_projects': managed,
             'local_projects': self.registry.count() - managed,
             'terminals': sum(p.terminal_count() for p in self.registry.projects.values()),
+            'displays': self.displays.running_count(),
             'exam_mode': self.exam_mode(), 'load1': load1, 'mem_available_mb': _mem_available_mb(),
             'occupied': occupied, 'occupied_by': reasons,
             'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
@@ -340,9 +355,22 @@ class Agent:
                 raise AccessError(400, "flavor_json must be an object")
             args += ['--flavor-json', json.dumps(flavor)]
         args.append(lab)
-        return await self._stream_creation(request, identity, args, body.get('idle_timeout'))
+        # the virtual desktop of the project: its number and cookie go to sre start (the containers
+        # keep them), kept when the lab turns out to have an x11_host machine
+        reservation = None
+        if self.displays.ready:
+            try:
+                reservation = self.displays.reserve()
+            except DisplayError as e:
+                raise AccessError(503, str(e))
+        try:
+            return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
+                                               reservation=reservation)
+        finally:
+            if reservation is not None:
+                self.displays.release(reservation)
 
-    async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout):
+    async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None):
         """``sre start`` as an NDJSON stream."""
         try:
             idle = None if idle_timeout is None else max(0.0, float(idle_timeout))
@@ -355,7 +383,8 @@ class Agent:
             await resp.write(json.dumps(obj).encode('utf-8') + b'\n')
 
         try:
-            run = await self.runner.stream(identity.login, args, lang=identity.language)
+            run = await self.runner.stream(identity.login, args, lang=identity.language,
+                                           env=self.displays.env_for(reservation) if reservation else None)
             async for event in run.events():
                 await line(event)
             run.result()
@@ -385,6 +414,8 @@ class Agent:
         if idle is not None:
             project.idle_timeout = idle
         project.touch()
+        if reservation is not None and access.display_available(project.info, identity):
+            self.displays.commit(project, reservation)
         self.registry.write_state(project, force=True)
         await line({'phase': 'result', 'status': 'created', 'running_lab_name': project.rln, 'host': self.hostname})
         return resp
@@ -393,7 +424,7 @@ class Agent:
         project = self._project(request)
         identity = request[IDENTITY_KEY]
         return web.json_response({
-            'project': sanitise(project.info, identity, exam_mode=self.exam_mode()),
+            'project': self._view(project, identity),
             'answers': AnswersStore.public(self.answers.read(project), project),
             'running_lab_name': project.rln, 'host': self.hostname,
         })
@@ -685,6 +716,87 @@ class Agent:
                 project.terminals.get(device, []).remove(session)
             await session.close()
             log.info("terminal %s/%s closed", project.rln, device)
+        return ws
+
+    # -- the virtual desktop ---------------------------------------------------------------------
+
+    async def display_get(self, request):
+        project = self._project(request)
+        return web.json_response(self.displays.status(project, access.display_available(project.info,
+                                                                                         request[IDENTITY_KEY])))
+
+    async def display_post(self, request):
+        """The X server of the project, started (again) if needed."""
+        project = self._project(request)
+        identity = request[IDENTITY_KEY]
+        access.check_display(project.info, identity)
+        access.check_not_exam(self.pub_dir)
+        if project.closing or project.display is None:
+            raise AccessError(404, "no display for this project")
+        try:
+            await self.displays.ensure(project)
+        except DisplayError as e:
+            raise AccessError(503, str(e))
+        return web.json_response(self.displays.status(project, True))
+
+    async def display_ws(self, request):
+        """The RFB stream of the X server of the project, for noVNC: binary frames only, raw bytes
+        both ways; a failure is a close code (4403 / 4404 like the terminals, 4500 when the X
+        server is not there), never a text frame."""
+        project = self._project(request)
+        identity = request[IDENTITY_KEY]
+        ws = web.WebSocketResponse(protocols=(DISPLAY_SUBPROTOCOL,), heartbeat=WS_HEARTBEAT, max_msg_size=1 << 20)
+        try:
+            access.check_display(project.info, identity)
+            access.check_not_exam(self.pub_dir)
+            if project.closing or project.display is None:
+                raise AccessError(404, "no display for this project")
+            session = await self.displays.ensure(project)
+            reader, writer = await asyncio.open_unix_connection(str(session.socket_path))
+        except AccessError as e:
+            await ws.prepare(request)
+            await ws.close(code={404: WS_NOT_FOUND}.get(e.status, WS_FORBIDDEN), message=e.message.encode())
+            return ws
+        except (DisplayError, OSError) as e:
+            await ws.prepare(request)
+            await ws.close(code=WS_DISPLAY_FAILED, message=str(e).encode())
+            return ws
+        await ws.prepare(request)
+        project.display_clients.append(ws)
+        project.touch()
+        log.info("display %s opened for %s", project.rln, identity.login)
+
+        async def sender():
+            try:
+                while True:
+                    data = await reader.read(DISPLAY_CHUNK)
+                    if not data:
+                        break
+                    await ws.send_bytes(data)
+            except (OSError, ConnectionError):
+                pass
+            with contextlib.suppress(Exception):
+                await ws.close(code=WS_DISPLAY_FAILED, message=b"the X server closed the connection")
+
+        sender_task = asyncio.ensure_future(sender())
+        try:
+            async for msg in ws:
+                if msg.type == WSMsgType.BINARY:
+                    writer.write(msg.data)
+                    await writer.drain()
+                    project.touch()
+                elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
+                    break
+        except (OSError, ConnectionError):
+            pass
+        finally:
+            sender_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sender_task
+            with contextlib.suppress(ValueError):
+                project.display_clients.remove(ws)
+            writer.close()
+            log.info("display %s closed", project.rln)
         return ws
 
     @staticmethod

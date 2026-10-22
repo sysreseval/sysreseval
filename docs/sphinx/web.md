@@ -48,13 +48,15 @@ The agent enforces what the `sre` CLI does not check: the exact running lab name
 ### From a checkout
 
 `make venv` installs the Python dependencies (`aiohttp`, `jinja2`, `aiohttp-jinja2`, `ldap3`);
-`make xterm` (run by `make install`) downloads the terminal library of the browser into
-`web/static/vendor/` (checksum-pinned, not committed). `scripts/install.sh` offers to install the
+`make xterm` and `make novnc` (run by `make install`) download the terminal library and the
+VNC viewer of the browser into `web/static/vendor/` (checksum-pinned, not committed). `scripts/install.sh` offers to install the
 systemd units `sre-agent.service` and `sre-web.service` (disabled) and the example configuration
 files `etc/agent.toml` and `etc/web.toml` under the installation directory.
 
 On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with the listen address
 of a management interface and a long random token, then `systemctl enable --now sre-agent`.
+For the Display tab (below), install `tigervnc-standalone-server` and `openbox`, create the
+`sreweb-x11` system user (`scripts/install.sh` offers it) and set `[display] enabled = true`.
 For a whole classroom, `scripts/make-web-hosts.sh` (see *A whole site at once* below) writes
 the tokens, the certificates and the `[[hosts]]` entries from a list of machines.
 
@@ -74,6 +76,10 @@ units are `sysreseval-agent.service` and `sysreseval-web.service`, disabled by d
 configuration files are `/etc/sysreseval/agent.toml` and `/etc/sysreseval/web.toml` (examples in
 `/usr/share/doc/sysreseval-*/examples/`); the postinst of `sysreseval-web` creates the `sre-web`
 user and protects `web.toml` and `web.d/*.toml` when they exist.
+
+The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual X desktops;
+`tigervnc-standalone-server` and `openbox` are its Recommends (the Display tab is off until
+`[display] enabled = true`).
 
 ## Configuration
 
@@ -97,6 +103,7 @@ user and protects `web.toml` and `web.d/*.toml` when they exist.
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `export = 600`, `list = 30` | seconds, per `sre` command |
+| `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
 `import` (a path or a list of paths relative to `agent.toml`: a directory, a glob or a file)
@@ -309,6 +316,24 @@ config host removed by hand comes back with `enable`. `--json` gives the raw row
   a new xterm in the Qt GUI: `gw`, `gw (2)`, …), the select of the Terminals tab opens one on
   any device (the machines open to the students and the managed switches), the × of a sub-tab
   closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. Export downloads the Kathara zip.
+
+### The Display tab
+
+A lab machine declared `x11_host` draws its graphical applications (Wireshark, Firefox…) on
+the X server of the host: on a workstation, the student's own desktop. A pool host has no X
+server, so the agent runs one virtual desktop per project whose lab has such a machine: a
+TigerVNC `Xvnc` with an `openbox` window manager, started as the unprivileged `sreweb-x11`
+user right after `sre start`, shown in the **Display** tab by noVNC (`make novnc`). The
+containers reach display `:N` on TCP port 6000+N of the host with the cookie of the project
+(the core passes them `SRE_DISPLAY` and `SRE_XAUTH_COOKIE`, the `.bashrc` of the images ≥ 1.31
+sets `DISPLAY` from them); the browser reaches the RFB Unix socket of the server through the
+agent and the portal, as a WebSocket of binary frames. The desktop follows the size of the tab
+(*Resize the desktop*; *Fit to window* scales it instead), the text box of the bar sends text to
+the X clipboard and shows what the applications copy, *Reconnect* opens the stream again. The
+number and the cookie of a project never change: a desktop that died, or that was lost when the
+agent restarted (its X server is a child of the agent), is started again at the next use of the
+tab, empty. `[display]` of `agent.toml` holds the geometry, the range of display numbers and
+the commands.
   Session recording (`asciinema`) applies as on a workstation, since it happens in `sre connect`.
 - The answers are saved as the user types (debounced), with the identity of the session.
 
@@ -332,10 +357,18 @@ config host removed by hand comes back with `enable`. `--json` gives the raw row
   check it. Instructors are the members of `instructor_groups` (of `[auth.ldap]`, or of the
   groups header in proxy mode); the rest of the instructor role is phase 5.
 
+**The virtual desktops.** Each `Xvnc` listens on TCP port 6000+N on every interface of the pool
+host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
+configured for the labs (`installation.md`); an nftables rule such as
+`nft add rule inet filter input tcp dport 6010-6099 iifname != "docker0" drop` keeps the other
+hosts out. The RFB socket of a desktop is reachable by root only (the agent); the window manager
+runs as `sreweb-x11` with no menu, no launcher and no key binding running a program of the host;
+the browser reaches a desktop through the owner check of the portal and of the agent.
+
 ## Limitations
 
-- `x11_host` machines (GUI applications displayed on the student's X server, e.g. the Wireshark
-  lab) have no display on a pool host: not supported by the web site.
+- The virtual X desktops die with the agent (a restart of its unit): they are started again,
+  empty, at the next use of the Display tab; the applications shown must be launched again.
 - The `ports` of the bridged machines are bound on the pool host and shown with its name.
 - A host in exam mode (`exam.json`) is excluded from the pool: the exam mode of the web site is a
   later phase, as are the instructor role (instructor-mode projects, the instructor view, every

@@ -809,3 +809,19 @@ class TestExport:
 
     def test_export_unknown_running_lab(self, pub, project):
         assert run_mock(pub, 'export', 'dhcp').returncode == 1
+
+
+class TestX11Flag:
+    def test_mock_x11_marks_the_open_machine(self, pub):
+        rln = start_project(pub, FIRST_LAB, extra_env={'MOCK_X11': '1'})
+        machines = {m['name']: m for m in info_of(pub, rln)['machines']}
+        assert machines['m1']['x11_host'] is True and machines['m2']['x11_host'] is False
+        plain = start_project(pub, FIRST_LAB)
+        assert all(m['x11_host'] is False for m in info_of(pub, plain)['machines'])
+
+    def test_x11_variables_logged(self, pub):
+        log = pub / 'calls.log'
+        start_project(pub, FIRST_LAB, extra_env={'MOCK_SRE_LOG': str(log), 'SRE_XAUTH_COOKIE': 'ab' * 16,
+                                                 'SRE_X11_DISPLAY': '12'})
+        entry = json.loads(log.read_text().splitlines()[0])
+        assert entry['env']['SRE_XAUTH_COOKIE'] == 'ab' * 16 and entry['env']['SRE_X11_DISPLAY'] == '12'

@@ -14,7 +14,7 @@ pytest.importorskip('aiohttp_jinja2', reason="aiohttp_jinja2 is not installed: t
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from sreweb import identity as ident
-from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL
+from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL
 from sreweb.config import agent_config_from_dict, web_config_from_dict
 from sreweb.identity import Identity
 from sreweb.portal import session as S
@@ -23,6 +23,7 @@ from sreweb.portal.pool import Pool, PoolError, HostStatus
 from sreweb.config import HostConfig
 
 MOCK = Path(__file__).parent / 'mock_sre.py'
+MOCK_XVNC = Path(__file__).parent / 'mock_xvnc.py'
 TOKEN = 't' * 32
 SECRET = 's' * 32
 CSRF = {S.CSRF_HEADER: S.CSRF_VALUE}
@@ -53,7 +54,7 @@ def who(login, fullname='', email='', groups='') -> dict:
 class Harness:
     """A real agent on the fake sre, and a portal whose only host is that agent."""
 
-    def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1):
+    def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1, agent_over=None):
         self.tmp = tmp_path
         self.pub = tmp_path / 'pub'
         (self.pub / 'projects').mkdir(parents=True)
@@ -62,7 +63,8 @@ class Harness:
         exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
         env = {'SRE_PUB_DIR': str(self.pub), **(mock_env or {})}
         cfg = agent_config_from_dict({'token': TOKEN, 'sre_exe': str(exe), 'poll_interval': 0.05,
-                                      'state_dir': str(tmp_path / 'web-agent'), 'occupied_check': 'never'},
+                                      'state_dir': str(tmp_path / 'web-agent'), 'occupied_check': 'never',
+                                      **(agent_over or {})},
                                      sre_exe=str(exe), state_dir='')   # never: the sessions of the test host
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
                            hostname='pool1', extra_env=env)
@@ -450,3 +452,50 @@ class TestPoolPlacement:
         with pytest.raises(PoolError) as e:
             pool.pick()
         assert e.value.status == 503
+
+
+class TestDisplayThroughThePortal:
+    """The virtual X desktop: the JSON routes relayed, the RFB WebSocket pumped as it is."""
+
+    @staticmethod
+    def display_over(runtime_dir) -> dict:
+        script = runtime_dir / 'xvnc'
+        script.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{MOCK_XVNC}" "$@"\n')
+        script.chmod(0o755)
+        return {'display': {'enabled': True, 'user': '', 'xvnc_command': str(script), 'window_manager_command': '',
+                            'runtime_dir': str(runtime_dir), 'first_display': 93, 'last_display': 94}}
+
+    def test_display_relayed(self, tmp_path):
+        import shutil
+        import tempfile
+        runtime_dir = Path(tempfile.mkdtemp(prefix='sre-x11-', dir='/tmp'))   # short: an AF_UNIX path
+
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_X11': '1'}, agent_over=self.display_over(runtime_dir)) as h:
+                await h.login('A')
+                rln = (await h.start())['running_lab_name']
+                base = f'/api/projects/a01/{rln}'
+                project = (await (await h.client.get(base)).json())['project']
+                assert project['display'] == {'available': True} and 'display' in project['tabs']
+                status = await (await h.client.get(f'{base}/display')).json()
+                assert status['available'] is True and status['display'] == 93
+                resp = await h.client.post(f'{base}/display', headers=CSRF)
+                assert resp.status == 200 and (await resp.json())['running'] is True
+                ws = await h.client.ws_connect(f'{base}/display/ws', protocols=(DISPLAY_SUBPROTOCOL,))
+                assert ws.protocol == DISPLAY_SUBPROTOCOL
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.BINARY and msg.data == b'RFB 003.008\n'
+                await ws.send_bytes(b'\x00\x01\x02')
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.BINARY and msg.data == b'\x00\x01\x02'
+                await ws.close()
+                h.client.session.cookie_jar.clear()
+                await h.login('B')
+                assert (await h.client.get(f'{base}/display')).status == 403
+                assert (await h.client.post(f'{base}/display', headers=CSRF)).status == 403
+                with pytest.raises(aiohttp.WSServerHandshakeError):
+                    await h.client.ws_connect(f'{base}/display/ws', protocols=(DISPLAY_SUBPROTOCOL,))
+        try:
+            run(go())
+        finally:
+            shutil.rmtree(runtime_dir, ignore_errors=True)

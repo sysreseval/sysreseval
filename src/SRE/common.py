@@ -493,10 +493,11 @@ TAB_NETWORKS = "networks"
 TAB_QUESTIONS = "questions"
 TAB_EVALUATION = "evaluation"
 TAB_TERMINALS = "terminals"
+TAB_DISPLAY = "display"          # the web only: the virtual X desktop of the project
 TAB_APPLY_CONFIG = "apply_config"
 TAB_LOG = "log"
 TAB_ORDER = (TAB_SCHEMA, TAB_FULL_SCHEMA, TAB_INFORMATIONS, TAB_MACHINES, TAB_NETWORKS, TAB_QUESTIONS,
-             TAB_EVALUATION, TAB_TERMINALS, TAB_APPLY_CONFIG, TAB_LOG)
+             TAB_EVALUATION, TAB_TERMINALS, TAB_DISPLAY, TAB_APPLY_CONFIG, TAB_LOG)
 
 
 def resolve_text(value, lang_priority: list, *, show_instructor: bool = False) -> str:
@@ -576,14 +577,15 @@ def state_rows(user_allowed_states: dict, admin_only_states, *, show_admin_only:
     return rows
 
 
-def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool) -> list:
+def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool, display: bool = False) -> list:
     """The tabs shown for a project, in display order (the ``TAB_*`` identifiers).
 
     *instructor_shown*: the project has instructor texts (instructor mode or debug project) and
     the "Instructor mode" button is on.  A debug project always gets the Full Schema, every state
     and the Log; the Evaluation tab is hidden in exam mode and when the lab does not allow
     self-evaluation; the Apply Configuration tab needs listed states (and not an exam, unless the
-    instructor view is on)."""
+    instructor view is on).  *display*: the web only, the Display tab of the virtual X desktop
+    (after the Terminals); the Qt GUI never asks for it."""
     debug = bool(info.get("debug_project", False))
     tabs = [TAB_SCHEMA]
     if debug:
@@ -594,6 +596,8 @@ def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool) -> list
     if not exam_mode and info.get("allow_self_grade", True):
         tabs.append(TAB_EVALUATION)
     tabs.append(TAB_TERMINALS)
+    if display:
+        tabs.append(TAB_DISPLAY)
     states = listed_states(info.get("user_allowed_states", {}), info.get("admin_only_states", []),
                            show_admin_only=debug or instructor_shown)
     if debug or ((instructor_shown or not exam_mode) and bool(states)):

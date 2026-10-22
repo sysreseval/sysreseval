@@ -21,6 +21,9 @@ KillMode=mixed
 TimeoutStopSec=300
 ProtectSystem=full
 ReadWritePaths=/var/lib/sre /var/run/docker.sock
+# /run/sre-agent: the RFB sockets and X authority files of the virtual desktops ([display])
+RuntimeDirectory=sre-agent
+RuntimeDirectoryMode=0755
 
 [Install]
 WantedBy=multi-user.target

@@ -133,7 +133,7 @@ class TestFiles:
         assert changelog.startswith(f'kathara (3.8.3+git{date}.{sha}-1)')
 
     @pytest.mark.parametrize('script', ['scripts/build-deb.sh', 'scripts/network-plugin.sh', 'scripts/release.sh',
-                                        'scripts/apt-repo.sh', 'debian/sysreseval.postinst',
+                                        'scripts/apt-repo.sh', 'debian/sysreseval.postinst', 'debian/sysreseval-agent.postinst',
                                         'debian/sysreseval.postrm', 'debian/set-param'])
     def test_shell_syntax(self, script):
         subprocess.run(['bash', '-n', str(ROOT / script)], check=True)

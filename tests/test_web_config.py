@@ -250,6 +250,44 @@ def _tree(write, main_extra='', import_line='import = ["web.d"]'):
     write('web.d/secrets.toml', f'[admin]\ntoken = "{"a" * 32}"\n')
     return main
 
+    def test_display_defaults_and_values(self):
+        d = agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y').display
+        assert d.enabled is False and d.user == 'sreweb-x11' and d.xvnc_command == 'Xvnc'
+        assert d.window_manager_command == 'openbox' and d.geometry == '1280x800' and d.depth == 24
+        assert (d.first_display, d.last_display, d.frame_rate) == (10, 99, 30)
+        assert d.runtime_dir == '/run/sre-agent' and d.start_timeout == 10.0
+        d = agent_config_from_dict({'token': 't' * 32, 'display': {
+            'enabled': True, 'user': '', 'xvnc_command': '/usr/bin/Xvnc -verbose 2', 'window_manager_command': '',
+            'geometry': '1920x1080', 'depth': 16, 'frame_rate': 60, 'first_display': 1, 'last_display': 1,
+            'runtime_dir': '/tmp/run', 'start_timeout': '15s'}}, sre_exe='/x', state_dir='/y').display
+        assert d.enabled is True and d.user == '' and d.xvnc_command == '/usr/bin/Xvnc -verbose 2'
+        assert d.window_manager_command == '' and d.geometry == '1920x1080' and d.depth == 16
+        assert (d.first_display, d.last_display, d.frame_rate, d.start_timeout) == (1, 1, 60, 15.0)
+        with pytest.raises(ValueError, match=r'\[display\] must be a table'):
+            agent_config_from_dict({'token': 't' * 32, 'display': 1}, sre_exe='/x', state_dir='/y')
+
+    @pytest.mark.parametrize('display, fragment', [
+        ({'foo': 1}, 'unknown key'),
+        ({'first_display': 50, 'last_display': 49}, 'last_display'),
+        ({'first_display': 0}, 'first_display'),
+        ({'last_display': 1000}, 'last_display'),
+        ({'first_display': '10'}, 'first_display must be an integer'),
+        ({'depth': True}, 'depth must be an integer'),
+        ({'geometry': '1280'}, 'geometry'),
+        ({'geometry': '12x34'}, 'geometry'),
+        ({'depth': 8}, 'depth'),
+        ({'frame_rate': 0}, 'frame_rate'),
+        ({'enabled': True, 'xvnc_command': ' '}, 'xvnc_command'),
+        ({'user': 'Bad User'}, 'user'),
+        ({'runtime_dir': 'run'}, 'runtime_dir'),
+        ({'start_timeout': 0}, 'start_timeout'),
+        ({'start_timeout': 'soon'}, 'start_timeout'),
+        ({'enabled': 'yes'}, 'enabled'),
+    ])
+    def test_display_refused(self, display, fragment):
+        with pytest.raises(ValueError, match=fragment):
+            agent_config_from_dict({'token': 't' * 32, 'display': display}, sre_exe='/x', state_dir='/y')
+
 
 class TestImports:
     def test_directory(self, write):

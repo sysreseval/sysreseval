@@ -211,7 +211,7 @@ sre-wrapper:
 	chmod 711 ${ROOT_DIR}/bin/sre-wrapper
 
 
-install: check-debug-mode fonts xterm sre-wrapper wrappers
+install: check-debug-mode fonts xterm novnc sre-wrapper wrappers
 
 check-debug-mode:
 	@grep -qP '^debug_mode\s*=\s*True' ${ROOT_DIR}/src/SRE/params.py \
@@ -288,7 +288,7 @@ images:
 # Web front-end (src/sreweb, web/): translations and the vendored xterm.js
 # ---------------------------------------------------------------------------------------------
 
-.PHONY: web-translations xterm
+.PHONY: web-translations xterm novnc
 
 # The gettext catalog of the web front-end (domain "sreweb", src/sreweb/i18n.py): the strings
 # of the Python sources and of the JavaScript modules are merged into the hand-maintained .po
@@ -350,3 +350,31 @@ xterm:
 	mkdir -p "$(XTERM_DIR)"; \
 	for f in $(XTERM_FILES); do install -m 644 "$$tmp/$$f" "$(XTERM_DIR)/$$f"; done; \
 	echo "xterm.js installed in $(XTERM_DIR)"
+
+# noVNC, vendored into web/static/vendor/novnc (the Display tab of the web front-end: the virtual
+# X desktop of a project; web/static/js/tabs/display.js imports core/rfb.js as an ES module, which
+# needs vendor/pako).  The release archive of GitHub at a pinned tag, checked against its SHA-256;
+# nothing to do when core/rfb.js is already there.  Not committed: `make install` and the Debian
+# build run this target.
+NOVNC_VERSION := 1.6.0
+NOVNC_DIR := ${ROOT_DIR}/web/static/vendor/novnc
+NOVNC_URL := https://github.com/novnc/noVNC/archive/refs/tags/v$(NOVNC_VERSION).tar.gz
+NOVNC_SHA256 := 5066103959ef4e9b10f37e5a148627360dd8414e4cf8a7db92bdbd022e728aaa
+
+novnc:
+	@set -e; \
+	if [ -s "$(NOVNC_DIR)/core/rfb.js" ]; then echo "noVNC $(NOVNC_VERSION) already in $(NOVNC_DIR)"; exit 0; fi; \
+	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	echo "Downloading noVNC $(NOVNC_VERSION)"; \
+	curl -fsSL -o "$$tmp/novnc.tar.gz" "$(NOVNC_URL)"; \
+	if command -v sha256sum >/dev/null 2>&1; then sum=$$(sha256sum "$$tmp/novnc.tar.gz"); \
+	else sum=$$(shasum -a 256 "$$tmp/novnc.tar.gz"); fi; \
+	[ "$${sum%% *}" = "$(NOVNC_SHA256)" ] \
+		|| { echo "ERROR: unexpected SHA-256 for $(NOVNC_URL): $${sum%% *}"; exit 1; }; \
+	tar -xzf "$$tmp/novnc.tar.gz" -C "$$tmp" "noVNC-$(NOVNC_VERSION)/core" "noVNC-$(NOVNC_VERSION)/vendor/pako" \
+		"noVNC-$(NOVNC_VERSION)/LICENSE.txt"; \
+	rm -rf "$(NOVNC_DIR)"; mkdir -p "$(NOVNC_DIR)"; \
+	cp -R "$$tmp/noVNC-$(NOVNC_VERSION)/core" "$$tmp/noVNC-$(NOVNC_VERSION)/vendor" "$(NOVNC_DIR)/"; \
+	install -m 644 "$$tmp/noVNC-$(NOVNC_VERSION)/LICENSE.txt" "$(NOVNC_DIR)/LICENSE.txt"; \
+	find "$(NOVNC_DIR)" -type d -exec chmod 755 {} +; find "$(NOVNC_DIR)" -type f -exec chmod 644 {} +; \
+	echo "noVNC installed in $(NOVNC_DIR)"

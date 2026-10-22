@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION   ?= 1.30
+VERSION   ?= 1.31
 NAMESPACE ?= sysreseval
 
 IMAGES := base init frr mail

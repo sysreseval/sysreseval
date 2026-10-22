@@ -357,6 +357,38 @@ msgstr "Fermer le terminal"
 msgid "{device} ({n})"
 msgstr "{device} ({n})"
 
+# --- tabs/display.js ------------------------------------------------------------------------
+
+msgid "Display"
+msgstr "Affichage"
+
+msgid "Starting the display…"
+msgstr "Démarrage de l'affichage…"
+
+msgid "Connection lost."
+msgstr "Connexion perdue."
+
+msgid "Fit to window"
+msgstr "Ajuster à la fenêtre"
+
+msgid "Resize the desktop"
+msgstr "Redimensionner le bureau"
+
+msgid "Send to the X clipboard"
+msgstr "Envoyer au presse-papiers X"
+
+msgid "Text to paste into the X desktop, or received from it"
+msgstr "Texte à coller dans le bureau X, ou reçu de celui-ci"
+
+msgid "No display for this project."
+msgstr "Pas d'affichage pour ce projet."
+
+msgid "The X server stopped."
+msgstr "Le serveur X s'est arrêté."
+
+msgid "Connection to the display is not allowed."
+msgstr "La connexion à l'affichage n'est pas autorisée."
+
 # --- tabs/states.js, tabs/log.js ------------------------------------------------------------
 
 msgid "Apply"

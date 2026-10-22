@@ -534,6 +534,11 @@ if [[ -f $ETC_DIR/sre-agent.service ]] && command -v systemctl >/dev/null 2>&1; 
                 chown root:sre-web "$main_sre_dir/etc/web.toml" && chmod 0640 "$main_sre_dir/etc/web.toml"
             fi
         fi
+        if ! getent passwd sreweb-x11 >/dev/null; then
+            if confirm "Create the sreweb-x11 system user (the virtual X desktops of the web site run as it; needs tigervnc-standalone-server and openbox)?" "Y"; then
+                adduser --system --group --home /nonexistent --no-create-home --shell /usr/sbin/nologin sreweb-x11
+            fi
+        fi
         echo "Installed sre-agent.service and sre-web.service (not enabled)."
         echo "  → pool host: edit $main_sre_dir/etc/agent.toml, then: systemctl enable --now sre-agent.service"
         echo "  → portal host: edit $main_sre_dir/etc/web.toml, then: systemctl enable --now sre-web.service"

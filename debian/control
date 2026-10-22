@@ -116,11 +116,17 @@ Package: sysreseval-agent
 Architecture: all
 Depends: ${misc:Depends},
          sysreseval (>= ${source:Version}),
-         sysreseval-web (= ${binary:Version})
+         sysreseval-web (= ${binary:Version}),
+         adduser
+Recommends: openbox,
+            tigervnc-standalone-server
 Description: pool-host agent of the SysResEval web site
  The daemon of a host of the pool behind sysreseval-web: it runs sre on behalf
  of the web users, exactly as the graphical interface does for the students of
- a workstation, owns their terminals and schedules their evaluations.
+ a workstation, owns their terminals and schedules their evaluations.  With
+ tigervnc-standalone-server and openbox it also runs the virtual X desktops of
+ the projects (the Display tab of the web site: the graphical applications of
+ the labs), as the unprivileged user sreweb-x11.
  Configuration: /etc/sysreseval/agent.toml (see /usr/share/doc/sysreseval-agent/examples/).
 
 Package: sysreseval-doc

@@ -17,6 +17,7 @@ import {createNetworksTab} from './tabs/networks.js';
 import {createQuestionsTab} from './tabs/questions.js';
 import {createEvaluationTab} from './tabs/evaluation.js';
 import {createTerminalsTab} from './tabs/terminals.js';
+import {createDisplayTab} from './tabs/display.js';
 import {createStatesTab} from './tabs/states.js';
 import {createLogTab} from './tabs/log.js';
 
@@ -86,8 +87,8 @@ function tabLabels() {
   return {
     schema: _('Schema'), full_schema: _('Full Schema'), informations: _('Informations'),
     machines: _('Machines'), networks: _('Networks'), questions: _('Questions'),
-    evaluation: _('Evaluation'), terminals: _('Terminals'), apply_config: _('Apply Configuration'),
-    log: _('Log'),
+    evaluation: _('Evaluation'), terminals: _('Terminals'), display: _('Display'),
+    apply_config: _('Apply Configuration'), log: _('Log'),
   };
 }
 
@@ -101,6 +102,7 @@ function createTab(id) {
     case 'questions': return createQuestionsTab(ctx);
     case 'evaluation': return createEvaluationTab(ctx);
     case 'terminals': return createTerminalsTab(ctx);
+    case 'display': return createDisplayTab(ctx);
     case 'apply_config': return createStatesTab(ctx);
     case 'log': return createLogTab(ctx);
     default: return null;
@@ -203,6 +205,9 @@ function projectClosed() {
   }
   if (tabs.terminals) {
     tabs.terminals.closeAll();
+  }
+  if (tabs.display) {
+    tabs.display.close();
   }
   tabBar.hidden = true;
   panes.hidden = true;

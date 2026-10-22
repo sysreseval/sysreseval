@@ -352,7 +352,8 @@ class TestProjectView:
         view = projectview.sanitise(make_info(), ALICE)
         assert view['title'] == 'Le DHCP' and view['lab_name'] == 'sre/dhcp.py'
         assert [m['name'] for m in view['machines']] == ['pc1', 'srv']
-        assert 'x11_host' not in view['machines'][0] and 'lab_hash' not in view
+        assert view['machines'][0]['x11_host'] is False and 'lab_hash' not in view
+        assert view['display'] == {'available': False} and 'display' not in view['tabs']
         assert view['machines'][0]['ports_text'] == '8080 -> 80 (tcp)'
         assert view['terminal_devices'] == [
             {'name': 'pc1', 'kind': 'machine', 'allow_connection': True, 'hidden': False},
@@ -396,3 +397,63 @@ class TestProjectView:
         assert 'probe' in full
         with pytest.raises(ValueError):
             projectview.schema_svg(info, ALICE, {'order': 'random'})
+
+
+class TestDisplayView:
+    def test_display_needs_the_host_and_a_visible_x11_machine(self):
+        info = make_info()
+        info['machines'][0]['x11_host'] = True
+        view = projectview.sanitise(info, ALICE, display_enabled=True)
+        assert view['display'] == {'available': True} and view['machines'][0]['x11_host'] is True
+        assert view['tabs'].index('display') == view['tabs'].index('terminals') + 1
+        # the host runs no display, or the lab has no x11 machine, or only a hidden one
+        assert projectview.sanitise(info, ALICE)['display'] == {'available': False}
+        assert projectview.sanitise(make_info(), ALICE, display_enabled=True)['display'] == {'available': False}
+        hidden = make_info()
+        hidden['machines'][2]['x11_host'] = True
+        for identity in (ALICE, PROF):
+            view = projectview.sanitise(hidden, identity, display_enabled=True)
+            assert view['display'] == {'available': False} and 'display' not in view['tabs']
+
+    def test_state_file_keeps_the_display(self, tmp_pub_dir):
+        make_project(tmp_pub_dir)
+        reg = registry()
+        run(reg.tick())
+        p = reg.get(RLN)
+        assert p.display is None and p.display_clients == []
+        p.display = {'number': 12, 'cookie': 'ab' * 16}
+        reg.write_state(p, force=True)
+        state = json.loads((tmp_pub_dir / 'web-agent' / f'{RLN}.json').read_text())
+        assert state['display'] == {'number': 12, 'cookie': 'ab' * 16}
+        reg2 = registry()
+        run(reg2.tick())
+        assert reg2.get(RLN).display == {'number': 12, 'cookie': 'ab' * 16}
+        # a malformed entry is ignored
+        for bad in ({'number': '12', 'cookie': 'ab' * 16}, {'number': 12, 'cookie': 'xyz'}, {'number': True, 'cookie': 'ab'}, 12):
+            state['display'] = bad
+            (tmp_pub_dir / 'web-agent' / f'{RLN}.json').write_text(json.dumps(state))
+            reg3 = registry()
+            run(reg3.tick())
+            assert reg3.get(RLN).display is None, bad
+
+    def test_removed_hooks(self, tmp_pub_dir):
+        async def go():
+            path = make_project(tmp_pub_dir)
+            reg = registry()
+            seen = []
+
+            async def hook(project):
+                seen.append(project.rln)
+
+            reg.on_removed.append(hook)
+            await reg.tick()
+            assert seen == []
+            import shutil
+            shutil.rmtree(path)
+            await reg.tick()
+            assert seen == [RLN]
+            make_project(tmp_pub_dir)
+            await reg.tick()
+            await reg.stop()
+            assert seen == [RLN, RLN]
+        run(go())

@@ -363,6 +363,57 @@ def load_web_config(path) -> WebConfig:
 DEFAULT_TIMEOUTS = {'start': 900.0, 'eval': 600.0, 'state': 600.0, 'stop': 300.0, 'export': 600.0, 'list': 30.0}
 
 
+_GEOMETRY_RE = re.compile(r'^\d{3,5}x\d{3,5}$')
+_USER_RE = re.compile(r'^[a-z_][a-z0-9_-]*$')
+MAX_DISPLAY = 999
+
+
+@dataclass
+class DisplayConfig:
+    """``[display]``: one virtual X desktop (Xvnc + a window manager) per project whose lab has an
+    ``x11_host`` machine, shown in the Display tab of the web site."""
+    enabled: bool = False
+    user: str = 'sreweb-x11'                  # the unprivileged account of the X processes ('' = the agent's own
+                                              # user: tests only, refused when the agent runs as root)
+    xvnc_command: str = 'Xvnc'                # TigerVNC's Xvnc; shlex-split, the agent appends its options
+    window_manager_command: str = 'openbox'   # '' = none
+    geometry: str = '1280x800'
+    depth: int = 24
+    frame_rate: int = 30
+    first_display: int = 10                   # :10 ... :99 -> X11 TCP ports 6010 ... 6099 on the pool host
+    last_display: int = 99
+    runtime_dir: str = '/run/sre-agent'       # the RFB sockets and X authority files (display/ inside)
+    start_timeout: float = 10.0               # seconds for the RFB socket of Xvnc to appear
+
+
+def _check_display(d: DisplayConfig, path: str):
+    where = f"{path}: display."
+    if not isinstance(d.enabled, bool):
+        raise ConfigError(f"{where}enabled must be true or false")
+    for name in ('depth', 'frame_rate', 'first_display', 'last_display'):
+        value = getattr(d, name)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ConfigError(f"{where}{name} must be an integer")
+    if not 1 <= d.first_display <= MAX_DISPLAY:
+        raise ConfigError(f"{where}first_display must be between 1 and {MAX_DISPLAY}")
+    if not d.first_display <= d.last_display <= MAX_DISPLAY:
+        raise ConfigError(f"{where}last_display must be between first_display and {MAX_DISPLAY}")
+    if d.depth not in (16, 24):
+        raise ConfigError(f"{where}depth must be 16 or 24")
+    if not 1 <= d.frame_rate <= 120:
+        raise ConfigError(f"{where}frame_rate must be between 1 and 120")
+    if not isinstance(d.geometry, str) or not _GEOMETRY_RE.match(d.geometry):
+        raise ConfigError(f"{where}geometry must be <width>x<height>, e.g. 1280x800")
+    if d.enabled and not str(d.xvnc_command).strip():
+        raise ConfigError(f"{where}xvnc_command cannot be empty when enabled")
+    if not isinstance(d.user, str) or (d.user and not _USER_RE.match(d.user)):
+        raise ConfigError(f"{where}user must be a system user name (or empty)")
+    if not isinstance(d.runtime_dir, str) or not d.runtime_dir.startswith('/'):
+        raise ConfigError(f"{where}runtime_dir must be an absolute path")
+    if d.start_timeout <= 0:
+        raise ConfigError(f"{where}start_timeout must be positive")
+
+
 @dataclass
 class AgentConfig:
     listen: tuple = ('127.0.0.1', 8451)
@@ -393,6 +444,7 @@ class AgentConfig:
     close_projects_on_stop: str = 'shutdown'
     shutdown_timeout: float = 240.0
     timeouts: dict = field(default_factory=lambda: dict(DEFAULT_TIMEOUTS))
+    display: DisplayConfig = field(default_factory=DisplayConfig)
 
 
 def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str = '',
@@ -407,10 +459,14 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     _check_keys(given, DEFAULT_TIMEOUTS, f"{path}: [timeouts]")
     for k, v in given.items():
         timeouts[k] = parse_duration(v, f'timeouts.{k}')
-    top = {k: v for k, v in data.items() if k != 'timeouts'}
+    display_data = _section(data, 'display', path)
+    display = _build(DisplayConfig, display_data, f"{path}: [display]",
+                     **({'start_timeout': parse_duration(display_data['start_timeout'], 'display.start_timeout')}
+                        if 'start_timeout' in display_data else {}))
+    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display')}
     converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl',
                                                         'shutdown_timeout') if k in top}
-    cfg = _build(AgentConfig, top, path, timeouts=timeouts, listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
+    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
                  allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: token must have at least {MIN_SECRET_LENGTH} characters")
@@ -431,6 +487,7 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
         raise ConfigError(f"{path}: occupied_check must be sessions, projects, both or never")
     if cfg.close_projects_on_stop not in ('shutdown', 'always', 'never'):
         raise ConfigError(f"{path}: close_projects_on_stop must be shutdown, always or never")
+    _check_display(cfg.display, path)
     return cfg
 
 

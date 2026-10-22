@@ -389,7 +389,7 @@ class NetScheme(NetScheme0):
 |-----------|---------|-------------|
 | `image` | `params.default_docker_image` | Docker image |
 | `bridged` | `False` | Enable host-network bridging (required for `ports`) |
-| `x11_host` | `False` | Forward X11 to the host: inject `SRE_HOST_IP` (and the host's X magic cookie as `SRE_XAUTH_COOKIE`) so GUI apps launched in the container display on the host's X server. Requires `bridged=True` (refused at startup otherwise) |
+| `x11_host` | `False` | Forward X11 to the host: inject `SRE_HOST_IP` (and the host's X magic cookie as `SRE_XAUTH_COOKIE`) so GUI apps launched in the container display on the host's X server (`DISPLAY` is set by the `.bashrc` of the images; needs `bridged=True` to reach the host). On the web site the apps show in the Display tab, a virtual desktop of the project (`SRE_DISPLAY`) |
 | `hidden` | `False` | Hidden from the Machines tab |
 | `allow_connection` | `True` | Show *Connect* button in the GUI |
 | `shell` | `None` | Shell launched by `sre connect` (interactive terminal session) |

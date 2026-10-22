@@ -2,8 +2,10 @@
 import asyncio
 import json
 import os
+import shutil
 import stat
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -12,11 +14,13 @@ aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the w
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from SRE import params
-from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, PROBE_DELAY
+from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY
+from sreweb.agent.display import parse_xauthority, WS_DISPLAY_FAILED
 from sreweb.config import agent_config_from_dict
 from sreweb.identity import Identity
 
 MOCK = Path(__file__).parent / 'mock_sre.py'
+MOCK_XVNC = Path(__file__).parent / 'mock_xvnc.py'
 TOKEN = 't' * 32
 ALICE = Identity(login='alice', fullname='Alice A', email='a@x.org', language='fr')
 BOB = Identity(login='bob')
@@ -37,7 +41,7 @@ class Harness:
 
     def __init__(self, tmp_path, mock_env=None, **cfg_over):
         self.pub = tmp_path / 'pub'
-        (self.pub / 'projects').mkdir(parents=True)
+        (self.pub / 'projects').mkdir(parents=True, exist_ok=True)   # a second agent on the same host
         exe = tmp_path / 'sre'
         exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" -W ignore "{MOCK}" "$@"\n')
         exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
@@ -59,10 +63,14 @@ class Harness:
     async def __aexit__(self, *exc):
         await self.client.close()
 
-    def calls(self) -> list:
+    def entries(self) -> list:
+        """The calls of the fake sre: ``{'argv', 'env'}`` dicts."""
         if not self.log.exists():
             return []
-        return [json.loads(line)['argv'] for line in self.log.read_text().splitlines() if line.strip()]
+        return [json.loads(line) for line in self.log.read_text().splitlines() if line.strip()]
+
+    def calls(self) -> list:
+        return [entry['argv'] for entry in self.entries()]
 
     async def start(self, identity=ALICE, lab='sre/dhcp.py', **body) -> tuple:
         resp = await self.client.post('/v1/projects', json={'lab': lab, **body}, headers=headers(identity))
@@ -471,4 +479,230 @@ class TestWebSockets:
                 await second.receive()
                 assert second.close_code == 4409
                 await first.close()
+        run(go())
+
+
+# ---------------------------------------------------------------------------------------------
+# the virtual X desktop of a project (sreweb.agent.display on the fake Xvnc of tests/mock_xvnc.py)
+# ---------------------------------------------------------------------------------------------
+
+@pytest.fixture
+def short_dir():
+    """A short runtime directory: an AF_UNIX socket path is limited to about 100 bytes, and
+    pytest's tmp_path is longer than that on macOS."""
+    d = Path(tempfile.mkdtemp(prefix='sre-x11-', dir='/tmp'))
+    yield d
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def display_cfg(runtime_dir, *, fail: str = '', **over) -> dict:
+    """The ``[display]`` section of a test agent: the fake X server (through a shell script giving
+    it its log file, and ``MOCK_XVNC_FAIL`` when *fail* is set: the agent builds the environment of
+    the server itself), no window manager, no dedicated user, three display numbers."""
+    script = Path(runtime_dir) / 'xvnc'
+    script.write_text(f'#!/bin/sh\nexport MOCK_XVNC_LOG="{runtime_dir}/xvnc.log"\n'
+                      + (f'export MOCK_XVNC_FAIL="{fail}"\n' if fail else '')
+                      + f'exec "{sys.executable}" "{MOCK_XVNC}" "$@"\n')
+    script.chmod(0o755)
+    return {'display': {'enabled': True, 'user': '', 'xvnc_command': str(script), 'window_manager_command': '',
+                        'runtime_dir': str(runtime_dir), 'first_display': 90, 'last_display': 92,
+                        'start_timeout': 10, **over}}
+
+
+def x11_env(**over) -> dict:
+    return {'MOCK_X11': '1', **over}
+
+
+def xvnc_runs(runtime_dir) -> list:
+    """What the fake X server logged: ``{'argv', 'env', 'pid'}`` per run."""
+    log = Path(runtime_dir) / 'xvnc.log'
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+
+
+async def until(predicate, timeout=5.0):
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.05)
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+class TestDisplay:
+    def test_start_gets_a_display_and_the_browser_reaches_it(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h:
+                rln = await h.started()
+                env = [e for e in h.entries() if 'start' in e['argv']][0]['env']
+                cookie = env['SRE_XAUTH_COOKIE']
+                assert len(cookie) == 32 and int(cookie, 16) >= 0 and env['SRE_X11_DISPLAY'] == '90'
+                state = json.loads((tmp_path / 'web-agent' / f'{rln}.json').read_text())
+                assert state['display'] == {'number': 90, 'cookie': cookie}
+                view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['project']
+                assert view['display'] == {'available': True} and view['machines'][0]['x11_host'] is True
+                assert view['tabs'].index('display') == view['tabs'].index('terminals') + 1
+                # the X server is started right after the project: POST reports it running
+                resp = await h.client.post(f'/v1/projects/{rln}/display', headers=headers())
+                assert resp.status == 200, await resp.text()
+                status = await resp.json()
+                assert status == {'available': True, 'running': True, 'display': 90, 'geometry': '1280x800', 'error': ''}
+                assert (await (await h.client.get(f'/v1/projects/{rln}/display', headers=headers())).json()) == status
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['displays'] == 1
+                xauth = short_dir / 'display' / '90.xauth'
+                assert xauth.stat().st_mode & 0o777 == 0o600
+                (family, address, number, name, data), = parse_xauthority(xauth.read_bytes())
+                assert (family, address, number, name, data.hex()) == (0xFFFF, b'', b'90', b'MIT-MAGIC-COOKIE-1', cookie)
+                runs = xvnc_runs(short_dir)
+                assert len(runs) == 1
+                argv = runs[0]['argv']
+                assert argv[0] == ':90' and argv[argv.index('-auth') + 1] == str(xauth)
+                assert argv[argv.index('-rfbunixpath') + 1] == str(short_dir / 'display' / '90.sock')
+                assert '-listen' in argv and argv[argv.index('-SecurityTypes') + 1] == 'None'
+                # the RFB stream: the greeting of the server, then (the fake) echoes the bytes sent
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/display/ws', headers=headers(),
+                                               protocols=(DISPLAY_SUBPROTOCOL,))
+                assert ws.protocol == DISPLAY_SUBPROTOCOL
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.BINARY and msg.data == b'RFB 003.008\n'
+                await ws.send_bytes(b'RFB 003.008\n')
+                await ws.send_bytes(bytes(range(256)))
+                got = b''
+                async with asyncio.timeout(5):
+                    while len(got) < 12 + 256:
+                        msg = await ws.receive()
+                        assert msg.type == aiohttp.WSMsgType.BINARY, msg
+                        got += msg.data
+                assert got == b'RFB 003.008\n' + bytes(range(256))
+                assert len(h.agent.registry.get(rln).display_clients) == 1
+                await ws.close()
+                await until(lambda: not h.agent.registry.get(rln).display_clients)
+                # closing the project ends the X server and removes its files
+                pid = runs[0]['pid']
+                assert alive(pid)
+                resp = await h.client.delete(f'/v1/projects/{rln}', headers=headers())
+                assert resp.status == 200
+                await until(lambda: h.agent.registry.get(rln) is None)
+                await until(lambda: not alive(pid))
+                assert not xauth.exists() and not (short_dir / 'display' / '90.sock').exists()
+                assert h.agent.displays.running_count() == 0
+        run(go())
+
+    def test_lab_without_x11_machine_gets_no_display(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env={}, **display_cfg(short_dir)) as h:
+                rln = await h.started()
+                env = [e for e in h.entries() if 'start' in e['argv']][0]['env']
+                assert env['SRE_X11_DISPLAY'] == '90' and len(env['SRE_XAUTH_COOKIE']) == 32
+                assert 'display' not in json.loads((tmp_path / 'web-agent' / f'{rln}.json').read_text())
+                view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['project']
+                assert view['display'] == {'available': False} and 'display' not in view['tabs']
+                status = await (await h.client.get(f'/v1/projects/{rln}/display', headers=headers())).json()
+                assert status['available'] is False and status['display'] is None and status['running'] is False
+                assert (await h.client.post(f'/v1/projects/{rln}/display', headers=headers())).status == 404
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/display/ws', headers=headers(),
+                                               protocols=(DISPLAY_SUBPROTOCOL,))
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == 4404
+                # the number was released: the next project gets it again
+                await h.started()
+                assert [e['env']['SRE_X11_DISPLAY'] for e in h.entries() if 'start' in e['argv']] == ['90', '90']
+                assert xvnc_runs(short_dir) == []
+        run(go())
+
+    def test_host_without_displays(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env()) as h:
+                rln = await h.started()
+                env = [e for e in h.entries() if 'start' in e['argv']][0]['env']
+                assert 'SRE_X11_DISPLAY' not in env and 'SRE_XAUTH_COOKIE' not in env
+                view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['project']
+                assert view['display'] == {'available': False} and view['machines'][0]['x11_host'] is True
+                status = await (await h.client.get(f'/v1/projects/{rln}/display', headers=headers())).json()
+                assert status['available'] is False and 'disabled' in status['error']
+                assert (await h.client.post(f'/v1/projects/{rln}/display', headers=headers())).status == 404
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['displays'] == 0
+        run(go())
+
+    def test_other_user_and_exam_mode(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h:
+                rln = await h.started()
+                for method in (h.client.get, h.client.post):
+                    assert (await method(f'/v1/projects/{rln}/display', headers=headers(BOB))).status == 403
+                with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+                    await h.client.ws_connect(f'/v1/projects/{rln}/display/ws', headers=headers(BOB),
+                                              protocols=(DISPLAY_SUBPROTOCOL,))
+                assert e.value.status == 403
+                (h.pub / params.exam_json_name).write_text('{}')
+                assert (await h.client.post(f'/v1/projects/{rln}/display', headers=headers())).status == 409
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/display/ws', headers=headers(),
+                                               protocols=(DISPLAY_SUBPROTOCOL,))
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == 4403
+        run(go())
+
+    def test_dead_server_is_started_again(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h:
+                rln = await h.started()
+                assert (await (await h.client.post(f'/v1/projects/{rln}/display', headers=headers())).json())['running']
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/display/ws', headers=headers(),
+                                               protocols=(DISPLAY_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(ws.receive(), 5)).data == b'RFB 003.008\n'
+                first = xvnc_runs(short_dir)[0]
+                os.kill(first['pid'], 15)
+                await until(lambda: not alive(first['pid']))
+                # the viewer is told, the status says so, POST starts another server
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == WS_DISPLAY_FAILED
+                await until(lambda: not h.agent.displays.sessions[rln].running)
+                status = await (await h.client.get(f'/v1/projects/{rln}/display', headers=headers())).json()
+                assert status['running'] is False and 'exited' in status['error']
+                status = await (await h.client.post(f'/v1/projects/{rln}/display', headers=headers())).json()
+                assert status['running'] is True and status['error'] == ''
+                runs = xvnc_runs(short_dir)
+                assert len(runs) == 2 and runs[1]['pid'] != first['pid'] and runs[1]['argv'][0] == ':90'
+                cookie = [e for e in h.entries() if 'start' in e['argv']][0]['env']['SRE_XAUTH_COOKIE']
+                records = parse_xauthority((short_dir / 'display' / '90.xauth').read_bytes())
+                assert records[0][4].hex() == cookie
+        run(go())
+
+    def test_server_failures(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir, fail='early')) as h:
+                rln = await h.started()
+                resp = await h.client.post(f'/v1/projects/{rln}/display', headers=headers())
+                assert resp.status == 503 and 'listening sockets' in (await resp.json())['error']
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/display/ws', headers=headers(),
+                                               protocols=(DISPLAY_SUBPROTOCOL,))
+                msg = await asyncio.wait_for(ws.receive(), 5)
+                assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == WS_DISPLAY_FAILED
+                assert not (short_dir / 'display' / '90.xauth').exists()
+        run(go())
+
+    def test_agent_restart_starts_the_same_display_again(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h:
+                rln = await h.started()
+                assert (await (await h.client.post(f'/v1/projects/{rln}/display', headers=headers())).json())['running']
+                first = xvnc_runs(short_dir)[0]
+                cookie = [e for e in h.entries() if 'start' in e['argv']][0]['env']['SRE_XAUTH_COOKIE']
+            await until(lambda: not alive(first['pid']))
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h2:
+                assert h2.agent.registry.get(rln).display == {'number': 90, 'cookie': cookie}
+                status = await (await h2.client.post(f'/v1/projects/{rln}/display', headers=headers())).json()
+                assert status['running'] is True and status['display'] == 90
+                runs = xvnc_runs(short_dir)
+                assert len(runs) == 2 and runs[1]['argv'][0] == ':90'
+                assert parse_xauthority((short_dir / 'display' / '90.xauth').read_bytes())[0][4].hex() == cookie
+                # a new project of the second agent takes the next free number
+                await h2.started()
+                assert [e['env']['SRE_X11_DISPLAY'] for e in h2.entries() if 'start' in e['argv']][-1] == '91'
         run(go())

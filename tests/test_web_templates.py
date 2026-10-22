@@ -15,8 +15,8 @@ STATIC = WEB / 'static'
 JS = STATIC / 'js'
 PO = ROOT / 'locale' / 'fr' / 'LC_MESSAGES' / 'sreweb.po'
 
-#: the vendored files of `make xterm` are not committed: a missing one is not an error here
-VENDORED = 'vendor/xterm/'
+#: the vendored files of `make xterm` / `make novnc` are not committed: a missing one is not an error here
+VENDORED = ('vendor/xterm/', 'vendor/novnc/')
 
 # _("...") / _('...') with the usual escapes, in a template or a JavaScript module
 TRANSLATED_STRING = re.compile(r"""_\(\s*(['"])((?:\\.|(?!\1).)*)\1""")

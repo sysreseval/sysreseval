@@ -79,7 +79,8 @@ class Schedulers:
 
     async def _reap_if_idle(self, project: Project):
         timeout = self.idle_timeout(project)
-        if timeout <= 0 or project.terminal_count() or project.subscribers or project.lock.locked():
+        if (timeout <= 0 or project.terminal_count() or project.subscribers or project.display_clients
+                or project.lock.locked()):
             return
         if project.idle_seconds() > timeout:
             log.info("closing %s: idle for %.0f s", project.rln, project.idle_seconds())

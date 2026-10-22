@@ -450,3 +450,10 @@ option.closed-device { color: var(--closed-color); }
   max-width: 420px;
 }
 .toast.error { background: var(--danger); }
+
+/* the Display tab: the virtual X desktop drawn by noVNC in .display-screen */
+.display { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.display-screen { flex: 1; min-height: 0; position: relative; background: #303030; overflow: hidden; }
+.ctrl-bar .display-status.error { color: var(--danger); }
+.ctrl-bar .display-name { font-size: 90%; opacity: 0.8; }
+.ctrl-bar .display-clipboard { height: 1.6em; width: 16em; resize: none; font: inherit; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; }

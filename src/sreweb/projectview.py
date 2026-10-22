@@ -2,8 +2,9 @@
 
 ``info.json`` is readable by the students of a workstation, so it holds nothing secret; still,
 the web view drops what a student has no use for or must not see: the hidden machines of a debug
-project (and their networks), ``x11_host``, ``lab_hash``, the admin-only states, the scheduling
-fields of the agent.  Texts are resolved to the user's language and rendered (markdown to HTML)
+project (and their networks), ``lab_hash``, the admin-only states, the scheduling fields of the
+agent.  ``display`` says whether the project has a virtual X desktop (the Display tab: the host
+runs one, *display_enabled*, and a visible machine is an ``x11_host``).  Texts are resolved to the user's language and rendered (markdown to HTML)
 here, once, with the instructor fragments stripped unless the instructor view applies; the
 question descriptions of the forms are split into chunks the browser renders as inputs.
 """
@@ -12,7 +13,7 @@ from SRE.form_spec import parse_form_description, chunks_to_json
 from SRE.instructor_text import markdown_to_html
 from SRE.schema_graph import render_schema_svg, parse_order
 
-from .agent.access import visible_machines, instructor_view_allowed
+from .agent.access import visible_machines, instructor_view_allowed, display_available
 from .identity import Identity
 
 SCHEMA_SEP_MAX = 9
@@ -23,9 +24,10 @@ def lang_priority(identity: Identity, info: dict) -> list:
     return list(dict.fromkeys([identity.language, default_language, 'en']))
 
 
-def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False) -> dict:
+def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False) -> dict:
     priority = lang_priority(identity, info)
     show_instructor = instructor_view_allowed(info, identity)
+    display = bool(display_enabled) and display_available(info, identity)
 
     def text(value) -> str:
         return common.resolve_text(value, priority, show_instructor=show_instructor)
@@ -75,6 +77,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False) -> dict
             'ports': list(m.get('ports', []) or []), 'ports_text': common.format_ports(m.get('ports', []) or []),
             'bridged': bool(m.get('bridged', False)), 'color': m.get('color', '') or '',
             'shape': m.get('shape', '') or '', 'hidden': bool(m.get('hidden', False)),
+            'x11_host': bool(m.get('x11_host', False)),
         } for m in machines],
         'switches': [{'name': s.get('name', ''), 'mode': s.get('mode', ''),
                       'allow_connection': bool(s.get('allow_connection', False))}
@@ -82,7 +85,8 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False) -> dict
         'terminal_devices': devices,
         'questions': questions,
         'states': states,
-        'tabs': common.visible_tabs(info, exam_mode=exam_mode, instructor_shown=show_instructor),
+        'tabs': common.visible_tabs(info, exam_mode=exam_mode, instructor_shown=show_instructor, display=display),
+        'display': {'available': display},
         'allow_self_grade': bool(info.get('allow_self_grade', True)),
         'export_kathara_project': bool(info.get('export_kathara_project', True)),
         'delay_between_self_grade': info.get('delay_between_self_grade', 0) or 0,

@@ -286,7 +286,7 @@ del _fhs, _root
 #################################################################################
 
 sre_version = "0.13.2"
-default_docker_image_version = "1.30"
+default_docker_image_version = "1.31"
 sre_docker_namespace = "sysreseval"
 
 def sre_docker_image(image_name: str = "base") -> str:
@@ -315,6 +315,11 @@ sre_projects_dir = sre_pub_dir + "/projects"
 sre_name_env_variable = "SRE_LAB_NAME"
 sre_xauth_cookie_env_variable = "SRE_XAUTH_COOKIE"
 sre_host_ip_env_variable = "SRE_HOST_IP"
+# the web agent gives `sre start` the number of the virtual X display of the project (digits);
+# the x11_host machines then get SRE_DISPLAY=<sre_host_ip>:<number>, used by the images' .bashrc
+# in place of <sre_host_ip>:0 (the X server of a workstation)
+sre_x11_display_env_variable = "SRE_X11_DISPLAY"
+sre_display_env_variable = "SRE_DISPLAY"
 
 sre_host_ip = "172.17.0.1"
 

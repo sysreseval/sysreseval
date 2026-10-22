@@ -125,3 +125,21 @@ class TestFlags:
         with pytest.raises(AccessError) as e:
             A.check_not_exam(str(tmp_path))
         assert e.value.status == 409
+
+
+class TestDisplay:
+    def test_available_with_a_visible_x11_machine(self):
+        assert A.display_available(info(), OTHER) is False
+        with pytest.raises(AccessError) as e:
+            A.check_display(info(), OTHER)
+        assert e.value.status == 404
+        x11 = info(machines=[{'name': 'pc1', 'allow_connection': True, 'x11_host': True},
+                             {'name': 'srv', 'allow_connection': False}])
+        assert A.display_available(x11, OTHER) is True
+        A.check_display(x11, OTHER)
+
+    def test_hidden_x11_machine_counts_for_nobody(self):
+        hidden = info(machines=[{'name': 'pc1', 'allow_connection': True},
+                                {'name': 'probe', 'allow_connection': True, 'hidden': True, 'x11_host': True}])
+        assert A.display_available(hidden, OTHER) is False
+        assert A.display_available(hidden, PROF) is False

@@ -47,3 +47,21 @@ state = 600
 stop = 300
 export = 600
 list = 30
+# One virtual X desktop per project whose lab has an x11_host machine (the Wireshark lab): a
+# TigerVNC Xvnc and a window manager, shown in the Display tab of the web site.  Needs the
+# packages tigervnc-standalone-server and openbox and the unprivileged user the X processes run
+# as (sreweb-x11, created by the sysreseval-agent package or scripts/install.sh).  Display :N
+# listens on TCP port 6000+N for the containers of the project, protected by its own X cookie;
+# the RFB socket of the browser is under runtime_dir, for the agent only.
+[display]
+enabled = false
+user = "sreweb-x11"
+# xvnc_command = "Xvnc"
+# window_manager_command = "openbox"
+# geometry = "1280x800"
+# depth = 24
+# frame_rate = 30
+# first_display = 10
+# last_display = 99
+# runtime_dir = "/run/sre-agent"
+# start_timeout = 10

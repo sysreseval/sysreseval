@@ -86,6 +86,17 @@ def check_device(info: dict, device: str, identity: Identity) -> str:
     raise AccessError(404, f"unknown device {device}")
 
 
+def display_available(info: dict, identity: Identity) -> bool:
+    """The lab has a machine the user sees that draws on the X server of the host
+    (``x11_host``): the project gets a virtual desktop (the Display tab)."""
+    return any(m.get('x11_host', False) and not m.get('hidden', False) for m in visible_machines(info, identity))
+
+
+def check_display(info: dict, identity: Identity):
+    if not display_available(info, identity):
+        raise AccessError(404, "no display for this project")
+
+
 def allowed_states(info: dict, identity: Identity) -> dict:
     """The states the user may apply: ``user_allowed_states`` of info.json without the
     admin-only ones, unless the project is a debug one or the instructor view is on."""

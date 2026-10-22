@@ -24,6 +24,11 @@ files it may import) and
 sre-web-nginx.conf and sre-web-apache.conf (this one authenticates the users against the LDAP
 directory itself) are next to web.toml.  See the "Web site" page of the documentation.
 
+The Display tab of the web site (the graphical applications of the labs, e.g. Wireshark) needs
+tigervnc-standalone-server and openbox on the pool hosts (Recommends of sysreseval-agent) and
+`[display] enabled = true` in agent.toml; the X processes run as the sreweb-x11 user the
+package creates.
+
 Layout of the package
 ---------------------
   /usr/sbin/sre                          command-line interface (run by root, or by the students

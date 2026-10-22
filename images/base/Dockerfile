@@ -118,11 +118,13 @@ COPY .bashrc /root/.bashrc
 # point DISPLAY at the host and merge the cookie so GUI apps started in a
 # container show up on the host's X server.  Appended to /root/.bashrc and to
 # /etc/skel/.bashrc so every user created below (useradd -m seeds their home
-# from /etc/skel) gets it too.
+# from /etc/skel) gets it too.  SRE_DISPLAY (<host ip>:<number>) is set by the web
+# agent, which runs one virtual X server per project on a pool host; a workstation
+# gives display :0 of the host.
 RUN cat <<'EOF' | tee -a /root/.bashrc >> /etc/skel/.bashrc
 
 if [ -n "$SRE_XAUTH_COOKIE" ]; then
-    export DISPLAY="${SRE_HOST_IP}:0"
+    export DISPLAY="${SRE_DISPLAY:-${SRE_HOST_IP}:0}"
     xauth add "$DISPLAY" . "$SRE_XAUTH_COOKIE" 2>/dev/null
 fi
 EOF

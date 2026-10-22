@@ -262,17 +262,21 @@ class SreRunner:
 
     # -- spawning -------------------------------------------------------------------------------
 
-    async def _spawn(self, user: str, args, *, privileged: bool, stdin, lang=None):
+    async def _spawn(self, user: str, args, *, privileged: bool, stdin, lang=None, env=None):
+        """*env*: variables added for this call (``start``: the X cookie and display number of
+        the virtual desktop of the project); the agent's ``extra_env`` comes last."""
         argv = build_argv(self.sre_exe, args, privileged=privileged)
-        env = build_env(user, privileged=privileged, lang=lang)
-        env.update(self.extra_env)
+        environment = build_env(user, privileged=privileged, lang=lang)
+        environment.update(env or {})
+        environment.update(self.extra_env)
+        env = environment
         return await asyncio.create_subprocess_exec(
             *argv, env=env,
             stdin=stdin, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             start_new_session=True, close_fds=True, limit=STREAM_LINE_LIMIT)
 
     async def run(self, user: str, args, *, privileged: bool = False, stdin: bytes | None = None,
-                  timeout: float | None = None, lang: str | None = None) -> RunResult:
+                  timeout: float | None = None, lang: str | None = None, env: dict | None = None) -> RunResult:
         """Run ``sre`` to completion: ``list``, ``eval``, ``state``, ``stop``.  Raises
         :class:`CommandError` on a non-zero exit, :class:`CommandTimeout` after *timeout*
         (default: the timeout of the command)."""
@@ -280,7 +284,7 @@ class SreRunner:
         try:
             proc = await self._spawn(user, args, privileged=privileged,
                                      stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
-                                     lang=lang)
+                                     lang=lang, env=env)
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(stdin), self._timeout(args, timeout))
             except TimeoutError:
@@ -295,7 +299,7 @@ class SreRunner:
         return RunResult(proc.returncode, stdout, text, events)
 
     async def stream(self, user: str, args, *, privileged: bool = False, stdin: bytes | None = None,
-                     timeout: float | None = None, lang: str | None = None) -> StreamingRun:
+                     timeout: float | None = None, lang: str | None = None, env: dict | None = None) -> StreamingRun:
         """Start ``sre`` and give its stderr events as they come (``start``, ``restore``: the
         progress of the pulls and deploys, the flavor form, the ``project created`` event).
         *stdin* (``restore -``) is written then closed."""
@@ -303,7 +307,7 @@ class SreRunner:
         try:
             proc = await self._spawn(user, args, privileged=privileged,
                                      stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
-                                     lang=lang)
+                                     lang=lang, env=env)
         except BaseException:
             self._release(held)
             raise

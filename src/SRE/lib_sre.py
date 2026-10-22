@@ -208,6 +208,17 @@ def _resolve_xauth_cookie():
     return cookie if cookie and _re.fullmatch(r'[0-9A-Fa-f]+', cookie) else None
 
 
+def _resolve_x11_display():
+    """Return the validated X display number from $SRE_X11_DISPLAY (digits), or None.
+
+    The env var is set by the web agent, which runs one virtual X server per project on the
+    pool host: the x11_host machines then get SRE_DISPLAY=<sre_host_ip>:<number> and their
+    .bashrc points DISPLAY at it instead of <sre_host_ip>:0.  Never set on a workstation.
+    """
+    number = os.environ.get(params.sre_x11_display_env_variable)
+    return number if number and _re.fullmatch(r'[0-9]{1,4}', number) else None
+
+
 class _AppendOp:
     """A file-append operation registered via NetScheme0.append_to_file()."""
     __slots__ = ('filename', 'content', 'permissions', 'owner', 'mtime')
@@ -1292,6 +1303,7 @@ class NetScheme0:
         abb_lab_name = params.get_abbreviated_lab_name_from_running_lab_name(self.running_lab_name)
         _used_ports: set = set()
         xauth_cookie = _resolve_xauth_cookie()
+        x11_display = _resolve_x11_display()
         for m in self.get_machines():
             m.ports = [_resolve_port(p, _used_ports) for p in m.ports]
             m.envs[f"{params.sre_name_env_variable}={abb_lab_name}"] = True
@@ -1299,6 +1311,8 @@ class NetScheme0:
                 m.envs[f"{params.sre_host_ip_env_variable}={params.sre_host_ip}"] = True
                 if xauth_cookie:
                     m.envs[f"{params.sre_xauth_cookie_env_variable}={xauth_cookie}"] = True
+                if x11_display:
+                    m.envs[f"{params.sre_display_env_variable}={params.sre_host_ip}:{x11_display}"] = True
             volumes = []
             if len(m.volumes) > 0:
                 has_private_volume = False

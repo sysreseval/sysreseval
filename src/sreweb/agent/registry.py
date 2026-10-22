@@ -17,6 +17,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,6 +39,7 @@ EVENT_REMOVED = 'removed'
 
 LOG_CHUNK = 1 << 18          # bytes of operations.log read per tick at most
 STATE_WRITE_INTERVAL = 60.0  # seconds between two writes of the state file of a project
+_HEX = re.compile(r'[0-9A-Fa-f]+')
 
 
 @dataclass
@@ -71,6 +73,10 @@ class Project:
     created_at: float = field(default_factory=time.time)
     subscribers: list = field(default_factory=list)
     terminals: dict = field(default_factory=dict)   # device -> [PtySession]
+    #: The virtual X desktop of the project ({'number', 'cookie'}, kept in the state file: the
+    #: containers were started with them), and the open display WebSockets (``display.py``).
+    display: dict | None = None
+    display_clients: list = field(default_factory=list)
     _state_written: float = 0.0
 
     @property
@@ -134,6 +140,8 @@ class Registry:
         self.tick_hooks: list[TickHook] = []
         self.on_added: list[Callable[[Project], None]] = []
         self.on_info_changed: list[Callable[[Project], None]] = []
+        #: Awaited for every project whose directory vanished, and for every project at stop().
+        self.on_removed: list[Callable[[Project], Awaitable[None]]] = []
         #: Builds the ``info`` event of a subscriber (set by the app: the sanitised view).
         self.info_event: Callable[[Project, Identity], dict] | None = None
         self._task: asyncio.Task | None = None
@@ -180,6 +188,11 @@ class Registry:
             created = state.get('created_at')
             if isinstance(created, (int, float)):
                 project.created_at = created
+            display = state.get('display')
+            if (isinstance(display, dict) and isinstance(display.get('number'), int)
+                    and not isinstance(display.get('number'), bool) and isinstance(display.get('cookie'), str)
+                    and _HEX.fullmatch(display['cookie'])):
+                project.display = {'number': display['number'], 'cookie': display['cookie']}
 
     def write_state(self, project: Project, force: bool = False):
         """The state file of a managed project (idle clock, idle timeout), at most once a minute."""
@@ -191,6 +204,8 @@ class Registry:
         project._state_written = now
         state = {'idle_timeout': project.idle_timeout, 'created_at': project.created_at,
                  'last_activity_at': time.time() - project.idle_seconds(), 'owner': project.owner}
+        if project.display:
+            state['display'] = dict(project.display)
         try:
             self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             tmp = self.state_dir / f".{project.rln}.json.tmp"
@@ -333,6 +348,7 @@ class Registry:
             log.info("project gone: %s", project.rln)
             self._remove_state(project.rln)
             await self._close_terminals(project)
+            await self._run_removed_hooks(project)
             await self.broadcast(project, {'t': EVENT_REMOVED})
             project.subscribers.clear()
         for project in added:
@@ -378,6 +394,14 @@ class Registry:
                 await self._task
         for project in list(self.projects.values()):
             await self._close_terminals(project)
+            await self._run_removed_hooks(project)
+
+    async def _run_removed_hooks(self, project: Project):
+        for hook in self.on_removed:
+            try:
+                await hook(project)
+            except Exception:
+                log.exception("removal hook failed on %s", project.rln)
 
     @staticmethod
     async def _close_terminals(project: Project):

@@ -1129,3 +1129,73 @@ class TestIpv6Flag:
         kwargs = lab_cls.return_value.new_machine.call_args_list[0].kwargs
         assert {'exec_commands', 'sysctls', 'envs', 'ports', 'ulimits', 'volumes', 'shell', 'image', 'bridged',
                 'privileged', 'entrypoint'} <= set(kwargs)
+
+
+# ---------------------------------------------------------------------------
+# X11: the envs of the x11_host machines (SRE_HOST_IP, the cookie, the web agent's SRE_DISPLAY)
+# ---------------------------------------------------------------------------
+
+from SRE.lib_sre import _resolve_x11_display  # noqa: E402
+
+
+class X11Scheme(NetScheme0):
+    def __init__(self, data):
+        super().__init__(data=data, running_lab_name=RUNNING_LAB)
+        self.net1 = Network(name='net1')
+        self.gw = Machine(name='gw', bridged=True, x11_host=True)
+        self.m1 = Machine(name='m1')
+        for m in (self.gw, self.m1):
+            NetAdapter(machine=m, network=self.net1, interface=0)
+
+
+def _x11_envs(monkeypatch, env: dict) -> dict:
+    """{machine: the X11-related envs of new_machine()} of get_new_lab_from_scheme() run with
+    the given SRE_XAUTH_COOKIE / SRE_X11_DISPLAY environment (the lab name env left out)."""
+    monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+    for name in (params.sre_xauth_cookie_env_variable, params.sre_x11_display_env_variable):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    lab_cls = MagicMock()
+    monkeypatch.setattr(lib_sre, 'Lab', lab_cls)
+    X11Scheme(MockData()).get_new_lab_from_scheme()
+    return {c.args[0]: {e for e in c.kwargs['envs'] if not e.startswith(params.sre_name_env_variable + '=')}
+            for c in lab_cls.return_value.new_machine.call_args_list}
+
+
+class TestX11DisplayEnv:
+    HOST_IP = f"{params.sre_host_ip_env_variable}={params.sre_host_ip}"
+    COOKIE = 'a' * 32
+
+    def test_workstation_path_unchanged(self, monkeypatch):
+        # no cookie: the host ip only; a cookie: DISPLAY stays <host ip>:0 (no SRE_DISPLAY)
+        assert _x11_envs(monkeypatch, {}) == {'gw': {self.HOST_IP}, 'm1': set()}
+        envs = _x11_envs(monkeypatch, {params.sre_xauth_cookie_env_variable: self.COOKIE})
+        assert envs == {'gw': {self.HOST_IP, f"{params.sre_xauth_cookie_env_variable}={self.COOKIE}"}, 'm1': set()}
+
+    def test_web_agent_display_number(self, monkeypatch):
+        envs = _x11_envs(monkeypatch, {params.sre_xauth_cookie_env_variable: self.COOKIE,
+                                       params.sre_x11_display_env_variable: '12'})
+        assert envs['gw'] == {self.HOST_IP, f"{params.sre_xauth_cookie_env_variable}={self.COOKIE}",
+                              f"{params.sre_display_env_variable}={params.sre_host_ip}:12"}
+        assert envs['m1'] == set()
+
+    def test_display_number_without_cookie_still_passed(self, monkeypatch):
+        envs = _x11_envs(monkeypatch, {params.sre_x11_display_env_variable: '7'})
+        assert envs['gw'] == {self.HOST_IP, f"{params.sre_display_env_variable}={params.sre_host_ip}:7"}
+
+    @pytest.mark.parametrize('bad', ['', 'abc', '1 2', '12345', ':12', '-1', '1.0'])
+    def test_malformed_display_number_ignored(self, monkeypatch, bad):
+        envs = _x11_envs(monkeypatch, {params.sre_xauth_cookie_env_variable: self.COOKIE,
+                                       params.sre_x11_display_env_variable: bad})
+        assert not any(e.startswith(params.sre_display_env_variable + '=') for e in envs['gw'])
+
+    def test_resolve_x11_display(self, monkeypatch):
+        monkeypatch.delenv(params.sre_x11_display_env_variable, raising=False)
+        assert _resolve_x11_display() is None
+        monkeypatch.setenv(params.sre_x11_display_env_variable, '0')
+        assert _resolve_x11_display() == '0'
+        monkeypatch.setenv(params.sre_x11_display_env_variable, '0099')
+        assert _resolve_x11_display() == '0099'
+        monkeypatch.setenv(params.sre_x11_display_env_variable, '12\n')
+        assert _resolve_x11_display() is None

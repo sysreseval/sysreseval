@@ -23,6 +23,7 @@ from ..i18n import translator, catalog
 log = logging.getLogger('sreweb.portal')
 
 TERMINAL_SUBPROTOCOL = 'sre-term.v1'
+DISPLAY_SUBPROTOCOL = 'sre-display.v1'   # the RFB stream of the virtual X desktop (binary frames only)
 LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français'}
 
 
@@ -70,6 +71,9 @@ class Routes:
         r.add_post('/api/projects/{host}/{rln}/eval', self.api_eval)
         r.add_post('/api/projects/{host}/{rln}/states/{state}', self.api_state)
         r.add_get('/api/projects/{host}/{rln}/terminals/{device}', self.api_terminal)
+        r.add_get('/api/projects/{host}/{rln}/display', self.api_display)
+        r.add_post('/api/projects/{host}/{rln}/display', self.api_display_start)
+        r.add_get('/api/projects/{host}/{rln}/display/ws', self.api_display_ws)
         r.add_get('/api/projects/{host}/{rln}/log', self.api_log)
         r.add_post('/api/projects/{host}/{rln}/touch', self.api_touch)
         r.add_get('/api/projects/{host}/{rln}/export', self.api_export)
@@ -415,6 +419,17 @@ class Routes:
     async def api_events(self, request):
         host, rln, identity = self._target(request)
         return await self.relay.websocket(request, host, identity, self._path(rln, '/events'))
+
+    async def api_display(self, request):
+        return await self._relay_json(request, 'GET', '/display')
+
+    async def api_display_start(self, request):
+        return await self._relay_json(request, 'POST', '/display', timeout=60)
+
+    async def api_display_ws(self, request):
+        host, rln, identity = self._target(request)
+        return await self.relay.websocket(request, host, identity, self._path(rln, '/display/ws'),
+                                          protocols=(DISPLAY_SUBPROTOCOL,))
 
     async def api_terminal(self, request):
         host, rln, identity = self._target(request)

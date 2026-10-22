@@ -13,6 +13,7 @@ Environment variables (all optional but the first):
   SRE_PUB_DIR         the public dir: projects in <SRE_PUB_DIR>/projects, cooldown files in
                       <SRE_PUB_DIR>/last_self_grades, archives in <SRE_PUB_DIR>/archives, user
                       public dirs in <SRE_PUB_DIR>/home (required: the mock never touches /var/lib/sre)
+  MOCK_X11            set: the open machine of the stub lab is an x11_host (its info.json)
   MOCK_SRE_LOG        a file where every invocation appends one JSON line
                       {"argv": [...], "env": {<the keys of LOGGED_ENV present in the environment>}}
   MOCK_LAB_LIST       JSON list of the lab names `list` prints (default DEFAULT_LAB_LIST)
@@ -79,9 +80,11 @@ ENV_START_DELAY = 'MOCK_START_DELAY'
 ENV_EVAL_DELAY = 'MOCK_EVAL_DELAY'
 ENV_COOLDOWN = 'MOCK_COOLDOWN'
 ENV_FAIL = 'MOCK_FAIL'
+ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an x11_host
 
 #: the environment keys written to MOCK_SRE_LOG (when present in the environment)
-LOGGED_ENV = ('SUDO_USER', 'USER_USERNAME', 'LOGNAME', 'SUDO_COMMAND', 'SRE_IN_RECORDER', 'TERM')
+LOGGED_ENV = ('SUDO_USER', 'USER_USERNAME', 'LOGNAME', 'SUDO_COMMAND', 'SRE_IN_RECORDER', 'TERM',
+              'SRE_XAUTH_COOKIE', 'SRE_X11_DISPLAY')
 
 DEFAULT_LAB_LIST = ["sre/dhcp.py", "s4/tp_ssh"]
 #: the title of the first lab of the list (`list --with-titles`, `info.json`); the others have none
@@ -156,12 +159,12 @@ def question_hashes() -> tuple:
     return text.question_hash, form.question_hash
 
 
-def stub_machines(include_hidden: bool) -> list:
+def stub_machines(include_hidden: bool, x11_host: bool = False) -> list:
     lan, dmz = SWITCH_MANAGED, SWITCH_PLAIN
     machines = [
         InfoMachine(name=MACHINE_OPEN, status="running", allow_connection=True, hidden=False,
                     interfaces=[InfoInterface(lan, "eth0"), InfoInterface(dmz, "eth1")],
-                    ports=["2222:22/tcp"], bridged=True),
+                    ports=["2222:22/tcp"], bridged=True, x11_host=x11_host),
         InfoMachine(name=MACHINE_CLOSED, status="running", allow_connection=False, hidden=False,
                     interfaces=[InfoInterface(lan, "eth0")], ports=[], bridged=False),
     ]
@@ -173,7 +176,8 @@ def stub_machines(include_hidden: bool) -> list:
     return machines
 
 
-def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_mode: bool) -> InfoLab:
+def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_mode: bool,
+              x11_host: bool = False) -> InfoLab:
     """The ``info.json`` of a project of the stub lab, as ``Grade0.save_lab_info()`` would write
     it: the hidden machine and every state only in a debug project."""
     return InfoLab(
@@ -186,7 +190,7 @@ def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_m
                          "`m1` aussi sur `dmz`.\n\n| Machine | Rôle |\n|---|---|\n| m1 | client |\n| m2 | serveur |\n"),
         export_kathara_project=True,
         allow_self_grade=True,
-        machines=stub_machines(include_hidden=debug_project),
+        machines=stub_machines(include_hidden=debug_project, x11_host=x11_host),
         questions=stub_questions(),
         delay_between_self_grade=5,
         eval_interval_without_exam_mode=0,
@@ -319,7 +323,7 @@ class Mock:
         self.emit_deployment()
 
         info = stub_info(running_lab_name, self.lab_title(lab_cli_arg) or lab_name.removesuffix('.py'),
-                         debug_project=debug_project, instructor_mode=instructor_mode)
+                         debug_project=debug_project, instructor_mode=instructor_mode, x11_host=bool(self.env.get(ENV_X11)))
         Path(params.info_filename(running_lab_name)).write_text(info.to_json())
         emit({"phase": "project", "status": "created", "running_lab_name": running_lab_name})
         return running_lab_name
