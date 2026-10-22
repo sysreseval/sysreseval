@@ -2287,6 +2287,7 @@ class Grade0:
         eval_interval_without_exam_mode = getattr(module_rvlab, 'eval_interval_without_exam_mode', params.default_eval_interval_without_exam_mode)
         eval_before_exit = getattr(module_rvlab, 'eval_before_exit', False)
         allow_save_restore = getattr(module_rvlab, 'allow_save_restore', False)
+        export_schema_pdf = bool(getattr(module_rvlab, 'export_schema_pdf', True))
 
         informations = TranslatedText.from_value(self.net_scheme.informations, default_language)
         for q in questions:
@@ -2356,6 +2357,7 @@ class Grade0:
                        eval_interval_without_exam_mode=eval_interval_without_exam_mode,
                        eval_before_exit=eval_before_exit,
                        allow_save_restore=allow_save_restore,
+                       export_schema_pdf=export_schema_pdf,
                        default_language=default_language,
                        user_allowed_states=user_allowed_states,
                        admin_only_states=admin_only_states,

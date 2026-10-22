@@ -260,7 +260,7 @@ class TestStart:
         assert set(raw) >= {'lab_name', 'lab_hash', 'title', 'informations', 'export_kathara_project',
                             'allow_self_grade', 'machines', 'questions', 'delay_between_self_grade',
                             'eval_interval_without_exam_mode', 'eval_before_exit', 'user_allowed_states',
-                            'debug_project', 'instructor_mode', 'allow_save_restore', 'admin_only_states',
+                            'debug_project', 'instructor_mode', 'allow_save_restore', 'export_schema_pdf', 'admin_only_states',
                             'default_language', 'network_colors', 'network_shapes', 'show_nat_network',
                             'nat_network_name', 'nat_network_color', 'host_network_exploded',
                             'host_network_edge_relative_length', 'schema_splines', 'schema_overlap', 'switches'}

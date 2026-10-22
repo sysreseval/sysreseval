@@ -21,6 +21,14 @@ During an exam, **Open Project** is disabled — only pre-authorised exam labs o
 
 **File → Restore Project** (always available outside exam mode) asks for a `.sre` file and runs `sre-wrapper restore -` with the file on stdin, showing the same image-pull / machine-start progress as **Open Project**. The saved project comes back as a **new** tab (new instance); the original one, if still open, is untouched. Only files are restored — the lab's `restore` state relaunches its services.
 
+## Exporting a project
+
+**File → Export Kathara Project** (enabled unless the lab sets `export_kathara_project = False`) runs `sre-wrapper export <project>` with the display settings of the Schema tab and writes `~/<lab>.zip`: the Kathara project (`lab.conf`, the files of every machine) with `schema.pdf` and `informations.pdf`.
+
+**File → Export Schema to PDF** (right below; enabled unless the lab sets `export_schema_pdf = False`) writes the drawing of the *Schema* tab to a PDF chosen in a file dialog (default `~/<lab>_schema.pdf`): the visible machines only, never the hidden ones, even for a debug project or while the *Instructor mode* button is on, with the tab's current Lines / Compact-Spread / Order / Icons settings and the machine order of `info.json`. The GUI draws it itself with graphviz from `info.json`; no `sre` command is run.
+
+Both items are disabled in exam mode.
+
 ## Project tabs
 
 | Tab | Content |
@@ -54,7 +62,7 @@ A **debug project** (`sre start --debug-project`) shows the same button: its `in
 
 ## Exam mode
 
-When `/var/lib/sre/exam.json` exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All are disabled, and answers re-save with an updated `exam_time_remaining` on every exam-config change.
+When `/var/lib/sre/exam.json` exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All / Export Kathara Project / Export Schema to PDF are disabled, and answers re-save with an updated `exam_time_remaining` on every exam-config change.
 
 | Phase | Trigger | Shows / actions |
 |-------|---------|----------------|

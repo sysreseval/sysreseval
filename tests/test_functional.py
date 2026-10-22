@@ -248,6 +248,19 @@ class TestProjectStructure:
         machine_names = {m['name'] for m in info['machines']}
         assert machine_names == {'router', 'client'}
 
+    def test_export_schema_pdf_defaults_to_true_in_info_json(self, started_lab):
+        """The fixture lab sets no export_schema_pdf: File → Export Schema to PDF is on by default."""
+        info = json.loads((Path(params.sre_projects_dir) / started_lab / 'info.json').read_text())
+        assert info['export_schema_pdf'] is True
+
+    def test_export_schema_pdf_false_from_the_lab(self, functional_env, tmp_path, monkeypatch):
+        lab = _lab_copy(tmp_path, 'nopdf.py', lambda t: t + '\nexport_schema_pdf = False\n')
+        monkeypatch.setattr(params, 'authorized_src_dir', params.authorized_src_dir + [str(tmp_path)])
+        do_action_start(lab_cli_arg=str(lab), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        info = json.loads((Path(params.sre_projects_dir) / rln / 'info.json').read_text())
+        assert info['export_schema_pdf'] is False
+
     def test_private_dir_exists(self, started_lab):
         private_dir = Path(params.sre_projects_dir) / started_lab / '.private'
         assert private_dir.is_dir()

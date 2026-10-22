@@ -199,6 +199,7 @@ def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_m
         debug_project=debug_project,
         instructor_mode=instructor_mode,
         allow_save_restore=True,
+        export_schema_pdf=True,
         admin_only_states=[],
         default_language=DEFAULT_LANGUAGE,
         network_colors={SWITCH_PLAIN: "lightyellow"},

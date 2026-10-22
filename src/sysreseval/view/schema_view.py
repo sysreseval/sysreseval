@@ -1,5 +1,7 @@
 import base64
 import random as _random
+import tempfile
+from pathlib import Path
 
 from graphviz import Graph
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
@@ -17,8 +19,9 @@ from SRE.schema_graph import HIDDEN_COLOR, SchemaMachine, SchemaTopology, build_
 from sysreseval import settings
 
 
-def _svg_file_to_png_data_uri(path: str) -> str | None:
-    """The PNG data URI of an SVG icon: QSvgRenderer cannot draw a nested SVG ``<image>``."""
+def _svg_file_to_png_bytes(path: str) -> bytes | None:
+    """The PNG of an SVG icon at its own size (64x64 when it declares none), drawn by
+    QSvgRenderer; None when Qt cannot read the file."""
     renderer = QSvgRenderer(path)
     if not renderer.isValid():
         return None
@@ -34,8 +37,15 @@ def _svg_file_to_png_data_uri(path: str) -> str | None:
     buf = QBuffer()
     buf.open(QIODevice.WriteOnly)
     img.save(buf, "PNG")
-    data = base64.b64encode(bytes(buf.data())).decode()
-    return f"data:image/png;base64,{data}"
+    return bytes(buf.data())
+
+
+def _svg_file_to_png_data_uri(path: str) -> str | None:
+    """The PNG data URI of an SVG icon: QSvgRenderer cannot draw a nested SVG ``<image>``."""
+    data = _svg_file_to_png_bytes(path)
+    if data is None:
+        return None
+    return "data:image/png;base64," + base64.b64encode(data).decode()
 
 
 def _inline_svg_images(content: str) -> QByteArray:
@@ -60,13 +70,17 @@ def _build_graph(
     schema_splines: str = 'curved',
     schema_overlap: str = 'prism',
     include_hidden: bool = False,
+    icon=None,
+    fmt: str = "svg",
 ) -> Graph:
     """Build the graphviz graph of the topology from the machines list in info.json
     (``SRE.schema_graph.build_graph``).
 
     The hidden machines are left out unless ``include_hidden`` (the Full Schema of a debug
     project, whose info.json lists them): they, their links and the networks only they use are
-    then drawn in ``HIDDEN_COLOR``."""
+    then drawn in ``HIDDEN_COLOR``.  ``icon`` maps the path of an SVG icon file to the file
+    graphviz embeds (the PNG conversions of ``_build_pdf_from_machines``) and ``fmt`` is the
+    output format of ``pipe()``; the DOT source depends on neither."""
     topo = SchemaTopology(
         machines=[SchemaMachine.from_info(m) for m in machines],
         network_colors=network_colors,
@@ -80,7 +94,7 @@ def _build_graph(
         schema_overlap=schema_overlap,
     )
     return build_graph(topo, curved=curved, sep_pos=sep_pos, use_icons=use_icons, reverse=reverse,
-                       random_seed=random_seed, include_hidden=include_hidden)
+                       random_seed=random_seed, include_hidden=include_hidden, icon=icon, fmt=fmt)
 
 
 def _build_svg_from_machines(
@@ -124,6 +138,31 @@ def _build_svg_from_machines(
     if use_icons:
         return _inline_svg_images(svg_str)
     return QByteArray(svg_str.encode("utf-8"))
+
+
+def _png_icon_file(svg_path: str, out_dir: str) -> str:
+    """The PNG file of the SVG icon *svg_path*, written in *out_dir* (the SVG path itself when Qt
+    cannot read the file)."""
+    data = _svg_file_to_png_bytes(svg_path)
+    if data is None:
+        return svg_path
+    out = Path(out_dir) / (Path(svg_path).stem + ".png")
+    out.write_bytes(data)
+    return str(out)
+
+
+def _build_pdf_from_machines(machines: list, **kwargs) -> bytes:
+    """The schema PDF of the machines list in info.json, rendered by graphviz (the keyword
+    arguments of ``_build_graph``).
+
+    Graphviz's PDF output embeds raster images only: the SVG icons are drawn by Qt into PNG files
+    of a temporary directory (``sre export`` converts them with rsvg-convert for the same reason).
+    They are drawn at their own size, 200 px wide: 200-400 dpi in the nodes, whose size is fixed
+    by their ``width`` / ``height`` attributes."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        g = _build_graph(machines, icon=lambda svg_path: _png_icon_file(svg_path, tmp_dir), fmt="pdf",
+                         **kwargs)
+        return g.pipe(format="pdf")
 
 
 def _vsep() -> QFrame:
@@ -296,9 +335,10 @@ class SchemaView(QWidget):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def _reload(self):
-        data = _build_svg_from_machines(
-            self._machines,
+    def _draw_kwargs(self) -> dict:
+        """The keyword arguments of ``_build_graph`` for this view's settings (lines, spread,
+        order, icons) and the display options of the lab, ``include_hidden`` apart."""
+        return dict(
             curved=self._curved,
             sep_pos=self._sep_pos,
             use_icons=self._use_icons,
@@ -313,9 +353,18 @@ class SchemaView(QWidget):
             host_network_edge_relative_length=self._host_network_edge_relative_length,
             schema_splines=self._schema_splines,
             schema_overlap=self._schema_overlap,
-            include_hidden=self._include_hidden,
         )
+
+    def _reload(self):
+        data = _build_svg_from_machines(self._machines, include_hidden=self._include_hidden,
+                                        **self._draw_kwargs())
         self._view.load_svg(data)
+
+    def render_pdf(self) -> bytes:
+        """The schema as this tab draws it (lines, spread, order, icons) in a PDF, without the
+        hidden machines whatever the view: what a student may export (File → Export Schema to
+        PDF)."""
+        return _build_pdf_from_machines(self._machines, include_hidden=False, **self._draw_kwargs())
 
     def update_data(self, machines: list, network_colors: dict = {},
                     network_shapes: dict = {},

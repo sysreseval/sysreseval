@@ -249,6 +249,20 @@ class TestInfoLab:
         lab.allow_save_restore = True
         assert InfoLab.from_json(lab.to_json()).allow_save_restore is True
 
+    def test_export_schema_pdf_default_true(self):
+        lab = _make_info_lab()
+        assert lab.export_schema_pdf is True
+        assert InfoLab.from_json(lab.to_json()).export_schema_pdf is True
+        # absent from an older info.json → True (File → Export Schema to PDF is on by default)
+        d = json.loads(lab.to_json())
+        del d['export_schema_pdf']
+        assert InfoLab.from_json(json.dumps(d)).export_schema_pdf is True
+
+    def test_export_schema_pdf_roundtrip(self):
+        lab = _make_info_lab()
+        lab.export_schema_pdf = False
+        assert InfoLab.from_json(lab.to_json()).export_schema_pdf is False
+
     def test_switches_default_to_none(self):
         lab = _make_info_lab()
         assert lab.switches == []

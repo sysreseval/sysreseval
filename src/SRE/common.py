@@ -417,6 +417,7 @@ class InfoLab:
     debug_project: bool = False
     instructor_mode: bool = False
     allow_save_restore: bool = False
+    export_schema_pdf: bool = True
     admin_only_states: list = field(default_factory=list)
     default_language: str = ''
     network_colors: dict = field(default_factory=dict)
@@ -453,6 +454,7 @@ class InfoLab:
             debug_project=d.get("debug_project", False),
             instructor_mode=d.get("instructor_mode", False),
             allow_save_restore=d.get("allow_save_restore", False),
+            export_schema_pdf=d.get("export_schema_pdf", True),
             delay_between_self_grade=d.get("delay_between_self_grade", 0),
             eval_interval_without_exam_mode=d.get("eval_interval_without_exam_mode", 0),
             eval_before_exit=d.get("eval_before_exit", False),

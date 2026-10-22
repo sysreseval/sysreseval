@@ -2,7 +2,9 @@
 Schema tabs of the GUI: the topology drawn by graphviz from the machines of info.json.  The
 Schema tab leaves the hidden machines out; the Full Schema tab of a debug project (whose
 info.json lists them) draws them, their links and the networks only they use in red
-(schema_view.HIDDEN_COLOR), like their titles in the Terminals tab.
+(schema_view.HIDDEN_COLOR), like their titles in the Terminals tab.  SchemaView.render_pdf()
+(File → Export Schema to PDF) is the Schema tab's drawing in a PDF, without the hidden machines
+whatever the view.
 Offscreen Qt; the graph tests read the DOT source, no graphviz binary needed.
 """
 import json
@@ -18,11 +20,14 @@ pytest.importorskip('PySide6')
 pytest.importorskip('graphviz')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+from graphviz import Graph  # noqa: E402
 from PySide6.QtCore import QTranslator  # noqa: E402
+from PySide6.QtGui import QImage  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from SRE import params  # noqa: E402
-from sysreseval.view.schema_view import (HIDDEN_COLOR, _build_graph, _build_svg_from_machines,  # noqa: E402
+from sysreseval.view.schema_view import (HIDDEN_COLOR, _build_graph, _build_pdf_from_machines,  # noqa: E402
+                                         _build_svg_from_machines, _svg_file_to_png_bytes,
                                          _svg_file_to_png_data_uri)
 
 _app = QApplication.instance() or QApplication([])
@@ -65,6 +70,23 @@ def _red_label(g, head: str) -> bool:
 
 def _red_line(g, head: str) -> bool:
     return re.search(rf"(?<!\w)color={HIDDEN_COLOR}(?!\w)", _attrs(g, head)) is not None
+
+
+@pytest.fixture
+def fake_pipe(monkeypatch):
+    """graphviz's pipe() replaced, no neato needed (SchemaView.__init__ draws the SVG at once):
+    every call records the DOT source, the format and the first bytes of the PNG files the source
+    embeds, as they are at that moment."""
+    calls = []
+
+    def pipe(self, format=None, **kwargs):
+        pngs = {p: Path(p).read_bytes()[:8] for p in re.findall(r'"([^"]+\.png)"', self.source)
+                if Path(p).exists()}
+        calls.append((self.source, format, pngs))
+        return b"%PDF-1.7 fake" if format == "pdf" else b"<svg xmlns='http://www.w3.org/2000/svg'/>"
+
+    monkeypatch.setattr(Graph, "pipe", pipe)
+    return calls
 
 
 class TestBuildGraph:
@@ -125,6 +147,11 @@ class TestBuildSvg:
         svg = bytes(_build_svg_from_machines(MACHINES, use_icons=False, include_hidden=True))
         assert b"probe" in svg and b"hidden_net" in svg
 
+    @pytest.mark.parametrize("use_icons", [False, True])
+    def test_pdf_of_the_schema_is_rendered_by_graphviz(self, use_icons):
+        # with icons: graphviz reads the PNG files Qt wrote
+        assert _build_pdf_from_machines(MACHINES, use_icons=use_icons).startswith(b"%PDF")
+
 
 def _write_info(project_dir: Path, **fields):
     (project_dir / params.info_json_name).write_text(json.dumps({
@@ -173,6 +200,19 @@ class TestProjectWidget:
         names = ["m1", "probe", "probe2", "m2"]
         assert [m["name"] for m in widget._full_schema_view._machines] == names
         assert [m["name"] for m in widget._schema_view._machines] == names
+
+    def test_render_schema_pdf_is_the_schema_not_the_full_schema(self, project_dir, fake_pipe):
+        from sysreseval.project_widget import ProjectWidget
+        _write_info(project_dir, debug_project=True)
+        widget = ProjectWidget(project_dir)
+        widget._schema_view._sep_pos, widget._schema_view._use_icons = 8, False
+        widget._full_schema_view._reverse, widget._full_schema_view._use_icons = True, False
+        assert widget.render_schema_pdf() == b"%PDF-1.7 fake"
+        source, fmt, _ = fake_pipe[-1]
+        assert fmt == "pdf"
+        assert source == _build_graph(VISIBLE, curved=widget._schema_view._curved, sep_pos=8,
+                                      use_icons=False).source
+        assert not re.search(r"\bprobe\b", source)
 
     @pytest.mark.skipif(not FR_QM.exists(), reason="translations not compiled")
     def test_french_title(self, project_dir):
@@ -232,3 +272,58 @@ class TestNetworkShapes:
         monkeypatch.setattr(params, "machine_icon_svg_file", str(GRAPHICS / 'machine.svg'))
         svg = bytes(_build_svg_from_machines(GATEWAY, use_icons=True, network_shapes={"core": "cloud"}))
         assert b"data:image/png;base64" in svg and b"cloud.svg" not in svg
+
+
+# ---------------------------------------------------------------------------
+# File → Export Schema to PDF: SchemaView.render_pdf()
+# ---------------------------------------------------------------------------
+
+class TestSchemaPdf:
+    """The Schema tab's drawing in a PDF, without the hidden machines whatever the view: graphviz's
+    pipe() is faked, the DOT source is checked."""
+
+    @staticmethod
+    def _view(include_hidden=False):
+        from sysreseval.view.schema_view import SchemaView
+        view = SchemaView(MACHINES, include_hidden=include_hidden)
+        view._use_icons = False
+        return view
+
+    def test_render_pdf_leaves_the_hidden_machines_out_even_in_the_full_schema(self, fake_pipe):
+        view = self._view(include_hidden=True)
+        assert view.render_pdf() == b"%PDF-1.7 fake"
+        source, fmt, _ = fake_pipe[-1]
+        assert fmt == "pdf"
+        assert re.search(r"\bm1\b", source) and re.search(r"\blan\b", source)
+        for name in ("probe", "probe2", "hidden_net"):
+            assert not re.search(rf"\b{name}\b", source)
+
+    def test_render_pdf_follows_the_tab_settings(self, fake_pipe):
+        view = self._view()
+        view._curved, view._sep_pos, view._reverse = False, 7, True
+        view.render_pdf()
+        source, _, _ = fake_pipe[-1]
+        # the DOT source does not depend on the output format
+        assert source == _build_graph(VISIBLE, curved=False, sep_pos=7, use_icons=False, reverse=True).source
+        view._random_seed = 12
+        view.render_pdf()
+        assert fake_pipe[-1][0] == _build_graph(VISIBLE, curved=False, sep_pos=7, use_icons=False,
+                                                reverse=True, random_seed=12).source
+
+    def test_render_pdf_embeds_png_icons_of_a_temporary_directory(self, fake_pipe):
+        view = self._view()
+        view._use_icons = True
+        view.render_pdf()
+        source, _, pngs = fake_pipe[-1]
+        assert ".svg" not in source
+        assert len(pngs) == 2                                   # the machine and the switch icons
+        assert all(head.startswith(b"\x89PNG") for head in pngs.values())
+        assert not any(Path(p).exists() for p in pngs)          # removed with the directory
+
+    def test_png_bytes_of_an_icon(self):
+        data = _svg_file_to_png_bytes(CLOUD_SVG)
+        assert data.startswith(b"\x89PNG")
+        img = QImage.fromData(data)
+        assert (img.width(), img.height()) == (200, 120)        # the size the SVG declares
+        assert _svg_file_to_png_data_uri(CLOUD_SVG).startswith("data:image/png;base64,")
+        assert _svg_file_to_png_bytes(str(GRAPHICS / "missing.svg")) is None

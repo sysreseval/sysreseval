@@ -1352,7 +1352,8 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `shared_path` | `bool` | `False` | Create `/home/sre/{running_lab_name}/` (mode `0o777`) and bind-mount it into each container for file exchange between host and containers |
-| `export_kathara_project` | `bool` | `True` | If `False`, disable **File → Export** in the GUI and refuse `sre export` for this lab |
+| `export_kathara_project` | `bool` | `True` | If `False`, disable **File → Export Kathara Project** in the GUI and refuse `sre export` for this lab |
+| `export_schema_pdf` | `bool` | `True` | If `False`, disable **File → Export Schema to PDF** in the GUI: the drawing of the *Schema* tab (the visible machines only, with the tab's lines / spacing / order / icons settings) written to a PDF by graphviz. See [Exporting a project](gui.md#exporting-a-project) |
 | `allow_save_restore` | `bool` | `False` | If `True`, students may save a running project to a file (**File → Save Project**, `sre save`) and restore it later as a new instance (**File → Restore Project**, `sre restore`). The save file holds `data.json` and `.private/files` — in clear unless `save_key` is set — so enable it only for labs whose `Data` holds nothing the student must not read, or set `save_key` |
 | `save_key` | `str` | _(unset)_ | Non-empty secret string. When set, the payload of every save file is encrypted (AES-256-GCM, key derived from `save_key`); only a lab with the same key can restore it, and students cannot restore cleartext files. Keep the lab file unreadable by students |
 

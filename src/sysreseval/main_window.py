@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from graphviz import ExecutableNotFound
 from PySide6.QtCore import QByteArray, QEvent, QProcess, QTimer, QRectF, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QFont, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
@@ -355,6 +356,11 @@ class MainWindow(QMainWindow):
         self._export_action.triggered.connect(self._export_project)
         file_menu.addAction(self._export_action)
 
+        self._export_schema_pdf_action = QAction(self.tr("Export Schema to PDF"), self)
+        self._export_schema_pdf_action.setEnabled(False)
+        self._export_schema_pdf_action.triggered.connect(self._export_schema_pdf)
+        file_menu.addAction(self._export_schema_pdf_action)
+
         file_menu.addSeparator()
 
         self._settings_action = QAction(self.tr("Settings"), self)
@@ -474,8 +480,7 @@ class MainWindow(QMainWindow):
             return
 
         running_lab_name = widget.project_dir.name
-        lab_name = params.get_lab_name_from_running_lab_name(running_lab_name)
-        lab_display = lab_name.replace('@', '/').split('/')[-1].removesuffix('.py')
+        lab_display = params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name)
         zip_path = Path.home() / f"{lab_display}.zip"
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -502,6 +507,43 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, self.tr("Export"),
                                 self.tr("Project exported to ") + str(zip_path))
 
+    def _export_schema_pdf(self):
+        """File → Export Schema to PDF: the drawing of the Schema tab (its lines, spread, order
+        and icons settings) without the hidden machines, rendered by graphviz in this process
+        from info.json; no wrapper call."""
+        widget = self.tabs.currentWidget()
+        if not isinstance(widget, ProjectWidget):
+            return
+
+        lab_display = params.get_abbreviated_lab_name_from_running_lab_name(widget.project_dir.name)
+        default = Path.home() / f"{lab_display}_{params.pdf_schema_file}"
+        path, _ = QFileDialog.getSaveFileName(self, self.tr("Export Schema to PDF"), str(default),
+                                              self.tr("PDF files (*.pdf)"))
+        if not path:
+            return
+        if not path.lower().endswith(".pdf"):
+            path += ".pdf"
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            data, error = widget.render_schema_pdf(), None
+        except (ExecutableNotFound, subprocess.CalledProcessError, OSError) as e:
+            data, error = b"", str(e)      # graphviz's CalledProcessError carries neato's stderr
+        finally:
+            QApplication.restoreOverrideCursor()
+        if error is not None:
+            QMessageBox.critical(self, self.tr("Export Error"), self.tr("Export failed:\n") + error)
+            return
+
+        try:
+            Path(path).write_bytes(data)
+        except OSError as e:
+            QMessageBox.critical(self, self.tr("Export Error"),
+                                 self.tr("Failed to save file:\n") + str(e))
+            return
+
+        QMessageBox.information(self, self.tr("Export"), self.tr("Schema exported to ") + path)
+
     def _update_menu_state(self):
         self._refresh_file_menu_actions(self._exam_data is not None)
 
@@ -523,6 +565,9 @@ class MainWindow(QMainWindow):
         can_export = (not in_exam and current_is_project and
                       current_widget.info.get("export_kathara_project", True))
         self._export_action.setEnabled(can_export)
+        can_export_pdf = (not in_exam and current_is_project and
+                          bool(current_widget.info.get("export_schema_pdf", True)))
+        self._export_schema_pdf_action.setEnabled(can_export_pdf)
         self._instructor_btn.setVisible(current_is_project and current_widget.has_instructor_texts())
 
     def _tab_title_for(self, widget: ProjectWidget) -> str:
@@ -576,6 +621,7 @@ class MainWindow(QMainWindow):
         self._close_action.setText(self.tr("Close Project"))
         self._close_all_action.setText(self.tr("Close All Projects"))
         self._export_action.setText(self.tr("Export Kathara Project"))
+        self._export_schema_pdf_action.setText(self.tr("Export Schema to PDF"))
         self._settings_action.setText(self.tr("Settings"))
         self._language_action.setText(self.tr("Language"))
         self._quit_action.setText(self.tr("Quit"))
@@ -1158,8 +1204,7 @@ class MainWindow(QMainWindow):
             return
 
         running_lab_name = widget.project_dir.name
-        lab_name = params.get_lab_name_from_running_lab_name(running_lab_name)
-        lab_display = lab_name.replace('@', '/').split('/')[-1].removesuffix('.py')
+        lab_display = params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name)
         default = Path.home() / f"{lab_display}{params.save_file_suffix}"
 
         path, _ = QFileDialog.getSaveFileName(self, self.tr("Save Project"), str(default),

@@ -177,6 +177,11 @@ class ProjectWidget(QWidget):
     def schema_export_args(self) -> list[str]:
         return self._schema_view.schema_export_args()
 
+    def render_schema_pdf(self) -> bytes:
+        """The PDF of the Schema tab (File → Export Schema to PDF): never the Full Schema of a
+        debug project, the hidden machines are left out whatever the view."""
+        return self._schema_view.render_pdf()
+
     def save_answers(self):
         """Force-write answers.json for this project (e.g. on exam start)."""
         self._questions_view.save_answers()
