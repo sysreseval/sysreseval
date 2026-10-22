@@ -55,6 +55,8 @@ files `etc/agent.toml` and `etc/web.toml` under the installation directory.
 
 On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with the listen address
 of a management interface and a long random token, then `systemctl enable --now sre-agent`.
+For a whole classroom, `scripts/make-web-hosts.sh` (see *A whole site at once* below) writes
+the tokens, the certificates and the `[[hosts]]` entries from a list of machines.
 
 On the portal host: create the `sre-web` system user (`adduser --system --group --no-create-home
 --shell /usr/sbin/nologin sre-web`), write `/opt/sre/etc/web.toml` (root:sre-web, mode 0640:
@@ -202,6 +204,42 @@ portal host, `web.toml` gets `[pool] ca = ".../ca.crt"`, `client_cert = ".../por
 `https://<name or address in the certificate's SANs>:8451`. The portal then logs
 `TLS to the agents: CA …, client certificate …` and each host as reachable; an agent without
 the right certificate, or a client without one, fails at the handshake, before any request.
+
+### A whole site at once (`scripts/make-web-hosts.sh`)
+
+`scripts/make-web-hosts.sh` writes everything the previous section asks for, for every pool
+host of a site, from a list of its machines:
+
+```
+IP_MAC_FILE=ip_mac.txt OUT_DIR=/root/sre-pool REGEXP='^([a-z])[0-9]+$' ROOMS="a h" DISABLED_ROOMS=h \
+    scripts/make-web-hosts.sh
+```
+
+The list has one `mac;ip;name` line per machine (`e4:54:e8:d1:6c:1c;10.0.128.1;a01`: the MAC
+address for Wake-on-LAN, the IPv4 address the agent listens on, the name). A machine gets an
+agent when its lower-cased name matches `REGEXP`; the first group of the expression, when there
+is one, is its room, so that `ROOMS` selects the rooms joining the pool (empty: every qualified
+machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (polled, no project
+placed there until `sre-web pool enable`). These five variables are required and have no
+default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
+`allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
+`PORTAL_ADDRESS` (`allowed_clients` of the agents) and `TLS_DIR_ON_HOSTS` (`/etc/sysreseval/tls`,
+the paths written in the files) are optional.
+
+In `OUT_DIR` (private keys and tokens: outside any repository) it writes, through `web-tls.sh`,
+the CA and the portal's client certificate once, then per host a key and a certificate (SANs
+`IP:<ip>` and `DNS:<name>`), a token drawn once and kept in `<name>.token`, and:
+
+- `hosts.toml`: the `[[hosts]]` entries, one room after the other, with the three `[pool]` TLS
+  lines of `web.toml` in its header; a file of `web.d/` (`import = ["web.d"]`) or pasted at the
+  end of `web.toml`;
+- `agent-<name>.toml`: the host-specific lines of that host's `agent.toml` (`listen`, `token`,
+  `tls_*`), to complete with the example file.
+
+Copy `<name>.crt`, `<name>.key` and `ca.crt` to `TLS_DIR_ON_HOSTS` of each host, and `ca.crt`,
+`portal.crt`, `portal.key` to the portal's. A second run keeps every key, certificate and token
+already there, adds the new hosts and rewrites `hosts.toml` and the agent files, so the rooms may
+change at any time; a kept certificate that no longer names the address of its host is reported.
 
 ### A pool of workstations
 
