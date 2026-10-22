@@ -78,9 +78,8 @@ DOMAIN="${DOMAIN:-}"
 PORTAL_ADDRESS="${PORTAL_ADDRESS:-}"
 TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sysreseval/tls}"
 
-here=$(cd "$(dirname "$0")/.." && pwd)   # the checkout
 input="$IP_MAC_FILE"
-web_tls="$here/scripts/web-tls.sh"
+web_tls="$(dirname "$0")/web-tls.sh"
 out="$OUT_DIR"
 [ -r "$input" ] || die "$input: not readable"
 [ -r "$web_tls" ] || die "$web_tls: not found"
