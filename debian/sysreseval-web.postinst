@@ -15,6 +15,16 @@ case "$1" in
             chown root:"$WEB_USER" /etc/sysreseval/web.toml
             chmod 0640 /etc/sysreseval/web.toml
         fi
+        # the files web.toml imports (import = ["web.d"]) hold the same secrets
+        if [ -d /etc/sysreseval/web.d ]; then
+            chown root:"$WEB_USER" /etc/sysreseval/web.d
+            chmod 0750 /etc/sysreseval/web.d
+            for f in /etc/sysreseval/web.d/*.toml; do
+                [ -f "$f" ] || continue
+                chown root:"$WEB_USER" "$f"
+                chmod 0640 "$f"
+            done
+        fi
         # the pool state (`sre-web pool add / remove / enable / disable`), written by the service
         if [ -d /var/lib/sre-web ]; then
             chown "$WEB_USER":"$WEB_USER" /var/lib/sre-web

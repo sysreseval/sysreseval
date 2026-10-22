@@ -1,9 +1,13 @@
 """Configuration files of ``sre-web`` and ``sre-agent``: TOML (stdlib ``tomllib``) read into
 dataclasses with defaults and validation.  Unknown keys are refused (a typo must not silently
 leave a default in place).  Durations are written as ``"2h"``, ``"30m"``, ``"90s"`` or a number
-of seconds; ``listen`` as ``"host:port"`` (an IPv6 address between brackets)."""
+of seconds; ``listen`` as ``"host:port"`` (an IPv6 address between brackets).  A file may import
+other files (``import = ["web.d"]``: a directory, a glob or a file), merged before the validation
+by ``read_config``."""
 import dataclasses
+import glob
 import ipaddress
+import os
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -348,7 +352,7 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
 
 
 def load_web_config(path) -> WebConfig:
-    return web_config_from_dict(_read_toml(path), str(path))
+    return web_config_from_dict(read_config(path), str(path))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -431,7 +435,85 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
 
 
 def load_agent_config(path, *, sre_exe: str = '', state_dir: str = '') -> AgentConfig:
-    return agent_config_from_dict(_read_toml(path), str(path), sre_exe=sre_exe, state_dir=state_dir)
+    return agent_config_from_dict(read_config(path), str(path), sre_exe=sre_exe, state_dir=state_dir)
+
+
+# ---------------------------------------------------------------------------------------------
+# The files: TOML, and the ``import`` key merging other files in
+# ---------------------------------------------------------------------------------------------
+
+def _is_array_of_tables(value) -> bool:
+    """A ``[[hosts]]``-style value: a list whose elements are all tables (an empty list qualifies;
+    ``tomllib`` gives a plain ``list`` for arrays and arrays of tables alike)."""
+    return isinstance(value, list) and all(isinstance(v, dict) for v in value)
+
+
+def merge_config(base: dict, extra: dict, origins: dict, extra_name: str, prefix: str = '') -> dict:
+    """A new dict: *base* with the keys of *extra* (the content of the file *extra_name*) added.
+    Tables merge recursively, two arrays of tables are concatenated (*base* first), and any other
+    key present in both (a scalar, a plain array, a table against a non-table) is refused, naming
+    both files: ``web.d/b.toml: secret is also given in web.toml``.  *origins* (dotted key → the
+    file that first gave it) is filled in place; *prefix* is the dotted path of the table being
+    merged (``"auth.ldap."``).  Neither dict argument is modified."""
+    merged = dict(base)
+    for key, value in extra.items():
+        dotted = prefix + key
+        origins.setdefault(dotted, extra_name)
+        if key not in base:
+            merged[key] = (merge_config({}, value, origins, extra_name, dotted + '.')
+                           if isinstance(value, dict) else value)
+        elif isinstance(base[key], dict) and isinstance(value, dict):
+            merged[key] = merge_config(base[key], value, origins, extra_name, dotted + '.')
+        elif _is_array_of_tables(base[key]) and _is_array_of_tables(value):
+            merged[key] = base[key] + value
+        else:
+            raise ConfigError(f"{extra_name}: {dotted} is also given in {origins[dotted]}")
+    return merged
+
+
+def import_paths(entries: list, base_dir: str) -> list:
+    """The files named by the ``import`` *entries*, each resolved against *base_dir* (an absolute
+    entry stays as it is): a directory → its ``*.toml`` files, by name; a glob pattern (``*``,
+    ``?``, ``[``) → the matching paths, by name, possibly none; anything else → that path, read
+    later (``no such file`` when missing).  In the order of the entries, each path once."""
+    paths, seen = [], set()
+    for entry in entries:
+        target = os.path.normpath(os.path.join(base_dir, entry))      # also drops a trailing '/'
+        if os.path.isdir(target):
+            found = sorted(glob.glob(os.path.join(target, '*.toml')))
+        elif glob.has_magic(entry):
+            found = sorted(glob.glob(target))
+        else:
+            found = [target]
+        for p in found:
+            if p not in seen:
+                seen.add(p)
+                paths.append(p)
+    return paths
+
+
+def read_config(path) -> dict:
+    """The data of the TOML file *path* with the files its ``import`` key names merged in
+    (``merge_config``) and the key removed: what ``web_config_from_dict`` /
+    ``agent_config_from_dict`` validate.  ``import`` is a path or a list of paths relative to the
+    directory of *path* (``import_paths``); an imported file cannot ``import``."""
+    main = _read_toml(path)
+    entries = main.pop('import', [])
+    if isinstance(entries, str):
+        entries = [entries]
+    if not isinstance(entries, list) or not all(isinstance(e, str) and e for e in entries):
+        raise ConfigError(f"{path}: import must be a path or a list of paths")
+    here = os.path.abspath(path)
+    origins = {}
+    data = merge_config({}, main, origins, str(path))
+    for file in import_paths(entries, os.path.dirname(here)):
+        if file == here:
+            raise ConfigError(f"{path}: import names the file itself")
+        extra = _read_toml(file)
+        if 'import' in extra:
+            raise ConfigError(f"{file}: import is not allowed in an imported file")
+        data = merge_config(data, extra, origins, file)
+    return data
 
 
 def _read_toml(path) -> dict:
@@ -440,5 +522,9 @@ def _read_toml(path) -> dict:
             return tomllib.load(f)
     except FileNotFoundError:
         raise ConfigError(f"{path}: no such file") from None
-    except tomllib.TOMLDecodeError as e:
+    except IsADirectoryError:
+        raise ConfigError(f"{path}: is a directory") from None
+    except OSError as e:                                  # PermissionError, NotADirectoryError...
+        raise ConfigError(f"{path}: {e.strerror or e}") from None
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
         raise ConfigError(f"{path}: {e}") from None

@@ -1,6 +1,11 @@
 # /opt/sre/etc/web.toml (checkout) or /etc/sysreseval/web.toml (Debian package): the SRE web site
 # (sre-web).  Owned by root, group sre-web, mode 0640: it holds the secret and the tokens.
 #
+# Other files merged into this one before it is checked (a directory: its *.toml files by name;
+# a glob; a file), e.g. one file per host in web.d/, same owner and mode.  A key given twice is
+# refused.
+# import = ["web.d"]
+#
 # Behind a reverse proxy doing TLS (nginx, caddy): listen on the loopback and give public_url.
 listen = "127.0.0.1:8450"
 public_url = "https://sre.example.org"

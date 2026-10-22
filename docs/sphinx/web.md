@@ -58,7 +58,8 @@ of a management interface and a long random token, then `systemctl enable --now 
 
 On the portal host: create the `sre-web` system user (`adduser --system --group --no-create-home
 --shell /usr/sbin/nologin sre-web`), write `/opt/sre/etc/web.toml` (root:sre-web, mode 0640:
-it holds the cookie secret and the agent tokens), then `systemctl enable --now sre-web`. Put a
+it holds the cookie secret and the agent tokens; the files it imports likewise), then
+`systemctl enable --now sre-web`. Put a
 reverse proxy doing TLS in front (`scripts/etc/sre-web-nginx.conf` is an nginx example,
 `sre-web-apache.conf` an Apache one that also authenticates the users: the proxy mode below), or
 give the portal its own certificate (`tls_cert` / `tls_key`).
@@ -70,7 +71,7 @@ code it shares), `sysreseval-web` on the portal host (it depends on nothing of S
 units are `sysreseval-agent.service` and `sysreseval-web.service`, disabled by default; the
 configuration files are `/etc/sysreseval/agent.toml` and `/etc/sysreseval/web.toml` (examples in
 `/usr/share/doc/sysreseval-*/examples/`); the postinst of `sysreseval-web` creates the `sre-web`
-user and protects `web.toml` when it exists.
+user and protects `web.toml` and `web.d/*.toml` when they exist.
 
 ## Configuration
 
@@ -96,6 +97,8 @@ user and protects `web.toml` when it exists.
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `export = 600`, `list = 30` | seconds, per `sre` command |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
+`import` (a path or a list of paths relative to `agent.toml`: a directory, a glob or a file)
+merges other files into this one, as for `web.toml` below.
 
 ### `web.toml`
 
@@ -114,6 +117,13 @@ Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown ke
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web pool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects |
+| `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
+
+`import = ["web.d"]` splits the configuration into `/etc/sysreseval/web.toml` and the `*.toml`
+files of `/etc/sysreseval/web.d/`, read by name after it: a file per pool host, the secrets
+apart. Nothing is silently overridden: a key given twice is an error naming both files, and an
+error found after the merge names `web.toml`. The imported files hold the same secrets as
+`web.toml` and need the same owner and mode (root:sre-web, 0640).
 
 The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
 answers file of the projects like the GECOS fields do on a workstation, so `sre outline` and

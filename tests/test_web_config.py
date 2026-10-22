@@ -1,11 +1,14 @@
-"""Tests of sreweb.config: the TOML configuration of sre-web and sre-agent."""
+"""Tests of sreweb.config: the TOML configuration of sre-web and sre-agent, and the ``import``
+key merging other files into the main one."""
 import ipaddress
+import os
 
 import pytest
 
 from sreweb import config
 from sreweb.config import (ConfigError, parse_duration, parse_listen, web_config_from_dict, load_web_config,
-                           agent_config_from_dict, load_agent_config, DEFAULT_TIMEOUTS)
+                           agent_config_from_dict, load_agent_config, DEFAULT_TIMEOUTS, read_config, merge_config,
+                           import_paths)
 
 SECRET = 's' * 32
 HOST = {'name': 'a01', 'url': 'http://10.0.0.11:8451', 'token': 't' * 32, 'max_projects': 10}
@@ -222,3 +225,166 @@ class TestAgentConfig:
         f = tmp_path / 'agent.toml'
         f.write_text(f'token = "{"t" * 32}"\n[timeouts]\nstart = "20m"\n')
         assert load_agent_config(f, sre_exe='/x', state_dir='/y').timeouts['start'] == 1200
+
+
+def _host(name: str) -> str:
+    return f'[[hosts]]\nname = "{name}"\nurl = "http://{name}:8451"\ntoken = "{"t" * 32}"\n'
+
+
+@pytest.fixture
+def write(tmp_path):
+    def _write(name, text, binary=False):
+        p = tmp_path / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        (p.write_bytes if binary else p.write_text)(text)
+        return p
+    return _write
+
+
+def _tree(write, main_extra='', import_line='import = ["web.d"]'):
+    """web.toml importing web.d/: one file per host, the secrets apart, a README ignored."""
+    main = write('web.toml', f'secret = "{SECRET}"\n{import_line}\n{main_extra}[pool]\npoll_interval = 3\n')
+    write('web.d/10-a01.toml', _host('a01'))
+    write('web.d/20-h01.toml', _host('h01') + '[pool]\nspare_projects = 2\n')
+    write('web.d/README', 'not toml\n')
+    write('web.d/secrets.toml', f'[admin]\ntoken = "{"a" * 32}"\n')
+    return main
+
+
+class TestImports:
+    def test_directory(self, write):
+        cfg = load_web_config(_tree(write))
+        assert [h.name for h in cfg.hosts] == ['a01', 'h01']                    # by name, README ignored
+        assert cfg.pool.poll_interval == 3 and cfg.pool.spare_projects == 2       # the [pool] tables merged
+        assert cfg.admin.token == 'a' * 32 and cfg.secret == SECRET
+        assert 'import' not in read_config(_tree(write))
+
+    def test_string_and_single_file(self, write):
+        main = _tree(write, main_extra=_host('m1'), import_line='import = "web.d/secrets.toml"')
+        cfg = load_web_config(main)
+        assert [h.name for h in cfg.hosts] == ['m1'] and cfg.admin.token == 'a' * 32
+
+    def test_glob(self, write):
+        main = _tree(write, import_line='import = ["web.d/1*.toml"]')
+        assert [h.name for h in load_web_config(main).hosts] == ['a01']
+        main = _tree(write, import_line='import = ["web.d/none-*.toml"]')     # matching nothing is fine
+        assert load_web_config(main).hosts == []
+
+    def test_absolute_path(self, write, tmp_path):
+        main = _tree(write, import_line=f'import = ["{tmp_path / "web.d" / "20-h01.toml"}"]')
+        assert [h.name for h in load_web_config(main).hosts] == ['h01']
+
+    def test_trailing_slash_and_duplicates(self, write):
+        main = _tree(write, import_line='import = ["web.d/", "web.d/10-a01.toml"]')
+        assert [h.name for h in load_web_config(main).hosts] == ['a01', 'h01']
+
+    def test_main_file_hosts_come_first(self, write):
+        main = _tree(write, main_extra=_host('m1'))
+        assert [h.name for h in load_web_config(main).hosts] == ['m1', 'a01', 'h01']
+
+    @pytest.mark.parametrize('main_extra, imported, fragment', [
+        ('', f'secret = "{SECRET}"\n', r'secret is also given in .*web\.toml'),
+        ('', '[pool]\npoll_interval = 5\n', r'pool\.poll_interval is also given in .*web\.toml'),
+        ('trusted_proxies = ["127.0.0.1"]\n', 'trusted_proxies = ["::1"]\n', 'trusted_proxies is also given'),
+        ('', 'pool = 1\n', r'30-more\.toml: pool is also given'),
+    ])
+    def test_conflicts(self, write, main_extra, imported, fragment):
+        main = _tree(write, main_extra=main_extra)
+        write('web.d/30-more.toml', imported)
+        with pytest.raises(ConfigError, match=fragment):
+            load_web_config(main)
+
+    def test_conflict_between_two_imported_files(self, write):
+        main = write('web.toml', 'import = ["web.d"]\n')
+        write('web.d/10-a01.toml', f'secret = "{SECRET}"\n')
+        write('web.d/20-h01.toml', f'secret = "{SECRET}"\n')
+        with pytest.raises(ConfigError, match=r'20-h01\.toml: secret is also given in .*10-a01\.toml'):
+            load_web_config(main)
+
+    def test_nested_import_refused(self, write):
+        main = _tree(write)
+        write('web.d/30-nested.toml', 'import = []\n')
+        with pytest.raises(ConfigError, match=r'30-nested\.toml: import is not allowed in an imported file'):
+            load_web_config(main)
+
+    def test_missing_file(self, write):
+        main = _tree(write, import_line='import = ["nope.toml"]')
+        with pytest.raises(ConfigError, match=r'nope\.toml: no such file'):
+            load_web_config(main)
+
+    @pytest.mark.parametrize('value', ['1', 'true', '["a", 2]', '[""]', '{}'])
+    def test_bad_import_value(self, write, value):
+        main = _tree(write, import_line=f'import = {value}')
+        with pytest.raises(ConfigError, match='import must be a path or a list of paths'):
+            load_web_config(main)
+
+    def test_self_import(self, write):
+        main = _tree(write, import_line='import = ["."]')
+        with pytest.raises(ConfigError, match='import names the file itself'):
+            load_web_config(main)
+
+    def test_unreadable(self, write, tmp_path):
+        main = _tree(write)
+        (tmp_path / 'web.d' / '30-dir.toml').mkdir()
+        with pytest.raises(ConfigError, match=r'30-dir\.toml: is a directory'):
+            load_web_config(main)
+        (tmp_path / 'web.d' / '30-dir.toml').rmdir()
+        bad = write('web.d/40-bad.toml', b'\xff\xfe', binary=True)
+        with pytest.raises(ConfigError, match=r'40-bad\.toml: '):
+            load_web_config(main)
+        if os.geteuid() != 0:
+            bad.chmod(0)
+            with pytest.raises(ConfigError, match=r'40-bad\.toml: Permission denied'):
+                load_web_config(main)
+            bad.chmod(0o600)
+
+    def test_validation_names_main_file(self, write):
+        main = _tree(write)
+        write('web.d/30-typo.toml', 'typo = 1\n')
+        with pytest.raises(ConfigError, match='typo') as e:
+            load_web_config(main)
+        assert str(e.value).startswith(str(main))
+
+    def test_agent_import(self, write):
+        main = write('agent.toml', f'token = "{"t" * 32}"\nimport = ["agent.d"]\n')
+        write('agent.d/timeouts.toml', '[timeouts]\nstart = "20m"\n')
+        assert load_agent_config(main, sre_exe='/x', state_dir='/y').timeouts['start'] == 1200
+        write('agent.d/more.toml', '[timeouts]\nstart = "10m"\n')       # read first (by name)
+        with pytest.raises(ConfigError, match=r'timeouts\.toml: timeouts\.start is also given in .*more\.toml'):
+            load_agent_config(main, sre_exe='/x', state_dir='/y')
+
+    def test_merge_config_unit(self):
+        origins = {}
+        first = {'auth': {'mode': 'ldap'}, 'hosts': [], 'secret': 's'}
+        base = merge_config({}, first, origins, 'a')
+        merged = merge_config(base, {'auth': {'ldap': {'uri': 'ldap://x'}}, 'hosts': [{'name': 'h'}], 'listen': ':1'},
+                              origins, 'b')
+        assert merged == {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldap://x'}}, 'hosts': [{'name': 'h'}],
+                          'secret': 's', 'listen': ':1'}
+        assert origins['auth.mode'] == 'a' and origins['auth.ldap.uri'] == 'b' and origins['listen'] == 'b'
+        assert base == first == {'auth': {'mode': 'ldap'}, 'hosts': [], 'secret': 's'}     # not mutated
+        assert merge_config({'hosts': [{'name': 'h'}]}, {'hosts': []}, {}, 'c') == {'hosts': [{'name': 'h'}]}
+        with pytest.raises(ConfigError, match=r'^b: auth\.mode is also given in a$'):
+            merge_config(base, {'auth': {'mode': 'proxy'}}, origins, 'b')
+        with pytest.raises(ConfigError, match=r'^b: secret is also given in a$'):
+            merge_config(base, {'secret': 'x'}, origins, 'b')
+        with pytest.raises(ConfigError, match=r'^b: auth is also given in a$'):
+            merge_config(base, {'auth': 1}, origins, 'b')
+        with pytest.raises(ConfigError, match=r'^b: hosts is also given in a$'):
+            merge_config(base, {'hosts': ['h']}, origins, 'b')                 # a plain array, not tables
+
+    def test_import_paths_unit(self, write, tmp_path):
+        _tree(write)
+        d = str(tmp_path)
+
+        def names(paths):
+            return [os.path.relpath(p, d) for p in paths]
+
+        assert names(import_paths(['web.d'], d)) == ['web.d/10-a01.toml', 'web.d/20-h01.toml', 'web.d/secrets.toml']
+        assert names(import_paths(['web.d/', 'web.d/10-a01.toml', 'web.toml'], d)) == \
+            ['web.d/10-a01.toml', 'web.d/20-h01.toml', 'web.d/secrets.toml', 'web.toml']
+        assert names(import_paths(['web.d/2*.toml', 'web.d/none-*'], d)) == ['web.d/20-h01.toml']
+        absolute = str(tmp_path / 'web.d' / 'secrets.toml')
+        assert import_paths([absolute], '/elsewhere') == [absolute]
+        assert names(import_paths(['missing.toml'], d)) == ['missing.toml']
+        assert import_paths([], d) == []
