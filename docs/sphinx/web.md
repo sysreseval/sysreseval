@@ -88,6 +88,9 @@ user and protects `web.toml` when it exists.
 | `tls_cert`, `tls_key` | none | the certificate and key of this agent (TLS to the portal) |
 | `tls_ca` | none | the CA a **client certificate** must be signed by: only the portal gets past the handshake (mutual TLS) |
 | `allowed_clients` | `[]` (any) | the addresses or networks the agent answers, e.g. `["10.0.0.1", "10.0.1.0/24"]` |
+| `occupied_check` | `both` | when the host reports itself *occupied* (no new project, never powered off): `sessions` (a local login session: `loginctl`, or `who`), `projects` (projects of the Qt GUI on the host), `both`, `never` |
+| `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
+| `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `export = 600`, `list = 30` | seconds, per `sre` command |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
@@ -104,9 +107,10 @@ Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown ke
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`); `start_tls`; `timeout` |
-| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
-| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`) |
+| `[admin]` | | `token`: the token of `sre-web pool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
+| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects |
 
 The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
 answers file of the projects like the GECOS fields do on a workstation, so `sre outline` and
@@ -133,6 +137,60 @@ portal host, `web.toml` gets `[pool] ca = ".../ca.crt"`, `client_cert = ".../por
 `https://<name or address in the certificate's SANs>:8451`. The portal then logs
 `TLS to the agents: CA …, client certificate …` and each host as reachable; an agent without
 the right certificate, or a client without one, fails at the handshake, before any request.
+
+### A pool of workstations
+
+The pool hosts are typically classroom workstations: off when nobody needs them (a nightly cron
+shuts them down), woken by Wake-on-LAN, and sometimes used at the keyboard by a student. The
+portal gives each host a **state** from the status of its agent, and `sre-web pool list` shows
+it:
+
+| State | Meaning | New projects |
+|---|---|---|
+| `off` | the agent does not answer | no |
+| `waking` | a wake was sent less than `wake_timeout` ago | no, but a start answers "a host is starting" (503, retried by the Open page) |
+| `up` | the agent answers, the host is free | yes |
+| `occupied` | the agent answers, the host is used locally (`occupied_check`) | no; the web projects already running there go on |
+| `exam` | the agent answers, `exam.json` is on the host | no |
+| `draining` | the portal asked the host to power off, or `sre-web pool drain` | no; powered off once it is empty |
+| `disabled` | `sre-web pool disable`, or `enabled = false` | no |
+
+**Waking.** A host with a `mac` gets a magic packet (UDP port 9 to `wol_broadcast`: the portal
+must be on the hosts' network, or the routers must forward the directed broadcast); a host with a
+`wake_command` gets that command instead (`ssh relay wakeonlan {mac}`, an IPMI or VM call…).
+The portal wakes one sleeping host, in configuration order, whenever the free project slots of
+the hosts up (plus the capacity of those waking) drop below `spare_projects`, and keeps
+`min_hosts_up` hosts awake during `active_hours`: the floor is re-established in the morning and
+not fought at night after the cron. A host still silent after `wake_timeout` is retried after 1,
+2, 4… up to 30 minutes, so a machine that is really down is not hammered. The agent must be an
+enabled systemd unit on every host (boot → agent up → the portal sees it).
+
+**Occupied hosts.** The agent reports `occupied` when a local login session exists (`loginctl`,
+`who` as a fallback) or when projects of the Qt GUI run on the host; the portal places nothing
+there and never powers it off. The web projects already running there continue.
+
+**Going down.** When the agent's unit stops because the system halts (the nightly cron, a
+`poweroff`), the agent closes the projects it manages as a Close would (the last evaluation,
+then `sre stop`), concurrently, within `TimeoutStopSec`; the browsers see "project closed".
+With `power = true` on the host and `allow_power_off = true` in its `agent.toml`, the portal
+powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron does it), above
+`min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web pool poweroff`.
+
+**By hand.** `sre-web pool …` talks to the running portal through its administration API
+(`[admin] token`, loopback only by default; `--config`, `--url`, `--token` override the
+configuration):
+
+```
+sre-web pool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
+sre-web pool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web pool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power]
+sre-web pool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
+sre-web pool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+```
+
+The additions, removals and enable / disable flags are kept in `[admin] state_file` and merged
+with the `[[hosts]]` of `web.toml` at every start (`list` shows `config` or `added` per host); a
+config host removed by hand comes back with `enable`. `--json` gives the raw rows.
 
 ## What the users see
 

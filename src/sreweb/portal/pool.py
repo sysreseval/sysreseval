@@ -1,25 +1,41 @@
-"""The pool of hosts: the status of their agents, the placement of a new project, the fan-out
-of the project lists."""
+"""The pool of hosts: the status of their agents, the state of each host, the placement of a
+new project, the fan-out of the project lists, and the membership changed by hand
+(``sre-web pool add / remove / enable / disable``, kept in a state file merged with the
+``[[hosts]]`` of the configuration)."""
 import asyncio
+import json
 import logging
+import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 
 import aiohttp
 
-from ..config import HostConfig
+from ..config import HostConfig, host_config_from_dict, ConfigError
 from ..identity import Identity
 
 log = logging.getLogger('sreweb.portal')
 
 STATUS_TIMEOUT = 5.0
 
+#: The states of a host, as the portal sees it.
+STATE_OFF = 'off'              # agent unreachable
+STATE_WAKING = 'waking'        # a wake was sent, the agent not up yet
+STATE_UP = 'up'                # agent up, free: new projects go there
+STATE_OCCUPIED = 'occupied'    # agent up, the machine is used locally: no new project
+STATE_EXAM = 'exam'            # agent up, exam.json on the host
+STATE_DRAINING = 'draining'    # agent up, a power off is wanted: no new project
+STATE_DISABLED = 'disabled'    # taken out of the placement by hand
+SOURCE_CONFIG = 'config'
+SOURCE_ADDED = 'added'
+
 
 class PoolError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, retry_after: int | None = None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.retry_after = retry_after
 
 
 @dataclass
@@ -29,42 +45,170 @@ class Reservation:
 
 @dataclass
 class HostStatus:
+    """What the last status poll of the agent said."""
     reachable: bool = False
     projects: int = 0
+    managed_projects: int = 0
+    local_projects: int = 0
     terminals: int = 0
     load1: float | None = None
     exam_mode: bool = False
+    occupied: bool = False
+    occupied_by: list = field(default_factory=list)
+    uptime: int | None = None
+    power_off_allowed: bool = False
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
     updated: float = field(default_factory=time.monotonic)
 
 
+@dataclass
+class HostRuntime:
+    """What the portal remembers about a host between polls."""
+    source: str = SOURCE_CONFIG
+    enabled: bool = True
+    woken_at: float | None = None      # monotonic time of the last wake, None when not waking
+    wake_failures: int = 0
+    next_wake_at: float = 0.0          # backoff after failed wakes
+    idle_since: float | None = None    # monotonic time since the host has no project
+    drain: bool = False                # power off wanted as soon as the host is empty
+    power_off_sent: float | None = None   # monotonic time of the last accepted power off
+    last_wake_reason: str = ''
+
+
 class Pool:
-    def __init__(self, hosts: list, session: aiohttp.ClientSession, *, poll_interval: float = 2.0):
-        self.hosts: dict[str, HostConfig] = {h.name: h for h in hosts}
+    def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
+                 state_file: str = ''):
+        self.hosts: dict[str, HostConfig] = {}
+        self.status: dict[str, HostStatus] = {}
+        self.runtime: dict[str, HostRuntime] = {}
         self.session = session
         self.poll_interval = poll_interval
-        self.status: dict[str, HostStatus] = {name: HostStatus() for name in self.hosts}
+        self.wake_timeout = wake_timeout
+        self.state_file = state_file
+        self._config_hosts = {h.name: h for h in hosts}
+        self._removed: set = set()      # config hosts removed by hand (``enable`` brings them back)
         #: The projects being started on each host: a reservation counts as a project until the
         #: start is over (``release``) and a status polled after that has been received, so that
         #: a stale poll never frees the slot early.
-        self._reservations: dict[str, list] = {name: [] for name in self.hosts}
+        self._reservations: dict[str, list] = {}
         self._reported: dict[str, bool] = {}
         self._task: asyncio.Task | None = None
+        for host in hosts:
+            self._register(host, SOURCE_CONFIG)
+        self.load_state()
 
-    def _consume(self, name: str, polled_at: float) -> int:
-        """Forget the reservations released before the status request sent at *polled_at*;
-        the number still counted."""
-        self._reservations[name] = [r for r in self._reservations[name]
-                                    if r.released_at is None or r.released_at > polled_at]
-        return len(self._reservations[name])
+    # -- membership -----------------------------------------------------------------------------
+
+    def _register(self, host: HostConfig, source: str):
+        self.hosts[host.name] = host
+        self.status[host.name] = HostStatus()
+        self.runtime[host.name] = HostRuntime(source=source, enabled=host.enabled)
+        self._reservations[host.name] = []
+        self._reported.pop(host.name, None)
 
     def host(self, name: str) -> HostConfig:
         host = self.hosts.get(name)
         if host is None:
             raise PoolError(404, "unknown host")
         return host
+
+    def add_host(self, host: HostConfig):
+        """``sre-web pool add``: a host added by hand (an added host of the same name is
+        replaced; a config host of that name cannot be redefined)."""
+        if host.name in self._config_hosts:
+            raise PoolError(409, f"{host.name} is in the configuration file: edit it there"
+                            + (", or enable it" if host.name in self._removed else ""))
+        self._register(host, SOURCE_ADDED)
+        self.save_state()
+        log.info("host %s added to the pool (%s)", host.name, host.url)
+
+    def remove_host(self, name: str, force: bool = False):
+        """``sre-web pool remove``: refused while the host has projects, unless forced (they
+        stay on the host, out of the portal's reach: the agent's idle reaper closes them)."""
+        self.host(name)
+        projects = self.status[name].projects if self.status[name].reachable else 0
+        if projects and not force:
+            raise PoolError(409, f"{name} has {projects} project(s): drain it first, or --force")
+        if self.runtime[name].source == SOURCE_CONFIG:
+            self._removed.add(name)
+        for table in (self.hosts, self.status, self.runtime, self._reservations):
+            table.pop(name, None)
+        self._reported.pop(name, None)
+        self.save_state()
+        log.info("host %s removed from the pool", name)
+
+    def set_enabled(self, name: str, enabled: bool):
+        """``enable`` / ``disable``: a disabled host stays polled and listed but gets no project;
+        ``enable`` also cancels a drain, and brings back a config host removed by hand."""
+        if name in self._removed and enabled:
+            self._removed.discard(name)
+            self._register(self._config_hosts[name], SOURCE_CONFIG)
+            self.save_state()
+            log.info("host %s back in the pool from the configuration", name)
+            return
+        self.host(name)
+        self.runtime[name].enabled = enabled
+        if enabled:
+            self.runtime[name].drain = False
+        self.save_state()
+        log.info("host %s %s", name, 'enabled' if enabled else 'disabled')
+
+    def load_state(self):
+        """The hosts added, removed and disabled by hand (``state_file``), over the configuration."""
+        if not self.state_file:
+            return
+        try:
+            with open(self.state_file, encoding='utf-8') as f:
+                state = json.load(f)
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError) as e:
+            log.error("cannot read %s: %s", self.state_file, e)
+            return
+        if not isinstance(state, dict):
+            return
+        for name in state.get('removed', []) or []:
+            if name in self.hosts and self.runtime[name].source == SOURCE_CONFIG:
+                for table in (self.hosts, self.status, self.runtime, self._reservations):
+                    table.pop(name, None)
+                self._removed.add(name)
+        for entry in state.get('added', []) or []:
+            try:
+                host = host_config_from_dict(entry, f"{self.state_file}: added host")
+            except ConfigError as e:
+                log.error("%s", e)
+                continue
+            if host.name in self.hosts and self.runtime[host.name].source == SOURCE_CONFIG:
+                continue
+            self._register(host, SOURCE_ADDED)
+        for name in state.get('disabled', []) or []:
+            if name in self.runtime:
+                self.runtime[name].enabled = False
+        log.info("pool state read from %s: %d removed, %d added, %d disabled", self.state_file,
+                 len(self._removed), sum(1 for r in self.runtime.values() if r.source == SOURCE_ADDED),
+                 sum(1 for r in self.runtime.values() if not r.enabled))
+
+    def save_state(self):
+        if not self.state_file:
+            return
+        state = {
+            'removed': sorted(self._removed),
+            'added': [asdict(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
+            'disabled': sorted(n for n, r in self.runtime.items() if not r.enabled),
+        }
+        try:
+            os.makedirs(os.path.dirname(self.state_file) or '.', exist_ok=True)
+            tmp = self.state_file + '.tmp'
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp, self.state_file)
+        except OSError as e:
+            log.error("cannot write %s: %s", self.state_file, e)
+
+    # -- status ---------------------------------------------------------------------------------
 
     @staticmethod
     def headers(host: HostConfig, identity: Identity | None = None) -> dict:
@@ -73,7 +217,12 @@ class Pool:
             headers.update(identity.headers())
         return headers
 
-    # -- status ---------------------------------------------------------------------------------
+    def _consume(self, name: str, polled_at: float) -> int:
+        """Forget the reservations released before the status request sent at *polled_at*;
+        the number still counted."""
+        self._reservations[name] = [r for r in self._reservations[name]
+                                    if r.released_at is None or r.released_at > polled_at]
+        return len(self._reservations[name])
 
     async def refresh_host(self, host: HostConfig) -> HostStatus:
         polled_at = time.monotonic()
@@ -86,25 +235,47 @@ class Pool:
                     data = await resp.json()
                     status = HostStatus(reachable=True,
                                         projects=int(data.get('projects', 0)) + self._consume(host.name, polled_at),
+                                        managed_projects=int(data.get('managed_projects', 0)),
+                                        local_projects=int(data.get('local_projects', 0)),
                                         terminals=int(data.get('terminals', 0)), load1=data.get('load1'),
                                         exam_mode=bool(data.get('exam_mode', False)),
+                                        occupied=bool(data.get('occupied', False)),
+                                        occupied_by=list(data.get('occupied_by', []) or []),
+                                        uptime=data.get('uptime'),
+                                        power_off_allowed=bool(data.get('power_off_allowed', False)),
                                         hostname=str(data.get('hostname', '')),
                                         sre_version=str(data.get('sre_version', '')))
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
             status = HostStatus(error=str(e) or type(e).__name__)
+        if host.name not in self.status:
+            return status   # removed meanwhile
         previous = self._reported.get(host.name)   # None at the first poll: always reported
         self._reported[host.name] = status.reachable
         if previous is None or previous != status.reachable:
             if status.reachable:
-                log.info("host %s reachable: %s, sre %s, %d project(s)", host.name, status.hostname, status.sre_version,
-                         status.projects)
+                log.info("host %s reachable: %s, sre %s, %d project(s)%s", host.name, status.hostname,
+                         status.sre_version, status.projects, " (occupied)" if status.occupied else "")
             else:
                 log.warning("host %s unreachable at %s: %s", host.name, host.url, status.error)
+        runtime = self.runtime[host.name]
+        if status.reachable and previous is False:
+            # back after a shutdown: a drain, a power off and a backoff of the previous run are over
+            runtime.drain = False
+            runtime.power_off_sent = None
+            runtime.next_wake_at = 0.0
+        elif not status.reachable and runtime.power_off_sent is not None:
+            runtime.drain = False           # gone after its power off: the drain is done
+            runtime.power_off_sent = None
+        if status.reachable and runtime.woken_at is not None:
+            log.info("host %s is up %.0f s after its wake", host.name, time.monotonic() - runtime.woken_at)
+            runtime.woken_at = None
+            runtime.wake_failures = 0
+            runtime.next_wake_at = 0.0
         self.status[host.name] = status
         return status
 
     async def refresh(self):
-        await asyncio.gather(*(self.refresh_host(h) for h in self.hosts.values()))
+        await asyncio.gather(*(self.refresh_host(h) for h in list(self.hosts.values())))
 
     async def _loop(self):
         while True:
@@ -125,24 +296,59 @@ class Pool:
             except asyncio.CancelledError:
                 pass
 
-    def summary(self) -> list:
-        return [{'name': h.name, 'url': h.url, 'max_projects': h.max_projects, **vars(self.status[h.name])}
-                for h in self.hosts.values()]
+    # -- states -----------------------------------------------------------------------------------
+
+    def state_of(self, name: str, now: float | None = None) -> str:
+        st, rt = self.status[name], self.runtime[name]
+        now = time.monotonic() if now is None else now
+        if not rt.enabled:
+            return STATE_DISABLED
+        if not st.reachable:
+            return STATE_WAKING if rt.woken_at is not None and now - rt.woken_at < self.wake_timeout else STATE_OFF
+        if st.exam_mode:
+            return STATE_EXAM
+        if st.occupied:
+            return STATE_OCCUPIED
+        if rt.drain:
+            return STATE_DRAINING
+        return STATE_UP
+
+    def summary(self, now: float | None = None) -> list:
+        now = time.monotonic() if now is None else now
+        rows = []
+        for h in self.hosts.values():
+            st, rt = self.status[h.name], self.runtime[h.name]
+            rows.append({
+                'name': h.name, 'url': h.url, 'max_projects': h.max_projects, 'state': self.state_of(h.name, now),
+                'source': rt.source, 'enabled': rt.enabled, 'can_wake': h.can_wake, 'power': h.power,
+                'drain': rt.drain, 'power_off_sent': rt.power_off_sent is not None,
+                'waking_for': round(now - rt.woken_at) if rt.woken_at is not None else None,
+                'wake_failures': rt.wake_failures,
+                'idle_for': round(now - rt.idle_since) if rt.idle_since is not None else None,
+                **{k: v for k, v in vars(st).items() if k != 'updated'},
+            })
+        return rows
 
     # -- placement ------------------------------------------------------------------------------
 
     def pick(self) -> tuple:
-        """The host of a new project and its reservation: reachable, not in exam mode, below its
-        maximum, the least loaded (projects / max_projects, then load).  The caller releases the
-        reservation when the start is over."""
+        """The host of a new project and its reservation: up (enabled, reachable, not occupied,
+        not in exam mode, not draining), below its maximum, the least loaded (projects /
+        max_projects, then load).  The caller releases the reservation when the start is over."""
         candidates = []
+        now = time.monotonic()
+        waking = False
         for host in self.hosts.values():
+            state = self.state_of(host.name, now)
+            waking = waking or state == STATE_WAKING
             st = self.status[host.name]
-            if not st.reachable or st.exam_mode or st.projects >= host.max_projects:
+            if state != STATE_UP or st.projects >= host.max_projects:
                 continue
             candidates.append((st.projects / host.max_projects, st.load1 if st.load1 is not None else 0.0, host.name, host))
         if not candidates:
-            raise PoolError(503, "no host available for a new project")
+            if waking:
+                raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
+            raise PoolError(503, "no host available for a new project", retry_after=60)
         candidates.sort(key=lambda c: c[:3])
         host = candidates[0][3]
         self.status[host.name].projects += 1
@@ -171,7 +377,7 @@ class Pool:
                 log.warning("host %s: GET /v1/projects failed: %s", host.name, e or type(e).__name__)
                 return []
             return [dict(p, host=host.name) for p in projects if isinstance(p, dict)]
-        results = await asyncio.gather(*(one(h) for h in self.hosts.values() if self.status[h.name].reachable))
+        results = await asyncio.gather(*(one(h) for h in list(self.hosts.values()) if self.status[h.name].reachable))
         projects = [p for group in results for p in group]
         projects.sort(key=lambda p: (p.get('started_at', ''), p.get('running_lab_name', '')))
         return projects
@@ -179,7 +385,7 @@ class Pool:
     async def labs(self, identity: Identity) -> list:
         """The union of the lab lists of the reachable hosts (one list wins when they differ)."""
         seen: dict[str, dict] = {}
-        for host in self.hosts.values():
+        for host in list(self.hosts.values()):
             if not self.status[host.name].reachable:
                 continue
             try:

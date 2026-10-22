@@ -47,6 +47,30 @@ poll_interval = 2
 # ca = "/etc/sysreseval/tls/ca.crt"
 # client_cert = "/etc/sysreseval/tls/portal.crt"
 # client_key = "/etc/sysreseval/tls/portal.key"
+# The elastic pool (hosts with a mac or a wake_command below): a sleeping host is woken when the
+# free project slots of the hosts up drop below spare_projects, and min_hosts_up hosts are kept
+# awake during active_hours (local time of the portal; "" = always).  A woken host silent after
+# wake_timeout seconds is retried later (1, 2, 4... up to 30 minutes), one wake per wake_interval.
+spare_projects = 5
+min_hosts_up = 1
+active_hours = "07:00-20:00"
+wake_timeout = 180
+wake_interval = 30
+# Where the Wake-on-LAN packets go (UDP port 9): the broadcast address of the hosts' network when
+# the portal is not on it (the routers must forward directed broadcasts).
+wol_broadcast = "255.255.255.255"
+# A host with power = true, up with no project for this long, above min_hosts_up and the spare
+# capacity, is powered off through its agent (allow_power_off in agent.toml); 0 = never (the
+# nightly cron of the hosts does it).
+idle_host_timeout = 0
+
+[admin]
+# The token of `sre-web pool ...` (32+ random characters; empty: the command is refused), accepted
+# from the loopback only unless listen_any = true.
+token = "change-me-to-another-long-random-string"
+# The hosts added, removed, enabled and disabled by hand, merged with [[hosts]] at startup
+# (default: /var/lib/sre-web/pool.json when that directory exists, else pool.json next to this file).
+# state_file = "/var/lib/sre-web/pool.json"
 
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user
@@ -55,15 +79,22 @@ login_per_minute = 5      # login attempts per client address
 max_answer_bytes = 1048576
 
 # One entry per pool host: the URL of its agent, the token of its agent.toml, and how many
-# projects it takes (a classroom workstation holds about thirty).
+# projects it takes (a classroom workstation holds about thirty).  A host with a mac (Wake-on-LAN)
+# or a wake_command ({name} and {mac} substituted: a relay, IPMI, a VM start) is woken on demand;
+# power = true lets the portal power it off (see idle_host_timeout and `sre-web pool poweroff`).
+# `sre-web pool add / remove / enable / disable` change the pool without a restart.
 [[hosts]]
 name = "a01"
 url = "https://10.0.0.11:8451"       # http:// without TLS on the agent
 token = "change-me-to-a-long-random-string"
 max_projects = 25
+# mac = "aa:bb:cc:dd:ee:ff"
+# power = true
 
 # [[hosts]]
 # name = "a02"
 # url = "http://10.0.0.12:8451"
 # token = "..."
 # max_projects = 25
+# wake_command = "ssh relay wakeonlan {mac}"
+# enabled = false                    # kept in the pool, no project placed there

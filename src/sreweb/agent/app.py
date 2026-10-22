@@ -15,7 +15,9 @@ import hmac
 import json
 import logging
 import os
+import shlex
 import socket
+import subprocess
 import time
 
 from aiohttp import web, WSMsgType
@@ -26,7 +28,7 @@ from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
 
-from . import access
+from . import access, occupancy
 from .access import AccessError
 from .answers import AnswersStore
 from .pty_session import PtySession
@@ -62,6 +64,27 @@ def json_error(status: int, message: str) -> web.Response:
     return web.json_response({'error': message, 'status': status}, status=status)
 
 
+OCCUPANCY_TTL = 5.0
+
+
+def _uptime_seconds() -> int | None:
+    try:
+        with open('/proc/uptime') as f:
+            return int(float(f.read().split()[0]))
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _system_stopping() -> bool:
+    """Whether systemd is shutting the system down (``systemctl is-system-running`` says
+    ``stopping``); false when systemd is not there."""
+    try:
+        result = subprocess.run(['systemctl', 'is-system-running'], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.stdout.strip() == 'stopping'
+
+
 def _mem_available_mb() -> int | None:
     try:
         with open('/proc/meminfo') as f:
@@ -91,6 +114,11 @@ class Agent:
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
         self._refused_clients: set = set()
+        self._occupancy: tuple[float, tuple] | None = None
+        self._started_at = time.monotonic()
+        #: Whether the system is going down (SIGTERM at shutdown): injectable for the tests.
+        self.system_stopping = _system_stopping
+        self.run_command = subprocess.run
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -130,6 +158,7 @@ class Agent:
         app[AGENT_KEY] = self
         p = API_PREFIX
         app.router.add_get(f'{p}/status', self.status)
+        app.router.add_post(f'{p}/power/off', self.power_off)
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_post(f'{p}/projects', self.projects_create)
@@ -153,7 +182,38 @@ class Agent:
         self.registry.start()
 
     async def _on_shutdown(self, app):
+        await self.close_managed_projects()
         await self.registry.stop()
+
+    async def close_managed_projects(self):
+        """On the stop of the agent: the projects it created are evaluated (when their lab asks)
+        and stopped before the machine halts, so that the last evaluation is archived; only when
+        the system is going down, unless ``close_projects_on_stop`` says always / never."""
+        mode = self.cfg.close_projects_on_stop
+        if mode == 'never' or (mode == 'shutdown' and not self.system_stopping()):
+            return
+        projects = [p for p in self.registry.projects.values() if p.managed and not p.closing]
+        if not projects:
+            return
+        log.info("stopping: closing %d managed project(s)", len(projects))
+        try:
+            async with asyncio.timeout(self.cfg.shutdown_timeout):
+                await asyncio.gather(*(self.schedulers.close_project(p) for p in projects), return_exceptions=True)
+        except TimeoutError:
+            log.error("stopping: %d project(s) not closed within %.0f s", sum(1 for p in projects if p.closing),
+                      self.cfg.shutdown_timeout)
+
+    # -- occupancy ------------------------------------------------------------------------------
+
+    def occupied(self) -> tuple:
+        """``(occupied, reasons)``, computed at most every OCCUPANCY_TTL seconds."""
+        now = time.monotonic()
+        if self._occupancy is not None and now - self._occupancy[0] < OCCUPANCY_TTL:
+            return self._occupancy[1]
+        local = sum(1 for p in self.registry.projects.values() if not p.managed)
+        result = occupancy.occupancy(self.cfg.occupied_check, local, self.run_command)
+        self._occupancy = (now, result)
+        return result
 
     # -- middlewares ----------------------------------------------------------------------------
 
@@ -168,8 +228,8 @@ class Agent:
         scheme, _, token = auth.partition(' ')
         if scheme.lower() != 'bearer' or not hmac.compare_digest(token.strip(), self.cfg.token):
             return json_error(401, "bad agent token")
-        if request.path == f'{API_PREFIX}/status':
-            request[IDENTITY_KEY] = None   # polled by the portal itself, no user behind it
+        if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off'):
+            request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
         try:
             request[IDENTITY_KEY] = Identity.from_headers(request.headers)
@@ -206,12 +266,41 @@ class Agent:
             load1 = os.getloadavg()[0]
         except OSError:
             load1 = None
+        occupied, reasons = self.occupied()
+        managed = sum(1 for p in self.registry.projects.values() if p.managed)
         return web.json_response({
             'hostname': self.hostname, 'sre_version': params.sre_version,
-            'projects': self.registry.count(),
+            'projects': self.registry.count(), 'managed_projects': managed,
+            'local_projects': self.registry.count() - managed,
             'terminals': sum(p.terminal_count() for p in self.registry.projects.values()),
             'exam_mode': self.exam_mode(), 'load1': load1, 'mem_available_mb': _mem_available_mb(),
+            'occupied': occupied, 'occupied_by': reasons,
+            'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
+            'power_off_allowed': self.cfg.allow_power_off,
         })
+
+    async def power_off(self, request):
+        """The portal powers this idle host off: refused unless allowed, while a local session
+        or any project exists; the command runs once the answer is sent."""
+        if not self.cfg.allow_power_off:
+            raise AccessError(403, "power off is not allowed on this host")
+        occupied, reasons = self.occupied()
+        if occupied:
+            raise AccessError(409, f"the machine is occupied ({', '.join(reasons)})")
+        if self.registry.count() > 0:
+            raise AccessError(409, f"{self.registry.count()} project(s) running")
+        log.warning("power off requested by %s: %s", request.remote, self.cfg.power_off_command)
+        asyncio.get_running_loop().call_later(1.0, lambda: asyncio.ensure_future(self._run_power_off()))
+        return web.json_response({'ok': True})
+
+    async def _run_power_off(self):
+        try:
+            proc = await asyncio.create_subprocess_exec(*shlex.split(self.cfg.power_off_command))
+            await proc.wait()
+            if proc.returncode != 0:
+                log.error("power off command failed (%s)", proc.returncode)
+        except OSError as e:
+            log.error("power off command failed: %s", e)
 
     async def labs_handler(self, request):
         if self.exam_mode():

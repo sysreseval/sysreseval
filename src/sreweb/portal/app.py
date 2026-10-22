@@ -11,6 +11,7 @@ import jinja2
 from aiohttp import web
 
 from . import session as S
+from .manager import PoolManager
 from .pool import Pool, PoolError
 from .relay import Relay
 from .routes import Routes, json_error
@@ -30,6 +31,7 @@ class Portal:
         self.localedirs = list(localedirs)
         self.session: aiohttp.ClientSession | None = None
         self.pool: Pool | None = None
+        self.manager: PoolManager | None = None
         self.relay: Relay | None = None
         self.routes: Routes | None = None
 
@@ -39,9 +41,11 @@ class Portal:
         app[PORTAL_KEY] = self
         aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(self.web_dir / 'templates')), autoescape=True)
         # the client session is created at startup, inside the running loop (aiohttp requires it)
-        self.pool = Pool(self.cfg.hosts, None, poll_interval=self.cfg.pool.poll_interval)
+        self.pool = Pool(self.cfg.hosts, None, poll_interval=self.cfg.pool.poll_interval,
+                         wake_timeout=self.cfg.pool.wake_timeout, state_file=self.cfg.admin.state_file)
+        self.manager = PoolManager(self.pool, self.cfg.pool)
         self.relay = Relay(self.pool, None)
-        self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs)
+        self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -72,8 +76,10 @@ class Portal:
         self.relay.session = self.session
         await self.pool.refresh()
         self.pool.start()
+        self.manager.start()
 
     async def _on_cleanup(self, app):
+        await self.manager.stop()
         await self.pool.stop()
         await self.session.close()
 
@@ -100,6 +106,8 @@ class Portal:
 
     @web.middleware
     async def csrf_middleware(self, request, handler):
+        if request.path.startswith('/api/pool') and request.headers.get('Authorization', '').lower().startswith('bearer '):
+            return await handler(request)   # sre-web pool: the admin token, checked by the handler
         if request.path.startswith('/api/'):
             upgrade = request.headers.get('Upgrade', '').lower() == 'websocket'
             if request.method not in ('GET', 'HEAD', 'OPTIONS') or upgrade:
@@ -117,7 +125,8 @@ class Portal:
             return await handler(request)
         except PoolError as e:
             if request.path.startswith('/api/'):
-                return json_error(e.status, e.message)
+                extra = {'retry_after': e.retry_after} if e.retry_after else {}
+                return json_error(e.status, e.message, **extra)
             return web.Response(status=e.status, text=e.message)
         except web.HTTPException:
             raise

@@ -15,6 +15,11 @@ case "$1" in
             chown root:"$WEB_USER" /etc/sysreseval/web.toml
             chmod 0640 /etc/sysreseval/web.toml
         fi
+        # the pool state (`sre-web pool add / remove / enable / disable`), written by the service
+        if [ -d /var/lib/sre-web ]; then
+            chown "$WEB_USER":"$WEB_USER" /var/lib/sre-web
+            chmod 0750 /var/lib/sre-web
+        fi
         ;;
 esac
 

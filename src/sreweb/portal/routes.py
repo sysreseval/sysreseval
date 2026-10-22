@@ -1,6 +1,7 @@
 """The handlers of the portal: the pages (Jinja2) and the ``/api/...`` endpoints relayed to the
 agents (``relay.py``).  Every ``/api`` call needs the session cookie; the non-GET ones and the
 WebSockets need the ``X-Requested-With: sre-web`` header (CSRF)."""
+import hmac
 import json
 import logging
 import urllib.parse
@@ -13,7 +14,7 @@ from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .ratelimit import RateLimiter
 from .relay import Relay
-from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS
+from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, host_config_from_dict, ConfigError
 from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
 from ..i18n import translator, catalog
 
@@ -28,9 +29,10 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 
 
 class Routes:
-    def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs):
+    def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None):
         self.cfg = cfg
         self.pool = pool
+        self.manager = manager
         self.relay = relay
         self.localedirs = localedirs
         self.limiter = RateLimiter()
@@ -52,6 +54,10 @@ class Routes:
         r.add_post('/api/language', self.api_language)
         r.add_get('/api/labs', self.api_labs)
         r.add_get('/api/pool', self.api_pool)
+        r.add_get('/api/pool/status', self.api_pool_status)
+        r.add_post('/api/pool/hosts', self.api_pool_add)
+        r.add_delete('/api/pool/hosts/{name}', self.api_pool_remove)
+        r.add_post('/api/pool/hosts/{name}/{action}', self.api_pool_action)
         r.add_get('/api/projects', self.api_projects)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
@@ -225,11 +231,83 @@ class Routes:
         identity = self._require_identity(request)
         return web.json_response(await self.pool.labs(identity))
 
-    async def api_pool(self, request):
-        identity = self._require_identity(request)
-        if identity.role != ROLE_INSTRUCTOR:
+    # -- the pool (instructors, and sre-web pool with the admin token) --------------------------
+
+    def _is_admin(self, request) -> bool:
+        """The administration token (``[admin] token`` of web.toml), from the loopback unless
+        ``listen_any``; every admin call is logged with its source."""
+        token = self.cfg.admin.token
+        scheme, _, given = request.headers.get('Authorization', '').partition(' ')
+        if not token or scheme.lower() != 'bearer' \
+                or not hmac.compare_digest(given.strip().encode('utf-8'), token.encode('utf-8')):
+            return False
+        if not self.cfg.admin.listen_any and request.remote not in ('127.0.0.1', '::1'):
+            log.warning("admin call from %s refused (admin.listen_any is false)", request.remote)
+            return False
+        log.info("admin %s %s from %s", request.method, request.path, request.remote)
+        return True
+
+    def _require_pool_access(self, request):
+        if self._is_admin(request):
+            return
+        if request.headers.get('Authorization'):
+            raise PoolError(401, "bad administration token")
+        if self._require_identity(request).role != ROLE_INSTRUCTOR:
             raise PoolError(403, "instructors only")
+
+    def _require_admin(self, request):
+        if not self._is_admin(request):
+            raise PoolError(401, "bad administration token" if request.headers.get('Authorization')
+                            else "the administration token is required")
+
+    async def api_pool(self, request):
+        self._require_pool_access(request)
         return web.json_response(self.pool.summary())
+
+    async def api_pool_status(self, request):
+        self._require_pool_access(request)
+        return web.json_response(self.manager.status() if self.manager else {})
+
+    async def api_pool_add(self, request):
+        self._require_admin(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        try:
+            host = host_config_from_dict(body if isinstance(body, dict) else {}, "host")
+        except ConfigError as e:
+            return json_error(400, str(e))
+        self.pool.add_host(host)
+        return web.json_response(self._host_row(host.name), status=201)
+
+    async def api_pool_remove(self, request):
+        self._require_admin(request)
+        name = request.match_info['name']
+        self.pool.remove_host(name, force=request.query.get('force', '') in ('1', 'true'))
+        return web.json_response({'ok': True, 'removed': name})
+
+    async def api_pool_action(self, request):
+        self._require_admin(request)
+        name, action = request.match_info['name'], request.match_info['action']
+        if action == 'enable':
+            self.pool.set_enabled(name, True)
+        elif action == 'disable':
+            self.pool.set_enabled(name, False)
+        elif action == 'wake':
+            await self.manager.wake(name, "requested")
+        elif action == 'poweroff':
+            await self.manager.power_off(name, "requested")
+        elif action == 'drain':
+            self.pool.host(name)
+            self.pool.runtime[name].drain = True
+            log.info("host %s draining: no new project, power off when empty", name)
+        else:
+            return json_error(404, f"unknown action {action}")
+        return web.json_response(self._host_row(name))
+
+    def _host_row(self, name: str) -> dict:
+        return next((row for row in self.pool.summary() if row['name'] == name), {'name': name})
 
     async def api_projects(self, request):
         identity = self._require_identity(request)

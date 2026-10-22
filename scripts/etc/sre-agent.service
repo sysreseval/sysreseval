@@ -15,6 +15,10 @@ User=root
 ExecStart=/opt/sre/sbin/sre-agent
 Restart=on-failure
 RestartSec=5
+# at a shutdown the agent evaluates and stops the web projects first (close_projects_on_stop):
+# SIGTERM to the agent only, time for the sre commands, SIGKILL to what is left afterwards
+KillMode=mixed
+TimeoutStopSec=300
 ProtectSystem=full
 ReadWritePaths=/var/lib/sre /home/sre /var/run/docker.sock
 

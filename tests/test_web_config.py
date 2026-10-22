@@ -79,6 +79,47 @@ class TestWebConfig:
         with pytest.raises(ConfigError, match=fragment):
             web_config_from_dict(data)
 
+    def test_hosts_wake_and_power(self):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [
+            dict(HOST, mac='AA-BB-CC-DD-EE-01', power=True),
+            dict(HOST, name='b', wake_command='ipmitool -H {name} power on'),
+            dict(HOST, name='c', enabled=False)]})
+        a, b, c = cfg.hosts
+        assert a.mac == 'aa:bb:cc:dd:ee:01' and a.power and a.can_wake and a.enabled
+        assert b.wake_command.startswith('ipmitool') and b.can_wake and not b.power
+        assert not c.enabled and not c.can_wake
+        with pytest.raises(ConfigError, match='MAC'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [dict(HOST, mac='zz')]})
+        with pytest.raises(ConfigError, match='host name'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [dict(HOST, name='a b')]})
+
+    def test_pool_policy_and_admin(self):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],
+                                    'pool': {'spare_projects': 3, 'min_hosts_up': 2, 'active_hours': '08:30-19:00',
+                                             'wake_timeout': '2m', 'wake_interval': 10, 'idle_host_timeout': '30m',
+                                             'wol_broadcast': '10.0.0.255'},
+                                    'admin': {'token': 'a' * 32, 'listen_any': True, 'state_file': '/x/pool.json'}})
+        p = cfg.pool
+        assert (p.spare_projects, p.min_hosts_up, p.active_hours) == (3, 2, '08:30-19:00')
+        assert (p.wake_timeout, p.wake_interval, p.idle_host_timeout, p.wol_broadcast) == (120, 10, 1800, '10.0.0.255')
+        assert cfg.admin.token == 'a' * 32 and cfg.admin.listen_any and cfg.admin.state_file == '/x/pool.json'
+        defaults = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]})
+        assert defaults.pool.spare_projects == 5 and defaults.pool.min_hosts_up == 1 and defaults.pool.idle_host_timeout == 0
+        assert defaults.admin.token == '' and not defaults.admin.listen_any
+        with pytest.raises(ConfigError, match='active_hours'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'active_hours': '8-20'}})
+        with pytest.raises(ConfigError, match='admin.token'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'admin': {'token': 'short'}})
+
+    def test_active_hours(self):
+        from sreweb.config import parse_active_hours, in_active_hours
+        assert parse_active_hours('') is None and in_active_hours(None, 0)
+        day = parse_active_hours('07:00-20:00')
+        assert day == (420, 1200) and in_active_hours(day, 420) and in_active_hours(day, 1199)
+        assert not in_active_hours(day, 1200) and not in_active_hours(day, 60)
+        night = parse_active_hours('22:00-06:00')
+        assert in_active_hours(night, 23 * 60) and in_active_hours(night, 60) and not in_active_hours(night, 12 * 60)
+
     def test_pool_tls(self):
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],
                                     'pool': {'ca': '/x/ca.crt', 'client_cert': '/x/p.crt', 'client_key': '/x/p.key'}})
@@ -110,6 +151,18 @@ class TestAgentConfig:
                                      sre_exe='/x', state_dir='/y')
         assert cfg.sre_exe == '/usr/sbin/sre' and cfg.max_idle == 7200
         assert cfg.timeouts['start'] == 900 and cfg.timeouts['eval'] == 30 and cfg.timeouts['stop'] == 300
+
+    def test_occupancy_and_power(self):
+        cfg = agent_config_from_dict({'token': 't' * 32, 'occupied_check': 'sessions', 'allow_power_off': True,
+                                      'power_off_command': '/bin/true', 'close_projects_on_stop': 'always',
+                                      'shutdown_timeout': '2m'}, sre_exe='/x', state_dir='/y')
+        assert cfg.occupied_check == 'sessions' and cfg.allow_power_off and cfg.power_off_command == '/bin/true'
+        assert cfg.close_projects_on_stop == 'always' and cfg.shutdown_timeout == 120
+        d = agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y')
+        assert d.occupied_check == 'both' and not d.allow_power_off and d.close_projects_on_stop == 'shutdown'
+        for bad in ({'occupied_check': 'sometimes'}, {'close_projects_on_stop': 'maybe'}):
+            with pytest.raises(ConfigError):
+                agent_config_from_dict({'token': 't' * 32, **bad}, sre_exe='/x', state_dir='/y')
 
     def test_tls_and_allowed_clients(self):
         import ipaddress

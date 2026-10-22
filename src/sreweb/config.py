@@ -13,6 +13,8 @@ from pathlib import Path
 MIN_SECRET_LENGTH = 16
 
 _DURATION_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*([smhd]?)\s*$')
+_MAC_RE = re.compile(r'^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$', re.I)
+_HOURS_RE = re.compile(r'^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$')
 _DURATION_UNITS = {'': 1, 's': 1, 'm': 60, 'h': 3600, 'd': 86400}
 
 
@@ -49,6 +51,38 @@ def parse_listen(value, key='listen') -> tuple[str, int]:
     if not port.isdigit() or not 0 < int(port) < 65536:
         raise ConfigError(f"{key}: bad port in {value!r}")
     return host or '0.0.0.0', int(port)
+
+
+def parse_mac(value, key='mac') -> str:
+    """A MAC address as ``aa:bb:cc:dd:ee:ff`` (lower case, colons)."""
+    text = str(value).strip()
+    if not _MAC_RE.match(text):
+        raise ConfigError(f"{key}: bad MAC address {value!r}")
+    return text.lower().replace('-', ':')
+
+
+def parse_active_hours(value, key='active_hours'):
+    """``"07:00-20:00"`` as ``(start, end)`` minutes of the day; ``""`` means always (``None``).
+    An end before the start wraps past midnight (``"22:00-06:00"``)."""
+    text = str(value or '').strip()
+    if not text:
+        return None
+    m = _HOURS_RE.match(text)
+    if not m:
+        raise ConfigError(f"{key}: bad time range {value!r} (use 'HH:MM-HH:MM')")
+    h1, m1, h2, m2 = (int(x) for x in m.groups())
+    if h1 > 24 or h2 > 24 or m1 > 59 or m2 > 59:
+        raise ConfigError(f"{key}: bad time range {value!r}")
+    return h1 * 60 + m1, h2 * 60 + m2
+
+
+def in_active_hours(hours, minute_of_day: int) -> bool:
+    if hours is None:
+        return True
+    start, end = hours
+    if start <= end:
+        return start <= minute_of_day < end
+    return minute_of_day >= start or minute_of_day < end
 
 
 def parse_networks(values, key='allowed_clients') -> list:
@@ -101,11 +135,21 @@ AUTH_LDAP = 'ldap'
 
 @dataclass
 class HostConfig:
-    """A host of the pool: the URL of its agent and the token of that agent."""
+    """A host of the pool: the URL of its agent and the token of that agent; how to wake it
+    (a MAC address for a Wake-on-LAN packet, or a command with ``{name}`` / ``{mac}``) and
+    whether the portal may power it off."""
     name: str
     url: str
     token: str
     max_projects: int = 25
+    mac: str = ''
+    wake_command: str = ''
+    power: bool = False
+    enabled: bool = True              # placement allowed (``sre-web pool disable`` flips it)
+
+    @property
+    def can_wake(self) -> bool:
+        return bool(self.mac or self.wake_command)
 
 
 @dataclass
@@ -140,6 +184,18 @@ class PoolConfig:
     ca: str = ''
     client_cert: str = ''
     client_key: str = ''
+    # the elastic pool: hosts are woken when the spare capacity (free project slots of the hosts
+    # up) drops below spare_projects, at most one wake per wake_interval, a host silent for
+    # wake_timeout after its wake going back to sleep (with a backoff); min_hosts_up hosts are
+    # kept awake during active_hours (HH:MM-HH:MM, local time; "" = always); a host with no
+    # project for idle_host_timeout may be powered off (0 = never: the nightly cron does it)
+    spare_projects: int = 5
+    min_hosts_up: int = 1
+    active_hours: str = '07:00-20:00'
+    wake_timeout: float = 180.0
+    wake_interval: float = 30.0
+    wol_broadcast: str = '255.255.255.255'
+    idle_host_timeout: float = 0.0
 
 
 @dataclass
@@ -148,6 +204,16 @@ class LimitsConfig:
     start_interval: float = 30.0       # seconds between two starts of one user
     login_per_minute: int = 5          # per client address
     max_answer_bytes: int = 1 << 20
+
+
+@dataclass
+class AdminConfig:
+    """The administration API of the portal (``sre-web pool ...``): a bearer token, loopback
+    clients only unless listen_any, and the file where the hosts added / removed / disabled by
+    hand are kept (merged with the [[hosts]] of the configuration at startup)."""
+    token: str = ''                   # '' : the administration API is disabled
+    listen_any: bool = False
+    state_file: str = ''              # '' : the default of the installation (see sre-web)
 
 
 @dataclass
@@ -162,7 +228,26 @@ class WebConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     pool: PoolConfig = field(default_factory=PoolConfig)
     limits: LimitsConfig = field(default_factory=LimitsConfig)
+    admin: AdminConfig = field(default_factory=AdminConfig)
     hosts: list = field(default_factory=list)
+
+
+def host_config_from_dict(h: dict, where: str) -> HostConfig:
+    """A [[hosts]] entry (of the configuration, or added with ``sre-web pool add``)."""
+    if not isinstance(h, dict):
+        raise ConfigError(f"{where} must be a table")
+    converted = {}
+    if h.get('mac'):
+        converted['mac'] = parse_mac(h['mac'], f'{where}.mac')
+    host = _build(HostConfig, {'name': '', 'url': '', 'token': '', **{k: v for k, v in h.items() if k != 'mac' or not v}},
+                  where, **converted)
+    if not host.name or not host.url or not host.token:
+        raise ConfigError(f"{where} needs name, url and token")
+    if not re.match(r'^[A-Za-z0-9._-]+$', host.name):
+        raise ConfigError(f"{where}: bad host name {host.name!r}")
+    if host.max_projects < 1:
+        raise ConfigError(f"{where}.max_projects must be positive")
+    return host
 
 
 def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
@@ -181,9 +266,17 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     pool_data = _section(data, 'pool', path)
     pool = _build(PoolConfig, pool_data, f"{path}: [pool]",
                   **{k: parse_duration(pool_data[k], f'pool.{k}') for k in
-                     ('idle_timeout_anonymous', 'idle_timeout_authenticated', 'poll_interval') if k in pool_data})
+                     ('idle_timeout_anonymous', 'idle_timeout_authenticated', 'poll_interval', 'wake_timeout',
+                      'wake_interval', 'idle_host_timeout') if k in pool_data})
     if bool(pool.client_cert) != bool(pool.client_key):
         raise ConfigError(f"{path}: pool.client_cert and pool.client_key go together")
+    parse_active_hours(pool.active_hours, 'pool.active_hours')
+    if pool.spare_projects < 0 or pool.min_hosts_up < 0:
+        raise ConfigError(f"{path}: pool.spare_projects and pool.min_hosts_up cannot be negative")
+    admin_data = _section(data, 'admin', path)
+    admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
+    if admin.token and len(admin.token) < MIN_SECRET_LENGTH:
+        raise ConfigError(f"{path}: admin.token must have at least {MIN_SECRET_LENGTH} characters")
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
@@ -191,20 +284,11 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     hosts_data = data.get('hosts', [])
     if not isinstance(hosts_data, list):
         raise ConfigError(f"{path}: [[hosts]] must be an array of tables")
-    hosts = []
-    for i, h in enumerate(hosts_data):
-        if not isinstance(h, dict):
-            raise ConfigError(f"{path}: hosts[{i}] must be a table")
-        host = _build(HostConfig, h, f"{path}: hosts[{i}]")
-        if not host.name or not host.url or not host.token:
-            raise ConfigError(f"{path}: hosts[{i}] needs name, url and token")
-        if host.max_projects < 1:
-            raise ConfigError(f"{path}: hosts[{i}].max_projects must be positive")
-        hosts.append(host)
+    hosts = [host_config_from_dict(h, f"{path}: hosts[{i}]") for i, h in enumerate(hosts_data)]
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
-    top = {k: v for k, v in data.items() if k not in ('auth', 'pool', 'limits', 'hosts')}
-    cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, hosts=hosts,
+    top = {k: v for k, v in data.items() if k not in ('auth', 'pool', 'limits', 'admin', 'hosts')}
+    cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')))
     if len(cfg.secret) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: secret must have at least {MIN_SECRET_LENGTH} characters")
@@ -244,6 +328,18 @@ class AgentConfig:
     tls_key: str = ''
     tls_ca: str = ''                  # when set: a client certificate signed by this CA is required (the portal's)
     allowed_clients: list = field(default_factory=list)   # ipaddress networks; empty = any address
+    # the machine counts as occupied (no new web project) when a local user session exists
+    # ("sessions"), when projects not started by the agent exist ("projects"), either ("both")
+    # or never
+    occupied_check: str = 'both'
+    # POST /v1/power/off (the portal powers an idle host off) and the command it runs
+    allow_power_off: bool = False
+    power_off_command: str = 'systemctl poweroff'
+    # on SIGTERM, the managed projects are evaluated / stopped first: "shutdown" (only when the
+    # system is going down: the nightly cron, a poweroff), "always" (a restart of the unit too),
+    # "never"; within shutdown_timeout seconds (the unit's TimeoutStopSec is longer)
+    close_projects_on_stop: str = 'shutdown'
+    shutdown_timeout: float = 240.0
     timeouts: dict = field(default_factory=lambda: dict(DEFAULT_TIMEOUTS))
 
 
@@ -260,7 +356,8 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     for k, v in given.items():
         timeouts[k] = parse_duration(v, f'timeouts.{k}')
     top = {k: v for k, v in data.items() if k != 'timeouts'}
-    converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl') if k in top}
+    converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl',
+                                                        'shutdown_timeout') if k in top}
     cfg = _build(AgentConfig, top, path, timeouts=timeouts, listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
                  allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:
@@ -278,6 +375,10 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
         raise ConfigError(f"{path}: tls_cert and tls_key go together")
     if cfg.tls_ca and not cfg.tls_cert:
         raise ConfigError(f"{path}: tls_ca needs tls_cert and tls_key")
+    if cfg.occupied_check not in ('sessions', 'projects', 'both', 'never'):
+        raise ConfigError(f"{path}: occupied_check must be sessions, projects, both or never")
+    if cfg.close_projects_on_stop not in ('shutdown', 'always', 'never'):
+        raise ConfigError(f"{path}: close_projects_on_stop must be shutdown, always or never")
     return cfg
 
 

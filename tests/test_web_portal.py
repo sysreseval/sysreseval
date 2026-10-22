@@ -52,7 +52,8 @@ class Harness:
         exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
         env = {'SRE_PUB_DIR': str(self.pub), **(mock_env or {})}
         cfg = agent_config_from_dict({'token': TOKEN, 'sre_exe': str(exe), 'poll_interval': 0.05,
-                                      'state_dir': str(tmp_path / 'web-agent')}, sre_exe=str(exe), state_dir='')
+                                      'state_dir': str(tmp_path / 'web-agent'), 'occupied_check': 'never'},
+                                     sre_exe=str(exe), state_dir='')   # never: the sessions of the test host
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
                            hostname='pool1', extra_env=env)
         self.web_dir = tmp_path / 'web'
@@ -289,6 +290,9 @@ class TestProjectsThroughThePortal:
                 for _ in range(3):
                     h.portal.routes.limiter._last.clear()
                     assert (await h.start())['status'] == 'created'
+                    # a poll made after the release of the reservation (a poll started before it and
+                    # answered after counts the project twice for one interval)
+                    await asyncio.sleep(0.3)
                 h.portal.routes.limiter._last.clear()
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers=CSRF)
                 assert resp.status == 503

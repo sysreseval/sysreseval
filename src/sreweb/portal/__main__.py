@@ -33,8 +33,21 @@ def default_locale_dirs() -> list:
     return [str(_root() / 'locale'), FHS_LOCALE]
 
 
+FHS_STATE_DIR = '/var/lib/sre-web'
+
+
+def default_state_file(config_file: str) -> str:
+    if os.path.isdir(FHS_STATE_DIR):
+        return os.path.join(FHS_STATE_DIR, 'pool.json')
+    return os.path.join(os.path.dirname(os.path.abspath(config_file)), 'pool.json')
+
+
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog='sre-web', description="SRE web site")
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ['pool']:
+        from .poolctl import main as pool_main
+        return pool_main(argv[1:], default_config_file())
+    parser = argparse.ArgumentParser(prog='sre-web', description="SRE web site (sre-web pool ...: manage the pool)")
     parser.add_argument('--config', default=default_config_file(), help="configuration file (TOML)")
     parser.add_argument('--listen', default=None, help="host:port to listen on (overrides the file)")
     parser.add_argument('--web-dir', default=default_web_dir(), help="templates and static files")
@@ -46,6 +59,8 @@ def main(argv=None) -> int:
         cfg = load_web_config(args.config)
         if args.listen:
             cfg.listen = parse_listen(args.listen)
+        if not cfg.admin.state_file:
+            cfg.admin.state_file = default_state_file(args.config)
     except ConfigError as e:
         print(f"sre-web: {e}", file=sys.stderr)
         return 1

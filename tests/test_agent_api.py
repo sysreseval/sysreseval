@@ -44,7 +44,8 @@ class Harness:
         self.log = tmp_path / 'mock.log'
         env = {'SRE_PUB_DIR': str(self.pub), 'MOCK_SRE_LOG': str(self.log), **(mock_env or {})}
         cfg = agent_config_from_dict({'token': TOKEN, 'sre_exe': str(exe), 'poll_interval': 0.05,
-                                      'state_dir': str(tmp_path / 'web-agent'), **cfg_over},
+                                      'state_dir': str(tmp_path / 'web-agent'), 'occupied_check': 'never',
+                                      **cfg_over},   # never: the login sessions of the test host
                                      sre_exe=str(exe), state_dir=str(tmp_path / 'web-agent'))
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
                            hostname='pool1', extra_env=env)
@@ -108,6 +109,69 @@ class TestAllowedClients:
                 assert (await h.client.get('/v1/labs', headers=headers())).status == 403
             async with Harness(tmp_path / 'b', allowed_clients=['127.0.0.1', '::1']) as h:
                 assert (await h.client.get('/v1/status', headers=headers())).status == 200
+        run(go())
+
+
+class TestOccupancyAndPower:
+    def test_status_fields_and_power_off(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, allow_power_off=True, power_off_command='/usr/bin/true',
+                               occupied_check='sessions') as h:
+                calls = []
+                import subprocess
+                h.agent.run_command = lambda argv, **kw: subprocess.CompletedProcess(argv, 1, '', '')   # no loginctl, no who
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['occupied'] is False and st['occupied_by'] == [] and st['managed_projects'] == 0
+                assert st['power_off_allowed'] is True and 'agent_uptime' in st
+                # a local session: occupied, no power off
+                h.agent.run_command = lambda argv, **kw: subprocess.CompletedProcess(
+                    argv, 0, "     2 1000 alice seat0 tty2\n" if argv[1] == 'list-sessions'
+                    else "Name=alice\nSeat=seat0\nTTY=tty2\nClass=user\nRemote=no\nUser=1000\n", '')
+                h.agent._occupancy = None
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['occupied'] is True and st['occupied_by'] == ['session:alice']
+                resp = await h.client.post('/v1/power/off', headers=headers())
+                assert resp.status == 409 and 'occupied' in (await resp.json())['error']
+                # nobody, but a project: refused too
+                h.agent.run_command = lambda argv, **kw: subprocess.CompletedProcess(argv, 1, '', '')
+                h.agent._occupancy = None
+                rln = await h.started()
+                resp = await h.client.post('/v1/power/off', headers=headers())
+                assert resp.status == 409 and 'project' in (await resp.json())['error']
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['managed_projects'] == 1 and st['local_projects'] == 0
+                await h.client.delete(f'/v1/projects/{rln}', headers=headers())
+                h.agent._occupancy = None
+                resp = await h.client.post('/v1/power/off', headers=headers())
+                assert resp.status == 200 and (await resp.json()) == {'ok': True}
+            async with Harness(tmp_path / 'b') as h:   # not allowed by default
+                assert (await h.client.post('/v1/power/off', headers=headers())).status == 403
+        run(go())
+
+    def test_local_projects_count_as_occupied(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, occupied_check='projects') as h:
+                rln = await h.started()
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['occupied'] is False                      # managed by this agent
+                (tmp_path / 'web-agent' / f'{rln}.json').unlink()   # as a Qt-GUI project: not managed
+                h.agent.registry.projects[rln].managed = False
+                h.agent._occupancy = None
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['occupied'] is True and st['occupied_by'] == ['projects:1'] and st['local_projects'] == 1
+        run(go())
+
+    def test_managed_projects_closed_on_shutdown(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, close_projects_on_stop='shutdown') as h:
+                rln = await h.started()
+                h.agent.system_stopping = lambda: False
+                await h.agent.close_managed_projects()
+                assert (h.pub / 'projects' / rln).exists()           # a plain restart keeps them
+                h.agent.system_stopping = lambda: True
+                await h.agent.close_managed_projects()
+                assert not (h.pub / 'projects' / rln).exists()       # the shutdown closes them
+                assert h.calls()[-1] == ['--user', 'stop', rln]
         run(go())
 
 

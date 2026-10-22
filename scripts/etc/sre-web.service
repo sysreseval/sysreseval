@@ -13,6 +13,9 @@ Group=sre-web
 ExecStart=/opt/sre/sbin/sre-web
 Restart=on-failure
 RestartSec=5
+# /var/lib/sre-web: the hosts added or removed with `sre-web pool`
+StateDirectory=sre-web
+StateDirectoryMode=0750
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes

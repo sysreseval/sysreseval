@@ -25,6 +25,20 @@ lab_list_cache_ttl = 60
 # tls_ca = "/etc/sysreseval/tls/ca.crt"
 # The addresses or networks the agent answers (empty: any); the portal's.
 # allowed_clients = ["10.0.0.1"]
+# When the workstation is "occupied" (reported to the portal, which then places no project here
+# and never powers the host off): a local login session ("sessions": loginctl, or who), projects
+# of the Qt GUI ("projects"), "both" or "never".
+occupied_check = "both"
+# What the agent does with the projects it manages when it stops (the nightly shutdown, a restart
+# of the unit): "shutdown" closes them (the last evaluation, then sre stop) only when the system is
+# going down, "always" at every stop, "never"; within shutdown_timeout seconds (the unit's
+# TimeoutStopSec is 300).
+close_projects_on_stop = "shutdown"
+shutdown_timeout = 240
+# Whether the portal may power this host off (POST /v1/power/off, refused when occupied or with
+# any project), and how.
+allow_power_off = false
+power_off_command = "systemctl poweroff"
 # Timeouts of the sre commands, in seconds.
 [timeouts]
 start = 900
