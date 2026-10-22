@@ -488,12 +488,13 @@ Rules:
 
 #### A lab file without the instructor texts — `sbin/strip-instructor`
 
-The running system keeps the instructor texts away from students, but the lab file itself still holds them. `sbin/strip-instructor` writes the file without its `instructor()` calls, for instance before handing a lab over:
+The running system keeps the instructor texts away from students, but the lab file itself still holds them. `sbin/strip-instructor` writes the file without its `instructor()` calls, and with `--full` without its solution states either, for instance before handing a lab over:
 
 ```bash
 sbin/strip-instructor lab/s4/mylab.py /tmp/mylab_public.py   # output file
 sbin/strip-instructor lab/s4/mylab.py /srv/public_labs/      # existing directory → /srv/public_labs/mylab.py
 sbin/strip-instructor -i /srv/public_labs/mylab.py           # replace the file itself
+sbin/strip-instructor --full lab/s4/mylab.py /srv/public_labs/   # the solution states removed as well
 ```
 
 - an `instructor(...)` operand of a `+` disappears with its operator (`instructor(tr("note")) + tr("public")` → `tr("public")`); a call standing alone becomes `''`;
@@ -501,10 +502,17 @@ sbin/strip-instructor -i /srv/public_labs/mylab.py           # replace the file 
 - `instructor` is removed from its `from ... import` when nothing uses it any more;
 - formatting and comments are kept; the result is checked (it must parse and hold no `instructor()` call), otherwise nothing is written.
 
+With `--full` (no short form) the file loses the states students cannot apply as well, so that it holds no solution any more:
+
+- every `@sre_state` method is removed with its decorator, unless it is `initial`, a lifecycle state (`save`, `restore`: `sre save` / `sre restore` apply them) or user-allowed (`@sre_state(user_allowed=True, ...)`); the `_TRANSLATIONS` entries that only those methods used go with them, and `sre_state` leaves its import when no state is left;
+- the `cheat_answers={...}` of the questions lose the entries keyed by a removed state (the whole keyword when no entry is left);
+- a removed state that a kept method still uses (`self.final()` in `restore`) makes the file refused: move the shared code to a helper method, or make the state user-allowed.
+
 The stripped lab behaves like the original outside the instructor mode. Limits:
 
 - a text kept in a variable is not followed: with `note = tr("...")` then `instructor(note)`, the definition of `note` stays in the file. The script warns about such variables; write `note = instructor(tr("..."))` to have the text removed;
-- comments are not examined, and only the lab file is processed (not the state directories of a directory lab);
+- with `--full`, the helper methods and the variables that only the removed states (or their `cheat_answers`) used stay in the file: a warning names them (`_solution_dhcpd_conf`, `q1_answers`…), to be removed by hand;
+- comments are not examined, and only the lab file is processed (not the state directories of a directory lab: with `--full` a warning names the directory of a removed state standing next to a `srelab.py`);
 - a question keeps its hash as long as the removed text has no language that the text it was added to lacks (the usual case). Otherwise the archives of the stripped lab do not match the original lab in `sre re-eval`.
 
 In instructor mode every state can be applied from the GUI, as in a debug project: the **Apply Configuration** tab also lists the states that are not `user_allowed` (in red), so the instructor can apply a `final` state in front of the class without making it available to students. The project also gets a **Log** tab listing what every applied state executed (`self.cmd()`, `self.file()`…, with outputs and exit codes), again only while the button is on.

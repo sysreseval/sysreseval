@@ -474,3 +474,548 @@ class TestCommandLine:
         r = subprocess.run([str(WRAPPER), '-i', str(project)], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
         assert project.read_text() == STRIPPED
+
+
+# ---------------------------------------------------------------------------
+# --full: the states students cannot apply
+# ---------------------------------------------------------------------------
+
+def strip_full(source: str) -> str:
+    return strip_source(textwrap.dedent(source).encode(), full=True).data.decode()
+
+
+def with_final(code: str) -> tuple:
+    """(source, expected) of a snippet preceded by a class holding one removed state."""
+    return (f'class N:\n    @sre_state\n    def final(self): pass\n{dedent(code)}',
+            f'class N:\n    pass\n')
+
+
+FULL_LAB = '''
+    from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, instructor, make_tr
+    tr = make_tr('fr')
+    _TRANSLATIONS = {
+        'en': {
+            'Solution complète': 'Full solution',
+            'Panne': 'Fault',
+            'Public': 'Public',
+        },
+    }
+    SECRET = "ip route add default via 10.0.0.1"
+
+
+    class NetScheme(NetScheme0):
+        def __init__(self, data, running_lab_name):
+            super().__init__(data=data, running_lab_name=running_lab_name)
+            self.informations = tr("Public")
+
+        def _addresses(self):
+            self.cmd("pc", "ip addr add 10.0.0.2/24 dev eth0")
+
+        def _solve(self):
+            self.cmd("pc", "ip route add default via 10.0.0.1")
+
+        @sre_state
+        def initial(self):
+            self._addresses()
+
+        @sre_state(user_allowed=False)
+        def restore(self):
+            self._addresses()
+
+        @sre_state(user_allowed=True,
+                   description=tr("Panne"))
+        def fault(self):
+            self.cmd("pc", "ip route del default")
+
+        @sre_state(user_allowed=False, description=tr("Solution complète"))
+        def final(self):
+            # the answer
+            self._solve()
+            self.file("pc", "/root/answer", SECRET)
+            self.informations = instructor(tr("note"))
+
+
+    class Grade(Grade0):
+        def grade(self):
+            super().grade()
+            answers = {"gw": "10.0.0.1"}
+            self.question_form(title=tr("Gateway"), description=tr("@@{gw:.*}@@"),
+                               cheat_answers={"final": answers})
+    '''
+
+FULL_LAB_STRIPPED = '''
+    from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr
+    tr = make_tr('fr')
+    _TRANSLATIONS = {
+        'en': {
+            'Panne': 'Fault',
+            'Public': 'Public',
+        },
+    }
+    SECRET = "ip route add default via 10.0.0.1"
+
+
+    class NetScheme(NetScheme0):
+        def __init__(self, data, running_lab_name):
+            super().__init__(data=data, running_lab_name=running_lab_name)
+            self.informations = tr("Public")
+
+        def _addresses(self):
+            self.cmd("pc", "ip addr add 10.0.0.2/24 dev eth0")
+
+        def _solve(self):
+            self.cmd("pc", "ip route add default via 10.0.0.1")
+
+        @sre_state
+        def initial(self):
+            self._addresses()
+
+        @sre_state(user_allowed=False)
+        def restore(self):
+            self._addresses()
+
+        @sre_state(user_allowed=True,
+                   description=tr("Panne"))
+        def fault(self):
+            self.cmd("pc", "ip route del default")
+
+
+    class Grade(Grade0):
+        def grade(self):
+            super().grade()
+            answers = {"gw": "10.0.0.1"}
+            self.question_form(title=tr("Gateway"), description=tr("@@{gw:.*}@@"))
+    '''
+
+
+class TestFullStates:
+    @pytest.mark.parametrize('decorator', ['@sre_state', '@sre_state()', '@sre_state(user_allowed=False)',
+                                           '@sre_state(description="x")', '@sre_state(multi_pass=True)',
+                                           '@sre_state(user_allowed=0)'])
+    def test_removed_whatever_the_decorator_form(self, decorator):
+        source = f'class N:\n    def a(self):\n        pass\n\n    {decorator}\n    def final(self):\n        pass\n'
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == 'class N:\n    def a(self):\n        pass\n'
+        assert result.states == ['final'] and result.calls == 0 and not result.warnings
+
+    @pytest.mark.parametrize('name, decorator', [
+        ('initial', '@sre_state'), ('save', '@sre_state()'), ('restore', '@sre_state(user_allowed=False)'),
+        ('final', '@sre_state(user_allowed=True)'), ('final', '@sre_state(user_allowed=True, description="x")'),
+        ('final', '@sre_state(description="x",\n               user_allowed=True)'),
+    ])
+    def test_kept_states(self, name, decorator):
+        source = f'class N:\n    {decorator}\n    def {name}(self):\n        pass\n'
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == source and result.states == [] and not result.warnings
+
+    def test_whole_lab(self):
+        result = strip_source(dedent(FULL_LAB).encode(), full=True)
+        assert result.data.decode() == dedent(FULL_LAB_STRIPPED)
+        assert result.states == ['final'] and result.calls == 1 and result.translations == 1
+        assert result.cheat_entries == 1 and result.import_removed
+        assert result.warnings == [
+            "line 11: 'SECRET' is only used inside the removed states but defined outside: its definition is "
+            "left in the file",
+            "line 49: 'answers' is only used inside the removed cheat_answers but defined outside: its definition "
+            "is left in the file",
+            "line 22: the method '_solve' is only used inside the removed states: its definition is left in the file",
+        ]
+
+    def test_without_full_only_the_instructor_call_goes(self):
+        result = strip_source(dedent(FULL_LAB).encode())
+        assert result.states == [] and result.calls == 1 and result.cheat_entries == 0
+        text = result.data.decode()
+        assert 'def final(self):' in text and 'cheat_answers={"final": answers}' in text
+        assert "self.informations = ''" in text and 'instructor' not in text.split('\n')[1]
+
+    def test_nothing_to_remove(self):
+        source = b'from SRE.lib_sre import sre_state\nclass N:\n    @sre_state\n    def initial(self): pass\n'
+        result = strip_source(source, full=True)
+        assert result.data == source and result.states == [] and not result.warnings
+
+    def test_blank_lines_above_go_with_the_method(self):
+        assert strip_full('''
+            class N:
+                def a(self): pass
+
+
+                @sre_state
+                def final(self): pass
+
+                def b(self): pass
+            ''') == dedent('''
+            class N:
+                def a(self): pass
+
+                def b(self): pass
+            ''')
+
+    def test_first_method_of_the_class(self):
+        assert strip_full('''
+            class N:
+                @sre_state
+                def final(self):
+                    pass
+
+                def b(self): pass
+            ''') == dedent('''
+            class N:
+
+                def b(self): pass
+            ''')
+
+    def test_last_method_keeps_the_separation_with_the_next_class(self):
+        assert strip_full('''
+            class N:
+                def a(self): pass
+
+                @sre_state
+                def final(self): pass
+
+
+            class G:
+                pass
+            ''') == dedent('''
+            class N:
+                def a(self): pass
+
+
+            class G:
+                pass
+            ''')
+
+    @pytest.mark.parametrize('source, expected', [
+        ('class N(NetScheme0):\n    @sre_state()\n    def final(self):\n        pass\n', 'class N(NetScheme0):\n    pass\n'),
+        ('class N:\n    @sre_state\n    def final(self): pass  # c\nx = 2\n', 'class N:\n    pass  # c\nx = 2\n'),
+    ])
+    def test_only_method_becomes_pass(self, source, expected):
+        assert strip_source(source.encode(), full=True).data.decode() == expected
+
+    def test_several_decorators_and_a_multi_line_one(self):
+        assert strip_full('''
+            class N:
+                x = 1
+
+                @other
+                @sre_state(user_allowed=False,
+                           description=tr("Solution"))
+                def final(self):
+                    pass
+            ''') == dedent('''
+            class N:
+                x = 1
+            ''')
+
+    def test_two_states_removed_in_two_classes(self):
+        result = strip_source(dedent('''
+            class A:
+                @sre_state
+                def final(self): pass
+            class B:
+                @sre_state
+                def ok(self): pass
+                @sre_state
+                def final(self): pass
+            ''').encode(), full=True)
+        assert result.data.decode() == '\nclass A:\n    pass\nclass B:\n    pass\n'
+        assert result.states == ['final', 'ok']
+
+    def test_alias_and_attribute_decorator(self):
+        assert strip_full('''
+            from SRE.lib_sre import sre_state as state
+            import SRE.lib_sre as lib
+            class N:
+                @state
+                def final(self): pass
+                @lib.sre_state()
+                def ok(self): pass
+                def a(self): pass
+            ''') == dedent('''
+            import SRE.lib_sre as lib
+            class N:
+                def a(self): pass
+            ''')
+
+    def test_non_literal_user_allowed_is_kept_with_a_warning(self):
+        source = 'class N:\n    @sre_state(user_allowed=FLAG)\n    def final(self): pass\n'
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == source and result.states == []
+        assert result.warnings == ["line 3: the user_allowed value of the state 'final' is not a literal: the state is kept"]
+
+    def test_translations_of_the_removed_state_only(self):
+        assert strip_full('''
+            _TRANSLATIONS = {'en': {'a': 'A', 'b': 'B', 'c': 'C'}}
+            class N:
+                @sre_state(description=tr("a"))
+                def final(self):
+                    self.cmd("m", tr("b"))
+                @sre_state(user_allowed=True, description=tr("b"))
+                def fault(self):
+                    self.cmd("m", tr("c"))
+            ''') == dedent('''
+            _TRANSLATIONS = {'en': {'b': 'B', 'c': 'C'}}
+            class N:
+                @sre_state(user_allowed=True, description=tr("b"))
+                def fault(self):
+                    self.cmd("m", tr("c"))
+            ''')
+
+    def test_instructor_calls_inside_a_removed_state_go_with_it(self):
+        result = strip_source(dedent('''
+            from SRE.lib_sre import instructor, sre_state, tr
+            class N:
+                @sre_state
+                def initial(self):
+                    self.informations = tr("public")
+                @sre_state
+                def final(self):
+                    self.informations = instructor(tr("note")) + tr("public") + instructor(tr("more"))
+            ''').encode(), full=True)
+        assert result.data.decode() == dedent('''
+            from SRE.lib_sre import sre_state, tr
+            class N:
+                @sre_state
+                def initial(self):
+                    self.informations = tr("public")
+            ''')
+        assert result.calls == 2 and result.states == ['final']
+
+    @pytest.mark.parametrize('before, after', [
+        ('from SRE.lib_sre import NetScheme0, sre_state\n', 'from SRE.lib_sre import NetScheme0\n'),
+        ('from SRE.lib_sre import a, instructor, sre_state\n', 'from SRE.lib_sre import a\n'),
+        ('from SRE.lib_sre import instructor, sre_state, a\n', 'from SRE.lib_sre import a\n'),
+        ('from SRE.lib_sre import instructor, a, sre_state\n', 'from SRE.lib_sre import a\n'),
+        ('from SRE.lib_sre import (\n    instructor,\n    a,\n    sre_state,\n)\n', 'from SRE.lib_sre import (\n    a,\n)\n'),
+        ('from SRE.lib_sre import (\n    instructor,\n    sre_state,\n)\n', ''),
+    ])
+    def test_sre_state_import_removed_when_no_state_is_left(self, before, after):
+        source = before + 'class N:\n    @sre_state\n    def final(self):\n        x = instructor("n")\n'
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == after + 'class N:\n    pass\n' and result.import_removed
+
+    def test_sre_state_import_kept_while_a_state_remains(self):
+        source = 'from SRE.lib_sre import sre_state\nclass N:\n    @sre_state\n    def initial(self): pass\n    @sre_state\n    def final(self): pass\n'
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == 'from SRE.lib_sre import sre_state\nclass N:\n    @sre_state\n    def initial(self): pass\n'
+        assert not result.import_removed
+
+    def test_unused_sre_state_import_is_left_without_full(self):
+        source = b'from SRE.lib_sre import sre_state, instructor\nx = instructor("a") + "b"\n'
+        assert strip_source(source).data == b'from SRE.lib_sre import sre_state\nx = "b"\n'
+
+
+class TestFullCheatAnswers:
+    def test_last_keyword_after_a_parenthesised_value(self):
+        source, prefix = with_final('''
+            self.question_text(
+                title=tr("Q"),
+                description=(
+                    tr("D")
+                ),  # about D
+                cheat_answers={"final": a},
+            )
+            ''')
+        assert strip_source(source.encode(), full=True).data.decode() == prefix + dedent('''
+            self.question_text(
+                title=tr("Q"),
+                description=(
+                    tr("D")
+                ),  # about D
+            )
+            ''')
+
+    @pytest.mark.parametrize('call, expected', [
+        ('q(a, cheat_answers={"final": x})\n', 'q(a)\n'),
+        ('q(a, cheat_answers={"final": x}, b=1)\n', 'q(a, b=1)\n'),
+        ('q(cheat_answers={"final": x}, b=1)\n', 'q(b=1)\n'),
+        ('q(cheat_answers={"final": x})\n', 'q()\n'),
+        ('q(a,\n  cheat_answers={"final": x},\n  b=1)\n', 'q(a,\n  b=1)\n'),
+        ('q(a, cheat_answers={"final": x, "ok": y})\n', 'q(a, cheat_answers={"ok": y})\n'),
+        ('q(a, cheat_answers={"ok": y, "final": x})\n', 'q(a, cheat_answers={"ok": y})\n'),
+        ('q(a,\n  cheat_answers={"final": x}\n)\n', 'q(a,\n)\n'),
+        ('q(a,\n  cheat_answers={"final": x})\n', 'q(a)\n'),
+        ('q(a, cheat_answers={\n    "final": x,\n    "ok": y,\n})\n', 'q(a, cheat_answers={\n    "ok": y,\n})\n'),
+        ('q(a, cheat_answers={"ok": y})\n', 'q(a, cheat_answers={"ok": y})\n'),
+    ])
+    def test_entry_or_whole_keyword(self, call, expected):
+        source, prefix = with_final(call)
+        assert strip_source(source.encode(), full=True).data.decode() == prefix + expected
+
+    def test_entries_of_every_removed_state(self):
+        source = 'class N:\n    @sre_state\n    def final(self): pass\n    @sre_state\n    def ok(self): pass\n' \
+                 'q(a, cheat_answers={"final": x, "ok": y, "fault": z})\n'
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == 'class N:\n    pass\nq(a, cheat_answers={"fault": z})\n'
+        assert result.cheat_entries == 2
+
+    def test_non_literal_dict_is_reported(self):
+        source, prefix = with_final('q(a, cheat_answers=answers)\n')
+        result = strip_source(source.encode(), full=True)
+        assert result.data.decode() == prefix + 'q(a, cheat_answers=answers)\n' and result.cheat_entries == 0
+        assert result.warnings == ["line 4: cheat_answers is not a literal dict: the answers of the removed states, "
+                                   "if any, are still in the file"]
+
+    def test_untouched_without_full(self):
+        source = 'class N:\n    @sre_state\n    def final(self): pass\nq(a, cheat_answers={"final": x})\n'
+        assert strip_source(source.encode()).data.decode() == source
+
+
+class TestFullReferences:
+    def test_kept_method_using_a_removed_state_refuses_the_file(self):
+        with pytest.raises(StripError, match=r"line 8: restore\(\) uses self.final while the state 'final' is removed"):
+            strip_source(dedent('''
+                class N:
+                    @sre_state
+                    def final(self):
+                        pass
+                    @sre_state
+                    def restore(self):
+                        self.final()
+                ''').encode(), full=True)
+
+    def test_classmethod_and_module_level(self):
+        with pytest.raises(StripError, match=r"line 6: helper\(\) uses cls.final"):
+            strip_source(b'class N:\n    @sre_state\n    def final(self): pass\n    @classmethod\n    def helper(cls):\n        return cls.final\n', full=True)
+
+    def test_reference_inside_another_removed_state_is_fine(self):
+        result = strip_source(dedent('''
+            class N:
+                @sre_state
+                def final(self):
+                    pass
+                @sre_state
+                def ok(self):
+                    self.final()
+            ''').encode(), full=True)
+        assert result.data.decode() == '\nclass N:\n    pass\n' and result.states == ['final', 'ok']
+
+    def test_other_attributes_of_the_same_name_are_fine(self):
+        source = 'class N:\n    @sre_state\n    def final(self): pass\n    def a(self):\n        return other.final, self.final_text\n'
+        assert strip_source(source.encode(), full=True).data.decode() == 'class N:\n' + source.split('pass\n', 1)[1]
+
+
+class TestFullWarnings:
+    def test_helper_method_only_the_removed_state_uses(self):
+        result = strip_source(dedent('''
+            class N:
+                def _shared(self): pass
+                def _solve(self): pass
+                @sre_state
+                def initial(self):
+                    self._shared()
+                @sre_state
+                def final(self):
+                    self._shared()
+                    self._solve()
+                    self.initial()
+            ''').encode(), full=True)
+        assert result.warnings == ["line 4: the method '_solve' is only used inside the removed states: its "
+                                   "definition is left in the file"]
+
+    def test_constant_and_cheat_variable(self):
+        result = strip_source(dedent('''
+            SECRET = "s"
+            SHARED = "x"
+            class N:
+                @sre_state
+                def initial(self):
+                    self.cmd("m", SHARED)
+                @sre_state
+                def final(self):
+                    self.cmd("m", SECRET + SHARED)
+                    local = 1
+                    self.cmd("m", str(local))
+            def grade(self):
+                answers = {"a": 1}
+                self.q(cheat_answers={"final": answers})
+            ''').encode(), full=True)
+        assert result.warnings == [
+            "line 2: 'SECRET' is only used inside the removed states but defined outside: its definition is left in the file",
+            "line 14: 'answers' is only used inside the removed cheat_answers but defined outside: its definition is left in the file",
+        ]
+
+    def test_used_by_an_instructor_call_and_a_removed_state(self):
+        result = strip_source(dedent('''
+            from SRE.lib_sre import instructor, sre_state, tr
+            NOTE = "n"
+            class N:
+                def __init__(self):
+                    self.informations = instructor(NOTE) + tr("public")
+                @sre_state
+                def final(self):
+                    self.cmd("m", NOTE)
+            ''').encode(), full=True)
+        assert result.warnings == ["line 3: 'NOTE' is only used inside instructor() and the removed states but defined "
+                                   "outside: its definition is left in the file"]
+
+    def test_instructor_only_variable_keeps_the_hint(self):
+        result = strip_source(b'note = tr("s")\nx = tr("p") + instructor(note)\nclass N:\n    @sre_state\n    def final(self): pass\n', full=True)
+        assert len(result.warnings) == 1 and result.warnings[0].endswith("(wrap the text in instructor() where it is assigned to remove it)")
+
+
+class TestFullRealFiles:
+    @pytest.mark.parametrize('lab', sorted((ROOT / 'tests' / 'labs').glob('*.py'))
+                             + sorted((ROOT / 'lab' / 'sre').glob('*.py')), ids=lambda p: p.name)
+    def test_no_removable_state_is_left(self, lab):
+        from strip_instructor import _Stripper, _local_names, _state_decorator, KEPT_STATES
+        data = lab.read_bytes()
+        result = strip_source(data, full=True)
+        tree = ast.parse(result.data)
+        assert not _Stripper(result.data, tree).states_to_remove([])
+        left = {fn.name for cls in ast.walk(tree) if isinstance(cls, ast.ClassDef) for fn in cls.body
+                if isinstance(fn, ast.FunctionDef) and _state_decorator(fn, _local_names(tree, 'sre_state'))}
+        assert not (left & set(result.states))
+        assert not set(result.states) & set(KEPT_STATES)
+        # the file without --full is the same as before, whatever the states
+        assert strip_source(data).states == []
+
+
+class TestFullCommandLine:
+    def test_summary(self, tmp_path, capsys):
+        path, output = tmp_path / 'lab.py', tmp_path / 'out.py'
+        path.write_text(dedent(FULL_LAB))
+        assert main(['--full', str(path), str(output)]) == 0
+        captured = capsys.readouterr()
+        assert captured.out == (f"{output}: 1 instructor() call(s) removed, 1 _TRANSLATIONS entry removed, "
+                                "1 state(s) removed (final), 1 cheat_answers entry removed.\n")
+        assert captured.err.count('warning:') == 3 and output.read_text() == dedent(FULL_LAB_STRIPPED)
+
+    def test_nothing_to_remove(self, tmp_path, capsys):
+        path = tmp_path / 'lab.py'
+        path.write_text('class N:\n    @sre_state\n    def initial(self): pass\n')
+        assert main(['--full', '-i', str(path)]) == 0
+        assert capsys.readouterr().out == f"{path}: no instructor() call, no state to remove.\n"
+
+    @pytest.mark.parametrize('arguments', [['-f'], ['-fi'], ['-i', '-f']])
+    def test_no_short_option(self, tmp_path, capsys, arguments):
+        path = tmp_path / 'lab.py'
+        source = 'class N:\n    @sre_state\n    def final(self): pass\n'
+        path.write_text(source)
+        with pytest.raises(SystemExit) as error:
+            main(arguments + [str(path)] + ([str(tmp_path / 'out.py')] if '-i' not in ''.join(arguments) else []))
+        assert error.value.code == 2
+        err = capsys.readouterr().err
+        assert 'error: -f is not an option: use --full' in err and '[-f]' not in err
+        assert path.read_text() == source and not (tmp_path / 'out.py').exists()
+
+    def test_refused_file_writes_nothing(self, tmp_path, capsys):
+        path = tmp_path / 'lab.py'
+        source = 'class N:\n    @sre_state\n    def final(self): pass\n    def a(self): self.final()\n'
+        path.write_text(source)
+        assert main(['--full', str(path), str(tmp_path / 'out.py')]) == 1
+        assert main(['--full', '-i', str(path)]) == 1
+        assert "a() uses self.final while the state 'final' is removed" in capsys.readouterr().err
+        assert not (tmp_path / 'out.py').exists() and path.read_text() == source
+
+    def test_state_directory_of_a_directory_lab_is_reported(self, tmp_path, capsys):
+        lab_dir = tmp_path / 'mylab'
+        lab_dir.mkdir()
+        (lab_dir / 'final').mkdir()
+        (lab_dir / 'initial').mkdir()
+        source = 'class N:\n    @sre_state\n    def final(self): pass\n'
+        for name, reported in (('srelab.py', True), ('other.py', False)):
+            (lab_dir / name).write_text(source)
+            assert main(['--full', str(lab_dir / name), str(tmp_path / 'out.py')]) == 0
+            err = capsys.readouterr().err
+            assert (f"warning: the directory '{lab_dir / 'final'}' holds the files of the removed state 'final'" in err) is reported
+            assert 'initial' not in err
