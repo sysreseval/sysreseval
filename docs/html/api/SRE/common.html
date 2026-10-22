@@ -467,6 +467,66 @@
                 </ul>
 
             </li>
+            <li>
+                    <a class="variable" href="#TAB_SCHEMA">TAB_SCHEMA</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_FULL_SCHEMA">TAB_FULL_SCHEMA</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_INFORMATIONS">TAB_INFORMATIONS</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_MACHINES">TAB_MACHINES</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_NETWORKS">TAB_NETWORKS</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_QUESTIONS">TAB_QUESTIONS</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_EVALUATION">TAB_EVALUATION</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_TERMINALS">TAB_TERMINALS</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_APPLY_CONFIG">TAB_APPLY_CONFIG</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_LOG">TAB_LOG</a>
+            </li>
+            <li>
+                    <a class="variable" href="#TAB_ORDER">TAB_ORDER</a>
+            </li>
+            <li>
+                    <a class="function" href="#resolve_text">resolve_text</a>
+            </li>
+            <li>
+                    <a class="function" href="#format_port">format_port</a>
+            </li>
+            <li>
+                    <a class="function" href="#format_ports">format_ports</a>
+            </li>
+            <li>
+                    <a class="function" href="#terminal_devices">terminal_devices</a>
+            </li>
+            <li>
+                    <a class="function" href="#info_languages">info_languages</a>
+            </li>
+            <li>
+                    <a class="function" href="#project_title">project_title</a>
+            </li>
+            <li>
+                    <a class="function" href="#listed_states">listed_states</a>
+            </li>
+            <li>
+                    <a class="function" href="#state_rows">state_rows</a>
+            </li>
+            <li>
+                    <a class="function" href="#visible_tabs">visible_tabs</a>
+            </li>
     </ul>
 
 
@@ -498,7 +558,7 @@ SRE<wbr>.common    </h1>
 </span><span id="L-8"><a href="#L-8"><span class="linenos">  8</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enum</span>
 </span><span id="L-9"><a href="#L-9"><span class="linenos">  9</span></a>
 </span><span id="L-10"><a href="#L-10"><span class="linenos"> 10</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">params</span>
-</span><span id="L-11"><a href="#L-11"><span class="linenos"> 11</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">.instructor_text</span><span class="w"> </span><span class="kn">import</span> <span class="n">strip_instructor</span>
+</span><span id="L-11"><a href="#L-11"><span class="linenos"> 11</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">.instructor_text</span><span class="w"> </span><span class="kn">import</span> <span class="n">strip_instructor</span><span class="p">,</span> <span class="n">unwrap_instructor</span>
 </span><span id="L-12"><a href="#L-12"><span class="linenos"> 12</span></a>
 </span><span id="L-13"><a href="#L-13"><span class="linenos"> 13</span></a><span class="c1"># graphviz node sizes (inches) of the icons of the schema (GUI and export PDF)</span>
 </span><span id="L-14"><a href="#L-14"><span class="linenos"> 14</span></a><span class="n">SWITCH_ICON_SIZE</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;0.5&quot;</span><span class="p">,</span> <span class="s2">&quot;0.5&quot;</span><span class="p">)</span>
@@ -967,6 +1027,130 @@ SRE<wbr>.common    </h1>
 </span><span id="L-477"><a href="#L-477"><span class="linenos">477</span></a>                <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;questions&quot;</span><span class="p">]</span>
 </span><span id="L-478"><a href="#L-478"><span class="linenos">478</span></a>            <span class="p">],</span>
 </span><span id="L-479"><a href="#L-479"><span class="linenos">479</span></a>        <span class="p">)</span>
+</span><span id="L-480"><a href="#L-480"><span class="linenos">480</span></a>
+</span><span id="L-481"><a href="#L-481"><span class="linenos">481</span></a>
+</span><span id="L-482"><a href="#L-482"><span class="linenos">482</span></a><span class="c1"># ---------------------------------------------------------------------------------------------</span>
+</span><span id="L-483"><a href="#L-483"><span class="linenos">483</span></a><span class="c1"># Display helpers shared by the Qt GUI (sysreseval) and the web front-end (sreweb): pure</span>
+</span><span id="L-484"><a href="#L-484"><span class="linenos">484</span></a><span class="c1"># functions of the info.json dict, so that both show a project the same way.</span>
+</span><span id="L-485"><a href="#L-485"><span class="linenos">485</span></a><span class="c1"># ---------------------------------------------------------------------------------------------</span>
+</span><span id="L-486"><a href="#L-486"><span class="linenos">486</span></a>
+</span><span id="L-487"><a href="#L-487"><span class="linenos">487</span></a><span class="c1">#: Identifiers of the tabs of a project, in display order.</span>
+</span><span id="L-488"><a href="#L-488"><span class="linenos">488</span></a><span class="n">TAB_SCHEMA</span> <span class="o">=</span> <span class="s2">&quot;schema&quot;</span>
+</span><span id="L-489"><a href="#L-489"><span class="linenos">489</span></a><span class="n">TAB_FULL_SCHEMA</span> <span class="o">=</span> <span class="s2">&quot;full_schema&quot;</span>
+</span><span id="L-490"><a href="#L-490"><span class="linenos">490</span></a><span class="n">TAB_INFORMATIONS</span> <span class="o">=</span> <span class="s2">&quot;informations&quot;</span>
+</span><span id="L-491"><a href="#L-491"><span class="linenos">491</span></a><span class="n">TAB_MACHINES</span> <span class="o">=</span> <span class="s2">&quot;machines&quot;</span>
+</span><span id="L-492"><a href="#L-492"><span class="linenos">492</span></a><span class="n">TAB_NETWORKS</span> <span class="o">=</span> <span class="s2">&quot;networks&quot;</span>
+</span><span id="L-493"><a href="#L-493"><span class="linenos">493</span></a><span class="n">TAB_QUESTIONS</span> <span class="o">=</span> <span class="s2">&quot;questions&quot;</span>
+</span><span id="L-494"><a href="#L-494"><span class="linenos">494</span></a><span class="n">TAB_EVALUATION</span> <span class="o">=</span> <span class="s2">&quot;evaluation&quot;</span>
+</span><span id="L-495"><a href="#L-495"><span class="linenos">495</span></a><span class="n">TAB_TERMINALS</span> <span class="o">=</span> <span class="s2">&quot;terminals&quot;</span>
+</span><span id="L-496"><a href="#L-496"><span class="linenos">496</span></a><span class="n">TAB_APPLY_CONFIG</span> <span class="o">=</span> <span class="s2">&quot;apply_config&quot;</span>
+</span><span id="L-497"><a href="#L-497"><span class="linenos">497</span></a><span class="n">TAB_LOG</span> <span class="o">=</span> <span class="s2">&quot;log&quot;</span>
+</span><span id="L-498"><a href="#L-498"><span class="linenos">498</span></a><span class="n">TAB_ORDER</span> <span class="o">=</span> <span class="p">(</span><span class="n">TAB_SCHEMA</span><span class="p">,</span> <span class="n">TAB_FULL_SCHEMA</span><span class="p">,</span> <span class="n">TAB_INFORMATIONS</span><span class="p">,</span> <span class="n">TAB_MACHINES</span><span class="p">,</span> <span class="n">TAB_NETWORKS</span><span class="p">,</span> <span class="n">TAB_QUESTIONS</span><span class="p">,</span>
+</span><span id="L-499"><a href="#L-499"><span class="linenos">499</span></a>             <span class="n">TAB_EVALUATION</span><span class="p">,</span> <span class="n">TAB_TERMINALS</span><span class="p">,</span> <span class="n">TAB_APPLY_CONFIG</span><span class="p">,</span> <span class="n">TAB_LOG</span><span class="p">)</span>
+</span><span id="L-500"><a href="#L-500"><span class="linenos">500</span></a>
+</span><span id="L-501"><a href="#L-501"><span class="linenos">501</span></a>
+</span><span id="L-502"><a href="#L-502"><span class="linenos">502</span></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_text</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">show_instructor</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="L-503"><a href="#L-503"><span class="linenos">503</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A text of info.json (a string or a ``{lang: text}`` dict) in the first language of</span>
+</span><span id="L-504"><a href="#L-504"><span class="linenos">504</span></a><span class="sd">    *lang_priority* it has, as plain text: the instructor fragments are removed, or kept without</span>
+</span><span id="L-505"><a href="#L-505"><span class="linenos">505</span></a><span class="sd">    their marks with *show_instructor*.&quot;&quot;&quot;</span>
+</span><span id="L-506"><a href="#L-506"><span class="linenos">506</span></a>    <span class="n">text</span> <span class="o">=</span> <span class="n">TranslatedText</span><span class="o">.</span><span class="n">from_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_priority</span><span class="p">(</span><span class="n">lang_priority</span><span class="p">)</span>
+</span><span id="L-507"><a href="#L-507"><span class="linenos">507</span></a>    <span class="k">return</span> <span class="n">unwrap_instructor</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="k">if</span> <span class="n">show_instructor</span> <span class="k">else</span> <span class="n">strip_instructor</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+</span><span id="L-508"><a href="#L-508"><span class="linenos">508</span></a>
+</span><span id="L-509"><a href="#L-509"><span class="linenos">509</span></a>
+</span><span id="L-510"><a href="#L-510"><span class="linenos">510</span></a><span class="k">def</span><span class="w"> </span><span class="nf">format_port</span><span class="p">(</span><span class="n">entry</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="L-511"><a href="#L-511"><span class="linenos">511</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Format ``host:machine/proto`` of ``InfoMachine.ports`` as ``host -&gt; machine (proto)``.&quot;&quot;&quot;</span>
+</span><span id="L-512"><a href="#L-512"><span class="linenos">512</span></a>    <span class="n">proto</span> <span class="o">=</span> <span class="s2">&quot;tcp&quot;</span>
+</span><span id="L-513"><a href="#L-513"><span class="linenos">513</span></a>    <span class="k">if</span> <span class="s2">&quot;/&quot;</span> <span class="ow">in</span> <span class="n">entry</span><span class="p">:</span>
+</span><span id="L-514"><a href="#L-514"><span class="linenos">514</span></a>        <span class="n">entry</span><span class="p">,</span> <span class="n">proto</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span><span id="L-515"><a href="#L-515"><span class="linenos">515</span></a>    <span class="n">host_port</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">machine_port</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span>
+</span><span id="L-516"><a href="#L-516"><span class="linenos">516</span></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">host_port</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">machine_port</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">proto</span><span class="si">}</span><span class="s2">)&quot;</span>
+</span><span id="L-517"><a href="#L-517"><span class="linenos">517</span></a>
+</span><span id="L-518"><a href="#L-518"><span class="linenos">518</span></a>
+</span><span id="L-519"><a href="#L-519"><span class="linenos">519</span></a><span class="k">def</span><span class="w"> </span><span class="nf">format_ports</span><span class="p">(</span><span class="n">ports</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="L-520"><a href="#L-520"><span class="linenos">520</span></a>    <span class="k">return</span> <span class="s2">&quot;  -  &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">format_port</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ports</span> <span class="ow">or</span> <span class="p">[])</span>
+</span><span id="L-521"><a href="#L-521"><span class="linenos">521</span></a>
+</span><span id="L-522"><a href="#L-522"><span class="linenos">522</span></a>
+</span><span id="L-523"><a href="#L-523"><span class="linenos">523</span></a><span class="k">def</span><span class="w"> </span><span class="nf">terminal_devices</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="L-524"><a href="#L-524"><span class="linenos">524</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The devices of the Terminals tab: the machines of info.json, then the manageable switches</span>
+</span><span id="L-525"><a href="#L-525"><span class="linenos">525</span></a><span class="sd">    (their management console) as ``{name, allow_connection}`` dicts.&quot;&quot;&quot;</span>
+</span><span id="L-526"><a href="#L-526"><span class="linenos">526</span></a>    <span class="n">switches</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span> <span class="s2">&quot;allow_connection&quot;</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;allow_connection&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)}</span>
+</span><span id="L-527"><a href="#L-527"><span class="linenos">527</span></a>                <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;switches&quot;</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">or</span> <span class="p">[]</span>
+</span><span id="L-528"><a href="#L-528"><span class="linenos">528</span></a>                <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;mode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">params</span><span class="o">.</span><span class="n">network_mode_managed</span><span class="p">]</span>
+</span><span id="L-529"><a href="#L-529"><span class="linenos">529</span></a>    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;machines&quot;</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">or</span> <span class="p">[])</span> <span class="o">+</span> <span class="n">switches</span>
+</span><span id="L-530"><a href="#L-530"><span class="linenos">530</span></a>
+</span><span id="L-531"><a href="#L-531"><span class="linenos">531</span></a>
+</span><span id="L-532"><a href="#L-532"><span class="linenos">532</span></a><span class="k">def</span><span class="w"> </span><span class="nf">info_languages</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+</span><span id="L-533"><a href="#L-533"><span class="linenos">533</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The language codes of the translated texts of a project (title, informations, questions).&quot;&quot;&quot;</span>
+</span><span id="L-534"><a href="#L-534"><span class="linenos">534</span></a>    <span class="n">langs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+</span><span id="L-535"><a href="#L-535"><span class="linenos">535</span></a>    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;informations&#39;</span><span class="p">):</span>
+</span><span id="L-536"><a href="#L-536"><span class="linenos">536</span></a>        <span class="n">v</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+</span><span id="L-537"><a href="#L-537"><span class="linenos">537</span></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+</span><span id="L-538"><a href="#L-538"><span class="linenos">538</span></a>            <span class="n">langs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+</span><span id="L-539"><a href="#L-539"><span class="linenos">539</span></a>    <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;questions&#39;</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">or</span> <span class="p">[]:</span>
+</span><span id="L-540"><a href="#L-540"><span class="linenos">540</span></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;description&#39;</span><span class="p">):</span>
+</span><span id="L-541"><a href="#L-541"><span class="linenos">541</span></a>            <span class="n">v</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+</span><span id="L-542"><a href="#L-542"><span class="linenos">542</span></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+</span><span id="L-543"><a href="#L-543"><span class="linenos">543</span></a>                <span class="n">langs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+</span><span id="L-544"><a href="#L-544"><span class="linenos">544</span></a>    <span class="k">return</span> <span class="n">langs</span>
+</span><span id="L-545"><a href="#L-545"><span class="linenos">545</span></a>
+</span><span id="L-546"><a href="#L-546"><span class="linenos">546</span></a>
+</span><span id="L-547"><a href="#L-547"><span class="linenos">547</span></a><span class="k">def</span><span class="w"> </span><span class="nf">project_title</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">fallback</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="L-548"><a href="#L-548"><span class="linenos">548</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The title of a project tab: ``title`` of info.json in the user&#39;s language, else the lab</span>
+</span><span id="L-549"><a href="#L-549"><span class="linenos">549</span></a><span class="sd">    name without ``.py``, else *fallback* (the running lab name).&quot;&quot;&quot;</span>
+</span><span id="L-550"><a href="#L-550"><span class="linenos">550</span></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lab_name&quot;</span><span class="p">,</span> <span class="n">fallback</span><span class="p">)</span><span class="o">.</span><span class="n">removesuffix</span><span class="p">(</span><span class="s1">&#39;.py&#39;</span><span class="p">))</span>
+</span><span id="L-551"><a href="#L-551"><span class="linenos">551</span></a>    <span class="k">return</span> <span class="n">TranslatedText</span><span class="o">.</span><span class="n">from_value</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_priority</span><span class="p">(</span><span class="n">lang_priority</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">str</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+</span><span id="L-552"><a href="#L-552"><span class="linenos">552</span></a>
+</span><span id="L-553"><a href="#L-553"><span class="linenos">553</span></a>
+</span><span id="L-554"><a href="#L-554"><span class="linenos">554</span></a><span class="k">def</span><span class="w"> </span><span class="nf">listed_states</span><span class="p">(</span><span class="n">user_allowed_states</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">admin_only_states</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">show_admin_only</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+</span><span id="L-555"><a href="#L-555"><span class="linenos">555</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The states of the Apply Configuration tab: every state of ``user_allowed_states``, or only</span>
+</span><span id="L-556"><a href="#L-556"><span class="linenos">556</span></a><span class="sd">    those a student could apply when *show_admin_only* is false (project in instructor mode while</span>
+</span><span id="L-557"><a href="#L-557"><span class="linenos">557</span></a><span class="sd">    the &quot;Instructor mode&quot; button is off).&quot;&quot;&quot;</span>
+</span><span id="L-558"><a href="#L-558"><span class="linenos">558</span></a>    <span class="k">if</span> <span class="n">show_admin_only</span><span class="p">:</span>
+</span><span id="L-559"><a href="#L-559"><span class="linenos">559</span></a>        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">user_allowed_states</span> <span class="ow">or</span> <span class="p">{})</span>
+</span><span id="L-560"><a href="#L-560"><span class="linenos">560</span></a>    <span class="n">admin_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">admin_only_states</span> <span class="ow">or</span> <span class="p">[])</span>
+</span><span id="L-561"><a href="#L-561"><span class="linenos">561</span></a>    <span class="k">return</span> <span class="p">{</span><span class="n">state</span><span class="p">:</span> <span class="n">description</span> <span class="k">for</span> <span class="n">state</span><span class="p">,</span> <span class="n">description</span> <span class="ow">in</span> <span class="p">(</span><span class="n">user_allowed_states</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+</span><span id="L-562"><a href="#L-562"><span class="linenos">562</span></a>            <span class="k">if</span> <span class="n">state</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">admin_only</span><span class="p">}</span>
+</span><span id="L-563"><a href="#L-563"><span class="linenos">563</span></a>
+</span><span id="L-564"><a href="#L-564"><span class="linenos">564</span></a>
+</span><span id="L-565"><a href="#L-565"><span class="linenos">565</span></a><span class="k">def</span><span class="w"> </span><span class="nf">state_rows</span><span class="p">(</span><span class="n">user_allowed_states</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">admin_only_states</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">show_admin_only</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span><span id="L-566"><a href="#L-566"><span class="linenos">566</span></a>               <span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="L-567"><a href="#L-567"><span class="linenos">567</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The rows of the Apply Configuration tab: ``(state, label, admin_only)`` tuples, the label</span>
+</span><span id="L-568"><a href="#L-568"><span class="linenos">568</span></a><span class="sd">    being the description of the state in the user&#39;s language, else the state name.&quot;&quot;&quot;</span>
+</span><span id="L-569"><a href="#L-569"><span class="linenos">569</span></a>    <span class="n">admin_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">admin_only_states</span> <span class="ow">or</span> <span class="p">[])</span>
+</span><span id="L-570"><a href="#L-570"><span class="linenos">570</span></a>    <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="L-571"><a href="#L-571"><span class="linenos">571</span></a>    <span class="k">for</span> <span class="n">state</span><span class="p">,</span> <span class="n">description</span> <span class="ow">in</span> <span class="n">listed_states</span><span class="p">(</span><span class="n">user_allowed_states</span><span class="p">,</span> <span class="n">admin_only_states</span><span class="p">,</span>
+</span><span id="L-572"><a href="#L-572"><span class="linenos">572</span></a>                                            <span class="n">show_admin_only</span><span class="o">=</span><span class="n">show_admin_only</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="L-573"><a href="#L-573"><span class="linenos">573</span></a>        <span class="n">resolved</span> <span class="o">=</span> <span class="p">(</span><span class="n">TranslatedText</span><span class="o">.</span><span class="n">from_value</span><span class="p">(</span><span class="n">description</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_priority</span><span class="p">(</span><span class="n">lang_priority</span><span class="p">)</span>
+</span><span id="L-574"><a href="#L-574"><span class="linenos">574</span></a>                    <span class="k">if</span> <span class="n">description</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+</span><span id="L-575"><a href="#L-575"><span class="linenos">575</span></a>        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">state</span><span class="p">,</span> <span class="n">resolved</span> <span class="k">if</span> <span class="n">resolved</span> <span class="k">else</span> <span class="n">state</span><span class="p">,</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">admin_only</span><span class="p">))</span>
+</span><span id="L-576"><a href="#L-576"><span class="linenos">576</span></a>    <span class="k">return</span> <span class="n">rows</span>
+</span><span id="L-577"><a href="#L-577"><span class="linenos">577</span></a>
+</span><span id="L-578"><a href="#L-578"><span class="linenos">578</span></a>
+</span><span id="L-579"><a href="#L-579"><span class="linenos">579</span></a><span class="k">def</span><span class="w"> </span><span class="nf">visible_tabs</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">exam_mode</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">instructor_shown</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="L-580"><a href="#L-580"><span class="linenos">580</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The tabs shown for a project, in display order (the ``TAB_*`` identifiers).</span>
+</span><span id="L-581"><a href="#L-581"><span class="linenos">581</span></a>
+</span><span id="L-582"><a href="#L-582"><span class="linenos">582</span></a><span class="sd">    *instructor_shown*: the project has instructor texts (instructor mode or debug project) and</span>
+</span><span id="L-583"><a href="#L-583"><span class="linenos">583</span></a><span class="sd">    the &quot;Instructor mode&quot; button is on.  A debug project always gets the Full Schema, every state</span>
+</span><span id="L-584"><a href="#L-584"><span class="linenos">584</span></a><span class="sd">    and the Log; the Evaluation tab is hidden in exam mode and when the lab does not allow</span>
+</span><span id="L-585"><a href="#L-585"><span class="linenos">585</span></a><span class="sd">    self-evaluation; the Apply Configuration tab needs listed states (and not an exam, unless the</span>
+</span><span id="L-586"><a href="#L-586"><span class="linenos">586</span></a><span class="sd">    instructor view is on).&quot;&quot;&quot;</span>
+</span><span id="L-587"><a href="#L-587"><span class="linenos">587</span></a>    <span class="n">debug</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;debug_project&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
+</span><span id="L-588"><a href="#L-588"><span class="linenos">588</span></a>    <span class="n">tabs</span> <span class="o">=</span> <span class="p">[</span><span class="n">TAB_SCHEMA</span><span class="p">]</span>
+</span><span id="L-589"><a href="#L-589"><span class="linenos">589</span></a>    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+</span><span id="L-590"><a href="#L-590"><span class="linenos">590</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_FULL_SCHEMA</span><span class="p">)</span>
+</span><span id="L-591"><a href="#L-591"><span class="linenos">591</span></a>    <span class="n">tabs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">TAB_INFORMATIONS</span><span class="p">,</span> <span class="n">TAB_MACHINES</span><span class="p">,</span> <span class="n">TAB_NETWORKS</span><span class="p">]</span>
+</span><span id="L-592"><a href="#L-592"><span class="linenos">592</span></a>    <span class="k">if</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;questions&quot;</span><span class="p">):</span>
+</span><span id="L-593"><a href="#L-593"><span class="linenos">593</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_QUESTIONS</span><span class="p">)</span>
+</span><span id="L-594"><a href="#L-594"><span class="linenos">594</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">exam_mode</span> <span class="ow">and</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;allow_self_grade&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">):</span>
+</span><span id="L-595"><a href="#L-595"><span class="linenos">595</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_EVALUATION</span><span class="p">)</span>
+</span><span id="L-596"><a href="#L-596"><span class="linenos">596</span></a>    <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_TERMINALS</span><span class="p">)</span>
+</span><span id="L-597"><a href="#L-597"><span class="linenos">597</span></a>    <span class="n">states</span> <span class="o">=</span> <span class="n">listed_states</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user_allowed_states&quot;</span><span class="p">,</span> <span class="p">{}),</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;admin_only_states&quot;</span><span class="p">,</span> <span class="p">[]),</span>
+</span><span id="L-598"><a href="#L-598"><span class="linenos">598</span></a>                           <span class="n">show_admin_only</span><span class="o">=</span><span class="n">debug</span> <span class="ow">or</span> <span class="n">instructor_shown</span><span class="p">)</span>
+</span><span id="L-599"><a href="#L-599"><span class="linenos">599</span></a>    <span class="k">if</span> <span class="n">debug</span> <span class="ow">or</span> <span class="p">((</span><span class="n">instructor_shown</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">exam_mode</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">bool</span><span class="p">(</span><span class="n">states</span><span class="p">)):</span>
+</span><span id="L-600"><a href="#L-600"><span class="linenos">600</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_APPLY_CONFIG</span><span class="p">)</span>
+</span><span id="L-601"><a href="#L-601"><span class="linenos">601</span></a>    <span class="k">if</span> <span class="n">debug</span> <span class="ow">or</span> <span class="n">instructor_shown</span><span class="p">:</span>
+</span><span id="L-602"><a href="#L-602"><span class="linenos">602</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_LOG</span><span class="p">)</span>
+</span><span id="L-603"><a href="#L-603"><span class="linenos">603</span></a>    <span class="k">return</span> <span class="n">tabs</span>
 </span></pre></div>
 
 
@@ -3457,6 +3641,407 @@ whether students may open the console of a managed switch.</p>
     
 
                             </div>
+                </section>
+                <section id="TAB_SCHEMA">
+                    <div class="attr variable">
+            <span class="name">TAB_SCHEMA</span>        =
+<span class="default_value">&#39;schema&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_SCHEMA"></a>
+    
+    
+
+                </section>
+                <section id="TAB_FULL_SCHEMA">
+                    <div class="attr variable">
+            <span class="name">TAB_FULL_SCHEMA</span>        =
+<span class="default_value">&#39;full_schema&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_FULL_SCHEMA"></a>
+    
+    
+
+                </section>
+                <section id="TAB_INFORMATIONS">
+                    <div class="attr variable">
+            <span class="name">TAB_INFORMATIONS</span>        =
+<span class="default_value">&#39;informations&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_INFORMATIONS"></a>
+    
+    
+
+                </section>
+                <section id="TAB_MACHINES">
+                    <div class="attr variable">
+            <span class="name">TAB_MACHINES</span>        =
+<span class="default_value">&#39;machines&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_MACHINES"></a>
+    
+    
+
+                </section>
+                <section id="TAB_NETWORKS">
+                    <div class="attr variable">
+            <span class="name">TAB_NETWORKS</span>        =
+<span class="default_value">&#39;networks&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_NETWORKS"></a>
+    
+    
+
+                </section>
+                <section id="TAB_QUESTIONS">
+                    <div class="attr variable">
+            <span class="name">TAB_QUESTIONS</span>        =
+<span class="default_value">&#39;questions&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_QUESTIONS"></a>
+    
+    
+
+                </section>
+                <section id="TAB_EVALUATION">
+                    <div class="attr variable">
+            <span class="name">TAB_EVALUATION</span>        =
+<span class="default_value">&#39;evaluation&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_EVALUATION"></a>
+    
+    
+
+                </section>
+                <section id="TAB_TERMINALS">
+                    <div class="attr variable">
+            <span class="name">TAB_TERMINALS</span>        =
+<span class="default_value">&#39;terminals&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_TERMINALS"></a>
+    
+    
+
+                </section>
+                <section id="TAB_APPLY_CONFIG">
+                    <div class="attr variable">
+            <span class="name">TAB_APPLY_CONFIG</span>        =
+<span class="default_value">&#39;apply_config&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_APPLY_CONFIG"></a>
+    
+    
+
+                </section>
+                <section id="TAB_LOG">
+                    <div class="attr variable">
+            <span class="name">TAB_LOG</span>        =
+<span class="default_value">&#39;log&#39;</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_LOG"></a>
+    
+    
+
+                </section>
+                <section id="TAB_ORDER">
+                    <div class="attr variable">
+            <span class="name">TAB_ORDER</span>        =
+<input id="TAB_ORDER-view-value" class="view-value-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+            <label class="view-value-button pdoc-button" for="TAB_ORDER-view-value"></label><span class="default_value">(&#39;schema&#39;, &#39;full_schema&#39;, &#39;informations&#39;, &#39;machines&#39;, &#39;networks&#39;, &#39;questions&#39;, &#39;evaluation&#39;, &#39;terminals&#39;, &#39;apply_config&#39;, &#39;log&#39;)</span>
+
+        
+    </div>
+    <a class="headerlink" href="#TAB_ORDER"></a>
+    
+    
+
+                </section>
+                <section id="resolve_text">
+                            <input id="resolve_text-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">resolve_text</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">value</span>, </span><span class="param"><span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span>, </span><span class="param"><span class="o">*</span>, </span><span class="param"><span class="n">show_instructor</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
+
+                <label class="view-source-button" for="resolve_text-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#resolve_text"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="resolve_text-503"><a href="#resolve_text-503"><span class="linenos">503</span></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_text</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">show_instructor</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="resolve_text-504"><a href="#resolve_text-504"><span class="linenos">504</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A text of info.json (a string or a ``{lang: text}`` dict) in the first language of</span>
+</span><span id="resolve_text-505"><a href="#resolve_text-505"><span class="linenos">505</span></a><span class="sd">    *lang_priority* it has, as plain text: the instructor fragments are removed, or kept without</span>
+</span><span id="resolve_text-506"><a href="#resolve_text-506"><span class="linenos">506</span></a><span class="sd">    their marks with *show_instructor*.&quot;&quot;&quot;</span>
+</span><span id="resolve_text-507"><a href="#resolve_text-507"><span class="linenos">507</span></a>    <span class="n">text</span> <span class="o">=</span> <span class="n">TranslatedText</span><span class="o">.</span><span class="n">from_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_priority</span><span class="p">(</span><span class="n">lang_priority</span><span class="p">)</span>
+</span><span id="resolve_text-508"><a href="#resolve_text-508"><span class="linenos">508</span></a>    <span class="k">return</span> <span class="n">unwrap_instructor</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="k">if</span> <span class="n">show_instructor</span> <span class="k">else</span> <span class="n">strip_instructor</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>A text of info.json (a string or a <code>{lang: text}</code> dict) in the first language of
+<em>lang_priority</em> it has, as plain text: the instructor fragments are removed, or kept without
+their marks with <em>show_instructor</em>.</p>
+</div>
+
+
+                </section>
+                <section id="format_port">
+                            <input id="format_port-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">format_port</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">entry</span><span class="p">:</span> <span class="nb">str</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
+
+                <label class="view-source-button" for="format_port-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#format_port"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="format_port-511"><a href="#format_port-511"><span class="linenos">511</span></a><span class="k">def</span><span class="w"> </span><span class="nf">format_port</span><span class="p">(</span><span class="n">entry</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="format_port-512"><a href="#format_port-512"><span class="linenos">512</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Format ``host:machine/proto`` of ``InfoMachine.ports`` as ``host -&gt; machine (proto)``.&quot;&quot;&quot;</span>
+</span><span id="format_port-513"><a href="#format_port-513"><span class="linenos">513</span></a>    <span class="n">proto</span> <span class="o">=</span> <span class="s2">&quot;tcp&quot;</span>
+</span><span id="format_port-514"><a href="#format_port-514"><span class="linenos">514</span></a>    <span class="k">if</span> <span class="s2">&quot;/&quot;</span> <span class="ow">in</span> <span class="n">entry</span><span class="p">:</span>
+</span><span id="format_port-515"><a href="#format_port-515"><span class="linenos">515</span></a>        <span class="n">entry</span><span class="p">,</span> <span class="n">proto</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span><span id="format_port-516"><a href="#format_port-516"><span class="linenos">516</span></a>    <span class="n">host_port</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">machine_port</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span>
+</span><span id="format_port-517"><a href="#format_port-517"><span class="linenos">517</span></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">host_port</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">machine_port</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">proto</span><span class="si">}</span><span class="s2">)&quot;</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>Format <code>host:machine/proto</code> of <code><a href="#InfoMachine.ports">InfoMachine.ports</a></code> as <code>host -&gt; machine (proto)</code>.</p>
+</div>
+
+
+                </section>
+                <section id="format_ports">
+                            <input id="format_ports-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">format_ports</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">ports</span><span class="p">:</span> <span class="nb">list</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
+
+                <label class="view-source-button" for="format_ports-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#format_ports"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="format_ports-520"><a href="#format_ports-520"><span class="linenos">520</span></a><span class="k">def</span><span class="w"> </span><span class="nf">format_ports</span><span class="p">(</span><span class="n">ports</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="format_ports-521"><a href="#format_ports-521"><span class="linenos">521</span></a>    <span class="k">return</span> <span class="s2">&quot;  -  &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">format_port</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ports</span> <span class="ow">or</span> <span class="p">[])</span>
+</span></pre></div>
+
+
+    
+
+                </section>
+                <section id="terminal_devices">
+                            <input id="terminal_devices-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">terminal_devices</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span></span><span class="return-annotation">) -> <span class="nb">list</span>:</span></span>
+
+                <label class="view-source-button" for="terminal_devices-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#terminal_devices"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="terminal_devices-524"><a href="#terminal_devices-524"><span class="linenos">524</span></a><span class="k">def</span><span class="w"> </span><span class="nf">terminal_devices</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="terminal_devices-525"><a href="#terminal_devices-525"><span class="linenos">525</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The devices of the Terminals tab: the machines of info.json, then the manageable switches</span>
+</span><span id="terminal_devices-526"><a href="#terminal_devices-526"><span class="linenos">526</span></a><span class="sd">    (their management console) as ``{name, allow_connection}`` dicts.&quot;&quot;&quot;</span>
+</span><span id="terminal_devices-527"><a href="#terminal_devices-527"><span class="linenos">527</span></a>    <span class="n">switches</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span> <span class="s2">&quot;allow_connection&quot;</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;allow_connection&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)}</span>
+</span><span id="terminal_devices-528"><a href="#terminal_devices-528"><span class="linenos">528</span></a>                <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;switches&quot;</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">or</span> <span class="p">[]</span>
+</span><span id="terminal_devices-529"><a href="#terminal_devices-529"><span class="linenos">529</span></a>                <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;mode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">params</span><span class="o">.</span><span class="n">network_mode_managed</span><span class="p">]</span>
+</span><span id="terminal_devices-530"><a href="#terminal_devices-530"><span class="linenos">530</span></a>    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;machines&quot;</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">or</span> <span class="p">[])</span> <span class="o">+</span> <span class="n">switches</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>The devices of the Terminals tab: the machines of info.json, then the manageable switches
+(their management console) as <code>{name, allow_connection}</code> dicts.</p>
+</div>
+
+
+                </section>
+                <section id="info_languages">
+                            <input id="info_languages-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">info_languages</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span></span><span class="return-annotation">) -> <span class="nb">set</span>:</span></span>
+
+                <label class="view-source-button" for="info_languages-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#info_languages"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="info_languages-533"><a href="#info_languages-533"><span class="linenos">533</span></a><span class="k">def</span><span class="w"> </span><span class="nf">info_languages</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+</span><span id="info_languages-534"><a href="#info_languages-534"><span class="linenos">534</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The language codes of the translated texts of a project (title, informations, questions).&quot;&quot;&quot;</span>
+</span><span id="info_languages-535"><a href="#info_languages-535"><span class="linenos">535</span></a>    <span class="n">langs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+</span><span id="info_languages-536"><a href="#info_languages-536"><span class="linenos">536</span></a>    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;informations&#39;</span><span class="p">):</span>
+</span><span id="info_languages-537"><a href="#info_languages-537"><span class="linenos">537</span></a>        <span class="n">v</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+</span><span id="info_languages-538"><a href="#info_languages-538"><span class="linenos">538</span></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+</span><span id="info_languages-539"><a href="#info_languages-539"><span class="linenos">539</span></a>            <span class="n">langs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+</span><span id="info_languages-540"><a href="#info_languages-540"><span class="linenos">540</span></a>    <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;questions&#39;</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">or</span> <span class="p">[]:</span>
+</span><span id="info_languages-541"><a href="#info_languages-541"><span class="linenos">541</span></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;description&#39;</span><span class="p">):</span>
+</span><span id="info_languages-542"><a href="#info_languages-542"><span class="linenos">542</span></a>            <span class="n">v</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+</span><span id="info_languages-543"><a href="#info_languages-543"><span class="linenos">543</span></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+</span><span id="info_languages-544"><a href="#info_languages-544"><span class="linenos">544</span></a>                <span class="n">langs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+</span><span id="info_languages-545"><a href="#info_languages-545"><span class="linenos">545</span></a>    <span class="k">return</span> <span class="n">langs</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>The language codes of the translated texts of a project (title, informations, questions).</p>
+</div>
+
+
+                </section>
+                <section id="project_title">
+                            <input id="project_title-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">project_title</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span>, </span><span class="param"><span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span>, </span><span class="param"><span class="n">fallback</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
+
+                <label class="view-source-button" for="project_title-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#project_title"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="project_title-548"><a href="#project_title-548"><span class="linenos">548</span></a><span class="k">def</span><span class="w"> </span><span class="nf">project_title</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">fallback</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="project_title-549"><a href="#project_title-549"><span class="linenos">549</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The title of a project tab: ``title`` of info.json in the user&#39;s language, else the lab</span>
+</span><span id="project_title-550"><a href="#project_title-550"><span class="linenos">550</span></a><span class="sd">    name without ``.py``, else *fallback* (the running lab name).&quot;&quot;&quot;</span>
+</span><span id="project_title-551"><a href="#project_title-551"><span class="linenos">551</span></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lab_name&quot;</span><span class="p">,</span> <span class="n">fallback</span><span class="p">)</span><span class="o">.</span><span class="n">removesuffix</span><span class="p">(</span><span class="s1">&#39;.py&#39;</span><span class="p">))</span>
+</span><span id="project_title-552"><a href="#project_title-552"><span class="linenos">552</span></a>    <span class="k">return</span> <span class="n">TranslatedText</span><span class="o">.</span><span class="n">from_value</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_priority</span><span class="p">(</span><span class="n">lang_priority</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">str</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>The title of a project tab: <code>title</code> of info.json in the user's language, else the lab
+name without <code>.py</code>, else <em>fallback</em> (the running lab name).</p>
+</div>
+
+
+                </section>
+                <section id="listed_states">
+                            <input id="listed_states-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">listed_states</span><span class="signature pdoc-code multiline">(<span class="param">	<span class="n">user_allowed_states</span><span class="p">:</span> <span class="nb">dict</span>,</span><span class="param">	<span class="n">admin_only_states</span>,</span><span class="param">	<span class="o">*</span>,</span><span class="param">	<span class="n">show_admin_only</span><span class="p">:</span> <span class="nb">bool</span></span><span class="return-annotation">) -> <span class="nb">dict</span>:</span></span>
+
+                <label class="view-source-button" for="listed_states-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#listed_states"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="listed_states-555"><a href="#listed_states-555"><span class="linenos">555</span></a><span class="k">def</span><span class="w"> </span><span class="nf">listed_states</span><span class="p">(</span><span class="n">user_allowed_states</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">admin_only_states</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">show_admin_only</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+</span><span id="listed_states-556"><a href="#listed_states-556"><span class="linenos">556</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The states of the Apply Configuration tab: every state of ``user_allowed_states``, or only</span>
+</span><span id="listed_states-557"><a href="#listed_states-557"><span class="linenos">557</span></a><span class="sd">    those a student could apply when *show_admin_only* is false (project in instructor mode while</span>
+</span><span id="listed_states-558"><a href="#listed_states-558"><span class="linenos">558</span></a><span class="sd">    the &quot;Instructor mode&quot; button is off).&quot;&quot;&quot;</span>
+</span><span id="listed_states-559"><a href="#listed_states-559"><span class="linenos">559</span></a>    <span class="k">if</span> <span class="n">show_admin_only</span><span class="p">:</span>
+</span><span id="listed_states-560"><a href="#listed_states-560"><span class="linenos">560</span></a>        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">user_allowed_states</span> <span class="ow">or</span> <span class="p">{})</span>
+</span><span id="listed_states-561"><a href="#listed_states-561"><span class="linenos">561</span></a>    <span class="n">admin_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">admin_only_states</span> <span class="ow">or</span> <span class="p">[])</span>
+</span><span id="listed_states-562"><a href="#listed_states-562"><span class="linenos">562</span></a>    <span class="k">return</span> <span class="p">{</span><span class="n">state</span><span class="p">:</span> <span class="n">description</span> <span class="k">for</span> <span class="n">state</span><span class="p">,</span> <span class="n">description</span> <span class="ow">in</span> <span class="p">(</span><span class="n">user_allowed_states</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+</span><span id="listed_states-563"><a href="#listed_states-563"><span class="linenos">563</span></a>            <span class="k">if</span> <span class="n">state</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">admin_only</span><span class="p">}</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>The states of the Apply Configuration tab: every state of <code>user_allowed_states</code>, or only
+those a student could apply when <em>show_admin_only</em> is false (project in instructor mode while
+the "Instructor mode" button is off).</p>
+</div>
+
+
+                </section>
+                <section id="state_rows">
+                            <input id="state_rows-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">state_rows</span><span class="signature pdoc-code multiline">(<span class="param">	<span class="n">user_allowed_states</span><span class="p">:</span> <span class="nb">dict</span>,</span><span class="param">	<span class="n">admin_only_states</span>,</span><span class="param">	<span class="o">*</span>,</span><span class="param">	<span class="n">show_admin_only</span><span class="p">:</span> <span class="nb">bool</span>,</span><span class="param">	<span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span></span><span class="return-annotation">) -> <span class="nb">list</span>:</span></span>
+
+                <label class="view-source-button" for="state_rows-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#state_rows"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="state_rows-566"><a href="#state_rows-566"><span class="linenos">566</span></a><span class="k">def</span><span class="w"> </span><span class="nf">state_rows</span><span class="p">(</span><span class="n">user_allowed_states</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">admin_only_states</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">show_admin_only</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span><span id="state_rows-567"><a href="#state_rows-567"><span class="linenos">567</span></a>               <span class="n">lang_priority</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="state_rows-568"><a href="#state_rows-568"><span class="linenos">568</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The rows of the Apply Configuration tab: ``(state, label, admin_only)`` tuples, the label</span>
+</span><span id="state_rows-569"><a href="#state_rows-569"><span class="linenos">569</span></a><span class="sd">    being the description of the state in the user&#39;s language, else the state name.&quot;&quot;&quot;</span>
+</span><span id="state_rows-570"><a href="#state_rows-570"><span class="linenos">570</span></a>    <span class="n">admin_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">admin_only_states</span> <span class="ow">or</span> <span class="p">[])</span>
+</span><span id="state_rows-571"><a href="#state_rows-571"><span class="linenos">571</span></a>    <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="state_rows-572"><a href="#state_rows-572"><span class="linenos">572</span></a>    <span class="k">for</span> <span class="n">state</span><span class="p">,</span> <span class="n">description</span> <span class="ow">in</span> <span class="n">listed_states</span><span class="p">(</span><span class="n">user_allowed_states</span><span class="p">,</span> <span class="n">admin_only_states</span><span class="p">,</span>
+</span><span id="state_rows-573"><a href="#state_rows-573"><span class="linenos">573</span></a>                                            <span class="n">show_admin_only</span><span class="o">=</span><span class="n">show_admin_only</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="state_rows-574"><a href="#state_rows-574"><span class="linenos">574</span></a>        <span class="n">resolved</span> <span class="o">=</span> <span class="p">(</span><span class="n">TranslatedText</span><span class="o">.</span><span class="n">from_value</span><span class="p">(</span><span class="n">description</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_priority</span><span class="p">(</span><span class="n">lang_priority</span><span class="p">)</span>
+</span><span id="state_rows-575"><a href="#state_rows-575"><span class="linenos">575</span></a>                    <span class="k">if</span> <span class="n">description</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+</span><span id="state_rows-576"><a href="#state_rows-576"><span class="linenos">576</span></a>        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">state</span><span class="p">,</span> <span class="n">resolved</span> <span class="k">if</span> <span class="n">resolved</span> <span class="k">else</span> <span class="n">state</span><span class="p">,</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">admin_only</span><span class="p">))</span>
+</span><span id="state_rows-577"><a href="#state_rows-577"><span class="linenos">577</span></a>    <span class="k">return</span> <span class="n">rows</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>The rows of the Apply Configuration tab: <code>(state, label, admin_only)</code> tuples, the label
+being the description of the state in the user's language, else the state name.</p>
+</div>
+
+
+                </section>
+                <section id="visible_tabs">
+                            <input id="visible_tabs-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">visible_tabs</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span>, </span><span class="param"><span class="o">*</span>, </span><span class="param"><span class="n">exam_mode</span><span class="p">:</span> <span class="nb">bool</span>, </span><span class="param"><span class="n">instructor_shown</span><span class="p">:</span> <span class="nb">bool</span></span><span class="return-annotation">) -> <span class="nb">list</span>:</span></span>
+
+                <label class="view-source-button" for="visible_tabs-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#visible_tabs"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="visible_tabs-580"><a href="#visible_tabs-580"><span class="linenos">580</span></a><span class="k">def</span><span class="w"> </span><span class="nf">visible_tabs</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">exam_mode</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">instructor_shown</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="visible_tabs-581"><a href="#visible_tabs-581"><span class="linenos">581</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The tabs shown for a project, in display order (the ``TAB_*`` identifiers).</span>
+</span><span id="visible_tabs-582"><a href="#visible_tabs-582"><span class="linenos">582</span></a>
+</span><span id="visible_tabs-583"><a href="#visible_tabs-583"><span class="linenos">583</span></a><span class="sd">    *instructor_shown*: the project has instructor texts (instructor mode or debug project) and</span>
+</span><span id="visible_tabs-584"><a href="#visible_tabs-584"><span class="linenos">584</span></a><span class="sd">    the &quot;Instructor mode&quot; button is on.  A debug project always gets the Full Schema, every state</span>
+</span><span id="visible_tabs-585"><a href="#visible_tabs-585"><span class="linenos">585</span></a><span class="sd">    and the Log; the Evaluation tab is hidden in exam mode and when the lab does not allow</span>
+</span><span id="visible_tabs-586"><a href="#visible_tabs-586"><span class="linenos">586</span></a><span class="sd">    self-evaluation; the Apply Configuration tab needs listed states (and not an exam, unless the</span>
+</span><span id="visible_tabs-587"><a href="#visible_tabs-587"><span class="linenos">587</span></a><span class="sd">    instructor view is on).&quot;&quot;&quot;</span>
+</span><span id="visible_tabs-588"><a href="#visible_tabs-588"><span class="linenos">588</span></a>    <span class="n">debug</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;debug_project&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
+</span><span id="visible_tabs-589"><a href="#visible_tabs-589"><span class="linenos">589</span></a>    <span class="n">tabs</span> <span class="o">=</span> <span class="p">[</span><span class="n">TAB_SCHEMA</span><span class="p">]</span>
+</span><span id="visible_tabs-590"><a href="#visible_tabs-590"><span class="linenos">590</span></a>    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+</span><span id="visible_tabs-591"><a href="#visible_tabs-591"><span class="linenos">591</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_FULL_SCHEMA</span><span class="p">)</span>
+</span><span id="visible_tabs-592"><a href="#visible_tabs-592"><span class="linenos">592</span></a>    <span class="n">tabs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">TAB_INFORMATIONS</span><span class="p">,</span> <span class="n">TAB_MACHINES</span><span class="p">,</span> <span class="n">TAB_NETWORKS</span><span class="p">]</span>
+</span><span id="visible_tabs-593"><a href="#visible_tabs-593"><span class="linenos">593</span></a>    <span class="k">if</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;questions&quot;</span><span class="p">):</span>
+</span><span id="visible_tabs-594"><a href="#visible_tabs-594"><span class="linenos">594</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_QUESTIONS</span><span class="p">)</span>
+</span><span id="visible_tabs-595"><a href="#visible_tabs-595"><span class="linenos">595</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">exam_mode</span> <span class="ow">and</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;allow_self_grade&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">):</span>
+</span><span id="visible_tabs-596"><a href="#visible_tabs-596"><span class="linenos">596</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_EVALUATION</span><span class="p">)</span>
+</span><span id="visible_tabs-597"><a href="#visible_tabs-597"><span class="linenos">597</span></a>    <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_TERMINALS</span><span class="p">)</span>
+</span><span id="visible_tabs-598"><a href="#visible_tabs-598"><span class="linenos">598</span></a>    <span class="n">states</span> <span class="o">=</span> <span class="n">listed_states</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user_allowed_states&quot;</span><span class="p">,</span> <span class="p">{}),</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;admin_only_states&quot;</span><span class="p">,</span> <span class="p">[]),</span>
+</span><span id="visible_tabs-599"><a href="#visible_tabs-599"><span class="linenos">599</span></a>                           <span class="n">show_admin_only</span><span class="o">=</span><span class="n">debug</span> <span class="ow">or</span> <span class="n">instructor_shown</span><span class="p">)</span>
+</span><span id="visible_tabs-600"><a href="#visible_tabs-600"><span class="linenos">600</span></a>    <span class="k">if</span> <span class="n">debug</span> <span class="ow">or</span> <span class="p">((</span><span class="n">instructor_shown</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">exam_mode</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">bool</span><span class="p">(</span><span class="n">states</span><span class="p">)):</span>
+</span><span id="visible_tabs-601"><a href="#visible_tabs-601"><span class="linenos">601</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_APPLY_CONFIG</span><span class="p">)</span>
+</span><span id="visible_tabs-602"><a href="#visible_tabs-602"><span class="linenos">602</span></a>    <span class="k">if</span> <span class="n">debug</span> <span class="ow">or</span> <span class="n">instructor_shown</span><span class="p">:</span>
+</span><span id="visible_tabs-603"><a href="#visible_tabs-603"><span class="linenos">603</span></a>        <span class="n">tabs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TAB_LOG</span><span class="p">)</span>
+</span><span id="visible_tabs-604"><a href="#visible_tabs-604"><span class="linenos">604</span></a>    <span class="k">return</span> <span class="n">tabs</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>The tabs shown for a project, in display order (the <code>TAB_*</code> identifiers).</p>
+
+<p><em>instructor_shown</em>: the project has instructor texts (instructor mode or debug project) and
+the "Instructor mode" button is on.  A debug project always gets the Full Schema, every state
+and the Log; the Evaluation tab is hidden in exam mode and when the lab does not allow
+self-evaluation; the Apply Configuration tab needs listed states (and not an exam, unless the
+instructor view is on).</p>
+</div>
+
+
                 </section>
     </main>
 <script>

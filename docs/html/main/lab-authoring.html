@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Hubs, switches and VLANs" href="switches.html"><link rel="prev" title="Exam Administration" href="exam.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Hubs, switches and VLANs" href="switches.html"><link rel="prev" title="Web site (remote use)" href="web.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Lab Authoring Guide - SRE / sysreseval</title>
@@ -215,6 +215,27 @@
 <li class="toctree-l3"><a class="reference internal" href="exam.html#export-to-a-spreadsheet">Export to a spreadsheet</a></li>
 </ul>
 </li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="web.html">Web site (remote use)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="web.html#architecture">Architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#installation">Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#from-a-checkout">From a checkout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#debian-packages">Debian packages</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#a-pool-of-workstations">A pool of workstations</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#security">Security</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#limitations">Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#development">Development</a></li>
 </ul>
 </li>
 </ul>
@@ -1123,10 +1144,11 @@ checkbox), plus <code class="docutils literal notranslate"><span class="pre">&#6
 </ul>
 <section id="a-lab-file-without-the-instructor-texts-sbin-strip-instructor">
 <h4>A lab file without the instructor texts — <code class="docutils literal notranslate"><span class="pre">sbin/strip-instructor</span></code><a class="headerlink" href="#a-lab-file-without-the-instructor-texts-sbin-strip-instructor" title="Link to this heading">¶</a></h4>
-<p>The running system keeps the instructor texts away from students, but the lab file itself still holds them. <code class="docutils literal notranslate"><span class="pre">sbin/strip-instructor</span></code> writes the file without its <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> calls, for instance before handing a lab over:</p>
+<p>The running system keeps the instructor texts away from students, but the lab file itself still holds them. <code class="docutils literal notranslate"><span class="pre">sbin/strip-instructor</span></code> writes the file without its <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> calls, and with <code class="docutils literal notranslate"><span class="pre">--full</span></code> without its solution states either, for instance before handing a lab over:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sbin/strip-instructor<span class="w"> </span>lab/s4/mylab.py<span class="w"> </span>/tmp/mylab_public.py<span class="w">   </span><span class="c1"># output file</span>
 sbin/strip-instructor<span class="w"> </span>lab/s4/mylab.py<span class="w"> </span>/srv/public_labs/<span class="w">      </span><span class="c1"># existing directory → /srv/public_labs/mylab.py</span>
 sbin/strip-instructor<span class="w"> </span>-i<span class="w"> </span>/srv/public_labs/mylab.py<span class="w">           </span><span class="c1"># replace the file itself</span>
+sbin/strip-instructor<span class="w"> </span>--full<span class="w"> </span>lab/s4/mylab.py<span class="w"> </span>/srv/public_labs/<span class="w">   </span><span class="c1"># the solution states removed as well</span>
 </pre></div>
 </div>
 <ul class="simple">
@@ -1135,10 +1157,17 @@ sbin/strip-instructor<span class="w"> </span>-i<span class="w"> </span>/srv/publ
 <li><p><code class="docutils literal notranslate"><span class="pre">instructor</span></code> is removed from its <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">...</span> <span class="pre">import</span></code> when nothing uses it any more;</p></li>
 <li><p>formatting and comments are kept; the result is checked (it must parse and hold no <code class="docutils literal notranslate"><span class="pre">instructor()</span></code> call), otherwise nothing is written.</p></li>
 </ul>
+<p>With <code class="docutils literal notranslate"><span class="pre">--full</span></code> (no short form) the file loses the states students cannot apply as well, so that it holds no solution any more:</p>
+<ul class="simple">
+<li><p>every <code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> method is removed with its decorator, unless it is <code class="docutils literal notranslate"><span class="pre">initial</span></code>, a lifecycle state (<code class="docutils literal notranslate"><span class="pre">save</span></code>, <code class="docutils literal notranslate"><span class="pre">restore</span></code>: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span></code> apply them) or user-allowed (<code class="docutils literal notranslate"><span class="pre">&#64;sre_state(user_allowed=True,</span> <span class="pre">...)</span></code>); the <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code> entries that only those methods used go with them, and <code class="docutils literal notranslate"><span class="pre">sre_state</span></code> leaves its import when no state is left;</p></li>
+<li><p>the <code class="docutils literal notranslate"><span class="pre">cheat_answers={...}</span></code> of the questions lose the entries keyed by a removed state (the whole keyword when no entry is left);</p></li>
+<li><p>a removed state that a kept method still uses (<code class="docutils literal notranslate"><span class="pre">self.final()</span></code> in <code class="docutils literal notranslate"><span class="pre">restore</span></code>) makes the file refused: move the shared code to a helper method, or make the state user-allowed.</p></li>
+</ul>
 <p>The stripped lab behaves like the original outside the instructor mode. Limits:</p>
 <ul class="simple">
 <li><p>a text kept in a variable is not followed: with <code class="docutils literal notranslate"><span class="pre">note</span> <span class="pre">=</span> <span class="pre">tr(&quot;...&quot;)</span></code> then <code class="docutils literal notranslate"><span class="pre">instructor(note)</span></code>, the definition of <code class="docutils literal notranslate"><span class="pre">note</span></code> stays in the file. The script warns about such variables; write <code class="docutils literal notranslate"><span class="pre">note</span> <span class="pre">=</span> <span class="pre">instructor(tr(&quot;...&quot;))</span></code> to have the text removed;</p></li>
-<li><p>comments are not examined, and only the lab file is processed (not the state directories of a directory lab);</p></li>
+<li><p>with <code class="docutils literal notranslate"><span class="pre">--full</span></code>, the helper methods and the variables that only the removed states (or their <code class="docutils literal notranslate"><span class="pre">cheat_answers</span></code>) used stay in the file: a warning names them (<code class="docutils literal notranslate"><span class="pre">_solution_dhcpd_conf</span></code>, <code class="docutils literal notranslate"><span class="pre">q1_answers</span></code>…), to be removed by hand;</p></li>
+<li><p>comments are not examined, and only the lab file is processed (not the state directories of a directory lab: with <code class="docutils literal notranslate"><span class="pre">--full</span></code> a warning names the directory of a removed state standing next to a <code class="docutils literal notranslate"><span class="pre">srelab.py</span></code>);</p></li>
 <li><p>a question keeps its hash as long as the removed text has no language that the text it was added to lacks (the usual case). Otherwise the archives of the stripped lab do not match the original lab in <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span></code>.</p></li>
 </ul>
 <p>In instructor mode every state can be applied from the GUI, as in a debug project: the <strong>Apply Configuration</strong> tab also lists the states that are not <code class="docutils literal notranslate"><span class="pre">user_allowed</span></code> (in red), so the instructor can apply a <code class="docutils literal notranslate"><span class="pre">final</span></code> state in front of the class without making it available to students. The project also gets a <strong>Log</strong> tab listing what every applied state executed (<code class="docutils literal notranslate"><span class="pre">self.cmd()</span></code>, <code class="docutils literal notranslate"><span class="pre">self.file()</span></code>…, with outputs and exit codes), again only while the button is on.</p>
@@ -2593,14 +2622,14 @@ views); <code class="docutils literal notranslate"><span class="pre">get_unbound
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="exam.html">
+          <a class="prev-page" href="web.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Exam Administration</div>
+                <div class="title">Web site (remote use)</div>
                 
               </div>
             </a>

@@ -1,0 +1,1063 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Lab Authoring Guide" href="lab-authoring.html"><link rel="prev" title="Exam Administration" href="exam.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Web site (remote use) - SRE / sysreseval</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">SRE / sysreseval</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">SRE / sysreseval</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Utilisation</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#student-workflow">Student Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#monitoring-of-a-session">Monitoring of a session</a></li>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#running-exams">Running exams</a></li>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#post-exam-workflow">Post-exam workflow</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="exam.html">Exam Administration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#lifecycle-at-a-glance">Lifecycle at a glance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#setting-up-an-exam-sre-set-exam">Setting up an exam — <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#monitoring-an-exam">Monitoring an exam</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#clean-up-after-an-exam">Clean up after an exam</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#exam-only-labs">Exam-only labs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam.html#post-exam-workflow">Post-exam workflow</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#inspect-a-single-archive">Inspect a single archive</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#re-grade-with-a-corrected-project-file">Re-grade with a corrected project file</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#per-student-pdf-reports-summary-spreadsheet">Per-student PDF reports + summary spreadsheet</a></li>
+<li class="toctree-l3"><a class="reference internal" href="exam.html#export-to-a-spreadsheet">Export to a spreadsheet</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Web site (remote use)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#architecture">Architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#from-a-checkout">From a checkout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#debian-packages">Debian packages</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#security">Security</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#limitations">Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#development">Development</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Authoring Labs</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="lab-authoring.html">Lab Authoring Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-authoring-workflow-on-the-cli">The authoring workflow on the CLI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-start-debug-project-p-lab-xauth-file-path"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;path&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-connect-running-lab-device-and-sre-exec-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#identifying-a-running-lab-and-where-its-files-live">Identifying a running lab and where its files live</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#the-four-classes-at-a-glance">The four classes at a glance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#data-class"><code class="docutils literal notranslate"><span class="pre">Data</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ip-helper-functions-from-opt-sre-lib-ips-py">IP helper functions (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ips.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ipv6-labs">IPv6 labs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#compute-pre-generate-and-compute-post-generate"><code class="docutils literal notranslate"><span class="pre">compute_pre_generate</span></code> and <code class="docutils literal notranslate"><span class="pre">compute_post_generate</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#flavor-class"><code class="docutils literal notranslate"><span class="pre">Flavor</span></code> class</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#netscheme-class"><code class="docutils literal notranslate"><span class="pre">NetScheme</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#declarations-and-accessors">Declarations and accessors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#machine-constructor-parameters"><code class="docutils literal notranslate"><span class="pre">Machine</span></code> constructor parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-parameters"><code class="docutils literal notranslate"><span class="pre">Network</span></code> parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switches-and-vlans">Switches and VLANs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#instructor-only-texts-instructor">Instructor-only texts — <code class="docutils literal notranslate"><span class="pre">instructor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#numbered-sections-references-and-table-of-contents-info-subtitle-info-toc">Numbered sections, references and table of contents — <code class="docutils literal notranslate"><span class="pre">info_subtitle()</span></code>, <code class="docutils literal notranslate"><span class="pre">info_toc()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#state-methods">State methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#lifecycle-states-save-restore">Lifecycle states: <code class="docutils literal notranslate"><span class="pre">save</span></code> / <code class="docutils literal notranslate"><span class="pre">restore</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#sre-state-decorator"><code class="docutils literal notranslate"><span class="pre">&#64;sre_state</span></code> decorator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#per-machine-operations">Per-machine operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#file-transfer-between-host-and-container">File transfer between host and container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#host-side-operations">Host-side operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-operations">Switch operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#multi-step-state-setup-the-step-parameter">Multi-step state setup — the <code class="docutils literal notranslate"><span class="pre">step</span></code> parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#reading-command-results-multi-pass-true">Reading command results — <code class="docutils literal notranslate"><span class="pre">multi_pass=True</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-config-helpers-from-opt-sre-lib-net-config-py">Network config helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-helpers-from-opt-sre-lib-state-helpers-py">State helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/state_helpers.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grade-class"><code class="docutils literal notranslate"><span class="pre">Grade</span></code> class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#the-grading-lifecycle">The grading lifecycle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-parts">Grade parts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#self-eval-vs-instructor-eval-scope">Self-eval vs instructor-eval scope</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#cheat-answers">Cheat answers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#letter-grades-vs-numeric-marks">Letter grades vs numeric marks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bonus-elements">Bonus elements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#overriding-mark-exo-eval-to-adjust-the-overall-mark">Overriding <code class="docutils literal notranslate"><span class="pre">mark_exo_eval()</span></code> to adjust the overall mark</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#grade-methods">Grade methods</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#grading-library-reference">Grading Library Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dhcp-helpers-from-opt-sre-lib-dhcp-py">DHCP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dhcp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#mail-helpers-from-opt-sre-lib-smtp-py">Mail helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/smtp.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tls-helpers-from-opt-sre-lib-tls-py">TLS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/tls.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#dns-helpers-from-opt-sre-lib-dns-py">DNS helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/dns.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#tcp-port-helpers-from-opt-sre-lib-grade-helpers-py">TCP port helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/grade_helpers.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ospf-helpers-from-opt-sre-lib-frr-py">OSPF helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#bgp-helpers-from-opt-sre-lib-frr-py">BGP helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/frr.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#standard-machine-wiring-from-opt-sre-lib-std-py">Standard machine wiring (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/std.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#miscellaneous-generators-from-opt-sre-lib-utils-py">Miscellaneous generators (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/utils.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#network-inspection-helpers-from-opt-sre-lib-net-config-py">Network inspection helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/net_config.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#switch-helpers-from-opt-sre-lib-switch-py">Switch helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/switch.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ping-helper-from-opt-sre-lib-ping-py">Ping helper (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ping.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#ssh-helpers-from-opt-sre-lib-ssh-py">SSH helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/ssh.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#packet-capture-helpers-from-opt-sre-lib-pcap-gen-py">Packet capture helpers (from <code class="docutils literal notranslate"><span class="pre">/opt/sre/lib/pcap_gen.py</span></code>)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#module-level-attributes">Module-level Attributes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#lab-identity-and-presentation">Lab identity and presentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#student-self-evaluation">Student self-evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#automatic-evaluation">Automatic evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#archives-and-recordings">Archives and recordings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#state-machine-and-flavors">State machine and flavors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#networking">Networking</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#filesystem-and-export">Filesystem and export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="lab-authoring.html#schema-rendering">Schema rendering</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="lab-authoring.html#complete-minimal-example">Complete Minimal Example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#in-the-gui">In the GUI</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-networks-tab">The Networks tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#the-console-of-a-manageable-switch">The console of a manageable switch</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#in-a-lab">In a lab</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#declaring-the-kind-of-a-network">Declaring the kind of a network</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#running-switch-commands-from-a-state">Running switch commands from a state</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#grading-the-configuration-of-a-switch">Grading the configuration of a switch</a></li>
+<li class="toctree-l3"><a class="reference internal" href="switches.html#a-complete-example">A complete example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#on-the-command-line">On the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#limits">Limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#what-a-host-needs">What a host needs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="switches.html#tests">Tests</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="translations.html">Translating a Lab</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#internationalization-with-tr-make-tr">Internationalization with <code class="docutils literal notranslate"><span class="pre">tr()</span></code> / <code class="docutils literal notranslate"><span class="pre">make_tr()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#marking-strings-that-must-not-be-translated-no-tr">Marking strings that must NOT be translated: <code class="docutils literal notranslate"><span class="pre">no_tr()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#centralizing-translations-with-translations">Centralizing translations with <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#where-to-put-translations">Where to put <code class="docutils literal notranslate"><span class="pre">_TRANSLATIONS</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#dynamic-strings-with-format-placeholders">Dynamic strings with format placeholders</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#translation-toolchain">Translation toolchain</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prepare-sre-translations-migrate-and-scaffold">1. <code class="docutils literal notranslate"><span class="pre">prepare-sre-translations</span></code> — migrate and scaffold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#check-sre-translations-verify-consistency">2. <code class="docutils literal notranslate"><span class="pre">check-sre-translations</span></code> — verify consistency</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#add-sre-translations-machine-translate-missing-strings">3. <code class="docutils literal notranslate"><span class="pre">add-sre-translations</span></code> — machine-translate missing strings</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#complete-translation-workflow">Complete translation workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="translations.html#switching-the-default-language-change-default-language">Switching the default language: <code class="docutils literal notranslate"><span class="pre">--change-default-language</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="translations.html#example-switching-to-english-as-a-pivot-before-translating">Example: switching to English as a pivot before translating</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Installation and Setup</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#deployment-layout">Deployment layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#debian-package">Debian package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#updating">Updating</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-installer">Running the installer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#install-manually">Install manually</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#post-install-steps">Post-install steps</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#deploy-and-verify">1. Deploy and verify</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#enable-x11-access-for-lab-virtual-machines">2. Enable X11 access for lab virtual machines</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#restricting-student-access-to-docker">3. Restricting student access to Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#sharing-evaluation-archives-for-sre-watch">4. Sharing evaluation archives for <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#pre-loading-docker-images">5. Pre-loading Docker images</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#reference">Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#build-targets">Build targets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#tests">Tests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#building-the-documentation">Building the documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#network-plugin-for-the-switch-types">Network plugin for the switch types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#dependencies">Dependencies</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="gui.html">GUI Reference — <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#project-tabs">Project tabs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#instructor-mode">Instructor mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#exam-mode">Exam mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#settings">Settings</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference — <code class="docutils literal notranslate"><span class="pre">sre</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#global-options">Global options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-connect-shell-shell-exec-argument-no-records-running-lab-device"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">[--exec</span> <span class="pre">&lt;argument…&gt;]</span> <span class="pre">[--no-records]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-p-path-auto-eval-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">[-p</span> <span class="pre">path]</span> <span class="pre">[--auto-eval]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-state-running-lab-state-name"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;state_name&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#admin-only-commands">Admin-only commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-exec-shell-shell-running-lab-device-command"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">exec</span> <span class="pre">[--shell</span> <span class="pre">&lt;shell&gt;]</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">&lt;device&gt;</span> <span class="pre">&lt;command…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-set-instructor-mode-running-lab-and-sre-remove-instructor-mode-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">remove-instructor-mode</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-all-display-grades-no-display-grades"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-all</span> <span class="pre">[--display-grades</span> <span class="pre">/</span> <span class="pre">--no-display-grades]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-p-lab-state"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span> <span class="pre">[-p]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[&lt;state&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-watch-timeout-sec-interval-sec-h-regexp-s-time-l-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span> <span class="pre">[--timeout</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[--interval</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">[-H</span> <span class="pre">&lt;regexp&gt;]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-L]</span> <span class="pre">&lt;dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-preload-images-random-delay-sec-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">preload-images</span> <span class="pre">[--random-delay</span> <span class="pre">&lt;sec&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-make-titles-o-file-r-directory"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;</span> <span class="pre">|</span> <span class="pre">-r]</span> <span class="pre">&lt;directory&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-update-main-ref-tag-branch-commit-check-force-y-venv"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">update</span> <span class="pre">[--main</span> <span class="pre">|</span> <span class="pre">--ref</span> <span class="pre">&lt;tag|branch|commit&gt;]</span> <span class="pre">[--check</span> <span class="pre">|</span> <span class="pre">--force]</span> <span class="pre">[-y]</span> <span class="pre">[--venv]</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#exam-management">Exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-set-exam-options"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span> <span class="pre">[options]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-del-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">del-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-records-d-dir-only-last-record"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save-records</span> <span class="pre">-d</span> <span class="pre">&lt;dir&gt;</span> <span class="pre">[--only-last-record]</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#post-exam-management">Post-exam management</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-cat-options-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">cat</span> <span class="pre">[options]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-check-eval-s-srelab-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check-eval</span> <span class="pre">[-s</span> <span class="pre">&lt;srelab&gt;]</span> <span class="pre">&lt;file…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-re-eval-s-srelab-p-prefix-d-outdir-r-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">re-eval</span> <span class="pre">-s</span> <span class="pre">&lt;srelab&gt;</span> <span class="pre">-p</span> <span class="pre">&lt;prefix&gt;</span> <span class="pre">[-d</span> <span class="pre">&lt;outdir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-sheet-o-output-ods-r-s-time-f-time-separate-instances-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">-o</span> <span class="pre">&lt;output.ods&gt;</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--separate-instances]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-outline-o-summary-ods-d-pdf-dir-r-s-time-f-time-lang-lang-no-timeline-remaining-time-separate-instances-users-file-file-file-or-dir"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">[-o</span> <span class="pre">&lt;summary.ods&gt;]</span> <span class="pre">[-d</span> <span class="pre">&lt;pdf_dir&gt;]</span> <span class="pre">[-r]</span> <span class="pre">[-S</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[-F</span> <span class="pre">&lt;time&gt;]</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--separate-instances]</span> <span class="pre">[--users-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">&lt;file_or_dir…&gt;</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-pre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-exam</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-end-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">end-exam</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="exam-reference.html">Exam Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="exam-reference.html#exam-json-single-source-of-truth"><code class="docutils literal notranslate"><span class="pre">exam.json</span></code> — single source of truth</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam-reference.html#gui-exam-logic">GUI exam logic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="exam-reference.html#commands">Commands</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="internals.html">Runtime &amp; Internals</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#architecture">Architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#filesystem-layout">Filesystem layout</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#running-lab-directory">Running lab directory</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#constants-src-sre-params-py">Constants (<code class="docutils literal notranslate"><span class="pre">src/SRE/params.py</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#environment-variables">Environment variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="internals.html#locale">Locale</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#dynamic-module-loading">Dynamic module loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#data-serialization">Data serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#test-execution">Test execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#switches">Switches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#course-text-informations">Course text (<code class="docutils literal notranslate"><span class="pre">informations</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#progress-reporting">Progress reporting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#security-model">Security model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#archive-format">Archive format</a></li>
+<li class="toctree-l2"><a class="reference internal" href="internals.html#save-file-format">Save file format</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/web.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="web-site-remote-use">
+<h1>Web site (remote use)<a class="headerlink" href="#web-site-remote-use" title="Link to this heading">¶</a></h1>
+<p>The web site lets the students work on the labs from a browser, without the Qt interface and
+without a remote desktop: the projects run on a <strong>pool of Docker hosts</strong>, every tab of the
+graphical interface (Schema, Informations, Machines, Networks, Questions, Evaluation, Terminals,
+Apply Configuration, Log) is rendered in the browser and the terminals go through WebSockets.
+The users log in with an LDAP directory (the portal binds to it, or an Apache reverse proxy in
+front authenticates them), or everybody is anonymous.</p>
+<p>Nothing of a lab ever reaches the browser but what a student sees today: the content of
+<code class="docutils literal notranslate"><span class="pre">info.json</span></code> (resolved to the user’s language, the instructor texts stripped), the outputs of the
+<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">--user</span></code> commands (the schema, the grades of a self-evaluation, the console of a machine).
+The lab files, <code class="docutils literal notranslate"><span class="pre">data.json</span></code>, the hidden machines and the archives stay on the pool hosts.</p>
+<section id="architecture">
+<h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sre-agent (one per pool host) ──► sre --user …
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">sre-web</span></code></strong>, the portal, is the web site the browsers talk to. It authenticates the users,
+keeps a signed session cookie, knows the pool of hosts and relays every request about a project
+to the agent of the host running it. It runs as an unprivileged user, needs neither Docker,
+Kathara nor the labs, and may run anywhere on the network (the Debian package <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code>
+installs alone).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">sre-agent</span></code></strong> runs on every pool host, as root, next to <code class="docutils literal notranslate"><span class="pre">sre</span></code>. It drives the <code class="docutils literal notranslate"><span class="pre">sre</span></code> CLI in user
+mode on behalf of the web users exactly as <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span></code> + <code class="docutils literal notranslate"><span class="pre">sudo</span></code> do for the students of a
+workstation (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">--user</span> <span class="pre">&lt;cmd&gt;</span></code> with <code class="docutils literal notranslate"><span class="pre">SUDO_USER=&lt;login&gt;</span></code>), owns the terminals (a pseudo-terminal
+per <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>), writes the answers file with the user’s identity, merges the cheat answers
+of the states, tails the operations log and schedules what the Qt GUI used to schedule: the
+periodic evaluations of a lab (<code class="docutils literal notranslate"><span class="pre">eval_interval_without_exam_mode</span></code>), the evaluation before a
+project is closed (<code class="docutils literal notranslate"><span class="pre">eval_before_exit</span></code>), and an idle reaper closing the projects nobody touched
+for the configured time.</p></li>
+<li><p>The pool hosts share the lab tree as today (NFS, rsync or the Debian package) and, if the
+instructor wants <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> across the pool, an <code class="docutils literal notranslate"><span class="pre">archive_dirs</span></code>
+entry on a shared directory. The <code class="docutils literal notranslate"><span class="pre">hostname</span></code> of the archives is the pool host.</p></li>
+<li><p>Placement: a new project goes to the reachable host with the lowest <code class="docutils literal notranslate"><span class="pre">projects</span> <span class="pre">/</span> <span class="pre">max_projects</span></code>
+(then the lowest load); a host in exam mode is never used. A classroom workstation holds about
+thirty projects (210 containers in 3.4 GB).</p></li>
+</ul>
+<p>The agent enforces what the <code class="docutils literal notranslate"><span class="pre">sre</span></code> CLI does not check: the exact running lab name and its owner
+(a user only reaches their own projects; the <code class="docutils literal notranslate"><span class="pre">wipe</span></code>, <code class="docutils literal notranslate"><span class="pre">exec</span></code> and exam commands have no endpoint),
+<code class="docutils literal notranslate"><span class="pre">allow_connection</span></code> of the devices, <code class="docutils literal notranslate"><span class="pre">allow_self_grade</span></code>, the user-allowed states, the
+<code class="docutils literal notranslate"><span class="pre">export_kathara_project</span></code> flag. Save and restore are not offered on the web.</p>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<section id="from-a-checkout">
+<h3>From a checkout<a class="headerlink" href="#from-a-checkout" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">venv</span></code> installs the Python dependencies (<code class="docutils literal notranslate"><span class="pre">aiohttp</span></code>, <code class="docutils literal notranslate"><span class="pre">jinja2</span></code>, <code class="docutils literal notranslate"><span class="pre">aiohttp-jinja2</span></code>, <code class="docutils literal notranslate"><span class="pre">ldap3</span></code>);
+<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">xterm</span></code> (run by <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install</span></code>) downloads the terminal library of the browser into
+<code class="docutils literal notranslate"><span class="pre">web/static/vendor/</span></code> (checksum-pinned, not committed). <code class="docutils literal notranslate"><span class="pre">scripts/install.sh</span></code> offers to install the
+systemd units <code class="docutils literal notranslate"><span class="pre">sre-agent.service</span></code> and <code class="docutils literal notranslate"><span class="pre">sre-web.service</span></code> (disabled) and the example configuration
+files <code class="docutils literal notranslate"><span class="pre">etc/agent.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">etc/web.toml</span></code> under the installation directory.</p>
+<p>On every pool host: write <code class="docutils literal notranslate"><span class="pre">/opt/sre/etc/agent.toml</span></code> (root, mode 0600) with the listen address
+of a management interface and a long random token, then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-agent</span></code>.</p>
+<p>On the portal host: create the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code> system user (<code class="docutils literal notranslate"><span class="pre">adduser</span> <span class="pre">--system</span> <span class="pre">--group</span> <span class="pre">--no-create-home</span> <span class="pre">--shell</span> <span class="pre">/usr/sbin/nologin</span> <span class="pre">sre-web</span></code>), write <code class="docutils literal notranslate"><span class="pre">/opt/sre/etc/web.toml</span></code> (root:sre-web, mode 0640:
+it holds the cookie secret and the agent tokens; the files it imports likewise), then
+<code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-web</span></code>. Put a
+reverse proxy doing TLS in front (<code class="docutils literal notranslate"><span class="pre">scripts/etc/sre-web-nginx.conf</span></code> is an nginx example,
+<code class="docutils literal notranslate"><span class="pre">sre-web-apache.conf</span></code> an Apache one that also authenticates the users: the proxy mode below), or
+give the portal its own certificate (<code class="docutils literal notranslate"><span class="pre">tls_cert</span></code> / <code class="docutils literal notranslate"><span class="pre">tls_key</span></code>).</p>
+</section>
+<section id="debian-packages">
+<h3>Debian packages<a class="headerlink" href="#debian-packages" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">sysreseval-agent</span></code> on every pool host (it depends on <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code> and <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code>, whose
+code it shares), <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code> on the portal host (it depends on nothing of SysResEval). The
+units are <code class="docutils literal notranslate"><span class="pre">sysreseval-agent.service</span></code> and <code class="docutils literal notranslate"><span class="pre">sysreseval-web.service</span></code>, disabled by default; the
+configuration files are <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/agent.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/web.toml</span></code> (examples in
+<code class="docutils literal notranslate"><span class="pre">/usr/share/doc/sysreseval-*/examples/</span></code>); the postinst of <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code> creates the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code>
+user and protects <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">web.d/*.toml</span></code> when they exist.</p>
+</section>
+</section>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">¶</a></h2>
+<section id="agent-toml">
+<h3><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code><a class="headerlink" href="#agent-toml" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">listen</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">127.0.0.1:8451</span></code></p></td>
+<td><p>the address the portal reaches (a management interface, never the students’ network)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">token</span></code></p></td>
+<td><p>required</p></td>
+<td><p>the shared secret of this host, repeated in the portal’s <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entry (32+ characters)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sre_exe</span></code></p></td>
+<td><p>the installation’s <code class="docutils literal notranslate"><span class="pre">sre</span></code></p></td>
+<td><p>the command run for the users</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">poll_interval</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>seconds between two scans of the projects directory (the Qt GUI polls every second too)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_idle</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">24h</span></code></p></td>
+<td><p>default idle timeout of a project (the portal gives its own per user); <code class="docutils literal notranslate"><span class="pre">0</span></code> = never</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">terminals_per_project</span></code>, <code class="docutils literal notranslate"><span class="pre">terminals_per_device</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">16</span></code>, <code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
+<td><p>caps on the open terminals (every Connect opens a new terminal on the machine)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_concurrent_starts</span></code>, <code class="docutils literal notranslate"><span class="pre">max_concurrent_evals</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code>, <code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p>concurrent <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> on the host</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lab_list_cache_ttl</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">60</span></code></p></td>
+<td><p>seconds the output of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span></code> is cached</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state_dir</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/var/lib/sre/web-agent</span></code></p></td>
+<td><p>the idle clocks of the projects, kept across restarts</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tls_cert</span></code>, <code class="docutils literal notranslate"><span class="pre">tls_key</span></code></p></td>
+<td><p>none</p></td>
+<td><p>the certificate and key of this agent (TLS to the portal)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tls_ca</span></code></p></td>
+<td><p>none</p></td>
+<td><p>the CA a <strong>client certificate</strong> must be signed by: only the portal gets past the handshake (mutual TLS)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code> (any)</p></td>
+<td><p>the addresses or networks the agent answers, e.g. <code class="docutils literal notranslate"><span class="pre">[&quot;10.0.0.1&quot;,</span> <span class="pre">&quot;10.0.1.0/24&quot;]</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">occupied_check</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">both</span></code></p></td>
+<td><p>when the host reports itself <em>occupied</em> (no new project, never powered off): <code class="docutils literal notranslate"><span class="pre">sessions</span></code> (a local login session: <code class="docutils literal notranslate"><span class="pre">loginctl</span></code>, or <code class="docutils literal notranslate"><span class="pre">who</span></code>), <code class="docutils literal notranslate"><span class="pre">projects</span></code> (projects of the Qt GUI on the host), <code class="docutils literal notranslate"><span class="pre">both</span></code>, <code class="docutils literal notranslate"><span class="pre">never</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">close_projects_on_stop</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">shutdown</span></code></p></td>
+<td><p>what the agent does with the projects it manages when its unit stops: <code class="docutils literal notranslate"><span class="pre">shutdown</span></code> closes them (last evaluation, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span></code>) only when the system is going down, <code class="docutils literal notranslate"><span class="pre">always</span></code>, <code class="docutils literal notranslate"><span class="pre">never</span></code>; within <code class="docutils literal notranslate"><span class="pre">shutdown_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">240</span></code> s, the unit’s <code class="docutils literal notranslate"><span class="pre">TimeoutStopSec</span></code> is 300)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">allow_power_off</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>the portal may power the host off (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/power/off</span></code>, refused when occupied or with any project) with <code class="docutils literal notranslate"><span class="pre">power_off_command</span></code> (<code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">poweroff</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[timeouts]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">=</span> <span class="pre">900</span></code>, <code class="docutils literal notranslate"><span class="pre">eval</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span> <span class="pre">=</span> <span class="pre">300</span></code>, <code class="docutils literal notranslate"><span class="pre">export</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span> <span class="pre">=</span> <span class="pre">30</span></code></p></td>
+<td><p>seconds, per <code class="docutils literal notranslate"><span class="pre">sre</span></code> command</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Durations are written as <code class="docutils literal notranslate"><span class="pre">90</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;90s&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;30m&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;2h&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;1d&quot;</span></code>. An unknown key is refused.
+<code class="docutils literal notranslate"><span class="pre">import</span></code> (a path or a list of paths relative to <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>: a directory, a glob or a file)
+merges other files into this one, as for <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> below.</p>
+</section>
+<section id="web-toml">
+<h3><code class="docutils literal notranslate"><span class="pre">web.toml</span></code><a class="headerlink" href="#web-toml" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">listen</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">127.0.0.1:8450</span></code></p></td>
+<td><p>behind a reverse proxy: the loopback</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">public_url</span></code></p></td>
+<td><p>none</p></td>
+<td><p>the URL the users type (the <code class="docutils literal notranslate"><span class="pre">Origin</span></code> of the WebSockets is checked against it)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">secret</span></code></p></td>
+<td><p>required</p></td>
+<td><p>signs the session cookies (32+ random characters)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>); required in that mode</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">languages</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;en&quot;,</span> <span class="pre">&quot;fr&quot;]</span></code></p></td>
+<td><p>the languages offered at login, the first one by default</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tls_cert</span></code>, <code class="docutils literal notranslate"><span class="pre">tls_key</span></code></p></td>
+<td><p>none</p></td>
+<td><p>own TLS instead of a proxy</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[auth]</span> <span class="pre">mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">anonymous</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">anonymous</span></code>: a pseudonym <code class="docutils literal notranslate"><span class="pre">guest-xxxxxxxx</span></code> per browser (the user may type a display name); <code class="docutils literal notranslate"><span class="pre">ldap</span></code>: the directory account; <code class="docutils literal notranslate"><span class="pre">proxy</span></code>: the identity the reverse proxy passes in headers (below)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code></p></td>
+<td><p></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uri</span></code>, then either <code class="docutils literal notranslate"><span class="pre">bind_dn_template</span> <span class="pre">=</span> <span class="pre">&quot;uid={login},ou=people,…&quot;</span></code> (bind as the user) or <code class="docutils literal notranslate"><span class="pre">search_base</span></code> + <code class="docutils literal notranslate"><span class="pre">search_filter</span></code> (+ <code class="docutils literal notranslate"><span class="pre">bind_dn</span></code> / <code class="docutils literal notranslate"><span class="pre">bind_password</span></code> of a service account) to find the user first; <code class="docutils literal notranslate"><span class="pre">attr_fullname</span></code> (<code class="docutils literal notranslate"><span class="pre">cn</span></code>), <code class="docutils literal notranslate"><span class="pre">attr_mail</span></code> (<code class="docutils literal notranslate"><span class="pre">mail</span></code>); <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> (DNs; <code class="docutils literal notranslate"><span class="pre">memberOf</span></code>, or <code class="docutils literal notranslate"><span class="pre">group_filter</span> <span class="pre">=</span> <span class="pre">&quot;(member={dn})&quot;</span></code>); <code class="docutils literal notranslate"><span class="pre">start_tls</span></code>; <code class="docutils literal notranslate"><span class="pre">timeout</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[auth.proxy]</span></code></p></td>
+<td><p></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">header_login</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-User</span></code>), <code class="docutils literal notranslate"><span class="pre">header_fullname</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Name</span></code>), <code class="docutils literal notranslate"><span class="pre">header_email</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Email</span></code>), <code class="docutils literal notranslate"><span class="pre">header_groups</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Groups</span></code>): the headers set by the proxy; <code class="docutils literal notranslate"><span class="pre">groups_separator</span></code> (<code class="docutils literal notranslate"><span class="pre">;</span></code>); <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code>: the values of the groups header giving the instructor role; <code class="docutils literal notranslate"><span class="pre">logout_url</span></code>: where Logout sends the browser (none: no Logout button)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[pool]</span></code></p></td>
+<td><p></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">idle_timeout_anonymous</span></code> (<code class="docutils literal notranslate"><span class="pre">2h</span></code>), <code class="docutils literal notranslate"><span class="pre">idle_timeout_authenticated</span></code> (<code class="docutils literal notranslate"><span class="pre">24h</span></code>): the idle timeout given to the agents per user, <code class="docutils literal notranslate"><span class="pre">0</span></code> = never; <code class="docutils literal notranslate"><span class="pre">poll_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">2</span></code>): seconds between two polls of the agents; <code class="docutils literal notranslate"><span class="pre">ca</span></code>: the CA the agents’ certificates are verified against (the system store without it); <code class="docutils literal notranslate"><span class="pre">client_cert</span></code>, <code class="docutils literal notranslate"><span class="pre">client_key</span></code>: the client certificate of the portal, presented to every agent; the elastic pool (below): <code class="docutils literal notranslate"><span class="pre">spare_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code>), <code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">active_hours</span></code> (<code class="docutils literal notranslate"><span class="pre">07:00-20:00</span></code>, local time, <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> = always), <code class="docutils literal notranslate"><span class="pre">wake_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">180</span></code>), <code class="docutils literal notranslate"><span class="pre">wake_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code>), <code class="docutils literal notranslate"><span class="pre">wol_broadcast</span></code> (<code class="docutils literal notranslate"><span class="pre">255.255.255.255</span></code>), <code class="docutils literal notranslate"><span class="pre">idle_host_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> = never)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[limits]</span></code></p></td>
+<td><p></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">eval_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">10</span></code> s between two self-evaluations of a user), <code class="docutils literal notranslate"><span class="pre">start_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code> s between two starts), <code class="docutils literal notranslate"><span class="pre">login_per_minute</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code> per client address), <code class="docutils literal notranslate"><span class="pre">max_answer_bytes</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[admin]</span></code></p></td>
+<td><p></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">token</span></code>: the token of <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">…</span></code> (32+ characters; none = the command is refused), accepted from the loopback only unless <code class="docutils literal notranslate"><span class="pre">listen_any</span> <span class="pre">=</span> <span class="pre">true</span></code>; <code class="docutils literal notranslate"><span class="pre">state_file</span></code>: the hosts added, removed, enabled and disabled by hand (<code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web/pool.json</span></code> when that directory exists, else <code class="docutils literal notranslate"><span class="pre">pool.json</span></code> next to <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code></p></td>
+<td><p>required</p></td>
+<td><p>one per pool host: <code class="docutils literal notranslate"><span class="pre">name</span></code> (what the URLs show), <code class="docutils literal notranslate"><span class="pre">url</span></code> of its agent, <code class="docutils literal notranslate"><span class="pre">token</span></code> of its <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">max_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">25</span></code>); to wake it, <code class="docutils literal notranslate"><span class="pre">mac</span></code> (Wake-on-LAN) or <code class="docutils literal notranslate"><span class="pre">wake_command</span></code> (<code class="docutils literal notranslate"><span class="pre">{name}</span></code>, <code class="docutils literal notranslate"><span class="pre">{mac}</span></code> substituted); <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> lets the portal power it off; <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code> keeps it polled without placing projects</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">import</span></code></p></td>
+<td><p>none</p></td>
+<td><p>other files merged into this one before it is checked: a path or a list of paths, relative to the directory of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>: a directory (its <code class="docutils literal notranslate"><span class="pre">*.toml</span></code> files, by name), a glob pattern (<code class="docutils literal notranslate"><span class="pre">&quot;web.d/*.toml&quot;</span></code>, possibly matching nothing) or a file. Tables merge, <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entries add up; a key given in two files is refused, naming both; an imported file cannot <code class="docutils literal notranslate"><span class="pre">import</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">=</span> <span class="pre">[&quot;web.d&quot;]</span></code> splits the configuration into <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/web.toml</span></code> and the <code class="docutils literal notranslate"><span class="pre">*.toml</span></code>
+files of <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/web.d/</span></code>, read by name after it: a file per pool host, the secrets
+apart. Nothing is silently overridden: a key given twice is an error naming both files, and an
+error found after the merge names <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>. The imported files hold the same secrets as
+<code class="docutils literal notranslate"><span class="pre">web.toml</span></code> and need the same owner and mode (root:sre-web, 0640).</p>
+<p>The full name and the e-mail of an LDAP account (<code class="docutils literal notranslate"><span class="pre">attr_fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">attr_mail</span></code>) go into the
+answers file of the projects like the GECOS fields do on a workstation, so <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> and
+<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> show them; an anonymous user is identified by the pseudonym and the display name.</p>
+</section>
+<section id="authentication-by-the-reverse-proxy">
+<h3>Authentication by the reverse proxy<a class="headerlink" href="#authentication-by-the-reverse-proxy" title="Link to this heading">¶</a></h3>
+<p>With <code class="docutils literal notranslate"><span class="pre">[auth]</span> <span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;proxy&quot;</span></code> the portal has no login page: the reverse proxy in front
+authenticates the users itself and names them in request headers, which the portal reads on
+every request (pages, API calls, the NDJSON streams of the starts, the WebSockets of the
+terminals). Nothing is stored in a cookie: the proxy’s session is the session, and a request
+that does not come from a peer of <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> has no identity whatever its headers.
+<code class="docutils literal notranslate"><span class="pre">scripts/etc/sre-web-apache.conf</span></code> is the Apache 2.4 example (<code class="docutils literal notranslate"><span class="pre">mod_authnz_ldap</span></code> + <code class="docutils literal notranslate"><span class="pre">mod_proxy</span></code>):</p>
+<div class="highlight-apache notranslate"><div class="highlight"><pre><span></span><span class="nt">&lt;Location</span><span class="w"> </span><span class="s">&quot;/&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nb">AuthType</span><span class="w"> </span>Basic
+<span class="w">    </span><span class="nb">AuthName</span><span class="w"> </span><span class="s2">&quot;SRE&quot;</span>
+<span class="w">    </span><span class="nb">AuthBasicProvider</span><span class="w"> </span>ldap
+<span class="w">    </span><span class="nb">AuthLDAPURL</span><span class="w"> </span><span class="s2">&quot;ldaps://ldap.example.org/ou=people,dc=example,dc=org?uid,cn,mail,memberOf?sub?(objectClass=inetOrgPerson)&quot;</span>
+<span class="w">    </span><span class="nb">AuthLDAPRemoteUserAttribute</span><span class="w"> </span>uid
+<span class="w">    </span><span class="nb">Require</span><span class="w"> </span>valid-user
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-User<span class="w"> </span><span class="s2">&quot;expr=%{REMOTE_USER}&quot;</span>
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>X-Remote-Name
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Name<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_CN}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_CN
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>X-Remote-Email
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Email<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_MAIL}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_MAIL
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>X-Remote-Groups
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Groups<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_MEMBEROF}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_MEMBEROF
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>Authorization
+<span class="nt">&lt;/Location&gt;</span>
+<span class="nb">ProxyPreserveHost</span><span class="w"> </span><span class="k">On</span>
+<span class="nb">ProxyPass</span><span class="w">        </span><span class="s2">&quot;/&quot;</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8450/&quot;</span><span class="w"> </span>upgrade=websocket<span class="w"> </span>timeout=3600
+<span class="nb">ProxyPassReverse</span><span class="w"> </span><span class="s2">&quot;/&quot;</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8450/&quot;</span>
+</pre></div>
+</div>
+<p>The rules that keep this safe:</p>
+<ul class="simple">
+<li><p>The portal listens on the loopback (or on an address only the proxy reaches) and
+<code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> holds the proxy’s address as the portal sees it (<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> and <code class="docutils literal notranslate"><span class="pre">::1</span></code> for
+a proxy on the same host); the portal takes the TCP peer address, never <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>.</p></li>
+<li><p>The proxy sets the four headers on <strong>every</strong> request, replacing whatever the browser sent
+(<code class="docutils literal notranslate"><span class="pre">RequestHeader</span> <span class="pre">set</span></code> does; never pass a client header through), after the authentication
+(not <code class="docutils literal notranslate"><span class="pre">early</span></code>). An optional header is removed when the attribute is missing, or <code class="docutils literal notranslate"><span class="pre">mod_headers</span></code>
+writes the literal <code class="docutils literal notranslate"><span class="pre">(null)</span></code>, which the portal treats as empty.</p></li>
+<li><p>The attributes exported by <code class="docutils literal notranslate"><span class="pre">mod_authnz_ldap</span></code> (<code class="docutils literal notranslate"><span class="pre">AUTHENTICATE_CN</span></code>…) are those listed in the
+<code class="docutils literal notranslate"><span class="pre">AuthLDAPURL</span></code>; a multi-valued one is joined with <code class="docutils literal notranslate"><span class="pre">;</span> </code> (hence <code class="docutils literal notranslate"><span class="pre">groups_separator</span> <span class="pre">=</span> <span class="pre">&quot;;&quot;</span></code>). The
+groups header may carry any attribute, <code class="docutils literal notranslate"><span class="pre">memberOf</span></code> DNs or <code class="docutils literal notranslate"><span class="pre">eduPersonAffiliation</span></code> values:
+<code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> lists the values giving the instructor role. A long list of groups can
+exceed Apache’s <code class="docutils literal notranslate"><span class="pre">LimitRequestFieldSize</span></code> (8190 bytes): raise it or export fewer attributes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">public_url</span></code> must be the <code class="docutils literal notranslate"><span class="pre">https://</span></code> URL the users type (the <code class="docutils literal notranslate"><span class="pre">Secure</span></code> flag of the language
+cookie, the <code class="docutils literal notranslate"><span class="pre">Origin</span></code> check of the WebSockets together with <code class="docutils literal notranslate"><span class="pre">ProxyPreserveHost</span> <span class="pre">On</span></code>).</p></li>
+<li><p>HTTP Basic authentication cannot be logged out of: the Logout button is hidden unless
+<code class="docutils literal notranslate"><span class="pre">logout_url</span></code> names a logout handler (<code class="docutils literal notranslate"><span class="pre">mod_auth_form</span></code>, sketched at the end of the example).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">…</span></code> talks to the loopback port directly, never through the proxy (the Basic
+authentication would refuse its bearer token).</p></li>
+</ul>
+</section>
+<section id="securing-the-pool-mutual-tls">
+<h3>Securing the pool (mutual TLS)<a class="headerlink" href="#securing-the-pool-mutual-tls" title="Link to this heading">¶</a></h3>
+<p>The portal and the agents can authenticate each other with certificates of one private CA, on
+top of the token: the agent serves TLS and requires a client certificate of that CA, the portal
+verifies the agents against the same CA and presents its client certificate.
+<code class="docutils literal notranslate"><span class="pre">scripts/web-tls.sh</span></code> makes the files with <code class="docutils literal notranslate"><span class="pre">openssl</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">scripts</span><span class="o">/</span><span class="n">web</span><span class="o">-</span><span class="n">tls</span><span class="o">.</span><span class="n">sh</span> <span class="n">init</span><span class="o">-</span><span class="n">ca</span> <span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">sre</span><span class="o">-</span><span class="n">tls</span>                      <span class="c1"># ca.key, ca.crt (10 years)</span>
+<span class="n">scripts</span><span class="o">/</span><span class="n">web</span><span class="o">-</span><span class="n">tls</span><span class="o">.</span><span class="n">sh</span> <span class="n">agent</span> <span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">sre</span><span class="o">-</span><span class="n">tls</span> <span class="n">a01</span> <span class="n">IP</span><span class="p">:</span><span class="mf">10.0.0.11</span> <span class="n">DNS</span><span class="p">:</span><span class="n">a01</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">org</span>   <span class="c1"># a01.key, a01.crt</span>
+<span class="n">scripts</span><span class="o">/</span><span class="n">web</span><span class="o">-</span><span class="n">tls</span><span class="o">.</span><span class="n">sh</span> <span class="n">portal</span> <span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">sre</span><span class="o">-</span><span class="n">tls</span>                       <span class="c1"># portal.key, portal.crt</span>
+</pre></div>
+</div>
+<p>On each pool host, <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> gets its own certificate and the CA
+(<code class="docutils literal notranslate"><span class="pre">tls_cert</span> <span class="pre">=</span> <span class="pre">&quot;.../a01.crt&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">tls_key</span> <span class="pre">=</span> <span class="pre">&quot;.../a01.key&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">tls_ca</span> <span class="pre">=</span> <span class="pre">&quot;.../ca.crt&quot;</span></code>, files readable
+by root only) and, as a second fence, <code class="docutils literal notranslate"><span class="pre">allowed_clients</span> <span class="pre">=</span> <span class="pre">[&quot;&lt;address</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">portal&gt;&quot;]</span></code>. On the
+portal host, <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> gets <code class="docutils literal notranslate"><span class="pre">[pool]</span> <span class="pre">ca</span> <span class="pre">=</span> <span class="pre">&quot;.../ca.crt&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">client_cert</span> <span class="pre">=</span> <span class="pre">&quot;.../portal.crt&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">client_key</span> <span class="pre">=</span> <span class="pre">&quot;.../portal.key&quot;</span></code> (readable by <code class="docutils literal notranslate"><span class="pre">sre-web</span></code>), and every <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> URL becomes
+<code class="docutils literal notranslate"><span class="pre">https://&lt;name</span> <span class="pre">or</span> <span class="pre">address</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">certificate's</span> <span class="pre">SANs&gt;:8451</span></code>. The portal then logs
+<code class="docutils literal notranslate"><span class="pre">TLS</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">agents:</span> <span class="pre">CA</span> <span class="pre">…,</span> <span class="pre">client</span> <span class="pre">certificate</span> <span class="pre">…</span></code> and each host as reachable; an agent without
+the right certificate, or a client without one, fails at the handshake, before any request.</p>
+</section>
+<section id="a-pool-of-workstations">
+<h3>A pool of workstations<a class="headerlink" href="#a-pool-of-workstations" title="Link to this heading">¶</a></h3>
+<p>The pool hosts are typically classroom workstations: off when nobody needs them (a nightly cron
+shuts them down), woken by Wake-on-LAN, and sometimes used at the keyboard by a student. The
+portal gives each host a <strong>state</strong> from the status of its agent, and <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">list</span></code> shows
+it:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>State</p></th>
+<th class="head"><p>Meaning</p></th>
+<th class="head"><p>New projects</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">off</span></code></p></td>
+<td><p>the agent does not answer</p></td>
+<td><p>no</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">waking</span></code></p></td>
+<td><p>a wake was sent less than <code class="docutils literal notranslate"><span class="pre">wake_timeout</span></code> ago</p></td>
+<td><p>no, but a start answers “a host is starting” (503, retried by the Open page)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">up</span></code></p></td>
+<td><p>the agent answers, the host is free</p></td>
+<td><p>yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">occupied</span></code></p></td>
+<td><p>the agent answers, the host is used locally (<code class="docutils literal notranslate"><span class="pre">occupied_check</span></code>)</p></td>
+<td><p>no; the web projects already running there go on</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exam</span></code></p></td>
+<td><p>the agent answers, <code class="docutils literal notranslate"><span class="pre">exam.json</span></code> is on the host</p></td>
+<td><p>no</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">draining</span></code></p></td>
+<td><p>the portal asked the host to power off, or <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">drain</span></code></p></td>
+<td><p>no; powered off once it is empty</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">disabled</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">disable</span></code>, or <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code></p></td>
+<td><p>no</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Waking.</strong> A host with a <code class="docutils literal notranslate"><span class="pre">mac</span></code> gets a magic packet (UDP port 9 to <code class="docutils literal notranslate"><span class="pre">wol_broadcast</span></code>: the portal
+must be on the hosts’ network, or the routers must forward the directed broadcast); a host with a
+<code class="docutils literal notranslate"><span class="pre">wake_command</span></code> gets that command instead (<code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">relay</span> <span class="pre">wakeonlan</span> <span class="pre">{mac}</span></code>, an IPMI or VM call…).
+The portal wakes one sleeping host, in configuration order, whenever the free project slots of
+the hosts up (plus the capacity of those waking) drop below <code class="docutils literal notranslate"><span class="pre">spare_projects</span></code>, and keeps
+<code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> hosts awake during <code class="docutils literal notranslate"><span class="pre">active_hours</span></code>: the floor is re-established in the morning and
+not fought at night after the cron. A host still silent after <code class="docutils literal notranslate"><span class="pre">wake_timeout</span></code> is retried after 1,
+2, 4… up to 30 minutes, so a machine that is really down is not hammered. The agent must be an
+enabled systemd unit on every host (boot → agent up → the portal sees it).</p>
+<p><strong>Occupied hosts.</strong> The agent reports <code class="docutils literal notranslate"><span class="pre">occupied</span></code> when a local login session exists (<code class="docutils literal notranslate"><span class="pre">loginctl</span></code>,
+<code class="docutils literal notranslate"><span class="pre">who</span></code> as a fallback) or when projects of the Qt GUI run on the host; the portal places nothing
+there and never powers it off. The web projects already running there continue.</p>
+<p><strong>Going down.</strong> When the agent’s unit stops because the system halts (the nightly cron, a
+<code class="docutils literal notranslate"><span class="pre">poweroff</span></code>), the agent closes the projects it manages as a Close would (the last evaluation,
+then <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span></code>), concurrently, within <code class="docutils literal notranslate"><span class="pre">TimeoutStopSec</span></code>; the browsers see “project closed”.
+With <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> on the host and <code class="docutils literal notranslate"><span class="pre">allow_power_off</span> <span class="pre">=</span> <span class="pre">true</span></code> in its <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, the portal
+powers off an idle host itself: <code class="docutils literal notranslate"><span class="pre">idle_host_timeout</span></code> (0 by default: only the cron does it), above
+<code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> and as long as the spare capacity stays, or at once with <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">poweroff</span></code>.</p>
+<p><strong>By hand.</strong> <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">…</span></code> talks to the running portal through its administration API
+(<code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">token</span></code>, loopback only by default; <code class="docutils literal notranslate"><span class="pre">--config</span></code>, <code class="docutils literal notranslate"><span class="pre">--url</span></code>, <code class="docutils literal notranslate"><span class="pre">--token</span></code> override the
+configuration):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sre-web pool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
+sre-web pool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web pool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power]
+sre-web pool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent&#39;s idle reaper)
+sre-web pool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+</pre></div>
+</div>
+<p>The additions, removals and enable / disable flags are kept in <code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">state_file</span></code> and merged
+with the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> at every start (<code class="docutils literal notranslate"><span class="pre">list</span></code> shows <code class="docutils literal notranslate"><span class="pre">config</span></code> or <code class="docutils literal notranslate"><span class="pre">added</span></code> per host); a
+config host removed by hand comes back with <code class="docutils literal notranslate"><span class="pre">enable</span></code>. <code class="docutils literal notranslate"><span class="pre">--json</span></code> gives the raw rows.</p>
+</section>
+</section>
+<section id="what-the-users-see">
+<h2>What the users see<a class="headerlink" href="#what-the-users-see" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Login</strong>: the directory account, or (anonymous mode) a display name and a language; in
+proxy mode the web server in front has already asked, there is no login page.</p></li>
+<li><p><strong>Projects</strong>: the user’s running projects on the whole pool (Open, Close), “Open a lab” (the
+lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
+deploys).</p></li>
+<li><p><strong>A project</strong>: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
+same options (lines, spacing, order, icons); the questions and the forms are the same; the
+evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
+<code class="docutils literal notranslate"><span class="pre">xterm.js</span></code> windows on <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>: every Connect button opens a new one on its machine (like
+a new xterm in the Qt GUI: <code class="docutils literal notranslate"><span class="pre">gw</span></code>, <code class="docutils literal notranslate"><span class="pre">gw</span> <span class="pre">(2)</span></code>, …), the select of the Terminals tab opens one on
+any device (the machines open to the students and the managed switches), the × of a sub-tab
+closes it, <code class="docutils literal notranslate"><span class="pre">terminals_per_device</span></code> caps them; the Log tab appears for debug projects. Export downloads the Kathara zip.
+Session recording (<code class="docutils literal notranslate"><span class="pre">asciinema</span></code>) applies as on a workstation, since it happens in <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>.</p></li>
+<li><p>The answers are saved as the user types (debounced), with the identity of the session.</p></li>
+</ul>
+</section>
+<section id="security">
+<h2>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>The agent listens on a management address and refuses every request without its bearer token
+and the identity headers the portal adds (<code class="docutils literal notranslate"><span class="pre">X-SRE-Login</span></code>, …); the browser never talks to it.
+With mutual TLS (above) only the holder of a client certificate of the CA reaches the token
+check, the traffic to the agents is encrypted, and <code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> refuses every other
+address with 403. Without TLS the token and the terminals cross the network in clear: keep the
+agents on a trusted management network or behind a tunnel (the agent warns at startup).</p></li>
+<li><p>The session cookie is signed (HMAC-SHA256), <code class="docutils literal notranslate"><span class="pre">HttpOnly</span></code>, <code class="docutils literal notranslate"><span class="pre">SameSite=Strict</span></code>, <code class="docutils literal notranslate"><span class="pre">Secure</span></code> behind
+HTTPS; the state-changing calls need the <code class="docutils literal notranslate"><span class="pre">X-Requested-With:</span> <span class="pre">sre-web</span></code> header and the WebSockets a
+matching <code class="docutils literal notranslate"><span class="pre">Origin</span></code>; the pages carry a <code class="docutils literal notranslate"><span class="pre">Content-Security-Policy</span></code>.</p></li>
+<li><p>In proxy mode nothing is stored in a cookie: every request carries the identity set by the
+reverse proxy, accepted from the peers of <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> only (a request reaching the
+portal from anywhere else has no identity, headers or not).</p></li>
+<li><p>Rate limits per user (evaluations, starts) and per client address (logins); the size of the
+answers is capped.</p></li>
+<li><p>A project’s owner is the third field of its running lab name; the portal and the agent both
+check it. Instructors are the members of <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> (of <code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code>, or of the
+groups header in proxy mode); the rest of the instructor role is phase 5.</p></li>
+</ul>
+</section>
+<section id="limitations">
+<h2>Limitations<a class="headerlink" href="#limitations" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">x11_host</span></code> machines (GUI applications displayed on the student’s X server, e.g. the Wireshark
+lab) have no display on a pool host: not supported by the web site.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">ports</span></code> of the bridged machines are bound on the pool host and shown with its name.</p></li>
+<li><p>A host in exam mode (<code class="docutils literal notranslate"><span class="pre">exam.json</span></code>) is excluded from the pool: the exam mode of the web site is a
+later phase, as are the instructor role (instructor-mode projects, the instructor view, every
+project of the pool), the reconnection of a terminal after a network cut, and the save of the
+terminal sessions across a restart of the agent.</p></li>
+<li><p>A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.</p></li>
+</ul>
+</section>
+<section id="development">
+<h2>Development<a class="headerlink" href="#development" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">web-tests</span></code> runs the offline tests of the web front-end: the agent against a fake <code class="docutils literal notranslate"><span class="pre">sre</span></code>
+(<code class="docutils literal notranslate"><span class="pre">tests/mock_sre.py</span></code>), the portal against that agent, the templates. <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-m</span> <span class="pre">sreweb.agent</span> <span class="pre">--config</span> <span class="pre">agent.toml</span> <span class="pre">--listen</span> <span class="pre">127.0.0.1:8451</span></code> and <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-m</span> <span class="pre">sreweb.portal</span> <span class="pre">--config</span> <span class="pre">web.toml</span> <span class="pre">--listen</span> <span class="pre">127.0.0.1:8450</span> <span class="pre">--web-dir</span> <span class="pre">web</span></code> (from <code class="docutils literal notranslate"><span class="pre">src/</span></code>, in the venv) run both locally; with
+<code class="docutils literal notranslate"><span class="pre">sre_exe</span></code> pointed at a wrapper of <code class="docutils literal notranslate"><span class="pre">tests/mock_sre.py</span></code> (<code class="docutils literal notranslate"><span class="pre">SRE_PUB_DIR</span></code> exported in the wrapper),
+the whole site works without Docker. The French catalog is <code class="docutils literal notranslate"><span class="pre">locale/fr/LC_MESSAGES/sreweb.po</span></code>
+(hand-maintained, <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">web-translations</span></code>).</p>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="lab-authoring.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Lab Authoring Guide</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="exam.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Exam Administration</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Web site (remote use)</a><ul>
+<li><a class="reference internal" href="#architecture">Architecture</a></li>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+<li><a class="reference internal" href="#from-a-checkout">From a checkout</a></li>
+<li><a class="reference internal" href="#debian-packages">Debian packages</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#configuration">Configuration</a><ul>
+<li><a class="reference internal" href="#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
+<li><a class="reference internal" href="#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
+<li><a class="reference internal" href="#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
+<li><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#what-the-users-see">What the users see</a></li>
+<li><a class="reference internal" href="#security">Security</a></li>
+<li><a class="reference internal" href="#limitations">Limitations</a></li>
+<li><a class="reference internal" href="#development">Development</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>
