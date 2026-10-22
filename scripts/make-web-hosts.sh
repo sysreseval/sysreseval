@@ -33,11 +33,18 @@
 #   PORTAL_ADDRESS    none               when set, allowed_clients = ["<it>"] in agent-<name>.toml
 #   TLS_DIR_ON_HOSTS  /etc/sysreseval/tls  where the hosts and the portal keep the files (the paths
 #                                        written in the toml)
+#   CA_KEY, CA_CRT    none               both set: the private key and the certificate of an existing CA
+#                                        (an earlier OUT_DIR, the files already deployed), copied into
+#                                        OUT_DIR as ca.key / ca.crt instead of a new CA, so that the new
+#                                        hosts are signed by the CA the portal and the other hosts know;
+#                                        the key must be the certificate's; refused when OUT_DIR already
+#                                        holds another CA
 # A qualified machine with a bad address stops the script, as does a name, an address or a MAC given
 # twice among the qualified machines of the selected rooms.
 #
 # Written in OUT_DIR:
-#   ca.key ca.crt portal.key portal.crt   web-tls.sh init-ca and portal, once
+#   ca.key ca.crt                         web-tls.sh init-ca once, or the copy of CA_KEY / CA_CRT
+#   portal.key portal.crt                 web-tls.sh portal, once
 #   <name>.key <name>.crt                 web-tls.sh agent, once per host (SANs IP:<ip>, DNS:<name>[.DOMAIN])
 #   <name>.token                          the agent token of the host, drawn once (openssl rand) and kept
 #   hosts.toml                            the [[hosts]] entries, one room after the other (the order of ROOMS,
@@ -77,6 +84,8 @@ POWER="${POWER:-false}"
 DOMAIN="${DOMAIN:-}"
 PORTAL_ADDRESS="${PORTAL_ADDRESS:-}"
 TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sysreseval/tls}"
+CA_KEY="${CA_KEY:-}"
+CA_CRT="${CA_CRT:-}"
 
 input="$IP_MAC_FILE"
 web_tls="$(dirname "$0")/web-tls.sh"
@@ -84,6 +93,14 @@ out="$OUT_DIR"
 [ -r "$input" ] || die "$input: not readable"
 [ -r "$web_tls" ] || die "$web_tls: not found"
 command -v openssl >/dev/null || die "openssl is not installed"
+if [ -n "$CA_KEY$CA_CRT" ]; then
+    [ -n "$CA_KEY" ] && [ -n "$CA_CRT" ] || die "CA_KEY and CA_CRT go together (the private key and the certificate of the CA)"
+    [ -r "$CA_KEY" ] || die "CA_KEY $CA_KEY: not readable"
+    [ -r "$CA_CRT" ] || die "CA_CRT $CA_CRT: not readable"
+    openssl x509 -in "$CA_CRT" -noout -text | grep -q 'CA:TRUE' || die "CA_CRT $CA_CRT: not a CA certificate"
+    [ "$(openssl x509 -in "$CA_CRT" -noout -pubkey)" = "$(openssl pkey -in "$CA_KEY" -pubout)" ] \
+        || die "CA_KEY $CA_KEY is not the private key of CA_CRT $CA_CRT"
+fi
 if [[ probe =~ $REGEXP ]]; then :; elif [ $? -eq 2 ]; then die "REGEXP '$REGEXP': bad regular expression"; fi
 ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS")
 if [ -n "$ROOMS" ]; then
@@ -134,7 +151,16 @@ done
 
 mkdir -p "$out"
 chmod 0700 "$out"
-[ -f "$out/ca.key" ] || bash "$web_tls" init-ca "$out"
+if [ -z "$CA_KEY" ]; then
+    [ -f "$out/ca.key" ] || bash "$web_tls" init-ca "$out"
+elif [ -f "$out/ca.key" ]; then
+    [ "$(openssl x509 -in "$out/ca.crt" -noout -fingerprint -sha256)" = "$(openssl x509 -in "$CA_CRT" -noout -fingerprint -sha256)" ] \
+        || die "$out holds another CA than $CA_CRT: remove its ca.key / ca.crt and the certificates they signed, or unset CA_KEY / CA_CRT"
+else
+    install -m 0600 "$CA_KEY" "$out/ca.key"
+    install -m 0644 "$CA_CRT" "$out/ca.crt"
+    echo "make-web-hosts: CA copied from $CA_KEY and $CA_CRT"
+fi
 [ -f "$out/portal.key" ] || bash "$web_tls" portal "$out"
 
 hosts_toml="$out/hosts.toml"

@@ -230,8 +230,10 @@ machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (po
 placed there until `sre-web pool enable`). These five variables are required and have no
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
 `allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
-`PORTAL_ADDRESS` (`allowed_clients` of the agents) and `TLS_DIR_ON_HOSTS` (`/etc/sysreseval/tls`,
-the paths written in the files) are optional.
+`PORTAL_ADDRESS` (`allowed_clients` of the agents), `TLS_DIR_ON_HOSTS` (`/etc/sysreseval/tls`,
+the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
+`OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
+portal already knows; refused when `OUT_DIR` holds another CA) are optional.
 
 In `OUT_DIR` (private keys and tokens: outside any repository) it writes, through `web-tls.sh`,
 the CA and the portal's client certificate once, then per host a key and a certificate (SANs
