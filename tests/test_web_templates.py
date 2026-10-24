@@ -39,7 +39,7 @@ def environment() -> jinja2.Environment:
 def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
-            'language': 'fr', 'instructor': False, 'logout_url': ''}
+            'language': 'fr', 'instructor': False, 'logout_url': '', 'site': {'name': '', 'url': '', 'logo_url': ''}}
     base.update(extra)
     return base
 
@@ -125,6 +125,24 @@ class TestTemplates:
         assert 'action="/logout"' in render('projects.html')
         assert 'action="/logout"' not in render('projects.html', auth_mode='proxy')
         assert 'action="/logout"' in render('projects.html', auth_mode='proxy', logout_url='/apache-logout')
+
+    def test_institution_next_to_the_brand(self):
+        """[site] of web.toml: the institution's logo and name right after the SRE brand, on
+        every page (the login page too), linked when a url is given."""
+        site = {'name': 'IUT <Démo>', 'url': 'https://www.example.org/', 'logo_url': '/site/logo'}
+        html = render('projects.html', site=site)
+        assert html.index('class="brand"') < html.index('class="institution"') < html.index('class="topbar-nav"')
+        assert 'href="https://www.example.org/"' in html and 'src="/site/logo"' in html
+        assert 'IUT &lt;Démo&gt;' in html and 'IUT <Démo>' not in html
+        html = render('login.html', identity=None, site=site)
+        assert 'class="institution"' in html and 'src="/site/logo"' in html
+        # the name alone, without link; the logo alone
+        html = render('projects.html', site={'name': 'Demo', 'url': '', 'logo_url': ''})
+        assert '<a class="institution">' in html and '<span>Demo</span>' in html and 'src="/site/logo"' not in html
+        html = render('projects.html', site={'name': '', 'url': '', 'logo_url': '/site/logo'})
+        assert 'src="/site/logo" alt=""' in html and '<span>' not in html.split('class="institution"')[1].split('</a>')[0]
+        # nothing configured: no block at all
+        assert 'institution' not in render('projects.html')
 
     def test_login_error_is_escaped(self):
         html = render('login.html', identity=None, error='<script>alert(1)</script>')

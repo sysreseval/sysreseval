@@ -7,6 +7,7 @@ by ``read_config``."""
 import dataclasses
 import glob
 import ipaddress
+import mimetypes
 import os
 import re
 import tomllib
@@ -255,6 +256,49 @@ class AdminConfig:
     state_file: str = ''              # '' : the default of the installation (see sre-web)
 
 
+_URL_PREFIXES = ('/', 'http://', 'https://')
+
+
+@dataclass
+class SiteConfig:
+    """``[site]``: the institution shown next to the SRE logo in the header of every page: a
+    logo (an image file, served at ``/site/logo``), a name (a string, or a table of strings by
+    language) and the page the two link to.  Nothing by default: the SRE logo alone."""
+    logo: str = ''                    # absolute path of the image file (JPG, PNG, SVG...), readable by sre-web
+    name: object = ''                 # str, or {language: str}
+    url: str = ''                     # '' = no link
+
+    def name_for(self, language: str, languages: list) -> str:
+        """The name in *language*, else in the first of *languages* (the default language of
+        the site), else the first one given."""
+        if not isinstance(self.name, dict):
+            return self.name
+        for lang in (language, *languages):
+            if self.name.get(lang):
+                return self.name[lang]
+        return next(iter(self.name.values()), '')
+
+
+def _check_site(site: SiteConfig, path: str):
+    where = f"{path}: site."
+    if not isinstance(site.logo, str):
+        raise ConfigError(f"{where}logo must be the absolute path of an image file")
+    if site.logo:
+        if not os.path.isabs(site.logo):
+            raise ConfigError(f"{where}logo must be the absolute path of an image file")
+        if not os.path.isfile(site.logo) or not os.access(site.logo, os.R_OK):
+            raise ConfigError(f"{where}logo: {site.logo} is not a readable file")
+        if not (mimetypes.guess_type(site.logo)[0] or '').startswith('image/'):
+            raise ConfigError(f"{where}logo must be an image file (.jpg, .png, .svg, .gif, .webp)")
+    if isinstance(site.name, dict):
+        if not all(isinstance(k, str) and isinstance(v, str) for k, v in site.name.items()):
+            raise ConfigError(f"{where}name must be a string or a table of strings by language")
+    elif not isinstance(site.name, str):
+        raise ConfigError(f"{where}name must be a string or a table of strings by language")
+    if not isinstance(site.url, str) or (site.url and not site.url.startswith(_URL_PREFIXES)):
+        raise ConfigError(f"{where}url must be a path or an absolute URL")
+
+
 @dataclass
 class WebConfig:
     listen: tuple = ('127.0.0.1', 8450)
@@ -268,6 +312,7 @@ class WebConfig:
     pool: PoolConfig = field(default_factory=PoolConfig)
     limits: LimitsConfig = field(default_factory=LimitsConfig)
     admin: AdminConfig = field(default_factory=AdminConfig)
+    site: SiteConfig = field(default_factory=SiteConfig)
     hosts: list = field(default_factory=list)
 
 
@@ -310,7 +355,7 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
             raise ConfigError(f"{path}: auth.proxy.{name} cannot be empty")
     if not isinstance(proxy.instructor_groups, list):
         raise ConfigError(f"{path}: auth.proxy.instructor_groups must be a list")
-    if proxy.logout_url and not proxy.logout_url.startswith(('/', 'http://', 'https://')):
+    if proxy.logout_url and not proxy.logout_url.startswith(_URL_PREFIXES):
         raise ConfigError(f"{path}: auth.proxy.logout_url must be a path or an absolute URL")
     pool_data = _section(data, 'pool', path)
     pool = _build(PoolConfig, pool_data, f"{path}: [pool]",
@@ -330,14 +375,16 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
                        ('eval_interval', 'start_interval') if k in limits_data})
+    site = _build(SiteConfig, _section(data, 'site', path), f"{path}: [site]")
+    _check_site(site, path)
     hosts_data = data.get('hosts', [])
     if not isinstance(hosts_data, list):
         raise ConfigError(f"{path}: [[hosts]] must be an array of tables")
     hosts = [host_config_from_dict(h, f"{path}: hosts[{i}]") for i, h in enumerate(hosts_data)]
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
-    top = {k: v for k, v in data.items() if k not in ('auth', 'pool', 'limits', 'admin', 'hosts')}
-    cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, hosts=hosts,
+    top = {k: v for k, v in data.items() if k not in ('auth', 'pool', 'limits', 'admin', 'site', 'hosts')}
+    cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, site=site, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:

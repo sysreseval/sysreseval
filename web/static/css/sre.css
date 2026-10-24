@@ -97,6 +97,9 @@ input:invalid { border-color: var(--danger); }
 }
 .brand { display: flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); font-weight: bold; }
 .brand img { width: 24px; height: 24px; }
+.institution { display: flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text);
+               padding-left: 12px; border-left: 1px solid var(--border); }   /* [site] of web.toml */
+.institution img { height: 24px; width: auto; }
 .topbar-nav { flex: 1; display: flex; gap: 10px; }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 .topbar-right .user { font-weight: bold; }

@@ -35,7 +35,8 @@ PROXY_OVER = {'auth': {'mode': 'proxy', 'proxy': {'instructor_groups': [TEACHERS
 
 TEMPLATES = {
     'login.html': '<html lang="{{ language }}"><title>Login</title>{{ auth_mode }} {{ error }}'
-                  '{% for code, name in languages %}<option>{{ code }}</option>{% endfor %}</html>',
+                  '{% for code, name in languages %}<option>{{ code }}</option>{% endfor %}'
+                  '{% if site.logo_url %}<img src="{{ site.logo_url }}">{% endif %}[{{ site.name }}]</html>',
     'projects.html': '<html><title>Projects</title>{{ identity.login }}</html>',
     'open.html': '<html><title>Open</title>{{ identity.login }}</html>',
     'project.html': '<html><title>Project</title>{{ host }} {{ rln }} {{ api_base }} {{ _("Schema") }}</html>',
@@ -162,6 +163,28 @@ class TestLoginAndPages:
                 resp = await h.client.post('/api/logout', headers=CSRF)
                 assert resp.status == 200
                 assert (await (await h.client.get('/api/me')).json())['identity'] is None
+        run(go())
+
+    def test_site_logo_and_name(self, tmp_path):
+        """[site] of web.toml: the logo is served at /site/logo without any session (the login
+        page shows it), the name follows the language of the page; 404 and nothing without."""
+        async def go():
+            logo = tmp_path / 'logo.jpg'
+            logo.write_bytes(b'\xff\xd8\xff\xe0 fake jpeg')
+            over = {'languages': ['fr', 'en'],
+                    'site': {'logo': str(logo), 'name': {'fr': 'IUT de Démo', 'en': 'Demo Institute'}, 'url': '/about'}}
+            async with Harness(tmp_path / 'with', web_over=over) as h:
+                resp = await h.client.get('/site/logo')
+                assert resp.status == 200 and resp.headers['Content-Type'] == 'image/jpeg'
+                assert await resp.read() == logo.read_bytes()
+                text = await (await h.client.get('/login')).text()
+                assert '<img src="/site/logo">' in text and '[IUT de Démo]' in text
+                text = await (await h.client.get('/login?lang=en')).text()
+                assert '[Demo Institute]' in text
+            async with Harness(tmp_path / 'without') as h:
+                assert (await h.client.get('/site/logo')).status == 404
+                text = await (await h.client.get('/login')).text()
+                assert '<img' not in text and '[]' in text
         run(go())
 
     def test_each_browser_gets_its_own_guest(self, tmp_path):

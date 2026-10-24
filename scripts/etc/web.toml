@@ -103,6 +103,16 @@ token = "change-me-to-another-long-random-string"
 # (default: /var/lib/sre-web/pool.json when that directory exists, else pool.json next to this file).
 # state_file = "/var/lib/sre-web/pool.json"
 
+[site]
+# The institution, shown next to the SRE logo in the header of every page (the login page too):
+# the absolute path of an image file (JPG, PNG, SVG...; readable by sre-web, served at
+# /site/logo), a name (a string, or one per language) and the page the two link to.  Nothing
+# here: the SRE logo alone.
+# logo = "/etc/sysreseval/logo.jpg"
+# name = "Example Institute"
+# name = { fr = "Institut Exemple", en = "Example Institute" }
+# url = "https://www.example.org/"
+
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user
 start_interval = 30       # seconds between two starts of one user

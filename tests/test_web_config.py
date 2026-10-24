@@ -112,6 +112,49 @@ class TestWebConfig:
         anonymous = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'logout_url': 'https://x/out'}}})
         assert anonymous.auth.mode == config.AUTH_ANONYMOUS and anonymous.auth.proxy.logout_url == 'https://x/out'
 
+    def test_site(self, tmp_path):
+        logo = tmp_path / 'logo.jpg'
+        logo.write_bytes(b'\xff\xd8\xff')
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'languages': ['fr', 'en'],
+                                    'site': {'logo': str(logo), 'name': {'fr': 'IUT de Démo', 'en': 'Demo Institute'},
+                                             'url': 'https://www.example.org/'}})
+        assert cfg.site.logo == str(logo) and cfg.site.url == 'https://www.example.org/'
+        assert cfg.site.name_for('en', cfg.languages) == 'Demo Institute'
+        assert cfg.site.name_for('fr', cfg.languages) == 'IUT de Démo'
+        assert cfg.site.name_for('de', cfg.languages) == 'IUT de Démo'      # the first configured language
+        assert cfg.site.name_for('de', ['de']) == 'IUT de Démo'            # neither: the first one given
+        plain = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'site': {'name': 'Demo', 'url': '/about'}})
+        assert plain.site.name_for('fr', plain.languages) == 'Demo' and plain.site.logo == '' and plain.site.url == '/about'
+        none = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]})
+        assert none.site.name_for('fr', none.languages) == '' and none.site.logo == '' and none.site.url == ''
+        empty = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'site': {'name': {}}})
+        assert empty.site.name_for('fr', empty.languages) == ''
+
+    @pytest.mark.parametrize('site, fragment', [
+        ({'logo': 'logo.jpg'}, 'absolute'),
+        ({'logo': '/nonexistent/logo.jpg'}, 'readable'),
+        ({'logo': 3}, 'logo'),
+        ({'name': 3}, 'name'),
+        ({'name': {'fr': 3}}, 'name'),
+        ({'url': 'javascript:x'}, 'url'),
+        ({'url': 3}, 'url'),
+        ({'typo': 1}, 'typo'),
+        ('x', 'table'),
+    ])
+    def test_site_refused(self, site, fragment):
+        with pytest.raises(ConfigError, match=fragment):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'site': site})
+
+    def test_site_logo_must_be_an_image(self, tmp_path):
+        text = tmp_path / 'logo.txt'
+        text.write_text('x')
+        with pytest.raises(ConfigError, match='image'):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'site': {'logo': str(text)}})
+        for suffix in ('.png', '.svg', '.jpeg', '.webp', '.gif'):
+            image = tmp_path / ('logo' + suffix)
+            image.write_bytes(b'x')
+            assert web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'site': {'logo': str(image)}}).site.logo == str(image)
+
     def test_hosts_wake_and_power(self):
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [
             dict(HOST, mac='AA-BB-CC-DD-EE-01', power=True),

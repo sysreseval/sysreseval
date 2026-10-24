@@ -11,6 +11,12 @@
 <body data-language="{{ language }}" data-auth-mode="{{ auth_mode }}" data-instructor="{{ 'true' if instructor else 'false' }}" {% block body_attrs %}{% endblock %}>
 <header class="topbar">
   <a class="brand" href="/projects"><img src="/static/img/logo_sre.svg" alt=""><span>SRE</span></a>
+  {% if site.logo_url or site.name %}
+  <a class="institution"{% if site.url %} href="{{ site.url }}"{% endif %}>
+    {% if site.logo_url %}<img src="{{ site.logo_url }}" alt="{{ site.name }}">{% endif %}
+    {% if site.name %}<span>{{ site.name }}</span>{% endif %}
+  </a>
+  {% endif %}
   <nav class="topbar-nav">{% block nav %}{% endblock %}</nav>
   <div class="topbar-right">
     {% if identity %}

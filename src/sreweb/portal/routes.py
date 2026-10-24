@@ -18,6 +18,9 @@ from .ratelimit import RateLimiter
 from .relay import Relay
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
 from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
+
+#: Where the institution's logo of ``[site] logo`` is served.
+SITE_LOGO_PATH = '/site/logo'
 from ..i18n import translator, catalog
 
 log = logging.getLogger('sreweb.portal')
@@ -51,6 +54,7 @@ class Routes:
         r.add_get('/open', self.open_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
+        r.add_get(SITE_LOGO_PATH, self.site_logo)
         r.add_get('/api/me', self.api_me)
         r.add_post('/api/login', self.api_login)
         r.add_post('/api/logout', self.logout)
@@ -99,16 +103,25 @@ class Routes:
 
     def _page_context(self, request, **extra) -> dict:
         identity = request.get(IDENTITY_KEY)
+        language = self._language(request)
         return {
             '_': self._translate(request),
             'identity': identity.to_dict() if identity else None,
             'auth_mode': self.cfg.auth.mode,
             'languages': [(code, LANGUAGE_NAMES.get(code, code)) for code in self.cfg.languages],
-            'language': self._language(request),
+            'language': language,
             'instructor': bool(identity and identity.role == ROLE_INSTRUCTOR),
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
+            'site': self._site(language),
             **extra,
         }
+
+    def _site(self, language: str) -> dict:
+        """``[site]`` for the header of the pages: the institution's name in *language*, its
+        link, and the URL of its logo ('' without one)."""
+        site = self.cfg.site
+        return {'name': site.name_for(language, self.cfg.languages), 'url': site.url,
+                'logo_url': SITE_LOGO_PATH if site.logo else ''}
 
     def _require_identity(self, request) -> Identity:
         identity = request.get(IDENTITY_KEY)
@@ -210,6 +223,13 @@ class Routes:
         if lang not in self.cfg.languages:
             raise web.HTTPNotFound()
         return web.json_response(catalog(lang, self.localedirs), headers={'Cache-Control': 'max-age=3600'})
+
+    async def site_logo(self, request):
+        """The institution's logo (``[site] logo``), next to the SRE logo on every page, the
+        login page included: no session needed."""
+        if not self.cfg.site.logo:
+            raise web.HTTPNotFound()
+        return web.FileResponse(self.cfg.site.logo, headers={'Cache-Control': 'max-age=3600'})
 
     # -- session API ----------------------------------------------------------------------------
 
