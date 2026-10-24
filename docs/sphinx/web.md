@@ -53,8 +53,9 @@ VNC viewer of the browser into `web/static/vendor/` (checksum-pinned, not commit
 systemd units `sre-agent.service` and `sre-web.service` (disabled) and the example configuration
 files `etc/agent.toml` and `etc/web.toml` under the installation directory.
 
-On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with the listen address
-of a management interface and a long random token, then `systemctl enable --now sre-agent`.
+On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with a long random token
+(the example file listens on every interface, `0.0.0.0:8451`: `allowed_clients` and the mutual
+TLS below keep the port to the portal), then `systemctl enable --now sre-agent`.
 The unit starts the agent only when that file exists and `/etc/sysreseval/DO_NOT_START_AGENT`
 does not (`ConditionPathExists=`: one image for a whole classroom may ship the unit enabled, the
 hosts without a configuration file, or with the marker, skip it without any failure; checked at
@@ -96,7 +97,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `listen` | `127.0.0.1:8451` | the address the portal reaches (a management interface, never the students' network) |
+| `listen` | `127.0.0.1:8451` | the address the portal reaches: `0.0.0.0:8451` in the example file (every interface, the Docker bridge the students' containers reach included: set `allowed_clients` and `tls_ca`), or a management interface the students do not reach |
 | `token` | required | the shared secret of this host, repeated in the portal's `[[hosts]]` entry (32+ characters) |
 | `sre_exe` | the installation's `sre` | the command run for the users |
 | `poll_interval` | `1` | seconds between two scans of the projects directory (the Qt GUI polls every second too) |
@@ -232,7 +233,7 @@ IP_MAC_FILE=ip_mac.txt OUT_DIR=/root/sre-pool REGEXP='^([a-z])[0-9]+$' ROOMS="a 
 ```
 
 The list has one `mac;ip;name` line per machine (`e4:54:e8:d1:6c:1c;10.0.128.1;a01`: the MAC
-address for Wake-on-LAN, the IPv4 address the agent listens on, the name). A machine gets an
+address for Wake-on-LAN, the IPv4 address the portal reaches its agent at, the name). A machine gets an
 agent when its lower-cased name matches `REGEXP`; the first group of the expression, when there
 is one, is its room, so that `ROOMS` selects the rooms joining the pool (empty: every qualified
 machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (polled, no project
@@ -251,8 +252,9 @@ the CA and the portal's client certificate once, then per host a key and a certi
 - `hosts.toml`: the `[[hosts]]` entries, one room after the other, with the three `[pool]` TLS
   lines of `web.toml` in its header; a file of `web.d/` (`import = ["web.d"]`) or pasted at the
   end of `web.toml`;
-- `agent-<name>.toml`: the host-specific lines of that host's `agent.toml` (`listen`, `token`,
-  `tls_*`), to complete with the example file.
+- `agent-<name>.toml`: the host-specific lines of that host's `agent.toml` (`token`, `tls_*`, and
+  `allowed_clients` / `allow_power_off` when asked; no `listen`: the shared file's `0.0.0.0:8451`),
+  to complete with the example file.
 
 Copy `<name>.crt`, `<name>.key` and `ca.crt` to `TLS_DIR_ON_HOSTS` of each host, and `ca.crt`,
 `portal.crt`, `portal.key` to the portal's. A second run keeps every key, certificate and token
@@ -350,7 +352,7 @@ the commands.
 
 ## Security
 
-- The agent listens on a management address and refuses every request without its bearer token
+- The agent refuses every request without its bearer token
   and the identity headers the portal adds (`X-SRE-Login`, …); the browser never talks to it.
   With mutual TLS (above) only the holder of a client certificate of the CA reaches the token
   check, the traffic to the agents is encrypted, and `allowed_clients` refuses every other
