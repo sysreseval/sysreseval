@@ -1,10 +1,19 @@
 # /opt/sre/etc/web.toml (checkout) or /etc/sysreseval/web.toml (Debian package): the SRE web site
 # (sre-web).  Owned by root, group sre-web, mode 0640: it holds the secret and the tokens.
 #
-# Other files merged into this one before it is checked (a directory: its *.toml files by name;
-# a glob; a file), e.g. one file per host in web.d/, same owner and mode.  A key given twice is
-# refused.
-# import = ["web.d"]
+# Other files merged into this one before it is checked, each path relative to this directory: a
+# directory (its *.toml files, by name), a glob (possibly matching nothing) or a file (it must
+# exist).  Tables merge and [[hosts]] entries add up; a key given twice is refused, naming both
+# files; an imported file cannot import.  Same owner and mode as this file.  E.g. the [[hosts]]
+# entries in web.d/ (the hosts.toml of scripts/make-web-hosts.sh, or one file per room) and the
+# secrets in a file of their own, secret and [admin] token then removed from here:
+# import = ["web.d", "secrets.toml"]
+#   # secrets.toml
+#   secret = "change-me-to-a-long-random-string"
+#   [admin]
+#   token = "change-me-to-another-long-random-string"
+#   [auth.ldap]
+#   bind_password = "..."
 #
 # Behind a reverse proxy doing TLS (nginx, caddy): listen on the loopback and give public_url.
 listen = "127.0.0.1:8450"

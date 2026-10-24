@@ -3,6 +3,20 @@
 # The systemd unit starts the agent only when this file exists and the marker file
 # /etc/sysreseval/DO_NOT_START_AGENT does not; a configuration error (exit status 78) is not retried.
 #
+# Other files merged into this one before it is checked, each path relative to this directory: a
+# directory (its *.toml files, by name), a glob (possibly matching nothing) or a file (it must
+# exist).  Tables merge; a key given twice is refused, naming both files; an imported file cannot
+# import.  Same owner and mode as this file.  E.g. this file the same on every host of a standard
+# image, and the lines of the host (the agent-<name>.toml of scripts/make-web-hosts.sh) in
+# agent.d/host.toml, listen and token then removed from here:
+# import = ["agent.d"]
+#   # agent.d/host.toml
+#   listen = "10.0.0.11:8451"
+#   token = "change-me-to-a-long-random-string"
+#   tls_cert = "/etc/sysreseval/tls/a01.crt"
+#   tls_key = "/etc/sysreseval/tls/a01.key"
+#   tls_ca = "/etc/sysreseval/tls/ca.crt"
+#
 # The agent listens on a management address the portal reaches; never expose it to the students.
 listen = "10.0.0.11:8451"
 # Shared secret of this host, repeated in the [[hosts]] entry of the portal's web.toml (32+ characters).
