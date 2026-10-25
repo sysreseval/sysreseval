@@ -1,7 +1,9 @@
 """Proxy mode: a reverse proxy of ``trusted_proxies`` (Apache ``mod_authnz_ldap``...) authenticates
 the browser itself and passes the identity in request headers, read again on every request (no
 session cookie).  Pure functions, no aiohttp: the header values as aiohttp gives them (UTF-8
-decoded with ``surrogateescape``) in, an ``Identity`` out."""
+decoded with ``surrogateescape``) in, an ``Identity`` out.  The role comes from the header tests
+(``instructor_groups`` on the groups header, ``instructor_values`` on ``instructor_header``); the
+LDAP tests of ``ldap_roles`` are applied afterwards by the portal (``roles.py``)."""
 import re
 
 from ..config import ProxyAuthConfig
@@ -54,8 +56,11 @@ def identity_from_headers(cfg: ProxyAuthConfig, headers, language: str) -> Ident
     if not is_valid_login(login):
         raise IdentityError(f"invalid login {login[:80]!r} in the {cfg.header_login} header")
     groups = split_groups(decode_header_value(headers.get(cfg.header_groups)), cfg.groups_separator)
+    extra = (split_groups(decode_header_value(headers.get(cfg.instructor_header)), cfg.groups_separator)
+             if cfg.instructor_header else [])
+    instructor = is_instructor(groups, cfg.instructor_groups) or is_instructor(extra, cfg.instructor_values)
     return Identity(login=login,
                     fullname=decode_header_value(headers.get(cfg.header_fullname), MAX_FULLNAME),
                     email=decode_header_value(headers.get(cfg.header_email), MAX_EMAIL),
-                    role=ROLE_INSTRUCTOR if is_instructor(groups, cfg.instructor_groups) else ROLE_STUDENT,
+                    role=ROLE_INSTRUCTOR if instructor else ROLE_STUDENT,
                     language=language, anonymous=False)

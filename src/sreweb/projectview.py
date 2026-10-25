@@ -24,10 +24,16 @@ def lang_priority(identity: Identity, info: dict) -> list:
     return list(dict.fromkeys([identity.language, default_language, 'en']))
 
 
-def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False) -> dict:
+def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False,
+             connect_all: bool = False) -> dict:
+    """*connect_all*: every device opens (an instructor on a student's project, see
+    ``access.is_privileged_caller``), as in a debug project."""
     priority = lang_priority(identity, info)
     show_instructor = instructor_view_allowed(info, identity)
     display = bool(display_enabled) and display_available(info, identity)
+    open_all = bool(info.get('debug_project', False)) or bool(connect_all)
+    # an instructor gets the Evaluation tab of every project (the last archived evaluation)
+    evaluation = True if identity.is_instructor else None
 
     def text(value) -> str:
         return common.resolve_text(value, priority, show_instructor=show_instructor)
@@ -44,7 +50,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
         if is_machine and d.get('name') not in visible_names:
             continue
         devices.append({'name': d.get('name', ''), 'kind': 'machine' if is_machine else 'switch',
-                        'allow_connection': bool(d.get('allow_connection', False)),
+                        'allow_connection': bool(d.get('allow_connection', False)) or open_all,
                         'hidden': bool(d.get('hidden', False)) if is_machine else False})
     questions = []
     for q in info.get('questions', []) or []:
@@ -71,7 +77,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
         'informations_html': html(info.get('informations', '')),
         'machines': [{
             'name': m.get('name', ''), 'status': m.get('status', ''),
-            'allow_connection': bool(m.get('allow_connection', False)) or bool(info.get('debug_project', False)),
+            'allow_connection': bool(m.get('allow_connection', False)) or open_all,
             'interfaces': [{'network': i.get('network', ''), 'interface_name': i.get('interface_name', '')}
                            for i in m.get('interfaces', []) or []],
             'ports': list(m.get('ports', []) or []), 'ports_text': common.format_ports(m.get('ports', []) or []),
@@ -85,7 +91,8 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
         'terminal_devices': devices,
         'questions': questions,
         'states': states,
-        'tabs': common.visible_tabs(info, exam_mode=exam_mode, instructor_shown=show_instructor, display=display),
+        'tabs': common.visible_tabs(info, exam_mode=exam_mode, instructor_shown=show_instructor, display=display,
+                                    evaluation=evaluation),
         'display': {'available': display},
         'allow_self_grade': bool(info.get('allow_self_grade', True)),
         'export_kathara_project': bool(info.get('export_kathara_project', True)),

@@ -1,0 +1,213 @@
+"""Tests of sreweb.portal.auth_ldap without a directory: the role tests on a duck-typed
+connection, the proxy-mode role resolver, and the per-login role cache (sreweb.portal.roles)."""
+import asyncio
+
+import pytest
+
+from sreweb.config import LdapConfig
+from sreweb.identity import ROLE_INSTRUCTOR, ROLE_STUDENT
+from sreweb.portal import auth_ldap as L
+from sreweb.portal.roles import RoleCache
+
+PEOPLE = 'ou=people,dc=example,dc=org'
+GROUPS = 'ou=groups,dc=example,dc=org'
+TEACHERS = f'cn=teachers,{GROUPS}'
+ALICE_DN = f'uid=alice,{PEOPLE}'
+POSIX = '(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))'
+
+
+class FakeAttribute:
+    def __init__(self, values):
+        self.values = values
+
+
+class FakeEntry:
+    def __init__(self, dn, **attributes):
+        self.entry_dn = dn
+        self._attributes = attributes
+
+    def __getitem__(self, name):
+        return FakeAttribute(self._attributes[name])
+
+
+class FakeConn:
+    """Answers `search()` from a table {(base, filter): [entries]} and records every call."""
+
+    def __init__(self, answers=None):
+        self.answers = answers or {}
+        self.calls = []
+        self.entries = []
+
+    def search(self, base, ldap_filter, search_scope='SUBTREE', attributes=None):
+        self.calls.append((base, ldap_filter, search_scope))
+        self.entries = list(self.answers.get((base, ldap_filter), []))
+        return bool(self.entries)
+
+    def unbind(self):
+        pass
+
+
+def cfg(**over) -> LdapConfig:
+    base = dict(uri='ldaps://ldap.example.org', search_base=PEOPLE, instructor_filter='', group_search_base='')
+    base.update(over)
+    return LdapConfig(**base)
+
+
+class TestRoleTests:
+    def test_nothing_configured_makes_no_search(self):
+        conn = FakeConn()
+        auth = L.LdapAuthenticator(cfg())
+        assert not auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == []
+
+    def test_instructor_groups_through_member_of(self):
+        auth = L.LdapAuthenticator(cfg(instructor_groups=[TEACHERS]))
+        teacher = FakeEntry(ALICE_DN, memberOf=['cn=all,dc=x', TEACHERS.upper()])
+        student = FakeEntry(ALICE_DN, memberOf=['cn=all,dc=x'])
+        assert auth._is_instructor(FakeConn(), 'alice', ALICE_DN, teacher)
+        assert not auth._is_instructor(FakeConn(), 'alice', ALICE_DN, student)
+        assert 'memberOf' in auth._attributes()
+
+    def test_group_filter_searches_the_group_base(self):
+        conn = FakeConn({(GROUPS, f'(member={ALICE_DN})'): [FakeEntry(TEACHERS)]})
+        auth = L.LdapAuthenticator(cfg(instructor_groups=[TEACHERS], group_filter='(member={dn})', group_search_base=GROUPS,
+                                       instructor_group_filter=''))
+        assert auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == [(GROUPS, f'(member={ALICE_DN})', 'SUBTREE')]
+        # without group_search_base the people base is searched, as before
+        conn = FakeConn()
+        auth = L.LdapAuthenticator(cfg(instructor_groups=[TEACHERS], group_filter='(member={dn})', instructor_group_filter=''))
+        assert not auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == [(PEOPLE, f'(member={ALICE_DN})', 'SUBTREE')]
+
+    def test_instructor_filter_on_the_entry(self):
+        conn = FakeConn({(ALICE_DN, '(gidNumber=2000)'): [FakeEntry(ALICE_DN)]})
+        auth = L.LdapAuthenticator(cfg(instructor_filter='(gidNumber=2000)'))
+        assert auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == [(ALICE_DN, '(gidNumber=2000)', 'BASE')]
+        bob = f'uid=bob,{PEOPLE}'
+        assert not auth._is_instructor(conn, 'bob', bob, FakeEntry(bob))
+
+    def test_group_membership_needs_the_group_base(self):
+        conn = FakeConn({(GROUPS, POSIX.format(login='alice')): [FakeEntry(f'cn=profs,{GROUPS}')]})
+        without = L.LdapAuthenticator(cfg(instructor_group_filter=POSIX))
+        assert not without._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN)) and conn.calls == []
+        auth = L.LdapAuthenticator(cfg(instructor_group_filter=POSIX, group_search_base=GROUPS))
+        assert auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == [(GROUPS, POSIX.format(login='alice'), 'SUBTREE')]
+        assert not auth._is_instructor(conn, 'bob', f'uid=bob,{PEOPLE}', None)
+
+    def test_placeholders_are_escaped(self):
+        conn = FakeConn()
+        L.group_found(conn, GROUPS, '(&(cn=teachers)(member={dn}))', login='a)b', dn='uid=a)b,' + PEOPLE)
+        assert conn.calls == [(GROUPS, f'(&(cn=teachers)(member=uid=a\\29b,{PEOPLE}))', 'SUBTREE')]
+        conn = FakeConn()
+        L.group_found(conn, GROUPS, POSIX, login='a*b', dn='x')
+        assert conn.calls[0][1] == POSIX.format(login='a\\2ab')
+        assert not L.entry_matches(conn, ALICE_DN, '') and not L.group_found(conn, '', POSIX, login='a', dn='b')
+
+    def test_defaults_are_the_site_values(self):
+        d = LdapConfig()
+        assert d.instructor_filter == '(gidNumber=2000)' and d.group_search_base == ''
+        assert d.instructor_group_filter == POSIX
+
+    def test_or_of_the_tests(self):
+        conn = FakeConn({(GROUPS, POSIX.format(login='alice')): [FakeEntry(f'cn=profs,{GROUPS}')]})
+        auth = L.LdapAuthenticator(cfg(instructor_groups=[TEACHERS], instructor_filter='(gidNumber=2000)',
+                                       instructor_group_filter=POSIX, group_search_base=GROUPS))
+        assert auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN, memberOf=[]))
+        assert [c[0] for c in conn.calls] == [ALICE_DN, GROUPS]
+
+
+class FakeDirectoryResolver(L.LdapRoleResolver):
+    """The resolver with a fake directory: one connection per bind, searches from a table."""
+
+    def __init__(self, config, answers, *, bind_ok=True):
+        super().__init__(config)
+        self.answers = answers
+        self.bind_ok = bind_ok
+        self.conns = []
+
+    def _import_ldap3(self):
+        return Exception
+
+    def _connect(self, user, password):
+        if not self.bind_ok:
+            return None
+        conn = FakeConn(self.answers)
+        self.conns.append(conn)
+        return conn
+
+
+class TestRoleResolver:
+    def test_search_mode(self):
+        answers = {(PEOPLE, '(uid=alice)'): [FakeEntry(ALICE_DN, cn=['Alice'], mail=[])],
+                   (ALICE_DN, '(gidNumber=2000)'): [FakeEntry(ALICE_DN)],
+                   (PEOPLE, '(uid=bob)'): [FakeEntry(f'uid=bob,{PEOPLE}', cn=['Bob'], mail=[])]}
+        r = FakeDirectoryResolver(cfg(instructor_filter='(gidNumber=2000)'), answers)
+        assert r.role_for('alice') == ROLE_INSTRUCTOR
+        assert r.role_for('bob') == ROLE_STUDENT
+        assert r.role_for('nobody') == ROLE_STUDENT
+        assert r.role_for('../x') == ROLE_STUDENT
+        assert r.conns[0].calls[0] == (PEOPLE, '(uid=alice)', 'SUBTREE')
+
+    def test_template_mode(self):
+        answers = {(ALICE_DN, '(objectClass=*)'): [FakeEntry(ALICE_DN, cn=['Alice'], mail=[])],
+                   (GROUPS, POSIX.format(login='alice')): [FakeEntry(f'cn=profs,{GROUPS}')]}
+        r = FakeDirectoryResolver(cfg(search_base='', bind_dn_template='uid={login},' + PEOPLE,
+                                      group_search_base=GROUPS, instructor_group_filter=POSIX), answers)
+        assert r.role_for('alice') == ROLE_INSTRUCTOR
+        assert r.conns[0].calls[0] == (ALICE_DN, '(objectClass=*)', 'BASE')
+
+    def test_bind_failure(self):
+        r = FakeDirectoryResolver(cfg(), {}, bind_ok=False)
+        with pytest.raises(L.LdapError, match='service account'):
+            r.role_for('alice')
+
+
+class CountingResolver:
+    def __init__(self, roles, fail=False):
+        self.roles, self.fail, self.calls = roles, fail, []
+
+    def role_for(self, login):
+        self.calls.append(login)
+        if self.fail:
+            raise L.LdapError("ldap down")
+        return self.roles.get(login, ROLE_STUDENT)
+
+
+class TestRoleCache:
+    def test_one_lookup_until_the_ttl(self):
+        now = [1000.0]
+        resolver = CountingResolver({'prof': ROLE_INSTRUCTOR})
+        cache = RoleCache(resolver, ttl=600, clock=lambda: now[0])
+
+        async def go():
+            assert await cache.get('prof') == ROLE_INSTRUCTOR
+            assert await cache.get('prof') == ROLE_INSTRUCTOR
+            assert await cache.get('alice') == ROLE_STUDENT
+            roles = await asyncio.gather(*(cache.get('bob') for _ in range(5)))
+            assert roles == [ROLE_STUDENT] * 5
+            assert resolver.calls == ['prof', 'alice', 'bob']
+            now[0] += 601
+            assert await cache.get('prof') == ROLE_INSTRUCTOR
+            assert resolver.calls == ['prof', 'alice', 'bob', 'prof']
+            cache.forget('prof')
+            await cache.get('prof')
+            assert resolver.calls[-2:] == ['prof', 'prof']
+        asyncio.run(go())
+
+    def test_directory_failure_counts_as_a_student_for_a_while(self):
+        now = [0.0]
+        resolver = CountingResolver({'prof': ROLE_INSTRUCTOR}, fail=True)
+        cache = RoleCache(resolver, ttl=600, negative_ttl=30, clock=lambda: now[0])
+
+        async def go():
+            assert await cache.get('prof') == ROLE_STUDENT
+            assert await cache.get('prof') == ROLE_STUDENT
+            assert resolver.calls == ['prof']
+            now[0] += 31
+            resolver.fail = False
+            assert await cache.get('prof') == ROLE_INSTRUCTOR
+            assert cache.lookups == 2
+        asyncio.run(go())

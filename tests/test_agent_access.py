@@ -44,6 +44,17 @@ class TestRunningLabName:
             A.check_owner(RLN, OTHER)
         assert e.value.status == 403
 
+    def test_owner_only_and_privileged_caller(self):
+        A.check_is_owner(RLN, STUDENT)
+        for who in (OTHER, PROF, PROF_VIEW):
+            with pytest.raises(AccessError) as e:
+                A.check_is_owner(RLN, who)
+            assert e.value.status == 403
+        # an instructor on somebody else's project runs sre privileged; the owner never does
+        assert A.is_privileged_caller(RLN, PROF) and A.is_privileged_caller(RLN, PROF_VIEW)
+        assert not A.is_privileged_caller(RLN, STUDENT) and not A.is_privileged_caller(RLN, OTHER)
+        assert not A.is_privileged_caller('20260910100000@@@sre@dhcp.py@@@prof', PROF)
+
 
 class TestDevices:
     def test_student_sees_no_hidden_machine(self):
@@ -69,6 +80,19 @@ class TestDevices:
             with pytest.raises(AccessError) as e:
                 A.check_device(info(), name, STUDENT)
             assert e.value.status == 403
+
+    def test_connect_all_opens_every_listed_device(self):
+        assert A.check_device(info(), 'srv', PROF, connect_all=True) == A.DEVICE_MACHINE
+        assert A.check_device(info(), 'closed', PROF, connect_all=True) == A.DEVICE_SWITCH
+        assert A.check_device(info(), 'probe', PROF, connect_all=True) == A.DEVICE_MACHINE
+        with pytest.raises(AccessError) as e:
+            A.check_device(info(), 'dmz', PROF, connect_all=True)    # a plain switch still has no console
+        assert e.value.status == 403
+        with pytest.raises(AccessError) as e:
+            A.check_device(info(), 'nope', PROF, connect_all=True)
+        assert e.value.status == 404
+        with pytest.raises(AccessError):
+            A.check_device(info(), 'srv', PROF)                      # the flag is the caller's decision
 
     def test_debug_project_opens_everything(self):
         d = info(debug_project=True)

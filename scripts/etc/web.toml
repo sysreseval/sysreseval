@@ -47,9 +47,19 @@ bind_dn_template = "uid={login},ou=people,dc=example,dc=org"
 # bind_password = "..."
 attr_fullname = "cn"
 attr_mail = "mail"
-# The members of these groups get the instructor role (memberOf, or group_filter = "(member={dn})").
+# Who is an instructor: the OR of the tests below (an empty key skips its test).
+# 1. The members of these groups (DNs; the memberOf attribute of the user, or a group search
+#    with group_filter = "(member={dn})" under group_search_base).
 instructor_groups = []
 # group_filter = "(member={dn})"
+# 2. A filter the user's own entry must match (the primary group here; with the memberof
+#    overlay: "(memberOf=cn=teachers,ou=groups,dc=example,dc=org)"); "" disables it.
+instructor_filter = "(gidNumber=2000)"
+# 3. A group naming the user, found under group_search_base (setting it enables this test):
+#    {login} and {dn} are replaced (and escaped).  The default is a posixGroup of gid 2000; a
+#    groupOfNames site writes "(&(cn=teachers)(member={dn}))".
+# group_search_base = "ou=groups,dc=example,dc=org"
+# instructor_group_filter = "(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"
 start_tls = false
 timeout = 10
 
@@ -63,6 +73,16 @@ header_email = "X-Remote-Email"
 header_groups = "X-Remote-Groups"
 groups_separator = ";"
 instructor_groups = []
+# A second header test: the values of this header (an attribute mod_authnz_ldap exports, e.g.
+# X-Remote-Gid set from AUTHENTICATE_GIDNUMBER) in instructor_values give the instructor role.
+# instructor_header = "X-Remote-Gid"
+# instructor_values = ["2000"]
+# Or the portal runs the tests of [auth.ldap] itself for the login the proxy gives (needed for a
+# group membership without the memberof overlay): fill uri, search_base / search_filter (or
+# bind_dn_template), bind_dn / bind_password (or an anonymous search) and the instructor_* keys of
+# [auth.ldap]; the role is cached per login for ldap_roles_ttl.
+# ldap_roles = true
+ldap_roles_ttl = "10m"
 # Where Logout sends the browser (the logout handler of a mod_auth_form login); empty: no Logout
 # button (an HTTP Basic authentication cannot be logged out of).
 logout_url = ""

@@ -396,3 +396,136 @@ msgstr "Appliquer"
 
 msgid "Clear"
 msgstr "Effacer"
+
+# --- the instructor role: watch.html, watch.js, base.html, open.html ---------------------------
+
+msgid "Watch"
+msgstr "Suivi"
+
+msgid "All running projects"
+msgstr "Tous les projets en cours"
+
+msgid "Filter…"
+msgstr "Filtrer…"
+
+msgid "Host, owner or lab"
+msgstr "Machine, propriétaire ou TP"
+
+msgid "no recent evaluation"
+msgstr "pas d'évaluation récente"
+
+msgid "errors in the last evaluation"
+msgstr "erreurs dans la dernière évaluation"
+
+msgid "Host"
+msgstr "Machine"
+
+msgid "Owner"
+msgstr "Propriétaire"
+
+msgid "Lab"
+msgstr "TP"
+
+msgid "Started"
+msgstr "Démarré"
+
+msgid "Last evaluation"
+msgstr "Dernière évaluation"
+
+msgid "Grade"
+msgstr "Points"
+
+msgid "Mark"
+msgstr "Note"
+
+msgid "Errors"
+msgstr "Erreurs"
+
+msgid "Mode"
+msgstr "Mode"
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "{n} s ago"
+msgstr "il y a {n} s"
+
+msgid "{n} min ago"
+msgstr "il y a {n} min"
+
+msgid "{n} h ago"
+msgstr "il y a {n} h"
+
+msgid "{n} project(s)"
+msgstr "{n} projet(s)"
+
+msgid "{n} of {total} project(s)"
+msgstr "{n} projet(s) sur {total}"
+
+msgid "No project matches the filter."
+msgstr "Aucun projet ne correspond au filtre."
+
+msgid "No project on the pool."
+msgstr "Aucun projet sur le parc."
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "Close the project of {owner}? Its machines will be stopped."
+msgstr "Fermer le projet de {owner} ? Ses machines seront arrêtées."
+
+msgid "never"
+msgstr "jamais"
+
+msgid "web"
+msgstr "web"
+
+msgid "local"
+msgstr "local"
+
+msgid "(keeps the instructor texts, lists every state, logs the states applied)"
+msgstr "(conserve les textes enseignant, liste tous les états, journalise les états appliqués)"
+
+# --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
+
+msgid "No archived evaluation yet."
+msgstr "Pas encore d'évaluation archivée."
+
+msgid "Last archived evaluation: {date}"
+msgstr "Dernière évaluation archivée : {date}"
+
+msgid "{errors} error(s), {warnings} warning(s)"
+msgstr "{errors} erreur(s), {warnings} avertissement(s)"
+
+msgid "This connection fell behind the terminal output."
+msgstr "Cette connexion n'a pas suivi la sortie du terminal."
+
+msgid "This terminal is closed."
+msgstr "Ce terminal est fermé."
+
+msgid "Private terminal (the student does not see it)"
+msgstr "Terminal privé (l'étudiant ne le voit pas)"
+
+msgid "Shared terminal (the student can join it)"
+msgstr "Terminal partagé (l'étudiant peut s'y joindre)"
+
+msgid "{n} viewers"
+msgstr "{n} participants"
+
+msgid "Live terminals:"
+msgstr "Terminaux ouverts :"
+
+msgid "you"
+msgstr "vous"
+
+msgid "Join {device} ({who})"
+msgstr "Rejoindre {device} ({who})"
+
+msgid "private"
+msgstr "privé"
+
+msgid "{title} (private)"
+msgstr "{title} (privé)"
+
+msgid "{device} ({who})"
+msgstr "{device} ({who})"

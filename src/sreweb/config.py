@@ -190,6 +190,14 @@ class LdapConfig:
     attr_mail: str = 'mail'
     instructor_groups: list = field(default_factory=list)   # DNs; members get the instructor role
     group_filter: str = ''            # "(member={dn})" group search when memberOf is not available
+    # The instructor role is the OR of every configured test (a test with an empty key is skipped):
+    # instructor_groups above, a filter the user's own entry must match (BASE search on its DN), and
+    # a group search under group_search_base (setting it enables that test) whose filter gets the
+    # login (filter-escaped) and the DN of the user.  The defaults are a primary group / a posixGroup
+    # of gid 2000: another site blanks or changes them.
+    instructor_filter: str = '(gidNumber=2000)'
+    group_search_base: str = ''       # the base of the group searches (group_filter too); '' = search_base
+    instructor_group_filter: str = '(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))'
     start_tls: bool = False
     timeout: float = 10.0
 
@@ -204,6 +212,14 @@ class ProxyAuthConfig:
     header_groups: str = 'X-Remote-Groups'
     groups_separator: str = ';'       # mod_authnz_ldap joins the values of an attribute with "; "
     instructor_groups: list = field(default_factory=list)   # values of the groups header giving the role
+    # A second header test: the values of instructor_header (split like the groups header) in
+    # instructor_values give the role, e.g. X-Remote-Gid = AUTHENTICATE_GIDNUMBER and ["2000"].
+    instructor_header: str = ''
+    instructor_values: list = field(default_factory=list)
+    # The portal runs the tests of [auth.ldap] itself for the login the proxy gives (the only way
+    # to a group membership without a memberOf overlay in this mode); the role is cached per login.
+    ldap_roles: bool = False
+    ldap_roles_ttl: float = 600.0     # seconds
     logout_url: str = ''              # where Logout sends the browser; '' = no Logout button
 
 
@@ -339,22 +355,39 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     ldap_data = _section(auth_data, 'ldap', path)
     ldap = _build(LdapConfig, ldap_data, f"{path}: [auth.ldap]",
                   timeout=parse_duration(ldap_data.get('timeout', 10.0), 'auth.ldap.timeout'))
-    proxy = _build(ProxyAuthConfig, _section(auth_data, 'proxy', path), f"{path}: [auth.proxy]")
+    proxy_data = _section(auth_data, 'proxy', path)
+    proxy = _build(ProxyAuthConfig, proxy_data, f"{path}: [auth.proxy]",
+                   ldap_roles_ttl=parse_duration(proxy_data.get('ldap_roles_ttl', 600.0), 'auth.proxy.ldap_roles_ttl'))
     auth = _build(AuthConfig, {k: v for k, v in auth_data.items() if k not in ('ldap', 'proxy')}, f"{path}: [auth]",
                   ldap=ldap, proxy=proxy)
     if auth.mode not in AUTH_MODES:
         raise ConfigError(f"{path}: auth.mode must be " + ', '.join(f"'{m}'" for m in AUTH_MODES[:-1])
                           + f" or '{AUTH_MODES[-1]}'")
-    if auth.mode == AUTH_LDAP:
+    if auth.mode == AUTH_LDAP or (auth.mode == AUTH_PROXY and proxy.ldap_roles):
+        why = "in ldap mode" if auth.mode == AUTH_LDAP else "with auth.proxy.ldap_roles"
         if not ldap.uri:
-            raise ConfigError(f"{path}: auth.ldap.uri is required in ldap mode")
+            raise ConfigError(f"{path}: auth.ldap.uri is required {why}")
         if not ldap.bind_dn_template and not ldap.search_base:
-            raise ConfigError(f"{path}: auth.ldap needs bind_dn_template or search_base")
+            raise ConfigError(f"{path}: auth.ldap needs bind_dn_template or search_base {why}")
+    if not isinstance(ldap.instructor_groups, list):
+        raise ConfigError(f"{path}: auth.ldap.instructor_groups must be a list")
+    for name in ('instructor_filter', 'group_filter', 'instructor_group_filter'):
+        value = str(getattr(ldap, name)).strip()
+        if value and not (value.startswith('(') and value.endswith(')')):
+            raise ConfigError(f"{path}: auth.ldap.{name} must be an LDAP filter between parentheses")
+    if ldap.instructor_group_filter.strip() and '{login}' not in ldap.instructor_group_filter \
+            and '{dn}' not in ldap.instructor_group_filter:
+        raise ConfigError(f"{path}: auth.ldap.instructor_group_filter must name the user with {{login}} or {{dn}}")
     for name in ('header_login', 'header_fullname', 'header_email', 'header_groups', 'groups_separator'):
         if not str(getattr(proxy, name)).strip():
             raise ConfigError(f"{path}: auth.proxy.{name} cannot be empty")
-    if not isinstance(proxy.instructor_groups, list):
-        raise ConfigError(f"{path}: auth.proxy.instructor_groups must be a list")
+    for name in ('instructor_groups', 'instructor_values'):
+        if not isinstance(getattr(proxy, name), list):
+            raise ConfigError(f"{path}: auth.proxy.{name} must be a list")
+    if bool(proxy.instructor_values) != bool(proxy.instructor_header.strip()):
+        raise ConfigError(f"{path}: auth.proxy.instructor_header and instructor_values go together")
+    if proxy.ldap_roles_ttl < 0:
+        raise ConfigError(f"{path}: auth.proxy.ldap_roles_ttl cannot be negative")
     if proxy.logout_url and not proxy.logout_url.startswith(_URL_PREFIXES):
         raise ConfigError(f"{path}: auth.proxy.logout_url must be a path or an absolute URL")
     pool_data = _section(data, 'pool', path)

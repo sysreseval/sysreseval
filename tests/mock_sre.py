@@ -15,7 +15,8 @@ Environment variables (all optional but the first):
                       public dirs in <SRE_PUB_DIR>/home (required: the mock never touches /var/lib/sre)
   MOCK_X11            set: the open machine of the stub lab is an x11_host (its info.json)
   MOCK_SRE_LOG        a file where every invocation appends one JSON line
-                      {"argv": [...], "env": {<the keys of LOGGED_ENV present in the environment>}}
+                      {"argv": [...], "env": {<the keys of LOGGED_ENV present in the environment>},
+                       "username": <the SRE username of the call>, "user_mode": <--user given>}
   MOCK_LAB_LIST       JSON list of the lab names `list` prints (default DEFAULT_LAB_LIST)
   MOCK_FLAVOR_FORM    when set, `start` without --flavor-json (user mode) exits 3 with the
                       flavor_form event, `form` being its value
@@ -23,6 +24,8 @@ Environment variables (all optional but the first):
                       this message
   MOCK_START_DELAY    seconds (float) slept between two progress events of start / restore
   MOCK_EVAL_DELAY     seconds (float) slept by `eval` while it holds .private/eval_in_progress
+  MOCK_EVAL_ERRORS    JSON list of [category, text] pairs: the `errors` of the archives `eval` writes
+                      (real archives: zstandard + msgpack, the keys of Grade0.save_tests_on_file)
   MOCK_COOLDOWN       seconds (int): `eval --auto-eval` answers {"grades": null,
                       "delay_before_self_grade": N} when the previous auto-eval of the same lab
                       and owner is younger than that (timestamp file of
@@ -67,7 +70,12 @@ if __name__ == '__main__':
         if _venv_python.is_file() and Path(sys.executable).resolve() != _venv_python.resolve():
             os.execv(str(_venv_python), [str(_venv_python), '-W', 'ignore', __file__, *sys.argv[1:]])
 
+import msgpack  # noqa: E402
+import zstandard as zstd  # noqa: E402
+
 from SRE import access, params  # noqa: E402
+from SRE.answers import load_answers  # noqa: E402
+from SRE.instructor_text import instructor, set_instructor_context  # noqa: E402
 from SRE.common import (GradeElement, GradePart, InfoInterface, InfoLab, InfoMachine, InfoSwitch,  # noqa: E402
                         QuestionForm, QuestionText, TranslatedText)
 
@@ -78,6 +86,7 @@ ENV_FLAVOR_FORM = 'MOCK_FLAVOR_FORM'
 ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
 ENV_START_DELAY = 'MOCK_START_DELAY'
 ENV_EVAL_DELAY = 'MOCK_EVAL_DELAY'
+ENV_EVAL_ERRORS = 'MOCK_EVAL_ERRORS'
 ENV_COOLDOWN = 'MOCK_COOLDOWN'
 ENV_FAIL = 'MOCK_FAIL'
 ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an x11_host
@@ -179,15 +188,24 @@ def stub_machines(include_hidden: bool, x11_host: bool = False) -> list:
 def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_mode: bool,
               x11_host: bool = False) -> InfoLab:
     """The ``info.json`` of a project of the stub lab, as ``Grade0.save_lab_info()`` would write
-    it: the hidden machine and every state only in a debug project."""
+    it: the hidden machine and every state only in a debug project; an ``instructor()`` fragment
+    (the solution) at the top of the informations of an instructor-mode or debug project, as a
+    real lab keeps it there (stripped everywhere else)."""
+    set_instructor_context(debug_project or instructor_mode)
+    try:
+        solution = instructor(_tr("**Solution:** the gateway of m1 is 10.0.0.254.\n\n",
+                                  "**Solution :** la passerelle de m1 est 10.0.0.254.\n\n"))
+    finally:
+        set_instructor_context(False)
     return InfoLab(
         lab_name=params.get_lab_name_from_running_lab_name(running_lab_name),
         lab_hash=hashlib.md5(running_lab_name.encode()).hexdigest(),
         title=TranslatedText.from_value(title, DEFAULT_LANGUAGE),
-        informations=_tr("# Mock lab\n\nA stub project of `tests/mock_sre.py`: two machines on `lan`, "
-                         "`m1` also on `dmz`.\n\n| Machine | Role |\n|---|---|\n| m1 | client |\n| m2 | server |\n",
-                         "# TP factice\n\nUn projet factice de `tests/mock_sre.py` : deux machines sur `lan`, "
-                         "`m1` aussi sur `dmz`.\n\n| Machine | Rôle |\n|---|---|\n| m1 | client |\n| m2 | serveur |\n"),
+        informations=solution + _tr(
+            "# Mock lab\n\nA stub project of `tests/mock_sre.py`: two machines on `lan`, "
+            "`m1` also on `dmz`.\n\n| Machine | Role |\n|---|---|\n| m1 | client |\n| m2 | server |\n",
+            "# TP factice\n\nUn projet factice de `tests/mock_sre.py` : deux machines sur `lan`, "
+            "`m1` aussi sur `dmz`.\n\n| Machine | Rôle |\n|---|---|\n| m1 | client |\n| m2 | serveur |\n"),
         export_kathara_project=True,
         allow_self_grade=True,
         machines=stub_machines(include_hidden=debug_project, x11_host=x11_host),
@@ -458,12 +476,9 @@ class Mock:
                 'grade_parts': [asdict(p) for p in parts],
                 'mark': mark,
                 'maximum_mark': params.default_maximum_mark,
-                'delay_before_self_grade': cooldown,
+                'delay_before_self_grade': cooldown if self.user_mode else 0,
             }
-            archive_dir = Path(params.archive_dirs[0])
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            (archive_dir / params.get_archive_name(running_lab_name, now)).write_bytes(
-                json.dumps(result).encode())
+            self.write_archive(running_lab_name, now, parts, elements, mark, auto_eval=auto_eval)
             if self.is_debug_project(running_lab_name):
                 lines = [f"grade - [{e.grade_part}] {e.title} : {e.grade} / {e.max_grade}\n"
                          if e.grade_part else f"grade - {e.title} : {e.grade} / {e.max_grade}\n"
@@ -475,6 +490,40 @@ class Mock:
         finally:
             os.close(lock_fd)
             lock_path.unlink(missing_ok=True)
+
+    def write_archive(self, running_lab_name: str, now, parts, elements, mark, *, auto_eval: bool):
+        """The archive of an evaluation, as ``Grade0.save_tests_on_file()`` writes it (zstandard +
+        msgpack, same keys): the answers of the project with the metadata ``sre eval`` adds, the
+        errors of MOCK_EVAL_ERRORS, the grade list, the same totals for both scopes."""
+        archive_dir = Path(params.archive_dirs[0])
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        answers = dict(load_answers(params.answers_filename(running_lab_name)))
+        answers.setdefault(params.login_keyword, params.get_username_from_running_lab_name(running_lab_name))
+        answers.setdefault(params.hostname_keyword, socket.gethostname())
+        previous = [p for p in archive_dir.iterdir()
+                    if (m := re.fullmatch(params.archive_name_match_pattern, p.name)) and m.group(2) == running_lab_name]
+        answers[params.auto_eval_count_keyword] = len(previous) + 1 if auto_eval and self.user_mode else len(previous)
+        errors = [tuple(e) if isinstance(e, list) else e for e in json.loads(self.env.get(ENV_EVAL_ERRORS) or '[]')]
+        total = sum(e.grade for e in elements)
+        total_max = sum(e.max_grade for e in elements if not e.bonus)
+        archive = {
+            params.running_lab_name_keyword: running_lab_name,
+            params.eval_date_keyword: now.isoformat(),
+            params.re_eval_date_keyword: None,
+            'data_json': '{}',
+            'tests': {},
+            'errors': errors,
+            'answers': answers,
+            'grade_list': [asdict(e) for e in elements],
+            'grade_parts': [asdict(p) for p in parts],
+            'total_grade_self_eval': total, 'total_max_self_eval': total_max, 'mark_self_eval': mark,
+            'total_grade_exo_eval': total, 'total_max_exo_eval': total_max, 'mark_exo_eval': mark,
+            'maximum_mark': params.default_maximum_mark,
+            'files': {},
+        }
+        packed = msgpack.packb(archive, use_bin_type=True)
+        (archive_dir / params.get_archive_name(running_lab_name, now)).write_bytes(
+            zstd.ZstdCompressor(level=6).compress(packed))
 
     def action_state(self):
         self.not_allowed_in_exam_mode()
@@ -752,7 +801,13 @@ def log_invocation(argv: list, env: dict):
     log_file = env.get(ENV_LOG)
     if not log_file:
         return
-    entry = {"argv": list(argv), "env": {key: env[key] for key in LOGGED_ENV if key in env}}
+    user_mode = '--user' in argv
+    try:
+        username = access.resolve_username(env, user_flag=user_mode, use_sudo_user=params.use_sudo_user_for_username)
+    except Exception:
+        username = None
+    entry = {"argv": list(argv), "env": {key: env[key] for key in LOGGED_ENV if key in env},
+             "username": username, "user_mode": user_mode}
     with open(log_file, 'a') as f:
         f.write(json.dumps(entry) + "\n")
 

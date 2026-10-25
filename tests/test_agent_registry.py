@@ -82,7 +82,11 @@ class TestRegistry:
         assert p.owner == 'alice' and p.lab_name == 'sre/dhcp.py' and p.started == '20260910100000'
         assert reg.require(RLN) is p and p.managed and (tmp_pub_dir / 'web-agent' / f'{RLN}.json').exists()
         assert [q.rln for q in reg.visible_to(ALICE)] == [RLN] and reg.visible_to(BOB) == []
-        assert [q.rln for q in reg.visible_to(PROF)] == [RLN]
+        # an instructor lists their own projects too; every one of the host with all_projects
+        assert reg.visible_to(PROF) == []
+        assert [q.rln for q in reg.visible_to(PROF, all_projects=True)] == [RLN]
+        assert [q.rln for q in reg.visible_to(BOB, all_projects=True)] == [RLN]
+        assert p.to_dict()['managed'] is True and p.to_dict()['eval_interval'] == 0 and p.to_dict()['terminals'] == 0
         events = []
         reg.subscribe(p, lambda e: _collect(events, e), ALICE)
         import shutil
@@ -136,6 +140,29 @@ class TestRegistry:
         (path / params.operations_log_name).write_text('new\n')   # truncated: starts again
         run(reg.tick())
         assert events[-1] == {'t': EVENT_LOG, 'data': 'new\n', 'reset': True}
+
+    def test_log_goes_to_the_allowed_subscribers_only(self, tmp_pub_dir):
+        """With log_allowed set by the app, the tail reaches the subscribers it accepts (the
+        instructor view of an instructor-mode project), not the others."""
+        path = make_project(tmp_pub_dir, instructor_mode=True)
+        (path / params.private_dir_name / params.instructor_mode_marker_name).write_text('')
+        reg = registry()
+        reg.log_allowed = lambda project, identity: project.debug or identity.instructor_view
+        run(reg.tick())
+        p = reg.get(RLN)
+        assert p.instructor and p.holds_instructor_texts
+        seen, hidden = [], []
+        reg.subscribe(p, lambda e: _collect(seen, e), PROF)
+        reg.subscribe(p, lambda e: _collect(hidden, e), Identity(login='prof', role='instructor'))
+        (path / params.operations_log_name).write_text('=== state final\n')
+        run(reg.tick())
+        assert seen == [{'t': EVENT_LOG, 'data': '=== state final\n', 'reset': False}] and hidden == []
+        # nobody allowed: the file is not even read (the offset stays)
+        reg.unsubscribe(p, p.subscribers[0])
+        with open(path / params.operations_log_name, 'a') as f:
+            f.write('more\n')
+        run(reg.tick())
+        assert hidden == [] and p.log_offset == len('=== state final\n')
 
     def test_dead_subscriber_is_dropped(self, tmp_pub_dir):
         make_project(tmp_pub_dir)
@@ -385,6 +412,21 @@ class TestProjectView:
         assert 'secret' not in plain['informations_html'] and plain['instructor_view'] is False
         # hidden machines: shown to instructors, never to students
         assert [m['name'] for m in projectview.sanitise(info, PROF)['machines']] == ['pc1', 'srv', 'probe']
+
+    def test_instructor_on_a_student_project(self):
+        prof = Identity(login='prof', role='instructor')
+        view = projectview.sanitise(make_info(allow_self_grade=False), prof, connect_all=True)
+        # every device opens for them (privileged sre connect), as in a debug project
+        assert [(d['name'], d['allow_connection']) for d in view['terminal_devices']] == \
+            [('pc1', True), ('srv', True), ('probe', True), ('lan', True)]
+        assert all(m['allow_connection'] for m in view['machines'])
+        # the Evaluation tab of every project for an instructor (the last archived evaluation)
+        assert 'evaluation' in view['tabs']
+        assert 'evaluation' not in projectview.sanitise(make_info(allow_self_grade=False), ALICE)['tabs']
+        # without connect_all the student's rules apply to the owner-instructor
+        own = projectview.sanitise(make_info(), prof)
+        assert [(d['name'], d['allow_connection']) for d in own['terminal_devices']] == \
+            [('pc1', True), ('srv', False), ('probe', True), ('lan', True)]
 
     def test_schema_svg(self):
         import shutil

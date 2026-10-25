@@ -3,7 +3,11 @@
 // {api_base}/terminals/{device} with the subprotocol "sre-term.v1":
 //   binary frames   raw bytes both ways (keystrokes to the pty, its output to the terminal)
 //   text frames     JSON; sent: {"t": "resize", "cols", "rows"}
-//                   received: {"t": "ready"} | {"t": "exit", "code"} | {"t": "error", "message"}
+//                   received: {"t": "ready", "session", "device", "clients", "joined"}
+//                             | {"t": "exit", "code"} | {"t": "error", "message"}
+// A session is shared: `join` attaches to a live session (its id) instead of opening a new one,
+// `private` opens one the student does not see (instructors).  After a disconnection, Reconnect
+// joins the same session again while another viewer keeps it alive.
 
 import {wsUrl, withQuery} from './api.js';
 import {el} from './ui.js';
@@ -26,15 +30,23 @@ function closeMessage(code) {
     case 4403: return _('Connection to this device is not allowed.');
     case 4404: return _('The project is gone.');
     case 4409: return _('Too many terminals are open.');
+    case 4410: return _('This connection fell behind the terminal output.');
     case 4502: return _('The host does not answer.');
     default: return '';
   }
 }
 
 export class TerminalSession {
-  // container: a .terminal-box element; path: {api_base}/terminals/{device} (+ query)
-  constructor(container, path, {fontSize, scheme}) {
+  // container: a .terminal-box element; path: {api_base}/terminals/{device} (+ query);
+  // join: the id of a live session to attach to; private: a new session hidden from the student;
+  // onReady(info): the ready frame (the session id, the number of viewers)
+  constructor(container, path, {fontSize, scheme, join = null, private: priv = false, onReady = null}) {
     this.path = path;
+    this.join = join;
+    this.private = priv;
+    this.onReady = onReady;
+    this.sessionId = null;
+    this.clients = 0;
     this.container = container;
     this.scheme = scheme in THEMES ? scheme : 'black_on_white';
     this.socket = null;
@@ -125,7 +137,8 @@ export class TerminalSession {
       this.term.write('\r\n');
     }
     this.setStatus(_('Connecting…'));
-    const url = wsUrl(withQuery(this.path, {cols: this.size.cols || 80, rows: this.size.rows || 24}));
+    const url = wsUrl(withQuery(this.path, {cols: this.size.cols || 80, rows: this.size.rows || 24,
+                                            join: this.join || undefined, private: this.private && !this.join ? 1 : undefined}));
     const socket = new WebSocket(url, [SUBPROTOCOL]);
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
@@ -145,7 +158,12 @@ export class TerminalSession {
         return;
       }
       if (obj.t === 'ready') {
+        this.sessionId = obj.session || null;
+        this.clients = Number(obj.clients) || 1;
         this.setStatus(_('Connected.'));
+        if (this.onReady) {
+          this.onReady(obj);
+        }
       } else if (obj.t === 'exit') {
         const code = obj.code === null || obj.code === undefined ? '?' : obj.code;
         this.setStatus(format(_('Disconnected (exit code {code}).'), {code}));
@@ -158,7 +176,13 @@ export class TerminalSession {
         return;
       }
       this.socket = null;
-      const message = closeMessage(ev.code) || (ev.reason ? ev.reason : '');
+      let message = closeMessage(ev.code) || (ev.reason ? ev.reason : '');
+      if (ev.code === 4404 && this.join) {
+        message = _('This terminal is closed.');
+        this.join = null;                      // Reconnect opens a new one
+      } else if (this.sessionId && ev.code !== 4403) {
+        this.join = this.sessionId;            // Reconnect joins the same session while it lives
+      }
       if (message) {
         this.setStatus(message, {error: ev.code !== 1000});
       } else if (!this.statusText.textContent.startsWith(_('Disconnected'))) {

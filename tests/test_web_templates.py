@@ -97,8 +97,8 @@ def parse_po(path: Path) -> dict:
 # ---------------------------------------------------------------------------------------------
 
 class TestTemplates:
-    def test_the_four_pages_exist(self):
-        assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html'} <= set(template_names())
+    def test_the_pages_exist(self):
+        assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -159,6 +159,20 @@ class TestTemplates:
     def test_open_page(self):
         html = render('open.html')
         assert 'id="labs"' in html and 'id="start-button"' in html and '/static/js/open.js' in html
+        assert 'id="instructor-mode"' not in html and 'href="/watch"' not in html
+        # the instructor's extras: the Instructor mode box of the Open page, the Watch link of every page
+        html = render('open.html', instructor=True)
+        assert 'id="instructor-mode"' in html and 'href="/watch"' in html and 'Instructor mode' in html
+        assert 'href="/watch"' in render('projects.html', instructor=True)
+        assert 'href="/watch"' not in render('projects.html')
+
+    def test_watch_page(self):
+        html = render('watch.html', instructor=True)
+        assert 'id="watch"' in html and 'id="watch-filter"' in html and 'id="watch-count"' in html
+        assert '/static/js/watch.js' in html and 'href="/watch"' in html
+        for key in ('host', 'owner', 'title', 'started_at', 'last_eval', 'grade', 'mark', 'errors', 'terminals', 'managed'):
+            assert f'data-sort="{key}"' in html, key
+        assert 'data-login="alice"' in html
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)
@@ -187,8 +201,8 @@ class TestTemplates:
             assert not re.search(r'\son\w+\s*=', text), name   # no onclick="..."
 
     def test_static_references_exist(self):
-        pages = [render('login.html', identity=None), render('projects.html'), render('open.html'),
-                 render('project.html', host='a01', rln=RLN, api_base=API_BASE)]
+        pages = [render('login.html', identity=None), render('projects.html'), render('open.html', instructor=True),
+                 render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True)]
         checked = 0
         for html in pages:
             references = static_references(html)

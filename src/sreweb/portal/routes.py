@@ -52,6 +52,7 @@ class Routes:
         r.add_post('/logout', self.logout)
         r.add_get('/projects', self.projects_page)
         r.add_get('/open', self.open_page)
+        r.add_get('/watch', self.watch_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
         r.add_get(SITE_LOGO_PATH, self.site_logo)
@@ -66,6 +67,7 @@ class Routes:
         r.add_delete('/api/pool/hosts/{name}', self.api_pool_remove)
         r.add_post('/api/pool/hosts/{name}/{action}', self.api_pool_action)
         r.add_get('/api/projects', self.api_projects)
+        r.add_get('/api/watch', self.api_watch)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -73,6 +75,7 @@ class Routes:
         r.add_get('/api/projects/{host}/{rln}/schema.svg', self.api_schema)
         r.add_put('/api/projects/{host}/{rln}/answers', self.api_answers)
         r.add_post('/api/projects/{host}/{rln}/eval', self.api_eval)
+        r.add_get('/api/projects/{host}/{rln}/evaluation', self.api_evaluation)
         r.add_post('/api/projects/{host}/{rln}/states/{state}', self.api_state)
         r.add_get('/api/projects/{host}/{rln}/terminals/{device}', self.api_terminal)
         r.add_get('/api/projects/{host}/{rln}/display', self.api_display)
@@ -128,6 +131,12 @@ class Routes:
         if identity is None:
             raise web.HTTPUnauthorized(text=json.dumps({'error': 'not logged in', 'status': 401}),
                                        content_type='application/json')
+        return identity
+
+    def _require_instructor(self, request) -> Identity:
+        identity = self._require_identity(request)
+        if identity.role != ROLE_INSTRUCTOR:
+            raise PoolError(403, "instructors only")
         return identity
 
     def _target(self, request) -> tuple:
@@ -210,6 +219,14 @@ class Routes:
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
         return aiohttp_jinja2.render_template('open.html', request, self._page_context(request))
+
+    async def watch_page(self, request):
+        """Instructors: every running project of the pool with its last evaluation."""
+        if not request.get(IDENTITY_KEY):
+            raise web.HTTPFound('/login')
+        if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
+            raise web.HTTPForbidden(text="instructors only")
+        return aiohttp_jinja2.render_template('watch.html', request, self._page_context(request))
 
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
@@ -350,6 +367,12 @@ class Routes:
         identity = self._require_identity(request)
         return web.json_response(await self.pool.projects_of(identity))
 
+    async def api_watch(self, request):
+        """Instructors: every project of every reachable host, with its owner and the summary of
+        its last archived evaluation (the agents read their archives)."""
+        identity = self._require_instructor(request)
+        return web.json_response(await self.pool.projects_of(identity, all_projects=True))
+
     def _idle_timeout(self, identity: Identity) -> float:
         return self.cfg.pool.idle_timeout_anonymous if identity.anonymous else self.cfg.pool.idle_timeout_authenticated
 
@@ -364,10 +387,14 @@ class Routes:
         wait = self.limiter.allow_every('start', identity.login, self.cfg.limits.start_interval)
         if wait:
             return json_error(429, "please wait before starting another project", retry_after=round(wait))
+        if body.get('instructor_mode') and identity.role != ROLE_INSTRUCTOR:
+            return json_error(403, "instructors only")
         host, reservation = self.pool.pick()
         payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
         if isinstance(body.get('flavor'), dict):
             payload['flavor_json'] = body['flavor']
+        if body.get('instructor_mode'):
+            payload['instructor_mode'] = True     # an instructor's own project in instructor mode
         try:
             return await self._forward_json(request, host, identity, payload)
         finally:
@@ -420,6 +447,9 @@ class Routes:
             return json_error(400, "a JSON body is expected")
         return await self._relay_json(request, 'PUT', '/answers', json_body=body)
 
+    async def api_evaluation(self, request):
+        return await self._relay_json(request, 'GET', '/evaluation')
+
     async def api_eval(self, request):
         identity = self._require_identity(request)
         wait = self.limiter.allow_every('eval', identity.login, self.cfg.limits.eval_interval)
@@ -454,7 +484,7 @@ class Routes:
     async def api_terminal(self, request):
         host, rln, identity = self._target(request)
         device = request.match_info['device']
-        params = {k: request.query[k] for k in ('cols', 'rows') if k in request.query}
+        params = {k: request.query[k] for k in ('cols', 'rows', 'join', 'private') if k in request.query}
         return await self.relay.websocket(request, host, identity,
                                           self._path(rln, f"/terminals/{urllib.parse.quote(device, safe='')}"),
                                           protocols=(TERMINAL_SUBPROTOCOL,), params=params)

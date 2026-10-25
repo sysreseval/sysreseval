@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from SRE import params
+from SRE.archive_summary import read_archive
 from SRE.common import InfoLab, QuestionType
 
 MOCK = Path(__file__).resolve().parent / 'mock_sre.py'
@@ -174,6 +175,10 @@ class TestEntry:
                                    'TERM': 'xterm'}
         assert 'SUDO_COMMAND' not in lines[0]['env']
         assert lines[1]['env']['SRE_IN_RECORDER'] == '1'
+        assert (lines[0]['username'], lines[0]['user_mode']) == (STUDENT, True)
+        run_mock(pub, 'list', user=False, extra_env={'MOCK_SRE_LOG': str(log)})
+        last = json.loads(log.read_text().splitlines()[-1])
+        assert (last['username'], last['user_mode']) == (last['env']['LOGNAME'], False)
 
     def test_main_function_in_process(self, pub, capsys):
         spec = importlib.util.spec_from_file_location('mock_sre_module', MOCK)
@@ -414,8 +419,23 @@ class TestEval:
         archives = list((pub / 'archives').iterdir())
         assert len(archives) == 1
         assert re.fullmatch(params.archive_name_match_pattern, archives[0].name).group(2) == project
+        # a real archive (zstandard + msgpack), with the keys of Grade0.save_tests_on_file
+        raw = read_archive(str(archives[0]))
+        assert raw[params.running_lab_name_keyword] == project
+        assert raw[params.eval_date_keyword] == result[params.eval_date_keyword]
+        assert raw['answers'][params.login_keyword] == STUDENT
+        assert raw['answers'][params.auto_eval_count_keyword] == 1
+        assert [g['title'] for g in raw['grade_list']] == [g['title'] for g in grades]
+        assert (raw['total_grade_exo_eval'], raw['total_max_exo_eval'], raw['mark_exo_eval']) == (4.5, 5, 18.0)
+        assert raw['errors'] == [] and raw['maximum_mark'] == params.default_maximum_mark
         assert not (project_dir(pub, project) / params.private_dir_name / params.eval_in_progress_name).exists()
         assert not (pub / 'last_self_grades').exists()   # no cooldown without MOCK_COOLDOWN
+
+    def test_archive_errors_from_the_environment(self, pub, project):
+        completed = run_mock(pub, 'eval', project, extra_env={'MOCK_EVAL_ERRORS': '[["ERROR", "m1 down"], ["WARNING", "slow"]]'})
+        assert completed.returncode == 0
+        raw = read_archive(str(next((pub / 'archives').iterdir())))
+        assert raw['errors'] == [['ERROR', 'm1 down'], ['WARNING', 'slow']]
 
     def test_eval_without_auto_eval_prints_nothing_but_archives(self, pub, project):
         completed = run_mock(pub, 'eval', project)
@@ -466,7 +486,7 @@ class TestEval:
         assert result['grades']
         # the archive of this evaluation (same name as the first one's when both ran in the same second)
         archives = list((pub / 'archives').iterdir())
-        assert result[params.eval_date_keyword] in {json.loads(a.read_bytes())[params.eval_date_keyword] for a in archives}
+        assert result[params.eval_date_keyword] in {read_archive(str(a))[params.eval_date_keyword] for a in archives}
 
     def test_cooldown_is_per_lab_and_owner(self, pub, project):
         env = {'MOCK_COOLDOWN': '60'}

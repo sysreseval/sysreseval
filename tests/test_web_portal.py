@@ -40,6 +40,7 @@ TEMPLATES = {
     'projects.html': '<html><title>Projects</title>{{ identity.login }}</html>',
     'open.html': '<html><title>Open</title>{{ identity.login }}</html>',
     'project.html': '<html><title>Project</title>{{ host }} {{ rln }} {{ api_base }} {{ _("Schema") }}</html>',
+    'watch.html': '<html><title>Watch</title>{{ identity.login }} {{ instructor }}</html>',
 }
 
 
@@ -55,8 +56,10 @@ def who(login, fullname='', email='', groups='') -> dict:
 class Harness:
     """A real agent on the fake sre, and a portal whose only host is that agent."""
 
-    def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1, agent_over=None):
+    def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1, agent_over=None,
+                 role_resolver=None):
         self.tmp = tmp_path
+        self.role_resolver = role_resolver
         self.pub = tmp_path / 'pub'
         (self.pub / 'projects').mkdir(parents=True)
         exe = tmp_path / 'sre'
@@ -68,7 +71,7 @@ class Harness:
                                       **(agent_over or {})},
                                      sre_exe=str(exe), state_dir='')   # never: the sessions of the test host
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
-                           hostname='pool1', extra_env=env)
+                           hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')])
         self.web_dir = tmp_path / 'web'
         (self.web_dir / 'templates').mkdir(parents=True)
         (self.web_dir / 'static').mkdir()
@@ -91,7 +94,7 @@ class Harness:
             hosts.append({'name': 'down', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'max_projects': 3})
         cfg = web_config_from_dict({'secret': SECRET, 'auth': {'mode': self.auth_mode},
                                     'pool': {'poll_interval': 0.1}, 'hosts': hosts, **self.web_over})
-        self.portal = Portal(cfg, web_dir=str(self.web_dir), localedirs=[])
+        self.portal = Portal(cfg, web_dir=str(self.web_dir), localedirs=[], role_resolver=self.role_resolver)
         self.client = TestClient(TestServer(self.portal.make_app()))
         await self.client.start_server()
         return self
@@ -273,7 +276,7 @@ class TestProjectsThroughThePortal:
                 await ws.close()
                 term = await h.client.ws_connect(f'{base}/terminals/m1?cols=90&rows=20', protocols=(TERMINAL_SUBPROTOCOL,))
                 assert term.protocol == TERMINAL_SUBPROTOCOL
-                assert (await asyncio.wait_for(term.receive_json(), 5)) == {'t': 'ready'}
+                assert (await asyncio.wait_for(term.receive_json(), 5))['t'] == 'ready'
                 await term.send_bytes(b'echo hi\n')
                 out = b''
                 async with asyncio.timeout(10):
@@ -522,3 +525,111 @@ class TestDisplayThroughThePortal:
             run(go())
         finally:
             shutil.rmtree(runtime_dir, ignore_errors=True)
+
+
+class FakeRoleResolver:
+    """The directory of proxy mode's ldap_roles, answering from a dict (or failing)."""
+
+    def __init__(self, roles, fail=False):
+        self.roles, self.fail, self.calls = roles, fail, []
+
+    def role_for(self, login):
+        self.calls.append(login)
+        if self.fail:
+            from sreweb.portal.auth_ldap import LdapError
+            raise LdapError("directory down")
+        return self.roles.get(login, 'student')
+
+
+class TestInstructorThroughThePortal:
+    def test_watch_evaluation_and_instructor_mode(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=PROXY_OVER) as h:
+                alice, bob, prof = who('alice', 'Alice'), who('bob'), who('prof', groups=TEACHERS)
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
+                rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
+                # the watch page and its data: instructors only
+                assert (await h.client.get('/watch', headers=bob)).status == 403
+                assert (await h.client.get('/api/watch', headers=bob)).status == 403
+                assert (await h.client.get('/watch', allow_redirects=False)).status == 302
+                page = await h.client.get('/watch', headers=prof)
+                assert page.status == 200 and 'prof True' in await page.text()
+                rows = await (await h.client.get('/api/watch', headers=prof)).json()
+                assert len(rows) == 1 and (rows[0]['host'], rows[0]['owner'], rows[0]['last_eval']) == ('a01', 'alice', None)
+                # the instructor's own list stays theirs; the student's list unchanged
+                assert await (await h.client.get('/api/projects', headers=prof)).json() == []
+                assert [p['running_lab_name'] for p in await (await h.client.get('/api/projects', headers=alice)).json()] == [rln]
+                base = f'/api/projects/a01/{rln}'
+                assert (await h.client.get(f'{base}/evaluation', headers=alice)).status == 403
+                assert (await h.client.get(f'{base}/evaluation', headers=prof)).status == 404
+                await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'gw'}}, headers={**alice, **CSRF})
+                assert (await h.client.post(f'{base}/eval', headers={**alice, **CSRF})).status == 200
+                rows = await (await h.client.get('/api/watch', headers=prof)).json()
+                assert rows[0]['last_eval']['grade'] == 4.5 and rows[0]['fullname'] == 'Alice'
+                data = await (await h.client.get(f'{base}/evaluation', headers=prof)).json()
+                assert data['mark'] == 18.0 and data['rows'] and data['archive'].endswith('.zst')
+                # the instructor evaluates the student's project (privileged on the agent) and reads her answers only
+                assert (await h.client.post(f'{base}/eval', headers={**prof, **CSRF})).status == 200
+                assert (await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'x'}},
+                                           headers={**prof, **CSRF})).status == 403
+                got = await (await h.client.get(base, headers=prof)).json()
+                assert got['answers_readonly'] is True and got['owner'] == 'alice'
+                # an instructor-mode project of the instructor; refused to a student
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'instructor_mode': True},
+                                           headers={**bob, **CSRF})
+                assert resp.status == 403
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'instructor_mode': True},
+                                           headers={**prof, **CSRF})
+                result = [json.loads(l) for l in (await resp.text()).splitlines()][-1]
+                assert result['status'] == 'created' and result['running_lab_name'].endswith('@@@prof')
+                view = (await (await h.client.get(f"/api/projects/a01/{result['running_lab_name']}?view=instructor",
+                                                  headers=prof)).json())['project']
+                assert view['instructor_mode'] and view['instructor_view'] and 'Solution' in view['informations_html']
+        run(go())
+
+    def test_join_through_the_portal(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=PROXY_OVER) as h:
+                alice, prof = who('alice'), who('prof', groups=TEACHERS)
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
+                rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
+                base = f'/api/projects/a01/{rln}'
+                term = await h.client.ws_connect(f'{base}/terminals/m1', headers=alice, protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(term.receive_json(), 5)
+                sid = ready['session']
+                joined = await h.client.ws_connect(f'{base}/terminals/m1?join={sid}&cols=90&rows=20', headers=prof,
+                                                   protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(joined.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['session'] == sid and ready['clients'] == 2 and ready['joined']
+                private = await h.client.ws_connect(f'{base}/terminals/m2?private=1', headers=prof,
+                                                    protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(private.receive_json(), 5))['t'] == 'ready'
+                listed = (await (await h.client.get(base, headers=alice)).json())['terminals']
+                assert [t['id'] for t in listed] == [sid]              # the private one is not hers to see
+                for ws in (private, joined, term):
+                    await ws.close()
+        run(go())
+
+    def test_ldap_roles_in_proxy_mode(self, tmp_path):
+        over = {'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True, 'ldap_roles_ttl': '10m',
+                                                     'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000']},
+                         'ldap': {'uri': 'ldaps://ldap.example.org', 'search_base': 'ou=people,dc=example,dc=org'}},
+                'trusted_proxies': ['127.0.0.1', '::1']}
+
+        async def go():
+            resolver = FakeRoleResolver({'zoe': 'instructor'})
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
+                me = await (await h.client.get('/api/me', headers=who('zoe'))).json()
+                assert me['identity']['role'] == 'instructor'
+                await h.client.get('/api/me', headers=who('zoe'))
+                assert resolver.calls == ['zoe']                          # cached
+                assert (await (await h.client.get('/api/me', headers=who('bob'))).json())['identity']['role'] == 'student'
+                # the header test comes first: no lookup for a header-granted role
+                me = await (await h.client.get('/api/me', headers={**who('ann'), 'X-Remote-Gid': '2000'})).json()
+                assert me['identity']['role'] == 'instructor' and 'ann' not in resolver.calls
+            resolver = FakeRoleResolver({'zoe': 'instructor'}, fail=True)
+            async with Harness(tmp_path / 'b', auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
+                me = await (await h.client.get('/api/me', headers=who('zoe'))).json()
+                assert me['identity']['role'] == 'student'              # the site stays up without the directory
+                assert (await h.client.get('/projects', headers=who('zoe'))).status == 200
+        run(go())

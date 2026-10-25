@@ -67,6 +67,10 @@ async function start(lab, flavorAnswers = null) {
   }
   setBusy(true);
   const body = flavorAnswers ? {lab, flavor: flavorAnswers} : {lab};
+  const instructorBox = document.getElementById('instructor-mode');
+  if (instructorBox && instructorBox.checked) {
+    body.instructor_mode = true;   // an instructor's own project in instructor mode (privileged start)
+  }
   const result = await runCreation(progress, _('Starting…'), 'POST', '/api/projects', {json: body});
   setBusy(false);
   if (result.status === 'created') {

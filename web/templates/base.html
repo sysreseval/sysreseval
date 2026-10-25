@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/static/css/sre.css">
 {% block head %}{% endblock %}
 </head>
-<body data-language="{{ language }}" data-auth-mode="{{ auth_mode }}" data-instructor="{{ 'true' if instructor else 'false' }}" {% block body_attrs %}{% endblock %}>
+<body data-language="{{ language }}" data-auth-mode="{{ auth_mode }}" data-instructor="{{ 'true' if instructor else 'false' }}" data-login="{{ identity.login if identity else '' }}" {% block body_attrs %}{% endblock %}>
 <header class="topbar">
   <a class="brand" href="/projects"><img src="/static/img/logo_sre.svg" alt=""><span>SRE</span></a>
   {% if site.logo_url or site.name %}
@@ -17,7 +17,7 @@
     {% if site.name %}<span>{{ site.name }}</span>{% endif %}
   </a>
   {% endif %}
-  <nav class="topbar-nav">{% block nav %}{% endblock %}</nav>
+  <nav class="topbar-nav">{% block nav %}{% endblock %}{% if instructor %} <a href="/watch" class="watch-link">{{ _("Watch") }}</a>{% endif %}</nav>
   <div class="topbar-right">
     {% if identity %}
       <span class="user" title="{{ identity.login }}">{{ identity.fullname or identity.login }}</span>

@@ -27,7 +27,7 @@ from SRE import params
 from sysreseval.util import load_projects, load_info
 
 from .access import AccessError
-from ..identity import Identity, ROLE_INSTRUCTOR
+from ..identity import Identity
 
 log = logging.getLogger('sreweb.agent')
 
@@ -36,6 +36,7 @@ EVENT_INFO = 'info'
 EVENT_ANSWERS = 'answers'
 EVENT_LOG = 'log'
 EVENT_REMOVED = 'removed'
+EVENT_TERMINALS = 'terminals'
 
 LOG_CHUNK = 1 << 18          # bytes of operations.log read per tick at most
 STATE_WRITE_INTERVAL = 60.0  # seconds between two writes of the state file of a project
@@ -72,7 +73,10 @@ class Project:
     managed: bool = False
     created_at: float = field(default_factory=time.time)
     subscribers: list = field(default_factory=list)
-    terminals: dict = field(default_factory=dict)   # device -> [PtySession]
+    #: The live terminal sessions (``terminals.TerminalSession``) by session id; a session is
+    #: shared by every browser attached to it (the owner's, the instructors who joined).
+    terminals: dict = field(default_factory=dict)
+    _terminals_push_pending: bool = False
     #: The virtual X desktop of the project ({'number', 'cookie'}, kept in the state file: the
     #: containers were started with them), and the open display WebSockets (``display.py``).
     display: dict | None = None
@@ -106,7 +110,18 @@ class Project:
         self.instructor = (self.private_dir / params.instructor_mode_marker_name).exists()
 
     def terminal_count(self) -> int:
-        return sum(len(v) for v in self.terminals.values())
+        """The live sessions (a browser joining a session opens no new one)."""
+        return len(self.terminals)
+
+    def terminals_on(self, device: str) -> int:
+        return sum(1 for t in self.terminals.values() if getattr(t, 'device', None) == device)
+
+    def terminal_list(self, identity: Identity) -> list:
+        """The live sessions as the browser of *identity* may list them: the private ones (an
+        instructor's, hidden from the student) only to instructors; oldest first."""
+        sessions = [t for t in self.terminals.values() if not getattr(t, 'closing', False)
+                    and (not getattr(t, 'private', False) or identity.is_instructor)]
+        return [t.to_dict() for t in sorted(sessions, key=lambda t: getattr(t, 'created_at', 0.0))]
 
     def touch(self):
         self.last_activity = time.monotonic()
@@ -125,6 +140,8 @@ class Project:
             'instructor_mode': bool(self.info.get('instructor_mode', False)),
             'info_mtime': self.info_mtime,
             'terminals': self.terminal_count(),
+            'managed': self.managed,
+            'eval_interval': int(self.info.get('eval_interval_without_exam_mode', 0) or 0),
         }
 
 
@@ -144,6 +161,9 @@ class Registry:
         self.on_removed: list[Callable[[Project], Awaitable[None]]] = []
         #: Builds the ``info`` event of a subscriber (set by the app: the sanitised view).
         self.info_event: Callable[[Project, Identity], dict] | None = None
+        #: Whether a subscriber may read the operations log of a project (set by the app: debug
+        #: projects, and the instructor view of an instructor-mode project); everybody without it.
+        self.log_allowed: Callable[[Project, Identity], bool] | None = None
         self._task: asyncio.Task | None = None
 
     # -- lookup ---------------------------------------------------------------------------------
@@ -157,10 +177,11 @@ class Registry:
             raise AccessError(404, "unknown project")
         return project
 
-    def visible_to(self, identity: Identity) -> list:
-        """The projects a user may list: their own, every one for an instructor."""
+    def visible_to(self, identity: Identity, *, all_projects: bool = False) -> list:
+        """The projects a user lists: their own; every one of the host with *all_projects* (the
+        Watch page of the instructors: the caller checks the role)."""
         projects = [p for p in self.projects.values() if not p.closing]
-        if identity.role == ROLE_INSTRUCTOR:
+        if all_projects:
             return projects
         return [p for p in projects if p.owner == identity.login]
 
@@ -319,10 +340,12 @@ class Registry:
         with contextlib.suppress(ValueError):
             project.subscribers.remove(sub)
 
-    async def broadcast(self, project: Project, event):
-        """Send an event to every subscriber: a dict, or a callable of the subscriber's identity
-        giving the dict (the ``info`` event differs by role)."""
+    async def broadcast(self, project: Project, event, *, only: Callable[[Identity], bool] | None = None):
+        """Send an event to every subscriber (those *only* accepts, when given): a dict, or a
+        callable of the subscriber's identity giving the dict (the ``info`` event differs by role)."""
         for sub in list(project.subscribers):
+            if only is not None and not only(sub.identity):
+                continue
             try:
                 payload = event(sub.identity) if callable(event) else event
                 await sub.send(payload)
@@ -366,9 +389,12 @@ class Registry:
                 if self.info_event is not None:
                     await self.broadcast(project, lambda identity, p=project: self.info_event(p, identity))
             if project.holds_instructor_texts and project.subscribers:
-                text, reset = self.read_log(project)
-                if text or reset:
-                    await self.broadcast(project, {'t': EVENT_LOG, 'data': text, 'reset': reset})
+                allowed = (lambda identity: True) if self.log_allowed is None \
+                    else (lambda identity, p=project: self.log_allowed(p, identity))
+                if any(allowed(sub.identity) for sub in project.subscribers):
+                    text, reset = self.read_log(project)
+                    if text or reset:
+                        await self.broadcast(project, {'t': EVENT_LOG, 'data': text, 'reset': reset}, only=allowed)
             for hook in self.tick_hooks:
                 try:
                     await hook(project)
@@ -405,7 +431,7 @@ class Registry:
 
     @staticmethod
     async def _close_terminals(project: Project):
-        sessions = [s for sessions in project.terminals.values() for s in sessions]
+        sessions = list(project.terminals.values())
         project.terminals.clear()
         for session in sessions:
             with contextlib.suppress(Exception):

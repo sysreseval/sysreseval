@@ -1,7 +1,8 @@
 // The Evaluation tab: a "Start evaluation" button (POST {api_base}/eval) and the table of the
 // grades the agent lays out (header labels and rows with their colours, from
 // SRE/evaluation_table.py).  While the lab's cooldown runs, the button is replaced by a
-// countdown "Next evaluation allowed in {n} s", as in the Qt view.
+// countdown "Next evaluation allowed in {n} s", as in the Qt view.  An instructor first sees
+// the last archived evaluation of the project (GET {api_base}/evaluation), whoever ran it.
 
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
@@ -12,11 +13,13 @@ const KIND_SEPARATOR = 'separator';
 export function createEvaluationTab(ctx) {
   const button = el('button', {type: 'button', class: 'primary'}, _('Start evaluation'));
   const countdown = el('span', {hidden: true});
+  const caption = el('p', {class: 'evaluation-caption muted', hidden: true});
   const table = el('table', {class: 'grid evaluation'});
-  const pane = el('div', {class: 'pane'}, el('div', {class: 'evaluation-bar'}, button, countdown), table);
+  const pane = el('div', {class: 'pane'}, el('div', {class: 'evaluation-bar'}, button, countdown), caption, table);
   let columns = 3;
   let deadline = null;   // ms timestamp of the end of the cooldown
   let timer = null;
+  let lastLoaded = false;
 
   function renderTable(header, rows) {
     clear(table);
@@ -77,6 +80,33 @@ export function createEvaluationTab(ctx) {
     button.disabled = false;
   }
 
+  // instructors: the last archived evaluation, with its date and the errors of the run
+  async function loadLast() {
+    lastLoaded = true;
+    let data;
+    try {
+      data = await api.get(ctx.url('/evaluation'));
+    } catch (e) {
+      if (e.status === 404) {
+        caption.textContent = _('No archived evaluation yet.');
+        caption.hidden = false;
+      } else if (e.status !== 403) {
+        errorRow(e.message);
+      }
+      return;
+    }
+    renderTable(data.header || [], data.rows || []);
+    const when = data.eval_date ? new Date(data.eval_date).toLocaleString() : '';
+    let text = format(_('Last archived evaluation: {date}'), {date: when});
+    if (data.error_count || data.warning_count) {
+      text += ' — ' + format(_('{errors} error(s), {warnings} warning(s)'),
+                             {errors: data.error_count || 0, warnings: data.warning_count || 0});
+    }
+    caption.textContent = text;
+    caption.title = (data.errors || []).map((e) => `${e.category}: ${e.text}`).join('\n');
+    caption.hidden = false;
+  }
+
   async function start() {
     button.disabled = true;
     let data;
@@ -97,6 +127,7 @@ export function createEvaluationTab(ctx) {
     const result = data.result || {};
     if (result.grades !== null && result.grades !== undefined) {
       renderTable(data.header || [], data.rows || []);
+      caption.hidden = true;
     }
     // grades null: still in the cooldown, the previous table stays
     const delay = Number(data.delay_before_self_grade || result.delay_before_self_grade || 0);
@@ -111,7 +142,11 @@ export function createEvaluationTab(ctx) {
   return {
     id: 'evaluation',
     element: pane,
-    show() {},
+    show() {
+      if (ctx.isInstructor && !lastLoaded) {
+        loadLast();
+      }
+    },
     hide() {},
     update() {},
   };

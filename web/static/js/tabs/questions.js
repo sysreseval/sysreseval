@@ -2,7 +2,8 @@
 // the right: its description, then a text area (text question), the form of its chunks (form
 // question) or nothing (a display-only question).  The answers are saved 500 ms after the last
 // change (PUT {api_base}/answers); an answers event (a state applied) refreshes the current
-// widget without saving again.
+// widget without saving again.  On somebody else's project (an instructor helping) the answers
+// are shown read-only: nothing is saved.
 
 import * as settings from '../settings.js';
 import {el, clear, toast} from '../ui.js';
@@ -48,6 +49,9 @@ export function createQuestionsTab(ctx) {
 
   // -- saving -----------------------------------------------------------------------------
   function changed(hash, value) {
+    if (ctx.answersReadonly && ctx.answersReadonly()) {
+      return;
+    }
     // value: the string of a text question, the answers object of a form
     answers[hash] = typeof value === 'string' ? value : JSON.stringify(value);
     pending[hash] = value;
@@ -117,6 +121,7 @@ export function createQuestionsTab(ctx) {
       });
       form.setAnswers(parsedForm(hash));
       widget = {kind: 'form', form};
+      setReadonly(container);
       return;
     }
     const text = el('div', {class: 'question-text content' + (wordWrap ? '' : ' nowrap')});
@@ -133,7 +138,18 @@ export function createQuestionsTab(ctx) {
     textarea.value = answers[hash] || '';
     textarea.addEventListener('input', () => changed(hash, textarea.value));
     panel.append(textarea);
+    setReadonly(panel);
     widget = {kind: 'text', textarea};
+  }
+
+  // a non-owner reads the answers: every control of the question is disabled
+  function setReadonly(container) {
+    if (!(ctx.answersReadonly && ctx.answersReadonly())) {
+      return;
+    }
+    for (const control of container.querySelectorAll('input, select, textarea, button')) {
+      control.disabled = true;
+    }
   }
 
   function select(hash) {

@@ -55,13 +55,23 @@ class TestWebConfig:
             'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldaps://ldap.example.org',
                                               'bind_dn_template': 'uid={login},ou=people,dc=example,dc=org',
                                               'instructor_groups': ['cn=teachers,ou=groups,dc=example,dc=org'],
-                                              'timeout': '5s'}},
+                                              'instructor_filter': '(memberOf=cn=profs,ou=groups,dc=example,dc=org)',
+                                              'group_search_base': 'ou=groups,dc=example,dc=org',
+                                              'instructor_group_filter': '(&(cn=teachers)(member={dn}))',
+                                              'timeout': '5s'},
+                     'proxy': {'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000'],
+                               'ldap_roles': True, 'ldap_roles_ttl': '5m'}},
             'pool': {'idle_timeout_anonymous': '1h', 'idle_timeout_authenticated': 0, 'poll_interval': 3},
             'limits': {'eval_interval': '20s', 'max_answer_bytes': 100},
             'hosts': [HOST, dict(HOST, name='h01', url='http://10.0.0.12:8451')],
         })
         assert cfg.listen == ('::', 8000) and cfg.auth.mode == 'ldap' and cfg.auth.ldap.timeout == 5
         assert cfg.auth.ldap.instructor_groups == ['cn=teachers,ou=groups,dc=example,dc=org']
+        assert cfg.auth.ldap.instructor_filter == '(memberOf=cn=profs,ou=groups,dc=example,dc=org)'
+        assert cfg.auth.ldap.group_search_base == 'ou=groups,dc=example,dc=org'
+        assert cfg.auth.ldap.instructor_group_filter == '(&(cn=teachers)(member={dn}))'
+        assert (cfg.auth.proxy.instructor_header, cfg.auth.proxy.instructor_values) == ('X-Remote-Gid', ['2000'])
+        assert cfg.auth.proxy.ldap_roles is True and cfg.auth.proxy.ldap_roles_ttl == 300
         assert cfg.trusted_proxies == [ipaddress.ip_network('127.0.0.1/32')]
         assert cfg.pool.idle_timeout_anonymous == 3600 and cfg.pool.idle_timeout_authenticated == 0
         assert cfg.pool.poll_interval == 3 and cfg.limits.eval_interval == 20 and cfg.limits.max_answer_bytes == 100
@@ -88,6 +98,18 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'typo': 1}}}, 'typo'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'logout_url': 'javascript:x'}}}, 'logout_url'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_groups': 'cn=x'}}}, 'instructor_groups'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'instructor_groups': 'cn=x'}}}, 'ldap.instructor_groups'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'instructor_filter': 'gidNumber=2000'}}}, 'instructor_filter'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'group_filter': 'member={dn}'}}}, 'group_filter'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'instructor_group_filter': '(cn=teachers)'}}}, '{login}'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_values': '2000'}}}, 'instructor_values'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_values': ['2000']}}}, 'instructor_header'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_header': 'X-Remote-Gid'}}}, 'instructor_values'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'ldap_roles_ttl': 'soon'}}}, 'ldap_roles_ttl'),
+        ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
+          'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True}}}, 'ldap_roles'),
+        ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
+          'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x'}}}, 'search_base'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['10.0.0.300']}, '10.0.0.300'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': '127.0.0.1'}, 'trusted_proxies'),
     ])
@@ -108,6 +130,10 @@ class TestWebConfig:
         assert p.header_login == 'Remote-User' and p.header_fullname == 'X-Remote-Name'
         assert p.header_email == 'X-Remote-Email' and p.header_groups == 'X-Remote-Groups' and p.groups_separator == ';'
         assert p.instructor_groups == ['cn=teachers,ou=groups,dc=example,dc=org'] and p.logout_url == '/apache-logout'
+        assert (p.instructor_header, p.instructor_values, p.ldap_roles, p.ldap_roles_ttl) == ('', [], False, 600)
+        # the defaults of the LDAP tests are the site's: a primary group / a posixGroup of gid 2000
+        assert cfg.auth.ldap.instructor_filter == '(gidNumber=2000)'
+        assert cfg.auth.ldap.instructor_group_filter == '(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))'
         # the section is read in every mode: a typo must not wait for the switch to proxy mode
         anonymous = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'logout_url': 'https://x/out'}}})
         assert anonymous.auth.mode == config.AUTH_ANONYMOUS and anonymous.auth.proxy.logout_url == 'https://x/out'

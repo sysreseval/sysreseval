@@ -26,6 +26,9 @@ const TOUCH_INTERVAL = 60000;   // ms
 const body = document.body;
 const apiBase = body.dataset.apiBase;
 const isInstructor = body.dataset.instructor === 'true';
+const login = body.dataset.login || '';
+const owner = (body.dataset.rln || '').split('@@@')[2] || '';
+const isOwner = owner === login;
 
 const tabBar = document.getElementById('tabbar');
 const panes = document.getElementById('panes');
@@ -41,16 +44,25 @@ const closedBanner = document.getElementById('closed-banner');
 const state = {
   project: null,
   answers: {},
+  answersReadonly: false,   // an instructor on a student's project only reads the answers
+  terminals: [],            // the live terminal sessions of the project (shared with the viewers)
   instructorView: false,
   closed: false,
   exportQuery: {},
 };
 
 // What the tabs get: the project URLs (with the instructor view when it is on), the answers,
-// the terminals, the tab selection.
+// the terminals, the tab selection, who the user is for this project.
 const ctx = {
+  isInstructor,
+  isOwner,
+  owner,
+  login,
   url(suffix, params) {
     return api.withQuery(apiBase + suffix, {...(params || {}), view: state.instructorView ? 'instructor' : undefined});
+  },
+  answersReadonly() {
+    return state.answersReadonly;
   },
   getAnswers() {
     return state.answers;
@@ -154,8 +166,10 @@ function renderTabBar(ids) {
 
 function applyProject(project) {
   state.project = project;
-  document.title = `${project.title || project.lab_name} - SRE`;
-  titleElement.textContent = project.title || project.lab_name;
+  const name = project.title || project.lab_name;
+  document.title = `${name} - SRE`;
+  // somebody else's project (an instructor helping): the owner next to the title
+  titleElement.textContent = isOwner || !owner ? name : `${name} (${owner})`;
   renderTabBar(project.tabs);
   for (const id of project.tabs) {
     const t = tab(id);
@@ -175,6 +189,9 @@ function applyProject(project) {
   if (!currentTab || !project.tabs.includes(currentTab)) {
     selectTab(project.tabs[0]);
   }
+  if (tabs.terminals) {
+    tabs.terminals.setSessions(state.terminals);
+  }
   instructorToggle.hidden = !(isInstructor && project.has_instructor_texts);
   instructorToggle.setAttribute('aria-pressed', state.instructorView ? 'true' : 'false');
   exportLink.hidden = !project.export_kathara_project;
@@ -188,6 +205,8 @@ function updateExportLink() {
 async function load() {
   const data = await api.get(ctx.url(''));
   state.answers = data.answers || {};
+  state.answersReadonly = Boolean(data.answers_readonly);
+  state.terminals = data.terminals || [];
   applyProject(data.project);
   if (tabs.questions) {
     tabs.questions.setAnswers(state.answers);
@@ -233,6 +252,12 @@ function onEvent(ev) {
     case 'log':
       if (tab('log')) {
         tabs.log.onLog(ev);
+      }
+      break;
+    case 'terminals':
+      state.terminals = ev.terminals || [];
+      if (tabs.terminals) {
+        tabs.terminals.setSessions(state.terminals);
       }
       break;
     case 'removed':

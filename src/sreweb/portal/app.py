@@ -3,6 +3,7 @@ Jinja2 templates, static files, the pool refresh task."""
 import logging
 import ssl
 import urllib.parse
+from dataclasses import replace
 from pathlib import Path
 
 import aiohttp
@@ -11,12 +12,14 @@ import jinja2
 from aiohttp import web
 
 from . import session as S
+from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
+from .roles import RoleCache
 from .manager import PoolManager
 from .pool import Pool, PoolError
 from .relay import Relay
 from .routes import Routes, json_error
-from ..identity import IDENTITY_KEY, IdentityError
+from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR
 from ..config import WebConfig, AUTH_PROXY, client_allowed
 
 log = logging.getLogger('sreweb.portal')
@@ -28,7 +31,9 @@ CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline
 
 
 class Portal:
-    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs):
+    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs, role_resolver=None):
+        """*role_resolver*: proxy mode with ``ldap_roles``, an object with ``role_for(login)``
+        (the ``LdapRoleResolver`` of ``[auth.ldap]`` by default; the tests inject a fake)."""
         self.cfg = cfg
         self.web_dir = Path(web_dir)
         self.localedirs = list(localedirs)
@@ -38,6 +43,9 @@ class Portal:
         self.relay: Relay | None = None
         self.routes: Routes | None = None
         self._proxy_warned: set = set()
+        self.roles: RoleCache | None = None
+        if cfg.auth.mode == AUTH_PROXY and cfg.auth.proxy.ldap_roles:
+            self.roles = RoleCache(role_resolver or LdapRoleResolver(cfg.auth.ldap), ttl=cfg.auth.proxy.ldap_roles_ttl)
 
     def make_app(self) -> web.Application:
         app = web.Application(middlewares=[self.identity_middleware, self.csrf_middleware, self.error_middleware],
@@ -92,7 +100,11 @@ class Portal:
     @web.middleware
     async def identity_middleware(self, request, handler):
         if self.cfg.auth.mode == AUTH_PROXY:
-            request[IDENTITY_KEY] = self._proxy_identity(request)
+            identity = self._proxy_identity(request)
+            if identity is not None and self.roles is not None and identity.role != ROLE_INSTRUCTOR:
+                # the LDAP tests of ldap_roles, after the header tests (cached per login)
+                identity = replace(identity, role=await self.roles.get(identity.login))
+            request[IDENTITY_KEY] = identity
         else:
             request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)
         response = await handler(request)

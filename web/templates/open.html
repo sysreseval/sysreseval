@@ -11,6 +11,13 @@
   <span id="selected-lab" class="selected"></span>
   <button type="button" id="start-button" class="primary" disabled>{{ _("Start") }}</button>
 </div>
+{% if instructor %}
+<label class="instructor-option">
+  <input type="checkbox" id="instructor-mode">
+  {{ _("Instructor mode") }}
+  <span class="muted">{{ _("(keeps the instructor texts, lists every state, logs the states applied)") }}</span>
+</label>
+{% endif %}
 <div id="progress" class="progress-box" hidden></div>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/open.js"></script>{% endblock %}

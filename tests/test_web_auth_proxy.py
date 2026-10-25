@@ -66,6 +66,23 @@ class TestIdentityFromHeaders:
         assert me.login == 'alice' and me.role == 'instructor'
         assert len(me.fullname) == P.MAX_FULLNAME and len(me.email) == P.MAX_EMAIL
 
+    def test_instructor_header(self):
+        cfg = ProxyAuthConfig(instructor_header='X-Remote-Gid', instructor_values=['2000'])
+        def role(**headers):
+            return P.identity_from_headers(cfg, Headers({'X-Remote-User': 'zoe', **headers}), 'en').role
+        assert role(**{'X-Remote-Gid': '2000'}) == 'instructor'
+        assert role(**{'x-remote-gid': ' 2000 '}) == 'instructor'
+        assert role(**{'X-Remote-Gid': '1000; 2000'}) == 'instructor'     # a multi-valued attribute
+        assert role(**{'X-Remote-Gid': '1000'}) == 'student'
+        assert role(**{'X-Remote-Gid': '(null)'}) == 'student' and role() == 'student'
+        assert role(**{'X-Remote-Gid': '20001'}) == 'student'            # whole values only
+        # OR with the groups header
+        both = ProxyAuthConfig(instructor_groups=[TEACHERS], instructor_header='X-Remote-Gid', instructor_values=['2000'])
+        me = P.identity_from_headers(both, Headers({'X-Remote-User': 'zoe', 'X-Remote-Groups': TEACHERS}), 'en')
+        assert me.role == 'instructor'
+        # the header is ignored when no instructor_header is configured
+        assert P.identity_from_headers(ProxyAuthConfig(), Headers({'X-Remote-User': 'zoe', 'X-Remote-Gid': '2000'}), 'en').role == 'student'
+
     @pytest.mark.parametrize('login', ['../x', 'a b', 'alice@example.org', 'x' * 65, 'ali\x00ce!'])
     def test_bad_login_is_refused_not_truncated(self, login):
         with pytest.raises(IdentityError, match='X-Remote-User'):

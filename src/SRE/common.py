@@ -579,23 +579,27 @@ def state_rows(user_allowed_states: dict, admin_only_states, *, show_admin_only:
     return rows
 
 
-def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool, display: bool = False) -> list:
+def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool, display: bool = False,
+                 evaluation: bool | None = None) -> list:
     """The tabs shown for a project, in display order (the ``TAB_*`` identifiers).
 
     *instructor_shown*: the project has instructor texts (instructor mode or debug project) and
     the "Instructor mode" button is on.  A debug project always gets the Full Schema, every state
     and the Log; the Evaluation tab is hidden in exam mode and when the lab does not allow
-    self-evaluation; the Apply Configuration tab needs listed states (and not an exam, unless the
-    instructor view is on).  *display*: the web only, the Display tab of the virtual X desktop
-    (after the Terminals); the Qt GUI never asks for it."""
+    self-evaluation (*evaluation* forces it on or off whatever the lab says: the web shows an
+    instructor the last archived evaluation of any project); the Apply Configuration tab needs
+    listed states (and not an exam, unless the instructor view is on).  *display*: the web only,
+    the Display tab of the virtual X desktop (after the Terminals); the Qt GUI never asks for it."""
     debug = bool(info.get("debug_project", False))
+    if evaluation is None:
+        evaluation = bool(info.get("allow_self_grade", True))
     tabs = [TAB_SCHEMA]
     if debug:
         tabs.append(TAB_FULL_SCHEMA)
     tabs += [TAB_INFORMATIONS, TAB_MACHINES, TAB_NETWORKS]
     if info.get("questions"):
         tabs.append(TAB_QUESTIONS)
-    if not exam_mode and info.get("allow_self_grade", True):
+    if not exam_mode and evaluation:
         tabs.append(TAB_EVALUATION)
     tabs.append(TAB_TERMINALS)
     if display:

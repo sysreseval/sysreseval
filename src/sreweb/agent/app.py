@@ -16,6 +16,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import shlex
 import socket
 import subprocess
@@ -25,6 +26,7 @@ from aiohttp import web, WSMsgType
 
 from SRE import params
 from SRE import common
+from SRE.archive_summary import error_entries, exo_grade_list
 from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
@@ -33,11 +35,12 @@ from . import access, occupancy
 from .access import AccessError
 from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED
-from .pty_session import PtySession
-from .registry import Registry, Project, EVENT_INFO
+from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS
+from .results import ArchiveIndex
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
                      build_env, PHASE_PROJECT)
 from .schedulers import Schedulers
+from .terminals import TerminalSession, MAX_CLIENTS_PER_SESSION, PROBE_DELAY  # noqa: F401  (PROBE_DELAY: the tests)
 from ..config import AgentConfig
 from ..identity import Identity, IdentityError, IDENTITY_KEY
 from ..i18n import translator
@@ -57,9 +60,6 @@ WS_FORBIDDEN = 4403
 WS_NOT_FOUND = 4404
 WS_LIMIT = 4409
 MAX_TERMINAL_COLS, MAX_TERMINAL_ROWS = 500, 300
-EARLY_INPUT_MAX = 4096       # keystrokes held until the first output of the terminal
-EARLY_INPUT_HOLD = 20.0      # seconds after which they go through anyway
-PROBE_DELAY = 5.0            # seconds of silence after which a newline is sent to the terminal (below)
 CLIENT_MAX_SIZE = 4 << 20        # the answers of a PUT (the portal caps them lower)
 WS_HEARTBEAT = 30.0
 
@@ -102,7 +102,10 @@ def _mem_available_mb() -> int | None:
 
 class Agent:
     def __init__(self, cfg: AgentConfig, *, pub_dir: str | None = None, projects_dir: str | None = None,
-                 localedirs=None, hostname: str | None = None, extra_env: dict | None = None):
+                 localedirs=None, hostname: str | None = None, extra_env: dict | None = None,
+                 archive_dirs: list | None = None):
+        """*archive_dirs*: where the evaluation archives are (``params.archive_dirs`` by default):
+        the last evaluation of each project shown to the instructors."""
         self.cfg = cfg
         self.pub_dir = pub_dir or params.sre_pub_dir
         self.projects_dir = projects_dir or params.sre_projects_dir
@@ -112,6 +115,10 @@ class Agent:
                                 max_concurrent_evals=cfg.max_concurrent_evals, extra_env=extra_env)
         self.registry = Registry(self.projects_dir, poll_interval=cfg.poll_interval, state_dir=cfg.state_dir)
         self.registry.info_event = self._info_event
+        # the operations log goes to the subscribers allowed to read it only
+        self.registry.log_allowed = lambda project, identity: bool(
+            project.debug or access.instructor_view_allowed(project.info, identity))
+        self.results = ArchiveIndex(archive_dirs)
         self.displays = DisplayManager(cfg.display, registry=self.registry)
         self.answers = AnswersStore(self.registry, hostname=self.hostname, pub_dir=self.pub_dir)
         self.schedulers = Schedulers(self.registry, self.runner, exam_mode=self.exam_mode,
@@ -135,7 +142,8 @@ class Agent:
 
     def _view(self, project: Project, identity: Identity) -> dict:
         return sanitise(project.info, identity, exam_mode=self.exam_mode(),
-                        display_enabled=self.displays.offered(project))
+                        display_enabled=self.displays.offered(project),
+                        connect_all=access.is_privileged_caller(project.rln, identity))
 
     def _project(self, request) -> Project:
         rln = access.check_running_lab_name(request.match_info.get('rln', ''))
@@ -177,6 +185,7 @@ class Agent:
         app.router.add_get(f'{p}/projects/{{rln}}/schema.svg', self.schema)
         app.router.add_put(f'{p}/projects/{{rln}}/answers', self.answers_put)
         app.router.add_post(f'{p}/projects/{{rln}}/eval', self.eval_post)
+        app.router.add_get(f'{p}/projects/{{rln}}/evaluation', self.evaluation_get)
         app.router.add_post(f'{p}/projects/{{rln}}/states/{{state}}', self.state_post)
         app.router.add_get(f'{p}/projects/{{rln}}/terminals/{{device}}', self.terminal_ws)
         app.router.add_get(f'{p}/projects/{{rln}}/display', self.display_get)
@@ -325,9 +334,25 @@ class Agent:
     # -- projects --------------------------------------------------------------------------------
 
     async def projects_list(self, request):
+        """The projects of the user; with ``?all=1`` (instructors only) every project of the host,
+        with its owner's full name and the summary of its last archived evaluation (the Watch
+        page)."""
         identity = request[IDENTITY_KEY]
-        return web.json_response([dict(p.to_dict(), title=common.project_title(p.info, lang_priority(identity, p.info)))
-                                  for p in self.registry.visible_to(identity)])
+        everyone = request.query.get('all', '') in ('1', 'true')
+        if everyone and not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        projects = self.registry.visible_to(identity, all_projects=everyone)
+        if everyone:
+            await self.results.refresh({p.rln for p in projects})
+        rows = []
+        for p in projects:
+            row = dict(p.to_dict(), title=common.project_title(p.info, lang_priority(identity, p.info)))
+            if everyone:
+                summary = self.results.summary(p.rln)
+                row['fullname'] = str(self.answers.read(p).get(params.fullname_keyword, '') or '')
+                row['last_eval'] = summary.to_json() if summary is not None else None
+            rows.append(row)
+        return web.json_response(rows)
 
     async def _read_json(self, request) -> dict:
         try:
@@ -348,7 +373,12 @@ class Agent:
         labs = await self.labs(identity.login)
         if lab not in {entry.get('name') if isinstance(entry, dict) else entry for entry in labs}:
             raise AccessError(404, f"unknown lab {lab}")
-        args = ['start']
+        # an instructor's own project in instructor mode: privileged start (the texts kept, every
+        # state listed); the project is theirs and follows the student path afterwards
+        instructor_mode = bool(body.get('instructor_mode', False))
+        if instructor_mode and not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        args = ['start'] + (['--instructor-mode'] if instructor_mode else [])
         flavor = body.get('flavor_json')
         if flavor is not None:
             if not isinstance(flavor, dict):
@@ -365,13 +395,14 @@ class Agent:
                 raise AccessError(503, str(e))
         try:
             return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
-                                               reservation=reservation)
+                                               reservation=reservation, privileged=instructor_mode)
         finally:
             if reservation is not None:
                 self.displays.release(reservation)
 
-    async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None):
-        """``sre start`` as an NDJSON stream."""
+    async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None,
+                               privileged: bool = False):
+        """``sre start`` as an NDJSON stream (privileged: ``--instructor-mode``)."""
         try:
             idle = None if idle_timeout is None else max(0.0, float(idle_timeout))
         except (TypeError, ValueError):
@@ -383,7 +414,7 @@ class Agent:
             await resp.write(json.dumps(obj).encode('utf-8') + b'\n')
 
         try:
-            run = await self.runner.stream(identity.login, args, lang=identity.language,
+            run = await self.runner.stream(identity.login, args, privileged=privileged, lang=identity.language,
                                            env=self.displays.env_for(reservation) if reservation else None)
             async for event in run.events():
                 await line(event)
@@ -426,6 +457,9 @@ class Agent:
         return web.json_response({
             'project': self._view(project, identity),
             'answers': AnswersStore.public(self.answers.read(project), project),
+            'answers_readonly': project.owner != identity.login,
+            'owner': project.owner,
+            'terminals': project.terminal_list(identity),
             'running_lab_name': project.rln, 'host': self.hostname,
         })
 
@@ -470,6 +504,7 @@ class Agent:
 
     async def answers_put(self, request):
         project = self._project(request)
+        access.check_is_owner(project.rln, request[IDENTITY_KEY])   # an instructor only reads them
         body = await self._read_json(request)
         patch = body.get('answers', body)
         if not isinstance(patch, dict):
@@ -479,14 +514,25 @@ class Agent:
                                   'answers_updated_at': data.get(params.sysreseval_answers_updated_at, '')})
 
     async def eval_post(self, request):
+        """The student's self-evaluation (``sre --user eval --auto-eval``, cooldown and counters
+        of the lab), or, for an instructor on somebody else's project, a privileged ``sre eval``
+        (exo-eval marks, no cooldown, nothing counted on the student's side)."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
-        access.check_self_grade(project.info)
+        privileged = access.is_privileged_caller(project.rln, identity)
+        if not privileged:
+            access.check_self_grade(project.info)
         access.check_not_exam(self.pub_dir)
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
         async with project.lock:
-            result = await self.runner.run(project.owner, ['eval', '--auto-eval', project.rln], lang=identity.language)
+            if privileged:
+                result = await self.runner.run(identity.login, ['eval', project.rln], privileged=True,
+                                               lang=identity.language)
+            else:
+                result = await self.runner.run(project.owner, ['eval', '--auto-eval', project.rln],
+                                               lang=identity.language)
+        self.results.invalidate()
         try:
             data = json.loads(result.stdout.decode('utf-8', 'replace'))
         except ValueError:
@@ -501,7 +547,7 @@ class Agent:
                 lang_priority=lang_priority(identity, project.info), translate=translate))
             header = header_labels(debug=debug, translate=translate)
         return web.json_response({'result': data, 'rows': rows, 'header': header,
-                                  'delay_before_self_grade': data.get('delay_before_self_grade', 0)})
+                                  'delay_before_self_grade': 0 if privileged else data.get('delay_before_self_grade', 0)})
 
     async def state_post(self, request):
         project = self._project(request)
@@ -511,18 +557,45 @@ class Agent:
         access.check_not_exam(self.pub_dir)
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
+        privileged = access.is_privileged_caller(project.rln, identity)
         async with project.lock:
-            await self.runner.run(project.owner, ['state', project.rln, state], lang=identity.language)
+            await self.runner.run(identity.login if privileged else project.owner, ['state', project.rln, state],
+                                  privileged=privileged, lang=identity.language)
         answers = await self.answers.consume_cheat(project)
         if answers is None:
             answers = self.answers.read(project)
         return web.json_response({'ok': True, 'answers': AnswersStore.public(answers, project)})
 
+    async def evaluation_get(self, request):
+        """Instructors: the last archived evaluation of the project (exo-eval scope), as rows of
+        the evaluation table, with the errors of the run."""
+        project = self._project(request)
+        identity = request[IDENTITY_KEY]
+        if not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        found = await self.results.archive(project.rln)
+        if found is None:
+            raise AccessError(404, "no archived evaluation")
+        summary, raw = found
+        debug = project.debug
+        translate = translator(identity.language, self.localedirs)
+        rows = rows_to_json(build_evaluation_rows(
+            exo_grade_list(raw, debug=debug), raw.get('grade_parts') or [], mark=summary.mark,
+            maximum_mark=summary.maximum_mark, debug=debug, lang_priority=lang_priority(identity, project.info),
+            translate=translate))
+        body = summary.to_json()
+        body.update({'rows': rows, 'header': header_labels(debug=debug, translate=translate),
+                     'error_count': summary.errors, 'warning_count': summary.warnings,
+                     'errors': error_entries(raw.get('errors'))})
+        return web.json_response(body)
+
     # -- export ---------------------------------------------------------------------------------
 
     async def export_get(self, request):
         project = self._project(request)
-        access.check_export(project.info)
+        privileged = access.is_privileged_caller(project.rln, request[IDENTITY_KEY])
+        if not privileged:
+            access.check_export(project.info)
         q = request.query
         args = ['export', project.rln]
         if q.get('curved', '') in ('1', 'true'):
@@ -543,7 +616,8 @@ class Agent:
         await resp.prepare(request)
         remainder = b''
         async with project.lock:
-            async for chunk in self.runner.stream_stdout(project.owner, args):
+            async for chunk in self.runner.stream_stdout(request[IDENTITY_KEY].login if privileged else project.owner,
+                                                         args, privileged=privileged):
                 text = remainder + b''.join(chunk.split())
                 usable = len(text) - len(text) % 4
                 remainder = text[usable:]
@@ -576,18 +650,40 @@ class Agent:
         return ws
 
     async def terminal_ws(self, request):
+        """A terminal on a device: a new ``sre connect`` session, or (``?join=<id>``) one more
+        browser on a live session of the project (``terminals.TerminalSession``: everybody types
+        into the same pty and sees the same output).  A session of a non-owner instructor runs
+        ``sre connect`` privileged (every listed device opens); ``?private=1`` (instructors) keeps
+        it out of the student's list."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
         device = request.match_info.get('device', '')
+        q = request.query
         ws = web.WebSocketResponse(protocols=(TERMINAL_SUBPROTOCOL,), heartbeat=WS_HEARTBEAT, max_msg_size=1 << 20)
+        session = None
+        privileged = private = False
         try:
-            access.check_device(project.info, device, identity)
             access.check_not_exam(self.pub_dir)
             if project.closing:
                 raise AccessError(404, "the project is closing")
-            if (project.terminal_count() >= self.cfg.terminals_per_project
-                    or len(project.terminals.get(device, [])) >= self.cfg.terminals_per_device):
-                raise AccessError(429, "too many terminals")
+            join = q.get('join', '')
+            if join:
+                session = project.terminals.get(join)
+                if session is None or session.closing or session.device != device:
+                    raise AccessError(404, "this terminal is gone")
+                if not session.visible_to(identity):
+                    raise AccessError(403, "private terminal")
+                if len(session.clients) >= MAX_CLIENTS_PER_SESSION:
+                    raise AccessError(429, "too many viewers on this terminal")
+            else:
+                private = q.get('private', '') in ('1', 'true')
+                if private and not identity.is_instructor:
+                    raise AccessError(403, "private terminals are for instructors")
+                privileged = access.is_privileged_caller(project.rln, identity)
+                access.check_device(project.info, device, identity, connect_all=privileged)
+                if (project.terminal_count() >= self.cfg.terminals_per_project
+                        or project.terminals_on(device) >= self.cfg.terminals_per_device):
+                    raise AccessError(429, "too many terminals")
         except AccessError as e:
             await ws.prepare(request)
             await ws.send_json({'t': 'error', 'message': e.message})
@@ -595,105 +691,44 @@ class Agent:
                            message=e.message.encode())
             return ws
         await ws.prepare(request)
-        cols, rows = self._size(request.query)
-        buffer = bytearray()
-        wake = asyncio.Event()
-        exited = asyncio.Event()
-        exit_code = [None]
-        # Keystrokes typed before the shell shows up are held: Kathara switches the pty to raw
-        # mode with TCSAFLUSH when it attaches, which discards whatever is queued on it.  But a
-        # machine whose startup never ends (an /sbin/init machine without /tmp/EOS) shows nothing
-        # until "the user requests the control", which Kathara detects as a readable stdin: a
-        # newline is written to the pty at the first keystroke, and after PROBE_DELAY seconds of
-        # silence anyway (in an xterm the student would press Enter); it is discarded by the raw
-        # switch, or reaches the shell as an empty line.
-        started = asyncio.Event()
-        early_input = bytearray()
-        probed = [False]
-
-        def probe():
-            if not probed[0] and not started.is_set():
-                probed[0] = True
-                session.write(b'\n')
-
-        def on_output(data: bytes):
-            # the echo of the probe newline (bare line ends) is not the shell showing up
-            if not started.is_set() and (not probed[0] or data.strip(b'\r\n')):
-                started.set()
-                if early_input:
-                    session.write(bytes(early_input))
-                    early_input.clear()
-            buffer.extend(data)
-            session.output_pending(len(buffer))
-            wake.set()
-
-        def on_exit(rc):
-            exit_code[0] = rc
-            exited.set()
-            wake.set()
-
-        env = build_env(project.owner, term='xterm-256color', lang=identity.language)
-        env.update(self.runner.extra_env)
-        session = PtySession(build_argv(self.cfg.sre_exe, ['connect', project.rln, device]), env,
-                             cols=cols, rows=rows, on_output=on_output, on_exit=on_exit)
-        project.terminals.setdefault(device, []).append(session)
-        try:
-            await session.start()
-        except OSError as e:
-            project.terminals[device].remove(session)
-            await ws.send_json({'t': 'error', 'message': f"cannot start the terminal: {e}"})
-            await ws.close(code=WS_NOT_FOUND)
-            return ws
-        await ws.send_json({'t': 'ready'})
-        log.info("terminal %s/%s opened for %s", project.rln, device, identity.login)
-
-        async def sender():
-            while True:
-                await wake.wait()
-                wake.clear()
-                if buffer:
-                    data = bytes(buffer)
-                    buffer.clear()
-                    session.output_pending(0)
-                    project.touch()
-                    await ws.send_bytes(data)
-                if exited.is_set() and not buffer:
-                    with contextlib.suppress(Exception):
-                        await ws.send_json({'t': 'exit', 'code': exit_code[0]})
-                    await ws.close()
-                    return
-
-        def type_in(data: bytes):
-            if started.is_set():
-                session.write(data)
-            else:
-                if len(early_input) < EARLY_INPUT_MAX:
-                    early_input.extend(data)
-                probe()
-
-        async def release_early_input():
-            # a silent terminal gets the probe newline; a shell that prints nothing even then:
-            # the held keystrokes go through after a while anyway
+        cols, rows = self._size(q)
+        if session is None:
+            user = identity.login if privileged else project.owner
+            env = build_env(user, privileged=privileged, term='xterm-256color', lang=identity.language)
+            env.update(self.runner.extra_env)
+            session = TerminalSession(
+                self._new_terminal_id(project), device,
+                build_argv(self.cfg.sre_exe, ['connect', project.rln, device], privileged=privileged), env,
+                created_by=identity.login, private=private, cols=cols, rows=rows,
+                on_change=lambda: self._terminals_changed(project),
+                on_closed=lambda s: self._terminal_closed(project, s), on_activity=project.touch)
+            project.terminals[session.id] = session
             try:
-                await asyncio.wait_for(started.wait(), PROBE_DELAY)
-                return
-            except TimeoutError:
-                probe()
-            try:
-                await asyncio.wait_for(started.wait(), EARLY_INPUT_HOLD - PROBE_DELAY)
-            except TimeoutError:
-                if not started.is_set():
-                    started.set()
-                    if early_input:
-                        session.write(bytes(early_input))
-                        early_input.clear()
+                await session.start()
+            except OSError as e:
+                project.terminals.pop(session.id, None)
+                await ws.send_json({'t': 'error', 'message': f"cannot start the terminal: {e}"})
+                await ws.close(code=WS_NOT_FOUND)
+                return ws
+            log.info("terminal %s/%s opened for %s%s%s", project.rln, device, identity.login,
+                     " (privileged)" if privileged else "", " (private)" if private else "")
+            self._terminals_changed(project)
+        else:
+            log.info("terminal %s/%s joined by %s", project.rln, device, identity.login)
 
-        sender_task = asyncio.ensure_future(sender())
-        release_task = asyncio.ensure_future(release_early_input())
+        async def close_client(code: int, message: str):
+            with contextlib.suppress(Exception):
+                await ws.close(code=code, message=message.encode())
+
+        client = session.attach(identity, send_bytes=ws.send_bytes, send_json=ws.send_json, close=close_client,
+                                cols=cols, rows=rows)
+        await ws.send_json({'t': 'ready', 'session': session.id, 'device': session.device,
+                            'clients': len(session.clients), 'joined': bool(q.get('join', ''))})
+        pump = asyncio.ensure_future(session.pump(client))
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.BINARY:
-                    type_in(msg.data)
+                    session.type_in(msg.data)
                     project.touch()
                 elif msg.type == WSMsgType.TEXT:
                     try:
@@ -702,21 +737,43 @@ class Agent:
                         continue
                     if isinstance(obj, dict) and obj.get('t') == 'resize':
                         c, r = self._size({'cols': obj.get('cols'), 'rows': obj.get('rows')})
-                        session.resize(c, r)
+                        session.resize_client(client, c, r)
                     elif isinstance(obj, dict) and obj.get('t') == 'input' and isinstance(obj.get('data'), str):
-                        type_in(obj['data'].encode('utf-8'))
+                        session.type_in(obj['data'].encode('utf-8'))
+                        project.touch()
                 elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
         finally:
-            for task in (sender_task, release_task):
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
-            with contextlib.suppress(ValueError):
-                project.terminals.get(device, []).remove(session)
-            await session.close()
-            log.info("terminal %s/%s closed", project.rln, device)
+            pump.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pump
+            session.detach(client)   # the last client takes the session with it
+            log.info("terminal %s/%s left by %s", project.rln, device, identity.login)
         return ws
+
+    @staticmethod
+    def _new_terminal_id(project: Project) -> str:
+        while True:
+            session_id = secrets.token_urlsafe(6)
+            if session_id not in project.terminals:
+                return session_id
+
+    def _terminals_changed(self, project: Project):
+        """Push the list of live sessions to the subscribers of the project, once per loop turn
+        however many changes happen in it."""
+        if project._terminals_push_pending:
+            return
+        project._terminals_push_pending = True
+        asyncio.get_running_loop().call_soon(lambda: asyncio.ensure_future(self._push_terminals(project)))
+
+    async def _push_terminals(self, project: Project):
+        project._terminals_push_pending = False
+        await self.registry.broadcast(project, lambda identity, p=project: {
+            't': EVENT_TERMINALS, 'terminals': p.terminal_list(identity)})
+
+    def _terminal_closed(self, project: Project, session):
+        if project.terminals.pop(session.id, None) is not None:
+            self._terminals_changed(project)
 
     # -- the virtual desktop ---------------------------------------------------------------------
 

@@ -45,6 +45,21 @@ def check_owner(rln: str, identity: Identity):
         raise AccessError(403, "not your project")
 
 
+def check_is_owner(rln: str, identity: Identity):
+    """The project belongs to the user: what an instructor may only read on a student's project
+    (the answers)."""
+    if owner_of(rln) != identity.login:
+        raise AccessError(403, "read-only for a non-owner")
+
+
+def is_privileged_caller(rln: str, identity: Identity) -> bool:
+    """An instructor acting on a project that is not theirs: the agent runs ``sre`` privileged
+    for them (no ``--user``, their own login), never as the student, so a student's cooldown,
+    counters and answers are untouched by the help they get.  The owner, instructor or not,
+    follows the student path."""
+    return identity.role == ROLE_INSTRUCTOR and owner_of(rln) != identity.login
+
+
 def instructor_view_allowed(info: dict, identity: Identity) -> bool:
     """The instructor view shows the instructor() texts and every state: instructors only, on
     the projects that hold those texts (instructor mode or debug project), like the "Instructor
@@ -66,11 +81,12 @@ def visible_switches(info: dict) -> list:
     return list(info.get('switches', []) or [])
 
 
-def check_device(info: dict, device: str, identity: Identity) -> str:
+def check_device(info: dict, device: str, identity: Identity, *, connect_all: bool = False) -> str:
     """A device of the Terminals tab: a visible machine with ``allow_connection``, or a managed
     switch with ``allow_connection``; a debug project opens every device (the Qt GUI does the
-    same).  Returns :data:`DEVICE_MACHINE` or :data:`DEVICE_SWITCH`."""
-    debug = bool(info.get('debug_project', False))
+    same), and so does *connect_all* (an instructor on a student's project: privileged
+    ``sre connect`` lets them in).  Returns :data:`DEVICE_MACHINE` or :data:`DEVICE_SWITCH`."""
+    debug = bool(info.get('debug_project', False)) or bool(connect_all)
     for m in visible_machines(info, identity):
         if m.get('name') == device:
             if not (m.get('allow_connection', False) or debug):

@@ -362,12 +362,16 @@ class Pool:
 
     # -- projects -------------------------------------------------------------------------------
 
-    async def projects_of(self, identity: Identity) -> list:
-        """The projects of a user on every reachable host: ``[{host, ...project}]``."""
+    async def projects_of(self, identity: Identity, *, all_projects: bool = False) -> list:
+        """The projects of a user on every reachable host: ``[{host, ...project}]``; with
+        *all_projects* (an instructor's Watch page) every project of every host, with the owner's
+        name and the last archived evaluation."""
+        params = {'all': '1'} if all_projects else None
+
         async def one(host: HostConfig):
             try:
                 async with self.session.get(f"{host.url}/v1/projects", headers=self.headers(host, identity),
-                                            timeout=aiohttp.ClientTimeout(total=STATUS_TIMEOUT)) as resp:
+                                            params=params, timeout=aiohttp.ClientTimeout(total=STATUS_TIMEOUT)) as resp:
                     if resp.status != 200:
                         log.warning("host %s: GET /v1/projects answered %s: %s", host.name, resp.status,
                                     (await resp.text())[:300])

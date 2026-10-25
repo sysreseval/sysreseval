@@ -25,6 +25,7 @@ TOKEN = 't' * 32
 ALICE = Identity(login='alice', fullname='Alice A', email='a@x.org', language='fr')
 BOB = Identity(login='bob')
 PROF = Identity(login='prof', role='instructor', view='instructor')
+PROF_NOVIEW = Identity(login='prof', role='instructor')
 TEXT_HASH = 'cfc140584d209e6d8ed82f6db72c91a210cb1f2ded6a6b66f81c17e16ac2b857'
 FORM_HASH = 'e87736964454b2a575c2eb84df9bcb7440abd31fd2a722c99a0e20a8f2c3b4f2'
 
@@ -52,7 +53,7 @@ class Harness:
                                       **cfg_over},   # never: the login sessions of the test host
                                      sre_exe=str(exe), state_dir=str(tmp_path / 'web-agent'))
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
-                           hostname='pool1', extra_env=env)
+                           hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')])
         self.client = None
 
     async def __aenter__(self):
@@ -207,7 +208,10 @@ class TestLabsAndStart:
                 projects = await (await h.client.get('/v1/projects', headers=headers())).json()
                 assert [p['running_lab_name'] for p in projects] == [rln] and projects[0]['lab_name'] == 'sre@dhcp.py'
                 assert await (await h.client.get('/v1/projects', headers=headers(BOB))).json() == []
-                assert len(await (await h.client.get('/v1/projects', headers=headers(PROF))).json()) == 1
+                # an instructor lists their own projects; every one of the host with ?all=1
+                assert await (await h.client.get('/v1/projects', headers=headers(PROF))).json() == []
+                assert len(await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json()) == 1
+                assert (await h.client.get('/v1/projects?all=1', headers=headers())).status == 403
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['projects'] == 1
                 state = json.loads((tmp_path / 'web-agent' / f'{rln}.json').read_text())
                 assert state['idle_timeout'] == 7200.0
@@ -369,7 +373,7 @@ class TestWebSockets:
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?cols=100&rows=30',
                                                headers=headers(), protocols=(TERMINAL_SUBPROTOCOL,))
                 assert ws.protocol == TERMINAL_SUBPROTOCOL
-                assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'ready'
                 await ws.send_bytes(b'echo hi\n')
                 out = b''
                 async with asyncio.timeout(10):
@@ -405,7 +409,7 @@ class TestWebSockets:
                 for _ in range(2):
                     ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
                                                    protocols=(TERMINAL_SUBPROTOCOL,))
-                    assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                    assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'ready'
                     terms.append(ws)
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 2
                 for n, ws in enumerate(terms):
@@ -433,7 +437,7 @@ class TestWebSockets:
                 # silence: the automatic probe brings the prompt
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
                                                protocols=(TERMINAL_SUBPROTOCOL,))
-                assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'ready'
                 out = b''
                 async with asyncio.timeout(PROBE_DELAY + 10):
                     while b'mock$' not in out:
@@ -445,7 +449,7 @@ class TestWebSockets:
                 # a keystroke right away: the probe is immediate and the keystrokes are kept
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
                                                protocols=(TERMINAL_SUBPROTOCOL,))
-                assert (await asyncio.wait_for(ws.receive_json(), 5)) == {'t': 'ready'}
+                assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'ready'
                 t0 = asyncio.get_running_loop().time()
                 await ws.send_bytes(b'echo hi\n')
                 out = b''
@@ -472,7 +476,7 @@ class TestWebSockets:
                     assert closing.type == aiohttp.WSMsgType.CLOSE and ws.close_code == code, device
                 first = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
                                                   protocols=(TERMINAL_SUBPROTOCOL,))
-                assert (await asyncio.wait_for(first.receive_json(), 5)) == {'t': 'ready'}
+                assert (await asyncio.wait_for(first.receive_json(), 5))['t'] == 'ready'
                 second = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
                                                    protocols=(TERMINAL_SUBPROTOCOL,))
                 await asyncio.wait_for(second.receive_json(), 5)
@@ -705,4 +709,262 @@ class TestDisplay:
                 # a new project of the second agent takes the next free number
                 await h2.started()
                 assert [e['env']['SRE_X11_DISPLAY'] for e in h2.entries() if 'start' in e['argv']][-1] == '91'
+        run(go())
+
+
+# ---------------------------------------------------------------------------------------------
+# the instructor role: every project of the host, privileged actions on a student's project,
+# the last archived evaluation, instructor-mode projects, shared and private terminals
+# ---------------------------------------------------------------------------------------------
+
+async def receive_event(ws, kind, timeout=5.0) -> dict:
+    """The next event of *kind* on an events WebSocket (the others are skipped)."""
+    async with asyncio.timeout(timeout):
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('t') == kind:
+                return msg
+
+
+async def events_of(ws, duration=1.0) -> list:
+    """Every event received on *ws* during *duration* seconds."""
+    seen = []
+    try:
+        async with asyncio.timeout(duration):
+            while True:
+                seen.append(await ws.receive_json())
+    except TimeoutError:
+        pass
+    return seen
+
+
+async def read_until(ws, needle: bytes, timeout=10.0, after: bytes = b'') -> bytes:
+    """The binary frames of a terminal WebSocket until *needle* shows up (after the last
+    occurrence of *after*, e.g. the echo of the command typed)."""
+    out = b''
+    async with asyncio.timeout(timeout):
+        while needle not in (out.split(after)[-1] if after else out):
+            msg = await ws.receive()
+            assert msg.type in (aiohttp.WSMsgType.BINARY, aiohttp.WSMsgType.TEXT), msg
+            if msg.type == aiohttp.WSMsgType.BINARY:
+                out += msg.data
+    return out
+
+
+def privileged_call(entry: dict, argv: list, login: str):
+    assert entry['argv'] == argv, entry
+    assert entry['env']['LOGNAME'] == login and 'SUDO_USER' not in entry['env'] and 'USER_USERNAME' not in entry['env']
+    assert entry['user_mode'] is False and entry['username'] == login
+
+
+class TestInstructor:
+    def test_projects_of_everyone_and_the_last_evaluation(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                assert (await h.client.get('/v1/projects?all=1', headers=headers())).status == 403
+                rows = await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json()
+                assert len(rows) == 1
+                row = rows[0]
+                assert (row['running_lab_name'], row['owner'], row['fullname'], row['managed']) == (rln, 'alice', '', True)
+                assert row['last_eval'] is None and row['terminals'] == 0 and row['eval_interval'] == 0
+                # the full name comes with the first answer of the student
+                await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'gw'}}, headers=headers())
+                assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 200
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert row['fullname'] == ALICE.fullname
+                last = row['last_eval']
+                assert (last['grade'], last['max_grade'], last['mark'], last['maximum_mark']) == (4.5, 5, 18.0, 20)
+                assert (last['errors'], last['warnings'], last['auto_eval_count']) == (0, 0, 1)
+                assert last['age_s'] >= 0 and last['archive'].endswith('.zst') and last['eval_date']
+                # a second agent instance would see the same archive: the index is read on demand
+                assert h.agent.results.scans >= 1
+            async with Harness(tmp_path / 'b', {'MOCK_EVAL_ERRORS': '[["ERROR", "m1 down"], ["WARNING", "slow"]]'}) as h:
+                rln = await h.started()
+                await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
+                last = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]['last_eval']
+                assert (last['errors'], last['warnings']) == (1, 1)
+        run(go())
+
+    def test_non_owner_actions_run_privileged(self, tmp_path):
+        """An instructor on a student's project: sre runs privileged for them (their login, no
+        --user): no cooldown, no counter, no answer of the student touched; the owner, instructor
+        or not, keeps the student path."""
+        async def go():
+            async with Harness(tmp_path, {'MOCK_COOLDOWN': '60'}) as h:
+                rln = await h.started()
+                resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers(PROF))
+                data = await resp.json()
+                assert resp.status == 200 and data['rows'] and data['delay_before_self_grade'] == 0
+                privileged_call(h.entries()[-1], ['eval', rln], 'prof')
+                assert not (h.pub / 'last_self_grades').exists()      # alice's cooldown untouched
+                # alice's own evaluation afterwards is her first one (grades, not the cooldown answer)
+                resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
+                assert (await resp.json())['result']['grades'] is not None
+                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', rln]
+                # states, export: privileged too; the answers are read-only for a non-owner
+                assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
+                privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
+                resp = await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'x'}},
+                                          headers=headers(PROF))
+                assert resp.status == 403
+                resp = await h.client.get(f'/v1/projects/{rln}/export', headers=headers(PROF))
+                assert resp.status == 200 and len(await resp.read()) > 0
+                privileged_call(h.entries()[-1], ['export', rln], 'prof')
+                data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json()
+                assert data['answers_readonly'] is True and data['owner'] == 'alice'
+                assert all(d['allow_connection'] for d in data['project']['terminal_devices'])
+                own = await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json()
+                assert own['answers_readonly'] is False
+                assert [d['allow_connection'] for d in own['project']['terminal_devices']] == [True, False, True]
+                # the instructor's own project: the student path
+                mine = await h.started(PROF_NOVIEW)
+                assert mine.endswith('@@@prof')
+                await h.client.post(f'/v1/projects/{mine}/eval', headers=headers(PROF_NOVIEW))
+                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', mine]
+                assert h.entries()[-1]['env']['SUDO_USER'] == 'prof'
+        run(go())
+
+    def test_last_archived_evaluation(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                assert (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers())).status == 403
+                assert (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))).status == 404
+                await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
+                resp = await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))
+                data = await resp.json()
+                assert resp.status == 200
+                assert data['header'] == ['Element', 'Grade', 'Max grade']
+                assert [r['kind'] for r in data['rows']][-1] == 'mark' and any(r['kind'] == 'total' for r in data['rows'])
+                assert (data['grade'], data['max_grade'], data['mark'], data['maximum_mark']) == (4.5, 5, 18.0, 20)
+                assert data['errors'] == [] and (data['error_count'], data['warning_count']) == (0, 0)
+                assert data['eval_date'] and data['archive'].endswith('.zst')
+        run(go())
+
+    def test_instructor_mode_project(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py', 'instructor_mode': True},
+                                           headers=headers())
+                assert resp.status == 403
+                rln = await h.started(PROF_NOVIEW, instructor_mode=True)
+                assert rln.endswith('@@@prof')
+                privileged_call([e for e in h.entries() if 'start' in e['argv']][-1],
+                                ['start', '--instructor-mode', 'sre/dhcp.py'], 'prof')
+                view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['project']
+                assert view['instructor_mode'] and view['has_instructor_texts'] and view['instructor_view']
+                assert 'Solution' in view['informations_html'] and 'log' in view['tabs']
+                plain = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF_NOVIEW))).json())['project']
+                assert plain['has_instructor_texts'] and not plain['instructor_view']
+                assert 'Solution' not in plain['informations_html'] and 'log' not in plain['tabs']
+                # the student view of a plain project never holds the fragment
+                other = await h.started()
+                view = (await (await h.client.get(f'/v1/projects/{other}', headers=headers(PROF))).json())['project']
+                assert not view['has_instructor_texts'] and 'Solution' not in view['informations_html']
+        run(go())
+
+    def test_log_reaches_the_allowed_subscribers_only(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started(PROF_NOVIEW, instructor_mode=True)
+                shown = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
+                hidden = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF_NOVIEW))
+                await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF_NOVIEW))
+                log_event = await receive_event(shown, 'log')
+                assert 'state final' in log_event['data']
+                assert [e['t'] for e in await events_of(hidden, 1.0) if e['t'] == 'log'] == []
+                await shown.close()
+                await hidden.close()
+        run(go())
+
+
+class TestSharedTerminals:
+    def test_join_a_session(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(alice.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['device'] == 'm1' and ready['clients'] == 1 and not ready['joined']
+                sid = ready['session']
+                listed = (await receive_event(events, 'terminals'))['terminals']
+                assert len(listed) == 1 and listed[0]['id'] == sid and listed[0]['created_by'] == 'alice'
+                await read_until(alice, b'mock$')
+                data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json()
+                entry = data['terminals'][0]
+                assert (entry['id'], entry['device'], entry['created_by'], entry['private'], entry['clients']) == \
+                    (sid, 'm1', 'alice', False, 1)
+                # the instructor joins: the replay, then the live session shared with alice
+                prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}', headers=headers(PROF),
+                                                 protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(prof.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['session'] == sid and ready['clients'] == 2 and ready['joined']
+                assert b'mock$' in await read_until(prof, b'mock$')
+                assert (await receive_event(events, 'terminals'))['terminals'][0]['clients'] == 2
+                await prof.send_bytes(b'echo MARK\n')
+                await read_until(alice, b'MARK', after=b'echo MARK')
+                await read_until(prof, b'MARK', after=b'echo MARK')
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
+                # the instructor leaves: the session stays with alice
+                await prof.close()
+                assert (await receive_event(events, 'terminals'))['terminals'][0]['clients'] == 1
+                await alice.send_bytes(b'echo STILL\n')
+                await read_until(alice, b'STILL', after=b'echo STILL')
+                await alice.close()
+                assert (await receive_event(events, 'terminals'))['terminals'] == []
+                await asyncio.sleep(0.2)
+                assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
+                await events.close()
+        run(go())
+
+    def test_private_terminals_and_refusals(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+
+                async def refused(path, identity, code):
+                    ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/{path}', headers=headers(identity),
+                                                   protocols=(TERMINAL_SUBPROTOCOL,))
+                    msg = await asyncio.wait_for(ws.receive_json(), 5)
+                    assert msg['t'] == 'error', msg
+                    closing = await ws.receive()
+                    assert closing.type == aiohttp.WSMsgType.CLOSE and ws.close_code == code, (path, ws.close_code)
+
+                await refused('m1?join=nope', ALICE, 4404)
+                await refused('m1?private=1', ALICE, 4403)
+                # a private terminal of the instructor on the closed machine, privileged
+                prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m2?private=1', headers=headers(PROF),
+                                                 protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(prof.receive_json(), 5)
+                assert ready['t'] == 'ready'
+                pid = ready['session']
+                await read_until(prof, b'mock$')          # the fake sre logs its call before the shell
+                privileged_call([e for e in h.entries() if 'connect' in e['argv']][-1], ['connect', rln, 'm2'], 'prof')
+                assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
+                mine = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['terminals']
+                assert [(t['id'], t['private'], t['created_by']) for t in mine] == [(pid, True, 'prof')]
+                await refused(f'm2?join={pid}', ALICE, 4403)
+                await refused(f'm1?join={pid}', PROF, 4404)          # the right device is part of the address
+                await prof.close()
+                await asyncio.sleep(0.2)
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 0
+            async with Harness(tmp_path / 'b', terminals_per_device=1) as h:
+                rln = await h.started()
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                sid = (await asyncio.wait_for(alice.receive_json(), 5))['session']
+                prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}', headers=headers(PROF),
+                                                 protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(prof.receive_json(), 5))['t'] == 'ready'   # a join is not a new terminal
+                second = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                   protocols=(TERMINAL_SUBPROTOCOL,))
+                await asyncio.wait_for(second.receive_json(), 5)
+                await second.receive()
+                assert second.close_code == 4409
+                await prof.close()
+                await alice.close()
         run(go())

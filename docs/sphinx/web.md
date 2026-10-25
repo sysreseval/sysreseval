@@ -33,15 +33,21 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   for the configured time.
 - The pool hosts share the lab tree as today (NFS, rsync or the Debian package) and, if the
   instructor wants `sre watch` / `sre sheet` / `sre outline` across the pool, an `archive_dirs`
-  entry on a shared directory. The `hostname` of the archives is the pool host.
+  entry on a shared directory. The `hostname` of the archives is the pool host. The Watch page
+  of the instructors needs none of that: each agent reads the archives of its own host
+  (`params.archive_dirs`) on demand.
 - Placement: a new project goes to the reachable host with the lowest `projects / max_projects`
   (then the lowest load); a host in exam mode is never used. A classroom workstation holds about
   thirty projects (210 containers in 3.4 GB).
 
 The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
-(a user only reaches their own projects; the `wipe`, `exec` and exam commands have no endpoint),
-`allow_connection` of the devices, `allow_self_grade`, the user-allowed states, the
-`export_kathara_project` flag. Save and restore are not offered on the web.
+(a user only reaches their own projects, an instructor every project; the `wipe`, `exec` and
+exam commands have no endpoint), `allow_connection` of the devices, `allow_self_grade`, the
+user-allowed states, the `export_kathara_project` flag. Save and restore are not offered on the
+web. An instructor acting on somebody else's project is served by a **privileged** `sre` (no
+`--user`, their own login: `sre eval` without cooldown nor counter, `sre connect` to every listed
+device, `sre state`, `sre export`), never by a command run as the student; the owner, instructor
+or not, follows the student path.
 
 ## Installation
 
@@ -130,8 +136,8 @@ merges other files into this one, as for `web.toml` below.
 | `languages` | `["en", "fr"]` | the languages offered at login, the first one by default |
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
-| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`); `start_tls`; `timeout` |
-| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `instructor_groups`: the values of the groups header giving the instructor role; `logout_url`: where Logout sends the browser (none: no Logout button) |
+| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` |
+| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, the role cached per login for `ldap_roles_ttl` (`10m`); `logout_url`: where Logout sends the browser (none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web pool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
@@ -163,7 +169,7 @@ that does not come from a peer of `trusted_proxies` has no identity whatever its
     AuthType Basic
     AuthName "SRE"
     AuthBasicProvider ldap
-    AuthLDAPURL "ldaps://ldap.example.org/ou=people,dc=example,dc=org?uid,cn,mail,memberOf?sub?(objectClass=inetOrgPerson)"
+    AuthLDAPURL "ldaps://ldap.example.org/ou=people,dc=example,dc=org?uid,cn,mail,memberOf,gidNumber?sub?(objectClass=inetOrgPerson)"
     AuthLDAPRemoteUserAttribute uid
     Require valid-user
     RequestHeader set X-Remote-User "expr=%{REMOTE_USER}"
@@ -173,6 +179,8 @@ that does not come from a peer of `trusted_proxies` has no identity whatever its
     RequestHeader set X-Remote-Email "%{AUTHENTICATE_MAIL}e" env=AUTHENTICATE_MAIL
     RequestHeader unset X-Remote-Groups
     RequestHeader set X-Remote-Groups "%{AUTHENTICATE_MEMBEROF}e" env=AUTHENTICATE_MEMBEROF
+    RequestHeader unset X-Remote-Gid
+    RequestHeader set X-Remote-Gid "%{AUTHENTICATE_GIDNUMBER}e" env=AUTHENTICATE_GIDNUMBER
     RequestHeader unset Authorization
 </Location>
 ProxyPreserveHost On
@@ -192,7 +200,11 @@ The rules that keep this safe:
 - The attributes exported by `mod_authnz_ldap` (`AUTHENTICATE_CN`...) are those listed in the
   `AuthLDAPURL`; a multi-valued one is joined with `; ` (hence `groups_separator = ";"`). The
   groups header may carry any attribute, `memberOf` DNs or `eduPersonAffiliation` values:
-  `instructor_groups` lists the values giving the instructor role. A long list of groups can
+  `instructor_groups` lists the values giving the instructor role; `instructor_header` /
+  `instructor_values` test a second attribute the same way (`gidNumber` above, the primary
+  group). A group membership the proxy cannot export (a `posixGroup` listing its `memberUid`,
+  without the memberof overlay) is tested by the portal itself with `ldap_roles = true` and the
+  `[auth.ldap]` settings (see *Who is an instructor*). A long list of groups can
   exceed Apache's `LimitRequestFieldSize` (8190 bytes): raise it or export fewer attributes.
 - `public_url` must be the `https://` URL the users type (the `Secure` flag of the language
   cookie, the `Origin` check of the WebSockets together with `ProxyPreserveHost On`).
@@ -332,6 +344,63 @@ config host removed by hand comes back with `enable`. `--json` gives the raw row
   a new xterm in the Qt GUI: `gw`, `gw (2)`, …), the select of the Terminals tab opens one on
   any device (the machines open to the students and the managed switches), the × of a sub-tab
   closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. Export downloads the Kathara zip.
+  A terminal is a session shared by its viewers: the live sessions of the project that are not
+  on the page are listed under the bar with a Join button (the same shell for everybody, the
+  last 64 KiB of output replayed to the newcomer, the pty sized to the smallest window), a
+  sub-tab shows how many viewers its session has, and a session ends when its last viewer leaves
+  (or when the shell exits). After a disconnection, Reconnect joins the same session again while
+  another viewer kept it alive.
+
+### Instructors
+
+Who is an instructor is decided by the directory, the role being the OR of the tests configured
+in `web.toml` (a test whose key is empty is skipped):
+
+- `instructor_groups`: the user is a member of one of these groups (DNs), through the
+  `memberOf` attribute of their entry or, with `group_filter = "(member={dn})"`, a search of the
+  groups under `group_search_base` (`search_base` without it);
+- `instructor_filter`: the user's own entry matches this LDAP filter (a BASE search on their
+  DN), `"(gidNumber=2000)"` by default — the primary group; a site with the memberof overlay may
+  write `"(memberOf=cn=teachers,ou=groups,dc=example,dc=org)"`; `""` disables the test;
+- `group_search_base` + `instructor_group_filter`: a group found under that base names the user
+  (`{login}` and `{dn}` are substituted, filter-escaped), by default a `posixGroup` of gid 2000
+  listing the login in `memberUid` (the group search that needs no overlay; a `groupOfNames`
+  site writes `"(&(cn=teachers)(member={dn}))"`); setting `group_search_base` enables the test.
+
+In LDAP mode the portal runs them when the user logs in (the role is kept in the session cookie:
+a change applies at the next login). In proxy mode the reverse proxy authenticates and the tests
+are run on the request headers (`instructor_groups` on the groups header, `instructor_values` on
+`instructor_header`: any attribute `mod_authnz_ldap` exports) and, with `ldap_roles = true`, by the
+portal itself with the `[auth.ldap]` settings for the login the proxy gives (the service account
+or an anonymous search finds the entry, then the same three tests), the role being cached per
+login for `ldap_roles_ttl`; a directory failure makes the login a student for a minute (logged
+once) rather than the site unavailable.
+
+What an instructor gets:
+
+- **Watch** (the link in the header, `/watch`): every running project of every reachable host,
+  one row per project with its host, owner, lab, start time, the age of its last archived
+  evaluation, its grade and mark (exo-eval scope, as `sre watch` shows them), its errors and
+  warnings, its open terminals and whether the web or the Qt GUI runs it; sortable by any
+  column, filtered by text, refreshed every 5 s; a row whose last evaluation had errors is red,
+  one without an evaluation younger than 15 minutes (or twice the lab's evaluation interval) is
+  amber. Open goes to the project, Close stops it. The agents read the archives of their own
+  host (`params.archive_dirs`) on demand, nothing is scanned while nobody watches.
+- **Projects** stays the instructor's own projects (Watch holds the others).
+- **A student's project**: every tab, the devices all open (the privileged `sre connect`), the
+  answers read-only; the Terminals tab **joins the student's live terminals** when it opens (the
+  instructor sees the student's shell and may type in it, the student sees the same; a closed
+  sub-tab is not joined again), and the select offers a **private terminal** (the student does
+  not see it in their list; what the instructor types there stays with them) or a shared one;
+  the Evaluation tab opens on the **last archived evaluation** of the project (date, errors in
+  the tooltip) and *Start evaluation* runs a privileged `sre eval` (no cooldown, nothing counted
+  on the student's side, the exo-eval marks); the states apply through the privileged path too.
+- **Instructor mode** on the Open page: the instructor's own project started with
+  `sre start --instructor-mode` (the instructor texts kept in `info.json`, every state listed,
+  the states logged): the *Instructor mode* button of the project page then shows the
+  `instructor()` texts of the Informations and Questions tabs, every state and the Log tab, as in
+  the Qt GUI. A student's project holds no instructor text (the CLI strips them), so the button
+  does not appear there.
 
 ### The Display tab
 
@@ -370,8 +439,11 @@ the commands.
 - Rate limits per user (evaluations, starts) and per client address (logins); the size of the
   answers is capped.
 - A project's owner is the third field of its running lab name; the portal and the agent both
-  check it. Instructors are the members of `instructor_groups` (of `[auth.ldap]`, or of the
-  groups header in proxy mode); the rest of the instructor role is phase 5.
+  check it. An instructor (see *Instructors* above) reaches every project, but the agent never
+  runs a command as the student for them: a non-owner's `eval`, `state`, `connect` and `export`
+  are privileged `sre` calls under the instructor's own login, the answers are read-only, and a
+  private terminal is listed to instructors only. The operations log of an instructor-mode
+  project goes to the subscribers allowed to read it only.
 
 **The virtual desktops.** Each `Xvnc` listens on TCP port 6000+N on every interface of the pool
 host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
@@ -387,10 +459,14 @@ the browser reaches a desktop through the owner check of the portal and of the a
   empty, at the next use of the Display tab; the applications shown must be launched again.
 - The `ports` of the bridged machines are bound on the pool host and shown with its name.
 - A host in exam mode (`exam.json`) is excluded from the pool: the exam mode of the web site is a
-  later phase, as are the instructor role (instructor-mode projects, the instructor view, every
-  project of the pool), the reconnection of a terminal after a network cut, and the save of the
-  terminal sessions across a restart of the agent.
-- A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.
+  later phase, as is the save of the terminal sessions across a restart of the agent.
+- A terminal session ends when its last viewer leaves: a page reload loses it unless another
+  viewer (an instructor who joined) keeps it alive, in which case Reconnect joins it again.
+  A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.
+- The replay a joining viewer gets may start inside an escape sequence; the next prompt or
+  redraw of the application settles the display.
+- The `[limits] eval_interval` of the portal (10 s between two evaluations of a login) also
+  applies to an instructor evaluating several students' projects in a row.
 
 ## Development
 

@@ -321,6 +321,23 @@ table.grid.evaluation { min-width: 60%; }
 table.grid.evaluation td.num { width: 90px; text-align: center; }
 table.grid.states td:first-child { width: 100%; }
 
+/* the Watch page of the instructors */
+table.grid.watch { width: calc(100% - 16px); }
+table.grid.watch th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+table.grid.watch th.sortable[aria-sort="ascending"]::after { content: " \25B2"; font-size: 10px; }
+table.grid.watch th.sortable[aria-sort="descending"]::after { content: " \25BC"; font-size: 10px; }
+table.grid.watch td.num { text-align: right; white-space: nowrap; }
+table.grid.watch td.actions { white-space: nowrap; }
+table.grid.watch td.actions .button, table.grid.watch td.actions button { margin-right: 4px; }
+table.grid tr.row-errors td { background: var(--fail-bg); }
+table.grid tr.row-stale td { background: var(--debug-bg); }
+.watch-filter { margin-left: 12px; width: 240px; }
+.watch-legend { margin: 0 8px 4px; font-size: 12px; }
+.watch-legend .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--border); vertical-align: middle; margin-left: 12px; }
+.watch-legend .swatch.row-stale { background: var(--debug-bg); }
+.watch-legend .swatch.row-errors { background: var(--fail-bg); }
+.instructor-option { display: block; margin: 8px; }
+
 /* schema */
 .schema-view {
   flex: 1;
@@ -386,6 +403,7 @@ table.grid.states td:first-child { width: 100%; }
 
 /* evaluation */
 .evaluation-bar { display: flex; align-items: center; gap: 10px; padding: 8px; flex: none; }
+.evaluation-caption { margin: 0 8px; font-size: 12px; }
 
 /* terminals */
 .terminals { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -402,6 +420,11 @@ table.grid.states td:first-child { width: 100%; }
 .terminal-tabs [role="tab"] .close { margin-left: 8px; color: #777; font-weight: normal; }
 .terminal-tabs [role="tab"] .close:hover { color: var(--danger); }
 .ctrl-bar select.new-terminal { margin-left: 6px; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; background: #ececec; }
+.terminal-tabs [role="tab"] .viewers { margin-left: 6px; font-size: 11px; color: var(--muted); font-weight: normal; }
+.live-sessions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 3px 8px; font-size: 12px; background: var(--bar-bg); border-bottom: 1px solid var(--border-light); }
+.live-sessions:empty { display: none; }
+.live-sessions button { font-size: 12px; padding: 1px 8px; background: var(--ok-bg); }
+.live-sessions button.private { background: var(--debug-bg); }
 option.hidden-device { color: var(--hidden-color); }
 option.closed-device { color: var(--closed-color); }
 .terminal-host { flex: 1; min-height: 0; position: relative; }
