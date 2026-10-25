@@ -1,7 +1,9 @@
 src/sre_web.py usr/lib/sysreseval/
+src/sre_web_tool.py usr/lib/sysreseval/
 src/sre_agent.py usr/lib/sysreseval/
 src/sreweb usr/lib/sysreseval/
 web/templates usr/share/sysreseval/web/
 web/static usr/share/sysreseval/web/
 debian/build/sreweb.mo usr/share/locale/fr/LC_MESSAGES/
 debian/launchers/sre-web usr/sbin/
+debian/launchers/sre-web-tool usr/sbin/

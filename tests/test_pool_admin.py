@@ -1,5 +1,5 @@
 """The administration of the pool: the admin API of the portal (token, loopback, membership kept
-in the state file across restarts) and the ``sre-web pool`` command line on top of it."""
+in the state file across restarts) and the ``sre-web-tool`` command line on top of it."""
 import asyncio
 import json
 import os
@@ -133,7 +133,7 @@ class TestAdminApi:
 
 
 class TestCli:
-    def test_sre_web_pool(self, tmp_path):
+    def test_sre_web_tool(self, tmp_path):
         over = {'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
 
         async def go():
@@ -142,7 +142,7 @@ class TestCli:
                 env = {**os.environ, 'PYTHONPATH': str(SRC)}
 
                 def cli(*args, token=ADMIN):
-                    return subprocess.run([sys.executable, '-m', 'sreweb.portal', 'pool', '--url', url,
+                    return subprocess.run([sys.executable, '-m', 'sreweb.tool', '--url', url,
                                            '--token', token, *args], capture_output=True, text=True, env=env,
                                           timeout=120)
                 loop = asyncio.get_running_loop()
@@ -171,9 +171,14 @@ class TestCli:
                 r = await loop.run_in_executor(None, lambda: cli('list', token='w' * 32))
                 assert r.returncode == 1 and 'bad administration token (401)' in r.stderr
                 r = await loop.run_in_executor(None, lambda: subprocess.run(
-                    [sys.executable, '-m', 'sreweb.portal', 'pool', '--url', 'http://127.0.0.1:9', '--token', ADMIN,
+                    [sys.executable, '-m', 'sreweb.tool', '--url', 'http://127.0.0.1:9', '--token', ADMIN,
                      'list'], capture_output=True, text=True, env=env, timeout=120))
                 assert r.returncode == 1 and 'cannot reach the portal' in r.stderr
+                # the former `sre-web pool ...` points at the tool
+                r = await loop.run_in_executor(None, lambda: subprocess.run(
+                    [sys.executable, '-m', 'sreweb.portal', 'pool', 'list'], capture_output=True, text=True,
+                    env=env, timeout=120))
+                assert r.returncode == 2 and 'sre-web-tool' in r.stderr
         run(go())
 
     def test_table_cells(self):

@@ -1,11 +1,11 @@
-"""``sre-web pool ...``: manage the pool of the running portal from the command line, through
-its administration API (``[admin] token`` of web.toml; stdlib ``urllib`` only).
+"""``sre-web-tool ...``: manage the pool of the running portal from the command line,
+through its administration API (``[admin] token`` of web.toml; stdlib ``urllib`` only).
 
-  sre-web pool list                 the hosts, their state, projects, load, terminals...
-  sre-web pool status               the spare capacity, the floor, the active hours, who is waking
-  sre-web pool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power]
-  sre-web pool remove NAME [--force]
-  sre-web pool enable | disable | wake | poweroff | drain NAME
+  sre-web-tool list                 the hosts, their state, projects, load, terminals...
+  sre-web-tool status               the spare capacity, the floor, the active hours, who is waking
+  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power]
+  sre-web-tool remove NAME [--force]
+  sre-web-tool enable | disable | wake | poweroff | drain NAME
 """
 import argparse
 import json
@@ -16,6 +16,7 @@ import urllib.request
 
 from ..config import load_web_config, ConfigError
 
+PROG = 'sre-web-tool'
 ERROR_WIDTH = 60
 COLUMNS = [('name', 'NAME'), ('state', 'STATE'), ('projects', 'PROJECTS'), ('load1', 'LOAD'),
            ('terminals', 'TERMINALS'), ('occupied_by', 'OCCUPIED'), ('uptime', 'UPTIME'), ('source', 'SOURCE'),
@@ -45,9 +46,9 @@ class PoolClient:
                 message = json.loads(text).get('error', text)
             except ValueError:
                 message = text
-            raise SystemExit(f"sre-web pool: {message} ({e.code})")
+            raise SystemExit(f"{PROG}: {message} ({e.code})")
         except (urllib.error.URLError, OSError) as e:
-            raise SystemExit(f"sre-web pool: cannot reach the portal at {self.url}: {e.reason if hasattr(e, 'reason') else e}")
+            raise SystemExit(f"{PROG}: cannot reach the portal at {self.url}: {e.reason if hasattr(e, 'reason') else e}")
         return json.loads(text) if text else None
 
 
@@ -99,7 +100,7 @@ def _portal_url(cfg) -> str:
 
 
 def main(argv, default_config: str) -> int:
-    parser = argparse.ArgumentParser(prog='sre-web pool', description="manage the pool of the running portal")
+    parser = argparse.ArgumentParser(prog=PROG, description="manage the pool of the running portal")
     parser.add_argument('--config', default=default_config, help="web.toml (the portal address and the admin token)")
     parser.add_argument('--url', default=None, help="the portal (default: from the configuration)")
     parser.add_argument('--token', default=None, help="the admin token (default: [admin] token of the configuration)")
@@ -130,13 +131,13 @@ def main(argv, default_config: str) -> int:
         try:
             cfg = load_web_config(args.config)
         except ConfigError as e:
-            print(f"sre-web pool: {e}", file=sys.stderr)
+            print(f"{PROG}: {e}", file=sys.stderr)
             return 1
         if url is None:
             url, cafile = _portal_url(cfg), cfg.tls_cert
         token = token or cfg.admin.token
     if not token:
-        print("sre-web pool: no administration token ([admin] token in web.toml, or --token)", file=sys.stderr)
+        print(f"{PROG}: no administration token ([admin] token in web.toml, or --token)", file=sys.stderr)
         return 1
     client = PoolClient(url, token, cafile)
 

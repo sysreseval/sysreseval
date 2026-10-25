@@ -154,7 +154,7 @@ class Portal:
     @web.middleware
     async def csrf_middleware(self, request, handler):
         if request.path.startswith('/api/pool') and request.headers.get('Authorization', '').lower().startswith('bearer '):
-            return await handler(request)   # sre-web pool: the admin token, checked by the handler
+            return await handler(request)   # sre-web-tool: the admin token, checked by the handler
         if request.path.startswith('/api/'):
             upgrade = request.headers.get('Upgrade', '').lower() == 'websocket'
             if request.method not in ('GET', 'HEAD', 'OPTIONS') or upgrade:

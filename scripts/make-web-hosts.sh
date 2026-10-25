@@ -23,7 +23,7 @@
 #   ROOMS           the rooms whose machines join the pool ("a h"); empty: every room, i.e. every
 #                   qualified machine (the only value when REGEXP has no group)
 #   DISABLED_ROOMS  the rooms whose machines start with enabled = false (polled, no project placed
-#                   there until `sre-web pool enable <name>`); empty: none
+#                   there until `sre-web-tool enable <name>`); empty: none
 # The optional ones, with the values of the documentation when unset:
 #   AGENT_PORT        8451               the port of the agents (url; the shared agent.toml listens on
 #                                        0.0.0.0:<it>)

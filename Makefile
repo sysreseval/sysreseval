@@ -203,7 +203,7 @@ translations:
 wrappers:
 	@grep -qP '^debug_mode\s*=\s*True' ${ROOT_DIR}/src/SRE/params.py \
 		&& { echo "ERROR: debug_mode is True in params.py — refusing to build"; exit 1; } || true
-	chmod 755 ${ROOT_DIR}/sbin/sre ${ROOT_DIR}/bin/sysreseval ${ROOT_DIR}/sbin/sre-agent ${ROOT_DIR}/sbin/sre-web
+	chmod 755 ${ROOT_DIR}/sbin/sre ${ROOT_DIR}/bin/sysreseval ${ROOT_DIR}/sbin/sre-agent ${ROOT_DIR}/sbin/sre-web ${ROOT_DIR}/sbin/sre-web-tool
 
 sre-wrapper:
 	gcc -O2 -Wall -o ${ROOT_DIR}/bin/sre-wrapper ${ROOT_DIR}/src/sre-wrapper/sre-wrapper.c

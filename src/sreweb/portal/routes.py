@@ -285,7 +285,7 @@ class Routes:
         identity = self._require_identity(request)
         return web.json_response(await self.pool.labs(identity))
 
-    # -- the pool (instructors, and sre-web pool with the admin token) --------------------------
+    # -- the pool (instructors, and sre-web-tool with the admin token) --------------------------
 
     def _is_admin(self, request) -> bool:
         """The administration token (``[admin] token`` of web.toml), from the loopback unless

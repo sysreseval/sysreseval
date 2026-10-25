@@ -31,6 +31,8 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   periodic evaluations of a lab (`eval_interval_without_exam_mode`), the evaluation before a
   project is closed (`eval_before_exit`), and an idle reaper closing the projects nobody touched
   for the configured time.
+- **`sre-web-tool`** is the command line next to the portal: `sre-web-tool …` lists and
+  changes the pool of the running portal through its administration API (*The pool* below).
 - The pool hosts share the lab tree as today (NFS, rsync or the Debian package) and, if the
   instructor wants `sre watch` / `sre sheet` / `sre outline` across the pool, an `archive_dirs`
   entry on a shared directory. The `hostname` of the archives is the pool host. The Watch page
@@ -141,7 +143,7 @@ merges other files into this one, as for `web.toml` below.
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, the role cached per login for `ldap_roles_ttl` (`10m`); `logout_url`: where Logout sends the browser (none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
-| `[admin]` | | `token`: the token of `sre-web pool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
+| `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
@@ -211,7 +213,7 @@ The rules that keep this safe:
   cookie, the `Origin` check of the WebSockets together with `ProxyPreserveHost On`).
 - HTTP Basic authentication cannot be logged out of: the Logout button is hidden unless
   `logout_url` names a logout handler (`mod_auth_form`, sketched at the end of the example).
-- `sre-web pool …` talks to the loopback port directly, never through the proxy (the Basic
+- `sre-web-tool …` talks to the loopback port directly, never through the proxy (the Basic
   authentication would refuse its bearer token).
 
 ### Securing the pool (mutual TLS)
@@ -251,7 +253,7 @@ address for Wake-on-LAN, the IPv4 address the portal reaches its agent at, the n
 agent when its lower-cased name matches `REGEXP`; the first group of the expression, when there
 is one, is its room, so that `ROOMS` selects the rooms joining the pool (empty: every qualified
 machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (polled, no project
-placed there until `sre-web pool enable`). These five variables are required and have no
+placed there until `sre-web-tool enable`). These five variables are required and have no
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
 `allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
@@ -279,7 +281,7 @@ change at any time; a kept certificate that no longer names the address of its h
 
 The pool hosts are typically classroom workstations: off when nobody needs them (a nightly cron
 shuts them down), woken by Wake-on-LAN, and sometimes used at the keyboard by a student. The
-portal gives each host a **state** from the status of its agent, and `sre-web pool list` shows
+portal gives each host a **state** from the status of its agent, and `sre-web-tool list` shows
 it:
 
 | State | Meaning | New projects |
@@ -289,8 +291,8 @@ it:
 | `up` | the agent answers, the host is free | yes |
 | `occupied` | the agent answers, the host is used locally (`occupied_check`) | no; the web projects already running there go on |
 | `exam` | the agent answers, `exam.json` is on the host | no |
-| `draining` | the portal asked the host to power off, or `sre-web pool drain` | no; powered off once it is empty |
-| `disabled` | `sre-web pool disable`, or `enabled = false` | no |
+| `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty |
+| `disabled` | `sre-web-tool disable`, or `enabled = false` | no |
 
 **Waking.** A host with a `mac` gets a magic packet (UDP port 9 to `wol_broadcast`: the portal
 must be on the hosts' network, or the routers must forward the directed broadcast); a host with a
@@ -311,18 +313,19 @@ there and never powers it off. The web projects already running there continue.
 then `sre stop`), concurrently, within `TimeoutStopSec`; the browsers see "project closed".
 With `power = true` on the host and `allow_power_off = true` in its `agent.toml`, the portal
 powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron does it), above
-`min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web pool poweroff`.
+`min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web-tool poweroff`.
 
-**By hand.** `sre-web pool …` talks to the running portal through its administration API
-(`[admin] token`, loopback only by default; `--config`, `--url`, `--token` override the
-configuration):
+**By hand.** `sre-web-tool …` (`sbin/sre-web-tool` of a checkout, `/usr/sbin/sre-web-tool`
+of the `sysreseval-web` package; `python3 -m sreweb.tool` from the sources) talks to the running
+portal through its administration API (`[admin] token`, loopback only by default; `--config`,
+`--url`, `--token` override the configuration):
 
 ```
-sre-web pool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
-sre-web pool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
-sre-web pool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power]
-sre-web pool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
-sre-web pool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
+sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power]
+sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
+sre-web-tool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
 ```
 
 The additions, removals and enable / disable flags are kept in `[admin] state_file` and merged

@@ -1,2 +1,4 @@
-# no manual page yet: `sre-web --help` and the documentation of sysreseval-doc describe the command
+# no manual page yet: `sre-web --help`, `sre-web-tool --help` and the documentation of sysreseval-doc
+# describe the commands
 sysreseval-web: no-manual-page [usr/sbin/sre-web]
+sysreseval-web: no-manual-page [usr/sbin/sre-web-tool]

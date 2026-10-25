@@ -1,55 +1,25 @@
-"""``python3 -m sreweb.portal [--config FILE] [--listen HOST:PORT]``: run the web site."""
+"""``python3 -m sreweb.portal [--config FILE] [--listen HOST:PORT]``: run the web site.  The pool
+of the running portal is managed with ``sre-web-tool ...`` (``sreweb.tool``)."""
 import argparse
 import logging
-import os
 import ssl
 import sys
-from pathlib import Path
 
 from aiohttp import web
 
 from .app import Portal
+from .defaults import default_web_dir, default_config_file, default_locale_dirs, default_state_file
 from ..config import load_web_config, parse_listen, ConfigError, AUTH_PROXY
 
-FHS_WEB_DIR = '/usr/share/sysreseval/web'
-# The configuration file of a checkout (params.web_config_file: the portal imports no SRE module)
-# and of the Debian package.
-CONFIG = '/etc/sreweb/web.toml'
-FHS_CONFIG = '/etc/sysreseval/web.toml'
-FHS_LOCALE = '/usr/share/locale'
-
-
-def _root() -> Path:
-    return Path(__file__).resolve().parents[3]   # <root>/src/sreweb/portal/__main__.py
-
-
-def default_web_dir() -> str:
-    return FHS_WEB_DIR if os.path.isdir(FHS_WEB_DIR) and not (_root() / 'web').is_dir() else str(_root() / 'web')
-
-
-def default_config_file() -> str:
-    return CONFIG if os.path.exists(CONFIG) or not os.path.exists(FHS_CONFIG) else FHS_CONFIG
-
-
-def default_locale_dirs() -> list:
-    return [str(_root() / 'locale'), FHS_LOCALE]
-
-
-FHS_STATE_DIR = '/var/lib/sre-web'
-
-
-def default_state_file(config_file: str) -> str:
-    if os.path.isdir(FHS_STATE_DIR):
-        return os.path.join(FHS_STATE_DIR, 'pool.json')
-    return os.path.join(os.path.dirname(os.path.abspath(config_file)), 'pool.json')
+MOVED_TO_TOOL = ('pool',)     # the former `sre-web pool ...`
 
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    if argv[:1] == ['pool']:
-        from .poolctl import main as pool_main
-        return pool_main(argv[1:], default_config_file())
-    parser = argparse.ArgumentParser(prog='sre-web', description="SRE web site (sre-web pool ...: manage the pool)")
+    if argv[:1] and argv[0] in MOVED_TO_TOOL:
+        print(f"sre-web: `sre-web {argv[0]} ...` is now `sre-web-tool ...`", file=sys.stderr)
+        return 2
+    parser = argparse.ArgumentParser(prog='sre-web', description="SRE web site (the pool: sre-web-tool ...)")
     parser.add_argument('--config', default=default_config_file(), help="configuration file (TOML)")
     parser.add_argument('--listen', default=None, help="host:port to listen on (overrides the file)")
     parser.add_argument('--web-dir', default=default_web_dir(), help="templates and static files")

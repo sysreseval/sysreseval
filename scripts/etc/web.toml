@@ -116,7 +116,7 @@ wol_broadcast = "255.255.255.255"
 idle_host_timeout = 0
 
 [admin]
-# The token of `sre-web pool ...` (32+ random characters; empty: the command is refused), accepted
+# The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted
 # from the loopback only unless listen_any = true.
 token = "change-me-to-another-long-random-string"
 # The hosts added, removed, enabled and disabled by hand, merged with [[hosts]] at startup
@@ -142,8 +142,8 @@ max_answer_bytes = 1048576
 # One entry per pool host: the URL of its agent, the token of its agent.toml, and how many
 # projects it takes (a classroom workstation holds about thirty).  A host with a mac (Wake-on-LAN)
 # or a wake_command ({name} and {mac} substituted: a relay, IPMI, a VM start) is woken on demand;
-# power = true lets the portal power it off (see idle_host_timeout and `sre-web pool poweroff`).
-# `sre-web pool add / remove / enable / disable` change the pool without a restart.
+# power = true lets the portal power it off (see idle_host_timeout and `sre-web-tool poweroff`).
+# `sre-web-tool add / remove / enable / disable` change the pool without a restart.
 [[hosts]]
 name = "a01"
 url = "https://10.0.0.11:8451"       # http:// without TLS on the agent

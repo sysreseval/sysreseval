@@ -171,7 +171,7 @@ class HostConfig:
     mac: str = ''
     wake_command: str = ''
     power: bool = False
-    enabled: bool = True              # placement allowed (``sre-web pool disable`` flips it)
+    enabled: bool = True              # placement allowed (``sre-web-tool disable`` flips it)
 
     @property
     def can_wake(self) -> bool:
@@ -264,7 +264,7 @@ class LimitsConfig:
 
 @dataclass
 class AdminConfig:
-    """The administration API of the portal (``sre-web pool ...``): a bearer token, loopback
+    """The administration API of the portal (``sre-web-tool ...``): a bearer token, loopback
     clients only unless listen_any, and the file where the hosts added / removed / disabled by
     hand are kept (merged with the [[hosts]] of the configuration at startup)."""
     token: str = ''                   # '' : the administration API is disabled
@@ -333,7 +333,7 @@ class WebConfig:
 
 
 def host_config_from_dict(h: dict, where: str) -> HostConfig:
-    """A [[hosts]] entry (of the configuration, or added with ``sre-web pool add``)."""
+    """A [[hosts]] entry (of the configuration, or added with ``sre-web-tool add``)."""
     if not isinstance(h, dict):
         raise ConfigError(f"{where} must be a table")
     converted = {}

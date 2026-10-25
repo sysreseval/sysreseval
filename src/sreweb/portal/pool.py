@@ -1,6 +1,6 @@
 """The pool of hosts: the status of their agents, the state of each host, the placement of a
 new project, the fan-out of the project lists, and the membership changed by hand
-(``sre-web pool add / remove / enable / disable``, kept in a state file merged with the
+(``sre-web-tool add / remove / enable / disable``, kept in a state file merged with the
 ``[[hosts]]`` of the configuration)."""
 import asyncio
 import json
@@ -115,7 +115,7 @@ class Pool:
         return host
 
     def add_host(self, host: HostConfig):
-        """``sre-web pool add``: a host added by hand (an added host of the same name is
+        """``sre-web-tool add``: a host added by hand (an added host of the same name is
         replaced; a config host of that name cannot be redefined)."""
         if host.name in self._config_hosts:
             raise PoolError(409, f"{host.name} is in the configuration file: edit it there"
@@ -125,7 +125,7 @@ class Pool:
         log.info("host %s added to the pool (%s)", host.name, host.url)
 
     def remove_host(self, name: str, force: bool = False):
-        """``sre-web pool remove``: refused while the host has projects, unless forced (they
+        """``sre-web-tool remove``: refused while the host has projects, unless forced (they
         stay on the host, out of the portal's reach: the agent's idle reaper closes them)."""
         self.host(name)
         projects = self.status[name].projects if self.status[name].reachable else 0
