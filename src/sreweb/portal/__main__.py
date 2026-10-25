@@ -12,6 +12,9 @@ from .app import Portal
 from ..config import load_web_config, parse_listen, ConfigError, AUTH_PROXY
 
 FHS_WEB_DIR = '/usr/share/sysreseval/web'
+# The configuration file of a checkout (params.web_config_file: the portal imports no SRE module)
+# and of the Debian package.
+CONFIG = '/etc/sreweb/web.toml'
 FHS_CONFIG = '/etc/sysreseval/web.toml'
 FHS_LOCALE = '/usr/share/locale'
 
@@ -25,8 +28,7 @@ def default_web_dir() -> str:
 
 
 def default_config_file() -> str:
-    checkout = _root() / 'etc' / 'web.toml'
-    return str(checkout) if checkout.exists() or not os.path.exists(FHS_CONFIG) else FHS_CONFIG
+    return CONFIG if os.path.exists(CONFIG) or not os.path.exists(FHS_CONFIG) else FHS_CONFIG
 
 
 def default_locale_dirs() -> list:

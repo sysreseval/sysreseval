@@ -1,9 +1,9 @@
 # The agent of a pool host of the SRE web site: runs sre on behalf of the web users (as root, like
 # sudo does for the students of the Qt GUI), owns their terminals and schedules their evaluations.
-# Configuration: /opt/sre/etc/agent.toml.  Disabled by default:
+# Configuration: /etc/sreweb/agent.toml.  Disabled by default:
 # systemctl enable --now sre-agent.service
 # A host that must not run the agent although the unit is enabled (one image for a whole
-# classroom): no configuration file, or the marker file /etc/sysreseval/DO_NOT_START_AGENT.
+# classroom): no configuration file, or the marker file /etc/sreweb/DO_NOT_START_AGENT.
 [Unit]
 Description=SysResEval web agent of this pool host
 Documentation=https://github.com/sysreseval/sysreseval
@@ -13,8 +13,8 @@ After=network-online.target docker.service
 # inactive, nothing fails, nothing is restarted.  Checked at boot and on `systemctl start` /
 # `restart`, not on the automatic restarts below (a marker written while the agent loops needs
 # one `systemctl restart`).
-ConditionPathExists=/opt/sre/etc/agent.toml
-ConditionPathExists=!/etc/sysreseval/DO_NOT_START_AGENT
+ConditionPathExists=/etc/sreweb/agent.toml
+ConditionPathExists=!/etc/sreweb/DO_NOT_START_AGENT
 # Five failed starts within five minutes (about 25 s with RestartSec=5) and the unit stays failed
 # until the next boot or `systemctl reset-failed sre-agent`: no endless loop whatever the error.
 StartLimitIntervalSec=300

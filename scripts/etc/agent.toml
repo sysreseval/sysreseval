@@ -1,7 +1,7 @@
-# /opt/sre/etc/agent.toml (checkout) or /etc/sysreseval/agent.toml (Debian package): the agent of
+# /etc/sreweb/agent.toml (checkout) or /etc/sysreseval/agent.toml (Debian package): the agent of
 # a pool host of the SRE web site (sre-agent).  Owned by root, mode 0600: it holds the token.
 # The systemd unit starts the agent only when this file exists and the marker file
-# /etc/sysreseval/DO_NOT_START_AGENT does not; a configuration error (exit status 78) is not retried.
+# /etc/sreweb/DO_NOT_START_AGENT does not; a configuration error (exit status 78) is not retried.
 #
 # Other files merged into this one before it is checked, each path relative to this directory: a
 # directory (its *.toml files, by name), a glob (possibly matching nothing) or a file (it must
@@ -12,9 +12,9 @@
 # import = ["agent.d"]
 #   # agent.d/host.toml
 #   token = "change-me-to-a-long-random-string"
-#   tls_cert = "/etc/sysreseval/tls/a01.crt"
-#   tls_key = "/etc/sysreseval/tls/a01.key"
-#   tls_ca = "/etc/sysreseval/tls/ca.crt"
+#   tls_cert = "/etc/sreweb/tls/a01.crt"
+#   tls_key = "/etc/sreweb/tls/a01.key"
+#   tls_ca = "/etc/sreweb/tls/ca.crt"
 #
 # The address the portal reaches.  0.0.0.0 is every interface of the host, the Docker bridge the
 # containers of the students reach (172.17.0.1) included: set allowed_clients and tls_ca below so
@@ -38,9 +38,9 @@ lab_list_cache_ttl = 60
 # TLS between the portal and this agent: the certificate of this host, and with tls_ca the CA
 # whose client certificate the portal must present (mutual TLS; scripts/web-tls.sh makes the CA
 # and the certificates).  The files must be readable by root only.
-# tls_cert = "/etc/sysreseval/tls/a01.crt"
-# tls_key = "/etc/sysreseval/tls/a01.key"
-# tls_ca = "/etc/sysreseval/tls/ca.crt"
+# tls_cert = "/etc/sreweb/tls/a01.crt"
+# tls_key = "/etc/sreweb/tls/a01.key"
+# tls_ca = "/etc/sreweb/tls/ca.crt"
 # The addresses or networks the agent answers (empty: any); the portal's.
 # allowed_clients = ["10.0.0.1"]
 # When the workstation is "occupied" (reported to the portal, which then places no project here

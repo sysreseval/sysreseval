@@ -521,17 +521,19 @@ if [[ -f $ETC_DIR/sre-agent.service ]] && command -v systemctl >/dev/null 2>&1; 
         install_templated "$ETC_DIR/sre-agent.service" /etc/systemd/system/sre-agent.service 0644
         install_templated "$ETC_DIR/sre-web.service" /etc/systemd/system/sre-web.service 0644
         systemctl daemon-reload
-        mkdir -p "$main_sre_dir/etc"
+        # params.agent_config_file / web_config_file of the checkout layout, read by the units above
+        web_etc_dir=/etc/sreweb
+        mkdir -p "$web_etc_dir"
         for f in agent.toml web.toml; do
-            if [[ ! -e $main_sre_dir/etc/$f ]]; then
-                install -m 0600 -o root -g root "$ETC_DIR/$f" "$main_sre_dir/etc/$f"
-                echo "Installed the example $main_sre_dir/etc/$f: edit it (token, secret, hosts)."
+            if [[ ! -e $web_etc_dir/$f ]]; then
+                install -m 0600 -o root -g root "$ETC_DIR/$f" "$web_etc_dir/$f"
+                echo "Installed the example $web_etc_dir/$f: edit it (token, secret, hosts)."
             fi
         done
         if ! getent passwd sre-web >/dev/null; then
             if confirm "Create the sre-web system user (the portal runs as it)?" "Y"; then
                 adduser --system --group --home /nonexistent --no-create-home --shell /usr/sbin/nologin sre-web
-                chown root:sre-web "$main_sre_dir/etc/web.toml" && chmod 0640 "$main_sre_dir/etc/web.toml"
+                chown root:sre-web "$web_etc_dir/web.toml" && chmod 0640 "$web_etc_dir/web.toml"
             fi
         fi
         if ! getent passwd sreweb-x11 >/dev/null; then
@@ -540,8 +542,8 @@ if [[ -f $ETC_DIR/sre-agent.service ]] && command -v systemctl >/dev/null 2>&1; 
             fi
         fi
         echo "Installed sre-agent.service and sre-web.service (not enabled)."
-        echo "  → pool host: edit $main_sre_dir/etc/agent.toml, then: systemctl enable --now sre-agent.service"
-        echo "  → portal host: edit $main_sre_dir/etc/web.toml, then: systemctl enable --now sre-web.service"
+        echo "  → pool host: edit $web_etc_dir/agent.toml, then: systemctl enable --now sre-agent.service"
+        echo "  → portal host: edit $web_etc_dir/web.toml, then: systemctl enable --now sre-web.service"
     fi
 fi
 

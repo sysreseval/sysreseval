@@ -57,12 +57,13 @@ or not, follows the student path.
 `make xterm` and `make novnc` (run by `make install`) download the terminal library and the
 VNC viewer of the browser into `web/static/vendor/` (checksum-pinned, not committed). `scripts/install.sh` offers to install the
 systemd units `sre-agent.service` and `sre-web.service` (disabled) and the example configuration
-files `etc/agent.toml` and `etc/web.toml` under the installation directory.
+files `agent.toml` and `web.toml` in `/etc/sreweb/` (`params.agent_config_file` /
+`params.web_config_file`; `--config` names another file).
 
-On every pool host: write `/opt/sre/etc/agent.toml` (root, mode 0600) with a long random token
+On every pool host: write `/etc/sreweb/agent.toml` (root, mode 0600) with a long random token
 (the example file listens on every interface, `0.0.0.0:8451`: `allowed_clients` and the mutual
 TLS below keep the port to the portal), then `systemctl enable --now sre-agent`.
-The unit starts the agent only when that file exists and `/etc/sysreseval/DO_NOT_START_AGENT`
+The unit starts the agent only when that file exists and `/etc/sreweb/DO_NOT_START_AGENT`
 does not (`ConditionPathExists=`: one image for a whole classroom may ship the unit enabled, the
 hosts without a configuration file, or with the marker, skip it without any failure; checked at
 boot and on `systemctl start` / `restart`), and it does not restart the agent after a
@@ -75,7 +76,7 @@ For a whole classroom, `scripts/make-web-hosts.sh` (see *A whole site at once* b
 the tokens, the certificates and the `[[hosts]]` entries from a list of machines.
 
 On the portal host: create the `sre-web` system user (`adduser --system --group --no-create-home
---shell /usr/sbin/nologin sre-web`), write `/opt/sre/etc/web.toml` (root:sre-web, mode 0640:
+--shell /usr/sbin/nologin sre-web`), write `/etc/sreweb/web.toml` (root:sre-web, mode 0640:
 it holds the cookie secret and the agent tokens; the files it imports likewise), then
 `systemctl enable --now sre-web`. Put a
 reverse proxy doing TLS in front (`scripts/etc/sre-web-nginx.conf` is an nginx example,
@@ -253,7 +254,7 @@ machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (po
 placed there until `sre-web pool enable`). These five variables are required and have no
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
 `allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
-`PORTAL_ADDRESS` (`allowed_clients` of the agents), `TLS_DIR_ON_HOSTS` (`/etc/sysreseval/tls`,
+`PORTAL_ADDRESS` (`allowed_clients` of the agents), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
 the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
 `OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
 portal already knows; refused when `OUT_DIR` holds another CA) are optional.

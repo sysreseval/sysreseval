@@ -32,7 +32,7 @@
 #                                        and allow_power_off = true in agent-<name>.toml
 #   DOMAIN            none               when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
 #   PORTAL_ADDRESS    none               when set, allowed_clients = ["<it>"] in agent-<name>.toml
-#   TLS_DIR_ON_HOSTS  /etc/sysreseval/tls  where the hosts and the portal keep the files (the paths
+#   TLS_DIR_ON_HOSTS  /etc/sreweb/tls      where the hosts and the portal keep the files (the paths
 #                                        written in the toml)
 #   CA_KEY, CA_CRT    none               both set: the private key and the certificate of an existing CA
 #                                        (an earlier OUT_DIR, the files already deployed), copied into
@@ -86,7 +86,7 @@ MAX_PROJECTS="${MAX_PROJECTS:-25}"
 POWER="${POWER:-false}"
 DOMAIN="${DOMAIN:-}"
 PORTAL_ADDRESS="${PORTAL_ADDRESS:-}"
-TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sysreseval/tls}"
+TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sreweb/tls}"
 CA_KEY="${CA_KEY:-}"
 CA_CRT="${CA_CRT:-}"
 

@@ -65,8 +65,8 @@ self_update_allowed = None   # None: True (checkout), False (fhs: the package is
 network_plugin_hint = None   # None: how to install the network plugin with the switch types, by layout
 kathara_hint = None          # None: how to get a Kathara with the switch modes, by layout
 web_dir = None               # None: main_sre_dir/web (checkout), /usr/share/sysreseval/web (fhs): templates and static files of sre-web
-web_config_file = None       # None: main_sre_dir/etc/web.toml (checkout), /etc/sysreseval/web.toml (fhs): configuration of sre-web
-agent_config_file = None     # None: main_sre_dir/etc/agent.toml (checkout), /etc/sysreseval/agent.toml (fhs): configuration of sre-agent
+web_config_file = None       # None: /etc/sreweb/web.toml (checkout), /etc/sysreseval/web.toml (fhs): configuration of sre-web
+agent_config_file = None     # None: /etc/sreweb/agent.toml (checkout), /etc/sysreseval/agent.toml (fhs): configuration of sre-agent
 # Site parameters file: a Python file executed into this module after the parameters above (any
 # of them may be set there) and before the derived ones.  It must be owned by root (or by the
 # user running the program) and not writable by the group or others.  None: /etc/sysreseval/params.py
@@ -273,9 +273,9 @@ if kathara_hint is None:
 if web_dir is None:
     web_dir = "/usr/share/sysreseval/web" if _fhs else main_sre_dir + "/web"
 if web_config_file is None:
-    web_config_file = "/etc/sysreseval/web.toml" if _fhs else main_sre_dir + "/etc/web.toml"
+    web_config_file = "/etc/sysreseval/web.toml" if _fhs else "/etc/sreweb/web.toml"
 if agent_config_file is None:
-    agent_config_file = "/etc/sysreseval/agent.toml" if _fhs else main_sre_dir + "/etc/agent.toml"
+    agent_config_file = "/etc/sysreseval/agent.toml" if _fhs else "/etc/sreweb/agent.toml"
 del _fhs, _root
 
 

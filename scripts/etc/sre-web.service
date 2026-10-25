@@ -1,5 +1,5 @@
 # The SRE web site: the pages, the sessions, the pool of hosts.  Runs as the unprivileged sre-web
-# user; needs neither Docker nor the labs.  Configuration: /opt/sre/etc/web.toml.
+# user; needs neither Docker nor the labs.  Configuration: /etc/sreweb/web.toml.
 # Disabled by default: systemctl enable --now sre-web.service
 [Unit]
 Description=SysResEval web site

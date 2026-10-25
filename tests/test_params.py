@@ -209,8 +209,8 @@ class TestCheckoutDefaults:
         assert p.sre_uid == 1100 and p.sre_gid == 1100 and p.docker_gid == 988
         assert p.self_update_allowed is True and p.site_params_file is None
         assert 'make network-plugin' in p.network_plugin_hint and 'make venv' in p.kathara_hint
-        assert p.web_dir == root + '/web' and p.web_config_file == root + '/etc/web.toml'
-        assert p.agent_config_file == root + '/etc/agent.toml'
+        assert p.web_dir == root + '/web' and p.web_config_file == '/etc/sreweb/web.toml'
+        assert p.agent_config_file == '/etc/sreweb/agent.toml'
 
     def test_site_values_patched_in_place_win(self):
         """scripts/install.sh replaces the lines: a literal is never overridden by the derivation."""

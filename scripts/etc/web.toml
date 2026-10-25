@@ -1,4 +1,4 @@
-# /opt/sre/etc/web.toml (checkout) or /etc/sysreseval/web.toml (Debian package): the SRE web site
+# /etc/sreweb/web.toml (checkout) or /etc/sysreseval/web.toml (Debian package): the SRE web site
 # (sre-web).  Owned by root, group sre-web, mode 0640: it holds the secret and the tokens.
 #
 # Other files merged into this one before it is checked, each path relative to this directory: a
@@ -26,8 +26,8 @@ trusted_proxies = ["127.0.0.1", "::1"]
 # Languages offered on the login page, the first one is the default.
 languages = ["fr", "en"]
 # Own TLS instead of a proxy (optional).
-# tls_cert = "/etc/sysreseval/web.crt"
-# tls_key = "/etc/sysreseval/web.key"
+# tls_cert = "/etc/sreweb/web.crt"
+# tls_key = "/etc/sreweb/web.key"
 
 [auth]
 # "anonymous": every browser gets a pseudonym guest-xxxxxxxx (and may give a display name);
@@ -95,9 +95,9 @@ idle_timeout_authenticated = "24h"
 poll_interval = 2
 # Mutual TLS with the agents (scripts/web-tls.sh): the CA of the agents' certificates and the
 # client certificate of the portal, which the agents require with their tls_ca.
-# ca = "/etc/sysreseval/tls/ca.crt"
-# client_cert = "/etc/sysreseval/tls/portal.crt"
-# client_key = "/etc/sysreseval/tls/portal.key"
+# ca = "/etc/sreweb/tls/ca.crt"
+# client_cert = "/etc/sreweb/tls/portal.crt"
+# client_key = "/etc/sreweb/tls/portal.key"
 # The elastic pool (hosts with a mac or a wake_command below): a sleeping host is woken when the
 # free project slots of the hosts up drop below spare_projects, and min_hosts_up hosts are kept
 # awake during active_hours (local time of the portal; "" = always).  A woken host silent after
