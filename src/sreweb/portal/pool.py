@@ -321,6 +321,7 @@ class Pool:
             rows.append({
                 'name': h.name, 'url': h.url, 'max_projects': h.max_projects, 'state': self.state_of(h.name, now),
                 'source': rt.source, 'enabled': rt.enabled, 'can_wake': h.can_wake, 'power': h.power,
+                'instructors_only': h.instructors_only,
                 'drain': rt.drain, 'power_off_sent': rt.power_off_sent is not None,
                 'waking_for': round(now - rt.woken_at) if rt.woken_at is not None else None,
                 'wake_failures': rt.wake_failures,
@@ -331,26 +332,44 @@ class Pool:
 
     # -- placement ------------------------------------------------------------------------------
 
-    def pick(self) -> tuple:
-        """The host of a new project and its reservation: up (enabled, reachable, not occupied,
-        not in exam mode, not draining), below its maximum, the least loaded (projects /
-        max_projects, then load).  The caller releases the reservation when the start is over."""
-        candidates = []
+    def pick(self, identity: Identity | None = None, host: str | None = None) -> tuple:
+        """The host of a new project and its reservation.  Without *host*: the least loaded
+        (projects / max_projects, then load) of the hosts up (enabled, reachable, not occupied,
+        not in exam mode, not draining) below their maximum that *identity* may use: a host with
+        ``instructors_only`` takes an instructor's project only, and the caller is a student
+        without identity.  With *host* (an instructor naming one on the Open page): that host,
+        when the identity may use it (403 otherwise), it is up (503) and has room (503).  The
+        caller releases the reservation when the start is over."""
+        instructor = identity is not None and identity.is_instructor
         now = time.monotonic()
+        if host is not None:
+            chosen = self.host(host)
+            if chosen.instructors_only and not instructor:
+                raise PoolError(403, "instructors only")
+            if self.state_of(host, now) != STATE_UP:
+                raise PoolError(503, f"the host {host} is not available", retry_after=60)
+            if self.status[host].projects >= chosen.max_projects:
+                raise PoolError(503, f"the host {host} is full", retry_after=60)
+            return self._reserve(chosen)
+        candidates = []
         waking = False
-        for host in self.hosts.values():
-            state = self.state_of(host.name, now)
-            waking = waking or state == STATE_WAKING
-            st = self.status[host.name]
-            if state != STATE_UP or st.projects >= host.max_projects:
+        for h in self.hosts.values():
+            if h.instructors_only and not instructor:
                 continue
-            candidates.append((st.projects / host.max_projects, st.load1 if st.load1 is not None else 0.0, host.name, host))
+            state = self.state_of(h.name, now)
+            waking = waking or state == STATE_WAKING
+            st = self.status[h.name]
+            if state != STATE_UP or st.projects >= h.max_projects:
+                continue
+            candidates.append((st.projects / h.max_projects, st.load1 if st.load1 is not None else 0.0, h.name, h))
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
             raise PoolError(503, "no host available for a new project", retry_after=60)
         candidates.sort(key=lambda c: c[:3])
-        host = candidates[0][3]
+        return self._reserve(candidates[0][3])
+
+    def _reserve(self, host: HostConfig) -> tuple:
         self.status[host.name].projects += 1
         reservation = Reservation()
         self._reservations[host.name].append(reservation)
@@ -387,10 +406,12 @@ class Pool:
         return projects
 
     async def labs(self, identity: Identity) -> list:
-        """The union of the lab lists of the reachable hosts (one list wins when they differ)."""
+        """The union of the lab lists of the reachable hosts *identity* may use (one list wins
+        when they differ): a student is never placed on a host reserved for instructors, so its
+        labs are not offered."""
         seen: dict[str, dict] = {}
         for host in list(self.hosts.values()):
-            if not self.status[host.name].reachable:
+            if not self.status[host.name].reachable or (host.instructors_only and not identity.is_instructor):
                 continue
             try:
                 async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity),

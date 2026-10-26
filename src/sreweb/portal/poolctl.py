@@ -3,7 +3,7 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
 
   sre-web-tool list                 the hosts, their state, projects, load, terminals...
   sre-web-tool status               the spare capacity, the floor, the active hours, who is waking
-  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power]
+  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only]
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
 """
@@ -75,6 +75,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append(f"{row['wake_failures']} failed")
         if row.get('drain') and value != 'draining':
             extra.append('drain')
+        if row.get('instructors_only'):
+            extra.append('instructors')
         return value + (f" ({', '.join(extra)})" if extra else '')
     if key == 'error':
         text = '' if row.get('reachable') else (value or '')
@@ -117,6 +119,7 @@ def main(argv, default_config: str) -> int:
     add.add_argument('--wake-command', default='', help="command waking the host ({name}, {mac})")
     add.add_argument('--max-projects', type=int, default=25)
     add.add_argument('--power', action='store_true', help="the portal may power it off")
+    add.add_argument('--instructors-only', action='store_true', help="only the instructors' projects are placed there")
     remove = sub.add_parser('remove', help="remove a host", parents=[common])
     remove.add_argument('name')
     remove.add_argument('--force', action='store_true', help="even with projects (they stay on the host)")
@@ -156,7 +159,8 @@ def main(argv, default_config: str) -> int:
             print(f"idle host timeout: {status['idle_host_timeout'] or 'never (the nightly cron)'}")
     elif args.command == 'add':
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
-                'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power}
+                'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,
+                'instructors_only': args.instructors_only}
         row = client.call('POST', '/api/pool/hosts', body)
         print(json.dumps(row, indent=2) if args.json else table([row]))
     elif args.command == 'remove':

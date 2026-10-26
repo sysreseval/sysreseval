@@ -14,6 +14,7 @@ import aiohttp
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
 from sreweb.config import HostConfig, PoolConfig
+from sreweb.identity import Identity, ROLE_INSTRUCTOR
 from sreweb.portal.manager import (HostView, PoolManager, magic_packet, poweroff_plan, spare_capacity,
                                    wake_plan, BACKOFF_MIN)
 from sreweb.portal.pool import (Pool, HostStatus, PoolError, STATE_OFF, STATE_UP, STATE_WAKING,
@@ -23,10 +24,12 @@ TOKEN = 't' * 32
 
 
 def view(name, state, projects=0, max_projects=10, can_wake=True, enabled=True, power=False,
-         power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False):
+         power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False,
+         instructors_only=False):
     return HostView(name=name, state=state, projects=projects, max_projects=max_projects, can_wake=can_wake,
                     enabled=enabled, power=power, power_off_allowed=power_off_allowed, next_wake_at=next_wake_at,
-                    idle_for=idle_for, drain=drain, power_off_pending=power_off_pending)
+                    idle_for=idle_for, drain=drain, power_off_pending=power_off_pending,
+                    instructors_only=instructors_only)
 
 
 class TestWakePlan:
@@ -66,6 +69,20 @@ class TestWakePlan:
         hosts = [view('a', STATE_EXAM), view('b', STATE_DRAINING, projects=1), view('c', STATE_OFF)]
         assert wake_plan(hosts, cfg, 1000.0, True, 0.0) == []
 
+    def test_reserved_hosts(self):
+        """A host reserved for instructors is no spare capacity, no floor, and is never woken."""
+        cfg = PoolConfig(spare_projects=5, min_hosts_up=0)
+        hosts = [view('a', STATE_UP, projects=8), view('r', STATE_UP, instructors_only=True), view('b', STATE_OFF)]
+        assert spare_capacity(hosts) == 2                   # r's ten slots do not count
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['b']
+        hosts = [view('r', STATE_OFF, instructors_only=True), view('b', STATE_OFF)]
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['b']
+        assert wake_plan([view('r', STATE_OFF, instructors_only=True)], cfg, 1000.0, False, 0.0) == []
+        assert spare_capacity([view('r', STATE_WAKING, instructors_only=True)]) == 0
+        floor = PoolConfig(spare_projects=0, min_hosts_up=1)
+        hosts = [view('r', STATE_UP, instructors_only=True), view('b', STATE_OFF)]
+        assert wake_plan(hosts, floor, 1000.0, active=True, last_wake_at=0.0) == ['b']   # r is not the floor
+
 
 class TestPowerOffPlan:
     def test_drained_host_first(self):
@@ -90,6 +107,24 @@ class TestPowerOffPlan:
         assert poweroff_plan(hosts, cfg, active=True) == []             # not idle long enough
         hosts[0].idle_for, hosts[0].power = 700, False
         assert poweroff_plan(hosts, cfg, active=True) == []             # power = false in the configuration
+
+    def test_reserved_hosts(self):
+        """An idle reserved host is powered off whatever the floor and the spare; it never
+        counts as the floor keeping a shared host up."""
+        cfg = PoolConfig(idle_host_timeout=600, spare_projects=5, min_hosts_up=1)
+        a = view('a', STATE_UP, power=True, power_off_allowed=True, idle_for=700)
+        r = view('r', STATE_UP, power=True, power_off_allowed=True, idle_for=800, instructors_only=True)
+        assert poweroff_plan([a, r], cfg, active=True) == ['r']        # the most idle; a is the floor
+        r.idle_for = 100
+        assert poweroff_plan([a, r], cfg, active=True) == []           # r not idle enough, a is the floor
+        r.idle_for, a.projects = 800, 9
+        assert poweroff_plan([a, r], cfg, active=True) == ['r']        # a short shared spare does not hold r
+        a.projects, a.idle_for, r.idle_for = 0, 700, 100
+        assert poweroff_plan([a, r], cfg, active=False) == []          # r is no spare for the students: a stays
+        assert poweroff_plan([a, r], PoolConfig(idle_host_timeout=600, spare_projects=0), active=False) == ['a']
+        drained = view('r', STATE_DRAINING, projects=0, power=True, power_off_allowed=True, drain=True,
+                       instructors_only=True)
+        assert poweroff_plan([drained], cfg, active=True) == ['r']
 
 
 class TestMagicPacket:
@@ -178,6 +213,47 @@ class TestStates:
         rows = {r['name']: r for r in pool.summary(now=now + 50)}
         assert rows['b']['state'] == STATE_OCCUPIED and rows['b']['occupied_by'] == ['session:bob']
         assert rows['d']['drain'] is True and rows['e']['enabled'] is False and 'token' not in rows['a']
+
+    def test_pick_reserved_host(self):
+        """A host reserved for instructors: never a student's, an instructor's by the automatic
+        rule or by name; a shared host may be named too."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('r', 'http://r', TOKEN, 10, instructors_only=True)]
+        pool = Pool(hosts, session=None, wake_timeout=100.0)
+        pool.status['a'] = HostStatus(reachable=True, projects=5)
+        pool.status['r'] = HostStatus(reachable=True, projects=1)
+        student, prof = Identity(login='bob'), Identity(login='prof', role=ROLE_INSTRUCTOR)
+        assert pool.pick(student)[0].name == 'a' and pool.pick()[0].name == 'a'   # r is emptier, but reserved
+        assert pool.pick(prof)[0].name == 'r'                                     # the least loaded usable host
+        pool.status['r'].projects = 10
+        assert pool.pick(prof)[0].name == 'a'
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='nope')
+        assert e.value.status == 404
+        with pytest.raises(PoolError) as e:
+            pool.pick(student, host='r')
+        assert e.value.status == 403 and 'instructors only' in e.value.message
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='r')
+        assert e.value.status == 503 and 'full' in e.value.message and e.value.retry_after == 60
+        pool.status['r'] = HostStatus()
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='r')
+        assert e.value.status == 503 and 'not available' in e.value.message
+        pool.status['r'] = HostStatus(reachable=True, projects=2)
+        host, reservation = pool.pick(prof, host='r')
+        assert host.name == 'r' and pool.status['r'].projects == 3 and reservation in pool._reservations['r']
+        assert pool.pick(prof, host='a')[0].name == 'a'
+        # a waking reserved host never tells a student to retry
+        pool.status['a'] = HostStatus(reachable=True, projects=10)
+        pool.status['r'] = HostStatus()
+        pool.runtime['r'].woken_at = time.monotonic()
+        with pytest.raises(PoolError) as e:
+            pool.pick(student)
+        assert e.value.retry_after == 60 and 'no host' in e.value.message
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof)
+        assert e.value.retry_after == 30 and 'starting' in e.value.message
+        assert {row['name']: row['instructors_only'] for row in pool.summary()} == {'a': False, 'r': True}
 
 
 class TestManager:

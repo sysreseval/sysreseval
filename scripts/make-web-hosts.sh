@@ -34,6 +34,9 @@
 #   MAX_PROJECTS      25                 max_projects of every host
 #   POWER             false              true: power = true (the portal may power a host off) in [[hosts]]
 #                                        and allow_power_off = true in agent-<name>.toml
+#   INSTRUCTOR_ROOMS  none               the rooms whose hosts get instructors_only = true (only the
+#                                        instructors' projects are placed there, they choose them on their
+#                                        Open page); a room may be in DISABLED_ROOMS too
 #   DOMAIN            none               when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
 #   PORTAL_ADDRESS    none               when set, allowed_clients = ["<it>"] in agent-<name>.toml
 #   TLS_DIR_ON_HOSTS  /etc/sreweb/tls      where the hosts and the portal keep the files (the paths
@@ -59,8 +62,8 @@
 #   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (listen =
 #                                         "<ip>:AGENT_PORT", token, tls_*, allowed_clients, allow_power_off;
 #                                         the shared agent.toml must then have no listen line)
-# Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS may change at
-# any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
+# Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS
+# may change at any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
 # and tokens are made anew on every run unless --keep is given: the files present are then kept (a
 # kept certificate that no longer names the address of its host is reported) and only those of the
 # new hosts are made.
@@ -94,6 +97,7 @@ done
 AGENT_PORT="${AGENT_PORT:-8451}"
 MAX_PROJECTS="${MAX_PROJECTS:-25}"
 POWER="${POWER:-false}"
+INSTRUCTOR_ROOMS="${INSTRUCTOR_ROOMS:-}"
 DOMAIN="${DOMAIN:-}"
 PORTAL_ADDRESS="${PORTAL_ADDRESS:-}"
 TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sreweb/tls}"
@@ -115,10 +119,13 @@ if [ -n "$CA_KEY$CA_CRT" ]; then
         || die "CA_KEY $CA_KEY is not the private key of CA_CRT $CA_CRT"
 fi
 if [[ probe =~ $REGEXP ]]; then :; elif [ $? -eq 2 ]; then die "REGEXP '$REGEXP': bad regular expression"; fi
-ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS")
+ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS"); INSTRUCTOR_ROOMS=$(lower "$INSTRUCTOR_ROOMS")
 if [ -n "$ROOMS" ]; then
     for room in $DISABLED_ROOMS; do
         in_list "$room" "$ROOMS" || warn "disabled room '$room' is not in ROOMS ($ROOMS): its machines are left out"
+    done
+    for room in $INSTRUCTOR_ROOMS; do
+        in_list "$room" "$ROOMS" || warn "instructor room '$room' is not in ROOMS ($ROOMS): its machines are left out"
     done
 fi
 
@@ -180,7 +187,7 @@ hosts_toml="$out/hosts.toml"
 tmp="$hosts_toml.tmp"
 (umask 077; cat > "$tmp" <<EOH
 # [[hosts]] of the SRE web portal (scripts/etc/web.toml), made by scripts/make-web-hosts.sh on $(date '+%Y-%m-%d %H:%M')
-# from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}.
+# from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}${INSTRUCTOR_ROOMS:+, instructors only: $INSTRUCTOR_ROOMS}.
 # A file of web.d/ (web.toml: import = ["web.d"]) or pasted at the end of web.toml; owner
 # root:sre-web, mode 0640.  The [pool] table of web.toml needs the CA and the portal's client
 # certificate (ca.crt, portal.crt, portal.key of the same directory as the hosts' certificates):
@@ -190,7 +197,7 @@ tmp="$hosts_toml.tmp"
 # client_key = "$TLS_DIR_ON_HOSTS/portal.key"
 EOH
 )
-n=0; new=0; kept=0; disabled=0
+n=0; new=0; kept=0; disabled=0; instructors=0
 while IFS=';' read -r name ip mac room; do
     [ -n "$name" ] || continue
     if [ "$KEEP" = true ] && [ -f "$out/$name.key" ] && [ -f "$out/$name.crt" ]; then
@@ -209,6 +216,8 @@ while IFS=';' read -r name ip mac room; do
     [ ${#token} -ge 32 ] || die "$out/$name.token: too short (32+ characters expected)"
     enabled=true
     if [ -n "$room" ] && in_list "$room" "$DISABLED_ROOMS"; then enabled=false; disabled=$((disabled + 1)); fi
+    instructors_only=false
+    if [ -n "$room" ] && in_list "$room" "$INSTRUCTOR_ROOMS"; then instructors_only=true; instructors=$((instructors + 1)); fi
     {
         echo
         echo '[[hosts]]'
@@ -219,6 +228,7 @@ while IFS=';' read -r name ip mac room; do
         echo "mac = \"$mac\""
         if [ "$POWER" = true ]; then echo "power = true"; fi
         if [ "$enabled" = false ]; then echo "enabled = false"; fi
+        if [ "$instructors_only" = true ]; then echo "instructors_only = true"; fi
     } >> "$tmp"
     (umask 077; {
         echo "# The lines of $name's agent.toml (scripts/etc/agent.toml) made by scripts/make-web-hosts.sh: its"
@@ -237,4 +247,4 @@ while IFS=';' read -r name ip mac room; do
 done <<< "$hosts"
 mv "$tmp" "$hosts_toml"
 if [ "$KEEP" = true ]; then made="$new new certificates, $kept kept (--keep)"; else made="$new certificates and tokens made anew"; fi
-echo "make-web-hosts: $n hosts ($disabled disabled at start) in $hosts_toml, $made; agent-<name>.toml next to it"
+echo "make-web-hosts: $n hosts ($disabled disabled at start, $instructors instructors only) in $hosts_toml, $made; agent-<name>.toml next to it"

@@ -396,6 +396,10 @@ class Routes:
             return json_error(400, "a JSON body is expected")
         if not isinstance(body, dict) or not isinstance(body.get('lab'), str):
             return json_error(400, "lab is required")
+        wanted = body.get('host')             # an instructor's choice ('' = the automatic placement)
+        if wanted is not None and not isinstance(wanted, str):
+            return json_error(400, "host must be a host name")
+        wanted = wanted or None
         logged = request.get(ACCESS_KEY)      # the line of the connection log: the lab, the host, the outcome
         if logged is not None:
             logged.update(lab=body['lab'], instructor=bool(body.get('instructor_mode')))
@@ -404,7 +408,9 @@ class Routes:
             return json_error(429, "please wait before starting another project", retry_after=round(wait))
         if body.get('instructor_mode') and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
-        host, reservation = self.pool.pick()
+        if wanted and identity.role != ROLE_INSTRUCTOR:
+            return json_error(403, "instructors only")
+        host, reservation = self.pool.pick(identity, wanted)
         if logged is not None:
             logged['host'] = host.name
         payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}

@@ -159,10 +159,12 @@ class TestTemplates:
     def test_open_page(self):
         html = render('open.html')
         assert 'id="labs"' in html and 'id="start-button"' in html and '/static/js/open.js' in html
-        assert 'id="instructor-mode"' not in html and 'href="/watch"' not in html
-        # the instructor's extras: the Instructor mode box of the Open page, the Watch link of every page
+        assert 'id="instructor-mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
+        # the instructor's extras: the Instructor mode box and the Host select of the Open page, the Watch
+        # link of every page
         html = render('open.html', instructor=True)
         assert 'id="instructor-mode"' in html and 'href="/watch"' in html and 'Instructor mode' in html
+        assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
         assert 'href="/watch"' in render('projects.html', instructor=True)
         assert 'href="/watch"' not in render('projects.html')
 

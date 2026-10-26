@@ -131,6 +131,29 @@ class TestAdminApi:
                 assert (await h.client.post('/api/pool/hosts/a01/disable', headers=auth(ADMIN))).status == 401
         run(go())
 
+    def test_instructors_only_host(self, tmp_path):
+        """`add --instructors-only`: the flag in the answer, in the state file, back after a restart."""
+        state = tmp_path / 'state' / 'pool.json'
+        over = {'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over=over) as h:
+                body = {'name': 'c03', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'max_projects': 2,
+                        'instructors_only': True}
+                resp = await h.client.post('/api/pool/hosts', json=body, headers=auth(ADMIN))
+                assert resp.status == 201, await resp.text()
+                assert (await resp.json())['instructors_only'] is True
+                resp = await h.client.post('/api/pool/hosts', json={**body, 'instructors_only': 'yes'},
+                                           headers=auth(ADMIN))
+                assert resp.status == 400 and 'instructors_only' in (await resp.json())['error']
+                assert json.loads(state.read_text())['added'][0]['instructors_only'] is True
+                rows = {r['name']: r for r in await (await h.client.get('/api/pool', headers=auth(ADMIN))).json()}
+                assert rows['a01']['instructors_only'] is False
+            async with P.Harness(tmp_path / 'again', web_over=over) as h:
+                rows = {r['name']: r for r in await (await h.client.get('/api/pool', headers=auth(ADMIN))).json()}
+                assert rows['c03']['instructors_only'] is True and rows['c03']['source'] == 'added'
+        run(go())
+
 
 class TestCli:
     def test_sre_web_tool(self, tmp_path):
@@ -153,15 +176,18 @@ class TestCli:
                                             'SOURCE', 'LAST', 'ERROR']
                 assert lines[1].split()[:3] == ['a01', 'up', '0/3'] and lines[1].split()[-1] == 'config'
                 r = await loop.run_in_executor(None, lambda: cli('add', 'b02', '--url', 'http://127.0.0.1:9',
-                                                                 '--token', TOKEN, '--max-projects', '2', '--json'))
+                                                                 '--token', TOKEN, '--max-projects', '2', '--json',
+                                                                 '--instructors-only'))
                 assert r.returncode == 0, r.stderr
                 assert json.loads(r.stdout)['state'] == 'off' and json.loads(r.stdout)['source'] == 'added'
+                assert json.loads(r.stdout)['instructors_only'] is True
                 r = await loop.run_in_executor(None, cli, 'status')
                 assert r.returncode == 0 and r.stdout.startswith('spare capacity: 3 project slot(s)')
                 assert 'waking: none' in r.stdout
                 r = await loop.run_in_executor(None, cli, 'list')
                 assert [l.split()[:2] for l in r.stdout.splitlines()[1:]] == [['a01', 'up'], ['b02', 'off']]
                 assert 'Cannot connect' in r.stdout.splitlines()[2]     # the last error of the unreachable host
+                assert '(instructors)' in r.stdout.splitlines()[2] and '(instructors)' not in r.stdout.splitlines()[1]
                 r = await loop.run_in_executor(None, cli, 'disable', 'b02')
                 assert r.returncode == 0 and r.stdout.splitlines()[1].split()[:2] == ['b02', 'disabled']
                 r = await loop.run_in_executor(None, cli, 'remove', 'b02')
@@ -186,7 +212,10 @@ class TestCli:
         rows = [{'name': 'a01', 'state': 'waking', 'waking_for': 12, 'wake_failures': 1, 'reachable': False,
                  'error': 'down', 'source': 'config', 'max_projects': 3},
                 {'name': 'b02', 'state': 'up', 'drain': True, 'reachable': True, 'projects': 2, 'max_projects': 3,
-                 'load1': 1.234, 'terminals': 4, 'occupied_by': ['session:bob'], 'uptime': 3725, 'source': 'added'}]
+                 'load1': 1.234, 'terminals': 4, 'occupied_by': ['session:bob'], 'uptime': 3725, 'source': 'added'},
+                {'name': 'c03', 'state': 'off', 'instructors_only': True, 'reachable': False, 'source': 'config',
+                 'max_projects': 3}]
         out = table(rows).splitlines()
         assert out[1].split()[:2] == ['a01', 'waking'] and '(12s, 1 failed)' in out[1] and out[1].endswith('down')
         assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '4', 'session:bob', '1h02', 'added']
+        assert out[3].split()[:3] == ['c03', 'off', '(instructors)']

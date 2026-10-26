@@ -529,3 +529,9 @@ msgstr "{title} (privé)"
 
 msgid "{device} ({who})"
 msgstr "{device} ({who})"
+
+msgid "Automatic placement"
+msgstr "Placement automatique"
+
+msgid "(a host reserved for instructors, or the least loaded one)"
+msgstr "(une machine réservée aux enseignants, ou la moins chargée)"

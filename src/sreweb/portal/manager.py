@@ -38,25 +38,34 @@ class HostView:
     idle_for: float | None      # seconds without a project (None when it has some, or is not up)
     drain: bool
     power_off_pending: bool     # a power off was accepted lately: the host is going down
+    instructors_only: bool = False   # reserved for the instructors' projects: outside the policy
+
+
+def awake_count(hosts) -> int:
+    """The shared hosts awake (``AWAKE_STATES``) or waking: what the floor ``min_hosts_up``
+    counts (a host reserved for instructors serves no student)."""
+    return sum(1 for h in hosts if not h.instructors_only and (h.state in AWAKE_STATES or h.state == STATE_WAKING))
 
 
 def spare_capacity(hosts) -> int:
-    """The free project slots of the hosts up, plus the whole capacity of those waking."""
-    return sum(h.max_projects - h.projects for h in hosts if h.state == STATE_UP) + \
-        sum(h.max_projects for h in hosts if h.state == STATE_WAKING)
+    """The free project slots of the shared hosts up, plus the whole capacity of those waking
+    (a host reserved for instructors is no capacity for the students)."""
+    return sum(h.max_projects - h.projects for h in hosts if h.state == STATE_UP and not h.instructors_only) + \
+        sum(h.max_projects for h in hosts if h.state == STATE_WAKING and not h.instructors_only)
 
 
 def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: float) -> list:
     """The names of the hosts to wake now, in configuration order: enough sleeping hosts to bring
     the spare capacity back to ``spare_projects`` and, during the active hours, the awake hosts
-    up to ``min_hosts_up``; at most one wake per ``wake_interval``."""
+    up to ``min_hosts_up``; at most one wake per ``wake_interval``.  A host reserved for
+    instructors is never woken by the policy (``sre-web-tool wake``, or its own boot)."""
     if now - last_wake_at < cfg.wake_interval:
         return []
-    awake = sum(1 for h in hosts if h.state in AWAKE_STATES or h.state == STATE_WAKING)
+    awake = awake_count(hosts)
     spare = spare_capacity(hosts)
     wanted = []
     for h in hosts:
-        if h.state != STATE_OFF or not h.can_wake or not h.enabled or now < h.next_wake_at:
+        if h.state != STATE_OFF or not h.can_wake or not h.enabled or h.instructors_only or now < h.next_wake_at:
             continue
         if spare < cfg.spare_projects or (active and awake < cfg.min_hosts_up):
             wanted.append(h.name)
@@ -67,7 +76,8 @@ def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: fl
 
 def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
     """The names of the hosts to power off now: a draining host as soon as it is empty; with
-    ``idle_host_timeout``, one idle host that the floor and the spare capacity can spare."""
+    ``idle_host_timeout``, one idle host that the floor and the spare capacity can spare (a
+    host reserved for instructors counts for neither: idle long enough is enough)."""
     empties = [h for h in hosts if h.state in (STATE_UP, STATE_DRAINING) and h.projects == 0 and h.power
                and h.power_off_allowed and not h.power_off_pending]
     drained = [h.name for h in empties if h.drain]
@@ -75,12 +85,14 @@ def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
         return drained[:1]
     if cfg.idle_host_timeout <= 0:
         return []
-    awake = sum(1 for h in hosts if h.state in AWAKE_STATES or h.state == STATE_WAKING)
+    awake = awake_count(hosts)
     floor = cfg.min_hosts_up if active else 0
     for h in sorted(empties, key=lambda h: -(h.idle_for or 0)):
-        if h.idle_for is None or h.idle_for < cfg.idle_host_timeout or awake <= floor:
+        if h.idle_for is None or h.idle_for < cfg.idle_host_timeout:
             continue
-        if spare_capacity([x for x in hosts if x.name != h.name]) >= cfg.spare_projects:
+        if h.instructors_only:
+            return [h.name]
+        if awake > floor and spare_capacity([x for x in hosts if x.name != h.name]) >= cfg.spare_projects:
             return [h.name]
     return []
 
@@ -123,13 +135,15 @@ class PoolManager:
                                   idle_for=(now - rt.idle_since) if rt.idle_since is not None and st.projects == 0
                                   and state in (STATE_UP, STATE_DRAINING) else None, drain=rt.drain,
                                   power_off_pending=rt.power_off_sent is not None
-                                  and now - rt.power_off_sent < self.pool.wake_timeout))
+                                  and now - rt.power_off_sent < self.pool.wake_timeout,
+                                  instructors_only=host.instructors_only))
         return views
 
     def status(self) -> dict:
         views = self.views()
         return {'spare_projects': spare_capacity(views), 'wanted_spare': self.cfg.spare_projects,
-                'awake': sum(1 for h in views if h.state in AWAKE_STATES), 'min_hosts_up': self.cfg.min_hosts_up,
+                'awake': sum(1 for h in views if h.state in AWAKE_STATES and not h.instructors_only),
+                'min_hosts_up': self.cfg.min_hosts_up,
                 'active_hours': self.cfg.active_hours or 'always', 'active_now': self.active(),
                 'waking': [h.name for h in views if h.state == STATE_WAKING],
                 'idle_host_timeout': self.cfg.idle_host_timeout}

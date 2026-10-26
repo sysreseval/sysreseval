@@ -17,6 +17,11 @@
   {{ _("Instructor mode") }}
   <span class="muted">{{ _("(keeps the instructor texts, lists every state, logs the states applied)") }}</span>
 </label>
+<label class="instructor-option" id="host-option" hidden>
+  {{ _("Host") }}
+  <select id="host"><option value="">{{ _("Automatic placement") }}</option></select>
+  <span class="muted">{{ _("(a host reserved for instructors, or the least loaded one)") }}</span>
+</label>
 {% endif %}
 <div id="progress" class="progress-box" hidden></div>
 {% endblock %}

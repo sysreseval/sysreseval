@@ -39,8 +39,9 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   of the instructors needs none of that: each agent reads the archives of its own host
   (`params.archive_dirs`) on demand.
 - Placement: a new project goes to the reachable host with the lowest `projects / max_projects`
-  (then the lowest load); a host in exam mode is never used. A classroom workstation holds about
-  thirty projects (210 containers in 3.4 GB).
+  (then the lowest load); a host in exam mode is never used, a host with `instructors_only =
+  true` never for a student (an instructor may also name the host on the Open page). A classroom
+  workstation holds about thirty projects (210 containers in 3.4 GB).
 
 The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
 (a user only reaches their own projects, an instructor every project; the `wipe`, `exec` and
@@ -146,7 +147,7 @@ merges other files into this one, as for `web.toml` below.
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
-| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects |
+| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
 
 `import = ["web.d"]` splits the configuration into `/etc/sysreseval/web.toml` and the `*.toml`
@@ -315,7 +316,8 @@ machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (po
 placed there until `sre-web-tool enable`). These five variables are required and have no
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
 `allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
-`PORTAL_ADDRESS` (`allowed_clients` of the agents), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
+`PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
+get `instructors_only = true`), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
 the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
 `OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
 portal already knows; refused when `OUT_DIR` holds another CA) are optional.
@@ -371,6 +373,15 @@ enabled systemd unit on every host (boot → agent up → the portal sees it).
 `who` as a fallback) or when projects of the Qt GUI run on the host; the portal places nothing
 there and never powers it off. The web projects already running there continue.
 
+**Reserved hosts.** A host with `instructors_only = true` never takes a student's project: an
+instructor's goes there when they name it on the Open page (the *Host* select lists the
+reserved hosts with their state and their projects) or by the automatic placement when it is
+the least loaded host they may use. It is outside the elastic pool: its free slots count
+neither as spare capacity nor towards `min_hosts_up`, the portal never wakes it by itself
+(`sre-web-tool wake`, or its own boot; an instructor finds it greyed while it is off) and
+powers it off when idle like any host with `power = true`, whatever the floor and the spare.
+`list` shows `(instructors)` after its state.
+
 **Going down.** When the agent's unit stops because the system halts (the nightly cron, a
 `poweroff`), the agent closes the projects it manages as a Close would (the last evaluation,
 then `sre stop`), concurrently, within `TimeoutStopSec`; the browsers see "project closed".
@@ -386,7 +397,7 @@ portal through its administration API (`[admin] token`, loopback only by default
 ```
 sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
-sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power]
+sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
 ```
@@ -468,6 +479,11 @@ What an instructor gets:
   `instructor()` texts of the Informations and Questions tabs, every state and the Log tab, as in
   the Qt GUI. A student's project holds no instructor text (the CLI strips them), so the button
   does not appear there.
+- **The host of a project**: the *Host* select of the Open page (shown when the pool has a host
+  reserved for instructors, `instructors_only = true` in `[[hosts]]`) names one of them, with
+  its state and its projects (greyed when off or full), or leaves the automatic placement: the
+  least loaded host the instructor may use, reserved or shared. `POST /api/projects` takes the
+  optional `host`; a student sending one gets 403.
 
 ### The Display tab
 

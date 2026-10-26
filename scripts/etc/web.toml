@@ -160,6 +160,9 @@ max_answer_bytes = 1048576
 # projects it takes (a classroom workstation holds about thirty).  A host with a mac (Wake-on-LAN)
 # or a wake_command ({name} and {mac} substituted: a relay, IPMI, a VM start) is woken on demand;
 # power = true lets the portal power it off (see idle_host_timeout and `sre-web-tool poweroff`).
+# instructors_only = true reserves a host for the instructors' projects: never a student's, they
+# choose it on their Open page; it is outside the elastic pool (no spare capacity, no floor, never
+# woken by the portal; powered off when idle like the others).
 # `sre-web-tool add / remove / enable / disable` change the pool without a restart.
 [[hosts]]
 name = "a01"
@@ -176,3 +179,4 @@ max_projects = 25
 # max_projects = 25
 # wake_command = "ssh relay wakeonlan {mac}"
 # enabled = false                    # kept in the pool, no project placed there
+# instructors_only = true            # never a student's project; the instructors choose it on the Open page

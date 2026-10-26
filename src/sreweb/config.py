@@ -162,8 +162,9 @@ AUTH_MODES = (AUTH_ANONYMOUS, AUTH_LDAP, AUTH_PROXY)
 @dataclass
 class HostConfig:
     """A host of the pool: the URL of its agent and the token of that agent; how to wake it
-    (a MAC address for a Wake-on-LAN packet, or a command with ``{name}`` / ``{mac}``) and
-    whether the portal may power it off."""
+    (a MAC address for a Wake-on-LAN packet, or a command with ``{name}`` / ``{mac}``),
+    whether the portal may power it off, and whether it is reserved for the instructors'
+    projects (``instructors_only``: never a student's project, outside the elastic pool)."""
     name: str
     url: str
     token: str
@@ -172,6 +173,7 @@ class HostConfig:
     wake_command: str = ''
     power: bool = False
     enabled: bool = True              # placement allowed (``sre-web-tool disable`` flips it)
+    instructors_only: bool = False    # only the instructors' projects are placed there (chosen on their Open page)
 
     @property
     def can_wake(self) -> bool:
@@ -374,6 +376,9 @@ def host_config_from_dict(h: dict, where: str) -> HostConfig:
         raise ConfigError(f"{where}: bad host name {host.name!r}")
     if host.max_projects < 1:
         raise ConfigError(f"{where}.max_projects must be positive")
+    for key in ('power', 'enabled', 'instructors_only'):
+        if not isinstance(getattr(host, key), bool):
+            raise ConfigError(f"{where}.{key} must be true or false")
     return host
 
 

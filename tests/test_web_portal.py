@@ -58,9 +58,10 @@ class Harness:
     """A real agent on the fake sre, and a portal whose only host is that agent."""
 
     def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1, agent_over=None,
-                 role_resolver=None):
+                 role_resolver=None, host_over=None):
         self.tmp = tmp_path
         self.role_resolver = role_resolver
+        self.host_over = host_over or {}       # merged into the [[hosts]] entry of the agent (a01)
         self.pub = tmp_path / 'pub'
         (self.pub / 'projects').mkdir(parents=True)
         exe = tmp_path / 'sre'
@@ -90,7 +91,7 @@ class Harness:
         self.agent_server = TestServer(self.agent.make_app())
         await self.agent_server.start_server()
         url = f"http://127.0.0.1:{self.agent_server.port}"
-        hosts = [{'name': 'a01', 'url': url, 'token': TOKEN, 'max_projects': 3}]
+        hosts = [{'name': 'a01', 'url': url, 'token': TOKEN, 'max_projects': 3, **self.host_over}]
         if self.hosts > 1:
             hosts.append({'name': 'down', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'max_projects': 3})
         cfg = web_config_from_dict({'secret': SECRET, 'auth': {'mode': self.auth_mode},
@@ -594,6 +595,38 @@ class TestProxyMode:
                 assert resp.status == 302 and resp.headers['Location'] == '/apache-logout'
                 resp = await h.client.post('/api/logout', headers={**who('alice'), **CSRF})
                 assert (await resp.json())['logout_url'] == '/apache-logout'
+        run(go())
+
+    def test_instructors_only_host(self, tmp_path):
+        """A host reserved for instructors: no student's project, no lab list for them; an
+        instructor is placed there by the automatic rule or by naming it."""
+        async def go():
+            over = {**PROXY_OVER, 'limits': {'start_interval': 0}}
+            async with Harness(tmp_path, web_over=over, hosts=2, host_over={'instructors_only': True}) as h:
+                bob, alice = who('bob'), who('alice', 'Alice', '', TEACHERS)
+                assert await (await h.client.get('/api/labs', headers=bob)).json() == []
+                labs = await (await h.client.get('/api/labs', headers=alice)).json()
+                assert {l['name'] for l in labs} == {'sre/dhcp.py', 's4/tp_ssh'}
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
+                assert resp.status == 503 and 'no host' in (await resp.json())['error']
+                assert (await resp.json())['retry_after'] == 60
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'host': 'a01'},
+                                           headers={**bob, **CSRF})
+                assert resp.status == 403
+                for host, status, fragment in ((5, 400, 'host name'), ('nope', 404, 'unknown host'),
+                                               ('down', 503, 'not available')):
+                    resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'host': host},
+                                               headers={**alice, **CSRF})
+                    assert resp.status == status and fragment in (await resp.json())['error'], host
+                for body in ({'lab': 'sre/dhcp.py'}, {'lab': 'sre/dhcp.py', 'host': 'a01'}, {'lab': 'sre/dhcp.py', 'host': ''}):
+                    resp = await h.client.post('/api/projects', json=body, headers={**alice, **CSRF})
+                    assert resp.status == 200, await resp.text()
+                    result = json.loads((await resp.text()).splitlines()[-1])
+                    assert result['status'] == 'created' and result['host'] == 'a01', body
+                rows = {r['name']: r for r in await (await h.client.get('/api/pool', headers=alice)).json()}
+                assert rows['a01']['instructors_only'] is True and rows['down']['instructors_only'] is False
+                assert await (await h.client.get('/api/projects', headers=bob)).json() == []
+                assert len(await (await h.client.get('/api/projects', headers=alice)).json()) == 3
         run(go())
 
     def test_stale_session_cookie_is_ignored(self, tmp_path):
