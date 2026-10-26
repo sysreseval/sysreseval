@@ -347,12 +347,17 @@ the CA and the portal's client certificate once, then per host a key and a certi
   refused).
 
 Copy `<name>.crt`, `<name>.key` and `ca.crt` to `TLS_DIR_ON_HOSTS` of each host, and `ca.crt`,
-`portal.crt`, `portal.key` to the portal's. Every run rewrites `hosts.toml` and the agent files, so
-the rooms may change at any time; the CA and the portal's certificate are made once. The hosts'
-keys, certificates and tokens are made anew on every run, to deploy again, unless the script is
-run with `--keep`: the files already there are kept and only those of the new hosts are made (a
-kept certificate that no longer names the address of its host is reported), so a room is added
-without touching the hosts already deployed.
+`portal.crt`, `portal.key` to the portal's. Every run computes `hosts.toml` and the agent files
+from the variables of the moment, so the rooms, the disabled or reserved hosts may change at any
+time, and compares them with the previous run: a file whose content did not change is left as it
+is, the others are replaced, what changed is printed per host (`enabled`, `instructors_only`,
+`allow_power_off`...) with the new hosts and those no longer selected, and the last line says
+whether `hosts.toml` and which agent files are to deploy again; the CA and the portal's
+certificate are made once. The hosts' keys, certificates and tokens are made anew on every run,
+to deploy again, unless the script is run with `--keep`: the files already there are kept and
+only those of the new hosts are made (a kept certificate that no longer names the address of its
+host is reported), so a room is added, or a host disabled or reserved, without touching the
+hosts already deployed.
 
 ### A pool of workstations
 

@@ -8,8 +8,9 @@
 # The one option:
 #   --keep          keep the agent files already in OUT_DIR (<name>.key + <name>.crt when both exist,
 #                   <name>.token) and build only the missing ones: a room is added without touching
-#                   the hosts already deployed.  Without it every selected host gets a new key, a new
-#                   certificate and a new token on each run, to deploy again.
+#                   the hosts already deployed (their hosts.toml entry and agent-<name>.toml still
+#                   follow the variables, see below).  Without it every selected host gets a new
+#                   key, a new certificate and a new token on each run, to deploy again.
 # Everything else comes from environment variables.  These five are required, without default
 # (ROOMS and DISABLED_ROOMS may be empty, but must be set):
 #   IP_MAC_FILE     the machines of the site, one per line, three fields separated by semicolons, no
@@ -65,11 +66,17 @@
 #   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (listen =
 #                                         "<ip>:AGENT_PORT", token, tls_*, allowed_clients, allow_power_off;
 #                                         the shared agent.toml must then have no listen line)
-# Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS /
-# INSTRUCTOR_MACHINES may change at any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
-# and tokens are made anew on every run unless --keep is given: the files present are then kept (a
-# kept certificate that no longer names the address of its host is reported) and only those of the
-# new hosts are made.
+# Every run computes hosts.toml and every agent-<name>.toml from the variables of the moment (REGEXP /
+# ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS / INSTRUCTOR_MACHINES / POWER... may change at any time)
+# and compares them with the files of the previous run: a file whose content did not change is left
+# as it is (its date too), the others are replaced, and what changed is printed per host (hosts.toml:
+# enabled, instructors_only, url, max_projects, mac, power; agent-<name>.toml: listen, tls_*,
+# allowed_clients, allow_power_off), with the new hosts and those no longer selected (their entry is
+# dropped, their files are left in OUT_DIR); the last line says whether hosts.toml and which
+# agent-<name>.toml are to deploy again.  The CA and the portal's certificate are made once and kept.
+# The hosts' keys, certificates and tokens are made anew on every run unless --keep is given: the
+# files present are then kept (a kept certificate that no longer names the address of its host is
+# reported) and only those of the new hosts are made.
 set -euo pipefail
 
 die() { echo "make-web-hosts: $*" >&2; exit 1; }
@@ -80,6 +87,58 @@ in_list() {   # in_list WORD LIST: WORD is one of the space-separated LIST
     return 1
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+entries_of() {   # entries_of FILE: the [[hosts]] entries of a hosts.toml, one line each, to compare two runs:
+                 # "name;url;token;max_projects;mac;power;enabled;instructors_only" (the default of a key left out)
+    [ -f "$1" ] || return 0
+    awk '
+        function reset() { split("", v); v["power"] = "false"; v["enabled"] = "true"; v["instructors_only"] = "false" }
+        function flush() {
+            if (name != "")
+                print name ";" v["url"] ";" v["token"] ";" v["max_projects"] ";" v["mac"] ";" v["power"] ";" v["enabled"] ";" v["instructors_only"]
+            name = ""; reset()
+        }
+        BEGIN { reset() }
+        /^\[\[hosts\]\]/ { flush(); next }
+        /^[a-z_]+ *= */ {
+            key = $0; sub(/ *=.*$/, "", key)
+            val = $0; sub(/^[a-z_]+ *= */, "", val); gsub(/^"|"$/, "", val)
+            if (key == "name") name = val; else v[key] = val
+        }
+        END { flush() }' "$1"
+}
+entry_of() {   # entry_of NAME LINES: the line of host NAME among the entry LINES, "" when absent
+    printf '%s\n' "$2" | awk -F';' -v n="$1" '$1 == n { print; exit }'
+}
+entry_changes() {   # entry_changes OLD NEW [ignore_token]: what differs between two entry lines, "" when nothing
+    local name o_url o_token o_max o_mac o_power o_enabled o_instr n_url n_token n_max n_mac n_power n_enabled n_instr changes=""
+    IFS=';' read -r name o_url o_token o_max o_mac o_power o_enabled o_instr <<< "$1"
+    IFS=';' read -r name n_url n_token n_max n_mac n_power n_enabled n_instr <<< "$2"
+    [ "${3:-}" != ignore_token ] || o_token=$n_token
+    [ "$o_url" = "$n_url" ] || changes="$changes, url $o_url -> $n_url"
+    [ "$o_token" = "$n_token" ] || changes="$changes, token"
+    [ "$o_max" = "$n_max" ] || changes="$changes, max_projects $o_max -> $n_max"
+    [ "$o_mac" = "$n_mac" ] || changes="$changes, mac $o_mac -> $n_mac"
+    [ "$o_power" = "$n_power" ] || changes="$changes, power $o_power -> $n_power"
+    [ "$o_enabled" = "$n_enabled" ] || changes="$changes, enabled $o_enabled -> $n_enabled"
+    [ "$o_instr" = "$n_instr" ] || changes="$changes, instructors_only $o_instr -> $n_instr"
+    printf '%s' "${changes#, }"
+}
+agent_changes() {   # agent_changes OLD NEW [ignore_token]: the keys whose line differs between two agent-<name>.toml,
+                    # "comments" when only the comments do, "" when nothing (a token change is ignored when asked)
+    local key o n changes="" token_differs=false
+    cmp -s "$1" "$2" && return 0
+    for key in listen token tls_cert tls_key tls_ca allowed_clients allow_power_off; do
+        o=$(grep "^$key = " "$1" || true); n=$(grep "^$key = " "$2" || true)
+        [ "$o" != "$n" ] || continue
+        if [ "$key" = token ]; then
+            token_differs=true
+            if [ "${3:-}" = ignore_token ]; then continue; fi
+        fi
+        changes="$changes, $key"
+    done
+    [ -n "$changes" ] || [ "$token_differs" = true ] || changes=", comments"
+    printf '%s' "${changes#, }"
+}
 
 KEEP=false
 for arg in "$@"; do
@@ -194,6 +253,9 @@ fi
 
 hosts_toml="$out/hosts.toml"
 tmp="$hosts_toml.tmp"
+first_run=true; [ ! -f "$hosts_toml" ] || first_run=false
+old_entries=$(entries_of "$hosts_toml")                          # the previous run, to report what changes
+ignore_token=""; [ "$KEEP" = true ] || ignore_token=ignore_token  # tokens made anew: not a change of one host
 (umask 077; cat > "$tmp" <<EOH
 # [[hosts]] of the SRE web portal (scripts/etc/web.toml), made by scripts/make-web-hosts.sh on $(date '+%Y-%m-%d %H:%M')
 # from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}${INSTRUCTOR_ROOMS:+, instructor rooms: $INSTRUCTOR_ROOMS}${INSTRUCTOR_MACHINES:+, instructor machines: $INSTRUCTOR_MACHINES}.
@@ -207,6 +269,7 @@ tmp="$hosts_toml.tmp"
 EOH
 )
 n=0; new=0; kept=0; disabled=0; instructors=0
+new_entries=""; added=0; changed=0; agents_changed=""
 while IFS=';' read -r name ip mac room; do
     [ -n "$name" ] || continue
     if [ "$KEEP" = true ] && [ -f "$out/$name.key" ] && [ -f "$out/$name.crt" ]; then
@@ -229,6 +292,10 @@ while IFS=';' read -r name ip mac room; do
     if { [ -n "$room" ] && in_list "$room" "$INSTRUCTOR_ROOMS"; } || in_list "$(lower "$name")" "$INSTRUCTOR_MACHINES"; then
         instructors_only=true; instructors=$((instructors + 1))
     fi
+    power=false; [ "$POWER" != true ] || power=true
+    entry="$name;https://$ip:$AGENT_PORT;$token;$MAX_PROJECTS;$mac;$power;$enabled;$instructors_only"
+    new_entries="$new_entries$entry
+"
     {
         echo
         echo '[[hosts]]'
@@ -241,6 +308,7 @@ while IFS=';' read -r name ip mac room; do
         if [ "$enabled" = false ]; then echo "enabled = false"; fi
         if [ "$instructors_only" = true ]; then echo "instructors_only = true"; fi
     } >> "$tmp"
+    agent_toml="$out/agent-$name.toml"
     (umask 077; {
         echo "# The lines of $name's agent.toml (scripts/etc/agent.toml) made by scripts/make-web-hosts.sh: its"
         echo "# certificate $name.crt / $name.key and ca.crt go to $TLS_DIR_ON_HOSTS (readable by root only)."
@@ -253,9 +321,69 @@ while IFS=';' read -r name ip mac room; do
         echo "tls_ca = \"$TLS_DIR_ON_HOSTS/ca.crt\""
         if [ -n "$PORTAL_ADDRESS" ]; then echo "allowed_clients = [\"$PORTAL_ADDRESS\"]"; fi
         if [ "$POWER" = true ]; then echo "allow_power_off = true"; fi
-    } > "$out/agent-$name.toml")
+    } > "$agent_toml.tmp")
+    # the agent file is replaced only when its content changed; what changed since the previous run
+    # is reported per host (nothing on the first run, when everything is new)
+    agent_diff=""
+    if [ ! -f "$agent_toml" ]; then
+        mv "$agent_toml.tmp" "$agent_toml"; agents_changed="$agents_changed $name"
+    elif cmp -s "$agent_toml" "$agent_toml.tmp"; then
+        rm -f "$agent_toml.tmp"
+    else
+        agent_diff=$(agent_changes "$agent_toml" "$agent_toml.tmp" $ignore_token)
+        mv "$agent_toml.tmp" "$agent_toml"; agents_changed="$agents_changed $name"
+    fi
+    report=""
+    if [ "$first_run" = true ]; then
+        :
+    elif old=$(entry_of "$name" "$old_entries") && [ -z "$old" ]; then
+        added=$((added + 1)); report="new host"
+    else
+        host_diff=$(entry_changes "$old" "$entry" $ignore_token)
+        if [ -n "$host_diff" ]; then changed=$((changed + 1)); report="hosts.toml: $host_diff"; fi
+        if [ -n "$agent_diff" ]; then report="${report:+$report; }agent-$name.toml: $agent_diff"; fi
+    fi
+    [ -z "$report" ] || echo "make-web-hosts: $name: $report"
     n=$((n + 1))
 done <<< "$hosts"
-mv "$tmp" "$hosts_toml"
+
+# the hosts of the previous run that are not selected any more, and the files left of hosts not selected
+dropped=0
+for name in $(printf '%s\n' "$old_entries" | cut -d';' -f1); do
+    [ -z "$(entry_of "$name" "$new_entries")" ] || continue
+    dropped=$((dropped + 1))
+    echo "make-web-hosts: $name: no longer selected, its [[hosts]] entry is dropped"
+done
+stale=""
+for name in $( (cd "$out" && ls agent-*.toml ./*.key ./*.crt ./*.token 2>/dev/null) | sed -E 's#^\./##; s/^agent-//; s/\.(toml|key|crt|token)$//' | sort -u); do
+    case "$name" in ca|portal) continue;; esac
+    [ -z "$(entry_of "$name" "$new_entries")" ] || continue
+    stale="$stale $name"
+done
+[ -z "$stale" ] || echo "make-web-hosts: files of hosts not selected (agent-<name>.toml, <name>.key / .crt / .token) left in $out:$stale"
+
+# hosts.toml is replaced only when something but the date of its header changed
+if [ "$first_run" = false ] && [ "$(tail -n +2 "$tmp")" = "$(tail -n +2 "$hosts_toml")" ]; then
+    rm -f "$tmp"; hosts_status="unchanged"
+else
+    mv "$tmp" "$hosts_toml"
+    if [ "$first_run" = true ]; then
+        hosts_status="created"
+    else
+        why=""
+        [ "$changed" -eq 0 ] || why="$why, $changed entries changed"
+        [ "$added" -eq 0 ] || why="$why, $added new"
+        [ "$dropped" -eq 0 ] || why="$why, $dropped dropped"
+        [ "$KEEP" = true ] || why="$why, tokens made anew"
+        hosts_status="rewritten (${why#, }), to deploy on the portal"; [ -n "$why" ] || hosts_status="rewritten (header only)"
+    fi
+fi
+agents_changed=${agents_changed# }
+if [ "$first_run" = true ]; then agents_status="agent-<name>.toml created for every host"
+elif [ -z "$agents_changed" ]; then agents_status="no agent-<name>.toml changed"
+elif [ "$KEEP" != true ]; then agents_status="every agent-<name>.toml rewritten (tokens made anew), to deploy on the hosts"
+else agents_status="agent-<name>.toml changed for $agents_changed, to deploy on those hosts"
+fi
 if [ "$KEEP" = true ]; then made="$new new certificates, $kept kept (--keep)"; else made="$new certificates and tokens made anew"; fi
 echo "make-web-hosts: $n hosts ($disabled disabled at start, $instructors instructors only) in $hosts_toml, $made; agent-<name>.toml next to it"
+echo "make-web-hosts: hosts.toml $hosts_status; $agents_status"
