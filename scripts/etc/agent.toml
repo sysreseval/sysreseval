@@ -7,10 +7,11 @@
 # directory (its *.toml files, by name), a glob (possibly matching nothing) or a file (it must
 # exist).  Tables merge; a key given twice is refused, naming both files; an imported file cannot
 # import.  Same owner and mode as this file.  E.g. this file the same on every host of a standard
-# image, and the lines of the host (its token and certificate: the agent-<name>.toml of
-# scripts/make-web-hosts.sh) in agent.d/host.toml, token then removed from here:
+# image, and the lines of the host (its address, token and certificate: the agent-<name>.toml of
+# scripts/make-web-hosts.sh) in agent.d/host.toml, listen and token then removed from here:
 # import = ["agent.d"]
 #   # agent.d/host.toml
+#   listen = "10.0.128.1:8451"
 #   token = "change-me-to-a-long-random-string"
 #   tls_cert = "/etc/sreweb/tls/a01.crt"
 #   tls_key = "/etc/sreweb/tls/a01.key"

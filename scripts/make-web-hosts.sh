@@ -30,8 +30,7 @@
 #   DISABLED_ROOMS  the rooms whose machines start with enabled = false (polled, no project placed
 #                   there until `sre-web-tool enable <name>`); empty: none
 # The optional ones, with the values of the documentation when unset:
-#   AGENT_PORT        8451               the port of the agents (url; the shared agent.toml listens on
-#                                        0.0.0.0:<it>)
+#   AGENT_PORT        8451               the port of the agents (url of the portal, listen of the agent)
 #   MAX_PROJECTS      25                 max_projects of every host
 #   POWER             false              true: power = true (the portal may power a host off) in [[hosts]]
 #                                        and allow_power_off = true in agent-<name>.toml
@@ -57,9 +56,9 @@
 #                                         else of the file), the machines in the order of the file: a file of
 #                                         web.d/ (import = ["web.d"]) or pasted at the end of web.toml; the
 #                                         [pool] TLS lines in its header
-#   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (token,
-#                                         tls_*, allowed_clients, allow_power_off; no listen: the shared
-#                                         agent.toml listens on 0.0.0.0:AGENT_PORT)
+#   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (listen =
+#                                         "<ip>:AGENT_PORT", token, tls_*, allowed_clients, allow_power_off;
+#                                         the shared agent.toml must then have no listen line)
 # Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS may change at
 # any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
 # and tokens are made anew on every run unless --keep is given: the files present are then kept (a
@@ -224,7 +223,9 @@ while IFS=';' read -r name ip mac room; do
     (umask 077; {
         echo "# The lines of $name's agent.toml (scripts/etc/agent.toml) made by scripts/make-web-hosts.sh: its"
         echo "# certificate $name.crt / $name.key and ca.crt go to $TLS_DIR_ON_HOSTS (readable by root only)."
-        echo "# No listen line: the shared agent.toml listens on 0.0.0.0:$AGENT_PORT, the portal connects to $ip."
+        echo "# listen is the address the portal connects to: the shared agent.toml must have no listen line"
+        echo "# (a key given twice is refused)."
+        echo "listen = \"$ip:$AGENT_PORT\""
         echo "token = \"$token\""
         echo "tls_cert = \"$TLS_DIR_ON_HOSTS/$name.crt\""
         echo "tls_key = \"$TLS_DIR_ON_HOSTS/$name.key\""

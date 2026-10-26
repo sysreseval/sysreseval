@@ -268,9 +268,10 @@ the CA and the portal's client certificate once, then per host a key and a certi
 - `hosts.toml`: the `[[hosts]]` entries, one room after the other, with the three `[pool]` TLS
   lines of `web.toml` in its header; a file of `web.d/` (`import = ["web.d"]`) or pasted at the
   end of `web.toml`;
-- `agent-<name>.toml`: the host-specific lines of that host's `agent.toml` (`token`, `tls_*`, and
-  `allowed_clients` / `allow_power_off` when asked; no `listen`: the shared file's `0.0.0.0:8451`),
-  to complete with the example file.
+- `agent-<name>.toml`: the host-specific lines of that host's `agent.toml` (`listen = "<ip>:8451"`,
+  `token`, `tls_*`, and `allowed_clients` / `allow_power_off` when asked), to complete with the
+  example file, whose own `listen` and `token` lines are then removed (a key given twice is
+  refused).
 
 Copy `<name>.crt`, `<name>.key` and `ca.crt` to `TLS_DIR_ON_HOSTS` of each host, and `ca.crt`,
 `portal.crt`, `portal.key` to the portal's. Every run rewrites `hosts.toml` and the agent files, so
