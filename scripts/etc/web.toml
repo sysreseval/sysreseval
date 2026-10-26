@@ -123,6 +123,23 @@ token = "change-me-to-another-long-random-string"
 # (default: /var/lib/sre-web/pool.json when that directory exists, else pool.json next to this file).
 # state_file = "/var/lib/sre-web/pool.json"
 
+[access_log]
+# The connection log: one `key=value` line per event, in a file and / or in the portal's own
+# log (stderr: the journal, `docker logs`).  Sessions (session_open / session_close: the requests
+# of one login from one address, closed by a logout, by session_timeout of inactivity or at the
+# shutdown, with the duration, the number of requests and the projects used), logins, starts
+# (lab, host, outcome, name of the project), project pages, terminals and virtual desktops
+# (open / close, duration), evaluations, states, stops, exports, denied calls, admin calls.  The
+# client address is the last X-Forwarded-For entry when the peer is one of trusted_proxies.
+# The file, rotated daily (keep: days kept; 0 = no rotation, for logrotate); none by default.
+# The unit creates /var/log/sre-web (LogsDirectory); in a container, mount it or use
+# /var/lib/sre-web/access.log.
+# file = "/var/log/sre-web/access.log"
+# keep = 400
+# The lines also go to the portal's log (the journal): true by default, false with a file.
+journal = true
+session_timeout = "30m"
+
 [site]
 # The institution, shown next to the SRE logo in the header of every page (the login page too):
 # the absolute path of an image file (JPG, PNG, SVG...; readable by sre-web, served at

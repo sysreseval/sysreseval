@@ -9,6 +9,7 @@ import logging
 import aiohttp
 from aiohttp import web, WSMsgType
 
+from .accesslog import WS_KEY
 from .pool import Pool, PoolError
 from ..config import HostConfig
 from ..identity import Identity
@@ -63,10 +64,11 @@ class Relay:
             raise PoolError(502, f"the host {host.name} does not answer: {e or type(e).__name__}")
 
     async def forward_ndjson(self, request: web.Request, host: HostConfig, identity: Identity, method: str,
-                             path: str, *, data=None, params=None, headers=None) -> web.StreamResponse:
+                             path: str, *, data=None, params=None, headers=None, on_result=None) -> web.StreamResponse:
         """Relay a request whose answer is an NDJSON stream (``start``), line by
         line: the ``result`` line names the host as the browser knows it (``host.name``), not as
-        the agent calls itself."""
+        the agent calls itself, and is given to *on_result* (the connection log reads the outcome
+        and the name of the new project there)."""
         request_headers = self.pool.headers(host, identity)
         request_headers.update(headers or {})
         try:
@@ -87,9 +89,15 @@ class Relay:
                         obj = json.loads(text)
                     except ValueError:
                         obj = None
-                    if isinstance(obj, dict) and obj.get('phase') == 'result' and 'host' in obj:
-                        obj['host'] = host.name
-                        text = json.dumps(obj).encode('utf-8')
+                    if isinstance(obj, dict) and obj.get('phase') == 'result':
+                        if 'host' in obj:
+                            obj['host'] = host.name
+                            text = json.dumps(obj).encode('utf-8')
+                        if on_result is not None:
+                            try:
+                                on_result(obj)
+                            except Exception:
+                                log.exception("on_result failed")
                     await response.write(text + b'\n')
                 await response.write_eof()
                 return response
@@ -98,8 +106,11 @@ class Relay:
 
     async def websocket(self, request: web.Request, host: HostConfig, identity: Identity, path: str, *,
                         protocols=(), params=None, heartbeat: float = 30.0) -> web.WebSocketResponse:
-        """Pipe a WebSocket of the browser to the same path on the agent, frame by frame."""
+        """Pipe a WebSocket of the browser to the same path on the agent, frame by frame.  The
+        socket is kept in ``request[WS_KEY]`` for the connection log (the handler is cancelled
+        when the browser leaves)."""
         ws = web.WebSocketResponse(protocols=protocols, heartbeat=heartbeat, max_msg_size=1 << 20)
+        request[WS_KEY] = ws
         try:
             upstream = await self.session.ws_connect(self._url(host, path), headers=self.pool.headers(host, identity),
                                                      protocols=protocols, params=params, heartbeat=heartbeat,

@@ -1,5 +1,5 @@
-"""The aiohttp application of the portal: middlewares (session, CSRF, errors, security headers),
-Jinja2 templates, static files, the pool refresh task."""
+"""The aiohttp application of the portal: middlewares (session, connection log, CSRF, errors,
+security headers), Jinja2 templates, static files, the pool refresh task."""
 import logging
 import ssl
 import urllib.parse
@@ -12,6 +12,7 @@ import jinja2
 from aiohttp import web
 
 from . import session as S
+from .accesslog import AccessLog
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
 from .roles import RoleCache
@@ -43,12 +44,15 @@ class Portal:
         self.relay: Relay | None = None
         self.routes: Routes | None = None
         self._proxy_warned: set = set()
+        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies)
         self.roles: RoleCache | None = None
         if cfg.auth.mode == AUTH_PROXY and cfg.auth.proxy.ldap_roles:
             self.roles = RoleCache(role_resolver or LdapRoleResolver(cfg.auth.ldap), ttl=cfg.auth.proxy.ldap_roles_ttl)
 
     def make_app(self) -> web.Application:
-        app = web.Application(middlewares=[self.identity_middleware, self.csrf_middleware, self.error_middleware],
+        self.access.open()     # the log file: a bad path fails here, before the server starts
+        app = web.Application(middlewares=[self.identity_middleware, self.access.middleware, self.csrf_middleware,
+                                           self.error_middleware],
                               client_max_size=max(1 << 20, self.cfg.limits.max_answer_bytes))
         app[PORTAL_KEY] = self
         aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(self.web_dir / 'templates')), autoescape=True)
@@ -57,7 +61,8 @@ class Portal:
                          wake_timeout=self.cfg.pool.wake_timeout, state_file=self.cfg.admin.state_file)
         self.manager = PoolManager(self.pool, self.cfg.pool)
         self.relay = Relay(self.pool, None)
-        self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager)
+        self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
+                             access=self.access)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -89,8 +94,13 @@ class Portal:
         await self.pool.refresh()
         self.pool.start()
         self.manager.start()
+        self.access.start()
 
     async def _on_cleanup(self, app):
+        # after the in-flight handlers (the WebSockets) are done: their close lines come first
+        await self.access.stop()
+        self.access.close_all('shutdown')
+        self.access.close()
         await self.manager.stop()
         await self.pool.stop()
         await self.session.close()

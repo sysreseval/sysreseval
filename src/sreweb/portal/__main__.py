@@ -33,6 +33,8 @@ def main(argv=None) -> int:
             cfg.listen = parse_listen(args.listen)
         if not cfg.admin.state_file:
             cfg.admin.state_file = default_state_file(args.config)
+        portal = Portal(cfg, web_dir=args.web_dir, localedirs=default_locale_dirs())
+        app = portal.make_app()          # opens the connection log file: a ConfigError when it cannot
     except ConfigError as e:
         print(f"sre-web: {e}", file=sys.stderr)
         return 1
@@ -40,13 +42,13 @@ def main(argv=None) -> int:
     if cfg.tls_cert:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(cfg.tls_cert, cfg.tls_key)
-    portal = Portal(cfg, web_dir=args.web_dir, localedirs=default_locale_dirs())
     host, port = cfg.listen
     logger = logging.getLogger('sreweb.portal')
     logger.info("listening on %s:%d, %d host(s), auth %s", host, port, len(cfg.hosts), cfg.auth.mode)
     if cfg.auth.mode == AUTH_PROXY:
         logger.info("identity headers trusted from %s", ', '.join(str(n) for n in cfg.trusted_proxies))
-    web.run_app(portal.make_app(), host=host, port=port, ssl_context=ssl_context, print=None)
+    logger.info("connection log: %s", portal.access.describe())
+    web.run_app(app, host=host, port=port, ssl_context=ssl_context, print=None)
     return 0
 
 

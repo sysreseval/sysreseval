@@ -46,14 +46,15 @@ class IdentityError(ValueError):
     """The headers do not describe a valid identity."""
 
 
-def request_key():
-    """The key of the identity in the per-request storage of aiohttp (``request[IDENTITY_KEY]``):
-    a typed ``web.RequestKey`` when the installed aiohttp has it, the plain name otherwise."""
+def request_key(name: str = 'identity'):
+    """A key of the per-request storage of aiohttp (``request[IDENTITY_KEY]``, the extra fields
+    of the connection log): a typed ``web.RequestKey`` when the installed aiohttp has it, the
+    plain name otherwise."""
     try:
         from aiohttp.web import RequestKey
     except ImportError:
-        return 'identity'
-    return RequestKey('identity', object)
+        return name
+    return RequestKey(name, object)
 
 
 IDENTITY_KEY = request_key()

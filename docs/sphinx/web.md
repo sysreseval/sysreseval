@@ -135,7 +135,7 @@ merges other files into this one, as for `web.toml` below.
 | `listen` | `127.0.0.1:8450` | behind a reverse proxy: the loopback |
 | `public_url` | none | the URL the users type (the `Origin` of the WebSockets is checked against it) |
 | `secret` | required | signs the session cookies (32+ random characters) |
-| `trusted_proxies` | `[]` | proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never `X-Forwarded-For`); required in that mode |
+| `trusted_proxies` | `[]` | proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never `X-Forwarded-For`); required in that mode. In every mode, the connection log takes the client address from the `X-Forwarded-For` header of these peers |
 | `languages` | `["en", "fr"]` | the languages offered at login, the first one by default |
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
@@ -144,6 +144,7 @@ merges other files into this one, as for `web.toml` below.
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
+| `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
@@ -195,7 +196,8 @@ The rules that keep this safe:
 
 - The portal listens on the loopback (or on an address only the proxy reaches) and
   `trusted_proxies` holds the proxy's address as the portal sees it (`127.0.0.1` and `::1` for
-  a proxy on the same host); the portal takes the TCP peer address, never `X-Forwarded-For`.
+  a proxy on the same host); the portal takes the TCP peer address, never `X-Forwarded-For`
+  (the connection log alone reads that header, from these peers only, for the client address).
 - The proxy sets the four headers on **every** request, replacing whatever the browser sent
   (`RequestHeader set` does; never pass a client header through), after the authentication
   (not `early`). An optional header is removed when the attribute is missing, or `mod_headers`
@@ -215,6 +217,63 @@ The rules that keep this safe:
   `logout_url` names a logout handler (`mod_auth_form`, sketched at the end of the example).
 - `sre-web-tool …` talks to the loopback port directly, never through the proxy (the Basic
   authentication would refuse its bearer token).
+
+### The connection log
+
+`[access_log]` of `web.toml` makes the portal keep a log of its use: who connected from where
+and for how long, which projects were opened, started, evaluated, closed. One `key=value` line
+per event (a value with spaces or quotes is JSON-quoted, so a user agent or a display name
+cannot forge a line), in the file named by `file` (rotated at midnight, `keep` days of
+`access.log.YYYY-MM-DD` files kept; `keep = 0` leaves the rotation to logrotate, the file is
+reopened when it moves) and, with `journal = true` (the default, and the whole log when no
+file is set), in the portal's own log on stderr: the journal under systemd, `docker logs` in a
+container. The unit creates `/var/log/sre-web` (`LogsDirectory=`); a container mounts a
+directory for the file or writes it under `/var/lib/sre-web`. The lines of the file start with
+a timestamp (`2026-10-26T09:12:03+0100`):
+
+```
+event=login login=alice addr=10.0.1.7 mode=ldap role=student anon=0 name="Alice Test"
+event=session_open login=alice addr=10.0.1.7 role=student anon=0 name="Alice Test" ua="Mozilla/5.0 …"
+event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 host=a01 result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
+event=project_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice
+event=terminal_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0
+event=terminal_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0 duration=612.3 code=1000
+event=eval login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice status=200 duration=8.1
+event=project_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice duration=1803.6 code=1001
+event=stop login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice status=200 duration=3.0
+event=logout login=alice addr=10.0.1.7 status=200 duration=0.0
+event=session_close login=alice addr=10.0.1.7 reason=logout since=2026-10-26T09:11:50+0100 duration=1850 requests=14 projects=1761466323@@@dhcp@@@alice
+```
+
+A **session** is the requests of one login from one client address (`addr`): it opens at the
+first request (`session_open`: role, pseudonym or not, name, user agent) and closes
+(`session_close`) at a logout, after `session_timeout` without a request (`reason=idle`; the
+duration then ends at the last request, not at the expiry) or when the portal stops
+(`shutdown`); a session whose project page, terminal or desktop is still open never expires.
+The closing line gives the start, the duration in seconds, the number of requests (the polls of
+the pages and the keep-alive of a project are not counted) and the projects used. In proxy
+mode there is no login: the first request of a user opens the session and the request following
+a logout opens another one. The other events:
+
+- `login` (`mode`: `anonymous` or `ldap`) and `login_failed` (`reason`: `password`,
+  `rate_limited`, `directory` when the directory does not answer, `proxy_mode`);
+- `start`: the lab, the host chosen, whether the instructor mode was asked, `result` (`created`,
+  `flavor_form`, `flavor_error`, `error`) and `rln`, the running lab name of the new project;
+- `project_open` / `project_close`: the project page, open as long as its events WebSocket is
+  (`duration` in seconds, `code`: the WebSocket close code; `view=instructor` for the instructor
+  view); `terminal_open` / `terminal_close` (`device`, `join`: the session joined, `private`)
+  and `display_open` / `display_close` likewise; a socket refused before it opens (401, 403, 404)
+  gives a close line with `status` instead of `code`;
+- `eval`, `state` (`state`), `export`, `stop`, `display_start`: the HTTP status and the duration;
+- `denied`: a call answered 401, 403 or 429 (`method`, `path`), `login=-` when nobody was logged
+  in; `admin`: a call of `sre-web-tool` changing the pool.
+
+The client address is the last entry of `X-Forwarded-For` when the TCP peer is one of
+`trusted_proxies` (the Apache and nginx examples set that header), the peer address otherwise:
+set `trusted_proxies` in every mode to log the real addresses behind a proxy. The login rate
+limit (`[limits] login_per_minute`) counts per logged address too. The log holds personal data
+(names, addresses, what was done when): `keep` is its retention, and the file is readable by
+`sre-web` and root only (`/var/log/sre-web` is mode 0750).
 
 ### Securing the pool (mutual TLS)
 
@@ -446,6 +505,10 @@ the commands.
   portal from anywhere else has no identity, headers or not).
 - Rate limits per user (evaluations, starts) and per client address (logins); the size of the
   answers is capped.
+- The connection log (`[access_log]`) keeps who did what from where: the sessions with their
+  duration and projects, the logins and their failures, the denied calls, the administration
+  calls. The only header it reads is `X-Forwarded-For`, from the peers of `trusted_proxies`,
+  for the client address; the identity never comes from it.
 - A project's owner is the third field of its running lab name; the portal and the agent both
   check it. An instructor (see *Instructors* above) reaches every project, but the agent never
   runs a command as the student for them: a non-owner's `eval`, `state`, `connect` and `export`

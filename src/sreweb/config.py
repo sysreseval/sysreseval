@@ -272,6 +272,18 @@ class AdminConfig:
     state_file: str = ''              # '' : the default of the installation (see sre-web)
 
 
+@dataclass
+class AccessLogConfig:
+    """``[access_log]``: the connection log of the portal (``sreweb/portal/accesslog.py``), one
+    ``key=value`` line per event: the sessions of the users (first request to logout, idle
+    timeout or shutdown, with their duration and the projects opened), the logins, the starts,
+    the project pages, terminals, evaluations, states, stops, exports, the denied calls."""
+    file: str = ''                      # '' : no file
+    journal: bool = True                # the lines also go to the portal's log (stderr: the journal, docker logs)
+    keep: int = 400                     # days of daily rotated files kept; 0 = no rotation (logrotate reopens the file)
+    session_timeout: float = 1800.0     # a session idle for this long is closed (its duration ends at its last request)
+
+
 _URL_PREFIXES = ('/', 'http://', 'https://')
 
 
@@ -293,6 +305,20 @@ class SiteConfig:
             if self.name.get(lang):
                 return self.name[lang]
         return next(iter(self.name.values()), '')
+
+
+def _check_access_log(cfg: AccessLogConfig, path: str):
+    where = f"{path}: access_log."
+    if not isinstance(cfg.file, str):
+        raise ConfigError(f"{where}file must be the absolute path of the log file")
+    if cfg.file and not os.path.isabs(cfg.file):
+        raise ConfigError(f"{where}file must be the absolute path of the log file")
+    if not isinstance(cfg.journal, bool):
+        raise ConfigError(f"{where}journal must be true or false")
+    if isinstance(cfg.keep, bool) or not isinstance(cfg.keep, int) or cfg.keep < 0:
+        raise ConfigError(f"{where}keep must be a number of days (0 = no rotation)")
+    if cfg.session_timeout <= 0:
+        raise ConfigError(f"{where}session_timeout must be positive")
 
 
 def _check_site(site: SiteConfig, path: str):
@@ -328,6 +354,7 @@ class WebConfig:
     pool: PoolConfig = field(default_factory=PoolConfig)
     limits: LimitsConfig = field(default_factory=LimitsConfig)
     admin: AdminConfig = field(default_factory=AdminConfig)
+    access_log: AccessLogConfig = field(default_factory=AccessLogConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
     hosts: list = field(default_factory=list)
 
@@ -404,6 +431,11 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: admin.token must have at least {MIN_SECRET_LENGTH} characters")
+    access_data = _section(data, 'access_log', path)
+    access_log = _build(AccessLogConfig, access_data, f"{path}: [access_log]",
+                        session_timeout=parse_duration(access_data.get('session_timeout', 1800.0),
+                                                       'access_log.session_timeout'))
+    _check_access_log(access_log, path)
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
@@ -416,8 +448,10 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     hosts = [host_config_from_dict(h, f"{path}: hosts[{i}]") for i, h in enumerate(hosts_data)]
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
-    top = {k: v for k, v in data.items() if k not in ('auth', 'pool', 'limits', 'admin', 'site', 'hosts')}
-    cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, site=site, hosts=hosts,
+    top = {k: v for k, v in data.items()
+           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'site', 'hosts')}
+    cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
+                 site=site, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:

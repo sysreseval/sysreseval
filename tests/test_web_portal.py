@@ -18,6 +18,7 @@ from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL
 from sreweb.config import agent_config_from_dict, web_config_from_dict
 from sreweb.identity import Identity
 from sreweb.portal import session as S
+from sreweb.portal.accesslog import parse_line
 from sreweb.portal.app import Portal
 from sreweb.portal.pool import Pool, PoolError, HostStatus
 from sreweb.config import HostConfig
@@ -335,6 +336,185 @@ class TestProjectsThroughThePortal:
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers=CSRF)
                 assert resp.status == 503
                 assert len(await (await h.client.get('/api/projects')).json()) == 3
+        run(go())
+
+
+class TestAccessLog:
+    """The connection log ([access_log]) of a real portal: the lines of a whole session."""
+
+    @staticmethod
+    def over(tmp_path, **more) -> dict:
+        return {'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, **more}}
+
+    @staticmethod
+    def lines(tmp_path) -> list:
+        return [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+
+    async def wait_event(self, tmp_path, event: str) -> dict:
+        """The WebSocket close lines are written when the server side of the socket ends, a
+        moment after the client's close() returns."""
+        async with asyncio.timeout(5):
+            while True:
+                for line in reversed(self.lines(tmp_path)):
+                    if line['event'] == event:
+                        return line
+                await asyncio.sleep(0.02)
+
+    def test_full_flow(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=self.over(tmp_path)) as h:
+                me = await h.login('Alice Test')
+                rln = (await h.start())['running_lab_name']
+                base = f'/api/projects/a01/{rln}'
+                assert (await h.client.get('/api/projects')).status == 200            # polls: not counted
+                assert (await h.client.post(f'{base}/touch', headers=CSRF)).status == 204
+                assert (await h.client.get(f'/projects/a01/{rln}')).status == 200   # counted, no event
+                assert (await h.client.get('/static/x.css')).status == 200            # ignored
+                ws = await h.client.ws_connect(f'{base}/events')
+                await ws.close()
+                await self.wait_event(tmp_path, 'project_close')
+                term = await h.client.ws_connect(f'{base}/terminals/m1?cols=90&rows=20', protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(term.receive_json(), 5))['t'] == 'ready'
+                await term.close()
+                await self.wait_event(tmp_path, 'terminal_close')
+                assert (await h.client.post(f'{base}/eval', headers=CSRF)).status == 200
+                assert (await h.client.post(f'{base}/states/final', headers=CSRF)).status == 200
+                assert (await h.client.post(f'{base}/states/nope', headers=CSRF)).status == 403
+                resp = await h.client.get(f'{base}/export?sep=2')
+                assert resp.status == 200 and (await resp.read()).startswith(b'PK')   # unread: status=abort
+                await self.wait_event(tmp_path, 'export')
+                assert (await h.client.get('/api/pool')).status == 403                # denied, no event
+                assert (await h.client.delete(base, headers=CSRF)).status == 200
+                assert (await h.client.post('/api/logout', headers=CSRF)).status == 200
+                assert (await h.client.get('/api/projects')).status == 401            # denied, nobody
+                return me['login'], rln
+        login, rln = run(go())
+        lines = self.lines(tmp_path)
+        assert [l['event'] for l in lines] == [
+            'login', 'session_open', 'start', 'project_open', 'project_close', 'terminal_open', 'terminal_close',
+            'eval', 'state', 'state', 'export', 'denied', 'stop', 'logout', 'session_close', 'denied']
+        for line in lines[:-1]:
+            assert line['login'] == login and line['addr'] == '127.0.0.1', line
+        assert lines[0]['mode'] == 'anonymous' and lines[0]['anon'] == '1' and lines[0]['name'] == 'Alice Test'
+        assert lines[1]['role'] == 'student' and lines[1]['ua'].startswith('Python/')
+        start = lines[2]
+        assert (start['lab'], start['instructor'], start['host'], start['result'], start['rln'], start['status']) == \
+               ('sre/dhcp.py', '0', 'a01', 'created', rln, '200')
+        assert float(start['duration']) >= 0
+        assert lines[3] == dict(ts=lines[3]['ts'], event='project_open', login=login, addr='127.0.0.1', host='a01', rln=rln)
+        assert lines[4]['code'] == '1000' and float(lines[4]['duration']) >= 0
+        assert (lines[5]['device'], lines[5]['join'], lines[5]['private']) == ('m1', '', '0')
+        assert lines[6]['code'] == '1000' and lines[6]['device'] == 'm1'
+        assert (lines[7]['status'], lines[8]['state'], lines[8]['status'], lines[9]['state'], lines[9]['status']) == \
+               ('200', 'final', '200', 'nope', '403')
+        assert lines[10]['status'] == '200' and lines[10]['rln'] == rln
+        assert lines[11] == dict(ts=lines[11]['ts'], event='denied', login=login, addr='127.0.0.1', method='GET',
+                                 path='/api/pool', status='403')
+        assert lines[12]['rln'] == rln and lines[12]['status'] == '200'
+        assert lines[13]['status'] == '200'
+        close = lines[14]
+        # login, start, page, 2 sockets, eval, 2 states, export, pool, stop, logout; not the poll, the touch, the static file
+        assert (close['reason'], close['requests'], close['projects']) == ('logout', '12', rln)
+        assert close['since'][:2] == '20' and int(close['duration']) < 60
+        assert lines[15] == dict(ts=lines[15]['ts'], event='denied', login='', addr='127.0.0.1', method='GET',
+                                 path='/api/projects', status='401')
+
+    def test_shutdown_closes_the_sessions(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=self.over(tmp_path)) as h:
+                await h.login('A')
+                h.client.session.cookie_jar.clear()
+                await h.login('B')
+        run(go())
+        lines = self.lines(tmp_path)
+        assert [l['event'] for l in lines] == ['login', 'session_open', 'login', 'session_open', 'session_close',
+                                               'session_close']
+        assert {l['reason'] for l in lines[4:]} == {'shutdown'} and {l['requests'] for l in lines[4:]} == {'1'}
+
+    def test_idle_expiry(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over=self.over(tmp_path, session_timeout='10m')) as h:
+                access = h.portal.access
+                assert access.period == 60.0 and access._task is not None
+                await h.login('A')
+                t0 = access.clock()
+                access.clock = lambda: t0 + 700
+                access.expire()
+                assert [l['event'] for l in self.lines(tmp_path)][-1] == 'session_close'
+                # a session with an open WebSocket (the project page) never expires
+                h.client.session.cookie_jar.clear()      # else the login of B is a request of A's session
+                await h.login('B')
+                rln = (await h.start())['running_lab_name']
+                ws = await h.client.ws_connect(f'/api/projects/a01/{rln}/events')
+                access.clock = lambda: t0 + 1400
+                access.expire()
+                assert [l['event'] for l in self.lines(tmp_path)][-1] == 'project_open'
+                await ws.close()
+                await self.wait_event(tmp_path, 'project_close')
+                access.expire()                      # active until the socket closed
+                assert [l['event'] for l in self.lines(tmp_path)][-1] == 'project_close'
+                access.clock = lambda: t0 + 2100
+                access.expire()
+                return rln
+        rln = run(go())
+        lines = self.lines(tmp_path)
+        assert [l['event'] for l in lines] == ['login', 'session_open', 'session_close', 'login', 'session_open', 'start',
+                                               'project_open', 'project_close', 'session_close']
+        assert lines[2]['reason'] == 'idle' and int(lines[2]['duration']) < 5
+        assert (lines[8]['reason'], lines[8]['duration'], lines[8]['projects'], lines[8]['requests']) == \
+               ('idle', '700', rln, '3')
+
+    def test_client_address_behind_a_trusted_proxy(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, web_over={**PROXY_OVER, **self.over(tmp_path)}) as h:
+                headers = {**who('alice', 'Alice'), 'X-Forwarded-For': '1.2.3.4, 10.0.1.7'}
+                assert (await h.client.get('/api/projects', headers=headers)).status == 200
+                assert (await h.client.get('/api/projects', headers=who('alice'))).status == 200   # the peer itself
+                resp = await h.client.post('/api/logout', headers={**headers, **CSRF})
+                assert resp.status == 200
+                assert (await h.client.get('/projects', headers=headers)).status == 200     # proxy mode: a new session
+            lines = self.lines(tmp_path)
+            assert [(l['event'], l['addr']) for l in lines] == [
+                ('session_open', '10.0.1.7'), ('session_open', '127.0.0.1'), ('logout', '10.0.1.7'),
+                ('session_close', '10.0.1.7'), ('session_open', '10.0.1.7'),
+                ('session_close', '127.0.0.1'), ('session_close', '10.0.1.7')]
+            assert lines[0]['name'] == 'Alice' and lines[0]['role'] == 'student' and lines[0]['anon'] == '0'
+            assert lines[3]['reason'] == 'logout' and lines[3]['requests'] == '1' and lines[5]['reason'] == 'shutdown'
+            # without trusted proxies the header is ignored
+            async with Harness(tmp_path / 'anon', web_over=self.over(tmp_path / 'anon')) as h:
+                resp = await h.client.post('/api/login', json={'display_name': 'x'},
+                                           headers={**CSRF, 'X-Forwarded-For': '10.0.1.7'})
+                assert resp.status == 200
+            assert [l['addr'] for l in self.lines(tmp_path / 'anon')] == ['127.0.0.1'] * 3
+        run(go())
+
+    def test_login_failures(self, tmp_path):
+        async def go():
+            over = {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldap://127.0.0.1:1', 'bind_dn_template': 'uid={login},dc=x',
+                                                     'timeout': 1}}, **self.over(tmp_path)}
+            async with Harness(tmp_path, auth_mode='ldap', web_over=over) as h:
+                resp = await h.client.post('/api/login', json={'login': 'alice', 'password': 'x'}, headers=CSRF)
+                assert resp.status in (502, 401)
+                resp = await h.client.post('/login', data={'login': '../x', 'password': 'x'}, allow_redirects=False)
+                assert resp.status == 302
+                statuses = set()
+                for _ in range(6):
+                    resp = await h.client.post('/api/login', json={'login': 'bob', 'password': 'x'}, headers=CSRF)
+                    statuses.add(resp.status)
+                assert 429 in statuses
+            lines = self.lines(tmp_path)
+            assert {l['event'] for l in lines} == {'login_failed'}
+            assert lines[0]['login'] == 'alice' and lines[0]['reason'] in ('directory', 'password')
+            assert lines[1]['login'] == '../x' and lines[1]['reason'] in ('directory', 'password')
+            assert lines[-1] == dict(ts=lines[-1]['ts'], event='login_failed', login='bob', addr='127.0.0.1',
+                                     reason='rate_limited')
+            async with Harness(tmp_path / 'proxy', web_over={**PROXY_OVER, **self.over(tmp_path / 'proxy')}) as h:
+                resp = await h.client.post('/api/login', json={'login': 'alice', 'password': 'x'},
+                                           headers={**who('alice'), **CSRF})
+                assert resp.status == 403
+            lines = self.lines(tmp_path / 'proxy')
+            assert [(l['event'], l.get('reason'), l['login']) for l in lines] == [
+                ('session_open', None, 'alice'), ('login_failed', 'proxy_mode', 'alice'), ('session_close', 'shutdown', 'alice')]
         run(go())
 
 

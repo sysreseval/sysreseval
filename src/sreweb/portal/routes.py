@@ -12,6 +12,7 @@ import aiohttp_jinja2
 from aiohttp import web
 
 from . import auth_anon, session as S
+from .accesslog import AccessLog, ACCESS_KEY
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .ratelimit import RateLimiter
@@ -35,11 +36,12 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 
 
 class Routes:
-    def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None):
+    def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog):
         self.cfg = cfg
         self.pool = pool
         self.manager = manager
         self.relay = relay
+        self.access = access
         self.localedirs = localedirs
         self.limiter = RateLimiter()
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
@@ -169,22 +171,32 @@ class Routes:
                                               self._page_context(request, error=request.query.get('error', '')))
 
     async def _authenticate(self, request, data: dict) -> Identity:
+        """The identity of a login request; the outcome goes to the connection log (the
+        request carries no identity, so the log's middleware cannot see it)."""
+        login = str(data.get('login', '')).strip()
         if self.proxy_mode:
+            self.access.login_failed(request, login, 'proxy_mode')
             raise PoolError(403, "the authentication is done by the reverse proxy")
         language = self._check_language(str(data.get('language', '') or self._language(request)))
         if self.cfg.auth.mode == AUTH_ANONYMOUS:
-            return auth_anon.new_guest(str(data.get('display_name', '')), language)
-        if not self.limiter.allow_per_minute('login', request.remote or '', self.cfg.limits.login_per_minute):
+            identity = auth_anon.new_guest(str(data.get('display_name', '')), language)
+            self.access.login(request, identity, self.cfg.auth.mode)
+            return identity
+        # per client address: the one the proxy forwards, else every user shares the proxy's budget
+        if not self.limiter.allow_per_minute('login', self.access.address(request), self.cfg.limits.login_per_minute):
+            self.access.login_failed(request, login, 'rate_limited')
             raise PoolError(429, "too many login attempts, try again in a minute")
-        login = str(data.get('login', '')).strip()
         password = str(data.get('password', ''))
         try:
             identity = await self.ldap.authenticate(login, password, language)
         except LdapError as e:
             log.error("LDAP error: %s", e)
+            self.access.login_failed(request, login, 'directory')
             raise PoolError(502, "the directory does not answer")
         if identity is None:
+            self.access.login_failed(request, login, 'password')
             raise PoolError(401, "wrong login or password")
+        self.access.login(request, identity, self.cfg.auth.mode)
         return identity
 
     async def login_form(self, request):
@@ -384,27 +396,37 @@ class Routes:
             return json_error(400, "a JSON body is expected")
         if not isinstance(body, dict) or not isinstance(body.get('lab'), str):
             return json_error(400, "lab is required")
+        logged = request.get(ACCESS_KEY)      # the line of the connection log: the lab, the host, the outcome
+        if logged is not None:
+            logged.update(lab=body['lab'], instructor=bool(body.get('instructor_mode')))
         wait = self.limiter.allow_every('start', identity.login, self.cfg.limits.start_interval)
         if wait:
             return json_error(429, "please wait before starting another project", retry_after=round(wait))
         if body.get('instructor_mode') and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
         host, reservation = self.pool.pick()
+        if logged is not None:
+            logged['host'] = host.name
         payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
         if isinstance(body.get('flavor'), dict):
             payload['flavor_json'] = body['flavor']
         if body.get('instructor_mode'):
             payload['instructor_mode'] = True     # an instructor's own project in instructor mode
+
+        def on_result(obj: dict):
+            if logged is not None:
+                logged.update(result=obj.get('status'), rln=obj.get('running_lab_name'))
+
         try:
-            return await self._forward_json(request, host, identity, payload)
+            return await self._forward_json(request, host, identity, payload, on_result=on_result)
         finally:
             self.pool.release(reservation)
 
-    async def _forward_json(self, request, host, identity, payload: dict):
+    async def _forward_json(self, request, host, identity, payload: dict, *, on_result=None):
         """Relay a JSON POST that answers an NDJSON stream."""
         return await self.relay.forward_ndjson(request, host, identity, 'POST', '/projects',
                                                data=json.dumps(payload).encode('utf-8'),
-                                               headers={'Content-Type': 'application/json'})
+                                               headers={'Content-Type': 'application/json'}, on_result=on_result)
 
     # -- one project -----------------------------------------------------------------------------
 
