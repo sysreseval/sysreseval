@@ -42,6 +42,7 @@ TEMPLATES = {
     'open.html': '<html><title>Open</title>{{ identity.login }}</html>',
     'project.html': '<html><title>Project</title>{{ host }} {{ rln }} {{ api_base }} {{ _("Schema") }}</html>',
     'watch.html': '<html><title>Watch</title>{{ identity.login }} {{ instructor }} {{ groups }}</html>',
+    'pool.html': '<html><title>Pool</title>{{ identity.login }} {{ instructor }}</html>',
 }
 
 
@@ -417,8 +418,9 @@ class TestAccessLog:
         assert lines[12]['rln'] == rln and lines[12]['status'] == '200'
         assert lines[13]['status'] == '200'
         close = lines[14]
-        # login, start, page, 2 sockets, eval, 2 states, export, pool, stop, logout; not the poll, the touch, the static file
-        assert (close['reason'], close['requests'], close['projects']) == ('logout', '12', rln)
+        # login, start, page, 2 sockets, eval, 2 states, export, stop, logout; not the polls (projects, pool), the
+        # touch, the static file
+        assert (close['reason'], close['requests'], close['projects']) == ('logout', '11', rln)
         assert close['since'][:2] == '20' and int(close['duration']) < 60
         assert lines[15] == dict(ts=lines[15]['ts'], event='denied', login='', addr='127.0.0.1', method='GET',
                                  path='/api/projects', status='401')

@@ -51,10 +51,10 @@ class TestAdminApi:
                 assert 'token' not in rows[0] and rows[0]['projects'] == 0 and rows[0]['max_projects'] == 3
                 status = await (await h.client.get('/api/pool/status', headers=auth(ADMIN))).json()
                 assert status['awake'] == 1 and status['spare_projects'] == 3 and status['waking'] == []
-                # a student: the listing is for instructors, the actions for the token
+                # a student: the listing and the actions are for the instructors (TestInstructorPage) and the token
                 await h.login()
                 assert (await h.client.get('/api/pool')).status == 403
-                assert (await h.client.post('/api/pool/hosts/a01/disable', headers=CSRF)).status == 401
+                assert (await h.client.post('/api/pool/hosts/a01/disable', headers=CSRF)).status == 403
                 # add a host (down, wakeable), replace it, refuse a config name and a bad entry
                 body = {'name': 'b02', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'max_projects': 2,
                         'mac': 'AA-BB-CC-DD-EE-FF', 'power': True}
@@ -152,6 +152,53 @@ class TestAdminApi:
             async with P.Harness(tmp_path / 'again', web_over=over) as h:
                 rows = {r['name']: r for r in await (await h.client.get('/api/pool', headers=auth(ADMIN))).json()}
                 assert rows['c03']['instructors_only'] is True and rows['c03']['source'] == 'added'
+        run(go())
+
+
+class TestInstructorPage:
+    def test_page_and_actions(self, tmp_path):
+        """The Pool page: the listing and the five actions for an instructor's session (the CSRF
+        header, no token), add / remove for the token only."""
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN}, 'pool': QUIET_POOL, 'limits': {'start_interval': 0}}
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+                sent = []
+                h.portal.manager.wol = lambda mac, broadcast: sent.append((mac, broadcast))
+                bob, prof = P.who('bob'), P.who('prof', groups=P.TEACHERS)
+                body = {'name': 'b02', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'mac': 'aa:bb:cc:dd:ee:ff'}
+                assert (await h.client.post('/api/pool/hosts', json=body, headers=auth(ADMIN))).status == 201
+                # the page and the status: instructors only
+                assert (await h.client.get('/pool', allow_redirects=False)).status == 302
+                assert (await h.client.get('/pool', headers=bob)).status == 403
+                page = await h.client.get('/pool', headers=prof)
+                assert page.status == 200 and 'prof True' in await page.text()
+                assert (await h.client.get('/api/pool/status', headers=bob)).status == 403
+                status = await (await h.client.get('/api/pool/status', headers=prof)).json()
+                assert status['awake'] == 1 and status['waking'] == []
+                # the actions: a student 403, the CSRF header required, then the commands of the tool
+                a01 = '/api/pool/hosts/a01/'
+                assert (await h.client.post(a01 + 'disable', headers={**bob, **CSRF})).status == 403
+                resp = await h.client.post(a01 + 'disable', headers=prof)
+                assert resp.status == 403 and 'X-Requested-With' in (await resp.json())['error']
+                resp = await h.client.post(a01 + 'disable', headers={**prof, **CSRF})
+                assert resp.status == 200 and (await resp.json())['state'] == 'disabled'
+                resp = await h.client.post(a01 + 'enable', headers={**prof, **CSRF})
+                assert resp.status == 200 and (await resp.json())['state'] == 'up'
+                resp = await h.client.post(a01 + 'drain', headers={**prof, **CSRF})
+                assert resp.status == 200 and (await resp.json())['state'] == 'draining'
+                row = await (await h.client.post(a01 + 'enable', headers={**prof, **CSRF})).json()
+                assert row['state'] == 'up' and row['drain'] is False
+                resp = await h.client.post('/api/pool/hosts/b02/wake', headers={**prof, **CSRF})
+                assert resp.status == 200 and (await resp.json())['state'] == 'waking'
+                assert sent == [('aa:bb:cc:dd:ee:ff', '255.255.255.255')]
+                assert (await h.client.post(a01 + 'wake', headers={**prof, **CSRF})).status == 409      # no mac
+                assert (await h.client.post(a01 + 'poweroff', headers={**prof, **CSRF})).status == 403  # the agent refuses
+                assert (await h.client.post(a01 + 'dance', headers={**prof, **CSRF})).status == 404
+                assert (await h.client.post('/api/pool/hosts/nope/enable', headers={**prof, **CSRF})).status == 404
+                # add and remove stay with the token
+                assert (await h.client.post('/api/pool/hosts', json=body, headers={**prof, **CSRF})).status == 401
+                assert (await h.client.delete('/api/pool/hosts/b02', headers={**prof, **CSRF})).status == 401
         run(go())
 
 

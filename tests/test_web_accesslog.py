@@ -108,6 +108,7 @@ class TestEventFor:
     def test_sets(self):
         assert A.WS_EVENTS == {'project', 'terminal', 'display'}
         assert ('GET', '/api/projects') in A.KEEPALIVE and ('POST', '/api/projects/{host}/{rln}/touch') in A.KEEPALIVE
+        assert ('GET', '/api/pool') in A.KEEPALIVE and ('GET', '/api/pool/status') in A.KEEPALIVE
         assert '/static' in A.IGNORED and '' in A.IGNORED and '/i18n/{lang}.json' in A.IGNORED
         assert A.LOGIN_ROUTES == {('POST', '/login'), ('POST', '/api/login')}
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin'}

@@ -498,6 +498,146 @@ msgstr "local"
 msgid "(keeps the instructor texts, lists every state, logs the states applied)"
 msgstr "(conserve les textes enseignant, liste tous les états, journalise les états appliqués)"
 
+# --- the instructor role: pool.html, pool.js, base.html -------------------------------------
+
+msgid "Pool"
+msgstr "Parc"
+
+msgid "The hosts of the pool"
+msgstr "Les machines du parc"
+
+msgid "Host, state or user"
+msgstr "Machine, état ou utilisateur"
+
+msgid "State"
+msgstr "État"
+
+msgid "Load"
+msgstr "Charge"
+
+msgid "Occupied by"
+msgstr "Occupée par"
+
+msgid "Uptime"
+msgstr "Allumée depuis"
+
+msgid "Flags"
+msgstr "Indicateurs"
+
+msgid "Version"
+msgstr "Version"
+
+msgid "Last error"
+msgstr "Dernière erreur"
+
+msgid "Enable"
+msgstr "Activer"
+
+msgid "Disable"
+msgstr "Désactiver"
+
+msgid "Wake"
+msgstr "Réveiller"
+
+msgid "Drain"
+msgstr "Vider"
+
+msgid "Power off"
+msgstr "Éteindre"
+
+msgid "Power off {name}? The agent refuses while a project runs or someone is logged in there."
+msgstr "Éteindre {name} ? L'agent refuse tant qu'un projet tourne ou que quelqu'un y est connecté."
+
+msgid "in progress…"
+msgstr "en cours…"
+
+msgid "up"
+msgstr "allumée"
+
+msgid "off"
+msgstr "éteinte"
+
+msgid "waking"
+msgstr "en démarrage"
+
+msgid "occupied"
+msgstr "occupée"
+
+msgid "exam"
+msgstr "examen"
+
+msgid "draining"
+msgstr "en vidage"
+
+msgid "disabled"
+msgstr "désactivée"
+
+msgid "{n} s"
+msgstr "{n} s"
+
+msgid "{n} failed"
+msgstr "{n} échec(s)"
+
+msgid "idle for {n} min"
+msgstr "inactive depuis {n} min"
+
+msgid "instructors"
+msgstr "enseignants"
+
+msgid "power"
+msgstr "extinction auto"
+
+msgid "drain"
+msgstr "vidage"
+
+msgid "power off sent"
+msgstr "extinction demandée"
+
+msgid "the host is not reachable"
+msgstr "la machine est injoignable"
+
+msgid "no MAC address nor wake command"
+msgstr "ni adresse MAC ni commande de réveil"
+
+msgid "the host is up"
+msgstr "la machine est allumée"
+
+msgid "the host is disabled"
+msgstr "la machine est désactivée"
+
+msgid "already draining"
+msgstr "déjà en vidage"
+
+msgid "the agent does not allow it (allow_power_off)"
+msgstr "l'agent ne le permet pas (allow_power_off)"
+
+msgid "none"
+msgstr "aucune"
+
+msgid "{awake} host(s) awake (floor {floor})"
+msgstr "{awake} machine(s) allumée(s) (plancher {floor})"
+
+msgid "spare capacity: {spare} slot(s) (wanted: {wanted})"
+msgstr "capacité libre : {spare} place(s) (souhaitée : {wanted})"
+
+msgid "waking: {names}"
+msgstr "en démarrage : {names}"
+
+msgid "outside the active hours"
+msgstr "hors des heures actives"
+
+msgid "{n} host(s)"
+msgstr "{n} machine(s)"
+
+msgid "{n} of {total} host(s)"
+msgstr "{n} machine(s) sur {total}"
+
+msgid "No host matches the filter."
+msgstr "Aucune machine ne correspond au filtre."
+
+msgid "No host in the pool."
+msgstr "Aucune machine dans le parc."
+
 # --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
 
 msgid "No archived evaluation yet."

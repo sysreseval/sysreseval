@@ -99,7 +99,8 @@ def parse_po(path: Path) -> dict:
 
 class TestTemplates:
     def test_the_pages_exist(self):
-        assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html'} <= set(template_names())
+        assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
+                'pool.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -161,13 +162,17 @@ class TestTemplates:
         html = render('open.html')
         assert 'id="labs"' in html and 'id="start-button"' in html and '/static/js/open.js' in html
         assert 'id="instructor-mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
+        assert 'href="/pool"' not in html
         # the instructor's extras: the Instructor mode box and the Host select of the Open page, the Watch
-        # link of every page
+        # and Pool links of every page
         html = render('open.html', instructor=True)
         assert 'id="instructor-mode"' in html and 'href="/watch"' in html and 'Instructor mode' in html
         assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
-        assert 'href="/watch"' in render('projects.html', instructor=True)
-        assert 'href="/watch"' not in render('projects.html')
+        assert 'href="/pool"' in html
+        html = render('projects.html', instructor=True)
+        assert 'href="/watch"' in html and 'href="/pool"' in html
+        html = render('projects.html')
+        assert 'href="/watch"' not in html and 'href="/pool"' not in html
 
     def test_watch_page(self):
         html = render('watch.html', instructor=True)
@@ -184,6 +189,14 @@ class TestTemplates:
         shown = render('watch.html', instructor=True, groups=True)
         assert 'data-groups="true"' in shown and 'data-sort="group">' in shown
         assert 'class="watch-group" title="Student group">' in shown and ' hidden' not in shown
+
+    def test_pool_page(self):
+        html = render('pool.html', instructor=True)
+        assert 'id="pool"' in html and 'id="pool-filter"' in html and 'id="pool-count"' in html
+        assert 'id="pool-status"' in html and '/static/js/pool.js' in html and 'href="/pool"' in html
+        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'occupied_by', 'uptime', 'sre_version'):
+            assert f'data-sort="{key}"' in html, key
+        assert 'data-login="alice"' in html and 'class="grid watch pool"' in html
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)
@@ -213,7 +226,8 @@ class TestTemplates:
 
     def test_static_references_exist(self):
         pages = [render('login.html', identity=None), render('projects.html'), render('open.html', instructor=True),
-                 render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True)]
+                 render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True),
+                 render('pool.html', instructor=True)]
         checked = 0
         for html in pages:
             references = static_references(html)

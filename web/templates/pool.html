@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Pool") }} - SRE{% endblock %}
+{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ _("The hosts of the pool") }}</h1>
+  <input type="text" id="pool-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Host, state or user") }}">
+  <span id="pool-count" class="muted"></span>
+</div>
+<p id="pool-status" class="pool-status muted"></p>
+<table id="pool" class="grid watch pool">
+  <thead>
+    <tr>
+      <th class="sortable" data-sort="name">{{ _("Host") }}</th>
+      <th class="sortable" data-sort="state">{{ _("State") }}</th>
+      <th class="sortable" data-sort="projects">{{ _("Projects") }}</th>
+      <th class="sortable" data-sort="terminals">{{ _("Terminals") }}</th>
+      <th class="sortable" data-sort="load1">{{ _("Load") }}</th>
+      <th class="sortable" data-sort="occupied_by">{{ _("Occupied by") }}</th>
+      <th class="sortable" data-sort="uptime">{{ _("Uptime") }}</th>
+      <th>{{ _("Flags") }}</th>
+      <th class="sortable" data-sort="sre_version">{{ _("Version") }}</th>
+      <th>{{ _("Last error") }}</th>
+      <th>{{ _("Actions") }}</th>
+    </tr>
+  </thead>
+  <tbody><tr><td colspan="11" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+</table>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/pool.js"></script>{% endblock %}

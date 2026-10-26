@@ -55,6 +55,7 @@ class Routes:
         r.add_get('/projects', self.projects_page)
         r.add_get('/open', self.open_page)
         r.add_get('/watch', self.watch_page)
+        r.add_get('/pool', self.pool_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
         r.add_get(SITE_LOGO_PATH, self.site_logo)
@@ -241,6 +242,15 @@ class Routes:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('watch.html', request, self._page_context(request))
 
+    async def pool_page(self, request):
+        """Instructors: the hosts of the pool with their state, and the actions of sre-web-tool
+        (but add / remove)."""
+        if not request.get(IDENTITY_KEY):
+            raise web.HTTPFound('/login')
+        if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
+            raise web.HTTPForbidden(text="instructors only")
+        return aiohttp_jinja2.render_template('pool.html', request, self._page_context(request))
+
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
@@ -298,7 +308,8 @@ class Routes:
         identity = self._require_identity(request)
         return web.json_response(await self.pool.labs(identity))
 
-    # -- the pool (instructors, and sre-web-tool with the admin token) --------------------------
+    # -- the pool: sre-web-tool with the admin token; the listing and the actions (not add /
+    # remove) for the instructors too (the Pool page) ---------------------------------------
 
     def _is_admin(self, request) -> bool:
         """The administration token (``[admin] token`` of web.toml), from the loopback unless
@@ -314,13 +325,17 @@ class Routes:
         log.info("admin %s %s from %s", request.method, request.path, request.remote)
         return True
 
-    def _require_pool_access(self, request):
+    def _require_pool_access(self, request) -> Identity | None:
+        """The admin token (sre-web-tool) or an instructor's session (the Pool page): ``None``
+        for the token, the identity otherwise."""
         if self._is_admin(request):
-            return
+            return None
         if request.headers.get('Authorization'):
             raise PoolError(401, "bad administration token")
-        if self._require_identity(request).role != ROLE_INSTRUCTOR:
+        identity = self._require_identity(request)
+        if identity.role != ROLE_INSTRUCTOR:
             raise PoolError(403, "instructors only")
+        return identity
 
     def _require_admin(self, request):
         if not self._is_admin(request):
@@ -355,7 +370,9 @@ class Routes:
         return web.json_response({'ok': True, 'removed': name})
 
     async def api_pool_action(self, request):
-        self._require_admin(request)
+        """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` a host: the commands of
+        sre-web-tool and the buttons of the Pool page; the answer is the updated row."""
+        identity = self._require_pool_access(request)
         name, action = request.match_info['name'], request.match_info['action']
         if action == 'enable':
             self.pool.set_enabled(name, True)
@@ -371,6 +388,7 @@ class Routes:
             log.info("host %s draining: no new project, power off when empty", name)
         else:
             return json_error(404, f"unknown action {action}")
+        log.info("pool: %s %s by %s", action, name, identity.login if identity else "the admin token")
         return web.json_response(self._host_row(name))
 
     def _host_row(self, name: str) -> dict:

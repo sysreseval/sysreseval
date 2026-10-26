@@ -63,7 +63,8 @@ WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
 PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state', 'export'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
-KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('POST', '/api/projects/{host}/{rln}/touch')})
+KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/pool'),
+                       ('GET', '/api/pool/status'), ('POST', '/api/projects/{host}/{rln}/touch')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).
 IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo'})
 #: A failed login is logged as ``login_failed`` by the handler, not as a denied call.

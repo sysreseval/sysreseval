@@ -323,12 +323,13 @@ table.grid.states td:first-child { width: 100%; }
 
 /* the Watch page of the instructors */
 table.grid.watch { width: calc(100% - 16px); }
-table.grid.watch th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-table.grid.watch th.sortable[aria-sort="ascending"]::after { content: " \25B2"; font-size: 10px; }
-table.grid.watch th.sortable[aria-sort="descending"]::after { content: " \25BC"; font-size: 10px; }
-table.grid.watch td.num { text-align: right; white-space: nowrap; }
-table.grid.watch td.actions { white-space: nowrap; }
-table.grid.watch td.actions .button, table.grid.watch td.actions button { margin-right: 4px; }
+table.grid.watch th.sortable, table.grid.pool th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+table.grid.watch th.sortable[aria-sort="ascending"]::after, table.grid.pool th.sortable[aria-sort="ascending"]::after { content: " \25B2"; font-size: 10px; }
+table.grid.watch th.sortable[aria-sort="descending"]::after, table.grid.pool th.sortable[aria-sort="descending"]::after { content: " \25BC"; font-size: 10px; }
+table.grid.watch td.num, table.grid.pool td.num { text-align: right; white-space: nowrap; }
+table.grid.watch td.actions, table.grid.pool td.actions { white-space: nowrap; }
+table.grid.watch td.actions .button, table.grid.watch td.actions button,
+table.grid.pool td.actions .button, table.grid.pool td.actions button { margin-right: 4px; }
 table.grid tr.row-errors td { background: var(--fail-bg); }
 table.grid tr.row-stale td { background: var(--debug-bg); }
 .watch-filter { margin-left: 12px; width: 240px; }
@@ -338,6 +339,14 @@ table.grid tr.row-stale td { background: var(--debug-bg); }
 .watch-legend .swatch.row-stale { background: var(--debug-bg); }
 .watch-legend .swatch.row-errors { background: var(--fail-bg); }
 .instructor-option { display: block; margin: 8px; }
+
+/* the Pool page of the instructors: the state cell coloured, the status line */
+table.grid.pool td.state, table.grid.pool td.flags { white-space: nowrap; }
+table.grid.pool td.state.up { background: var(--ok-bg); }
+table.grid.pool td.state.waking, table.grid.pool td.state.occupied, table.grid.pool td.state.exam,
+table.grid.pool td.state.draining { background: var(--debug-bg); }
+table.grid.pool td.state.off, table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--muted); }
+.pool-status { margin: 0 8px 8px; }
 
 /* schema */
 .schema-view {
