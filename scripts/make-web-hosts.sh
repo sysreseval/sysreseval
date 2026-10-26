@@ -3,10 +3,15 @@
 # site that get an agent, with the TLS material of every host made by scripts/web-tls.sh.
 #
 #   IP_MAC_FILE=<file> OUT_DIR=<dir> REGEXP=<regexp> ROOMS="<rooms>" DISABLED_ROOMS="<rooms>" \
-#       scripts/make-web-hosts.sh
+#       scripts/make-web-hosts.sh [--keep]
 #
-# Everything comes from environment variables.  These five are required, without default (ROOMS
-# and DISABLED_ROOMS may be empty, but must be set):
+# The one option:
+#   --keep          keep the agent files already in OUT_DIR (<name>.key + <name>.crt when both exist,
+#                   <name>.token) and build only the missing ones: a room is added without touching
+#                   the hosts already deployed.  Without it every selected host gets a new key, a new
+#                   certificate and a new token on each run, to deploy again.
+# Everything else comes from environment variables.  These five are required, without default
+# (ROOMS and DISABLED_ROOMS may be empty, but must be set):
 #   IP_MAC_FILE     the machines of the site, one per line, three fields separated by semicolons, no
 #                   header, no comment, blank lines skipped:
 #                     <mac>;<ip>;<name>           e.g.  e4:54:e8:d1:6c:1c;10.0.128.1;a01
@@ -46,8 +51,8 @@
 # Written in OUT_DIR:
 #   ca.key ca.crt                         web-tls.sh init-ca once, or the copy of CA_KEY / CA_CRT
 #   portal.key portal.crt                 web-tls.sh portal, once
-#   <name>.key <name>.crt                 web-tls.sh agent, once per host (SANs IP:<ip>, DNS:<name>[.DOMAIN])
-#   <name>.token                          the agent token of the host, drawn once (openssl rand) and kept
+#   <name>.key <name>.crt                 web-tls.sh agent, per host (SANs IP:<ip>, DNS:<name>[.DOMAIN])
+#   <name>.token                          the agent token of the host (openssl rand)
 #   hosts.toml                            the [[hosts]] entries, one room after the other (the order of ROOMS,
 #                                         else of the file), the machines in the order of the file: a file of
 #                                         web.d/ (import = ["web.d"]) or pasted at the end of web.toml; the
@@ -55,8 +60,11 @@
 #   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (token,
 #                                         tls_*, allowed_clients, allow_power_off; no listen: the shared
 #                                         agent.toml listens on 0.0.0.0:AGENT_PORT)
-# A second run keeps every key, certificate and token already there, adds the new hosts and
-# rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS may change at any time.
+# Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS may change at
+# any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
+# and tokens are made anew on every run unless --keep is given: the files present are then kept (a
+# kept certificate that no longer names the address of its host is reported) and only those of the
+# new hosts are made.
 set -euo pipefail
 
 die() { echo "make-web-hosts: $*" >&2; exit 1; }
@@ -68,11 +76,14 @@ in_list() {   # in_list WORD LIST: WORD is one of the space-separated LIST
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
-case "${1:-}" in
-    '') ;;
-    -h|--help) usage; exit 0;;
-    *) usage >&2; exit 1;;
-esac
+KEEP=false
+for arg in "$@"; do
+    case "$arg" in
+        --keep) KEEP=true;;
+        -h|--help) usage; exit 0;;
+        *) echo "make-web-hosts: unknown argument '$arg'" >&2; usage >&2; exit 1;;
+    esac
+done
 missing=""
 for v in IP_MAC_FILE OUT_DIR REGEXP ROOMS DISABLED_ROOMS; do
     [ -n "${!v+set}" ] || missing="$missing $v"
@@ -180,17 +191,21 @@ tmp="$hosts_toml.tmp"
 # client_key = "$TLS_DIR_ON_HOSTS/portal.key"
 EOH
 )
-n=0; new=0; disabled=0
+n=0; new=0; kept=0; disabled=0
 while IFS=';' read -r name ip mac room; do
     [ -n "$name" ] || continue
-    if [ -f "$out/$name.crt" ]; then
+    if [ "$KEEP" = true ] && [ -f "$out/$name.key" ] && [ -f "$out/$name.crt" ]; then
         openssl x509 -in "$out/$name.crt" -noout -text | grep -q -E "IP Address:$ip(,|\$)" \
-            || warn "$name.crt does not name $ip: remove $out/$name.key and $out/$name.crt and run again"
+            || warn "$name.crt does not name $ip: run again without --keep, or remove $out/$name.key and $out/$name.crt"
+        kept=$((kept + 1))
     else
+        rm -f "$out/$name.key" "$out/$name.crt"     # web-tls.sh never overwrites a key
         bash "$web_tls" agent "$out" "$name" "IP:$ip" "DNS:$name" ${DOMAIN:+"DNS:$name.$DOMAIN"}
         new=$((new + 1))
     fi
-    [ -f "$out/$name.token" ] || (umask 077; openssl rand -hex 24 > "$out/$name.token")
+    if [ "$KEEP" != true ] || [ ! -f "$out/$name.token" ]; then
+        (umask 077; openssl rand -hex 24 > "$out/$name.token")
+    fi
     token=$(cat "$out/$name.token")
     [ ${#token} -ge 32 ] || die "$out/$name.token: too short (32+ characters expected)"
     enabled=true
@@ -220,4 +235,5 @@ while IFS=';' read -r name ip mac room; do
     n=$((n + 1))
 done <<< "$hosts"
 mv "$tmp" "$hosts_toml"
-echo "make-web-hosts: $n hosts ($disabled disabled at start) in $hosts_toml, $new new certificates; agent-<name>.toml next to it"
+if [ "$KEEP" = true ]; then made="$new new certificates, $kept kept (--keep)"; else made="$new certificates and tokens made anew"; fi
+echo "make-web-hosts: $n hosts ($disabled disabled at start) in $hosts_toml, $made; agent-<name>.toml next to it"

@@ -263,7 +263,7 @@ portal already knows; refused when `OUT_DIR` holds another CA) are optional.
 
 In `OUT_DIR` (private keys and tokens: outside any repository) it writes, through `web-tls.sh`,
 the CA and the portal's client certificate once, then per host a key and a certificate (SANs
-`IP:<ip>` and `DNS:<name>`), a token drawn once and kept in `<name>.token`, and:
+`IP:<ip>` and `DNS:<name>`), a token in `<name>.token`, and:
 
 - `hosts.toml`: the `[[hosts]]` entries, one room after the other, with the three `[pool]` TLS
   lines of `web.toml` in its header; a file of `web.d/` (`import = ["web.d"]`) or pasted at the
@@ -273,9 +273,12 @@ the CA and the portal's client certificate once, then per host a key and a certi
   to complete with the example file.
 
 Copy `<name>.crt`, `<name>.key` and `ca.crt` to `TLS_DIR_ON_HOSTS` of each host, and `ca.crt`,
-`portal.crt`, `portal.key` to the portal's. A second run keeps every key, certificate and token
-already there, adds the new hosts and rewrites `hosts.toml` and the agent files, so the rooms may
-change at any time; a kept certificate that no longer names the address of its host is reported.
+`portal.crt`, `portal.key` to the portal's. Every run rewrites `hosts.toml` and the agent files, so
+the rooms may change at any time; the CA and the portal's certificate are made once. The hosts'
+keys, certificates and tokens are made anew on every run, to deploy again, unless the script is
+run with `--keep`: the files already there are kept and only those of the new hosts are made (a
+kept certificate that no longer names the address of its host is reported), so a room is added
+without touching the hosts already deployed.
 
 ### A pool of workstations
 
