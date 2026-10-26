@@ -38,10 +38,11 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   entry on a shared directory. The `hostname` of the archives is the pool host. The Watch page
   of the instructors needs none of that: each agent reads the archives of its own host
   (`params.archive_dirs`) on demand.
-- Placement: a new project goes to the reachable host with the lowest `projects / max_projects`
-  (then the lowest load); a host in exam mode is never used, a host with `instructors_only =
-  true` never for a student (an instructor may also name the host on the Open page). A classroom
-  workstation holds about thirty projects (210 containers in 3.4 GB).
+- Placement: a new project goes to the host where its user has a local login session (the
+  workstation they sit at, `follow_local_sessions`), else to the reachable host with the lowest
+  `projects / max_projects` (then the lowest load); a host in exam mode is never used, a host
+  with `instructors_only = true` never for a student (an instructor may also name the host on
+  the Open page). A classroom workstation holds about thirty projects (210 containers in 3.4 GB).
 
 The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
 (a user only reaches their own projects, an instructor every project; the `wipe`, `exec` and
@@ -142,7 +143,7 @@ merges other files into this one, as for `web.toml` below.
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` |
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `logout_url`: where Logout sends the browser (none: no Logout button) |
-| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never) |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session) |
@@ -242,7 +243,7 @@ a timestamp (`2026-10-26T09:12:03+0100`):
 ```
 event=login login=alice addr=10.0.1.7 mode=ldap role=student anon=0 name="Alice Test"
 event=session_open login=alice addr=10.0.1.7 role=student anon=0 name="Alice Test" ua="Mozilla/5.0 …"
-event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 host=a01 result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
+event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 host=a01 placement=load result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
 event=project_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice
 event=terminal_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0
 event=terminal_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0 duration=612.3 code=1000
@@ -265,8 +266,10 @@ a logout opens another one. The other events:
 
 - `login` (`mode`: `anonymous` or `ldap`) and `login_failed` (`reason`: `password`,
   `rate_limited`, `directory` when the directory does not answer, `proxy_mode`);
-- `start`: the lab, the host chosen, whether the instructor mode was asked, `result` (`created`,
-  `flavor_form`, `flavor_error`, `error`) and `rln`, the running lab name of the new project;
+- `start`: the lab, the host chosen and `placement`, why that host (`load`: the least loaded,
+  `session`: the user is logged in at its keyboard, `named`: the instructor named it), whether
+  the instructor mode was asked, `result` (`created`, `flavor_form`, `flavor_error`, `error`)
+  and `rln`, the running lab name of the new project;
 - `project_open` / `project_close`: the project page, open as long as its events WebSocket is
   (`duration` in seconds, `code`: the WebSocket close code; `view=instructor` for the instructor
   view); `terminal_open` / `terminal_close` (`device`, `join`: the session joined, `private`)
@@ -361,7 +364,7 @@ it:
 | `off` | the agent does not answer | no |
 | `waking` | a wake was sent less than `wake_timeout` ago | no, but a start answers "a host is starting" (503, retried by the Open page) |
 | `up` | the agent answers, the host is free | yes |
-| `occupied` | the agent answers, the host is used locally (`occupied_check`) | no; the web projects already running there go on |
+| `occupied` | the agent answers, the host is used locally (`occupied_check`) | only the new projects of the users logged in there (`follow_local_sessions`); the web projects already running there go on |
 | `exam` | the agent answers, `exam.json` is on the host | no |
 | `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty |
 | `disabled` | `sre-web-tool disable`, or `enabled = false` | no |
@@ -378,7 +381,19 @@ enabled systemd unit on every host (boot → agent up → the portal sees it).
 
 **Occupied hosts.** The agent reports `occupied` when a local login session exists (`loginctl`,
 `who` as a fallback) or when projects of the Qt GUI run on the host; the portal places nothing
-there and never powers it off. The web projects already running there continue.
+there and never powers it off. The web projects already running there continue. One exception,
+`follow_local_sessions` (`true` by default): the user logged in at the keyboard of a pool host
+gets their new projects on that host, whatever its load, so that a student working at a
+classroom workstation uses their own machine through the web too. The agent names the sessions
+in its status (`session:<login>`, the OCCUPIED column of `sre-web-tool list`; its
+`occupied_check` must include the sessions) and the portal matches them against the login of
+the identity, which must therefore be the Unix login of the workstation (the directory `uid`:
+`AuthLDAPRemoteUserAttribute uid` in the Apache example; a `guest-…` pseudonym never matches).
+The rule overrides the load and the occupation only: when the host is full (`max_projects`),
+in exam mode, disabled, draining or reserved for the instructors, the normal placement applies,
+and an instructor naming a host on the Open page is obeyed (they may name the host of their own
+session). The `start` line of the connection log says `placement=session`.
+`follow_local_sessions = false` restores the strict rule: nothing goes to an occupied host.
 
 **Reserved hosts.** A host with `instructors_only = true` never takes a student's project: an
 instructor's goes there when they name it on the Open page (the *Host* select lists the
@@ -387,7 +402,8 @@ the least loaded host they may use. It is outside the elastic pool: its free slo
 neither as spare capacity nor towards `min_hosts_up`, the portal never wakes it by itself
 (`sre-web-tool wake`, or its own boot; an instructor finds it greyed while it is off) and
 powers it off when idle like any host with `power = true`, whatever the floor and the spare.
-`list` shows `(instructors)` after its state.
+`list` shows `(instructors)` after its state. A student logged in at the keyboard of a reserved
+host is still placed elsewhere: `follow_local_sessions` never overrides the reservation.
 
 **Going down.** When the agent's unit stops because the system halts (the nightly cron, a
 `poweroff`), the agent closes the projects it manages as a Close would (the last evaluation,

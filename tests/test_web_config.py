@@ -87,6 +87,7 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'mode': 'ldap'}}, 'uri'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldap://x'}}}, 'bind_dn_template'),
         ({'secret': SECRET, 'hosts': [HOST], 'pool': {'idle_timeout_anonymous': 'soon'}}, 'idle_timeout_anonymous'),
+        ({'secret': SECRET, 'hosts': [HOST], 'pool': {'follow_local_sessions': 'yes'}}, 'follow_local_sessions'),
         ({'secret': SECRET, 'hosts': [dict(HOST, token='')]}, 'token'),
         ({'secret': SECRET, 'hosts': [HOST, HOST]}, 'unique'),
         ({'secret': SECRET, 'hosts': [dict(HOST, max_projects=0)]}, 'max_projects'),
@@ -223,14 +224,16 @@ class TestWebConfig:
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],
                                     'pool': {'spare_projects': 3, 'min_hosts_up': 2, 'active_hours': '08:30-19:00',
                                              'wake_timeout': '2m', 'wake_interval': 10, 'idle_host_timeout': '30m',
-                                             'wol_broadcast': '10.0.0.255'},
+                                             'wol_broadcast': '10.0.0.255', 'follow_local_sessions': False},
                                     'admin': {'token': 'a' * 32, 'listen_any': True, 'state_file': '/x/pool.json'}})
         p = cfg.pool
         assert (p.spare_projects, p.min_hosts_up, p.active_hours) == (3, 2, '08:30-19:00')
         assert (p.wake_timeout, p.wake_interval, p.idle_host_timeout, p.wol_broadcast) == (120, 10, 1800, '10.0.0.255')
+        assert p.follow_local_sessions is False
         assert cfg.admin.token == 'a' * 32 and cfg.admin.listen_any and cfg.admin.state_file == '/x/pool.json'
         defaults = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]})
         assert defaults.pool.spare_projects == 5 and defaults.pool.min_hosts_up == 1 and defaults.pool.idle_host_timeout == 0
+        assert defaults.pool.follow_local_sessions is True
         assert defaults.admin.token == '' and not defaults.admin.listen_any
         with pytest.raises(ConfigError, match='active_hours'):
             web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'active_hours': '8-20'}})

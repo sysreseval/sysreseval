@@ -260,6 +260,11 @@ class PoolConfig:
     wake_interval: float = 30.0
     wol_broadcast: str = '255.255.255.255'
     idle_host_timeout: float = 0.0
+    # a user with a local login session on a pool host (session:<login> in the occupied_by of its
+    # agent, whose occupied_check must include the sessions) gets their new projects on that host
+    # whatever its load, below its max_projects; the other rules (exam mode, disabled, draining,
+    # instructors_only, a host named by an instructor) keep their meaning
+    follow_local_sessions: bool = True
 
 
 @dataclass
@@ -457,6 +462,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     parse_active_hours(pool.active_hours, 'pool.active_hours')
     if pool.spare_projects < 0 or pool.min_hosts_up < 0:
         raise ConfigError(f"{path}: pool.spare_projects and pool.min_hosts_up cannot be negative")
+    if not isinstance(pool.follow_local_sessions, bool):
+        raise ConfigError(f"{path}: pool.follow_local_sessions must be true or false")
     admin_data = _section(data, 'admin', path)
     admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:

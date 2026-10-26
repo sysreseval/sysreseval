@@ -120,6 +120,10 @@ wol_broadcast = "255.255.255.255"
 # capacity, is powered off through its agent (allow_power_off in agent.toml); 0 = never (the
 # nightly cron of the hosts does it).
 idle_host_timeout = 0
+# The user logged in at the keyboard of a pool host (a local session, reported by the agent when
+# its occupied_check includes the sessions) gets their new projects on that host whatever its
+# load, below its max_projects; false: nothing goes to an occupied host.
+follow_local_sessions = true
 
 [admin]
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted

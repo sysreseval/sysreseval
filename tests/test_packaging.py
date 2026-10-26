@@ -69,7 +69,8 @@ class TestControl:
         assert {'kubernetes', 'setuptools', 'libtmux', 'appscript', 'pypiwin32', 'windows-curses'} <= set(removed)
 
 
-SBIN_LAUNCHERS = {'sre': 'sysreseval', 'sre-web': 'sysreseval-web', 'sre-agent': 'sysreseval-agent'}
+SBIN_LAUNCHERS = {'sre': 'sysreseval', 'sre-web': 'sysreseval-web', 'sre-web-tool': 'sysreseval-web',
+                  'sre-agent': 'sysreseval-agent'}
 
 
 class TestFiles:

@@ -18,7 +18,8 @@ from sreweb.identity import Identity, ROLE_INSTRUCTOR
 from sreweb.portal.manager import (HostView, PoolManager, magic_packet, poweroff_plan, spare_capacity,
                                    wake_plan, BACKOFF_MIN)
 from sreweb.portal.pool import (Pool, HostStatus, PoolError, STATE_OFF, STATE_UP, STATE_WAKING,
-                                STATE_OCCUPIED, STATE_DRAINING, STATE_DISABLED, STATE_EXAM)
+                                STATE_OCCUPIED, STATE_DRAINING, STATE_DISABLED, STATE_EXAM,
+                                PLACEMENT_LOAD, PLACEMENT_SESSION, PLACEMENT_NAMED)
 
 TOKEN = 't' * 32
 
@@ -254,6 +255,74 @@ class TestStates:
             pool.pick(prof)
         assert e.value.retry_after == 30 and 'starting' in e.value.message
         assert {row['name']: row['instructors_only'] for row in pool.summary()} == {'a': False, 'r': True}
+
+    def test_pick_local_session(self):
+        """follow_local_sessions: the host occupied by a local login session of the user takes
+        their new projects whatever its load; every other rule stands."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10),
+                 HostConfig('r', 'http://r', TOKEN, 10, instructors_only=True)]
+        pool = Pool(hosts, session=None, wake_timeout=100.0)
+        bob, alice = Identity(login='bob'), Identity(login='alice')
+        prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
+
+        def reset():
+            pool.status['a'] = HostStatus(reachable=True, projects=1, load1=0.5)
+            pool.status['b'] = HostStatus(reachable=True, projects=8, load1=4.0, occupied=True,
+                                          occupied_by=['session:bob', 'projects:1'])
+            pool.status['r'] = HostStatus(reachable=True, projects=0)
+            pool.runtime['b'].drain = False
+            pool.runtime['b'].enabled = True
+        reset()
+        host, reservation = pool.pick(bob)
+        assert host.name == 'b' and reservation.placement == PLACEMENT_SESSION and pool.status['b'].projects == 9
+        host, reservation = pool.pick(alice)
+        assert host.name == 'a' and reservation.placement == PLACEMENT_LOAD     # occupied by somebody else
+        assert pool.pick()[0].name == 'a'                                       # no identity
+        assert pool.pick(bob)[0].name == 'b'                                    # the last slot of b
+        host, reservation = pool.pick(bob)
+        assert host.name == 'a' and reservation.placement == PLACEMENT_LOAD     # b full: the normal placement
+        reset()
+        pool.runtime['b'].drain = True
+        assert pool.pick(bob)[0].name == 'a'
+        reset()
+        pool.status['b'].exam_mode = True
+        assert pool.pick(bob)[0].name == 'a'
+        reset()
+        pool.runtime['b'].enabled = False
+        assert pool.pick(bob)[0].name == 'a'
+        # two hosts with a session of bob: the least loaded of them
+        reset()
+        pool.status['a'] = HostStatus(reachable=True, projects=3, occupied=True, occupied_by=['session:bob'])
+        assert pool.pick(bob)[0].name == 'a'
+        # a reserved host: a student's session there changes nothing, an instructor's counts
+        reset()
+        pool.status['r'] = HostStatus(reachable=True, projects=9, occupied=True,
+                                      occupied_by=['session:bob', 'session:prof'])
+        assert pool.pick(bob)[0].name == 'b'
+        host, reservation = pool.pick(prof)
+        assert host.name == 'r' and reservation.placement == PLACEMENT_SESSION
+        # a named host wins; the host of one's own session may be named, another's may not
+        reset()
+        pool.status['r'] = HostStatus(reachable=True, projects=2, occupied=True, occupied_by=['session:prof'])
+        host, reservation = pool.pick(prof, host='a')
+        assert host.name == 'a' and reservation.placement == PLACEMENT_NAMED
+        assert pool.pick(prof, host='r')[0].name == 'r'
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='b')
+        assert e.value.status == 503 and 'not available' in e.value.message
+        # the option off: nothing on an occupied host
+        strict = Pool(hosts, session=None, follow_local_sessions=False)
+        strict.status['a'] = HostStatus(reachable=True, projects=1)
+        strict.status['b'] = HostStatus(reachable=True, projects=8, occupied=True, occupied_by=['session:bob'])
+        host, reservation = strict.pick(bob)
+        assert host.name == 'a' and reservation.placement == PLACEMENT_LOAD
+        strict.status['a'].projects = 10
+        with pytest.raises(PoolError) as e:
+            strict.pick(bob)
+        assert e.value.status == 503
+        with pytest.raises(PoolError) as e:
+            strict.pick(prof, host='b')
+        assert e.value.status == 503 and 'not available' in e.value.message
 
 
 class TestManager:

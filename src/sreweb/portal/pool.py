@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, asdict
 
 import aiohttp
 
+from ..agent.occupancy import SESSION_PREFIX
 from ..config import HostConfig, host_config_from_dict, ConfigError
 from ..identity import Identity
 
@@ -22,12 +23,16 @@ STATUS_TIMEOUT = 5.0
 STATE_OFF = 'off'              # agent unreachable
 STATE_WAKING = 'waking'        # a wake was sent, the agent not up yet
 STATE_UP = 'up'                # agent up, free: new projects go there
-STATE_OCCUPIED = 'occupied'    # agent up, the machine is used locally: no new project
+STATE_OCCUPIED = 'occupied'    # agent up, the machine is used locally: no new project but its local users'
 STATE_EXAM = 'exam'            # agent up, exam.json on the host
 STATE_DRAINING = 'draining'    # agent up, a power off is wanted: no new project
 STATE_DISABLED = 'disabled'    # taken out of the placement by hand
 SOURCE_CONFIG = 'config'
 SOURCE_ADDED = 'added'
+#: Why a host was chosen (the ``placement`` field of the ``start`` line of the connection log).
+PLACEMENT_LOAD = 'load'          # the least loaded host
+PLACEMENT_SESSION = 'session'    # the host of a local login session of the user (follow_local_sessions)
+PLACEMENT_NAMED = 'named'        # the host an instructor named
 
 
 class PoolError(Exception):
@@ -41,6 +46,7 @@ class PoolError(Exception):
 @dataclass
 class Reservation:
     released_at: float | None = None
+    placement: str = PLACEMENT_LOAD
 
 
 @dataclass
@@ -79,7 +85,7 @@ class HostRuntime:
 
 class Pool:
     def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
-                 state_file: str = ''):
+                 state_file: str = '', follow_local_sessions: bool = True):
         self.hosts: dict[str, HostConfig] = {}
         self.status: dict[str, HostStatus] = {}
         self.runtime: dict[str, HostRuntime] = {}
@@ -87,6 +93,7 @@ class Pool:
         self.poll_interval = poll_interval
         self.wake_timeout = wake_timeout
         self.state_file = state_file
+        self.follow_local_sessions = follow_local_sessions
         self._config_hosts = {h.name: h for h in hosts}
         self._removed: set = set()      # config hosts removed by hand (``enable`` brings them back)
         #: The projects being started on each host: a reservation counts as a project until the
@@ -333,24 +340,26 @@ class Pool:
     # -- placement ------------------------------------------------------------------------------
 
     def pick(self, identity: Identity | None = None, host: str | None = None) -> tuple:
-        """The host of a new project and its reservation.  Without *host*: the least loaded
-        (projects / max_projects, then load) of the hosts up (enabled, reachable, not occupied,
-        not in exam mode, not draining) below their maximum that *identity* may use: a host with
+        """The host of a new project and its reservation.  Without *host*: the host of a local
+        login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
+        occupied by them, whatever its load), else the least loaded (projects / max_projects, then
+        load) of the hosts up (enabled, reachable, not occupied, not in exam mode, not draining);
+        always below their maximum and among the hosts *identity* may use: a host with
         ``instructors_only`` takes an instructor's project only, and the caller is a student
         without identity.  With *host* (an instructor naming one on the Open page): that host,
-        when the identity may use it (403 otherwise), it is up (503) and has room (503).  The
-        caller releases the reservation when the start is over."""
+        when the identity may use it (403 otherwise), it is available to them (503) and has room
+        (503).  The caller releases the reservation when the start is over."""
         instructor = identity is not None and identity.is_instructor
         now = time.monotonic()
         if host is not None:
             chosen = self.host(host)
             if chosen.instructors_only and not instructor:
                 raise PoolError(403, "instructors only")
-            if self.state_of(host, now) != STATE_UP:
+            if not self._available_to(chosen, identity, self.state_of(host, now))[0]:
                 raise PoolError(503, f"the host {host} is not available", retry_after=60)
             if self.status[host].projects >= chosen.max_projects:
                 raise PoolError(503, f"the host {host} is full", retry_after=60)
-            return self._reserve(chosen)
+            return self._reserve(chosen, PLACEMENT_NAMED)
         candidates = []
         waking = False
         for h in self.hosts.values():
@@ -358,20 +367,35 @@ class Pool:
                 continue
             state = self.state_of(h.name, now)
             waking = waking or state == STATE_WAKING
+            available, placement = self._available_to(h, identity, state)
             st = self.status[h.name]
-            if state != STATE_UP or st.projects >= h.max_projects:
+            if not available or st.projects >= h.max_projects:
                 continue
-            candidates.append((st.projects / h.max_projects, st.load1 if st.load1 is not None else 0.0, h.name, h))
+            candidates.append((placement != PLACEMENT_SESSION, st.projects / h.max_projects,
+                               st.load1 if st.load1 is not None else 0.0, h.name, h, placement))
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
             raise PoolError(503, "no host available for a new project", retry_after=60)
-        candidates.sort(key=lambda c: c[:3])
-        return self._reserve(candidates[0][3])
+        candidates.sort(key=lambda c: c[:4])
+        return self._reserve(candidates[0][4], candidates[0][5])
 
-    def _reserve(self, host: HostConfig) -> tuple:
+    def _available_to(self, h: HostConfig, identity: Identity | None, state: str) -> tuple:
+        """Whether a new project of *identity* may go on *h*, in *state*, and what the placement
+        would be: a host up (``PLACEMENT_LOAD``), or a host occupied by a local login session of
+        the user (``PLACEMENT_SESSION``, with ``follow_local_sessions``; not when a power off is
+        wanted: ``state_of`` hides the drain behind the occupation)."""
+        if state == STATE_UP:
+            return True, PLACEMENT_LOAD
+        if (state == STATE_OCCUPIED and self.follow_local_sessions and identity is not None
+                and not self.runtime[h.name].drain
+                and SESSION_PREFIX + identity.login in self.status[h.name].occupied_by):
+            return True, PLACEMENT_SESSION
+        return False, ''
+
+    def _reserve(self, host: HostConfig, placement: str = PLACEMENT_LOAD) -> tuple:
         self.status[host.name].projects += 1
-        reservation = Reservation()
+        reservation = Reservation(placement=placement)
         self._reservations[host.name].append(reservation)
         return host, reservation
 

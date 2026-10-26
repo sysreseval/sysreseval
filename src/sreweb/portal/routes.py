@@ -413,7 +413,7 @@ class Routes:
             return json_error(403, "instructors only")
         host, reservation = self.pool.pick(identity, wanted)
         if logged is not None:
-            logged['host'] = host.name
+            logged.update(host=host.name, placement=reservation.placement)
         payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
         if isinstance(body.get('flavor'), dict):
             payload['flavor_json'] = body['flavor']

@@ -1,7 +1,9 @@
 """Is the machine used locally?  A pool host is a classroom workstation: when a student sits at
 it (a local login session) or runs projects with the Qt GUI (projects not started by the agent),
-the web must not land new projects on it.  The agent reports it in its status; the portal then
-places nothing there and never powers it off.
+the web must not land new projects on it.  The agent reports it in its status (``occupied``,
+``occupied_by`` = ``session:<login>`` / ``projects:<n>``); the portal then places nothing there
+but the new projects of its local users (``follow_local_sessions`` of ``web.toml``) and never
+powers it off.
 
 The sessions come from ``loginctl`` (systemd-logind: a session of class ``user`` on a seat or a
 tty, not remote), with ``who`` as a fallback (a tty or an X display); both run through *run*
@@ -9,6 +11,9 @@ tty, not remote), with ``who`` as a fallback (a tty or an X display); both run t
 import subprocess
 
 SYSTEM_UID_MAX = 999
+#: The entries of ``occupied_by``: a local login session, the projects of the Qt GUI.
+SESSION_PREFIX = 'session:'
+PROJECTS_PREFIX = 'projects:'
 
 
 def _run(run, argv) -> str:
@@ -72,7 +77,7 @@ def occupancy(check: str, local_projects: int, run=subprocess.run) -> tuple:
     """``(occupied, reasons)`` for the ``occupied_check`` setting of the agent."""
     reasons = []
     if check in ('sessions', 'both'):
-        reasons += [f'session:{user}' for user in local_sessions(run)]
+        reasons += [SESSION_PREFIX + user for user in local_sessions(run)]
     if check in ('projects', 'both') and local_projects > 0:
-        reasons.append(f'projects:{local_projects}')
+        reasons.append(f'{PROJECTS_PREFIX}{local_projects}')
     return bool(reasons), reasons

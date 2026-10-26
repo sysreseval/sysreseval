@@ -402,8 +402,8 @@ class TestAccessLog:
         assert lines[0]['mode'] == 'anonymous' and lines[0]['anon'] == '1' and lines[0]['name'] == 'Alice Test'
         assert lines[1]['role'] == 'student' and lines[1]['ua'].startswith('Python/')
         start = lines[2]
-        assert (start['lab'], start['instructor'], start['host'], start['result'], start['rln'], start['status']) == \
-               ('sre/dhcp.py', '0', 'a01', 'created', rln, '200')
+        assert (start['lab'], start['instructor'], start['host'], start['placement'], start['result'], start['rln'],
+                start['status']) == ('sre/dhcp.py', '0', 'a01', 'load', 'created', rln, '200')
         assert float(start['duration']) >= 0
         assert lines[3] == dict(ts=lines[3]['ts'], event='project_open', login=login, addr='127.0.0.1', host='a01', rln=rln)
         assert lines[4]['code'] == '1000' and float(lines[4]['duration']) >= 0
