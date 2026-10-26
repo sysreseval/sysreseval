@@ -328,7 +328,8 @@ placed there until `sre-web-tool enable`). These five variables are required and
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
 `allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
-get `instructors_only = true`), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
+get `instructors_only = true`) and `INSTRUCTOR_MACHINES` (the names of the hosts that get it on
+their own, whatever their room), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
 the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
 `OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
 portal already knows; refused when `OUT_DIR` holds another CA) are optional.

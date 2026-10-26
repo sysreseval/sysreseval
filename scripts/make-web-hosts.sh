@@ -30,18 +30,21 @@
 #   DISABLED_ROOMS  the rooms whose machines start with enabled = false (polled, no project placed
 #                   there until `sre-web-tool enable <name>`); empty: none
 # The optional ones, with the values of the documentation when unset:
-#   AGENT_PORT        8451               the port of the agents (url of the portal, listen of the agent)
-#   MAX_PROJECTS      25                 max_projects of every host
-#   POWER             false              true: power = true (the portal may power a host off) in [[hosts]]
+#   AGENT_PORT          8451             the port of the agents (url of the portal, listen of the agent)
+#   MAX_PROJECTS        25               max_projects of every host
+#   POWER               false            true: power = true (the portal may power a host off) in [[hosts]]
 #                                        and allow_power_off = true in agent-<name>.toml
-#   INSTRUCTOR_ROOMS  none               the rooms whose hosts get instructors_only = true (only the
+#   INSTRUCTOR_ROOMS    none             the rooms whose hosts get instructors_only = true (only the
 #                                        instructors' projects are placed there, they choose them on their
 #                                        Open page); a room may be in DISABLED_ROOMS too
-#   DOMAIN            none               when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
-#   PORTAL_ADDRESS    none               when set, allowed_clients = ["<it>"] in agent-<name>.toml
-#   TLS_DIR_ON_HOSTS  /etc/sreweb/tls      where the hosts and the portal keep the files (the paths
+#   INSTRUCTOR_MACHINES none             the machines ("s0 h3", names as in the file, any case) whose host
+#                                        gets instructors_only = true on its own, whatever its room; a name
+#                                        that is not one of the selected hosts is reported and ignored
+#   DOMAIN              none             when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
+#   PORTAL_ADDRESS      none             when set, allowed_clients = ["<it>"] in agent-<name>.toml
+#   TLS_DIR_ON_HOSTS    /etc/sreweb/tls  where the hosts and the portal keep the files (the paths
 #                                        written in the toml)
-#   CA_KEY, CA_CRT    none               both set: the private key and the certificate of an existing CA
+#   CA_KEY, CA_CRT      none             both set: the private key and the certificate of an existing CA
 #                                        (an earlier OUT_DIR, the files already deployed), copied into
 #                                        OUT_DIR as ca.key / ca.crt instead of a new CA, so that the new
 #                                        hosts are signed by the CA the portal and the other hosts know;
@@ -62,8 +65,8 @@
 #   agent-<name>.toml                     the host-specific lines of the agent.toml of that host (listen =
 #                                         "<ip>:AGENT_PORT", token, tls_*, allowed_clients, allow_power_off;
 #                                         the shared agent.toml must then have no listen line)
-# Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS
-# may change at any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
+# Every run rewrites hosts.toml and agent-*.toml, so REGEXP / ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS /
+# INSTRUCTOR_MACHINES may change at any time; the CA and the portal's certificate are made once and kept.  The hosts' keys, certificates
 # and tokens are made anew on every run unless --keep is given: the files present are then kept (a
 # kept certificate that no longer names the address of its host is reported) and only those of the
 # new hosts are made.
@@ -98,6 +101,7 @@ AGENT_PORT="${AGENT_PORT:-8451}"
 MAX_PROJECTS="${MAX_PROJECTS:-25}"
 POWER="${POWER:-false}"
 INSTRUCTOR_ROOMS="${INSTRUCTOR_ROOMS:-}"
+INSTRUCTOR_MACHINES="${INSTRUCTOR_MACHINES:-}"
 DOMAIN="${DOMAIN:-}"
 PORTAL_ADDRESS="${PORTAL_ADDRESS:-}"
 TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sreweb/tls}"
@@ -119,7 +123,8 @@ if [ -n "$CA_KEY$CA_CRT" ]; then
         || die "CA_KEY $CA_KEY is not the private key of CA_CRT $CA_CRT"
 fi
 if [[ probe =~ $REGEXP ]]; then :; elif [ $? -eq 2 ]; then die "REGEXP '$REGEXP': bad regular expression"; fi
-ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS"); INSTRUCTOR_ROOMS=$(lower "$INSTRUCTOR_ROOMS")
+ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS")
+INSTRUCTOR_ROOMS=$(lower "$INSTRUCTOR_ROOMS"); INSTRUCTOR_MACHINES=$(lower "$INSTRUCTOR_MACHINES")
 if [ -n "$ROOMS" ]; then
     for room in $DISABLED_ROOMS; do
         in_list "$room" "$ROOMS" || warn "disabled room '$room' is not in ROOMS ($ROOMS): its machines are left out"
@@ -168,6 +173,10 @@ for field in '1 name' '2 IP address' '3 MAC address'; do
     dup=$(printf '%s\n' "$hosts" | cut -d';' -f"${field%% *}" | sort | uniq -d | tr '\n' ' ')
     [ -z "$dup" ] || die "the same ${field#* } twice among the selected hosts of $input: $dup"
 done
+selected_names=$(printf '%s\n' "$hosts" | cut -d';' -f1 | tr '[:upper:]' '[:lower:]' | tr '\n' ' ')
+for machine in $INSTRUCTOR_MACHINES; do
+    in_list "$machine" "$selected_names" || warn "instructor machine '$machine' is not one of the selected hosts: ignored"
+done
 
 mkdir -p "$out"
 chmod 0700 "$out"
@@ -187,7 +196,7 @@ hosts_toml="$out/hosts.toml"
 tmp="$hosts_toml.tmp"
 (umask 077; cat > "$tmp" <<EOH
 # [[hosts]] of the SRE web portal (scripts/etc/web.toml), made by scripts/make-web-hosts.sh on $(date '+%Y-%m-%d %H:%M')
-# from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}${INSTRUCTOR_ROOMS:+, instructors only: $INSTRUCTOR_ROOMS}.
+# from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}${INSTRUCTOR_ROOMS:+, instructor rooms: $INSTRUCTOR_ROOMS}${INSTRUCTOR_MACHINES:+, instructor machines: $INSTRUCTOR_MACHINES}.
 # A file of web.d/ (web.toml: import = ["web.d"]) or pasted at the end of web.toml; owner
 # root:sre-web, mode 0640.  The [pool] table of web.toml needs the CA and the portal's client
 # certificate (ca.crt, portal.crt, portal.key of the same directory as the hosts' certificates):
@@ -217,7 +226,9 @@ while IFS=';' read -r name ip mac room; do
     enabled=true
     if [ -n "$room" ] && in_list "$room" "$DISABLED_ROOMS"; then enabled=false; disabled=$((disabled + 1)); fi
     instructors_only=false
-    if [ -n "$room" ] && in_list "$room" "$INSTRUCTOR_ROOMS"; then instructors_only=true; instructors=$((instructors + 1)); fi
+    if { [ -n "$room" ] && in_list "$room" "$INSTRUCTOR_ROOMS"; } || in_list "$(lower "$name")" "$INSTRUCTOR_MACHINES"; then
+        instructors_only=true; instructors=$((instructors + 1))
+    fi
     {
         echo
         echo '[[hosts]]'
