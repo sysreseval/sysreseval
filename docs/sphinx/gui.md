@@ -43,7 +43,7 @@ Both items are disabled in exam mode.
 | **Terminals** | Embedded terminals per machine, launched via `params.terminal_cmd_prefix`, plus one per manageable switch students may use (its console). |
 | **Log** | Debug projects (`sre start --debug-project`), and instructor-mode projects while the *Instructor mode* button is on (states only). Live tail of the project's `operations.log`: one `=== <time>  state <name>` / `=== <time>  evaluation` header per run, then one `stepN - on <machine|host> : <operation>` line per operation executed (`cmd()`, `file()`, `append_to_file()`, `cp_from_host()`, `host_cmd()`, state files pushed, evaluation tests...), with the command output indented below it and its exit code last. File operations are followed by the content they wrote (text, capped; `(binary content not shown)` otherwise). An evaluation ends with one `grade - [<part>] <title> : <grade> / <max>` line per grade element and the two `total - self-eval` / `total - exo-eval` lines with the marks. *Clear* empties the display only. |
 
-`answers/answers.json` also carries metadata (`hostname`, `login`, `fullname`, `email`, `language`, `answers_updated_at`, plus `exam_*` fields in exam mode); see [Archive format](internals.md#archive-format) for the full schema.
+`answers/answers.json` also carries metadata (`hostname`, `login`, `fullname`, `email`, `language`, `answers_updated_at`, plus `exam_*` fields in exam mode, and `group` for the projects of the web front-end); see [Archive format](internals.md#archive-format) for the full schema.
 
 *Start evaluation* runs `sre eval --auto-eval` in a background thread. The periodic background eval (`eval_interval_without_exam_mode`) and `eval_before_exit` run plain `sre eval` (no cooldown, no log line, no stdout).
 

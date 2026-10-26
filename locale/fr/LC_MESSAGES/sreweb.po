@@ -408,8 +408,17 @@ msgstr "Tous les projets en cours"
 msgid "Filter…"
 msgstr "Filtrer…"
 
-msgid "Host, owner or lab"
-msgstr "Machine, propriétaire ou TP"
+msgid "Host, owner, group or lab"
+msgstr "Machine, propriétaire, groupe ou TP"
+
+msgid "Student group"
+msgstr "Groupe d'étudiants"
+
+msgid "All groups"
+msgstr "Tous les groupes"
+
+msgid "No group"
+msgstr "Sans groupe"
 
 msgid "no recent evaluation"
 msgstr "pas d'évaluation récente"
@@ -422,6 +431,9 @@ msgstr "Machine"
 
 msgid "Owner"
 msgstr "Propriétaire"
+
+msgid "Group"
+msgstr "Groupe"
 
 msgid "Lab"
 msgstr "TP"

@@ -2,12 +2,13 @@
 the browser itself and passes the identity in request headers, read again on every request (no
 session cookie).  Pure functions, no aiohttp: the header values as aiohttp gives them (UTF-8
 decoded with ``surrogateescape``) in, an ``Identity`` out.  The role comes from the header tests
-(``instructor_groups`` on the groups header, ``instructor_values`` on ``instructor_header``); the
-LDAP tests of ``ldap_roles`` are applied afterwards by the portal (``roles.py``)."""
+(``instructor_groups`` on the groups header, ``instructor_values`` on ``instructor_header``), the
+student group from ``header_group`` (its first value); the LDAP tests of ``ldap_roles`` are
+applied afterwards by the portal (``roles.py``)."""
 import re
 
 from ..config import ProxyAuthConfig
-from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDENT, is_valid_login
+from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDENT, clean_group, is_valid_login
 
 MAX_FULLNAME = 64          # like auth_anon.MAX_DISPLAY_NAME
 MAX_EMAIL = 254
@@ -59,8 +60,11 @@ def identity_from_headers(cfg: ProxyAuthConfig, headers, language: str) -> Ident
     extra = (split_groups(decode_header_value(headers.get(cfg.instructor_header)), cfg.groups_separator)
              if cfg.instructor_header else [])
     instructor = is_instructor(groups, cfg.instructor_groups) or is_instructor(extra, cfg.instructor_values)
+    group_values = (split_groups(decode_header_value(headers.get(cfg.header_group)), cfg.groups_separator)
+                    if cfg.header_group else [])
     return Identity(login=login,
                     fullname=decode_header_value(headers.get(cfg.header_fullname), MAX_FULLNAME),
                     email=decode_header_value(headers.get(cfg.header_email), MAX_EMAIL),
                     role=ROLE_INSTRUCTOR if instructor else ROLE_STUDENT,
-                    language=language, anonymous=False)
+                    language=language, anonymous=False,
+                    group=clean_group(group_values[0]) if group_values else '')

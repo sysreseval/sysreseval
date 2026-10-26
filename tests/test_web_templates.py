@@ -27,7 +27,7 @@ PO_ESCAPES = {'n': '\n', 't': '\t', '"': '"', "'": "'", '\\': '\\'}
 
 LANGUAGES = [('en', 'English'), ('fr', 'Français')]
 IDENTITY = {'login': 'alice', 'fullname': 'Alice Martin', 'email': 'alice@example.org', 'role': 'student',
-            'language': 'fr', 'anonymous': False}
+            'language': 'fr', 'anonymous': False, 'group': ''}
 RLN = '20261021153000@@@sre@dhcp.py@@@alice'
 API_BASE = '/api/projects/a01/20261021153000%40%40%40sre%40dhcp.py%40%40%40alice'
 
@@ -39,7 +39,8 @@ def environment() -> jinja2.Environment:
 def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
-            'language': 'fr', 'instructor': False, 'logout_url': '', 'site': {'name': '', 'url': '', 'logo_url': ''}}
+            'language': 'fr', 'instructor': False, 'groups': False, 'logout_url': '',
+            'site': {'name': '', 'url': '', 'logo_url': ''}}
     base.update(extra)
     return base
 
@@ -172,9 +173,17 @@ class TestTemplates:
         html = render('watch.html', instructor=True)
         assert 'id="watch"' in html and 'id="watch-filter"' in html and 'id="watch-count"' in html
         assert '/static/js/watch.js' in html and 'href="/watch"' in html
-        for key in ('host', 'owner', 'title', 'started_at', 'last_eval', 'grade', 'mark', 'errors', 'terminals', 'managed'):
+        for key in ('host', 'owner', 'group', 'title', 'started_at', 'last_eval', 'grade', 'mark', 'errors', 'terminals',
+                    'managed'):
             assert f'data-sort="{key}"' in html, key
         assert 'data-login="alice"' in html
+        # the group column and select exist, hidden without a configured group source
+        assert 'data-groups="false"' in html and 'data-sort="group" hidden>' in html
+        assert 'id="watch-group"' in html and 'data-kind="all"' in html and 'data-kind="none"' in html
+        assert 'class="watch-group" title="Student group" hidden>' in html
+        shown = render('watch.html', instructor=True, groups=True)
+        assert 'data-groups="true"' in shown and 'data-sort="group">' in shown
+        assert 'class="watch-group" title="Student group">' in shown and ' hidden' not in shown
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)

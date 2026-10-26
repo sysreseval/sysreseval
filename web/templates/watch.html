@@ -4,18 +4,23 @@
 {% block content %}
 <div class="toolbar">
   <h1>{{ _("All running projects") }}</h1>
-  <input type="text" id="watch-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Host, owner or lab") }}">
+  <input type="text" id="watch-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Host, owner, group or lab") }}">
+  <select id="watch-group" class="watch-group" title="{{ _("Student group") }}"{% if not groups %} hidden{% endif %}>
+    <option value="" data-kind="all">{{ _("All groups") }}</option>
+    <option value="" data-kind="none">{{ _("No group") }}</option>
+  </select>
   <span id="watch-count" class="muted"></span>
 </div>
 <div class="watch-legend muted">
   <span class="swatch row-stale"></span> {{ _("no recent evaluation") }}
   <span class="swatch row-errors"></span> {{ _("errors in the last evaluation") }}
 </div>
-<table id="watch" class="grid watch">
+<table id="watch" class="grid watch" data-groups="{{ 'true' if groups else 'false' }}">
   <thead>
     <tr>
       <th class="sortable" data-sort="host">{{ _("Host") }}</th>
       <th class="sortable" data-sort="owner">{{ _("Owner") }}</th>
+      <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
       <th class="sortable" data-sort="title">{{ _("Lab") }}</th>
       <th class="sortable" data-sort="started_at">{{ _("Started") }}</th>
       <th class="sortable" data-sort="last_eval">{{ _("Last evaluation") }}</th>
@@ -27,7 +32,7 @@
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="11" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/watch.js"></script>{% endblock %}

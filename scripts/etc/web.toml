@@ -47,6 +47,9 @@ bind_dn_template = "uid={login},ou=people,dc=example,dc=org"
 # bind_password = "..."
 attr_fullname = "cn"
 attr_mail = "mail"
+# The student group of the users (the first value of a multi-valued attribute): shown on the
+# Watch page of the instructors, who can filter it, and kept in the answers files; "" = none.
+# attr_group = "departmentNumber"
 # Who is an instructor: the OR of the tests below (an empty key skips its test).
 # 1. The members of these groups (DNs; the memberOf attribute of the user, or a group search
 #    with group_filter = "(member={dn})" under group_search_base).
@@ -72,6 +75,9 @@ header_fullname = "X-Remote-Name"
 header_email = "X-Remote-Email"
 header_groups = "X-Remote-Groups"
 groups_separator = ";"
+# The student group (sre-web-apache.conf sets X-Remote-Group from departmentNumber; the first
+# value, split like the groups header); "" = none, unless ldap_roles reads attr_group below.
+# header_group = "X-Remote-Group"
 instructor_groups = []
 # A second header test: the values of this header (an attribute mod_authnz_ldap exports, e.g.
 # X-Remote-Gid set from AUTHENTICATE_GIDNUMBER) in instructor_values give the instructor role.
@@ -80,7 +86,7 @@ instructor_groups = []
 # Or the portal runs the tests of [auth.ldap] itself for the login the proxy gives (needed for a
 # group membership without the memberof overlay): fill uri, search_base / search_filter (or
 # bind_dn_template), bind_dn / bind_password (or an anonymous search) and the instructor_* keys of
-# [auth.ldap]; the role is cached per login for ldap_roles_ttl.
+# [auth.ldap]; the role, and the group of attr_group, are cached per login for ldap_roles_ttl.
 # ldap_roles = true
 ldap_roles_ttl = "10m"
 # Where Logout sends the browser (the logout handler of a mod_auth_form login); empty: no Logout

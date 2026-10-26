@@ -50,7 +50,7 @@ def decode(value: str, secret: str, now: float | None = None, max_age: float = M
     if not isinstance(iat, (int, float)) or current - iat > max_age or iat > current + 300:
         return None
     try:
-        return Identity(**{k: payload[k] for k in ('login', 'fullname', 'email', 'role', 'language', 'anonymous')
+        return Identity(**{k: payload[k] for k in ('login', 'fullname', 'email', 'role', 'language', 'anonymous', 'group')
                            if k in payload})
     except (IdentityError, TypeError):
         return None

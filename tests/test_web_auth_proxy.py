@@ -83,6 +83,18 @@ class TestIdentityFromHeaders:
         # the header is ignored when no instructor_header is configured
         assert P.identity_from_headers(ProxyAuthConfig(), Headers({'X-Remote-User': 'zoe', 'X-Remote-Gid': '2000'}), 'en').role == 'student'
 
+    def test_group_header(self):
+        cfg = ProxyAuthConfig(header_group='X-Remote-Group')
+        def group(**headers):
+            return P.identity_from_headers(cfg, Headers({'X-Remote-User': 'zoe', **headers}), 'en').group
+        assert group(**{'X-Remote-Group': 'INFO1'}) == 'INFO1'
+        assert group(**{'x-remote-group': ' Génie info '}) == 'Génie info'
+        assert group(**{'X-Remote-Group': 'INFO1; RT'}) == 'INFO1'            # the first value of the attribute
+        assert group(**{'X-Remote-Group': '(null)'}) == '' and group() == ''
+        assert group(**{'X-Remote-Group': 'x' * 100}) == 'x' * 64
+        # ignored when no header_group is configured
+        assert P.identity_from_headers(ProxyAuthConfig(), Headers({'X-Remote-User': 'zoe', 'X-Remote-Group': 'INFO1'}), 'en').group == ''
+
     @pytest.mark.parametrize('login', ['../x', 'a b', 'alice@example.org', 'x' * 65, 'ali\x00ce!'])
     def test_bad_login_is_refused_not_truncated(self, login):
         with pytest.raises(IdentityError, match='X-Remote-User'):

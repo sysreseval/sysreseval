@@ -139,16 +139,31 @@ class FakeDirectoryResolver(L.LdapRoleResolver):
         return conn
 
 
+class TestGroup:
+    def test_attribute_requested_and_read(self):
+        auth = L.LdapAuthenticator(cfg(attr_group='departmentNumber'))
+        assert auth._attributes() == ['cn', 'mail', 'departmentNumber']
+        assert 'departmentNumber' not in L.LdapAuthenticator(cfg())._attributes()
+        entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=['a@x'], departmentNumber=[' INFO1 ', 'RT'])
+        me = auth._identity(FakeConn(), 'alice', ALICE_DN, entry, 'fr')
+        assert (me.login, me.fullname, me.email, me.group, me.role) == ('alice', 'Alice', 'a@x', 'INFO1', ROLE_STUDENT)
+        assert auth._identity(FakeConn(), 'alice', ALICE_DN, FakeEntry(ALICE_DN, cn=['Alice'], mail=[]), 'fr').group == ''
+        assert auth._identity(FakeConn(), 'alice', ALICE_DN, None, 'fr').group == ''
+        # not configured: the attribute of the entry is not read
+        assert L.LdapAuthenticator(cfg())._identity(FakeConn(), 'alice', ALICE_DN, entry, 'fr').group == ''
+
+
 class TestRoleResolver:
     def test_search_mode(self):
-        answers = {(PEOPLE, '(uid=alice)'): [FakeEntry(ALICE_DN, cn=['Alice'], mail=[])],
+        answers = {(PEOPLE, '(uid=alice)'): [FakeEntry(ALICE_DN, cn=['Alice'], mail=[], departmentNumber=['INFO1'])],
                    (ALICE_DN, '(gidNumber=2000)'): [FakeEntry(ALICE_DN)],
                    (PEOPLE, '(uid=bob)'): [FakeEntry(f'uid=bob,{PEOPLE}', cn=['Bob'], mail=[])]}
-        r = FakeDirectoryResolver(cfg(instructor_filter='(gidNumber=2000)'), answers)
+        r = FakeDirectoryResolver(cfg(instructor_filter='(gidNumber=2000)', attr_group='departmentNumber'), answers)
+        assert r.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, 'INFO1')
         assert r.role_for('alice') == ROLE_INSTRUCTOR
-        assert r.role_for('bob') == ROLE_STUDENT
+        assert r.resolve('bob') == L.DirectoryLookup(ROLE_STUDENT, '')
         assert r.role_for('nobody') == ROLE_STUDENT
-        assert r.role_for('../x') == ROLE_STUDENT
+        assert r.resolve('../x') == L.DirectoryLookup()
         assert r.conns[0].calls[0] == (PEOPLE, '(uid=alice)', 'SUBTREE')
 
     def test_template_mode(self):
@@ -166,31 +181,31 @@ class TestRoleResolver:
 
 
 class CountingResolver:
-    def __init__(self, roles, fail=False):
-        self.roles, self.fail, self.calls = roles, fail, []
+    def __init__(self, roles, fail=False, groups=None):
+        self.roles, self.fail, self.calls, self.groups = roles, fail, [], groups or {}
 
-    def role_for(self, login):
+    def resolve(self, login):
         self.calls.append(login)
         if self.fail:
             raise L.LdapError("ldap down")
-        return self.roles.get(login, ROLE_STUDENT)
+        return L.DirectoryLookup(self.roles.get(login, ROLE_STUDENT), self.groups.get(login, ''))
 
 
 class TestRoleCache:
     def test_one_lookup_until_the_ttl(self):
         now = [1000.0]
-        resolver = CountingResolver({'prof': ROLE_INSTRUCTOR})
+        resolver = CountingResolver({'prof': ROLE_INSTRUCTOR}, groups={'alice': 'INFO1'})
         cache = RoleCache(resolver, ttl=600, clock=lambda: now[0])
 
         async def go():
-            assert await cache.get('prof') == ROLE_INSTRUCTOR
-            assert await cache.get('prof') == ROLE_INSTRUCTOR
-            assert await cache.get('alice') == ROLE_STUDENT
+            assert (await cache.get('prof')).role == ROLE_INSTRUCTOR
+            assert await cache.get('prof') == L.DirectoryLookup(ROLE_INSTRUCTOR, '')
+            assert await cache.get('alice') == L.DirectoryLookup(ROLE_STUDENT, 'INFO1')
             roles = await asyncio.gather(*(cache.get('bob') for _ in range(5)))
-            assert roles == [ROLE_STUDENT] * 5
+            assert roles == [L.DirectoryLookup()] * 5
             assert resolver.calls == ['prof', 'alice', 'bob']
             now[0] += 601
-            assert await cache.get('prof') == ROLE_INSTRUCTOR
+            assert (await cache.get('prof')).role == ROLE_INSTRUCTOR
             assert resolver.calls == ['prof', 'alice', 'bob', 'prof']
             cache.forget('prof')
             await cache.get('prof')
@@ -203,11 +218,11 @@ class TestRoleCache:
         cache = RoleCache(resolver, ttl=600, negative_ttl=30, clock=lambda: now[0])
 
         async def go():
-            assert await cache.get('prof') == ROLE_STUDENT
-            assert await cache.get('prof') == ROLE_STUDENT
+            assert await cache.get('prof') == L.DirectoryLookup(ROLE_STUDENT, '')
+            assert (await cache.get('prof')).role == ROLE_STUDENT
             assert resolver.calls == ['prof']
             now[0] += 31
             resolver.fail = False
-            assert await cache.get('prof') == ROLE_INSTRUCTOR
+            assert (await cache.get('prof')).role == ROLE_INSTRUCTOR
             assert cache.lookups == 2
         asyncio.run(go())

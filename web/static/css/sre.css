@@ -332,6 +332,7 @@ table.grid.watch td.actions .button, table.grid.watch td.actions button { margin
 table.grid tr.row-errors td { background: var(--fail-bg); }
 table.grid tr.row-stale td { background: var(--debug-bg); }
 .watch-filter { margin-left: 12px; width: 240px; }
+.watch-group { margin-left: 8px; }
 .watch-legend { margin: 0 8px 4px; font-size: 12px; }
 .watch-legend .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--border); vertical-align: middle; margin-left: 12px; }
 .watch-legend .swatch.row-stale { background: var(--debug-bg); }

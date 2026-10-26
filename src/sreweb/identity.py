@@ -4,8 +4,9 @@ The portal authenticates the browser (LDAP, or an anonymous pseudonym) and adds 
 every request it relays to an agent as ``X-SRE-*`` headers, next to the bearer token of the
 agent; the browser never sets them.  The agent builds the same ``Identity`` back from the
 headers: the login names the owner of the projects (the third ``@@@`` field of a running lab
-name, and ``SUDO_USER`` of the ``sre --user`` processes), the full name, e-mail and language go
-into ``answers.json`` like the Qt GUI writes them from the session.
+name, and ``SUDO_USER`` of the ``sre --user`` processes), the full name, e-mail, student group
+and language go into ``answers.json`` like the Qt GUI writes them from the session (the group
+being the web's own: an attribute of the directory, ``attr_group`` / ``header_group``).
 
 The login must be a valid SRE username (the regex of ``SRE.access.is_valid_username``, repeated
 here because the portal does not import ``SRE``).
@@ -31,11 +32,14 @@ HEADER_FULLNAME = 'X-SRE-Fullname'
 HEADER_EMAIL = 'X-SRE-Email'
 HEADER_VIEW = 'X-SRE-View'
 HEADER_ANONYMOUS = 'X-SRE-Anonymous'
+HEADER_GROUP = 'X-SRE-Group'
 
 #: Same as SRE.access._VALID_USERNAME (checked by tests/test_web_identity.py).
 VALID_LOGIN = re.compile(r'^[a-zA-Z0-9._-]+$')
 MAX_LOGIN_LENGTH = 64
+MAX_GROUP_LENGTH = 64
 _LANGUAGE = re.compile(r'^[a-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$')
+_CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f]')
 
 
 #: Same as params.running_lab_name_match_pattern: <timestamp>@@@<lab>@@@<owner>.
@@ -72,6 +76,13 @@ def is_valid_login(login: str) -> bool:
     return bool(login) and len(login) <= MAX_LOGIN_LENGTH and bool(VALID_LOGIN.match(login))
 
 
+def clean_group(value) -> str:
+    """A student group as the directory or the proxy gives it, as it is kept: control
+    characters dropped, blanks trimmed, capped at ``MAX_GROUP_LENGTH`` (``''`` for ``None``)."""
+    text = _CONTROL.sub('', str(value or '')).strip()
+    return text[:MAX_GROUP_LENGTH].strip()
+
+
 def encode_header_text(text: str) -> str:
     """A UTF-8 text in a header: base64 (headers are Latin-1 at best)."""
     return base64.b64encode((text or '').encode('utf-8')).decode('ascii')
@@ -93,6 +104,7 @@ class Identity:
     language: str = 'en'
     anonymous: bool = False
     view: str = VIEW_STUDENT
+    group: str = ''                 # the student group ('' = unknown)
 
     def __post_init__(self):
         if not is_valid_login(self.login):
@@ -127,6 +139,7 @@ class Identity:
             HEADER_EMAIL: encode_header_text(self.email),
             HEADER_VIEW: self.view,
             HEADER_ANONYMOUS: '1' if self.anonymous else '0',
+            HEADER_GROUP: encode_header_text(self.group),
         }
 
     @classmethod
@@ -144,9 +157,10 @@ class Identity:
             language=headers.get(HEADER_LANGUAGE, 'en') or 'en',
             anonymous=headers.get(HEADER_ANONYMOUS, '0') == '1',
             view=headers.get(HEADER_VIEW, VIEW_STUDENT) or VIEW_STUDENT,
+            group=decode_header_text(headers.get(HEADER_GROUP, '')),
         )
 
     def to_dict(self) -> dict:
         """What the browser is told about itself (``GET /api/me``)."""
         return {'login': self.login, 'fullname': self.fullname, 'email': self.email, 'role': self.role,
-                'language': self.language, 'anonymous': self.anonymous}
+                'language': self.language, 'anonymous': self.anonymous, 'group': self.group}

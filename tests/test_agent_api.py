@@ -22,7 +22,7 @@ from sreweb.identity import Identity
 MOCK = Path(__file__).parent / 'mock_sre.py'
 MOCK_XVNC = Path(__file__).parent / 'mock_xvnc.py'
 TOKEN = 't' * 32
-ALICE = Identity(login='alice', fullname='Alice A', email='a@x.org', language='fr')
+ALICE = Identity(login='alice', fullname='Alice A', email='a@x.org', language='fr', group='INFO1')
 BOB = Identity(login='bob')
 PROF = Identity(login='prof', role='instructor', view='instructor')
 PROF_NOVIEW = Identity(login='prof', role='instructor')
@@ -766,19 +766,30 @@ class TestInstructor:
                 rows = await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json()
                 assert len(rows) == 1
                 row = rows[0]
-                assert (row['running_lab_name'], row['owner'], row['fullname'], row['managed']) == (rln, 'alice', '', True)
+                # the full name and the group are written at the creation, before any answer
+                assert (row['running_lab_name'], row['owner'], row['fullname'], row['group'], row['managed']) == \
+                    (rln, 'alice', 'Alice A', 'INFO1', True)
                 assert row['last_eval'] is None and row['terminals'] == 0 and row['eval_interval'] == 0
-                # the full name comes with the first answer of the student
+                on_disk = json.loads((h.pub / 'projects' / rln / 'answers' / 'answers.json').read_text())
+                assert (on_disk['login'], on_disk['hostname'], on_disk['group'], on_disk['exam_mode']) == ('alice', 'pool1', 'INFO1', False)
+                assert not [k for k in on_disk if len(k) == 64]       # no question entry
+                assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['answers'] == {}
                 await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'gw'}}, headers=headers())
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 200
                 row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
-                assert row['fullname'] == ALICE.fullname
+                assert row['fullname'] == ALICE.fullname and row['group'] == 'INFO1'
                 last = row['last_eval']
                 assert (last['grade'], last['max_grade'], last['mark'], last['maximum_mark']) == (4.5, 5, 18.0, 20)
                 assert (last['errors'], last['warnings'], last['auto_eval_count']) == (0, 0, 1)
                 assert last['age_s'] >= 0 and last['archive'].endswith('.zst') and last['eval_date']
                 # a second agent instance would see the same archive: the index is read on demand
                 assert h.agent.results.scans >= 1
+                # the group of the owner's next request wins (the directory changed it)
+                from dataclasses import replace
+                await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'gw2'}},
+                                   headers=headers(replace(ALICE, group='INFO2')))
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert row['group'] == 'INFO2'
             async with Harness(tmp_path / 'b', {'MOCK_EVAL_ERRORS': '[["ERROR", "m1 down"], ["WARNING", "slow"]]'}) as h:
                 rln = await h.started()
                 await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())

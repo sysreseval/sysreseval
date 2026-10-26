@@ -17,7 +17,7 @@ from sreweb.agent.access import AccessError
 from sreweb.identity import Identity
 from sreweb import projectview
 
-ALICE = Identity(login='alice', fullname='Alice A', email='a@example.org', language='fr')
+ALICE = Identity(login='alice', fullname='Alice A', email='a@example.org', language='fr', group='INFO1')
 BOB = Identity(login='bob')
 PROF = Identity(login='prof', role='instructor', view='instructor')
 RLN = '20260910100000@@@sre@dhcp.py@@@alice'
@@ -247,6 +247,7 @@ class TestAnswersStore:
         assert data[text_hash] == 'because' and data[params.login_keyword] == 'alice'
         assert data[params.hostname_keyword] == 'pool1' and data[params.fullname_keyword] == 'Alice A'
         assert data[params.email_keyword] == 'a@example.org' and data[params.language_keyword] == 'fr'
+        assert data[params.group_keyword] == 'INFO1'
         assert data[params.sysreseval_exam_mode] is False and len(data[params.sysreseval_answers_updated_at]) == 14
         on_disk = json.loads((path / params.answer_dir_name / params.answers_filename(RLN).rsplit('/', 1)[1]).read_text())
         assert on_disk[text_hash] == 'because'
@@ -256,6 +257,21 @@ class TestAnswersStore:
         assert json.loads(data[form_hash]) == {'ip': '1.2.3.4', 'ok': False}
         public = AnswersStore.public(data, p)
         assert set(public) == {text_hash, form_hash}
+
+    def test_rewrite_creates_the_metadata_only_file(self, tmp_pub_dir):
+        """At the creation of a project: the metadata alone, no question entry."""
+        path = make_project(tmp_pub_dir)
+        reg = registry()
+        store = AnswersStore(reg, hostname='pool1', pub_dir=str(tmp_pub_dir), owner=None)
+        run(reg.tick())
+        p = reg.get(RLN)
+        assert not p.answers_path.exists()
+        data = run(store.rewrite(p, ALICE))
+        on_disk = json.loads(p.answers_path.read_text())
+        assert on_disk == data
+        assert (data[params.login_keyword], data[params.fullname_keyword], data[params.group_keyword]) == ('alice', 'Alice A', 'INFO1')
+        assert AnswersStore.public(data, p) == {}
+        assert run(store.rewrite(p, BOB))[params.group_keyword] == ''
 
     def test_put_refuses_unknown_questions(self, tmp_pub_dir):
         make_project(tmp_pub_dir)

@@ -190,6 +190,9 @@ class LdapConfig:
     bind_password: str = ''
     attr_fullname: str = 'cn'
     attr_mail: str = 'mail'
+    # The student group of the user ("departmentNumber"...; the first value of a multi-valued
+    # attribute): shown on the Watch page, kept in the answers files; '' = no group.
+    attr_group: str = ''
     instructor_groups: list = field(default_factory=list)   # DNs; members get the instructor role
     group_filter: str = ''            # "(member={dn})" group search when memberOf is not available
     # The instructor role is the OR of every configured test (a test with an empty key is skipped):
@@ -213,6 +216,9 @@ class ProxyAuthConfig:
     header_email: str = 'X-Remote-Email'
     header_groups: str = 'X-Remote-Groups'
     groups_separator: str = ';'       # mod_authnz_ldap joins the values of an attribute with "; "
+    # The student group (the first value of the header, split like the groups header); '' = none
+    # here (ldap_roles with attr_group of [auth.ldap] gives it otherwise).
+    header_group: str = ''
     instructor_groups: list = field(default_factory=list)   # values of the groups header giving the role
     # A second header test: the values of instructor_header (split like the groups header) in
     # instructor_values give the role, e.g. X-Remote-Gid = AUTHENTICATE_GIDNUMBER and ["2000"].
@@ -360,6 +366,17 @@ class WebConfig:
     site: SiteConfig = field(default_factory=SiteConfig)
     hosts: list = field(default_factory=list)
 
+    @property
+    def groups_configured(self) -> bool:
+        """Whether a source of the users' student group is configured in the current mode (the
+        Watch page shows its Group column and filter then)."""
+        if self.auth.mode == AUTH_LDAP:
+            return bool(self.auth.ldap.attr_group)
+        if self.auth.mode == AUTH_PROXY:
+            proxy = self.auth.proxy
+            return bool(proxy.header_group or (proxy.ldap_roles and self.auth.ldap.attr_group))
+        return False
+
 
 def host_config_from_dict(h: dict, where: str) -> HostConfig:
     """A [[hosts]] entry (of the configuration, or added with ``sre-web-tool add``)."""
@@ -410,9 +427,17 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if ldap.instructor_group_filter.strip() and '{login}' not in ldap.instructor_group_filter \
             and '{dn}' not in ldap.instructor_group_filter:
         raise ConfigError(f"{path}: auth.ldap.instructor_group_filter must name the user with {{login}} or {{dn}}")
+    if not isinstance(ldap.attr_group, str) or (ldap.attr_group.strip()
+                                                and not re.match(r'^[A-Za-z][A-Za-z0-9;-]*$', ldap.attr_group.strip())):
+        raise ConfigError(f"{path}: auth.ldap.attr_group must be an LDAP attribute name")
+    ldap.attr_group = ldap.attr_group.strip()
     for name in ('header_login', 'header_fullname', 'header_email', 'header_groups', 'groups_separator'):
         if not str(getattr(proxy, name)).strip():
             raise ConfigError(f"{path}: auth.proxy.{name} cannot be empty")
+    if not isinstance(proxy.header_group, str) or (proxy.header_group.strip()
+                                                   and not re.match(r'^[A-Za-z0-9-]+$', proxy.header_group.strip())):
+        raise ConfigError(f"{path}: auth.proxy.header_group must be a header name")
+    proxy.header_group = proxy.header_group.strip()
     for name in ('instructor_groups', 'instructor_values'):
         if not isinstance(getattr(proxy, name), list):
             raise ConfigError(f"{path}: auth.proxy.{name} must be a list")

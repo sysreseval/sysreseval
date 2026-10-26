@@ -484,6 +484,7 @@ login_keyword = "login"
 fullname_keyword = "fullname"
 email_keyword = "email"
 language_keyword = "language"
+group_keyword = "group"            # the student group of the owner (web front-end, when configured)
 
 # Languages selectable in the GUI language priority dialog
 available_language_in_interface = ['en', 'fr']

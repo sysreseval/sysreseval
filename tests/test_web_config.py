@@ -58,9 +58,9 @@ class TestWebConfig:
                                               'instructor_filter': '(memberOf=cn=profs,ou=groups,dc=example,dc=org)',
                                               'group_search_base': 'ou=groups,dc=example,dc=org',
                                               'instructor_group_filter': '(&(cn=teachers)(member={dn}))',
-                                              'timeout': '5s'},
+                                              'attr_group': ' departmentNumber ', 'timeout': '5s'},
                      'proxy': {'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000'],
-                               'ldap_roles': True, 'ldap_roles_ttl': '5m'}},
+                               'header_group': 'X-Remote-Group', 'ldap_roles': True, 'ldap_roles_ttl': '5m'}},
             'pool': {'idle_timeout_anonymous': '1h', 'idle_timeout_authenticated': 0, 'poll_interval': 3},
             'limits': {'eval_interval': '20s', 'max_answer_bytes': 100},
             'hosts': [HOST, dict(HOST, name='h01', url='http://10.0.0.12:8451')],
@@ -72,6 +72,8 @@ class TestWebConfig:
         assert cfg.auth.ldap.instructor_group_filter == '(&(cn=teachers)(member={dn}))'
         assert (cfg.auth.proxy.instructor_header, cfg.auth.proxy.instructor_values) == ('X-Remote-Gid', ['2000'])
         assert cfg.auth.proxy.ldap_roles is True and cfg.auth.proxy.ldap_roles_ttl == 300
+        assert cfg.auth.ldap.attr_group == 'departmentNumber' and cfg.auth.proxy.header_group == 'X-Remote-Group'
+        assert cfg.groups_configured
         assert cfg.trusted_proxies == [ipaddress.ip_network('127.0.0.1/32')]
         assert cfg.pool.idle_timeout_anonymous == 3600 and cfg.pool.idle_timeout_authenticated == 0
         assert cfg.pool.poll_interval == 3 and cfg.limits.eval_interval == 20 and cfg.limits.max_answer_bytes == 100
@@ -109,6 +111,10 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_values': ['2000']}}}, 'instructor_header'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_header': 'X-Remote-Gid'}}}, 'instructor_values'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'ldap_roles_ttl': 'soon'}}}, 'ldap_roles_ttl'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'attr_group': 3}}}, 'attr_group'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'attr_group': '(cn)'}}}, 'attr_group'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'header_group': 'X Remote'}}}, 'header_group'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'header_group': ['X-Remote-Group']}}}, 'header_group'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
           'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True}}}, 'ldap_roles'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
@@ -140,6 +146,20 @@ class TestWebConfig:
         # the section is read in every mode: a typo must not wait for the switch to proxy mode
         anonymous = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'logout_url': 'https://x/out'}}})
         assert anonymous.auth.mode == config.AUTH_ANONYMOUS and anonymous.auth.proxy.logout_url == 'https://x/out'
+
+    @pytest.mark.parametrize('auth, expected', [
+        ({'mode': 'anonymous', 'ldap': {'attr_group': 'departmentNumber'}, 'proxy': {'header_group': 'X-Remote-Group'}}, False),
+        ({'mode': 'ldap', 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people', 'attr_group': 'departmentNumber'}}, True),
+        ({'mode': 'ldap', 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}}, False),
+        ({'mode': 'proxy', 'proxy': {'header_group': 'X-Remote-Group'}}, True),
+        ({'mode': 'proxy', 'ldap': {'attr_group': 'departmentNumber'}}, False),       # no lookup without ldap_roles
+        ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
+                                                                   'attr_group': 'departmentNumber'}}, True),
+        ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}}, False),
+    ])
+    def test_groups_configured(self, auth, expected):
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'], 'auth': auth})
+        assert cfg.groups_configured is expected
 
     def test_site(self, tmp_path):
         logo = tmp_path / 'logo.jpg'

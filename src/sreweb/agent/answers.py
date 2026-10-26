@@ -3,9 +3,11 @@
 The Qt GUI writes the file itself on every keystroke, with the identity of the desktop session;
 here the browser sends the changed answers (``PUT``) and the agent merges them under the
 project's answers lock, adds the metadata from the identity the portal relayed
-(``SRE.answers.with_metadata``) and the hostname of the pool host, and writes the file atomically,
-readable by the ``sre`` user that evaluates (``Grade0.load_answers``).  ``cheat.json`` written by
-``sre state`` is merged the same way at the next tick and pushed to the open pages.
+(``SRE.answers.with_metadata``: login, full name, e-mail, student group, language...) and the
+hostname of the pool host, and writes the file atomically, readable by the ``sre`` user that
+evaluates (``Grade0.load_answers``).  The metadata alone is written as soon as a project is
+created (``rewrite``), so the Watch page names the owner before the first answer.  ``cheat.json``
+written by ``sre state`` is merged the same way at the next tick and pushed to the open pages.
 """
 import json
 import logging
@@ -79,7 +81,7 @@ class AnswersStore:
     def _with_metadata(self, answers: dict, identity: Identity) -> dict:
         return A.with_metadata(answers, hostname=self.hostname, login=identity.login, fullname=identity.fullname,
                                email=identity.email or None, language=identity.language,
-                               exam_data=A.read_exam_json(self.pub_dir))
+                               exam_data=A.read_exam_json(self.pub_dir), group=identity.group)
 
     def _save(self, project: Project, data: dict):
         A.save_answers(self.path(project), data, atomic=True, owner=self.owner, mode=self.mode)
@@ -96,7 +98,8 @@ class AnswersStore:
         return data
 
     async def rewrite(self, project: Project, identity: Identity) -> dict:
-        """Write the file again with the current metadata (a new language, the exam fields)."""
+        """Write the file again with the current metadata: at the creation of the project (the
+        file then holds the metadata alone), or for a new language, the exam fields..."""
         async with project.answers_lock:
             data = self._with_metadata(self.read(project), identity)
             self._save(project, data)

@@ -31,7 +31,7 @@ CSRF = {S.CSRF_HEADER: S.CSRF_VALUE}
 TEXT_HASH = 'cfc140584d209e6d8ed82f6db72c91a210cb1f2ded6a6b66f81c17e16ac2b857'
 TEACHERS = 'cn=teachers,ou=groups,dc=example,dc=org'
 # proxy mode: the test client is the trusted peer (TestServer binds 127.0.0.1); web_over replaces the whole auth dict
-PROXY_OVER = {'auth': {'mode': 'proxy', 'proxy': {'instructor_groups': [TEACHERS]}},
+PROXY_OVER = {'auth': {'mode': 'proxy', 'proxy': {'instructor_groups': [TEACHERS], 'header_group': 'X-Remote-Group'}},
               'trusted_proxies': ['127.0.0.1', '::1']}
 
 TEMPLATES = {
@@ -41,7 +41,7 @@ TEMPLATES = {
     'projects.html': '<html><title>Projects</title>{{ identity.login }}</html>',
     'open.html': '<html><title>Open</title>{{ identity.login }}</html>',
     'project.html': '<html><title>Project</title>{{ host }} {{ rln }} {{ api_base }} {{ _("Schema") }}</html>',
-    'watch.html': '<html><title>Watch</title>{{ identity.login }} {{ instructor }}</html>',
+    'watch.html': '<html><title>Watch</title>{{ identity.login }} {{ instructor }} {{ groups }}</html>',
 }
 
 
@@ -49,9 +49,11 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def who(login, fullname='', email='', groups='') -> dict:
-    """The identity headers Apache sets in proxy mode (the defaults of [auth.proxy])."""
-    return {'X-Remote-User': login, 'X-Remote-Name': fullname, 'X-Remote-Email': email, 'X-Remote-Groups': groups}
+def who(login, fullname='', email='', groups='', group='') -> dict:
+    """The identity headers Apache sets in proxy mode (the defaults of [auth.proxy], and the
+    X-Remote-Group of PROXY_OVER)."""
+    return {'X-Remote-User': login, 'X-Remote-Name': fullname, 'X-Remote-Email': email, 'X-Remote-Groups': groups,
+            'X-Remote-Group': group}
 
 
 class Harness:
@@ -120,9 +122,10 @@ class Harness:
 
 class TestSessionCookie:
     def test_round_trip_and_forgery(self):
-        me = Identity(login='alice', fullname='Alice', email='a@x', language='fr', anonymous=True)
+        me = Identity(login='alice', fullname='Alice', email='a@x', language='fr', anonymous=True, group='INFO1')
         value = S.encode(me, SECRET, now=1000)
         assert S.decode(value, SECRET, now=2000) == me
+        assert S.decode(value, SECRET, now=2000).group == 'INFO1'
         assert S.decode(value, 'x' * 32, now=2000) is None          # another secret
         assert S.decode(value[:-2] + 'zz', SECRET, now=2000) is None  # tampered signature
         assert S.decode(value, SECRET, now=1000 + S.MAX_AGE + 1) is None   # expired
@@ -523,12 +526,13 @@ class TestProxyMode:
     def test_identity_from_the_headers(self, tmp_path):
         async def go():
             async with Harness(tmp_path, web_over=PROXY_OVER) as h:
-                me = who('alice', 'Émile Dupont', 'alice@example.org', f'cn=students,ou=groups,dc=example,dc=org; {TEACHERS}')
+                me = who('alice', 'Émile Dupont', 'alice@example.org', f'cn=students,ou=groups,dc=example,dc=org; {TEACHERS}',
+                         group='INFO1')
                 resp = await h.client.get('/api/me', headers=me)
                 data = await resp.json()
                 assert data['auth_mode'] == 'proxy' and S.COOKIE_NAME not in resp.cookies
                 assert data['identity'] == {'login': 'alice', 'fullname': 'Émile Dupont', 'email': 'alice@example.org',
-                                            'role': 'instructor', 'language': 'en', 'anonymous': False}
+                                            'role': 'instructor', 'language': 'en', 'anonymous': False, 'group': 'INFO1'}
                 student = (await (await h.client.get('/api/me', headers=who('bob'))).json())['identity']
                 assert student['login'] == 'bob' and student['role'] == 'student' and student['fullname'] == ''
                 for path in ('/', '/login'):
@@ -641,7 +645,7 @@ class TestProxyMode:
     def test_projects_with_the_proxy_identity(self, tmp_path):
         async def go():
             async with Harness(tmp_path, web_over=PROXY_OVER) as h:
-                alice = who('alice', 'Émile Dupont', 'alice@example.org')
+                alice = who('alice', 'Émile Dupont', 'alice@example.org', group='INFO1')
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
                 assert resp.status == 200, await resp.text()
                 result = json.loads((await resp.text()).splitlines()[-1])
@@ -653,7 +657,8 @@ class TestProxyMode:
                 resp = await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'gw'}}, headers={**alice, **CSRF})
                 assert resp.status == 200
                 on_disk = json.loads((h.pub / 'projects' / rln / 'answers' / 'answers.json').read_text())
-                assert (on_disk['login'], on_disk['fullname'], on_disk['email']) == ('alice', 'Émile Dupont', 'alice@example.org')
+                assert (on_disk['login'], on_disk['fullname'], on_disk['email'], on_disk['group']) == \
+                    ('alice', 'Émile Dupont', 'alice@example.org', 'INFO1')
                 ws = await h.client.ws_connect(f'{base}/events', headers=alice)
                 await h.client.post(f'{base}/states/final', headers={**alice, **CSRF})
                 assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'answers'
@@ -741,24 +746,24 @@ class TestDisplayThroughThePortal:
 
 
 class FakeRoleResolver:
-    """The directory of proxy mode's ldap_roles, answering from a dict (or failing)."""
+    """The directory of proxy mode's ldap_roles, answering from dicts (or failing)."""
 
-    def __init__(self, roles, fail=False):
-        self.roles, self.fail, self.calls = roles, fail, []
+    def __init__(self, roles, fail=False, groups=None):
+        self.roles, self.fail, self.calls, self.groups = roles, fail, [], groups or {}
 
-    def role_for(self, login):
+    def resolve(self, login):
+        from sreweb.portal.auth_ldap import DirectoryLookup, LdapError
         self.calls.append(login)
         if self.fail:
-            from sreweb.portal.auth_ldap import LdapError
             raise LdapError("directory down")
-        return self.roles.get(login, 'student')
+        return DirectoryLookup(self.roles.get(login, 'student'), self.groups.get(login, ''))
 
 
 class TestInstructorThroughThePortal:
     def test_watch_evaluation_and_instructor_mode(self, tmp_path):
         async def go():
             async with Harness(tmp_path, auth_mode='proxy', web_over=PROXY_OVER) as h:
-                alice, bob, prof = who('alice', 'Alice'), who('bob'), who('prof', groups=TEACHERS)
+                alice, bob, prof = who('alice', 'Alice', group='INFO1'), who('bob'), who('prof', groups=TEACHERS)
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
                 rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
                 # the watch page and its data: instructors only
@@ -766,9 +771,11 @@ class TestInstructorThroughThePortal:
                 assert (await h.client.get('/api/watch', headers=bob)).status == 403
                 assert (await h.client.get('/watch', allow_redirects=False)).status == 302
                 page = await h.client.get('/watch', headers=prof)
-                assert page.status == 200 and 'prof True' in await page.text()
+                assert page.status == 200 and 'prof True True' in await page.text()   # a group source is configured
                 rows = await (await h.client.get('/api/watch', headers=prof)).json()
                 assert len(rows) == 1 and (rows[0]['host'], rows[0]['owner'], rows[0]['last_eval']) == ('a01', 'alice', None)
+                # the owner's name and group from the start, before any answer
+                assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')
                 # the instructor's own list stays theirs; the student's list unchanged
                 assert await (await h.client.get('/api/projects', headers=prof)).json() == []
                 assert [p['running_lab_name'] for p in await (await h.client.get('/api/projects', headers=alice)).json()] == [rln]
@@ -828,6 +835,8 @@ class TestInstructorThroughThePortal:
                                                      'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000']},
                          'ldap': {'uri': 'ldaps://ldap.example.org', 'search_base': 'ou=people,dc=example,dc=org'}},
                 'trusted_proxies': ['127.0.0.1', '::1']}
+        with_group = {**over, 'auth': {**over['auth'], 'ldap': {**over['auth']['ldap'], 'attr_group': 'departmentNumber'},
+                                       'proxy': {**over['auth']['proxy'], 'header_group': 'X-Remote-Group'}}}
 
         async def go():
             resolver = FakeRoleResolver({'zoe': 'instructor'})
@@ -840,9 +849,23 @@ class TestInstructorThroughThePortal:
                 # the header test comes first: no lookup for a header-granted role
                 me = await (await h.client.get('/api/me', headers={**who('ann'), 'X-Remote-Gid': '2000'})).json()
                 assert me['identity']['role'] == 'instructor' and 'ann' not in resolver.calls
+                assert (await h.client.get('/watch', headers=who('zoe'))).status == 200
+                assert 'zoe True False' in await (await h.client.get('/watch', headers=who('zoe'))).text()   # no group source
+            # the lookup also reads the group (attr_group): then it runs for a header-made instructor too
+            resolver = FakeRoleResolver({'zoe': 'instructor'}, groups={'zoe': 'INFO2', 'ann': 'INFO3', 'bob': 'INFO1'})
+            async with Harness(tmp_path / 'g', auth_mode='proxy', web_over=with_group, role_resolver=resolver) as h:
+                me = (await (await h.client.get('/api/me', headers=who('zoe'))).json())['identity']
+                assert (me['role'], me['group']) == ('instructor', 'INFO2')
+                me = (await (await h.client.get('/api/me', headers={**who('ann'), 'X-Remote-Gid': '2000'})).json())['identity']
+                assert (me['role'], me['group']) == ('instructor', 'INFO3') and 'ann' in resolver.calls
+                me = (await (await h.client.get('/api/me', headers=who('bob', group='HDR'))).json())['identity']
+                assert (me['role'], me['group']) == ('student', 'HDR')           # the header's value wins
+                assert 'zoe True True' in await (await h.client.get('/watch', headers=who('zoe'))).text()
             resolver = FakeRoleResolver({'zoe': 'instructor'}, fail=True)
-            async with Harness(tmp_path / 'b', auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
-                me = await (await h.client.get('/api/me', headers=who('zoe'))).json()
-                assert me['identity']['role'] == 'student'              # the site stays up without the directory
+            async with Harness(tmp_path / 'b', auth_mode='proxy', web_over=with_group, role_resolver=resolver) as h:
+                me = (await (await h.client.get('/api/me', headers=who('zoe'))).json())['identity']
+                assert (me['role'], me['group']) == ('student', '')      # the site stays up without the directory
                 assert (await h.client.get('/projects', headers=who('zoe'))).status == 200
+                me = (await (await h.client.get('/api/me', headers={**who('ann'), 'X-Remote-Gid': '2000'})).json())['identity']
+                assert (me['role'], me['group']) == ('instructor', '')   # never demoted by a directory failure
         run(go())

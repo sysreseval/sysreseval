@@ -101,7 +101,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 | `authorized_src_dir` | `['/opt/sre/lab', '/home/etudiant']` | Allowed lab source directories |
 | `default_network_mode` | `"hub"` | Type of switch of a network that declares no `mode` (`network_modes`: `hub`, `switch`, `managed`) |
 | `switch_user_commands` | `("help", "port/print", "port/setvlan", "vlan/create", …)` | Console commands a student may run on a managed switch; any other is refused in user mode |
-| `hostname_keyword` / `login_keyword` / `fullname_keyword` / `email_keyword` / `language_keyword` | `"hostname"` / `"login"` / `"fullname"` / `"email"` / `"language"` | Keys used in `answers.json` and archive `answers` dict |
+| `hostname_keyword` / `login_keyword` / `fullname_keyword` / `email_keyword` / `language_keyword` / `group_keyword` | `"hostname"` / `"login"` / `"fullname"` / `"email"` / `"language"` / `"group"` | Keys used in `answers.json` and archive `answers` dict (`group`: the student group, web front-end only) |
 
 ### Environment variables
 
@@ -253,6 +253,7 @@ archive = {
         "login":               "alice",
         "fullname":            "Alice Martin",      # from GECOS, always present
         "email":               "alice@example.com", # when email_in_gecos_last_field=True
+        "group":               "INFO1",             # web front-end only, when a group source is configured
         "language":            "fr",
         "answers_updated_at":  "20260615110000",
         "auto_eval_count":     2,                   # self-evals before this one

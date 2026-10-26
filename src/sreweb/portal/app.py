@@ -20,7 +20,7 @@ from .manager import PoolManager
 from .pool import Pool, PoolError
 from .relay import Relay
 from .routes import Routes, json_error
-from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR
+from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDENT
 from ..config import WebConfig, AUTH_PROXY, client_allowed
 
 log = logging.getLogger('sreweb.portal')
@@ -111,9 +111,16 @@ class Portal:
     async def identity_middleware(self, request, handler):
         if self.cfg.auth.mode == AUTH_PROXY:
             identity = self._proxy_identity(request)
-            if identity is not None and self.roles is not None and identity.role != ROLE_INSTRUCTOR:
-                # the LDAP tests of ldap_roles, after the header tests (cached per login)
-                identity = replace(identity, role=await self.roles.get(identity.login))
+            if identity is not None and self.roles is not None \
+                    and (identity.role != ROLE_INSTRUCTOR or self.cfg.auth.ldap.attr_group):
+                # the LDAP tests of ldap_roles, after the header tests (cached per login); the
+                # lookup also reads the group, so it runs for a header-made instructor too when
+                # attr_group is set (the header's role and group win when they have a value)
+                found = await self.roles.get(identity.login)
+                identity = replace(identity,
+                                   role=ROLE_INSTRUCTOR if identity.is_instructor or found.role == ROLE_INSTRUCTOR
+                                   else ROLE_STUDENT,
+                                   group=identity.group or found.group)
             request[IDENTITY_KEY] = identity
         else:
             request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)

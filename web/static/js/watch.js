@@ -1,9 +1,11 @@
 // The Watch page of the instructors: every running project of the pool (GET /api/watch every
-// 5 s), one row per project with its owner, its lab, when it started, its last archived
-// evaluation (age, grade, mark, errors), its terminals and whether the web (or the Qt GUI) runs
-// it.  The rows can be sorted by any column and filtered by text; a row without a recent
-// evaluation is amber, one whose last evaluation had errors is red.  Open goes to the project
-// page (the instructor joins the student's terminals there), Close stops the project.
+// 5 s), one row per project with its owner (and their student group when the site configures
+// one), its lab, when it started, its last archived evaluation (age, grade, mark, errors), its
+// terminals and whether the web (or the Qt GUI) runs it.  The rows can be sorted by any column,
+// filtered by text and restricted to one group (the select; kept in the URL as ?group=); a row
+// without a recent evaluation is amber, one whose last evaluation had errors is red.  Open goes
+// to the project page (the instructor joins the student's terminals there), Close stops the
+// project.
 
 import './base.js';
 import * as api from './api.js';
@@ -18,10 +20,18 @@ const STALE_AFTER_S = 900;     // without an evaluation younger than this (or 2 
 const table = document.getElementById('watch');
 const body = table.querySelector('tbody');
 const filterInput = document.getElementById('watch-filter');
+const groupSelect = document.getElementById('watch-group');
+const groupsEnabled = table.dataset.groups === 'true';   // a group source is configured: column + select shown
 const countElement = document.getElementById('watch-count');
 const closing = new Set();     // running lab names whose close is in progress
 
-const state = {rows: [], sortKey: 'started_at', sortAsc: false, filter: ''};
+// group: null = every group, '' = the rows without group, else one group
+const state = {rows: [], sortKey: 'started_at', sortAsc: false, filter: '', group: null};
+let listedGroups = '';         // the groups the select offers, joined: rebuilt only when they change
+
+function columnCount() {
+  return table.querySelectorAll('thead th:not([hidden])').length;
+}
 
 function projectApi(row) {
   return `/api/projects/${encodeURIComponent(row.host)}/${encodeURIComponent(row.running_lab_name)}`;
@@ -59,6 +69,7 @@ function sortValue(row, key) {
   switch (key) {
     case 'host': return row.host || '';
     case 'owner': return row.owner || '';
+    case 'group': return row.group || '';
     case 'title': return title(row).toLowerCase();
     case 'started_at': return row.started_at || '';
     case 'last_eval': return last ? -last.age_s : -Infinity;
@@ -86,12 +97,68 @@ function compare(a, b) {
   return state.sortAsc ? result : -result;
 }
 
+function matchesGroup(row) {
+  if (state.group === null) {
+    return true;
+  }
+  return state.group === '' ? !row.group : row.group === state.group;
+}
+
 function matches(row) {
+  if (!matchesGroup(row)) {
+    return false;
+  }
   if (!state.filter) {
     return true;
   }
-  const haystack = [row.host, row.owner, row.fullname, title(row), row.lab_name].join(' ').toLowerCase();
+  const haystack = [row.host, row.owner, row.fullname, row.group, title(row), row.lab_name].join(' ').toLowerCase();
   return state.filter.split(/\s+/).every((word) => haystack.includes(word));
+}
+
+// the group select: its fixed entries (every group, no group) then the groups of the rows, plus
+// the selected one while its projects are gone (the filter does not reset by itself)
+function selectGroup() {
+  const kind = state.group === null ? 'all' : (state.group === '' ? 'none' : 'group');
+  for (const option of groupSelect.options) {
+    option.selected = option.dataset.kind === kind && (kind !== 'group' || option.value === state.group);
+  }
+}
+
+function fillGroups() {
+  const groups = new Set(state.rows.map((row) => row.group).filter((group) => group));
+  if (state.group) {
+    groups.add(state.group);
+  }
+  const sorted = [...groups].sort((a, b) => a.localeCompare(b));
+  const joined = sorted.join('\n');
+  if (joined === listedGroups) {
+    return;
+  }
+  listedGroups = joined;
+  for (const option of [...groupSelect.options]) {
+    if (option.dataset.kind === 'group') {
+      option.remove();
+    }
+  }
+  for (const group of sorted) {
+    groupSelect.append(el('option', {value: group, dataset: {kind: 'group'}}, group));
+  }
+  selectGroup();
+}
+
+function groupFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.has('group') ? params.get('group') : null;
+}
+
+function storeGroupInUrl() {
+  const url = new URL(window.location.href);
+  if (state.group === null) {
+    url.searchParams.delete('group');
+  } else {
+    url.searchParams.set('group', state.group);
+  }
+  window.history.replaceState(null, '', url);
 }
 
 function rowClass(row) {
@@ -107,6 +174,9 @@ function rowClass(row) {
 
 function render() {
   clear(body);
+  if (groupsEnabled) {
+    fillGroups();
+  }
   const rows = state.rows.filter(matches).sort(compare);
   countElement.textContent = state.rows.length === rows.length
     ? format(_('{n} project(s)'), {n: rows.length})
@@ -115,7 +185,7 @@ function render() {
     th.setAttribute('aria-sort', th.dataset.sort === state.sortKey ? (state.sortAsc ? 'ascending' : 'descending') : 'none');
   }
   if (!rows.length) {
-    body.append(el('tr', {}, el('td', {colspan: 11, class: 'muted'},
+    body.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'muted'},
                                 state.rows.length ? _('No project matches the filter.') : _('No project on the pool.'))));
     return;
   }
@@ -152,6 +222,7 @@ function renderRow(row) {
   return el('tr', {class: rowClass(row), dataset: {rln}},
     el('td', {}, row.host || ''),
     el('td', {title: row.fullname || ''}, row.owner || ''),
+    el('td', {hidden: !groupsEnabled}, row.group || ''),
     el('td', {title: rln}, title(row)),
     el('td', {}, formatTimestamp(row.started_at)),
     el('td', {title: last ? last.eval_date : ''}, last ? ageText(last.age_s) : _('never')),
@@ -172,7 +243,7 @@ async function refresh() {
     rows = await api.get('/api/watch');
   } catch (e) {
     clear(body);
-    body.append(el('tr', {}, el('td', {colspan: 11, class: 'error'}, e.message)));
+    body.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'error'}, e.message)));
     return;
   }
   state.rows = Array.isArray(rows) ? rows : [];
@@ -196,6 +267,17 @@ function setupControls() {
     state.filter = filterInput.value.trim().toLowerCase();
     render();
   });
+  if (groupsEnabled) {
+    state.group = groupFromUrl();
+    selectGroup();
+    groupSelect.addEventListener('change', () => {
+      const option = groupSelect.selectedOptions[0];
+      const kind = option ? option.dataset.kind : 'all';
+      state.group = kind === 'all' ? null : (kind === 'none' ? '' : option.value);
+      storeGroupInUrl();
+      render();
+    });
+  }
 }
 
 async function main() {

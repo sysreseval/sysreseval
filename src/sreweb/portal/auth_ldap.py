@@ -1,5 +1,6 @@
 """LDAP mode: the user binds with their own password (``ldap3``), the portal reads their full
-name and e-mail, and the instructor role comes from the directory.
+name, e-mail and student group (``attr_group``), and the instructor role comes from the
+directory.
 
 Two ways to find the user's DN: a template (``uid={login},ou=people,...``) or a search with a
 service account (``search_base`` + ``search_filter``).  The role is the OR of the configured
@@ -12,20 +13,29 @@ ldap3 call runs in a thread (the library is synchronous).
 
 In LDAP mode the role is baked into the session cookie: a rule change applies at the next login.
 In proxy mode, :class:`LdapRoleResolver` runs the same tests for the login the proxy gives
-(``ldap_roles``), the result being cached per login by ``roles.RoleCache``.
+(``ldap_roles``) and reads the group, the :class:`DirectoryLookup` being cached per login by
+``roles.RoleCache``.
 """
 import asyncio
 import logging
 import warnings
+from dataclasses import dataclass
 
 from ..config import LdapConfig
-from ..identity import Identity, ROLE_INSTRUCTOR, ROLE_STUDENT, is_valid_login
+from ..identity import Identity, ROLE_INSTRUCTOR, ROLE_STUDENT, clean_group, is_valid_login
 
 log = logging.getLogger('sreweb.portal')
 
 
 class LdapError(Exception):
     """The directory could not be used (not a wrong password)."""
+
+
+@dataclass(frozen=True)
+class DirectoryLookup:
+    """What the directory says of a login in proxy mode: the role and the student group."""
+    role: str = ROLE_STUDENT
+    group: str = ''
 
 
 def _escape_filter(value: str) -> str:
@@ -105,9 +115,18 @@ class _Directory:
 
     def _attributes(self) -> list:
         attrs = [self.cfg.attr_fullname, self.cfg.attr_mail]
+        if self.cfg.attr_group:
+            attrs.append(self.cfg.attr_group)
         if self.cfg.instructor_groups and not self.cfg.group_filter:
             attrs.append('memberOf')
         return attrs
+
+    def _group(self, entry) -> str:
+        """The student group of *entry* (the first value of ``attr_group``, cleaned), ``''``
+        without the attribute."""
+        if entry is None or not self.cfg.attr_group:
+            return ''
+        return clean_group(_first(entry, self.cfg.attr_group))
 
     def _group_base(self) -> str:
         return self.cfg.group_search_base or self.cfg.search_base
@@ -143,14 +162,18 @@ class _Directory:
 
 
 class LdapRoleResolver(_Directory):
-    """Proxy mode: the role of a login the reverse proxy authenticated, computed with the service
-    account (or an anonymous bind) from the same tests as the LDAP login."""
+    """Proxy mode: the role and the group of a login the reverse proxy authenticated, computed
+    with the service account (or an anonymous bind) from the same tests as the LDAP login."""
 
     def role_for(self, login: str) -> str:
-        """``ROLE_INSTRUCTOR`` or ``ROLE_STUDENT`` (an unknown login is a student); ``LdapError``
-        when the directory cannot be used.  Synchronous: run it in a thread."""
+        """``ROLE_INSTRUCTOR`` or ``ROLE_STUDENT``: the role of :meth:`resolve`."""
+        return self.resolve(login).role
+
+    def resolve(self, login: str) -> DirectoryLookup:
+        """The role (an unknown login is a student) and the student group of *login*;
+        ``LdapError`` when the directory cannot be used.  Synchronous: run it in a thread."""
         if not is_valid_login(login):
-            return ROLE_STUDENT
+            return DirectoryLookup()
         LDAPException = self._import_ldap3()
         try:
             conn = self._connect(self.cfg.bind_dn, self.cfg.bind_password)
@@ -165,10 +188,11 @@ class LdapRoleResolver(_Directory):
                     conn.search(self.cfg.search_base, self.cfg.search_filter.format(login=_escape_filter(login)),
                                 attributes=self._attributes())
                     if not conn.entries:
-                        return ROLE_STUDENT
+                        return DirectoryLookup()
                     entry = conn.entries[0]
                     dn = entry.entry_dn
-                return ROLE_INSTRUCTOR if self._is_instructor(conn, login, dn, entry) else ROLE_STUDENT
+                return DirectoryLookup(ROLE_INSTRUCTOR if self._is_instructor(conn, login, dn, entry) else ROLE_STUDENT,
+                                       self._group(entry))
             finally:
                 conn.unbind()
         except LDAPException as e:
@@ -226,4 +250,5 @@ class LdapAuthenticator(_Directory):
         fullname = _first(entry, self.cfg.attr_fullname) if entry is not None else ''
         email = _first(entry, self.cfg.attr_mail) if entry is not None else ''
         return Identity(login=login, fullname=fullname, email=email, language=language,
-                        role=ROLE_INSTRUCTOR if self._is_instructor(conn, login, dn, entry) else ROLE_STUDENT)
+                        role=ROLE_INSTRUCTOR if self._is_instructor(conn, login, dn, entry) else ROLE_STUDENT,
+                        group=self._group(entry))

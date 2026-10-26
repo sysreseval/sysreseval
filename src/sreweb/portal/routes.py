@@ -116,6 +116,7 @@ class Routes:
             'languages': [(code, LANGUAGE_NAMES.get(code, code)) for code in self.cfg.languages],
             'language': language,
             'instructor': bool(identity and identity.role == ROLE_INSTRUCTOR),
+            'groups': self.cfg.groups_configured,     # the Watch page shows the student groups
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
             **extra,

@@ -92,6 +92,14 @@ class TestWithMetadata:
         data = with_metadata(ANSWERS, **{**IDENTITY, 'email': None}, language='en', exam_data=None)
         assert params.email_keyword not in data
 
+    def test_group_only_when_given(self):
+        """The student group is the web agent's: the GUI never passes it and gets no key."""
+        data = with_metadata(ANSWERS, **IDENTITY, language='en', exam_data=None)
+        assert params.group_keyword not in data
+        data = with_metadata(ANSWERS, **IDENTITY, language='en', exam_data=None, group='INFO1')
+        assert data[params.group_keyword] == 'INFO1'
+        assert with_metadata({}, **IDENTITY, language='en', exam_data=None, group='')[params.group_keyword] == ''
+
     def test_updated_at_is_now_by_default(self):
         before = datetime.now().replace(microsecond=0)
         data = with_metadata({}, **IDENTITY, language='en', exam_data=None)

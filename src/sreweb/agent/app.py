@@ -335,8 +335,8 @@ class Agent:
 
     async def projects_list(self, request):
         """The projects of the user; with ``?all=1`` (instructors only) every project of the host,
-        with its owner's full name and the summary of its last archived evaluation (the Watch
-        page)."""
+        with its owner's full name and student group (the answers metadata) and the summary of
+        its last archived evaluation (the Watch page)."""
         identity = request[IDENTITY_KEY]
         everyone = request.query.get('all', '') in ('1', 'true')
         if everyone and not identity.is_instructor:
@@ -349,7 +349,9 @@ class Agent:
             row = dict(p.to_dict(), title=common.project_title(p.info, lang_priority(identity, p.info)))
             if everyone:
                 summary = self.results.summary(p.rln)
-                row['fullname'] = str(self.answers.read(p).get(params.fullname_keyword, '') or '')
+                answers = self.answers.read(p)
+                row['fullname'] = str(answers.get(params.fullname_keyword, '') or '')
+                row['group'] = str(answers.get(params.group_keyword, '') or '')
                 row['last_eval'] = summary.to_json() if summary is not None else None
             rows.append(row)
         return web.json_response(rows)
@@ -448,6 +450,13 @@ class Agent:
         if reservation is not None and access.display_available(project.info, identity):
             self.displays.commit(project, reservation)
         self.registry.write_state(project, force=True)
+        # the answers metadata (login, full name, group...) from the start: the Watch page names
+        # the owner before the first answer; a failure must not cut the stream, the first PUT
+        # writes the file anyway
+        try:
+            await self.answers.rewrite(project, identity)
+        except OSError as e:
+            log.warning("cannot write the answers metadata of %s: %s", project.rln, e)
         await line({'phase': 'result', 'status': 'created', 'running_lab_name': project.rln, 'host': self.hostname})
         return resp
 
