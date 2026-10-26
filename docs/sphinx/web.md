@@ -278,7 +278,13 @@ a logout opens another one. The other events:
 - `eval`, `state` (`state`), `export`, `stop`, `display_start`: the HTTP status and the duration;
 - `denied`: a call answered 401, 403 or 429 (`method`, `path`), `login=-` when nobody was logged
   in; `admin`: a call of `sre-web-tool` changing the pool, or an action of the Pool page of an
-  instructor (their `login`).
+  instructor (their `login`);
+- the presentations (*Instructors* below): `present_start` (the instructor's `login`, `host`,
+  `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
+  changed), `present_stop`, and `present_open` (a student opened the presented page: their
+  `login`, the `presenter`); the project calls a spectator makes keep their own events, their
+  close lines carrying `spectator=1`. The presence socket every page keeps open and the view the
+  presenter publishes are not logged.
 
 The client address is the last entry of `X-Forwarded-For` when the TCP peer is one of
 `trusted_proxies` (the Apache and nginx examples set that header), the peer address otherwise:
@@ -460,6 +466,13 @@ below), except `add` and `remove`, which stay with the token.
   sub-tab shows how many viewers its session has, and a session ends when its last viewer leaves
   (or when the shell exits). After a disconnection, Reconnect joins the same session again while
   another viewer kept it alive.
+- **A presentation**: when an instructor presents a project to the class (*Present* below), the
+  page of every chosen student is covered by that project, read-only: every tab is there but
+  nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
+  their exact size, at the largest font that fits), the question selected, the drawing options
+  of the schema, the instructor texts and the virtual desktop (view-only) follow what the
+  instructor does. The student's own page is untouched underneath, terminals included: when the
+  presentation ends it is back as it was.
 
 ### Instructors
 
@@ -534,6 +547,19 @@ What an instructor gets:
   its state and its projects (greyed when off or full), or leaves the automatic placement: the
   least loaded host the instructor may use, reserved or shared. `POST /api/projects` takes the
   optional `host`; a student sending one gets 403.
+- **Present**: the *Present* button of a project page (the instructor's own project, or a
+  student's) opens the list of the users connected to the site (a text filter, the student
+  groups among them when the site configures one, *Select all*): the chosen students, one by one
+  and by group (a group takes its members connected now and those connecting later), see the
+  project read-only on their own browsers (above). The bar under the project bar then tells how
+  many students are in the audience and how many are watching; *Edit audience* changes the list,
+  *Stop presenting* ends it (so does closing the project). The spectators follow the instructor's
+  page: the tab, the terminals the instructor opens (joined read-only: the students see the same
+  shell, cannot type, and do not change its size), the question, the schema options, the
+  *Instructor mode* texts, the Display tab view-only, and the Evaluation tab shows them the last
+  archived evaluation again after each one the instructor runs. A reloaded page goes on
+  presenting; a page closed for a minute ends the presentation. A student is in one presentation
+  at a time (the newest that includes them), and falls back to the previous one when it ends.
 
 ### The Display tab
 
@@ -581,6 +607,14 @@ the commands.
   are privileged `sre` calls under the instructor's own login, the answers are read-only, and a
   private terminal is listed to instructors only. The operations log of an instructor-mode
   project goes to the subscribers allowed to read it only.
+- The spectators of a presentation reach the presented project through the portal only, on a
+  short list of read-only calls (the project, its events, the schema, the last evaluation, the
+  log, a terminal to *join*, the display), relayed to the agent under the presenter's identity
+  (the agent trusts the portal for every identity anyway); everything else is refused, the
+  portal never forwards what a spectator's browser sends on a terminal socket and the agent
+  attaches a read-only client that cannot type nor resize, and the display socket of a spectator
+  goes through a filter dropping the RFB input and resize messages (an unexpected message closes
+  it). The presentations live in the portal's memory.
 
 **The virtual desktops.** Each `Xvnc` listens on TCP port 6000+N on every interface of the pool
 host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
@@ -604,6 +638,10 @@ the browser reaches a desktop through the owner check of the portal and of the a
   redraw of the application settles the display.
 - The `[limits] eval_interval` of the portal (10 s between two evaluations of a login) also
   applies to an instructor evaluating several students' projects in a row.
+- A presentation ends when the portal restarts (nothing is kept on disk); the agents log the
+  spectators under the presenter's login (the connection log of the portal has the real ones); a
+  spectator's terminal shows the presenter's grid at a smaller font when their window is smaller;
+  a presented project never idles out while it is watched.
 
 ## Development
 

@@ -31,11 +31,15 @@ export function createStatesTab(ctx) {
     clear(table);
     const body = el('tbody');
     for (const state of project.states || []) {
-      const button = el('button', {type: 'button'}, _('Apply'));
-      button.addEventListener('click', () => apply(state.name, button));
+      const action = el('td');
+      if (!ctx.spectator) {        // a spectator of a presentation applies nothing
+        const button = el('button', {type: 'button'}, _('Apply'));
+        button.addEventListener('click', () => apply(state.name, button));
+        action.append(button);
+      }
       body.append(el('tr', {},
         el('td', {class: state.admin_only ? 'admin-only' : undefined}, state.label || state.name),
-        el('td', {}, button)));
+        action));
     }
     table.append(body);
   }

@@ -33,7 +33,7 @@ export function createNetworksTab(ctx) {
       const allowed = Boolean(network.allow_connection);
       const type = el('td', {class: 'center' + (managed && !allowed ? ' closed' : '')}, modeLabel(network.mode));
       const connection = el('td');
-      if (managed && (allowed || project.debug_project)) {
+      if (managed && (allowed || project.debug_project) && !ctx.spectator) {
         const button = el('button', {type: 'button', class: 'connect' + (allowed ? '' : ' debug')}, _('Connect'));
         button.addEventListener('click', () => ctx.openTerminal(network.name));
         connection.append(button);

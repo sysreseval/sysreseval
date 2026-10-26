@@ -207,7 +207,7 @@ input:invalid { border-color: var(--danger); }
 .progress-box .retry { margin-top: 6px; }
 
 /* flavor form dialog */
-dialog.flavor {
+dialog.modal {
   width: 640px;
   max-width: 95vw;
   max-height: 90vh;
@@ -215,9 +215,9 @@ dialog.flavor {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
-dialog.flavor::backdrop { background: rgba(0, 0, 0, 0.3); }
+dialog.modal::backdrop { background: rgba(0, 0, 0, 0.3); }
 dialog.flavor .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
-dialog.flavor .buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+dialog.modal .buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 
 /* ---- the project page -------------------------------------------------------------------- */
 
@@ -493,3 +493,32 @@ option.closed-device { color: var(--closed-color); }
 .ctrl-bar .display-status.error { color: var(--danger); }
 .ctrl-bar .display-name { font-size: 90%; opacity: 0.8; }
 .ctrl-bar .display-clipboard { height: 1.6em; width: 16em; resize: none; font: inherit; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; }
+
+/* presentations: the overlay of a student's page (the iframe of /present/{id}), the bar and the
+   audience dialog of the presenter's page, the read-only terminals of a spectator */
+#presentation-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--bg); }
+#presentation-overlay iframe { display: block; width: 100%; height: 100%; border: 0; }
+body.has-presentation { overflow: hidden; }
+body[data-presentation] .topbar, body[data-presentation] .footer { display: none; }
+.presenter-name { color: var(--muted); white-space: nowrap; margin: 0 8px; }
+.presentation-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--debug-bg); border-bottom: 1px solid var(--border); flex: none; }
+.presentation-bar #presentation-status { flex: 1; font-weight: bold; }
+.tabbar [role="tab"]:disabled, .terminal-tabs [role="tab"]:disabled { opacity: 1; cursor: default; }
+dialog.present { width: 540px; }
+.present-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+.present-toolbar input { flex: 1; }
+.present-groups { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; }
+.present-groups label { display: flex; align-items: center; gap: 4px; }
+.present-list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--border); }
+.present-list li { border-bottom: 1px solid var(--border-light); }
+.present-list li:last-child { border-bottom: none; }
+.present-list label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; cursor: pointer; }
+.present-list .login { color: var(--muted); }
+.present-list .badge { font-size: 11px; padding: 0 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--bar-bg); }
+.present-list .busy { color: var(--closed-color); font-size: 11px; }
+.present-list li.empty, .present-list li.error { padding: 6px 8px; color: var(--muted); }
+.present-list li.error { color: var(--danger); }
+.present-count { margin: 6px 0 0; font-size: 12px; }
+dialog.modal .buttons .spacer { flex: 1; }
+.terminal-box.readonly .xterm-wrap { display: flex; align-items: center; justify-content: center; overflow: hidden; background: #303030; }
+.terminal-box.readonly .xterm-wrap .xterm { height: auto; flex: none; }

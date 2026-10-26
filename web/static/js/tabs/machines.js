@@ -18,9 +18,11 @@ export function createMachinesTab(ctx) {
     for (const machine of project.machines || []) {
       const connection = el('td');
       if (machine.allow_connection) {
-        const button = el('button', {type: 'button', class: 'connect'}, _('Connect'));
-        button.addEventListener('click', () => ctx.openTerminal(machine.name));
-        connection.append(button);
+        if (!ctx.spectator) {      // a spectator of a presentation opens nothing
+          const button = el('button', {type: 'button', class: 'connect'}, _('Connect'));
+          button.addEventListener('click', () => ctx.openTerminal(machine.name));
+          connection.append(button);
+        }
       } else {
         connection.className = 'closed';
       }

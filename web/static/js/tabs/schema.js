@@ -2,7 +2,9 @@
 // GET {api_base}/schema.svg drawn inline with pan and zoom, and the controls of the Qt view:
 // Lines (straight / curved), the Compact-Spread slider, the node Order (forward, reverse,
 // random with a seed kept until the next click) and Nodes (icons / shapes).  Lines, spacing and
-// nodes are kept in the settings; the order is per page, like the Qt view.
+// nodes are kept in the settings; the order is per page, like the Qt view.  A spectator of a
+// presentation (ctx.spectator) gets the presenter's options instead (setOptions, from the
+// exportQuery of the presenter's tab), the controls disabled and the settings untouched.
 
 import * as api from '../api.js';
 import * as settings from '../settings.js';
@@ -15,6 +17,13 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
   const order = {reverse: false, seed: null};
   let loaded = false;
   let shown = false;
+  const spectator = Boolean(ctx.spectator);
+  // a spectator: the options of the presenter (the settings of this browser are not touched)
+  const options = {curved: settings.get('schema_curved'), sep: settings.get('schema_sep'),
+                   icons: settings.get('schema_icons')};
+  const isCurved = () => (spectator ? options.curved : settings.get('schema_curved'));
+  const separation = () => (spectator ? options.sep : settings.get('schema_sep'));
+  const useIcons = () => (spectator ? options.icons : settings.get('schema_icons'));
 
   // -- controls ---------------------------------------------------------------------------
   const radio = (name, value, label, checked, onChange) => {
@@ -76,6 +85,13 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
   const view = el('div', {class: 'schema-view'});
   const pane = el('div', {class: 'pane no-scroll'}, bar, view);
   const panzoom = new SvgPanZoom(view);
+  if (spectator) {
+    for (const control of [straight, curved, icons, shapes]) {
+      control.querySelector('input').disabled = true;
+    }
+    slider.disabled = true;
+    forward.disabled = reverse.disabled = random.disabled = true;
+  }
 
   function setCurved(value) {
     settings.set('schema_curved', value);
@@ -89,13 +105,12 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
 
   // The two schema tabs share the settings: the controls follow them when the tab is shown.
   function syncControls() {
-    const isCurved = settings.get('schema_curved');
-    curved.querySelector('input').checked = isCurved;
-    straight.querySelector('input').checked = !isCurved;
-    const useIcons = settings.get('schema_icons');
-    icons.querySelector('input').checked = useIcons;
-    shapes.querySelector('input').checked = !useIcons;
-    slider.value = settings.get('schema_sep');
+    curved.querySelector('input').checked = isCurved();
+    straight.querySelector('input').checked = !isCurved();
+    icons.querySelector('input').checked = useIcons();
+    shapes.querySelector('input').checked = !useIcons();
+    slider.value = separation();
+    pressOrder(order.seed !== null ? random : (order.reverse ? reverse : forward));
   }
 
   function orderText() {
@@ -107,10 +122,10 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
 
   function query() {
     return {
-      curved: settings.get('schema_curved') ? 1 : 0,
-      sep: settings.get('schema_sep'),
+      curved: isCurved() ? 1 : 0,
+      sep: separation(),
       order: orderText(),
-      icons: settings.get('schema_icons') ? 1 : 0,
+      icons: useIcons() ? 1 : 0,
       hidden: hidden ? 1 : undefined,
     };
   }
@@ -118,12 +133,31 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
   // The query string of GET {api_base}/export mirroring the display (sre export options).
   function exportQuery() {
     return {
-      curved: settings.get('schema_curved') ? 1 : 0,
-      sep: settings.get('schema_sep'),
-      shapes: settings.get('schema_icons') ? 0 : 1,
+      curved: isCurved() ? 1 : 0,
+      sep: separation(),
+      shapes: useIcons() ? 0 : 1,
       reverse: order.reverse ? 1 : 0,
       random_seed: order.seed === null ? undefined : order.seed,
     };
+  }
+
+  // A spectator: the presenter's options (the exportQuery of their tab).
+  function setOptions(q) {
+    if (!spectator || !q || typeof q !== 'object') {
+      return;
+    }
+    const before = JSON.stringify(query());
+    options.curved = Boolean(Number(q.curved));
+    if (q.sep !== undefined && q.sep !== null) {
+      options.sep = Math.max(0, Math.min(9, Number(q.sep) || 0));
+    }
+    options.icons = !Number(q.shapes);
+    order.reverse = Boolean(Number(q.reverse));
+    order.seed = q.random_seed === undefined || q.random_seed === null ? null : Number(q.random_seed);
+    syncControls();
+    if (JSON.stringify(query()) !== before && (shown || loaded)) {
+      reload();
+    }
   }
 
   let pending = false;
@@ -167,5 +201,6 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
       }
     },
     exportQuery,
+    setOptions,
   };
 }

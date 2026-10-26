@@ -2,7 +2,9 @@
 // grades the agent lays out (header labels and rows with their colours, from
 // SRE/evaluation_table.py).  While the lab's cooldown runs, the button is replaced by a
 // countdown "Next evaluation allowed in {n} s", as in the Qt view.  An instructor first sees
-// the last archived evaluation of the project (GET {api_base}/evaluation), whoever ran it.
+// the last archived evaluation of the project (GET {api_base}/evaluation), whoever ran it; so
+// does a spectator of a presentation (ctx.spectator, no button), again after each evaluation
+// the presenter runs (reload); the presenter's page calls ctx.onEvaluated() then.
 
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
@@ -20,6 +22,11 @@ export function createEvaluationTab(ctx) {
   let deadline = null;   // ms timestamp of the end of the cooldown
   let timer = null;
   let lastLoaded = false;
+  let shown = false;
+  const spectator = Boolean(ctx.spectator);
+  if (spectator) {
+    button.hidden = true;
+  }
 
   function renderTable(header, rows) {
     clear(table);
@@ -128,6 +135,9 @@ export function createEvaluationTab(ctx) {
     if (result.grades !== null && result.grades !== undefined) {
       renderTable(data.header || [], data.rows || []);
       caption.hidden = true;
+      if (ctx.onEvaluated) {
+        ctx.onEvaluated();      // the spectators load the archived evaluation again
+      }
     }
     // grades null: still in the cooldown, the previous table stays
     const delay = Number(data.delay_before_self_grade || result.delay_before_self_grade || 0);
@@ -143,11 +153,21 @@ export function createEvaluationTab(ctx) {
     id: 'evaluation',
     element: pane,
     show() {
-      if (ctx.isInstructor && !lastLoaded) {
+      shown = true;
+      if ((ctx.isInstructor || spectator) && !lastLoaded) {
         loadLast();
       }
     },
-    hide() {},
+    hide() {
+      shown = false;
+    },
     update() {},
+    // a spectator: the presenter evaluated: the last archived evaluation again
+    reload() {
+      lastLoaded = false;
+      if (shown) {
+        loadLast();
+      }
+    },
   };
 }

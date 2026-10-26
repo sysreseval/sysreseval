@@ -1,18 +1,24 @@
-// The events WebSocket of an open project page ({api_base}/events): text frames holding one
-// JSON object each ({"t": "info" | "answers" | "log" | "removed", ...}).  The socket is
-// reopened with an exponential backoff when it drops; the page re-fetches everything then.
+// Reconnecting WebSockets of the pages: text frames holding one JSON object each.  A socket is
+// reopened with an exponential backoff when it drops (the page re-fetches everything then,
+// through onReconnect); onClose(ev) may stop that (return false) on a close code meaning "over".
+// ProjectEvents is the events socket of an open project page ({api_base}/events:
+// {"t": "info" | "answers" | "log" | "terminals" | "removed", ...}); the presence socket of
+// base.js and the presentation sockets of project.js / present.js are plain ReconnectingSockets.
 
 import {wsUrl} from './api.js';
 
 const FIRST_DELAY = 1000;     // ms
 const MAX_DELAY = 30000;
 
-export class ProjectEvents {
-  // onEvent(obj): a decoded frame; onReconnect(): the socket is open again after a drop
-  constructor(path, {onEvent, onReconnect}) {
+export class ReconnectingSocket {
+  // onMessage(obj): a decoded frame; onReconnect(): the socket is open again after a drop;
+  // onClose(ev): the socket closed, before the reconnection is scheduled (false = stop for good)
+  constructor(path, {onMessage, onReconnect = null, onClose = null, protocols = undefined}) {
     this.path = path;
-    this.onEvent = onEvent;
+    this.onMessage = onMessage;
     this.onReconnect = onReconnect;
+    this.onClose = onClose;
+    this.protocols = protocols;
     this.socket = null;
     this.delay = FIRST_DELAY;
     this.timer = null;
@@ -24,7 +30,8 @@ export class ProjectEvents {
     if (this.closed) {
       return;
     }
-    const socket = new WebSocket(wsUrl(this.path));
+    const url = wsUrl(this.path);
+    const socket = this.protocols ? new WebSocket(url, this.protocols) : new WebSocket(url);
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.delay = FIRST_DELAY;
@@ -44,12 +51,16 @@ export class ProjectEvents {
         return;
       }
       if (obj && typeof obj === 'object') {
-        this.onEvent(obj);
+        this.onMessage(obj);
       }
     });
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', (ev) => {
       if (this.socket === socket) {
         this.socket = null;
+        if (this.onClose && this.onClose(ev) === false) {
+          this.closed = true;
+          return;
+        }
         this.scheduleReconnect();
       }
     });
@@ -94,5 +105,12 @@ export class ProjectEvents {
       this.socket = null;
       socket.close();
     }
+  }
+}
+
+export class ProjectEvents extends ReconnectingSocket {
+  // onEvent(obj): a decoded frame; onReconnect(): the socket is open again after a drop
+  constructor(path, {onEvent, onReconnect}) {
+    super(path, {onMessage: onEvent, onReconnect});
   }
 }

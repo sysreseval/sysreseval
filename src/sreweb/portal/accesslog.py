@@ -58,15 +58,26 @@ EVENTS = {
     ('POST', '/api/pool/hosts'): 'admin',
     ('DELETE', '/api/pool/hosts/{name}'): 'admin',
     ('POST', '/api/pool/hosts/{name}/{action}'): 'admin',
+    # presentations: the start, the audience changes and the end by the presenter, the page
+    # opened by a spectator (the project calls of a spectator keep their own events, with
+    # ``spectator=1`` on the close lines of their sockets)
+    ('POST', '/api/presentations'): 'present_start',
+    ('PUT', '/api/presentations/{id}/audience'): 'present_audience',
+    ('DELETE', '/api/presentations/{id}'): 'present_stop',
+    ('GET', '/present/{id}'): 'present_open',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
-PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state', 'export'})
+PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state', 'export',
+                            'present_start', 'present_open'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
 KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/pool'),
-                       ('GET', '/api/pool/status'), ('POST', '/api/projects/{host}/{rln}/touch')})
-#: Routes that neither touch the session nor count ('' = no route: 404 / 405).
-IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo'})
+                       ('GET', '/api/pool/status'), ('POST', '/api/projects/{host}/{rln}/touch'),
+                       ('GET', '/api/presence'), ('GET', '/api/presentations'), ('GET', '/api/presentations/{id}'),
+                       ('PUT', '/api/presentations/{id}/view'), ('GET', '/api/presentations/{id}/ws')})
+#: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
+#: socket every page keeps open is one of them: the session expiry stays what it was.
+IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws'})
 #: A failed login is logged as ``login_failed`` by the handler, not as a denied call.
 LOGIN_ROUTES = frozenset({('POST', '/login'), ('POST', '/api/login')})
 DENIED_STATUSES = frozenset({401, 403, 429})
@@ -375,7 +386,7 @@ class AccessLog:
         if event is None:
             return await self._plain(request, handler, fields, denied=(method, canonical) not in LOGIN_ROUTES)
         info = request.match_info
-        for name in ('host', 'rln', 'state', 'device'):
+        for name in ('host', 'rln', 'state', 'device', 'id'):
             if name in info:
                 fields[name] = info[name]
         if event == 'terminal':
@@ -441,6 +452,7 @@ class AccessLog:
         finally:
             now = self.clock()
             self.visits.socket_closed(key, now)
+            fields.update(request.get(ACCESS_KEY) or {})    # what the handler added (spectator=1)
             ws = request.get(WS_KEY)
             if ws is not None:
                 if key is not None:

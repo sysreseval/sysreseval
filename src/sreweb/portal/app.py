@@ -18,8 +18,9 @@ from .auth_proxy import identity_from_headers
 from .roles import RoleCache
 from .manager import PoolManager
 from .pool import Pool, PoolError
+from .presentation import Presence, Presentations
 from .relay import Relay
-from .routes import Routes, json_error
+from .routes import Routes, json_error, CSP
 from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDENT
 from ..config import WebConfig, AUTH_PROXY, client_allowed
 
@@ -28,7 +29,6 @@ log = logging.getLogger('sreweb.portal')
 PORTAL_KEY = web.AppKey('portal', object)
 #: Proxy mode: how many distinct peers / bad logins are warned about once (then every time).
 PROXY_WARNINGS_MAX = 100
-CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
 
 
 class Portal:
@@ -43,6 +43,8 @@ class Portal:
         self.manager: PoolManager | None = None
         self.relay: Relay | None = None
         self.routes: Routes | None = None
+        self.presence: Presence | None = None
+        self.presentations: Presentations | None = None
         self._proxy_warned: set = set()
         self.access = AccessLog(cfg.access_log, cfg.trusted_proxies)
         self.roles: RoleCache | None = None
@@ -62,13 +64,16 @@ class Portal:
                          follow_local_sessions=self.cfg.pool.follow_local_sessions)
         self.manager = PoolManager(self.pool, self.cfg.pool)
         self.relay = Relay(self.pool, None)
+        self.presence = Presence()
+        self.presentations = Presentations(self.presence)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
-                             access=self.access)
+                             access=self.access, presentations=self.presentations)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
             app.router.add_static('/static/', str(static), name='static')
         app.on_startup.append(self._on_startup)
+        app.on_shutdown.append(self._on_shutdown)
         app.on_cleanup.append(self._on_cleanup)
         return app
 
@@ -96,6 +101,13 @@ class Portal:
         self.pool.start()
         self.manager.start()
         self.access.start()
+        self.presentations.start_loop()
+
+    async def _on_shutdown(self, app):
+        # before the connections are torn down: the spectators' browsers get the end of the
+        # presentations (their sockets closed, the overlays removed)
+        await self.presentations.stop_loop()
+        await self.presentations.shutdown()
 
     async def _on_cleanup(self, app):
         # after the in-flight handlers (the WebSockets) are done: their close lines come first

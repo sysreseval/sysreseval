@@ -38,7 +38,7 @@ function showFlavorForm(lab, result) {
     const error = el('div', {class: 'form-error'});
     const body = el('div', {class: 'form-body'});
     const cancel = el('button', {type: 'button'}, _('Cancel'));
-    const dialog = el('dialog', {class: 'flavor'},
+    const dialog = el('dialog', {class: 'modal flavor'},
       el('h2', {}, _('Lab configuration')), error, body, el('div', {class: 'buttons'}, cancel));
     if (Array.isArray(result.form_size) && result.form_size.length === 2) {
       dialog.style.width = result.form_size[0] + 'px';

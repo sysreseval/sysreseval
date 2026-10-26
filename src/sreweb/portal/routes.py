@@ -2,6 +2,7 @@
 agents (``relay.py``).  Every ``/api`` call needs the session cookie (in proxy mode, the identity
 headers of the reverse proxy); the non-GET ones and the WebSockets need the
 ``X-Requested-With: sre-web`` header (CSRF)."""
+import contextlib
 import hmac
 import json
 import logging
@@ -9,12 +10,14 @@ import urllib.parse
 from dataclasses import replace
 
 import aiohttp_jinja2
-from aiohttp import web
+from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
 from .accesslog import AccessLog, ACCESS_KEY
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
+from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
+                           MAX_VIEW_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
 from .ratelimit import RateLimiter
 from .relay import Relay
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
@@ -29,6 +32,24 @@ log = logging.getLogger('sreweb.portal')
 TERMINAL_SUBPROTOCOL = 'sre-term.v1'
 DISPLAY_SUBPROTOCOL = 'sre-display.v1'   # the RFB stream of the virtual X desktop (binary frames only)
 LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français'}
+#: The security policy of every page; the page of a presentation (``/present/{id}``) is shown in
+#: an iframe of the student's current page, so it alone allows a same-origin frame ancestor.
+CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+CSP_FRAMED = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+#: ``(method, canonical route)`` of the project calls a spectator of a presentation may make: they
+#: are relayed with the presenter's identity (``Routes._target``), read-only by construction (the
+#: terminal socket must join a session and gets ``readonly=1``, the display socket ``readonly=1``).
+SPECTATOR_ROUTES = frozenset({
+    ('GET', '/api/projects/{host}/{rln}'),
+    ('GET', '/api/projects/{host}/{rln}/events'),
+    ('GET', '/api/projects/{host}/{rln}/schema.svg'),
+    ('GET', '/api/projects/{host}/{rln}/evaluation'),
+    ('GET', '/api/projects/{host}/{rln}/log'),
+    ('GET', '/api/projects/{host}/{rln}/terminals/{device}'),
+    ('GET', '/api/projects/{host}/{rln}/display'),
+    ('GET', '/api/projects/{host}/{rln}/display/ws'),
+    ('POST', '/api/projects/{host}/{rln}/touch'),
+})
 
 
 def json_error(status: int, message: str, **extra) -> web.Response:
@@ -36,12 +57,15 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 
 
 class Routes:
-    def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog):
+    def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
+                 presentations: Presentations | None = None):
         self.cfg = cfg
         self.pool = pool
         self.manager = manager
         self.relay = relay
         self.access = access
+        self.presentations = presentations if presentations is not None else Presentations(Presence())
+        self.presence = self.presentations.presence
         self.localedirs = localedirs
         self.limiter = RateLimiter()
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
@@ -87,6 +111,17 @@ class Routes:
         r.add_get('/api/projects/{host}/{rln}/log', self.api_log)
         r.add_post('/api/projects/{host}/{rln}/touch', self.api_touch)
         r.add_get('/api/projects/{host}/{rln}/export', self.api_export)
+        # presentations: an instructor's project shown read-only on the students' browsers
+        r.add_get('/present/{id}', self.present_page)
+        r.add_get('/api/presence/ws', self.api_presence_ws)
+        r.add_get('/api/presence', self.api_presence)
+        r.add_get('/api/presentations', self.api_presentations)
+        r.add_post('/api/presentations', self.api_presentation_create)
+        r.add_get('/api/presentations/{id}', self.api_presentation_get)
+        r.add_put('/api/presentations/{id}/audience', self.api_presentation_audience)
+        r.add_put('/api/presentations/{id}/view', self.api_presentation_view)
+        r.add_delete('/api/presentations/{id}', self.api_presentation_delete)
+        r.add_get('/api/presentations/{id}/ws', self.api_presentation_ws)
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -144,7 +179,10 @@ class Routes:
         return identity
 
     def _target(self, request) -> tuple:
-        """The host and running lab name of a project URL, after the ownership check."""
+        """The host and running lab name of a project URL, after the ownership check.  A
+        spectator of a presentation of that project gets the presenter's identity (their own
+        language) on the read-only routes of ``SPECTATOR_ROUTES``, the instructor view following
+        the presenter's; ``request[SPECTATOR_KEY]`` then holds the presentation."""
         identity = self._require_identity(request)
         host = self.pool.host(request.match_info['host'])
         rln = request.match_info['rln']
@@ -152,7 +190,19 @@ class Routes:
         if owner is None:
             raise PoolError(404, "unknown project")
         if owner != identity.login and identity.role != ROLE_INSTRUCTOR:
-            raise PoolError(403, "not your project")
+            presentation = self.presentations.spectator_of(identity, host.name, rln)
+            canonical = getattr(request.match_info.route.resource, 'canonical', '') or ''
+            method = 'GET' if request.method == 'HEAD' else request.method
+            if presentation is None or (method, canonical) not in SPECTATOR_ROUTES:
+                raise PoolError(403, "not your project")
+            request[SPECTATOR_KEY] = presentation
+            logged = request.get(ACCESS_KEY)
+            if logged is not None:
+                logged['spectator'] = True
+            presenter = replace(presentation.presenter, language=identity.language)
+            if presentation.view.get('instructorView') is True:
+                presenter = presenter.with_view(VIEW_INSTRUCTOR)
+            return host, rln, presenter
         view = request.query.get('view', '')
         if view == VIEW_INSTRUCTOR and identity.role == ROLE_INSTRUCTOR:
             identity = identity.with_view(VIEW_INSTRUCTOR)
@@ -515,7 +565,8 @@ class Routes:
 
     async def api_events(self, request):
         host, rln, identity = self._target(request)
-        return await self.relay.websocket(request, host, identity, self._path(rln, '/events'))
+        return await self.relay.websocket(request, host, identity, self._path(rln, '/events'),
+                                          upstream=request.get(SPECTATOR_KEY) is None)
 
     async def api_display(self, request):
         return await self._relay_json(request, 'GET', '/display')
@@ -525,13 +576,210 @@ class Routes:
 
     async def api_display_ws(self, request):
         host, rln, identity = self._target(request)
+        # a spectator: the agent filters the RFB client messages (the handshake and the update
+        # requests must still reach it, so the frames of the browser are forwarded)
+        params = {'readonly': '1'} if request.get(SPECTATOR_KEY) is not None else None
         return await self.relay.websocket(request, host, identity, self._path(rln, '/display/ws'),
-                                          protocols=(DISPLAY_SUBPROTOCOL,))
+                                          protocols=(DISPLAY_SUBPROTOCOL,), params=params)
 
     async def api_terminal(self, request):
         host, rln, identity = self._target(request)
         device = request.match_info['device']
         params = {k: request.query[k] for k in ('cols', 'rows', 'join', 'private') if k in request.query}
+        spectator = request.get(SPECTATOR_KEY) is not None
+        if spectator:
+            # a spectator only watches a live terminal of the presenter: the agent attaches a
+            # read-only client, and nothing typed in the browser is relayed anyway
+            if not params.get('join'):
+                raise PoolError(403, "a spectator may only join a terminal")
+            params.pop('private', None)
+            params['readonly'] = '1'
         return await self.relay.websocket(request, host, identity,
                                           self._path(rln, f"/terminals/{urllib.parse.quote(device, safe='')}"),
-                                          protocols=(TERMINAL_SUBPROTOCOL,), params=params)
+                                          protocols=(TERMINAL_SUBPROTOCOL,), params=params, upstream=not spectator)
+
+    # -- presentations ----------------------------------------------------------------------------
+    # An instructor's project shown read-only on the browsers of the chosen students: the state
+    # lives in ``presentation.py``; here the page of a spectator, the presence sockets of every
+    # page, and the API of the presenter's page.
+
+    @staticmethod
+    def _watcher(ws: web.WebSocketResponse) -> Watcher:
+        async def close(code: int, reason: str):
+            await ws.close(code=code, message=reason.encode('utf-8'))
+        return Watcher(ws.send_json, close)
+
+    def _presentation(self, request) -> Presentation:
+        p = self.presentations.get(request.match_info['id'])
+        if p is None:
+            raise PoolError(404, "no such presentation")
+        return p
+
+    def _presenter_of(self, request) -> tuple:
+        """``(identity, presentation)`` of a call reserved to the presenter."""
+        identity = self._require_identity(request)
+        p = self._presentation(request)
+        if identity.login != p.presenter.login:
+            raise PoolError(403, "the presenter only")
+        return identity, p
+
+    async def present_page(self, request):
+        """The project page of a spectator: the same template as ``project_page`` with the
+        ``presentation`` context (the browser hides every control and follows the presenter's
+        view), shown in an iframe of the student's own page, hence the framing headers."""
+        identity = request.get(IDENTITY_KEY)
+        if not identity:
+            raise web.HTTPFound('/login')
+        p = self._presentation(request)
+        if not p.includes(identity):
+            raise PoolError(403, "not in the audience")
+        host = self.pool.host(p.host)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(host=host.name, rln=p.rln, presenter=p.presenter.login)
+        response = aiohttp_jinja2.render_template('project.html', request, self._page_context(
+            request, host=host.name, rln=p.rln, api_base=f"/api/projects/{host.name}/{urllib.parse.quote(p.rln)}",
+            presentation={'id': p.id, 'presenter': p.presenter.fullname or p.presenter.login}))
+        response.headers['Content-Security-Policy'] = CSP_FRAMED
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        return response
+
+    async def api_presence_ws(self, request):
+        """The socket every page of a logged-in user keeps open: the portal pushes the start and
+        the end of the presentations the user is in; the frames of the browser are ignored."""
+        identity = self._require_identity(request)
+        page = request.query.get('page', '')
+        if not (page.startswith('/') and len(page) <= MAX_PAGE_LENGTH and page.isprintable()):
+            page = ''
+        ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
+        await ws.prepare(request)
+        socket = self.presence.add(identity, page, self._watcher(ws))
+        try:
+            await self.presentations.resync({identity.login})    # a presentation already running for them
+            async for msg in ws:
+                if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
+                    break
+        finally:
+            self.presence.remove(socket)
+            with contextlib.suppress(Exception):
+                await self.presentations.resync({identity.login})
+        return ws
+
+    async def api_presence(self, request):
+        """Instructors: the connected users (the audience to choose from)."""
+        identity = self._require_instructor(request)
+        return web.json_response(self.presence.connected(exclude_login=identity.login,
+                                                         presentation_of=self.presentations.presentation_id_of))
+
+    async def api_presentations(self, request):
+        self._require_instructor(request)
+        return web.json_response([p.to_dict(self.presence) for p in self.presentations.listing()])
+
+    async def api_presentation_create(self, request):
+        identity = self._require_instructor(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        if not isinstance(body, dict):
+            return json_error(400, "a JSON object is expected")
+        host = self.pool.host(str(body.get('host', '')))
+        rln = body.get('rln')
+        if not isinstance(rln, str) or running_lab_name_owner(rln) is None:
+            return json_error(400, "bad running lab name")
+        try:
+            audience = parse_audience(body.get('audience'), identity.login)
+        except ValueError as e:
+            return json_error(400, str(e))
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(host=host.name, rln=rln, audience=audience_size(audience))
+        p = await self.presentations.start(identity, host.name, rln, audience)
+        return web.json_response(p.to_dict(self.presence), status=201)
+
+    async def api_presentation_get(self, request):
+        identity = self._require_identity(request)
+        p = self._presentation(request)
+        if identity.login != p.presenter.login and not p.includes(identity):
+            raise PoolError(403, "not in the audience")
+        return web.json_response(p.to_dict(self.presence))
+
+    async def api_presentation_audience(self, request):
+        identity, p = self._presenter_of(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        try:
+            audience = parse_audience((body or {}).get('audience') if isinstance(body, dict) else None, identity.login)
+        except ValueError as e:
+            return json_error(400, str(e))
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(host=p.host, rln=p.rln, audience=audience_size(audience))
+        p = await self.presentations.set_audience(p.id, audience)
+        return web.json_response(p.to_dict(self.presence))
+
+    async def api_presentation_view(self, request):
+        """The presenter's view (the active tab, the open terminals...), pushed to the spectators."""
+        identity, p = self._presenter_of(request)
+        if request.content_length and request.content_length > MAX_VIEW_BYTES + 64:
+            return json_error(413, "view too large")
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        view = body.get('view') if isinstance(body, dict) and 'view' in body else body
+        try:
+            await self.presentations.set_view(p.id, view)
+        except ValueError as e:
+            return json_error(400, str(e))
+        except KeyError:
+            return json_error(404, "no such presentation")
+        return web.Response(status=204)
+
+    async def api_presentation_delete(self, request):
+        identity = self._require_identity(request)
+        p = self._presentation(request)
+        if identity.login != p.presenter.login and identity.role != ROLE_INSTRUCTOR:
+            raise PoolError(403, "the presenter or an instructor only")
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(host=p.host, rln=p.rln, presenter=p.presenter.login)
+        await self.presentations.end(p.id)
+        return web.json_response({'ok': True})
+
+    async def api_presentation_ws(self, request):
+        """The socket of the presenter's page (the audience counts) and of a spectator's page
+        (the view, at once and on every change); closed with ``WS_PRESENTATION_ENDED`` when the
+        presentation is over, at once when it already is."""
+        identity = self._require_identity(request)
+        p = self.presentations.get(request.match_info['id'])
+        ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
+        if p is None:
+            await ws.prepare(request)
+            await ws.close(code=WS_PRESENTATION_ENDED, message=b"the presentation has ended")
+            return ws
+        presenter = identity.login == p.presenter.login
+        if not presenter and not p.includes(identity):
+            raise PoolError(403, "not in the audience")
+        await ws.prepare(request)
+        watcher = self._watcher(ws)
+        if presenter:
+            attached = await self.presentations.attach_presenter(p.id, watcher)
+        else:
+            attached = await self.presentations.attach_spectator(p.id, identity, watcher)
+        if not attached:
+            await ws.close(code=WS_PRESENTATION_ENDED, message=b"the presentation has ended")
+            return ws
+        try:
+            async for msg in ws:
+                if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
+                    break
+        finally:
+            if presenter:
+                self.presentations.detach_presenter(p.id, watcher)
+            else:
+                with contextlib.suppress(Exception):
+                    await self.presentations.detach_spectator(p.id, identity.login, watcher)
+        return ws

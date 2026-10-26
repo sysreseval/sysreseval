@@ -12,6 +12,11 @@ who joined to help), every one typing into the same pty and getting the same out
   and the other clients go on; the pty is throttled by the slowest live client up to that point.
 - The session ends when its last client leaves, or when the child exits (every client then gets
   ``{"t": "exit", "code": N}`` and a normal close).
+- A read-only client (``attach(readonly=True)``: the spectators of a presentation) only watches:
+  what it sends is ignored by the app, it does not count in the size of the pty nor in
+  :data:`MAX_CLIENTS_PER_SESSION` (its own cap is :data:`MAX_READONLY_CLIENTS_PER_SESSION`), it
+  is told the size (``{"t": "size", "cols": C, "rows": R}`` whenever the pty is resized), it
+  never slows the pty down, and the session ends with its last client that can type.
 - The keystrokes typed before the shell shows up are held: Kathara switches the pty to raw mode
   with ``TCSAFLUSH`` when it attaches, which discards whatever is queued on it.  But a machine
   whose startup never ends (an ``/sbin/init`` machine without ``/tmp/EOS``) shows nothing until
@@ -36,7 +41,8 @@ log = logging.getLogger('sreweb.agent')
 
 REPLAY_SIZE = 1 << 16          # bytes of output replayed to a joining client
 CLIENT_HIGH_WATER = 1 << 20    # a client this far behind is dropped (the pty is not stopped for it)
-MAX_CLIENTS_PER_SESSION = 8
+MAX_CLIENTS_PER_SESSION = 8    # the clients that type (the viewers of a presentation apart)
+MAX_READONLY_CLIENTS_PER_SESSION = 64
 #: Close code of a client dropped for falling behind the output.
 WS_OVERRUN = 4410
 EARLY_INPUT_MAX = 4096       # keystrokes held until the first output of the terminal
@@ -46,7 +52,10 @@ PROBE_DELAY = 5.0            # seconds of silence after which a newline is sent 
 
 @dataclass
 class TerminalClient:
-    """One browser attached to a session: how to reach it, its window size, its pending output."""
+    """One browser attached to a session: how to reach it, its window size, its pending output.
+    A read-only client (a spectator of a presentation) only watches: its input is ignored, it
+    does not take part in the size of the pty (it is told the size instead: ``size_pending``
+    becomes a ``{"t": "size"}`` frame), it does not keep the session alive."""
     id: int
     identity: Identity
     send_bytes: Callable[[bytes], Awaitable[None]]
@@ -57,6 +66,8 @@ class TerminalClient:
     buffer: bytearray = field(default_factory=bytearray)
     wake: asyncio.Event = field(default_factory=asyncio.Event)
     dropped: bool = False
+    readonly: bool = False
+    size_pending: tuple | None = None
 
 
 class TerminalSession:
@@ -128,28 +139,34 @@ class TerminalSession:
         return not self.private or identity.is_instructor or identity.login == self.created_by
 
     def to_dict(self) -> dict:
+        """``clients`` are the browsers that share the shell, ``viewers`` the read-only ones."""
         return {'id': self.id, 'device': self.device, 'created_by': self.created_by, 'private': self.private,
-                'clients': len(self._live()), 'created_at': datetime.fromtimestamp(self.created_at).isoformat(timespec='seconds')}
+                'clients': len(self._writers()), 'viewers': len(self._viewers()),
+                'created_at': datetime.fromtimestamp(self.created_at).isoformat(timespec='seconds')}
 
     # -- clients --------------------------------------------------------------------------------
 
-    def attach(self, identity: Identity, *, send_bytes, send_json, close, cols: int, rows: int) -> TerminalClient:
+    def attach(self, identity: Identity, *, send_bytes, send_json, close, cols: int, rows: int,
+               readonly: bool = False) -> TerminalClient:
         """A new client: it gets the replay first (after the caller's ``ready`` frame, through its
-        own buffer), then the live output; the pty takes the smallest size."""
-        client = TerminalClient(self._next_client, identity, send_bytes, send_json, close, cols, rows)
+        own buffer), then the live output; the pty takes the smallest size of the clients that
+        type (a *readonly* client is told the size instead)."""
+        client = TerminalClient(self._next_client, identity, send_bytes, send_json, close, cols, rows, readonly=readonly)
         self._next_client += 1
         self.clients[client.id] = client
         if self.replay:
             client.buffer.extend(self.replay)
             client.wake.set()
-        self._apply_size()
+        if not readonly:
+            self._apply_size()
         self._changed()
         return client
 
     def detach(self, client: TerminalClient):
-        """A client left: the last one takes the session with it."""
+        """A client left: the last one that could type takes the session with it (a shell
+        nobody can type into is not kept for its viewers)."""
         self.clients.pop(client.id, None)
-        if not self.clients:
+        if not self._writers():
             if not self.closing:
                 asyncio.ensure_future(self.close())
             return
@@ -157,20 +174,42 @@ class TerminalSession:
         self._changed()
 
     def resize_client(self, client: TerminalClient, cols: int, rows: int):
+        if client.readonly:
+            return
         client.cols, client.rows = cols, rows
         self._apply_size()
 
     def _live(self) -> list:
         return [c for c in self.clients.values() if not c.dropped]
 
+    def _writers(self) -> list:
+        return [c for c in self._live() if not c.readonly]
+
+    def _viewers(self) -> list:
+        return [c for c in self._live() if c.readonly]
+
+    def writer_count(self) -> int:
+        return len(self._writers())
+
+    def viewer_count(self) -> int:
+        return len(self._viewers())
+
+    @property
+    def size(self) -> tuple:
+        """``(cols, rows)`` of the pty."""
+        return self._size
+
     def _apply_size(self):
-        live = self._live()
-        if not live:
+        writers = self._writers()
+        if not writers:
             return
-        size = (min(c.cols for c in live), min(c.rows for c in live))
+        size = (min(c.cols for c in writers), min(c.rows for c in writers))
         if size != self._size:
             self._size = size
             self.pty.resize(*size)
+            for viewer in self._viewers():
+                viewer.size_pending = size
+                viewer.wake.set()
 
     def _changed(self):
         if self.on_change is not None:
@@ -193,7 +232,8 @@ class TerminalSession:
         self._update_pending()
 
     def _update_pending(self):
-        self.pty.output_pending(max((len(c.buffer) for c in self._live()), default=0))
+        # the viewers never slow the pty down: a slow one is dropped at the high-water mark
+        self.pty.output_pending(max((len(c.buffer) for c in self._writers()), default=0))
 
     def _drop(self, client: TerminalClient):
         """The slow client goes, the session stays."""
@@ -218,6 +258,11 @@ class TerminalSession:
             client.wake.clear()
             if client.dropped:
                 return
+            if client.size_pending is not None:
+                cols, rows = client.size_pending
+                client.size_pending = None
+                with contextlib.suppress(Exception):
+                    await client.send_json({'t': 'size', 'cols': cols, 'rows': rows})
             if client.buffer:
                 data = bytes(client.buffer)
                 client.buffer.clear()

@@ -240,3 +240,66 @@ def test_visibility_and_dict():
         assert d['id'] == 'p1' and d['device'] == 'm2' and d['created_by'] == 'prof' and d['private'] is True
         assert d['clients'] == 0 and 'T' in d['created_at']
     run(go())
+
+
+# ---------------------------------------------------------------------------------------------
+# read-only clients: the spectators of a presentation
+# ---------------------------------------------------------------------------------------------
+
+def attach_readonly(h: Harness, identity, cols=20, rows=5, stuck=False):
+    fake = FakeClient(stuck)
+    client = h.session.attach(identity, send_bytes=fake.send_bytes, send_json=fake.send_json, close=fake.close,
+                              cols=cols, rows=rows, readonly=True)
+    h.pumps[client.id] = asyncio.ensure_future(h.session.pump(client))
+    return fake, client
+
+
+async def wait_for(predicate, timeout=5.0):
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.02)
+
+
+def test_readonly_viewer_follows_the_writers():
+    async def go():
+        h = Harness()
+        await h.session.start()
+        a, ca = h.attach(ALICE, 100, 30)
+        await a.expect('tty=True')
+        viewer, cv = attach_readonly(h, PROF, 20, 5)
+        await viewer.expect('tty=True')                         # the replay
+        assert h.session.size == (100, 30)                      # the viewer's size counts for nothing
+        assert h.session.to_dict()['clients'] == 1 and h.session.to_dict()['viewers'] == 1
+        assert h.session.writer_count() == 1 and h.session.viewer_count() == 1
+        h.session.resize_client(cv, 10, 3)
+        assert h.session.size == (100, 30)
+        h.session.type_in(b'size\n')
+        await a.expect('size=100x30')
+        await viewer.expect('size=100x30')                      # the live output too
+        h.session.resize_client(ca, 80, 24)
+        await wait_for(lambda: {'t': 'size', 'cols': 80, 'rows': 24} in viewer.frames)
+        # a viewer leaves: the session stays; the last writer leaves: the session ends, the viewer told
+        other, co = attach_readonly(h, PROF)
+        h.session.detach(co)
+        await asyncio.sleep(0.1)
+        assert not h.session.closing and h.session.to_dict()['viewers'] == 1
+        h.session.detach(ca)
+        await wait_for(lambda: viewer.closed is not None, timeout=10)
+        assert viewer.frames[-1]['t'] == 'exit' and viewer.closed[0] == 1000
+        await h.finish()
+    run(go())
+
+
+def test_slow_viewer_is_dropped_and_never_throttles():
+    async def go():
+        h = Harness()
+        await h.session.start()
+        a, ca = h.attach(ALICE)
+        await a.expect('tty=True')
+        stuck, cv = attach_readonly(h, PROF, stuck=True)
+        h.session.type_in(b'flood\n')
+        await a.expect('flooded', timeout=20)
+        assert cv.dropped and stuck.closed == (T.WS_OVERRUN, 'terminal output overrun')
+        assert not h.session.closing and h.session.to_dict() ['viewers'] == 0
+        await h.finish()
+    run(go())

@@ -211,6 +211,33 @@ class TestTemplates:
         assert '/static/vendor/xterm/xterm.js' in html and '/static/vendor/xterm/addon-fit.js' in html
         assert '/static/vendor/xterm/xterm.css' in html and '/static/js/project.js' in html
         assert 'Instructor mode' in html
+        # an instructor may present the project; a student has no such control
+        for control in ('present', 'presentation-bar', 'presentation-edit', 'presentation-stop'):
+            assert f'id="{control}"' in html, control
+        assert 'Stop presenting' in html and 'data-groups="false"' in html and 'data-presentation' not in html
+        student = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=False, groups=True)
+        assert 'id="present"' not in student and 'id="presentation-bar"' not in student
+        assert 'data-groups="true"' in student and 'id="close-project" class="danger">' in student
+
+    def test_project_page_of_a_spectator(self):
+        """The page in the iframe of /present/{id}: the data attributes project.js keys on, no
+        control of the presenter's, no navigation out of the frame, the presenter named."""
+        html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=False,
+                      presentation={'id': 'pres1', 'presenter': 'Pr. Of'})
+        assert 'data-presentation="pres1"' in html and 'data-presenter="Pr. Of"' in html
+        assert 'Presented by Pr. Of' in html and 'id="presenter-name"' in html and 'id="ended-banner"' in html
+        assert 'id="close-project" class="danger" hidden>' in html
+        assert 'id="present"' not in html and 'id="presentation-bar"' not in html
+        assert 'href="/open"' not in html and 'href="/projects">Back' not in html
+        assert 'id="tabbar"' in html and 'id="panes"' in html and '/static/js/project.js' in html
+        # an instructor in the audience is a spectator like the others
+        html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True,
+                      presentation={'id': 'pres1', 'presenter': 'Pr. Of'})
+        assert 'id="present"' not in html and 'id="presentation-bar"' not in html
+
+    def test_project_page_escapes_the_presenter(self):
+        html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': '<b>'})
+        assert 'Presented by <b>' not in html and 'Presented by &lt;b&gt;' in html
 
     def test_project_page_escapes_the_name(self):
         html = render('project.html', host='a01', rln='x"<b>', api_base='/api/projects/a01/x%22%3Cb%3E', instructor=False)
@@ -227,7 +254,8 @@ class TestTemplates:
     def test_static_references_exist(self):
         pages = [render('login.html', identity=None), render('projects.html'), render('open.html', instructor=True),
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True),
-                 render('pool.html', instructor=True)]
+                 render('pool.html', instructor=True),
+                 render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'})]
         checked = 0
         for html in pages:
             references = static_references(html)

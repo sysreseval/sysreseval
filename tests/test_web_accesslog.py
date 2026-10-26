@@ -94,6 +94,13 @@ class TestEventFor:
         ('POST', '/logout', 'logout'),
         ('POST', '/api/logout', 'logout'),
         ('POST', '/api/pool/hosts/{name}/{action}', 'admin'),
+        ('POST', '/api/presentations', 'present_start'),
+        ('PUT', '/api/presentations/{id}/audience', 'present_audience'),
+        ('DELETE', '/api/presentations/{id}', 'present_stop'),
+        ('GET', '/present/{id}', 'present_open'),
+        ('GET', '/api/presence', None),
+        ('GET', '/api/presence/ws', None),
+        ('PUT', '/api/presentations/{id}/view', None),
         ('GET', '/api/projects', None),
         ('GET', '/api/projects/{host}/{rln}', None),
         ('PUT', '/api/projects/{host}/{rln}/answers', None),
@@ -110,8 +117,13 @@ class TestEventFor:
         assert ('GET', '/api/projects') in A.KEEPALIVE and ('POST', '/api/projects/{host}/{rln}/touch') in A.KEEPALIVE
         assert ('GET', '/api/pool') in A.KEEPALIVE and ('GET', '/api/pool/status') in A.KEEPALIVE
         assert '/static' in A.IGNORED and '' in A.IGNORED and '/i18n/{lang}.json' in A.IGNORED
+        assert '/api/presence/ws' in A.IGNORED
+        assert ('GET', '/api/presence') in A.KEEPALIVE and ('PUT', '/api/presentations/{id}/view') in A.KEEPALIVE
+        assert ('GET', '/api/presentations/{id}/ws') in A.KEEPALIVE
+        assert {'present_start', 'present_open'} <= A.PROJECT_EVENTS
         assert A.LOGIN_ROUTES == {('POST', '/login'), ('POST', '/api/login')}
-        assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin'}
+        assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
+                                                                            'present_audience', 'present_stop'}
 
 
 class TestVisits:

@@ -105,14 +105,16 @@ class Relay:
             raise PoolError(502, f"the host {host.name} does not answer: {e or type(e).__name__}")
 
     async def websocket(self, request: web.Request, host: HostConfig, identity: Identity, path: str, *,
-                        protocols=(), params=None, heartbeat: float = 30.0) -> web.WebSocketResponse:
+                        protocols=(), params=None, heartbeat: float = 30.0,
+                        upstream: bool = True) -> web.WebSocketResponse:
         """Pipe a WebSocket of the browser to the same path on the agent, frame by frame.  The
         socket is kept in ``request[WS_KEY]`` for the connection log (the handler is cancelled
-        when the browser leaves)."""
+        when the browser leaves).  With *upstream* false the frames of the browser are discarded
+        (a spectator of a presentation: nothing of theirs reaches the agent)."""
         ws = web.WebSocketResponse(protocols=protocols, heartbeat=heartbeat, max_msg_size=1 << 20)
         request[WS_KEY] = ws
         try:
-            upstream = await self.session.ws_connect(self._url(host, path), headers=self.pool.headers(host, identity),
+            agent_ws = await self.session.ws_connect(self._url(host, path), headers=self.pool.headers(host, identity),
                                                      protocols=protocols, params=params, heartbeat=heartbeat,
                                                      max_msg_size=1 << 20)
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
@@ -122,23 +124,25 @@ class Relay:
             return ws
         await ws.prepare(request)
 
-        async def pump(src, dst, close_code_default=1000):
+        async def pump(src, dst, close_code_default=1000, forward=True):
             try:
                 async for msg in src:
+                    if msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR):
+                        break
+                    if not forward:
+                        continue
                     if msg.type == WSMsgType.BINARY:
                         await dst.send_bytes(msg.data)
                     elif msg.type == WSMsgType.TEXT:
                         await dst.send_str(msg.data)
-                    elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR):
-                        break
             except (aiohttp.ClientError, ConnectionResetError, asyncio.CancelledError):
                 pass
             finally:
                 with contextlib.suppress(Exception):
                     await dst.close(code=getattr(src, 'close_code', None) or close_code_default)
 
-        down = asyncio.ensure_future(pump(upstream, ws))
-        up = asyncio.ensure_future(pump(ws, upstream))
+        down = asyncio.ensure_future(pump(agent_ws, ws))
+        up = asyncio.ensure_future(pump(ws, agent_ws, forward=upstream))
         try:
             await asyncio.wait({down, up}, return_when=asyncio.FIRST_COMPLETED)
         finally:
@@ -148,7 +152,7 @@ class Relay:
                     with contextlib.suppress(asyncio.CancelledError, Exception):
                         await task
             with contextlib.suppress(Exception):
-                await upstream.close()
+                await agent_ws.close()
             with contextlib.suppress(Exception):
                 await ws.close()
         return ws

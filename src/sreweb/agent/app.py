@@ -37,10 +37,12 @@ from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED
 from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS
 from .results import ArchiveIndex
+from .rfb_filter import RfbInputFilter, RfbProtocolError
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
                      build_env, PHASE_PROJECT)
 from .schedulers import Schedulers
-from .terminals import TerminalSession, MAX_CLIENTS_PER_SESSION, PROBE_DELAY  # noqa: F401  (PROBE_DELAY: the tests)
+from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_CLIENTS_PER_SESSION,
+                        PROBE_DELAY)  # noqa: F401  (PROBE_DELAY: the tests)
 from ..config import AgentConfig
 from ..identity import Identity, IdentityError, IDENTITY_KEY
 from ..i18n import translator
@@ -663,7 +665,9 @@ class Agent:
         browser on a live session of the project (``terminals.TerminalSession``: everybody types
         into the same pty and sees the same output).  A session of a non-owner instructor runs
         ``sre connect`` privileged (every listed device opens); ``?private=1`` (instructors) keeps
-        it out of the student's list."""
+        it out of the student's list.  ``?readonly=1`` with ``join`` attaches a read-only client
+        (a spectator of a presentation): its frames are ignored, it is told the size of the pty
+        (``cols`` / ``rows`` in ``ready``, then ``{"t": "size"}`` frames), it has its own cap."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
         device = request.match_info.get('device', '')
@@ -671,18 +675,24 @@ class Agent:
         ws = web.WebSocketResponse(protocols=(TERMINAL_SUBPROTOCOL,), heartbeat=WS_HEARTBEAT, max_msg_size=1 << 20)
         session = None
         privileged = private = False
+        readonly = q.get('readonly', '') in ('1', 'true')
         try:
             access.check_not_exam(self.pub_dir)
             if project.closing:
                 raise AccessError(404, "the project is closing")
             join = q.get('join', '')
+            if readonly and not join:
+                raise AccessError(403, "a read-only terminal must join a session")
             if join:
                 session = project.terminals.get(join)
                 if session is None or session.closing or session.device != device:
                     raise AccessError(404, "this terminal is gone")
                 if not session.visible_to(identity):
                     raise AccessError(403, "private terminal")
-                if len(session.clients) >= MAX_CLIENTS_PER_SESSION:
+                if readonly:
+                    if session.viewer_count() >= MAX_READONLY_CLIENTS_PER_SESSION:
+                        raise AccessError(429, "too many viewers on this terminal")
+                elif session.writer_count() >= MAX_CLIENTS_PER_SESSION:
                     raise AccessError(429, "too many viewers on this terminal")
             else:
                 private = q.get('private', '') in ('1', 'true')
@@ -723,19 +733,26 @@ class Agent:
                      " (privileged)" if privileged else "", " (private)" if private else "")
             self._terminals_changed(project)
         else:
-            log.info("terminal %s/%s joined by %s", project.rln, device, identity.login)
+            log.info("terminal %s/%s joined by %s%s", project.rln, device, identity.login,
+                     " (read-only)" if readonly else "")
 
         async def close_client(code: int, message: str):
             with contextlib.suppress(Exception):
                 await ws.close(code=code, message=message.encode())
 
         client = session.attach(identity, send_bytes=ws.send_bytes, send_json=ws.send_json, close=close_client,
-                                cols=cols, rows=rows)
+                                cols=cols, rows=rows, readonly=readonly)
         await ws.send_json({'t': 'ready', 'session': session.id, 'device': session.device,
-                            'clients': len(session.clients), 'joined': bool(q.get('join', ''))})
+                            'clients': session.writer_count(), 'viewers': session.viewer_count(),
+                            'cols': session.size[0], 'rows': session.size[1], 'readonly': readonly,
+                            'joined': bool(q.get('join', ''))})
         pump = asyncio.ensure_future(session.pump(client))
         try:
             async for msg in ws:
+                if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
+                    break
+                if readonly:
+                    continue           # a viewer: nothing it sends reaches the pty
                 if msg.type == WSMsgType.BINARY:
                     session.type_in(msg.data)
                     project.touch()
@@ -750,8 +767,6 @@ class Agent:
                     elif isinstance(obj, dict) and obj.get('t') == 'input' and isinstance(obj.get('data'), str):
                         session.type_in(obj['data'].encode('utf-8'))
                         project.touch()
-                elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
-                    break
         finally:
             pump.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -808,9 +823,14 @@ class Agent:
     async def display_ws(self, request):
         """The RFB stream of the X server of the project, for noVNC: binary frames only, raw bytes
         both ways; a failure is a close code (4403 / 4404 like the terminals, 4500 when the X
-        server is not there), never a text frame."""
+        server is not there), never a text frame.  ``?readonly=1`` (a spectator of a
+        presentation): the client messages go through ``RfbInputFilter`` (the handshake and the
+        update requests pass, the input and the desktop changes are dropped, anything else
+        closes the socket with 4403)."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
+        readonly = request.query.get('readonly', '') in ('1', 'true')
+        rfb_filter = RfbInputFilter() if readonly else None
         ws = web.WebSocketResponse(protocols=(DISPLAY_SUBPROTOCOL,), heartbeat=WS_HEARTBEAT, max_msg_size=1 << 20)
         try:
             access.check_display(project.info, identity)
@@ -830,7 +850,7 @@ class Agent:
         await ws.prepare(request)
         project.display_clients.append(ws)
         project.touch()
-        log.info("display %s opened for %s", project.rln, identity.login)
+        log.info("display %s opened for %s%s", project.rln, identity.login, " (read-only)" if readonly else "")
 
         async def sender():
             try:
@@ -848,9 +868,20 @@ class Agent:
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.BINARY:
-                    writer.write(msg.data)
-                    await writer.drain()
-                    project.touch()
+                    data = msg.data
+                    if rfb_filter is not None:
+                        try:
+                            data = rfb_filter.feed(data)
+                        except RfbProtocolError as e:
+                            log.info("display %s: read-only viewer sent %s", project.rln, e)
+                            with contextlib.suppress(Exception):
+                                await ws.close(code=WS_FORBIDDEN, message=b"unexpected RFB message")
+                            break
+                    if data:
+                        writer.write(data)
+                        await writer.drain()
+                    if rfb_filter is None:
+                        project.touch()
                 elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
         except (OSError, ConnectionError):

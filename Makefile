@@ -242,7 +242,8 @@ web-tests:
 		${ROOT_DIR}/tests/test_pool_manager.py ${ROOT_DIR}/tests/test_agent_terminals.py \
 		${ROOT_DIR}/tests/test_archive_summary.py ${ROOT_DIR}/tests/test_web_auth_ldap.py \
 		${ROOT_DIR}/tests/test_pool_admin.py ${ROOT_DIR}/tests/test_web_templates.py ${ROOT_DIR}/tests/test_web_tls.py \
-		${ROOT_DIR}/tests/test_web_accesslog.py \
+		${ROOT_DIR}/tests/test_web_accesslog.py ${ROOT_DIR}/tests/test_web_presentation.py \
+		${ROOT_DIR}/tests/test_agent_rfb_filter.py \
 		-v -p no:cacheprovider
 
 # Run a single test file: make test FILE=test_net_config.py

@@ -4,7 +4,10 @@
 // carrying the RFB stream, nothing else; a failure is a close code).  The X server is started
 // by the agent after the project; POST {api_base}/display starts it again after it stopped.
 // noVNC is vendored by `make novnc` under /static/vendor/novnc/ and loaded on first use: the page
-// works without it, only this tab reports the missing file.
+// works without it, only this tab reports the missing file.  A spectator of a presentation
+// (ctx.spectator) sees the desktop view-only (noVNC's viewOnly; the agent drops the input
+// messages anyway), scaled to the tab, without the clipboard and resize controls, and never
+// starts the X server (GET instead of POST).
 
 import * as api from '../api.js';
 import {wsUrl} from '../api.js';
@@ -13,6 +16,8 @@ import {_} from '../i18n.js';
 
 const SUBPROTOCOL = 'sre-display.v1';
 const NOVNC_MODULE = '/static/vendor/novnc/core/rfb.js';
+const SPECTATOR_RETRIES = 10;         // a spectator waits for the presenter's X server this many times
+const SPECTATOR_RETRY_DELAY = 1000;   // ms
 
 // The texts of the close codes of the agent and the portal.
 function closeMessage(code) {
@@ -36,9 +41,12 @@ export function createDisplayTab(ctx) {
     title: _('Text to paste into the X desktop, or received from it')});
   const sendButton = el('button', {type: 'button'}, _('Send to the X clipboard'));
   const desktopName = el('span', {class: 'display-name'});
-  const bar = el('div', {class: 'ctrl-bar'}, statusText, reconnectButton, el('span', {class: 'sep'}),
-    el('label', {}, fitBox, _('Fit to window')), el('label', {}, resizeBox, _('Resize the desktop')),
-    el('span', {class: 'spacer'}), desktopName, clipboard, sendButton);
+  const spectator = Boolean(ctx.spectator);
+  const bar = spectator
+    ? el('div', {class: 'ctrl-bar'}, statusText, reconnectButton, el('span', {class: 'spacer'}), desktopName)
+    : el('div', {class: 'ctrl-bar'}, statusText, reconnectButton, el('span', {class: 'sep'}),
+         el('label', {}, fitBox, _('Fit to window')), el('label', {}, resizeBox, _('Resize the desktop')),
+         el('span', {class: 'spacer'}), desktopName, clipboard, sendButton);
   const screen = el('div', {class: 'display-screen'});
   const pane = el('div', {class: 'pane no-scroll'}, el('div', {class: 'display'}, bar, screen));
 
@@ -77,7 +85,12 @@ export function createDisplayTab(ctx) {
     disconnect();
     setStatus(_('Starting the display…'));
     try {
-      const status = await api.post(ctx.url('/display'));
+      // a spectator never starts the X server: the presenter's page does, maybe a moment later
+      let status = spectator ? await api.get(ctx.url('/display')) : await api.post(ctx.url('/display'));
+      for (let attempt = 0; spectator && !status.running && attempt < SPECTATOR_RETRIES; attempt++) {
+        await new Promise((resolve) => window.setTimeout(resolve, SPECTATOR_RETRY_DELAY));
+        status = await api.get(ctx.url('/display'));
+      }
       if (!status.running) {
         throw new Error(status.error || _('The X server stopped.'));
       }
@@ -91,9 +104,10 @@ export function createDisplayTab(ctx) {
       });
       const session = new Rfb(screen, socket, {shared: true});
       session.background = '#303030';
-      session.focusOnClick = true;
-      session.scaleViewport = fitBox.checked;
-      session.resizeSession = resizeBox.checked;
+      session.viewOnly = spectator;
+      session.focusOnClick = !spectator;
+      session.scaleViewport = spectator ? true : fitBox.checked;
+      session.resizeSession = spectator ? false : resizeBox.checked;
       session.addEventListener('connect', () => setStatus(_('Connected.')));
       session.addEventListener('disconnect', (ev) => {
         if (rfb !== session) {
@@ -111,12 +125,14 @@ export function createDisplayTab(ctx) {
       session.addEventListener('desktopname', (ev) => {
         desktopName.textContent = ev.detail.name;
       });
-      session.addEventListener('clipboard', (ev) => {
-        clipboard.value = ev.detail.text;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(ev.detail.text).catch(() => {});
-        }
-      });
+      if (!spectator) {
+        session.addEventListener('clipboard', (ev) => {
+          clipboard.value = ev.detail.text;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(ev.detail.text).catch(() => {});
+          }
+        });
+      }
       rfb = session;
       setStatus(_('Connecting…'));
     } catch (e) {
@@ -150,7 +166,9 @@ export function createDisplayTab(ctx) {
     element: pane,
     show() {
       if (rfb) {
-        rfb.focus();
+        if (!spectator) {
+          rfb.focus();
+        }
       } else if (available && !connecting) {
         connect();
       }

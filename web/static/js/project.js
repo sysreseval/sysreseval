@@ -2,6 +2,12 @@
 // sanitised view of the project and the answers), the events WebSocket ({api_base}/events)
 // refreshing them, the corner controls (instructor view, word wrap, content font size,
 // Export links, Close project) and the touch keeping the project alive every minute.
+//
+// Two more roles: an instructor may present the project (present.js: the Present button, the
+// bar, the view published after each change through the ctx.onViewChange / onEvaluated hooks of
+// the tabs), and the same page in the iframe of /present/{id} is a spectator's (data-presentation
+// on the body): read-only, no control, the tabs and the terminals following the presenter's
+// view (the socket /api/presentations/{id}/ws).
 
 import './base.js';
 import * as api from './api.js';
@@ -9,7 +15,8 @@ import * as i18n from './i18n.js';
 import * as settings from './settings.js';
 import {_} from './i18n.js';
 import {el, clear, toast} from './ui.js';
-import {ProjectEvents} from './events.js';
+import {ProjectEvents, ReconnectingSocket} from './events.js';
+import {createPresenter} from './present.js';
 import {createSchemaTab} from './tabs/schema.js';
 import {createInformationsTab} from './tabs/informations.js';
 import {createMachinesTab} from './tabs/machines.js';
@@ -29,6 +36,11 @@ const isInstructor = body.dataset.instructor === 'true';
 const login = body.dataset.login || '';
 const owner = (body.dataset.rln || '').split('@@@')[2] || '';
 const isOwner = owner === login;
+// a spectator of a presentation (the page in the iframe of /present/{id}): read-only, driven
+// by the presenter's view
+const presentationId = body.dataset.presentation || '';
+const spectator = Boolean(presentationId);
+const groupsEnabled = body.dataset.groups === 'true';
 
 const tabBar = document.getElementById('tabbar');
 const panes = document.getElementById('panes');
@@ -40,6 +52,10 @@ const fontPlus = document.getElementById('font-plus');
 const exportLink = document.getElementById('export-link');
 const closeButton = document.getElementById('close-project');
 const closedBanner = document.getElementById('closed-banner');
+const endedBanner = document.getElementById('ended-banner');          // a spectator's page
+const presentButton = document.getElementById('present');             // an instructor's page
+const presentationBar = document.getElementById('presentation-bar');
+let presenter = null;      // the presentation side of an instructor's page (present.js)
 
 const state = {
   project: null,
@@ -49,6 +65,7 @@ const state = {
   instructorView: false,
   closed: false,
   exportQuery: {},
+  view: null,               // a spectator: the last view of the presenter applied
 };
 
 // What the tabs get: the project URLs (with the instructor view when it is on), the answers,
@@ -58,11 +75,12 @@ const ctx = {
   isOwner,
   owner,
   login,
+  spectator,
   url(suffix, params) {
     return api.withQuery(apiBase + suffix, {...(params || {}), view: state.instructorView ? 'instructor' : undefined});
   },
   answersReadonly() {
-    return state.answersReadonly;
+    return spectator || state.answersReadonly;
   },
   getAnswers() {
     return state.answers;
@@ -71,6 +89,9 @@ const ctx = {
     const result = await api.put(ctx.url('/answers'), {answers: patch});
     if (result && result.answers) {
       state.answers = result.answers;
+    }
+    if (presenter) {
+      presenter.bump('answers');     // the spectators fetch the answers again
     }
     return result;
   },
@@ -87,8 +108,25 @@ const ctx = {
   onSchemaOptions(query) {
     state.exportQuery = query;
     updateExportLink();
+    if (presenter) {
+      presenter.schedule();
+    }
   },
 };
+if (isInstructor && !spectator) {
+  // the hooks of the tabs publishing the presenter's view (absent on the other pages: a
+  // spectator's page applies the view without publishing anything)
+  ctx.onViewChange = () => {
+    if (presenter) {
+      presenter.schedule();
+    }
+  };
+  ctx.onEvaluated = () => {
+    if (presenter) {
+      presenter.bump('evaluated');
+    }
+  };
+}
 
 // -- tabs ----------------------------------------------------------------------------------------
 
@@ -149,6 +187,9 @@ function selectTab(id) {
   }
   tabs[id].element.hidden = false;
   tabs[id].show();
+  if (ctx.onViewChange) {
+    ctx.onViewChange();
+  }
 }
 
 function renderTabBar(ids) {
@@ -157,7 +198,11 @@ function renderTabBar(ids) {
   for (const id of ids) {
     const button = el('button', {type: 'button', role: 'tab', dataset: {tab: id}}, labels[id] || id);
     button.setAttribute('aria-selected', id === currentTab ? 'true' : 'false');
-    button.addEventListener('click', () => selectTab(id));
+    if (spectator) {
+      button.disabled = true;        // the presenter chooses the tab
+    } else {
+      button.addEventListener('click', () => selectTab(id));
+    }
     tabBar.append(button);
   }
 }
@@ -192,14 +237,33 @@ function applyProject(project) {
   if (tabs.terminals) {
     tabs.terminals.setSessions(state.terminals);
   }
-  instructorToggle.hidden = !(isInstructor && project.has_instructor_texts);
+  instructorToggle.hidden = spectator || !(isInstructor && project.has_instructor_texts);
   instructorToggle.setAttribute('aria-pressed', state.instructorView ? 'true' : 'false');
-  exportLink.hidden = !project.export_kathara_project;
+  exportLink.hidden = spectator || !project.export_kathara_project;
   updateExportLink();
+  if (presentButton && presenter && !presenter.isPresenting()) {
+    presentButton.hidden = false;
+  }
+  if (spectator && pendingView) {
+    const view = pendingView;
+    pendingView = null;
+    applyView(view);
+  }
 }
 
 function updateExportLink() {
   exportLink.href = ctx.url('/export', state.exportQuery);
+}
+
+// The presenter's view, as present.js publishes it to the spectators.
+function getView() {
+  return {
+    tab: currentTab,
+    terminals: tabs.terminals ? tabs.terminals.getView() : {open: [], active: null},
+    question: tabs.questions ? tabs.questions.getSelected() : null,
+    schema: state.exportQuery,
+    instructorView: state.instructorView,
+  };
 }
 
 async function load() {
@@ -213,12 +277,17 @@ async function load() {
   }
 }
 
-function projectClosed() {
+// The page is over (the project closed, or the presentation ended): every socket closed, the
+// tabs hidden; false when it already was.
+function shutDown() {
   if (state.closed) {
-    return;
+    return false;
   }
   state.closed = true;
   events.close();
+  if (presentationSocket) {
+    presentationSocket.close();
+  }
   if (touchTimer) {
     window.clearInterval(touchTimer);
   }
@@ -230,8 +299,84 @@ function projectClosed() {
   }
   tabBar.hidden = true;
   panes.hidden = true;
-  closedBanner.hidden = false;
   closeButton.disabled = true;
+  if (presentButton) {
+    presentButton.hidden = true;
+  }
+  return true;
+}
+
+function projectClosed() {
+  if (state.closed) {
+    return;
+  }
+  if (presenter) {
+    presenter.end();      // the spectators are told the presentation is over (before the controls go)
+  }
+  shutDown();
+  closedBanner.hidden = false;
+}
+
+// A spectator: the presentation is over (the presenter stopped it, or left); the parent page
+// removes the overlay when told.
+function presentationEnded() {
+  if (!shutDown()) {
+    return;
+  }
+  if (endedBanner) {
+    endedBanner.hidden = false;
+  }
+  if (window.parent !== window) {
+    window.parent.postMessage({t: 'presentation-ended', id: presentationId}, window.location.origin);
+  }
+}
+
+// -- a spectator: the presenter's view ----------------------------------------------------------
+
+let pendingView = null;          // a view received before the project was loaded
+let presentationSocket = null;
+
+// The active tab, the terminals, the question, the schema options, the instructor texts, and
+// the counters telling that the answers or the evaluation changed.
+function applyView(view) {
+  if (!view || typeof view !== 'object') {
+    return;
+  }
+  if (!state.project || state.closed) {
+    pendingView = view;
+    return;
+  }
+  const previous = state.view;
+  state.view = view;
+  if (Boolean(view.instructorView) !== state.instructorView) {
+    // the texts and the tabs change with the view: the project loaded again, then the view applied
+    setInstructorView(Boolean(view.instructorView)).then(() => applyView(view));
+    return;
+  }
+  if (previous && view.answers !== previous.answers) {
+    load().catch(() => {});      // PUT answers are not broadcast by the agent
+  }
+  const listed = (id) => (state.project.tabs.includes(id) ? tab(id) : null);
+  for (const id of ['schema', 'full_schema']) {
+    const schema = listed(id);
+    if (schema && view.schema) {
+      schema.setOptions(view.schema);
+    }
+  }
+  const questions = listed('questions');
+  if (questions) {
+    questions.setSelected(view.question || null);
+  }
+  if (view.tab) {
+    selectTab(view.tab);
+  }
+  const terminals = listed('terminals');
+  if (terminals) {
+    terminals.setView(view.terminals || {});
+  }
+  if (previous && view.evaluated !== previous.evaluated && tabs.evaluation) {
+    tabs.evaluation.reload();
+  }
 }
 
 // -- the events socket -------------------------------------------------------------------------
@@ -292,8 +437,12 @@ function setInstructorView(on) {
   if (tabs.log) {
     tabs.log.reset();
   }
-  load().then(() => events.reopen(ctx.url('/events')))
-        .catch((e) => toast(e.message, {error: true}));
+  const done = load().then(() => events.reopen(ctx.url('/events')))
+                     .catch((e) => toast(e.message, {error: true}));
+  if (ctx.onViewChange) {
+    ctx.onViewChange();
+  }
+  return done;
 }
 
 function adjustFontSize(delta) {
@@ -344,9 +493,40 @@ function setupControls() {
 
 // -- start -------------------------------------------------------------------------------------
 
+if (isInstructor && !spectator && presentButton && presentationBar) {
+  presenter = createPresenter(ctx, {
+    host: body.dataset.host || '', rln: body.dataset.rln || '', login, groups: groupsEnabled, getView,
+    elements: {
+      button: presentButton, bar: presentationBar,
+      status: document.getElementById('presentation-status'),
+      edit: document.getElementById('presentation-edit'),
+      stop: document.getElementById('presentation-stop'),
+    },
+  });
+}
+
 async function main() {
   await i18n.init();
   setupControls();
+  if (spectator) {
+    // the presenter's view, now and on every change; the socket is closed when the presentation
+    // is over (a closed presentation closes it at once: the page ends cleanly even before the load)
+    presentationSocket = new ReconnectingSocket(`/api/presentations/${encodeURIComponent(presentationId)}/ws`, {
+      onMessage: (message) => {
+        if (message.t === 'view' && message.view) {
+          applyView(message.view);
+        }
+      },
+      onClose: (ev) => {
+        if (ev.code === 4411 || ev.code === 4403 || ev.code === 4404) {
+          presentationEnded();
+          return false;
+        }
+        return true;
+      },
+    });
+    presentationSocket.connect();
+  }
   try {
     await load();
   } catch (e) {
@@ -362,6 +542,9 @@ async function main() {
   touchTimer = window.setInterval(() => {
     api.post(ctx.url('/touch')).catch(() => {});
   }, TOUCH_INTERVAL);
+  if (presenter) {
+    presenter.resume();       // a reloaded page goes on presenting
+  }
 }
 
 main();

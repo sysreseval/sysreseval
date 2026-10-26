@@ -687,3 +687,56 @@ msgstr "Placement automatique"
 
 msgid "(a host reserved for instructors, or the least loaded one)"
 msgstr "(une machine réservée aux enseignants, ou la moins chargée)"
+
+# --- presentations: project.html, project.js, present.js ---
+
+msgid "Present"
+msgstr "Présenter"
+
+msgid "Show this project, read-only, on the browsers of chosen students"
+msgstr "Montrer ce projet, en lecture seule, sur les navigateurs d'étudiants choisis"
+
+msgid "Presented by {name}"
+msgstr "Présenté par {name}"
+
+msgid "Edit audience"
+msgstr "Modifier le public"
+
+msgid "Stop presenting"
+msgstr "Arrêter la présentation"
+
+msgid "The presentation has ended."
+msgstr "La présentation est terminée."
+
+msgid "Present to…"
+msgstr "Présenter à…"
+
+msgid "Select all"
+msgstr "Tout sélectionner"
+
+msgid "None"
+msgstr "Aucun"
+
+msgid "No user is connected."
+msgstr "Aucun utilisateur n'est connecté."
+
+msgid "No user matches the filter."
+msgstr "Aucun utilisateur ne correspond au filtre."
+
+msgid "{n} selected"
+msgstr "{n} sélectionné(s)"
+
+msgid "instructor"
+msgstr "enseignant"
+
+msgid "in a presentation"
+msgstr "en présentation"
+
+msgid "via group"
+msgstr "via le groupe"
+
+msgid "{group} ({n} connected)"
+msgstr "{group} ({n} connecté(s))"
+
+msgid "Presenting to {n} students ({m} connected)"
+msgstr "Présentation à {n} étudiants ({m} connectés)"

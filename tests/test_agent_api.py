@@ -979,3 +979,114 @@ class TestSharedTerminals:
                 await prof.close()
                 await alice.close()
         run(go())
+
+
+# ---------------------------------------------------------------------------------------------
+# the read-only clients of the spectators of a presentation: terminals and the display
+# ---------------------------------------------------------------------------------------------
+
+async def receive_text(ws, kind, timeout=5.0) -> dict:
+    """The next text frame of *kind* on a terminal WebSocket (the binary frames are skipped)."""
+    async with asyncio.timeout(timeout):
+        while True:
+            msg = await ws.receive()
+            assert msg.type in (aiohttp.WSMsgType.BINARY, aiohttp.WSMsgType.TEXT), msg
+            if msg.type == aiohttp.WSMsgType.TEXT and json.loads(msg.data).get('t') == kind:
+                return json.loads(msg.data)
+
+
+async def collect_bytes(ws, n: int, timeout=5.0) -> bytes:
+    """*n* bytes of binary frames."""
+    out = b''
+    async with asyncio.timeout(timeout):
+        while len(out) < n:
+            msg = await ws.receive()
+            assert msg.type == aiohttp.WSMsgType.BINARY, msg
+            out += msg.data
+    return out
+
+
+class TestReadOnlyClients:
+    def test_readonly_terminal_join(self, tmp_path, monkeypatch):
+        import sreweb.agent.app as agent_app
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?cols=100&rows=30', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(alice.receive_json(), 5)
+                sid = ready['session']
+                assert (ready['cols'], ready['rows'], ready['readonly'], ready['viewers']) == (100, 30, False, 0)
+                await read_until(alice, b'mock$')
+                assert (await receive_event(events, 'terminals'))['terminals'][0]['viewers'] == 0
+                # a read-only client needs a session to join
+                refused = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?readonly=1', headers=headers(PROF),
+                                                    protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(refused.receive_json(), 5))['t'] == 'error'
+                await refused.receive()
+                assert refused.close_code == 4403
+                viewer = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}&readonly=1&cols=20&rows=5',
+                                                   headers=headers(PROF), protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(viewer.receive_json(), 5)
+                assert ready['readonly'] is True and ready['joined'] and (ready['clients'], ready['viewers']) == (1, 1)
+                assert (ready['cols'], ready['rows']) == (100, 30)      # the pty's size, not the viewer's
+                await read_until(viewer, b'mock$')
+                listed = (await receive_event(events, 'terminals'))['terminals'][0]
+                assert (listed['clients'], listed['viewers']) == (1, 1)
+                # nothing the viewer sends reaches the shell
+                await viewer.send_bytes(b'echo NOPE\n')
+                await viewer.send_str(json.dumps({'t': 'input', 'data': 'echo NOPE2\n'}))
+                await viewer.send_str(json.dumps({'t': 'resize', 'cols': 10, 'rows': 3}))
+                await alice.send_bytes(b'echo STILL\n')
+                out = await read_until(alice, b'STILL', after=b'echo STILL')
+                assert b'NOPE' not in out
+                # the writer's resize is told to the viewer
+                await alice.send_str(json.dumps({'t': 'resize', 'cols': 90, 'rows': 25}))
+                size = await receive_text(viewer, 'size')
+                assert (size['cols'], size['rows']) == (90, 25)
+                # the cap of the viewers
+                monkeypatch.setattr(agent_app, 'MAX_READONLY_CLIENTS_PER_SESSION', 1)
+                second = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}&readonly=1',
+                                                   headers=headers(PROF), protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(second.receive_json(), 5))['t'] == 'error'
+                await second.receive()
+                assert second.close_code == 4409
+                # the viewer leaves: the session stays; the writer leaves: the session ends for the viewers too
+                await viewer.close()
+                listed = (await receive_event(events, 'terminals'))['terminals'][0]
+                assert (listed['clients'], listed['viewers']) == (1, 0)
+                viewer = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}&readonly=1',
+                                                   headers=headers(PROF), protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(viewer.receive_json(), 5))['t'] == 'ready'
+                assert (await receive_event(events, 'terminals'))['terminals'][0]['viewers'] == 1
+                await alice.close()
+                assert (await receive_text(viewer, 'exit', timeout=10))['t'] == 'exit'
+                await viewer.receive()
+                assert viewer.close_code == 1000
+                assert (await receive_event(events, 'terminals'))['terminals'] == []
+                await events.close()
+        run(go())
+
+    def test_readonly_display_stream(self, tmp_path, short_dir):
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h:
+                rln = await h.started()
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/display/ws?readonly=1', headers=headers(PROF),
+                                               protocols=(DISPLAY_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(ws.receive(), 5)).data == b'RFB 003.008\n'
+                handshake = b'RFB 003.008\n\x01\x01'
+                await ws.send_bytes(handshake)
+                assert await collect_bytes(ws, len(handshake)) == handshake   # the fake server echoes
+                key = b'\x04\x01\x00\x00\x00\x00\x00\x61'
+                request = b'\x03\x00' + bytes(8)
+                pointer = b'\x05\x01\x00\x0a\x00\x14'
+                await ws.send_bytes(key + request + pointer)
+                assert await collect_bytes(ws, len(request)) == request     # the input never reached the server
+                await ws.send_bytes(b'\x07')                                # not an RFB client message
+                closing = await asyncio.wait_for(ws.receive(), 5)
+                assert closing.type == aiohttp.WSMsgType.CLOSE and ws.close_code == 4403
+                await asyncio.sleep(0.1)
+                assert h.agent.registry.projects[rln].display_clients == []
+        run(go())

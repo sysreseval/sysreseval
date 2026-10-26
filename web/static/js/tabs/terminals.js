@@ -12,6 +12,10 @@
 // sees and types), a sub-tab shows how many viewers its session has.  An instructor on a
 // student's project joins the student's terminals by default when the tab opens, and can open
 // private terminals the student does not see (the select offers both kinds).
+//
+// On the page of a spectator of a presentation (ctx.spectator) nothing can be opened or closed:
+// the sub-tabs are those of the presenter's page (setView, read-only sessions joined by their
+// id), the active one follows; on the presenter's page every change calls ctx.onViewChange().
 
 import * as settings from '../settings.js';
 import {el, clear} from '../ui.js';
@@ -19,6 +23,7 @@ import {_, format} from '../i18n.js';
 import {TerminalSession} from '../terminal.js';
 
 export function createTerminalsTab(ctx) {
+  const spectator = Boolean(ctx.spectator);
   const tabs = el('div', {class: 'terminal-tabs', role: 'tablist'});
   const newSelect = el('select', {class: 'new-terminal', title: _('New terminal…')});
   const live = el('div', {class: 'live-sessions'});
@@ -34,6 +39,8 @@ export function createTerminalsTab(ctx) {
   larger.addEventListener('click', () => settings.set('terminal_font_size', settings.get('terminal_font_size') + 1));
   const bar = el('div', {class: 'ctrl-bar'}, tabs, newSelect, el('span', {class: 'spacer'}), schemeSelect, smaller, larger);
   const pane = el('div', {class: 'pane no-scroll'}, el('div', {class: 'terminals'}, bar, live, host));
+  newSelect.hidden = spectator;
+  live.hidden = spectator;
 
   const sessions = new Map();   // id -> {id, device, title, box, tab, badge, session, remoteId}, in opening order
   const counters = new Map();   // device -> number of terminals opened on it so far (the titles)
@@ -46,7 +53,14 @@ export function createTerminalsTab(ctx) {
   const dismissed = new Set();  // the remote sessions the user closed here: never joined again by themselves
   let shown = false;            // the tab has been shown at least once
   // an instructor on somebody else's project: joins the owner's terminals, opens private ones
-  const helper = Boolean(ctx.isInstructor && !ctx.isOwner);
+  const helper = Boolean(ctx.isInstructor && !ctx.isOwner && !spectator);
+
+  // the presenter's page: the sub-tabs changed (published to the spectators)
+  function notify() {
+    if (ctx.onViewChange) {
+      ctx.onViewChange();
+    }
+  }
 
   settings.onChange('terminal_font_size', (size) => {
     for (const {session} of sessions.values()) {
@@ -113,15 +127,20 @@ export function createTerminalsTab(ctx) {
   }
 
   function makeTab(entry) {
+    entry.badge = el('span', {class: 'viewers'});
+    const button = el('button', {type: 'button', role: 'tab', class: deviceClass(deviceOf(entry.device)),
+      dataset: {id: String(entry.id), device: entry.device}}, entry.title, entry.badge);
+    if (spectator) {
+      button.disabled = true;      // the presenter chooses the terminal shown
+      return button;
+    }
     const close = el('span', {class: 'close', role: 'button', title: _('Close terminal'),
       'aria-label': _('Close terminal')}, '×');
     close.addEventListener('click', (event) => {
       event.stopPropagation();
       closeSession(entry.id);
     });
-    entry.badge = el('span', {class: 'viewers'});
-    const button = el('button', {type: 'button', role: 'tab', class: deviceClass(deviceOf(entry.device)),
-      dataset: {id: String(entry.id), device: entry.device}}, entry.title, entry.badge, close);
+    button.append(close);
     button.addEventListener('click', () => select(entry.id));
     return button;
   }
@@ -137,17 +156,21 @@ export function createTerminalsTab(ctx) {
       other.tab.setAttribute('aria-selected', other === entry ? 'true' : 'false');
     }
     entry.session.refit();
-    entry.session.focus();
+    if (!spectator) {
+      entry.session.focus();
+    }
+    notify();
   }
 
   function remoteOf(entry) {
     return entry.remoteId ? remote.find((r) => r.id === entry.remoteId) : null;
   }
 
-  // the viewer count of a sub-tab (the session is shared when it is above one)
+  // the viewer count of a sub-tab (the session is shared when it is above one): the browsers
+  // typing in it and the read-only spectators of a presentation
   function updateBadge(entry) {
     const r = remoteOf(entry);
-    const n = r ? r.clients : (entry.session.clients || 0);
+    const n = r ? (Number(r.clients) || 0) + (Number(r.viewers) || 0) : (entry.session.clients || 0);
     entry.badge.textContent = n > 1 ? `(${n})` : '';
     entry.badge.title = n > 1 ? format(_('{n} viewers'), {n}) : '';
   }
@@ -159,6 +182,9 @@ export function createTerminalsTab(ctx) {
   // the live sessions of the project not on this page: a Join button each
   function renderLive() {
     clear(live);
+    if (spectator) {
+      return;
+    }
     const attached = attachedIds();
     const others = remote.filter((r) => !attached.has(r.id));
     if (!others.length) {
@@ -179,7 +205,9 @@ export function createTerminalsTab(ctx) {
   // new sub-tab, a new WebSocket
   function openNew(name, {join: joinId = null, priv = false, title = null} = {}) {
     const device = deviceOf(name);
-    if (!device || (!joinId && !canOpen(device))) {
+    // a joined session is addressed by its id: its device need not be listed (a spectator's view
+    // may name a session before the terminals event does)
+    if (!joinId && (!device || !canOpen(device))) {
       return null;
     }
     const id = nextId++;
@@ -195,10 +223,12 @@ export function createTerminalsTab(ctx) {
       scheme: settings.get('terminal_color_scheme'),
       join: joinId,
       private: priv,
+      readonly: spectator,
       onReady: (info) => {
         entry.remoteId = info.session || entry.remoteId;
         updateBadge(entry);
         renderLive();
+        notify();         // the session id is known: the spectators can join it
       },
     });
     entry.session = session;
@@ -241,6 +271,44 @@ export function createTerminalsTab(ctx) {
       }
     }
     renderLive();
+    notify();
+  }
+
+  // -- the presenter's view of the sub-tabs, and a spectator following it --------------------
+  function getView() {
+    const open = [...sessions.values()].filter((e) => e.remoteId)
+      .map((e) => ({id: e.remoteId, device: e.device, title: e.title}));
+    const entry = current !== null ? sessions.get(current) : null;
+    return {open, active: entry && entry.remoteId ? entry.remoteId : null};
+  }
+
+  function setView(view) {
+    const open = Array.isArray(view && view.open) ? view.open.filter((o) => o && o.id && o.device) : [];
+    const wanted = new Set(open.map((o) => o.id));
+    for (const entry of [...sessions.values()]) {
+      if (!entry.remoteId || !wanted.has(entry.remoteId)) {
+        closeSession(entry.id);
+      }
+    }
+    const byRemote = new Map([...sessions.values()].map((e) => [e.remoteId, e]));
+    for (const o of open) {
+      if (!byRemote.has(o.id)) {
+        const entry = openNew(o.device, {join: o.id, title: o.title || o.device});
+        if (entry) {
+          byRemote.set(o.id, entry);
+        }
+      }
+    }
+    for (const o of open) {              // the order of the presenter's sub-tabs
+      const entry = byRemote.get(o.id);
+      if (entry) {
+        tabs.append(entry.tab);
+      }
+    }
+    const active = view && view.active ? byRemote.get(view.active) : null;
+    if (active) {
+      select(active.id);
+    }
   }
 
   // a helping instructor: the owner's live sessions not yet on this page
@@ -263,6 +331,8 @@ export function createTerminalsTab(ctx) {
       shown = true;
       if (current !== null) {
         select(current);
+      } else if (spectator) {
+        // the presenter's view says what is open: nothing by itself
       } else if (sessions.size === 0 && pending === null) {
         if (helper) {
           autoJoin();   // the student's terminals; nothing when there is none
@@ -312,5 +382,7 @@ export function createTerminalsTab(ctx) {
         entry.session.close();
       }
     },
+    getView,
+    setView,
   };
 }

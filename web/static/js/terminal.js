@@ -3,17 +3,20 @@
 // {api_base}/terminals/{device} with the subprotocol "sre-term.v1":
 //   binary frames   raw bytes both ways (keystrokes to the pty, its output to the terminal)
 //   text frames     JSON; sent: {"t": "resize", "cols", "rows"}
-//                   received: {"t": "ready", "session", "device", "clients", "joined"}
-//                             | {"t": "exit", "code"} | {"t": "error", "message"}
+//                   received: {"t": "ready", "session", "device", "clients", "viewers", "cols", "rows", "joined"}
+//                             | {"t": "size", "cols", "rows"} | {"t": "exit", "code"} | {"t": "error", "message"}
 // A session is shared: `join` attaches to a live session (its id) instead of opening a new one,
 // `private` opens one the student does not see (instructors).  After a disconnection, Reconnect
-// joins the same session again while another viewer keeps it alive.
+// joins the same session again while another viewer keeps it alive.  `readonly` (a spectator of
+// a presentation) only watches: nothing is sent, the terminal renders the grid of the pty as the
+// `ready` and `size` frames give it, with the largest font that fits the box.
 
 import {wsUrl, withQuery} from './api.js';
 import {el} from './ui.js';
 import {_, format} from './i18n.js';
 
 const SUBPROTOCOL = 'sre-term.v1';
+const MIN_FONT_SIZE = 6;     // px: below that a read-only grid is clipped rather than shrunk
 
 // The themes of the Qt GUI (settings.terminal_color_scheme).
 export const THEMES = {
@@ -39,11 +42,15 @@ function closeMessage(code) {
 export class TerminalSession {
   // container: a .terminal-box element; path: {api_base}/terminals/{device} (+ query);
   // join: the id of a live session to attach to; private: a new session hidden from the student;
-  // onReady(info): the ready frame (the session id, the number of viewers)
-  constructor(container, path, {fontSize, scheme, join = null, private: priv = false, onReady = null}) {
+  // onReady(info): the ready frame (the session id, the number of viewers); readonly: a
+  // spectator (join required): nothing sent, the grid of the pty rendered
+  constructor(container, path, {fontSize, scheme, join = null, private: priv = false, onReady = null,
+                                readonly = false}) {
     this.path = path;
     this.join = join;
     this.private = priv;
+    this.readonly = readonly;
+    this.maxFontSize = fontSize;
     this.onReady = onReady;
     this.sessionId = null;
     this.clients = 0;
@@ -57,13 +64,17 @@ export class TerminalSession {
     this.reconnectButton.addEventListener('click', () => this.connect());
     this.status = el('div', {class: 'status'}, this.statusText, this.reconnectButton);
     container.classList.add(this.scheme);
+    if (readonly) {
+      container.classList.add('readonly');
+    }
     container.append(this.wrap, this.status);
 
     this.term = new window.Terminal({
       fontSize,
       fontFamily: 'ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace',
       theme: THEMES[this.scheme],
-      cursorBlink: true,
+      cursorBlink: !readonly,
+      disableStdin: readonly,
       scrollback: 5000,
       allowProposedApi: false,
     });
@@ -71,15 +82,17 @@ export class TerminalSession {
     this.term.loadAddon(this.fit);
     this.term.open(this.wrap);
     this.encoder = new TextEncoder();
-    this.term.onData((data) => this.send(this.encoder.encode(data)));
-    this.term.onBinary((data) => {
-      // xterm gives a binary string: one byte per character
-      const bytes = new Uint8Array(data.length);
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xff;
-      }
-      this.send(bytes);
-    });
+    if (!readonly) {
+      this.term.onData((data) => this.send(this.encoder.encode(data)));
+      this.term.onBinary((data) => {
+        // xterm gives a binary string: one byte per character
+        const bytes = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+          bytes[i] = data.charCodeAt(i) & 0xff;
+        }
+        this.send(bytes);
+      });
+    }
     // Ctrl+Shift+C / Ctrl+Shift+V: copy the selection / paste, like the xterm of the Qt GUI
     this.term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown' || !ev.ctrlKey || !ev.shiftKey) {
@@ -89,7 +102,7 @@ export class TerminalSession {
         navigator.clipboard.writeText(this.term.getSelection()).catch(() => {});
         return false;
       }
-      if (ev.code === 'KeyV') {
+      if (ev.code === 'KeyV' && !readonly) {
         navigator.clipboard.readText().then((text) => this.term.paste(text)).catch(() => {});
         return false;
       }
@@ -99,8 +112,13 @@ export class TerminalSession {
     this.observer.observe(this.wrap);
   }
 
-  // Fit the terminal to its box and tell the pty when the size changed.
+  // Fit the terminal to its box and tell the pty when the size changed (read-only: the grid is
+  // the pty's, the font is fitted instead).
   refit() {
+    if (this.readonly) {
+      this.fitFont();
+      return;
+    }
     if (!this.wrap.isConnected || this.wrap.clientWidth === 0 || this.wrap.clientHeight === 0) {
       return;
     }
@@ -117,6 +135,45 @@ export class TerminalSession {
         this.socket.send(JSON.stringify({t: 'resize', cols, rows}));
       }
     }
+  }
+
+  // Read-only: the size of the pty, as the ready and size frames give it.
+  applySize(cols, rows) {
+    cols = Number(cols);
+    rows = Number(rows);
+    if (!(cols > 0 && rows > 0)) {
+      return;
+    }
+    this.size = {cols, rows};
+    this.term.resize(cols, rows);
+    this.fitFont();
+  }
+
+  // Read-only: the largest font size (up to the one chosen) at which the grid fits the box; the
+  // fit addon measures what a size would hold (setting fontSize re-measures the cells at once).
+  fitFont() {
+    if (!this.wrap.isConnected || this.wrap.clientWidth === 0 || this.wrap.clientHeight === 0 || !this.size.cols) {
+      return;
+    }
+    const fits = (size) => {
+      this.term.options.fontSize = size;
+      const dims = this.fit.proposeDimensions();
+      return Boolean(dims) && dims.cols >= this.size.cols && dims.rows >= this.size.rows;
+    };
+    let low = MIN_FONT_SIZE;
+    let high = Math.max(MIN_FONT_SIZE, this.maxFontSize);
+    if (fits(high)) {
+      return;
+    }
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      if (fits(middle)) {
+        low = middle;
+      } else {
+        high = middle;
+      }
+    }
+    this.term.options.fontSize = low;    // the grid is clipped when even that does not fit
   }
 
   send(bytes) {
@@ -137,14 +194,19 @@ export class TerminalSession {
       this.term.write('\r\n');
     }
     this.setStatus(_('Connecting…'));
-    const url = wsUrl(withQuery(this.path, {cols: this.size.cols || 80, rows: this.size.rows || 24,
-                                            join: this.join || undefined, private: this.private && !this.join ? 1 : undefined}));
+    const query = this.readonly
+      ? {join: this.join || undefined}
+      : {cols: this.size.cols || 80, rows: this.size.rows || 24,
+         join: this.join || undefined, private: this.private && !this.join ? 1 : undefined};
+    const url = wsUrl(withQuery(this.path, query));
     const socket = new WebSocket(url, [SUBPROTOCOL]);
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.refit();
-      this.term.focus();
+      if (!this.readonly) {
+        this.term.focus();
+      }
     });
     socket.addEventListener('message', (ev) => {
       if (ev.data instanceof ArrayBuffer) {
@@ -161,8 +223,15 @@ export class TerminalSession {
         this.sessionId = obj.session || null;
         this.clients = Number(obj.clients) || 1;
         this.setStatus(_('Connected.'));
+        if (this.readonly) {
+          this.applySize(obj.cols, obj.rows);
+        }
         if (this.onReady) {
           this.onReady(obj);
+        }
+      } else if (obj.t === 'size') {
+        if (this.readonly) {
+          this.applySize(obj.cols, obj.rows);
         }
       } else if (obj.t === 'exit') {
         const code = obj.code === null || obj.code === undefined ? '?' : obj.code;
@@ -197,6 +266,11 @@ export class TerminalSession {
   }
 
   setFontSize(size) {
+    if (this.readonly) {
+      this.maxFontSize = size;     // a cap: the grid of the pty decides
+      this.fitFont();
+      return;
+    }
     this.term.options.fontSize = size;
     this.refit();
   }

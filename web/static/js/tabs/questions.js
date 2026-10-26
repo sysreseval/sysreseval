@@ -3,7 +3,9 @@
 // question) or nothing (a display-only question).  The answers are saved 500 ms after the last
 // change (PUT {api_base}/answers); an answers event (a state applied) refreshes the current
 // widget without saving again.  On somebody else's project (an instructor helping) the answers
-// are shown read-only: nothing is saved.
+// are shown read-only: nothing is saved.  A spectator of a presentation (ctx.spectator) cannot
+// choose the question either: the presenter's choice is applied (setSelected), and on the
+// presenter's page every choice calls ctx.onViewChange().
 
 import * as settings from '../settings.js';
 import {el, clear, toast} from '../ui.js';
@@ -28,6 +30,8 @@ export function createQuestionsTab(ctx) {
   let saving = null;         // the promise of the PUT in progress
   let widget = null;         // {kind: 'text', textarea} | {kind: 'form', form} | null
   let wordWrap = settings.get('word_wrap');
+  const spectator = Boolean(ctx.spectator);
+  let wanted = null;         // a spectator: the presenter's question, until the list holds it
 
   settings.onChange('word_wrap', (wrap) => {
     wordWrap = wrap;
@@ -158,6 +162,9 @@ export function createQuestionsTab(ctx) {
       button.setAttribute('aria-selected', button.dataset.hash === hash ? 'true' : 'false');
     }
     renderCurrent();
+    if (ctx.onViewChange) {
+      ctx.onViewChange();
+    }
   }
 
   function renderList() {
@@ -165,10 +172,13 @@ export function createQuestionsTab(ctx) {
     for (const question of questions) {
       const button = el('button', {type: 'button', dataset: {hash: question.question_hash}},
                         question.title || _('Untitled'));
+      button.disabled = spectator;     // the presenter chooses the question
       button.addEventListener('click', () => select(question.question_hash));
       list.append(el('li', {}, button));
     }
   }
+
+  const known = (hash) => hash !== null && questions.some((q) => q.question_hash === hash);
 
   return {
     id: 'questions',
@@ -179,8 +189,27 @@ export function createQuestionsTab(ctx) {
       questions = [...(project.questions || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
       answers = withPending(ctx.getAnswers());
       renderList();
-      const still = questions.some((q) => q.question_hash === currentHash);
-      select(still ? currentHash : (questions.length ? questions[0].question_hash : null));
+      if (known(wanted)) {
+        const hash = wanted;
+        wanted = null;
+        select(hash);
+        return;
+      }
+      select(known(currentHash) ? currentHash : (questions.length ? questions[0].question_hash : null));
+    },
+    // a spectator: the presenter's question (kept until the list holds it)
+    setSelected(hash) {
+      if (!hash || hash === currentHash) {
+        return;
+      }
+      if (known(hash)) {
+        select(hash);
+      } else {
+        wanted = hash;
+      }
+    },
+    getSelected() {
+      return currentHash;
     },
     // the answers changed on the server (a state applied, another tab of the browser)
     setAnswers(values) {

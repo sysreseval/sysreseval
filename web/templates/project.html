@@ -5,25 +5,39 @@
 <script defer src="/static/vendor/xterm/xterm.js"></script>
 <script defer src="/static/vendor/xterm/addon-fit.js"></script>
 {% endblock %}
-{% block body_attrs %}data-api-base="{{ api_base }}" data-host="{{ host }}" data-rln="{{ rln }}"{% endblock %}
+{% block body_attrs %}data-api-base="{{ api_base }}" data-host="{{ host }}" data-rln="{{ rln }}" data-groups="{{ 'true' if groups else 'false' }}"{% if presentation %} data-presentation="{{ presentation.id }}" data-presenter="{{ presentation.presenter }}"{% endif %}{% endblock %}
 {% block main_class %}project{% endblock %}
-{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block nav %}{% if not presentation %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="project-bar">
   <h1 id="project-title" class="project-title" title="{{ rln }} ({{ host }})">{{ rln }}</h1>
+  {% if presentation %}<span id="presenter-name" class="presenter-name">{{ _("Presented by {name}").format(name=presentation.presenter) }}</span>{% endif %}
   <div class="corner">
     <button type="button" id="instructor-toggle" class="toggle" aria-pressed="false" hidden title="{{ _("Show the instructor texts and every state") }}">{{ _("Instructor mode") }}</button>
     <button type="button" id="wrap-toggle" class="toggle" aria-pressed="true" title="{{ _("Wrap") }}">&#8629;</button>
     <button type="button" id="font-minus" title="{{ _("Smaller text") }}">A&minus;</button>
     <button type="button" id="font-plus" title="{{ _("Larger text") }}">A+</button>
     <a id="export-link" class="button" hidden href="{{ api_base }}/export" download>{{ _("Export Kathara Project") }}</a>
-    <button type="button" id="close-project" class="danger">{{ _("Close Project") }}</button>
+    {% if instructor and not presentation %}<button type="button" id="present" class="primary" hidden title="{{ _("Show this project, read-only, on the browsers of chosen students") }}">{{ _("Present") }}</button>{% endif %}
+    <button type="button" id="close-project" class="danger"{% if presentation %} hidden{% endif %}>{{ _("Close Project") }}</button>
   </div>
 </div>
+{% if instructor and not presentation %}
+<div id="presentation-bar" class="presentation-bar" hidden>
+  <span id="presentation-status"></span>
+  <button type="button" id="presentation-edit">{{ _("Edit audience") }}</button>
+  <button type="button" id="presentation-stop" class="danger">{{ _("Stop presenting") }}</button>
+</div>
+{% endif %}
 <div id="tabbar" class="tabbar" role="tablist"></div>
 <div id="panes" class="panes"></div>
 <div id="closed-banner" class="banner" hidden>
-  <p>{{ _("This project is closed.") }} <a href="/projects">{{ _("Back to the projects") }}</a></p>
+  <p>{{ _("This project is closed.") }} {% if not presentation %}<a href="/projects">{{ _("Back to the projects") }}</a>{% endif %}</p>
 </div>
+{% if presentation %}
+<div id="ended-banner" class="banner" hidden>
+  <p>{{ _("The presentation has ended.") }}</p>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/project.js"></script>{% endblock %}
