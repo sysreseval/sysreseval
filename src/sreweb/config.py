@@ -265,6 +265,10 @@ class PoolConfig:
     # whatever its load, below its max_projects; the other rules (exam mode, disabled, draining,
     # instructors_only, a host named by an instructor) keep their meaning
     follow_local_sessions: bool = True
+    # the lab list of the Open page is asked from one host (the one a new project would go to,
+    # the next when it fails: every host serves the same lab tree) and kept this many seconds per
+    # role (the reserved hosts are the instructors' only); 0 = asked at every open
+    labs_cache_ttl: float = 60.0
 
 
 @dataclass
@@ -456,7 +460,7 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     pool = _build(PoolConfig, pool_data, f"{path}: [pool]",
                   **{k: parse_duration(pool_data[k], f'pool.{k}') for k in
                      ('idle_timeout_anonymous', 'idle_timeout_authenticated', 'poll_interval', 'wake_timeout',
-                      'wake_interval', 'idle_host_timeout') if k in pool_data})
+                      'wake_interval', 'idle_host_timeout', 'labs_cache_ttl') if k in pool_data})
     if bool(pool.client_cert) != bool(pool.client_key):
         raise ConfigError(f"{path}: pool.client_cert and pool.client_key go together")
     parse_active_hours(pool.active_hours, 'pool.active_hours')
@@ -464,6 +468,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
         raise ConfigError(f"{path}: pool.spare_projects and pool.min_hosts_up cannot be negative")
     if not isinstance(pool.follow_local_sessions, bool):
         raise ConfigError(f"{path}: pool.follow_local_sessions must be true or false")
+    if pool.labs_cache_ttl < 0:
+        raise ConfigError(f"{path}: pool.labs_cache_ttl cannot be negative")
     admin_data = _section(data, 'admin', path)
     admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:

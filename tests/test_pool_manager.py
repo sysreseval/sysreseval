@@ -161,11 +161,20 @@ class FakeSession:
 
     def __init__(self):
         self.answers = {}
+        self.labs = {}          # base URL -> the answer of GET /v1/labs: a list, (status, data), None = down
+        self.gets = []
         self.posts = []
         self.post_status, self.post_data = 200, {'ok': True}
 
     def get(self, url, headers=None, timeout=None):
-        base = url.rsplit('/v1/', 1)[0]
+        self.gets.append(url)
+        base, _, path = url.rpartition('/v1/')
+        if path == 'labs' and base in self.labs:
+            answer = self.labs[base]
+            if answer is None:
+                raise aiohttp.ClientConnectionError('down')
+            status, data = answer if isinstance(answer, tuple) else (200, answer)
+            return FakeResponse(status, data)
         data = self.answers.get(base)
         if data is None:
             raise aiohttp.ClientConnectionError('down')
@@ -439,3 +448,90 @@ class TestManager:
         assert mgr.active() is True
         mgr.clock = lambda: datetime.datetime(2026, 10, 22, 22, 0)
         assert mgr.active() is False and mgr.status()['active_now'] is False
+
+
+# -- the lab list of the Open page --------------------------------------------------------------------
+
+LABS = ['s4/tp_ssh', {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP'}}, 'sre/dhcp.py']
+LABS_OUT = [{'name': 's4/tp_ssh', 'title': None}, {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP'}}]
+
+
+class TestLabs:
+    """``Pool.labs()``: one host, the likely placement of a new project, the next one when it
+    fails; the list kept ``labs_cache_ttl`` seconds per role."""
+
+    @staticmethod
+    def _pool(ttl=60.0):
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc']
+        hosts.append(HostConfig('r', 'http://r', TOKEN, 10, instructors_only=True))
+        session = FakeSession()
+        pool = Pool(hosts, session, labs_cache_ttl=ttl)
+        for n in 'abcr':
+            pool.status[n] = HostStatus(reachable=True, load1=0.5)
+            session.labs[f'http://{n}'] = LABS
+        return pool, session
+
+    @staticmethod
+    def asked(session):
+        return [u.rsplit('/v1/', 1)[0].removeprefix('http://') for u in session.gets if u.endswith('/v1/labs')]
+
+    def test_one_host_the_likely_placement(self):
+        pool, session = self._pool()
+        pool.status['a'] = HostStatus(reachable=True, projects=0, load1=0.2)
+        pool.status['b'] = HostStatus(reachable=True, projects=2, load1=0.1)    # the most loaded by projects
+        pool.status['c'] = HostStatus(reachable=True, projects=0, load1=0.9)
+        bob, prof = Identity(login='bob'), Identity(login='prof', role=ROLE_INSTRUCTOR)
+        assert run(pool.labs(bob)) == LABS_OUT
+        assert self.asked(session) == ['a']                   # one host: the least loaded a student may use
+        # the reserved host r (0 projects, load 0.5) comes after a for an instructor too
+        assert run(pool.labs(prof)) == LABS_OUT and self.asked(session) == ['a', 'a']
+        # a disabled host is never asked, an occupied one after the hosts up, an unreachable one never
+        pool.runtime['a'].enabled = False
+        pool.status['c'] = HostStatus(reachable=True, occupied=True, occupied_by=['x'])
+        pool._labs_cache.clear()
+        assert run(pool.labs(bob)) == LABS_OUT and self.asked(session)[-1] == 'b'
+        pool.status['b'] = HostStatus()                       # off
+        pool._labs_cache.clear()
+        assert run(pool.labs(bob)) == LABS_OUT and self.asked(session)[-1] == 'c'    # occupied, still serving
+        pool.status['c'] = HostStatus()
+        pool._labs_cache.clear()
+        assert run(pool.labs(bob)) == [] and len(self.asked(session)) == 4             # nobody left to ask
+        assert run(pool.labs(prof)) == LABS_OUT and self.asked(session)[-1] == 'r'    # the instructor: r
+
+    def test_fallback_and_no_cache_of_a_failure(self):
+        pool, session = self._pool()
+        pool.status['a'] = HostStatus(reachable=True, load1=0.1)
+        pool.status['b'] = HostStatus(reachable=True, load1=0.2)
+        session.labs['http://a'] = None                       # down since the last poll
+        session.labs['http://b'] = (500, {'error': 'x'})
+        bob = Identity(login='bob')
+        assert run(pool.labs(bob)) == LABS_OUT and self.asked(session) == ['a', 'b', 'c']
+        session.labs['http://c'] = {'not': 'a list'}
+        pool._labs_cache.clear()
+        assert run(pool.labs(bob)) == [] and self.asked(session) == ['a', 'b', 'c'] * 2
+        assert run(pool.labs(bob)) == [] and len(self.asked(session)) == 9              # a failure is not cached
+        session.labs['http://c'] = LABS
+        assert run(pool.labs(bob)) == LABS_OUT and len(self.asked(session)) == 12
+        assert run(pool.labs(bob)) == LABS_OUT and len(self.asked(session)) == 12       # the success is
+
+    def test_cache_per_role(self):
+        pool, session = self._pool(ttl=60.0)
+        bob, alice, prof = Identity(login='bob'), Identity(login='alice'), Identity(login='prof', role=ROLE_INSTRUCTOR)
+        assert run(pool.labs(bob)) == LABS_OUT and len(self.asked(session)) == 1
+        assert run(pool.labs(alice)) == LABS_OUT and len(self.asked(session)) == 1      # same role: cached
+        assert run(pool.labs(prof)) == LABS_OUT and len(self.asked(session)) == 2       # the other role: fetched
+        assert run(pool.labs(prof)) == LABS_OUT and len(self.asked(session)) == 2
+        pool._labs_cache[False] = (time.monotonic() - 61, LABS_OUT)                     # expired
+        assert run(pool.labs(bob)) == LABS_OUT and len(self.asked(session)) == 3
+        pool, session = self._pool(ttl=0)
+        for _ in range(3):
+            assert run(pool.labs(bob)) == LABS_OUT
+        assert len(self.asked(session)) == 3                                            # 0 = no cache
+
+    def test_concurrent_requests_share_one_fetch(self):
+        pool, session = self._pool()
+        bob = Identity(login='bob')
+
+        async def go():
+            return await asyncio.gather(*(pool.labs(bob) for _ in range(5)))
+        assert run(go()) == [LABS_OUT] * 5 and len(self.asked(session)) == 1

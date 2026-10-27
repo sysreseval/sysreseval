@@ -124,6 +124,10 @@ idle_host_timeout = 0
 # its occupied_check includes the sessions) gets their new projects on that host whatever its
 # load, below its max_projects; false: nothing goes to an occupied host.
 follow_local_sessions = true
+# The lab list of the Open page is asked from one host (the one a new project would go to, the
+# next when it fails: every host serves the same lab tree) and kept this long per role (the
+# reserved hosts are the instructors' only); 0 = asked at every open.
+labs_cache_ttl = 60
 
 [admin]
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted

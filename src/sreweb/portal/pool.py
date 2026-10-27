@@ -85,7 +85,7 @@ class HostRuntime:
 
 class Pool:
     def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
-                 state_file: str = '', follow_local_sessions: bool = True):
+                 state_file: str = '', follow_local_sessions: bool = True, labs_cache_ttl: float = 60.0):
         self.hosts: dict[str, HostConfig] = {}
         self.status: dict[str, HostStatus] = {}
         self.runtime: dict[str, HostRuntime] = {}
@@ -94,6 +94,11 @@ class Pool:
         self.wake_timeout = wake_timeout
         self.state_file = state_file
         self.follow_local_sessions = follow_local_sessions
+        self.labs_cache_ttl = labs_cache_ttl
+        #: The lab list of the Open page per role (``labs``), kept labs_cache_ttl seconds, and the
+        #: lock making the requests of a role wait for the one fetching it.
+        self._labs_cache: dict[bool, tuple[float, list]] = {}
+        self._labs_locks: dict[bool, asyncio.Lock] = {}
         self._config_hosts = {h.name: h for h in hosts}
         self._removed: set = set()      # config hosts removed by hand (``enable`` brings them back)
         #: The projects being started on each host: a reservation counts as a project until the
@@ -429,28 +434,65 @@ class Pool:
         projects.sort(key=lambda p: (p.get('started_at', ''), p.get('running_lab_name', '')))
         return projects
 
+    def _labs_hosts(self, identity: Identity) -> list:
+        """The hosts whose lab list may be served to *identity*, the most likely placement of a
+        new project of theirs first: the enabled reachable hosts they may use (a reserved host
+        for an instructor only), the hosts up before the others (occupied, draining, in exam
+        mode: no project goes there, but they serve the same lab tree), the least loaded first."""
+        now = time.monotonic()
+        rows = []
+        for h in self.hosts.values():
+            if h.instructors_only and not identity.is_instructor:
+                continue
+            st, rt = self.status[h.name], self.runtime[h.name]
+            if not rt.enabled or not st.reachable:
+                continue
+            rows.append((self.state_of(h.name, now) != STATE_UP, st.projects / h.max_projects,
+                         st.load1 if st.load1 is not None else 0.0, h.name, h))
+        rows.sort(key=lambda r: r[:4])
+        return [r[4] for r in rows]
+
     async def labs(self, identity: Identity) -> list:
-        """The union of the lab lists of the reachable hosts *identity* may use (one list wins
-        when they differ): a student is never placed on a host reserved for instructors, so its
-        labs are not offered."""
+        """The lab list of the pool for *identity*, ``[{name, title}]`` sorted by name: the one
+        of the host a new project of theirs would most likely go to (every host of a pool serves
+        the same lab tree), the next candidate when it fails, nothing when no host answers.  Kept
+        ``labs_cache_ttl`` seconds per role (the reserved hosts are the instructors' only), so
+        that the Open page costs one ``sre list`` per minute whatever the size of the pool; the
+        requests of one role wait for the one fetching."""
+        key = identity.is_instructor
+        lock = self._labs_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached = self._labs_cache.get(key)
+            if cached is not None and time.monotonic() - cached[0] < self.labs_cache_ttl:
+                return cached[1]
+            for host in self._labs_hosts(identity):
+                labs = await self._labs_of(host, identity)
+                if labs is not None:
+                    self._labs_cache[key] = (time.monotonic(), labs)
+                    return labs
+            return []
+
+    async def _labs_of(self, host: HostConfig, identity: Identity) -> list | None:
+        """``GET /v1/labs`` of one host, normalised (``[{name, title}]``, a bare name accepted,
+        duplicates dropped, sorted); ``None`` when the host does not answer a list."""
+        try:
+            async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity),
+                                        timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    log.warning("host %s: GET /v1/labs answered %s: %s", host.name, resp.status,
+                                (await resp.text())[:300])
+                    return None
+                labs = await resp.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+            log.warning("host %s: GET /v1/labs failed: %s", host.name, e or type(e).__name__)
+            return None
+        if not isinstance(labs, list):
+            log.warning("host %s: GET /v1/labs gave no list", host.name)
+            return None
         seen: dict[str, dict] = {}
-        for host in list(self.hosts.values()):
-            if not self.status[host.name].reachable or (host.instructors_only and not identity.is_instructor):
-                continue
-            try:
-                async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity),
-                                            timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    if resp.status != 200:
-                        log.warning("host %s: GET /v1/labs answered %s: %s", host.name, resp.status,
-                                    (await resp.text())[:300])
-                        continue
-                    labs = await resp.json()
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
-                log.warning("host %s: GET /v1/labs failed: %s", host.name, e or type(e).__name__)
-                continue
-            for entry in labs if isinstance(labs, list) else []:
-                if isinstance(entry, str):
-                    entry = {'name': entry, 'title': None}
-                if isinstance(entry, dict) and entry.get('name') and entry['name'] not in seen:
-                    seen[entry['name']] = {'name': entry['name'], 'title': entry.get('title')}
+        for entry in labs:
+            if isinstance(entry, str):
+                entry = {'name': entry, 'title': None}
+            if isinstance(entry, dict) and entry.get('name') and entry['name'] not in seen:
+                seen[entry['name']] = {'name': entry['name'], 'title': entry.get('title')}
         return sorted(seen.values(), key=lambda e: e['name'])

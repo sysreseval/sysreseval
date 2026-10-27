@@ -61,7 +61,8 @@ class Portal:
         # the client session is created at startup, inside the running loop (aiohttp requires it)
         self.pool = Pool(self.cfg.hosts, None, poll_interval=self.cfg.pool.poll_interval,
                          wake_timeout=self.cfg.pool.wake_timeout, state_file=self.cfg.admin.state_file,
-                         follow_local_sessions=self.cfg.pool.follow_local_sessions)
+                         follow_local_sessions=self.cfg.pool.follow_local_sessions,
+                         labs_cache_ttl=self.cfg.pool.labs_cache_ttl)
         self.manager = PoolManager(self.pool, self.cfg.pool)
         self.relay = Relay(self.pool, None)
         self.presence = Presence()
