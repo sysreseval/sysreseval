@@ -160,7 +160,8 @@ class TestLoginAndPages:
                 resp = await h.client.get('/projects')
                 assert resp.status == 200 and me['login'] in await resp.text()
                 assert (await h.client.get('/open')).status == 200
-                assert (await h.client.get('/static/x.css')).status == 200
+                resp = await h.client.get('/static/x.css')
+                assert resp.status == 200 and resp.headers['Cache-Control'] == 'no-cache'   # revalidated on every load
                 assert (await h.client.get('/i18n/fr.json')).status == 200
                 assert (await h.client.get('/i18n/xx.json')).status == 404
                 # language change

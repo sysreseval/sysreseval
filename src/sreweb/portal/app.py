@@ -73,6 +73,7 @@ class Portal:
         static = self.web_dir / 'static'
         if static.is_dir():
             app.router.add_static('/static/', str(static), name='static')
+            app.on_response_prepare.append(self._static_no_cache)
         app.on_startup.append(self._on_startup)
         app.on_shutdown.append(self._on_shutdown)
         app.on_cleanup.append(self._on_cleanup)
@@ -118,6 +119,14 @@ class Portal:
         await self.manager.stop()
         await self.pool.stop()
         await self.session.close()
+
+    @staticmethod
+    async def _static_no_cache(request, response):
+        """The scripts and style sheets are revalidated on every page load (aiohttp sends an
+        ``ETag``, so an unchanged file costs a 304): without it a browser keeps a script for hours
+        after ``web/`` is updated and runs it on a page it no longer matches."""
+        if request.path.startswith('/static/'):
+            response.headers['Cache-Control'] = 'no-cache'
 
     # -- middlewares ----------------------------------------------------------------------------
 

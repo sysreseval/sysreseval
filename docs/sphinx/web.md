@@ -635,6 +635,11 @@ the browser reaches a desktop through the owner check of the portal and of the a
 
 ## Limitations
 
+- After an update of the tree, the portal and the agents must be restarted for the Python code
+  (the templates are re-read when they change); the scripts and style sheets of `web/static` are
+  served with `Cache-Control: no-cache`, so a browser revalidates them on every page load (an
+  `ETag` answers 304 for an unchanged file) and never runs a script older than the page. A page
+  loaded before the update keeps its scripts until it is reloaded.
 - The virtual X desktops die with the agent (a restart of its unit): they are started again,
   empty, at the next use of the Display tab; the applications shown must be launched again.
 - The `ports` of the bridged machines are bound on the pool host and shown with its name.

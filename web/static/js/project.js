@@ -239,8 +239,10 @@ function applyProject(project) {
   }
   instructorToggle.hidden = spectator || !(isInstructor && project.has_instructor_texts);
   instructorToggle.setAttribute('aria-pressed', state.instructorView ? 'true' : 'false');
-  schemaPdfLink.hidden = spectator || !project.export_schema_pdf;
-  updateSchemaPdfLink();
+  if (schemaPdfLink) {
+    schemaPdfLink.hidden = spectator || !project.export_schema_pdf;
+    updateSchemaPdfLink();
+  }
   if (presentButton && presenter && !presenter.isPresenting()) {
     presentButton.hidden = false;
   }
@@ -252,9 +254,13 @@ function applyProject(project) {
 }
 
 // The Export Schema to PDF link downloads the drawing of the Schema tab with its current options
-// (never the Full Schema: the hidden machines are never exported, as in the Qt GUI).
+// (never the Full Schema: the hidden machines are never exported, as in the Qt GUI).  The link
+// may be missing when the page and this script are not of the same version (a script cached
+// before an update): the project is shown without it.
 function updateSchemaPdfLink() {
-  schemaPdfLink.href = ctx.url('/schema.pdf', tabs.schema ? tabs.schema.pdfQuery() : {});
+  if (schemaPdfLink) {
+    schemaPdfLink.href = ctx.url('/schema.pdf', tabs.schema && tabs.schema.pdfQuery ? tabs.schema.pdfQuery() : {});
+  }
 }
 
 // The presenter's view, as present.js publishes it to the spectators.
