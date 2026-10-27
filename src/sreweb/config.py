@@ -597,6 +597,10 @@ class AgentConfig:
     # POST /v1/power/off (the portal powers an idle host off) and the command it runs
     allow_power_off: bool = False
     power_off_command: str = 'systemctl poweroff'
+    # POST /v1/restart (sre-web-tool restart: the agent restarts itself, e.g. for new code after
+    # an update): the command run; '' = `systemctl restart` of the unit the agent runs in (read
+    # from /proc/self/cgroup); refused (409) when neither applies (an agent run by hand)
+    restart_command: str = ''
     # on SIGTERM, the managed projects are evaluated / stopped first: "shutdown" (only when the
     # system is going down: the nightly cron, a poweroff), "always" (a restart of the unit too),
     # "never"; within shutdown_timeout seconds (the unit's TimeoutStopSec is longer)

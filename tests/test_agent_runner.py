@@ -162,6 +162,34 @@ class TestStream:
         assert run(go()) == 1
 
 
+class TestInFlight:
+    def test_counter_and_wait_idle(self, fake_sre, tmp_path):
+        """``in_flight`` counts a command from its limits acquired to their release, whatever its
+        end; ``wait_idle`` waits for zero or the deadline."""
+        async def go():
+            r = SreRunner(fake_sre, timeouts={'sleep': 1.0})
+            assert r.in_flight == 0 and await r.wait_idle(0.1) == 0
+            task = asyncio.ensure_future(r.run('alice', ['sleep']))
+            await asyncio.sleep(0.2)
+            assert r.in_flight == 1
+            assert await r.wait_idle(0.2) == 1                  # still running at the deadline
+            assert await r.wait_idle(5.0) == 0                  # over once killed by its own timeout
+            with pytest.raises(CommandTimeout):
+                await task
+            s = await r.stream('alice', ['start', 'lab'])      # a streamed command counts until consumed
+            assert r.in_flight == 1
+            async for _ in s.events():
+                pass
+            assert r.in_flight == 0 and s.result().rc == 0
+            missing = SreRunner(str(tmp_path / 'nope'))         # a failed spawn leaves nothing counted
+            with pytest.raises(FileNotFoundError):
+                await missing.run('alice', ['list'])
+            with pytest.raises(FileNotFoundError):
+                await missing.stream('alice', ['start', 'lab'])
+            assert missing.in_flight == 0
+        run(go())
+
+
 class TestStreamStdout:
     def test_chunks(self, fake_sre):
         async def go():

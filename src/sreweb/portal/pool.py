@@ -18,6 +18,8 @@ from ..identity import Identity
 log = logging.getLogger('sreweb.portal')
 
 STATUS_TIMEOUT = 5.0
+#: Seconds a host is expected to restart within after ``POST /v1/restart`` (``restart_sent``).
+RESTART_HOLD = 120.0
 
 #: The states of a host, as the portal sees it.
 STATE_OFF = 'off'              # agent unreachable
@@ -63,6 +65,9 @@ class HostStatus:
     occupied_by: list = field(default_factory=list)
     uptime: int | None = None
     power_off_allowed: bool = False
+    agent_uptime: int | None = None     # seconds since the agent started: a restart resets it
+    restart_allowed: bool = False       # the agent can restart itself (its unit, or restart_command)
+    restarting: bool = False            # a restart is pending on the agent (sre commands in flight)
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -80,18 +85,21 @@ class HostRuntime:
     idle_since: float | None = None    # monotonic time since the host has no project
     drain: bool = False                # power off wanted as soon as the host is empty
     power_off_sent: float | None = None   # monotonic time of the last accepted power off
+    restart_sent: float | None = None     # monotonic time of the last accepted restart, until it is seen
     last_wake_reason: str = ''
 
 
 class Pool:
     def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
-                 state_file: str = '', follow_local_sessions: bool = True, labs_cache_ttl: float = 60.0):
+                 state_file: str = '', follow_local_sessions: bool = True, labs_cache_ttl: float = 60.0,
+                 restart_hold: float = RESTART_HOLD):
         self.hosts: dict[str, HostConfig] = {}
         self.status: dict[str, HostStatus] = {}
         self.runtime: dict[str, HostRuntime] = {}
         self.session = session
         self.poll_interval = poll_interval
         self.wake_timeout = wake_timeout
+        self.restart_hold = restart_hold
         self.state_file = state_file
         self.follow_local_sessions = follow_local_sessions
         self.labs_cache_ttl = labs_cache_ttl
@@ -255,22 +263,31 @@ class Pool:
                                         occupied_by=list(data.get('occupied_by', []) or []),
                                         uptime=data.get('uptime'),
                                         power_off_allowed=bool(data.get('power_off_allowed', False)),
+                                        agent_uptime=(int(data['agent_uptime'])
+                                                      if isinstance(data.get('agent_uptime'), (int, float)) else None),
+                                        restart_allowed=bool(data.get('restart_allowed', False)),
+                                        restarting=bool(data.get('restarting', False)),
                                         hostname=str(data.get('hostname', '')),
                                         sre_version=str(data.get('sre_version', '')))
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
             status = HostStatus(error=str(e) or type(e).__name__)
         if host.name not in self.status:
             return status   # removed meanwhile
+        runtime = self.runtime[host.name]
+        restarting = runtime.restart_sent is not None
         previous = self._reported.get(host.name)   # None at the first poll: always reported
         self._reported[host.name] = status.reachable
         if previous is None or previous != status.reachable:
             if status.reachable:
                 log.info("host %s reachable: %s, sre %s, %d project(s)%s", host.name, status.hostname,
                          status.sre_version, status.projects, " (occupied)" if status.occupied else "")
+            elif restarting:
+                log.info("host %s restarting: not answering", host.name)
             else:
                 log.warning("host %s unreachable at %s: %s", host.name, host.url, status.error)
-        runtime = self.runtime[host.name]
-        if status.reachable and previous is False:
+        if restarting:
+            self._track_restart(host.name, status, runtime, polled_at)
+        elif status.reachable and previous is False:
             # back after a shutdown: a drain, a power off and a backoff of the previous run are over
             runtime.drain = False
             runtime.power_off_sent = None
@@ -285,6 +302,24 @@ class Pool:
             runtime.next_wake_at = 0.0
         self.status[host.name] = status
         return status
+
+    def _track_restart(self, name: str, status: HostStatus, runtime: HostRuntime, polled_at: float):
+        """A restart was sent to the agent (``restart_sent``): over when its uptime is younger
+        than the request (a fast restart may fall between two polls), given up with a warning
+        after ``restart_hold`` seconds without it, unless the agent says the restart is still
+        pending (a sre command in flight delays it).  Meanwhile the host takes no project, the
+        policy leaves it alone and a drain survives the restart (``refresh_host`` skips its
+        "back after a shutdown" reset)."""
+        elapsed = polled_at - runtime.restart_sent
+        # the agent rounds its uptime to the second: half a second of margin, so that an agent
+        # younger than that at the request can never look restarted before it is
+        if status.reachable and status.agent_uptime is not None and status.agent_uptime + 0.5 < elapsed:
+            log.info("host %s back %.0f s after its restart (sre %s)", name, elapsed, status.sre_version)
+            runtime.restart_sent = None
+        elif elapsed > self.restart_hold and not (status.reachable and status.restarting):
+            log.warning("host %s: no restart seen within %.0f s (%s)", name, self.restart_hold,
+                        f"agent up for {status.agent_uptime} s" if status.reachable else "unreachable")
+            runtime.restart_sent = None
 
     async def refresh(self):
         await asyncio.gather(*(self.refresh_host(h) for h in list(self.hosts.values())))
@@ -335,6 +370,7 @@ class Pool:
                 'source': rt.source, 'enabled': rt.enabled, 'can_wake': h.can_wake, 'power': h.power,
                 'instructors_only': h.instructors_only,
                 'drain': rt.drain, 'power_off_sent': rt.power_off_sent is not None,
+                'restart_sent': rt.restart_sent is not None,
                 'waking_for': round(now - rt.woken_at) if rt.woken_at is not None else None,
                 'wake_failures': rt.wake_failures,
                 'idle_for': round(now - rt.idle_since) if rt.idle_since is not None else None,
@@ -371,7 +407,7 @@ class Pool:
             if h.instructors_only and not instructor:
                 continue
             state = self.state_of(h.name, now)
-            waking = waking or state == STATE_WAKING
+            waking = waking or state == STATE_WAKING or self.runtime[h.name].restart_sent is not None
             available, placement = self._available_to(h, identity, state)
             st = self.status[h.name]
             if not available or st.projects >= h.max_projects:
@@ -389,7 +425,10 @@ class Pool:
         """Whether a new project of *identity* may go on *h*, in *state*, and what the placement
         would be: a host up (``PLACEMENT_LOAD``), or a host occupied by a local login session of
         the user (``PLACEMENT_SESSION``, with ``follow_local_sessions``; not when a power off is
-        wanted: ``state_of`` hides the drain behind the occupation)."""
+        wanted: ``state_of`` hides the drain behind the occupation).  Never a host whose agent
+        is about to restart (it refuses new projects meanwhile)."""
+        if self.runtime[h.name].restart_sent is not None:
+            return False, ''
         if state == STATE_UP:
             return True, PLACEMENT_LOAD
         if (state == STATE_OCCUPIED and self.follow_local_sessions and identity is not None

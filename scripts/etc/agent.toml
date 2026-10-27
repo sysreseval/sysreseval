@@ -58,6 +58,11 @@ shutdown_timeout = 240
 # any project), and how.
 allow_power_off = false
 power_off_command = "systemctl poweroff"
+# How the agent restarts itself on `sre-web-tool restart` (POST /v1/restart: new code after an
+# update; the projects stay, the open terminals and desktops are lost): by default
+# `systemctl restart` of its own unit, found in /proc/self/cgroup; a command for an agent
+# run otherwise (the request is refused when neither applies).
+# restart_command = ""
 # Timeouts of the sre commands, in seconds.
 [timeouts]
 start = 900

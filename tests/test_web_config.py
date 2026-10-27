@@ -287,11 +287,14 @@ class TestAgentConfig:
     def test_occupancy_and_power(self):
         cfg = agent_config_from_dict({'token': 't' * 32, 'occupied_check': 'sessions', 'allow_power_off': True,
                                       'power_off_command': '/bin/true', 'close_projects_on_stop': 'always',
-                                      'shutdown_timeout': '2m'}, sre_exe='/x', state_dir='/y')
+                                      'shutdown_timeout': '2m', 'restart_command': 'systemctl restart x'},
+                                     sre_exe='/x', state_dir='/y')
         assert cfg.occupied_check == 'sessions' and cfg.allow_power_off and cfg.power_off_command == '/bin/true'
         assert cfg.close_projects_on_stop == 'always' and cfg.shutdown_timeout == 120
+        assert cfg.restart_command == 'systemctl restart x'
         d = agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y')
         assert d.occupied_check == 'both' and not d.allow_power_off and d.close_projects_on_stop == 'shutdown'
+        assert d.restart_command == ''      # the agent's own unit, from /proc/self/cgroup
         for bad in ({'occupied_check': 'sometimes'}, {'close_projects_on_stop': 'maybe'}):
             with pytest.raises(ConfigError):
                 agent_config_from_dict({'token': 't' * 32, **bad}, sre_exe='/x', state_dir='/y')

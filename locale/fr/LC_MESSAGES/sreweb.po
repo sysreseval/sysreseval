@@ -593,6 +593,18 @@ msgstr "vidage"
 msgid "power off sent"
 msgstr "extinction demandée"
 
+msgid "restart sent"
+msgstr "redémarrage demandé"
+
+msgid "Restart"
+msgstr "Redémarrer"
+
+msgid "Restart the agent of {name}? The projects stay, the open terminals and desktops are lost."
+msgstr "Redémarrer l'agent de {name} ? Les projets restent, les terminaux et bureaux ouverts sont perdus."
+
+msgid "the agent cannot restart itself (restart_command)"
+msgstr "l'agent ne peut pas se redémarrer lui-même (restart_command)"
+
 msgid "the host is not reachable"
 msgstr "la machine est injoignable"
 

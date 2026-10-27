@@ -39,6 +39,7 @@ class HostView:
     drain: bool
     power_off_pending: bool     # a power off was accepted lately: the host is going down
     instructors_only: bool = False   # reserved for the instructors' projects: outside the policy
+    restart_pending: bool = False    # a restart of the agent was sent: the policy leaves the host alone
 
 
 def awake_count(hosts) -> int:
@@ -65,7 +66,8 @@ def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: fl
     spare = spare_capacity(hosts)
     wanted = []
     for h in hosts:
-        if h.state != STATE_OFF or not h.can_wake or not h.enabled or h.instructors_only or now < h.next_wake_at:
+        if h.state != STATE_OFF or not h.can_wake or not h.enabled or h.instructors_only or now < h.next_wake_at \
+                or h.restart_pending:
             continue
         if spare < cfg.spare_projects or (active and awake < cfg.min_hosts_up):
             wanted.append(h.name)
@@ -79,7 +81,7 @@ def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
     ``idle_host_timeout``, one idle host that the floor and the spare capacity can spare (a
     host reserved for instructors counts for neither: idle long enough is enough)."""
     empties = [h for h in hosts if h.state in (STATE_UP, STATE_DRAINING) and h.projects == 0 and h.power
-               and h.power_off_allowed and not h.power_off_pending]
+               and h.power_off_allowed and not h.power_off_pending and not h.restart_pending]
     drained = [h.name for h in empties if h.drain]
     if drained:
         return drained[:1]
@@ -136,7 +138,8 @@ class PoolManager:
                                   and state in (STATE_UP, STATE_DRAINING) else None, drain=rt.drain,
                                   power_off_pending=rt.power_off_sent is not None
                                   and now - rt.power_off_sent < self.pool.wake_timeout,
-                                  instructors_only=host.instructors_only))
+                                  instructors_only=host.instructors_only,
+                                  restart_pending=rt.restart_sent is not None))
         return views
 
     def status(self) -> dict:
@@ -258,3 +261,25 @@ class PoolManager:
         rt.drain = True
         rt.power_off_sent = time.monotonic()
         rt.next_wake_at = max(rt.next_wake_at, rt.power_off_sent + POWER_OFF_HOLD)
+
+    async def restart(self, name: str, reason: str = "requested"):
+        """``POST /v1/restart`` on the agent (``sre-web-tool restart``: the agent restarts its
+        own unit once its sre commands are over; the projects stay); the host is marked
+        ``restart_sent`` until the portal sees the agent's uptime reset, or ``restart_hold``:
+        no placement there, no wake nor power off by the policy, its drain kept."""
+        host = self.pool.host(name)
+        st, rt = self.pool.status[name], self.pool.runtime[name]
+        if not st.reachable:
+            raise PoolError(409, f"{name} is not reachable")
+        if rt.restart_sent is not None:
+            raise PoolError(409, f"{name}: a restart was sent {time.monotonic() - rt.restart_sent:.0f} s ago")
+        log.info("restarting the agent of host %s (%s)", name, reason)
+        try:
+            async with self.pool.session.post(f"{host.url}/v1/restart", headers=self.pool.headers(host),
+                                              timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                body = await resp.json(content_type=None) if resp.content_type.endswith('json') else {}
+                if resp.status != 200:
+                    raise PoolError(resp.status, f"{name} refused: {body.get('error', resp.status)}")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            raise PoolError(502, f"{name} does not answer: {e or type(e).__name__}")
+        rt.restart_sent = time.monotonic()

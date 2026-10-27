@@ -128,6 +128,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `occupied_check` | `both` | when the host reports itself *occupied* (no new project, never powered off): `sessions` (a local login session: `loginctl`, or `who`), `projects` (projects of the Qt GUI on the host), `both`, `never` |
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
+| `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30` | seconds, per `sre` command (`export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 
@@ -430,6 +431,25 @@ With `power = true` on the host and `allow_power_off = true` in its `agent.toml`
 powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron does it), above
 `min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web-tool poweroff`.
 
+**Restarting the agents.** After an update of the tree the agents run the old Python code until
+their unit is restarted: `sre-web-tool restart NAME`, or `restart --all` for every reachable host
+(whatever its state), tells each agent to restart itself (`POST /v1/restart`). The agent answers
+at once, lets its running `sre` commands end (a start, an evaluation; no new project is accepted
+meanwhile), then runs `systemctl reset-failed` and `systemctl --no-block restart` on its own
+unit (`sre-agent` or `sysreseval-agent`, read from `/proc/self/cgroup`; `restart_command` in
+`agent.toml` replaces that for an agent run otherwise). The projects stay
+(`close_projects_on_stop = "shutdown"`: a restart is not a shutdown; with `always` they are
+closed), the open terminals and virtual desktops are lost, the project pages reconnect by
+themselves. The stop is quick: the agent closes the project pages' WebSockets itself (aiohttp
+would otherwise wait a minute for them) and `KillMode=mixed` ends what is left. `list` shows
+`(restart)` after the state until the portal sees the agent's uptime reset (or gives up after
+two minutes with a warning in its journal); the host takes no project meanwhile and keeps its
+drain. `--wait` makes the tool wait for the agents to be back (`--timeout`, 180 s by default),
+so a deployment script can chain it after the sync. A `DO_NOT_START_AGENT` marker written since
+the start is honoured (that agent stops); code that no longer starts leaves the unit failed
+after five attempts (`journalctl -u sre-agent`, then `systemctl reset-failed`). The portal
+itself is restarted by hand (`systemctl restart sre-web`).
+
 **By hand.** `sre-web-tool …` (`sbin/sre-web-tool` of a checkout, `/usr/sbin/sre-web-tool`
 of the `sysreseval-web` package; `python3 -m sreweb.tool` from the sources) talks to the running
 portal through its administration API (`[admin] token`, loopback only by default; `--config`,
@@ -441,6 +461,7 @@ sre-web-tool status               # spare capacity, hosts awake vs the floor, ac
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 ```
 
 The additions, removals and enable / disable flags are kept in `[admin] state_file` and merged
@@ -531,9 +552,11 @@ What an instructor gets:
   of `sre-web-tool status` above the table; the state cell is green (up), amber (waking,
   occupied, exam, draining) or grey (off, disabled); sortable by any column, filtered by text,
   refreshed every 5 s. The buttons are the commands of the tool: *Enable* / *Disable*, *Wake*
-  (a host with a `mac` or a `wake_command`, while it is off), *Drain* and *Power off* (asked to
+  (a host with a `mac` or a `wake_command`, while it is off), *Drain*, *Power off* (asked to
   confirm; allowed by the agent's `allow_power_off`, refused while the host has a project or a
-  local session), each disabled with the reason as its tooltip when it does not apply. Adding
+  local session) and *Restart* (asked to confirm; the agent restarts itself, the projects stay;
+  greyed when the agent cannot restart itself or a restart was just sent), each disabled with
+  the reason as its tooltip when it does not apply. Adding
   and removing hosts stays with `sre-web-tool` and the token. Every action is an `admin` line of
   the connection log with the instructor's login.
 - **Projects** stays the instructor's own projects (Watch holds the others).
@@ -636,7 +659,8 @@ the browser reaches a desktop through the owner check of the portal and of the a
 ## Limitations
 
 - After an update of the tree, the portal and the agents must be restarted for the Python code
-  (the templates are re-read when they change); the scripts and style sheets of `web/static` are
+  (`sre-web-tool restart --all` for the agents, see *Restarting the agents* above; the
+  templates are re-read when they change); the scripts and style sheets of `web/static` are
   served with `Cache-Control: no-cache`, so a browser revalidates them on every page load (an
   `ETag` answers 304 for an unchanged file) and never runs a script older than the page. A page
   loaded before the update keeps its scripts until it is reloaded.

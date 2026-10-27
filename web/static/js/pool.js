@@ -4,8 +4,8 @@
 // its flags (reserved for instructors, power, drain, power off sent), the agent's version and
 // its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
 // sorted by any column and filtered by text.  The buttons are the commands of the tool (Enable /
-// Disable, Wake, Drain, Power off: POST /api/pool/hosts/{name}/{action}; add and remove stay
-// with the tool), each disabled with the reason as its tooltip when it does not apply; the
+// Disable, Wake, Drain, Power off, Restart: POST /api/pool/hosts/{name}/{action}; add and remove
+// stay with the tool), each disabled with the reason as its tooltip when it does not apply; the
 // answer of an action is the updated row, shown at once.
 
 import './base.js';
@@ -68,6 +68,9 @@ function flagsText(row) {
   }
   if (row.power_off_sent) {
     flags.push(_('power off sent'));
+  }
+  if (row.restart_sent) {
+    flags.push(_('restart sent'));
   }
   return flags.join(', ');
 }
@@ -168,7 +171,7 @@ function actionButton(row, action, label, options = {}) {
   return button;
 }
 
-// the four buttons of a row, always there (a stable layout), each with the reason it is disabled
+// the buttons of a row, always there (a stable layout), each with the reason it is disabled
 function actions(row) {
   const unreachable = row.reachable ? '' : _('the host is not reachable');
   let wake = '';
@@ -191,11 +194,20 @@ function actions(row) {
   }
   const question = format(_('Power off {name}? The agent refuses while a project runs or someone is logged in there.'),
                           {name: row.name});
+  let restart = unreachable;
+  if (!restart && !row.restart_allowed) {
+    restart = _('the agent cannot restart itself (restart_command)');
+  } else if (!restart && row.restart_sent) {
+    restart = _('restart sent');
+  }
+  const restartQuestion = format(_('Restart the agent of {name}? The projects stay, the open terminals and desktops are lost.'),
+                                 {name: row.name});
   return [
     row.enabled ? actionButton(row, 'disable', _('Disable'), {danger: true}) : actionButton(row, 'enable', _('Enable')),
     actionButton(row, 'wake', _('Wake'), {reason: wake}),
     actionButton(row, 'drain', _('Drain'), {reason: drain}),
     actionButton(row, 'poweroff', _('Power off'), {danger: true, reason: poweroff, confirm: question}),
+    actionButton(row, 'restart', _('Restart'), {reason: restart, confirm: restartQuestion}),
   ];
 }
 

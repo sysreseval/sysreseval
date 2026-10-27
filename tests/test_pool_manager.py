@@ -2,6 +2,7 @@
 manager on a pool with fake agents, the Wake-on-LAN packet."""
 import asyncio
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -26,11 +27,11 @@ TOKEN = 't' * 32
 
 def view(name, state, projects=0, max_projects=10, can_wake=True, enabled=True, power=False,
          power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False,
-         instructors_only=False):
+         instructors_only=False, restart_pending=False):
     return HostView(name=name, state=state, projects=projects, max_projects=max_projects, can_wake=can_wake,
                     enabled=enabled, power=power, power_off_allowed=power_off_allowed, next_wake_at=next_wake_at,
                     idle_for=idle_for, drain=drain, power_off_pending=power_off_pending,
-                    instructors_only=instructors_only)
+                    instructors_only=instructors_only, restart_pending=restart_pending)
 
 
 class TestWakePlan:
@@ -56,6 +57,8 @@ class TestWakePlan:
         assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['e']
         hosts[0].next_wake_at = 999.0
         assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['b']
+        hosts[0].restart_pending = True      # its agent is restarting: not a host to wake
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['e']
 
     def test_floor_during_active_hours(self):
         cfg = PoolConfig(spare_projects=0, min_hosts_up=1)
@@ -94,6 +97,8 @@ class TestPowerOffPlan:
         hosts[0].power_off_pending = True   # already sent
         assert poweroff_plan(hosts, cfg, active=True) == []
         hosts[0].power_off_pending, hosts[0].power_off_allowed = False, False   # the agent does not allow it
+        assert poweroff_plan(hosts, cfg, active=True) == []
+        hosts[0].power_off_allowed, hosts[0].restart_pending = True, True       # its agent is restarting
         assert poweroff_plan(hosts, cfg, active=True) == []
 
     def test_idle_hosts_above_the_floor(self):
@@ -188,7 +193,7 @@ class FakeSession:
 def up(projects=0, **over):
     return {'projects': projects, 'managed_projects': projects, 'terminals': 0, 'load1': 0.5, 'exam_mode': False,
             'occupied': False, 'occupied_by': [], 'uptime': 100, 'power_off_allowed': True, 'hostname': 'h',
-            'sre_version': '1', **over}
+            'sre_version': '1', 'agent_uptime': 500, 'restart_allowed': True, 'restarting': False, **over}
 
 
 def run(coro):
@@ -437,6 +442,94 @@ class TestManager:
             await pool.refresh()
             with pytest.raises(PoolError) as e:
                 await mgr.power_off('a')
+            assert e.value.status == 409 and 'not reachable' in e.value.message
+        run(go())
+
+    def test_restart_and_recovery(self, caplog):
+        """``restart``: the POST, then the host takes no project, is neither woken nor powered
+        off and keeps its drain until the portal sees the agent's uptime reset (even without an
+        unreachable poll in between); given up after the hold unless the agent still says it is
+        about to restart."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10, mac='aa:bb:cc:dd:ee:ff'), HostConfig('b', 'http://b', TOKEN, 10)]
+        session = FakeSession()
+        session.answers = {'http://a': up(), 'http://b': up()}
+        pool = Pool(hosts, session, wake_timeout=100.0, restart_hold=1.0)
+        sent = []
+        mgr = PoolManager(pool, PoolConfig(spare_projects=5, min_hosts_up=2, active_hours=''),
+                          wol=lambda mac, broadcast: sent.append(mac))
+        prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
+
+        async def go():
+            await pool.refresh()
+            rt = pool.runtime['a']
+            rt.drain = True
+            await mgr.restart('a')
+            assert session.posts == ['http://a/v1/restart'] and rt.restart_sent is not None and rt.drain is True
+            rows = {r['name']: r for r in pool.summary()}
+            assert rows['a']['restart_sent'] is True and rows['a']['restart_allowed'] is True
+            assert rows['a']['agent_uptime'] == 500 and rows['b']['restart_sent'] is False
+            assert [v.restart_pending for v in mgr.views()] == [True, False]
+            # no placement there, by load or by name; the other host full: "a host is starting"
+            assert pool.pick()[0].name == 'b'
+            with pytest.raises(PoolError) as e:
+                pool.pick(prof, host='a')
+            assert e.value.status == 503 and 'not available' in e.value.message
+            session.answers['http://b'] = up(projects=10)
+            await pool.refresh()
+            with pytest.raises(PoolError) as e:
+                pool.pick()
+            assert e.value.status == 503 and 'starting' in e.value.message
+            with pytest.raises(PoolError) as e:                   # a second restart meanwhile
+                await mgr.restart('a')
+            assert e.value.status == 409 and 'sent' in e.value.message and len(session.posts) == 1
+            # down while it restarts: off, not woken by the policy although the floor wants two hosts
+            session.answers['http://a'] = None
+            await pool.refresh()
+            assert pool.state_of('a') == STATE_OFF and rt.restart_sent is not None and rt.drain is True
+            await mgr.tick()
+            assert sent == []
+            # back with a fresh uptime: the restart is over, the drain kept
+            session.answers['http://a'] = up(agent_uptime=0)
+            rt.restart_sent -= 2.0                              # the request is two seconds old
+            await pool.refresh()
+            assert rt.restart_sent is None and rt.drain is True and pool.state_of('a') == STATE_DRAINING
+            # a fast restart between two polls: the uptime alone tells
+            rt.drain = False
+            session.answers['http://a'] = up()
+            await pool.refresh()
+            await mgr.restart('a')
+            await pool.refresh()
+            assert rt.restart_sent is not None                   # the agent's uptime is older than the request
+            session.answers['http://a'] = up(agent_uptime=0)
+            await pool.refresh()
+            assert rt.restart_sent is not None                   # too soon: the uptime is rounded to the second
+            rt.restart_sent -= 2.0
+            await pool.refresh()
+            assert rt.restart_sent is None and pool.state_of('a') == STATE_UP
+            # nothing restarts (the command failed on the agent): given up after the hold, with a warning
+            session.answers['http://a'] = up()
+            await pool.refresh()
+            await mgr.restart('a')
+            rt.restart_sent -= 2.0
+            with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+                await pool.refresh()
+            assert rt.restart_sent is None and 'no restart seen' in caplog.text
+            # ... unless the agent still says it is about to (a sre command in flight delays it)
+            await mgr.restart('a')
+            rt.restart_sent -= 2.0
+            session.answers['http://a'] = up(restarting=True)
+            await pool.refresh()
+            assert rt.restart_sent is not None
+            rt.restart_sent = None
+            # the agent refuses, or is unreachable: nothing marked
+            session.post_status, session.post_data = 409, {'error': 'not a systemd service'}
+            with pytest.raises(PoolError) as e:
+                await mgr.restart('a')
+            assert e.value.status == 409 and 'systemd' in e.value.message and rt.restart_sent is None
+            session.answers['http://a'] = None
+            await pool.refresh()
+            with pytest.raises(PoolError) as e:
+                await mgr.restart('a')
             assert e.value.status == 409 and 'not reachable' in e.value.message
         run(go())
 

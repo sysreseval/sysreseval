@@ -1,7 +1,7 @@
 """``sre-web-tool COMMAND ...``: manage the pool of the running portal from the command line
 (``python3 -m sreweb.tool`` from a checkout).  The commands, in ``sreweb.portal.poolctl``:
 
-  sre-web-tool list | status | add | remove | enable | disable | wake | poweroff | drain
+  sre-web-tool list | status | add | remove | enable | disable | wake | poweroff | drain | restart
 """
 import sys
 

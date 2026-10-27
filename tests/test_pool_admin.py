@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -124,6 +125,33 @@ class TestAdminApi:
                 assert rows['b02']['source'] == 'added' and rows['b02']['state'] == 'disabled'
         run(go())
 
+    def test_restart(self, tmp_path):
+        """``restart``: the agent runs its command, the row shows the restart sent, a second one
+        and an unreachable host are refused."""
+        flag = tmp_path / 'restarted'
+        over = {'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over=over, hosts=2,
+                                 agent_over={'restart_command': f'sh -c "touch {flag}"'}) as h:
+                resp = await h.client.post('/api/pool/hosts/a01/restart', headers=auth(ADMIN))
+                assert resp.status == 200, await resp.text()
+                row = await resp.json()
+                assert row['restart_sent'] is True and row['restart_allowed'] is True and row['state'] == 'up'
+                resp = await h.client.post('/api/pool/hosts/a01/restart', headers=auth(ADMIN))
+                assert resp.status == 409 and 'sent' in (await resp.json())['error']
+                resp = await h.client.post('/api/pool/hosts/down/restart', headers=auth(ADMIN))
+                assert resp.status == 409 and 'not reachable' in (await resp.json())['error']
+                for _ in range(40):
+                    if flag.exists():
+                        break
+                    await asyncio.sleep(0.1)
+                assert flag.exists()
+                # the agent of the tests never restarts: the flag stays until the portal's hold
+                rows = {r['name']: r for r in await (await h.client.get('/api/pool', headers=auth(ADMIN))).json()}
+                assert rows['a01']['restart_sent'] is True and rows['a01']['restarting'] is True
+        run(go())
+
     def test_no_token_configured(self, tmp_path):
         async def go():
             async with P.Harness(tmp_path, web_over={'pool': QUIET_POOL}) as h:
@@ -162,7 +190,8 @@ class TestInstructorPage:
         over = {**P.PROXY_OVER, 'admin': {'token': ADMIN}, 'pool': QUIET_POOL, 'limits': {'start_interval': 0}}
 
         async def go():
-            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over,
+                                 agent_over={'restart_command': 'sh -c true'}) as h:
                 sent = []
                 h.portal.manager.wol = lambda mac, broadcast: sent.append((mac, broadcast))
                 bob, prof = P.who('bob'), P.who('prof', groups=P.TEACHERS)
@@ -194,6 +223,9 @@ class TestInstructorPage:
                 assert sent == [('aa:bb:cc:dd:ee:ff', '255.255.255.255')]
                 assert (await h.client.post(a01 + 'wake', headers={**prof, **CSRF})).status == 409      # no mac
                 assert (await h.client.post(a01 + 'poweroff', headers={**prof, **CSRF})).status == 403  # the agent refuses
+                resp = await h.client.post(a01 + 'restart', headers={**prof, **CSRF})
+                assert resp.status == 200 and (await resp.json())['restart_sent'] is True
+                assert (await h.client.post(a01 + 'restart', headers={**prof, **CSRF})).status == 409   # sent already
                 assert (await h.client.post(a01 + 'dance', headers={**prof, **CSRF})).status == 404
                 assert (await h.client.post('/api/pool/hosts/nope/enable', headers={**prof, **CSRF})).status == 404
                 # add and remove stay with the token
@@ -207,7 +239,7 @@ class TestCli:
         over = {'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
 
         async def go():
-            async with P.Harness(tmp_path, web_over=over) as h:
+            async with P.Harness(tmp_path, web_over=over, agent_over={'restart_command': 'sh -c true'}) as h:
                 url = f"http://127.0.0.1:{h.client.port}"
                 env = {**os.environ, 'PYTHONPATH': str(SRC)}
 
@@ -241,6 +273,19 @@ class TestCli:
                 assert r.returncode == 0 and r.stdout.strip() == 'b02 removed'
                 r = await loop.run_in_executor(None, cli, 'wake', 'a01')
                 assert r.returncode == 1 and 'no mac' in r.stderr and '(409)' in r.stderr
+                # restart: every reachable host, then the one already sent is refused; the usage
+                r = await loop.run_in_executor(None, cli, 'restart', '--all')
+                assert r.returncode == 0, r.stderr
+                assert r.stdout.splitlines()[1].split()[:3] == ['a01', 'up', '(restart)']
+                r = await loop.run_in_executor(None, cli, 'restart', 'a01')
+                assert r.returncode == 1 and r.stdout == '' and 'a01: a01: a restart was sent' in r.stderr \
+                    and '(409)' in r.stderr
+                r = await loop.run_in_executor(None, lambda: cli('restart', '--all', '--json'))
+                assert r.returncode == 1 and r.stdout == '' and 'a01:' in r.stderr
+                r = await loop.run_in_executor(None, cli, 'restart')
+                assert r.returncode == 2 and 'give a host name or --all' in r.stderr
+                r = await loop.run_in_executor(None, cli, 'restart', '--all', 'a01')
+                assert r.returncode == 2 and 'give a host name or --all' in r.stderr
                 r = await loop.run_in_executor(None, lambda: cli('list', token='w' * 32))
                 assert r.returncode == 1 and 'bad administration token (401)' in r.stderr
                 r = await loop.run_in_executor(None, lambda: subprocess.run(
@@ -261,8 +306,31 @@ class TestCli:
                 {'name': 'b02', 'state': 'up', 'drain': True, 'reachable': True, 'projects': 2, 'max_projects': 3,
                  'load1': 1.234, 'terminals': 4, 'occupied_by': ['session:bob'], 'uptime': 3725, 'source': 'added'},
                 {'name': 'c03', 'state': 'off', 'instructors_only': True, 'reachable': False, 'source': 'config',
-                 'max_projects': 3}]
+                 'max_projects': 3, 'restart_sent': True}]
         out = table(rows).splitlines()
         assert out[1].split()[:2] == ['a01', 'waking'] and '(12s, 1 failed)' in out[1] and out[1].endswith('down')
         assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '4', 'session:bob', '1h02', 'added']
-        assert out[3].split()[:3] == ['c03', 'off', '(instructors)']
+        assert out[3].split()[:4] == ['c03', 'off', '(restart,', 'instructors)']
+
+    def test_wait_restarted(self, monkeypatch):
+        """``--wait``: a host is back once its agent's uptime is younger than the request; the
+        others are reported at the deadline, the rows refreshed."""
+        from sreweb.portal import poolctl
+        monkeypatch.setattr(poolctl, 'RESTART_POLL', 0.01)
+        readings = [[{'name': 'a01', 'reachable': True, 'agent_uptime': 500}, {'name': 'b02', 'reachable': False},
+                     {'name': 'c03', 'reachable': True, 'agent_uptime': 500}],
+                    [{'name': 'a01', 'reachable': True, 'agent_uptime': 0}, {'name': 'b02', 'reachable': False},
+                     {'name': 'c03', 'reachable': True, 'agent_uptime': 501}]]
+        client = types.SimpleNamespace(calls=0)
+
+        def call(method, path):
+            assert (method, path) == ('GET', '/api/pool')
+            client.calls += 1
+            return readings[min(client.calls, len(readings)) - 1]
+        client.call = call
+        sent = time.monotonic() - 2.0      # requests two seconds old (the uptime is rounded to the second)
+        rows = [{'name': 'a01', 'state': 'up'}, {'name': 'b02', 'state': 'up'}, {'name': 'c03', 'state': 'up'}]
+        failures = poolctl._wait_restarted(client, {'a01': sent, 'b02': sent, 'c03': sent}, 0.2, rows)
+        assert sorted(failures) == ['b02: did not come back within 0 s',
+                                    'c03: did not restart within 0 s (agent up for 501 s)']
+        assert rows[0]['agent_uptime'] == 0 and rows[2]['agent_uptime'] == 501 and client.calls >= 2

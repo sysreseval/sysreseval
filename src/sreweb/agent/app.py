@@ -21,7 +21,7 @@ import socket
 import subprocess
 import time
 
-from aiohttp import web, WSMsgType
+from aiohttp import web, WSMsgType, WSCloseCode
 
 from SRE import params
 from SRE import common
@@ -90,6 +90,20 @@ def _system_stopping() -> bool:
     return result.stdout.strip() == 'stopping'
 
 
+def unit_of_cgroup(text: str) -> str | None:
+    """The systemd service a process belongs to, from its ``/proc/self/cgroup``
+    (``0::/system.slice/sre-agent.service`` on cgroup v2, ``12:pids:/system.slice/...`` or
+    ``1:name=systemd:/...`` on v1): the last ``.service`` component of a path; ``None`` for a
+    process outside any service (a login session scope, a container, no systemd)."""
+    for line in text.splitlines():
+        if line.count(':') < 2:
+            continue
+        for component in reversed(line.split(':', 2)[2].split('/')):
+            if component.endswith('.service'):
+                return component
+    return None
+
+
 def _mem_available_mb() -> int | None:
     try:
         with open('/proc/meminfo') as f:
@@ -132,6 +146,13 @@ class Agent:
         #: Whether the system is going down (SIGTERM at shutdown): injectable for the tests.
         self.system_stopping = _system_stopping
         self.run_command = subprocess.run
+        #: The commands of the host (power off, restart) and the cgroup file naming the agent's
+        #: own systemd unit: injectable for the tests.
+        self.spawn = asyncio.create_subprocess_exec
+        self.cgroup_file = '/proc/self/cgroup'
+        #: When a restart was accepted (``POST /v1/restart``): no new project until it happens.
+        self.restarting: float | None = None
+        self._event_sockets: set = set()
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -177,6 +198,7 @@ class Agent:
         p = API_PREFIX
         app.router.add_get(f'{p}/status', self.status)
         app.router.add_post(f'{p}/power/off', self.power_off)
+        app.router.add_post(f'{p}/restart', self.restart)
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_post(f'{p}/projects', self.projects_create)
@@ -205,27 +227,62 @@ class Agent:
         self.registry.start()
 
     async def _on_shutdown(self, app):
-        await self.close_managed_projects()
+        """SIGTERM (a stop or a restart of the unit; the listening socket is already closed):
+        the sre commands in flight end first (their handlers finish normally), the managed
+        projects are closed when ``close_projects_on_stop`` says so, the project pages are told
+        to reconnect (close code 1001: aiohttp would otherwise wait its shutdown timeout for
+        every events socket still open), then the terminals and the desktops are stopped."""
+        started = time.monotonic()
+        left = await self.runner.wait_idle(self.cfg.shutdown_timeout)
+        if left:
+            log.warning("stopping with %d sre command(s) still running", left)
+        await self.close_managed_projects(timeout=max(1.0, self.cfg.shutdown_timeout - (time.monotonic() - started)))
+        await asyncio.gather(*(ws.close(code=WSCloseCode.GOING_AWAY, message=b'agent stopping')
+                               for ws in list(self._event_sockets)), return_exceptions=True)
         await self.registry.stop()
         await self.displays.stop_all()
 
-    async def close_managed_projects(self):
+    async def close_managed_projects(self, timeout: float | None = None):
         """On the stop of the agent: the projects it created are evaluated (when their lab asks)
         and stopped before the machine halts, so that the last evaluation is archived; only when
-        the system is going down, unless ``close_projects_on_stop`` says always / never."""
+        the system is going down, unless ``close_projects_on_stop`` says always / never; within
+        *timeout* seconds (``shutdown_timeout``)."""
         mode = self.cfg.close_projects_on_stop
         if mode == 'never' or (mode == 'shutdown' and not self.system_stopping()):
             return
         projects = [p for p in self.registry.projects.values() if p.managed and not p.closing]
         if not projects:
             return
+        timeout = self.cfg.shutdown_timeout if timeout is None else timeout
         log.info("stopping: closing %d managed project(s)", len(projects))
         try:
-            async with asyncio.timeout(self.cfg.shutdown_timeout):
+            async with asyncio.timeout(timeout):
                 await asyncio.gather(*(self.schedulers.close_project(p) for p in projects), return_exceptions=True)
         except TimeoutError:
             log.error("stopping: %d project(s) not closed within %.0f s", sum(1 for p in projects if p.closing),
-                      self.cfg.shutdown_timeout)
+                      timeout)
+
+    # -- the agent's own unit -------------------------------------------------------------------
+
+    def systemd_unit(self) -> str | None:
+        """The systemd service this agent runs in (``sre-agent.service``, ``sysreseval-agent.service``),
+        from its cgroup; ``None`` outside systemd or when run by hand."""
+        try:
+            with open(self.cgroup_file, encoding='utf-8') as f:
+                return unit_of_cgroup(f.read())
+        except OSError:
+            return None
+
+    def restart_argvs(self) -> list:
+        """The commands of a restart of the agent: ``restart_command`` when set, else
+        ``systemctl reset-failed`` (the start limit of the unit counts the manual restarts too)
+        and ``systemctl --no-block restart`` of its own unit; empty when neither applies."""
+        if self.cfg.restart_command:
+            return [shlex.split(self.cfg.restart_command)]
+        unit = self.systemd_unit()
+        if unit is None:
+            return []
+        return [['systemctl', 'reset-failed', unit], ['systemctl', '--no-block', 'restart', unit]]
 
     # -- occupancy ------------------------------------------------------------------------------
 
@@ -252,7 +309,7 @@ class Agent:
         scheme, _, token = auth.partition(' ')
         if scheme.lower() != 'bearer' or not hmac.compare_digest(token.strip(), self.cfg.token):
             return json_error(401, "bad agent token")
-        if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off'):
+        if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart'):
             request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
         try:
@@ -302,6 +359,7 @@ class Agent:
             'occupied': occupied, 'occupied_by': reasons,
             'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
             'power_off_allowed': self.cfg.allow_power_off,
+            'restart_allowed': bool(self.restart_argvs()), 'restarting': self.restarting is not None,
         })
 
     async def power_off(self, request):
@@ -319,13 +377,47 @@ class Agent:
         return web.json_response({'ok': True})
 
     async def _run_power_off(self):
+        await self._run_command(shlex.split(self.cfg.power_off_command), "power off")
+
+    async def _run_command(self, argv: list, what: str) -> bool:
+        """Run a command of the host (a power off, a restart); false when it failed, logged."""
         try:
-            proc = await asyncio.create_subprocess_exec(*shlex.split(self.cfg.power_off_command))
+            proc = await self.spawn(*argv)
             await proc.wait()
-            if proc.returncode != 0:
-                log.error("power off command failed (%s)", proc.returncode)
         except OSError as e:
-            log.error("power off command failed: %s", e)
+            log.error("%s command failed: %s", what, e)
+            return False
+        if proc.returncode != 0:
+            log.error("%s command failed (%s)", what, proc.returncode)
+            return False
+        return True
+
+    async def restart(self, request):
+        """The portal restarts this agent (``sre-web-tool restart``: new code after an update):
+        once the answer is sent and the sre commands in flight are over (no new project
+        meanwhile), ``restart_command`` or ``systemctl restart`` of the unit the agent runs in.
+        The projects stay (the registry adopts them again), the terminals and the desktops are
+        lost.  409 when the agent is no systemd service and no command is configured; a second
+        request while one is pending changes nothing."""
+        argvs = self.restart_argvs()
+        if not argvs:
+            raise AccessError(409, "the agent is not a systemd service: set restart_command in agent.toml")
+        if self.restarting is None:
+            self.restarting = time.monotonic()
+            log.warning("restart requested by %s: %s (%d sre command(s) running)", request.remote,
+                        ' && '.join(shlex.join(argv) for argv in argvs), self.runner.in_flight)
+            asyncio.get_running_loop().call_later(1.0, lambda: asyncio.ensure_future(self._run_restart(argvs)))
+        return web.json_response({'ok': True, 'in_flight': self.runner.in_flight})
+
+    async def _run_restart(self, argvs: list):
+        left = await self.runner.wait_idle(max(self.cfg.timeouts.values()))   # longer than any sre command
+        if left:
+            log.warning("restarting with %d sre command(s) still running", left)
+        ok = True
+        for argv in argvs:
+            ok = await self._run_command(argv, "restart")
+        if not ok:
+            self.restarting = None
 
     async def labs_handler(self, request):
         if self.exam_mode():
@@ -368,6 +460,8 @@ class Agent:
 
     async def projects_create(self, request):
         identity = request[IDENTITY_KEY]
+        if self.restarting is not None:
+            raise AccessError(503, "the agent is restarting, please retry in a moment")
         body = await self._read_json(request)
         access.check_not_exam(self.pub_dir)
         lab = body.get('lab')
@@ -621,6 +715,7 @@ class Agent:
         identity = request[IDENTITY_KEY]
         ws = web.WebSocketResponse(heartbeat=WS_HEARTBEAT)
         await ws.prepare(request)
+        self._event_sockets.add(ws)
         sub = self.registry.subscribe(project, ws.send_json, identity)
         try:
             async for msg in ws:
@@ -628,6 +723,7 @@ class Agent:
                     break
                 project.touch()
         finally:
+            self._event_sockets.discard(ws)
             self.registry.unsubscribe(project, sub)
         return ws
 

@@ -77,6 +77,8 @@ class Harness:
                                      sre_exe=str(exe), state_dir='')   # never: the sessions of the test host
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
                            hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')])
+        # never the unit the test process may run in (a CI runner): a restart needs restart_command here
+        self.agent.cgroup_file = str(tmp_path / 'no-cgroup')
         self.web_dir = tmp_path / 'web'
         (self.web_dir / 'templates').mkdir(parents=True)
         (self.web_dir / 'static').mkdir()

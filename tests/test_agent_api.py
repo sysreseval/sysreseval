@@ -6,6 +6,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the w
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from SRE import params
-from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY
+from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup
 from sreweb.agent.display import parse_xauthority, WS_DISPLAY_FAILED
 from sreweb.config import agent_config_from_dict
 from sreweb.identity import Identity
@@ -54,6 +55,8 @@ class Harness:
                                      sre_exe=str(exe), state_dir=str(tmp_path / 'web-agent'))
         self.agent = Agent(cfg, pub_dir=str(self.pub), projects_dir=str(self.pub / 'projects'), localedirs=[],
                            hostname='pool1', extra_env=env, archive_dirs=[str(self.pub / 'archives')])
+        # never the unit the test process may run in (a CI runner): TestRestart gives its own file
+        self.agent.cgroup_file = str(tmp_path / 'no-cgroup')
         self.client = None
 
     async def __aenter__(self):
@@ -181,6 +184,133 @@ class TestOccupancyAndPower:
                 await h.agent.close_managed_projects()
                 assert not (h.pub / 'projects' / rln).exists()       # the shutdown closes them
                 assert h.calls()[-1] == ['--user', 'stop', rln]
+        run(go())
+
+
+class FakeProc:
+    returncode = 0
+
+    async def wait(self):
+        return 0
+
+
+def fake_spawn(spawned: list):
+    async def spawn(*argv):
+        spawned.append(list(argv))
+        return FakeProc()
+    return spawn
+
+
+class TestRestart:
+    SERVICE = '0::/system.slice/sre-agent.service\n'
+    SCOPE = '0::/user.slice/user-0.slice/session-55.scope\n'
+
+    def test_unit_of_cgroup(self):
+        assert unit_of_cgroup(self.SERVICE) == 'sre-agent.service'
+        assert unit_of_cgroup('0::/system.slice/system-x.slice/x@1.service\n') == 'x@1.service'
+        assert unit_of_cgroup('12:pids:/system.slice/sysreseval-agent.service\n1:name=systemd:/system.slice/'
+                              'sysreseval-agent.service\n0::/system.slice/sysreseval-agent.service\n') \
+            == 'sysreseval-agent.service'
+        assert unit_of_cgroup(self.SCOPE) is None and unit_of_cgroup('0::/docker/abc\n') is None
+        assert unit_of_cgroup('') is None and unit_of_cgroup('garbage\n') is None
+
+    def test_refused_outside_systemd(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                (tmp_path / 'cgroup').write_text(self.SCOPE)
+                h.agent.cgroup_file = str(tmp_path / 'cgroup')
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['restart_allowed'] is False and st['restarting'] is False
+                resp = await h.client.post('/v1/restart', headers=headers())
+                assert resp.status == 409 and 'restart_command' in (await resp.json())['error']
+                h.agent.cgroup_file = str(tmp_path / 'nope')      # no /proc at all (macOS)
+                assert (await h.client.post('/v1/restart', headers=headers())).status == 409
+        run(go())
+
+    def test_own_unit_restarted(self, tmp_path):
+        """The unit of the cgroup, restarted one second after the answer; a second request
+        changes nothing; no new project meanwhile."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                (tmp_path / 'cgroup').write_text(self.SERVICE)
+                h.agent.cgroup_file = str(tmp_path / 'cgroup')
+                spawned = []
+                h.agent.spawn = fake_spawn(spawned)
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['restart_allowed'] is True and st['restarting'] is False
+                resp = await h.client.post('/v1/restart', headers=headers())
+                assert resp.status == 200 and (await resp.json()) == {'ok': True, 'in_flight': 0}
+                assert (await h.client.post('/v1/restart', headers=headers())).status == 200
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['restarting'] is True and spawned == []
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py'}, headers=headers())
+                assert resp.status == 503 and 'restarting' in (await resp.json())['error']
+                for _ in range(40):
+                    if len(spawned) == 2:
+                        break
+                    await asyncio.sleep(0.1)
+                assert spawned == [['systemctl', 'reset-failed', 'sre-agent.service'],
+                                   ['systemctl', '--no-block', 'restart', 'sre-agent.service']]
+                await asyncio.sleep(0.2)
+                assert len(spawned) == 2                    # once, whatever the number of requests
+        run(go())
+
+    def test_restart_command(self, tmp_path):
+        flag = tmp_path / 'restarted'
+        async def go():
+            async with Harness(tmp_path, restart_command=f'sh -c "touch {flag}"') as h:
+                h.agent.cgroup_file = str(tmp_path / 'nope')
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['restart_allowed'] is True
+                assert (await h.client.post('/v1/restart', headers=headers())).status == 200
+                for _ in range(40):
+                    if flag.exists():
+                        break
+                    await asyncio.sleep(0.1)
+                assert flag.exists()
+        run(go())
+
+    def test_deferred_behind_a_start(self, tmp_path):
+        """The command waits for the sre commands in flight (a start of a few seconds here);
+        a new start is refused meanwhile."""
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_START_DELAY': '0.4'}) as h:
+                (tmp_path / 'cgroup').write_text(self.SERVICE)
+                h.agent.cgroup_file = str(tmp_path / 'cgroup')
+                spawned = []
+                h.agent.spawn = fake_spawn(spawned)
+                start = asyncio.ensure_future(h.started())
+                await asyncio.sleep(0.5)
+                resp = await h.client.post('/v1/restart', headers=headers())
+                assert resp.status == 200 and (await resp.json()) == {'ok': True, 'in_flight': 1}
+                assert (await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py'}, headers=headers(BOB))).status == 503
+                await asyncio.sleep(1.2)
+                assert spawned == [] and not start.done()   # deferred: the start goes on
+                rln = await start
+                assert (h.pub / 'projects' / rln).exists()
+                for _ in range(40):
+                    if len(spawned) == 2:
+                        break
+                    await asyncio.sleep(0.1)
+                assert len(spawned) == 2
+        run(go())
+
+    def test_shutdown_closes_the_project_pages(self, tmp_path):
+        """An events WebSocket left open by a browser is closed with 1001 at the stop, instead of
+        holding the shutdown for aiohttp's timeout (60 s)."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                url = f"http://127.0.0.1:{h.client.port}/v1/projects/{rln}/events"
+                async with aiohttp.ClientSession() as session:    # not closed by the test client itself
+                    ws = await session.ws_connect(url, headers=headers())
+                    started = time.monotonic()
+                    await h.client.close()
+                    elapsed = time.monotonic() - started
+                    msg = await asyncio.wait_for(ws.receive(), 5)
+                    assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == aiohttp.WSCloseCode.GOING_AWAY
+                    await ws.close()
+                assert elapsed < 10, elapsed
+                assert (h.pub / 'projects' / rln).exists()         # a restart keeps the projects
         run(go())
 
 

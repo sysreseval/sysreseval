@@ -19,6 +19,7 @@ import asyncio
 import json
 import os
 import signal
+import time
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Callable
 
@@ -232,6 +233,9 @@ class SreRunner:
         self._start_sem = asyncio.Semaphore(max_concurrent_starts)
         self._eval_sem = asyncio.Semaphore(max_concurrent_evals)
         self._user_start_locks: dict[str, asyncio.Lock] = {}
+        #: The sre commands running (counted from their limits acquired to their release): what
+        #: a stop or a restart of the agent waits for (:meth:`wait_idle`).
+        self.in_flight = 0
 
     # -- limits ---------------------------------------------------------------------------------
 
@@ -253,12 +257,23 @@ class SreRunner:
         elif command in EVAL_LIKE:
             await self._eval_sem.acquire()
             held.append(self._eval_sem)
+        self.in_flight += 1
         return held
 
-    @staticmethod
-    def _release(held: list):
+    def _release(self, held: list):
+        self.in_flight -= 1
         for item in reversed(held):
             item.release()
+
+    async def wait_idle(self, timeout: float) -> int:
+        """Wait until no sre command runs, at most *timeout* seconds; the number still running."""
+        deadline = time.monotonic() + timeout
+        while self.in_flight > 0:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            await asyncio.sleep(min(0.5, left))
+        return self.in_flight
 
     # -- spawning -------------------------------------------------------------------------------
 
