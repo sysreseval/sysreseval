@@ -133,9 +133,11 @@ def check_self_grade(info: dict):
         raise AccessError(403, "self-evaluation is not allowed for this lab")
 
 
-def check_export(info: dict):
-    if not info.get('export_kathara_project', True):
-        raise AccessError(403, "this lab cannot be exported")
+def check_schema_pdf(info: dict):
+    """The lab's ``export_schema_pdf`` flag (File → Export Schema to PDF of the GUI), for
+    everybody: it is a property of the lab, not a permission."""
+    if not info.get('export_schema_pdf', True):
+        raise AccessError(403, "the schema of this lab cannot be exported to PDF")
 
 
 def exam_mode_on(pub_dir: str = None) -> bool:

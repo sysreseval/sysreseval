@@ -100,6 +100,7 @@ class Routes:
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
         r.add_get('/api/projects/{host}/{rln}/events', self.api_events)
         r.add_get('/api/projects/{host}/{rln}/schema.svg', self.api_schema)
+        r.add_get('/api/projects/{host}/{rln}/schema.pdf', self.api_schema_pdf)
         r.add_put('/api/projects/{host}/{rln}/answers', self.api_answers)
         r.add_post('/api/projects/{host}/{rln}/eval', self.api_eval)
         r.add_get('/api/projects/{host}/{rln}/evaluation', self.api_evaluation)
@@ -110,7 +111,6 @@ class Routes:
         r.add_get('/api/projects/{host}/{rln}/display/ws', self.api_display_ws)
         r.add_get('/api/projects/{host}/{rln}/log', self.api_log)
         r.add_post('/api/projects/{host}/{rln}/touch', self.api_touch)
-        r.add_get('/api/projects/{host}/{rln}/export', self.api_export)
         # presentations: an instructor's project shown read-only on the students' browsers
         r.add_get('/present/{id}', self.present_page)
         r.add_get('/api/presence/ws', self.api_presence_ws)
@@ -535,6 +535,11 @@ class Routes:
         return await self.relay.forward(request, host, identity, 'GET', self._path(rln, '/schema.svg'),
                                         params=dict(request.query))
 
+    async def api_schema_pdf(self, request):
+        host, rln, identity = self._target(request)
+        return await self.relay.forward(request, host, identity, 'GET', self._path(rln, '/schema.pdf'),
+                                        params=dict(request.query))
+
     async def api_answers(self, request):
         if request.content_length and request.content_length > self.cfg.limits.max_answer_bytes:
             return json_error(413, "answers too large")
@@ -557,11 +562,6 @@ class Routes:
     async def api_state(self, request):
         state = request.match_info['state']
         return await self._relay_json(request, 'POST', f"/states/{urllib.parse.quote(state, safe='')}", timeout=900)
-
-    async def api_export(self, request):
-        host, rln, identity = self._target(request)
-        return await self.relay.forward(request, host, identity, 'GET', self._path(rln, '/export'),
-                                        params=dict(request.query))
 
     async def api_events(self, request):
         host, rln, identity = self._target(request)

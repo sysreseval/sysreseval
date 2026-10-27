@@ -125,13 +125,13 @@ class TestStates:
 
 
 class TestFlags:
-    def test_self_grade_and_export(self):
+    def test_self_grade_and_schema_pdf(self):
         A.check_self_grade(info())
         with pytest.raises(AccessError):
             A.check_self_grade(info(allow_self_grade=False))
-        A.check_export(info())
+        A.check_schema_pdf(info())
         with pytest.raises(AccessError):
-            A.check_export(info(export_kathara_project=False))
+            A.check_schema_pdf(info(export_schema_pdf=False))
 
     def test_client_allowed(self):
         import ipaddress

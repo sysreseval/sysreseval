@@ -64,7 +64,6 @@ start = 900
 eval = 600
 state = 600
 stop = 300
-export = 600
 list = 30
 # One virtual X desktop per project whose lab has an x11_host machine (the Wireshark lab): a
 # TigerVNC Xvnc and a window manager, shown in the Display tab of the web site.  Needs the

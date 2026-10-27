@@ -52,11 +52,11 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
 The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
 (a user only reaches their own projects, an instructor every project; the `wipe`, `exec` and
 exam commands have no endpoint), `allow_connection` of the devices, `allow_self_grade`, the
-user-allowed states, the `export_kathara_project` flag. Save and restore are not offered on the
-web. An instructor acting on somebody else's project is served by a **privileged** `sre` (no
-`--user`, their own login: `sre eval` without cooldown nor counter, `sre connect` to every listed
-device, `sre state`, `sre export`), never by a command run as the student; the owner, instructor
-or not, follows the student path.
+user-allowed states, the `export_schema_pdf` flag of the lab (the *Export Schema to PDF*
+button). Save, restore and the Kathara export are not offered on the web. An instructor acting on
+somebody else's project is served by a **privileged** `sre` (no `--user`, their own login:
+`sre eval` without cooldown nor counter, `sre connect` to every listed device, `sre state`),
+never by a command run as the student; the owner, instructor or not, follows the student path.
 
 ## Installation
 
@@ -128,7 +128,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `occupied_check` | `both` | when the host reports itself *occupied* (no new project, never powered off): `sessions` (a local login session: `loginctl`, or `who`), `projects` (projects of the Qt GUI on the host), `both`, `never` |
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
-| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `export = 600`, `list = 30` | seconds, per `sre` command |
+| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30` | seconds, per `sre` command (`export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
@@ -280,7 +280,7 @@ a logout opens another one. The other events:
   view); `terminal_open` / `terminal_close` (`device`, `join`: the session joined, `private`)
   and `display_open` / `display_close` likewise; a socket refused before it opens (401, 403, 404)
   gives a close line with `status` instead of `code`;
-- `eval`, `state` (`state`), `export`, `stop`, `display_start`: the HTTP status and the duration;
+- `eval`, `state` (`state`), `stop`, `display_start`: the HTTP status and the duration;
 - `denied`: a call answered 401, 403 or 429 (`method`, `path`), `login=-` when nobody was logged
   in; `admin`: a call of `sre-web-tool` changing the pool, or an action of the Pool page of an
   instructor (their `login`);
@@ -464,7 +464,11 @@ below), except `add` and `remove`, which stay with the token.
   `xterm.js` windows on `sre connect`: every Connect button opens a new one on its machine (like
   a new xterm in the Qt GUI: `gw`, `gw (2)`, …), the select of the Terminals tab opens one on
   any device (the machines open to the students and the managed switches), the × of a sub-tab
-  closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. Export downloads the Kathara zip.
+  closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. *Export
+  Schema to PDF* downloads the drawing of the Schema tab with its current options (never the
+  hidden machines), rendered by the agent as the GUI's File → Export Schema to PDF does, unless
+  the lab sets `export_schema_pdf = False`; the icons need `rsvg-convert` (`librsvg2-bin`) on the
+  pool host, graphviz shapes otherwise. The Kathara export is not offered on the web.
   A terminal is a session shared by its viewers: the live sessions of the project that are not
   on the page are listed under the bar with a Join button (the same shell for everybody, the
   last 64 KiB of output replayed to the newcomer, the pty sized to the smallest window), a
@@ -608,8 +612,8 @@ the commands.
   for the client address; the identity never comes from it.
 - A project's owner is the third field of its running lab name; the portal and the agent both
   check it. An instructor (see *Instructors* above) reaches every project, but the agent never
-  runs a command as the student for them: a non-owner's `eval`, `state`, `connect` and `export`
-  are privileged `sre` calls under the instructor's own login, the answers are read-only, and a
+  runs a command as the student for them: a non-owner's `eval`, `state` and `connect` are
+  privileged `sre` calls under the instructor's own login, the answers are read-only, and a
   private terminal is listed to instructors only. The operations log of an instructor-mode
   project goes to the subscribers allowed to read it only.
 - The spectators of a presentation reach the presented project through the portal only, on a

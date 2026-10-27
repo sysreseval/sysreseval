@@ -204,10 +204,11 @@ class TestTemplates:
         assert 'data-rln="20261021153000@@@sre@dhcp.py@@@alice"' in html
         assert 'data-instructor="true"' in html
         assert 'id="tabbar"' in html and 'id="panes"' in html and 'id="closed-banner"' in html
-        for control in ('instructor-toggle', 'wrap-toggle', 'font-minus', 'font-plus', 'export-link',
+        for control in ('instructor-toggle', 'wrap-toggle', 'font-minus', 'font-plus', 'schema-pdf-link',
                         'close-project'):
             assert f'id="{control}"' in html
-        assert f'href="{API_BASE}/export"' in html and f'{API_BASE}/save' not in html
+        assert f'href="{API_BASE}/schema.pdf"' in html and 'Export Schema to PDF' in html
+        assert f'{API_BASE}/export' not in html and f'{API_BASE}/save' not in html   # not offered on the web
         assert '/static/vendor/xterm/xterm.js' in html and '/static/vendor/xterm/addon-fit.js' in html
         assert '/static/vendor/xterm/xterm.css' in html and '/static/js/project.js' in html
         assert 'Instructor mode' in html

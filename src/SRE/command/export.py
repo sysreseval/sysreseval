@@ -6,7 +6,6 @@ import re
 import random
 import shutil
 import string
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -18,30 +17,9 @@ from ..common import InfoLab, QuestionType, TranslatedText
 from ..instructor_text import strip_instructor
 from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp
 from ..pdf import SrePDF, markdown_to_html
-from ..schema_graph import build_graph, topology_from_net_scheme
+from ..schema_graph import build_graph, svg_file_to_png, topology_from_net_scheme
 from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, error_quit
 from ..params import SRE
-
-
-def _svg_to_png(svg_path: str, out_dir: str) -> str | None:
-    """Convert an SVG file to PNG using available system tools.
-
-    Tries rsvg-convert, inkscape, then ImageMagick convert in order.
-    Returns the output PNG path on success, None if all tools are absent.
-    """
-    out = os.path.join(out_dir, Path(svg_path).stem + '.png')
-    for cmd in [
-        ['rsvg-convert', '-f', 'png', '-o', out, svg_path],
-        ['inkscape', '--export-type=png', f'--export-filename={out}', svg_path],
-        ['convert', svg_path, out],
-    ]:
-        try:
-            if subprocess.run(cmd, capture_output=True, timeout=5).returncode == 0 \
-                    and Path(out).exists():
-                return out
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-            pass
-    return None
 
 
 def _build_schema_pdf(net_scheme, curved=False, sep_pos=3, use_icons=True,
@@ -49,11 +27,12 @@ def _build_schema_pdf(net_scheme, curved=False, sep_pos=3, use_icons=True,
     """The schema PDF of *net_scheme*; *options* are the display options of the lab (see
     ``_build_schema_graph``)."""
     # Graphviz PDF output requires raster images; SVG icons are not reliably
-    # embedded in PDF without librsvg. Pre-convert them to PNG in a temp dir.
+    # embedded in PDF without librsvg. Pre-convert them to PNG in a temp dir
+    # (schema_graph.svg_file_to_png, shared with the schema PDF of the web front-end).
     tmp_dir = tempfile.mkdtemp()
     try:
         g = _build_schema_graph(net_scheme, curved, use_icons, reverse, random_seed, f"+{sep_pos * 10}",
-                                icon=lambda svg_path: _svg_to_png(svg_path, tmp_dir) or svg_path, **options)
+                                icon=lambda svg_path: svg_file_to_png(svg_path, tmp_dir) or svg_path, **options)
         return g.pipe(format="pdf")
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

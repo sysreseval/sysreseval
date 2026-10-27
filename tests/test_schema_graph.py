@@ -20,8 +20,8 @@ from SRE import schema_graph  # noqa: E402
 from SRE.common import InfoInterface, InfoMachine  # noqa: E402
 from SRE.lib_sre import Data0, Machine, NetAdapter, NetScheme0, Network  # noqa: E402
 from SRE.schema_graph import (HIDDEN_COLOR, SchemaMachine, SchemaTopology, build_graph, inline_icons,  # noqa: E402
-                              parse_order, render_schema_svg, svg_file_to_data_uri, topology_from_info,
-                              topology_from_net_scheme)
+                              parse_order, render_schema_pdf, render_schema_svg, svg_file_to_data_uri,
+                              svg_file_to_png, topology_from_info, topology_from_net_scheme)
 
 GRAPHICS = str(Path(__file__).parent.parent / 'graphics')
 NEEDS_NEATO = pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz binaries not installed")
@@ -528,3 +528,74 @@ class TestRenderSchemaSvg:
         assert render_schema_svg(info, order="reverse", use_icons=False) != render_schema_svg(info, use_icons=False)
         with pytest.raises(ValueError):
             render_schema_svg(info, order="random")
+
+
+# ---------------------------------------------------------------------------
+# the schema PDF (the Export Schema to PDF button of the web front-end)
+# ---------------------------------------------------------------------------
+
+NEEDS_RSVG = pytest.mark.skipif(shutil.which("rsvg-convert") is None, reason="rsvg-convert not installed")
+
+
+class TestRenderSchemaPdf:
+    def test_options_and_no_hidden_machines(self, monkeypatch):
+        """The wiring: the options of render_schema_svg, never the hidden machines, PNG icons
+        through to_png (an icon no tool converts is given to graphviz as it is)."""
+        seen = {}
+
+        class FakeGraph:
+            def pipe(self, format):
+                seen["format"] = format
+                return b"%PDF-fake"
+
+        def fake_build_graph(topo, **kwargs):
+            seen["topo"] = topo
+            seen.update(kwargs)
+            return FakeGraph()
+
+        monkeypatch.setattr(schema_graph, "build_graph", fake_build_graph)
+        pdf = render_schema_pdf({"machines": GATEWAY + [_machine("spy", ["lan"], hidden=True)]}, curved=True,
+                                sep_pos=7, order="random:5", use_icons=True, to_png=lambda svg_path, out_dir: None)
+        assert pdf == b"%PDF-fake" and seen["format"] == "pdf" and seen["fmt"] == "pdf"
+        assert seen["include_hidden"] is False and {m.name for m in seen["topo"].machines} >= {"gw", "spy"}
+        assert seen["curved"] is True and seen["sep_pos"] == 7 and seen["use_icons"] is True
+        assert seen["reverse"] is False and seen["random_seed"] == 5
+        assert seen["icon"]("/x/cloud.svg") == "/x/cloud.svg"
+
+    def test_bad_order(self):
+        with pytest.raises(ValueError):
+            render_schema_pdf({"machines": GATEWAY}, order="bogus")
+
+    @NEEDS_NEATO
+    def test_pdf_with_shapes(self):
+        pdf = render_schema_pdf({"machines": GATEWAY}, use_icons=False, curved=False, sep_pos=2, order="reverse")
+        assert pdf.startswith(b"%PDF")
+
+    @NEEDS_NEATO
+    @NEEDS_RSVG
+    def test_icons_converted_once_per_file(self):
+        converted = []
+
+        def to_png(svg_path, out_dir):
+            converted.append(svg_path)
+            out = svg_file_to_png(svg_path, out_dir)
+            assert out and out.endswith(".png") and Path(out).read_bytes().startswith(b"\x89PNG")
+            return out
+
+        pdf = render_schema_pdf({"machines": GATEWAY}, use_icons=True, to_png=to_png)
+        assert pdf.startswith(b"%PDF")
+        assert converted and len(converted) == len(set(converted)) and all(p.endswith(".svg") for p in converted)
+
+
+class TestSvgFileToPng:
+    @NEEDS_RSVG
+    def test_converts(self, tmp_path):
+        out = svg_file_to_png(str(Path(GRAPHICS) / "cloud.svg"), str(tmp_path))
+        assert out == str(tmp_path / "cloud.png") and (tmp_path / "cloud.png").read_bytes().startswith(b"\x89PNG")
+
+    def test_no_tool(self, tmp_path, monkeypatch):
+        def no_tool(*args, **kwargs):
+            raise FileNotFoundError(args[0][0])
+        monkeypatch.setattr(schema_graph.subprocess, "run", no_tool)
+        assert svg_file_to_png(str(Path(GRAPHICS) / "cloud.svg"), str(tmp_path)) is None
+        assert not list(tmp_path.iterdir())

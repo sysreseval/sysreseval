@@ -517,6 +517,8 @@ def load_web_config(path) -> WebConfig:
 # ---------------------------------------------------------------------------------------------
 
 #: Timeouts (seconds) of the sre commands, by command.
+#: ``export``: the Kathara export left the web front-end (the schema PDF is rendered by the agent
+#: itself); the key is still accepted so that the agent.toml files naming it keep loading.
 DEFAULT_TIMEOUTS = {'start': 900.0, 'eval': 600.0, 'state': 600.0, 'stop': 300.0, 'export': 600.0, 'list': 30.0}
 
 

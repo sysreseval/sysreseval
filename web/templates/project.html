@@ -17,7 +17,7 @@
     <button type="button" id="wrap-toggle" class="toggle" aria-pressed="true" title="{{ _("Wrap") }}">&#8629;</button>
     <button type="button" id="font-minus" title="{{ _("Smaller text") }}">A&minus;</button>
     <button type="button" id="font-plus" title="{{ _("Larger text") }}">A+</button>
-    <a id="export-link" class="button" hidden href="{{ api_base }}/export" download>{{ _("Export Kathara Project") }}</a>
+    <a id="schema-pdf-link" class="button" hidden href="{{ api_base }}/schema.pdf" download>{{ _("Export Schema to PDF") }}</a>
     {% if instructor and not presentation %}<button type="button" id="present" class="primary" hidden title="{{ _("Show this project, read-only, on the browsers of chosen students") }}">{{ _("Present") }}</button>{% endif %}
     <button type="button" id="close-project" class="danger"{% if presentation %} hidden{% endif %}>{{ _("Close Project") }}</button>
   </div>

@@ -413,7 +413,7 @@ class TestPresentationThroughThePortal:
                 assert (await h.client.put(f'{base}/answers', json={'answers': {}}, headers={**bob, **P.CSRF})).status == 403
                 assert (await h.client.post(f'{base}/eval', headers={**bob, **P.CSRF})).status == 403
                 assert (await h.client.post(f'{base}/states/final', headers={**bob, **P.CSRF})).status == 403
-                assert (await h.client.get(f'{base}/export', headers=bob)).status == 403
+                assert (await h.client.get(f'{base}/schema.pdf', headers=bob)).status == 403
                 assert (await h.client.post(f'{base}/display', headers={**bob, **P.CSRF})).status == 403
                 assert (await h.client.delete(base, headers={**bob, **P.CSRF})).status == 403
                 assert (await h.client.get(f'/projects/a01/{rln}', headers=bob)).status == 403

@@ -9,12 +9,19 @@ front-end build the same graph from here.  Two adapters give the topology:
 * ``topology_from_net_scheme(net_scheme)`` from a ``NetScheme0`` (``sre export``).
 
 ``build_graph(topo, ...)`` returns the ``graphviz.Graph``; ``render_schema_svg(info, ...)`` pipes
-it through ``neato`` and inlines the SVG icons as data URIs for a browser.
+it through ``neato`` and inlines the SVG icons as data URIs for a browser; ``render_schema_pdf(info,
+...)`` gives the schema PDF of the web front-end (the File → Export Schema to PDF of the GUI), the
+icons converted to PNG files by ``svg_file_to_png`` since graphviz's PDF output embeds raster
+images only.
 """
 import base64
+import os
 import random
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from graphviz import Graph
 
@@ -332,3 +339,37 @@ def render_schema_svg(info: dict, *, curved: bool = True, sep_pos: int = 3, orde
                     reverse=reverse, random_seed=random_seed, include_hidden=include_hidden)
     svg = g.pipe(format="svg").decode("utf-8")
     return inline_icons(svg, to_data_uri) if use_icons else svg
+
+
+def svg_file_to_png(svg_path: str, out_dir: str) -> str | None:
+    """The PNG file of the SVG icon *svg_path*, written in *out_dir* by the first of rsvg-convert,
+    inkscape and ImageMagick's convert that is installed; None when none converts it.  Graphviz's
+    PDF output embeds raster images only (the GUI draws the icons with Qt instead)."""
+    out = os.path.join(out_dir, Path(svg_path).stem + '.png')
+    for cmd in [
+        ['rsvg-convert', '-f', 'png', '-o', out, svg_path],
+        ['inkscape', '--export-type=png', f'--export-filename={out}', svg_path],
+        ['convert', svg_path, out],
+    ]:
+        try:
+            if subprocess.run(cmd, capture_output=True, timeout=5).returncode == 0 and os.path.exists(out):
+                return out
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+    return None
+
+
+def render_schema_pdf(info: dict, *, curved: bool = True, sep_pos: int = 3, order: str = ORDER_FORWARD,
+                      use_icons: bool = True, to_png=svg_file_to_png) -> bytes:
+    """The schema PDF of the ``info.json`` dict *info*, rendered by ``neato`` with the options of
+    ``render_schema_svg`` (see ``build_graph`` and ``parse_order``): the drawing of the Schema tab
+    as the GUI's File → Export Schema to PDF writes it, never the hidden machines of a debug
+    project.  The icons are converted to PNG files of a temporary directory by *to_png(svg_path,
+    out_dir)*; an icon it cannot convert is given to graphviz as it is (drawn with librsvg, else
+    left out of its node)."""
+    reverse, random_seed = parse_order(order)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        g = build_graph(topology_from_info(info), curved=curved, sep_pos=sep_pos, use_icons=use_icons,
+                        reverse=reverse, random_seed=random_seed, include_hidden=False,
+                        icon=lambda svg_path: to_png(svg_path, tmp_dir) or svg_path, fmt="pdf")
+        return g.pipe(format="pdf")

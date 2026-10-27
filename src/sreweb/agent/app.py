@@ -4,13 +4,12 @@ Every request carries the bearer token of the agent and the ``X-SRE-*`` identity
 web user (``sreweb.identity``); the handlers check the access rules (``access.py``) and drive
 ``sre`` through the runner, the registry, the answers store and the schedulers.  Long
 operations stream: ``start`` answers NDJSON (one JSON object per line, the events of
-``SRE/progress.py`` then a final ``result`` line), ``export`` streams the bytes, the events and
-the terminals are WebSockets, like the virtual X desktop of a project (``display.py``: raw RFB
-bytes for noVNC).  Save and restore are not offered on the web.
+``SRE/progress.py`` then a final ``result`` line), the events and the terminals are WebSockets,
+like the virtual X desktop of a project (``display.py``: raw RFB bytes for noVNC).  The schema
+PDF is rendered here by graphviz (``schema.pdf``, no ``sre`` call).  Save, restore and the
+Kathara export are not offered on the web.
 """
 import asyncio
-import base64
-import binascii
 import contextlib
 import hmac
 import json
@@ -46,7 +45,7 @@ from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_C
 from ..config import AgentConfig
 from ..identity import Identity, IdentityError, IDENTITY_KEY
 from ..i18n import translator
-from ..projectview import sanitise, schema_svg, lang_priority
+from ..projectview import sanitise, schema_svg, schema_pdf, lang_priority
 
 log = logging.getLogger('sreweb.agent')
 
@@ -185,6 +184,7 @@ class Agent:
         app.router.add_delete(f'{p}/projects/{{rln}}', self.project_close)
         app.router.add_get(f'{p}/projects/{{rln}}/events', self.events_ws)
         app.router.add_get(f'{p}/projects/{{rln}}/schema.svg', self.schema)
+        app.router.add_get(f'{p}/projects/{{rln}}/schema.pdf', self.schema_pdf)
         app.router.add_put(f'{p}/projects/{{rln}}/answers', self.answers_put)
         app.router.add_post(f'{p}/projects/{{rln}}/eval', self.eval_post)
         app.router.add_get(f'{p}/projects/{{rln}}/evaluation', self.evaluation_get)
@@ -195,7 +195,6 @@ class Agent:
         app.router.add_get(f'{p}/projects/{{rln}}/display/ws', self.display_ws)
         app.router.add_get(f'{p}/projects/{{rln}}/log', self.log_get)
         app.router.add_post(f'{p}/projects/{{rln}}/touch', self.touch)
-        app.router.add_get(f'{p}/projects/{{rln}}/export', self.export_get)
         app.on_startup.append(self._on_startup)
         app.on_shutdown.append(self._on_shutdown)
         return app
@@ -493,6 +492,21 @@ class Agent:
             raise AccessError(400, str(e))
         return web.Response(text=svg, content_type='image/svg+xml', headers={'Cache-Control': 'no-cache'})
 
+    async def schema_pdf(self, request):
+        """The Export Schema to PDF button: the drawing of the Schema tab rendered here by
+        graphviz, like the GUI does in its own process (no ``sre`` call), as a download named
+        ``<lab>_schema.pdf``; refused by the lab's ``export_schema_pdf`` flag."""
+        project = self._project(request)
+        access.check_schema_pdf(project.info)
+        try:
+            pdf = await asyncio.to_thread(schema_pdf, project.info, request[IDENTITY_KEY], request.query)
+        except ValueError as e:
+            raise AccessError(400, str(e))
+        name = params.get_abbreviated_lab_name_from_running_lab_name(project.rln)
+        return web.Response(body=pdf, content_type='application/pdf',
+                            headers={'Content-Disposition': f'attachment; filename="{name}_{params.pdf_schema_file}"',
+                                     'Cache-Control': 'no-cache'})
+
     async def log_get(self, request):
         project = self._project(request)
         if not (project.info.get('debug_project') or
@@ -599,49 +613,6 @@ class Agent:
                      'error_count': summary.errors, 'warning_count': summary.warnings,
                      'errors': error_entries(raw.get('errors'))})
         return web.json_response(body)
-
-    # -- export ---------------------------------------------------------------------------------
-
-    async def export_get(self, request):
-        project = self._project(request)
-        privileged = access.is_privileged_caller(project.rln, request[IDENTITY_KEY])
-        if not privileged:
-            access.check_export(project.info)
-        q = request.query
-        args = ['export', project.rln]
-        if q.get('curved', '') in ('1', 'true'):
-            args.append('--curved')
-        if q.get('shapes', '') in ('1', 'true'):
-            args.append('--shapes')
-        if q.get('reverse', '') in ('1', 'true'):
-            args.append('--reverse')
-        for key, flag in (('sep', '--sep'), ('random_seed', '--random-seed')):
-            if key in q:
-                try:
-                    args += [flag, str(int(q[key]))]
-                except ValueError:
-                    raise AccessError(400, f"bad {key}")
-        name = params.get_abbreviated_lab_name_from_running_lab_name(project.rln)
-        resp = web.StreamResponse(headers={'Content-Type': 'application/zip',
-                                           'Content-Disposition': f'attachment; filename="{name}.zip"'})
-        await resp.prepare(request)
-        remainder = b''
-        async with project.lock:
-            async for chunk in self.runner.stream_stdout(request[IDENTITY_KEY].login if privileged else project.owner,
-                                                         args, privileged=privileged):
-                text = remainder + b''.join(chunk.split())
-                usable = len(text) - len(text) % 4
-                remainder = text[usable:]
-                if usable:
-                    try:
-                        await resp.write(binascii.a2b_base64(text[:usable]))
-                    except binascii.Error:
-                        raise CommandError(0, "sre export gave no base64")
-        if remainder:
-            with contextlib.suppress(binascii.Error):
-                await resp.write(base64.b64decode(remainder + b'=' * (-len(remainder) % 4)))
-        await resp.write_eof()
-        return resp
 
     # -- WebSockets -----------------------------------------------------------------------------
 

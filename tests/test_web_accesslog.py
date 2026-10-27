@@ -90,7 +90,6 @@ class TestEventFor:
         ('POST', '/api/projects/{host}/{rln}/display', 'display_start'),
         ('POST', '/api/projects/{host}/{rln}/eval', 'eval'),
         ('POST', '/api/projects/{host}/{rln}/states/{state}', 'state'),
-        ('GET', '/api/projects/{host}/{rln}/export', 'export'),
         ('POST', '/logout', 'logout'),
         ('POST', '/api/logout', 'logout'),
         ('POST', '/api/pool/hosts/{name}/{action}', 'admin'),

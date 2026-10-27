@@ -1,7 +1,7 @@
 // The project page: the tab bar and its panes (tabs/*.js), the data of GET {api_base} (the
 // sanitised view of the project and the answers), the events WebSocket ({api_base}/events)
 // refreshing them, the corner controls (instructor view, word wrap, content font size,
-// Export links, Close project) and the touch keeping the project alive every minute.
+// Export Schema to PDF, Close project) and the touch keeping the project alive every minute.
 //
 // Two more roles: an instructor may present the project (present.js: the Present button, the
 // bar, the view published after each change through the ctx.onViewChange / onEvaluated hooks of
@@ -49,7 +49,7 @@ const instructorToggle = document.getElementById('instructor-toggle');
 const wrapToggle = document.getElementById('wrap-toggle');
 const fontMinus = document.getElementById('font-minus');
 const fontPlus = document.getElementById('font-plus');
-const exportLink = document.getElementById('export-link');
+const schemaPdfLink = document.getElementById('schema-pdf-link');
 const closeButton = document.getElementById('close-project');
 const closedBanner = document.getElementById('closed-banner');
 const endedBanner = document.getElementById('ended-banner');          // a spectator's page
@@ -64,7 +64,7 @@ const state = {
   terminals: [],            // the live terminal sessions of the project (shared with the viewers)
   instructorView: false,
   closed: false,
-  exportQuery: {},
+  exportQuery: {},          // the options of the Schema tab, as the presenter's view carries them
   view: null,               // a spectator: the last view of the presenter applied
 };
 
@@ -107,7 +107,7 @@ const ctx = {
   selectTab,
   onSchemaOptions(query) {
     state.exportQuery = query;
-    updateExportLink();
+    updateSchemaPdfLink();
     if (presenter) {
       presenter.schedule();
     }
@@ -239,8 +239,8 @@ function applyProject(project) {
   }
   instructorToggle.hidden = spectator || !(isInstructor && project.has_instructor_texts);
   instructorToggle.setAttribute('aria-pressed', state.instructorView ? 'true' : 'false');
-  exportLink.hidden = spectator || !project.export_kathara_project;
-  updateExportLink();
+  schemaPdfLink.hidden = spectator || !project.export_schema_pdf;
+  updateSchemaPdfLink();
   if (presentButton && presenter && !presenter.isPresenting()) {
     presentButton.hidden = false;
   }
@@ -251,8 +251,10 @@ function applyProject(project) {
   }
 }
 
-function updateExportLink() {
-  exportLink.href = ctx.url('/export', state.exportQuery);
+// The Export Schema to PDF link downloads the drawing of the Schema tab with its current options
+// (never the Full Schema: the hidden machines are never exported, as in the Qt GUI).
+function updateSchemaPdfLink() {
+  schemaPdfLink.href = ctx.url('/schema.pdf', tabs.schema ? tabs.schema.pdfQuery() : {});
 }
 
 // The presenter's view, as present.js publishes it to the spectators.

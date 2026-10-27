@@ -11,7 +11,7 @@ question descriptions of the forms are split into chunks the browser renders as 
 from SRE import common
 from SRE.form_spec import parse_form_description, chunks_to_json
 from SRE.instructor_text import markdown_to_html
-from SRE.schema_graph import render_schema_svg, parse_order
+from SRE.schema_graph import render_schema_svg, render_schema_pdf, parse_order
 
 from .agent.access import visible_machines, instructor_view_allowed, display_available
 from .identity import Identity
@@ -95,7 +95,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
                                     evaluation=evaluation),
         'display': {'available': display},
         'allow_self_grade': bool(info.get('allow_self_grade', True)),
-        'export_kathara_project': bool(info.get('export_kathara_project', True)),
+        'export_schema_pdf': bool(info.get('export_schema_pdf', True)),
         'delay_between_self_grade': info.get('delay_between_self_grade', 0) or 0,
         'debug_project': bool(info.get('debug_project', False)),
         'instructor_mode': bool(info.get('instructor_mode', False)),
@@ -104,10 +104,9 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
     }
 
 
-def schema_svg(info: dict, identity: Identity, query) -> str:
-    """The schema SVG of a project for the query string of ``schema.svg`` (``curved``, ``sep``,
-    ``order``, ``icons``, ``hidden``): the hidden machines only with the instructor view of a
-    debug project (the Full Schema tab)."""
+def _schema_options(query) -> dict:
+    """The drawing options of the query string of ``schema.svg`` / ``schema.pdf`` (``curved``,
+    ``sep``, ``order``, ``icons``); ValueError when malformed."""
     def flag(name, default):
         value = query.get(name)
         if value is None:
@@ -120,9 +119,28 @@ def schema_svg(info: dict, identity: Identity, query) -> str:
     sep_pos = max(0, min(SCHEMA_SEP_MAX, sep_pos))
     order = str(query.get('order', 'forward'))
     parse_order(order)   # ValueError when malformed
-    include_hidden = flag('hidden', False) and instructor_view_allowed(info, identity) and bool(info.get('debug_project'))
+    return {'curved': flag('curved', False), 'sep_pos': sep_pos, 'order': order, 'use_icons': flag('icons', True),
+            'hidden': flag('hidden', False)}
+
+
+def schema_svg(info: dict, identity: Identity, query) -> str:
+    """The schema SVG of a project for the query string of ``schema.svg`` (``curved``, ``sep``,
+    ``order``, ``icons``, ``hidden``): the hidden machines only with the instructor view of a
+    debug project (the Full Schema tab)."""
+    options = _schema_options(query)
+    include_hidden = options.pop('hidden') and instructor_view_allowed(info, identity) and bool(info.get('debug_project'))
     view = dict(info)
     if not include_hidden:
         view['machines'] = visible_machines(info, identity)
-    return render_schema_svg(view, curved=flag('curved', False), sep_pos=sep_pos, order=order,
-                             use_icons=flag('icons', True), include_hidden=include_hidden)
+    return render_schema_svg(view, include_hidden=include_hidden, **options)
+
+
+def schema_pdf(info: dict, identity: Identity, query) -> bytes:
+    """The schema PDF of a project for the same query string as ``schema.svg`` (the Export Schema
+    to PDF button: the drawing of the Schema tab, never the hidden machines, like the GUI's
+    File → Export Schema to PDF; ``hidden`` is ignored)."""
+    options = _schema_options(query)
+    options.pop('hidden')
+    view = dict(info)
+    view['machines'] = visible_machines(info, identity)
+    return render_schema_pdf(view, **options)

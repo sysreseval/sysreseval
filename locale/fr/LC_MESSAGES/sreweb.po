@@ -170,8 +170,8 @@ msgid "Larger text"
 msgstr "Texte plus grand"
 
 
-msgid "Export Kathara Project"
-msgstr "Exporter le projet Kathara"
+msgid "Export Schema to PDF"
+msgstr "Exporter le schéma en PDF"
 
 msgid "This project is closed."
 msgstr "Ce projet est fermé."

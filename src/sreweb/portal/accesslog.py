@@ -52,7 +52,6 @@ EVENTS = {
     ('POST', '/api/projects/{host}/{rln}/display'): 'display_start',
     ('POST', '/api/projects/{host}/{rln}/eval'): 'eval',
     ('POST', '/api/projects/{host}/{rln}/states/{state}'): 'state',
-    ('GET', '/api/projects/{host}/{rln}/export'): 'export',
     ('POST', '/logout'): 'logout',
     ('POST', '/api/logout'): 'logout',
     ('POST', '/api/pool/hosts'): 'admin',
@@ -68,7 +67,7 @@ EVENTS = {
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
-PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state', 'export',
+PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state',
                             'present_start', 'present_open'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
 KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/pool'),

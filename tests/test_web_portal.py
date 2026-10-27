@@ -271,9 +271,12 @@ class TestProjectsThroughThePortal:
                 if shutil.which('neato'):
                     resp = await h.client.get(f'{base}/schema.svg?curved=1')
                     assert resp.status == 200 and resp.content_type == 'image/svg+xml'
-                assert (await h.client.get(f'{base}/save')).status == 404   # not offered on the web
-                resp = await h.client.get(f'{base}/export?sep=2')
-                assert resp.status == 200 and (await resp.read()).startswith(b'PK')
+                    resp = await h.client.get(f'{base}/schema.pdf?sep=2&order=reverse')
+                    assert resp.status == 200 and resp.content_type == 'application/pdf'
+                    assert (await resp.read()).startswith(b'%PDF')
+                    assert resp.headers['Content-Disposition'].endswith('_schema.pdf"')   # copied by the relay
+                assert (await h.client.get(f'{base}/save')).status == 404     # not offered on the web
+                assert (await h.client.get(f'{base}/export')).status == 404   # the Kathara export neither
                 # websockets through the relay
                 ws = await h.client.ws_connect(f'{base}/events')
                 await h.client.post(f'{base}/states/final', headers=CSRF)
@@ -385,9 +388,6 @@ class TestAccessLog:
                 assert (await h.client.post(f'{base}/eval', headers=CSRF)).status == 200
                 assert (await h.client.post(f'{base}/states/final', headers=CSRF)).status == 200
                 assert (await h.client.post(f'{base}/states/nope', headers=CSRF)).status == 403
-                resp = await h.client.get(f'{base}/export?sep=2')
-                assert resp.status == 200 and (await resp.read()).startswith(b'PK')   # unread: status=abort
-                await self.wait_event(tmp_path, 'export')
                 assert (await h.client.get('/api/pool')).status == 403                # denied, no event
                 assert (await h.client.delete(base, headers=CSRF)).status == 200
                 assert (await h.client.post('/api/logout', headers=CSRF)).status == 200
@@ -397,7 +397,7 @@ class TestAccessLog:
         lines = self.lines(tmp_path)
         assert [l['event'] for l in lines] == [
             'login', 'session_open', 'start', 'project_open', 'project_close', 'terminal_open', 'terminal_close',
-            'eval', 'state', 'state', 'export', 'denied', 'stop', 'logout', 'session_close', 'denied']
+            'eval', 'state', 'state', 'denied', 'stop', 'logout', 'session_close', 'denied']
         for line in lines[:-1]:
             assert line['login'] == login and line['addr'] == '127.0.0.1', line
         assert lines[0]['mode'] == 'anonymous' and lines[0]['anon'] == '1' and lines[0]['name'] == 'Alice Test'
@@ -412,17 +412,16 @@ class TestAccessLog:
         assert lines[6]['code'] == '1000' and lines[6]['device'] == 'm1'
         assert (lines[7]['status'], lines[8]['state'], lines[8]['status'], lines[9]['state'], lines[9]['status']) == \
                ('200', 'final', '200', 'nope', '403')
-        assert lines[10]['status'] == '200' and lines[10]['rln'] == rln
-        assert lines[11] == dict(ts=lines[11]['ts'], event='denied', login=login, addr='127.0.0.1', method='GET',
+        assert lines[10] == dict(ts=lines[10]['ts'], event='denied', login=login, addr='127.0.0.1', method='GET',
                                  path='/api/pool', status='403')
-        assert lines[12]['rln'] == rln and lines[12]['status'] == '200'
-        assert lines[13]['status'] == '200'
-        close = lines[14]
-        # login, start, page, 2 sockets, eval, 2 states, export, stop, logout; not the polls (projects, pool), the
+        assert lines[11]['rln'] == rln and lines[11]['status'] == '200'
+        assert lines[12]['status'] == '200'
+        close = lines[13]
+        # login, start, page, 2 sockets, eval, 2 states, stop, logout; not the polls (projects, pool), the
         # touch, the static file
-        assert (close['reason'], close['requests'], close['projects']) == ('logout', '11', rln)
+        assert (close['reason'], close['requests'], close['projects']) == ('logout', '10', rln)
         assert close['since'][:2] == '20' and int(close['duration']) < 60
-        assert lines[15] == dict(ts=lines[15]['ts'], event='denied', login='', addr='127.0.0.1', method='GET',
+        assert lines[14] == dict(ts=lines[14]['ts'], event='denied', login='', addr='127.0.0.1', method='GET',
                                  path='/api/projects', status='401')
 
     def test_shutdown_closes_the_sessions(self, tmp_path):

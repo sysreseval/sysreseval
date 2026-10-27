@@ -334,18 +334,35 @@ class TestProject:
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 403
         run(go())
 
-    def test_export_and_no_save_restore(self, tmp_path):
+    def test_schema_pdf_and_no_export_save_restore(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:
                 rln = await h.started()
-                # save and restore are not offered on the web
+                # save, restore and the Kathara export are not offered on the web
                 assert (await h.client.get(f'/v1/projects/{rln}/save', headers=headers())).status == 404
                 # the URL now matches the {rln} route, which has no POST: 405 (404 when no route matches at all)
                 assert (await h.client.post('/v1/projects/restore', data=b'x', headers=headers())).status in (404, 405)
-                resp = await h.client.get(f'/v1/projects/{rln}/export?curved=1&sep=4', headers=headers())
-                blob = await resp.read()
-                assert resp.status == 200 and blob.startswith(b'PK')
-                assert ['--user', 'export', rln, '--curved', '--sep', '4'] in h.calls()
+                assert (await h.client.get(f'/v1/projects/{rln}/export?curved=1', headers=headers())).status == 404
+                # the schema PDF: the drawing of the Schema tab, rendered by the agent itself (no sre call)
+                calls = len(h.calls())
+                import shutil
+                if shutil.which('neato'):
+                    resp = await h.client.get(f'/v1/projects/{rln}/schema.pdf?curved=1&sep=4&order=reverse&icons=0',
+                                              headers=headers())
+                    blob = await resp.read()
+                    assert resp.status == 200 and resp.content_type == 'application/pdf' and blob.startswith(b'%PDF')
+                    disposition = resp.headers['Content-Disposition']
+                    assert disposition.startswith('attachment; filename="') and disposition.endswith('_schema.pdf"')
+                    assert (await h.client.get(f'/v1/projects/{rln}/schema.pdf?order=bogus', headers=headers())).status == 400
+                assert len(h.calls()) == calls
+                # the lab's export_schema_pdf flag (File → Export Schema to PDF of the GUI)
+                info_path = h.pub / 'projects' / rln / 'info.json'
+                info = json.loads(info_path.read_text())
+                info['export_schema_pdf'] = False
+                info_path.write_text(json.dumps(info))
+                os.utime(info_path, (os.path.getmtime(info_path) + 2,) * 2)
+                await asyncio.sleep(0.2)   # the registry reloads info.json
+                assert (await h.client.get(f'/v1/projects/{rln}/schema.pdf', headers=headers())).status == 403
         run(go())
 
 
@@ -813,15 +830,17 @@ class TestInstructor:
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
                 assert (await resp.json())['result']['grades'] is not None
                 assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', rln]
-                # states, export: privileged too; the answers are read-only for a non-owner
+                # states: privileged too; the answers are read-only for a non-owner
                 assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
                 privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
                 resp = await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'x'}},
                                           headers=headers(PROF))
                 assert resp.status == 403
-                resp = await h.client.get(f'/v1/projects/{rln}/export', headers=headers(PROF))
-                assert resp.status == 200 and len(await resp.read()) > 0
-                privileged_call(h.entries()[-1], ['export', rln], 'prof')
+                import shutil
+                if shutil.which('neato'):   # the schema PDF of a non-owner: rendered by the agent, no sre call
+                    resp = await h.client.get(f'/v1/projects/{rln}/schema.pdf', headers=headers(PROF))
+                    assert resp.status == 200 and (await resp.read()).startswith(b'%PDF')
+                    privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
                 data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json()
                 assert data['answers_readonly'] is True and data['owner'] == 'alice'
                 assert all(d['allow_connection'] for d in data['project']['terminal_devices'])

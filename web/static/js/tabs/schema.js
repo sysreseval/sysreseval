@@ -130,7 +130,16 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
     };
   }
 
-  // The query string of GET {api_base}/export mirroring the display (sre export options).
+  // The query string of GET {api_base}/schema.pdf: the display without the hidden machines (the
+  // Export Schema to PDF button, like the GUI's File → Export Schema to PDF).
+  function pdfQuery() {
+    const q = query();
+    delete q.hidden;
+    return q;
+  }
+
+  // The options of the display as the presenter's view carries them (the option names of
+  // sre export: shapes, reverse, random_seed), read back by setOptions on a spectator's page.
   function exportQuery() {
     return {
       curved: isCurved() ? 1 : 0,
@@ -201,6 +210,7 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
       }
     },
     exportQuery,
+    pdfQuery,
     setOptions,
   };
 }
