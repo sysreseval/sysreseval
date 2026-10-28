@@ -430,7 +430,9 @@ class TestEval:
         assert raw['answers'][params.auto_eval_count_keyword] == 1
         assert [g['title'] for g in raw['grade_list']] == [g['title'] for g in grades]
         assert (raw['total_grade_exo_eval'], raw['total_max_exo_eval'], raw['mark_exo_eval']) == (4.5, 5, 18.0)
-        assert raw['errors'] == [] and raw['maximum_mark'] == params.default_maximum_mark
+        assert raw['errors'] == () and raw['maximum_mark'] == params.default_maximum_mark
+        # the tests keyed by (machine, step) / (command, timeout) tuples, as Grade0 keeps them
+        assert raw['tests'][('m1', 1)][('cat /etc/hostname', 10)] == ('m1\n', 0)
         assert not (project_dir(pub, project) / params.private_dir_name / params.eval_in_progress_name).exists()
         assert not (pub / 'last_self_grades').exists()   # no cooldown without MOCK_COOLDOWN
 
@@ -438,7 +440,7 @@ class TestEval:
         completed = run_mock(pub, 'eval', project, extra_env={'MOCK_EVAL_ERRORS': '[["ERROR", "m1 down"], ["WARNING", "slow"]]'})
         assert completed.returncode == 0
         raw = read_archive(str(next((pub / 'archives').iterdir())))
-        assert raw['errors'] == [['ERROR', 'm1 down'], ['WARNING', 'slow']]
+        assert raw['errors'] == (('ERROR', 'm1 down'), ('WARNING', 'slow'))
 
     def test_eval_without_auto_eval_prints_nothing_but_archives(self, pub, project):
         completed = run_mock(pub, 'eval', project)

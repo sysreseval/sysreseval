@@ -570,8 +570,10 @@ What an instructor gets:
   sub-tab is not joined again), and the select offers a **private terminal** (the student does
   not see it in their list; what the instructor types there stays with them) or a shared one;
   the Evaluation tab opens on the **last archived evaluation** of the project (date, errors in
-  the tooltip) and *Start evaluation* runs a privileged `sre eval` (no cooldown, nothing counted
-  on the student's side, the exo-eval marks); the states apply through the privileged path too.
+  the tooltip), shows each new one by itself (the periodic evaluations of the lab, the student's
+  own, another instructor's: the agent tells the open pages) and *Start evaluation* runs a
+  privileged `sre eval` (no cooldown, nothing counted on the student's side, the exo-eval marks);
+  the states apply through the privileged path too.
 - **Instructor mode** on the Open page: the instructor's own project started with
   `sre start --instructor-mode` (the instructor texts kept in `info.json`, every state listed,
   the states logged): the *Instructor mode* button of the project page then shows the
@@ -595,7 +597,7 @@ What an instructor gets:
   page: the tab, the terminals the instructor opens (joined read-only: the students see the same
   shell, cannot type, and do not change its size), the question, the schema options, the
   *Instructor mode* texts, the Display tab view-only, and the Evaluation tab shows them the last
-  archived evaluation again after each one the instructor runs. A reloaded page goes on
+  archived evaluation again after each evaluation of the project. A reloaded page goes on
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.
 

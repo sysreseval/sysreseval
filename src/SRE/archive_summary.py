@@ -66,12 +66,14 @@ class ArchiveSummary:
 
 
 def read_archive(path: str) -> dict:
-    """The dict of an archive (lists as lists, keys as strings)."""
+    """The dict of an archive: strings decoded, arrays as tuples (``use_list=False``, as ``sre
+    cat`` reads them: the keys of ``tests`` are ``(machine, step)`` and ``(command, timeout)``
+    tuples, written as msgpack arrays, and a list is no dict key)."""
     dctx = zstd.ZstdDecompressor()
     with open(path, 'rb') as f:
         with dctx.stream_reader(f) as reader:
             data = reader.read()
-    return msgpack.unpackb(data, raw=False, strict_map_key=False)
+    return msgpack.unpackb(data, raw=False, use_list=False, strict_map_key=False)
 
 
 def error_category(entry) -> str:

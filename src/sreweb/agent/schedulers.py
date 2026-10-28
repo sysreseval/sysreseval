@@ -7,7 +7,7 @@ half-applied state."""
 import asyncio
 import logging
 import time
-from typing import Callable
+from typing import Awaitable, Callable
 
 from SRE import params
 
@@ -19,13 +19,20 @@ log = logging.getLogger('sreweb.agent')
 
 class Schedulers:
     def __init__(self, registry: Registry, runner: SreRunner, *, exam_mode: Callable[[], bool],
-                 default_idle_timeout: float = 0.0):
+                 default_idle_timeout: float = 0.0,
+                 on_evaluated: Callable[[Project], Awaitable[None]] | None = None):
+        """*on_evaluated*: awaited after a periodic evaluation (the app refreshes its archive
+        index and tells the open pages)."""
         self.registry = registry
         self.runner = runner
         self.exam_mode = exam_mode
         self.default_idle_timeout = default_idle_timeout
+        self.on_evaluated = on_evaluated
         registry.on_added.append(self.arm)
         registry.on_info_changed.append(self.arm)
+        # a project this agent creates is found by the tick, not managed yet, before sre start
+        # ends: armed when the app adopts it
+        registry.on_managed.append(self.arm)
         registry.tick_hooks.append(self.on_tick)
 
     # -- periodic evaluation ----------------------------------------------------------------------
@@ -69,8 +76,12 @@ class Schedulers:
                 await self.runner.run(project.owner, ['eval', project.rln])
             except CommandError as e:
                 log.warning("periodic evaluation of %s failed: %s", project.rln, e.message)
+                return
             except FileNotFoundError as e:
                 log.error("cannot run sre: %s", e)
+                return
+        if self.on_evaluated is not None:
+            await self.on_evaluated(project)
 
     # -- closing --------------------------------------------------------------------------------
 

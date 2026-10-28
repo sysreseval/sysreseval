@@ -37,6 +37,7 @@ EVENT_ANSWERS = 'answers'
 EVENT_LOG = 'log'
 EVENT_REMOVED = 'removed'
 EVENT_TERMINALS = 'terminals'
+EVENT_EVALUATED = 'evaluated'   # a new archived evaluation (periodic, the student's, an instructor's)
 
 LOG_CHUNK = 1 << 18          # bytes of operations.log read per tick at most
 STATE_WRITE_INTERVAL = 60.0  # seconds between two writes of the state file of a project
@@ -157,6 +158,9 @@ class Registry:
         self.tick_hooks: list[TickHook] = []
         self.on_added: list[Callable[[Project], None]] = []
         self.on_info_changed: list[Callable[[Project], None]] = []
+        #: Called when a project created by this agent is adopted (:meth:`adopt`): the tick has
+        #: usually found its directory before ``sre start`` ended, as a project of somebody else.
+        self.on_managed: list[Callable[[Project], None]] = []
         #: Awaited for every project whose directory vanished, and for every project at stop().
         self.on_removed: list[Callable[[Project], Awaitable[None]]] = []
         #: Builds the ``info`` event of a subscriber (set by the app: the sanitised view).
@@ -357,13 +361,19 @@ class Registry:
 
     async def adopt(self, rln: str) -> Project | None:
         """Take a project just created by this agent (``sre start`` / ``sre restore``) into
-        account at once, without waiting for the next tick: it becomes managed."""
+        account at once, without waiting for the next tick: it becomes managed.  The tick has
+        usually found its directory already (``info.json`` is written long before ``sre start``
+        ends), as a project of somebody else: the ``on_managed`` hooks then plan what the
+        ``on_added`` ones could not (the periodic evaluation)."""
         added, removed = self.scan_once()
         await self._apply_scan(added, removed)
         project = self.projects.get(rln)
         if project is not None:
             project.managed = True
             self.write_state(project, force=True)
+            log.info("project adopted: %s", rln)
+            for cb in self.on_managed:
+                cb(project)
         return project
 
     async def _apply_scan(self, added, removed):

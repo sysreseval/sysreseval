@@ -162,7 +162,9 @@ export function createEvaluationTab(ctx) {
       shown = false;
     },
     update() {},
-    // a spectator: the presenter evaluated: the last archived evaluation again
+    // the last archived evaluation again: an instructor's page on the `evaluated` event (a
+    // periodic evaluation, the student's, another instructor's), a spectator's when the
+    // presenter evaluated
     reload() {
       lastLoaded = false;
       if (shown) {

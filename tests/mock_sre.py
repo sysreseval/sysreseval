@@ -25,7 +25,10 @@ Environment variables (all optional but the first):
   MOCK_START_DELAY    seconds (float) slept between two progress events of start / restore
   MOCK_EVAL_DELAY     seconds (float) slept by `eval` while it holds .private/eval_in_progress
   MOCK_EVAL_ERRORS    JSON list of [category, text] pairs: the `errors` of the archives `eval` writes
-                      (real archives: zstandard + msgpack, the keys of Grade0.save_tests_on_file)
+                      (real archives: zstandard + msgpack, the keys of Grade0.save_tests_on_file,
+                      `tests` keyed by tuples)
+  MOCK_EVAL_INTERVAL  seconds (int): the `eval_interval_without_exam_mode` of the info.json `start`
+                      writes (default 0: no periodic evaluation by the agent)
   MOCK_COOLDOWN       seconds (int): `eval --auto-eval` answers {"grades": null,
                       "delay_before_self_grade": N} when the previous auto-eval of the same lab
                       and owner is younger than that (timestamp file of
@@ -88,6 +91,7 @@ ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
 ENV_START_DELAY = 'MOCK_START_DELAY'
 ENV_EVAL_DELAY = 'MOCK_EVAL_DELAY'
 ENV_EVAL_ERRORS = 'MOCK_EVAL_ERRORS'
+ENV_EVAL_INTERVAL = 'MOCK_EVAL_INTERVAL'
 ENV_COOLDOWN = 'MOCK_COOLDOWN'
 ENV_FAIL = 'MOCK_FAIL'
 ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an x11_host
@@ -187,7 +191,7 @@ def stub_machines(include_hidden: bool, x11_host: bool = False) -> list:
 
 
 def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_mode: bool,
-              x11_host: bool = False) -> InfoLab:
+              x11_host: bool = False, eval_interval: int = 0) -> InfoLab:
     """The ``info.json`` of a project of the stub lab, as ``Grade0.save_lab_info()`` would write
     it: the hidden machine and every state only in a debug project; an ``instructor()`` fragment
     (the solution) at the top of the informations of an instructor-mode or debug project, as a
@@ -212,7 +216,7 @@ def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_m
         machines=stub_machines(include_hidden=debug_project, x11_host=x11_host),
         questions=stub_questions(),
         delay_between_self_grade=5,
-        eval_interval_without_exam_mode=0,
+        eval_interval_without_exam_mode=eval_interval,
         eval_before_exit=False,
         user_allowed_states={FINAL_STATE: _tr("Solution", "Solution")},
         debug_project=debug_project,
@@ -233,6 +237,15 @@ def stub_info(running_lab_name: str, title, *, debug_project: bool, instructor_m
         switches=[InfoSwitch(SWITCH_MANAGED, params.network_mode_managed, True),
                   InfoSwitch(SWITCH_PLAIN, params.network_mode_switch, True)],
     )
+
+
+def stub_tests() -> dict:
+    """The ``tests`` of an archive as ``Grade0`` keeps them: ``{(machine, step): {(command,
+    timeout): (stdout, exit code)}}``; msgpack writes the tuple keys as arrays, which a reader
+    unpacking them as lists cannot use as keys."""
+    return {(MACHINE_OPEN, 1): {('cat /etc/hostname', 10): (f'{MACHINE_OPEN}\n', 0),
+                                ('ip -4 -j addr', 10): ('[]', 0)},
+            (MACHINE_CLOSED, 1): {('cat /etc/hostname', 10): (f'{MACHINE_CLOSED}\n', 0)}}
 
 
 def stub_grades() -> tuple:
@@ -346,7 +359,8 @@ class Mock:
         self.emit_deployment()
 
         info = stub_info(running_lab_name, self.lab_title(lab_cli_arg) or lab_name.removesuffix('.py'),
-                         debug_project=debug_project, instructor_mode=instructor_mode, x11_host=bool(self.env.get(ENV_X11)))
+                         debug_project=debug_project, instructor_mode=instructor_mode, x11_host=bool(self.env.get(ENV_X11)),
+                         eval_interval=int(self.env.get(ENV_EVAL_INTERVAL) or 0))
         Path(params.info_filename(running_lab_name)).write_text(info.to_json())
         emit({"phase": "project", "status": "created", "running_lab_name": running_lab_name})
         return running_lab_name
@@ -515,7 +529,7 @@ class Mock:
             params.eval_date_keyword: now.isoformat(),
             params.re_eval_date_keyword: None,
             'data_json': '{}',
-            'tests': {},
+            'tests': stub_tests(),
             'errors': errors,
             'answers': answers,
             'grade_list': [asdict(e) for e in elements],

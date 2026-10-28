@@ -63,8 +63,11 @@ def main(argv=None) -> int:
         os.makedirs(os.path.join(pub_dir, 'projects'), exist_ok=True)
         if not cfg.state_dir or cfg.state_dir.startswith(params.sre_pub_dir):
             cfg.state_dir = os.path.join(pub_dir, 'web-agent')
+        # the archives of that sre are under its SRE_PUB_DIR too (a site directory elsewhere stays)
+        archive_dirs = list(dict.fromkeys(os.path.join(pub_dir, 'archives') if d.startswith(params.sre_pub_dir) else d
+                                          for d in params.archive_dirs))
         agent = Agent(cfg, pub_dir=pub_dir, projects_dir=os.path.join(pub_dir, 'projects'),
-                      extra_env={'SRE_PUB_DIR': pub_dir})
+                      extra_env={'SRE_PUB_DIR': pub_dir}, archive_dirs=archive_dirs)
     else:
         agent = Agent(cfg)
     host, port = cfg.listen

@@ -34,7 +34,7 @@ from . import access, occupancy
 from .access import AccessError
 from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED
-from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS
+from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
@@ -137,7 +137,7 @@ class Agent:
         self.displays = DisplayManager(cfg.display, registry=self.registry)
         self.answers = AnswersStore(self.registry, hostname=self.hostname, pub_dir=self.pub_dir)
         self.schedulers = Schedulers(self.registry, self.runner, exam_mode=self.exam_mode,
-                                     default_idle_timeout=cfg.max_idle)
+                                     default_idle_timeout=cfg.max_idle, on_evaluated=self._evaluated)
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
         self._refused_clients: set = set()
@@ -161,6 +161,12 @@ class Agent:
 
     def _info_event(self, project: Project, identity: Identity) -> dict:
         return {'t': EVENT_INFO, 'project': self._view(project, identity)}
+
+    async def _evaluated(self, project: Project):
+        """After an evaluation the agent ran (periodic, the student's, an instructor's): the
+        archive index is stale, and the open pages learn there is a new archived evaluation."""
+        self.results.invalidate()
+        await self.registry.broadcast(project, {'t': EVENT_EVALUATED})
 
     def _view(self, project: Project, identity: Identity) -> dict:
         return sanitise(project.info, identity, exam_mode=self.exam_mode(),
@@ -651,11 +657,12 @@ class Agent:
             else:
                 result = await self.runner.run(project.owner, ['eval', '--auto-eval', project.rln],
                                                lang=identity.language)
-        self.results.invalidate()
         try:
             data = json.loads(result.stdout.decode('utf-8', 'replace'))
         except ValueError:
             raise CommandError(0, "sre eval gave no JSON", result.stderr)
+        if data.get('grades') is not None:   # a self-evaluation refused by the cooldown wrote no archive
+            await self._evaluated(project)
         rows, header = [], []
         if data.get('grades') is not None:
             translate = translator(identity.language, self.localedirs)

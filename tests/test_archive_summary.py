@@ -9,6 +9,9 @@ from SRE import params
 from SRE import archive_summary as A
 
 RLN = '20261025100000@@@sre@dhcp.py@@@alice'
+#: the ``tests`` of a real archive: ``{(machine, step): {(command, timeout): (stdout, exit code)}}``
+TESTS = {('m1', 1): {('cat /etc/hostname', 10): ('m1\n', 0), ('ip -4 -j addr', 10): ('[]', 0)},
+         ('m2', 2): {('true', 5): ('', 0)}}
 
 
 def write_archive(directory, name: str, raw: dict) -> str:
@@ -24,7 +27,7 @@ def archive_dict(**over) -> dict:
         params.eval_date_keyword: '2026-10-25T10:01:02.345678',
         params.re_eval_date_keyword: None,
         'data_json': '{}',
-        'tests': {},
+        'tests': TESTS,
         'errors': [('ERROR', 'm1 unreachable'), ('WARNING', 'slow')],
         'answers': {params.login_keyword: 'alice', params.hostname_keyword: 'pool1',
                     params.fullname_keyword: 'Alice A', params.auto_eval_count_keyword: 3,
@@ -58,6 +61,17 @@ class TestSummary:
         js = s.to_json(now=datetime(2026, 10, 25, 10, 11, 2, 345678))
         assert js['eval_date'] == '2026-10-25T10:01:02' and js['age_s'] == 600
         assert js['archive'] == f'20261025100102_{RLN}.zst' and js['errors'] == 1 and js['mark'] == 6.7
+
+    def test_real_archive_shape(self, tmp_path):
+        """The tuple keys of ``tests`` (msgpack arrays) made ``read_archive`` fail with
+        ``unhashable type: 'list'`` until it unpacked the arrays as tuples: every real archive was
+        unreadable and the Watch page showed no evaluation."""
+        path = write_archive(tmp_path, f'20261025100102_{RLN}.zst', archive_dict())
+        raw = A.read_archive(path)
+        assert raw['tests'] == TESTS and raw['errors'][0] == ('ERROR', 'm1 unreachable')
+        assert A.summarize(raw, path).grade == 1.0
+        assert A.error_entries(raw['errors'])[1] == {'category': 'WARNING', 'text': 'slow'}
+        assert [e['title'] for e in A.exo_grade_list(raw)] == ['both', 'exo only']
 
     def test_legacy_keys_and_missing_answers(self, tmp_path):
         raw = archive_dict(answers={}, errors=['old style text'])

@@ -3,13 +3,18 @@
 and what the Evaluation tab of an instructor opens on.
 
 On demand only: a refresh scans the directories once (one ``scandir`` per directory, the newest
-archive per running lab name by its 14-digit prefix) and parses the newest archive of the
-projects asked for, in a thread; the scan is kept for ``ttl`` seconds (the Watch page polls every
-5 s).  Nothing is read while nobody watches.  A new evaluation is a new file, so a path is the
-key of its summary; ``invalidate()`` forces the next refresh (after an evaluation the agent ran).
+archive per running lab name by its 14-digit prefix, one ``stat`` per project) and parses the
+newest archive of the projects asked for, in a thread; the scan is kept for ``ttl`` seconds (the
+Watch page polls every 5 s), a summary as long as its file is the newest one.  Nothing is read
+while nobody watches.  A summary is keyed by the path **and the stamp** (mtime, size) of its
+file: a new evaluation is a new file, and an archive written again at the same path (two
+evaluations in the same second, ``sre re-eval -p ''``) is read again.  An unreadable archive is
+logged once and left alone until its file changes.  ``invalidate()`` forces the next scan (after
+an evaluation the agent ran).
 """
 import asyncio
 import logging
+import os
 import time
 
 from SRE import params
@@ -18,15 +23,19 @@ from SRE.archive_summary import (ArchiveSummary, newest_by_running_lab_name, rea
 
 log = logging.getLogger('sreweb.agent')
 
+Stamp = tuple[int, int]        # (st_mtime_ns, st_size) of an archive
+Key = tuple[str, Stamp]        # (path, stamp): the identity of an archive's content
+
 
 class ArchiveIndex:
     def __init__(self, dirs=None, *, ttl: float = 5.0):
         """*dirs*: the archive directories (``params.archive_dirs`` when ``None``)."""
         self.dirs = list(dirs) if dirs is not None else None
         self.ttl = ttl
-        self._newest: dict[str, str] = {}          # running lab name -> path of its newest archive
-        self._summaries: dict[str, ArchiveSummary] = {}
-        self._raw: dict[str, dict] = {}            # the archives read in full (the Evaluation tab)
+        self._newest: dict[str, Key] = {}            # running lab name -> its newest archive
+        self._summaries: dict[Key, ArchiveSummary] = {}
+        self._raw: dict[Key, dict] = {}              # the archives read in full (the Evaluation tab)
+        self._failed: dict[str, Stamp] = {}          # the archives that could not be read, by path
         self._scanned_at: float | None = None
         self._lock = asyncio.Lock()
         self.scans = 0
@@ -40,59 +49,74 @@ class ArchiveIndex:
     def invalidate(self):
         self._scanned_at = None
 
+    def _unreadable(self, key: Key) -> bool:
+        return self._failed.get(key[0]) == key[1]
+
     async def refresh(self, rlns=None, *, force: bool = False):
-        """Scan the directories unless the last scan is younger than *ttl* (or *force*), and
-        summarise the newest archive of the projects of *rlns* (every one when ``None``)."""
-        if self._fresh() and not force:
-            return
+        """Scan the directories unless the last scan is younger than *ttl* (or *force*), then
+        summarise the newest archive of the projects of *rlns* (every one when ``None``) that
+        has no summary yet (a fresh scan may hold archives summarised for nobody so far)."""
         async with self._lock:
-            if self._fresh() and not force:
-                return
-            newest = await asyncio.to_thread(self._scan)
-            wanted = set(rlns) if rlns is not None else set(newest)
-            todo = [newest[r] for r in wanted if r in newest and newest[r] not in self._summaries]
+            if force or not self._fresh():
+                self._newest = await asyncio.to_thread(self._scan)
+                keep = set(self._newest.values())
+                self._summaries = {k: s for k, s in self._summaries.items() if k in keep}
+                self._raw = {k: r for k, r in self._raw.items() if k in keep}
+                self._failed = {p: st for p, st in self._failed.items() if (p, st) in keep}
+                self._scanned_at = time.monotonic()
+                self.scans += 1
+            wanted = set(rlns) if rlns is not None else set(self._newest)
+            todo = [key for r in wanted if (key := self._newest.get(r)) is not None
+                    and key not in self._summaries and not self._unreadable(key)]
             if todo:
-                self._summaries.update(await asyncio.to_thread(self._summarize, todo))
-            keep = set(newest.values())
-            self._summaries = {p: s for p, s in self._summaries.items() if p in keep}
-            self._raw = {p: r for p, r in self._raw.items() if p in keep}
-            self._newest = newest
-            self._scanned_at = time.monotonic()
-            self.scans += 1
+                summaries, failed = await asyncio.to_thread(self._summarize, todo)
+                self._summaries.update(summaries)
+                self._failed.update(failed)
 
     def _scan(self) -> dict:
-        return newest_by_running_lab_name(scan_archive_dirs(self._dirs()))
+        newest = {}
+        for rln, path in newest_by_running_lab_name(scan_archive_dirs(self._dirs())).items():
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            newest[rln] = (path, (st.st_mtime_ns, st.st_size))
+        return newest
 
     @staticmethod
-    def _summarize(paths) -> dict:
-        result = {}
-        for path in paths:
+    def _summarize(keys) -> tuple[dict, dict]:
+        """``(summaries, failed)`` of the archives of *keys*: a truncated or foreign file must
+        not hide the others, and is not read again until it changes."""
+        summaries, failed = {}, {}
+        for path, stamp in keys:
             try:
-                result[path] = summarize(read_archive(path), path)
-            except Exception as e:   # a truncated or foreign file must not hide the others
+                summaries[(path, stamp)] = summarize(read_archive(path), path)
+            except Exception as e:
                 log.warning("cannot read the archive %s: %s", path, e)
-        return result
+                failed[path] = stamp
+        return summaries, failed
 
     def summary(self, rln: str) -> ArchiveSummary | None:
         """The summary of the newest archive of *rln* known to the last refresh."""
-        path = self._newest.get(rln)
-        return self._summaries.get(path) if path else None
+        key = self._newest.get(rln)
+        return self._summaries.get(key) if key else None
 
     async def archive(self, rln: str) -> tuple | None:
         """``(summary, archive dict)`` of the newest archive of *rln* (refreshing first), or
-        ``None``."""
+        ``None`` (no archive, or an unreadable one)."""
         await self.refresh({rln})
-        path = self._newest.get(rln)
-        if not path:
+        key = self._newest.get(rln)
+        if key is None or self._unreadable(key):
             return None
-        if path not in self._raw:
+        if key not in self._raw:
             try:
-                self._raw[path] = await asyncio.to_thread(read_archive, path)
+                self._raw[key] = await asyncio.to_thread(read_archive, key[0])
             except Exception as e:
-                log.warning("cannot read the archive %s: %s", path, e)
+                log.warning("cannot read the archive %s: %s", key[0], e)
+                self._failed[key[0]] = key[1]
                 return None
-        raw = self._raw[path]
-        summary = self._summaries.get(path)
+        raw = self._raw[key]
+        summary = self._summaries.get(key)
         if summary is None:
-            summary = self._summaries[path] = summarize(raw, path)
+            summary = self._summaries[key] = summarize(raw, key[0])
         return summary, raw

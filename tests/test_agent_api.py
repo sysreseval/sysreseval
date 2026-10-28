@@ -1027,6 +1027,43 @@ class TestInstructor:
                 assert data['eval_date'] and data['archive'].endswith('.zst')
         run(go())
 
+    def test_periodic_evaluation_of_a_web_project(self, tmp_path):
+        """The agent evaluates a project it created every eval_interval_without_exam_mode
+        seconds as the Qt GUI does (sre --user eval, no --auto-eval: no cooldown, nothing
+        counted), tells the open pages (the `evaluated` event) and the Watch page shows the new
+        archive at once.  The registry finds the directory before sre start ends
+        (MOCK_START_DELAY), as in production: the project must be armed when it is adopted."""
+        async def go():
+            async with Harness(tmp_path, {'MOCK_EVAL_INTERVAL': '1', 'MOCK_START_DELAY': '0.3'}) as h:
+                rln = await h.started()
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
+                await receive_event(ws, 'evaluated', timeout=5)
+                entry = h.entries()[-1]
+                assert (entry['argv'], entry['user_mode'], entry['username']) == (['--user', 'eval', rln], True, 'alice')
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert row['eval_interval'] == 1 and row['managed'] is True
+                first = row['last_eval']
+                assert first is not None and first['auto_eval_count'] == 0 and first['grade'] == 4.5
+                assert not (h.pub / 'last_self_grades').exists()
+                # the next one: a new archive, shown at once
+                await receive_event(ws, 'evaluated', timeout=5)
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert row['last_eval']['archive'] != first['archive']
+                data = await (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))).json()
+                assert data['archive'] == row['last_eval']['archive']
+                await ws.close()
+            # the student's own evaluation tells the pages too; one refused by the cooldown does not
+            async with Harness(tmp_path / 'b', {'MOCK_COOLDOWN': '60'}) as h:
+                rln = await h.started()
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 200
+                await receive_event(ws, 'evaluated', timeout=5)
+                resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
+                assert (await resp.json())['result']['grades'] is None
+                assert await events_of(ws, 0.5) == []
+                await ws.close()
+        run(go())
+
     def test_instructor_mode_project(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:

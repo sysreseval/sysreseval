@@ -413,6 +413,13 @@ function onEvent(ev) {
         tabs.terminals.setSessions(state.terminals);
       }
       break;
+    case 'evaluated':
+      // a new archived evaluation (periodic, the student's, an instructor's): the instructor's
+      // Evaluation tab, and a spectator's, show it
+      if (tabs.evaluation && (ctx.isInstructor || spectator)) {
+        tabs.evaluation.reload();
+      }
+      break;
     case 'removed':
       projectClosed();
       break;

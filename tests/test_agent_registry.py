@@ -308,7 +308,12 @@ class TestSchedulers:
         make_project(tmp_pub_dir, eval_interval_without_exam_mode=1)
         reg = registry()
         runner = FakeRunner()
-        sched = Schedulers(reg, runner, exam_mode=lambda: False)
+        evaluated = []
+
+        async def on_evaluated(project):
+            evaluated.append(project.rln)
+
+        sched = Schedulers(reg, runner, exam_mode=lambda: False, on_evaluated=on_evaluated)
 
         async def go():
             await reg.tick()
@@ -317,17 +322,55 @@ class TestSchedulers:
             p.next_eval_at = time.monotonic() - 1
             await reg.tick()
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['eval', RLN])]
+            assert runner.calls == [('alice', ['eval', RLN])] and evaluated == [RLN]
             # a locked project is skipped, not queued
             p.next_eval_at = time.monotonic() - 1
             async with p.lock:
                 await reg.tick()
             await asyncio.sleep(0.05)
             assert len(runner.calls) == 1
+            # a failed evaluation: logged, nothing to tell
+            runner.fail.add('eval')
+            p.next_eval_at = time.monotonic() - 1
+            await reg.tick()
+            await asyncio.sleep(0.05)
+            assert len(runner.calls) == 2 and evaluated == [RLN]
             # interval set to 0: disarmed
             p.info['eval_interval_without_exam_mode'] = 0
             sched.arm(p)
             assert p.next_eval_at is None
+        run(go())
+
+    def test_adopt_arms_periodic_eval(self, tmp_pub_dir):
+        """A project this agent creates: the tick finds its directory (as a project of somebody
+        else: nothing planned) before sre start ends, then the app adopts it; the adoption must
+        arm the periodic evaluation.  It did not: a web project was never evaluated in the
+        background until the agent restarted (its state file then made it managed at discovery)."""
+        reg = registry()
+        runner = FakeRunner()
+        evaluated = []
+
+        async def on_evaluated(project):
+            evaluated.append(project.rln)
+
+        Schedulers(reg, runner, exam_mode=lambda: False, on_evaluated=on_evaluated)
+
+        async def go():
+            await reg.tick()
+            make_project(tmp_pub_dir, managed=False, eval_interval_without_exam_mode=1)
+            await reg.tick()                       # found before the creation ends
+            p = reg.get(RLN)
+            assert not p.managed and p.next_eval_at is None
+            assert await reg.adopt(RLN) is p and p.managed and p.next_eval_at is not None
+            p.next_eval_at = time.monotonic() - 1
+            await reg.tick()
+            await asyncio.sleep(0.05)
+            assert runner.calls == [('alice', ['eval', RLN])] and evaluated == [RLN]
+            # adopted before any tick saw it (a quick start): armed as well
+            other = RLN.replace('alice', 'bob')
+            make_project(tmp_pub_dir, rln=other, managed=False, eval_interval_without_exam_mode=1)
+            q = await reg.adopt(other)
+            assert q.managed and q.next_eval_at is not None
         run(go())
 
     def test_no_eval_in_exam_mode(self, tmp_pub_dir):
