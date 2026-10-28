@@ -94,8 +94,9 @@ ldap_roles_ttl = "10m"
 # user whose group header is empty and for the owners of the Watch page the agents know no group
 # for (the projects of the Qt GUI); the roles stay those of the headers.  ldap_roles implies it.
 # ldap_groups = true
-# Where Logout sends the browser (the logout handler of a mod_auth_form login); empty: no Logout
-# button (an HTTP Basic authentication cannot be logged out of).
+# Where Logout sends the browser: the /apache-logout location of sre-web-apache.conf (HTTP Basic
+# authentication: the browser forgets its credentials, its password dialog shows once more and is
+# to be cancelled) or the logout handler of a mod_auth_form login; empty: no Logout button.
 logout_url = ""
 
 [pool]

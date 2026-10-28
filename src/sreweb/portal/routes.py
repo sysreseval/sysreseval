@@ -266,7 +266,8 @@ class Routes:
 
     async def logout(self, request):
         """Clears the session cookie (a stale cookie of a previous mode too); in proxy mode the
-        browser is sent to ``logout_url`` (the logout handler of the proxy) when there is one."""
+        browser is sent to ``logout_url`` (the logout location or handler of the proxy) when
+        there is one."""
         target = self.cfg.auth.proxy.logout_url if self.proxy_mode else ''
         if request.path.startswith('/api/'):
             response = web.json_response({'ok': True, 'logout_url': target})

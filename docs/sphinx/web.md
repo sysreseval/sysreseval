@@ -151,7 +151,7 @@ merges other files into this one, as for `web.toml` below.
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` |
-| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (none: no Logout button) |
+| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
@@ -212,6 +212,14 @@ that does not come from a peer of `trusted_proxies` has no identity whatever its
     RequestHeader set X-Remote-Group "%{AUTHENTICATE_DEPARTMENTNUMBER}e" env=AUTHENTICATE_DEPARTMENTNUMBER
     RequestHeader unset Authorization
 </Location>
+# Logout: a location that knows no user, so the browser forgets the credentials it cached
+ProxyPass "/apache-logout" !
+<Location "/apache-logout">
+    AuthBasicProvider file
+    AuthUserFile /dev/null
+    Require valid-user
+    ErrorDocument 401 "<!DOCTYPE html>... You are logged out. <a href='/'>Log in again</a> ..."
+</Location>
 ProxyPreserveHost On
 ProxyPass        "/" "http://127.0.0.1:8450/" upgrade=websocket timeout=3600
 ProxyPassReverse "/" "http://127.0.0.1:8450/"
@@ -239,8 +247,14 @@ The rules that keep this safe:
   exceed Apache's `LimitRequestFieldSize` (8190 bytes): raise it or export fewer attributes.
 - `public_url` must be the `https://` URL the users type (the `Secure` flag of the language
   cookie, the `Origin` check of the WebSockets together with `ProxyPreserveHost On`).
-- HTTP Basic authentication cannot be logged out of: the Logout button is hidden unless
-  `logout_url` names a logout handler (`mod_auth_form`, sketched at the end of the example).
+- An HTTP Basic authentication has no session to end, but the browser forgets the credentials
+  it cached as soon as the server refuses them: the `/apache-logout` location of the example
+  knows no user (`mod_authn_file` on `/dev/null`, the realm inherited from the main location),
+  so every request gets a 401 and the browser shows its password dialog once more; cancelling it
+  displays the "logged out" page of the `ErrorDocument` (a password typed there is refused and
+  the dialog comes back). `logout_url = "/apache-logout"` makes the Logout button appear; the
+  button is hidden without it. A `mod_auth_form` login (sketched at the end of the example) has a
+  real logout handler at the same URL.
 - `sre-web-tool …` talks to the loopback port directly, never through the proxy (the Basic
   authentication would refuse its bearer token).
 

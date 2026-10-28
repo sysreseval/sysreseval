@@ -123,7 +123,7 @@ class TestTemplates:
         assert '<script' not in html.split('<main')[0]   # the page works without JavaScript
 
     def test_logout_button(self):
-        # proxy mode: Basic auth cannot log out, the button only appears with a logout_url (mod_auth_form)
+        # proxy mode: the button only appears with a logout_url (the logout location or handler of the proxy)
         assert 'action="/logout"' in render('projects.html')
         assert 'action="/logout"' not in render('projects.html', auth_mode='proxy')
         assert 'action="/logout"' in render('projects.html', auth_mode='proxy', logout_url='/apache-logout')
