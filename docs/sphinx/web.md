@@ -766,6 +766,17 @@ Without a command the pool stays up until Ctrl-C (`portal=... admin_token=... wo
 printed first), for runs by hand. The work directory (configs, `portal.log`, `access.log`, one
 `agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died.
 
+What a healthy run looks like (100 students, 4 fake hosts of 25, `--ramp 60 --hold 120`, a Mac):
+every student completed and every check true, `start` created in 3.6 s median / 4.6 s max, the
+socket handshakes and the JSON calls under 10 ms, no `reachable` flip, the probe under 5 ms. The
+first run of that scenario found the portal's connection pool to the agents capped at aiohttp's
+default of 100 connections while every relayed events or terminal socket holds one for as long
+as the page is open: from the 50th student the 5 s status polls timed out, every host flipped
+unreachable (all four for 45 s), 21 starts were refused with 503, the lab list and the project
+lists came back empty, the socket handshakes and the answer saves waited up to 80 s and 54
+students completed — with the portal's event loop idle (`GET /api/me` in 2 ms). The connector
+has no limit since (`AGENT_CONNECTION_LIMIT` in `portal/app.py`).
+
 ### Stage 2: the production pool
 
 On the portal's host, outside class hours, with the tool copied there (or `/opt/sre/scripts/`
