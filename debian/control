@@ -31,6 +31,7 @@ Build-Depends: debhelper-compat (= 13),
                python3-aiohttp <!nocheck>,
                python3-aiohttp-jinja2 <!nocheck>,
                python3-jinja2 <!nocheck>,
+               python3-ldap3 <!nocheck>,
                python3-urllib3 <!nocheck>,
                python3-zstandard <!nocheck>,
                qt6-qpa-plugins <!nocheck>

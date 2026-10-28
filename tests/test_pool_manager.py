@@ -211,7 +211,7 @@ class TestStates:
         pool.runtime['d'].drain = True
         pool.status['e'] = HostStatus(reachable=True)
         pool.runtime['e'].enabled = False
-        now = time.monotonic()
+        now = float(int(time.monotonic()))   # integer-valued: now + 100 - now is exactly wake_timeout (float rounding made it 99.99… once in ~400 runs)
         pool.runtime['f'].woken_at = now
         assert [pool.state_of(n, now=now + 50) for n in 'abcdefg'] == [
             STATE_UP, STATE_OCCUPIED, STATE_EXAM, STATE_DRAINING, STATE_DISABLED, STATE_WAKING, STATE_OFF]
