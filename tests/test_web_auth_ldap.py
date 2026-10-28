@@ -1,6 +1,8 @@
 """Tests of sreweb.portal.auth_ldap without a directory: the role tests on a duck-typed
 connection, the proxy-mode role resolver, and the per-login role cache (sreweb.portal.roles)."""
 import asyncio
+import sys
+import types
 
 import pytest
 
@@ -117,6 +119,47 @@ class TestRoleTests:
                                        instructor_group_filter=POSIX, group_search_base=GROUPS))
         assert auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN, memberOf=[]))
         assert [c[0] for c in conn.calls] == [ALICE_DN, GROUPS]
+
+
+class TestLdap3Calls:
+    """The real ``_connect`` against a fake ldap3 module: what the library is handed."""
+
+    @staticmethod
+    def fake_ldap3(calls: list):
+        class Server:
+            def __init__(self, uri, **kw):
+                calls.append(('server', uri, kw))
+
+        class Connection:
+            def __init__(self, server, **kw):
+                calls.append(('connection', kw))
+
+            def bind(self):
+                return True
+
+            def unbind(self):
+                pass
+
+        return types.SimpleNamespace(Server=Server, Connection=Connection, NONE='NO_INFO', AUTO_BIND_NONE='NONE')
+
+    def test_timeouts_are_whole_seconds(self, monkeypatch):
+        """ldap3 packs receive_timeout with struct.pack('LL', ...) on Linux: the float of
+        parse_duration (10.0) made every bind fail with 'required argument is not an integer'
+        (seen live on 2026-10-28: no group looked up, logged once per login)."""
+        calls = []
+        monkeypatch.setitem(sys.modules, 'ldap3', self.fake_ldap3(calls))
+        for timeout, expected in ((10.0, 10), (2.5, 3), (0.2, 1), (7, 7)):
+            calls.clear()
+            conn = L.LdapRoleResolver(cfg(timeout=timeout))._connect('', '')
+            assert conn is not None
+            (_, uri, server_kw), (_, conn_kw) = calls
+            assert uri == 'ldaps://ldap.example.org' and server_kw['use_ssl'] is True
+            assert type(server_kw['connect_timeout']) is int and server_kw['connect_timeout'] == expected
+            assert type(conn_kw['receive_timeout']) is int and conn_kw['receive_timeout'] == expected
+            assert conn_kw['user'] is None and conn_kw['password'] is None       # anonymous bind
+        calls.clear()
+        L.LdapRoleResolver(cfg(uri='ldap://ldap.example.org'))._connect('cn=svc', 'pw')
+        assert calls[0][2]['use_ssl'] is False and calls[1][1]['user'] == 'cn=svc'
 
 
 class FakeDirectoryResolver(L.LdapRoleResolver):

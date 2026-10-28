@@ -18,6 +18,7 @@ In proxy mode, :class:`LdapRoleResolver` runs the same tests for the login the p
 """
 import asyncio
 import logging
+import math
 import warnings
 from dataclasses import dataclass
 
@@ -97,15 +98,21 @@ class _Directory:
     def __init__(self, cfg: LdapConfig):
         self.cfg = cfg
 
+    def _timeout(self) -> int:
+        """``timeout`` of the config as the whole seconds ldap3 wants: on Linux it packs
+        ``receive_timeout`` with ``struct.pack('LL', …)``, so a float (the ``10.0`` of
+        ``parse_duration``) made every bind fail with *required argument is not an integer*."""
+        return max(1, math.ceil(self.cfg.timeout))
+
     def _server(self):
         import ldap3
         return ldap3.Server(self.cfg.uri, use_ssl=self.cfg.uri.lower().startswith('ldaps://'),
-                            get_info=ldap3.NONE, connect_timeout=self.cfg.timeout)
+                            get_info=ldap3.NONE, connect_timeout=self._timeout())
 
     def _connect(self, user, password):
         import ldap3
         conn = ldap3.Connection(self._server(), user=user or None, password=password or None,
-                                receive_timeout=self.cfg.timeout, auto_bind=ldap3.AUTO_BIND_NONE)
+                                receive_timeout=self._timeout(), auto_bind=ldap3.AUTO_BIND_NONE)
         if self.cfg.start_tls:
             conn.start_tls()
         if not conn.bind():
