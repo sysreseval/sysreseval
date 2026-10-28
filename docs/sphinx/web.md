@@ -581,13 +581,20 @@ What an instructor gets:
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
   instructors, power, drain, power off sent, restart sent), the agent's version and its last error, the line
   of `sre-web-tool status` above the table; the state cell is green (up), amber (waking,
-  occupied, exam, draining) or grey (off, disabled); sortable by any column, filtered by text,
-  refreshed every 5 s. The buttons are the commands of the tool: *Enable* / *Disable*, *Wake*
-  (a host with a `mac` or a `wake_command`, while it is off), *Drain*, *Power off* (asked to
-  confirm; allowed by the agent's `allow_power_off`, refused while the host has a project or a
-  local session), each disabled with the reason as its tooltip when it does not apply. Adding
-  and removing hosts, and restarting the agents (`restart`, shown as the flag *restart sent*
-  while it lasts), stay with `sre-web-tool`. Every action is an `admin` line of the connection
+  occupied, exam, draining) or grey (off, disabled); sortable by any column, filtered by host
+  name (one or several words: the hosts whose name contains any of them, `a01 a02 h` for
+  those two and every `h…` host), refreshed every 5 s. The buttons of a row are the commands
+  of the tool: *Enable* / *Disable*, *Wake* (a host with a `mac` or a `wake_command`, while it
+  is off), *Drain*, *Power off* (asked to confirm; allowed by the agent's `allow_power_off`,
+  refused while the host has a project or a local session), each disabled with the reason as
+  its tooltip when it does not apply. A checkbox per row (the one of the header ticks the hosts
+  shown by the filter) selects hosts for the bar above the table: the count of the selected
+  hosts (and how many the filter hides) and the same five buttons, each acting on every
+  selected host its action applies to, one call per host run together (the tooltip says how
+  many, the button is disabled when none; *Power off* asks once with the names; the failures
+  come in one message, the selection stays). Adding and removing hosts, and restarting the
+  agents (`restart`, shown as the flag *restart sent* while it lasts), stay with
+  `sre-web-tool`. Every action, of a row or of the bar, is an `admin` line of the connection
   log with the instructor's login.
 - **Projects** stays the instructor's own projects (Watch holds the others).
 - **A student's project**: every tab, the devices all open (the privileged `sre connect`), the

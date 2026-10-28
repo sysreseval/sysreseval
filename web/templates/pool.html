@@ -4,13 +4,22 @@
 {% block content %}
 <div class="toolbar">
   <h1>{{ _("The hosts of the pool") }}</h1>
-  <input type="text" id="pool-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Host, state or user") }}">
+  <input type="text" id="pool-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Host name: one or several words, any of them") }}">
   <span id="pool-count" class="muted"></span>
 </div>
 <p id="pool-status" class="pool-status muted"></p>
+<div id="pool-selection" class="pool-selection">
+  <span id="pool-selected" class="muted"></span>
+  <button type="button" data-action="enable" disabled>{{ _("Enable") }}</button>
+  <button type="button" data-action="disable" disabled class="danger">{{ _("Disable") }}</button>
+  <button type="button" data-action="wake" disabled>{{ _("Wake") }}</button>
+  <button type="button" data-action="drain" disabled>{{ _("Drain") }}</button>
+  <button type="button" data-action="poweroff" disabled class="danger">{{ _("Power off") }}</button>
+</div>
 <table id="pool" class="grid watch pool">
   <thead>
     <tr>
+      <th class="select"><input type="checkbox" id="pool-select-all" title="{{ _("Select the hosts shown") }}"></th>
       <th class="sortable" data-sort="name">{{ _("Host") }}</th>
       <th class="sortable" data-sort="state">{{ _("State") }}</th>
       <th class="sortable" data-sort="projects">{{ _("Projects") }}</th>
@@ -24,7 +33,7 @@
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="11" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/pool.js"></script>{% endblock %}

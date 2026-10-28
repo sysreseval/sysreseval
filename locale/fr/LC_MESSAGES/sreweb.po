@@ -506,8 +506,8 @@ msgstr "Parc"
 msgid "The hosts of the pool"
 msgstr "Les machines du parc"
 
-msgid "Host, state or user"
-msgstr "Machine, état ou utilisateur"
+msgid "Host name: one or several words, any of them"
+msgstr "Nom de la machine : un ou plusieurs mots, l'un d'eux"
 
 msgid "State"
 msgstr "État"
@@ -640,6 +640,30 @@ msgstr "Aucune machine ne correspond au filtre."
 
 msgid "No host in the pool."
 msgstr "Aucune machine dans le parc."
+
+msgid "Select the hosts shown"
+msgstr "Sélectionner les machines affichées"
+
+msgid "{n} host(s) selected"
+msgstr "{n} machine(s) sélectionnée(s)"
+
+msgid "({n} not shown)"
+msgstr "({n} non affichée(s))"
+
+msgid "no host selected"
+msgstr "aucune machine sélectionnée"
+
+msgid "applies to none of the selected hosts"
+msgstr "ne s'applique à aucune des machines sélectionnées"
+
+msgid "applies to {n} of the {total} selected host(s)"
+msgstr "s'applique à {n} des {total} machine(s) sélectionnée(s)"
+
+msgid "the host is enabled"
+msgstr "la machine est activée"
+
+msgid "{failed} of {total} action(s) failed: {details}"
+msgstr "{failed} action(s) sur {total} ont échoué : {details}"
 
 # --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
 

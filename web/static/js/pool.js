@@ -3,10 +3,12 @@
 // the failed attempts of a wake), its projects, terminals, load, who occupies it, its uptime,
 // its flags (reserved for instructors, power, drain, power off sent, restart sent), the agent's version and
 // its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
-// sorted by any column and filtered by text.  The buttons are the commands of the tool (Enable /
+// sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
 // Disable, Wake, Drain, Power off: POST /api/pool/hosts/{name}/{action}; add, remove and restart
 // stay with the tool), each disabled with the reason as its tooltip when it does not apply; the
-// answer of an action is the updated row, shown at once.
+// answer of an action is the updated row, shown at once.  A checkbox per row (the header's one
+// ticks the hosts shown) selects hosts for the buttons of the bar above the table, which run the
+// same commands on every selected host the action applies to, one call per host.
 
 import './base.js';
 import * as api from './api.js';
@@ -24,7 +26,11 @@ const body = table.querySelector('tbody');
 const filterInput = document.getElementById('pool-filter');
 const countElement = document.getElementById('pool-count');
 const statusElement = document.getElementById('pool-status');
+const selectAll = document.getElementById('pool-select-all');
+const selectedElement = document.getElementById('pool-selected');
+const bulkButtons = Array.from(document.querySelectorAll('#pool-selection button[data-action]'));
 const pending = new Map();     // host name -> the action in progress: its buttons stay disabled across re-renders
+const selected = new Set();    // the names of the selected hosts, kept across re-renders
 
 const state = {rows: [], status: {}, sortKey: 'name', sortAsc: true, filter: ''};
 
@@ -119,14 +125,66 @@ function compare(a, b) {
   return state.sortAsc ? result : -result;
 }
 
-// every word of the filter in the name, host name, state, occupants or error of the row
+// the filter on the host name only (the Host column): one or several words, a host whose name
+// contains any of them ("a01 a02 h": those two and every h* host)
 function matches(row) {
   if (!state.filter) {
     return true;
   }
-  const haystack = [row.name, row.hostname, row.state, stateLabel(row.state), (row.occupied_by || []).join(' '),
-                    row.reachable ? '' : row.error].join(' ').toLowerCase();
-  return state.filter.split(/\s+/).every((word) => haystack.includes(word));
+  const name = (row.name || '').toLowerCase();
+  return state.filter.split(/\s+/).some((word) => name.includes(word));
+}
+
+function shownRows() {
+  return state.rows.filter(matches);
+}
+
+// why an action does not apply to a host ('' when it does): the tooltip of its disabled button,
+// and what the bulk buttons skip
+function actionReason(row, action) {
+  const unreachable = row.reachable ? '' : _('the host is not reachable');
+  switch (action) {
+    case 'enable':
+      return row.enabled ? _('the host is enabled') : '';
+    case 'disable':
+      return row.enabled ? '' : _('the host is disabled');
+    case 'wake':
+      if (!row.can_wake) {
+        return _('no MAC address nor wake command');
+      }
+      return row.reachable ? _('the host is up') : '';
+    case 'drain':
+      if (unreachable) {
+        return unreachable;
+      }
+      if (!row.enabled) {
+        return _('the host is disabled');
+      }
+      return row.drain ? _('already draining') : '';
+    case 'poweroff':
+      if (unreachable) {
+        return unreachable;
+      }
+      if (!row.power_off_allowed) {
+        return _('the agent does not allow it (allow_power_off)');
+      }
+      return row.power_off_sent ? _('power off sent') : '';
+    default:
+      return '';
+  }
+}
+
+function powerOffQuestion(names) {
+  return format(_('Power off {name}? The agent refuses while a project runs or someone is logged in there.'),
+                {name: names.join(', ')});
+}
+
+// one call of the route; the answer (the updated row) replaces the row at once
+async function postAction(row, action) {
+  const updated = await api.post(`/api/pool/hosts/${encodeURIComponent(row.name)}/${action}`);
+  if (updated && updated.name) {
+    state.rows = state.rows.map((r) => (r.name === updated.name ? updated : r));
+  }
 }
 
 // one action on a host: the row's buttons disabled meanwhile, the answer (the updated row) shown
@@ -135,14 +193,50 @@ async function act(row, action) {
   pending.set(row.name, action);
   render();
   try {
-    const updated = await api.post(`/api/pool/hosts/${encodeURIComponent(row.name)}/${action}`);
-    if (updated && updated.name) {
-      state.rows = state.rows.map((r) => (r.name === updated.name ? updated : r));
-    }
+    await postAction(row, action);
   } catch (e) {
     toast(e.message, {error: true});
   } finally {
     pending.delete(row.name);
+  }
+  render();
+  await refresh();
+}
+
+// the selected hosts an action applies to, those with an action in progress left out
+function targets(action) {
+  return state.rows.filter((row) => selected.has(row.name) && !pending.has(row.name) && !actionReason(row, action));
+}
+
+// one action on every selected host it applies to: one call per host, run together (one admin
+// line of the connection log each), the rows' buttons disabled meanwhile, every answer shown at
+// once, the failures in one message, then a refresh; the selection is kept
+async function actMany(action) {
+  const rows = targets(action);
+  if (!rows.length) {
+    return;
+  }
+  if (action === 'poweroff' && !window.confirm(powerOffQuestion(rows.map((row) => row.name)))) {
+    return;
+  }
+  for (const row of rows) {
+    pending.set(row.name, action);
+  }
+  render();
+  const failures = new Map();
+  await Promise.all(rows.map(async (row) => {
+    try {
+      await postAction(row, action);
+    } catch (e) {
+      failures.set(row.name, e.message);
+    } finally {
+      pending.delete(row.name);
+    }
+  }));
+  if (failures.size) {
+    const details = rows.filter((row) => failures.has(row.name)).map((row) => `${row.name}: ${failures.get(row.name)}`);
+    toast(format(_('{failed} of {total} action(s) failed: {details}'),
+                 {failed: failures.size, total: rows.length, details: details.join('; ')}), {error: true});
   }
   render();
   await refresh();
@@ -173,33 +267,56 @@ function actionButton(row, action, label, options = {}) {
 
 // the buttons of a row, always there (a stable layout), each with the reason it is disabled
 function actions(row) {
-  const unreachable = row.reachable ? '' : _('the host is not reachable');
-  let wake = '';
-  if (!row.can_wake) {
-    wake = _('no MAC address nor wake command');
-  } else if (row.reachable) {
-    wake = _('the host is up');
-  }
-  let drain = unreachable;
-  if (!drain && !row.enabled) {
-    drain = _('the host is disabled');
-  } else if (!drain && row.drain) {
-    drain = _('already draining');
-  }
-  let poweroff = unreachable;
-  if (!poweroff && !row.power_off_allowed) {
-    poweroff = _('the agent does not allow it (allow_power_off)');
-  } else if (!poweroff && row.power_off_sent) {
-    poweroff = _('power off sent');
-  }
-  const question = format(_('Power off {name}? The agent refuses while a project runs or someone is logged in there.'),
-                          {name: row.name});
   return [
     row.enabled ? actionButton(row, 'disable', _('Disable'), {danger: true}) : actionButton(row, 'enable', _('Enable')),
-    actionButton(row, 'wake', _('Wake'), {reason: wake}),
-    actionButton(row, 'drain', _('Drain'), {reason: drain}),
-    actionButton(row, 'poweroff', _('Power off'), {danger: true, reason: poweroff, confirm: question}),
+    actionButton(row, 'wake', _('Wake'), {reason: actionReason(row, 'wake')}),
+    actionButton(row, 'drain', _('Drain'), {reason: actionReason(row, 'drain')}),
+    actionButton(row, 'poweroff', _('Power off'),
+                 {danger: true, reason: actionReason(row, 'poweroff'), confirm: powerOffQuestion([row.name])}),
   ];
+}
+
+// the checkbox of a row
+function selectBox(row) {
+  const box = el('input', {type: 'checkbox', 'aria-label': row.name});
+  box.checked = selected.has(row.name);
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      selected.add(row.name);
+    } else {
+      selected.delete(row.name);
+    }
+    renderSelection();
+  });
+  return box;
+}
+
+// the header checkbox (the hosts shown: all, some or none of them selected) and the bar above the
+// table: the count of the selected hosts and the bulk buttons, each enabled when its action
+// applies to at least one selected host, the tooltip saying how many
+function renderSelection() {
+  const shown = shownRows();
+  const shownSelected = shown.filter((row) => selected.has(row.name)).length;
+  const count = selected.size;
+  let text = format(_('{n} host(s) selected'), {n: count});
+  if (count > shownSelected) {
+    text += ' ' + format(_('({n} not shown)'), {n: count - shownSelected});
+  }
+  selectedElement.textContent = text;
+  selectAll.disabled = !shown.length;
+  selectAll.checked = shown.length > 0 && shownSelected === shown.length;
+  selectAll.indeterminate = shownSelected > 0 && shownSelected < shown.length;
+  for (const button of bulkButtons) {
+    const n = targets(button.dataset.action).length;
+    let reason = '';
+    if (!count) {
+      reason = _('no host selected');
+    } else if (!n) {
+      reason = _('applies to none of the selected hosts');
+    }
+    button.disabled = Boolean(reason);
+    button.title = reason || format(_('applies to {n} of the {total} selected host(s)'), {n, total: count});
+  }
 }
 
 // the line of `sre-web-tool status`
@@ -224,7 +341,8 @@ function renderStatus() {
 function render() {
   clear(body);
   renderStatus();
-  const rows = state.rows.filter(matches).sort(compare);
+  renderSelection();
+  const rows = shownRows().sort(compare);
   countElement.textContent = state.rows.length === rows.length
     ? format(_('{n} host(s)'), {n: rows.length})
     : format(_('{n} of {total} host(s)'), {n: rows.length, total: state.rows.length});
@@ -245,6 +363,7 @@ function renderRow(row) {
   const nameTitle = [row.hostname, row.url].filter(Boolean).join(' — ');
   const idle = isNumber(row.idle_for) ? format(_('idle for {n} min'), {n: Math.floor(row.idle_for / 60)}) : '';
   return el('tr', {dataset: {host: row.name}},
+    el('td', {class: 'select'}, selectBox(row)),
     el('td', {title: nameTitle}, row.name || ''),
     el('td', {class: `state ${row.state || ''}`, title: idle}, stateText(row)),
     el('td', {class: 'num'}, row.reachable ? `${row.projects} / ${row.max_projects}` : ''),
@@ -270,6 +389,12 @@ async function refresh() {
   }
   state.rows = Array.isArray(rows) ? rows : [];
   state.status = status && typeof status === 'object' ? status : {};
+  const names = new Set(state.rows.map((row) => row.name));
+  for (const name of Array.from(selected)) {   // the hosts removed from the pool
+    if (!names.has(name)) {
+      selected.delete(name);
+    }
+  }
   render();
 }
 
@@ -290,6 +415,19 @@ function setupControls() {
     state.filter = filterInput.value.trim().toLowerCase();
     render();
   });
+  selectAll.addEventListener('change', () => {   // the hosts shown, selected or deselected together
+    for (const row of shownRows()) {
+      if (selectAll.checked) {
+        selected.add(row.name);
+      } else {
+        selected.delete(row.name);
+      }
+    }
+    render();
+  });
+  for (const button of bulkButtons) {
+    button.addEventListener('click', () => actMany(button.dataset.action));
+  }
 }
 
 async function main() {

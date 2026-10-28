@@ -234,6 +234,38 @@ class TestInstructorPage:
                 assert (await h.client.delete('/api/pool/hosts/b02', headers={**prof, **CSRF})).status == 401
         run(go())
 
+    def test_bulk_actions(self, tmp_path):
+        """The bar of the Pool page sends one call per selected host, all at once: the per-host
+        route serves them together, each answer being the row of its host, a failure (the wake
+        of a host without MAC) leaving the others alone."""
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN}, 'pool': QUIET_POOL, 'limits': {'start_interval': 0}}
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+                sent = []
+                h.portal.manager.wol = lambda mac, broadcast: sent.append((mac, broadcast))
+                prof = {**P.who('prof', groups=P.TEACHERS), **CSRF}
+                for name in ('b02', 'b03'):
+                    body = {'name': name, 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'mac': f'aa:bb:cc:dd:ee:{name[-2:]}'}
+                    assert (await h.client.post('/api/pool/hosts', json=body, headers=auth(ADMIN))).status == 201
+                hosts = ['a01', 'b02', 'b03']
+                responses = await asyncio.gather(*(h.client.post(f'/api/pool/hosts/{name}/disable', headers=prof)
+                                                   for name in hosts))
+                rows = [await r.json() for r in responses]
+                assert [r.status for r in responses] == [200] * 3
+                assert [row['name'] for row in rows] == hosts and all(row['state'] == 'disabled' for row in rows)
+                responses = await asyncio.gather(*(h.client.post(f'/api/pool/hosts/{name}/enable', headers=prof)
+                                                   for name in hosts))
+                assert [(await r.json())['enabled'] for r in responses] == [True] * 3
+                # a wake of the three: a01 has no MAC (409), the two others are woken
+                responses = await asyncio.gather(*(h.client.post(f'/api/pool/hosts/{name}/wake', headers=prof)
+                                                   for name in hosts))
+                assert [r.status for r in responses] == [409, 200, 200]
+                assert sorted(sent) == [('aa:bb:cc:dd:ee:02', '255.255.255.255'), ('aa:bb:cc:dd:ee:03', '255.255.255.255')]
+                summary = {row['name']: row['state'] for row in await (await h.client.get('/api/pool', headers=prof)).json()}
+                assert summary == {'a01': 'up', 'b02': 'waking', 'b03': 'waking'}
+        run(go())
+
 
 class TestCli:
     def test_sre_web_tool(self, tmp_path):

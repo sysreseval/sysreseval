@@ -198,6 +198,12 @@ class TestTemplates:
         for key in ('name', 'state', 'projects', 'terminals', 'load1', 'occupied_by', 'uptime', 'sre_version'):
             assert f'data-sort="{key}"' in html, key
         assert 'data-login="alice"' in html and 'class="grid watch pool"' in html
+        # the selection: the header checkbox, the bar of bulk buttons, one more column
+        assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
+        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff'):
+            assert f'data-action="{action}"' in html, action
+        assert 'colspan="12"' in html and len(re.findall(r'<th[ >]', html)) == 12
+        assert 'Host name: one or several words' in html
 
     def test_project_page(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True)

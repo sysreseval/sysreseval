@@ -342,7 +342,9 @@ table.grid tr.row-stale td { background: var(--debug-bg); }
 .watch-legend .swatch.row-errors { background: var(--fail-bg); }
 .instructor-option { display: block; margin: 8px; }
 
-/* the Pool page of the instructors: the state cell coloured, the status line */
+/* the Pool page of the instructors: the state cell coloured, the status line, the selection bar */
+table.grid.pool th.select, table.grid.pool td.select { width: 1px; text-align: center; }
+.pool-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 8px 8px; }
 table.grid.pool td.state, table.grid.pool td.flags { white-space: nowrap; }
 table.grid.pool td.state.up { background: var(--ok-bg); }
 table.grid.pool td.state.waking, table.grid.pool td.state.occupied, table.grid.pool td.state.exam,
