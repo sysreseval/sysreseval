@@ -25,6 +25,7 @@ from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDEN
 from ..config import WebConfig, AUTH_PROXY, client_allowed
 
 log = logging.getLogger('sreweb.portal')
+AGENT_CONNECTION_LIMIT = 0        # 0 = unlimited: a relayed WebSocket holds a connection while the page is open
 
 PORTAL_KEY = web.AppKey('portal', object)
 #: Proxy mode: how many distinct peers / bad logins are warned about once (then every time).
@@ -95,7 +96,12 @@ class Portal:
 
     async def _on_startup(self, app):
         context = self.client_ssl_context()
-        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=context) if context else None)
+        # one session to the agents for the status polls, the project lists and every relayed
+        # socket or stream: no connection limit (aiohttp's default is 100), since each open events
+        # or terminal socket of a browser holds one connection for as long as the page is open and
+        # a full pool starved the 5 s status polls (hosts reported unreachable, starts refused)
+        connector = aiohttp.TCPConnector(limit=AGENT_CONNECTION_LIMIT, ssl=context if context is not None else True)
+        self.session = aiohttp.ClientSession(connector=connector)
         if context is not None:
             log.info("TLS to the agents: CA %s, client certificate %s", self.cfg.pool.ca or '(system store)',
                      self.cfg.pool.client_cert or '(none)')

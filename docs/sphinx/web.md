@@ -715,3 +715,80 @@ the browser reaches a desktop through the owner check of the portal and of the a
 `sre_exe` pointed at a wrapper of `tests/mock_sre.py` (`SRE_PUB_DIR` exported in the wrapper),
 the whole site works without Docker. The French catalog is `locale/fr/LC_MESSAGES/sreweb.po`
 (hand-maintained, `make web-translations`).
+
+## Stress test
+
+`scripts/web-stress.py` simulates a class of students on a portal through its HTTP / WebSocket
+API, as the browser drives it: for each student (logins `stress001`, `stress002`...), the Projects
+page (`GET /api/projects` every 5 s, the presence socket), the Open page (`GET /api/labs`),
+`POST /api/projects` read as NDJSON until the `result` line (a 503 or 429 is retried after its
+`retry_after`), the project page (the project JSON, the schema, the events socket kept open and
+reconnected with the browser's backoff, `POST .../touch` every 60 s), a terminal on the first
+device open to the student with a few commands typed (the echo of the first one is checked),
+then, over `--hold` seconds, `--answers` saves and `--evals` self-evaluations, and finally the
+stop. The students begin spread over `--ramp` seconds. `--instructor` adds an instructor on the
+Watch page (`GET /api/watch`, the Pool page's calls, every 5 s), `--admin-token` samples
+`GET /api/pool` every 5 s (the `reachable` flag and the project count of each host as the portal
+sees them), `--probe` measures `GET /api/me` every 2 s. The tool needs Python 3.11 and aiohttp only
+(the venv of the installation has them) and runs in **proxy authentication mode**: the identity
+of each student travels in the `X-Remote-*` headers, so it must run on a host of
+`trusted_proxies` (the portal's own host, against `http://127.0.0.1:8450`); the instructor is
+made by `X-Remote-Gid: 2000` (`--instructor-header` / `--instructor-value` otherwise).
+
+The summary on stdout gives, per phase (`start`, `project_get`, `events_ws`, `terminal_ws`,
+`eval`, `stop`...), the number of calls, the errors, the latencies (p50 / p95 / max) and the
+statuses, then the students completed, the checks failed (`own_projects_only`: a listing showed
+another student's project; `project_listed`: the new project was missing from `GET /api/projects`;
+`terminal_echo`; `eval_grades`; `events_stayed_open`; `no_unexpected_removed`; `stopped`), the
+hosts used and the pool samples (the flips of `reachable` show the status polls timing out).
+`--report FILE` writes everything as JSON (one entry per student), `--events FILE` a CSV
+timeline (one line per request or socket event). The exit status is 0 when every student
+completed with every check true. `--keep` leaves the projects running; `--cleanup` stops every
+project of the synthetic logins (through the instructor identity) and exits.
+
+### Stage 1: a fake pool, no Docker
+
+`scripts/web-fake-pool.py` launches from the checkout N real agents whose `sre` is a wrapper of
+`tests/mock_sre.py` (the projects are directories, the terminals `/bin/sh`, a start takes
+7 × `--start-delay` seconds, an evaluation `--eval-delay`), and a real portal in proxy mode
+trusting the loopback, with the production `[limits]` (`--start-interval` / `--eval-interval`
+override them), `max_projects` per host and an admin token; then it runs the command given after
+`--` with `SRE_STRESS_PORTAL`, `SRE_STRESS_ADMIN_TOKEN` and `SRE_STRESS_WORKDIR` in its environment
+(the defaults of `--portal` and `--admin-token`) and stops everything:
+
+```sh
+venv/bin/python3 scripts/web-fake-pool.py --hosts 4 --max-projects 25 -- \
+    venv/bin/python3 scripts/web-stress.py --users 100 --ramp 60 --hold 120 --instructor --probe \
+        --report report.json --events events.csv
+```
+
+Without a command the pool stays up until Ctrl-C (`portal=... admin_token=... workdir=...` is
+printed first), for runs by hand. The work directory (configs, `portal.log`, `access.log`, one
+`agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died.
+
+### Stage 2: the production pool
+
+On the portal's host, outside class hours, with the tool copied there (or `/opt/sre/scripts/`
+once synced) and the venv of the installation:
+
+1. **Preflight.** The portal must see the tool as a trusted peer: from the host itself when the
+   portal container uses the host network (`docker inspect sre-web --format
+   '{{.HostConfig.NetworkMode}}'`), from inside the container otherwise (`docker exec`). Read the
+   admin token in `[admin]` of `web.toml`. `sre-web-tool status` and `list`: the hosts up and
+   the spare slots; with fewer slots than students, the pool wakes hosts during the ramp
+   (`wake_timeout`, the students refused with 503 "a host is starting" retry after
+   `[limits] start_interval`). Check `ulimit -n` of the portal process (two relayed sockets per
+   student). Note the `archive_dirs` of the hosts: every evaluation writes an archive there.
+2. **Smoke run:** `web-stress.py --portal http://127.0.0.1:8450 --users 3 --hold 60 --lab sre/dhcp.py
+   --instructor --admin-token ... --probe` must give 3 students completed and no check failed.
+3. **Full run:** the same with `--users 100 --ramp 300 --hold 600 --report ... --events ...`.
+   Meanwhile: `docker stats sre-web` (the CPU of one event loop, the memory), the connection log
+   (`event=start ... result=`, `denied`, hosts unreachable), `sre-web-tool list` (states, projects
+   per host), the journal of an agent (`journalctl -u sre-agent -f`), the probe's p95 in the summary.
+4. **Cleanup:** `web-stress.py --cleanup ...` stops what a stopped run left (a Ctrl-C stops the
+   students' projects by itself), then remove the archives of the synthetic logins
+   (`*@@@stress0*` under `archive_dirs` on the hosts) and check `sre-web-tool list` is back to
+   0 projects.
+
+The reverse proxy and the directory are bypassed (the tool speaks to the portal), and
+`follow_local_sessions` never applies (the synthetic logins have no local session).

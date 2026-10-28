@@ -345,11 +345,15 @@ class Mock:
         os.symlink(str(Path(__file__).resolve()), params.srelab_link_filename(running_lab_name))
 
         base = f"{params.sre_user_public_dir}/{params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name)}"
+        os.makedirs(params.sre_user_public_dir, exist_ok=True)
         user_public_dir, counter = base, 1
-        while os.path.exists(user_public_dir):
-            user_public_dir = f"{base}_{counter}"
-            counter += 1
-        os.makedirs(user_public_dir)
+        while True:
+            try:
+                os.mkdir(user_public_dir)   # atomic: a concurrent start of the same lab by another user takes the next suffix
+                break
+            except FileExistsError:
+                user_public_dir = f"{base}_{counter}"
+                counter += 1
         os.chmod(user_public_dir, 0o755)
         os.symlink(user_public_dir, params.link_to_user_public_dir(running_lab_name))
 

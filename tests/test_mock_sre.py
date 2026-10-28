@@ -261,6 +261,44 @@ class TestStart:
         link = d / params.private_dir_name / params.user_public_dir_name
         assert link.is_symlink() and link.resolve() == (pub / 'home' / 'dhcp').resolve()
 
+    def test_concurrent_starts_of_one_lab_take_distinct_home_dirs(self, pub, capsys, monkeypatch):
+        """The ``home/<lab>_N`` directory is taken with an atomic mkdir: when another user's start
+        of the same lab wins the race for ``home/dhcp_1`` (simulated here), this one takes ``_2``
+        instead of crashing (a stress test starts the same lab for many users at once)."""
+        spec = importlib.util.spec_from_file_location('mock_sre_module_race', MOCK)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        (pub / 'home' / 'dhcp').mkdir(parents=True)
+        real_mkdir, raced = os.mkdir, []
+
+        def mkdir(path, *args, **kwargs):
+            if str(path).endswith('/home/dhcp_1') and not raced:
+                raced.append(path)             # the other start created it between our attempts
+                real_mkdir(path, *args, **kwargs)
+                raise FileExistsError(path)
+            return real_mkdir(path, *args, **kwargs)
+        monkeypatch.setattr(os, 'mkdir', mkdir)
+        env = {'SRE_PUB_DIR': str(pub), 'LOGNAME': 'root', 'SUDO_USER': 'bob', 'USER_USERNAME': 'bob'}
+        assert module.main(['--user', 'start', FIRST_LAB], env) == 0
+        capsys.readouterr()
+        assert raced
+        projects = [p for p in (pub / 'projects').iterdir() if p.is_dir()]
+        assert len(projects) == 1 and params.get_username_from_running_lab_name(projects[0].name) == 'bob'
+        link = projects[0] / params.private_dir_name / params.user_public_dir_name
+        assert link.resolve() == (pub / 'home' / 'dhcp_2').resolve()
+        assert sorted(p.name for p in (pub / 'home').iterdir()) == ['dhcp', 'dhcp_1', 'dhcp_2']
+
+    def test_two_users_start_the_same_lab_at_once(self, pub):
+        procs = [subprocess.Popen(_argv('start', FIRST_LAB, user=True), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  stdin=subprocess.DEVNULL,
+                                  env=_env(pub, True, {'SUDO_USER': user, 'USER_USERNAME': user}))
+                 for user in ('alice', 'bob')]
+        for p in procs:
+            p.communicate(timeout=60)
+            assert p.returncode == 0
+        assert sorted(p.name for p in (pub / 'home').iterdir()) == ['dhcp', 'dhcp_1']
+        assert len([p for p in (pub / 'projects').iterdir() if (p / params.info_json_name).is_file()]) == 2
+
     def test_info_json_is_a_complete_info_lab(self, pub, project):
         text = (project_dir(pub, project) / params.info_json_name).read_text()
         info = InfoLab.from_json(text)   # every key of a real info.json, the real classes read it back
