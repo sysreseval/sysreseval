@@ -504,8 +504,9 @@ below), except `add` and `remove`, which stay with the token.
   nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
   their exact size, at the largest font that fits), the question selected, the drawing options
   of the schema, the instructor texts and the virtual desktop (view-only) follow what the
-  instructor does. The student's own page is untouched underneath, terminals included: when the
-  presentation ends it is back as it was.
+  instructor does. The title bar of the presented project is coloured (lavender) and names the
+  instructor presenting it. The student's own page is untouched underneath, terminals included:
+  when the presentation ends it is back as it was.
 
 ### Instructors
 
@@ -586,9 +587,11 @@ What an instructor gets:
   student's) opens the list of the users connected to the site (a text filter, the student
   groups among them when the site configures one, *Select all*): the chosen students, one by one
   and by group (a group takes its members connected now and those connecting later), see the
-  project read-only on their own browsers (above). The bar under the project bar then tells how
-  many students are in the audience and how many are watching; *Edit audience* changes the list,
-  *Stop presenting* ends it (so does closing the project). The spectators follow the instructor's
+  project read-only on their own browsers (above). The top of the page (the site bar, the
+  project bar and the bar under it) then takes the presentation colour (lavender), a reminder
+  that the students are watching, and that bar tells how many students are in the audience and
+  how many are watching; *Edit audience* changes the list, *Stop presenting* ends it (so does
+  closing the project) and the bars are grey again. The spectators follow the instructor's
   page: the tab, the terminals the instructor opens (joined read-only: the students see the same
   shell, cannot type, and do not change its size), the question, the schema options, the
   *Instructor mode* texts, the Display tab view-only, and the Evaluation tab shows them the last

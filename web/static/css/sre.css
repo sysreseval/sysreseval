@@ -20,6 +20,7 @@
   --debug-bg: #ffd9a0;              /* the orange Connect button of a debug project */
   --hidden-color: #d00000;          /* hidden machines of a debug project */
   --closed-color: #e08000;          /* devices closed to the students */
+  --presentation-bg: #d1c4e9;       /* the top bars of a page while a presentation is on */
 }
 
 * { box-sizing: border-box; }
@@ -495,11 +496,16 @@ option.closed-device { color: var(--closed-color); }
 .ctrl-bar .display-clipboard { height: 1.6em; width: 16em; resize: none; font: inherit; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; }
 
 /* presentations: the overlay of a student's page (the iframe of /present/{id}), the bar and the
-   audience dialog of the presenter's page, the read-only terminals of a spectator */
+   audience dialog of the presenter's page, the read-only terminals of a spectator; the top bars
+   take the presentation colour on both sides (body.presenting: the presenter's page while it
+   presents, set by present.js; body[data-presentation]: the presented page, whose site bar is
+   hidden) */
 #presentation-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--bg); }
 #presentation-overlay iframe { display: block; width: 100%; height: 100%; border: 0; }
 body.has-presentation { overflow: hidden; }
 body[data-presentation] .topbar, body[data-presentation] .footer { display: none; }
+body.presenting .topbar, body.presenting .project-bar, body.presenting .presentation-bar,
+body[data-presentation] .project-bar { background: var(--presentation-bg); }
 .presenter-name { color: var(--muted); white-space: nowrap; margin: 0 8px; }
 .presentation-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--debug-bg); border-bottom: 1px solid var(--border); flex: none; }
 .presentation-bar #presentation-status { flex: 1; font-weight: bold; }

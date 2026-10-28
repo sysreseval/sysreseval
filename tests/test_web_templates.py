@@ -343,3 +343,18 @@ class TestJavaScript:
                 if depth == 0 and TRANSLATED_STRING.search(stripped):
                     pytest.fail(f"{module.name}: _() at the module top level: {line.strip()}")
                 depth += stripped.count('{') + stripped.count('(') - stripped.count('}') - stripped.count(')')
+
+    def test_presentation_colour_keyed_on_the_body(self):
+        """The top bars take --presentation-bg while a presentation is on: the presenter's page
+        through the body class present.js sets and removes, the presented page through its
+        data-presentation attribute (project.html)."""
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert '--presentation-bg:' in css
+        rule = re.search(r'([^{}]*)\{[^{}]*var\(--presentation-bg\)', css)
+        assert rule, "no rule uses --presentation-bg"
+        selectors = [s.strip() for s in rule.group(1).split(',')]
+        for selector in ('body.presenting .topbar', 'body.presenting .project-bar',
+                         'body.presenting .presentation-bar', 'body[data-presentation] .project-bar'):
+            assert selector in selectors, selector
+        present = (JS / 'present.js').read_text(encoding='utf-8')
+        assert "classList.add('presenting')" in present and "classList.remove('presenting')" in present

@@ -1,11 +1,12 @@
 // The presentation side of the project page of an instructor: the Present button opens the
 // audience dialog (the connected users of GET /api/presence, one by one and by student group),
-// POST /api/presentations starts the presentation, and while it runs the bar under the project
-// bar shows the audience counts (the socket GET /api/presentations/{id}/ws), Edit audience
-// changes it (PUT .../audience) and Stop presenting ends it (DELETE).  The view the spectators
-// follow (the active tab, the open terminals, the question, the schema options, the instructor
-// texts, and the counters telling that the answers or the evaluation changed) is published
-// with PUT .../view a moment after each change: the tabs call ctx.onViewChange() /
+// POST /api/presentations starts the presentation, and while it runs the top bars take the
+// presentation colour (the class `presenting` on the body, sre.css) and the bar under the
+// project bar shows the audience counts (the socket GET /api/presentations/{id}/ws), Edit
+// audience changes it (PUT .../audience) and Stop presenting ends it (DELETE).  The view the
+// spectators follow (the active tab, the open terminals, the question, the schema options, the
+// instructor texts, and the counters telling that the answers or the evaluation changed) is
+// published with PUT .../view a moment after each change: the tabs call ctx.onViewChange() /
 // ctx.onEvaluated(), project.js builds the view (getView).  A reloaded page resumes its
 // presentation (GET /api/presentations); the portal ends it when the page is gone for a minute.
 
@@ -99,6 +100,7 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     }
     elements.button.hidden = true;
     elements.bar.hidden = false;
+    document.body.classList.add('presenting');
     renderStatus(p.count, p.connected);
     socket = new ReconnectingSocket(presentationUrl(p.id, '/ws'), {
       onMessage: (message) => {
@@ -132,6 +134,7 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     presentation = null;
     elements.bar.hidden = true;
     elements.button.hidden = false;
+    document.body.classList.remove('presenting');
   }
 
   async function end() {
