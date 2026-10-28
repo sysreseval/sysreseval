@@ -198,6 +198,7 @@
 <li class="toctree-l2"><a class="reference internal" href="overview.html#monitoring-of-a-session">Monitoring of a session</a></li>
 <li class="toctree-l2"><a class="reference internal" href="overview.html#running-exams">Running exams</a></li>
 <li class="toctree-l2"><a class="reference internal" href="overview.html#post-exam-workflow">Post-exam workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="overview.html#web-server-remote-use">Web server (remote use)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="exam.html">Exam Administration</a><ul>
@@ -547,6 +548,20 @@ front authenticates them), or everybody is anonymous.</p>
 <code class="docutils literal notranslate"><span class="pre">info.json</span></code> (resolved to the user’s language, the instructor texts stripped), the outputs of the
 <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">--user</span></code> commands (the schema, the grades of a self-evaluation, the console of a machine).
 The lab files, <code class="docutils literal notranslate"><span class="pre">data.json</span></code>, the hidden machines and the archives stay on the pool hosts.</p>
+<p>The instructors get, on top of what a student sees (<em>Instructors</em> below):</p>
+<ul class="simple">
+<li><p>a <strong>Watch page</strong>, the web counterpart of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code>: every running project of the pool, one
+row per project with its owner, its lab, the grade and mark of its last evaluation, its age
+and its errors, refreshed every few seconds;</p></li>
+<li><p>the <strong>projects of the students</strong>, open to them to help: every tab of the project, and the
+student’s terminals joined when the Terminals tab opens, so that the instructor and the
+student see the same shell and both type in it (a private terminal, unseen by the student, is
+offered too);</p></li>
+<li><p><strong>presentations</strong>: a project, the instructor’s own or a student’s, duplicated read-only on the
+browsers of the whole class or of chosen students and groups to demonstrate something. What
+the instructor does on their own page (changing tabs, typing in a terminal, selecting a
+question, changing the drawing of the schema, …) is shown at once on the students’ browsers.</p></li>
+</ul>
 <section id="architecture">
 <h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sre-agent (one per pool host) ──► sre --user …
@@ -577,7 +592,8 @@ of the instructors needs none of that: each agent reads the archives of its own 
 workstation they sit at, <code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code>), else to the reachable host with the lowest
 <code class="docutils literal notranslate"><span class="pre">projects</span> <span class="pre">/</span> <span class="pre">max_projects</span></code> (then the lowest load); a host in exam mode is never used, a host
 with <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code> never for a student (an instructor may also name the host on
-the Open page). A classroom workstation holds about thirty projects (210 containers in 3.4 GB).</p></li>
+the Open page); the whole rule is under <em>Placement</em> in <em>A pool of workstations</em>. A classroom
+workstation holds about thirty projects (210 containers in 3.4 GB).</p></li>
 <li><p>The lab list of the Open page comes from one host, the one a new project of the user would
 go to (every host of a pool serves the same lab tree; the next candidate is asked when it
 fails), and is kept <code class="docutils literal notranslate"><span class="pre">labs_cache_ttl</span></code> seconds (<code class="docutils literal notranslate"><span class="pre">60</span></code>) per role, since the reserved hosts are
@@ -1085,6 +1101,24 @@ the <em>Pool</em> page of the instructors) shows it:</p>
 </tbody>
 </table>
 </div>
+<p><strong>Placement.</strong> A new project (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/projects</span></code>) goes to one host, chosen by the portal from
+the last status poll of every agent (<code class="docutils literal notranslate"><span class="pre">poll_interval</span></code>) without asking them again. The candidates
+are the hosts <code class="docutils literal notranslate"><span class="pre">up</span></code> (plus, for a user logged in at the keyboard of an <code class="docutils literal notranslate"><span class="pre">occupied</span></code> host, that host:
+<em>Occupied hosts</em> below), below their <code class="docutils literal notranslate"><span class="pre">max_projects</span></code>, not reserved for the instructors when the
+caller is a student, and whose agent has no restart pending (<code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">restart</span></code>: the agent
+refuses new projects until it is back). Among them: the host of the user’s own session first,
+then the lowest <code class="docutils literal notranslate"><span class="pre">projects</span> <span class="pre">/</span> <span class="pre">max_projects</span></code>, then the lowest one-minute load, then the name, so
+that equal hosts are always settled the same way. The project count of the chosen host is raised
+at once and a <em>reservation</em> is kept until the start is over and a status poll sent after its end
+has answered: a burst of simultaneous starts is spread over the pool instead of piling onto the
+host the last poll showed emptiest, and <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> may count a project one poll before
+the agent does. Without any candidate the start is refused with 503 and a <code class="docutils literal notranslate"><span class="pre">retry_after</span></code> the Open
+page obeys: “a host is starting” (30 s) when a host the caller may use is <code class="docutils literal notranslate"><span class="pre">waking</span></code> or
+restarting, “no host available for a new project” (60 s) otherwise. An instructor naming a host
+on the Open page skips the ranking: the host must exist (404), be open to them (403 for a
+student), be available to them (503 “not available”) and have room (503 “full”). The <code class="docutils literal notranslate"><span class="pre">start</span></code>
+line of the connection log says why the host was chosen: <code class="docutils literal notranslate"><span class="pre">placement=load</span></code>, <code class="docutils literal notranslate"><span class="pre">session</span></code> or
+<code class="docutils literal notranslate"><span class="pre">named</span></code>.</p>
 <p><strong>Waking.</strong> A host with a <code class="docutils literal notranslate"><span class="pre">mac</span></code> gets a magic packet (UDP port 9 to <code class="docutils literal notranslate"><span class="pre">wol_broadcast</span></code>: the portal
 must be on the hosts’ network, or the routers must forward the directed broadcast); a host with a
 <code class="docutils literal notranslate"><span class="pre">wake_command</span></code> gets that command instead (<code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">relay</span> <span class="pre">wakeonlan</span> <span class="pre">{mac}</span></code>, an IPMI or VM call…).
@@ -1243,7 +1277,23 @@ chosen group kept in the URL (<code class="docutils literal notranslate"><span c
 bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
 red, one without an evaluation younger than 15 minutes (or twice the lab’s evaluation
 interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
-their own host (<code class="docutils literal notranslate"><span class="pre">params.archive_dirs</span></code>) on demand, nothing is scanned while nobody watches.</p></li>
+their own host (<code class="docutils literal notranslate"><span class="pre">params.archive_dirs</span></code>) on demand, nothing is scanned while nobody watches.
+As in <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code>, the page also shows the details: a <strong>click on a row</strong> opens a dialog with
+the last archived evaluation of the project (the owner, the lab and the host in the title,
+the date of the evaluation, the table of its grade elements with the parts, the subtotals,
+the bonuses, the total and the mark, then the errors and the warnings of the run; <em>Open the
+project</em> goes to its page; Esc or <em>Close</em> goes back), and a <strong>click on the lab cell</strong> of a
+row opens the summary of that lab for the rows shown (the text filter and the group select
+apply, so a class group alone when wanted): a matrix with one row per project and one column
+per grade element (numbered, the element as the tooltip of the number, the parts as a header
+row; a cell is the grade, or the OK / MEH / FAIL letter, coloured like the evaluation table;
+Total and Mark last; a project never evaluated says so), the rows <em>Max</em>, <em>Average</em> and
+<em>Success</em> (how many of the evaluated projects got the full grade) below it, then the table of
+the elements with their maximum, minimum, average and distribution of the grades (<code class="docutils literal notranslate"><span class="pre">1.5(2)</span> <span class="pre">3(7)</span></code>), a subtotal row per part, as the lab summary of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code>. The elements of the
+projects are matched by their title, whatever the language of each student. Both dialogs
+follow the polls: a new evaluation of the project, or of one of the projects of the lab,
+reloads the content, a project closed is said so. Reading the results of a student this way
+never counts as their activity (their project’s idle clock is left alone).</p></li>
 <li><p><strong>Pool</strong> (the link in the header, <code class="docutils literal notranslate"><span class="pre">/pool</span></code>): every host of the pool, one row per host with its
 state as <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> shows it (the seconds and the failed attempts of a wake), its
 projects and terminals, its load, who occupies it, its uptime, its flags (reserved for

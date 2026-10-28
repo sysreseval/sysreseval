@@ -12,6 +12,20 @@ Nothing of a lab ever reaches the browser but what a student sees today: the con
 `sre --user` commands (the schema, the grades of a self-evaluation, the console of a machine).
 The lab files, `data.json`, the hidden machines and the archives stay on the pool hosts.
 
+The instructors get, on top of what a student sees (*Instructors* below):
+
+- a **Watch page**, the web counterpart of `sre watch`: every running project of the pool, one
+  row per project with its owner, its lab, the grade and mark of its last evaluation, its age
+  and its errors, refreshed every few seconds;
+- the **projects of the students**, open to them to help: every tab of the project, and the
+  student's terminals joined when the Terminals tab opens, so that the instructor and the
+  student see the same shell and both type in it (a private terminal, unseen by the student, is
+  offered too);
+- **presentations**: a project, the instructor's own or a student's, duplicated read-only on the
+  browsers of the whole class or of chosen students and groups to demonstrate something. What
+  the instructor does on their own page (changing tabs, typing in a terminal, selecting a
+  question, changing the drawing of the schema, …) is shown at once on the students' browsers.
+
 ## Architecture
 
 ```
@@ -42,7 +56,8 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   workstation they sit at, `follow_local_sessions`), else to the reachable host with the lowest
   `projects / max_projects` (then the lowest load); a host in exam mode is never used, a host
   with `instructors_only = true` never for a student (an instructor may also name the host on
-  the Open page). A classroom workstation holds about thirty projects (210 containers in 3.4 GB).
+  the Open page); the whole rule is under *Placement* in *A pool of workstations*. A classroom
+  workstation holds about thirty projects (210 containers in 3.4 GB).
 - The lab list of the Open page comes from one host, the one a new project of the user would
   go to (every host of a pool serves the same lab tree; the next candidate is asked when it
   fails), and is kept `labs_cache_ttl` seconds (`60`) per role, since the reserved hosts are
@@ -412,6 +427,25 @@ the *Pool* page of the instructors) shows it:
 | `exam` | the agent answers, `exam.json` is on the host | no |
 | `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty |
 | `disabled` | `sre-web-tool disable`, or `enabled = false` | no |
+
+**Placement.** A new project (`POST /api/projects`) goes to one host, chosen by the portal from
+the last status poll of every agent (`poll_interval`) without asking them again. The candidates
+are the hosts `up` (plus, for a user logged in at the keyboard of an `occupied` host, that host:
+*Occupied hosts* below), below their `max_projects`, not reserved for the instructors when the
+caller is a student, and whose agent has no restart pending (`sre-web-tool restart`: the agent
+refuses new projects until it is back). Among them: the host of the user's own session first,
+then the lowest `projects / max_projects`, then the lowest one-minute load, then the name, so
+that equal hosts are always settled the same way. The project count of the chosen host is raised
+at once and a *reservation* is kept until the start is over and a status poll sent after its end
+has answered: a burst of simultaneous starts is spread over the pool instead of piling onto the
+host the last poll showed emptiest, and `sre-web-tool list` may count a project one poll before
+the agent does. Without any candidate the start is refused with 503 and a `retry_after` the Open
+page obeys: "a host is starting" (30 s) when a host the caller may use is `waking` or
+restarting, "no host available for a new project" (60 s) otherwise. An instructor naming a host
+on the Open page skips the ranking: the host must exist (404), be open to them (403 for a
+student), be available to them (503 "not available") and have room (503 "full"). The `start`
+line of the connection log says why the host was chosen: `placement=load`, `session` or
+`named`.
 
 **Waking.** A host with a `mac` gets a magic packet (UDP port 9 to `wol_broadcast`: the portal
 must be on the hosts' network, or the routers must forward the directed broadcast); a host with a

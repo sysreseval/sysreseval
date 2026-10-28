@@ -198,6 +198,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#monitoring-of-a-session">Monitoring of a session</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-exams">Running exams</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#post-exam-workflow">Post-exam workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#web-server-remote-use">Web server (remote use)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="exam.html">Exam Administration</a><ul>
@@ -610,6 +611,23 @@ for instance to adjust the relative weight of items, or to fix a
 bug in the script — and then generate a per-student PDF with a
 detailed item-by-item breakdown, plus a recap ODS spreadsheet.</p>
 </section>
+<section id="web-server-remote-use">
+<h2>Web server (remote use)<a class="headerlink" href="#web-server-remote-use" title="Link to this heading">¶</a></h2>
+<p>The students can also work from a <strong>browser</strong>, without the <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code> GUI and without a
+remote desktop: a web site, <code class="docutils literal notranslate"><span class="pre">sre-web</span></code>, authenticates them (an LDAP directory, or anonymous
+users) and shows the same tabs as the GUI — the schema, the informations, the questions, the
+terminals (through WebSockets), the evaluations, the configurations to apply. The projects run
+on a <strong>pool of Docker hosts</strong> (typically the workstations of the classrooms), each driven by
+an agent, <code class="docutils literal notranslate"><span class="pre">sre-agent</span></code>, which runs the <code class="docutils literal notranslate"><span class="pre">sre</span></code> CLI on behalf of the web users exactly as the GUI
+does; a new project goes to the least loaded host, and sleeping hosts can be woken up when
+the pool fills up.</p>
+<p>The instructors get a <strong>Watch page</strong>, the web counterpart of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code>, can <strong>open the
+project of a student</strong> to help them (both see and type in the same terminals), and can
+<strong>present</strong> a project, their own or a student’s, on the browsers of the whole class or of
+chosen students: what they do on their own page is shown at once on the students’ browsers.</p>
+<p>Exams are not run on the web: a host in exam mode leaves the pool. See
+<a class="reference internal" href="web.html"><span class="std std-doc">Web site (remote use)</span></a>.</p>
+</section>
 </section>
 <hr class="footnotes docutils" />
 <aside class="footnote-list brackets">
@@ -683,6 +701,7 @@ detailed item-by-item breakdown, plus a recap ODS spreadsheet.</p>
 <li><a class="reference internal" href="#monitoring-of-a-session">Monitoring of a session</a></li>
 <li><a class="reference internal" href="#running-exams">Running exams</a></li>
 <li><a class="reference internal" href="#post-exam-workflow">Post-exam workflow</a></li>
+<li><a class="reference internal" href="#web-server-remote-use">Web server (remote use)</a></li>
 </ul>
 </li>
 </ul>

@@ -81,6 +81,25 @@ for instance to adjust the relative weight of items, or to fix a
 bug in the script — and then generate a per-student PDF with a
 detailed item-by-item breakdown, plus a recap ODS spreadsheet.
 
+## Web server (remote use)
+
+The students can also work from a **browser**, without the `sysreseval` GUI and without a
+remote desktop: a web site, `sre-web`, authenticates them (an LDAP directory, or anonymous
+users) and shows the same tabs as the GUI — the schema, the informations, the questions, the
+terminals (through WebSockets), the evaluations, the configurations to apply. The projects run
+on a **pool of Docker hosts** (typically the workstations of the classrooms), each driven by
+an agent, `sre-agent`, which runs the `sre` CLI on behalf of the web users exactly as the GUI
+does; a new project goes to the least loaded host, and sleeping hosts can be woken up when
+the pool fills up.
+
+The instructors get a **Watch page**, the web counterpart of `sre watch`, can **open the
+project of a student** to help them (both see and type in the same terminals), and can
+**present** a project, their own or a student's, on the browsers of the whole class or of
+chosen students: what they do on their own page is shown at once on the students' browsers.
+
+Exams are not run on the web: a host in exam mode leaves the pool. See
+[Web site (remote use)](web.md).
+
 
 [^2]: The word *lab* comes from Kathara (and Netkit). We use *lab* and *project* interchangeably in this documentation.
 
