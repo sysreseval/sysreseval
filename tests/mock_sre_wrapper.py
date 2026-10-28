@@ -149,7 +149,17 @@ def cmd_stop(running_lab: str):
         shutil.rmtree(d)
 
 
+def cmd_stop_all():
+    """`sre stop-all` (the GUI's Close All Projects): the projects of MOCK_USERNAME and of root /
+    sre, what the real command stops in user mode."""
+    if PROJECTS_DIR.exists():
+        for d in PROJECTS_DIR.iterdir():
+            if d.is_dir() and d.name.rsplit(SEP, 1)[-1] in (MOCK_USERNAME, "root", "sre"):
+                shutil.rmtree(d)
+
+
 def cmd_wipe():
+    """Privileged only in the real sre; kept for the harness."""
     if PROJECTS_DIR.exists():
         for d in PROJECTS_DIR.iterdir():
             if d.is_dir():
@@ -175,6 +185,8 @@ def main():
             cmd_eval_exam()
         elif subcommand == "stop" and len(sys.argv) >= 3:
             cmd_stop(sys.argv[2])
+        elif subcommand == "stop-all":
+            cmd_stop_all()
         elif subcommand == "wipe":
             cmd_wipe()
         else:

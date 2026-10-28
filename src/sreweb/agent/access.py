@@ -1,10 +1,11 @@
 """The access rules of the agent, as pure functions (``AccessError`` carries the HTTP status).
 
-The ``sre`` CLI checks none of these: any ``--user`` caller may act on any project of the host
-(``resolve_running_lab_name`` even accepts a substring), and ``allow_connection``,
-``allow_self_grade`` or the user-allowed states are enforced by the Qt GUI only.  The agent
-therefore checks, before spawning anything: the exact running lab name, its owner, the visibility
-of a device, the state, and the flags of the lab.
+The ``sre`` CLI only checks, in user mode, that the project belongs to the caller or to root
+(``params.check_project_owner``; ``resolve_running_lab_name`` still accepts a substring among
+those), and ``allow_connection``, ``allow_self_grade`` or the user-allowed states are enforced by
+the Qt GUI only.  The agent therefore checks, before spawning anything: the exact running lab
+name, its owner (an instructor is served by a privileged call, which the CLI never checks), the
+visibility of a device, the state, and the flags of the lab.
 Save and restore are not offered on the web: no endpoint, no rule.
 """
 import os

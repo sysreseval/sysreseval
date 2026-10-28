@@ -8,7 +8,7 @@ from SRE.common import (
     QuestionText, QuestionDummy, QuestionForm, form_field_lines,
     GradeElement, InfoLab, InfoMachine, InfoInterface, InfoSwitch,
     QuestionType, TranslatedText,
-    bonus_texts
+    bonus_texts, project_accessible
 )
 
 
@@ -453,3 +453,31 @@ class TestDisplayHelpers:
             assert with_display.index(TAB_DISPLAY) == with_display.index(TAB_TERMINALS) + 1
             assert [t for t in with_display if t != TAB_DISPLAY] == tabs
             assert [t for t in TAB_ORDER if t in with_display] == with_display
+
+
+# ---------------------------------------------------------------------------
+# project_accessible: the user-mode ownership rule with the site parameter
+# ---------------------------------------------------------------------------
+
+class TestProjectAccessible:
+    def test_own_and_shared_owners(self, monkeypatch):
+        monkeypatch.setattr(params, 'check_project_owner', True)
+        assert project_accessible('20260101000000@@@lab@@@alice', 'alice')
+        assert not project_accessible('20260101000000@@@lab@@@alice', 'bob')
+        assert project_accessible('20260101000000@@@lab@@@root', 'bob')
+        assert project_accessible(f'20260101000000@@@lab@@@{params.sre_user}', 'bob')
+        # a path lab: the lab name holds @ characters, the owner is still the last field
+        assert project_accessible('20260101000000@@@@home@x@lab.py@@@alice', 'alice')
+        assert not project_accessible('20260101000000@@@@home@x@lab.py@@@alice', 'bob')
+
+    def test_no_username_and_malformed_names(self, monkeypatch):
+        monkeypatch.setattr(params, 'check_project_owner', True)
+        assert not project_accessible('20260101000000@@@lab@@@alice', None)
+        assert project_accessible('20260101000000@@@lab@@@root', None)
+        assert not project_accessible('no-separators', 'alice')
+        assert not project_accessible('no-separators', None)
+
+    def test_check_off(self, monkeypatch):
+        monkeypatch.setattr(params, 'check_project_owner', False)
+        assert project_accessible('20260101000000@@@lab@@@alice', 'bob')
+        assert project_accessible('no-separators', None)

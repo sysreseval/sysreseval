@@ -107,6 +107,13 @@ class TestParsing:
         assert result.code == 2 and result.events == []
         assert 'running_lab' in capsys.readouterr().err
 
+    def test_stop_all_takes_no_argument(self, sre_cli, capsys):
+        result = sre_cli(['stop-all'])
+        assert result.code == 0 and result.events == ['temporary drop', 'action_stop_all']
+        result = sre_cli(['stop-all', 'PROJECT'])
+        assert result.code == 2 and result.events == []
+        assert 'unrecognized arguments' in capsys.readouterr().err
+
     @pytest.mark.parametrize('argv', [['stop', '--instructor-mode', 'PROJECT'],
                                       ['state', '--instructor-mode', 'PROJECT', 'final'],
                                       [SET, '--instructor-mode', 'PROJECT']])
@@ -120,6 +127,8 @@ class TestParsing:
         text = ' '.join(capsys.readouterr().out.split())
         assert 'Put a running project in instructor mode (privileged only)' in text
         assert 'Take a running project out of instructor mode (privileged only)' in text
+        assert 'Stop every running project the caller may access' in text
+        assert 'Remove all files and stop kathara (privileged only)' in text
 
     @pytest.mark.parametrize('command', ['start', 'restore'])
     def test_help_of_the_option(self, sre_cli, capsys, command):
@@ -133,6 +142,7 @@ class TestParsing:
         text = ' '.join(capsys.readouterr().out.split())
         assert 'Passer un projet en cours en mode enseignant' in text
         assert 'Sortir un projet en cours du mode enseignant' in text
+        assert 'Arrêter tous les projets en cours accessibles' in text
         assert sre_cli(['start', '--help']).code == 0
         assert 'en mode enseignant' in ' '.join(capsys.readouterr().out.split())
 
@@ -197,9 +207,13 @@ class TestPrivilegeList:
     @pytest.mark.parametrize('argv', [[SET, 'PROJECT'], [REMOVE, 'PROJECT'],
                                       ['start', '--instructor-mode', 'mylab'],
                                       ['restore', '--instructor-mode', '-'],
-                                      ['eval', 'PROJECT'], ['state', 'PROJECT', 'final']])
+                                      ['eval', 'PROJECT'], ['state', 'PROJECT', 'final'], ['stop-all']])
     def test_temporary_drop(self, sre_cli, argv):
         assert sre_cli(argv).events[0] == 'temporary drop'
+
+    def test_stop_all_drops_for_good_without_privileged_machines(self, sre_cli, monkeypatch):
+        monkeypatch.setattr(params, 'allow_privileged_machines', False)
+        assert sre_cli(['stop-all']).events == ['permanent drop', 'action_stop_all']
 
     @pytest.mark.parametrize('argv', [['list'], ['export', 'PROJECT']])
     def test_other_actions_drop_for_good(self, sre_cli, argv):
@@ -243,6 +257,7 @@ class TestRefusals:
         (['restore', '--instructor-mode', '-'], 'action_restore',
          '--instructor-mode is not available in user mode'),
         ([UPDATE], 'action_update', "you're not allowed to run this command"),
+        (['wipe'], 'action_wipe', "you're not allowed to run this command"),
     ])
     def test_user_mode_is_refused_by_the_action(self, sre_cli, capsys, monkeypatch, tmp_pub_dir,
                                                 argv, action, message):
@@ -254,3 +269,13 @@ class TestRefusals:
         assert result.args is None
         assert message in capsys.readouterr().err
         assert not Path(params.sre_projects_dir).exists()
+
+    def test_stop_all_is_refused_in_exam_mode(self, sre_cli, capsys, monkeypatch, tmp_pub_dir):
+        """`stop-all` (the GUI's Close All Projects) follows `stop`: not during an exam."""
+        Path(params.sre_pub_dir).mkdir(parents=True, exist_ok=True)
+        (Path(params.sre_pub_dir) / params.exam_json_name).write_text('{}')
+        monkeypatch.setenv('SUDO_USER', 'etudiant')
+        monkeypatch.setenv('USER_USERNAME', 'etudiant')
+        result = sre_cli(['--user', 'stop-all'], real=('action_stop_all',))
+        assert result.code == 1 and result.events == ['temporary drop']
+        assert 'not allowed to run this command in exam mode' in capsys.readouterr().err

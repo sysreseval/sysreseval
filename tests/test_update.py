@@ -549,7 +549,8 @@ class TestParams:
         for name in ('sre_uid', 'main_sre_dir', 'debug_mode', 'execute_commands_on_host', 'authorized_src_dir',
                      'switch_user_commands', 'pdf_font_files', 'terminal_cmd_prefix', 'update_github_repository',
                      'sre_version', 'install_layout', 'sre_user', 'docker_group', 'lab_dir', 'shipped_lab_dir',
-                     'fontdir', 'sre_wrapper', 'sre_exe', 'archive_dirs', 'self_update_allowed', 'site_params_file'):
+                     'fontdir', 'sre_wrapper', 'sre_exe', 'archive_dirs', 'self_update_allowed', 'site_params_file',
+                     'check_project_owner'):
             assert name in values and values[name].keepable, name
         # the derived values of the layout are not parameters: one top-level assignment per name
         assert '_candidate' not in values and '_fhs' not in values and 'SRE' not in values

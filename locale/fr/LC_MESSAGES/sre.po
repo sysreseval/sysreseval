@@ -29,8 +29,8 @@ msgstr "afficher les messages de débogage sur stderr"
 msgid "lab directory"
 msgstr "répertoire du lab"
 
-msgid "Remove all files and stop kathara"
-msgstr "Supprimer tous les fichiers et arrêter kathara"
+msgid "Remove all files and stop kathara (privileged only)"
+msgstr "Supprimer tous les fichiers et arrêter kathara (privilégiés uniquement)"
 
 msgid "List all available projects"
 msgstr "Lister tous les projets disponibles"
@@ -76,6 +76,9 @@ msgstr "afficher les notes sur stdout (défaut : activé)"
 
 msgid "Stop a running project"
 msgstr "Arrêter un projet en cours"
+
+msgid "Stop every running project the caller may access"
+msgstr "Arrêter tous les projets en cours accessibles à l'appelant"
 
 msgid "running lab name"
 msgstr "nom du lab en cours"

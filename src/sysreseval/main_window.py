@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from sysreseval.open_project_dialog import OpenProjectDialog
 from sysreseval.project_widget import ProjectWidget
-from sysreseval.util import load_projects, log_wrapper_cmd
+from sysreseval.util import log_wrapper_cmd
 from sysreseval.wrapper_progress_dialog import SaveProjectDialog, RestoreProjectDialog
 from sysreseval import util, settings
 from SRE import params
@@ -173,6 +173,8 @@ class MainWindow(QMainWindow):
 
         self._debug = debug
         util._debug = debug
+        # the projects listed are those this login may act on through sre-wrapper (util.visible_projects)
+        self._username = util.local_username()
         self._app_start_time: datetime = datetime.now()
         self._exam_data: dict | None = None
         self._pre_start_called = False
@@ -410,7 +412,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def load_existing_projects(self):
-        for project_dir in load_projects():
+        for project_dir in util.visible_projects(self._username):
             self.add_project(project_dir)
 
     def add_project(self, project_dir: Path, switch_to: bool = True):
@@ -439,11 +441,12 @@ class MainWindow(QMainWindow):
             self._stop_project(widget)
 
     def _close_all_projects(self):
-        self._run_wrapper_in_background(["wipe"], self.tr("Close All Projects"))
+        """`sre stop-all`: every project this login may act on (`sre wipe` is privileged only)."""
+        self._run_wrapper_in_background(["stop-all"], self.tr("Close All Projects"))
 
     def _run_wrapper_in_background(self, args: list[str], failure_title: str):
         """Run `sre-wrapper *args*` without blocking the GUI.  A non-zero exit shows its stderr
-        (e.g. the `sre: cannot remove: ...` lines of stop/wipe) in a message box titled
+        (e.g. the `sre: cannot remove: ...` lines of stop/stop-all) in a message box titled
         *failure_title*; a success is silent (the project tab follows the directory)."""
         log_wrapper_cmd([params.sre_wrapper] + args)
         proc = QProcess(self)
@@ -675,7 +678,7 @@ class MainWindow(QMainWindow):
     def _scan_projects(self):
         self._update_exam_state()
 
-        current_dirs = set(load_projects())
+        current_dirs = set(util.visible_projects(self._username))
 
         changed = False
         for i in range(self.tabs.count() - 1, -1, -1):
@@ -1191,7 +1194,7 @@ class MainWindow(QMainWindow):
         existing = {self.tabs.widget(i).project_dir
                     for i in range(self.tabs.count())
                     if isinstance(self.tabs.widget(i), ProjectWidget)}
-        for project_dir in load_projects():
+        for project_dir in util.visible_projects(self._username):
             if project_dir not in existing:
                 self.add_project(project_dir)
 

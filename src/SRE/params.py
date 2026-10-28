@@ -133,6 +133,12 @@ disable_volume_mount_on_root_partition = False
 # USER_USERNAME is set by sre-wrapper from USER (spoofable by the user)
 use_sudo_user_for_username = True
 
+# In user mode (--user: sre-wrapper, hence the GUI, and the student path of the web agent) a
+# caller only sees and drives their own projects and those started by root or the sre user
+# (`sudo sre start ...`); the GUI lists the same projects.  False: every local user sees and
+# acts on every project of the host (the behaviour of the versions before 0.14).
+check_project_owner = True
+
 # Should projects be able to execute commands on the host (which might be useful)
 # shell : execution through subprocess.run with shell=True which allow pipes
 # split : execution through shlex.split to forbid pipes

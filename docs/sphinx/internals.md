@@ -88,6 +88,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 |----------|-------|-------------|
 | `sre_uid` | `1100` | UID of the `sre` system user |
 | `docker_gid` | `988` | GID of the `docker` group |
+| `check_project_owner` | `True` | User mode: a caller only sees and drives their own projects and those started by root or the `sre` user (`False`: every project of the host) |
 | `max_docker_concurrency` | `16` | Max parallel Docker API calls during eval |
 | `default_eval_interval_during_exams` | `60` | Default auto-eval period (s) |
 | `default_exam_duration` | `90` | Default exam duration (min), used if `duration` absent from `exam.json` |
@@ -228,6 +229,7 @@ The course of a lab and its question texts may hold the plain-text markers of `S
 | Unknown `__type__` deserialization | `Data0.from_dict()` / `unpack()` / `Flavor0` raise `ValueError` |
 | Single GUI instance | PID file at `/tmp/sysreseval-{uid}.pid` kills the previous instance |
 | Student command restrictions | `user_not_allowed()` / `user_not_allowed_in_exam_mode()` |
+| Project ownership | In user mode `utils.resolve_running_lab_name()` only resolves the projects of `common.project_accessible()` (`access.may_access_project()`: the caller's own and those of root / the `sre` user; `params.check_project_owner`); the GUI lists the same projects (`sysreseval.util.visible_projects()`); `sre wipe` is privileged only and `sre stop-all` stops the accessible projects |
 | State access control | `@sre_state(user_allowed=False)` blocks students from re-applying protected states |
 | Switch console | In user mode only the commands of `params.switch_user_commands` are sent to a managed switch (no port creation / removal, plugin loading, shutdown); `allow_connection` closes a console; the management socket itself is not readable by students |
 

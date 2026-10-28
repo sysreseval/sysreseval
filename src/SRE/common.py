@@ -7,7 +7,7 @@ from typing import List
 import msgpack
 from enum import Enum
 
-from . import params
+from . import access, params
 from .instructor_text import strip_instructor, unwrap_instructor
 
 # graphviz node sizes (inches) of the icons of the schema (GUI and export PDF)
@@ -611,3 +611,18 @@ def visible_tabs(info: dict, *, exam_mode: bool, instructor_shown: bool, display
     if debug or instructor_shown:
         tabs.append(TAB_LOG)
     return tabs
+
+
+# ---------------------------------------------------------------------------
+# Project ownership (the user mode of the CLI, the project list of the GUI)
+# ---------------------------------------------------------------------------
+
+def project_accessible(running_lab_name: str, username: str | None) -> bool:
+    """Whether *username*, in user mode, may see and act on the project *running_lab_name*
+    (:func:`SRE.access.may_access_project` with ``params.check_project_owner``: their own
+    projects and those of root or the sre user, every project when the check is off).
+    Privileged callers are never asked: the CLI calls this in user mode only, the GUI always
+    (it goes through sre-wrapper)."""
+    return access.may_access_project(params.get_username_from_running_lab_name(running_lab_name),
+                                     username or '', check_owner=params.check_project_owner,
+                                     shared_owners=('root', params.sre_user))

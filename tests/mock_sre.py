@@ -77,6 +77,7 @@ from SRE import access, params  # noqa: E402
 from SRE.answers import load_answers  # noqa: E402
 from SRE.instructor_text import instructor, set_instructor_context  # noqa: E402
 from SRE.common import (GradeElement, GradePart, InfoInterface, InfoLab, InfoMachine, InfoSwitch,  # noqa: E402
+                        project_accessible,
                         QuestionForm, QuestionText, TranslatedText)
 
 ENV_PUB_DIR = 'SRE_PUB_DIR'
@@ -283,10 +284,13 @@ class Mock:
     # --- projects ---
 
     def require_project(self, running_lab_name: str) -> str:
-        """The running lab name, which must be exact (no substring resolution) and exist."""
+        """The running lab name, which must be exact (no substring resolution), exist and, in user
+        mode, be accessible to the caller (the ownership check of the real resolver)."""
         if (not re.fullmatch(params.running_lab_name_match_pattern, running_lab_name)
                 or not os.path.isdir(params.public_lab_dir(running_lab_name))):
             error_quit(f"unknown running lab '{running_lab_name}'")
+        if self.user_mode and not project_accessible(running_lab_name, self.username):
+            error_quit(f"you're not allowed to access project '{running_lab_name}'")
         return running_lab_name
 
     @staticmethod
@@ -633,11 +637,21 @@ class Mock:
         shutil.rmtree(params.public_lab_dir(running_lab_name), ignore_errors=True)
 
     def action_wipe(self):
-        self.not_allowed_in_exam_mode()
+        if self.user_mode:
+            error_quit("you're not allowed to run this command")
         projects = Path(params.sre_projects_dir)
         if projects.is_dir():
             for entry in projects.iterdir():
                 if entry.is_dir():
+                    self.remove_project(entry.name)
+
+    def action_stop_all(self):
+        """Every project the caller may access (all of them for a privileged caller)."""
+        self.not_allowed_in_exam_mode()
+        projects = Path(params.sre_projects_dir)
+        if projects.is_dir():
+            for entry in sorted(projects.iterdir()):
+                if entry.is_dir() and (not self.user_mode or project_accessible(entry.name, self.username)):
                     self.remove_project(entry.name)
 
     def action_save(self):
@@ -766,6 +780,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser_restore.add_argument('--instructor-mode', dest='instructor_mode', action='store_true')
     parser_restore.add_argument('save_file', metavar='save_file')
 
+    subparsers.add_parser('stop-all')
+
     subparsers.add_parser('wipe')
 
     parser_connect = subparsers.add_parser('connect')
@@ -838,7 +854,7 @@ def run(argv: list, env: dict):
     params.sre_user_public_dir = f"{pub_dir}/home"
     params.save_tmp_dir = f"{pub_dir}/tmp"
     try:
-        getattr(mock, 'action_' + args.action)()
+        getattr(mock, 'action_' + args.action.replace('-', '_'))()
     finally:
         for name, value in saved.items():
             setattr(params, name, value)

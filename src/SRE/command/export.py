@@ -18,7 +18,8 @@ from ..instructor_text import strip_instructor
 from ..lib_sre import _FileOp, _AppendOp, _IdempotentAppendOp
 from ..pdf import SrePDF, markdown_to_html
 from ..schema_graph import build_graph, svg_file_to_png, topology_from_net_scheme
-from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, error_quit
+from ..utils import set_all_variables_for_action, user_not_allowed_in_exam_mode, error_quit, \
+    resolve_running_lab_name
 from ..params import SRE
 
 
@@ -200,7 +201,8 @@ def _build_lab_conf(net_scheme, ops, extra_cmds) -> str:
 def action_export():
     user_not_allowed_in_exam_mode()
 
-    module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=SRE.args.running_lab)
+    running_lab_name = resolve_running_lab_name(SRE.args.running_lab)
+    module_rvlab, net_scheme = set_all_variables_for_action(running_lab_name=running_lab_name)
 
     if hasattr(module_rvlab, 'export_kathara_project') and not module_rvlab.export_kathara_project:
         error_quit("export of this project is not allowed")

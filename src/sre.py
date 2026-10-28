@@ -37,6 +37,7 @@ from SRE.command.make_titles import action_make_titles
 from SRE.command.start import action_start
 from SRE.command.wipe import action_wipe
 from SRE.command.stop import action_stop
+from SRE.command.stop_all import action_stop_all
 from SRE.command.save import action_save
 from SRE.command.restore import action_restore
 from SRE.command.set_exam import action_set_exam
@@ -129,6 +130,8 @@ def parse_args():
     parser_stop = subparsers.add_parser('stop', help=_('Stop a running project'))
     parser_stop.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
 
+    subparsers.add_parser('stop-all', help=_('Stop every running project the caller may access'))
+
     parser_save = subparsers.add_parser('save',
                                         help=_('Save a running project (device filesystems and project files) '
                                                'into a save file (written to stdout, or to -o FILE)'))
@@ -144,8 +147,6 @@ def parse_args():
     parser_restore.add_argument('save_file', metavar='save_file',
                                 help=_("save file created by 'sre save' ('-' reads it from stdin; "
                                        "user mode accepts only '-')"))
-
-    subparsers.add_parser('wipe', help=_('Remove all files and stop kathara'))
 
     parser_connect = subparsers.add_parser('connect', help=_('Connect to a device (with the predefined command)'))
     parser_connect.add_argument('--shell', metavar='shell', default=None,
@@ -174,6 +175,8 @@ def parse_args():
     parser_exec.add_argument('running_lab', metavar='running_lab', help=_('running lab name'))
     parser_exec.add_argument('device', help=_('target device'))
     parser_exec.add_argument('command', nargs=argparse.REMAINDER, help=_('command to execute'))
+
+    subparsers.add_parser('wipe', help=_('Remove all files and stop kathara (privileged only)'))
 
     parser_set_instructor = subparsers.add_parser(
         'set-instructor-mode', help=_('Put a running project in instructor mode (privileged only)'))
@@ -428,7 +431,7 @@ if uid == 0:
 if SRE.args.action == 'update' or (
         params.allow_privileged_machines and SRE.args.action in ('start', 'start-exam', 'pre-start-exam', 'connect', 'exec',
                                                                  'eval', 'eval-all',
-                                                                 'eval-exam', 'state', 'stop', 'wipe', 'del-exam',
+                                                                 'eval-exam', 'state', 'stop', 'stop-all', 'wipe', 'del-exam',
                                                                  'save', 'restore',
                                                                  'set-instructor-mode', 'remove-instructor-mode')):
     drop_privileges_temporarily()
@@ -461,6 +464,8 @@ match SRE.args.action:
         action_eval_all()
     case 'stop':
         action_stop()
+    case 'stop-all':
+        action_stop_all()
     case 'save':
         action_save()
     case 'restore':

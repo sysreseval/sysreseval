@@ -49,9 +49,12 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   the instructors' only: opening the page costs one `sre list` per minute whatever the size of
   the pool.
 
-The agent enforces what the `sre` CLI does not check: the exact running lab name and its owner
-(a user only reaches their own projects, an instructor every project; the `wipe`, `exec` and
-exam commands have no endpoint), `allow_connection` of the devices, `allow_self_grade`, the
+The agent enforces what the `sre` CLI does not check: the exact running lab name (the CLI
+resolves substrings) and its owner (a user only reaches their own projects, an instructor every
+project; the CLI's own check, `params.check_project_owner`, lets a `--user` caller reach their
+own projects and root's only, which is why an instructor is served by privileged calls; the
+`wipe`, `stop-all`, `exec` and exam commands have no endpoint), `allow_connection` of the
+devices, `allow_self_grade`, the
 user-allowed states, the `export_schema_pdf` flag of the lab (the *Export Schema to PDF*
 button). Save, restore and the Kathara export are not offered on the web. An instructor acting on
 somebody else's project is served by a **privileged** `sre` (no `--user`, their own login:
@@ -633,8 +636,10 @@ the commands.
   duration and projects, the logins and their failures, the denied calls, the administration
   calls. The only header it reads is `X-Forwarded-For`, from the peers of `trusted_proxies`,
   for the client address; the identity never comes from it.
-- A project's owner is the third field of its running lab name; the portal and the agent both
-  check it. An instructor (see *Instructors* above) reaches every project, but the agent never
+- A project's owner is the third field of its running lab name; the portal, the agent and, in
+  user mode, the `sre` CLI itself (`params.check_project_owner`: the local GUI of a pool host
+  lists and reaches the same projects as the CLI lets through) check it. An instructor (see
+  *Instructors* above) reaches every project, but the agent never
   runs a command as the student for them: a non-owner's `eval`, `state` and `connect` are
   privileged `sre` calls under the instructor's own login, the answers are read-only, and a
   private terminal is listed to instructors only. The operations log of an instructor-mode

@@ -64,9 +64,9 @@ def do_eval(running_lab_name, multiples_evals=False, print_result=False):
         drop_privileges_temporarily()
     # Align Kathara's user filter with the project's actual owner (the trailing
     # @@@ segment of running_lab_name). Without this, a privileged lab started
-    # by one user (e.g. root via `sre start -p ...`) cannot be found by an eval
-    # launched as another user (e.g. the GUI's `sudo sre --user eval`), and
-    # run_tests() leaves every test at its empty default_value.
+    # by root (`sre start -p ...`, a project open to every user) cannot be found
+    # by an eval launched as another user (e.g. the GUI's `sudo sre --user eval`),
+    # and run_tests() leaves every test at its empty default_value.
     set_sudo_uid_for_username(params.get_username_from_running_lab_name(running_lab_name))
 
     srelab_file = params.get_current_srelab_file_from_running_lab_name(running_lab_name)

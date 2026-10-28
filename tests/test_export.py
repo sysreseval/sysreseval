@@ -10,6 +10,7 @@ import pytest
 from SRE import params
 from SRE.common import InfoLab, QuestionDummy, QuestionForm, QuestionText, TranslatedText
 from SRE.lib_sre import Data0, NetScheme0, Machine, Network, NetAdapter, _FileOp, _AppendOp
+from SRE.command import export as export_cmd
 from SRE.command.export import _build_info_pdf, _build_lab_conf, _lab_display_name, _random_token
 
 
@@ -50,6 +51,19 @@ def make_scheme():
 # ---------------------------------------------------------------------------
 # _lab_display_name
 # ---------------------------------------------------------------------------
+
+class TestActionExportResolvesTheName:
+    def test_unknown_or_traversal_name_is_refused_before_loading(self, tmp_pub_dir, mock_sre_args, monkeypatch,
+                                                                 capsys):
+        """The raw argument used to reach set_all_variables_for_action: `../x` resolved
+        `.private/srelab` under another directory.  Now resolved like the other commands."""
+        monkeypatch.setattr(export_cmd, 'set_all_variables_for_action',
+                            lambda **kwargs: pytest.fail('loaded without resolution'))
+        mock_sre_args.running_lab = '../x'
+        with pytest.raises(SystemExit) as e:
+            export_cmd.action_export()
+        assert e.value.code == 1 and "no running lab matches '../x'" in capsys.readouterr().err
+
 
 class TestLabDisplayName:
     def test_last_path_component(self):

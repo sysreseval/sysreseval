@@ -11,6 +11,7 @@ from pathlib import Path
 from .params import SRE
 from . import params
 from .instructor_text import set_instructor_context
+from .common import project_accessible
 
 
 def error_quit(error):
@@ -314,6 +315,11 @@ def resolve_running_lab_name(partial: str) -> str:
     If `partial` exactly matches a running lab, return it as-is.
     Otherwise return the unique running lab whose name contains `partial`.
     Prints the list of candidates and exits if zero or more than one match.
+
+    In user mode the candidates are the projects the caller may access
+    (`common.project_accessible`: their own and those of root / the sre user, every project
+    when `params.check_project_owner` is off): another user's project is refused by its exact
+    name, and never listed nor matched by a substring.
     """
     try:
         entries = os.listdir(params.sre_projects_dir)
@@ -323,11 +329,15 @@ def resolve_running_lab_name(partial: str) -> str:
     running_labs = sorted(
         e for e in entries if re.match(params.running_lab_name_match_pattern, e)
     )
+    accessible = ([lab for lab in running_labs if project_accessible(lab, SRE.username)]
+                  if in_user_mode() else running_labs)
 
     if partial in running_labs:
+        if partial not in accessible:
+            error_quit(f"you're not allowed to access project '{partial}'")
         return partial
 
-    matches = [lab for lab in running_labs if partial in lab]
+    matches = [lab for lab in accessible if partial in lab]
 
     if len(matches) == 1:
         return matches[0]

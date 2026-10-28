@@ -15,6 +15,8 @@ One instance per user. A PID file at `/tmp/sysreseval-{uid}.pid` kills any prior
 
 During an exam, **Open Project** is disabled — only pre-authorised exam labs open automatically.
 
+The project tabs are the projects of the logged-in user, plus those started on the host by root or the `sre` user (`sudo sre start …`). The projects of the other users of the host (another local login, the users of the [web front-end](web.md) placed on this host) are neither listed nor reachable through `sre-wrapper`; with `check_project_owner = False` in the site parameters every project of the host is listed, as before. **File → Close All Projects** runs `sre-wrapper stop-all` on the listed projects (`sre wipe` is privileged only).
+
 ## Saving and restoring a project
 
 **File → Save Project** appears only when the current project's lab sets `allow_save_restore = True`. A file dialog asks where to write the `.sre` save file (default `~/<lab>.sre`); the GUI then runs `sre-wrapper save <project>` with its stdout redirected to that file, showing a progress dialog. The file contains the filesystem of every machine (as a diff against its base image) and the project files; it is encrypted when the lab defines `save_key`.

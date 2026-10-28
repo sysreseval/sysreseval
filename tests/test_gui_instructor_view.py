@@ -293,9 +293,10 @@ class TestProjectWidget:
 @LINUX_ONLY
 class TestMainWindowButton:
     @pytest.fixture
-    def window(self, tmp_pub_dir):
+    def window(self, tmp_pub_dir, monkeypatch):
         from sysreseval import main_window
         Path(params.sre_projects_dir).mkdir()
+        monkeypatch.setattr(main_window.util, 'local_username', lambda: 'user')   # the owner of the test projects
         win = main_window.MainWindow()
         yield win
         win._timer.stop()

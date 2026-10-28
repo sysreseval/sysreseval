@@ -16,6 +16,7 @@
 # admin_uids = []                             # users allowed to run the archive tools (cat, sheet, outline, watch...)
 # admin_gids = [2000]                         # groups allowed to run them
 # allow_privileged_machines = True
+# check_project_owner = True                 # user mode: own projects and root's only (False: every project)
 # execute_commands_on_host = "shell"          # "shell", "split" or False
 # terminal_cmd_prefix = ["/usr/bin/mate-terminal", "--"]   # external terminal of the GUI (the choices are in params.py)
 # terminal_title_opt = "--title"

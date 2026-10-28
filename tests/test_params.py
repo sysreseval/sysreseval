@@ -208,6 +208,7 @@ class TestCheckoutDefaults:
         assert p.archive_dirs == ['/var/lib/sre/archives'] and p.sre_projects_dir == '/var/lib/sre/projects'
         assert p.sre_uid == 1100 and p.sre_gid == 1100 and p.docker_gid == 988
         assert p.self_update_allowed is True and p.site_params_file is None
+        assert p.check_project_owner is True
         assert 'make network-plugin' in p.network_plugin_hint and 'make venv' in p.kathara_hint
         assert p.web_dir == root + '/web' and p.web_config_file == '/etc/sreweb/web.toml'
         assert p.agent_config_file == '/etc/sreweb/agent.toml'
@@ -287,9 +288,10 @@ class TestSiteParams:
     def test_overrides_and_derivations(self, tmp_path):
         site = tmp_path / 'params.py'
         site.write_text('admin_gids = [42]\nsre_pub_dir = "/srv/sre"\nlab_dir = "/srv/labs"\n'
-                        'execute_commands_on_host = False\n')
+                        'execute_commands_on_host = False\ncheck_project_owner = False\n')
         p = _run(self._text(site))
         assert p.admin_gids == [42] and p.execute_commands_on_host is False
+        assert p.check_project_owner is False
         assert p.sre_pub_dir == '/srv/sre' and p.sre_projects_dir == '/srv/sre/projects'
         assert p.archive_dirs == ['/srv/sre/archives'] and p.save_tmp_dir == '/srv/sre/tmp'
         assert p.lab_dir == '/srv/labs' and p.authorized_src_dir == ['/srv/labs', '/home']

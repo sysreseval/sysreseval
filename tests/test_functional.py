@@ -31,6 +31,7 @@ from SRE.lib_sre import Grade0
 from SRE.command.start import do_action_start
 from SRE.command.eval import do_eval
 from SRE.command.stop import action_stop
+from SRE.command.stop_all import action_stop_all
 from SRE.command.save import do_action_save, action_save
 from SRE.command.restore import do_action_restore, action_restore
 from SRE import save_archive
@@ -145,6 +146,8 @@ def functional_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_stop_cmd,  'gain_privileges',                        noop)
     monkeypatch.setattr(_stop_cmd,  'set_sudo_uid_for_username',              noop_u)
     monkeypatch.setattr(_stop_cmd,  'drop_privileges_temporarily',            noop)
+    import SRE.command.stop_all as _stop_all_cmd
+    monkeypatch.setattr(_stop_all_cmd, 'drop_privileges_permanently',         noop)
     import SRE.command.save    as _save_cmd
     import SRE.command.restore as _restore_cmd
     import SRE.wipe            as _wipe_mod
@@ -415,6 +418,42 @@ class TestStop:
         if projects_dir.exists():
             assert list(projects_dir.iterdir()) == []
 
+    def test_user_mode_stop_of_another_users_project_is_refused(self, started_lab, mock_sre_args, monkeypatch,
+                                                                capsys):
+        mock_sre_args.user = True
+        mock_sre_args.running_lab = started_lab          # owner is 'testuser'
+        monkeypatch.setattr(params.SRE, 'username', 'other')
+        with pytest.raises(SystemExit):
+            action_stop()
+        assert 'not allowed to access project' in capsys.readouterr().err
+        assert (Path(params.sre_projects_dir) / started_lab).is_dir()
+
+    def _start_as(self, monkeypatch, *usernames):
+        for username in usernames:
+            monkeypatch.setattr(params.SRE, 'username', username)
+            do_action_start(lab_cli_arg=str(_LAB_PATH), lab_cli_arg_is_path=True)
+
+    def test_stop_all_privileged_removes_every_project(self, functional_env, mock_sre_args, monkeypatch):
+        self._start_as(monkeypatch, 'testuser', 'bob')
+        assert len(_project_dirs()) == 2
+        action_stop_all()
+        assert _project_dirs() == [] and list(functional_env['home_sre'].iterdir()) == []
+
+    def test_stop_all_user_mode_keeps_other_users_projects(self, functional_env, mock_sre_args, monkeypatch):
+        self._start_as(monkeypatch, 'testuser', 'root', 'bob')
+        mock_sre_args.user = True
+        monkeypatch.setattr(params.SRE, 'username', 'testuser')
+        action_stop_all()
+        assert [params.get_username_from_running_lab_name(p) for p in _project_dirs()] == ['bob']
+
+    def test_stop_all_with_the_check_off_removes_everything(self, functional_env, mock_sre_args, monkeypatch):
+        self._start_as(monkeypatch, 'testuser', 'bob')
+        mock_sre_args.user = True
+        monkeypatch.setattr(params.SRE, 'username', 'testuser')
+        monkeypatch.setattr(params, 'check_project_owner', False)
+        action_stop_all()
+        assert _project_dirs() == []
+
 
 # ---------------------------------------------------------------------------
 # Tests: start failure leaves no project behind
@@ -632,12 +671,35 @@ class TestSaveRestore:
         with pytest.raises(SystemExit):        # restore must read stdin in user mode
             action_restore()
 
-    def test_user_can_save_a_project_started_by_someone_else(self, save_restore_env, started_lab,
-                                                             mock_sre_args, monkeypatch, capsysbinary):
-        """A project started by root (`sre start -p ...`) must be savable from the GUI, which
-        runs `sre-wrapper save` as the logged-in user: no ownership check in user mode."""
+    def test_user_cannot_save_another_users_project(self, save_restore_env, started_lab,
+                                                   mock_sre_args, monkeypatch, capsysbinary):
+        """The ownership check of user mode (`resolve_running_lab_name`, `params.check_project_owner`)."""
         mock_sre_args.user = True
         mock_sre_args.running_lab = started_lab          # owner is 'testuser'
+        monkeypatch.setattr(params.SRE, 'username', 'someone_else')
+        with pytest.raises(SystemExit):
+            action_save()
+        out, err = capsysbinary.readouterr()
+        assert b'not allowed to access project' in err and not out.startswith(params.save_file_magic)
+
+    def test_check_project_owner_off_restores_the_old_behaviour(self, save_restore_env, started_lab,
+                                                               mock_sre_args, monkeypatch, capsysbinary):
+        mock_sre_args.user = True
+        mock_sre_args.running_lab = started_lab
+        monkeypatch.setattr(params.SRE, 'username', 'someone_else')
+        monkeypatch.setattr(params, 'check_project_owner', False)
+        action_save()
+        assert capsysbinary.readouterr().out.startswith(params.save_file_magic)
+
+    def test_user_can_save_a_project_started_by_root(self, save_restore_env, mock_sre_args, monkeypatch,
+                                                    capsysbinary):
+        """A project started by root (`sre start -p ...`) stays savable from the GUI, which runs
+        `sre-wrapper save` as the logged-in user: root's projects are everybody's."""
+        monkeypatch.setattr(params.SRE, 'username', 'root')
+        do_action_start(lab_cli_arg=str(_LAB_PATH), lab_cli_arg_is_path=True)
+        (rln,) = _project_dirs()
+        mock_sre_args.user = True
+        mock_sre_args.running_lab = rln
         monkeypatch.setattr(params.SRE, 'username', 'someone_else')
         action_save()
         assert capsysbinary.readouterr().out.startswith(params.save_file_magic)

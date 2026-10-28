@@ -93,6 +93,36 @@ class TestIsValidUsername:
         assert not access.is_valid_username(name)
 
 
+class TestMayAccessProject:
+    """The user-mode ownership rule: own projects, those of the shared owners (root, sre), or
+    everything when the check is off."""
+    SHARED = ('root', 'sre')
+
+    def test_own_project(self):
+        assert access.may_access_project('alice', 'alice', check_owner=True, shared_owners=self.SHARED)
+
+    @pytest.mark.parametrize('owner', ['root', 'sre'])
+    def test_shared_owners_are_everyones(self, owner):
+        assert access.may_access_project(owner, 'alice', check_owner=True, shared_owners=self.SHARED)
+        assert access.may_access_project(owner, None, check_owner=True, shared_owners=self.SHARED)
+
+    def test_another_user_is_refused(self):
+        assert not access.may_access_project('bob', 'alice', check_owner=True, shared_owners=self.SHARED)
+
+    @pytest.mark.parametrize('username', [None, ''])
+    def test_no_username_only_reaches_the_shared_owners(self, username):
+        assert not access.may_access_project('alice', username, check_owner=True, shared_owners=self.SHARED)
+        assert access.may_access_project('root', username, check_owner=True, shared_owners=self.SHARED)
+
+    @pytest.mark.parametrize('username', [None, '', 'alice'])
+    def test_empty_owner_is_never_anyones(self, username):
+        assert not access.may_access_project('', username, check_owner=True, shared_owners=self.SHARED)
+
+    @pytest.mark.parametrize('owner, username', [('bob', 'alice'), ('', 'alice'), ('alice', None), ('', '')])
+    def test_check_off_accepts_everything(self, owner, username):
+        assert access.may_access_project(owner, username, check_owner=False, shared_owners=self.SHARED)
+
+
 @pytest.fixture
 def install(tmp_path):
     """A fake /opt layout: ``opt/sre`` is a symlink to a versioned directory,

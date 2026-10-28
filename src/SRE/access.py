@@ -19,6 +19,11 @@ Who reaches ``sre`` and how
   recognised through ``/proc/<pid>/exe``, which the kernel sets and a caller
   cannot forge.  A shell script has no such identity (its ``exe`` is the
   interpreter) and is never accepted.
+* In user mode a caller only acts on the projects they own (the username of the
+  running lab name) and on those of a shared owner, root or the sre user: a
+  project started by ``sudo sre start ...`` stays usable by every local user
+  (:func:`may_access_project`, switched by ``params.check_project_owner``).
+  Privileged callers are never checked.
 """
 import os
 import re
@@ -58,6 +63,17 @@ def resolve_username(env, *, user_flag, use_sudo_user):
 
 def is_valid_username(name):
     return bool(_VALID_USERNAME.match(name))
+
+
+def may_access_project(owner, username, *, check_owner, shared_owners):
+    """User-mode rule: the caller *username* may act on the project of *owner* iff it is theirs
+    or belongs to a shared owner (root, the sre user: the projects started by ``sudo sre start``
+    stay usable by every local user).  *check_owner* off = every project (the old behaviour).
+    An empty *owner* (a name outside ``params.running_lab_name_match_pattern``) is never
+    anyone's."""
+    if not check_owner:
+        return True
+    return bool(owner) and (owner == username or owner in shared_owners)
 
 
 def launched_by_sudo(env, sre_exe):

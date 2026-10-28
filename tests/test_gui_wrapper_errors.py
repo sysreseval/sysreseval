@@ -1,6 +1,6 @@
 """
-The GUI runs `sre-wrapper stop` / `sre-wrapper wipe` in the background.  Since `sre stop` and
-`sre wipe` exit 1 with `sre: cannot remove: ...` when a directory is left behind, that failure
+The GUI runs `sre-wrapper stop` / `sre-wrapper stop-all` in the background.  Since `sre stop` and
+`sre stop-all` exit 1 with `sre: cannot remove: ...` when a directory is left behind, that failure
 must reach the user in a message box instead of being silently dropped (the tab just stayed).
 Offscreen Qt; the wrapper is replaced by a shell script; QMessageBox.critical is recorded.
 """
@@ -55,6 +55,7 @@ def _pump(predicate, timeout=5.0):
 @pytest.fixture
 def window(tmp_pub_dir, monkeypatch):
     Path(params.sre_projects_dir).mkdir()
+    monkeypatch.setattr(main_window.util, 'local_username', lambda: 'user')
     recorded = []
     monkeypatch.setattr(main_window.QMessageBox, 'critical',
                         lambda parent, title, text: recorded.append((title, text)))
@@ -67,14 +68,14 @@ def window(tmp_pub_dir, monkeypatch):
 
 
 class TestBackgroundWrapperErrors:
-    def test_wipe_failure_is_shown(self, window, tmp_path, monkeypatch):
+    def test_stop_all_failure_is_shown(self, window, tmp_path, monkeypatch):
         win, recorded = window
         monkeypatch.setattr(params, 'sre_wrapper', _fake_wrapper(tmp_path, 1, FAILURE_MESSAGE))
         win._close_all_projects()
-        assert _pump(lambda: recorded), "no message box after the failing wipe"
+        assert _pump(lambda: recorded), "no message box after the failing stop-all"
         title, text = recorded[0]
         assert title == 'Close All Projects'
-        assert "'sre wipe' failed (exit code 1)" in text
+        assert "'sre stop-all' failed (exit code 1)" in text
         assert '/home/sre/x/shared/rep_root: Permission denied' in text
 
     def test_stop_failure_names_the_project(self, window, tmp_path, monkeypatch):
@@ -99,7 +100,7 @@ class TestBackgroundWrapperErrors:
         monkeypatch.setattr(params, 'sre_wrapper', str(tmp_path / 'no-such-wrapper'))
         win._close_all_projects()
         assert _pump(lambda: recorded)
-        assert "'sre wipe' failed (exit code -1)" in recorded[0][1]
+        assert "'sre stop-all' failed (exit code -1)" in recorded[0][1]
 
     def test_success_is_silent(self, window, tmp_path, monkeypatch):
         win, recorded = window

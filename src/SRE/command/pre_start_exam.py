@@ -7,7 +7,8 @@ from Kathara.manager.Kathara import Kathara
 
 from .stop import stop_running_lab
 from .. import params
-from ..utils import error_quit, user_not_allowed, cannot_remove_message
+from ..utils import error_quit, user_not_allowed, cannot_remove_message, in_user_mode
+from ..common import project_accessible
 from .start import do_action_start
 
 
@@ -61,22 +62,29 @@ def action_pre_start_exam():
     }
 
     running = _get_running_labs()
+    user_mode = in_user_mode()
 
-    # Stop running projects whose lab_name is not in the allowed list (a project whose
-    # directories cannot be removed does not prevent the exam labs from starting)
+    # Stop the running projects whose lab_name is not in the allowed list and, in user mode, those
+    # the caller may not use (another user's leftover exam projects: the GUI only counts the
+    # caller's own tabs); the exam projects the caller may use are kept in `usable`.  A project
+    # whose directories cannot be removed does not prevent the exam labs from starting.
     not_removed: list[str] = []
+    usable: dict[str, list[tuple[str, str]]] = {}
     for lab_name, instances in running.items():
-        if lab_name not in allowed_lab_names:
-            for running_lab_name, lab_hash in instances:
+        for running_lab_name, lab_hash in instances:
+            if lab_name in allowed_lab_names and (
+                    not user_mode or project_accessible(running_lab_name, params.SRE.username)):
+                usable.setdefault(lab_name, []).append((running_lab_name, lab_hash))
+            else:
                 not_removed += stop_running_lab(running_lab_name=running_lab_name, lab_hash=lab_hash,
                                                 multi_project=True)
 
-    # Start one instance for each lab in the list that has no running project
+    # Start one instance for each lab in the list that has no usable running project
     labs = exam_data.get(params.exam_labs, [])
     for entry in labs:
         lab_cli_arg, flavor_name = params.parse_lab_entry(entry)
         lab_name = params.get_lab_name_from_cli_arg(lab_cli_arg, is_path=lab_cli_arg.startswith('/'))
-        if lab_name not in running:
+        if lab_name not in usable:
             do_action_start(lab_cli_arg=lab_cli_arg, flavor_name=flavor_name,
                             lab_cli_arg_is_path=lab_cli_arg.startswith('/'),
                             multi_project=(len(exam_data) > 1),

@@ -46,6 +46,7 @@ MACHINES = [_machine("m1", ["lan"]), _machine("probe", ["lan", "hidden_net"], hi
 def window(tmp_pub_dir, monkeypatch):
     """A MainWindow whose message boxes are recorded as (kind, title, text)."""
     Path(params.sre_projects_dir).mkdir()
+    monkeypatch.setattr(main_window.util, 'local_username', lambda: 'user')   # the owner of the test projects
     boxes = []
     monkeypatch.setattr(main_window.QMessageBox, 'critical',
                         lambda parent, title, text: boxes.append(('critical', title, text)))

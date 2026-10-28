@@ -1,4 +1,6 @@
 import json
+import os
+import pwd
 import subprocess
 import sys
 from datetime import datetime
@@ -7,6 +9,7 @@ from pathlib import Path
 import pathlib
 
 from SRE import params
+from SRE.common import project_accessible
 
 _debug = False
 
@@ -72,6 +75,23 @@ def load_projects():
         if info.exists():
             projects.append(d)
     return projects
+
+
+def local_username() -> str:
+    """The login sre-wrapper puts in USER_USERNAME (getpwuid(getuid())) and sudo in SUDO_USER:
+    the owner field of the projects started from this session ('' for an unknown uid)."""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        return ''
+
+
+def visible_projects(username: str) -> list[Path]:
+    """load_projects() restricted to the projects *username* may act on through sre-wrapper
+    (SRE.common.project_accessible: their own and those of root or the sre user; every project
+    when params.check_project_owner is off).  load_projects() itself stays unfiltered: the web
+    agent's registry lists every project of the host with it."""
+    return [d for d in load_projects() if project_accessible(d.name, username)]
 
 
 def load_info(project_dir: Path) -> dict:

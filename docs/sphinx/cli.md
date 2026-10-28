@@ -10,7 +10,7 @@ sre [--user] [--debug] <subcommand> ...
 
 | Option | Description |
 |--------|-------------|
-| `--user` | Set by `sre-wrapper`; reads student login from `USER_USERNAME` (else `LOGNAME`). Mutually exclusive with `--debug`. |
+| `--user` | Set by `sre-wrapper`; reads student login from `USER_USERNAME` (else `LOGNAME`). Mutually exclusive with `--debug`. In user mode a command only reaches the caller's own projects and those started by root or the `sre` user (`sudo sre start …`); with `params.check_project_owner = False` every project of the host, as before 0.14. |
 | `--debug` | Verbose diagnostics to stderr. |
 
 Access is restricted to `root`, the `sre` user (`params.sre_uid = 1100`), members of `params.admin_uids`, or members of any `params.admin_gids` group. Non-privileged users may only run `cat`, `check-eval`, `re-eval`, `sheet`, and `outline`.
@@ -39,6 +39,12 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 
 Undeploys containers and removes the project directory from `/var/lib/sre/projects/`. Kathara only undeploys the containers whose `user` label matches the caller, so `stop` first aligns `SUDO_UID` with the label used at deploy time (`sre` for non-privileged labs, the project owner for privileged ones; both are tried when the lab is not loaded, as in `pre-start-exam`).
 
+The name may be a unique substring of the running lab name (every command taking a `<running_lab>` resolves it this way). In user mode only the caller's own projects and those started by root or the `sre` user are candidates: another user's project is refused by its exact name and never listed nor matched by a substring (`params.check_project_owner`).
+
+### `sre stop-all`
+
+Stops every running project the caller may access, each one as `sre stop` does (with the `lab_hash` of its `info.json`: no lab module is loaded and both container labels are tried): all of them for a privileged caller, in user mode the caller's own projects and those started by root or the `sre` user (every project when `params.check_project_owner` is off). The GUI's **File → Close All Projects** runs it. Unlike `sre wipe` nothing else is touched: no Kathara wipe, the stray entries of the projects directory and the orphan user public directories stay, and a project without `info.json` (a start in progress or failed) is left alone. Refused in user mode during an exam, like `stop`.
+
 ### `sre save [-o <file>] [--full-images] <running_lab>`
 
 Saves a running project into a single save file (`.sre`): the filesystem of every container (captured by the patched Kathara `save_lab`, as a diff against the base image by default) plus the project files (`data.json`, `answers/`, `.private/files`, the user public dir with `shared/` and the volume directories, `.private/mnt`). The lab must set `allow_save_restore = True`; the lab's `save` state is applied first (see [Lifecycle states](lab-authoring.md#lifecycle-states-save--restore)). Only files are captured, not running processes.
@@ -60,7 +66,7 @@ Restores a save file as a **new** running project (fresh timestamp, current user
 
 ### `sre wipe`
 
-Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/`.
+Stops every running Kathara lab and removes everything under `/var/lib/sre/projects/` and the user public directories. Privileged only: the user-mode form is `sre stop-all`.
 
 ### `sre connect [--shell <shell>] [--exec <argument…>] [--no-records] <running_lab> <device>`
 
@@ -310,11 +316,11 @@ With `--with-titles`, output becomes `[{"name": <path>, "title": <dict|null>}, �
 
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 
-Exports a running project as a Kathara zip archive, base64-encoded on stdout. Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
+Exports a running project as a Kathara zip archive, base64-encoded on stdout. The project name is resolved like the other commands (exact name or unique substring, the ownership check of user mode). Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
 
 ### `sre pre-start-exam`
 
-Stops non-exam projects, then starts all exam labs so images are pre-pulled. Called by the GUI ~60 s before `start_after`.
+Stops non-exam projects, then starts all exam labs so images are pre-pulled. Called by the GUI ~60 s before `start_after`. In user mode with `params.check_project_owner` on, the projects of the other users of the host are stopped too, whatever their lab (the GUI only counts the caller's own tabs), and an exam lab is started unless the caller, or root, already runs one.
 
 ### `sre start-exam`
 

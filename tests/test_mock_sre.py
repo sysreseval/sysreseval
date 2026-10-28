@@ -30,6 +30,9 @@ STUDENT = 'dupont'
 INSTRUCTOR = 'instructor'
 USER_ENV = {'LOGNAME': 'root', 'SUDO_USER': STUDENT, 'USER_USERNAME': STUDENT}
 PRIVILEGED_ENV = {'LOGNAME': INSTRUCTOR}
+# the student path (--user) on a project started with PRIVILEGED_ENV, i.e. by its owner: another
+# user's project is refused in user mode (params.check_project_owner)
+AS_OWNER = {'SUDO_USER': INSTRUCTOR, 'USER_USERNAME': INSTRUCTOR}
 FIRST_LAB = 'sre/dhcp.py'
 PATH_LAB = '/labs/x/dhcp.py'     # --debug-project makes the lab argument a path (like start.py)
 
@@ -544,11 +547,12 @@ class TestState:
         running_lab_name = start_project(pub, '--debug-project', PATH_LAB, user=False)
         log = project_dir(pub, running_lab_name) / params.operations_log_name
         assert not log.exists()
-        assert run_mock(pub, 'state', running_lab_name, 'final').returncode == 0   # user mode, debug project
+        # user mode (the owner), debug project
+        assert run_mock(pub, 'state', running_lab_name, 'final', extra_env=AS_OWNER).returncode == 0
         text = log.read_text()
         assert re.match(r'=== \d{4}-\d\d-\d\d \d\d:\d\d:\d\d  state final\n', text)
         assert 'step1 - on m1 : hostname\n    m1\n    exit code 0\n' in text
-        run_mock(pub, 'eval', '--auto-eval', running_lab_name)
+        run_mock(pub, 'eval', '--auto-eval', running_lab_name, extra_env=AS_OWNER)
         text = log.read_text()
         assert '\n\n=== ' in text and '  evaluation\n' in text
         assert 'grade - [Routing] Default route of m1 : 2 / 2\n' in text
@@ -556,9 +560,9 @@ class TestState:
     def test_operations_log_of_an_instructor_mode_project_holds_states_only(self, pub):
         running_lab_name = start_project(pub, '--instructor-mode', FIRST_LAB, user=False)
         log = project_dir(pub, running_lab_name) / params.operations_log_name
-        run_mock(pub, 'eval', '--auto-eval', running_lab_name)
+        run_mock(pub, 'eval', '--auto-eval', running_lab_name, extra_env=AS_OWNER)
         assert not log.exists()
-        run_mock(pub, 'state', running_lab_name, 'final')
+        run_mock(pub, 'state', running_lab_name, 'final', extra_env=AS_OWNER)
         assert '  state final\n' in log.read_text()
 
     def test_no_operations_log_for_a_plain_project(self, pub, project):
@@ -594,7 +598,7 @@ class TestConnect:
 
     def test_hidden_machine_is_known_in_a_debug_project(self, pub):
         running_lab_name = start_project(pub, '--debug-project', PATH_LAB, user=False)
-        completed = run_mock(pub, 'connect', running_lab_name, 'probe')
+        completed = run_mock(pub, 'connect', running_lab_name, 'probe', extra_env=AS_OWNER)
         assert completed.stderr.decode().strip() == 'sre: Machine not running'
 
     def test_unknown_running_lab(self, pub, project):
@@ -697,9 +701,29 @@ class TestStop:
 
     def test_wipe_removes_every_project(self, pub, project):
         start_project(pub, 's4/tp_ssh')
-        assert run_mock(pub, 'wipe').returncode == 0
+        assert run_mock(pub, 'wipe', user=False).returncode == 0
         assert list((pub / 'projects').iterdir()) == []
         assert list((pub / 'home').iterdir()) == []
+
+    def test_wipe_is_refused_in_user_mode(self, pub, project):
+        completed = run_mock(pub, 'wipe')
+        assert completed.returncode == 1 and b'not allowed to run this command' in completed.stderr
+        assert project_dir(pub, project).is_dir()
+
+    def test_stop_of_another_users_project_is_refused(self, pub, project):
+        """The ownership check of the real resolver (user mode; a privileged caller is not checked)."""
+        completed = run_mock(pub, 'stop', project, extra_env={'SUDO_USER': 'durand', 'USER_USERNAME': 'durand'})
+        assert completed.returncode == 1 and b'not allowed to access project' in completed.stderr
+        assert project_dir(pub, project).is_dir()
+        assert run_mock(pub, 'stop', project, user=False).returncode == 0
+        assert not project_dir(pub, project).exists()
+
+    def test_stop_all_removes_the_callers_projects(self, pub, project):
+        other = start_project(pub, FIRST_LAB, extra_env={'SUDO_USER': 'durand', 'USER_USERNAME': 'durand'})
+        assert run_mock(pub, 'stop-all').returncode == 0
+        assert not project_dir(pub, project).exists() and project_dir(pub, other).is_dir()
+        assert run_mock(pub, 'stop-all', user=False).returncode == 0
+        assert list((pub / 'projects').iterdir()) == []
 
 
 # ---------------------------------------------------------------------------------------------
