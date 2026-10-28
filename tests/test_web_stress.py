@@ -86,8 +86,8 @@ class TestHelpers:
         assert stress.host_distribution(students) == {'h1': 2, 'h2': 1}
 
     def test_retry_delay(self):
-        opts = stress.Options(portal='http://x', start_interval=30, start_retries=2)
-        assert stress.retry_delay('start', '503', 10, 1, opts) == 31          # the start interval wins
+        opts = stress.Options(portal='http://x', start_retries=2)
+        assert stress.retry_delay('start', '503', 10, 1, opts) == 11          # the pool's retry_after
         assert stress.retry_delay('start', '503', 60, 1, opts) == 61
         assert stress.retry_delay('start', '503', 60, 2, opts) is None       # attempts exhausted
         assert stress.retry_delay('start', '429', 7, 1, opts) == 8

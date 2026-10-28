@@ -21,6 +21,7 @@ from .presentation import (Presence, Presentation, Presentations, Watcher, SPECT
 from .ratelimit import RateLimiter
 from .relay import Relay
 from .roles import complete_groups
+from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
 from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
 
@@ -481,30 +482,43 @@ class Routes:
         logged = request.get(ACCESS_KEY)      # the line of the connection log: the lab, the host, the outcome
         if logged is not None:
             logged.update(lab=body['lab'], instructor=bool(body.get('instructor_mode')))
-        wait = self.limiter.allow_every('start', identity.login, self.cfg.limits.start_interval)
-        if wait:
-            return json_error(429, "please wait before starting another project", retry_after=round(wait))
         if body.get('instructor_mode') and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
         if wanted and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
-        host, reservation = self.pool.pick(identity, wanted)
-        if logged is not None:
-            logged.update(host=host.name, placement=reservation.placement)
-        payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
-        if isinstance(body.get('flavor'), dict):
-            payload['flavor_json'] = body['flavor']
-        if body.get('instructor_mode'):
-            payload['instructor_mode'] = True     # an instructor's own project in instructor mode
-
-        def on_result(obj: dict):
-            if logged is not None:
-                logged.update(result=obj.get('status'), rln=obj.get('running_lab_name'))
-
+        # The start slot of the user is taken now (two simultaneous starts of one user are refused)
+        # and given back unless a start reached the agent and went past the flavor form: the form
+        # of a lab with flavor_form_at_startup is fetched by a start that ends on it, and the
+        # student's real start, seconds later, must not be refused; a placement refused by the
+        # pool, an agent not answering or a relay broken before the result line cost nothing
+        # either (the agent's start lock per user and max_projects still bound that user).
+        wait, previous = self.limiter.take_every('start', identity.login, self.cfg.limits.start_interval)
+        if wait:
+            return json_error(429, "please wait before starting another project", retry_after=round(wait))
+        started = False
+        reservation = None
         try:
+            host, reservation = self.pool.pick(identity, wanted)
+            if logged is not None:
+                logged.update(host=host.name, placement=reservation.placement)
+            payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
+            if isinstance(body.get('flavor'), dict):
+                payload['flavor_json'] = body['flavor']
+            if body.get('instructor_mode'):
+                payload['instructor_mode'] = True     # an instructor's own project in instructor mode
+
+            def on_result(obj: dict):
+                nonlocal started
+                started = obj.get('status') not in (RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR)
+                if logged is not None:
+                    logged.update(result=obj.get('status'), rln=obj.get('running_lab_name'))
+
             return await self._forward_json(request, host, identity, payload, on_result=on_result)
         finally:
-            self.pool.release(reservation)
+            if reservation is not None:
+                self.pool.release(reservation)
+            if not started:
+                self.limiter.give_back('start', identity.login, previous)
 
     async def _forward_json(self, request, host, identity, payload: dict, *, on_result=None):
         """Relay a JSON POST that answers an NDJSON stream."""

@@ -34,6 +34,14 @@ PHASE_PROJECT = 'project'       # {"phase": "project", "status": "created", "run
 PHASE_FLAVOR_FORM = 'flavor_form'
 PHASE_FLAVOR_ERROR = 'flavor_error'
 
+#: The ``status`` of the final ``{"phase": "result"}`` line of the creation stream of the agent
+#: (``POST /v1/projects``), read by the portal too: after a form or a refused flavor no project
+#: exists, and the start slot of the user is given back.
+RESULT_CREATED = 'created'
+RESULT_FLAVOR_FORM = 'flavor_form'
+RESULT_FLAVOR_ERROR = 'flavor_error'
+RESULT_ERROR = 'error'
+
 #: Commands sharing the "start" and the "eval" concurrency limits.
 START_LIKE = frozenset({'start'})
 EVAL_LIKE = frozenset({'eval', 'state'})

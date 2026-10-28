@@ -182,7 +182,6 @@ class Options:
     group: str = 'stress'
     headers: HeaderNames = field(default_factory=HeaderNames)
     timeout: float = 60.0
-    start_interval: float = 30.0
     start_retries: int = 10
     verbose: bool = False
     watch_interval: float = WATCH_INTERVAL      # the instructor's polls (the tests shorten it)
@@ -376,14 +375,13 @@ def host_distribution(students: list) -> dict:
 
 def retry_delay(phase: str, status, retry_after, attempt: int, opts: Options) -> float | None:
     """Seconds to wait before the attempt *attempt* + 1 of *phase* after *status*, None when the
-    call is not retried.  A start refused by the pool (503) is retried after the longer of the
-    pool's retry_after and the portal's start interval (consumed before the placement)."""
+    call is not retried.  A start refused by the pool (503) or by the start limit (429) is
+    retried after the retry_after of the answer (the portal gives the start slot back to a start
+    it refused before the relay)."""
     retry_after = float(retry_after or 0)
     status = str(status)
     if phase == PHASE_START:
-        if status == '503' and attempt < opts.start_retries:
-            return max(retry_after, opts.start_interval) + 1
-        if status == '429' and attempt < opts.start_retries:
+        if status in ('503', '429') and attempt < opts.start_retries:
             return retry_after + 1
         if status in ('500', '502', '504', RESULT_ERROR, RESULT_FLAVOR_ERROR) and attempt < 3:
             return 5.0 * attempt
@@ -516,9 +514,11 @@ def format_summary(report: Report) -> str:
     if report.pool:
         loads = [r.get('load1') for p in report.pool for r in p.rows if isinstance(r.get('load1'), (int, float))]
         projects = [r.get('projects') or 0 for p in report.pool for r in p.rows]
-        unreachable = sum(1 for p in report.pool for r in p.rows if not r.get('reachable'))
+        # a host off, disabled or waking is unreachable by nature: only the others count
+        unreachable = sum(1 for p in report.pool for r in p.rows
+                          if not r.get('reachable') and r.get('state') not in ('off', 'disabled', 'waking'))
         flips = ' '.join(f"{k}×{v}" for k, v in sorted(report.pool_flips.items())) or 'none'
-        lines.append(f"pool: {len(report.pool)} samples; reachable flips {flips}; unreachable rows {unreachable}; "
+        lines.append(f"pool: {len(report.pool)} samples; reachable flips {flips}; unreachable rows of hosts up {unreachable}; "
                      f"max projects {max(projects) if projects else 0}"
                      + (f"; max load1 {max(loads):.1f}" if loads else ''))
     if report.probe:
@@ -1288,8 +1288,6 @@ def parse_args(argv=None) -> Options:
     p.add_argument('--instructor-header', default='X-Remote-Gid', help="header making the instructor (X-Remote-Gid)")
     p.add_argument('--instructor-value', default='2000', help="its value (2000)")
     p.add_argument('--timeout', type=float, default=60.0, help="seconds per JSON call (60)")
-    p.add_argument('--start-interval', type=float, default=30.0,
-                   help="[limits] start_interval of the portal: the wait after a refused start (30)")
     p.add_argument('--start-retries', type=int, default=10, help="attempts of a refused start (10)")
     p.add_argument('--verbose', action='store_true', help="one line per request on stderr")
     a = p.parse_args(argv)
@@ -1312,7 +1310,7 @@ def parse_args(argv=None) -> Options:
                        prompt_timeout=a.prompt_timeout, answers=a.answers, evals=a.evals, keep=a.keep,
                        instructor=a.instructor, admin_token=a.admin_token, probe=a.probe, report=a.report,
                        events=a.events, language=a.language, group=a.group, headers=headers, timeout=a.timeout,
-                       start_interval=a.start_interval, start_retries=a.start_retries, verbose=a.verbose)
+                       start_retries=a.start_retries, verbose=a.verbose)
     except ValueError as e:
         p.error(str(e))
     opts.cleanup = a.cleanup          # not a scenario option: the mode of main()

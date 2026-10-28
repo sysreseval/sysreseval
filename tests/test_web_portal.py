@@ -19,6 +19,7 @@ from sreweb.config import agent_config_from_dict, web_config_from_dict
 from sreweb.identity import Identity
 from sreweb.portal import session as S
 from sreweb.portal.accesslog import parse_line
+from sreweb.portal.ratelimit import RateLimiter
 from sreweb.portal.app import Portal
 from sreweb.portal.pool import Pool, PoolError, HostStatus
 from sreweb.config import HostConfig
@@ -122,6 +123,26 @@ class Harness:
         assert resp.status == 200, await resp.text()
         lines = [json.loads(l) for l in (await resp.text()).splitlines()]
         return lines[-1]
+
+    async def start_refused(self, lab='sre/dhcp.py', **body) -> tuple:
+        """A start the portal refuses before the relay: (status, the JSON error)."""
+        resp = await self.client.post('/api/projects', json={'lab': lab, **body}, headers=CSRF)
+        assert resp.status != 200, await resp.text()
+        return resp.status, await resp.json()
+
+
+class TestRateLimiter:
+    def test_take_and_give_back(self):
+        rl = RateLimiter()
+        assert rl.take_every('start', 'a', 30, now=100) == (0.0, None)
+        assert rl.take_every('start', 'a', 30, now=110) == (20.0, None)    # refused: nothing to give back
+        rl.give_back('start', 'a', None)                                  # the take of 100, undone
+        assert rl.allow_every('start', 'a', 30, now=110) == 0
+        wait, previous = rl.take_every('start', 'a', 30, now=150)
+        assert (wait, previous) == (0.0, 110)
+        rl.give_back('start', 'a', previous)                              # back to the stamp of 110
+        assert rl.allow_every('start', 'a', 30, now=130) == 10
+        assert rl.allow_every('start', 'b', 30, now=130) == 0             # another key
 
 
 class TestSessionCookie:
@@ -326,9 +347,22 @@ class TestProjectsThroughThePortal:
                 await h.login()
                 result = await h.start()
                 assert result['status'] == 'flavor_form' and result['chunks'][1]['name'] == 'nb'
-                h.portal.routes.limiter._last.clear()
+                # the form fetch gave the start slot back: the start with the answers comes at once
                 result = await h.start(flavor={'nb': '2'})
                 assert result['status'] == 'created'
+                status, error = await h.start_refused(flavor={'nb': '2'})   # a real start took the slot
+                assert status == 429 and error['retry_after'] > 0
+        run(go())
+
+    def test_flavor_refused_gives_the_start_slot_back(self, tmp_path):
+        async def go():
+            env = {'MOCK_FLAVOR_FORM': 'N: @@{nb:[0-9]+}@@', 'MOCK_FLAVOR_REFUSE': 'too many'}
+            async with Harness(tmp_path, mock_env=env) as h:
+                await h.login()
+                assert (await h.start())['status'] == 'flavor_form'
+                assert (await h.start(flavor={'nb': '9'}))['status'] == 'flavor_error'
+                assert (await h.start(flavor={'nb': '1'}))['status'] == 'flavor_error'   # corrected at once, not 429
+                assert not h.portal.routes.limiter._last                                # no slot kept
         run(go())
 
     def test_pool_full_and_unreachable_host(self, tmp_path):
@@ -347,6 +381,9 @@ class TestProjectsThroughThePortal:
                 h.portal.routes.limiter._last.clear()
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers=CSRF)
                 assert resp.status == 503
+                # a refused placement gives the start slot back: the retry is refused by the pool again, not 429
+                status, error = await h.start_refused()
+                assert status == 503 and error['retry_after'] == 60
                 assert len(await (await h.client.get('/api/projects')).json()) == 3
         run(go())
 

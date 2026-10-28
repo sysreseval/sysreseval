@@ -38,6 +38,7 @@ from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVAL
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
+                     RESULT_CREATED, RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_ERROR,
                      build_env, PHASE_PROJECT)
 from .schedulers import Schedulers
 from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_CLIENTS_PER_SESSION,
@@ -525,25 +526,25 @@ class Agent:
         except FlavorFormNeeded as e:
             form = TranslatedText.from_value(e.form).resolve_priority([identity.language, 'en'])
             chunks = chunks_to_json(parse_form_description(form, allow_submit=True), show_instructor=False)
-            await line({'phase': 'result', 'status': 'flavor_form', 'form': form, 'form_size': e.form_size,
+            await line({'phase': 'result', 'status': RESULT_FLAVOR_FORM, 'form': form, 'form_size': e.form_size,
                         'chunks': chunks})
             return resp
         except FlavorError as e:
-            await line({'phase': 'result', 'status': 'flavor_error', 'message': e.message})
+            await line({'phase': 'result', 'status': RESULT_FLAVOR_ERROR, 'message': e.message})
             return resp
         except CommandTimeout as e:
-            await line({'phase': 'result', 'status': 'error', 'message': e.message})
+            await line({'phase': 'result', 'status': RESULT_ERROR, 'message': e.message})
             return resp
         except CommandError as e:
-            await line({'phase': 'result', 'status': 'error', 'message': e.message or f"sre failed ({e.rc})"})
+            await line({'phase': 'result', 'status': RESULT_ERROR, 'message': e.message or f"sre failed ({e.rc})"})
             return resp
         except FileNotFoundError:
-            await line({'phase': 'result', 'status': 'error', 'message': "cannot run sre on this host"})
+            await line({'phase': 'result', 'status': RESULT_ERROR, 'message': "cannot run sre on this host"})
             return resp
         rln = run.created_running_lab_name()
         project = await self.registry.adopt(rln) if rln else None
         if project is None:
-            await line({'phase': 'result', 'status': 'error', 'message': "the new project was not found"})
+            await line({'phase': 'result', 'status': RESULT_ERROR, 'message': "the new project was not found"})
             return resp
         if idle is not None:
             project.idle_timeout = idle
@@ -558,7 +559,7 @@ class Agent:
             await self.answers.rewrite(project, identity)
         except OSError as e:
             log.warning("cannot write the answers metadata of %s: %s", project.rln, e)
-        await line({'phase': 'result', 'status': 'created', 'running_lab_name': project.rln, 'host': self.hostname})
+        await line({'phase': 'result', 'status': RESULT_CREATED, 'running_lab_name': project.rln, 'host': self.hostname})
         return resp
 
     async def project_get(self, request):
