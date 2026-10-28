@@ -503,7 +503,9 @@ below), except `add` and `remove`, which stay with the token.
   proxy mode the web server in front has already asked, there is no login page.
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
   lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
-  deploys).
+  deploys). Logout asks what to do with the running projects: close them (each as a Close does:
+  the last evaluation when the lab asks for it, then `sre stop`; the dialog waits for every
+  answer) or leave them running; with no running project the button logs out at once.
 - **A project**: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
   same options (lines, spacing, order, icons); the questions and the forms are the same; the
   evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
@@ -835,3 +837,7 @@ that took the first 35 projects (13–14 each within two minutes, about 100 cont
 a load average of 140–150 and still answered starts in less than 13 s. The evaluations of the run
 are archived on the hosts themselves (`archive_dirs`: `/var/lib/sre/archives` and the per-host
 `/home/.resultats-sre`), to delete there.
+A second run the same evening with 200 students on 84 hosts (two or three projects per host):
+200 completed, every check true, starts in 5.4 s median / 9 s p95 (one host took 33 s for one
+start), the portal at 15 % CPU at most, growing from 69 MiB after a restart to 264 MiB with 600
+relayed sockets, 597 connections to the agents at the peak, the VM's load average below 0.3.
