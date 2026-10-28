@@ -359,3 +359,21 @@ class TestJavaScript:
             assert selector in selectors, selector
         present = (JS / 'present.js').read_text(encoding='utf-8')
         assert "classList.add('presenting')" in present and "classList.remove('presenting')" in present
+
+    def test_helper_colour_keyed_on_the_body(self):
+        """An instructor's page on a student's project takes --helper-bg on its site bar and
+        project bar (body.helping, set by project.js for an instructor who is neither the owner
+        nor a spectator); the rule precedes the presentation one, so the presentation colour
+        wins while that project is presented."""
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert '--helper-bg:' in css
+        rule = re.search(r'([^{}]*)\{[^{}]*var\(--helper-bg\)', css)
+        assert rule, "no rule uses --helper-bg"
+        selectors = [s.strip() for s in rule.group(1).split(',')]
+        assert 'body.helping .topbar' in selectors and 'body.helping .project-bar' in selectors
+        assert css.index('var(--helper-bg)') < css.index('var(--presentation-bg)')
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        line = next((l for l in project.splitlines() if "classList.add('helping')" in l), None)
+        assert line, "project.js never sets body.helping"
+        for token in ('isInstructor', '!isOwner', '!spectator'):
+            assert token in line, token

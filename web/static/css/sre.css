@@ -21,6 +21,7 @@
   --hidden-color: #d00000;          /* hidden machines of a debug project */
   --closed-color: #e08000;          /* devices closed to the students */
   --presentation-bg: #d1c4e9;       /* the top bars of a page while a presentation is on */
+  --helper-bg: #b2dfdb;             /* the top bars of an instructor's page on a student's project */
 }
 
 * { box-sizing: border-box; }
@@ -499,11 +500,14 @@ option.closed-device { color: var(--closed-color); }
    audience dialog of the presenter's page, the read-only terminals of a spectator; the top bars
    take the presentation colour on both sides (body.presenting: the presenter's page while it
    presents, set by present.js; body[data-presentation]: the presented page, whose site bar is
-   hidden) */
+   hidden).  An instructor's page on a student's project (body.helping, set by project.js) takes
+   the helper colour on its site bar and project bar; its rule comes first, so the presentation
+   colour wins while that project is presented */
 #presentation-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--bg); }
 #presentation-overlay iframe { display: block; width: 100%; height: 100%; border: 0; }
 body.has-presentation { overflow: hidden; }
 body[data-presentation] .topbar, body[data-presentation] .footer { display: none; }
+body.helping .topbar, body.helping .project-bar { background: var(--helper-bg); }
 body.presenting .topbar, body.presenting .project-bar, body.presenting .presentation-bar,
 body[data-presentation] .project-bar { background: var(--presentation-bg); }
 .presenter-name { color: var(--muted); white-space: nowrap; margin: 0 8px; }

@@ -41,6 +41,9 @@ const isOwner = owner === login;
 const presentationId = body.dataset.presentation || '';
 const spectator = Boolean(presentationId);
 const groupsEnabled = body.dataset.groups === 'true';
+// an instructor on a student's project: the top bars take the helper colour (sre.css); the
+// student's own page and a spectator's page keep theirs
+if (isInstructor && !isOwner && !spectator) body.classList.add('helping');
 
 const tabBar = document.getElementById('tabbar');
 const panes = document.getElementById('panes');
