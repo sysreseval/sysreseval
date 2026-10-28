@@ -38,7 +38,7 @@ Each student GUI reads `exam.json` every second (`_update_exam_state`) and runs 
 
 | Phase | Preconditions | Actions |
 |-------|--------------|---------|
-| Waiting | — | Show SRE logo + countdown to `start_after`. Once `now ≥ start_after − params.max_duration_between_exam_pre_start_and_start` (60 s) **and** `pre_start_date` is absent, fire `sre pre-start-exam` once (stops non-exam projects, starts exam labs, appends to `pre_start_date`). |
+| Waiting | — | Show SRE logo + countdown to `start_after`. Once `now ≥ start_after − params.max_duration_between_exam_pre_start_and_start` (60 s) **and** `pre_start_date` is absent, fire `sre pre-start-exam` once (stops the non-exam projects and, with `check_project_owner`, the projects of the other users; starts the exam labs the student does not run yet; appends to `pre_start_date`). |
 | Active | Exam containers up — one running project per lab in `labs`, no others (`_projects_ready`) | Fire `sre start-exam` once (stamps `started_at`; calls `pre-start-exam` internally if `pre_start_date` is missing). Show tabs + countdown. Every `eval_interval` s, fire `sre eval-exam` (skipped if previous still running). If `labs` changes, re-fire `sre pre-start-exam`. |
 | Ended | — | Fire `sre end-exam` once (stamps `ended_at`, runs a final concurrent eval with `save-records --force`). Show "That's All Folks" until the instructor runs `sre del-exam`. |
 

@@ -228,15 +228,25 @@
 <li class="toctree-l3"><a class="reference internal" href="web.html#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-connection-log">The connection log</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#instructors">Instructors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-display-tab">The Display tab</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#security">Security</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#limitations">Limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#development">Development</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#stress-test">Stress test</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-1-a-fake-pool-no-docker">Stage 1: a fake pool, no Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-2-the-production-pool">Stage 2: the production pool</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -401,6 +411,7 @@
 <li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#exporting-a-project">Exporting a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#project-tabs">Project tabs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#exam-mode">Exam mode</a></li>
@@ -412,6 +423,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-all"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
@@ -582,7 +594,7 @@ a large data file, or anything else you don’t want to download from the Intern
 </section>
 <section id="sre-wipe">
 <h3><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code><a class="headerlink" href="#sre-wipe" title="Link to this heading">¶</a></h3>
-<p>Stops every running Kathara lab and removes everything under <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/projects/</span></code>. The reset button between iterations: when a lab is misbehaving and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code> isn’t enough (orphaned bridges, broken Kathara state, leftover marker files), <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code> brings the host back to a clean slate. It does <strong>not</strong> touch <code class="docutils literal notranslate"><span class="pre">exam.json</span></code> or archive directories.</p>
+<p>Privileged only (the user-mode form is <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code>, the caller’s own projects): stops every running Kathara lab and removes everything under <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/projects/</span></code>. The reset button between iterations: when a lab is misbehaving and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code> isn’t enough (orphaned bridges, broken Kathara state, leftover marker files), <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code> brings the host back to a clean slate. It does <strong>not</strong> touch <code class="docutils literal notranslate"><span class="pre">exam.json</span></code> or archive directories.</p>
 <p>A typical edit-test cycle:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sre<span class="w"> </span>check<span class="w"> </span>-p<span class="w"> </span>~/labs/draft.py<span class="w"> </span>final<span class="w">            </span><span class="c1"># validate module + the &#39;final&#39; state</span>
 sre<span class="w"> </span>start<span class="w"> </span>--debug-project<span class="w"> </span>-p<span class="w"> </span>~/labs/draft.py<span class="w">  </span><span class="c1"># deploy, with debug visibility</span>
@@ -982,7 +994,7 @@ checkbox), plus <code class="docutils literal notranslate"><span class="pre">&#6
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">x11_host</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
-<td><p>Forward X11 to the host: inject <code class="docutils literal notranslate"><span class="pre">SRE_HOST_IP</span></code> (and the host’s X magic cookie as <code class="docutils literal notranslate"><span class="pre">SRE_XAUTH_COOKIE</span></code>) so GUI apps launched in the container display on the host’s X server. Requires <code class="docutils literal notranslate"><span class="pre">bridged=True</span></code> (refused at startup otherwise)</p></td>
+<td><p>Forward X11 to the host: inject <code class="docutils literal notranslate"><span class="pre">SRE_HOST_IP</span></code> (and the host’s X magic cookie as <code class="docutils literal notranslate"><span class="pre">SRE_XAUTH_COOKIE</span></code>) so GUI apps launched in the container display on the host’s X server (<code class="docutils literal notranslate"><span class="pre">DISPLAY</span></code> is set by the <code class="docutils literal notranslate"><span class="pre">.bashrc</span></code> of the images; needs <code class="docutils literal notranslate"><span class="pre">bridged=True</span></code> to reach the host). On the web site the apps show in the Display tab, a virtual desktop of the project (<code class="docutils literal notranslate"><span class="pre">SRE_DISPLAY</span></code>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hidden</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
@@ -2443,14 +2455,19 @@ views); <code class="docutils literal notranslate"><span class="pre">get_unbound
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">export_kathara_project</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
-<td><p>If <code class="docutils literal notranslate"><span class="pre">False</span></code>, disable <strong>File → Export</strong> in the GUI and refuse <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span></code> for this lab</p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">False</span></code>, disable <strong>File → Export Kathara Project</strong> in the GUI and refuse <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span></code> for this lab</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">allow_save_restore</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">export_schema_pdf</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">False</span></code>, disable <strong>File → Export Schema to PDF</strong> in the GUI: the drawing of the <em>Schema</em> tab (the visible machines only, with the tab’s lines / spacing / order / icons settings) written to a PDF by graphviz. See <a class="reference internal" href="gui.html#exporting-a-project"><span class="std std-ref">Exporting a project</span></a></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">allow_save_restore</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
 <td><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, students may save a running project to a file (<strong>File → Save Project</strong>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span></code>) and restore it later as a new instance (<strong>File → Restore Project</strong>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span></code>). The save file holds <code class="docutils literal notranslate"><span class="pre">data.json</span></code> and <code class="docutils literal notranslate"><span class="pre">.private/files</span></code> — in clear unless <code class="docutils literal notranslate"><span class="pre">save_key</span></code> is set — so enable it only for labs whose <code class="docutils literal notranslate"><span class="pre">Data</span></code> holds nothing the student must not read, or set <code class="docutils literal notranslate"><span class="pre">save_key</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">save_key</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">save_key</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
 <td><p><em>(unset)</em></p></td>
 <td><p>Non-empty secret string. When set, the payload of every save file is encrypted (AES-256-GCM, key derived from <code class="docutils literal notranslate"><span class="pre">save_key</span></code>); only a lab with the same key can restore it, and students cannot restore cleartext files. Keep the lab file unreadable by students</p></td>

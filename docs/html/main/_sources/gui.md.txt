@@ -15,11 +15,21 @@ One instance per user. A PID file at `/tmp/sysreseval-{uid}.pid` kills any prior
 
 During an exam, **Open Project** is disabled — only pre-authorised exam labs open automatically.
 
+The project tabs are the projects of the logged-in user, plus those started on the host by root or the `sre` user (`sudo sre start …`). The projects of the other users of the host (another local login, the users of the [web front-end](web.md) placed on this host) are neither listed nor reachable through `sre-wrapper`; with `check_project_owner = False` in the site parameters every project of the host is listed, as before. **File → Close All Projects** runs `sre-wrapper stop-all` on the listed projects (`sre wipe` is privileged only).
+
 ## Saving and restoring a project
 
 **File → Save Project** appears only when the current project's lab sets `allow_save_restore = True`. A file dialog asks where to write the `.sre` save file (default `~/<lab>.sre`); the GUI then runs `sre-wrapper save <project>` with its stdout redirected to that file, showing a progress dialog. The file contains the filesystem of every machine (as a diff against its base image) and the project files; it is encrypted when the lab defines `save_key`.
 
 **File → Restore Project** (always available outside exam mode) asks for a `.sre` file and runs `sre-wrapper restore -` with the file on stdin, showing the same image-pull / machine-start progress as **Open Project**. The saved project comes back as a **new** tab (new instance); the original one, if still open, is untouched. Only files are restored — the lab's `restore` state relaunches its services.
+
+## Exporting a project
+
+**File → Export Kathara Project** (enabled unless the lab sets `export_kathara_project = False`) runs `sre-wrapper export <project>` with the display settings of the Schema tab and writes `~/<lab>.zip`: the Kathara project (`lab.conf`, the files of every machine) with `schema.pdf` and `informations.pdf`.
+
+**File → Export Schema to PDF** (right below; enabled unless the lab sets `export_schema_pdf = False`) writes the drawing of the *Schema* tab to a PDF chosen in a file dialog (default `~/<lab>_schema.pdf`): the visible machines only, never the hidden ones, even for a debug project or while the *Instructor mode* button is on, with the tab's current Lines / Compact-Spread / Order / Icons settings and the machine order of `info.json`. The GUI draws it itself with graphviz from `info.json`; no `sre` command is run.
+
+Both items are disabled in exam mode.
 
 ## Project tabs
 
@@ -35,7 +45,7 @@ During an exam, **Open Project** is disabled — only pre-authorised exam labs o
 | **Terminals** | Embedded terminals per machine, launched via `params.terminal_cmd_prefix`, plus one per manageable switch students may use (its console). |
 | **Log** | Debug projects (`sre start --debug-project`), and instructor-mode projects while the *Instructor mode* button is on (states only). Live tail of the project's `operations.log`: one `=== <time>  state <name>` / `=== <time>  evaluation` header per run, then one `stepN - on <machine|host> : <operation>` line per operation executed (`cmd()`, `file()`, `append_to_file()`, `cp_from_host()`, `host_cmd()`, state files pushed, evaluation tests...), with the command output indented below it and its exit code last. File operations are followed by the content they wrote (text, capped; `(binary content not shown)` otherwise). An evaluation ends with one `grade - [<part>] <title> : <grade> / <max>` line per grade element and the two `total - self-eval` / `total - exo-eval` lines with the marks. *Clear* empties the display only. |
 
-`answers/answers.json` also carries metadata (`hostname`, `login`, `fullname`, `email`, `language`, `answers_updated_at`, plus `exam_*` fields in exam mode); see [Archive format](internals.md#archive-format) for the full schema.
+`answers/answers.json` also carries metadata (`hostname`, `login`, `fullname`, `email`, `language`, `answers_updated_at`, plus `exam_*` fields in exam mode, and `group` for the projects of the web front-end); see [Archive format](internals.md#archive-format) for the full schema.
 
 *Start evaluation* runs `sre eval --auto-eval` in a background thread. The periodic background eval (`eval_interval_without_exam_mode`) and `eval_before_exit` run plain `sre eval` (no cooldown, no log line, no stdout).
 
@@ -54,7 +64,7 @@ A **debug project** (`sre start --debug-project`) shows the same button: its `in
 
 ## Exam mode
 
-When `/var/lib/sre/exam.json` exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All are disabled, and answers re-save with an updated `exam_time_remaining` on every exam-config change.
+When `/var/lib/sre/exam.json` exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All / Export Kathara Project / Export Schema to PDF are disabled, and answers re-save with an updated `exam_time_remaining` on every exam-config change.
 
 | Phase | Trigger | Shows / actions |
 |-------|---------|----------------|

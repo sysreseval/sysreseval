@@ -228,15 +228,25 @@
 <li class="toctree-l3"><a class="reference internal" href="#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-connection-log">The connection log</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-users-see">What the users see</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#instructors">Instructors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-display-tab">The Display tab</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#security">Security</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#limitations">Limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#development">Development</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stress-test">Stress test</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#stage-1-a-fake-pool-no-docker">Stage 1: a fake pool, no Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#stage-2-the-production-pool">Stage 2: the production pool</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -401,6 +411,7 @@
 <li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#exporting-a-project">Exporting a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#project-tabs">Project tabs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#exam-mode">Exam mode</a></li>
@@ -412,6 +423,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-all"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
@@ -554,32 +566,61 @@ of the states, tails the operations log and schedules what the Qt GUI used to sc
 periodic evaluations of a lab (<code class="docutils literal notranslate"><span class="pre">eval_interval_without_exam_mode</span></code>), the evaluation before a
 project is closed (<code class="docutils literal notranslate"><span class="pre">eval_before_exit</span></code>), and an idle reaper closing the projects nobody touched
 for the configured time.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">sre-web-tool</span></code></strong> is the command line next to the portal: <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> lists and
+changes the pool of the running portal through its administration API (<em>The pool</em> below).</p></li>
 <li><p>The pool hosts share the lab tree as today (NFS, rsync or the Debian package) and, if the
 instructor wants <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> across the pool, an <code class="docutils literal notranslate"><span class="pre">archive_dirs</span></code>
-entry on a shared directory. The <code class="docutils literal notranslate"><span class="pre">hostname</span></code> of the archives is the pool host.</p></li>
-<li><p>Placement: a new project goes to the reachable host with the lowest <code class="docutils literal notranslate"><span class="pre">projects</span> <span class="pre">/</span> <span class="pre">max_projects</span></code>
-(then the lowest load); a host in exam mode is never used. A classroom workstation holds about
-thirty projects (210 containers in 3.4 GB).</p></li>
+entry on a shared directory. The <code class="docutils literal notranslate"><span class="pre">hostname</span></code> of the archives is the pool host. The Watch page
+of the instructors needs none of that: each agent reads the archives of its own host
+(<code class="docutils literal notranslate"><span class="pre">params.archive_dirs</span></code>) on demand.</p></li>
+<li><p>Placement: a new project goes to the host where its user has a local login session (the
+workstation they sit at, <code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code>), else to the reachable host with the lowest
+<code class="docutils literal notranslate"><span class="pre">projects</span> <span class="pre">/</span> <span class="pre">max_projects</span></code> (then the lowest load); a host in exam mode is never used, a host
+with <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code> never for a student (an instructor may also name the host on
+the Open page). A classroom workstation holds about thirty projects (210 containers in 3.4 GB).</p></li>
+<li><p>The lab list of the Open page comes from one host, the one a new project of the user would
+go to (every host of a pool serves the same lab tree; the next candidate is asked when it
+fails), and is kept <code class="docutils literal notranslate"><span class="pre">labs_cache_ttl</span></code> seconds (<code class="docutils literal notranslate"><span class="pre">60</span></code>) per role, since the reserved hosts are
+the instructors’ only: opening the page costs one <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span></code> per minute whatever the size of
+the pool.</p></li>
 </ul>
-<p>The agent enforces what the <code class="docutils literal notranslate"><span class="pre">sre</span></code> CLI does not check: the exact running lab name and its owner
-(a user only reaches their own projects; the <code class="docutils literal notranslate"><span class="pre">wipe</span></code>, <code class="docutils literal notranslate"><span class="pre">exec</span></code> and exam commands have no endpoint),
-<code class="docutils literal notranslate"><span class="pre">allow_connection</span></code> of the devices, <code class="docutils literal notranslate"><span class="pre">allow_self_grade</span></code>, the user-allowed states, the
-<code class="docutils literal notranslate"><span class="pre">export_kathara_project</span></code> flag. Save and restore are not offered on the web.</p>
+<p>The agent enforces what the <code class="docutils literal notranslate"><span class="pre">sre</span></code> CLI does not check: the exact running lab name (the CLI
+resolves substrings) and its owner (a user only reaches their own projects, an instructor every
+project; the CLI’s own check, <code class="docutils literal notranslate"><span class="pre">params.check_project_owner</span></code>, lets a <code class="docutils literal notranslate"><span class="pre">--user</span></code> caller reach their
+own projects and root’s only, which is why an instructor is served by privileged calls; the
+<code class="docutils literal notranslate"><span class="pre">wipe</span></code>, <code class="docutils literal notranslate"><span class="pre">stop-all</span></code>, <code class="docutils literal notranslate"><span class="pre">exec</span></code> and exam commands have no endpoint), <code class="docutils literal notranslate"><span class="pre">allow_connection</span></code> of the
+devices, <code class="docutils literal notranslate"><span class="pre">allow_self_grade</span></code>, the
+user-allowed states, the <code class="docutils literal notranslate"><span class="pre">export_schema_pdf</span></code> flag of the lab (the <em>Export Schema to PDF</em>
+button). Save, restore and the Kathara export are not offered on the web. An instructor acting on
+somebody else’s project is served by a <strong>privileged</strong> <code class="docutils literal notranslate"><span class="pre">sre</span></code> (no <code class="docutils literal notranslate"><span class="pre">--user</span></code>, their own login:
+<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> without cooldown nor counter, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code> to every listed device, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">state</span></code>),
+never by a command run as the student; the owner, instructor or not, follows the student path.</p>
 </section>
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
 <section id="from-a-checkout">
 <h3>From a checkout<a class="headerlink" href="#from-a-checkout" title="Link to this heading">¶</a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">venv</span></code> installs the Python dependencies (<code class="docutils literal notranslate"><span class="pre">aiohttp</span></code>, <code class="docutils literal notranslate"><span class="pre">jinja2</span></code>, <code class="docutils literal notranslate"><span class="pre">aiohttp-jinja2</span></code>, <code class="docutils literal notranslate"><span class="pre">ldap3</span></code>);
-<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">xterm</span></code> (run by <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install</span></code>) downloads the terminal library of the browser into
-<code class="docutils literal notranslate"><span class="pre">web/static/vendor/</span></code> (checksum-pinned, not committed). <code class="docutils literal notranslate"><span class="pre">scripts/install.sh</span></code> offers to install the
+<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">xterm</span></code> and <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">novnc</span></code> (run by <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install</span></code>) download the terminal library and the
+VNC viewer of the browser into <code class="docutils literal notranslate"><span class="pre">web/static/vendor/</span></code> (checksum-pinned, not committed). <code class="docutils literal notranslate"><span class="pre">scripts/install.sh</span></code> offers to install the
 systemd units <code class="docutils literal notranslate"><span class="pre">sre-agent.service</span></code> and <code class="docutils literal notranslate"><span class="pre">sre-web.service</span></code> (disabled) and the example configuration
-files <code class="docutils literal notranslate"><span class="pre">etc/agent.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">etc/web.toml</span></code> under the installation directory.</p>
-<p>On every pool host: write <code class="docutils literal notranslate"><span class="pre">/opt/sre/etc/agent.toml</span></code> (root, mode 0600) with the listen address
-of a management interface and a long random token, then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-agent</span></code>.
+files <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> in <code class="docutils literal notranslate"><span class="pre">/etc/sreweb/</span></code> (<code class="docutils literal notranslate"><span class="pre">params.agent_config_file</span></code> /
+<code class="docutils literal notranslate"><span class="pre">params.web_config_file</span></code>; <code class="docutils literal notranslate"><span class="pre">--config</span></code> names another file).</p>
+<p>On every pool host: write <code class="docutils literal notranslate"><span class="pre">/etc/sreweb/agent.toml</span></code> (root, mode 0600) with a long random token
+(the example file listens on every interface, <code class="docutils literal notranslate"><span class="pre">0.0.0.0:8451</span></code>: <code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> and the mutual
+TLS below keep the port to the portal), then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-agent</span></code>.
+The unit starts the agent only when that file exists and <code class="docutils literal notranslate"><span class="pre">/etc/sreweb/DO_NOT_START_AGENT</span></code>
+does not (<code class="docutils literal notranslate"><span class="pre">ConditionPathExists=</span></code>: one image for a whole classroom may ship the unit enabled, the
+hosts without a configuration file, or with the marker, skip it without any failure; checked at
+boot and on <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">start</span></code> / <code class="docutils literal notranslate"><span class="pre">restart</span></code>), and it does not restart the agent after a
+configuration error (exit status 78, <code class="docutils literal notranslate"><span class="pre">EX_CONFIG</span></code>: a bad <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, a missing certificate;
+the message is in the journal, fix the file then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span> <span class="pre">sre-agent</span></code>); five failed
+starts within five minutes leave it stopped until the next boot or <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">reset-failed</span></code>.
+For the Display tab (below), install <code class="docutils literal notranslate"><span class="pre">tigervnc-standalone-server</span></code> and <code class="docutils literal notranslate"><span class="pre">openbox</span></code>, create the
+<code class="docutils literal notranslate"><span class="pre">sreweb-x11</span></code> system user (<code class="docutils literal notranslate"><span class="pre">scripts/install.sh</span></code> offers it) and set <code class="docutils literal notranslate"><span class="pre">[display]</span> <span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">true</span></code>.
 For a whole classroom, <code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code> (see <em>A whole site at once</em> below) writes
 the tokens, the certificates and the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entries from a list of machines.</p>
-<p>On the portal host: create the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code> system user (<code class="docutils literal notranslate"><span class="pre">adduser</span> <span class="pre">--system</span> <span class="pre">--group</span> <span class="pre">--no-create-home</span> <span class="pre">--shell</span> <span class="pre">/usr/sbin/nologin</span> <span class="pre">sre-web</span></code>), write <code class="docutils literal notranslate"><span class="pre">/opt/sre/etc/web.toml</span></code> (root:sre-web, mode 0640:
+<p>On the portal host: create the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code> system user (<code class="docutils literal notranslate"><span class="pre">adduser</span> <span class="pre">--system</span> <span class="pre">--group</span> <span class="pre">--no-create-home</span> <span class="pre">--shell</span> <span class="pre">/usr/sbin/nologin</span> <span class="pre">sre-web</span></code>), write <code class="docutils literal notranslate"><span class="pre">/etc/sreweb/web.toml</span></code> (root:sre-web, mode 0640:
 it holds the cookie secret and the agent tokens; the files it imports likewise), then
 <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">enable</span> <span class="pre">--now</span> <span class="pre">sre-web</span></code>. Put a
 reverse proxy doing TLS in front (<code class="docutils literal notranslate"><span class="pre">scripts/etc/sre-web-nginx.conf</span></code> is an nginx example,
@@ -590,10 +631,15 @@ give the portal its own certificate (<code class="docutils literal notranslate">
 <h3>Debian packages<a class="headerlink" href="#debian-packages" title="Link to this heading">¶</a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">sysreseval-agent</span></code> on every pool host (it depends on <code class="docutils literal notranslate"><span class="pre">sysreseval</span></code> and <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code>, whose
 code it shares), <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code> on the portal host (it depends on nothing of SysResEval). The
-units are <code class="docutils literal notranslate"><span class="pre">sysreseval-agent.service</span></code> and <code class="docutils literal notranslate"><span class="pre">sysreseval-web.service</span></code>, disabled by default; the
+units are <code class="docutils literal notranslate"><span class="pre">sysreseval-agent.service</span></code> and <code class="docutils literal notranslate"><span class="pre">sysreseval-web.service</span></code>, disabled by default (the
+agent’s with the conditions and restart rules above, on <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/agent.toml</span></code> and
+<code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/DO_NOT_START_AGENT</span></code>); the
 configuration files are <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/agent.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/web.toml</span></code> (examples in
 <code class="docutils literal notranslate"><span class="pre">/usr/share/doc/sysreseval-*/examples/</span></code>); the postinst of <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code> creates the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code>
 user and protects <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> and <code class="docutils literal notranslate"><span class="pre">web.d/*.toml</span></code> when they exist.</p>
+<p>The postinst of <code class="docutils literal notranslate"><span class="pre">sysreseval-agent</span></code> creates the <code class="docutils literal notranslate"><span class="pre">sreweb-x11</span></code> user of the virtual X desktops;
+<code class="docutils literal notranslate"><span class="pre">tigervnc-standalone-server</span></code> and <code class="docutils literal notranslate"><span class="pre">openbox</span></code> are its Recommends (the Display tab is off until
+<code class="docutils literal notranslate"><span class="pre">[display]</span> <span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">true</span></code>).</p>
 </section>
 </section>
 <section id="configuration">
@@ -611,7 +657,7 @@ user and protects <code class="docutils literal notranslate"><span class="pre">w
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">listen</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">127.0.0.1:8451</span></code></p></td>
-<td><p>the address the portal reaches (a management interface, never the students’ network)</p></td>
+<td><p>the address the portal reaches: <code class="docutils literal notranslate"><span class="pre">0.0.0.0:8451</span></code> in the example file (every interface, the Docker bridge the students’ containers reach included: set <code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> and <code class="docutils literal notranslate"><span class="pre">tls_ca</span></code>), or a management interface the students do not reach</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">token</span></code></p></td>
 <td><p>required</p></td>
@@ -669,9 +715,17 @@ user and protects <code class="docutils literal notranslate"><span class="pre">w
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>the portal may power the host off (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/power/off</span></code>, refused when occupied or with any project) with <code class="docutils literal notranslate"><span class="pre">power_off_command</span></code> (<code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">poweroff</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[timeouts]</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">=</span> <span class="pre">900</span></code>, <code class="docutils literal notranslate"><span class="pre">eval</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span> <span class="pre">=</span> <span class="pre">300</span></code>, <code class="docutils literal notranslate"><span class="pre">export</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span> <span class="pre">=</span> <span class="pre">30</span></code></p></td>
-<td><p>seconds, per <code class="docutils literal notranslate"><span class="pre">sre</span></code> command</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">restart_command</span></code></p></td>
+<td><p>none</p></td>
+<td><p>how the agent restarts itself on <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">restart</span></code> (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/restart</span></code>): by default <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span></code> of its own unit, read from <code class="docutils literal notranslate"><span class="pre">/proc/self/cgroup</span></code>; a command for an agent run otherwise (refused, 409, when neither applies)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[timeouts]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">=</span> <span class="pre">900</span></code>, <code class="docutils literal notranslate"><span class="pre">eval</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span> <span class="pre">=</span> <span class="pre">300</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span> <span class="pre">=</span> <span class="pre">30</span></code></p></td>
+<td><p>seconds, per <code class="docutils literal notranslate"><span class="pre">sre</span></code> command (<code class="docutils literal notranslate"><span class="pre">export</span></code>, the timeout of the former Kathara export, is still accepted)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[display]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code></p></td>
+<td><p>one virtual X desktop per project whose lab has an <code class="docutils literal notranslate"><span class="pre">x11_host</span></code> machine, shown in the Display tab (see <em>The Display tab</em> below): <code class="docutils literal notranslate"><span class="pre">user</span></code> (<code class="docutils literal notranslate"><span class="pre">sreweb-x11</span></code>, the unprivileged account the X processes run as), <code class="docutils literal notranslate"><span class="pre">xvnc_command</span></code> (<code class="docutils literal notranslate"><span class="pre">Xvnc</span></code>, TigerVNC), <code class="docutils literal notranslate"><span class="pre">window_manager_command</span></code> (<code class="docutils literal notranslate"><span class="pre">openbox</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> = none), <code class="docutils literal notranslate"><span class="pre">geometry</span></code> (<code class="docutils literal notranslate"><span class="pre">1280x800</span></code>), <code class="docutils literal notranslate"><span class="pre">depth</span></code> (<code class="docutils literal notranslate"><span class="pre">24</span></code>), <code class="docutils literal notranslate"><span class="pre">frame_rate</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code>), <code class="docutils literal notranslate"><span class="pre">first_display</span></code> / <code class="docutils literal notranslate"><span class="pre">last_display</span></code> (<code class="docutils literal notranslate"><span class="pre">10</span></code> / <code class="docutils literal notranslate"><span class="pre">99</span></code>: display <code class="docutils literal notranslate"><span class="pre">:N</span></code> listens on TCP port 6000+N for the containers), <code class="docutils literal notranslate"><span class="pre">runtime_dir</span></code> (<code class="docutils literal notranslate"><span class="pre">/run/sre-agent</span></code>: the RFB sockets and X authority files), <code class="docutils literal notranslate"><span class="pre">start_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">10</span></code> s for the X server to come up)</p></td>
 </tr>
 </tbody>
 </table>
@@ -705,7 +759,7 @@ merges other files into this one, as for <code class="docutils literal notransla
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
-<td><p>proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>); required in that mode</p></td>
+<td><p>proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>); required in that mode. In every mode, the connection log takes the client address from the <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code> header of these peers</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">languages</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[&quot;en&quot;,</span> <span class="pre">&quot;fr&quot;]</span></code></p></td>
@@ -721,27 +775,35 @@ merges other files into this one, as for <code class="docutils literal notransla
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code></p></td>
 <td><p></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">uri</span></code>, then either <code class="docutils literal notranslate"><span class="pre">bind_dn_template</span> <span class="pre">=</span> <span class="pre">&quot;uid={login},ou=people,…&quot;</span></code> (bind as the user) or <code class="docutils literal notranslate"><span class="pre">search_base</span></code> + <code class="docutils literal notranslate"><span class="pre">search_filter</span></code> (+ <code class="docutils literal notranslate"><span class="pre">bind_dn</span></code> / <code class="docutils literal notranslate"><span class="pre">bind_password</span></code> of a service account) to find the user first; <code class="docutils literal notranslate"><span class="pre">attr_fullname</span></code> (<code class="docutils literal notranslate"><span class="pre">cn</span></code>), <code class="docutils literal notranslate"><span class="pre">attr_mail</span></code> (<code class="docutils literal notranslate"><span class="pre">mail</span></code>); <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> (DNs; <code class="docutils literal notranslate"><span class="pre">memberOf</span></code>, or <code class="docutils literal notranslate"><span class="pre">group_filter</span> <span class="pre">=</span> <span class="pre">&quot;(member={dn})&quot;</span></code>); <code class="docutils literal notranslate"><span class="pre">start_tls</span></code>; <code class="docutils literal notranslate"><span class="pre">timeout</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">uri</span></code>, then either <code class="docutils literal notranslate"><span class="pre">bind_dn_template</span> <span class="pre">=</span> <span class="pre">&quot;uid={login},ou=people,…&quot;</span></code> (bind as the user) or <code class="docutils literal notranslate"><span class="pre">search_base</span></code> + <code class="docutils literal notranslate"><span class="pre">search_filter</span></code> (+ <code class="docutils literal notranslate"><span class="pre">bind_dn</span></code> / <code class="docutils literal notranslate"><span class="pre">bind_password</span></code> of a service account) to find the user first; <code class="docutils literal notranslate"><span class="pre">attr_fullname</span></code> (<code class="docutils literal notranslate"><span class="pre">cn</span></code>), <code class="docutils literal notranslate"><span class="pre">attr_mail</span></code> (<code class="docutils literal notranslate"><span class="pre">mail</span></code>), <code class="docutils literal notranslate"><span class="pre">attr_group</span></code> (none; the attribute holding the student group, e.g. <code class="docutils literal notranslate"><span class="pre">departmentNumber</span></code>, its first value: the Group column and filter of the Watch page); the instructor tests (below): <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> (DNs; <code class="docutils literal notranslate"><span class="pre">memberOf</span></code>, or <code class="docutils literal notranslate"><span class="pre">group_filter</span> <span class="pre">=</span> <span class="pre">&quot;(member={dn})&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">instructor_filter</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;(gidNumber=2000)&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> = none), <code class="docutils literal notranslate"><span class="pre">group_search_base</span></code> (none = no membership test) + <code class="docutils literal notranslate"><span class="pre">instructor_group_filter</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;(&amp;(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))&quot;</span></code>); <code class="docutils literal notranslate"><span class="pre">start_tls</span></code>; <code class="docutils literal notranslate"><span class="pre">timeout</span></code>. Also read in proxy mode with <code class="docutils literal notranslate"><span class="pre">ldap_roles</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[auth.proxy]</span></code></p></td>
 <td><p></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">header_login</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-User</span></code>), <code class="docutils literal notranslate"><span class="pre">header_fullname</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Name</span></code>), <code class="docutils literal notranslate"><span class="pre">header_email</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Email</span></code>), <code class="docutils literal notranslate"><span class="pre">header_groups</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Groups</span></code>): the headers set by the proxy; <code class="docutils literal notranslate"><span class="pre">groups_separator</span></code> (<code class="docutils literal notranslate"><span class="pre">;</span></code>); <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code>: the values of the groups header giving the instructor role; <code class="docutils literal notranslate"><span class="pre">logout_url</span></code>: where Logout sends the browser (none: no Logout button)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">header_login</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-User</span></code>), <code class="docutils literal notranslate"><span class="pre">header_fullname</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Name</span></code>), <code class="docutils literal notranslate"><span class="pre">header_email</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Email</span></code>), <code class="docutils literal notranslate"><span class="pre">header_groups</span></code> (<code class="docutils literal notranslate"><span class="pre">X-Remote-Groups</span></code>): the headers set by the proxy; <code class="docutils literal notranslate"><span class="pre">groups_separator</span></code> (<code class="docutils literal notranslate"><span class="pre">;</span></code>); <code class="docutils literal notranslate"><span class="pre">header_group</span></code> (none; the header holding the student group, e.g. <code class="docutils literal notranslate"><span class="pre">X-Remote-Group</span></code> from <code class="docutils literal notranslate"><span class="pre">departmentNumber</span></code>, its first value); <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code>: the values of the groups header giving the instructor role; <code class="docutils literal notranslate"><span class="pre">instructor_header</span></code> + <code class="docutils literal notranslate"><span class="pre">instructor_values</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">X-Remote-Gid</span></code> and <code class="docutils literal notranslate"><span class="pre">[&quot;2000&quot;]</span></code>): a second header test; <code class="docutils literal notranslate"><span class="pre">ldap_roles</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>): the portal runs the tests of <code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code> itself for the login the proxy gives, and reads its <code class="docutils literal notranslate"><span class="pre">attr_group</span></code>, the result cached per login for <code class="docutils literal notranslate"><span class="pre">ldap_roles_ttl</span></code> (<code class="docutils literal notranslate"><span class="pre">10m</span></code>); <code class="docutils literal notranslate"><span class="pre">ldap_groups</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>): the group part alone (<code class="docutils literal notranslate"><span class="pre">attr_group</span></code> of <code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code> for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; <code class="docutils literal notranslate"><span class="pre">ldap_roles</span></code> implies it); <code class="docutils literal notranslate"><span class="pre">logout_url</span></code>: where Logout sends the browser (the <code class="docutils literal notranslate"><span class="pre">/apache-logout</span></code> location of the Apache example; none: no Logout button)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[pool]</span></code></p></td>
 <td><p></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">idle_timeout_anonymous</span></code> (<code class="docutils literal notranslate"><span class="pre">2h</span></code>), <code class="docutils literal notranslate"><span class="pre">idle_timeout_authenticated</span></code> (<code class="docutils literal notranslate"><span class="pre">24h</span></code>): the idle timeout given to the agents per user, <code class="docutils literal notranslate"><span class="pre">0</span></code> = never; <code class="docutils literal notranslate"><span class="pre">poll_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">2</span></code>): seconds between two polls of the agents; <code class="docutils literal notranslate"><span class="pre">ca</span></code>: the CA the agents’ certificates are verified against (the system store without it); <code class="docutils literal notranslate"><span class="pre">client_cert</span></code>, <code class="docutils literal notranslate"><span class="pre">client_key</span></code>: the client certificate of the portal, presented to every agent; the elastic pool (below): <code class="docutils literal notranslate"><span class="pre">spare_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code>), <code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">active_hours</span></code> (<code class="docutils literal notranslate"><span class="pre">07:00-20:00</span></code>, local time, <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> = always), <code class="docutils literal notranslate"><span class="pre">wake_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">180</span></code>), <code class="docutils literal notranslate"><span class="pre">wake_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code>), <code class="docutils literal notranslate"><span class="pre">wol_broadcast</span></code> (<code class="docutils literal notranslate"><span class="pre">255.255.255.255</span></code>), <code class="docutils literal notranslate"><span class="pre">idle_host_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> = never)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">idle_timeout_anonymous</span></code> (<code class="docutils literal notranslate"><span class="pre">2h</span></code>), <code class="docutils literal notranslate"><span class="pre">idle_timeout_authenticated</span></code> (<code class="docutils literal notranslate"><span class="pre">24h</span></code>): the idle timeout given to the agents per user, <code class="docutils literal notranslate"><span class="pre">0</span></code> = never; <code class="docutils literal notranslate"><span class="pre">poll_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">2</span></code>): seconds between two polls of the agents; <code class="docutils literal notranslate"><span class="pre">ca</span></code>: the CA the agents’ certificates are verified against (the system store without it); <code class="docutils literal notranslate"><span class="pre">client_cert</span></code>, <code class="docutils literal notranslate"><span class="pre">client_key</span></code>: the client certificate of the portal, presented to every agent; the elastic pool (below): <code class="docutils literal notranslate"><span class="pre">spare_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code>), <code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">active_hours</span></code> (<code class="docutils literal notranslate"><span class="pre">07:00-20:00</span></code>, local time, <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> = always), <code class="docutils literal notranslate"><span class="pre">wake_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">180</span></code>), <code class="docutils literal notranslate"><span class="pre">wake_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code>), <code class="docutils literal notranslate"><span class="pre">wol_broadcast</span></code> (<code class="docutils literal notranslate"><span class="pre">255.255.255.255</span></code>), <code class="docutils literal notranslate"><span class="pre">idle_host_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> = never); <code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its <code class="docutils literal notranslate"><span class="pre">max_projects</span></code> (<em>Occupied hosts</em> below); <code class="docutils literal notranslate"><span class="pre">labs_cache_ttl</span></code> (<code class="docutils literal notranslate"><span class="pre">60</span></code>): seconds the lab list of the Open page, asked from one host, is kept per role (<code class="docutils literal notranslate"><span class="pre">0</span></code> = asked at every open)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[limits]</span></code></p></td>
 <td><p></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">eval_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">10</span></code> s between two self-evaluations of a user), <code class="docutils literal notranslate"><span class="pre">start_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code> s between two starts), <code class="docutils literal notranslate"><span class="pre">login_per_minute</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code> per client address), <code class="docutils literal notranslate"><span class="pre">max_answer_bytes</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">eval_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">10</span></code> s between two self-evaluations of a user), <code class="docutils literal notranslate"><span class="pre">start_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">30</span></code> s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), <code class="docutils literal notranslate"><span class="pre">login_per_minute</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code> per client address), <code class="docutils literal notranslate"><span class="pre">max_answer_bytes</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[admin]</span></code></p></td>
 <td><p></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">token</span></code>: the token of <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">…</span></code> (32+ characters; none = the command is refused), accepted from the loopback only unless <code class="docutils literal notranslate"><span class="pre">listen_any</span> <span class="pre">=</span> <span class="pre">true</span></code>; <code class="docutils literal notranslate"><span class="pre">state_file</span></code>: the hosts added, removed, enabled and disabled by hand (<code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web/pool.json</span></code> when that directory exists, else <code class="docutils literal notranslate"><span class="pre">pool.json</span></code> next to <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">token</span></code>: the token of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> (32+ characters; none = the command is refused), accepted from the loopback only unless <code class="docutils literal notranslate"><span class="pre">listen_any</span> <span class="pre">=</span> <span class="pre">true</span></code>; <code class="docutils literal notranslate"><span class="pre">state_file</span></code>: the hosts added, removed, enabled and disabled by hand (<code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web/pool.json</span></code> when that directory exists, else <code class="docutils literal notranslate"><span class="pre">pool.json</span></code> next to <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[access_log]</span></code></p></td>
+<td><p></p></td>
+<td><p>the connection log (below): <code class="docutils literal notranslate"><span class="pre">file</span></code> (none; the absolute path of the log file, e.g. <code class="docutils literal notranslate"><span class="pre">/var/log/sre-web/access.log</span></code>, rotated daily), <code class="docutils literal notranslate"><span class="pre">keep</span></code> (<code class="docutils literal notranslate"><span class="pre">400</span></code> days of rotated files kept; <code class="docutils literal notranslate"><span class="pre">0</span></code> = no rotation, for logrotate), <code class="docutils literal notranslate"><span class="pre">journal</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>: the lines also go to the portal’s own log: stderr, the journal, <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">logs</span></code>), <code class="docutils literal notranslate"><span class="pre">session_timeout</span></code> (<code class="docutils literal notranslate"><span class="pre">30m</span></code> of inactivity closes a session)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[site]</span></code></p></td>
+<td><p>none</p></td>
+<td><p>the institution shown next to the SRE logo in the header of every page, the login page included: <code class="docutils literal notranslate"><span class="pre">logo</span></code> (the absolute path of an image file, JPG / PNG / SVG…, readable by <code class="docutils literal notranslate"><span class="pre">sre-web</span></code>, served at <code class="docutils literal notranslate"><span class="pre">/site/logo</span></code>), <code class="docutils literal notranslate"><span class="pre">name</span></code> (a string, or one per language: <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">fr</span> <span class="pre">=</span> <span class="pre">&quot;IUT</span> <span class="pre">de</span> <span class="pre">Démo&quot;,</span> <span class="pre">en</span> <span class="pre">=</span> <span class="pre">&quot;Demo</span> <span class="pre">Institute&quot;</span> <span class="pre">}</span></code>, the first configured language when the page’s one is missing), <code class="docutils literal notranslate"><span class="pre">url</span></code> (the page the two link to; none: plain text)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code></p></td>
 <td><p>required</p></td>
-<td><p>one per pool host: <code class="docutils literal notranslate"><span class="pre">name</span></code> (what the URLs show), <code class="docutils literal notranslate"><span class="pre">url</span></code> of its agent, <code class="docutils literal notranslate"><span class="pre">token</span></code> of its <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">max_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">25</span></code>); to wake it, <code class="docutils literal notranslate"><span class="pre">mac</span></code> (Wake-on-LAN) or <code class="docutils literal notranslate"><span class="pre">wake_command</span></code> (<code class="docutils literal notranslate"><span class="pre">{name}</span></code>, <code class="docutils literal notranslate"><span class="pre">{mac}</span></code> substituted); <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> lets the portal power it off; <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code> keeps it polled without placing projects</p></td>
+<td><p>one per pool host: <code class="docutils literal notranslate"><span class="pre">name</span></code> (what the URLs show), <code class="docutils literal notranslate"><span class="pre">url</span></code> of its agent, <code class="docutils literal notranslate"><span class="pre">token</span></code> of its <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">max_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">25</span></code>); to wake it, <code class="docutils literal notranslate"><span class="pre">mac</span></code> (Wake-on-LAN) or <code class="docutils literal notranslate"><span class="pre">wake_command</span></code> (<code class="docutils literal notranslate"><span class="pre">{name}</span></code>, <code class="docutils literal notranslate"><span class="pre">{mac}</span></code> substituted); <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> lets the portal power it off; <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code> keeps it polled without placing projects; <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code> reserves it for the instructors’ projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see <em>Reserved hosts</em>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">import</span></code></p></td>
 <td><p>none</p></td>
@@ -757,7 +819,19 @@ error found after the merge names <code class="docutils literal notranslate"><sp
 <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> and need the same owner and mode (root:sre-web, 0640).</p>
 <p>The full name and the e-mail of an LDAP account (<code class="docutils literal notranslate"><span class="pre">attr_fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">attr_mail</span></code>) go into the
 answers file of the projects like the GECOS fields do on a workstation, so <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> and
-<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> show them; an anonymous user is identified by the pseudonym and the display name.</p>
+<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> show them; an anonymous user is identified by the pseudonym and the display name.
+The student group (<code class="docutils literal notranslate"><span class="pre">attr_group</span></code> in LDAP mode, <code class="docutils literal notranslate"><span class="pre">header_group</span></code> or <code class="docutils literal notranslate"><span class="pre">ldap_roles</span></code> / <code class="docutils literal notranslate"><span class="pre">ldap_groups</span></code> +
+<code class="docutils literal notranslate"><span class="pre">attr_group</span></code> in proxy mode; <code class="docutils literal notranslate"><span class="pre">departmentNumber</span></code> typically, its first value, capped at 64
+characters) goes there too under the key <code class="docutils literal notranslate"><span class="pre">group</span></code> (hence into the archives): the Watch page shows
+it and filters on it. With a directory the portal can read (<code class="docutils literal notranslate"><span class="pre">attr_group</span></code> in LDAP mode,
+<code class="docutils literal notranslate"><span class="pre">ldap_roles</span></code> or <code class="docutils literal notranslate"><span class="pre">ldap_groups</span></code> in proxy mode), the Watch page also looks up the group of the
+owners the agents know none for, first of all the projects started on the Qt GUI, whose answers
+file never carries one: one cached lookup per login.
+The agent writes that metadata as soon as a project is created, before any answer, and again
+when the owner opens the project page and the file lacks it or holds other values (so a
+project created by an older agent, or on the Qt GUI, gets its name and group then); a request
+whose identity carries no full name or no group (a header the proxy did not set) never erases
+the stored values.</p>
 </section>
 <section id="authentication-by-the-reverse-proxy">
 <h3>Authentication by the reverse proxy<a class="headerlink" href="#authentication-by-the-reverse-proxy" title="Link to this heading">¶</a></h3>
@@ -771,7 +845,7 @@ that does not come from a peer of <code class="docutils literal notranslate"><sp
 <span class="w">    </span><span class="nb">AuthType</span><span class="w"> </span>Basic
 <span class="w">    </span><span class="nb">AuthName</span><span class="w"> </span><span class="s2">&quot;SRE&quot;</span>
 <span class="w">    </span><span class="nb">AuthBasicProvider</span><span class="w"> </span>ldap
-<span class="w">    </span><span class="nb">AuthLDAPURL</span><span class="w"> </span><span class="s2">&quot;ldaps://ldap.example.org/ou=people,dc=example,dc=org?uid,cn,mail,memberOf?sub?(objectClass=inetOrgPerson)&quot;</span>
+<span class="w">    </span><span class="nb">AuthLDAPURL</span><span class="w"> </span><span class="s2">&quot;ldaps://ldap.example.org/ou=people,dc=example,dc=org?uid,cn,mail,memberOf,gidNumber,departmentNumber?sub?(objectClass=inetOrgPerson)&quot;</span>
 <span class="w">    </span><span class="nb">AuthLDAPRemoteUserAttribute</span><span class="w"> </span>uid
 <span class="w">    </span><span class="nb">Require</span><span class="w"> </span>valid-user
 <span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-User<span class="w"> </span><span class="s2">&quot;expr=%{REMOTE_USER}&quot;</span>
@@ -781,7 +855,19 @@ that does not come from a peer of <code class="docutils literal notranslate"><sp
 <span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Email<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_MAIL}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_MAIL
 <span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>X-Remote-Groups
 <span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Groups<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_MEMBEROF}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_MEMBEROF
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>X-Remote-Gid
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Gid<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_GIDNUMBER}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_GIDNUMBER
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>X-Remote-Group
+<span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>set<span class="w"> </span>X-Remote-Group<span class="w"> </span><span class="s2">&quot;%{AUTHENTICATE_DEPARTMENTNUMBER}e&quot;</span><span class="w"> </span>env=AUTHENTICATE_DEPARTMENTNUMBER
 <span class="w">    </span><span class="nb">RequestHeader</span><span class="w"> </span>unset<span class="w"> </span>Authorization
+<span class="nt">&lt;/Location&gt;</span>
+<span class="c"># Logout: a location that knows no user, so the browser forgets the credentials it cached</span>
+<span class="nb">ProxyPass</span><span class="w"> </span><span class="s2">&quot;/apache-logout&quot;</span><span class="w"> </span>!
+<span class="nt">&lt;Location</span><span class="w"> </span><span class="s">&quot;/apache-logout&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nb">AuthBasicProvider</span><span class="w"> </span>file
+<span class="w">    </span><span class="nb">AuthUserFile</span><span class="w"> </span><span class="sx">/dev/null</span>
+<span class="w">    </span><span class="nb">Require</span><span class="w"> </span>valid-user
+<span class="w">    </span><span class="nb">ErrorDocument</span><span class="w"> </span><span class="m">401</span><span class="w"> </span><span class="s2">&quot;&lt;!DOCTYPE html&gt;... You are logged out. &lt;a href=&#39;/&#39;&gt;Log in again&lt;/a&gt; ...&quot;</span>
 <span class="nt">&lt;/Location&gt;</span>
 <span class="nb">ProxyPreserveHost</span><span class="w"> </span><span class="k">On</span>
 <span class="nb">ProxyPass</span><span class="w">        </span><span class="s2">&quot;/&quot;</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8450/&quot;</span><span class="w"> </span>upgrade=websocket<span class="w"> </span>timeout=3600
@@ -792,7 +878,8 @@ that does not come from a peer of <code class="docutils literal notranslate"><sp
 <ul class="simple">
 <li><p>The portal listens on the loopback (or on an address only the proxy reaches) and
 <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> holds the proxy’s address as the portal sees it (<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> and <code class="docutils literal notranslate"><span class="pre">::1</span></code> for
-a proxy on the same host); the portal takes the TCP peer address, never <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>.</p></li>
+a proxy on the same host); the portal takes the TCP peer address, never <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>
+(the connection log alone reads that header, from these peers only, for the client address).</p></li>
 <li><p>The proxy sets the four headers on <strong>every</strong> request, replacing whatever the browser sent
 (<code class="docutils literal notranslate"><span class="pre">RequestHeader</span> <span class="pre">set</span></code> does; never pass a client header through), after the authentication
 (not <code class="docutils literal notranslate"><span class="pre">early</span></code>). An optional header is removed when the attribute is missing, or <code class="docutils literal notranslate"><span class="pre">mod_headers</span></code>
@@ -800,15 +887,90 @@ writes the literal <code class="docutils literal notranslate"><span class="pre">
 <li><p>The attributes exported by <code class="docutils literal notranslate"><span class="pre">mod_authnz_ldap</span></code> (<code class="docutils literal notranslate"><span class="pre">AUTHENTICATE_CN</span></code>…) are those listed in the
 <code class="docutils literal notranslate"><span class="pre">AuthLDAPURL</span></code>; a multi-valued one is joined with <code class="docutils literal notranslate"><span class="pre">;</span> </code> (hence <code class="docutils literal notranslate"><span class="pre">groups_separator</span> <span class="pre">=</span> <span class="pre">&quot;;&quot;</span></code>). The
 groups header may carry any attribute, <code class="docutils literal notranslate"><span class="pre">memberOf</span></code> DNs or <code class="docutils literal notranslate"><span class="pre">eduPersonAffiliation</span></code> values:
-<code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> lists the values giving the instructor role. A long list of groups can
+<code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> lists the values giving the instructor role; <code class="docutils literal notranslate"><span class="pre">instructor_header</span></code> /
+<code class="docutils literal notranslate"><span class="pre">instructor_values</span></code> test a second attribute the same way (<code class="docutils literal notranslate"><span class="pre">gidNumber</span></code> above, the primary
+group); <code class="docutils literal notranslate"><span class="pre">header_group</span></code> names the header carrying the student group (<code class="docutils literal notranslate"><span class="pre">departmentNumber</span></code>
+above). A group membership the proxy cannot export (a <code class="docutils literal notranslate"><span class="pre">posixGroup</span></code> listing its <code class="docutils literal notranslate"><span class="pre">memberUid</span></code>,
+without the memberof overlay) is tested by the portal itself with <code class="docutils literal notranslate"><span class="pre">ldap_roles</span> <span class="pre">=</span> <span class="pre">true</span></code> and the
+<code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code> settings (see <em>Who is an instructor</em>). A long list of groups can
 exceed Apache’s <code class="docutils literal notranslate"><span class="pre">LimitRequestFieldSize</span></code> (8190 bytes): raise it or export fewer attributes.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">public_url</span></code> must be the <code class="docutils literal notranslate"><span class="pre">https://</span></code> URL the users type (the <code class="docutils literal notranslate"><span class="pre">Secure</span></code> flag of the language
 cookie, the <code class="docutils literal notranslate"><span class="pre">Origin</span></code> check of the WebSockets together with <code class="docutils literal notranslate"><span class="pre">ProxyPreserveHost</span> <span class="pre">On</span></code>).</p></li>
-<li><p>HTTP Basic authentication cannot be logged out of: the Logout button is hidden unless
-<code class="docutils literal notranslate"><span class="pre">logout_url</span></code> names a logout handler (<code class="docutils literal notranslate"><span class="pre">mod_auth_form</span></code>, sketched at the end of the example).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">…</span></code> talks to the loopback port directly, never through the proxy (the Basic
+<li><p>An HTTP Basic authentication has no session to end, but the browser forgets the credentials
+it cached as soon as the server refuses them: the <code class="docutils literal notranslate"><span class="pre">/apache-logout</span></code> location of the example
+knows no user (<code class="docutils literal notranslate"><span class="pre">mod_authn_file</span></code> on <code class="docutils literal notranslate"><span class="pre">/dev/null</span></code>, the realm inherited from the main location),
+so every request gets a 401 and the browser shows its password dialog once more; cancelling it
+displays the “logged out” page of the <code class="docutils literal notranslate"><span class="pre">ErrorDocument</span></code> (a password typed there is refused and
+the dialog comes back). <code class="docutils literal notranslate"><span class="pre">logout_url</span> <span class="pre">=</span> <span class="pre">&quot;/apache-logout&quot;</span></code> makes the Logout button appear; the
+button is hidden without it. A <code class="docutils literal notranslate"><span class="pre">mod_auth_form</span></code> login (sketched at the end of the example) has a
+real logout handler at the same URL.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> talks to the loopback port directly, never through the proxy (the Basic
 authentication would refuse its bearer token).</p></li>
 </ul>
+</section>
+<section id="the-connection-log">
+<h3>The connection log<a class="headerlink" href="#the-connection-log" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">[access_log]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> makes the portal keep a log of its use: who connected from where
+and for how long, which projects were opened, started, evaluated, closed. One <code class="docutils literal notranslate"><span class="pre">key=value</span></code> line
+per event (a value with spaces or quotes is JSON-quoted, so a user agent or a display name
+cannot forge a line), in the file named by <code class="docutils literal notranslate"><span class="pre">file</span></code> (rotated at midnight, <code class="docutils literal notranslate"><span class="pre">keep</span></code> days of
+<code class="docutils literal notranslate"><span class="pre">access.log.YYYY-MM-DD</span></code> files kept; <code class="docutils literal notranslate"><span class="pre">keep</span> <span class="pre">=</span> <span class="pre">0</span></code> leaves the rotation to logrotate, the file is
+reopened when it moves) and, with <code class="docutils literal notranslate"><span class="pre">journal</span> <span class="pre">=</span> <span class="pre">true</span></code> (the default, and the whole log when no
+file is set), in the portal’s own log on stderr: the journal under systemd, <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">logs</span></code> in a
+container. The unit creates <code class="docutils literal notranslate"><span class="pre">/var/log/sre-web</span></code> (<code class="docutils literal notranslate"><span class="pre">LogsDirectory=</span></code>); a container mounts a
+directory for the file or writes it under <code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web</span></code>. The lines of the file start with
+a timestamp (<code class="docutils literal notranslate"><span class="pre">2026-10-26T09:12:03+0100</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">event</span><span class="o">=</span><span class="n">login</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">mode</span><span class="o">=</span><span class="n">ldap</span> <span class="n">role</span><span class="o">=</span><span class="n">student</span> <span class="n">anon</span><span class="o">=</span><span class="mi">0</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice Test&quot;</span>
+<span class="n">event</span><span class="o">=</span><span class="n">session_open</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">role</span><span class="o">=</span><span class="n">student</span> <span class="n">anon</span><span class="o">=</span><span class="mi">0</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice Test&quot;</span> <span class="n">ua</span><span class="o">=</span><span class="s2">&quot;Mozilla/5.0 …&quot;</span>
+<span class="n">event</span><span class="o">=</span><span class="n">start</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">lab</span><span class="o">=</span><span class="n">sre</span><span class="o">/</span><span class="n">dhcp</span><span class="o">.</span><span class="n">py</span> <span class="n">instructor</span><span class="o">=</span><span class="mi">0</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">placement</span><span class="o">=</span><span class="n">load</span> <span class="n">result</span><span class="o">=</span><span class="n">created</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span> <span class="n">duration</span><span class="o">=</span><span class="mf">12.4</span>
+<span class="n">event</span><span class="o">=</span><span class="n">project_open</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span>
+<span class="n">event</span><span class="o">=</span><span class="n">terminal_open</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">device</span><span class="o">=</span><span class="n">m1</span> <span class="n">join</span><span class="o">=-</span> <span class="n">private</span><span class="o">=</span><span class="mi">0</span>
+<span class="n">event</span><span class="o">=</span><span class="n">terminal_close</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">device</span><span class="o">=</span><span class="n">m1</span> <span class="n">join</span><span class="o">=-</span> <span class="n">private</span><span class="o">=</span><span class="mi">0</span> <span class="n">duration</span><span class="o">=</span><span class="mf">612.3</span> <span class="n">code</span><span class="o">=</span><span class="mi">1000</span>
+<span class="n">event</span><span class="o">=</span><span class="nb">eval</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span> <span class="n">duration</span><span class="o">=</span><span class="mf">8.1</span>
+<span class="n">event</span><span class="o">=</span><span class="n">project_close</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">duration</span><span class="o">=</span><span class="mf">1803.6</span> <span class="n">code</span><span class="o">=</span><span class="mi">1001</span>
+<span class="n">event</span><span class="o">=</span><span class="n">stop</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span> <span class="n">duration</span><span class="o">=</span><span class="mf">3.0</span>
+<span class="n">event</span><span class="o">=</span><span class="n">logout</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span> <span class="n">duration</span><span class="o">=</span><span class="mf">0.0</span>
+<span class="n">event</span><span class="o">=</span><span class="n">session_close</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">reason</span><span class="o">=</span><span class="n">logout</span> <span class="n">since</span><span class="o">=</span><span class="mi">2026</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">26</span><span class="n">T09</span><span class="p">:</span><span class="mi">11</span><span class="p">:</span><span class="mi">50</span><span class="o">+</span><span class="mi">0100</span> <span class="n">duration</span><span class="o">=</span><span class="mi">1850</span> <span class="n">requests</span><span class="o">=</span><span class="mi">14</span> <span class="n">projects</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span>
+</pre></div>
+</div>
+<p>A <strong>session</strong> is the requests of one login from one client address (<code class="docutils literal notranslate"><span class="pre">addr</span></code>): it opens at the
+first request (<code class="docutils literal notranslate"><span class="pre">session_open</span></code>: role, pseudonym or not, name, user agent) and closes
+(<code class="docutils literal notranslate"><span class="pre">session_close</span></code>) at a logout, after <code class="docutils literal notranslate"><span class="pre">session_timeout</span></code> without a request (<code class="docutils literal notranslate"><span class="pre">reason=idle</span></code>; the
+duration then ends at the last request, not at the expiry) or when the portal stops
+(<code class="docutils literal notranslate"><span class="pre">shutdown</span></code>); a session whose project page, terminal or desktop is still open never expires.
+The closing line gives the start, the duration in seconds, the number of requests (the polls of
+the pages and the keep-alive of a project are not counted) and the projects used. In proxy
+mode there is no login: the first request of a user opens the session and the request following
+a logout opens another one. The other events:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">login</span></code> (<code class="docutils literal notranslate"><span class="pre">mode</span></code>: <code class="docutils literal notranslate"><span class="pre">anonymous</span></code> or <code class="docutils literal notranslate"><span class="pre">ldap</span></code>) and <code class="docutils literal notranslate"><span class="pre">login_failed</span></code> (<code class="docutils literal notranslate"><span class="pre">reason</span></code>: <code class="docutils literal notranslate"><span class="pre">password</span></code>,
+<code class="docutils literal notranslate"><span class="pre">rate_limited</span></code>, <code class="docutils literal notranslate"><span class="pre">directory</span></code> when the directory does not answer, <code class="docutils literal notranslate"><span class="pre">proxy_mode</span></code>);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">start</span></code>: the lab, the host chosen and <code class="docutils literal notranslate"><span class="pre">placement</span></code>, why that host (<code class="docutils literal notranslate"><span class="pre">load</span></code>: the least loaded,
+<code class="docutils literal notranslate"><span class="pre">session</span></code>: the user is logged in at its keyboard, <code class="docutils literal notranslate"><span class="pre">named</span></code>: the instructor named it), whether
+the instructor mode was asked, <code class="docutils literal notranslate"><span class="pre">result</span></code> (<code class="docutils literal notranslate"><span class="pre">created</span></code>, <code class="docutils literal notranslate"><span class="pre">flavor_form</span></code>, <code class="docutils literal notranslate"><span class="pre">flavor_error</span></code>, <code class="docutils literal notranslate"><span class="pre">error</span></code>)
+and <code class="docutils literal notranslate"><span class="pre">rln</span></code>, the running lab name of the new project;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_open</span></code> / <code class="docutils literal notranslate"><span class="pre">project_close</span></code>: the project page, open as long as its events WebSocket is
+(<code class="docutils literal notranslate"><span class="pre">duration</span></code> in seconds, <code class="docutils literal notranslate"><span class="pre">code</span></code>: the WebSocket close code; <code class="docutils literal notranslate"><span class="pre">view=instructor</span></code> for the instructor
+view); <code class="docutils literal notranslate"><span class="pre">terminal_open</span></code> / <code class="docutils literal notranslate"><span class="pre">terminal_close</span></code> (<code class="docutils literal notranslate"><span class="pre">device</span></code>, <code class="docutils literal notranslate"><span class="pre">join</span></code>: the session joined, <code class="docutils literal notranslate"><span class="pre">private</span></code>)
+and <code class="docutils literal notranslate"><span class="pre">display_open</span></code> / <code class="docutils literal notranslate"><span class="pre">display_close</span></code> likewise; a socket refused before it opens (401, 403, 404)
+gives a close line with <code class="docutils literal notranslate"><span class="pre">status</span></code> instead of <code class="docutils literal notranslate"><span class="pre">code</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">eval</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code> (<code class="docutils literal notranslate"><span class="pre">state</span></code>), <code class="docutils literal notranslate"><span class="pre">stop</span></code>, <code class="docutils literal notranslate"><span class="pre">display_start</span></code>: the HTTP status and the duration;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">denied</span></code>: a call answered 401, 403 or 429 (<code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">path</span></code>), <code class="docutils literal notranslate"><span class="pre">login=-</span></code> when nobody was logged
+in; <code class="docutils literal notranslate"><span class="pre">admin</span></code>: a call of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span></code> changing the pool, or an action of the Pool page of an
+instructor (their <code class="docutils literal notranslate"><span class="pre">login</span></code>);</p></li>
+<li><p>the presentations (<em>Instructors</em> below): <code class="docutils literal notranslate"><span class="pre">present_start</span></code> (the instructor’s <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">host</span></code>,
+<code class="docutils literal notranslate"><span class="pre">rln</span></code>, <code class="docutils literal notranslate"><span class="pre">audience</span></code>: the number of logins and groups chosen), <code class="docutils literal notranslate"><span class="pre">present_audience</span></code> (the audience
+changed), <code class="docutils literal notranslate"><span class="pre">present_stop</span></code>, and <code class="docutils literal notranslate"><span class="pre">present_open</span></code> (a student opened the presented page: their
+<code class="docutils literal notranslate"><span class="pre">login</span></code>, the <code class="docutils literal notranslate"><span class="pre">presenter</span></code>); the project calls a spectator makes keep their own events, their
+close lines carrying <code class="docutils literal notranslate"><span class="pre">spectator=1</span></code>. The presence socket every page keeps open and the view the
+presenter publishes are not logged.</p></li>
+</ul>
+<p>The client address is the last entry of <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code> when the TCP peer is one of
+<code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> (the Apache and nginx examples set that header), the peer address otherwise:
+set <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> in every mode to log the real addresses behind a proxy. The login rate
+limit (<code class="docutils literal notranslate"><span class="pre">[limits]</span> <span class="pre">login_per_minute</span></code>) counts per logged address too. The log holds personal data
+(names, addresses, what was done when): <code class="docutils literal notranslate"><span class="pre">keep</span></code> is its retention, and the file is readable by
+<code class="docutils literal notranslate"><span class="pre">sre-web</span></code> and root only (<code class="docutils literal notranslate"><span class="pre">/var/log/sre-web</span></code> is mode 0750).</p>
 </section>
 <section id="securing-the-pool-mutual-tls">
 <h3>Securing the pool (mutual TLS)<a class="headerlink" href="#securing-the-pool-mutual-tls" title="Link to this heading">¶</a></h3>
@@ -839,36 +1001,50 @@ host of a site, from a list of its machines:</p>
 </pre></div>
 </div>
 <p>The list has one <code class="docutils literal notranslate"><span class="pre">mac;ip;name</span></code> line per machine (<code class="docutils literal notranslate"><span class="pre">e4:54:e8:d1:6c:1c;10.0.128.1;a01</span></code>: the MAC
-address for Wake-on-LAN, the IPv4 address the agent listens on, the name). A machine gets an
+address for Wake-on-LAN, the IPv4 address the portal reaches its agent at, the name). A machine gets an
 agent when its lower-cased name matches <code class="docutils literal notranslate"><span class="pre">REGEXP</span></code>; the first group of the expression, when there
 is one, is its room, so that <code class="docutils literal notranslate"><span class="pre">ROOMS</span></code> selects the rooms joining the pool (empty: every qualified
 machine) and <code class="docutils literal notranslate"><span class="pre">DISABLED_ROOMS</span></code> those whose hosts start with <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code> (polled, no project
-placed there until <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">enable</span></code>). These five variables are required and have no
+placed there until <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">enable</span></code>). These five variables are required and have no
 default; <code class="docutils literal notranslate"><span class="pre">AGENT_PORT</span></code> (8451), <code class="docutils literal notranslate"><span class="pre">MAX_PROJECTS</span></code> (25), <code class="docutils literal notranslate"><span class="pre">POWER</span></code> (<code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> in the entries and
 <code class="docutils literal notranslate"><span class="pre">allow_power_off</span> <span class="pre">=</span> <span class="pre">true</span></code> on the agents), <code class="docutils literal notranslate"><span class="pre">DOMAIN</span></code> (a <code class="docutils literal notranslate"><span class="pre">DNS:&lt;name&gt;.&lt;domain&gt;</span></code> SAN too),
-<code class="docutils literal notranslate"><span class="pre">PORTAL_ADDRESS</span></code> (<code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> of the agents) and <code class="docutils literal notranslate"><span class="pre">TLS_DIR_ON_HOSTS</span></code> (<code class="docutils literal notranslate"><span class="pre">/etc/sysreseval/tls</span></code>,
-the paths written in the files) are optional.</p>
+<code class="docutils literal notranslate"><span class="pre">PORTAL_ADDRESS</span></code> (<code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> of the agents), <code class="docutils literal notranslate"><span class="pre">INSTRUCTOR_ROOMS</span></code> (the rooms whose hosts
+get <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code>) and <code class="docutils literal notranslate"><span class="pre">INSTRUCTOR_MACHINES</span></code> (the names of the hosts that get it on
+their own, whatever their room), <code class="docutils literal notranslate"><span class="pre">TLS_DIR_ON_HOSTS</span></code> (<code class="docutils literal notranslate"><span class="pre">/etc/sreweb/tls</span></code>,
+the paths written in the files) and <code class="docutils literal notranslate"><span class="pre">CA_KEY</span></code> / <code class="docutils literal notranslate"><span class="pre">CA_CRT</span></code> (both set: an existing CA copied into
+<code class="docutils literal notranslate"><span class="pre">OUT_DIR</span></code> instead of a new one, so that the hosts of a new <code class="docutils literal notranslate"><span class="pre">OUT_DIR</span></code> are signed by the CA the
+portal already knows; refused when <code class="docutils literal notranslate"><span class="pre">OUT_DIR</span></code> holds another CA) are optional.</p>
 <p>In <code class="docutils literal notranslate"><span class="pre">OUT_DIR</span></code> (private keys and tokens: outside any repository) it writes, through <code class="docutils literal notranslate"><span class="pre">web-tls.sh</span></code>,
 the CA and the portal’s client certificate once, then per host a key and a certificate (SANs
-<code class="docutils literal notranslate"><span class="pre">IP:&lt;ip&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">DNS:&lt;name&gt;</span></code>), a token drawn once and kept in <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.token</span></code>, and:</p>
+<code class="docutils literal notranslate"><span class="pre">IP:&lt;ip&gt;</span></code> and <code class="docutils literal notranslate"><span class="pre">DNS:&lt;name&gt;</span></code>), a token in <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.token</span></code>, and:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">hosts.toml</span></code>: the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entries, one room after the other, with the three <code class="docutils literal notranslate"><span class="pre">[pool]</span></code> TLS
 lines of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> in its header; a file of <code class="docutils literal notranslate"><span class="pre">web.d/</span></code> (<code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">=</span> <span class="pre">[&quot;web.d&quot;]</span></code>) or pasted at the
 end of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">agent-&lt;name&gt;.toml</span></code>: the host-specific lines of that host’s <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> (<code class="docutils literal notranslate"><span class="pre">listen</span></code>, <code class="docutils literal notranslate"><span class="pre">token</span></code>,
-<code class="docutils literal notranslate"><span class="pre">tls_*</span></code>), to complete with the example file.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">agent-&lt;name&gt;.toml</span></code>: the host-specific lines of that host’s <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> (<code class="docutils literal notranslate"><span class="pre">listen</span> <span class="pre">=</span> <span class="pre">&quot;&lt;ip&gt;:8451&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">token</span></code>, <code class="docutils literal notranslate"><span class="pre">tls_*</span></code>, and <code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> / <code class="docutils literal notranslate"><span class="pre">allow_power_off</span></code> when asked), to complete with the
+example file, whose own <code class="docutils literal notranslate"><span class="pre">listen</span></code> and <code class="docutils literal notranslate"><span class="pre">token</span></code> lines are then removed (a key given twice is
+refused).</p></li>
 </ul>
 <p>Copy <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.crt</span></code>, <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.key</span></code> and <code class="docutils literal notranslate"><span class="pre">ca.crt</span></code> to <code class="docutils literal notranslate"><span class="pre">TLS_DIR_ON_HOSTS</span></code> of each host, and <code class="docutils literal notranslate"><span class="pre">ca.crt</span></code>,
-<code class="docutils literal notranslate"><span class="pre">portal.crt</span></code>, <code class="docutils literal notranslate"><span class="pre">portal.key</span></code> to the portal’s. A second run keeps every key, certificate and token
-already there, adds the new hosts and rewrites <code class="docutils literal notranslate"><span class="pre">hosts.toml</span></code> and the agent files, so the rooms may
-change at any time; a kept certificate that no longer names the address of its host is reported.</p>
+<code class="docutils literal notranslate"><span class="pre">portal.crt</span></code>, <code class="docutils literal notranslate"><span class="pre">portal.key</span></code> to the portal’s. Every run computes <code class="docutils literal notranslate"><span class="pre">hosts.toml</span></code> and the agent files
+from the variables of the moment, so the rooms, the disabled or reserved hosts may change at any
+time, and compares them with the previous run: a file whose content did not change is left as it
+is, the others are replaced, what changed is printed per host (<code class="docutils literal notranslate"><span class="pre">enabled</span></code>, <code class="docutils literal notranslate"><span class="pre">instructors_only</span></code>,
+<code class="docutils literal notranslate"><span class="pre">allow_power_off</span></code>…) with the new hosts and those no longer selected, and the last line says
+whether <code class="docutils literal notranslate"><span class="pre">hosts.toml</span></code> and which agent files are to deploy again; the CA and the portal’s
+certificate are made once. The hosts’ keys, certificates and tokens are made anew on every run,
+to deploy again, unless the script is run with <code class="docutils literal notranslate"><span class="pre">--keep</span></code>: the files already there are kept and
+only those of the new hosts are made (a kept certificate that no longer names the address of its
+host is reported), so a room is added, or a host disabled or reserved, without touching the
+hosts already deployed.</p>
 </section>
 <section id="a-pool-of-workstations">
 <h3>A pool of workstations<a class="headerlink" href="#a-pool-of-workstations" title="Link to this heading">¶</a></h3>
 <p>The pool hosts are typically classroom workstations: off when nobody needs them (a nightly cron
 shuts them down), woken by Wake-on-LAN, and sometimes used at the keyboard by a student. The
-portal gives each host a <strong>state</strong> from the status of its agent, and <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">list</span></code> shows
-it:</p>
+portal gives each host a <strong>state</strong> from the status of its agent, and <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> (or
+the <em>Pool</em> page of the instructors) shows it:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -892,18 +1068,18 @@ it:</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">occupied</span></code></p></td>
 <td><p>the agent answers, the host is used locally (<code class="docutils literal notranslate"><span class="pre">occupied_check</span></code>)</p></td>
-<td><p>no; the web projects already running there go on</p></td>
+<td><p>only the new projects of the users logged in there (<code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code>); the web projects already running there go on</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exam</span></code></p></td>
 <td><p>the agent answers, <code class="docutils literal notranslate"><span class="pre">exam.json</span></code> is on the host</p></td>
 <td><p>no</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">draining</span></code></p></td>
-<td><p>the portal asked the host to power off, or <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">drain</span></code></p></td>
+<td><p>the portal asked the host to power off, or <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">drain</span></code></p></td>
 <td><p>no; powered off once it is empty</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">disabled</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">disable</span></code>, or <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">disable</span></code>, or <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code></p></td>
 <td><p>no</p></td>
 </tr>
 </tbody>
@@ -920,52 +1096,244 @@ not fought at night after the cron. A host still silent after <code class="docut
 enabled systemd unit on every host (boot → agent up → the portal sees it).</p>
 <p><strong>Occupied hosts.</strong> The agent reports <code class="docutils literal notranslate"><span class="pre">occupied</span></code> when a local login session exists (<code class="docutils literal notranslate"><span class="pre">loginctl</span></code>,
 <code class="docutils literal notranslate"><span class="pre">who</span></code> as a fallback) or when projects of the Qt GUI run on the host; the portal places nothing
-there and never powers it off. The web projects already running there continue.</p>
+there and never powers it off. The web projects already running there continue. One exception,
+<code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code> by default): the user logged in at the keyboard of a pool host
+gets their new projects on that host, whatever its load, so that a student working at a
+classroom workstation uses their own machine through the web too. The agent names the sessions
+in its status (<code class="docutils literal notranslate"><span class="pre">session:&lt;login&gt;</span></code>, the OCCUPIED column of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code>; its
+<code class="docutils literal notranslate"><span class="pre">occupied_check</span></code> must include the sessions) and the portal matches them against the login of
+the identity, which must therefore be the Unix login of the workstation (the directory <code class="docutils literal notranslate"><span class="pre">uid</span></code>:
+<code class="docutils literal notranslate"><span class="pre">AuthLDAPRemoteUserAttribute</span> <span class="pre">uid</span></code> in the Apache example; a <code class="docutils literal notranslate"><span class="pre">guest-…</span></code> pseudonym never matches).
+The rule overrides the load and the occupation only: when the host is full (<code class="docutils literal notranslate"><span class="pre">max_projects</span></code>),
+in exam mode, disabled, draining or reserved for the instructors, the normal placement applies,
+and an instructor naming a host on the Open page is obeyed (they may name the host of their own
+session). The <code class="docutils literal notranslate"><span class="pre">start</span></code> line of the connection log says <code class="docutils literal notranslate"><span class="pre">placement=session</span></code>.
+<code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span> <span class="pre">=</span> <span class="pre">false</span></code> restores the strict rule: nothing goes to an occupied host.</p>
+<p><strong>Reserved hosts.</strong> A host with <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code> never takes a student’s project: an
+instructor’s goes there when they name it on the Open page (the <em>Host</em> select lists the
+reserved hosts with their state and their projects) or by the automatic placement when it is
+the least loaded host they may use. It is outside the elastic pool: its free slots count
+neither as spare capacity nor towards <code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code>, the portal never wakes it by itself
+(<code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">wake</span></code>, or its own boot; an instructor finds it greyed while it is off) and
+powers it off when idle like any host with <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code>, whatever the floor and the spare.
+<code class="docutils literal notranslate"><span class="pre">list</span></code> shows <code class="docutils literal notranslate"><span class="pre">(instructors)</span></code> after its state. A student logged in at the keyboard of a reserved
+host is still placed elsewhere: <code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code> never overrides the reservation.</p>
 <p><strong>Going down.</strong> When the agent’s unit stops because the system halts (the nightly cron, a
 <code class="docutils literal notranslate"><span class="pre">poweroff</span></code>), the agent closes the projects it manages as a Close would (the last evaluation,
 then <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span></code>), concurrently, within <code class="docutils literal notranslate"><span class="pre">TimeoutStopSec</span></code>; the browsers see “project closed”.
 With <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> on the host and <code class="docutils literal notranslate"><span class="pre">allow_power_off</span> <span class="pre">=</span> <span class="pre">true</span></code> in its <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, the portal
 powers off an idle host itself: <code class="docutils literal notranslate"><span class="pre">idle_host_timeout</span></code> (0 by default: only the cron does it), above
-<code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> and as long as the spare capacity stays, or at once with <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">poweroff</span></code>.</p>
-<p><strong>By hand.</strong> <code class="docutils literal notranslate"><span class="pre">sre-web</span> <span class="pre">pool</span> <span class="pre">…</span></code> talks to the running portal through its administration API
-(<code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">token</span></code>, loopback only by default; <code class="docutils literal notranslate"><span class="pre">--config</span></code>, <code class="docutils literal notranslate"><span class="pre">--url</span></code>, <code class="docutils literal notranslate"><span class="pre">--token</span></code> override the
-configuration):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sre-web pool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
-sre-web pool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
-sre-web pool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power]
-sre-web pool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent&#39;s idle reaper)
-sre-web pool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+<code class="docutils literal notranslate"><span class="pre">min_hosts_up</span></code> and as long as the spare capacity stays, or at once with <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">poweroff</span></code>.</p>
+<p><strong>Restarting the agents.</strong> After an update of the tree the agents run the old Python code until
+their unit is restarted: <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">restart</span> <span class="pre">NAME</span></code>, or <code class="docutils literal notranslate"><span class="pre">restart</span> <span class="pre">--all</span></code> for every reachable host
+(whatever its state), tells each agent to restart itself (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/restart</span></code>). The agent answers
+at once, lets its running <code class="docutils literal notranslate"><span class="pre">sre</span></code> commands end (a start, an evaluation; no new project is accepted
+meanwhile), then runs <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">reset-failed</span></code> and <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">--no-block</span> <span class="pre">restart</span></code> on its own
+unit (<code class="docutils literal notranslate"><span class="pre">sre-agent</span></code> or <code class="docutils literal notranslate"><span class="pre">sysreseval-agent</span></code>, read from <code class="docutils literal notranslate"><span class="pre">/proc/self/cgroup</span></code>; <code class="docutils literal notranslate"><span class="pre">restart_command</span></code> in
+<code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> replaces that for an agent run otherwise). The projects stay
+(<code class="docutils literal notranslate"><span class="pre">close_projects_on_stop</span> <span class="pre">=</span> <span class="pre">&quot;shutdown&quot;</span></code>: a restart is not a shutdown; with <code class="docutils literal notranslate"><span class="pre">always</span></code> they are
+closed), the open terminals and virtual desktops are lost, the project pages reconnect by
+themselves. The stop is quick: the agent closes the project pages’ WebSockets itself (aiohttp
+would otherwise wait a minute for them) and <code class="docutils literal notranslate"><span class="pre">KillMode=mixed</span></code> ends what is left. <code class="docutils literal notranslate"><span class="pre">list</span></code> shows
+<code class="docutils literal notranslate"><span class="pre">(restart)</span></code> after the state until the portal sees the agent’s uptime reset (or gives up after
+two minutes with a warning in its journal); the host takes no project meanwhile and keeps its
+drain. <code class="docutils literal notranslate"><span class="pre">--wait</span></code> makes the tool wait for the agents to be back (<code class="docutils literal notranslate"><span class="pre">--timeout</span></code>, 180 s by default),
+so a deployment script can chain it after the sync. A <code class="docutils literal notranslate"><span class="pre">DO_NOT_START_AGENT</span></code> marker written since
+the start is honoured (that agent stops); code that no longer starts leaves the unit failed
+after five attempts (<code class="docutils literal notranslate"><span class="pre">journalctl</span> <span class="pre">-u</span> <span class="pre">sre-agent</span></code>, then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">reset-failed</span></code>). The portal
+itself is restarted by hand (<code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span> <span class="pre">sre-web</span></code>).</p>
+<p><strong>By hand.</strong> <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> (<code class="docutils literal notranslate"><span class="pre">sbin/sre-web-tool</span></code> of a checkout, <code class="docutils literal notranslate"><span class="pre">/usr/sbin/sre-web-tool</span></code>
+of the <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code> package; <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-m</span> <span class="pre">sreweb.tool</span></code> from the sources) talks to the running
+portal through its administration API (<code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">token</span></code>, loopback only by default; <code class="docutils literal notranslate"><span class="pre">--config</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--url</span></code>, <code class="docutils literal notranslate"><span class="pre">--token</span></code> override the configuration):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
+sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
+sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent&#39;s idle reaper)
+sre-web-tool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 </pre></div>
 </div>
 <p>The additions, removals and enable / disable flags are kept in <code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">state_file</span></code> and merged
 with the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> at every start (<code class="docutils literal notranslate"><span class="pre">list</span></code> shows <code class="docutils literal notranslate"><span class="pre">config</span></code> or <code class="docutils literal notranslate"><span class="pre">added</span></code> per host); a
-config host removed by hand comes back with <code class="docutils literal notranslate"><span class="pre">enable</span></code>. <code class="docutils literal notranslate"><span class="pre">--json</span></code> gives the raw rows.</p>
+config host removed by hand comes back with <code class="docutils literal notranslate"><span class="pre">enable</span></code>. <code class="docutils literal notranslate"><span class="pre">--json</span></code> gives the raw rows. The
+instructors have the same actions on the <strong>Pool</strong> page of the portal (<code class="docutils literal notranslate"><span class="pre">/pool</span></code>, see <em>Instructors</em>
+below), except <code class="docutils literal notranslate"><span class="pre">add</span></code> and <code class="docutils literal notranslate"><span class="pre">remove</span></code>, which stay with the token.</p>
 </section>
 </section>
 <section id="what-the-users-see">
 <h2>What the users see<a class="headerlink" href="#what-the-users-see" title="Link to this heading">¶</a></h2>
 <ul class="simple">
+<li><p><strong>Header</strong>: the SRE logo and, with <code class="docutils literal notranslate"><span class="pre">[site]</span></code> in <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>, the institution’s logo and name
+next to it, on every page.</p></li>
 <li><p><strong>Login</strong>: the directory account, or (anonymous mode) a display name and a language; in
 proxy mode the web server in front has already asked, there is no login page.</p></li>
 <li><p><strong>Projects</strong>: the user’s running projects on the whole pool (Open, Close), “Open a lab” (the
 lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
-deploys).</p></li>
+deploys). Logout asks what to do with the running projects: close them (each as a Close does:
+the last evaluation when the lab asks for it, then <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span></code>; the dialog waits for every
+answer) or leave them running; with no running project the button logs out at once.</p></li>
 <li><p><strong>A project</strong>: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
 same options (lines, spacing, order, icons); the questions and the forms are the same; the
 evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
 <code class="docutils literal notranslate"><span class="pre">xterm.js</span></code> windows on <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>: every Connect button opens a new one on its machine (like
 a new xterm in the Qt GUI: <code class="docutils literal notranslate"><span class="pre">gw</span></code>, <code class="docutils literal notranslate"><span class="pre">gw</span> <span class="pre">(2)</span></code>, …), the select of the Terminals tab opens one on
 any device (the machines open to the students and the managed switches), the × of a sub-tab
-closes it, <code class="docutils literal notranslate"><span class="pre">terminals_per_device</span></code> caps them; the Log tab appears for debug projects. Export downloads the Kathara zip.
-Session recording (<code class="docutils literal notranslate"><span class="pre">asciinema</span></code>) applies as on a workstation, since it happens in <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>.</p></li>
+closes it, <code class="docutils literal notranslate"><span class="pre">terminals_per_device</span></code> caps them; the Log tab appears for debug projects. <em>Export
+Schema to PDF</em> downloads the drawing of the Schema tab with its current options (never the
+hidden machines), rendered by the agent as the GUI’s File → Export Schema to PDF does, unless
+the lab sets <code class="docutils literal notranslate"><span class="pre">export_schema_pdf</span> <span class="pre">=</span> <span class="pre">False</span></code>; the icons need <code class="docutils literal notranslate"><span class="pre">rsvg-convert</span></code> (<code class="docutils literal notranslate"><span class="pre">librsvg2-bin</span></code>) on the
+pool host, graphviz shapes otherwise. The Kathara export is not offered on the web.
+A terminal is a session shared by its viewers: the live sessions of the project that are not
+on the page are listed under the bar with a Join button (the same shell for everybody, the
+last 64 KiB of output replayed to the newcomer, the pty sized to the smallest window), a
+sub-tab shows how many viewers its session has, and a session ends when its last viewer leaves
+(or when the shell exits). After a disconnection, Reconnect joins the same session again while
+another viewer kept it alive.</p></li>
+<li><p><strong>A presentation</strong>: when an instructor presents a project to the class (<em>Present</em> below), the
+page of every chosen student is covered by that project, read-only: every tab is there but
+nothing can be done on it, and the tab shown, the terminals open (the instructor’s shells, in
+their exact size, at the largest font that fits), the question selected, the drawing options
+of the schema, the instructor texts and the virtual desktop (view-only) follow what the
+instructor does. The title bar of the presented project is coloured (lavender) and names the
+instructor presenting it. The student’s own page is untouched underneath, terminals included:
+when the presentation ends it is back as it was.</p></li>
+</ul>
+<section id="instructors">
+<h3>Instructors<a class="headerlink" href="#instructors" title="Link to this heading">¶</a></h3>
+<p>Who is an instructor is decided by the directory, the role being the OR of the tests configured
+in <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> (a test whose key is empty is skipped):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code>: the user is a member of one of these groups (DNs), through the
+<code class="docutils literal notranslate"><span class="pre">memberOf</span></code> attribute of their entry or, with <code class="docutils literal notranslate"><span class="pre">group_filter</span> <span class="pre">=</span> <span class="pre">&quot;(member={dn})&quot;</span></code>, a search of the
+groups under <code class="docutils literal notranslate"><span class="pre">group_search_base</span></code> (<code class="docutils literal notranslate"><span class="pre">search_base</span></code> without it);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">instructor_filter</span></code>: the user’s own entry matches this LDAP filter (a BASE search on their
+DN), <code class="docutils literal notranslate"><span class="pre">&quot;(gidNumber=2000)&quot;</span></code> by default — the primary group; a site with the memberof overlay may
+write <code class="docutils literal notranslate"><span class="pre">&quot;(memberOf=cn=teachers,ou=groups,dc=example,dc=org)&quot;</span></code>; <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> disables the test;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">group_search_base</span></code> + <code class="docutils literal notranslate"><span class="pre">instructor_group_filter</span></code>: a group found under that base names the user
+(<code class="docutils literal notranslate"><span class="pre">{login}</span></code> and <code class="docutils literal notranslate"><span class="pre">{dn}</span></code> are substituted, filter-escaped), by default a <code class="docutils literal notranslate"><span class="pre">posixGroup</span></code> of gid 2000
+listing the login in <code class="docutils literal notranslate"><span class="pre">memberUid</span></code> (the group search that needs no overlay; a <code class="docutils literal notranslate"><span class="pre">groupOfNames</span></code>
+site writes <code class="docutils literal notranslate"><span class="pre">&quot;(&amp;(cn=teachers)(member={dn}))&quot;</span></code>); setting <code class="docutils literal notranslate"><span class="pre">group_search_base</span></code> enables the test.</p></li>
+</ul>
+<p>In LDAP mode the portal runs them when the user logs in (the role is kept in the session cookie:
+a change applies at the next login). In proxy mode the reverse proxy authenticates and the tests
+are run on the request headers (<code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> on the groups header, <code class="docutils literal notranslate"><span class="pre">instructor_values</span></code> on
+<code class="docutils literal notranslate"><span class="pre">instructor_header</span></code>: any attribute <code class="docutils literal notranslate"><span class="pre">mod_authnz_ldap</span></code> exports) and, with <code class="docutils literal notranslate"><span class="pre">ldap_roles</span> <span class="pre">=</span> <span class="pre">true</span></code>, by the
+portal itself with the <code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code> settings for the login the proxy gives (the service account
+or an anonymous search finds the entry, then the same three tests; the entry’s <code class="docutils literal notranslate"><span class="pre">attr_group</span></code> is
+read at the same time, so with that key set the lookup runs for the users the headers already
+made instructors too, who keep the role whatever the directory says), the result being cached
+per login for <code class="docutils literal notranslate"><span class="pre">ldap_roles_ttl</span></code>; a directory failure makes the login a student without group for
+a minute (logged once) rather than the site unavailable. <code class="docutils literal notranslate"><span class="pre">ldap_groups</span> <span class="pre">=</span> <span class="pre">true</span></code> does the group part
+alone: the directory gives the group of a user whose header carries none, the roles stay those
+of the headers (the production case: <code class="docutils literal notranslate"><span class="pre">gidNumber</span></code> exported by Apache, <code class="docutils literal notranslate"><span class="pre">departmentNumber</span></code> read
+by the portal for the owners of the Qt GUI projects on the Watch page).</p>
+<p>What an instructor gets:</p>
+<ul class="simple">
+<li><p><strong>Watch</strong> (the link in the header, <code class="docutils literal notranslate"><span class="pre">/watch</span></code>): every running project of every reachable host,
+one row per project with its host, owner (the login), name (the full name of the answers
+metadata), the owner’s student group when the site configures one (<code class="docutils literal notranslate"><span class="pre">attr_group</span></code> /
+<code class="docutils literal notranslate"><span class="pre">header_group</span></code>), lab, start time, the age
+of its last archived evaluation, its grade and mark (exo-eval scope, as <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> shows
+them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
+sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
+by the select listing the groups of the rows (every group, one group, or <em>No group</em>: the
+projects started on the Qt GUI carry none unless the portal reads the directory, above), the
+chosen group kept in the URL (<code class="docutils literal notranslate"><span class="pre">?group=</span></code>, a
+bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
+red, one without an evaluation younger than 15 minutes (or twice the lab’s evaluation
+interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
+their own host (<code class="docutils literal notranslate"><span class="pre">params.archive_dirs</span></code>) on demand, nothing is scanned while nobody watches.</p></li>
+<li><p><strong>Pool</strong> (the link in the header, <code class="docutils literal notranslate"><span class="pre">/pool</span></code>): every host of the pool, one row per host with its
+state as <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> shows it (the seconds and the failed attempts of a wake), its
+projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
+instructors, power, drain, power off sent, restart sent), the agent’s version and its last error, the line
+of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">status</span></code> above the table; the state cell is green (up), amber (waking,
+occupied, exam, draining) or grey (off, disabled); sortable by any column, filtered by host
+name (one or several words: the hosts whose name contains any of them, <code class="docutils literal notranslate"><span class="pre">a01</span> <span class="pre">a02</span> <span class="pre">h</span></code> for
+those two and every <code class="docutils literal notranslate"><span class="pre">h…</span></code> host), refreshed every 5 s. The buttons of a row are the commands
+of the tool: <em>Enable</em> / <em>Disable</em>, <em>Wake</em> (a host with a <code class="docutils literal notranslate"><span class="pre">mac</span></code> or a <code class="docutils literal notranslate"><span class="pre">wake_command</span></code>, while it
+is off), <em>Drain</em>, <em>Power off</em> (asked to confirm; allowed by the agent’s <code class="docutils literal notranslate"><span class="pre">allow_power_off</span></code>,
+refused while the host has a project or a local session), each disabled with the reason as
+its tooltip when it does not apply. A checkbox per row (the one of the header ticks the hosts
+shown by the filter) selects hosts for the bar above the table: the count of the selected
+hosts (and how many the filter hides) and the same five buttons, each acting on every
+selected host its action applies to, one call per host run together (the tooltip says how
+many, the button is disabled when none; <em>Power off</em> asks once with the names; the failures
+come in one message, the selection stays). Adding and removing hosts, and restarting the
+agents (<code class="docutils literal notranslate"><span class="pre">restart</span></code>, shown as the flag <em>restart sent</em> while it lasts), stay with
+<code class="docutils literal notranslate"><span class="pre">sre-web-tool</span></code>. Every action, of a row or of the bar, is an <code class="docutils literal notranslate"><span class="pre">admin</span></code> line of the connection
+log with the instructor’s login.</p></li>
+<li><p><strong>Projects</strong> stays the instructor’s own projects (Watch holds the others).</p></li>
+<li><p><strong>A student’s project</strong>: every tab, the devices all open (the privileged <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>), the
+answers read-only; the top of the page (the site bar and the project bar) takes the <strong>helper
+colour</strong> (teal) on the instructor’s browser only, a reminder that the project is not theirs
+(the student’s page stays grey; the presentation colour replaces it while the project is
+presented); the Terminals tab <strong>joins the student’s live terminals</strong> when it opens (the
+instructor sees the student’s shell and may type in it, the student sees the same; a closed
+sub-tab is not joined again), and the select offers a <strong>private terminal</strong> (the student does
+not see it in their list; what the instructor types there stays with them) or a shared one;
+the Evaluation tab opens on the <strong>last archived evaluation</strong> of the project (date, errors in
+the tooltip), shows each new one by itself (the periodic evaluations of the lab, the student’s
+own, another instructor’s: the agent tells the open pages) and <em>Start evaluation</em> runs a
+privileged <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> (no cooldown, nothing counted on the student’s side, the exo-eval marks);
+the states apply through the privileged path too.</p></li>
+<li><p><strong>Instructor mode</strong> on the Open page: the instructor’s own project started with
+<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--instructor-mode</span></code> (the instructor texts kept in <code class="docutils literal notranslate"><span class="pre">info.json</span></code>, every state listed,
+the states logged): the <em>Instructor mode</em> button of the project page then shows the
+<code class="docutils literal notranslate"><span class="pre">instructor()</span></code> texts of the Informations and Questions tabs, every state and the Log tab, as in
+the Qt GUI. A student’s project holds no instructor text (the CLI strips them), so the button
+does not appear there.</p></li>
+<li><p><strong>The host of a project</strong>: the <em>Host</em> select of the Open page (shown when the pool has a host
+reserved for instructors, <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code>) names one of them, with
+its state and its projects (greyed when off or full), or leaves the automatic placement: the
+least loaded host the instructor may use, reserved or shared. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/projects</span></code> takes the
+optional <code class="docutils literal notranslate"><span class="pre">host</span></code>; a student sending one gets 403.</p></li>
+<li><p><strong>Present</strong>: the <em>Present</em> button of a project page (the instructor’s own project, or a
+student’s) opens the list of the users connected to the site (a text filter, the student
+groups among them when the site configures one, <em>Select all</em>): the chosen students, one by one
+and by group (a group takes its members connected now and those connecting later), see the
+project read-only on their own browsers (above). The top of the page (the site bar, the
+project bar and the bar under it) then takes the presentation colour (lavender), a reminder
+that the students are watching, and that bar tells how many students are in the audience and
+how many are watching; <em>Edit audience</em> changes the list, <em>Stop presenting</em> ends it (so does
+closing the project) and the bars are grey again. The spectators follow the instructor’s
+page: the tab, the terminals the instructor opens (joined read-only: the students see the same
+shell, cannot type, and do not change its size), the question, the schema options, the
+<em>Instructor mode</em> texts, the Display tab view-only, and the Evaluation tab shows them the last
+archived evaluation again after each evaluation of the project. A reloaded page goes on
+presenting; a page closed for a minute ends the presentation. A student is in one presentation
+at a time (the newest that includes them), and falls back to the previous one when it ends.</p></li>
+</ul>
+</section>
+<section id="the-display-tab">
+<h3>The Display tab<a class="headerlink" href="#the-display-tab" title="Link to this heading">¶</a></h3>
+<p>A lab machine declared <code class="docutils literal notranslate"><span class="pre">x11_host</span></code> draws its graphical applications (Wireshark, Firefox…) on
+the X server of the host: on a workstation, the student’s own desktop. A pool host has no X
+server, so the agent runs one virtual desktop per project whose lab has such a machine: a
+TigerVNC <code class="docutils literal notranslate"><span class="pre">Xvnc</span></code> with an <code class="docutils literal notranslate"><span class="pre">openbox</span></code> window manager, started as the unprivileged <code class="docutils literal notranslate"><span class="pre">sreweb-x11</span></code>
+user right after <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code>, shown in the <strong>Display</strong> tab by noVNC (<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">novnc</span></code>). The
+containers reach display <code class="docutils literal notranslate"><span class="pre">:N</span></code> on TCP port 6000+N of the host with the cookie of the project
+(the core passes them <code class="docutils literal notranslate"><span class="pre">SRE_DISPLAY</span></code> and <code class="docutils literal notranslate"><span class="pre">SRE_XAUTH_COOKIE</span></code>, the <code class="docutils literal notranslate"><span class="pre">.bashrc</span></code> of the images ≥ 1.31
+sets <code class="docutils literal notranslate"><span class="pre">DISPLAY</span></code> from them); the browser reaches the RFB Unix socket of the server through the
+agent and the portal, as a WebSocket of binary frames. The desktop follows the size of the tab
+(<em>Resize the desktop</em>; <em>Fit to window</em> scales it instead), the text box of the bar sends text to
+the X clipboard and shows what the applications copy, <em>Reconnect</em> opens the stream again. The
+number and the cookie of a project never change: a desktop that died, or that was lost when the
+agent restarted (its X server is a child of the agent), is started again at the next use of the
+tab, empty. <code class="docutils literal notranslate"><span class="pre">[display]</span></code> of <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code> holds the geometry, the range of display numbers and
+the commands.
+Session recording (<code class="docutils literal notranslate"><span class="pre">asciinema</span></code>) applies as on a workstation, since it happens in <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">connect</span></code>.</p>
+<ul class="simple">
 <li><p>The answers are saved as the user types (debounced), with the identity of the session.</p></li>
 </ul>
+</section>
 </section>
 <section id="security">
 <h2>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p>The agent listens on a management address and refuses every request without its bearer token
-and the identity headers the portal adds (<code class="docutils literal notranslate"><span class="pre">X-SRE-Login</span></code>, …); the browser never talks to it.
+<li><p>The agent refuses every request without its bearer token
+and the identity headers the portal adds (<code class="docutils literal notranslate"><span class="pre">X-SRE-Login</span></code>, <code class="docutils literal notranslate"><span class="pre">X-SRE-Fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">X-SRE-Group</span></code>, …); the browser never talks to it.
 With mutual TLS (above) only the holder of a client certificate of the CA reaches the token
 check, the traffic to the agents is encrypted, and <code class="docutils literal notranslate"><span class="pre">allowed_clients</span></code> refuses every other
 address with 403. Without TLS the token and the terminals cross the network in clear: keep the
@@ -978,22 +1346,60 @@ reverse proxy, accepted from the peers of <code class="docutils literal notransl
 portal from anywhere else has no identity, headers or not).</p></li>
 <li><p>Rate limits per user (evaluations, starts) and per client address (logins); the size of the
 answers is capped.</p></li>
-<li><p>A project’s owner is the third field of its running lab name; the portal and the agent both
-check it. Instructors are the members of <code class="docutils literal notranslate"><span class="pre">instructor_groups</span></code> (of <code class="docutils literal notranslate"><span class="pre">[auth.ldap]</span></code>, or of the
-groups header in proxy mode); the rest of the instructor role is phase 5.</p></li>
+<li><p>The connection log (<code class="docutils literal notranslate"><span class="pre">[access_log]</span></code>) keeps who did what from where: the sessions with their
+duration and projects, the logins and their failures, the denied calls, the administration
+calls. The only header it reads is <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code>, from the peers of <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code>,
+for the client address; the identity never comes from it.</p></li>
+<li><p>A project’s owner is the third field of its running lab name; the portal, the agent and, in
+user mode, the <code class="docutils literal notranslate"><span class="pre">sre</span></code> CLI itself (<code class="docutils literal notranslate"><span class="pre">params.check_project_owner</span></code>: the local GUI of a pool host
+lists and reaches the same projects as the CLI lets through) check it. An instructor (see
+<em>Instructors</em> above) reaches every project, but the agent never
+runs a command as the student for them: a non-owner’s <code class="docutils literal notranslate"><span class="pre">eval</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code> and <code class="docutils literal notranslate"><span class="pre">connect</span></code> are
+privileged <code class="docutils literal notranslate"><span class="pre">sre</span></code> calls under the instructor’s own login, the answers are read-only, and a
+private terminal is listed to instructors only. The operations log of an instructor-mode
+project goes to the subscribers allowed to read it only.</p></li>
+<li><p>The spectators of a presentation reach the presented project through the portal only, on a
+short list of read-only calls (the project, its events, the schema, the last evaluation, the
+log, a terminal to <em>join</em>, the display), relayed to the agent under the presenter’s identity
+(the agent trusts the portal for every identity anyway); everything else is refused, the
+portal never forwards what a spectator’s browser sends on a terminal socket and the agent
+attaches a read-only client that cannot type nor resize, and the display socket of a spectator
+goes through a filter dropping the RFB input and resize messages (an unexpected message closes
+it). The presentations live in the portal’s memory.</p></li>
 </ul>
+<p><strong>The virtual desktops.</strong> Each <code class="docutils literal notranslate"><span class="pre">Xvnc</span></code> listens on TCP port 6000+N on every interface of the pool
+host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
+configured for the labs (<code class="docutils literal notranslate"><span class="pre">installation.md</span></code>); an nftables rule such as
+<code class="docutils literal notranslate"><span class="pre">nft</span> <span class="pre">add</span> <span class="pre">rule</span> <span class="pre">inet</span> <span class="pre">filter</span> <span class="pre">input</span> <span class="pre">tcp</span> <span class="pre">dport</span> <span class="pre">6010-6099</span> <span class="pre">iifname</span> <span class="pre">!=</span> <span class="pre">&quot;docker0&quot;</span> <span class="pre">drop</span></code> keeps the other
+hosts out. The RFB socket of a desktop is reachable by root only (the agent); the window manager
+runs as <code class="docutils literal notranslate"><span class="pre">sreweb-x11</span></code> with no menu, no launcher and no key binding running a program of the host;
+the browser reaches a desktop through the owner check of the portal and of the agent.</p>
 </section>
 <section id="limitations">
 <h2>Limitations<a class="headerlink" href="#limitations" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">x11_host</span></code> machines (GUI applications displayed on the student’s X server, e.g. the Wireshark
-lab) have no display on a pool host: not supported by the web site.</p></li>
+<li><p>After an update of the tree, the portal and the agents must be restarted for the Python code
+(<code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">restart</span> <span class="pre">--all</span></code> for the agents, see <em>Restarting the agents</em> above; the
+templates are re-read when they change); the scripts and style sheets of <code class="docutils literal notranslate"><span class="pre">web/static</span></code> are
+served with <code class="docutils literal notranslate"><span class="pre">Cache-Control:</span> <span class="pre">no-cache</span></code>, so a browser revalidates them on every page load (an
+<code class="docutils literal notranslate"><span class="pre">ETag</span></code> answers 304 for an unchanged file) and never runs a script older than the page. A page
+loaded before the update keeps its scripts until it is reloaded.</p></li>
+<li><p>The virtual X desktops die with the agent (a restart of its unit): they are started again,
+empty, at the next use of the Display tab; the applications shown must be launched again.</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">ports</span></code> of the bridged machines are bound on the pool host and shown with its name.</p></li>
 <li><p>A host in exam mode (<code class="docutils literal notranslate"><span class="pre">exam.json</span></code>) is excluded from the pool: the exam mode of the web site is a
-later phase, as are the instructor role (instructor-mode projects, the instructor view, every
-project of the pool), the reconnection of a terminal after a network cut, and the save of the
-terminal sessions across a restart of the agent.</p></li>
-<li><p>A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.</p></li>
+later phase, as is the save of the terminal sessions across a restart of the agent.</p></li>
+<li><p>A terminal session ends when its last viewer leaves: a page reload loses it unless another
+viewer (an instructor who joined) keeps it alive, in which case Reconnect joins it again.
+A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.</p></li>
+<li><p>The replay a joining viewer gets may start inside an escape sequence; the next prompt or
+redraw of the application settles the display.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">[limits]</span> <span class="pre">eval_interval</span></code> of the portal (10 s between two evaluations of a login) also
+applies to an instructor evaluating several students’ projects in a row.</p></li>
+<li><p>A presentation ends when the portal restarts (nothing is kept on disk); the agents log the
+spectators under the presenter’s login (the connection log of the portal has the real ones); a
+spectator’s terminal shows the presenter’s grid at a smaller font when their window is smaller;
+a presented project never idles out while it is watched.</p></li>
 </ul>
 </section>
 <section id="development">
@@ -1003,6 +1409,102 @@ terminal sessions across a restart of the agent.</p></li>
 <code class="docutils literal notranslate"><span class="pre">sre_exe</span></code> pointed at a wrapper of <code class="docutils literal notranslate"><span class="pre">tests/mock_sre.py</span></code> (<code class="docutils literal notranslate"><span class="pre">SRE_PUB_DIR</span></code> exported in the wrapper),
 the whole site works without Docker. The French catalog is <code class="docutils literal notranslate"><span class="pre">locale/fr/LC_MESSAGES/sreweb.po</span></code>
 (hand-maintained, <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">web-translations</span></code>).</p>
+</section>
+<section id="stress-test">
+<h2>Stress test<a class="headerlink" href="#stress-test" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">scripts/web-stress.py</span></code> simulates a class of students on a portal through its HTTP / WebSocket
+API, as the browser drives it: for each student (logins <code class="docutils literal notranslate"><span class="pre">stress001</span></code>, <code class="docutils literal notranslate"><span class="pre">stress002</span></code>…), the Projects
+page (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/projects</span></code> every 5 s, the presence socket), the Open page (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/labs</span></code>),
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/projects</span></code> read as NDJSON until the <code class="docutils literal notranslate"><span class="pre">result</span></code> line (a 503 or 429 is retried after its
+<code class="docutils literal notranslate"><span class="pre">retry_after</span></code>), the project page (the project JSON, the schema, the events socket kept open and
+reconnected with the browser’s backoff, <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">.../touch</span></code> every 60 s), a terminal on the first
+device open to the student with a few commands typed (the echo of the first one is checked),
+then, over <code class="docutils literal notranslate"><span class="pre">--hold</span></code> seconds, <code class="docutils literal notranslate"><span class="pre">--answers</span></code> saves and <code class="docutils literal notranslate"><span class="pre">--evals</span></code> self-evaluations, and finally the
+stop. The students begin spread over <code class="docutils literal notranslate"><span class="pre">--ramp</span></code> seconds. <code class="docutils literal notranslate"><span class="pre">--instructor</span></code> adds an instructor on the
+Watch page (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/watch</span></code>, the Pool page’s calls, every 5 s), <code class="docutils literal notranslate"><span class="pre">--admin-token</span></code> samples
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/pool</span></code> every 5 s (the <code class="docutils literal notranslate"><span class="pre">reachable</span></code> flag and the project count of each host as the portal
+sees them), <code class="docutils literal notranslate"><span class="pre">--probe</span></code> measures <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/me</span></code> every 2 s. The tool needs Python 3.11 and aiohttp only
+(the venv of the installation has them) and runs in <strong>proxy authentication mode</strong>: the identity
+of each student travels in the <code class="docutils literal notranslate"><span class="pre">X-Remote-*</span></code> headers, so it must run on a host of
+<code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> (the portal’s own host, against <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8450</span></code>); the instructor is
+made by <code class="docutils literal notranslate"><span class="pre">X-Remote-Gid:</span> <span class="pre">2000</span></code> (<code class="docutils literal notranslate"><span class="pre">--instructor-header</span></code> / <code class="docutils literal notranslate"><span class="pre">--instructor-value</span></code> otherwise).</p>
+<p>The summary on stdout gives, per phase (<code class="docutils literal notranslate"><span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">project_get</span></code>, <code class="docutils literal notranslate"><span class="pre">events_ws</span></code>, <code class="docutils literal notranslate"><span class="pre">terminal_ws</span></code>,
+<code class="docutils literal notranslate"><span class="pre">eval</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span></code>…), the number of calls, the errors, the latencies (p50 / p95 / max) and the
+statuses, then the students completed, the checks failed (<code class="docutils literal notranslate"><span class="pre">own_projects_only</span></code>: a listing showed
+another student’s project; <code class="docutils literal notranslate"><span class="pre">project_listed</span></code>: the new project was missing from <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/projects</span></code>;
+<code class="docutils literal notranslate"><span class="pre">terminal_echo</span></code>; <code class="docutils literal notranslate"><span class="pre">eval_grades</span></code>; <code class="docutils literal notranslate"><span class="pre">events_stayed_open</span></code>; <code class="docutils literal notranslate"><span class="pre">no_unexpected_removed</span></code>; <code class="docutils literal notranslate"><span class="pre">stopped</span></code>), the
+hosts used and the pool samples (the flips of <code class="docutils literal notranslate"><span class="pre">reachable</span></code> show the status polls timing out).
+<code class="docutils literal notranslate"><span class="pre">--report</span> <span class="pre">FILE</span></code> writes everything as JSON (one entry per student), <code class="docutils literal notranslate"><span class="pre">--events</span> <span class="pre">FILE</span></code> a CSV
+timeline (one line per request or socket event). The exit status is 0 when every student
+completed with every check true. <code class="docutils literal notranslate"><span class="pre">--keep</span></code> leaves the projects running; <code class="docutils literal notranslate"><span class="pre">--cleanup</span></code> stops every
+project of the synthetic logins (through the instructor identity) and exits.</p>
+<section id="stage-1-a-fake-pool-no-docker">
+<h3>Stage 1: a fake pool, no Docker<a class="headerlink" href="#stage-1-a-fake-pool-no-docker" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">scripts/web-fake-pool.py</span></code> launches from the checkout N real agents whose <code class="docutils literal notranslate"><span class="pre">sre</span></code> is a wrapper of
+<code class="docutils literal notranslate"><span class="pre">tests/mock_sre.py</span></code> (the projects are directories, the terminals <code class="docutils literal notranslate"><span class="pre">/bin/sh</span></code>, a start takes
+7 × <code class="docutils literal notranslate"><span class="pre">--start-delay</span></code> seconds, an evaluation <code class="docutils literal notranslate"><span class="pre">--eval-delay</span></code>), and a real portal in proxy mode
+trusting the loopback, with the production <code class="docutils literal notranslate"><span class="pre">[limits]</span></code> (<code class="docutils literal notranslate"><span class="pre">--start-interval</span></code> / <code class="docutils literal notranslate"><span class="pre">--eval-interval</span></code>
+override them), <code class="docutils literal notranslate"><span class="pre">max_projects</span></code> per host and an admin token; then it runs the command given after
+<code class="docutils literal notranslate"><span class="pre">--</span></code> with <code class="docutils literal notranslate"><span class="pre">SRE_STRESS_PORTAL</span></code>, <code class="docutils literal notranslate"><span class="pre">SRE_STRESS_ADMIN_TOKEN</span></code> and <code class="docutils literal notranslate"><span class="pre">SRE_STRESS_WORKDIR</span></code> in its environment
+(the defaults of <code class="docutils literal notranslate"><span class="pre">--portal</span></code> and <code class="docutils literal notranslate"><span class="pre">--admin-token</span></code>) and stops everything:</p>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>venv/bin/python3<span class="w"> </span>scripts/web-fake-pool.py<span class="w"> </span>--hosts<span class="w"> </span><span class="m">4</span><span class="w"> </span>--max-projects<span class="w"> </span><span class="m">25</span><span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>venv/bin/python3<span class="w"> </span>scripts/web-stress.py<span class="w"> </span>--users<span class="w"> </span><span class="m">100</span><span class="w"> </span>--ramp<span class="w"> </span><span class="m">60</span><span class="w"> </span>--hold<span class="w"> </span><span class="m">120</span><span class="w"> </span>--instructor<span class="w"> </span>--probe<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--report<span class="w"> </span>report.json<span class="w"> </span>--events<span class="w"> </span>events.csv
+</pre></div>
+</div>
+<p>Without a command the pool stays up until Ctrl-C (<code class="docutils literal notranslate"><span class="pre">portal=...</span> <span class="pre">admin_token=...</span> <span class="pre">workdir=...</span></code> is
+printed first), for runs by hand. The work directory (configs, <code class="docutils literal notranslate"><span class="pre">portal.log</span></code>, <code class="docutils literal notranslate"><span class="pre">access.log</span></code>, one
+<code class="docutils literal notranslate"><span class="pre">agent.log</span></code> and <code class="docutils literal notranslate"><span class="pre">sre.log</span></code> per host) is removed at the end unless <code class="docutils literal notranslate"><span class="pre">--keep-workdir</span></code> or a daemon died.</p>
+<p>What a healthy run looks like (100 students, 4 fake hosts of 25, <code class="docutils literal notranslate"><span class="pre">--ramp</span> <span class="pre">60</span> <span class="pre">--hold</span> <span class="pre">120</span></code>, a Mac):
+every student completed and every check true, <code class="docutils literal notranslate"><span class="pre">start</span></code> created in 3.6 s median / 4.6 s max, the
+socket handshakes and the JSON calls under 10 ms, no <code class="docutils literal notranslate"><span class="pre">reachable</span></code> flip, the probe under 5 ms. The
+first run of that scenario found the portal’s connection pool to the agents capped at aiohttp’s
+default of 100 connections while every relayed events or terminal socket holds one for as long
+as the page is open: from the 50th student the 5 s status polls timed out, every host flipped
+unreachable (all four for 45 s), 21 starts were refused with 503, the lab list and the project
+lists came back empty, the socket handshakes and the answer saves waited up to 80 s and 54
+students completed — with the portal’s event loop idle (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/me</span></code> in 2 ms). The connector
+has no limit since (<code class="docutils literal notranslate"><span class="pre">AGENT_CONNECTION_LIMIT</span></code> in <code class="docutils literal notranslate"><span class="pre">portal/app.py</span></code>).</p>
+</section>
+<section id="stage-2-the-production-pool">
+<h3>Stage 2: the production pool<a class="headerlink" href="#stage-2-the-production-pool" title="Link to this heading">¶</a></h3>
+<p>On the portal’s host, outside class hours, with the tool copied there (or <code class="docutils literal notranslate"><span class="pre">/opt/sre/scripts/</span></code>
+once synced) and the venv of the installation:</p>
+<ol class="arabic simple">
+<li><p><strong>Preflight.</strong> The portal must see the tool as a trusted peer: from the host itself when the
+portal container uses the host network (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span> <span class="pre">sre-web</span> <span class="pre">--format</span> <span class="pre">'{{.HostConfig.NetworkMode}}'</span></code>), from inside the container otherwise (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code>). Read the
+admin token in <code class="docutils literal notranslate"><span class="pre">[admin]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>. <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">status</span></code> and <code class="docutils literal notranslate"><span class="pre">list</span></code>: the hosts up and
+the spare slots; with fewer slots than students, the pool wakes hosts during the ramp
+(<code class="docutils literal notranslate"><span class="pre">wake_timeout</span></code>, the students refused with 503 “a host is starting” retry after the
+<code class="docutils literal notranslate"><span class="pre">retry_after</span></code> of the answer, 30 s). Check <code class="docutils literal notranslate"><span class="pre">ulimit</span> <span class="pre">-n</span></code> of the portal process (two relayed sockets per
+student). Note the <code class="docutils literal notranslate"><span class="pre">archive_dirs</span></code> of the hosts: every evaluation writes an archive there.</p></li>
+<li><p><strong>Smoke run:</strong> <code class="docutils literal notranslate"><span class="pre">web-stress.py</span> <span class="pre">--portal</span> <span class="pre">http://127.0.0.1:8450</span> <span class="pre">--users</span> <span class="pre">3</span> <span class="pre">--hold</span> <span class="pre">60</span> <span class="pre">--lab</span> <span class="pre">sre/dhcp.py</span> <span class="pre">--instructor</span> <span class="pre">--admin-token</span> <span class="pre">...</span> <span class="pre">--probe</span></code> must give 3 students completed and no check failed.</p></li>
+<li><p><strong>Full run:</strong> the same with <code class="docutils literal notranslate"><span class="pre">--users</span> <span class="pre">100</span> <span class="pre">--ramp</span> <span class="pre">300</span> <span class="pre">--hold</span> <span class="pre">600</span> <span class="pre">--report</span> <span class="pre">...</span> <span class="pre">--events</span> <span class="pre">...</span></code>.
+Meanwhile: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">stats</span> <span class="pre">sre-web</span></code> (the CPU of one event loop, the memory), the connection log
+(<code class="docutils literal notranslate"><span class="pre">event=start</span> <span class="pre">...</span> <span class="pre">result=</span></code>, <code class="docutils literal notranslate"><span class="pre">denied</span></code>, hosts unreachable), <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> (states, projects
+per host), the journal of an agent (<code class="docutils literal notranslate"><span class="pre">journalctl</span> <span class="pre">-u</span> <span class="pre">sre-agent</span> <span class="pre">-f</span></code>), the probe’s p95 in the summary.</p></li>
+<li><p><strong>Cleanup:</strong> <code class="docutils literal notranslate"><span class="pre">web-stress.py</span> <span class="pre">--cleanup</span> <span class="pre">...</span></code> stops what a stopped run left (a Ctrl-C stops the
+students’ projects by itself), then remove the archives of the synthetic logins
+(<code class="docutils literal notranslate"><span class="pre">*&#64;&#64;&#64;stress0*</span></code> under <code class="docutils literal notranslate"><span class="pre">archive_dirs</span></code> on the hosts) and check <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> is back to
+0 projects.</p></li>
+</ol>
+<p>The reverse proxy and the directory are bypassed (the tool speaks to the portal), and
+<code class="docutils literal notranslate"><span class="pre">follow_local_sessions</span></code> never applies (the synthetic logins have no local session).</p>
+<p>First production run (2026-10-28, 100 students, <code class="docutils literal notranslate"><span class="pre">sre/dhcp.py</span></code>, <code class="docutils literal notranslate"><span class="pre">--ramp</span> <span class="pre">300</span> <span class="pre">--hold</span> <span class="pre">600</span></code>, the
+portal in its container on the sreweb VM, three shared hosts up at the start and the other rooms
+enabled during the ramp): every student completed with every check true, starts created in 5.5 s
+median / 12.7 s max, the self-evaluations in 6 s, the stops (with their exit evaluation) in 7.4 s,
+no host flip, the portal at 11 % CPU at most and 195 MiB, 375 established connections to the
+agents at the peak (two relayed sockets per student plus the polls’ keep-alives). The three hosts
+that took the first 35 projects (13–14 each within two minutes, about 100 containers each) reached
+a load average of 140–150 and still answered starts in less than 13 s. The evaluations of the run
+are archived on the hosts themselves (<code class="docutils literal notranslate"><span class="pre">archive_dirs</span></code>: <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/archives</span></code> and the per-host
+<code class="docutils literal notranslate"><span class="pre">/home/.resultats-sre</span></code>), to delete there.
+A second run the same evening with 200 students on 84 hosts (two or three projects per host):
+200 completed, every check true, starts in 5.4 s median / 9 s p95 (one host took 33 s for one
+start), the portal at 15 % CPU at most, growing from 69 MiB after a restart to 264 MiB with 600
+relayed sockets, 597 connections to the agents at the peak, the VM’s load average below 0.3.</p>
+</section>
 </section>
 </section>
 
@@ -1072,15 +1574,25 @@ the whole site works without Docker. The French catalog is <code class="docutils
 <li><a class="reference internal" href="#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
 <li><a class="reference internal" href="#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li><a class="reference internal" href="#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li><a class="reference internal" href="#the-connection-log">The connection log</a></li>
 <li><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li><a class="reference internal" href="#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#what-the-users-see">What the users see</a></li>
+<li><a class="reference internal" href="#what-the-users-see">What the users see</a><ul>
+<li><a class="reference internal" href="#instructors">Instructors</a></li>
+<li><a class="reference internal" href="#the-display-tab">The Display tab</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#security">Security</a></li>
 <li><a class="reference internal" href="#limitations">Limitations</a></li>
 <li><a class="reference internal" href="#development">Development</a></li>
+<li><a class="reference internal" href="#stress-test">Stress test</a><ul>
+<li><a class="reference internal" href="#stage-1-a-fake-pool-no-docker">Stage 1: a fake pool, no Docker</a></li>
+<li><a class="reference internal" href="#stage-2-the-production-pool">Stage 2: the production pool</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

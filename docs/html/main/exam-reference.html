@@ -228,15 +228,25 @@
 <li class="toctree-l3"><a class="reference internal" href="web.html#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-connection-log">The connection log</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#instructors">Instructors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-display-tab">The Display tab</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#security">Security</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#limitations">Limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#development">Development</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#stress-test">Stress test</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-1-a-fake-pool-no-docker">Stage 1: a fake pool, no Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-2-the-production-pool">Stage 2: the production pool</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -401,6 +411,7 @@
 <li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#exporting-a-project">Exporting a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#project-tabs">Project tabs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#exam-mode">Exam mode</a></li>
@@ -412,6 +423,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-all"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
@@ -613,7 +625,7 @@
 <tbody>
 <tr class="row-even"><td><p>Waiting</p></td>
 <td><p>—</p></td>
-<td><p>Show SRE logo + countdown to <code class="docutils literal notranslate"><span class="pre">start_after</span></code>. Once <code class="docutils literal notranslate"><span class="pre">now</span> <span class="pre">≥</span> <span class="pre">start_after</span> <span class="pre">−</span> <span class="pre">params.max_duration_between_exam_pre_start_and_start</span></code> (60 s) <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code> is absent, fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code> once (stops non-exam projects, starts exam labs, appends to <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code>).</p></td>
+<td><p>Show SRE logo + countdown to <code class="docutils literal notranslate"><span class="pre">start_after</span></code>. Once <code class="docutils literal notranslate"><span class="pre">now</span> <span class="pre">≥</span> <span class="pre">start_after</span> <span class="pre">−</span> <span class="pre">params.max_duration_between_exam_pre_start_and_start</span></code> (60 s) <strong>and</strong> <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code> is absent, fire <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code> once (stops the non-exam projects and, with <code class="docutils literal notranslate"><span class="pre">check_project_owner</span></code>, the projects of the other users; starts the exam labs the student does not run yet; appends to <code class="docutils literal notranslate"><span class="pre">pre_start_date</span></code>).</p></td>
 </tr>
 <tr class="row-odd"><td><p>Active</p></td>
 <td><p>Exam containers up — one running project per lab in <code class="docutils literal notranslate"><span class="pre">labs</span></code>, no others (<code class="docutils literal notranslate"><span class="pre">_projects_ready</span></code>)</p></td>

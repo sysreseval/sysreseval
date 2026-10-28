@@ -228,15 +228,25 @@
 <li class="toctree-l3"><a class="reference internal" href="web.html#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-connection-log">The connection log</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#instructors">Instructors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-display-tab">The Display tab</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#security">Security</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#limitations">Limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#development">Development</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#stress-test">Stress test</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-1-a-fake-pool-no-docker">Stage 1: a fake pool, no Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-2-the-production-pool">Stage 2: the production pool</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -401,6 +411,7 @@
 <li class="toctree-l2"><a class="reference internal" href="gui.html#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#opening-a-project">Opening a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="gui.html#exporting-a-project">Exporting a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#project-tabs">Project tabs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="gui.html#exam-mode">Exam mode</a></li>
@@ -412,6 +423,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-all"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
@@ -666,61 +678,65 @@
 <td><p><code class="docutils literal notranslate"><span class="pre">988</span></code></p></td>
 <td><p>GID of the <code class="docutils literal notranslate"><span class="pre">docker</span></code> group</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_docker_concurrency</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">check_project_owner</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>User mode: a caller only sees and drives their own projects and those started by root or the <code class="docutils literal notranslate"><span class="pre">sre</span></code> user (<code class="docutils literal notranslate"><span class="pre">False</span></code>: every project of the host)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_docker_concurrency</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">16</span></code></p></td>
 <td><p>Max parallel Docker API calls during eval</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">default_eval_interval_during_exams</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">default_eval_interval_during_exams</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">60</span></code></p></td>
 <td><p>Default auto-eval period (s)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">default_exam_duration</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">default_exam_duration</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">90</span></code></p></td>
 <td><p>Default exam duration (min), used if <code class="docutils literal notranslate"><span class="pre">duration</span></code> absent from <code class="docutils literal notranslate"><span class="pre">exam.json</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">default_inactivity_threshold_in_watch_command</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">default_inactivity_threshold_in_watch_command</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">90</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> inactivity alert threshold</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_duration_between_exam_pre_start_and_start</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_duration_between_exam_pre_start_and_start</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">60</span></code></p></td>
 <td><p>Window before <code class="docutils literal notranslate"><span class="pre">start_after</span></code> during which <code class="docutils literal notranslate"><span class="pre">pre-start-exam</span></code> fires (s)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">email_in_gecos_last_field</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">email_in_gecos_last_field</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
 <td><p>Extract last GECOS sub-field as student email</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">terminal_cmd_prefix</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">terminal_cmd_prefix</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[&quot;/usr/bin/mate-terminal&quot;,</span> <span class="pre">&quot;--&quot;]</span></code></p></td>
 <td><p>External terminal emulator</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">terminal_font_size</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">terminal_font_size</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">12</span></code></p></td>
 <td><p>Default terminal font size (pt)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">terminal_color_scheme</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">terminal_color_scheme</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;black_on_white&quot;</span></code></p></td>
 <td><p>Default terminal colors</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">exam_only_affix</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exam_only_affix</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[&quot;_EXAM_&quot;,</span> <span class="pre">&quot;_OLD_&quot;,</span> <span class="pre">&quot;_DRAFT_&quot;,</span> <span class="pre">&quot;_TESTS_&quot;]</span></code></p></td>
 <td><p>Name substrings that hide labs from <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">authorized_src_dir</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">authorized_src_dir</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">['/opt/sre/lab',</span> <span class="pre">'/home/etudiant']</span></code></p></td>
 <td><p>Allowed lab source directories</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">default_network_mode</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">default_network_mode</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;hub&quot;</span></code></p></td>
 <td><p>Type of switch of a network that declares no <code class="docutils literal notranslate"><span class="pre">mode</span></code> (<code class="docutils literal notranslate"><span class="pre">network_modes</span></code>: <code class="docutils literal notranslate"><span class="pre">hub</span></code>, <code class="docutils literal notranslate"><span class="pre">switch</span></code>, <code class="docutils literal notranslate"><span class="pre">managed</span></code>)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">switch_user_commands</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">switch_user_commands</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">(&quot;help&quot;,</span> <span class="pre">&quot;port/print&quot;,</span> <span class="pre">&quot;port/setvlan&quot;,</span> <span class="pre">&quot;vlan/create&quot;,</span> <span class="pre">…)</span></code></p></td>
 <td><p>Console commands a student may run on a managed switch; any other is refused in user mode</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hostname_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">login_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">fullname_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">email_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">language_keyword</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;hostname&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;login&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;fullname&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;email&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;language&quot;</span></code></p></td>
-<td><p>Keys used in <code class="docutils literal notranslate"><span class="pre">answers.json</span></code> and archive <code class="docutils literal notranslate"><span class="pre">answers</span></code> dict</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hostname_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">login_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">fullname_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">email_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">language_keyword</span></code> / <code class="docutils literal notranslate"><span class="pre">group_keyword</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;hostname&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;login&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;fullname&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;email&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;language&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;group&quot;</span></code></p></td>
+<td><p>Keys used in <code class="docutils literal notranslate"><span class="pre">answers.json</span></code> and archive <code class="docutils literal notranslate"><span class="pre">answers</span></code> dict (<code class="docutils literal notranslate"><span class="pre">group</span></code>: the student group, web front-end only)</p></td>
 </tr>
 </tbody>
 </table>
@@ -940,10 +956,13 @@
 <tr class="row-odd"><td><p>Student command restrictions</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">user_not_allowed()</span></code> / <code class="docutils literal notranslate"><span class="pre">user_not_allowed_in_exam_mode()</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p>State access control</p></td>
+<tr class="row-even"><td><p>Project ownership</p></td>
+<td><p>In user mode <code class="docutils literal notranslate"><span class="pre">utils.resolve_running_lab_name()</span></code> only resolves the projects of <code class="docutils literal notranslate"><span class="pre">common.project_accessible()</span></code> (<code class="docutils literal notranslate"><span class="pre">access.may_access_project()</span></code>: the caller’s own and those of root / the <code class="docutils literal notranslate"><span class="pre">sre</span></code> user; <code class="docutils literal notranslate"><span class="pre">params.check_project_owner</span></code>); the GUI lists the same projects (<code class="docutils literal notranslate"><span class="pre">sysreseval.util.visible_projects()</span></code>); <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code> is privileged only and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code> stops the accessible projects</p></td>
+</tr>
+<tr class="row-odd"><td><p>State access control</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&#64;sre_state(user_allowed=False)</span></code> blocks students from re-applying protected states</p></td>
 </tr>
-<tr class="row-odd"><td><p>Switch console</p></td>
+<tr class="row-even"><td><p>Switch console</p></td>
 <td><p>In user mode only the commands of <code class="docutils literal notranslate"><span class="pre">params.switch_user_commands</span></code> are sent to a managed switch (no port creation / removal, plugin loading, shutdown); <code class="docutils literal notranslate"><span class="pre">allow_connection</span></code> closes a console; the management socket itself is not readable by students</p></td>
 </tr>
 </tbody>
@@ -969,6 +988,7 @@
         <span class="s2">&quot;login&quot;</span><span class="p">:</span>               <span class="s2">&quot;alice&quot;</span><span class="p">,</span>
         <span class="s2">&quot;fullname&quot;</span><span class="p">:</span>            <span class="s2">&quot;Alice Martin&quot;</span><span class="p">,</span>      <span class="c1"># from GECOS, always present</span>
         <span class="s2">&quot;email&quot;</span><span class="p">:</span>               <span class="s2">&quot;alice@example.com&quot;</span><span class="p">,</span> <span class="c1"># when email_in_gecos_last_field=True</span>
+        <span class="s2">&quot;group&quot;</span><span class="p">:</span>               <span class="s2">&quot;INFO1&quot;</span><span class="p">,</span>             <span class="c1"># web front-end only, when a group source is configured</span>
         <span class="s2">&quot;language&quot;</span><span class="p">:</span>            <span class="s2">&quot;fr&quot;</span><span class="p">,</span>
         <span class="s2">&quot;answers_updated_at&quot;</span><span class="p">:</span>  <span class="s2">&quot;20260615110000&quot;</span><span class="p">,</span>
         <span class="s2">&quot;auto_eval_count&quot;</span><span class="p">:</span>     <span class="mi">2</span><span class="p">,</span>                   <span class="c1"># self-evals before this one</span>

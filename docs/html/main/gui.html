@@ -228,15 +228,25 @@
 <li class="toctree-l3"><a class="reference internal" href="web.html#agent-toml"><code class="docutils literal notranslate"><span class="pre">agent.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-connection-log">The connection log</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-pool-of-workstations">A pool of workstations</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#instructors">Instructors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-display-tab">The Display tab</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#security">Security</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#limitations">Limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#development">Development</a></li>
+<li class="toctree-l2"><a class="reference internal" href="web.html#stress-test">Stress test</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-1-a-fake-pool-no-docker">Stage 1: a fake pool, no Docker</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#stage-2-the-production-pool">Stage 2: the production pool</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -401,6 +411,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#launching">Launching</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#opening-a-project">Opening a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#exporting-a-project">Exporting a project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-tabs">Project tabs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#instructor-mode">Instructor mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#exam-mode">Exam mode</a></li>
@@ -412,6 +423,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cli.html#dual-commands">Dual commands</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-d-data-p-flavor-flavor-json-set-flavor-name-xauth-file-file-instructor-mode-lab-data-version"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">[-d</span> <span class="pre">data]</span> <span class="pre">[-p]</span> <span class="pre">[--flavor</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--flavor-json</span> <span class="pre">…</span> <span class="pre">|</span> <span class="pre">--set-flavor-name</span> <span class="pre">…]</span> <span class="pre">[--xauth-file</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;lab&gt;</span> <span class="pre">[data_version]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-stop-all"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop-all</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-save-o-file-full-images-running-lab"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">save</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span> <span class="pre">[--full-images]</span> <span class="pre">&lt;running_lab&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-restore-instructor-mode-save-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">restore</span> <span class="pre">[--instructor-mode]</span> <span class="pre">&lt;save_file</span> <span class="pre">|</span> <span class="pre">-&gt;</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-wipe"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code></a></li>
@@ -537,11 +549,18 @@ sysreseval<span class="w">                                              </span><
 <h2>Opening a project<a class="headerlink" href="#opening-a-project" title="Link to this heading">¶</a></h2>
 <p><strong>File → Open Project</strong> (or the <code class="docutils literal notranslate"><span class="pre">+</span></code> tab) shows a dialog built from <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">--with-titles</span></code>. Leaves display each lab’s translated <code class="docutils literal notranslate"><span class="pre">title</span></code> (from per-directory <code class="docutils literal notranslate"><span class="pre">titles.json</span></code> sidecars, generated by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code>), falling back to the filename without <code class="docutils literal notranslate"><span class="pre">.py</span></code>. If the lab’s <code class="docutils literal notranslate"><span class="pre">Flavor</span></code> sets <code class="docutils literal notranslate"><span class="pre">flavor_form_at_startup</span> <span class="pre">=</span> <span class="pre">True</span></code>, a form runs first. A progress dialog then tracks image pulls and container starts (JSON on stderr from <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code>); the project tab appears when every machine is up.</p>
 <p>During an exam, <strong>Open Project</strong> is disabled — only pre-authorised exam labs open automatically.</p>
+<p>The project tabs are the projects of the logged-in user, plus those started on the host by root or the <code class="docutils literal notranslate"><span class="pre">sre</span></code> user (<code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">sre</span> <span class="pre">start</span> <span class="pre">…</span></code>). The projects of the other users of the host (another local login, the users of the <a class="reference internal" href="web.html"><span class="std std-doc">web front-end</span></a> placed on this host) are neither listed nor reachable through <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span></code>; with <code class="docutils literal notranslate"><span class="pre">check_project_owner</span> <span class="pre">=</span> <span class="pre">False</span></code> in the site parameters every project of the host is listed, as before. <strong>File → Close All Projects</strong> runs <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">stop-all</span></code> on the listed projects (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">wipe</span></code> is privileged only).</p>
 </section>
 <section id="saving-and-restoring-a-project">
 <h2>Saving and restoring a project<a class="headerlink" href="#saving-and-restoring-a-project" title="Link to this heading">¶</a></h2>
 <p><strong>File → Save Project</strong> appears only when the current project’s lab sets <code class="docutils literal notranslate"><span class="pre">allow_save_restore</span> <span class="pre">=</span> <span class="pre">True</span></code>. A file dialog asks where to write the <code class="docutils literal notranslate"><span class="pre">.sre</span></code> save file (default <code class="docutils literal notranslate"><span class="pre">~/&lt;lab&gt;.sre</span></code>); the GUI then runs <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">save</span> <span class="pre">&lt;project&gt;</span></code> with its stdout redirected to that file, showing a progress dialog. The file contains the filesystem of every machine (as a diff against its base image) and the project files; it is encrypted when the lab defines <code class="docutils literal notranslate"><span class="pre">save_key</span></code>.</p>
 <p><strong>File → Restore Project</strong> (always available outside exam mode) asks for a <code class="docutils literal notranslate"><span class="pre">.sre</span></code> file and runs <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">restore</span> <span class="pre">-</span></code> with the file on stdin, showing the same image-pull / machine-start progress as <strong>Open Project</strong>. The saved project comes back as a <strong>new</strong> tab (new instance); the original one, if still open, is untouched. Only files are restored — the lab’s <code class="docutils literal notranslate"><span class="pre">restore</span></code> state relaunches its services.</p>
+</section>
+<section id="exporting-a-project">
+<h2>Exporting a project<a class="headerlink" href="#exporting-a-project" title="Link to this heading">¶</a></h2>
+<p><strong>File → Export Kathara Project</strong> (enabled unless the lab sets <code class="docutils literal notranslate"><span class="pre">export_kathara_project</span> <span class="pre">=</span> <span class="pre">False</span></code>) runs <code class="docutils literal notranslate"><span class="pre">sre-wrapper</span> <span class="pre">export</span> <span class="pre">&lt;project&gt;</span></code> with the display settings of the Schema tab and writes <code class="docutils literal notranslate"><span class="pre">~/&lt;lab&gt;.zip</span></code>: the Kathara project (<code class="docutils literal notranslate"><span class="pre">lab.conf</span></code>, the files of every machine) with <code class="docutils literal notranslate"><span class="pre">schema.pdf</span></code> and <code class="docutils literal notranslate"><span class="pre">informations.pdf</span></code>.</p>
+<p><strong>File → Export Schema to PDF</strong> (right below; enabled unless the lab sets <code class="docutils literal notranslate"><span class="pre">export_schema_pdf</span> <span class="pre">=</span> <span class="pre">False</span></code>) writes the drawing of the <em>Schema</em> tab to a PDF chosen in a file dialog (default <code class="docutils literal notranslate"><span class="pre">~/&lt;lab&gt;_schema.pdf</span></code>): the visible machines only, never the hidden ones, even for a debug project or while the <em>Instructor mode</em> button is on, with the tab’s current Lines / Compact-Spread / Order / Icons settings and the machine order of <code class="docutils literal notranslate"><span class="pre">info.json</span></code>. The GUI draws it itself with graphviz from <code class="docutils literal notranslate"><span class="pre">info.json</span></code>; no <code class="docutils literal notranslate"><span class="pre">sre</span></code> command is run.</p>
+<p>Both items are disabled in exam mode.</p>
 </section>
 <section id="project-tabs">
 <h2>Project tabs<a class="headerlink" href="#project-tabs" title="Link to this heading">¶</a></h2>
@@ -583,7 +602,7 @@ sysreseval<span class="w">                                              </span><
 </tbody>
 </table>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">answers/answers.json</span></code> also carries metadata (<code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">email</span></code>, <code class="docutils literal notranslate"><span class="pre">language</span></code>, <code class="docutils literal notranslate"><span class="pre">answers_updated_at</span></code>, plus <code class="docutils literal notranslate"><span class="pre">exam_*</span></code> fields in exam mode); see <a class="reference internal" href="internals.html#archive-format"><span class="std std-ref">Archive format</span></a> for the full schema.</p>
+<p><code class="docutils literal notranslate"><span class="pre">answers/answers.json</span></code> also carries metadata (<code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">fullname</span></code>, <code class="docutils literal notranslate"><span class="pre">email</span></code>, <code class="docutils literal notranslate"><span class="pre">language</span></code>, <code class="docutils literal notranslate"><span class="pre">answers_updated_at</span></code>, plus <code class="docutils literal notranslate"><span class="pre">exam_*</span></code> fields in exam mode, and <code class="docutils literal notranslate"><span class="pre">group</span></code> for the projects of the web front-end); see <a class="reference internal" href="internals.html#archive-format"><span class="std std-ref">Archive format</span></a> for the full schema.</p>
 <p><em>Start evaluation</em> runs <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">--auto-eval</span></code> in a background thread. The periodic background eval (<code class="docutils literal notranslate"><span class="pre">eval_interval_without_exam_mode</span></code>) and <code class="docutils literal notranslate"><span class="pre">eval_before_exit</span></code> run plain <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span></code> (no cooldown, no log line, no stdout).</p>
 </section>
 <section id="instructor-mode">
@@ -617,7 +636,7 @@ sysreseval<span class="w">                                              </span><
 </section>
 <section id="exam-mode">
 <h2>Exam mode<a class="headerlink" href="#exam-mode" title="Link to this heading">¶</a></h2>
-<p>When <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/exam.json</span></code> exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All are disabled, and answers re-save with an updated <code class="docutils literal notranslate"><span class="pre">exam_time_remaining</span></code> on every exam-config change.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">/var/lib/sre/exam.json</span></code> exists, the GUI switches modes: File → Open / Restore / Save / Close / Close All / Export Kathara Project / Export Schema to PDF are disabled, and answers re-save with an updated <code class="docutils literal notranslate"><span class="pre">exam_time_remaining</span></code> on every exam-config change.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -756,6 +775,7 @@ sysreseval<span class="w">                                              </span><
 <li><a class="reference internal" href="#launching">Launching</a></li>
 <li><a class="reference internal" href="#opening-a-project">Opening a project</a></li>
 <li><a class="reference internal" href="#saving-and-restoring-a-project">Saving and restoring a project</a></li>
+<li><a class="reference internal" href="#exporting-a-project">Exporting a project</a></li>
 <li><a class="reference internal" href="#project-tabs">Project tabs</a></li>
 <li><a class="reference internal" href="#instructor-mode">Instructor mode</a></li>
 <li><a class="reference internal" href="#exam-mode">Exam mode</a></li>
