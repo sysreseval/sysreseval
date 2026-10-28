@@ -25,7 +25,7 @@ from aiohttp import web, WSMsgType, WSCloseCode
 
 from SRE import params
 from SRE import common
-from SRE.archive_summary import error_entries, exo_grade_list
+from SRE.archive_summary import error_entries, exo_grade_list, lab_elements
 from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
@@ -174,11 +174,15 @@ class Agent:
                         display_enabled=self.displays.offered(project),
                         connect_all=access.is_privileged_caller(project.rln, identity))
 
-    def _project(self, request) -> Project:
+    def _project(self, request, *, touch: bool = True) -> Project:
+        """The project of the request, checked (a known running lab name the caller may access);
+        its idle clock is reset unless *touch* is false (an instructor reading the results of a
+        student is not the student's activity)."""
         rln = access.check_running_lab_name(request.match_info.get('rln', ''))
         project = self.registry.require(rln)
         access.check_owner(rln, request[IDENTITY_KEY])
-        project.touch()
+        if touch:
+            project.touch()
         return project
 
     async def labs(self, login: str) -> list:
@@ -208,6 +212,7 @@ class Agent:
         app.router.add_post(f'{p}/restart', self.restart)
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
+        app.router.add_get(f'{p}/evaluations', self.evaluations_list)
         app.router.add_post(f'{p}/projects', self.projects_create)
         app.router.add_get(f'{p}/projects/{{rln}}', self.project_get)
         app.router.add_delete(f'{p}/projects/{{rln}}', self.project_close)
@@ -707,7 +712,7 @@ class Agent:
     async def evaluation_get(self, request):
         """Instructors: the last archived evaluation of the project (exo-eval scope), as rows of
         the evaluation table, with the errors of the run."""
-        project = self._project(request)
+        project = self._project(request, touch=False)
         identity = request[IDENTITY_KEY]
         if not identity.is_instructor:
             raise AccessError(403, "instructors only")
@@ -726,6 +731,36 @@ class Agent:
                      'error_count': summary.errors, 'warning_count': summary.warnings,
                      'errors': error_entries(raw.get('errors'))})
         return web.json_response(body)
+
+    async def evaluations_list(self, request):
+        """Instructors: every running project of the lab ``?lab=`` on the host with the elements
+        of its last archived evaluation (the lab summary of the Watch page: the browser matches
+        the elements across the projects by their ``key``).  One row per project: ``owner``,
+        ``fullname`` / ``group`` (the answers metadata), ``last_eval`` (the summary, or null) and
+        ``elements`` / ``parts`` of ``SRE.archive_summary.lab_elements`` (null without archive;
+        the exo-eval scope for every project, a debug one included, so that the columns match).
+        The idle clocks are left alone."""
+        identity = request[IDENTITY_KEY]
+        if not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        lab = request.query.get('lab', '')
+        if not lab:
+            raise AccessError(400, "a lab is expected")
+        projects = [p for p in self.registry.visible_to(identity, all_projects=True) if p.lab_name == lab]
+        rows = []
+        for p in sorted(projects, key=lambda p: (p.owner, p.started, p.rln)):
+            answers = self.answers.read(p)
+            row = {'running_lab_name': p.rln, 'owner': p.owner, 'started_at': p.started,
+                   'fullname': str(answers.get(params.fullname_keyword, '') or ''),
+                   'group': str(answers.get(params.group_keyword, '') or ''),
+                   'last_eval': None, 'elements': None, 'parts': None}
+            found = await self.results.archive(p.rln)
+            if found is not None:
+                summary, raw = found
+                row['last_eval'] = summary.to_json()
+                row['elements'], row['parts'] = lab_elements(raw, lang_priority=lang_priority(identity, p.info))
+            rows.append(row)
+        return web.json_response(rows)
 
     # -- WebSockets -----------------------------------------------------------------------------
 

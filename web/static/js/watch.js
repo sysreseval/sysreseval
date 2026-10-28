@@ -5,14 +5,18 @@
 // sorted by any column, filtered by text and restricted to one group (the select; kept in the
 // URL as ?group=); a row without a recent evaluation is amber, one whose last evaluation had
 // errors is red.  Open goes to the project page (the instructor joins the student's terminals
-// there), Close stops the project.
+// there), Close stops the project.  A click on a row opens the dialog of its last archived
+// evaluation (watch_detail.js), a click on its lab cell the summary of that lab for the rows
+// shown (watch_summary.js); both follow the polls.
 
 import './base.js';
 import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format, resolveText} from './i18n.js';
-import {el, clear, toast, formatTimestamp} from './ui.js';
+import {el, clear, toast, formatTimestamp, formatNumber} from './ui.js';
 import {projectUrl} from './creation.js';
+import {createDetailDialog} from './watch_detail.js';
+import {createSummaryDialog} from './watch_summary.js';
 
 const REFRESH_INTERVAL = 5000;
 const STALE_AFTER_S = 900;     // without an evaluation younger than this (or 2 × the lab's interval): amber
@@ -25,8 +29,9 @@ const groupsEnabled = table.dataset.groups === 'true';   // a group source is co
 const countElement = document.getElementById('watch-count');
 const closing = new Set();     // running lab names whose close is in progress
 
-// group: null = every group, '' = the rows without group, else one group
-const state = {rows: [], sortKey: 'started_at', sortAsc: false, filter: '', group: null};
+// group: null = every group, '' = the rows without group, else one group; shown: the rows
+// after the filters, in the order of the table
+const state = {rows: [], shown: [], sortKey: 'started_at', sortAsc: false, filter: '', group: null};
 let listedGroups = '';         // the groups the select offers, joined: rebuilt only when they change
 
 function columnCount() {
@@ -55,13 +60,8 @@ function ageText(seconds) {
   return format(_('{n} h ago'), {n: Math.floor(seconds / 3600)});
 }
 
-function num(value, digits = 1) {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  const n = Number(value);
-  return Number.isInteger(n) ? String(n) : n.toFixed(digits);
-}
+const detail = createDetailDialog({projectUrl: (row) => projectUrl(row.host, row.running_lab_name), projectApi, title});
+const summary = createSummaryDialog();
 
 // the value a column sorts on
 function sortValue(row, key) {
@@ -179,6 +179,7 @@ function render() {
     fillGroups();
   }
   const rows = state.rows.filter(matches).sort(compare);
+  state.shown = rows;
   countElement.textContent = state.rows.length === rows.length
     ? format(_('{n} project(s)'), {n: rows.length})
     : format(_('{n} of {total} project(s)'), {n: rows.length, total: state.rows.length});
@@ -220,23 +221,31 @@ function renderRow(row) {
     refresh();
   });
   const errorsText = last ? (last.warnings ? `${last.errors} (${last.warnings} ~)` : String(last.errors)) : '';
-  return el('tr', {class: rowClass(row), dataset: {rln}},
+  const tr = el('tr', {class: rowClass(row), dataset: {rln}},
     el('td', {}, row.host || ''),
     el('td', {}, row.owner || ''),
     el('td', {}, row.fullname || ''),
     el('td', {hidden: !groupsEnabled}, row.group || ''),
-    el('td', {title: rln}, title(row)),
-    el('td', {}, formatTimestamp(row.started_at)),
+    el('td', {class: 'lab', title: _('Summary of the lab for the projects shown'),
+              onclick: () => summary.open(row.lab_name, title(row), state.shown)}, title(row)),
+    el('td', {title: rln}, formatTimestamp(row.started_at)),
     el('td', {title: last ? last.eval_date : ''}, last ? ageText(last.age_s) : _('never')),
-    el('td', {class: 'num'}, last ? `${num(last.grade)} / ${num(last.max_grade)}` : ''),
+    el('td', {class: 'num'}, last ? `${formatNumber(last.grade)} / ${formatNumber(last.max_grade)}` : ''),
     el('td', {class: 'num'}, last && last.mark !== null && last.mark !== undefined
-      ? `${num(last.mark)} / ${num(last.maximum_mark)}` : ''),
+      ? `${formatNumber(last.mark)} / ${formatNumber(last.maximum_mark)}` : ''),
     el('td', {class: 'num'}, errorsText),
     el('td', {class: 'num'}, String(row.terminals || 0)),
     el('td', {}, row.managed ? _('web') : _('local')),
     el('td', {class: 'actions'},
       el('a', {class: 'button primary', href: projectUrl(row.host, rln)}, _('Open')),
       closeButton));
+  // the row itself: the last evaluation of the project (its buttons and its lab cell apart)
+  tr.addEventListener('click', (event) => {
+    if (!event.target.closest('a, button, td.lab')) {
+      detail.open(row);
+    }
+  });
+  return tr;
 }
 
 async function refresh() {
@@ -250,6 +259,8 @@ async function refresh() {
   }
   state.rows = Array.isArray(rows) ? rows : [];
   render();
+  detail.update(state.rows);
+  summary.update(state.shown);
 }
 
 function setupControls() {

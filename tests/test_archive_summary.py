@@ -121,3 +121,40 @@ class TestScopes:
         assert [e['title'] for e in A.exo_grade_list(raw)] == ['both', 'exo only']
         assert [e['title'] for e in A.exo_grade_list(raw, debug=True)] == ['both', 'self only', 'exo only']
         assert A.exo_grade_list({}) == []
+
+
+class TestLabElements:
+    """lab_elements(): the elements of an archive for the lab summary of the Watch page."""
+    GRADE_LIST = [
+        {'title': {'en': 'Default route', 'fr': 'Route par défaut'}, 'description': '', 'max_grade': 2, 'grade': 2,
+         'grade_letter': None, 'scope': 3, 'grade_part': 'Routing', 'bonus': False},
+        {'title': 'Address of m2', 'description': {'en': 'The address', 'fr': "L'adresse"}, 'max_grade': 3,
+         'grade': 1.5, 'grade_letter': None, 'scope': 3, 'grade_part': 'Routing', 'bonus': False},
+        {'title': 'ssh', 'description': '', 'max_grade': None, 'grade': None, 'grade_letter': 'OK', 'scope': 3,
+         'grade_part': None, 'bonus': False},
+        {'title': 'IPv6', 'description': '', 'max_grade': 1, 'grade': 0, 'grade_letter': None, 'scope': 3,
+         'grade_part': None, 'bonus': True},
+        {'title': 'self only', 'description': '', 'max_grade': 1, 'grade': 1, 'grade_letter': None,
+         'scope': params.SELF_EVAL_SCOPE, 'grade_part': None, 'bonus': False},
+    ]
+    PARTS = [{'title': 'Routing', 'description': {'en': 'Routing between lan and dmz', 'fr': 'Routage'}}]
+
+    def test_elements_and_parts(self, tmp_path):
+        path = write_archive(tmp_path, f'20261025100102_{RLN}.zst',
+                             archive_dict(grade_list=self.GRADE_LIST, grade_parts=self.PARTS))
+        raw = A.read_archive(path)          # the msgpack round trip: the translated titles stay dicts
+        en, parts = A.lab_elements(raw, lang_priority=['en'])
+        fr, parts_fr = A.lab_elements(raw, lang_priority=['fr', 'en'])
+        assert [e['label'] for e in en] == ['Default route', 'The address', 'ssh', 'IPv6']
+        assert [e['label'] for e in fr] == ['Route par défaut', "L'adresse", 'ssh', 'IPv6']
+        # the key of an element does not depend on the language: the columns of the students match
+        assert [e['key'] for e in en] == [e['key'] for e in fr] and len({e['key'] for e in en}) == 4
+        assert (en[1]['grade'], en[1]['max_grade'], en[1]['grade_letter'], en[1]['part'], en[1]['bonus']) == \
+            (1.5, 3.0, None, 'Routing', False)
+        assert (en[2]['grade'], en[2]['max_grade'], en[2]['grade_letter'], en[2]['part']) == (None, None, 'OK', None)
+        assert en[3]['bonus'] is True and en[3]['grade'] == 0.0
+        assert parts == [{'title': 'Routing', 'label': 'Routing between lan and dmz'}]
+        assert parts_fr == [{'title': 'Routing', 'label': 'Routage'}]
+        # a debug project: the self-only elements too
+        assert [e['label'] for e in A.lab_elements(raw, lang_priority=['en'], debug=True)[0]][-1] == 'self only'
+        assert A.lab_elements({}, lang_priority=['en']) == ([], [])

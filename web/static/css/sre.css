@@ -344,6 +344,29 @@ table.grid tr.row-stale td { background: var(--debug-bg); }
 .watch-legend .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--border); vertical-align: middle; margin-left: 12px; }
 .watch-legend .swatch.row-stale { background: var(--debug-bg); }
 .watch-legend .swatch.row-errors { background: var(--fail-bg); }
+.watch-legend .hint { margin-left: 12px; }
+/* the dialogs of the Watch page: the last evaluation of a project, the summary of a lab */
+table.grid.watch tbody tr[data-rln] { cursor: pointer; }
+table.grid.watch td.lab { text-decoration: underline dotted; }
+dialog.watch-detail { width: 760px; overflow: auto; }
+dialog.watch-summary { width: 95vw; overflow: auto; }
+dialog.watch-detail h2, dialog.watch-summary h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.watch-detail table.grid.evaluation { margin: 8px 0; width: 100%; }
+.evaluation-errors { margin: 4px 0; padding-left: 20px; }
+.evaluation-errors li.error { color: var(--danger); }
+.evaluation-errors li.warning { color: var(--muted); }
+a.button.disabled { pointer-events: none; opacity: 0.5; }
+.watch-summary-tables { display: flex; flex-direction: column; gap: 8px; }
+.watch-summary-tables table.grid { margin: 0; }
+table.grid.matrix th.part, table.grid.matrix th.element { text-align: center; }
+table.grid.matrix th.element { min-width: 2em; cursor: help; }
+table.grid.matrix td.num, table.grid.elements td.num { text-align: right; white-space: nowrap; }
+table.grid.matrix tr.stats td { font-weight: bold; background: var(--bar-bg); }
+table.grid.elements tr.part td { background: var(--bar-bg); }
+/* the grade colours of SRE/evaluation_table.py */
+table.grid td.g-ok { background: #a8f0a8; }
+table.grid td.g-meh { background: #f0e8a8; }
+table.grid td.g-fail { background: #f0a8a8; }
 .instructor-option { display: block; margin: 8px; }
 
 /* the Pool page of the instructors: the state cell coloured, the status line, the selection bar */

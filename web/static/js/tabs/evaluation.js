@@ -9,8 +9,7 @@
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
 import {_, format} from '../i18n.js';
-
-const KIND_SEPARATOR = 'separator';
+import {renderEvaluationTable} from '../evaluation_table.js';
 
 export function createEvaluationTab(ctx) {
   const button = el('button', {type: 'button', class: 'primary'}, _('Start evaluation'));
@@ -29,32 +28,7 @@ export function createEvaluationTab(ctx) {
   }
 
   function renderTable(header, rows) {
-    clear(table);
-    columns = header.length || 3;
-    table.append(el('thead', {}, el('tr', {}, ...header.map((label) => el('th', {}, label)))));
-    const body = el('tbody');
-    for (const row of rows) {
-      const tr = el('tr', {class: (row.bold ? 'bold ' : '') + (row.kind === KIND_SEPARATOR ? 'separator' : '')});
-      if (row.span) {
-        const cell = row.cells[0] || {text: ''};
-        tr.append(styledCell(cell, columns));
-      } else {
-        row.cells.forEach((cell, index) => tr.append(styledCell(cell, 1, index > 0)));
-      }
-      body.append(tr);
-    }
-    table.append(body);
-  }
-
-  function styledCell(cell, colspan, numeric) {
-    const td = el('td', {colspan: colspan > 1 ? colspan : undefined, class: numeric ? 'num' : undefined}, cell.text || '');
-    if (cell.color) {
-      td.style.backgroundColor = cell.color;
-    }
-    if (cell.align && cell.align !== 'left') {
-      td.style.textAlign = cell.align;
-    }
-    return td;
+    columns = renderEvaluationTable(table, header, rows);
   }
 
   function errorRow(message) {

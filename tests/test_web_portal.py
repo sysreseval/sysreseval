@@ -831,6 +831,13 @@ class TestInstructorThroughThePortal:
                 assert rows[0]['last_eval']['grade'] == 4.5 and rows[0]['fullname'] == 'Alice'
                 data = await (await h.client.get(f'{base}/evaluation', headers=prof)).json()
                 assert data['mark'] == 18.0 and data['rows'] and data['archive'].endswith('.zst')
+                # the lab summary: every project of the lab on every host with its last elements
+                assert (await h.client.get('/api/watch/evaluations?lab=sre@dhcp.py', headers=bob)).status == 403
+                assert (await h.client.get('/api/watch/evaluations', headers=prof)).status == 400
+                rows = await (await h.client.get('/api/watch/evaluations?lab=sre@dhcp.py', headers=prof)).json()
+                assert [(r['host'], r['owner'], r['group'], r['last_eval']['grade'], len(r['elements'])) for r in rows] == \
+                    [('a01', 'alice', 'INFO1', 4.5, 3)]
+                assert await (await h.client.get('/api/watch/evaluations?lab=none/x.py', headers=prof)).json() == []
                 # the instructor evaluates the student's project (privileged on the agent) and reads her answers only
                 assert (await h.client.post(f'{base}/eval', headers={**prof, **CSRF})).status == 200
                 assert (await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'x'}},
@@ -944,6 +951,9 @@ class TestInstructorThroughThePortal:
                 rows = await (await h.client.get('/api/watch', headers=zoe)).json()
                 assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')
                 assert resolver.calls.count('alice') == 1                           # one lookup, cached
+                rows = await (await h.client.get('/api/watch/evaluations?lab=sre@dhcp.py', headers=zoe)).json()
+                assert (rows[0]['owner'], rows[0]['group'], rows[0]['elements']) == ('alice', 'INFO1', None)
+                assert resolver.calls.count('alice') == 1
         run(go())
 
     def test_complete_groups(self):

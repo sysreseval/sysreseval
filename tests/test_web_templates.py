@@ -192,6 +192,7 @@ class TestTemplates:
                     'terminals', 'managed'):
             assert f'data-sort="{key}"' in html, key
         assert 'data-sort="fullname">Name</th>' in html and 'colspan="13"' in html   # the full name as a column
+        assert 'click a row for its last evaluation, a lab for the summary of the lab' in html   # the dialogs
         assert 'data-login="alice"' in html
         # the group column and select exist, hidden without a configured group source
         assert 'data-groups="false"' in html and 'data-sort="group" hidden>' in html

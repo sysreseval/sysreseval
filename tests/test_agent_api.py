@@ -1038,14 +1038,49 @@ class TestInstructor:
                 assert (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers())).status == 403
                 assert (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))).status == 404
                 await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
+                project = h.agent.registry.require(rln)
+                project.last_activity = 0.0
                 resp = await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))
                 data = await resp.json()
                 assert resp.status == 200
+                assert project.last_activity == 0.0     # reading the results is not the student's activity
                 assert data['header'] == ['Element', 'Grade', 'Max grade']
                 assert [r['kind'] for r in data['rows']][-1] == 'mark' and any(r['kind'] == 'total' for r in data['rows'])
                 assert (data['grade'], data['max_grade'], data['mark'], data['maximum_mark']) == (4.5, 5, 18.0, 20)
                 assert data['errors'] == [] and (data['error_count'], data['warning_count']) == (0, 0)
                 assert data['eval_date'] and data['archive'].endswith('.zst')
+        run(go())
+
+    def test_lab_evaluations(self, tmp_path):
+        """The lab summary of the Watch page: every project of a lab with the elements of its
+        last archived evaluation, matched across the students by a language-independent key."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                alice_rln = await h.started()
+                bob_rln = await h.started(BOB)
+                await h.client.post(f'/v1/projects/{alice_rln}/eval', headers=headers())
+                assert (await h.client.get('/v1/evaluations?lab=sre@dhcp.py', headers=headers())).status == 403
+                assert (await h.client.get('/v1/evaluations', headers=headers(PROF))).status == 400
+                assert await (await h.client.get('/v1/evaluations?lab=other/lab.py', headers=headers(PROF))).json() == []
+                for p in h.agent.registry.visible_to(PROF, all_projects=True):
+                    p.last_activity = 0.0
+                rows = await (await h.client.get('/v1/evaluations?lab=sre@dhcp.py', headers=headers(PROF))).json()
+                assert [(r['running_lab_name'], r['owner'], r['fullname'], r['group']) for r in rows] == \
+                    [(alice_rln, 'alice', 'Alice A', 'INFO1'), (bob_rln, 'bob', '', '')]
+                assert all(p.last_activity == 0.0 for p in h.agent.registry.visible_to(PROF, all_projects=True))   # idle clocks untouched
+                alice, bob = rows
+                assert (bob['last_eval'], bob['elements'], bob['parts']) == (None, None, None)
+                assert alice['last_eval']['grade'] == 4.5 and alice['last_eval']['archive'].endswith('.zst')
+                assert [(e['label'], e['grade'], e['max_grade'], e['part'], e['bonus']) for e in alice['elements']] == [
+                    ('Default route of m1', 2.0, 2.0, 'Routing', False), ('Address of m2', 1.5, 3.0, 'Routing', False),
+                    ('IPv6 route of m1', 1.0, 1.0, None, True)]
+                assert len({e['key'] for e in alice['elements']}) == 3
+                assert alice['parts'] == [{'title': 'Routing', 'label': 'Routing between lan and dmz'}]
+                # the labels in the instructor's language, the keys unchanged
+                prof_fr = Identity(login='prof', role='instructor', view='instructor', language='fr')
+                rows_fr = await (await h.client.get('/v1/evaluations?lab=sre@dhcp.py', headers=headers(prof_fr))).json()
+                assert rows_fr[0]['parts'][0]['label'] == 'Routage entre lan et dmz'
+                assert [e['key'] for e in rows_fr[0]['elements']] == [e['key'] for e in alice['elements']]
         run(go())
 
     def test_periodic_evaluation_of_a_web_project(self, tmp_path):

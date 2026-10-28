@@ -511,6 +511,90 @@ msgstr "web"
 msgid "local"
 msgstr "local"
 
+# --- the dialogs of the Watch page (watch.html, watch.js, watch_detail.js, watch_summary.js) and the
+# --- evaluation table the agent lays out (SRE/evaluation_table.py, translated with this domain) ----
+
+msgid "click a row for its last evaluation, a lab for the summary of the lab"
+msgstr "cliquer sur une ligne pour sa dernière évaluation, sur un TP pour le bilan du TP"
+
+msgid "Summary of the lab for the projects shown"
+msgstr "Bilan du TP pour les projets affichés"
+
+msgid "Open the project"
+msgstr "Ouvrir le projet"
+
+msgid "The project is closed."
+msgstr "Le projet est fermé."
+
+msgid "Lab summary: {lab}"
+msgstr "Bilan du TP : {lab}"
+
+msgid "{n} project(s) shown, {m} evaluated"
+msgstr "{n} projet(s) affiché(s), {m} évalué(s)"
+
+msgid "never evaluated"
+msgstr "jamais évalué"
+
+msgid "Max"
+msgstr "Max"
+
+msgid "Min"
+msgstr "Min"
+
+msgid "Average"
+msgstr "Moyenne"
+
+msgid "Success"
+msgstr "Réussite"
+
+msgid "Distribution"
+msgstr "Répartition"
+
+msgid "{max} (Bonus)"
+msgstr "{max} (Bonus)"
+
+msgid "Subtotal for {part}"
+msgstr "Sous-total pour {part}"
+
+msgid "Element"
+msgstr "Élément"
+
+msgid "Scope"
+msgstr "Portée"
+
+msgid "self Grade"
+msgstr "Points auto"
+
+msgid "exo Grade"
+msgstr "Points exo"
+
+msgid "Max grade"
+msgstr "Points max"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "MEH"
+msgstr "BOF"
+
+msgid "FAIL"
+msgstr "ERREUR"
+
+msgid "Bonus"
+msgstr "Bonus"
+
+msgid "Total for {part}"
+msgstr "Total pour {part}"
+
+msgid "Total"
+msgstr "Total"
+
+msgid "Total (self)"
+msgstr "Total (auto)"
+
+msgid "Total (exo)"
+msgstr "Total (exo)"
+
 msgid "(keeps the instructor texts, lists every state, logs the states applied)"
 msgstr "(conserve les textes enseignant, liste tous les états, journalise les états appliqués)"
 

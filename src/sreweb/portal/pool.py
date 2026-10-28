@@ -449,29 +449,43 @@ class Pool:
 
     # -- projects -------------------------------------------------------------------------------
 
+    async def _gather(self, identity: Identity, path: str, params=None) -> list:
+        """The rows of ``GET {host}/v1{path}`` on every reachable host, each with ``host`` set to
+        the host's name; a host that fails or answers something else than a list of dicts
+        contributes nothing (logged)."""
+        async def one(host: HostConfig):
+            try:
+                async with self.session.get(f"{host.url}/v1{path}", headers=self.headers(host, identity),
+                                            params=params, timeout=aiohttp.ClientTimeout(total=STATUS_TIMEOUT)) as resp:
+                    if resp.status != 200:
+                        log.warning("host %s: GET /v1%s answered %s: %s", host.name, path, resp.status,
+                                    (await resp.text())[:300])
+                        return []
+                    rows = await resp.json()
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+                log.warning("host %s: GET /v1%s failed: %s", host.name, path, e or type(e).__name__)
+                return []
+            if not isinstance(rows, list):
+                return []
+            return [dict(p, host=host.name) for p in rows if isinstance(p, dict)]
+        results = await asyncio.gather(*(one(h) for h in list(self.hosts.values()) if self.status[h.name].reachable))
+        return [p for group in results for p in group]
+
     async def projects_of(self, identity: Identity, *, all_projects: bool = False) -> list:
         """The projects of a user on every reachable host: ``[{host, ...project}]``; with
         *all_projects* (an instructor's Watch page) every project of every host, with the owner's
         name and the last archived evaluation."""
-        params = {'all': '1'} if all_projects else None
-
-        async def one(host: HostConfig):
-            try:
-                async with self.session.get(f"{host.url}/v1/projects", headers=self.headers(host, identity),
-                                            params=params, timeout=aiohttp.ClientTimeout(total=STATUS_TIMEOUT)) as resp:
-                    if resp.status != 200:
-                        log.warning("host %s: GET /v1/projects answered %s: %s", host.name, resp.status,
-                                    (await resp.text())[:300])
-                        return []
-                    projects = await resp.json()
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
-                log.warning("host %s: GET /v1/projects failed: %s", host.name, e or type(e).__name__)
-                return []
-            return [dict(p, host=host.name) for p in projects if isinstance(p, dict)]
-        results = await asyncio.gather(*(one(h) for h in list(self.hosts.values()) if self.status[h.name].reachable))
-        projects = [p for group in results for p in group]
+        projects = await self._gather(identity, '/projects', {'all': '1'} if all_projects else None)
         projects.sort(key=lambda p: (p.get('started_at', ''), p.get('running_lab_name', '')))
         return projects
+
+    async def evaluations_of(self, identity: Identity, lab: str) -> list:
+        """The lab summary of the Watch page: every running project of *lab* on every reachable
+        host with the elements of its last archived evaluation (``GET /v1/evaluations`` of the
+        agents), by owner."""
+        rows = await self._gather(identity, '/evaluations', {'lab': lab})
+        rows.sort(key=lambda p: (p.get('owner', ''), p.get('started_at', ''), p.get('running_lab_name', '')))
+        return rows
 
     def _labs_hosts(self, identity: Identity) -> list:
         """The hosts whose lab list may be served to *identity*, the most likely placement of a

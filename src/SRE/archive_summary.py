@@ -24,6 +24,7 @@ import msgpack
 import zstandard as zstd
 
 from SRE import params
+from SRE.common import TranslatedText, _tt_hash_str
 
 ARCHIVE_NAME_RE = re.compile(params.archive_name_match_pattern)
 WARNING_CATEGORY = "WARNING"
@@ -199,3 +200,38 @@ def exo_grade_list(raw: dict, *, debug: bool = False) -> list:
     if debug:
         return grades
     return [e for e in grades if int(e.get('scope', 3) or 0) & params.EXO_EVAL_SCOPE]
+
+
+def _label(description, title, lang_priority) -> str:
+    """The text a report shows for an element or a part: its description, else its title, in the
+    first language of *lang_priority* it has."""
+    for value in (description, title):
+        text = TranslatedText.from_value(value).resolve_priority(list(lang_priority))
+        if text:
+            return text
+    return ''
+
+
+def lab_elements(raw: dict, *, lang_priority, debug: bool = False) -> tuple[list, list]:
+    """``(elements, parts)`` of an archive for the lab summary of the Watch page, where the
+    elements of several projects of one lab are matched across students: one dict per element
+    of :func:`exo_grade_list` with ``key`` (``_tt_hash_str`` of the title: the key of
+    ``Grade0._grades``, the same in every language), ``label`` (the description, else the title,
+    resolved by *lang_priority*), ``grade``, ``max_grade``, ``grade_letter``, ``part`` (the title
+    of its grade part, or ``None``) and ``bonus``; the parts as ``[{'title', 'label'}]``."""
+    elements = []
+    for e in exo_grade_list(raw, debug=debug):
+        title = e.get('title', '')
+        part = e.get('grade_part') or None
+        elements.append({
+            'key': _tt_hash_str(title),
+            'label': _label(e.get('description', ''), title, lang_priority),
+            'grade': _float_or_none(e.get('grade')),
+            'max_grade': _float_or_none(e.get('max_grade')),
+            'grade_letter': str(e['grade_letter']) if e.get('grade_letter') else None,
+            'part': str(part) if part is not None else None,
+            'bonus': bool(e.get('bonus', False)),
+        })
+    parts = [{'title': str(p.get('title', '')), 'label': _label(p.get('description', ''), p.get('title', ''), lang_priority)}
+             for p in (raw.get('grade_parts') or []) if isinstance(p, dict)]
+    return elements, parts

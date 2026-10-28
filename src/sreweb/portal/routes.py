@@ -98,6 +98,7 @@ class Routes:
         r.add_post('/api/pool/hosts/{name}/{action}', self.api_pool_action)
         r.add_get('/api/projects', self.api_projects)
         r.add_get('/api/watch', self.api_watch)
+        r.add_get('/api/watch/evaluations', self.api_watch_evaluations)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -461,6 +462,19 @@ class Routes:
         the agents know none for (the Qt GUI projects) from the directory when it is readable."""
         identity = self._require_instructor(request)
         rows = await self.pool.projects_of(identity, all_projects=True)
+        if self.roles is not None:
+            await complete_groups(rows, self.roles)
+        return web.json_response(rows)
+
+    async def api_watch_evaluations(self, request):
+        """Instructors: the lab summary of the Watch page, every running project of the lab
+        ``?lab=`` on every reachable host with the elements of its last archived evaluation (the
+        agents read their archives), the groups completed as for ``/api/watch``."""
+        identity = self._require_instructor(request)
+        lab = request.query.get('lab', '')
+        if not lab:
+            return json_error(400, "a lab is expected")
+        rows = await self.pool.evaluations_of(identity, lab)
         if self.roles is not None:
             await complete_groups(rows, self.roles)
         return web.json_response(rows)

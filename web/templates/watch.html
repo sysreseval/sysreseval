@@ -14,6 +14,7 @@
 <div class="watch-legend muted">
   <span class="swatch row-stale"></span> {{ _("no recent evaluation") }}
   <span class="swatch row-errors"></span> {{ _("errors in the last evaluation") }}
+  <span class="hint">· {{ _("click a row for its last evaluation, a lab for the summary of the lab") }}</span>
 </div>
 <table id="watch" class="grid watch" data-groups="{{ 'true' if groups else 'false' }}">
   <thead>

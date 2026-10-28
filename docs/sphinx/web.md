@@ -578,6 +578,23 @@ What an instructor gets:
   red, one without an evaluation younger than 15 minutes (or twice the lab's evaluation
   interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
   their own host (`params.archive_dirs`) on demand, nothing is scanned while nobody watches.
+  As in `sre watch`, the page also shows the details: a **click on a row** opens a dialog with
+  the last archived evaluation of the project (the owner, the lab and the host in the title,
+  the date of the evaluation, the table of its grade elements with the parts, the subtotals,
+  the bonuses, the total and the mark, then the errors and the warnings of the run; *Open the
+  project* goes to its page; Esc or *Close* goes back), and a **click on the lab cell** of a
+  row opens the summary of that lab for the rows shown (the text filter and the group select
+  apply, so a class group alone when wanted): a matrix with one row per project and one column
+  per grade element (numbered, the element as the tooltip of the number, the parts as a header
+  row; a cell is the grade, or the OK / MEH / FAIL letter, coloured like the evaluation table;
+  Total and Mark last; a project never evaluated says so), the rows *Max*, *Average* and
+  *Success* (how many of the evaluated projects got the full grade) below it, then the table of
+  the elements with their maximum, minimum, average and distribution of the grades (`1.5(2)
+  3(7)`), a subtotal row per part, as the lab summary of `sre watch`. The elements of the
+  projects are matched by their title, whatever the language of each student. Both dialogs
+  follow the polls: a new evaluation of the project, or of one of the projects of the lab,
+  reloads the content, a project closed is said so. Reading the results of a student this way
+  never counts as their activity (their project's idle clock is left alone).
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for

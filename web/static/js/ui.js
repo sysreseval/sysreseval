@@ -61,3 +61,12 @@ export function formatTimestamp(text) {
   const date = parseTimestamp(text);
   return date ? date.toLocaleString() : (text || '');
 }
+
+// A grade or a mark: a whole number without decimals, else *digits* decimals; '' when missing.
+export function formatNumber(value, digits = 1) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(digits);
+}
