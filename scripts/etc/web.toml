@@ -76,7 +76,8 @@ header_email = "X-Remote-Email"
 header_groups = "X-Remote-Groups"
 groups_separator = ";"
 # The student group (sre-web-apache.conf sets X-Remote-Group from departmentNumber; the first
-# value, split like the groups header); "" = none, unless ldap_roles reads attr_group below.
+# value, split like the groups header); "" = none, unless ldap_roles / ldap_groups read attr_group
+# below.
 # header_group = "X-Remote-Group"
 instructor_groups = []
 # A second header test: the values of this header (an attribute mod_authnz_ldap exports, e.g.
@@ -89,6 +90,10 @@ instructor_groups = []
 # [auth.ldap]; the role, and the group of attr_group, are cached per login for ldap_roles_ttl.
 # ldap_roles = true
 ldap_roles_ttl = "10m"
+# Or only the group: the portal reads attr_group of [auth.ldap] (uri and search_base needed) for a
+# user whose group header is empty and for the owners of the Watch page the agents know no group
+# for (the projects of the Qt GUI); the roles stay those of the headers.  ldap_roles implies it.
+# ldap_groups = true
 # Where Logout sends the browser (the logout handler of a mod_auth_form login); empty: no Logout
 # button (an HTTP Basic authentication cannot be logged out of).
 logout_url = ""

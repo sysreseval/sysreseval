@@ -20,6 +20,7 @@ from .presentation import (Presence, Presentation, Presentations, Watcher, SPECT
                            MAX_VIEW_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
 from .ratelimit import RateLimiter
 from .relay import Relay
+from .roles import complete_groups
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
 from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
 
@@ -58,9 +59,10 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 
 class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
-                 presentations: Presentations | None = None):
+                 presentations: Presentations | None = None, roles=None):
         self.cfg = cfg
         self.pool = pool
+        self.roles = roles       # the directory lookups (roles.RoleCache) completing the Watch rows' groups
         self.manager = manager
         self.relay = relay
         self.access = access
@@ -453,9 +455,13 @@ class Routes:
 
     async def api_watch(self, request):
         """Instructors: every project of every reachable host, with its owner and the summary of
-        its last archived evaluation (the agents read their archives)."""
+        its last archived evaluation (the agents read their archives); the group of the owners
+        the agents know none for (the Qt GUI projects) from the directory when it is readable."""
         identity = self._require_instructor(request)
-        return web.json_response(await self.pool.projects_of(identity, all_projects=True))
+        rows = await self.pool.projects_of(identity, all_projects=True)
+        if self.roles is not None:
+            await complete_groups(rows, self.roles)
+        return web.json_response(rows)
 
     def _idle_timeout(self, identity: Identity) -> float:
         return self.cfg.pool.idle_timeout_anonymous if identity.anonymous else self.cfg.pool.idle_timeout_authenticated

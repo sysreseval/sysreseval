@@ -157,10 +157,30 @@ class TestWebConfig:
         ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
                                                                    'attr_group': 'departmentNumber'}}, True),
         ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}}, False),
+        ({'mode': 'proxy', 'proxy': {'ldap_groups': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
+                                                                    'attr_group': 'departmentNumber'}}, True),
     ])
     def test_groups_configured(self, auth, expected):
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'], 'auth': auth})
         assert cfg.groups_configured is expected
+
+    def test_ldap_groups_needs_the_directory_and_attr_group(self):
+        base = {'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1']}
+        directory = {'uri': 'ldap://x', 'search_base': 'ou=people'}
+        with pytest.raises(ConfigError, match='auth.ldap.uri is required with auth.proxy.ldap_groups'):
+            web_config_from_dict({**base, 'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': True}}})
+        with pytest.raises(ConfigError, match='attr_group is required with auth.proxy.ldap_groups'):
+            web_config_from_dict({**base, 'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': True}, 'ldap': directory}})
+        with pytest.raises(ConfigError, match='ldap_groups must be true or false'):
+            web_config_from_dict({**base, 'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': 'yes'}}})
+        cfg = web_config_from_dict({**base, 'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': True},
+                                                     'ldap': {**directory, 'attr_group': 'departmentNumber'}}})
+        assert cfg.auth.proxy.ldap_groups and cfg.directory_lookups and cfg.groups_configured
+        # the lookups of the Watch page in the other modes: LDAP mode with attr_group only
+        assert not web_config_from_dict({**base, 'auth': {'mode': 'proxy', 'proxy': {'header_group': 'X-Remote-Group'}}}).directory_lookups
+        assert web_config_from_dict({**base, 'auth': {'mode': 'ldap', 'ldap': {**directory, 'attr_group': 'departmentNumber'}}}).directory_lookups
+        assert not web_config_from_dict({**base, 'auth': {'mode': 'ldap', 'ldap': directory}}).directory_lookups
+        assert not web_config_from_dict({**base, 'auth': {'mode': 'anonymous'}}).directory_lookups
 
     def test_site(self, tmp_path):
         logo = tmp_path / 'logo.jpg'

@@ -217,7 +217,7 @@ class ProxyAuthConfig:
     header_groups: str = 'X-Remote-Groups'
     groups_separator: str = ';'       # mod_authnz_ldap joins the values of an attribute with "; "
     # The student group (the first value of the header, split like the groups header); '' = none
-    # here (ldap_roles with attr_group of [auth.ldap] gives it otherwise).
+    # here (ldap_roles / ldap_groups with attr_group of [auth.ldap] give it otherwise).
     header_group: str = ''
     instructor_groups: list = field(default_factory=list)   # values of the groups header giving the role
     # A second header test: the values of instructor_header (split like the groups header) in
@@ -228,6 +228,10 @@ class ProxyAuthConfig:
     # to a group membership without a memberOf overlay in this mode); the role is cached per login.
     ldap_roles: bool = False
     ldap_roles_ttl: float = 600.0     # seconds
+    # Only the group: attr_group of [auth.ldap] read for a user whose group header is empty and for
+    # the owners of the Watch page the agents know no group for (the projects of the Qt GUI); the
+    # roles stay those of the headers (ldap_roles implies it).  Cached like the roles.
+    ldap_groups: bool = False
     logout_url: str = ''              # where Logout sends the browser; '' = no Logout button
 
 
@@ -383,8 +387,17 @@ class WebConfig:
             return bool(self.auth.ldap.attr_group)
         if self.auth.mode == AUTH_PROXY:
             proxy = self.auth.proxy
-            return bool(proxy.header_group or (proxy.ldap_roles and self.auth.ldap.attr_group))
+            return bool(proxy.header_group or ((proxy.ldap_roles or proxy.ldap_groups) and self.auth.ldap.attr_group))
         return False
+
+    @property
+    def directory_lookups(self) -> bool:
+        """Whether the portal looks logins up in the directory itself (``portal.roles.RoleCache``):
+        proxy mode with ``ldap_roles`` or ``ldap_groups``, LDAP mode with ``attr_group`` (the
+        groups of the Watch rows the agents know none for)."""
+        if self.auth.mode == AUTH_PROXY:
+            return self.auth.proxy.ldap_roles or self.auth.proxy.ldap_groups
+        return self.auth.mode == AUTH_LDAP and bool(self.auth.ldap.attr_group)
 
 
 def host_config_from_dict(h: dict, where: str) -> HostConfig:
@@ -421,8 +434,12 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if auth.mode not in AUTH_MODES:
         raise ConfigError(f"{path}: auth.mode must be " + ', '.join(f"'{m}'" for m in AUTH_MODES[:-1])
                           + f" or '{AUTH_MODES[-1]}'")
-    if auth.mode == AUTH_LDAP or (auth.mode == AUTH_PROXY and proxy.ldap_roles):
-        why = "in ldap mode" if auth.mode == AUTH_LDAP else "with auth.proxy.ldap_roles"
+    for name in ('ldap_roles', 'ldap_groups'):
+        if not isinstance(getattr(proxy, name), bool):
+            raise ConfigError(f"{path}: auth.proxy.{name} must be true or false")
+    if auth.mode == AUTH_LDAP or (auth.mode == AUTH_PROXY and (proxy.ldap_roles or proxy.ldap_groups)):
+        why = "in ldap mode" if auth.mode == AUTH_LDAP else \
+            "with auth.proxy.ldap_roles" if proxy.ldap_roles else "with auth.proxy.ldap_groups"
         if not ldap.uri:
             raise ConfigError(f"{path}: auth.ldap.uri is required {why}")
         if not ldap.bind_dn_template and not ldap.search_base:
@@ -440,6 +457,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
                                                 and not re.match(r'^[A-Za-z][A-Za-z0-9;-]*$', ldap.attr_group.strip())):
         raise ConfigError(f"{path}: auth.ldap.attr_group must be an LDAP attribute name")
     ldap.attr_group = ldap.attr_group.strip()
+    if auth.mode == AUTH_PROXY and proxy.ldap_groups and not ldap.attr_group:
+        raise ConfigError(f"{path}: auth.ldap.attr_group is required with auth.proxy.ldap_groups")
     for name in ('header_login', 'header_fullname', 'header_email', 'header_groups', 'groups_separator'):
         if not str(getattr(proxy, name)).strip():
             raise ConfigError(f"{path}: auth.proxy.{name} cannot be empty")

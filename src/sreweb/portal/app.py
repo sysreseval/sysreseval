@@ -33,8 +33,10 @@ PROXY_WARNINGS_MAX = 100
 
 class Portal:
     def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs, role_resolver=None):
-        """*role_resolver*: proxy mode with ``ldap_roles``, an object with ``role_for(login)``
-        (the ``LdapRoleResolver`` of ``[auth.ldap]`` by default; the tests inject a fake)."""
+        """*role_resolver*: an object with ``resolve(login) -> DirectoryLookup`` (the
+        ``LdapRoleResolver`` of ``[auth.ldap]`` by default; the tests inject a fake), used when
+        ``cfg.directory_lookups`` (proxy mode with ``ldap_roles`` / ``ldap_groups``, LDAP mode with
+        ``attr_group``: the groups of the Watch rows)."""
         self.cfg = cfg
         self.web_dir = Path(web_dir)
         self.localedirs = list(localedirs)
@@ -48,7 +50,7 @@ class Portal:
         self._proxy_warned: set = set()
         self.access = AccessLog(cfg.access_log, cfg.trusted_proxies)
         self.roles: RoleCache | None = None
-        if cfg.auth.mode == AUTH_PROXY and cfg.auth.proxy.ldap_roles:
+        if cfg.directory_lookups:
             self.roles = RoleCache(role_resolver or LdapRoleResolver(cfg.auth.ldap), ttl=cfg.auth.proxy.ldap_roles_ttl)
 
     def make_app(self) -> web.Application:
@@ -68,7 +70,7 @@ class Portal:
         self.presence = Presence()
         self.presentations = Presentations(self.presence)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
-                             access=self.access, presentations=self.presentations)
+                             access=self.access, presentations=self.presentations, roles=self.roles)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -134,16 +136,19 @@ class Portal:
     async def identity_middleware(self, request, handler):
         if self.cfg.auth.mode == AUTH_PROXY:
             identity = self._proxy_identity(request)
-            if identity is not None and self.roles is not None \
-                    and (identity.role != ROLE_INSTRUCTOR or self.cfg.auth.ldap.attr_group):
-                # the LDAP tests of ldap_roles, after the header tests (cached per login); the
-                # lookup also reads the group, so it runs for a header-made instructor too when
-                # attr_group is set (the header's role and group win when they have a value)
-                found = await self.roles.get(identity.login)
-                identity = replace(identity,
-                                   role=ROLE_INSTRUCTOR if identity.is_instructor or found.role == ROLE_INSTRUCTOR
-                                   else ROLE_STUDENT,
-                                   group=identity.group or found.group)
+            if identity is not None and self.roles is not None:
+                # the directory after the header tests (cached per login): the role of ldap_roles
+                # for a user the headers did not make an instructor, the group of attr_group
+                # (ldap_roles or ldap_groups) for a user whose header gives none; the headers win
+                proxy = self.cfg.auth.proxy
+                want_role = proxy.ldap_roles and not identity.is_instructor
+                want_group = bool(self.cfg.auth.ldap.attr_group) and not identity.group
+                if want_role or want_group:
+                    found = await self.roles.get(identity.login)
+                    identity = replace(identity,
+                                       role=ROLE_INSTRUCTOR if identity.is_instructor
+                                       or (proxy.ldap_roles and found.role == ROLE_INSTRUCTOR) else ROLE_STUDENT,
+                                       group=identity.group or found.group)
             request[IDENTITY_KEY] = identity
         else:
             request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)

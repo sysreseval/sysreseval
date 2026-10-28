@@ -875,3 +875,50 @@ class TestInstructorThroughThePortal:
                 me = (await (await h.client.get('/api/me', headers={**who('ann'), 'X-Remote-Gid': '2000'})).json())['identity']
                 assert (me['role'], me['group']) == ('instructor', '')   # never demoted by a directory failure
         run(go())
+
+    def test_ldap_groups_in_proxy_mode(self, tmp_path):
+        """ldap_groups alone: the directory gives the group (never the role) of a user whose header
+        carries none, and the group of the owners the Watch rows lack (the Qt GUI projects)."""
+        over = {'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': True, 'header_group': 'X-Remote-Group',
+                                                     'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000']},
+                         'ldap': {'uri': 'ldaps://ldap.example.org', 'search_base': 'ou=people,dc=example,dc=org',
+                                  'attr_group': 'departmentNumber'}},
+                'trusted_proxies': ['127.0.0.1', '::1']}
+
+        async def go():
+            resolver = FakeRoleResolver({'zoe': 'instructor'}, groups={'zoe': 'INFO9', 'alice': 'INFO1'})
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
+                me = (await (await h.client.get('/api/me', headers=who('zoe'))).json())['identity']
+                assert (me['role'], me['group']) == ('student', 'INFO9')          # the group, never the role
+                zoe = {**who('zoe'), 'X-Remote-Gid': '2000'}
+                me = (await (await h.client.get('/api/me', headers=zoe)).json())['identity']
+                assert (me['role'], me['group']) == ('instructor', 'INFO9') and resolver.calls == ['zoe']   # cached
+                me = (await (await h.client.get('/api/me', headers=who('bob', group='HDR'))).json())['identity']
+                assert (me['role'], me['group']) == ('student', 'HDR') and 'bob' not in resolver.calls   # no lookup
+                assert 'zoe True True' in await (await h.client.get('/watch', headers=zoe)).text()   # a group source
+                # a project of alice, whose header has no group: the directory's goes into the metadata
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**who('alice'), **CSRF})
+                rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
+                rows = await (await h.client.get('/api/watch', headers=zoe)).json()
+                assert (rows[0]['owner'], rows[0]['group']) == ('alice', 'INFO1')
+                # the answers file of a Qt GUI project carries no group: the row gets the directory's
+                answers_file = h.pub / 'projects' / rln / 'answers' / 'answers.json'
+                answers_file.write_text(json.dumps({'login': 'alice', 'fullname': 'Alice', 'hostname': 'pc1'}))
+                rows = await (await h.client.get('/api/watch', headers=zoe)).json()
+                assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')
+                assert resolver.calls.count('alice') == 1                           # one lookup, cached
+        run(go())
+
+    def test_complete_groups(self):
+        """The Watch rows without a group: the directory's group by owner login, one lookup per
+        login, nothing for an unknown login, an invalid login or a row with a group."""
+        from sreweb.portal.roles import RoleCache, complete_groups
+        resolver = FakeRoleResolver({}, groups={'alice': 'INFO1'})
+        cache = RoleCache(resolver, ttl=600)
+        rows = [{'owner': 'alice', 'group': ''}, {'owner': 'alice'}, {'owner': 'bob', 'group': ''},
+                {'owner': 'carl', 'group': 'KEEP'}, {'owner': '../x', 'group': ''}, {}]
+        assert run(complete_groups(rows, cache)) is rows
+        assert [r.get('group') for r in rows] == ['INFO1', 'INFO1', '', 'KEEP', '', None]
+        assert sorted(resolver.calls) == ['alice', 'bob']
+        failing = RoleCache(FakeRoleResolver({}, fail=True), ttl=600)
+        assert run(complete_groups([{'owner': 'alice', 'group': ''}], failing)) == [{'owner': 'alice', 'group': ''}]

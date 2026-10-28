@@ -151,7 +151,7 @@ merges other files into this one, as for `web.toml` below.
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` |
-| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `logout_url`: where Logout sends the browser (none: no Logout button) |
+| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
@@ -169,9 +169,13 @@ error found after the merge names `web.toml`. The imported files hold the same s
 The full name and the e-mail of an LDAP account (`attr_fullname`, `attr_mail`) go into the
 answers file of the projects like the GECOS fields do on a workstation, so `sre outline` and
 `sre sheet` show them; an anonymous user is identified by the pseudonym and the display name.
-The student group (`attr_group` in LDAP mode, `header_group` or `ldap_roles` + `attr_group` in
-proxy mode; `departmentNumber` typically, its first value, capped at 64 characters) goes there
-too under the key `group` (hence into the archives): the Watch page shows it and filters on it.
+The student group (`attr_group` in LDAP mode, `header_group` or `ldap_roles` / `ldap_groups` +
+`attr_group` in proxy mode; `departmentNumber` typically, its first value, capped at 64
+characters) goes there too under the key `group` (hence into the archives): the Watch page shows
+it and filters on it. With a directory the portal can read (`attr_group` in LDAP mode,
+`ldap_roles` or `ldap_groups` in proxy mode), the Watch page also looks up the group of the
+owners the agents know none for, first of all the projects started on the Qt GUI, whose answers
+file never carries one: one cached lookup per login.
 The agent writes that metadata as soon as a project is created, before any answer, and again
 when the owner opens the project page and the file lacks it or holds other values (so a
 project created by an older agent, or on the Qt GUI, gets its name and group then); a request
@@ -537,7 +541,10 @@ or an anonymous search finds the entry, then the same three tests; the entry's `
 read at the same time, so with that key set the lookup runs for the users the headers already
 made instructors too, who keep the role whatever the directory says), the result being cached
 per login for `ldap_roles_ttl`; a directory failure makes the login a student without group for
-a minute (logged once) rather than the site unavailable.
+a minute (logged once) rather than the site unavailable. `ldap_groups = true` does the group part
+alone: the directory gives the group of a user whose header carries none, the roles stay those
+of the headers (the production case: `gidNumber` exported by Apache, `departmentNumber` read
+by the portal for the owners of the Qt GUI projects on the Watch page).
 
 What an instructor gets:
 
@@ -549,7 +556,8 @@ What an instructor gets:
   them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
   sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
   by the select listing the groups of the rows (every group, one group, or *No group*: the
-  projects started on the Qt GUI carry none), the chosen group kept in the URL (`?group=`, a
+  projects started on the Qt GUI carry none unless the portal reads the directory, above), the
+  chosen group kept in the URL (`?group=`, a
   bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
   red, one without an evaluation younger than 15 minutes (or twice the lab's evaluation
   interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
@@ -570,7 +578,10 @@ What an instructor gets:
   the connection log with the instructor's login.
 - **Projects** stays the instructor's own projects (Watch holds the others).
 - **A student's project**: every tab, the devices all open (the privileged `sre connect`), the
-  answers read-only; the Terminals tab **joins the student's live terminals** when it opens (the
+  answers read-only; the top of the page (the site bar and the project bar) takes the **helper
+  colour** (teal) on the instructor's browser only, a reminder that the project is not theirs
+  (the student's page stays grey; the presentation colour replaces it while the project is
+  presented); the Terminals tab **joins the student's live terminals** when it opens (the
   instructor sees the student's shell and may type in it, the student sees the same; a closed
   sub-tab is not joined again), and the select offers a **private terminal** (the student does
   not see it in their list; what the instructor types there stays with them) or a shared one;

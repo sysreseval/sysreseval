@@ -1,9 +1,11 @@
-"""Proxy mode: the role and the student group of a login looked up in the directory
-(``[auth.proxy] ldap_roles``), cached per login.
+"""The role and the student group of a login looked up in the directory, cached per login.
 
-The reverse proxy authenticates the browser and gives the login on every request; the portal
-has no session there, so the LDAP tests of ``[auth.ldap]`` (``LdapRoleResolver``) are run once
-per login, with the read of ``attr_group``, and the result kept for ``ldap_roles_ttl`` seconds.
+In proxy mode the reverse proxy authenticates the browser and gives the login on every request;
+the portal has no session there, so the LDAP tests of ``[auth.ldap]`` (``LdapRoleResolver``) are
+run once per login (``ldap_roles``), with the read of ``attr_group`` (``ldap_roles`` or
+``ldap_groups``), and the result kept for ``ldap_roles_ttl`` seconds.  In every mode with a
+readable directory (``WebConfig.directory_lookups``), the Watch page completes the groups of the
+project owners the agents know none for (:func:`complete_groups`: the projects of the Qt GUI).
 A directory failure makes the login a student without group for ``negative_ttl`` seconds (logged
 once per message), so the site stays up without its instructors rather than down.
 """
@@ -13,6 +15,7 @@ import time
 from typing import Callable
 
 from .auth_ldap import DirectoryLookup
+from ..identity import is_valid_login
 
 log = logging.getLogger('sreweb.portal')
 
@@ -61,3 +64,22 @@ class RoleCache:
             self._roles.clear()
         else:
             self._roles.pop(login, None)
+
+
+async def complete_groups(rows: list, roles: RoleCache, *, key: str = 'group', login_key: str = 'owner') -> list:
+    """The *rows* (dicts naming a login under *login_key*) whose *key* is empty get the group the
+    directory gives that login (cached per login, the distinct logins looked up concurrently): the
+    Watch rows of the Qt GUI projects, whose answers file never carries a group, and of the
+    owners whose header was empty.  A row stays as it is when the directory has no group for its
+    owner, or when the login is not a valid one (a malformed running lab name)."""
+    logins = {str(row.get(login_key) or '') for row in rows if not row.get(key)}
+    logins = sorted(login for login in logins if is_valid_login(login))
+    if not logins:
+        return rows
+    found = dict(zip(logins, await asyncio.gather(*(roles.get(login) for login in logins))))
+    for row in rows:
+        if not row.get(key):
+            lookup = found.get(str(row.get(login_key) or ''))
+            if lookup is not None and lookup.group:
+                row[key] = lookup.group
+    return rows
