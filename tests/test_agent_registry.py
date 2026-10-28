@@ -271,7 +271,22 @@ class TestAnswersStore:
         assert on_disk == data
         assert (data[params.login_keyword], data[params.fullname_keyword], data[params.group_keyword]) == ('alice', 'Alice A', 'INFO1')
         assert AnswersStore.public(data, p) == {}
-        assert run(store.rewrite(p, BOB))[params.group_keyword] == ''
+        # an identity without a full name or a group (a header the proxy did not set) keeps the
+        # stored values; a non-empty new value wins
+        data = run(store.rewrite(p, BOB))
+        assert (data[params.login_keyword], data[params.fullname_keyword], data[params.group_keyword]) == \
+            ('bob', 'Alice A', 'INFO1')
+        assert run(store.rewrite(p, Identity(login='bob', fullname='Bob B', group='INFO2')))[params.group_keyword] == 'INFO2'
+        # metadata_stale: no metadata, or the file of the Qt GUI (no group key), or other values
+        assert store.metadata_stale({}, ALICE) and store.metadata_stale({}, BOB)
+        gui_file = {params.login_keyword: 'alice', params.fullname_keyword: 'Alice A', params.hostname_keyword: 'pc1'}
+        assert store.metadata_stale(gui_file, ALICE)
+        data = run(store.rewrite(p, ALICE))
+        assert not store.metadata_stale(data, ALICE) and not store.metadata_stale(data, BOB)
+        assert store.metadata_stale(data, Identity(login='alice', group='INFO3'))
+        assert store.metadata_stale(data, Identity(login='alice', fullname='Alice B'))
+        assert run(store.refresh(p, ALICE)) == data                     # nothing to write
+        assert run(store.refresh(p, Identity(login='alice', group='INFO3')))[params.group_keyword] == 'INFO3'
 
     def test_put_refuses_unknown_questions(self, tmp_pub_dir):
         make_project(tmp_pub_dir)

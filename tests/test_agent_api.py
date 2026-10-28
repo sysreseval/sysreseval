@@ -962,6 +962,27 @@ class TestInstructor:
                                    headers=headers(replace(ALICE, group='INFO2')))
                 row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
                 assert row['group'] == 'INFO2'
+                # the file of an older agent or of the Qt GUI (no metadata): the owner's next page load
+                # writes it again, a non-owner's never does; a request without the name or the group
+                # (a missing header) keeps the stored values
+                answers_file = h.pub / 'projects' / rln / 'answers' / 'answers.json'
+                answers_file.write_text(json.dumps({TEXT_HASH: 'gw2'}))
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert (row['fullname'], row['group']) == ('', '')
+                assert (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).status == 200
+                assert json.loads(answers_file.read_text()) == {TEXT_HASH: 'gw2'}
+                page = await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json()
+                assert page['answers'] == {TEXT_HASH: 'gw2'}
+                on_disk = json.loads(answers_file.read_text())
+                assert (on_disk['login'], on_disk['fullname'], on_disk['group'], on_disk['hostname']) == \
+                    ('alice', 'Alice A', 'INFO1', 'pool1')
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert (row['fullname'], row['group']) == ('Alice A', 'INFO1')
+                await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'gw3'}},
+                                   headers=headers(replace(ALICE, fullname='', group='')))
+                on_disk = json.loads(answers_file.read_text())
+                assert (on_disk['fullname'], on_disk['group'], on_disk[TEXT_HASH]) == ('Alice A', 'INFO1', 'gw3')
+                assert not h.agent.answers.metadata_stale(on_disk, ALICE)
             async with Harness(tmp_path / 'b', {'MOCK_EVAL_ERRORS': '[["ERROR", "m1 down"], ["WARNING", "slow"]]'}) as h:
                 rln = await h.started()
                 await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())

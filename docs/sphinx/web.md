@@ -172,7 +172,11 @@ answers file of the projects like the GECOS fields do on a workstation, so `sre 
 The student group (`attr_group` in LDAP mode, `header_group` or `ldap_roles` + `attr_group` in
 proxy mode; `departmentNumber` typically, its first value, capped at 64 characters) goes there
 too under the key `group` (hence into the archives): the Watch page shows it and filters on it.
-The agent writes that metadata as soon as a project is created, before any answer.
+The agent writes that metadata as soon as a project is created, before any answer, and again
+when the owner opens the project page and the file lacks it or holds other values (so a
+project created by an older agent, or on the Qt GUI, gets its name and group then); a request
+whose identity carries no full name or no group (a header the proxy did not set) never erases
+the stored values.
 
 ### Authentication by the reverse proxy
 
@@ -538,8 +542,9 @@ a minute (logged once) rather than the site unavailable.
 What an instructor gets:
 
 - **Watch** (the link in the header, `/watch`): every running project of every reachable host,
-  one row per project with its host, owner (the full name as a tooltip), the owner's student
-  group when the site configures one (`attr_group` / `header_group`), lab, start time, the age
+  one row per project with its host, owner (the login), name (the full name of the answers
+  metadata), the owner's student group when the site configures one (`attr_group` /
+  `header_group`), lab, start time, the age
   of its last archived evaluation, its grade and mark (exo-eval scope, as `sre watch` shows
   them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
   sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,

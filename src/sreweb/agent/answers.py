@@ -6,8 +6,11 @@ project's answers lock, adds the metadata from the identity the portal relayed
 (``SRE.answers.with_metadata``: login, full name, e-mail, student group, language...) and the
 hostname of the pool host, and writes the file atomically, readable by the ``sre`` user that
 evaluates (``Grade0.load_answers``).  The metadata alone is written as soon as a project is
-created (``rewrite``), so the Watch page names the owner before the first answer.  ``cheat.json``
-written by ``sre state`` is merged the same way at the next tick and pushed to the open pages.
+created (``rewrite``), so the Watch page names the owner before the first answer, and again
+when the owner opens the project page and the file lacks it or holds other values
+(``refresh``: the project of an older agent or of the Qt GUI gets its full name and group
+then); an empty full name or group never replaces a stored one.  ``cheat.json`` written by
+``sre state`` is merged the same way at the next tick and pushed to the open pages.
 """
 import json
 import logging
@@ -78,10 +81,29 @@ class AnswersStore:
                 result[q_hash] = value
         return result
 
+    @staticmethod
+    def _stored(answers: dict, key: str) -> str:
+        return str(answers.get(key, '') or '')
+
     def _with_metadata(self, answers: dict, identity: Identity) -> dict:
-        return A.with_metadata(answers, hostname=self.hostname, login=identity.login, fullname=identity.fullname,
+        """*answers* with the metadata of *identity*: its full name and group when it gives
+        them, else the stored ones (a request without the header must not erase what an
+        earlier one wrote), like the e-mail."""
+        return A.with_metadata(answers, hostname=self.hostname, login=identity.login,
+                               fullname=identity.fullname or self._stored(answers, params.fullname_keyword),
                                email=identity.email or None, language=identity.language,
-                               exam_data=A.read_exam_json(self.pub_dir), group=identity.group)
+                               exam_data=A.read_exam_json(self.pub_dir),
+                               group=identity.group or self._stored(answers, params.group_keyword))
+
+    def metadata_stale(self, answers: dict, identity: Identity) -> bool:
+        """The file lacks the metadata a current agent writes (``login``, ``group``: the file of
+        the Qt GUI or of an older agent), or *identity* gives a full name or a group other than
+        the stored one (an empty value does not count).  The login is never compared: the Qt GUI
+        may write the Unix login of the same person."""
+        if params.login_keyword not in answers or params.group_keyword not in answers:
+            return True
+        return bool(identity.fullname and identity.fullname != self._stored(answers, params.fullname_keyword)
+                    or identity.group and identity.group != self._stored(answers, params.group_keyword))
 
     def _save(self, project: Project, data: dict):
         A.save_answers(self.path(project), data, atomic=True, owner=self.owner, mode=self.mode)
@@ -104,6 +126,14 @@ class AnswersStore:
             data = self._with_metadata(self.read(project), identity)
             self._save(project, data)
         return data
+
+    async def refresh(self, project: Project, identity: Identity) -> dict:
+        """The content of the file, written again first when its metadata is stale
+        (:meth:`metadata_stale`): the owner opening the project page."""
+        answers = self.read(project)
+        if not self.metadata_stale(answers, identity):
+            return answers
+        return await self.rewrite(project, identity)
 
     async def consume_cheat(self, project: Project) -> dict | None:
         """Tick hook: merge ``cheat.json`` (written by ``sre state``) into the answers, delete it

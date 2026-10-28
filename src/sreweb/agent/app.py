@@ -564,9 +564,20 @@ class Agent:
     async def project_get(self, request):
         project = self._project(request)
         identity = request[IDENTITY_KEY]
+        # the owner's page: the answers metadata (full name, group) written again when stale, so
+        # that a project created by an older agent or by the Qt GUI is named on the Watch page;
+        # a failure must not break the page
+        if identity.login == project.owner:
+            try:
+                answers = await self.answers.refresh(project, identity)
+            except OSError as e:
+                log.warning("cannot write the answers metadata of %s: %s", project.rln, e)
+                answers = self.answers.read(project)
+        else:
+            answers = self.answers.read(project)
         return web.json_response({
             'project': self._view(project, identity),
-            'answers': AnswersStore.public(self.answers.read(project), project),
+            'answers': AnswersStore.public(answers, project),
             'answers_readonly': project.owner != identity.login,
             'owner': project.owner,
             'terminals': project.terminal_list(identity),

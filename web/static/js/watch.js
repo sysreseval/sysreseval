@@ -1,11 +1,11 @@
 // The Watch page of the instructors: every running project of the pool (GET /api/watch every
-// 5 s), one row per project with its owner (and their student group when the site configures
-// one), its lab, when it started, its last archived evaluation (age, grade, mark, errors), its
-// terminals and whether the web (or the Qt GUI) runs it.  The rows can be sorted by any column,
-// filtered by text and restricted to one group (the select; kept in the URL as ?group=); a row
-// without a recent evaluation is amber, one whose last evaluation had errors is red.  Open goes
-// to the project page (the instructor joins the student's terminals there), Close stops the
-// project.
+// 5 s), one row per project with its owner (login and full name, and their student group when
+// the site configures one), its lab, when it started, its last archived evaluation (age, grade,
+// mark, errors), its terminals and whether the web (or the Qt GUI) runs it.  The rows can be
+// sorted by any column, filtered by text and restricted to one group (the select; kept in the
+// URL as ?group=); a row without a recent evaluation is amber, one whose last evaluation had
+// errors is red.  Open goes to the project page (the instructor joins the student's terminals
+// there), Close stops the project.
 
 import './base.js';
 import * as api from './api.js';
@@ -69,6 +69,7 @@ function sortValue(row, key) {
   switch (key) {
     case 'host': return row.host || '';
     case 'owner': return row.owner || '';
+    case 'fullname': return (row.fullname || '').toLowerCase();
     case 'group': return row.group || '';
     case 'title': return title(row).toLowerCase();
     case 'started_at': return row.started_at || '';
@@ -221,7 +222,8 @@ function renderRow(row) {
   const errorsText = last ? (last.warnings ? `${last.errors} (${last.warnings} ~)` : String(last.errors)) : '';
   return el('tr', {class: rowClass(row), dataset: {rln}},
     el('td', {}, row.host || ''),
-    el('td', {title: row.fullname || ''}, row.owner || ''),
+    el('td', {}, row.owner || ''),
+    el('td', {}, row.fullname || ''),
     el('td', {hidden: !groupsEnabled}, row.group || ''),
     el('td', {title: rln}, title(row)),
     el('td', {}, formatTimestamp(row.started_at)),

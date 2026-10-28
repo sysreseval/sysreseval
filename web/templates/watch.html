@@ -20,6 +20,7 @@
     <tr>
       <th class="sortable" data-sort="host">{{ _("Host") }}</th>
       <th class="sortable" data-sort="owner">{{ _("Owner") }}</th>
+      <th class="sortable" data-sort="fullname">{{ _("Name") }}</th>
       <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
       <th class="sortable" data-sort="title">{{ _("Lab") }}</th>
       <th class="sortable" data-sort="started_at">{{ _("Started") }}</th>
@@ -32,7 +33,7 @@
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="13" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/watch.js"></script>{% endblock %}
