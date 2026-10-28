@@ -25,6 +25,22 @@ msgstr "Langue"
 msgid "Logout"
 msgstr "Déconnexion"
 
+# the logout dialog (base.html, logout.js)
+msgid "You still have running projects:"
+msgstr "Vous avez encore des projets en cours :"
+
+msgid "Close them before logging out? Their machines will be stopped."
+msgstr "Les fermer avant de vous déconnecter ? Leurs machines seront arrêtées."
+
+msgid "Some projects could not be closed: try again, or log out and leave them running."
+msgstr "Certains projets n'ont pas pu être fermés : réessayez, ou déconnectez-vous en les laissant tourner."
+
+msgid "Log out"
+msgstr "Se déconnecter"
+
+msgid "Close the projects and log out"
+msgstr "Fermer les projets et se déconnecter"
+
 msgid "Sign in"
 msgstr "Connexion"
 

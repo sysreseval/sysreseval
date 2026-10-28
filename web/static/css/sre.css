@@ -220,6 +220,10 @@ dialog.modal {
 dialog.modal::backdrop { background: rgba(0, 0, 0, 0.3); }
 dialog.flavor .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
 dialog.modal .buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+dialog.logout { width: 520px; }
+dialog.logout #logout-projects { margin: 6px 0 10px 20px; }
+dialog.logout li.closed { color: var(--muted); text-decoration: line-through; }
+dialog.logout li.failed { color: var(--danger); }
 
 /* ---- the project page -------------------------------------------------------------------- */
 

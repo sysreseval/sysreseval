@@ -128,6 +128,16 @@ class TestTemplates:
         assert 'action="/logout"' not in render('projects.html', auth_mode='proxy')
         assert 'action="/logout"' in render('projects.html', auth_mode='proxy', logout_url='/apache-logout')
 
+    def test_logout_dialog(self):
+        # the Logout button asks about the running projects (logout.js): the dialog goes with the form
+        ids = ('id="logout-dialog"', 'id="logout-projects"', 'id="logout-cancel"', 'id="logout-keep"',
+               'id="logout-close"')
+        html = render('projects.html')
+        assert all(i in html for i in ids) and 'closing in progress...' in html
+        for html in (render('login.html', identity=None), render('projects.html', auth_mode='proxy')):
+            assert not any(i in html for i in ids)
+        assert 'id="logout-dialog"' in render('projects.html', auth_mode='proxy', logout_url='/apache-logout')
+
     def test_institution_next_to_the_brand(self):
         """[site] of web.toml: the institution's logo and name right after the SRE brand, on
         every page (the login page too), linked when a url is given."""
@@ -189,7 +199,8 @@ class TestTemplates:
         assert 'class="watch-group" title="Student group" hidden>' in html
         shown = render('watch.html', instructor=True, groups=True)
         assert 'data-groups="true"' in shown and 'data-sort="group">' in shown
-        assert 'class="watch-group" title="Student group">' in shown and ' hidden' not in shown
+        assert 'class="watch-group" title="Student group">' in shown
+        assert 'data-sort="group" hidden' not in shown and 'title="Student group" hidden' not in shown
 
     def test_pool_page(self):
         html = render('pool.html', instructor=True)

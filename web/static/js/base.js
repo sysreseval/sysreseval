@@ -7,11 +7,13 @@
 // "presenter"} / {"t": "presentation", "id", "ended": true}).  A presentation is shown in an
 // iframe covering the page (the project page of the presenter, read-only: /present/{id}), so
 // that the student's own page, terminals included, is still there when it ends.  Nothing of
-// this runs inside that iframe.  No _() here: base.js loads no catalog.
+// this runs inside that iframe.  The Logout button asks about the running projects before the
+// form is submitted (logout.js).  No _() here: base.js loads no catalog.
 
 import * as api from './api.js';
 import {el, toast} from './ui.js';
 import {ReconnectingSocket} from './events.js';
+import {setupLogout} from './logout.js';
 
 const select = document.getElementById('language-select');
 if (select) {
@@ -24,6 +26,8 @@ if (select) {
     }
   });
 }
+
+setupLogout();
 
 // -- presentations -----------------------------------------------------------------------------
 
