@@ -98,7 +98,7 @@ project of a student** to help them (both see and type in the same terminals), a
 chosen students: what they do on their own page is shown at once on the students' browsers.
 
 Exams are not run on the web: a host in exam mode leaves the pool. See
-[Web site (remote use)](web.md).
+[Web server (remote use)](web.md).
 
 
 [^2]: The word *lab* comes from Kathara (and Netkit). We use *lab* and *project* interchangeably in this documentation.

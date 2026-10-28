@@ -54,6 +54,13 @@ re-corriger avec un script mis à jour ; `sre outline` produit alors des rapport
 les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permettent de traduire facilement un projet dans une autre langue.
 
 
+## Serveur web (utilisation à distance)
+
+Les étudiants peuvent aussi travailler depuis un **navigateur**, sans l'interface graphique ni bureau à distance. Le site web `sre-web` les authentifie (annuaire LDAP ou accès anonyme) et présente les mêmes onglets que l'interface graphique, terminaux compris ; les projets tournent sur un **pool de machines Docker** (typiquement les postes des salles de TP), chacune pilotée par un agent `sre-agent` qui lance la CLI `sre` pour le compte des utilisateurs web, un nouveau projet allant sur la machine la moins chargée.
+Les enseignants disposent d'une **page Watch** (l'équivalent web de `sre watch`), peuvent **ouvrir le projet d'un étudiant** pour l'aider — tous deux voient et tapent dans les mêmes terminaux — et peuvent **présenter** un projet, le leur ou celui d'un étudiant, sur les navigateurs de toute la classe ou d'étudiants choisis, qui suivent ce que fait l'enseignant sur sa propre page (onglets, terminaux, questions). Les examens restent sur l'interface graphique.
+Voir **[Serveur web (utilisation à distance)](https://sysreseval.github.io/sysreseval/html/main/web.html)**.
+
+
 ## Exemple
 
 <p align="center">
@@ -92,6 +99,7 @@ L'installation pas à pas, l'installation manuelle et les étapes post-installat
 - [Aperçu](https://sysreseval.github.io/sysreseval/html/main/overview.html)
 - [Installation & déploiement](https://sysreseval.github.io/sysreseval/html/main/installation.html)
 - [Faire passer un examen](https://sysreseval.github.io/sysreseval/html/main/exam.html) · [référence examen](https://sysreseval.github.io/sysreseval/html/main/exam-reference.html)
+- [Serveur web (utilisation à distance)](https://sysreseval.github.io/sysreseval/html/main/web.html)
 - [Écrire des TP](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [hubs, switchs et VLAN](https://sysreseval.github.io/sysreseval/html/main/switches.html) · [traductions](https://sysreseval.github.io/sysreseval/html/main/translations.html)
 - [Référence CLI](https://sysreseval.github.io/sysreseval/html/main/cli.html) · [Référence GUI](https://sysreseval.github.io/sysreseval/html/main/gui.html)
 - [Runtime & internes](https://sysreseval.github.io/sysreseval/html/main/internals.html)

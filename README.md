@@ -48,6 +48,13 @@ If a grading bug surfaces after the fact, `sre re-eval` re-runs the scoring agai
 - **Internationalisable.** Lab strings and GUI translations ship in French and English; tools (`prepare-sre-translations`, `add-sre-translations`) make multilingual authoring straightforward.
 
 
+## Web server (remote use)
+
+Students can also work from a **browser**, without the desktop GUI or a remote desktop. The web site `sre-web` authenticates them (LDAP directory or anonymous access) and shows the same tabs as the GUI, terminals included; the projects run on a **pool of Docker hosts** (typically the classroom workstations), each driven by an `sre-agent` that runs the `sre` CLI on behalf of the web users, a new project going to the least loaded host.
+Instructors get a **Watch page** (the web counterpart of `sre watch`), can **open a student's project** to help them — both see and type in the same terminals — and can **present** a project, their own or a student's, on the browsers of the whole class or of chosen students, who follow what the instructor does on their own page (tabs, terminals, questions). Exams stay on the desktop GUI.
+See **[Web server (remote use)](https://sysreseval.github.io/sysreseval/html/main/web.html)**.
+
+
 ## Example
 
 <p align="center">
@@ -85,6 +92,7 @@ Full step-by-step setup, manual install, and post-install steps are documented i
 - [Overview](https://sysreseval.github.io/sysreseval/html/main/overview.html)
 - [Installation & deployment](https://sysreseval.github.io/sysreseval/html/main/installation.html)
 - [Running exams](https://sysreseval.github.io/sysreseval/html/main/exam.html) · [exam reference](https://sysreseval.github.io/sysreseval/html/main/exam-reference.html)
+- [Web server (remote use)](https://sysreseval.github.io/sysreseval/html/main/web.html)
 - [Authoring labs](https://sysreseval.github.io/sysreseval/html/main/lab-authoring.html) · [hubs, switches and VLANs](https://sysreseval.github.io/sysreseval/html/main/switches.html) · [translations](https://sysreseval.github.io/sysreseval/html/main/translations.html)
 - [CLI reference](https://sysreseval.github.io/sysreseval/html/main/cli.html) · [GUI reference](https://sysreseval.github.io/sysreseval/html/main/gui.html)
 - [Runtime & internals](https://sysreseval.github.io/sysreseval/html/main/internals.html)

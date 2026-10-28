@@ -1,4 +1,4 @@
-# Web site (remote use)
+# Web server (remote use)
 
 The web site lets the students work on the labs from a browser, without the Qt interface and
 without a remote desktop: the projects run on a **pool of Docker hosts**, every tab of the
