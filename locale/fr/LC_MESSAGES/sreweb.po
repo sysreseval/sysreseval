@@ -58,7 +58,7 @@ msgid "Running projects"
 msgstr "Projets en cours"
 
 msgid "Open a lab"
-msgstr "Ouvrir un TP"
+msgstr "Ouvrir un projet"
 
 
 msgid "Loading…"
