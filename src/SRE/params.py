@@ -285,7 +285,7 @@ del _fhs, _root
 #
 #################################################################################
 
-sre_version = "0.13.2"
+sre_version = "0.14.1"
 default_docker_image_version = "1.31"
 sre_docker_namespace = "sysreseval"
 

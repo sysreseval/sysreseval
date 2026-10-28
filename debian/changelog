@@ -1,3 +1,16 @@
+sysreseval (0.14.1-1) unstable; urgency=medium
+
+  * a web server to run projects in a browser
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Wed, 28 Oct 2026 09:21:58 +0100
+
+sysreseval (0.14.0-1) unstable; urgency=medium
+
+  * First version of ser-web (a web server to run projects), various bug
+    corrections
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Wed, 28 Oct 2026 09:16:41 +0100
+
 sysreseval (0.13.2-1) unstable; urgency=medium
 
   * Release 0.13.2.
