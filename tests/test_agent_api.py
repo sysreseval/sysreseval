@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import pwd
 import shutil
 import stat
 import sys
@@ -646,18 +647,42 @@ def short_dir():
     shutil.rmtree(d, ignore_errors=True)
 
 
+DISPLAY_USER_AS_ROOT = 'nobody'
+
+
+def display_user(runtime_dir) -> str:
+    """The ``[display] user`` of a test agent: ``''`` (the agent's own account) unless the suite
+    runs as root (``make tests`` on an installed tree), where the agent insists on an unprivileged
+    account as the service does with ``sreweb-x11``: then ``nobody``, which gets *runtime_dir* (the
+    fake X server writes its log there); the test is skipped when that account cannot read the
+    fake Xvnc or run the interpreter."""
+    if os.geteuid() != 0:
+        return ''
+    try:
+        entry = pwd.getpwnam(DISPLAY_USER_AS_ROOT)
+    except KeyError:
+        pytest.skip(f"running as root without a '{DISPLAY_USER_AS_ROOT}' account to run the fake Xvnc as")
+    for path, bit in ((MOCK_XVNC, stat.S_IROTH), (Path(sys.executable), stat.S_IXOTH)):
+        if not os.stat(path).st_mode & bit:
+            pytest.skip(f"{path} is not accessible to {DISPLAY_USER_AS_ROOT}: the fake Xvnc cannot run as root")
+    os.chown(runtime_dir, entry.pw_uid, entry.pw_gid)
+    os.chmod(runtime_dir, 0o755)
+    return DISPLAY_USER_AS_ROOT
+
+
 def display_cfg(runtime_dir, *, fail: str = '', **over) -> dict:
     """The ``[display]`` section of a test agent: the fake X server (through a shell script giving
     it its log file, and ``MOCK_XVNC_FAIL`` when *fail* is set: the agent builds the environment of
-    the server itself), no window manager, no dedicated user, three display numbers."""
+    the server itself), no window manager, the user of :func:`display_user`, three display
+    numbers."""
     script = Path(runtime_dir) / 'xvnc'
     script.write_text(f'#!/bin/sh\nexport MOCK_XVNC_LOG="{runtime_dir}/xvnc.log"\n'
                       + (f'export MOCK_XVNC_FAIL="{fail}"\n' if fail else '')
                       + f'exec "{sys.executable}" "{MOCK_XVNC}" "$@"\n')
     script.chmod(0o755)
-    return {'display': {'enabled': True, 'user': '', 'xvnc_command': str(script), 'window_manager_command': '',
-                        'runtime_dir': str(runtime_dir), 'first_display': 90, 'last_display': 92,
-                        'start_timeout': 10, **over}}
+    return {'display': {'enabled': True, 'user': display_user(runtime_dir), 'xvnc_command': str(script),
+                        'window_manager_command': '', 'runtime_dir': str(runtime_dir), 'first_display': 90,
+                        'last_display': 92, 'start_timeout': 10, **over}}
 
 
 def x11_env(**over) -> dict:

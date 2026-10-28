@@ -22,6 +22,7 @@ from sreweb.portal.accesslog import parse_line
 from sreweb.portal.app import Portal
 from sreweb.portal.pool import Pool, PoolError, HostStatus
 from sreweb.config import HostConfig
+from test_agent_api import display_user                      # noqa: E402  (the [display] user as root)
 
 MOCK = Path(__file__).parent / 'mock_sre.py'
 MOCK_XVNC = Path(__file__).parent / 'mock_xvnc.py'
@@ -710,8 +711,9 @@ class TestDisplayThroughThePortal:
         script = runtime_dir / 'xvnc'
         script.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{MOCK_XVNC}" "$@"\n')
         script.chmod(0o755)
-        return {'display': {'enabled': True, 'user': '', 'xvnc_command': str(script), 'window_manager_command': '',
-                            'runtime_dir': str(runtime_dir), 'first_display': 93, 'last_display': 94}}
+        return {'display': {'enabled': True, 'user': display_user(runtime_dir), 'xvnc_command': str(script),
+                            'window_manager_command': '', 'runtime_dir': str(runtime_dir), 'first_display': 93,
+                            'last_display': 94}}
 
     def test_display_relayed(self, tmp_path):
         import shutil
