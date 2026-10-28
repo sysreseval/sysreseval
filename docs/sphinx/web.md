@@ -803,3 +803,14 @@ once synced) and the venv of the installation:
 
 The reverse proxy and the directory are bypassed (the tool speaks to the portal), and
 `follow_local_sessions` never applies (the synthetic logins have no local session).
+
+First production run (2026-10-28, 100 students, `sre/dhcp.py`, `--ramp 300 --hold 600`, the
+portal in its container on the sreweb VM, three shared hosts up at the start and the other rooms
+enabled during the ramp): every student completed with every check true, starts created in 5.5 s
+median / 12.7 s max, the self-evaluations in 6 s, the stops (with their exit evaluation) in 7.4 s,
+no host flip, the portal at 11 % CPU at most and 195 MiB, 375 established connections to the
+agents at the peak (two relayed sockets per student plus the polls' keep-alives). The three hosts
+that took the first 35 projects (13–14 each within two minutes, about 100 containers each) reached
+a load average of 140–150 and still answered starts in less than 13 s. The evaluations of the run
+are archived on the hosts themselves (`archive_dirs`: `/var/lib/sre/archives` and the per-host
+`/home/.resultats-sre`), to delete there.
