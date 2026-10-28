@@ -1,3 +1,9 @@
+sysreseval (0.14.2-1) unstable; urgency=medium
+
+  * improvment of sre-web
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Wed, 28 Oct 2026 23:57:29 +0100
+
 sysreseval (0.14.1-1) unstable; urgency=medium
 
   * a web server to run projects in a browser
