@@ -185,8 +185,9 @@ class TestAdminApi:
 
 class TestInstructorPage:
     def test_page_and_actions(self, tmp_path):
-        """The Pool page: the listing and the five actions for an instructor's session (the CSRF
-        header, no token), add / remove for the token only."""
+        """The Pool page: the listing and the actions of the route for an instructor's session
+        (the CSRF header, no token; ``restart`` too, though the page offers no button for it),
+        add / remove for the token only."""
         over = {**P.PROXY_OVER, 'admin': {'token': ADMIN}, 'pool': QUIET_POOL, 'limits': {'start_interval': 0}}
 
         async def go():

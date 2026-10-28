@@ -1,10 +1,10 @@
 // The Pool page of the instructors: every host of the pool (GET /api/pool and /api/pool/status
 // every 5 s), one row per host with its state as `sre-web-tool list` shows it (the seconds and
 // the failed attempts of a wake), its projects, terminals, load, who occupies it, its uptime,
-// its flags (reserved for instructors, power, drain, power off sent), the agent's version and
+// its flags (reserved for instructors, power, drain, power off sent, restart sent), the agent's version and
 // its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
 // sorted by any column and filtered by text.  The buttons are the commands of the tool (Enable /
-// Disable, Wake, Drain, Power off, Restart: POST /api/pool/hosts/{name}/{action}; add and remove
+// Disable, Wake, Drain, Power off: POST /api/pool/hosts/{name}/{action}; add, remove and restart
 // stay with the tool), each disabled with the reason as its tooltip when it does not apply; the
 // answer of an action is the updated row, shown at once.
 
@@ -194,20 +194,11 @@ function actions(row) {
   }
   const question = format(_('Power off {name}? The agent refuses while a project runs or someone is logged in there.'),
                           {name: row.name});
-  let restart = unreachable;
-  if (!restart && !row.restart_allowed) {
-    restart = _('the agent cannot restart itself (restart_command)');
-  } else if (!restart && row.restart_sent) {
-    restart = _('restart sent');
-  }
-  const restartQuestion = format(_('Restart the agent of {name}? The projects stay, the open terminals and desktops are lost.'),
-                                 {name: row.name});
   return [
     row.enabled ? actionButton(row, 'disable', _('Disable'), {danger: true}) : actionButton(row, 'enable', _('Enable')),
     actionButton(row, 'wake', _('Wake'), {reason: wake}),
     actionButton(row, 'drain', _('Drain'), {reason: drain}),
     actionButton(row, 'poweroff', _('Power off'), {danger: true, reason: poweroff, confirm: question}),
-    actionButton(row, 'restart', _('Restart'), {reason: restart, confirm: restartQuestion}),
   ];
 }
 

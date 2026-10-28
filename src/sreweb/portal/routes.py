@@ -423,8 +423,8 @@ class Routes:
 
     async def api_pool_action(self, request):
         """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host:
-        the commands of sre-web-tool and the buttons of the Pool page; the answer is the updated
-        row."""
+        the commands of sre-web-tool and the buttons of the Pool page (which has no Restart
+        button: the tool alone offers it); the answer is the updated row."""
         identity = self._require_pool_access(request)
         name, action = request.match_info['name'], request.match_info['action']
         if action == 'enable':

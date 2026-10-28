@@ -565,17 +565,16 @@ What an instructor gets:
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
-  instructors, power, drain, power off sent), the agent's version and its last error, the line
+  instructors, power, drain, power off sent, restart sent), the agent's version and its last error, the line
   of `sre-web-tool status` above the table; the state cell is green (up), amber (waking,
   occupied, exam, draining) or grey (off, disabled); sortable by any column, filtered by text,
   refreshed every 5 s. The buttons are the commands of the tool: *Enable* / *Disable*, *Wake*
   (a host with a `mac` or a `wake_command`, while it is off), *Drain*, *Power off* (asked to
   confirm; allowed by the agent's `allow_power_off`, refused while the host has a project or a
-  local session) and *Restart* (asked to confirm; the agent restarts itself, the projects stay;
-  greyed when the agent cannot restart itself or a restart was just sent), each disabled with
-  the reason as its tooltip when it does not apply. Adding
-  and removing hosts stays with `sre-web-tool` and the token. Every action is an `admin` line of
-  the connection log with the instructor's login.
+  local session), each disabled with the reason as its tooltip when it does not apply. Adding
+  and removing hosts, and restarting the agents (`restart`, shown as the flag *restart sent*
+  while it lasts), stay with `sre-web-tool`. Every action is an `admin` line of the connection
+  log with the instructor's login.
 - **Projects** stays the instructor's own projects (Watch holds the others).
 - **A student's project**: every tab, the devices all open (the privileged `sre connect`), the
   answers read-only; the top of the page (the site bar and the project bar) takes the **helper
