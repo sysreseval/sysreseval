@@ -789,17 +789,6 @@ Without a command the pool stays up until Ctrl-C (`portal=... admin_token=... wo
 printed first), for runs by hand. The work directory (configs, `portal.log`, `access.log`, one
 `agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died.
 
-What a healthy run looks like (100 students, 4 fake hosts of 25, `--ramp 60 --hold 120`, a Mac):
-every student completed and every check true, `start` created in 3.6 s median / 4.6 s max, the
-socket handshakes and the JSON calls under 10 ms, no `reachable` flip, the probe under 5 ms. The
-first run of that scenario found the portal's connection pool to the agents capped at aiohttp's
-default of 100 connections while every relayed events or terminal socket holds one for as long
-as the page is open: from the 50th student the 5 s status polls timed out, every host flipped
-unreachable (all four for 45 s), 21 starts were refused with 503, the lab list and the project
-lists came back empty, the socket handshakes and the answer saves waited up to 80 s and 54
-students completed — with the portal's event loop idle (`GET /api/me` in 2 ms). The connector
-has no limit since (`AGENT_CONNECTION_LIMIT` in `portal/app.py`).
-
 ### Stage 2: the production pool
 
 On the portal's host, outside class hours, with the tool copied there (or `/opt/sre/scripts/`
@@ -826,18 +815,3 @@ once synced) and the venv of the installation:
 
 The reverse proxy and the directory are bypassed (the tool speaks to the portal), and
 `follow_local_sessions` never applies (the synthetic logins have no local session).
-
-First production run (2026-10-28, 100 students, `sre/dhcp.py`, `--ramp 300 --hold 600`, the
-portal in its container on the sreweb VM, three shared hosts up at the start and the other rooms
-enabled during the ramp): every student completed with every check true, starts created in 5.5 s
-median / 12.7 s max, the self-evaluations in 6 s, the stops (with their exit evaluation) in 7.4 s,
-no host flip, the portal at 11 % CPU at most and 195 MiB, 375 established connections to the
-agents at the peak (two relayed sockets per student plus the polls' keep-alives). The three hosts
-that took the first 35 projects (13–14 each within two minutes, about 100 containers each) reached
-a load average of 140–150 and still answered starts in less than 13 s. The evaluations of the run
-are archived on the hosts themselves (`archive_dirs`: `/var/lib/sre/archives` and the per-host
-`/home/.resultats-sre`), to delete there.
-A second run the same evening with 200 students on 84 hosts (two or three projects per host):
-200 completed, every check true, starts in 5.4 s median / 9 s p95 (one host took 33 s for one
-start), the portal at 15 % CPU at most, growing from 69 MiB after a restart to 264 MiB with 600
-relayed sockets, 597 connections to the agents at the peak, the VM's load average below 0.3.
