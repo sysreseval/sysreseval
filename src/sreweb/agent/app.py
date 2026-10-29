@@ -741,7 +741,9 @@ class Agent:
         """Instructors: every running project of the lab ``?lab=`` on the host with the elements
         of its last archived evaluation (the lab summary of the Watch page: the browser matches
         the elements across the projects by their ``key``).  One row per project: ``owner``,
-        ``fullname`` / ``group`` (the answers metadata), ``last_eval`` (the summary, or null) and
+        ``fullname`` / ``group`` (the answers metadata), ``managed`` (the portal completes the
+        name of an unmanaged project's owner from the directory, as on the Watch rows),
+        ``last_eval`` (the summary, or null) and
         ``elements`` / ``parts`` of ``SRE.archive_summary.lab_elements`` (null without archive;
         the exo-eval scope for every project, a debug one included, so that the columns match).
         The idle clocks are left alone."""
@@ -758,7 +760,7 @@ class Agent:
             row = {'running_lab_name': p.rln, 'owner': p.owner, 'started_at': p.started,
                    'fullname': str(answers.get(params.fullname_keyword, '') or ''),
                    'group': str(answers.get(params.group_keyword, '') or ''),
-                   'last_eval': None, 'elements': None, 'parts': None}
+                   'managed': p.managed, 'last_eval': None, 'elements': None, 'parts': None}
             found = await self.results.archive(p.rln)
             if found is not None:
                 summary, raw = found

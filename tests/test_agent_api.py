@@ -1085,8 +1085,8 @@ class TestInstructor:
                 for p in h.agent.registry.visible_to(PROF, all_projects=True):
                     p.last_activity = 0.0
                 rows = await (await h.client.get('/v1/evaluations?lab=sre@dhcp.py', headers=headers(PROF))).json()
-                assert [(r['running_lab_name'], r['owner'], r['fullname'], r['group']) for r in rows] == \
-                    [(alice_rln, 'alice', 'Alice A', 'INFO1'), (bob_rln, 'bob', '', '')]
+                assert [(r['running_lab_name'], r['owner'], r['fullname'], r['group'], r['managed']) for r in rows] == \
+                    [(alice_rln, 'alice', 'Alice A', 'INFO1', True), (bob_rln, 'bob', '', '', True)]
                 assert all(p.last_activity == 0.0 for p in h.agent.registry.visible_to(PROF, all_projects=True))   # idle clocks untouched
                 alice, bob = rows
                 assert (bob['last_eval'], bob['elements'], bob['parts']) == (None, None, None)

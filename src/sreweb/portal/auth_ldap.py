@@ -37,11 +37,13 @@ class LdapError(Exception):
 
 @dataclass(frozen=True)
 class DirectoryLookup:
-    """What the directory says of a login in proxy mode: the role, the student group and
-    whether the administrator tests match (the portal grants the flag to the instructors only)."""
+    """What the directory says of a login: the role, the student group, whether the
+    administrator tests match (the portal grants the flag to the instructors only) and the full
+    name (``attr_fullname``: the Watch page shows it for the owners of the Qt GUI projects)."""
     role: str = ROLE_STUDENT
     group: str = ''
     administrator: bool = False
+    fullname: str = ''
 
 
 def _escape_filter(value: str) -> str:
@@ -140,6 +142,10 @@ class _Directory:
             return ''
         return clean_group(_first(entry, self.cfg.attr_group))
 
+    def _fullname(self, entry) -> str:
+        """The full name of *entry* (the first value of ``attr_fullname``), ``''`` without it."""
+        return _first(entry, self.cfg.attr_fullname) if entry is not None else ''
+
     def _group_base(self) -> str:
         return self.cfg.group_search_base or self.cfg.search_base
 
@@ -194,9 +200,10 @@ class LdapRoleResolver(_Directory):
         return self.resolve(login).role
 
     def resolve(self, login: str) -> DirectoryLookup:
-        """The role (an unknown login is a student), the student group and the administrator
-        tests of *login* (run whatever the role: the portal applies them to the instructors);
-        ``LdapError`` when the directory cannot be used.  Synchronous: run it in a thread."""
+        """The role (an unknown login is a student), the student group, the administrator
+        tests of *login* (run whatever the role: the portal applies them to the instructors) and
+        the full name; ``LdapError`` when the directory cannot be used.  Synchronous: run it in
+        a thread."""
         if not is_valid_login(login):
             return DirectoryLookup()
         LDAPException = self._import_ldap3()
@@ -219,7 +226,7 @@ class LdapRoleResolver(_Directory):
                 instructor = self._is_instructor(conn, login, dn, entry)
                 administrator = self.cfg.administrator_tests and self._is_administrator(conn, login, dn, entry)
                 return DirectoryLookup(ROLE_INSTRUCTOR if instructor else ROLE_STUDENT, self._group(entry),
-                                       bool(administrator))
+                                       bool(administrator), self._fullname(entry))
             finally:
                 conn.unbind()
         except LDAPException as e:
@@ -274,7 +281,7 @@ class LdapAuthenticator(_Directory):
             raise LdapError(str(e)) from e
 
     def _identity(self, conn, login: str, dn: str, entry, language: str) -> Identity:
-        fullname = _first(entry, self.cfg.attr_fullname) if entry is not None else ''
+        fullname = self._fullname(entry)
         email = _first(entry, self.cfg.attr_mail) if entry is not None else ''
         instructor = self._is_instructor(conn, login, dn, entry)
         return Identity(login=login, fullname=fullname, email=email, language=language,

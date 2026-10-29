@@ -196,7 +196,9 @@ characters) goes there too under the key `group` (hence into the archives): the 
 it and filters on it. With a directory the portal can read (`attr_group` in LDAP mode,
 `ldap_roles` or `ldap_groups` in proxy mode), the Watch page also looks up the group of the
 owners the agents know none for, first of all the projects started on the Qt GUI, whose answers
-file never carries one: one cached lookup per login.
+file never carries one, and shows for the projects of the Qt GUI the full name of the directory
+(`attr_fullname`) rather than the GECOS name of the account their answers file carries (lower
+case on some sites): one cached lookup per login.
 The agent writes that metadata as soon as a project is created, before any answer, and again
 when the owner opens the project page and the file lacks it or holds other values (so a
 project created by an older agent, or on the Qt GUI, gets its name and group then); a request
@@ -679,7 +681,8 @@ What an instructor gets:
 
 - **Watch** (the link in the header, `/watch`): every running project of every reachable host,
   one row per project with its host, owner (the login), name (the full name of the answers
-  metadata), the owner's student group when the site configures one (`attr_group` /
+  metadata, or the directory's for a project of the Qt GUI when the portal reads it, above),
+  the owner's student group when the site configures one (`attr_group` /
   `header_group`), lab, start time, the age
   of its last archived evaluation, its grade and mark (exo-eval scope, as `sre watch` shows
   them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;

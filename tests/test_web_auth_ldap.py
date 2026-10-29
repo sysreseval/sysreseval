@@ -178,11 +178,11 @@ class TestAdministratorTests:
                    (GROUPS, ADMIN_POSIX.format(login='bob')): [FakeEntry(ADMINS)]}
         r = FakeDirectoryResolver(cfg(instructor_group_filter=POSIX, administrator_group_filter=ADMIN_POSIX,
                                       group_search_base=GROUPS), answers)
-        assert r.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, '', True)
-        assert r.resolve('bob') == L.DirectoryLookup(ROLE_STUDENT, '', True)       # the portal gates it with the role
-        assert r.resolve('carol') == L.DirectoryLookup(ROLE_STUDENT, '', False)
+        assert r.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, '', True, 'Alice')
+        assert r.resolve('bob') == L.DirectoryLookup(ROLE_STUDENT, '', True, 'Bob')    # the portal gates it with the role
+        assert r.resolve('carol') == L.DirectoryLookup(ROLE_STUDENT, '', False, 'Carol')
         plain = FakeDirectoryResolver(cfg(instructor_group_filter=POSIX, group_search_base=GROUPS), answers)
-        assert plain.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, '', False)
+        assert plain.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, '', False, 'Alice')
         assert [c[1] for c in plain.conns[0].calls if 'sre-admins' in c[1]] == []
 
 
@@ -267,9 +267,9 @@ class TestRoleResolver:
                    (ALICE_DN, '(gidNumber=2000)'): [FakeEntry(ALICE_DN)],
                    (PEOPLE, '(uid=bob)'): [FakeEntry(f'uid=bob,{PEOPLE}', cn=['Bob'], mail=[])]}
         r = FakeDirectoryResolver(cfg(instructor_filter='(gidNumber=2000)', attr_group='departmentNumber'), answers)
-        assert r.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, 'INFO1')
+        assert r.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, 'INFO1', fullname='Alice')   # the Watch page
         assert r.role_for('alice') == ROLE_INSTRUCTOR
-        assert r.resolve('bob') == L.DirectoryLookup(ROLE_STUDENT, '')
+        assert r.resolve('bob') == L.DirectoryLookup(ROLE_STUDENT, '', fullname='Bob')
         assert r.role_for('nobody') == ROLE_STUDENT
         assert r.resolve('../x') == L.DirectoryLookup()
         assert r.conns[0].calls[0] == (PEOPLE, '(uid=alice)', 'SUBTREE')

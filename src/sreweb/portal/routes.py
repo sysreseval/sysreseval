@@ -22,7 +22,7 @@ from .presentation import (Presence, Presentation, Presentations, Watcher, SPECT
 from .focus import Focus, Focuses, WS_FOCUS_ENDED
 from .ratelimit import RateLimiter
 from .relay import Relay
-from .roles import complete_groups
+from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
 from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
@@ -489,25 +489,26 @@ class Routes:
 
     async def api_watch(self, request):
         """Instructors: every project of every reachable host, with its owner and the summary of
-        its last archived evaluation (the agents read their archives); the group of the owners
-        the agents know none for (the Qt GUI projects) from the directory when it is readable."""
+        its last archived evaluation (the agents read their archives); from the directory when
+        it is readable, the group of the owners the agents know none for and the full name of
+        the owners of the Qt GUI projects (``roles.complete_owners``)."""
         identity = self._require_instructor(request)
         rows = await self.pool.projects_of(identity, all_projects=True)
         if self.roles is not None:
-            await complete_groups(rows, self.roles)
+            await complete_owners(rows, self.roles)
         return web.json_response(rows)
 
     async def api_watch_evaluations(self, request):
         """Instructors: the lab summary of the Watch page, every running project of the lab
         ``?lab=`` on every reachable host with the elements of its last archived evaluation (the
-        agents read their archives), the groups completed as for ``/api/watch``."""
+        agents read their archives), the groups and the names completed as for ``/api/watch``."""
         identity = self._require_instructor(request)
         lab = request.query.get('lab', '')
         if not lab:
             return json_error(400, "a lab is expected")
         rows = await self.pool.evaluations_of(identity, lab)
         if self.roles is not None:
-            await complete_groups(rows, self.roles)
+            await complete_owners(rows, self.roles)
         return web.json_response(rows)
 
     async def api_history(self, request):

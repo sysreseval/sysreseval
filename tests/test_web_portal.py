@@ -796,16 +796,18 @@ class TestDisplayThroughThePortal:
 class FakeRoleResolver:
     """The directory of proxy mode's ldap_roles, answering from dicts (or failing)."""
 
-    def __init__(self, roles, fail=False, groups=None, administrators=None):
+    def __init__(self, roles, fail=False, groups=None, administrators=None, fullnames=None):
         self.roles, self.fail, self.calls, self.groups = roles, fail, [], groups or {}
         self.administrators = set(administrators or ())
+        self.fullnames = fullnames or {}
 
     def resolve(self, login):
         from sreweb.portal.auth_ldap import DirectoryLookup, LdapError
         self.calls.append(login)
         if self.fail:
             raise LdapError("directory down")
-        return DirectoryLookup(self.roles.get(login, 'student'), self.groups.get(login, ''), login in self.administrators)
+        return DirectoryLookup(self.roles.get(login, 'student'), self.groups.get(login, ''), login in self.administrators,
+                               self.fullnames.get(login, ''))
 
 
 class TestInstructorThroughThePortal:
@@ -941,7 +943,8 @@ class TestInstructorThroughThePortal:
                 'trusted_proxies': ['127.0.0.1', '::1']}
 
         async def go():
-            resolver = FakeRoleResolver({'zoe': 'instructor'}, groups={'zoe': 'INFO9', 'alice': 'INFO1'})
+            resolver = FakeRoleResolver({'zoe': 'instructor'}, groups={'zoe': 'INFO9', 'alice': 'INFO1'},
+                                        fullnames={'alice': 'Alice Dupont'})
             async with Harness(tmp_path, auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
                 me = (await (await h.client.get('/api/me', headers=who('zoe'))).json())['identity']
                 assert (me['role'], me['group']) == ('student', 'INFO9')          # the group, never the role
@@ -960,26 +963,52 @@ class TestInstructorThroughThePortal:
                 answers_file = h.pub / 'projects' / rln / 'answers' / 'answers.json'
                 answers_file.write_text(json.dumps({'login': 'alice', 'fullname': 'Alice', 'hostname': 'pc1'}))
                 rows = await (await h.client.get('/api/watch', headers=zoe)).json()
-                assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')
+                assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')   # a managed project keeps its name
                 assert resolver.calls.count('alice') == 1                           # one lookup, cached
                 rows = await (await h.client.get('/api/watch/evaluations?lab=sre@dhcp.py', headers=zoe)).json()
                 assert (rows[0]['owner'], rows[0]['group'], rows[0]['elements']) == ('alice', 'INFO1', None)
                 assert resolver.calls.count('alice') == 1
+                # a project of the Qt GUI (not managed by the agent): the directory's full name, not the
+                # GECOS one of the answers file, on the Watch rows and in the lab summary
+                answers_file.write_text(json.dumps({'login': 'alice', 'fullname': 'alice dupont', 'hostname': 'pc1'}))
+                (h.pub / 'web-agent' / f'{rln}.json').unlink(missing_ok=True)
+                h.agent.registry.projects[rln].managed = False
+                rows = await (await h.client.get('/api/watch', headers=zoe)).json()
+                assert (rows[0]['fullname'], rows[0]['group'], rows[0]['managed']) == ('Alice Dupont', 'INFO1', False)
+                rows = await (await h.client.get('/api/watch/evaluations?lab=sre@dhcp.py', headers=zoe)).json()
+                assert (rows[0]['fullname'], rows[0]['group'], rows[0]['managed']) == ('Alice Dupont', 'INFO1', False)
+                assert resolver.calls.count('alice') == 1                           # still the cached lookup
         run(go())
 
-    def test_complete_groups(self):
+    def test_complete_owners(self):
         """The Watch rows without a group: the directory's group by owner login, one lookup per
-        login, nothing for an unknown login, an invalid login or a row with a group."""
-        from sreweb.portal.roles import RoleCache, complete_groups
-        resolver = FakeRoleResolver({}, groups={'alice': 'INFO1'})
+        login, nothing for an unknown login, an invalid login or a row with a group.  The rows
+        of the projects the agent does not manage (the Qt GUI, whose answers file carries the
+        GECOS name): the directory's full name whatever the group; a managed row, a row without
+        the key and the owner the directory names not keep theirs."""
+        from sreweb.portal.roles import RoleCache, complete_owners
+        resolver = FakeRoleResolver({}, groups={'alice': 'INFO1'}, fullnames={'alice': 'Alice Dupont', 'carl': 'Carl'})
         cache = RoleCache(resolver, ttl=600)
         rows = [{'owner': 'alice', 'group': ''}, {'owner': 'alice'}, {'owner': 'bob', 'group': ''},
                 {'owner': 'carl', 'group': 'KEEP'}, {'owner': '../x', 'group': ''}, {}]
-        assert run(complete_groups(rows, cache)) is rows
+        assert run(complete_owners(rows, cache)) is rows
         assert [r.get('group') for r in rows] == ['INFO1', 'INFO1', '', 'KEEP', '', None]
+        assert all('fullname' not in r for r in rows)                   # managed rows: no name added
         assert sorted(resolver.calls) == ['alice', 'bob']
+        rows = [{'owner': 'alice', 'group': '', 'fullname': 'alice dupont', 'managed': False},
+                {'owner': 'alice', 'group': 'INFO1', 'fullname': 'alice dupont', 'managed': False},
+                {'owner': 'alice', 'group': 'INFO1', 'fullname': 'alice dupont', 'managed': True},
+                {'owner': 'alice', 'group': 'INFO1', 'fullname': 'alice dupont'},
+                {'owner': 'bob', 'group': '', 'fullname': 'bob', 'managed': False},
+                {'owner': 'carl', 'group': 'KEEP', 'fullname': '', 'managed': False}]
+        run(complete_owners(rows, cache))
+        assert [r['fullname'] for r in rows] == ['Alice Dupont', 'Alice Dupont', 'alice dupont', 'alice dupont',
+                                                 'bob', 'Carl']
+        assert [r.get('group') for r in rows] == ['INFO1', 'INFO1', 'INFO1', 'INFO1', '', 'KEEP']
+        assert sorted(resolver.calls) == ['alice', 'bob', 'carl']        # alice and bob cached, carl looked up once
         failing = RoleCache(FakeRoleResolver({}, fail=True), ttl=600)
-        assert run(complete_groups([{'owner': 'alice', 'group': ''}], failing)) == [{'owner': 'alice', 'group': ''}]
+        before = [{'owner': 'alice', 'group': ''}, {'owner': 'alice', 'group': 'G', 'fullname': 'alice', 'managed': False}]
+        assert run(complete_owners([dict(r) for r in before], failing)) == before
 
 
 class TestHistory:
