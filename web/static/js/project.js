@@ -283,11 +283,12 @@ function updateSchemaPdfLink() {
 }
 
 // The view a focus shares both ways (focus.js): the active tab, the terminal sub-tab shown (by
-// the id of its session: the two pages share the student's sessions) and the question selected.
+// the id of its session: the two pages share the student's sessions; never a private terminal
+// of the instructor, which the student must not see) and the question selected.
 function focusView() {
   return {
     tab: currentTab,
-    terminal: tabs.terminals ? tabs.terminals.getView().active : null,
+    terminal: tabs.terminals ? tabs.terminals.focusTarget() : null,
     question: tabs.questions ? tabs.questions.getSelected() : null,
   };
 }

@@ -1214,6 +1214,9 @@ class TestSharedTerminals:
 
                 await refused('m1?join=nope', ALICE, 4404)
                 await refused('m1?private=1', ALICE, 4403)
+                # the events sockets of the student and of the instructor: each gets its own list
+                alice_events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                prof_events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
                 # a private terminal of the instructor on the closed machine, privileged
                 prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m2?private=1', headers=headers(PROF),
                                                  protocols=(TERMINAL_SUBPROTOCOL,))
@@ -1225,11 +1228,20 @@ class TestSharedTerminals:
                 assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
                 mine = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['terminals']
                 assert [(t['id'], t['private'], t['created_by']) for t in mine] == [(pid, True, 'prof')]
+                # the terminals event hides it from the student too (the focus of an instructor's
+                # page follows the sub-tabs by session id: a student's page must never learn of it)
+                listed = (await receive_event(prof_events, 'terminals'))['terminals']
+                assert [(t['id'], t['private'], t['created_by']) for t in listed] == [(pid, True, 'prof')]
+                assert (await receive_event(alice_events, 'terminals'))['terminals'] == []
                 await refused(f'm2?join={pid}', ALICE, 4403)
                 await refused(f'm1?join={pid}', PROF, 4404)          # the right device is part of the address
                 await prof.close()
                 await asyncio.sleep(0.2)
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 0
+                assert (await receive_event(prof_events, 'terminals'))['terminals'] == []
+                assert (await receive_event(alice_events, 'terminals'))['terminals'] == []
+                await alice_events.close()
+                await prof_events.close()
             async with Harness(tmp_path / 'b', terminals_per_device=1) as h:
                 rln = await h.started()
                 alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),

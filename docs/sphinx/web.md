@@ -753,9 +753,12 @@ What an instructor gets:
   site bar and the project bar) takes the **focus colour** (a deeper teal than the helper
   colour, which comes back on the instructor's page when the mode is off), the student's page
   names the instructor following them, and the two pages share the **tab** shown, the
-  **terminal** sub-tab shown (the student's sessions, joined by both: a terminal one page shows
-  is joined by the other when it has not got it) and the **question** selected, in both
-  directions: whichever page changes one of them, the other follows, the last change winning.
+  **terminal** sub-tab shown (a terminal the student may see: their own sessions and the
+  shared ones, joined by both: a terminal one page shows is joined by the other when it has
+  not got it; a private terminal of the instructor is never shown nor named to the student,
+  whose page keeps its sub-tab while the instructor is on one) and the **question** selected,
+  in both directions: whichever page changes one of them, the other follows, the last change
+  winning.
   Unlike a presentation, the student keeps every control: they type in the terminals, change
   tab, open terminals, answer questions. The button's tooltip says whether the student's page
   follows. A reloaded instructor's page goes on focusing; closing it for a minute, closing the

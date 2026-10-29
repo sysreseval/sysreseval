@@ -166,6 +166,13 @@ export function createTerminalsTab(ctx) {
     return entry.remoteId ? remote.find((r) => r.id === entry.remoteId) : null;
   }
 
+  // a private terminal: opened private here, or a joined session listed private (an
+  // instructor's, seen by instructors only)
+  function isPrivate(entry) {
+    const r = remoteOf(entry);
+    return Boolean(entry.private || (r && r.private));
+  }
+
   // the viewer count of a sub-tab (the session is shared when it is above one): the browsers
   // typing in it and the read-only spectators of a presentation
   function updateBadge(entry) {
@@ -214,7 +221,7 @@ export function createTerminalsTab(ctx) {
     const box = el('div', {class: 'terminal-box'});
     host.append(box);
     const entry = {id, device: name, title: title || titleFor(name), box, session: null, tab: null, badge: null,
-                   remoteId: joinId};
+                   remoteId: joinId, private: priv};
     if (priv) {
       entry.title = format(_('{title} (private)'), {title: entry.title});
     }
@@ -311,9 +318,16 @@ export function createTerminalsTab(ctx) {
     }
   }
 
-  // a focus (focus.js): the sub-tab the other page shows, by the id of its session: shown when
-  // it is open here, joined when it is a live session of the project this page may see, else
-  // kept until the terminals event lists it
+  // -- a focus (focus.js): the sub-tab shown, shared with the other page by the id of its
+  // session.  Never a private terminal: the student must not see nor join one.
+  function focusTarget() {
+    const entry = current !== null ? sessions.get(current) : null;
+    return entry && entry.remoteId && !isPrivate(entry) ? entry.remoteId : null;
+  }
+
+  // the sub-tab the other page shows: shown when it is open here, joined when it is a live
+  // session of the project this page may see (never a private one), else kept until the
+  // terminals event lists it
   let wantedSession = null;
   function focusSession(remoteId) {
     if (!remoteId) {
@@ -330,7 +344,9 @@ export function createTerminalsTab(ctx) {
     const r = remote.find((x) => x.id === remoteId);
     if (r) {
       wantedSession = null;
-      join(r);
+      if (!r.private) {
+        join(r);
+      }
     } else {
       wantedSession = remoteId;
     }
@@ -412,6 +428,7 @@ export function createTerminalsTab(ctx) {
     },
     getView,
     setView,
+    focusTarget,
     focusSession,
   };
 }

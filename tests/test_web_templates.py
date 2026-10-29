@@ -445,3 +445,17 @@ class TestJavaScript:
         focus = (JS / 'focus.js').read_text(encoding='utf-8')
         for cls in ('focusing', 'focused'):
             assert f"classList.add('{cls}')" in focus and f"classList.remove('{cls}')" in focus, cls
+
+    def test_focus_never_names_a_private_terminal(self):
+        """The terminal sub-tab a focus shares is taken from focusTarget() of the terminals tab,
+        which leaves a private terminal out (the student must not see nor join an instructor's
+        private terminal), and focusSession() joins no private session."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        line = next((l for l in project.splitlines() if l.strip().startswith('terminal:')), None)
+        assert line and 'focusTarget()' in line and 'getView' not in line, line
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert 'function focusTarget()' in terminals and 'function isPrivate(entry)' in terminals
+        target = terminals[terminals.index('function focusTarget()'):terminals.index('function focusSession(')]
+        assert '!isPrivate(entry)' in target
+        session = terminals[terminals.index('function focusSession('):terminals.index('function autoJoin(')]
+        assert '!r.private' in session and session.index('!r.private') < session.index('join(r)')
