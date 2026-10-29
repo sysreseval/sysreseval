@@ -1035,9 +1035,13 @@ class TestInstructor:
                     privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
                 data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json()
                 assert data['owner'] == 'alice' and data['answers'][TEXT_HASH] == 'y' and 'answers_readonly' not in data
+                # the student's full name (the answers metadata, kept under the instructor's
+                # write): the title of the instructor's page names the student
+                assert data['fullname'] == ALICE.fullname
                 assert all(d['allow_connection'] for d in data['project']['terminal_devices'])
                 own = await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json()
                 assert own['answers'][TEXT_HASH] == 'y' and 'answers_readonly' not in own
+                assert (own['owner'], own['fullname']) == ('alice', ALICE.fullname)
                 assert [d['allow_connection'] for d in own['project']['terminal_devices']] == [True, False, True]
                 # the instructor's own project: the student path
                 mine = await h.started(PROF_NOVIEW)

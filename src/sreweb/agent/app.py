@@ -568,6 +568,9 @@ class Agent:
         return resp
 
     async def project_get(self, request):
+        """The project page: the sanitised view, the answers, the owner's login and full name
+        (``fullname``, the answers metadata, ``''`` when unknown: an instructor's page of a
+        student's project names the student) and the live terminals."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
         # the owner's page: the answers metadata (full name, group) written again when stale, so
@@ -585,6 +588,7 @@ class Agent:
             'project': self._view(project, identity),
             'answers': AnswersStore.public(answers, project),
             'owner': project.owner,
+            'fullname': str(answers.get(params.fullname_keyword, '') or ''),
             'terminals': project.terminal_list(identity),
             'running_lab_name': project.rln, 'host': self.hostname,
         })

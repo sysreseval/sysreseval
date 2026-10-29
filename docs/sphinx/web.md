@@ -733,7 +733,9 @@ What an instructor gets:
   `sre-web-tool`. Every action, of a row or of the bar, is an `admin` line of the connection
   log with the instructor's login.
 - **Projects** stays the instructor's own projects (Watch holds the others).
-- **A student's project**: every tab, the devices all open (the privileged `sre connect`), the
+- **A student's project**: the student named in the project bar after the lab title (full
+  name and login, from the answers metadata; the login alone when the file has no name);
+  every tab, the devices all open (the privileged `sre connect`), the
   answers editable (what the instructor types goes into the student's answers file, whose
   metadata stays the student's: the Watch page and the archives still name the student; every
   save of either page is pushed to the open pages of the project, so the student's page shows

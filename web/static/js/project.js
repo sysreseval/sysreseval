@@ -40,6 +40,9 @@ const isInstructor = body.dataset.instructor === 'true';
 const login = body.dataset.login || '';
 const owner = (body.dataset.rln || '').split('@@@')[2] || '';
 const isOwner = owner === login;
+// the owner's full name (the answers metadata, sent with the project JSON): the title of
+// somebody else's project names its owner
+let ownerName = '';
 // a spectator of a presentation (the page in the iframe of /present/{id}): read-only, driven
 // by the presenter's view
 const presentationId = body.dataset.presentation || '';
@@ -229,8 +232,10 @@ function applyProject(project) {
   state.project = project;
   const name = project.title || project.lab_name;
   document.title = `${name} - SRE`;
-  // somebody else's project (an instructor helping): the owner next to the title
-  titleElement.textContent = isOwner || !owner ? name : `${name} (${owner})`;
+  // somebody else's project (an instructor helping): the owner next to the title, by full
+  // name when the answers metadata give it, with the login
+  const who = ownerName ? `${ownerName} (${owner})` : owner;
+  titleElement.textContent = isOwner || !owner ? name : `${name} — ${who}`;
   renderTabBar(project.tabs);
   for (const id of project.tabs) {
     const t = tab(id);
@@ -331,6 +336,7 @@ async function load() {
   const data = await api.get(ctx.url(''));
   state.answers = data.answers || {};
   state.terminals = data.terminals || [];
+  ownerName = data.fullname || '';
   applyProject(data.project);
   if (tabs.questions) {
     tabs.questions.setAnswers(state.answers);

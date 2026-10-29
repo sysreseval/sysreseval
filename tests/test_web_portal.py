@@ -851,6 +851,7 @@ class TestInstructorThroughThePortal:
                                            headers={**prof, **CSRF})).status == 200
                 got = await (await h.client.get(base, headers=prof)).json()
                 assert got['owner'] == 'alice' and got['answers'][TEXT_HASH] == 'x' and 'answers_readonly' not in got
+                assert got['fullname'] == 'Alice'   # the student's name in the title of the instructor's page
                 assert (await (await h.client.get(base, headers=alice)).json())['answers'][TEXT_HASH] == 'x'
                 rows = await (await h.client.get('/api/watch', headers=prof)).json()
                 assert (rows[0]['owner'], rows[0]['fullname']) == ('alice', 'Alice')
