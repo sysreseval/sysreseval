@@ -399,6 +399,19 @@ the file: `keep` is its retention, and the account of the portal should be the o
 it. In the production container the driver must be in the image (or the venv) and the server
 reachable from it (a local MariaDB over the host network, or its socket bind-mounted).
 
+**Retention.** The portal keeps `keep` days of each store while it runs: the rotated files
+beyond `keep` go at the next rotation, the rows older than `keep` days once a day.
+`scripts/web-purge-log.py` applies a retention of its own, for a cron job or a timer of the host
+(run with the Python of the portal, PyMySQL included; it reads `web.toml`): `--days` (365 by
+default), `--dry-run`, `--optimize` (the table rebuilt after the deletion, so that the deleted
+rows no longer occupy its file; a short lock), `--files-only` / `--database-only`; the current
+file is never touched, a rotated file goes by its modification time. For instance in
+`/etc/cron.d/sre-web`:
+
+```
+15 4 * * * root /opt/sre/venv/bin/python3 /opt/sre/scripts/web-purge-log.py --days 365
+```
+
 ### Securing the pool (mutual TLS)
 
 The portal and the agents can authenticate each other with certificates of one private CA, on
