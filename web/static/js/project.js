@@ -186,7 +186,9 @@ function tab(id) {
   return tabs[id];
 }
 
-function selectTab(id) {
+// options: what the tab's show() takes (the terminals tab: autoOpen false when a focus brings
+// the page there, so that no terminal is opened for the user)
+function selectTab(id, options = {}) {
   if (!state.project || !state.project.tabs.includes(id) || !tab(id)) {
     return;
   }
@@ -199,7 +201,7 @@ function selectTab(id) {
     button.setAttribute('aria-selected', button.dataset.tab === id ? 'true' : 'false');
   }
   tabs[id].element.hidden = false;
-  tabs[id].show();
+  tabs[id].show(options);
   if (ctx.onViewChange) {
     ctx.onViewChange();
   }
@@ -305,7 +307,7 @@ function applyFocusView(view) {
     questions.setSelected(view.question);
   }
   if (view.tab && view.tab !== currentTab) {
-    selectTab(view.tab);
+    selectTab(view.tab, {autoOpen: false});    // the other page went there: no terminal opened here
   }
   const terminals = listed('terminals');
   if (terminals && view.terminal) {

@@ -193,7 +193,8 @@ export function createTerminalsTab(ctx) {
       return;
     }
     const attached = attachedIds();
-    const others = remote.filter((r) => !attached.has(r.id));
+    // a private session is an instructor's (the agent lists them to instructors only)
+    const others = remote.filter((r) => !attached.has(r.id) && (!r.private || ctx.isInstructor));
     if (!others.length) {
       return;
     }
@@ -368,7 +369,10 @@ export function createTerminalsTab(ctx) {
   return {
     id: 'terminals',
     element: pane,
-    show() {
+    // autoOpen false: the tab is shown by a focus (the other page went there), not by the
+    // user: no terminal is opened for them (the instructor's new terminal, a private one say,
+    // would otherwise be echoed by a terminal of the student's own on the first machine)
+    show({autoOpen = true} = {}) {
       shown = true;
       if (current !== null) {
         select(current);
@@ -377,7 +381,7 @@ export function createTerminalsTab(ctx) {
       } else if (sessions.size === 0 && pending === null) {
         if (helper) {
           autoJoin();   // the student's terminals; nothing when there is none
-        } else {
+        } else if (autoOpen) {
           // the first open device, as the first terminal tab of the Qt view starts when shown
           const first = devices.find(canOpen);
           if (first) {

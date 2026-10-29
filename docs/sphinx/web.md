@@ -756,7 +756,9 @@ What an instructor gets:
   **terminal** sub-tab shown (a terminal the student may see: their own sessions and the
   shared ones, joined by both: a terminal one page shows is joined by the other when it has
   not got it; a private terminal of the instructor is never shown nor named to the student,
-  whose page keeps its sub-tab while the instructor is on one) and the **question** selected,
+  whose page keeps its sub-tab while the instructor is on one; a page brought to the Terminals
+  tab by the focus opens no terminal of its own, as it does when its user clicks the tab for
+  the first time) and the **question** selected,
   in both directions: whichever page changes one of them, the other follows, the last change
   winning.
   Unlike a presentation, the student keeps every control: they type in the terminals, change

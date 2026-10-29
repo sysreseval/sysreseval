@@ -459,3 +459,20 @@ class TestJavaScript:
         assert '!isPrivate(entry)' in target
         session = terminals[terminals.index('function focusSession('):terminals.index('function autoJoin(')]
         assert '!r.private' in session and session.index('!r.private') < session.index('join(r)')
+        # the live list of a student never offers a private session
+        live = terminals[terminals.index('function renderLive()'):terminals.index('function openNew(')]
+        assert '!r.private || ctx.isInstructor' in live
+
+    def test_focus_switch_opens_no_terminal(self):
+        """The terminals tab shown for the first time opens a terminal on the first open device
+        (as the Qt GUI), unless a focus brought the page there (autoOpen false): the instructor
+        opening a terminal (a private one, say) must not make the student's page open one of
+        its own, which looked like the private terminal shown to the student."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        apply_view = project[project.index('function applyFocusView('):project.index('function getView()')]
+        assert 'selectTab(view.tab, {autoOpen: false})' in apply_view
+        assert 'tabs[id].show(options)' in project
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        show = terminals[terminals.index('show({autoOpen = true} = {})'):terminals.index('hide() {}')]
+        assert '} else if (autoOpen) {' in show and 'openNew(first.name)' in show
+        assert show.index('autoJoin()') < show.index('else if (autoOpen)')     # the helper still joins
