@@ -380,6 +380,17 @@ table.grid.pool td.state.draining { background: var(--debug-bg); }
 table.grid.pool td.state.off, table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--muted); }
 .pool-status { margin: 0 8px 8px; }
 
+/* the History page of the administrators: the connection log read from its database */
+table.grid.history td.ts, table.grid.history td.num { white-space: nowrap; }
+table.grid.history td.details { font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+table.grid.history td.link { text-decoration: underline dotted; cursor: pointer; }
+.history-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 8px 8px; }
+.history-filters label { white-space: nowrap; }
+.history-filters input[type="datetime-local"] { padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; background: #fff; font: inherit; color: inherit; }
+.history-pager { display: flex; align-items: center; gap: 8px; margin: 0 8px 8px; }
+#history-notice { margin: 0 8px 8px; }
+#history-notice.error { color: var(--danger); }
+
 /* schema */
 .schema-view {
   flex: 1;

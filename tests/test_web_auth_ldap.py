@@ -16,6 +16,8 @@ GROUPS = 'ou=groups,dc=example,dc=org'
 TEACHERS = f'cn=teachers,{GROUPS}'
 ALICE_DN = f'uid=alice,{PEOPLE}'
 POSIX = '(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))'
+ADMINS = f'cn=sre-admins,{GROUPS}'
+ADMIN_POSIX = '(&(objectClass=posixGroup)(cn=sre-admins)(memberUid={login}))'
 
 
 class FakeAttribute:
@@ -119,6 +121,69 @@ class TestRoleTests:
                                        instructor_group_filter=POSIX, group_search_base=GROUPS))
         assert auth._is_instructor(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN, memberOf=[]))
         assert [c[0] for c in conn.calls] == [ALICE_DN, GROUPS]
+
+
+class TestAdministratorTests:
+    def test_nothing_configured_makes_no_search(self):
+        conn = FakeConn()
+        auth = L.LdapAuthenticator(cfg())
+        assert not cfg().administrator_tests
+        assert not auth._is_administrator(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN, memberOf=[ADMINS]))
+        assert conn.calls == [] and 'memberOf' not in auth._attributes()
+
+    def test_groups_through_member_of(self):
+        auth = L.LdapAuthenticator(cfg(administrator_groups=[ADMINS]))
+        assert auth.cfg.administrator_tests and 'memberOf' in auth._attributes()
+        assert auth._is_administrator(FakeConn(), 'alice', ALICE_DN, FakeEntry(ALICE_DN, memberOf=[ADMINS.upper()]))
+        assert not auth._is_administrator(FakeConn(), 'alice', ALICE_DN, FakeEntry(ALICE_DN, memberOf=[TEACHERS]))
+        assert not auth._is_administrator(FakeConn(), 'alice', ALICE_DN, None)
+
+    def test_groups_through_group_filter(self):
+        conn = FakeConn({(GROUPS, f'(member={ALICE_DN})'): [FakeEntry(ADMINS)]})
+        auth = L.LdapAuthenticator(cfg(administrator_groups=[ADMINS], group_filter='(member={dn})',
+                                       group_search_base=GROUPS, instructor_group_filter=''))
+        assert auth._is_administrator(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == [(GROUPS, f'(member={ALICE_DN})', 'SUBTREE')]
+
+    def test_group_filter_under_the_group_base(self):
+        conn = FakeConn({(GROUPS, ADMIN_POSIX.format(login='alice')): [FakeEntry(ADMINS)]})
+        auth = L.LdapAuthenticator(cfg(administrator_group_filter=ADMIN_POSIX, group_search_base=GROUPS))
+        assert auth._is_administrator(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN))
+        assert conn.calls == [(GROUPS, ADMIN_POSIX.format(login='alice'), 'SUBTREE')]
+        assert not auth._is_administrator(conn, 'bob', f'uid=bob,{PEOPLE}', FakeEntry(f'uid=bob,{PEOPLE}'))
+        without = L.LdapAuthenticator(cfg(administrator_group_filter=ADMIN_POSIX))     # no base: no test
+        conn = FakeConn()
+        assert not without._is_administrator(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN)) and conn.calls == []
+
+    def test_identity_flags_the_instructors_only(self):
+        answers = {(GROUPS, POSIX.format(login='alice')): [FakeEntry(f'cn=profs,{GROUPS}')],
+                   (GROUPS, ADMIN_POSIX.format(login='alice')): [FakeEntry(ADMINS)],
+                   (GROUPS, ADMIN_POSIX.format(login='bob')): [FakeEntry(ADMINS)]}
+        auth = L.LdapAuthenticator(cfg(instructor_group_filter=POSIX, administrator_group_filter=ADMIN_POSIX,
+                                       group_search_base=GROUPS))
+        conn = FakeConn(answers)
+        alice = auth._identity(conn, 'alice', ALICE_DN, FakeEntry(ALICE_DN, cn=['Alice'], mail=[]), 'fr')
+        assert alice.is_instructor and alice.administrator
+        conn = FakeConn(answers)
+        bob = auth._identity(conn, 'bob', f'uid=bob,{PEOPLE}', FakeEntry(f'uid=bob,{PEOPLE}', cn=['Bob'], mail=[]), 'fr')
+        assert bob.role == ROLE_STUDENT and not bob.administrator
+        assert conn.calls == [(GROUPS, POSIX.format(login='bob'), 'SUBTREE')]      # the admin test is not run
+
+    def test_resolver_reports_the_tests(self):
+        answers = {(PEOPLE, '(uid=alice)'): [FakeEntry(ALICE_DN, cn=['Alice'], mail=[])],
+                   (PEOPLE, '(uid=bob)'): [FakeEntry(f'uid=bob,{PEOPLE}', cn=['Bob'], mail=[])],
+                   (PEOPLE, '(uid=carol)'): [FakeEntry(f'uid=carol,{PEOPLE}', cn=['Carol'], mail=[])],
+                   (GROUPS, POSIX.format(login='alice')): [FakeEntry(f'cn=profs,{GROUPS}')],
+                   (GROUPS, ADMIN_POSIX.format(login='alice')): [FakeEntry(ADMINS)],
+                   (GROUPS, ADMIN_POSIX.format(login='bob')): [FakeEntry(ADMINS)]}
+        r = FakeDirectoryResolver(cfg(instructor_group_filter=POSIX, administrator_group_filter=ADMIN_POSIX,
+                                      group_search_base=GROUPS), answers)
+        assert r.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, '', True)
+        assert r.resolve('bob') == L.DirectoryLookup(ROLE_STUDENT, '', True)       # the portal gates it with the role
+        assert r.resolve('carol') == L.DirectoryLookup(ROLE_STUDENT, '', False)
+        plain = FakeDirectoryResolver(cfg(instructor_group_filter=POSIX, group_search_base=GROUPS), answers)
+        assert plain.resolve('alice') == L.DirectoryLookup(ROLE_INSTRUCTOR, '', False)
+        assert [c[1] for c in plain.conns[0].calls if 'sre-admins' in c[1]] == []
 
 
 class TestLdap3Calls:

@@ -13,9 +13,10 @@ def test_login_regex_is_the_one_of_sre_access():
 class TestIdentity:
     def test_round_trip_through_headers(self):
         me = Identity(login='dupont', fullname='Émile Dupont', email='e.dupont@example.org', role='instructor',
-                      language='fr', anonymous=False, view='instructor', group='Génie info')
+                      language='fr', anonymous=False, view='instructor', group='Génie info', administrator=True)
         headers = me.headers()
         assert headers[ident.HEADER_LOGIN] == 'dupont' and headers[ident.HEADER_VIEW] == 'instructor'
+        assert headers[ident.HEADER_ADMINISTRATOR] == '1'
         assert headers[ident.HEADER_FULLNAME] == encode_header_text('Émile Dupont')
         assert decode_header_text(headers[ident.HEADER_FULLNAME]) == 'Émile Dupont'
         assert decode_header_text(headers[ident.HEADER_GROUP]) == 'Génie info'
@@ -23,13 +24,16 @@ class TestIdentity:
         assert all(v.isascii() for v in headers.values())
         # an agent fed by a portal without the group header (an older version) sees no group
         assert Identity.from_headers({k: v for k, v in headers.items() if k != ident.HEADER_GROUP}).group == ''
+        # or without the administrator header: not one
+        older = Identity.from_headers({k: v for k, v in headers.items() if k != ident.HEADER_ADMINISTRATOR})
+        assert older.administrator is False and older.is_instructor
 
     def test_defaults_and_dict(self):
         me = Identity.from_headers({ident.HEADER_LOGIN: 'guest-1a2b3c4d', ident.HEADER_ANONYMOUS: '1'})
         assert me.anonymous and me.role == 'student' and me.view == 'student' and me.language == 'en'
         assert me.to_dict() == {'login': 'guest-1a2b3c4d', 'fullname': '', 'email': '', 'role': 'student',
-                                'language': 'en', 'anonymous': True, 'group': ''}
-        assert not me.is_instructor and not me.instructor_view
+                                'language': 'en', 'anonymous': True, 'group': '', 'administrator': False}
+        assert not me.is_instructor and not me.instructor_view and not me.administrator
 
     def test_clean_group(self):
         assert ident.clean_group(' INFO1 ') == 'INFO1' and ident.clean_group(None) == ''
@@ -45,6 +49,7 @@ class TestIdentity:
     @pytest.mark.parametrize('kwargs', [
         dict(login=''), dict(login='../x'), dict(login='a b'), dict(login='x' * 65), dict(login='é'),
         dict(login='ok', role='root'), dict(login='ok', view='instructor'),   # student with the instructor view
+        dict(login='ok', administrator=True),                                  # a student administrator
         dict(login='ok', language='french!'),
     ])
     def test_refused(self, kwargs):
@@ -60,3 +65,13 @@ class TestIdentity:
     def test_with_view(self):
         me = Identity(login='prof', role='instructor')
         assert me.with_view('instructor').instructor_view and not me.instructor_view
+
+    def test_with_administrator(self):
+        prof = Identity(login='prof', role='instructor')
+        assert prof.with_administrator(True).administrator and not prof.administrator
+        assert not prof.with_administrator(False).administrator
+        assert not prof.with_administrator(True).with_administrator(False).administrator
+        student = Identity(login='stu')
+        assert not student.with_administrator(True).administrator          # never a student
+        granted = prof.with_administrator(True)
+        assert granted.to_dict()['administrator'] is True and Identity.from_headers(granted.headers()) == granted

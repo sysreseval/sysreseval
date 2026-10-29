@@ -11,7 +11,7 @@ import pytest
 
 pytest.importorskip('aiohttp', reason="aiohttp is not installed: the web front-end needs it: run `make venv`")
 
-from sreweb.config import AccessLogConfig, ConfigError, web_config_from_dict  # noqa: E402
+from sreweb.config import AccessDatabaseConfig, AccessLogConfig, ConfigError, web_config_from_dict  # noqa: E402
 from sreweb.identity import Identity  # noqa: E402
 from sreweb.portal import accesslog as A  # noqa: E402
 
@@ -122,7 +122,8 @@ class TestEventFor:
         assert {'present_start', 'present_open'} <= A.PROJECT_EVENTS
         assert A.LOGIN_ROUTES == {('POST', '/login'), ('POST', '/api/login')}
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
-                                                                            'present_audience', 'present_stop'}
+                                                                            'present_audience', 'present_stop',
+                                                                            'history'}
 
 
 class TestVisits:
@@ -294,6 +295,24 @@ class TestConfig:
                                                    'session_timeout': '15m'}})
         assert cfg.access_log == AccessLogConfig(file='/var/log/sre-web/access.log', journal=False, keep=0,
                                                  session_timeout=900.0)
+        assert not cfg.access_log.database.enabled and cfg.access_log.database == AccessDatabaseConfig()
+
+    def test_database(self):
+        hosts = [{'name': 'a01', 'url': 'http://x', 'token': 't' * 32}]
+        cfg = web_config_from_dict({'secret': 's' * 32, 'hosts': hosts,
+                                    'access_log': {'journal': False,
+                                                   'database': {'host': 'db.example.org', 'user': 'sre_web',
+                                                                'password': 'pw', 'name': 'sre', 'keep': 30,
+                                                                'queue': 500, 'connect_timeout': '2s'}}})
+        db = cfg.access_log.database
+        assert db.enabled and cfg.access_log.journal is False
+        assert (db.host, db.port, db.unix_socket, db.user, db.password, db.name, db.table, db.keep, db.queue,
+                db.connect_timeout) == ('db.example.org', 3306, '', 'sre_web', 'pw', 'sre', 'access_log', 30, 500, 2.0)
+        cfg = web_config_from_dict({'secret': 's' * 32, 'hosts': hosts,
+                                    'access_log': {'database': {'unix_socket': '/run/mysqld/mysqld.sock', 'user': 'u',
+                                                                'name': 'sre', 'table': 'web_log', 'port': 3307}}})
+        db = cfg.access_log.database
+        assert db.enabled and db.host == '' and db.table == 'web_log' and db.port == 3307
 
     @pytest.mark.parametrize('table, fragment', [
         ({'file': 'access.log'}, 'absolute'),
@@ -305,6 +324,22 @@ class TestConfig:
         ({'session_timeout': 0}, 'session_timeout'),
         ({'session_timeout': 'soon'}, 'session_timeout'),
         ({'typo': 1}, 'typo'),
+        ({'database': 3}, 'database'),
+        ({'database': {'typo': 1}}, 'typo'),
+        ({'database': {'host': 3}}, 'host'),
+        ({'database': {'host': 'db'}}, 'name'),
+        ({'database': {'host': 'db', 'name': 'sre'}}, 'user'),
+        ({'database': {'host': 'db', 'unix_socket': '/run/x', 'user': 'u', 'name': 'sre'}}, 'not both'),
+        ({'database': {'unix_socket': 'relative.sock', 'user': 'u', 'name': 'sre'}}, 'unix_socket'),
+        ({'database': {'port': 70000}}, 'port'),
+        ({'database': {'port': True}}, 'port'),
+        ({'database': {'table': 'drop table;'}}, 'table'),
+        ({'database': {'table': ''}}, 'table'),
+        ({'database': {'keep': -1}}, 'keep'),
+        ({'database': {'keep': True}}, 'keep'),
+        ({'database': {'queue': 0}}, 'queue'),
+        ({'database': {'connect_timeout': 0}}, 'connect_timeout'),
+        ({'database': {'connect_timeout': 'soon'}}, 'connect_timeout'),
     ])
     def test_refused(self, table, fragment):
         with pytest.raises(ConfigError, match=fragment):

@@ -20,7 +20,7 @@ IMPORT_TO_PACKAGE = {
     'markdown': 'python3-markdown', 'msgpack': 'python3-msgpack', 'netaddr': 'python3-netaddr',
     'odf': 'python3-odf', 'urllib3': 'python3-urllib3', 'zstandard': 'python3-zstandard',
     'aiohttp': 'python3-aiohttp', 'aiohttp_jinja2': 'python3-aiohttp-jinja2', 'jinja2': 'python3-jinja2',
-    'ldap3': 'python3-ldap3',
+    'ldap3': 'python3-ldap3', 'pymysql': 'python3-pymysql',
 }
 LOCAL_MODULES = {'SRE', 'sysreseval', 'sreweb'} | {p.stem for p in (ROOT / 'lib').glob('*.py')}
 # the Python code of each binary package: what src/ holds, minus the web front-end (sysreseval-web

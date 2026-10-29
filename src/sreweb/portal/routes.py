@@ -13,7 +13,8 @@ import aiohttp_jinja2
 from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
-from .accesslog import AccessLog, ACCESS_KEY
+from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS
+from .accesshistory import parse_filters, HistoryError
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
@@ -83,6 +84,7 @@ class Routes:
         r.add_get('/open', self.open_page)
         r.add_get('/watch', self.watch_page)
         r.add_get('/pool', self.pool_page)
+        r.add_get('/history', self.history_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
         r.add_get(SITE_LOGO_PATH, self.site_logo)
@@ -99,6 +101,7 @@ class Routes:
         r.add_get('/api/projects', self.api_projects)
         r.add_get('/api/watch', self.api_watch)
         r.add_get('/api/watch/evaluations', self.api_watch_evaluations)
+        r.add_get('/api/history', self.api_history)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -156,6 +159,7 @@ class Routes:
             'languages': [(code, LANGUAGE_NAMES.get(code, code)) for code in self.cfg.languages],
             'language': language,
             'instructor': bool(identity and identity.role == ROLE_INSTRUCTOR),
+            'administrator': bool(identity and identity.administrator),   # the History link
             'groups': self.cfg.groups_configured,     # the Watch page shows the student groups
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
@@ -180,6 +184,12 @@ class Routes:
         identity = self._require_identity(request)
         if identity.role != ROLE_INSTRUCTOR:
             raise PoolError(403, "instructors only")
+        return identity
+
+    def _require_administrator(self, request) -> Identity:
+        identity = self._require_identity(request)
+        if not identity.administrator:
+            raise PoolError(403, "administrators only")
         return identity
 
     def _target(self, request) -> tuple:
@@ -305,6 +315,16 @@ class Routes:
         if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
             raise web.HTTPForbidden(text="instructors only")
         return aiohttp_jinja2.render_template('pool.html', request, self._page_context(request))
+
+    async def history_page(self, request):
+        """Administrators: the connection log, read from its database (``[access_log.database]``;
+        the page says so when none is configured)."""
+        if not request.get(IDENTITY_KEY):
+            raise web.HTTPFound('/login')
+        if not request[IDENTITY_KEY].administrator:
+            raise web.HTTPForbidden(text="administrators only")
+        return aiohttp_jinja2.render_template('history.html', request, self._page_context(
+            request, history_database=self.access.history is not None, events=ALL_EVENTS))
 
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
@@ -478,6 +498,28 @@ class Routes:
         if self.roles is not None:
             await complete_groups(rows, self.roles)
         return web.json_response(rows)
+
+    async def api_history(self, request):
+        """Administrators: a page of the connection log from its database, newest first, with
+        the filters of ``accesshistory.parse_filters`` and a cursor for the older pages; the
+        call is a ``history`` line of the log carrying the filters asked (``<key>_filter``)."""
+        self._require_administrator(request)
+        if self.access.history is None:
+            return json_error(409, "the connection log has no database ([access_log.database] of web.toml)")
+        try:
+            filters = parse_filters(request.query)
+        except ValueError as e:
+            return json_error(400, str(e))
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update({f'{key}_filter': value for key, value in filters.items() if key != 'limit'})
+        try:
+            page = await self.access.history.query(filters)
+        except HistoryError as e:
+            log.warning("access database: a history query failed: %s", e)
+            return json_error(503, "the database of the connection log does not answer")
+        return web.json_response({**page, 'limit': filters['limit'],
+                                  'database': self.access.db.status() if self.access.db is not None else None})
 
     def _idle_timeout(self, identity: Identity) -> float:
         return self.cfg.pool.idle_timeout_anonymous if identity.anonymous else self.cfg.pool.idle_timeout_authenticated

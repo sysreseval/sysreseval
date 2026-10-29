@@ -17,7 +17,7 @@
     {% if site.name %}<span>{{ site.name }}</span>{% endif %}
   </a>
   {% endif %}
-  <nav class="topbar-nav">{% block nav %}{% endblock %}{% if instructor %} <a href="/watch" class="watch-link">{{ _("Watch") }}</a> <a href="/pool" class="pool-link">{{ _("Pool") }}</a>{% endif %}</nav>
+  <nav class="topbar-nav">{% block nav %}{% endblock %}{% if instructor %} <a href="/watch" class="watch-link">{{ _("Watch") }}</a> <a href="/pool" class="pool-link">{{ _("Pool") }}</a>{% endif %}{% if administrator %} <a href="/history" class="history-link">{{ _("History") }}</a>{% endif %}</nav>
   <div class="topbar-right">
     {% if identity %}
       <span class="user" title="{{ identity.login }}">{{ identity.fullname or identity.login }}</span>

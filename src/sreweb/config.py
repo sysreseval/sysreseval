@@ -203,8 +203,21 @@ class LdapConfig:
     instructor_filter: str = '(gidNumber=2000)'
     group_search_base: str = ''       # the base of the group searches (group_filter too); '' = search_base
     instructor_group_filter: str = '(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))'
+    # The administrators (the instructors who browse the connection log: the History page), the OR
+    # of two tests shaped like the instructor ones: the members of administrator_groups (DNs; the
+    # memberOf attribute, or the group_filter search) and a group found under group_search_base by
+    # administrator_group_filter ({login} / {dn}; no default: the test is off).  A user who is not
+    # an instructor is never an administrator; [auth] administrators names logins directly.
+    administrator_groups: list = field(default_factory=list)
+    administrator_group_filter: str = ''
     start_tls: bool = False
     timeout: float = 10.0
+
+    @property
+    def administrator_tests(self) -> bool:
+        """Whether a directory test of the administrators is configured (a lookup is worth
+        running for an instructor)."""
+        return bool(self.administrator_groups or str(self.administrator_group_filter).strip())
 
 
 @dataclass
@@ -224,6 +237,10 @@ class ProxyAuthConfig:
     # instructor_values give the role, e.g. X-Remote-Gid = AUTHENTICATE_GIDNUMBER and ["2000"].
     instructor_header: str = ''
     instructor_values: list = field(default_factory=list)
+    # The values of the groups header making an instructor an administrator (the History page of
+    # the connection log); with ldap_roles or ldap_groups the administrator_* tests of [auth.ldap]
+    # are run too for the instructors.  [auth] administrators names logins directly.
+    administrator_groups: list = field(default_factory=list)
     # The portal runs the tests of [auth.ldap] itself for the login the proxy gives (the only way
     # to a group membership without a memberOf overlay in this mode); the role is cached per login.
     ldap_roles: bool = False
@@ -238,6 +255,10 @@ class ProxyAuthConfig:
 @dataclass
 class AuthConfig:
     mode: str = AUTH_ANONYMOUS
+    # The administrators: the instructors who may browse the connection log (the History page).
+    # These logins in every mode, plus the administrator_groups / administrator_group_filter tests
+    # of [auth.ldap] and [auth.proxy]; a user who is not an instructor never gets the rights.
+    administrators: list = field(default_factory=list)
     ldap: LdapConfig = field(default_factory=LdapConfig)
     proxy: ProxyAuthConfig = field(default_factory=ProxyAuthConfig)
 
@@ -294,15 +315,39 @@ class AdminConfig:
 
 
 @dataclass
+class AccessDatabaseConfig:
+    """``[access_log.database]``: the same events in a MariaDB / MySQL table (PyMySQL,
+    ``sreweb/portal/accessdb.py``), one row per line with the fields a filter needs in columns and
+    the rest as JSON; the History page of the administrators reads it.  Off unless ``host`` or
+    ``unix_socket`` is set."""
+    host: str = ''                      # '' (and no unix_socket): no database
+    port: int = 3306
+    unix_socket: str = ''               # a local server: its socket file instead of host:port
+    user: str = ''
+    password: str = ''                  # keep it in an imported secrets file (import = ["secrets.toml"])
+    name: str = ''                      # the database
+    table: str = 'access_log'
+    keep: int = 400                     # days of rows kept (purged daily); 0 = forever
+    queue: int = 10000                  # rows kept in memory while the server is unreachable (the oldest beyond are dropped)
+    connect_timeout: float = 5.0        # seconds (the read / write timeout of a statement is at least 30)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.host or self.unix_socket)
+
+
+@dataclass
 class AccessLogConfig:
     """``[access_log]``: the connection log of the portal (``sreweb/portal/accesslog.py``), one
     ``key=value`` line per event: the sessions of the users (first request to logout, idle
     timeout or shutdown, with their duration and the projects opened), the logins, the starts,
-    the project pages, terminals, evaluations, states, stops, exports, the denied calls."""
+    the project pages, terminals, evaluations, states, stops, the denied calls, the consultations
+    of the History page; in a file, in the journal and / or in a database (``[access_log.database]``)."""
     file: str = ''                      # '' : no file
     journal: bool = True                # the lines also go to the portal's log (stderr: the journal, docker logs)
     keep: int = 400                     # days of daily rotated files kept; 0 = no rotation (logrotate reopens the file)
     session_timeout: float = 1800.0     # a session idle for this long is closed (its duration ends at its last request)
+    database: AccessDatabaseConfig = field(default_factory=AccessDatabaseConfig)
 
 
 _URL_PREFIXES = ('/', 'http://', 'https://')
@@ -340,6 +385,36 @@ def _check_access_log(cfg: AccessLogConfig, path: str):
         raise ConfigError(f"{where}keep must be a number of days (0 = no rotation)")
     if cfg.session_timeout <= 0:
         raise ConfigError(f"{where}session_timeout must be positive")
+    _check_access_database(cfg.database, path)
+
+
+_TABLE_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,63}$')
+
+
+def _check_access_database(db: AccessDatabaseConfig, path: str):
+    where = f"{path}: access_log.database."
+    for name in ('host', 'unix_socket', 'user', 'password', 'name', 'table'):
+        if not isinstance(getattr(db, name), str):
+            raise ConfigError(f"{where}{name} must be a string")
+    if db.host and db.unix_socket:
+        raise ConfigError(f"{where}host and unix_socket: give one of them, not both")
+    if db.unix_socket and not os.path.isabs(db.unix_socket):
+        raise ConfigError(f"{where}unix_socket must be the absolute path of the socket file")
+    if isinstance(db.port, bool) or not isinstance(db.port, int) or not 0 < db.port < 65536:
+        raise ConfigError(f"{where}port must be a TCP port number")
+    # the table name is interpolated into the SQL (between backquotes): an identifier only
+    if not _TABLE_NAME_RE.match(db.table):
+        raise ConfigError(f"{where}table must be a plain SQL identifier (letters, digits, _)")
+    if isinstance(db.keep, bool) or not isinstance(db.keep, int) or db.keep < 0:
+        raise ConfigError(f"{where}keep must be a number of days (0 = rows kept forever)")
+    if isinstance(db.queue, bool) or not isinstance(db.queue, int) or db.queue < 1:
+        raise ConfigError(f"{where}queue must be a positive number of rows")
+    if db.connect_timeout <= 0:
+        raise ConfigError(f"{where}connect_timeout must be positive")
+    if db.enabled:
+        for name in ('name', 'user'):
+            if not getattr(db, name):
+                raise ConfigError(f"{where}{name} is required with a database")
 
 
 def _check_site(site: SiteConfig, path: str):
@@ -444,15 +519,23 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
             raise ConfigError(f"{path}: auth.ldap.uri is required {why}")
         if not ldap.bind_dn_template and not ldap.search_base:
             raise ConfigError(f"{path}: auth.ldap needs bind_dn_template or search_base {why}")
-    if not isinstance(ldap.instructor_groups, list):
-        raise ConfigError(f"{path}: auth.ldap.instructor_groups must be a list")
-    for name in ('instructor_filter', 'group_filter', 'instructor_group_filter'):
+    if not isinstance(auth.administrators, list) or not all(isinstance(a, str) and a.strip()
+                                                             for a in auth.administrators):
+        raise ConfigError(f"{path}: auth.administrators must be a list of logins")
+    auth.administrators = [a.strip() for a in auth.administrators]
+    for name in ('instructor_groups', 'administrator_groups'):
+        if not isinstance(getattr(ldap, name), list):
+            raise ConfigError(f"{path}: auth.ldap.{name} must be a list")
+    for name in ('instructor_filter', 'group_filter', 'instructor_group_filter', 'administrator_group_filter'):
         value = str(getattr(ldap, name)).strip()
         if value and not (value.startswith('(') and value.endswith(')')):
             raise ConfigError(f"{path}: auth.ldap.{name} must be an LDAP filter between parentheses")
-    if ldap.instructor_group_filter.strip() and '{login}' not in ldap.instructor_group_filter \
-            and '{dn}' not in ldap.instructor_group_filter:
-        raise ConfigError(f"{path}: auth.ldap.instructor_group_filter must name the user with {{login}} or {{dn}}")
+    for name in ('instructor_group_filter', 'administrator_group_filter'):
+        value = str(getattr(ldap, name))
+        if value.strip() and '{login}' not in value and '{dn}' not in value:
+            raise ConfigError(f"{path}: auth.ldap.{name} must name the user with {{login}} or {{dn}}")
+    if str(ldap.administrator_group_filter).strip() and not ldap.group_search_base:
+        raise ConfigError(f"{path}: auth.ldap.administrator_group_filter needs group_search_base")
     if not isinstance(ldap.attr_group, str) or (ldap.attr_group.strip()
                                                 and not re.match(r'^[A-Za-z][A-Za-z0-9;-]*$', ldap.attr_group.strip())):
         raise ConfigError(f"{path}: auth.ldap.attr_group must be an LDAP attribute name")
@@ -466,7 +549,7 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
                                                    and not re.match(r'^[A-Za-z0-9-]+$', proxy.header_group.strip())):
         raise ConfigError(f"{path}: auth.proxy.header_group must be a header name")
     proxy.header_group = proxy.header_group.strip()
-    for name in ('instructor_groups', 'instructor_values'):
+    for name in ('instructor_groups', 'instructor_values', 'administrator_groups'):
         if not isinstance(getattr(proxy, name), list):
             raise ConfigError(f"{path}: auth.proxy.{name} must be a list")
     if bool(proxy.instructor_values) != bool(proxy.instructor_header.strip()):
@@ -494,7 +577,12 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: admin.token must have at least {MIN_SECRET_LENGTH} characters")
     access_data = _section(data, 'access_log', path)
-    access_log = _build(AccessLogConfig, access_data, f"{path}: [access_log]",
+    db_data = _section(access_data, 'database', path)
+    database = _build(AccessDatabaseConfig, db_data, f"{path}: [access_log.database]",
+                      connect_timeout=parse_duration(db_data.get('connect_timeout', 5.0),
+                                                     'access_log.database.connect_timeout'))
+    access_log = _build(AccessLogConfig, {k: v for k, v in access_data.items() if k != 'database'},
+                        f"{path}: [access_log]", database=database,
                         session_timeout=parse_duration(access_data.get('session_timeout', 1800.0),
                                                        'access_log.session_timeout'))
     _check_access_log(access_log, path)

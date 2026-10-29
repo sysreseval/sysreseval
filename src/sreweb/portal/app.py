@@ -33,11 +33,13 @@ PROXY_WARNINGS_MAX = 100
 
 
 class Portal:
-    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs, role_resolver=None):
+    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs, role_resolver=None, db_connect=None):
         """*role_resolver*: an object with ``resolve(login) -> DirectoryLookup`` (the
         ``LdapRoleResolver`` of ``[auth.ldap]`` by default; the tests inject a fake), used when
         ``cfg.directory_lookups`` (proxy mode with ``ldap_roles`` / ``ldap_groups``, LDAP mode with
-        ``attr_group``: the groups of the Watch rows)."""
+        ``attr_group``: the groups of the Watch rows).  *db_connect*: the ``(connect, transient)``
+        pair of the connection log's database (``accessdb.connector`` by default; the tests
+        inject a fake connection)."""
         self.cfg = cfg
         self.web_dir = Path(web_dir)
         self.localedirs = list(localedirs)
@@ -49,7 +51,8 @@ class Portal:
         self.presence: Presence | None = None
         self.presentations: Presentations | None = None
         self._proxy_warned: set = set()
-        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies)
+        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies, connect=db_connect)
+        self._administrators = set(cfg.auth.administrators)    # [auth] administrators: logins (instructors only)
         self.roles: RoleCache | None = None
         if cfg.directory_lookups:
             self.roles = RoleCache(role_resolver or LdapRoleResolver(cfg.auth.ldap), ttl=cfg.auth.proxy.ldap_roles_ttl)
@@ -145,25 +148,38 @@ class Portal:
             if identity is not None and self.roles is not None:
                 # the directory after the header tests (cached per login): the role of ldap_roles
                 # for a user the headers did not make an instructor, the group of attr_group
-                # (ldap_roles or ldap_groups) for a user whose header gives none; the headers win
-                proxy = self.cfg.auth.proxy
+                # (ldap_roles or ldap_groups) for a user whose header gives none, the administrator
+                # tests of [auth.ldap] for an instructor nothing made an administrator yet; the
+                # headers win
+                proxy, ldap = self.cfg.auth.proxy, self.cfg.auth.ldap
                 want_role = proxy.ldap_roles and not identity.is_instructor
-                want_group = bool(self.cfg.auth.ldap.attr_group) and not identity.group
-                if want_role or want_group:
+                want_group = bool(ldap.attr_group) and not identity.group
+                want_admin = (ldap.administrator_tests and identity.is_instructor and not identity.administrator
+                              and identity.login not in self._administrators)
+                if want_role or want_group or want_admin:
                     found = await self.roles.get(identity.login)
-                    identity = replace(identity,
-                                       role=ROLE_INSTRUCTOR if identity.is_instructor
-                                       or (proxy.ldap_roles and found.role == ROLE_INSTRUCTOR) else ROLE_STUDENT,
-                                       group=identity.group or found.group)
-            request[IDENTITY_KEY] = identity
+                    instructor = identity.is_instructor or (proxy.ldap_roles and found.role == ROLE_INSTRUCTOR)
+                    administrator = identity.administrator or (ldap.administrator_tests and found.administrator)
+                    identity = replace(identity, role=ROLE_INSTRUCTOR if instructor else ROLE_STUDENT,
+                                       group=identity.group or found.group, administrator=False)
+                    identity = identity.with_administrator(administrator)
+            request[IDENTITY_KEY] = self._administrator(identity)
         else:
-            request[IDENTITY_KEY] = S.decode(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)
+            request[IDENTITY_KEY] = self._administrator(S.decode(request.cookies.get(S.COOKIE_NAME, ''),
+                                                                 self.cfg.secret))
         response = await handler(request)
         response.headers.setdefault('Content-Security-Policy', CSP)
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('Referrer-Policy', 'same-origin')
         response.headers.setdefault('X-Frame-Options', 'DENY')
         return response
+
+    def _administrator(self, identity):
+        """The identity with the administrator flag when its login is one of ``[auth]
+        administrators`` (an instructor only: ``with_administrator`` keeps a student out)."""
+        if identity is None or identity.administrator or identity.login not in self._administrators:
+            return identity
+        return identity.with_administrator(True)
 
     def _proxy_identity(self, request):
         """Proxy mode: the identity of the request headers, from a peer of ``trusted_proxies``

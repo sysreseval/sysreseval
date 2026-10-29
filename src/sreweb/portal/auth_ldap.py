@@ -8,8 +8,11 @@ tests: the DNs of ``instructor_groups`` matched against the ``memberOf`` attribu
 (or, with ``group_filter``, found by a search of the groups holding the user's DN),
 ``instructor_filter`` matched by the user's own entry (``(gidNumber=2000)``, a ``memberOf`` test
 when the overlay exists), and ``instructor_group_filter`` finding a group of ``group_search_base``
-naming the user (``posixGroup`` + ``memberUid``, the group search that needs no overlay).  Every
-ldap3 call runs in a thread (the library is synchronous).
+naming the user (``posixGroup`` + ``memberUid``, the group search that needs no overlay).  The
+administrators (the instructors who browse the connection log) come from the same two kinds of
+tests, ``administrator_groups`` and ``administrator_group_filter``, run for the instructors only
+(``[auth] administrators`` names logins directly, applied by the portal).  Every ldap3 call runs
+in a thread (the library is synchronous).
 
 In LDAP mode the role is baked into the session cookie: a rule change applies at the next login.
 In proxy mode, :class:`LdapRoleResolver` runs the same tests for the login the proxy gives
@@ -34,9 +37,11 @@ class LdapError(Exception):
 
 @dataclass(frozen=True)
 class DirectoryLookup:
-    """What the directory says of a login in proxy mode: the role and the student group."""
+    """What the directory says of a login in proxy mode: the role, the student group and
+    whether the administrator tests match (the portal grants the flag to the instructors only)."""
     role: str = ROLE_STUDENT
     group: str = ''
+    administrator: bool = False
 
 
 def _escape_filter(value: str) -> str:
@@ -124,7 +129,7 @@ class _Directory:
         attrs = [self.cfg.attr_fullname, self.cfg.attr_mail]
         if self.cfg.attr_group:
             attrs.append(self.cfg.attr_group)
-        if self.cfg.instructor_groups and not self.cfg.group_filter:
+        if (self.cfg.instructor_groups or self.cfg.administrator_groups) and not self.cfg.group_filter:
             attrs.append('memberOf')
         return attrs
 
@@ -140,14 +145,25 @@ class _Directory:
 
     def _is_instructor(self, conn, login: str, dn: str, entry) -> bool:
         """The OR of the three tests, each skipped when not configured."""
-        return (self._in_instructor_groups(conn, dn, entry)
+        return (self._in_groups(conn, dn, entry, self.cfg.instructor_groups)
                 or entry_matches(conn, dn, self.cfg.instructor_filter)
                 or (bool(self.cfg.group_search_base)
                     and group_found(conn, self.cfg.group_search_base, self.cfg.instructor_group_filter,
                                     login=login, dn=dn)))
 
-    def _in_instructor_groups(self, conn, dn: str, entry) -> bool:
-        groups = {g.lower() for g in self.cfg.instructor_groups}
+    def _is_administrator(self, conn, login: str, dn: str, entry) -> bool:
+        """The OR of the two administrator tests (``administrator_groups`` like
+        ``instructor_groups``, ``administrator_group_filter`` under ``group_search_base``), each
+        skipped when not configured; the callers run it for the instructors only."""
+        return (self._in_groups(conn, dn, entry, self.cfg.administrator_groups)
+                or (bool(self.cfg.group_search_base) and bool(self.cfg.administrator_group_filter.strip())
+                    and group_found(conn, self.cfg.group_search_base, self.cfg.administrator_group_filter,
+                                    login=login, dn=dn)))
+
+    def _in_groups(self, conn, dn: str, entry, wanted) -> bool:
+        """Whether the user is a member of one of the *wanted* groups (DNs): by the ``memberOf``
+        attribute of the entry, or by the ``group_filter`` search when configured."""
+        groups = {str(g).lower() for g in wanted}
         if not groups:
             return False
         if self.cfg.group_filter:
@@ -169,15 +185,17 @@ class _Directory:
 
 
 class LdapRoleResolver(_Directory):
-    """Proxy mode: the role and the group of a login the reverse proxy authenticated, computed
-    with the service account (or an anonymous bind) from the same tests as the LDAP login."""
+    """Proxy mode: the role, the group and the administrator tests of a login the reverse proxy
+    authenticated, computed with the service account (or an anonymous bind) from the same tests
+    as the LDAP login."""
 
     def role_for(self, login: str) -> str:
         """``ROLE_INSTRUCTOR`` or ``ROLE_STUDENT``: the role of :meth:`resolve`."""
         return self.resolve(login).role
 
     def resolve(self, login: str) -> DirectoryLookup:
-        """The role (an unknown login is a student) and the student group of *login*;
+        """The role (an unknown login is a student), the student group and the administrator
+        tests of *login* (run whatever the role: the portal applies them to the instructors);
         ``LdapError`` when the directory cannot be used.  Synchronous: run it in a thread."""
         if not is_valid_login(login):
             return DirectoryLookup()
@@ -198,8 +216,10 @@ class LdapRoleResolver(_Directory):
                         return DirectoryLookup()
                     entry = conn.entries[0]
                     dn = entry.entry_dn
-                return DirectoryLookup(ROLE_INSTRUCTOR if self._is_instructor(conn, login, dn, entry) else ROLE_STUDENT,
-                                       self._group(entry))
+                instructor = self._is_instructor(conn, login, dn, entry)
+                administrator = self.cfg.administrator_tests and self._is_administrator(conn, login, dn, entry)
+                return DirectoryLookup(ROLE_INSTRUCTOR if instructor else ROLE_STUDENT, self._group(entry),
+                                       bool(administrator))
             finally:
                 conn.unbind()
         except LDAPException as e:
@@ -256,6 +276,7 @@ class LdapAuthenticator(_Directory):
     def _identity(self, conn, login: str, dn: str, entry, language: str) -> Identity:
         fullname = _first(entry, self.cfg.attr_fullname) if entry is not None else ''
         email = _first(entry, self.cfg.attr_mail) if entry is not None else ''
+        instructor = self._is_instructor(conn, login, dn, entry)
         return Identity(login=login, fullname=fullname, email=email, language=language,
-                        role=ROLE_INSTRUCTOR if self._is_instructor(conn, login, dn, entry) else ROLE_STUDENT,
-                        group=self._group(entry))
+                        role=ROLE_INSTRUCTOR if instructor else ROLE_STUDENT, group=self._group(entry),
+                        administrator=instructor and self._is_administrator(conn, login, dn, entry))

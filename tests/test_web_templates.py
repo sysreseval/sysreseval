@@ -27,7 +27,7 @@ PO_ESCAPES = {'n': '\n', 't': '\t', '"': '"', "'": "'", '\\': '\\'}
 
 LANGUAGES = [('en', 'English'), ('fr', 'Français')]
 IDENTITY = {'login': 'alice', 'fullname': 'Alice Martin', 'email': 'alice@example.org', 'role': 'student',
-            'language': 'fr', 'anonymous': False, 'group': ''}
+            'language': 'fr', 'anonymous': False, 'group': '', 'administrator': False}
 RLN = '20261021153000@@@sre@dhcp.py@@@alice'
 API_BASE = '/api/projects/a01/20261021153000%40%40%40sre%40dhcp.py%40%40%40alice'
 
@@ -39,7 +39,7 @@ def environment() -> jinja2.Environment:
 def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
-            'language': 'fr', 'instructor': False, 'groups': False, 'logout_url': '',
+            'language': 'fr', 'instructor': False, 'administrator': False, 'groups': False, 'logout_url': '',
             'site': {'name': '', 'url': '', 'logo_url': ''}}
     base.update(extra)
     return base
@@ -100,7 +100,7 @@ def parse_po(path: Path) -> dict:
 class TestTemplates:
     def test_the_pages_exist(self):
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
-                'pool.html'} <= set(template_names())
+                'pool.html', 'history.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -180,9 +180,12 @@ class TestTemplates:
         assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
         assert 'href="/pool"' in html
         html = render('projects.html', instructor=True)
-        assert 'href="/watch"' in html and 'href="/pool"' in html
+        assert 'href="/watch"' in html and 'href="/pool"' in html and 'href="/history"' not in html
         html = render('projects.html')
-        assert 'href="/watch"' not in html and 'href="/pool"' not in html
+        assert 'href="/watch"' not in html and 'href="/pool"' not in html and 'href="/history"' not in html
+        # the History link of the administrators (instructors)
+        html = render('projects.html', instructor=True, administrator=True)
+        assert 'href="/history"' in html and 'href="/watch"' in html
 
     def test_watch_page(self):
         html = render('watch.html', instructor=True)
@@ -204,6 +207,24 @@ class TestTemplates:
         assert 'a lab for the summary of the lab, a group for that summary restricted to the group</span>' in shown
         assert 'class="watch-group" title="Student group">' in shown
         assert 'data-sort="group" hidden' not in shown and 'title="Student group" hidden' not in shown
+
+    def test_history_page(self):
+        events = ('denied', 'login', 'start')
+        html = render('history.html', instructor=True, administrator=True, history_database=False, events=events)
+        assert 'id="history"' in html and 'id="history-filters"' in html and 'id="history-count"' in html
+        assert '/static/js/history.js' in html and 'href="/history"' in html and 'data-login="alice"' in html
+        for name in ('login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'):
+            assert f'name="{name}"' in html, name
+        assert '<option value="start">start</option>' in html and '<option value="">All events</option>' in html
+        assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
+        assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
+        assert 'colspan="10"' in html and html.count('<th>') == 10
+        # without a database: the notice says what to configure, the table has nothing to show
+        assert 'data-database="false"' in html and 'id="history-notice" class="muted">' in html
+        assert 'not stored in a database' in html and 'access_log.database' in html
+        with_db = render('history.html', instructor=True, administrator=True, history_database=True, events=events)
+        assert 'data-database="true"' in with_db and 'id="history-notice" class="muted" hidden>' in with_db
+        assert 'not stored in a database' not in with_db
 
     def test_pool_page(self):
         html = render('pool.html', instructor=True)
@@ -277,6 +298,7 @@ class TestTemplates:
         pages = [render('login.html', identity=None), render('projects.html'), render('open.html', instructor=True),
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True),
                  render('pool.html', instructor=True),
+                 render('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'})]
         checked = 0
         for html in pages:

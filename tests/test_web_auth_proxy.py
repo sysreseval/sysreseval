@@ -35,12 +35,12 @@ class TestHeaderValues:
         assert P.split_groups('', ';') == [] and P.split_groups(None, ';') == []
         assert P.split_groups('a,b', ',') == ['a', 'b']
 
-    def test_is_instructor(self):
-        assert P.is_instructor(['cn=a,dc=x', TEACHERS.upper()], [TEACHERS])
-        assert not P.is_instructor(['cn=a,dc=x'], [TEACHERS])
-        assert not P.is_instructor([TEACHERS], []) and not P.is_instructor([], [TEACHERS])
-        assert not P.is_instructor(['cn=teachers'], [TEACHERS])             # whole values only
-        assert P.is_instructor(['faculty'], ['staff', ' Faculty '])          # any attribute, not only DNs
+    def test_member_of_any(self):
+        assert P.member_of_any(['cn=a,dc=x', TEACHERS.upper()], [TEACHERS])
+        assert not P.member_of_any(['cn=a,dc=x'], [TEACHERS])
+        assert not P.member_of_any([TEACHERS], []) and not P.member_of_any([], [TEACHERS])
+        assert not P.member_of_any(['cn=teachers'], [TEACHERS])             # whole values only
+        assert P.member_of_any(['faculty'], ['staff', ' Faculty '])          # any attribute, not only DNs
 
 
 class TestIdentityFromHeaders:
@@ -94,6 +94,22 @@ class TestIdentityFromHeaders:
         assert group(**{'X-Remote-Group': 'x' * 100}) == 'x' * 64
         # ignored when no header_group is configured
         assert P.identity_from_headers(ProxyAuthConfig(), Headers({'X-Remote-User': 'zoe', 'X-Remote-Group': 'INFO1'}), 'en').group == ''
+
+    def test_administrator_groups(self):
+        admins = 'cn=sre-admins,ou=groups,dc=example,dc=org'
+        cfg = ProxyAuthConfig(instructor_groups=[TEACHERS], administrator_groups=[admins])
+
+        def me(groups):
+            return P.identity_from_headers(cfg, Headers({'X-Remote-User': 'zoe', 'X-Remote-Groups': groups}), 'en')
+
+        both = me(f'{TEACHERS}; {admins.upper()}')
+        assert both.is_instructor and both.administrator
+        assert me(TEACHERS).is_instructor and not me(TEACHERS).administrator
+        student = me(admins)                          # in the group but not an instructor: no rights
+        assert student.role == 'student' and not student.administrator
+        assert not P.identity_from_headers(ProxyAuthConfig(instructor_groups=[TEACHERS]),
+                                           Headers({'X-Remote-User': 'zoe', 'X-Remote-Groups': f'{TEACHERS}; {admins}'}),
+                                           'en').administrator
 
     @pytest.mark.parametrize('login', ['../x', 'a b', 'alice@example.org', 'x' * 65, 'ali\x00ce!'])
     def test_bad_login_is_refused_not_truncated(self, login):

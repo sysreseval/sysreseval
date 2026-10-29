@@ -45,6 +45,8 @@ TEMPLATES = {
     'project.html': '<html><title>Project</title>{{ host }} {{ rln }} {{ api_base }} {{ _("Schema") }}</html>',
     'watch.html': '<html><title>Watch</title>{{ identity.login }} {{ instructor }} {{ groups }}</html>',
     'pool.html': '<html><title>Pool</title>{{ identity.login }} {{ instructor }}</html>',
+    'history.html': '<html><title>History</title>{{ identity.login }} {{ administrator }} {{ history_database }} '
+                    '{{ events | length }}</html>',
 }
 
 
@@ -63,9 +65,10 @@ class Harness:
     """A real agent on the fake sre, and a portal whose only host is that agent."""
 
     def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1, agent_over=None,
-                 role_resolver=None, host_over=None):
+                 role_resolver=None, host_over=None, db_connect=None):
         self.tmp = tmp_path
         self.role_resolver = role_resolver
+        self.db_connect = db_connect           # the (connect, transient) pair of a fake access database
         self.host_over = host_over or {}       # merged into the [[hosts]] entry of the agent (a01)
         self.pub = tmp_path / 'pub'
         (self.pub / 'projects').mkdir(parents=True)
@@ -103,7 +106,8 @@ class Harness:
             hosts.append({'name': 'down', 'url': 'http://127.0.0.1:9', 'token': TOKEN, 'max_projects': 3})
         cfg = web_config_from_dict({'secret': SECRET, 'auth': {'mode': self.auth_mode},
                                     'pool': {'poll_interval': 0.1}, 'hosts': hosts, **self.web_over})
-        self.portal = Portal(cfg, web_dir=str(self.web_dir), localedirs=[], role_resolver=self.role_resolver)
+        self.portal = Portal(cfg, web_dir=str(self.web_dir), localedirs=[], role_resolver=self.role_resolver,
+                             db_connect=self.db_connect)
         self.client = TestClient(TestServer(self.portal.make_app()))
         await self.client.start_server()
         return self
@@ -574,7 +578,8 @@ class TestProxyMode:
                 data = await resp.json()
                 assert data['auth_mode'] == 'proxy' and S.COOKIE_NAME not in resp.cookies
                 assert data['identity'] == {'login': 'alice', 'fullname': 'Émile Dupont', 'email': 'alice@example.org',
-                                            'role': 'instructor', 'language': 'en', 'anonymous': False, 'group': 'INFO1'}
+                                            'role': 'instructor', 'language': 'en', 'anonymous': False, 'group': 'INFO1',
+                                            'administrator': False}
                 student = (await (await h.client.get('/api/me', headers=who('bob'))).json())['identity']
                 assert student['login'] == 'bob' and student['role'] == 'student' and student['fullname'] == ''
                 for path in ('/', '/login'):
@@ -791,15 +796,16 @@ class TestDisplayThroughThePortal:
 class FakeRoleResolver:
     """The directory of proxy mode's ldap_roles, answering from dicts (or failing)."""
 
-    def __init__(self, roles, fail=False, groups=None):
+    def __init__(self, roles, fail=False, groups=None, administrators=None):
         self.roles, self.fail, self.calls, self.groups = roles, fail, [], groups or {}
+        self.administrators = set(administrators or ())
 
     def resolve(self, login):
         from sreweb.portal.auth_ldap import DirectoryLookup, LdapError
         self.calls.append(login)
         if self.fail:
             raise LdapError("directory down")
-        return DirectoryLookup(self.roles.get(login, 'student'), self.groups.get(login, ''))
+        return DirectoryLookup(self.roles.get(login, 'student'), self.groups.get(login, ''), login in self.administrators)
 
 
 class TestInstructorThroughThePortal:
@@ -969,3 +975,131 @@ class TestInstructorThroughThePortal:
         assert sorted(resolver.calls) == ['alice', 'bob']
         failing = RoleCache(FakeRoleResolver({}, fail=True), ttl=600)
         assert run(complete_groups([{'owner': 'alice', 'group': ''}], failing)) == [{'owner': 'alice', 'group': ''}]
+
+
+class TestHistory:
+    """The administrators (the instructors of [auth] administrators, of the administrator groups of the
+    headers or of the directory) and their History page: the guards, the queries on a fake
+    database (test_web_accessdb.FakeServer), the history and denied lines."""
+    ADMINS = 'cn=sre-admins,ou=groups,dc=example,dc=org'
+    DB = {'host': 'db.example.org', 'user': 'sre_web', 'name': 'sre'}
+
+    def test_administrators_by_login_and_by_header_group(self, tmp_path):
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['root.prof'],
+                                       'proxy': {**PROXY_OVER['auth']['proxy'], 'administrator_groups': [self.ADMINS]}}}
+
+        async def me(h, headers) -> dict:
+            return (await (await h.client.get('/api/me', headers=headers)).json())['identity']
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+                bob, prof = who('bob'), who('prof', groups=TEACHERS)
+                root = who('root.prof', groups=TEACHERS)
+                by_group = who('ann', groups=f'{TEACHERS}; {self.ADMINS}')
+                assert (await me(h, root))['administrator'] is True
+                assert (await me(h, prof))['administrator'] is False
+                assert (await me(h, by_group))['administrator'] is True
+                student = await me(h, who('stu', groups=self.ADMINS))             # in the group, not an instructor
+                assert student['role'] == 'student' and student['administrator'] is False
+                listed = await me(h, who('root.prof'))                            # listed, not an instructor today
+                assert listed['role'] == 'student' and listed['administrator'] is False
+                # the page and its API: administrators only
+                assert (await h.client.get('/history', allow_redirects=False)).status == 302
+                assert (await h.client.get('/history', headers=bob)).status == 403
+                assert (await h.client.get('/history', headers=prof)).status == 403
+                assert (await h.client.get('/api/history', headers=prof)).status == 403
+                assert (await h.client.get('/api/history')).status == 401
+                page = await h.client.get('/history', headers=root)
+                assert page.status == 200 and 'root.prof True False' in await page.text()   # no database configured
+                assert ' 0</html>' not in await page.text()                                   # the event names
+                resp = await h.client.get('/api/history', headers=root)
+                assert resp.status == 409 and 'access_log.database' in (await resp.json())['error']
+                assert (await h.client.get('/watch', headers=by_group)).status == 200
+                assert await (await h.client.get('/api/projects', headers=root)).json() == []  # relayed with the header
+        run(go())
+
+    def test_administrators_from_the_directory(self, tmp_path):
+        """ldap_groups: the roles stay the headers', the administrator tests of [auth.ldap] run for
+        the instructors (once per login, cached) and never make a student an administrator."""
+        over = {'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': True, 'header_group': 'X-Remote-Group',
+                                                     'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000']},
+                         'ldap': {'uri': 'ldaps://ldap.example.org', 'search_base': 'ou=people,dc=example,dc=org',
+                                  'attr_group': 'departmentNumber', 'group_search_base': 'ou=groups,dc=example,dc=org',
+                                  'administrator_group_filter': '(&(cn=sre-admins)(memberUid={login}))'}},
+                'trusted_proxies': ['127.0.0.1', '::1']}
+
+        async def go():
+            resolver = FakeRoleResolver({}, groups={'zoe': 'INFO9'}, administrators={'zoe', 'stu'})
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
+                zoe = {**who('zoe'), 'X-Remote-Gid': '2000'}
+                me = (await (await h.client.get('/api/me', headers=zoe)).json())['identity']
+                assert (me['role'], me['group'], me['administrator']) == ('instructor', 'INFO9', True)
+                await h.client.get('/api/me', headers=zoe)
+                assert resolver.calls == ['zoe']                                      # cached
+                me = (await (await h.client.get('/api/me', headers=who('stu', group='HDR'))).json())['identity']
+                assert (me['role'], me['administrator']) == ('student', False) and 'stu' not in resolver.calls
+                prof = {**who('prof', group='HDR'), 'X-Remote-Gid': '2000'}
+                me = (await (await h.client.get('/api/me', headers=prof)).json())['identity']
+                assert (me['role'], me['administrator']) == ('instructor', False) and 'prof' in resolver.calls
+                page = await h.client.get('/history', headers=zoe)
+                assert page.status == 200 and 'zoe True False' in await page.text()
+                assert (await h.client.get('/history', headers=prof)).status == 403
+            resolver = FakeRoleResolver({}, fail=True, administrators={'zoe'})
+            async with Harness(tmp_path / 'down', auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
+                me = (await (await h.client.get('/api/me', headers=zoe)).json())['identity']
+                assert (me['role'], me['administrator']) == ('instructor', False)      # the directory is down
+        run(go())
+
+    def test_history_from_the_database(self, tmp_path):
+        import time
+        from test_web_accessdb import FakeServer, Down, NAMES
+        from sreweb.portal.accessdb import utc_datetime
+        server = FakeServer(table_exists=True)
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['prof']},
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB}}
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                access = h.portal.access
+                assert access.db is not None and 'database sre on db.example.org' in access.describe()
+                prof, bob = who('prof', groups=TEACHERS), who('bob')
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
+                assert resp.status == 200 and (await resp.text())          # the start line comes after the stream
+                assert (await h.client.get('/history', headers=bob)).status == 403
+                assert access.db.flush(5)
+                events = [row[1] for row in server.committed]
+                assert events[:2] == ['session_open', 'start'] and 'denied' in events
+                assert server.committed[1][2:5] == ('bob', '127.0.0.1', 'a01') and server.committed[1][6] == 'sre/dhcp.py'
+                # the reader answers what the fake server scripts: the three newest rows, as ORDER BY id DESC
+                rows = [(i + 1, *row) for i, row in enumerate(server.committed)]
+                server.select_names = NAMES
+                server.select_rows = rows[::-1][:3]
+                page = await (await h.client.get('/api/history?login=bob&event=start,stop&limit=2', headers=prof)).json()
+                assert page['limit'] == 2 and page['more'] is True and len(page['rows']) == 2
+                assert page['rows'][0]['id'] == rows[-1][0] and isinstance(page['rows'][0]['ts'], float)
+                assert page['rows'][0]['details'] and page['database']['connected'] is True
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT id'))
+                assert "login LIKE %s ESCAPE '!'" in sql and 'event IN (%s, %s)' in sql and args == ['bob%', 'start', 'stop', 3]
+                assert (await h.client.get('/api/history?since=yesterday', headers=prof)).status == 400
+                assert (await h.client.get('/api/history', headers=bob)).status == 403
+                server.down = True                                       # the reader cannot connect
+                resp = await h.client.get('/api/history', headers=prof)
+                assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
+                server.down = False
+            # after the cleanup: the shutdown lines reached the database, the history line names the filters
+            events = [row[1] for row in server.committed]
+            assert events[-1] == 'session_close' and events.count('session_close') == 2 and 'history' in events
+            history_row = next(row for row in server.committed if row[1] == 'history')
+            assert history_row[2] == 'prof' and json.loads(history_row[9])['login_filter'] == 'bob'
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            history = [l for l in lines if l['event'] == 'history']
+            assert history[0]['login'] == 'prof' and history[0]['login_filter'] == 'bob'
+            assert history[0]['event_filter'] == 'start,stop' and history[0]['status'] == '200'
+            assert history[1]['status'] == '400' and history[-1]['status'] == '503'
+            assert any(l['path'] == '/history' and l['login'] == 'bob' for l in lines if l['event'] == 'denied')
+            # a student's call of the API: a history line with its status (the route has an event), not denied
+            assert any(l['login'] == 'bob' and l['status'] == '403' for l in history)
+            assert not any(l['path'] == '/api/history' for l in lines if l['event'] == 'denied')
+            assert server.committed[0][0] <= utc_datetime(time.time())          # UTC, not local time
+        run(go())
+

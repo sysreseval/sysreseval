@@ -3,8 +3,10 @@ the browser itself and passes the identity in request headers, read again on eve
 session cookie).  Pure functions, no aiohttp: the header values as aiohttp gives them (UTF-8
 decoded with ``surrogateescape``) in, an ``Identity`` out.  The role comes from the header tests
 (``instructor_groups`` on the groups header, ``instructor_values`` on ``instructor_header``), the
-student group from ``header_group`` (its first value); the LDAP tests of ``ldap_roles`` are
-applied afterwards by the portal (``roles.py``)."""
+administrator flag of an instructor from ``administrator_groups`` on the groups header, the
+student group from ``header_group`` (its first value); the LDAP tests of ``ldap_roles`` /
+``ldap_groups`` and the ``administrators`` login list are applied afterwards by the portal
+(``roles.py``, ``app.py``)."""
 import re
 
 from ..config import ProxyAuthConfig
@@ -41,9 +43,10 @@ def split_groups(value: str, separator: str) -> list:
     return [g.strip() for g in (value or '').split(separator) if g.strip()]
 
 
-def is_instructor(groups, instructor_groups) -> bool:
-    """Whether one of *groups* is one of *instructor_groups* (whole values, case-insensitive)."""
-    wanted = {str(g).strip().lower() for g in instructor_groups if str(g).strip()}
+def member_of_any(groups, wanted_groups) -> bool:
+    """Whether one of *groups* (the values of a header) is one of *wanted_groups* (whole values,
+    case-insensitive): the ``instructor_groups`` / ``administrator_groups`` tests."""
+    wanted = {str(g).strip().lower() for g in wanted_groups if str(g).strip()}
     return bool(wanted) and any(g.lower() in wanted for g in groups)
 
 
@@ -59,7 +62,7 @@ def identity_from_headers(cfg: ProxyAuthConfig, headers, language: str) -> Ident
     groups = split_groups(decode_header_value(headers.get(cfg.header_groups)), cfg.groups_separator)
     extra = (split_groups(decode_header_value(headers.get(cfg.instructor_header)), cfg.groups_separator)
              if cfg.instructor_header else [])
-    instructor = is_instructor(groups, cfg.instructor_groups) or is_instructor(extra, cfg.instructor_values)
+    instructor = member_of_any(groups, cfg.instructor_groups) or member_of_any(extra, cfg.instructor_values)
     group_values = (split_groups(decode_header_value(headers.get(cfg.header_group)), cfg.groups_separator)
                     if cfg.header_group else [])
     return Identity(login=login,
@@ -67,4 +70,5 @@ def identity_from_headers(cfg: ProxyAuthConfig, headers, language: str) -> Ident
                     email=decode_header_value(headers.get(cfg.header_email), MAX_EMAIL),
                     role=ROLE_INSTRUCTOR if instructor else ROLE_STUDENT,
                     language=language, anonymous=False,
-                    group=clean_group(group_values[0]) if group_values else '')
+                    group=clean_group(group_values[0]) if group_values else '',
+                    administrator=instructor and member_of_any(groups, cfg.administrator_groups))

@@ -52,14 +52,18 @@ class TestWebConfig:
         cfg = web_config_from_dict({
             'listen': '[::]:8000', 'public_url': 'https://sre.example.org', 'secret': SECRET,
             'trusted_proxies': ['127.0.0.1'], 'languages': ['fr', 'en'],
-            'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldaps://ldap.example.org',
-                                              'bind_dn_template': 'uid={login},ou=people,dc=example,dc=org',
-                                              'instructor_groups': ['cn=teachers,ou=groups,dc=example,dc=org'],
-                                              'instructor_filter': '(memberOf=cn=profs,ou=groups,dc=example,dc=org)',
-                                              'group_search_base': 'ou=groups,dc=example,dc=org',
-                                              'instructor_group_filter': '(&(cn=teachers)(member={dn}))',
-                                              'attr_group': ' departmentNumber ', 'timeout': '5s'},
+            'auth': {'mode': 'ldap', 'administrators': ['root.prof', ' admin2 '],
+                     'ldap': {'uri': 'ldaps://ldap.example.org',
+                              'bind_dn_template': 'uid={login},ou=people,dc=example,dc=org',
+                              'instructor_groups': ['cn=teachers,ou=groups,dc=example,dc=org'],
+                              'instructor_filter': '(memberOf=cn=profs,ou=groups,dc=example,dc=org)',
+                              'group_search_base': 'ou=groups,dc=example,dc=org',
+                              'instructor_group_filter': '(&(cn=teachers)(member={dn}))',
+                              'administrator_groups': ['cn=sre-admins,ou=groups,dc=example,dc=org'],
+                              'administrator_group_filter': '(&(cn=sre-admins)(memberUid={login}))',
+                              'attr_group': ' departmentNumber ', 'timeout': '5s'},
                      'proxy': {'instructor_header': 'X-Remote-Gid', 'instructor_values': ['2000'],
+                               'administrator_groups': ['cn=sre-admins,ou=groups,dc=example,dc=org'],
                                'header_group': 'X-Remote-Group', 'ldap_roles': True, 'ldap_roles_ttl': '5m'}},
             'pool': {'idle_timeout_anonymous': '1h', 'idle_timeout_authenticated': 0, 'poll_interval': 3},
             'limits': {'eval_interval': '20s', 'max_answer_bytes': 100},
@@ -70,6 +74,12 @@ class TestWebConfig:
         assert cfg.auth.ldap.instructor_filter == '(memberOf=cn=profs,ou=groups,dc=example,dc=org)'
         assert cfg.auth.ldap.group_search_base == 'ou=groups,dc=example,dc=org'
         assert cfg.auth.ldap.instructor_group_filter == '(&(cn=teachers)(member={dn}))'
+        assert cfg.auth.administrators == ['root.prof', 'admin2']
+        assert cfg.auth.ldap.administrator_groups == ['cn=sre-admins,ou=groups,dc=example,dc=org']
+        assert cfg.auth.ldap.administrator_group_filter == '(&(cn=sre-admins)(memberUid={login}))'
+        assert cfg.auth.ldap.administrator_tests and not config.LdapConfig().administrator_tests
+        assert cfg.auth.proxy.administrator_groups == ['cn=sre-admins,ou=groups,dc=example,dc=org']
+        assert web_config_from_dict({'secret': SECRET, 'hosts': [HOST]}).auth.administrators == []
         assert (cfg.auth.proxy.instructor_header, cfg.auth.proxy.instructor_values) == ('X-Remote-Gid', ['2000'])
         assert cfg.auth.proxy.ldap_roles is True and cfg.auth.proxy.ldap_roles_ttl == 300
         assert cfg.auth.ldap.attr_group == 'departmentNumber' and cfg.auth.proxy.header_group == 'X-Remote-Group'
@@ -108,6 +118,17 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'instructor_filter': 'gidNumber=2000'}}}, 'instructor_filter'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'group_filter': 'member={dn}'}}}, 'group_filter'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'instructor_group_filter': '(cn=teachers)'}}}, '{login}'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'administrators': 'root'}}, 'administrators'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'administrators': ['ok', '']}}, 'administrators'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'administrators': [3]}}, 'administrators'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'administrator_groups': 'cn=x'}}}, 'administrator_groups'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'administrator_group_filter': 'cn=x',
+                                                               'group_search_base': 'ou=g'}}}, 'administrator_group_filter'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'administrator_group_filter': '(cn=admins)',
+                                                               'group_search_base': 'ou=g'}}}, '{login}'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'administrator_group_filter':
+                                                               '(&(cn=admins)(memberUid={login}))'}}}, 'group_search_base'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'administrator_groups': 'cn=x'}}}, 'administrator_groups'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_values': '2000'}}}, 'instructor_values'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_values': ['2000']}}}, 'instructor_header'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'instructor_header': 'X-Remote-Gid'}}}, 'instructor_values'),

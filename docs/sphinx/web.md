@@ -80,7 +80,8 @@ never by a command run as the student; the owner, instructor or not, follows the
 
 ### From a checkout
 
-`make venv` installs the Python dependencies (`aiohttp`, `jinja2`, `aiohttp-jinja2`, `ldap3`);
+`make venv` installs the Python dependencies (`aiohttp`, `jinja2`, `aiohttp-jinja2`, `ldap3`, and
+`pymysql` for the optional database of the connection log);
 `make xterm` and `make novnc` (run by `make install`) download the terminal library and the
 VNC viewer of the browser into `web/static/vendor/` (checksum-pinned, not committed). `scripts/install.sh` offers to install the
 systemd units `sre-agent.service` and `sre-web.service` (disabled) and the example configuration
@@ -165,12 +166,14 @@ merges other files into this one, as for `web.toml` below.
 | `languages` | `["en", "fr"]` | the languages offered at login, the first one by default |
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
-| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` |
-| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
+| `[auth] administrators` | `[]` | the logins of the administrators: instructors who may read the connection log on the History page (*Administrators* below); a login that is not an instructor gets nothing. By group: `administrator_groups` / `administrator_group_filter` of `[auth.ldap]`, `administrator_groups` of `[auth.proxy]` |
+| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); the administrator tests (*Administrators* below): `administrator_groups` (DNs, tested like `instructor_groups`) and `administrator_group_filter` (a group search under `group_search_base`, none by default); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` / `ldap_groups` |
+| `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
-| `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session) |
+| `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
+| `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
@@ -324,7 +327,10 @@ a logout opens another one. The other events:
 - `eval`, `state` (`state`), `stop`, `display_start`: the HTTP status and the duration;
 - `denied`: a call answered 401, 403 or 429 (`method`, `path`), `login=-` when nobody was logged
   in; `admin`: a call of `sre-web-tool` changing the pool, or an action of the Pool page of an
-  instructor (their `login`);
+  instructor (their `login`); `history`: an administrator read the log on the History page
+  (*Administrators* below; the filters asked come as `login_filter`, `addr_filter`,
+  `event_filter`, `host_filter`, `rln_filter`, `lab_filter`, `since_filter`, `until_filter`,
+  `before_filter`);
 - the presentations (*Instructors* below): `present_start` (the instructor's `login`, `host`,
   `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
@@ -338,6 +344,59 @@ set `trusted_proxies` in every mode to log the real addresses behind a proxy. Th
 limit (`[limits] login_per_minute`) counts per logged address too. The log holds personal data
 (names, addresses, what was done when): `keep` is its retention, and the file is readable by
 `sre-web` and root only (`/var/log/sre-web` is mode 0750).
+
+**In a database.** `[access_log.database]` sends the same events to a MariaDB / MySQL table
+through PyMySQL (`python3-pymysql`, or `pip install pymysql` in the venv; the file and the
+journal stay what they are), where the History page of the administrators (*Administrators*
+below) reads them:
+
+```toml
+[access_log.database]
+host = "db.example.org"          # or unix_socket = "/run/mysqld/mysqld.sock"
+user = "sre_web"
+name = "sre"                     # the database; password = "…" in an imported secrets file
+keep = 400                       # days of rows kept (purged daily); 0 = forever
+```
+
+One row per line: the time (`ts`, UTC, millisecond precision), the event, the login (empty when
+nobody was logged in), the client address, the host, the project (`rln`), the lab, the status
+and the duration in columns, the other fields of the line as JSON in `details` (`SELECT login,
+COUNT(*) FROM access_log WHERE event = 'start' GROUP BY login` works as expected). The table
+(`table`, `access_log` by default) is created when it is missing, so the account needs `CREATE`
+for the first start; or create it by hand and grant `SELECT, INSERT, DELETE` only (`DELETE` for
+the purge of `keep`):
+
+```sql
+CREATE DATABASE sre CHARACTER SET utf8mb4;
+CREATE USER 'sre_web'@'%' IDENTIFIED BY '…';
+GRANT SELECT, INSERT, DELETE ON sre.* TO 'sre_web'@'%';
+CREATE TABLE sre.access_log (
+  id       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ts       DATETIME(3)     NOT NULL,
+  event    VARCHAR(32)     NOT NULL,
+  login    VARCHAR(64)     NOT NULL DEFAULT '',
+  addr     VARCHAR(64)     NOT NULL DEFAULT '',
+  host     VARCHAR(64)     NOT NULL DEFAULT '',
+  rln      VARCHAR(255)    NOT NULL DEFAULT '',
+  lab      VARCHAR(255)    NOT NULL DEFAULT '',
+  status   VARCHAR(16)     NOT NULL DEFAULT '',
+  duration DOUBLE          NULL,
+  details  TEXT            NOT NULL,
+  PRIMARY KEY (id), KEY ts (ts), KEY login_ts (login, ts), KEY addr_ts (addr, ts), KEY event_ts (event, ts)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+The rows are written by a thread of the portal, in batches, and a request never waits for the
+server: while it does not answer, the rows wait in memory (`queue` of them at most, the oldest
+dropped beyond; one warning in the portal's log, one line when the writing resumes; the History
+page says it too) and the portal goes on; a batch the server refuses is written row by row and
+a refused row is dropped with a warning; the rows still waiting when the portal stops get one
+last attempt. The rows older than `keep` days are deleted once a day (`DELETE … LIMIT`: a
+replicated server needs a row-based binlog). Every consultation of the History page is a
+`history` line, in the file and in the table alike. The table holds the same personal data as
+the file: `keep` is its retention, and the account of the portal should be the only one reading
+it. In the production container the driver must be in the image (or the venv) and the server
+reachable from it (a local MariaDB over the host network, or its socket bind-mounted).
 
 ### Securing the pool (mutual TLS)
 
@@ -694,6 +753,36 @@ What an instructor gets:
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.
 
+### Administrators
+
+An administrator is an instructor who may read the connection log on the **History** page (the
+link in the header, `/history`). Who is one is decided in `web.toml`, by login or by group, and
+a user who is not an instructor never gets the rights whatever the lists say:
+
+- `[auth] administrators`: a list of logins, in every mode;
+- in LDAP mode, `administrator_groups` of `[auth.ldap]` (DNs, tested like `instructor_groups`:
+  the `memberOf` attribute, or the `group_filter` search) and `administrator_group_filter` (a
+  group found under `group_search_base` naming the user, like `instructor_group_filter`; no
+  default), run at login for the users the instructor tests accepted (the flag is kept in the
+  session cookie, like the role);
+- in proxy mode, `administrator_groups` of `[auth.proxy]` on the groups header and, with
+  `ldap_roles` or `ldap_groups` (a directory is configured either way), the two `[auth.ldap]`
+  tests above, run by the portal for the instructors nothing else made administrators (cached
+  per login like the roles; the flag is lost while the directory is down, like the role of
+  `ldap_roles`).
+
+The History page needs `[access_log.database]` (*The connection log* above; without it the page
+says so): the events newest first, one row per event with its time (the local time of the
+browser), event, login, client address, host, project, lab, status, duration and the other
+fields of the line as `key=value`; a `denied` or `login_failed` line, a status of 400 or more
+and a failed start are red. The form filters by login and address (prefixes: `10.0.1.` is a
+subnet), event, host (exact), project and lab (substrings; the lab is only on the `start`
+lines) and a time window; the filters stay in the URL, so a filtered view reloads and can be
+sent to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a
+cursor on the row ids: a page is stable while new events arrive) and a click on an event,
+login, address, host or project cell filters on that value. Nothing is polled: *Search* asks
+again. Each query is a `history` line of the log itself, with the filters asked.
+
 ### The Display tab
 
 A lab machine declared `x11_host` draws its graphical applications (Wireshark, Firefox…) on
@@ -733,7 +822,11 @@ the commands.
 - The connection log (`[access_log]`) keeps who did what from where: the sessions with their
   duration and projects, the logins and their failures, the denied calls, the administration
   calls. The only header it reads is `X-Forwarded-For`, from the peers of `trusted_proxies`,
-  for the client address; the identity never comes from it.
+  for the client address; the identity never comes from it. With `[access_log.database]` the
+  same lines are in a MariaDB / MySQL table, read on the History page by the administrators
+  only (`[auth] administrators` and the administrator group tests: instructors, never
+  students; every consultation is itself logged); the account of the portal needs `SELECT,
+  INSERT, DELETE` on that table and nothing else.
 - A project's owner is the third field of its running lab name; the portal, the agent and, in
   user mode, the `sre` CLI itself (`params.check_project_owner`: the local GUI of a pool host
   lists and reaches the same projects as the CLI lets through) check it. An instructor (see

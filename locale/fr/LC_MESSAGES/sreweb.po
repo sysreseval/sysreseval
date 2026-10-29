@@ -876,3 +876,92 @@ msgstr "{group} ({n} connecté(s))"
 
 msgid "Presenting to {n} students ({m} connected)"
 msgstr "Présentation à {n} étudiants ({m} connectés)"
+
+# --- the administrators: history.html, history.js, base.html --------------------------------
+
+msgid "History"
+msgstr "Historique"
+
+msgid "Connection log"
+msgstr "Journal des connexions"
+
+msgid "The beginning of the login"
+msgstr "Le début de l'identifiant"
+
+msgid "Address"
+msgstr "Adresse"
+
+msgid "The beginning of the client address (a prefix is a subnet)"
+msgstr "Le début de l'adresse du client (un préfixe : un sous-réseau)"
+
+msgid "Event"
+msgstr "Événement"
+
+msgid "All events"
+msgstr "Tous les événements"
+
+msgid "The exact name of a pool host"
+msgstr "Le nom exact d'une machine du parc"
+
+msgid "Project"
+msgstr "Projet"
+
+msgid "A part of the running lab name"
+msgstr "Une partie du nom du projet en cours"
+
+msgid "A part of the lab name (the start lines only)"
+msgstr "Une partie du nom du TP (les lignes start seulement)"
+
+msgid "From"
+msgstr "Du"
+
+msgid "To"
+msgstr "Au"
+
+msgid "Rows"
+msgstr "Lignes"
+
+msgid "Search"
+msgstr "Rechercher"
+
+msgid "Reset"
+msgstr "Réinitialiser"
+
+msgid "The connection log is not stored in a database: set [access_log.database] in web.toml to browse it here."
+msgstr "Le journal des connexions n'est pas enregistré dans une base de données : renseignez [access_log.database] dans web.toml pour le consulter ici."
+
+msgid "Time"
+msgstr "Date"
+
+msgid "Status"
+msgstr "Statut"
+
+msgid "Duration"
+msgstr "Durée"
+
+msgid "Details"
+msgstr "Détails"
+
+msgid "Newer"
+msgstr "Plus récents"
+
+msgid "Older"
+msgstr "Plus anciens"
+
+msgid "Click to filter on this value"
+msgstr "Cliquer pour filtrer sur cette valeur"
+
+msgid "No event matches the filters."
+msgstr "Aucun événement ne correspond aux filtres."
+
+msgid "{n} event(s) shown, older ones exist"
+msgstr "{n} événement(s) affiché(s), il en existe de plus anciens"
+
+msgid "{n} event(s) shown"
+msgstr "{n} événement(s) affiché(s)"
+
+msgid "page {n}"
+msgstr "page {n}"
+
+msgid "The last events may be missing: the database does not answer ({error})."
+msgstr "Les derniers événements peuvent manquer : la base de données ne répond pas ({error})."

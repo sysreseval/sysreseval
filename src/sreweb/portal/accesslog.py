@@ -1,12 +1,14 @@
 """The connection log of the portal (``[access_log]`` of web.toml): one ``key=value`` line per
 event, written to a file (daily rotation) and / or to the portal's log (stderr: the journal,
-``docker logs``).  A *session* is the requests of one login from one client address, from the
+``docker logs``), and to a MariaDB / MySQL table when ``[access_log.database]`` is set
+(``accessdb.py``; the History page of the administrators reads it).  A *session* is the requests of one login from one client address, from the
 first one to a logout, ``session_timeout`` of inactivity or the shutdown of the portal; its
 closing line carries the duration (up to the last request), the number of requests and the
 projects used.  The other events are the logins, the starts (the lab, the host, the outcome and
 the name of the new project), the project pages (the events WebSocket: open and close, with the
 duration), the terminals and the virtual desktops (same), the evaluations, states, stops and
-exports, the denied calls (401 / 403 / 429) and the administration calls.  The client address
+exports, the denied calls (401 / 403 / 429), the administration calls and the consultations of
+the History page (``history``, with the filters asked).  The client address
 is the last ``X-Forwarded-For`` entry when the TCP peer is one of ``trusted_proxies`` (the
 reverse proxy adds it), the peer address otherwise; the identity never comes from that header.
 
@@ -27,6 +29,8 @@ from datetime import datetime
 
 from aiohttp import web
 
+from .accessdb import DatabaseSink, connector
+from .accesshistory import AccessDatabase
 from ..config import AccessLogConfig, ConfigError, client_allowed
 from ..identity import IDENTITY_KEY, Identity, request_key, VIEW_INSTRUCTOR
 
@@ -64,6 +68,8 @@ EVENTS = {
     ('PUT', '/api/presentations/{id}/audience'): 'present_audience',
     ('DELETE', '/api/presentations/{id}'): 'present_stop',
     ('GET', '/present/{id}'): 'present_open',
+    # the History page: an administrator reading the log leaves a trace (the filters asked)
+    ('GET', '/api/history'): 'history',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
@@ -81,6 +87,11 @@ IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/pre
 LOGIN_ROUTES = frozenset({('POST', '/login'), ('POST', '/api/login')})
 DENIED_STATUSES = frozenset({401, 403, 429})
 MAX_USER_AGENT = 200
+#: Every event name a line may carry (the event filter of the History page): the events of the
+#: routes, the open / close pairs of the WebSockets and the lines the methods below record.
+ALL_EVENTS = tuple(sorted({*(e for e in EVENTS.values() if e not in WS_EVENTS),
+                           *(f'{e}_open' for e in WS_EVENTS), *(f'{e}_close' for e in WS_EVENTS),
+                           'login', 'login_failed', 'session_open', 'session_close', 'denied'}))
 
 _BARE_RE = re.compile(r'^[A-Za-z0-9@_.:/+=,-]+$')
 _TOKEN_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=("(?:[^"\\]|\\.)*"|[^\s"]*)')
@@ -236,11 +247,12 @@ class Visits:
 
 
 class AccessLog:
-    """The log itself: the logger and its file, the sessions, the middleware deriving the events
-    from the routes, the expiry task.  *clock* (``time.time``) gives the timestamps and the
-    durations (the tests move it)."""
+    """The log itself: the logger and its file, the database sink and its reader, the
+    sessions, the middleware deriving the events from the routes, the expiry task.  *clock*
+    (``time.time``) gives the timestamps and the durations (the tests move it); *connect* is the
+    ``(connect, transient)`` pair of ``accessdb.connector`` (the tests give a fake connection)."""
 
-    def __init__(self, cfg: AccessLogConfig, trusted_proxies, *, clock=time.time):
+    def __init__(self, cfg: AccessLogConfig, trusted_proxies, *, clock=time.time, connect=None):
         self.cfg = cfg
         self.trusted_proxies = list(trusted_proxies or [])
         self.clock = clock
@@ -248,13 +260,17 @@ class AccessLog:
         self.logger = logging.getLogger(LOGGER_NAME)
         self._handler = None
         self._task = None
+        self._connect = connect
+        self.db: DatabaseSink | None = None            # the writer of [access_log.database]
+        self.history: AccessDatabase | None = None     # its reader (the History page)
 
     # -- the logger -----------------------------------------------------------------------------
 
     def open(self):
-        """Install the handler of the lines (the file when configured): the logger is a
-        process-wide singleton, so the handler another instance left is removed first.  A file
-        that cannot be opened is a ``ConfigError``."""
+        """Install the handler of the lines (the file when configured) and start the database
+        writer: the logger is a process-wide singleton, so the handler another instance left is
+        removed first.  A file that cannot be opened, or a database configured without the
+        driver, is a ``ConfigError``."""
         self.close()
         for handler in list(self.logger.handlers):
             if getattr(handler, 'sreweb_access', False):
@@ -277,8 +293,18 @@ class AccessLog:
         handler.sreweb_access = True
         self.logger.addHandler(handler)
         self._handler = handler
+        if self.cfg.database.enabled:
+            connect, transient = self._connect or connector(self.cfg.database)
+            # the lambda follows a clock the tests replace after open()
+            self.db = DatabaseSink(self.cfg.database, connect=connect, transient=transient, clock=lambda: self.clock())
+            self.db.start()
+            self.history = AccessDatabase(self.cfg.database, connect=connect)
 
     def close(self):
+        if self.db is not None:
+            self.db.close()                 # the queued rows (the shutdown lines) first
+            self.db = None
+            self.history = None
         if self._handler is not None:
             self.logger.removeHandler(self._handler)
             self._handler.close()
@@ -292,10 +318,14 @@ class AccessLog:
                                           else " (no rotation)"))
         if self.cfg.journal:
             where.append("the journal")
+        if self.db is not None:
+            where.append("the " + self.db.describe())
         return ' and '.join(where) or "nowhere (file and journal both off)"
 
     def record(self, event: str, **fields):
         self.logger.info(format_line({'event': event, **fields}))
+        if self.db is not None:
+            self.db.put(self.clock(), event, fields)
 
     # -- the sessions ---------------------------------------------------------------------------
 

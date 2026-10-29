@@ -33,6 +33,7 @@ HEADER_EMAIL = 'X-SRE-Email'
 HEADER_VIEW = 'X-SRE-View'
 HEADER_ANONYMOUS = 'X-SRE-Anonymous'
 HEADER_GROUP = 'X-SRE-Group'
+HEADER_ADMINISTRATOR = 'X-SRE-Administrator'
 
 #: Same as SRE.access._VALID_USERNAME (checked by tests/test_web_identity.py).
 VALID_LOGIN = re.compile(r'^[a-zA-Z0-9._-]+$')
@@ -105,6 +106,9 @@ class Identity:
     anonymous: bool = False
     view: str = VIEW_STUDENT
     group: str = ''                 # the student group ('' = unknown)
+    # an instructor who may browse the connection log (the History page of the portal): never
+    # true for a student, whatever the configuration says (with_administrator applies the rule)
+    administrator: bool = False
 
     def __post_init__(self):
         if not is_valid_login(self.login):
@@ -115,6 +119,8 @@ class Identity:
             raise IdentityError(f"invalid view {self.view!r}")
         if self.view == VIEW_INSTRUCTOR and self.role != ROLE_INSTRUCTOR:
             raise IdentityError("the instructor view needs the instructor role")
+        if self.administrator and self.role != ROLE_INSTRUCTOR:
+            raise IdentityError("an administrator must be an instructor")
         if not _LANGUAGE.match(self.language or ''):
             raise IdentityError(f"invalid language {self.language!r}")
 
@@ -129,6 +135,11 @@ class Identity:
     def with_view(self, view: str) -> 'Identity':
         return replace(self, view=view)
 
+    def with_administrator(self, granted: bool) -> 'Identity':
+        """The identity with the administrator flag when *granted* and the user is an instructor
+        (a student never gets it: the one place the rule is applied)."""
+        return replace(self, administrator=bool(granted) and self.is_instructor)
+
     def headers(self) -> dict:
         """The ``X-SRE-*`` headers the portal adds to a request relayed to an agent."""
         return {
@@ -140,6 +151,7 @@ class Identity:
             HEADER_VIEW: self.view,
             HEADER_ANONYMOUS: '1' if self.anonymous else '0',
             HEADER_GROUP: encode_header_text(self.group),
+            HEADER_ADMINISTRATOR: '1' if self.administrator else '0',
         }
 
     @classmethod
@@ -158,9 +170,11 @@ class Identity:
             anonymous=headers.get(HEADER_ANONYMOUS, '0') == '1',
             view=headers.get(HEADER_VIEW, VIEW_STUDENT) or VIEW_STUDENT,
             group=decode_header_text(headers.get(HEADER_GROUP, '')),
+            administrator=headers.get(HEADER_ADMINISTRATOR, '0') == '1',
         )
 
     def to_dict(self) -> dict:
         """What the browser is told about itself (``GET /api/me``)."""
         return {'login': self.login, 'fullname': self.fullname, 'email': self.email, 'role': self.role,
-                'language': self.language, 'anonymous': self.anonymous, 'group': self.group}
+                'language': self.language, 'anonymous': self.anonymous, 'group': self.group,
+                'administrator': self.administrator}

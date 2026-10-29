@@ -102,7 +102,7 @@ Depends: ${misc:Depends},
          python3-aiohttp,
          python3-aiohttp-jinja2,
          python3-jinja2
-Recommends: python3-ldap3
+Recommends: python3-ldap3, python3-pymysql
 Suggests: nginx | apache2 | caddy, sysreseval-agent
 Description: web site of SysResEval
  The web site through which the students work on the labs from a browser: the

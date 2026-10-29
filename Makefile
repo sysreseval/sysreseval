@@ -168,6 +168,8 @@ venv: fonts
 	${ROOT_DIR}/venv/bin/pip install jinja2
 	${ROOT_DIR}/venv/bin/pip install aiohttp-jinja2
 	${ROOT_DIR}/venv/bin/pip install ldap3
+	# the MariaDB / MySQL database of the connection log of sre-web ([access_log.database]; optional)
+	${ROOT_DIR}/venv/bin/pip install pymysql
 	# the JavaScript syntax check of the web tests (pure Python; not in Debian trixie: the package build skips that test)
 	${ROOT_DIR}/venv/bin/pip install esprima
 
