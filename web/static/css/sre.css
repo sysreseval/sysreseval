@@ -345,9 +345,10 @@ table.grid tr.row-stale td { background: var(--debug-bg); }
 .watch-legend .swatch.row-stale { background: var(--debug-bg); }
 .watch-legend .swatch.row-errors { background: var(--fail-bg); }
 .watch-legend .hint { margin-left: 12px; }
-/* the dialogs of the Watch page: the last evaluation of a project, the summary of a lab */
+/* the dialogs of the Watch page: the last evaluation of a project, the summary of a lab (for
+   the rows shown, or for one student group) */
 table.grid.watch tbody tr[data-rln] { cursor: pointer; }
-table.grid.watch td.lab { text-decoration: underline dotted; }
+table.grid.watch td.lab, table.grid.watch td.group { text-decoration: underline dotted; }
 dialog.watch-detail { width: 760px; overflow: auto; }
 dialog.watch-summary { width: 95vw; overflow: auto; }
 dialog.watch-detail h2, dialog.watch-summary h2 { margin: 0 0 6px; font-size: 1.2em; }

@@ -192,7 +192,8 @@ class TestTemplates:
                     'terminals', 'managed'):
             assert f'data-sort="{key}"' in html, key
         assert 'data-sort="fullname">Name</th>' in html and 'colspan="13"' in html   # the full name as a column
-        assert 'click a row for its last evaluation, a lab for the summary of the lab' in html   # the dialogs
+        assert 'click a row for its last evaluation, a lab for the summary of the lab</span>' in html   # the dialogs
+        assert 'a group for that summary' not in html
         assert 'data-login="alice"' in html
         # the group column and select exist, hidden without a configured group source
         assert 'data-groups="false"' in html and 'data-sort="group" hidden>' in html
@@ -200,6 +201,7 @@ class TestTemplates:
         assert 'class="watch-group" title="Student group" hidden>' in html
         shown = render('watch.html', instructor=True, groups=True)
         assert 'data-groups="true"' in shown and 'data-sort="group">' in shown
+        assert 'a lab for the summary of the lab, a group for that summary restricted to the group</span>' in shown
         assert 'class="watch-group" title="Student group">' in shown
         assert 'data-sort="group" hidden' not in shown and 'title="Student group" hidden' not in shown
 

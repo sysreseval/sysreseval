@@ -517,8 +517,14 @@ msgstr "local"
 msgid "click a row for its last evaluation, a lab for the summary of the lab"
 msgstr "cliquer sur une ligne pour sa dernière évaluation, sur un projet pour le bilan du projet"
 
+msgid "click a row for its last evaluation, a lab for the summary of the lab, a group for that summary restricted to the group"
+msgstr "cliquer sur une ligne pour sa dernière évaluation, sur un projet pour le bilan du projet, sur un groupe pour ce bilan restreint au groupe"
+
 msgid "Summary of the lab for the projects shown"
 msgstr "Bilan du TP pour les projets affichés"
+
+msgid "Summary of the lab for the students of the group"
+msgstr "Bilan du TP pour les étudiants du groupe"
 
 msgid "Open the project"
 msgstr "Ouvrir le projet"
@@ -528,6 +534,9 @@ msgstr "Le projet est fermé."
 
 msgid "Lab summary: {lab}"
 msgstr "Bilan du TP : {lab}"
+
+msgid "Lab summary: {lab}, group {group}"
+msgstr "Bilan du TP : {lab}, groupe {group}"
 
 msgid "{n} project(s) shown, {m} evaluated"
 msgstr "{n} projet(s) affiché(s), {m} évalué(s)"

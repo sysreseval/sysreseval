@@ -7,7 +7,9 @@
 // errors is red.  Open goes to the project page (the instructor joins the student's terminals
 // there), Close stops the project.  A click on a row opens the dialog of its last archived
 // evaluation (watch_detail.js), a click on its lab cell the summary of that lab for the rows
-// shown (watch_summary.js); both follow the polls.
+// shown, a click on its group cell the summary of that lab for the whole group (every project
+// of the pool whose owner has that group, whatever the filter; watch_summary.js); all follow
+// the polls.
 
 import './base.js';
 import * as api from './api.js';
@@ -225,9 +227,12 @@ function renderRow(row) {
     el('td', {}, row.host || ''),
     el('td', {}, row.owner || ''),
     el('td', {}, row.fullname || ''),
-    el('td', {hidden: !groupsEnabled}, row.group || ''),
+    el('td', {hidden: !groupsEnabled, class: row.group ? 'group' : null,
+              title: row.group ? _('Summary of the lab for the students of the group') : null,
+              onclick: row.group ? () => summary.open(row.lab_name, title(row), () => state.rows, {group: row.group}) : null},
+       row.group || ''),
     el('td', {class: 'lab', title: _('Summary of the lab for the projects shown'),
-              onclick: () => summary.open(row.lab_name, title(row), state.shown)}, title(row)),
+              onclick: () => summary.open(row.lab_name, title(row), () => state.shown)}, title(row)),
     el('td', {title: rln}, formatTimestamp(row.started_at)),
     el('td', {title: last ? last.eval_date : ''}, last ? ageText(last.age_s) : _('never')),
     el('td', {class: 'num'}, last ? `${formatNumber(last.grade)} / ${formatNumber(last.max_grade)}` : ''),
@@ -239,9 +244,10 @@ function renderRow(row) {
     el('td', {class: 'actions'},
       el('a', {class: 'button primary', href: projectUrl(row.host, rln)}, _('Open')),
       closeButton));
-  // the row itself: the last evaluation of the project (its buttons and its lab cell apart)
+  // the row itself: the last evaluation of the project (its buttons, its lab cell and its
+  // group cell apart)
   tr.addEventListener('click', (event) => {
-    if (!event.target.closest('a, button, td.lab')) {
+    if (!event.target.closest('a, button, td.lab, td.group')) {
       detail.open(row);
     }
   });
@@ -260,7 +266,7 @@ async function refresh() {
   state.rows = Array.isArray(rows) ? rows : [];
   render();
   detail.update(state.rows);
-  summary.update(state.shown);
+  summary.update();
 }
 
 function setupControls() {

@@ -625,7 +625,11 @@ What an instructor gets:
   *Success* (how many of the evaluated projects got the full grade) below it, then the table of
   the elements with their maximum, minimum, average and distribution of the grades (`1.5(2)
   3(7)`), a subtotal row per part, as the lab summary of `sre watch`. The elements of the
-  projects are matched by their title, whatever the language of each student. Both dialogs
+  projects are matched by their title, whatever the language of each student. A **click on
+  the group cell** of a row (when it holds a group) opens the same summary for that lab
+  restricted to the whole group: every project of the lab on the pool whose owner has that
+  group, whatever the text filter (the lab cell keeps the rows shown; an empty group cell opens
+  the last evaluation like the other cells). Both dialogs
   follow the polls: a new evaluation of the project, or of one of the projects of the lab,
   reloads the content, a project closed is said so. Reading the results of a student this way
   never counts as their activity (their project's idle clock is left alone).

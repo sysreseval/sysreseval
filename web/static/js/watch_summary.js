@@ -1,12 +1,13 @@
 // The lab summary dialog of the Watch page (Enter on a lab row of `sre watch`): for the rows
-// shown of one lab, GET /api/watch/evaluations?lab= gives every running project of the lab with
+// shown of one lab, or for every project of one lab whose owner belongs to one student group,
+// GET /api/watch/evaluations?lab= gives every running project of the lab with
 // the elements of its last archived evaluation; the elements are matched across the projects by
 // their key (the title, whatever the language) in the order of first appearance, and drawn as a
 // matrix (one row per project, one column per element coloured OK / MEH / FAIL under a header
 // row of the parts, then Total and Mark; the rows Max / Average / Success below), followed by
 // the table of the elements with their statistics (max, min, average, distribution, a subtotal
-// row per part) as `sre watch` shows them.  update() reloads the content when the shown rows of
-// the lab or their archives change.
+// row per part) as `sre watch` shows them.  update() reloads the content when the rows of the
+// lab (and of the group) or their archives change.
 
 import * as api from './api.js';
 import {el, clear, formatNumber} from './ui.js';
@@ -277,23 +278,29 @@ function renderElements(entries, groups) {
 // -- the dialog -------------------------------------------------------------------------------
 
 export function createSummaryDialog() {
-  let current = null;      // the open dialog: {lab, dialog, caption, body, shown, signature}
+  // the open dialog: {lab, group, source, dialog, caption, body, shown, signature}
+  let current = null;
 
   function signatureOf(rows) {
     return rows.map((r) => `${r.host}/${r.running_lab_name}:${r.last_eval ? r.last_eval.archive : ''}`).join('\n');
   }
 
-  // labName: the lab of the rows (row.lab_name); labTitle: as the table shows it; shownRows:
-  // the rows of the table after the filters, in their order
-  function open(labName, labTitle, shownRows) {
+  // labName: the lab of the rows (row.lab_name); labTitle: as the table shows it; source: a
+  // function giving the candidate rows (the rows of the table after the filters, or every row
+  // of the pool), in their order, called at open and at every update; group: the student group
+  // to keep (null: every row of the lab)
+  function open(labName, labTitle, source, {group = null} = {}) {
     if (current) {
       current.dialog.close();
     }
     const caption = el('p', {class: 'muted'}, _('Loading…'));
     const body = el('div', {class: 'watch-summary-tables'});
     const close = el('button', {type: 'button'}, _('Close'));
+    const heading = group === null
+      ? format(_('Lab summary: {lab}'), {lab: labTitle})
+      : format(_('Lab summary: {lab}, group {group}'), {lab: labTitle, group});
     const dialog = el('dialog', {class: 'modal watch-summary'},
-      el('h2', {}, format(_('Lab summary: {lab}'), {lab: labTitle})), caption, body,
+      el('h2', {}, heading), caption, body,
       el('div', {class: 'buttons'}, close));
     close.addEventListener('click', () => dialog.close());
     dialog.addEventListener('close', () => {
@@ -302,19 +309,19 @@ export function createSummaryDialog() {
         current = null;
       }
     });
-    current = {lab: labName, dialog, caption, body, shown: [], signature: null};
+    current = {lab: labName, group, source, dialog, caption, body, shown: [], signature: null};
     document.body.append(dialog);
     dialog.showModal();
-    update(shownRows);
+    update();
   }
 
-  // the shown rows of the last poll: a change of the lab's rows or of their archives reloads
-  function update(shownRows) {
+  // after a poll: a change of the rows of the lab (and of the group) or of their archives reloads
+  function update() {
     const c = current;
     if (!c) {
       return;
     }
-    const shown = shownRows.filter((r) => r.lab_name === c.lab);
+    const shown = c.source().filter((r) => r.lab_name === c.lab && (c.group === null || r.group === c.group));
     const signature = signatureOf(shown);
     if (signature === c.signature) {
       return;
