@@ -3,11 +3,14 @@
 // refreshing them, the corner controls (instructor view, word wrap, content font size,
 // Export Schema to PDF, Close project) and the touch keeping the project alive every minute.
 //
-// Two more roles: an instructor may present the project (present.js: the Present button, the
+// Three more roles: an instructor may present the project (present.js: the Present button, the
 // bar, the view published after each change through the ctx.onViewChange / onEvaluated hooks of
-// the tabs), and the same page in the iframe of /present/{id} is a spectator's (data-presentation
+// the tabs); the same page in the iframe of /present/{id} is a spectator's (data-presentation
 // on the body): read-only, no control, the tabs and the terminals following the presenter's
-// view (the socket /api/presentations/{id}/ws).
+// view (the socket /api/presentations/{id}/ws); and an instructor on a student's project may
+// focus the student on it (focus.js: the Focus student on project button, the tab, the terminal
+// and the question shared both ways with the student's own page, which follows through the same
+// module).
 
 import './base.js';
 import * as api from './api.js';
@@ -17,6 +20,7 @@ import {_} from './i18n.js';
 import {el, clear, toast} from './ui.js';
 import {ProjectEvents, ReconnectingSocket} from './events.js';
 import {createPresenter} from './present.js';
+import {createFocus} from './focus.js';
 import {createSchemaTab} from './tabs/schema.js';
 import {createInformationsTab} from './tabs/informations.js';
 import {createMachinesTab} from './tabs/machines.js';
@@ -58,7 +62,10 @@ const closedBanner = document.getElementById('closed-banner');
 const endedBanner = document.getElementById('ended-banner');          // a spectator's page
 const presentButton = document.getElementById('present');             // an instructor's page
 const presentationBar = document.getElementById('presentation-bar');
+const focusButton = document.getElementById('focus-student');         // an instructor's page
+const focusLabel = document.getElementById('focus-label');            // a student's page: "Followed by"
 let presenter = null;      // the presentation side of an instructor's page (present.js)
+let focus = null;          // the focus side (focus.js): the instructor's button, or the student's page following
 
 const state = {
   project: null,
@@ -116,12 +123,15 @@ const ctx = {
     }
   },
 };
-if (isInstructor && !spectator) {
-  // the hooks of the tabs publishing the presenter's view (absent on the other pages: a
-  // spectator's page applies the view without publishing anything)
+if (!spectator) {
+  // the hooks of the tabs publishing the presenter's view and the view shared by a focus
+  // (absent on a spectator's page, which applies the view without publishing anything)
   ctx.onViewChange = () => {
     if (presenter) {
       presenter.schedule();
+    }
+    if (focus) {
+      focus.schedule();
     }
   };
   ctx.onEvaluated = () => {
@@ -249,6 +259,12 @@ function applyProject(project) {
   if (presentButton && presenter && !presenter.isPresenting()) {
     presentButton.hidden = false;
   }
+  if (focus) {
+    if (focusButton && isInstructor && !isOwner) {
+      focusButton.hidden = false;
+    }
+    focus.projectLoaded();     // a view received before the load
+  }
   if (spectator && pendingView) {
     const view = pendingView;
     pendingView = null;
@@ -263,6 +279,36 @@ function applyProject(project) {
 function updateSchemaPdfLink() {
   if (schemaPdfLink) {
     schemaPdfLink.href = ctx.url('/schema.pdf', tabs.schema && tabs.schema.pdfQuery ? tabs.schema.pdfQuery() : {});
+  }
+}
+
+// The view a focus shares both ways (focus.js): the active tab, the terminal sub-tab shown (by
+// the id of its session: the two pages share the student's sessions) and the question selected.
+function focusView() {
+  return {
+    tab: currentTab,
+    terminal: tabs.terminals ? tabs.terminals.getView().active : null,
+    question: tabs.questions ? tabs.questions.getSelected() : null,
+  };
+}
+
+// The other page's view of a focus applied here: nothing is closed, the rest of the page is
+// left alone (the user keeps every control).
+function applyFocusView(view) {
+  if (!state.project || state.closed) {
+    return;
+  }
+  const listed = (id) => (state.project.tabs.includes(id) ? tab(id) : null);
+  const questions = listed('questions');
+  if (questions && view.question) {
+    questions.setSelected(view.question);
+  }
+  if (view.tab && view.tab !== currentTab) {
+    selectTab(view.tab);
+  }
+  const terminals = listed('terminals');
+  if (terminals && view.terminal) {
+    terminals.focusSession(view.terminal);
   }
 }
 
@@ -323,6 +369,9 @@ function projectClosed() {
   }
   if (presenter) {
     presenter.end();      // the spectators are told the presentation is over (before the controls go)
+  }
+  if (focus) {
+    focus.end();          // the student's page released (the instructor's page), or the label dropped
   }
   shutDown();
   closedBanner.hidden = false;
@@ -523,6 +572,16 @@ if (isInstructor && !spectator && presentButton && presentationBar) {
   });
 }
 
+if (!spectator && focusLabel && (isOwner || (isInstructor && focusButton))) {
+  // an instructor on a student's project leads a focus; the owner's page follows one
+  focus = createFocus(ctx, {
+    host: body.dataset.host || '', rln: body.dataset.rln || '', login, leader: isInstructor && !isOwner,
+    getView: focusView, applyView: applyFocusView,
+    isLoaded: () => Boolean(state.project) && !state.closed,
+    elements: {button: focusButton, label: focusLabel},
+  });
+}
+
 async function main() {
   await i18n.init();
   setupControls();
@@ -562,6 +621,9 @@ async function main() {
   }, TOUCH_INTERVAL);
   if (presenter) {
     presenter.resume();       // a reloaded page goes on presenting
+  }
+  if (focus) {
+    focus.resume();           // a reloaded page goes on focusing, or following
   }
 }
 

@@ -119,12 +119,14 @@ class TestEventFor:
         assert '/api/presence/ws' in A.IGNORED
         assert ('GET', '/api/presence') in A.KEEPALIVE and ('PUT', '/api/presentations/{id}/view') in A.KEEPALIVE
         assert ('GET', '/api/presentations/{id}/ws') in A.KEEPALIVE
-        assert {'present_start', 'present_open'} <= A.PROJECT_EVENTS
+        assert {'present_start', 'present_open', 'focus_start'} <= A.PROJECT_EVENTS
+        assert ('GET', '/api/focus') in A.KEEPALIVE and ('PUT', '/api/focus/{id}/view') in A.KEEPALIVE
+        assert ('GET', '/api/focus/{id}/ws') in A.KEEPALIVE and ('GET', '/api/focus/{id}') in A.KEEPALIVE
         assert A.LOGIN_ROUTES == {('POST', '/login'), ('POST', '/api/login')}
         assert A.LOGIN_EVENTS == {'login', 'login_failed'} and A.LOGIN_EVENTS <= set(A.ALL_EVENTS)
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
-                                                                            'history'}
+                                                                            'focus_stop', 'history'}
 
 
 class TestVisits:

@@ -877,6 +877,26 @@ msgstr "{group} ({n} connecté(s))"
 msgid "Presenting to {n} students ({m} connected)"
 msgstr "Présentation à {n} étudiants ({m} connectés)"
 
+# --- focus: project.html, focus.js ---
+
+msgid "Focus student on project"
+msgstr "Focaliser l'étudiant sur le projet"
+
+msgid "Bring the student's browser to this project and keep both pages on the same tab, terminal and question"
+msgstr "Amener le navigateur de l'étudiant sur ce projet et garder les deux pages sur le même onglet, le même terminal et la même question"
+
+msgid "Followed by {name}"
+msgstr "Suivi par {name}"
+
+msgid "The student's page follows"
+msgstr "La page de l'étudiant suit"
+
+msgid "Waiting for the student's page"
+msgstr "En attente de la page de l'étudiant"
+
+msgid "The focus has ended."
+msgstr "La focalisation est terminée."
+
 # --- the administrators: history.html, history.js, base.html --------------------------------
 
 msgid "History"

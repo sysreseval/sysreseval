@@ -19,6 +19,7 @@ from .roles import RoleCache
 from .manager import PoolManager
 from .pool import Pool, PoolError
 from .presentation import Presence, Presentations
+from .focus import Focuses
 from .relay import Relay
 from .routes import Routes, json_error, CSP
 from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDENT
@@ -50,6 +51,7 @@ class Portal:
         self.routes: Routes | None = None
         self.presence: Presence | None = None
         self.presentations: Presentations | None = None
+        self.focuses: Focuses | None = None
         self._proxy_warned: set = set()
         self.access = AccessLog(cfg.access_log, cfg.trusted_proxies, connect=db_connect)
         self._administrators = set(cfg.auth.administrators)    # [auth] administrators: logins (instructors only)
@@ -73,8 +75,10 @@ class Portal:
         self.relay = Relay(self.pool, None)
         self.presence = Presence()
         self.presentations = Presentations(self.presence)
+        self.focuses = Focuses(self.presence)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
-                             access=self.access, presentations=self.presentations, roles=self.roles)
+                             access=self.access, presentations=self.presentations, roles=self.roles,
+                             focuses=self.focuses)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -115,12 +119,16 @@ class Portal:
         self.manager.start()
         self.access.start()
         self.presentations.start_loop()
+        self.focuses.start_loop()
 
     async def _on_shutdown(self, app):
         # before the connections are torn down: the spectators' browsers get the end of the
-        # presentations (their sockets closed, the overlays removed)
+        # presentations (their sockets closed, the overlays removed), the students' pages the
+        # end of the focuses
         await self.presentations.stop_loop()
         await self.presentations.shutdown()
+        await self.focuses.stop_loop()
+        await self.focuses.shutdown()
 
     async def _on_cleanup(self, app):
         # after the in-flight handlers (the WebSockets) are done: their close lines come first

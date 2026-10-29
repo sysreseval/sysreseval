@@ -6,9 +6,13 @@
 // and the end of a presentation the user is in ({"t": "presentation", "id", "url",
 // "presenter"} / {"t": "presentation", "id", "ended": true}).  A presentation is shown in an
 // iframe covering the page (the project page of the presenter, read-only: /present/{id}), so
-// that the student's own page, terminals included, is still there when it ends.  Nothing of
-// this runs inside that iframe.  The Logout button asks about the running projects before the
-// form is submitted (logout.js).  No _() here: base.js loads no catalog.
+// that the student's own page, terminals included, is still there when it ends.  The same
+// socket brings the focus an instructor puts on the student's project ({"t": "focus", "id",
+// "url", "host", "rln", "instructor"} / {..., "ended": true}): a page that does not show that
+// project navigates to it, the project page itself is told (the `sre-focus` event on the
+// document, handled by focus.js) and follows the instructor.  Nothing of this runs inside the
+// presentation iframe.  The Logout button asks about the running projects before the form is
+// submitted (logout.js).  No _() here: base.js loads no catalog.
 
 import * as api from './api.js';
 import {el, toast} from './ui.js';
@@ -61,8 +65,40 @@ function showOverlay(id, url) {
   overlay = {id, element, iframe};
 }
 
+// -- focus -------------------------------------------------------------------------------------
+
+let focus = null;       // the focus this user (a student) is in: the last message that started it
+
+// The focus the page learnt of before focus.js asked (the project page of the focused project).
+export function currentFocus() {
+  return focus;
+}
+
+function onFocus(message) {
+  if (message.ended) {
+    if (focus && focus.id === message.id) {
+      focus = null;
+    }
+    document.dispatchEvent(new CustomEvent('sre-focus', {detail: message}));
+    return;
+  }
+  focus = message;
+  if (body.dataset.host === message.host && body.dataset.rln === message.rln) {
+    document.dispatchEvent(new CustomEvent('sre-focus', {detail: message}));   // this page: follow
+  } else if (typeof message.url === 'string' && message.url.startsWith('/projects/')) {
+    window.location.assign(message.url);                                       // any other page: go there
+  }
+}
+
 function onPresence(message) {
-  if (!message || message.t !== 'presentation' || !message.id) {
+  if (!message || !message.id) {
+    return;
+  }
+  if (message.t === 'focus') {
+    onFocus(message);
+    return;
+  }
+  if (message.t !== 'presentation') {
     return;
   }
   if (message.ended) {

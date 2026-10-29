@@ -19,6 +19,7 @@ from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
                            MAX_VIEW_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
+from .focus import Focus, Focuses, WS_FOCUS_ENDED
 from .ratelimit import RateLimiter
 from .relay import Relay
 from .roles import complete_groups
@@ -61,7 +62,7 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 
 class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
-                 presentations: Presentations | None = None, roles=None):
+                 presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None):
         self.cfg = cfg
         self.pool = pool
         self.roles = roles       # the directory lookups (roles.RoleCache) completing the Watch rows' groups
@@ -70,6 +71,7 @@ class Routes:
         self.access = access
         self.presentations = presentations if presentations is not None else Presentations(Presence())
         self.presence = self.presentations.presence
+        self.focuses = focuses if focuses is not None else Focuses(self.presence)
         self.localedirs = localedirs
         self.limiter = RateLimiter()
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
@@ -129,6 +131,13 @@ class Routes:
         r.add_put('/api/presentations/{id}/view', self.api_presentation_view)
         r.add_delete('/api/presentations/{id}', self.api_presentation_delete)
         r.add_get('/api/presentations/{id}/ws', self.api_presentation_ws)
+        # focus: an instructor helping a student keeps the student's browser on the project
+        r.add_get('/api/focus', self.api_focus_list)
+        r.add_post('/api/focus', self.api_focus_create)
+        r.add_get('/api/focus/{id}', self.api_focus_get)
+        r.add_put('/api/focus/{id}/view', self.api_focus_view)
+        r.add_delete('/api/focus/{id}', self.api_focus_delete)
+        r.add_get('/api/focus/{id}/ws', self.api_focus_ws)
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -735,9 +744,12 @@ class Routes:
             page = ''
         ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
         await ws.prepare(request)
-        socket = self.presence.add(identity, page, self._watcher(ws))
+        watcher = self._watcher(ws)
+        socket = self.presence.add(identity, page, watcher)
         try:
             await self.presentations.resync({identity.login})    # a presentation already running for them
+            await self.focuses.resync({identity.login})          # a focus on them already
+            await self.focuses.tell(identity.login, watcher)     # ... their other pages knew of
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
@@ -745,6 +757,8 @@ class Routes:
             self.presence.remove(socket)
             with contextlib.suppress(Exception):
                 await self.presentations.resync({identity.login})
+            with contextlib.suppress(Exception):
+                await self.focuses.resync({identity.login})
         return ws
 
     async def api_presence(self, request):
@@ -864,4 +878,120 @@ class Routes:
             else:
                 with contextlib.suppress(Exception):
                     await self.presentations.detach_spectator(p.id, identity.login, watcher)
+        return ws
+
+    # -- focus: an instructor on a student's project keeps the student's browser on it ---------
+    # The registry is ``focus.Focuses``; the student's pages learn of a focus through the
+    # presence socket (above), both pages share the view through the focus socket.
+
+    def _focus(self, request) -> Focus:
+        f = self.focuses.get(request.match_info['id'])
+        if f is None:
+            raise PoolError(404, "no such focus")
+        return f
+
+    def _focus_participant(self, request) -> tuple:
+        """``(identity, focus)`` of a call reserved to the instructor or the student of it."""
+        identity = self._require_identity(request)
+        f = self._focus(request)
+        if not f.participant(identity):
+            raise PoolError(403, "the instructor or the student of this focus only")
+        return identity, f
+
+    async def api_focus_list(self, request):
+        """The focuses of the caller: those they lead (an instructor's project pages resume
+        theirs) and the one on them (a student's page)."""
+        identity = self._require_identity(request)
+        following = self.focuses.of_student(identity.login)
+        return web.json_response({'leading': [f.to_dict() for f in self.focuses.for_instructor(identity.login)],
+                                  'following': following.to_dict() if following is not None else None})
+
+    async def api_focus_create(self, request):
+        identity = self._require_instructor(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        if not isinstance(body, dict):
+            return json_error(400, "a JSON object is expected")
+        host = self.pool.host(str(body.get('host', '')))
+        rln = body.get('rln')
+        if not isinstance(rln, str) or running_lab_name_owner(rln) is None:
+            return json_error(400, "bad running lab name")
+        try:
+            f = await self.focuses.start(identity, host.name, rln, body.get('view'))
+        except ValueError as e:
+            return json_error(400, str(e))
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(host=host.name, rln=rln, student=f.student)
+        return web.json_response(f.to_dict(), status=201)
+
+    async def api_focus_get(self, request):
+        _, f = self._focus_participant(request)
+        return web.json_response(f.to_dict())
+
+    async def api_focus_view(self, request):
+        """The shared view (the active tab, the terminal shown, the question), from either
+        page, pushed to both."""
+        _, f = self._focus_participant(request)
+        if request.content_length and request.content_length > MAX_VIEW_BYTES + 64:
+            return json_error(413, "view too large")
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        view = body.get('view') if isinstance(body, dict) and 'view' in body else body
+        try:
+            await self.focuses.set_view(f.id, view)
+        except ValueError as e:
+            return json_error(400, str(e))
+        except KeyError:
+            return json_error(404, "no such focus")
+        return web.Response(status=204)
+
+    async def api_focus_delete(self, request):
+        identity = self._require_identity(request)
+        f = self._focus(request)
+        if identity.login != f.instructor.login and identity.role != ROLE_INSTRUCTOR:
+            raise PoolError(403, "the instructor of this focus or an instructor only")
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(host=f.host, rln=f.rln, instructor=f.instructor.login, student=f.student)
+        await self.focuses.end(f.id)
+        return web.json_response({'ok': True})
+
+    async def api_focus_ws(self, request):
+        """The socket of the instructor's page (the status of the student's page, the view) and
+        of the student's page (the view, at once and on every change); closed with
+        ``WS_FOCUS_ENDED`` when the focus is over, at once when it already is."""
+        identity = self._require_identity(request)
+        f = self.focuses.get(request.match_info['id'])
+        ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
+        if f is None:
+            await ws.prepare(request)
+            await ws.close(code=WS_FOCUS_ENDED, message=b"the focus has ended")
+            return ws
+        if not f.participant(identity):
+            raise PoolError(403, "the instructor or the student of this focus only")
+        leader = identity.login == f.instructor.login
+        await ws.prepare(request)
+        watcher = self._watcher(ws)
+        if leader:
+            attached = await self.focuses.attach_instructor(f.id, watcher)
+        else:
+            attached = await self.focuses.attach_student(f.id, identity, watcher)
+        if not attached:
+            await ws.close(code=WS_FOCUS_ENDED, message=b"the focus has ended")
+            return ws
+        try:
+            async for msg in ws:
+                if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
+                    break
+        finally:
+            if leader:
+                self.focuses.detach_instructor(f.id, watcher)
+            else:
+                with contextlib.suppress(Exception):
+                    await self.focuses.detach_student(f.id, watcher)
         return ws

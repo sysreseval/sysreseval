@@ -311,6 +311,31 @@ export function createTerminalsTab(ctx) {
     }
   }
 
+  // a focus (focus.js): the sub-tab the other page shows, by the id of its session: shown when
+  // it is open here, joined when it is a live session of the project this page may see, else
+  // kept until the terminals event lists it
+  let wantedSession = null;
+  function focusSession(remoteId) {
+    if (!remoteId) {
+      return;
+    }
+    const entry = [...sessions.values()].find((e) => e.remoteId === remoteId);
+    if (entry) {
+      wantedSession = null;
+      if (current !== entry.id) {
+        select(entry.id);
+      }
+      return;
+    }
+    const r = remote.find((x) => x.id === remoteId);
+    if (r) {
+      wantedSession = null;
+      join(r);
+    } else {
+      wantedSession = remoteId;
+    }
+  }
+
   // a helping instructor: the owner's live sessions not yet on this page
   function autoJoin() {
     if (!helper || !shown) {
@@ -365,6 +390,9 @@ export function createTerminalsTab(ctx) {
       }
       renderLive();
       autoJoin();
+      if (wantedSession) {
+        focusSession(wantedSession);
+      }
     },
     // the Connect buttons of the Machines / Networks tabs: a new terminal every time (a private
     // one for a helping instructor)
@@ -384,5 +412,6 @@ export function createTerminalsTab(ctx) {
     },
     getView,
     setView,
+    focusSession,
   };
 }

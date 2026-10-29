@@ -258,8 +258,13 @@ class TestTemplates:
         for control in ('present', 'presentation-bar', 'presentation-edit', 'presentation-stop'):
             assert f'id="{control}"' in html, control
         assert 'Stop presenting' in html and 'data-groups="false"' in html and 'data-presentation' not in html
+        # an instructor may focus the student on the project (the button is shown by project.js on
+        # a student's project only); every page has the label of a followed student
+        assert 'id="focus-student" class="toggle" aria-pressed="false" hidden' in html and 'Focus student on project' in html
+        assert 'id="focus-label" class="presenter-name" hidden' in html
         student = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=False, groups=True)
         assert 'id="present"' not in student and 'id="presentation-bar"' not in student
+        assert 'id="focus-student"' not in student and 'id="focus-label"' in student
         assert 'data-groups="true"' in student and 'id="close-project" class="danger">' in student
 
     def test_project_page_of_a_spectator(self):
@@ -270,7 +275,7 @@ class TestTemplates:
         assert 'data-presentation="pres1"' in html and 'data-presenter="Pr. Of"' in html
         assert 'Presented by Pr. Of' in html and 'id="presenter-name"' in html and 'id="ended-banner"' in html
         assert 'id="close-project" class="danger" hidden>' in html
-        assert 'id="present"' not in html and 'id="presentation-bar"' not in html
+        assert 'id="present"' not in html and 'id="presentation-bar"' not in html and 'id="focus-student"' not in html
         assert 'href="/open"' not in html and 'href="/projects">Back' not in html
         assert 'id="tabbar"' in html and 'id="panes"' in html and '/static/js/project.js' in html
         # an instructor in the audience is a spectator like the others
@@ -419,3 +424,24 @@ class TestJavaScript:
         assert line, "project.js never sets body.helping"
         for token in ('isInstructor', '!isOwner', '!spectator'):
             assert token in line, token
+
+    def test_focus_colour_keyed_on_the_body(self):
+        """While an instructor focuses a student on the project, both pages take --focus-bg on
+        their top bars (body.focusing on the instructor's page, body.focused on the student's,
+        both set by focus.js), a colour of its own, different from the helper colour the
+        instructor's page has otherwise; its rule comes after the helper rule (same specificity:
+        it wins while the mode is on) and before the presentation rule (the lavender still
+        wins while the project is presented)."""
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        tokens = dict(re.findall(r'(--[a-z-]+-bg):\s*(#[0-9a-fA-F]+)', css))
+        assert '--focus-bg' in tokens and tokens['--focus-bg'].lower() != tokens['--helper-bg'].lower()
+        rule = re.search(r'([^{}]*)\{[^{}]*var\(--focus-bg\)', css)
+        assert rule, "no rule uses --focus-bg"
+        selectors = [s.strip() for s in rule.group(1).split(',')]
+        for selector in ('body.focusing .topbar', 'body.focusing .project-bar',
+                         'body.focused .topbar', 'body.focused .project-bar'):
+            assert selector in selectors, selector
+        assert css.index('var(--helper-bg)') < css.index('var(--focus-bg)') < css.index('var(--presentation-bg)')
+        focus = (JS / 'focus.js').read_text(encoding='utf-8')
+        for cls in ('focusing', 'focused'):
+            assert f"classList.add('{cls}')" in focus and f"classList.remove('{cls}')" in focus, cls

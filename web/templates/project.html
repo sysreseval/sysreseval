@@ -12,12 +12,14 @@
 <div class="project-bar">
   <h1 id="project-title" class="project-title" title="{{ rln }} ({{ host }})">{{ rln }}</h1>
   {% if presentation %}<span id="presenter-name" class="presenter-name">{{ _("Presented by {name}").format(name=presentation.presenter) }}</span>{% endif %}
+  <span id="focus-label" class="presenter-name" hidden></span>
   <div class="corner">
     <button type="button" id="instructor-toggle" class="toggle" aria-pressed="false" hidden title="{{ _("Show the instructor texts and every state") }}">{{ _("Instructor mode") }}</button>
     <button type="button" id="wrap-toggle" class="toggle" aria-pressed="true" title="{{ _("Wrap") }}">&#8629;</button>
     <button type="button" id="font-minus" title="{{ _("Smaller text") }}">A&minus;</button>
     <button type="button" id="font-plus" title="{{ _("Larger text") }}">A+</button>
     <a id="schema-pdf-link" class="button" hidden href="{{ api_base }}/schema.pdf" download>{{ _("Export Schema to PDF") }}</a>
+    {% if instructor and not presentation %}<button type="button" id="focus-student" class="toggle" aria-pressed="false" hidden title="{{ _("Bring the student's browser to this project and keep both pages on the same tab, terminal and question") }}">{{ _("Focus student on project") }}</button>{% endif %}
     {% if instructor and not presentation %}<button type="button" id="present" class="primary" hidden title="{{ _("Show this project, read-only, on the browsers of chosen students") }}">{{ _("Present") }}</button>{% endif %}
     <button type="button" id="close-project" class="danger"{% if presentation %} hidden{% endif %}>{{ _("Close Project") }}</button>
   </div>

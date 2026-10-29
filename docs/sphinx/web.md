@@ -24,7 +24,10 @@ The instructors get, on top of what a student sees (*Instructors* below):
 - **presentations**: a project, the instructor's own or a student's, duplicated read-only on the
   browsers of the whole class or of chosen students and groups to demonstrate something. What
   the instructor does on their own page (changing tabs, typing in a terminal, selecting a
-  question, changing the drawing of the schema, …) is shown at once on the students' browsers.
+  question, changing the drawing of the schema, …) is shown at once on the students' browsers;
+- the **focus** on one student: while helping a student on their project, the instructor brings
+  the student's browser to that project and keeps the two pages on the same tab, the same
+  terminal and the same question, whichever of the two changes it.
 
 ## Architecture
 
@@ -336,7 +339,10 @@ a logout opens another one. The other events:
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
   `login`, the `presenter`); the project calls a spectator makes keep their own events, their
   close lines carrying `spectator=1`. The presence socket every page keeps open and the view the
-  presenter publishes are not logged.
+  presenter publishes are not logged;
+- the focus on a student (*Instructors* below): `focus_start` (the instructor's `login`, `host`,
+  `rln`, the `student`) and `focus_stop` (the `instructor` of the focus, the `student`); the
+  view the two pages share and their sockets are not logged.
 
 The client address is the last entry of `X-Forwarded-For` when the TCP peer is one of
 `trusted_proxies` (the Apache and nginx examples set that header), the peer address otherwise:
@@ -740,6 +746,22 @@ What an instructor gets:
   own, another instructor's: the agent tells the open pages) and *Start evaluation* runs a
   privileged `sre eval` (no cooldown, nothing counted on the student's side, the exo-eval marks);
   the states apply through the privileged path too.
+- **Focus student on project**: the toggle button of a student's project page (off by default)
+  brings the student to what the instructor is looking at. While it is on, every page of the
+  student that does not show the project goes to it (now, and any page they open later: the
+  student stays on the project until the button is turned off), the top of both pages (the
+  site bar and the project bar) takes the **focus colour** (a deeper teal than the helper
+  colour, which comes back on the instructor's page when the mode is off), the student's page
+  names the instructor following them, and the two pages share the **tab** shown, the
+  **terminal** sub-tab shown (the student's sessions, joined by both: a terminal one page shows
+  is joined by the other when it has not got it) and the **question** selected, in both
+  directions: whichever page changes one of them, the other follows, the last change winning.
+  Unlike a presentation, the student keeps every control: they type in the terminals, change
+  tab, open terminals, answer questions. The button's tooltip says whether the student's page
+  follows. A reloaded instructor's page goes on focusing; closing it for a minute, closing the
+  project, or turning the button off releases the student (their page stays where it is, grey
+  again). Any instructor may end a focus; a student is in one focus at a time (the newest
+  wins, an older one still running comes back when it ends).
 - **Instructor mode** on the Open page: the instructor's own project started with
   `sre start --instructor-mode` (the instructor texts kept in `info.json`, every state listed,
   the states logged): the *Instructor mode* button of the project page then shows the
@@ -890,7 +912,8 @@ the browser reaches a desktop through the owner check of the portal and of the a
 - A presentation ends when the portal restarts (nothing is kept on disk); the agents log the
   spectators under the presenter's login (the connection log of the portal has the real ones); a
   spectator's terminal shows the presenter's grid at a smaller font when their window is smaller;
-  a presented project never idles out while it is watched.
+  a presented project never idles out while it is watched. A focus ends when the portal restarts
+  too; while one is on, the student's other browser tabs all go to the project.
 
 ## Development
 

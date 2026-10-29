@@ -68,18 +68,23 @@ EVENTS = {
     ('PUT', '/api/presentations/{id}/audience'): 'present_audience',
     ('DELETE', '/api/presentations/{id}'): 'present_stop',
     ('GET', '/present/{id}'): 'present_open',
+    # focus: an instructor keeps a student's browser on the project they look at together
+    ('POST', '/api/focus'): 'focus_start',
+    ('DELETE', '/api/focus/{id}'): 'focus_stop',
     # the History page: an administrator reading the log leaves a trace (the filters asked)
     ('GET', '/api/history'): 'history',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
 PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state',
-                            'present_start', 'present_open'})
+                            'present_start', 'present_open', 'focus_start'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
 KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/pool'),
                        ('GET', '/api/pool/status'), ('POST', '/api/projects/{host}/{rln}/touch'),
                        ('GET', '/api/presence'), ('GET', '/api/presentations'), ('GET', '/api/presentations/{id}'),
-                       ('PUT', '/api/presentations/{id}/view'), ('GET', '/api/presentations/{id}/ws')})
+                       ('PUT', '/api/presentations/{id}/view'), ('GET', '/api/presentations/{id}/ws'),
+                       ('GET', '/api/focus'), ('GET', '/api/focus/{id}'), ('PUT', '/api/focus/{id}/view'),
+                       ('GET', '/api/focus/{id}/ws')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
 #: socket every page keeps open is one of them: the session expiry stays what it was.
 IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws'})
