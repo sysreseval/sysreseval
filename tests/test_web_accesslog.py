@@ -121,6 +121,7 @@ class TestEventFor:
         assert ('GET', '/api/presentations/{id}/ws') in A.KEEPALIVE
         assert {'present_start', 'present_open'} <= A.PROJECT_EVENTS
         assert A.LOGIN_ROUTES == {('POST', '/login'), ('POST', '/api/login')}
+        assert A.LOGIN_EVENTS == {'login', 'login_failed'} and A.LOGIN_EVENTS <= set(A.ALL_EVENTS)
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
                                                                             'history'}

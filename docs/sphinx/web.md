@@ -790,8 +790,9 @@ says so): the events newest first, one row per event with its time (the local ti
 browser), event, login, client address, host, project, lab, status, duration and the other
 fields of the line as `key=value`; a `denied` or `login_failed` line, a status of 400 or more
 and a failed start are red. The form filters by login and address (prefixes: `10.0.1.` is a
-subnet), event, host (exact), project and lab (substrings; the lab is only on the `start`
-lines) and a time window; the filters stay in the URL, so a filtered view reloads and can be
+subnet), event (every event name; in proxy mode without `login` and `login_failed`, which never
+occur there), host (exact), project and lab (substrings; the lab is only on the `start` lines)
+and a time window; the filters stay in the URL, so a filtered view reloads and can be
 sent to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a
 cursor on the row ids: a page is stable while new events arrive) and a click on an event,
 login, address, host or project cell filters on that value. Nothing is polled: *Search* asks

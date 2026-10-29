@@ -18,7 +18,7 @@ from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL
 from sreweb.config import agent_config_from_dict, web_config_from_dict
 from sreweb.identity import Identity
 from sreweb.portal import session as S
-from sreweb.portal.accesslog import parse_line
+from sreweb.portal.accesslog import parse_line, ALL_EVENTS
 from sreweb.portal.ratelimit import RateLimiter
 from sreweb.portal.app import Portal
 from sreweb.portal.pool import Pool, PoolError, HostStatus
@@ -1011,7 +1011,8 @@ class TestHistory:
                 assert (await h.client.get('/api/history')).status == 401
                 page = await h.client.get('/history', headers=root)
                 assert page.status == 200 and 'root.prof True False' in await page.text()   # no database configured
-                assert ' 0</html>' not in await page.text()                                   # the event names
+                # the event names of the select: without the login events, never logged in proxy mode
+                assert f' {len(ALL_EVENTS) - 2}</html>' in await page.text()
                 resp = await h.client.get('/api/history', headers=root)
                 assert resp.status == 409 and 'access_log.database' in (await resp.json())['error']
                 assert (await h.client.get('/watch', headers=by_group)).status == 200
@@ -1048,6 +1049,24 @@ class TestHistory:
             async with Harness(tmp_path / 'down', auth_mode='proxy', web_over=over, role_resolver=resolver) as h:
                 me = (await (await h.client.get('/api/me', headers=zoe)).json())['identity']
                 assert (me['role'], me['administrator']) == ('instructor', False)      # the directory is down
+        run(go())
+
+    def test_ldap_mode_keeps_the_login_events(self, tmp_path):
+        """An administrator of LDAP mode (the flag in the cookie): every event in the select."""
+        over = {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldaps://ldap.example.org',
+                                                    'search_base': 'ou=people,dc=example,dc=org'}}}
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='ldap', web_over=over) as h:
+                h.client.session.cookie_jar.update_cookies(
+                    {S.COOKIE_NAME: S.encode(Identity(login='prof', role='instructor', administrator=True), SECRET)})
+                page = await h.client.get('/history')
+                assert page.status == 200 and f'prof True False {len(ALL_EVENTS)}</html>' in await page.text()
+                me = (await (await h.client.get('/api/me')).json())['identity']
+                assert me['administrator'] is True
+                h.client.session.cookie_jar.update_cookies(
+                    {S.COOKIE_NAME: S.encode(Identity(login='prof', role='instructor'), SECRET)})
+                assert (await h.client.get('/history')).status == 403
         run(go())
 
     def test_history_from_the_database(self, tmp_path):

@@ -13,7 +13,7 @@ import aiohttp_jinja2
 from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
-from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS
+from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
 from .accesshistory import parse_filters, HistoryError
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
@@ -318,13 +318,15 @@ class Routes:
 
     async def history_page(self, request):
         """Administrators: the connection log, read from its database (``[access_log.database]``;
-        the page says so when none is configured)."""
+        the page says so when none is configured).  The event select lists every event but, in
+        proxy mode, those of the login page (never logged there)."""
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
         if not request[IDENTITY_KEY].administrator:
             raise web.HTTPForbidden(text="administrators only")
+        events = [e for e in ALL_EVENTS if not (self.proxy_mode and e in LOGIN_EVENTS)]
         return aiohttp_jinja2.render_template('history.html', request, self._page_context(
-            request, history_database=self.access.history is not None, events=ALL_EVENTS))
+            request, history_database=self.access.history is not None, events=events))
 
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):

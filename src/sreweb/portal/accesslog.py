@@ -92,6 +92,9 @@ MAX_USER_AGENT = 200
 ALL_EVENTS = tuple(sorted({*(e for e in EVENTS.values() if e not in WS_EVENTS),
                            *(f'{e}_open' for e in WS_EVENTS), *(f'{e}_close' for e in WS_EVENTS),
                            'login', 'login_failed', 'session_open', 'session_close', 'denied'}))
+#: The events of the login page: never logged in proxy mode (the reverse proxy authenticates, the
+#: first request of a user opens the session), so the History page leaves them out there.
+LOGIN_EVENTS = frozenset({'login', 'login_failed'})
 
 _BARE_RE = re.compile(r'^[A-Za-z0-9@_.:/+=,-]+$')
 _TOKEN_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=("(?:[^"\\]|\\.)*"|[^\s"]*)')
