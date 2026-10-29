@@ -515,7 +515,7 @@ msgstr "local"
 # --- evaluation table the agent lays out (SRE/evaluation_table.py, translated with this domain) ----
 
 msgid "click a row for its last evaluation, a lab for the summary of the lab"
-msgstr "cliquer sur une ligne pour sa dernière évaluation, sur un TP pour le bilan du TP"
+msgstr "cliquer sur une ligne pour sa dernière évaluation, sur un projet pour le bilan du projet"
 
 msgid "Summary of the lab for the projects shown"
 msgstr "Bilan du TP pour les projets affichés"
