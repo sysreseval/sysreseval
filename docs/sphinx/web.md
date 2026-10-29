@@ -734,7 +734,11 @@ What an instructor gets:
   log with the instructor's login.
 - **Projects** stays the instructor's own projects (Watch holds the others).
 - **A student's project**: every tab, the devices all open (the privileged `sre connect`), the
-  answers read-only; the top of the page (the site bar and the project bar) takes the **helper
+  answers editable (what the instructor types goes into the student's answers file, whose
+  metadata stays the student's: the Watch page and the archives still name the student; every
+  save of either page is pushed to the open pages of the project, so the student's page shows
+  the instructor's text within a second and the instructor's page the student's); the top of
+  the page (the site bar and the project bar) takes the **helper
   colour** (teal) on the instructor's browser only, a reminder that the project is not theirs
   (the student's page stays grey; the presentation colour replaces it while the project is
   presented); the Terminals tab **joins the student's live terminals** when it opens (the
@@ -762,7 +766,8 @@ What an instructor gets:
   in both directions: whichever page changes one of them, the other follows, the last change
   winning.
   Unlike a presentation, the student keeps every control: they type in the terminals, change
-  tab, open terminals, answer questions. The button's tooltip says whether the student's page
+  tab, open terminals, answer questions (and the instructor may write in the answers too, both
+  pages showing the same text). The button's tooltip says whether the student's page
   follows. A reloaded instructor's page goes on focusing; closing it for a minute, closing the
   project, or turning the button off releases the student (their page stays where it is, grey
   again). Any instructor may end a focus; a student is in one focus at a time (the newest
@@ -874,8 +879,9 @@ the commands.
   lists and reaches the same projects as the CLI lets through) check it. An instructor (see
   *Instructors* above) reaches every project, but the agent never
   runs a command as the student for them: a non-owner's `eval`, `state` and `connect` are
-  privileged `sre` calls under the instructor's own login, the answers are read-only, and a
-  private terminal is listed to instructors only. The operations log of an instructor-mode
+  privileged `sre` calls under the instructor's own login, the answers a non-owner writes go
+  into the student's file with the student's metadata kept (the file never names the
+  instructor), and a private terminal is listed to instructors only. The operations log of an instructor-mode
   project goes to the subscribers allowed to read it only.
 - The spectators of a presentation reach the presented project through the portal only, on a
   short list of read-only calls (the project, its events, the schema, the last evaluation, the

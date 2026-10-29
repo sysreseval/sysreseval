@@ -70,7 +70,6 @@ let focus = null;          // the focus side (focus.js): the instructor's button
 const state = {
   project: null,
   answers: {},
-  answersReadonly: false,   // an instructor on a student's project only reads the answers
   terminals: [],            // the live terminal sessions of the project (shared with the viewers)
   instructorView: false,
   closed: false,
@@ -89,8 +88,10 @@ const ctx = {
   url(suffix, params) {
     return api.withQuery(apiBase + suffix, {...(params || {}), view: state.instructorView ? 'instructor' : undefined});
   },
+  // a spectator of a presentation reads the answers; an instructor on a student's project
+  // writes them like the student (the agent keeps the student's metadata)
   answersReadonly() {
-    return spectator || state.answersReadonly;
+    return spectator;
   },
   getAnswers() {
     return state.answers;
@@ -329,7 +330,6 @@ function getView() {
 async function load() {
   const data = await api.get(ctx.url(''));
   state.answers = data.answers || {};
-  state.answersReadonly = Boolean(data.answers_readonly);
   state.terminals = data.terminals || [];
   applyProject(data.project);
   if (tabs.questions) {

@@ -1,11 +1,12 @@
 // The Questions tab: the titles on the left (in the order of the lab), the current question on
 // the right: its description, then a text area (text question), the form of its chunks (form
 // question) or nothing (a display-only question).  The answers are saved 500 ms after the last
-// change (PUT {api_base}/answers); an answers event (a state applied) refreshes the current
-// widget without saving again.  On somebody else's project (an instructor helping) the answers
-// are shown read-only: nothing is saved.  A spectator of a presentation (ctx.spectator) cannot
-// choose the question either: the presenter's choice is applied (setSelected), and on the
-// presenter's page every choice calls ctx.onViewChange().
+// change (PUT {api_base}/answers); an answers event (a state applied, a save of another page of
+// the project: the instructor helping writes the student's answers too) refreshes the current
+// widget without saving again, the changes not sent yet kept on top.  A spectator of a
+// presentation (ctx.spectator) reads the answers (ctx.answersReadonly(): nothing is saved) and
+// cannot choose the question either: the presenter's choice is applied (setSelected), and on
+// the presenter's page every choice calls ctx.onViewChange().
 
 import * as settings from '../settings.js';
 import {el, clear, toast} from '../ui.js';
@@ -146,7 +147,7 @@ export function createQuestionsTab(ctx) {
     widget = {kind: 'text', textarea};
   }
 
-  // a non-owner reads the answers: every control of the question is disabled
+  // a spectator reads the answers: every control of the question is disabled
   function setReadonly(container) {
     if (!(ctx.answersReadonly && ctx.answersReadonly())) {
       return;

@@ -46,13 +46,6 @@ def check_owner(rln: str, identity: Identity):
         raise AccessError(403, "not your project")
 
 
-def check_is_owner(rln: str, identity: Identity):
-    """The project belongs to the user: what an instructor may only read on a student's project
-    (the answers)."""
-    if owner_of(rln) != identity.login:
-        raise AccessError(403, "read-only for a non-owner")
-
-
 def is_privileged_caller(rln: str, identity: Identity) -> bool:
     """An instructor acting on a project that is not theirs: the agent runs ``sre`` privileged
     for them (no ``--user``, their own login), never as the student, so a student's cooldown,

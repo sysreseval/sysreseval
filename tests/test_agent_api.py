@@ -1006,22 +1006,38 @@ class TestInstructor:
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
                 assert (await resp.json())['result']['grades'] is not None
                 assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', rln]
-                # states: privileged too; the answers are read-only for a non-owner
+                # states: privileged too
                 assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
                 privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
+                # the answers: the instructor writes in the student's file (no sre call), the
+                # student's metadata kept, and every save is pushed to the pages of both
+                ws_alice = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                ws_prof = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
                 resp = await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'x'}},
                                           headers=headers(PROF))
-                assert resp.status == 403
+                assert resp.status == 200 and (await resp.json())['answers'][TEXT_HASH] == 'x'
+                on_disk = json.loads((h.pub / 'projects' / rln / 'answers' / 'answers.json').read_text())
+                assert (on_disk[TEXT_HASH], on_disk['login'], on_disk['fullname'], on_disk['email'],
+                        on_disk['group'], on_disk['language'], on_disk['hostname']) == \
+                    ('x', 'alice', 'Alice A', 'a@x.org', 'INFO1', 'fr', 'pool1')
+                assert (await receive_event(ws_alice, 'answers'))['answers'][TEXT_HASH] == 'x'
+                assert (await receive_event(ws_prof, 'answers'))['answers'][TEXT_HASH] == 'x'
+                await h.client.put(f'/v1/projects/{rln}/answers', json={'answers': {TEXT_HASH: 'y'}}, headers=headers())
+                assert (await receive_event(ws_prof, 'answers'))['answers'][TEXT_HASH] == 'y'
+                assert (await receive_event(ws_alice, 'answers'))['answers'][TEXT_HASH] == 'y'
+                await ws_alice.close()
+                await ws_prof.close()
+                privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
                 import shutil
                 if shutil.which('neato'):   # the schema PDF of a non-owner: rendered by the agent, no sre call
                     resp = await h.client.get(f'/v1/projects/{rln}/schema.pdf', headers=headers(PROF))
                     assert resp.status == 200 and (await resp.read()).startswith(b'%PDF')
                     privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
                 data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json()
-                assert data['answers_readonly'] is True and data['owner'] == 'alice'
+                assert data['owner'] == 'alice' and data['answers'][TEXT_HASH] == 'y' and 'answers_readonly' not in data
                 assert all(d['allow_connection'] for d in data['project']['terminal_devices'])
                 own = await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json()
-                assert own['answers_readonly'] is False
+                assert own['answers'][TEXT_HASH] == 'y' and 'answers_readonly' not in own
                 assert [d['allow_connection'] for d in own['project']['terminal_devices']] == [True, False, True]
                 # the instructor's own project: the student path
                 mine = await h.started(PROF_NOVIEW)

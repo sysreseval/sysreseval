@@ -405,7 +405,7 @@ class TestPresentationThroughThePortal:
                 pid = (await present(h, prof, rln, ['bob']))['id']
                 data = await (await h.client.get(base, headers=bob)).json()
                 assert data['owner'] == 'alice' and data['running_lab_name'] == rln and data['host'] == 'a01'
-                assert data['answers_readonly'] is True                   # the presenter is not the owner either
+                assert 'answers_readonly' not in data      # no flag: the portal refuses a spectator's PUT (below)
                 assert (await h.client.get(f'{base}/evaluation', headers=bob)).status == 404   # instructors only: 403 otherwise
                 assert (await h.client.get(f'{base}/schema.svg?curved=1', headers=bob)).status in (200, 500)
                 assert (await h.client.post(f'{base}/touch', headers={**bob, **P.CSRF})).status == 204

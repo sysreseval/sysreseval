@@ -9,8 +9,13 @@ evaluates (``Grade0.load_answers``).  The metadata alone is written as soon as a
 created (``rewrite``), so the Watch page names the owner before the first answer, and again
 when the owner opens the project page and the file lacks it or holds other values
 (``refresh``: the project of an older agent or of the Qt GUI gets its full name and group
-then); an empty full name or group never replaces a stored one.  ``cheat.json`` written by
-``sre state`` is merged the same way at the next tick and pushed to the open pages.
+then); an empty full name or group never replaces a stored one.  An instructor helping a
+student writes in the student's file too (``put`` by a non-owner): the stored metadata is kept
+as it is (``_kept_metadata``: the student's login, full name, e-mail, group and language, never
+the instructor's), only the update time and the exam fields are new.  Every ``put`` is pushed to
+the open pages of the project (the ``answers`` event), so the student's page shows what the
+instructor types and the instructor's page what the student types.  ``cheat.json`` written by
+``sre state`` is merged the same way at the next tick and pushed too.
 """
 import json
 import logging
@@ -95,6 +100,19 @@ class AnswersStore:
                                exam_data=A.read_exam_json(self.pub_dir),
                                group=identity.group or self._stored(answers, params.group_keyword))
 
+    def _kept_metadata(self, project: Project, answers: dict, identity: Identity) -> dict:
+        """*answers* with the stored metadata written again: the file of a student written by
+        an instructor (*identity*) keeps the student's login (the owner of the project when the
+        file has none), full name, e-mail, group and language (the writer's language when the
+        file has none); the update time and the exam fields are new."""
+        return A.with_metadata(answers, hostname=self.hostname,
+                               login=self._stored(answers, params.login_keyword) or project.owner,
+                               fullname=self._stored(answers, params.fullname_keyword),
+                               email=self._stored(answers, params.email_keyword) or None,
+                               language=self._stored(answers, params.language_keyword) or identity.language,
+                               exam_data=A.read_exam_json(self.pub_dir),
+                               group=self._stored(answers, params.group_keyword))
+
     def metadata_stale(self, answers: dict, identity: Identity) -> bool:
         """The file lacks the metadata a current agent writes (``login``, ``group``: the file of
         the Qt GUI or of an older agent), or *identity* gives a full name or a group other than
@@ -109,14 +127,20 @@ class AnswersStore:
         A.save_answers(self.path(project), data, atomic=True, owner=self.owner, mode=self.mode)
 
     async def put(self, project: Project, patch: dict, identity: Identity) -> dict:
-        """Merge *patch* (``{question_hash: answer}``) into the file and return its new content."""
+        """Merge *patch* (``{question_hash: answer}``) into the file, push the new answers to
+        the open pages of the project and return the file's new content.  The owner's metadata
+        comes from *identity*; a non-owner (an instructor helping) leaves the stored one alone."""
         normalized = self.normalize(project, patch)
         async with project.answers_lock:
             answers = self.read(project)
             answers.update(normalized)
-            data = self._with_metadata(answers, identity)
+            if identity.login == project.owner:
+                data = self._with_metadata(answers, identity)
+            else:
+                data = self._kept_metadata(project, answers, identity)
             self._save(project, data)
         project.touch()
+        await self.registry.broadcast(project, {'t': EVENT_ANSWERS, 'answers': self.public(data, project)})
         return data
 
     async def rewrite(self, project: Project, identity: Identity) -> dict:

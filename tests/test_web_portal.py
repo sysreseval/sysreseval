@@ -844,12 +844,16 @@ class TestInstructorThroughThePortal:
                 assert [(r['host'], r['owner'], r['group'], r['last_eval']['grade'], len(r['elements'])) for r in rows] == \
                     [('a01', 'alice', 'INFO1', 4.5, 3)]
                 assert await (await h.client.get('/api/watch/evaluations?lab=none/x.py', headers=prof)).json() == []
-                # the instructor evaluates the student's project (privileged on the agent) and reads her answers only
+                # the instructor evaluates the student's project (privileged on the agent) and writes
+                # her answers (her file, her metadata kept: the Watch page still names her)
                 assert (await h.client.post(f'{base}/eval', headers={**prof, **CSRF})).status == 200
                 assert (await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'x'}},
-                                           headers={**prof, **CSRF})).status == 403
+                                           headers={**prof, **CSRF})).status == 200
                 got = await (await h.client.get(base, headers=prof)).json()
-                assert got['answers_readonly'] is True and got['owner'] == 'alice'
+                assert got['owner'] == 'alice' and got['answers'][TEXT_HASH] == 'x' and 'answers_readonly' not in got
+                assert (await (await h.client.get(base, headers=alice)).json())['answers'][TEXT_HASH] == 'x'
+                rows = await (await h.client.get('/api/watch', headers=prof)).json()
+                assert (rows[0]['owner'], rows[0]['fullname']) == ('alice', 'Alice')
                 # an instructor-mode project of the instructor; refused to a student
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'instructor_mode': True},
                                            headers={**bob, **CSRF})

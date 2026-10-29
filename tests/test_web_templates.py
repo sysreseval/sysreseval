@@ -463,6 +463,21 @@ class TestJavaScript:
         live = terminals[terminals.index('function renderLive()'):terminals.index('function openNew(')]
         assert '!r.private || ctx.isInstructor' in live
 
+    def test_answers_editable_by_an_instructor(self):
+        """An instructor on a student's project writes the answers like the student (the agent
+        keeps the student's metadata): no script carries a read-only flag of the answers any
+        more; a spectator of a presentation still reads them (ctx.answersReadonly())."""
+        for path in sorted(JS.rglob('*.js')):
+            if 'vendor' not in path.parts:
+                assert 'answers_readonly' not in path.read_text(encoding='utf-8'), path
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        readonly = project[project.index('answersReadonly() {'):]
+        assert readonly[:readonly.index('}')].strip().endswith('return spectator;')
+        questions = (JS / 'tabs' / 'questions.js').read_text(encoding='utf-8')
+        changed = questions[questions.index('function changed('):questions.index('async function flush(')]
+        assert 'ctx.answersReadonly()' in changed
+        assert 'control.disabled = true' in questions[questions.index('function setReadonly('):]
+
     def test_focus_switch_opens_no_terminal(self):
         """The terminals tab shown for the first time opens a terminal on the first open device
         (as the Qt GUI), unless a focus brought the page there (autoOpen false): the instructor

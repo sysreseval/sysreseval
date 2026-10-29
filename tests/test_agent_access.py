@@ -44,12 +44,7 @@ class TestRunningLabName:
             A.check_owner(RLN, OTHER)
         assert e.value.status == 403
 
-    def test_owner_only_and_privileged_caller(self):
-        A.check_is_owner(RLN, STUDENT)
-        for who in (OTHER, PROF, PROF_VIEW):
-            with pytest.raises(AccessError) as e:
-                A.check_is_owner(RLN, who)
-            assert e.value.status == 403
+    def test_privileged_caller(self):
         # an instructor on somebody else's project runs sre privileged; the owner never does
         assert A.is_privileged_caller(RLN, PROF) and A.is_privileged_caller(RLN, PROF_VIEW)
         assert not A.is_privileged_caller(RLN, STUDENT) and not A.is_privileged_caller(RLN, OTHER)

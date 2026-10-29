@@ -584,7 +584,6 @@ class Agent:
         return web.json_response({
             'project': self._view(project, identity),
             'answers': AnswersStore.public(answers, project),
-            'answers_readonly': project.owner != identity.login,
             'owner': project.owner,
             'terminals': project.terminal_list(identity),
             'running_lab_name': project.rln, 'host': self.hostname,
@@ -645,8 +644,10 @@ class Agent:
     # -- answers, evaluation, states --------------------------------------------------------------
 
     async def answers_put(self, request):
+        """The answers of the page: the owner's, or those an instructor types on a student's
+        project (the student's file, the student's metadata kept; a non-owner is an instructor,
+        ``_project`` lets nobody else in)."""
         project = self._project(request)
-        access.check_is_owner(project.rln, request[IDENTITY_KEY])   # an instructor only reads them
         body = await self._read_json(request)
         patch = body.get('answers', body)
         if not isinstance(patch, dict):
