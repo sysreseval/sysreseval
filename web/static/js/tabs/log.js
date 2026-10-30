@@ -2,10 +2,13 @@
 // evaluation executed).  The file is read once when the tab is first shown (GET
 // {api_base}/log?offset=0), then the "log" events of the project socket are appended (reset:
 // the file was truncated).  At most MAX_LINES lines are kept; Clear empties the display only.
+// The spectators of a presentation follow the presenter's scroll (scroll.js: a fraction of the
+// text, applied again once the file is read).
 
 import * as api from '../api.js';
 import {el} from '../ui.js';
 import {_} from '../i18n.js';
+import {scrollAnchor, applyScrollAnchor} from '../scroll.js';
 
 const MAX_LINES = 100000;   // params.operations_log_view_max_lines
 
@@ -16,6 +19,7 @@ export function createLogTab(ctx) {
                   el('div', {class: 'ctrl-bar'}, el('span', {class: 'spacer'}), clearButton), view);
   let loaded = false;
   let loading = false;
+  let wantedScroll = null;   // a spectator: the presenter's scroll, applied again when the file is read
   const backlog = [];   // events received before the first read of the file
 
   clearButton.addEventListener('click', () => {
@@ -63,6 +67,7 @@ export function createLogTab(ctx) {
         append(ev.data || '', Boolean(ev.reset));
       }
       backlog.length = 0;
+      applyScrollAnchor(view, wantedScroll);
     } catch (e) {
       append(e.message + '\n', true);
     } finally {
@@ -90,6 +95,13 @@ export function createLogTab(ctx) {
       loaded = false;
       backlog.length = 0;
       view.textContent = '';
+    },
+    getScroll() {
+      return scrollAnchor(view);
+    },
+    setScroll(anchor) {
+      wantedScroll = anchor;
+      applyScrollAnchor(view, anchor);
     },
   };
 }

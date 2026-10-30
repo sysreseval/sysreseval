@@ -6,6 +6,7 @@
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
 import {_} from '../i18n.js';
+import {paneScroll} from '../scroll.js';
 
 export function createStatesTab(ctx) {
   const table = el('table', {class: 'grid states'});
@@ -50,5 +51,6 @@ export function createStatesTab(ctx) {
     show() {},
     hide() {},
     update: render,
+    ...paneScroll(pane),     // the spectators of a presentation follow the presenter's scroll
   };
 }

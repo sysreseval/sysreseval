@@ -520,6 +520,47 @@ class TestJavaScript:
         assert 'ctx.answersReadonly()' in changed
         assert 'control.disabled = true' in questions[questions.index('function setReadonly('):]
 
+    def test_presentation_follows_the_scroll(self):
+        """The spectators follow the position inside the tab shown: the view carries `scroll`
+        (what the current tab's getScroll() reports: the anchor of a scrolling pane, scroll.js,
+        or the viewBox of a schema), applied by the same tab on a spectator's page once the
+        pane is shown (after selectTab); the presenter's page publishes on every scroll event
+        of a pane (one capturing listener: scroll events do not bubble) and on every change of
+        the schema's viewBox, through ctx.onScroll, never through ctx.onViewChange (the focus
+        does not share the scroll); present.js follows a scroll in progress (a maximum wait)
+        and sends nothing when the view is the one last sent."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        get_view = project[project.index('function getView()'):project.index('async function load()')]
+        assert 'scroll: current && current.getScroll ? current.getScroll() : null' in get_view
+        apply_view = project[project.index('function applyView('):project.index('function onEvent(')]
+        assert 'selectTab(view.tab);' in apply_view
+        assert apply_view.index('selectTab(view.tab);') < apply_view.index('current.setScroll(view.scroll || null)')
+        hooks = project[project.index('if (!spectator) {'):project.index('// -- tabs')]
+        assert 'ctx.onScroll = () => {' in hooks and 'presenter.schedule()' in hooks
+        assert "panes.addEventListener('scroll', () => ctx.onScroll(), {capture: true, passive: true})" in hooks
+        on_view_change = hooks[hooks.index('ctx.onViewChange = () => {'):hooks.index('ctx.onEvaluated')]
+        assert 'focus.schedule()' in on_view_change and 'onScroll' not in on_view_change
+        present = (JS / 'present.js').read_text(encoding='utf-8')
+        assert 'const PUBLISH_MAX_DELAY = ' in present
+        publish = present[present.index('async function publish()'):present.index('// -- presenting')]
+        assert 'if (key === lastKey) {' in publish and publish.index('await inFlight;') < publish.index('lastKey = key;')
+        focus = (JS / 'focus.js').read_text(encoding='utf-8')
+        keys = next(l for l in focus.splitlines() if l.startswith('const VIEW_KEYS = '))
+        assert 'scroll' not in keys
+        # every tab with a position of its own
+        for name in ('informations', 'machines', 'networks', 'states', 'evaluation', 'log', 'questions', 'schema'):
+            tab = (JS / 'tabs' / f'{name}.js').read_text(encoding='utf-8')
+            assert "from '../scroll.js'" in tab or 'function getScroll()' in tab, name
+            assert 'paneScroll(' in tab or ('getScroll' in tab and 'setScroll' in tab), name
+        for name in ('terminals', 'display'):
+            assert 'getScroll' not in (JS / 'tabs' / f'{name}.js').read_text(encoding='utf-8'), name
+        schema = (JS / 'tabs' / 'schema.js').read_text(encoding='utf-8')
+        assert 'new SvgPanZoom(view, {onChange: () => {' in schema and 'ctx.onScroll()' in schema
+        panzoom = (JS / 'svgpanzoom.js').read_text(encoding='utf-8')
+        assert 'setView(box) {' in panzoom
+        apply = panzoom[panzoom.index('apply() {'):panzoom.index('setView(box) {')]
+        assert 'this.onChange()' in apply
+
     def test_focus_switch_opens_no_terminal(self):
         """The terminals tab shown for the first time opens a terminal on the first open device
         (as the Qt GUI), unless a focus brought the page there (autoOpen false): the instructor

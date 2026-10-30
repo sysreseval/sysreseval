@@ -1,14 +1,17 @@
 // Pan and zoom of an inline SVG (the schema of a project) by editing its viewBox: drag to pan,
 // wheel to zoom about the pointer, double-click to reset.  The SVG keeps its own coordinate
-// system; the pointer positions are converted with the screen CTM of the <svg> element.
+// system; the pointer positions are converted with the screen CTM of the <svg> element.  The
+// onChange option is called after every change of the viewBox (the presenter's page publishes
+// it), setView() applies one set from outside (a spectator following the presenter).
 
 const ZOOM_FACTOR = 1.25;   // per wheel notch, like the Qt view
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 40;
 
 export class SvgPanZoom {
-  constructor(container) {
+  constructor(container, {onChange = null} = {}) {
     this.container = container;
+    this.onChange = onChange;
     this.svg = null;
     this.base = null;      // the viewBox of the document as loaded: {x, y, w, h}
     this.view = null;      // the current viewBox
@@ -51,7 +54,23 @@ export class SvgPanZoom {
     if (this.svg && this.view) {
       const v = this.view;
       this.svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
+      if (this.onChange) {
+        this.onChange();
+      }
     }
+  }
+
+  // The viewBox {x, y, w, h} of another page (a malformed one is ignored).
+  setView(box) {
+    if (!this.svg || !box || typeof box !== 'object') {
+      return;
+    }
+    const [x, y, w, h] = ['x', 'y', 'w', 'h'].map((key) => Number(box[key]));
+    if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) {
+      return;
+    }
+    this.view = {x, y, w, h};
+    this.apply();
   }
 
   reset() {

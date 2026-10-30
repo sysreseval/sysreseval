@@ -5,10 +5,14 @@
 // project bar shows the audience counts (the socket GET /api/presentations/{id}/ws), Edit
 // audience changes it (PUT .../audience) and Stop presenting ends it (DELETE).  The view the
 // spectators follow (the active tab, the open terminals, the question, the schema options, the
-// instructor texts, and the counters telling that the answers or the evaluation changed) is
-// published with PUT .../view a moment after each change: the tabs call ctx.onViewChange() /
-// ctx.onEvaluated(), project.js builds the view (getView).  A reloaded page resumes its
-// presentation (GET /api/presentations); the portal ends it when the page is gone for a minute.
+// instructor texts, the position inside the tab shown — the scroll, the pan and zoom of the
+// schema — and the counters telling that the answers or the evaluation changed) is published
+// with PUT .../view a moment after each change: the tabs call ctx.onViewChange() /
+// ctx.onEvaluated() / ctx.onScroll(), project.js builds the view (getView).  A scroll in
+// progress is followed: the PUT waits for a pause, PUBLISH_MAX_DELAY at most; a change leaving
+// the view as last sent (a terminal's scrollback scrolled) sends nothing.  A reloaded page
+// resumes its presentation (GET /api/presentations); the portal ends it when the page is gone
+// for a minute.
 
 import * as api from './api.js';
 import {el, clear, toast} from './ui.js';
@@ -16,6 +20,7 @@ import {_, format} from './i18n.js';
 import {ReconnectingSocket} from './events.js';
 
 const PUBLISH_DELAY = 150;        // ms between the last change of the view and its PUT
+const PUBLISH_MAX_DELAY = 300;    // ms at most between the first change not sent yet and its PUT (a scroll going on)
 const PRESENCE_REFRESH = 5000;    // ms between two refreshes of the connected users while the dialog is open
 const WS_PRESENTATION_ENDED = 4411;
 
@@ -24,8 +29,10 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
   let socket = null;
   const counters = {evaluated: 0, answers: 0};
   let timer = null;
+  let since = null;               // when the first change waiting for a PUT happened (ms)
   let inFlight = null;
   let dirty = false;
+  let lastKey = null;             // the JSON of the last view PUT: the same view again is not sent
   const warned = new Set();       // the statuses of the PUT view already shown as a toast
 
   function isPresenting() {
@@ -41,10 +48,14 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     if (!presentation) {
       return;
     }
+    const now = Date.now();
+    if (since === null) {
+      since = now;
+    }
     if (timer) {
       window.clearTimeout(timer);
     }
-    timer = window.setTimeout(publish, PUBLISH_DELAY);
+    timer = window.setTimeout(publish, Math.max(0, Math.min(PUBLISH_DELAY, since + PUBLISH_MAX_DELAY - now)));
   }
 
   function bump(name) {
@@ -54,6 +65,7 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
 
   async function publish() {
     timer = null;
+    since = null;
     if (!presentation) {
       return;
     }
@@ -63,9 +75,14 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     }
     const id = presentation.id;
     const view = {...getView(), ...counters};
+    const key = JSON.stringify(view);
+    if (key === lastKey) {
+      return;            // a change without effect on the view
+    }
     inFlight = api.put(presentationUrl(id, '/view'), {view});
     try {
       await inFlight;
+      lastKey = key;
     } catch (e) {
       if (e.status === 404) {
         leave();
@@ -101,6 +118,7 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     elements.button.hidden = true;
     elements.bar.hidden = false;
     document.body.classList.add('presenting');
+    lastKey = null;
     renderStatus(p.count, p.connected);
     socket = new ReconnectingSocket(presentationUrl(p.id, '/ws'), {
       onMessage: (message) => {
@@ -131,6 +149,9 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
       window.clearTimeout(timer);
       timer = null;
     }
+    since = null;
+    dirty = false;
+    lastKey = null;
     presentation = null;
     elements.bar.hidden = true;
     elements.button.hidden = false;

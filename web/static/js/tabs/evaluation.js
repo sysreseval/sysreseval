@@ -4,12 +4,14 @@
 // countdown "Next evaluation allowed in {n} s", as in the Qt view.  An instructor first sees
 // the last archived evaluation of the project (GET {api_base}/evaluation), whoever ran it; so
 // does a spectator of a presentation (ctx.spectator, no button), again after each evaluation
-// the presenter runs (reload); the presenter's page calls ctx.onEvaluated() then.
+// the presenter runs (reload); the presenter's page calls ctx.onEvaluated() then.  The
+// spectators follow the presenter's scroll (scroll.js), applied again once the table is loaded.
 
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
 import {_, format} from '../i18n.js';
 import {renderEvaluationTable} from '../evaluation_table.js';
+import {paneScroll} from '../scroll.js';
 
 export function createEvaluationTab(ctx) {
   const button = el('button', {type: 'button', class: 'primary'}, _('Start evaluation'));
@@ -17,11 +19,13 @@ export function createEvaluationTab(ctx) {
   const caption = el('p', {class: 'evaluation-caption muted', hidden: true});
   const table = el('table', {class: 'grid evaluation'});
   const pane = el('div', {class: 'pane'}, el('div', {class: 'evaluation-bar'}, button, countdown), caption, table);
+  const scroll = paneScroll(pane);
   let columns = 3;
   let deadline = null;   // ms timestamp of the end of the cooldown
   let timer = null;
   let lastLoaded = false;
   let shown = false;
+  let wantedScroll = null;   // a spectator: the presenter's scroll, applied again when the table arrives
   const spectator = Boolean(ctx.spectator);
   if (spectator) {
     button.hidden = true;
@@ -86,6 +90,7 @@ export function createEvaluationTab(ctx) {
     caption.textContent = text;
     caption.title = (data.errors || []).map((e) => `${e.category}: ${e.text}`).join('\n');
     caption.hidden = false;
+    scroll.setScroll(wantedScroll);
   }
 
   async function start() {
@@ -144,6 +149,11 @@ export function createEvaluationTab(ctx) {
       if (shown) {
         loadLast();
       }
+    },
+    getScroll: scroll.getScroll,
+    setScroll(anchor) {
+      wantedScroll = anchor;
+      scroll.setScroll(anchor);
     },
   };
 }

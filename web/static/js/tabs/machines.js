@@ -4,6 +4,7 @@
 
 import {el, clear} from '../ui.js';
 import {_} from '../i18n.js';
+import {paneScroll} from '../scroll.js';
 
 export function createMachinesTab(ctx) {
   const table = el('table', {class: 'grid machines'});
@@ -45,5 +46,6 @@ export function createMachinesTab(ctx) {
     show() {},
     hide() {},
     update: render,
+    ...paneScroll(pane),     // the spectators of a presentation follow the presenter's scroll
   };
 }

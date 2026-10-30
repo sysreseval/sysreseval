@@ -4,7 +4,9 @@
 // random with a seed kept until the next click) and Nodes (icons / shapes).  Lines, spacing and
 // nodes are kept in the settings; the order is per page, like the Qt view.  A spectator of a
 // presentation (ctx.spectator) gets the presenter's options instead (setOptions, from the
-// exportQuery of the presenter's tab), the controls disabled and the settings untouched.
+// exportQuery of the presenter's tab), the controls disabled and the settings untouched, and
+// follows the presenter's pan and zoom (setScroll: the viewBox, which both pages draw from the
+// same document; the presenter's page publishes it through ctx.onScroll()).
 
 import * as api from '../api.js';
 import * as settings from '../settings.js';
@@ -84,7 +86,12 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
     el('span', {}, _('Nodes:')), icons, shapes);
   const view = el('div', {class: 'schema-view'});
   const pane = el('div', {class: 'pane no-scroll'}, bar, view);
-  const panzoom = new SvgPanZoom(view);
+  const panzoom = new SvgPanZoom(view, {onChange: () => {
+    if (ctx.onScroll) {
+      ctx.onScroll();
+    }
+  }});
+  let wantedView = null;   // a spectator: the presenter's pan and zoom, applied again when the SVG is loaded
   if (spectator) {
     for (const control of [straight, curved, icons, shapes]) {
       control.querySelector('input').disabled = true;
@@ -169,6 +176,28 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
     }
   }
 
+  // The pan and zoom as the presenter's view carries them: the viewBox, the schema's form of a
+  // scroll position (null before the SVG is loaded).
+  function getScroll() {
+    const v = panzoom.view;
+    if (!v) {
+      return null;
+    }
+    const round = (n) => Math.round(n * 100) / 100;
+    return {x: round(v.x), y: round(v.y), w: round(v.w), h: round(v.h)};
+  }
+
+  // A spectator: the presenter's pan and zoom (kept until the SVG is loaded).
+  function setScroll(box) {
+    if (!spectator) {
+      return;
+    }
+    wantedView = box && typeof box === 'object' ? box : null;
+    if (wantedView) {
+      panzoom.setView(wantedView);
+    }
+  }
+
   let pending = false;
   async function reload() {
     if (ctx.onSchemaOptions) {
@@ -182,6 +211,9 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
       const response = await api.fetchRaw('GET', ctx.url('/schema.svg', query()));
       panzoom.load(await response.text());
       loaded = true;
+      if (wantedView) {
+        panzoom.setView(wantedView);
+      }
     } catch (e) {
       clear(view);
       view.append(el('div', {class: 'message error'}, e.message));
@@ -212,5 +244,7 @@ export function createSchemaTab(ctx, {hidden = false} = {}) {
     exportQuery,
     pdfQuery,
     setOptions,
+    getScroll,
+    setScroll,
   };
 }

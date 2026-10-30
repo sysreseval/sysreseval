@@ -643,7 +643,10 @@ below), except `add` and `remove`, which stay with the token.
   nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
   their exact size, at the largest font that fits), the question selected, the drawing options
   of the schema, the instructor texts and the virtual desktop (view-only) follow what the
-  instructor does. The title bar of the presented project is coloured (lavender) and names the
+  instructor does; so does the position inside the tab: the scroll of the text, of the question
+  (its description and the list of titles), of the tables and of the log (the line at the top of
+  the instructor's pane is at the top of the student's, whatever the size of their window or
+  their font size), and the pan and zoom of the schema. The title bar of the presented project is coloured (lavender) and names the
   instructor presenting it. The student's own page is untouched underneath, terminals included:
   when the presentation ends it is back as it was.
 
@@ -800,7 +803,9 @@ What an instructor gets:
   closing the project) and the bars are grey again. The spectators follow the instructor's
   page: the tab, the terminals the instructor opens (joined read-only: the students see the same
   shell, cannot type, and do not change its size), the question, the schema options, the
-  *Instructor mode* texts, the Display tab view-only, and the Evaluation tab shows them the last
+  *Instructor mode* texts, the Display tab view-only, the scroll of the tab shown and the pan and
+  zoom of the schema (followed as the instructor scrolls, a few times a second), and the
+  Evaluation tab shows them the last
   archived evaluation again after each evaluation of the project. A reloaded page goes on
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.

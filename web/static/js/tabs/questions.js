@@ -6,12 +6,14 @@
 // widget without saving again, the changes not sent yet kept on top.  A spectator of a
 // presentation (ctx.spectator) reads the answers (ctx.answersReadonly(): nothing is saved) and
 // cannot choose the question either: the presenter's choice is applied (setSelected), and on
-// the presenter's page every choice calls ctx.onViewChange().
+// the presenter's page every choice calls ctx.onViewChange().  The spectators follow the
+// presenter's scroll of the description (or the form) and of the list of titles (scroll.js).
 
 import * as settings from '../settings.js';
 import {el, clear, toast} from '../ui.js';
 import {_} from '../i18n.js';
 import {Form} from '../form.js';
+import {scrollAnchor, applyScrollAnchor} from '../scroll.js';
 
 const TYPE_DUMMY = 0;
 const TYPE_TEXT = 1;
@@ -211,6 +213,18 @@ export function createQuestionsTab(ctx) {
     },
     getSelected() {
       return currentHash;
+    },
+    // the presenter's position in the tab: the description (or the form) of the question, which
+    // renderCurrent() creates anew with every question, and the list of titles
+    getScroll() {
+      return {text: scrollAnchor(panel.querySelector('.question-text')), list: scrollAnchor(list)};
+    },
+    setScroll(position) {
+      if (!position || typeof position !== 'object') {
+        return;
+      }
+      applyScrollAnchor(panel.querySelector('.question-text'), position.text);
+      applyScrollAnchor(list, position.list);
     },
     // the answers changed on the server (a state applied, another tab of the browser)
     setAnswers(values) {

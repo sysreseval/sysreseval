@@ -4,10 +4,11 @@
 // Export Schema to PDF, Close project) and the touch keeping the project alive every minute.
 //
 // Three more roles: an instructor may present the project (present.js: the Present button, the
-// bar, the view published after each change through the ctx.onViewChange / onEvaluated hooks of
-// the tabs); the same page in the iframe of /present/{id} is a spectator's (data-presentation
-// on the body): read-only, no control, the tabs and the terminals following the presenter's
-// view (the socket /api/presentations/{id}/ws); and an instructor on a student's project may
+// bar, the view published after each change through the ctx.onViewChange / onEvaluated /
+// onScroll hooks of the tabs); the same page in the iframe of /present/{id} is a spectator's
+// (data-presentation on the body): read-only, no control, the tabs, the terminals and the
+// position inside the tab shown (the scroll, the pan and zoom of the schema) following the
+// presenter's view (the socket /api/presentations/{id}/ws); and an instructor on a student's project may
 // focus the student on it (focus.js: the Focus student on project button, the tab, the terminal
 // and the question shared both ways with the student's own page, which follows through the same
 // module).
@@ -143,6 +144,16 @@ if (!spectator) {
       presenter.bump('evaluated');
     }
   };
+  // the position inside the tab shown changed (a scroll, the pan and zoom of the schema): the
+  // presenter's view only, never the view of a focus (focus.js: the student keeps every control
+  // there, and two pages scrolling each other would fight)
+  ctx.onScroll = () => {
+    if (presenter) {
+      presenter.schedule();
+    }
+  };
+  // scroll events do not bubble: one capturing listener for every scroller of every pane
+  panes.addEventListener('scroll', () => ctx.onScroll(), {capture: true, passive: true});
 }
 
 // -- tabs ----------------------------------------------------------------------------------------
@@ -321,14 +332,19 @@ function applyFocusView(view) {
   }
 }
 
-// The presenter's view, as present.js publishes it to the spectators.
+// The presenter's view, as present.js publishes it to the spectators: the active tab, the
+// terminals, the question, the schema options, the instructor texts, and the position inside
+// the tab shown as the tab reports it (getScroll(): the scroll anchor of a pane, the viewBox of
+// a schema; null for a tab without one), applied by the same tab on a spectator's page.
 function getView() {
+  const current = currentTab ? tabs[currentTab] : null;
   return {
     tab: currentTab,
     terminals: tabs.terminals ? tabs.terminals.getView() : {open: [], active: null},
     question: tabs.questions ? tabs.questions.getSelected() : null,
     schema: state.exportQuery,
     instructorView: state.instructorView,
+    scroll: current && current.getScroll ? current.getScroll() : null,
   };
 }
 
@@ -405,8 +421,9 @@ function presentationEnded() {
 let pendingView = null;          // a view received before the project was loaded
 let presentationSocket = null;
 
-// The active tab, the terminals, the question, the schema options, the instructor texts, and
-// the counters telling that the answers or the evaluation changed.
+// The active tab, the terminals, the question, the schema options, the instructor texts, the
+// position inside the tab shown (applied once the pane is shown: a hidden pane ignores its
+// scroll), and the counters telling that the answers or the evaluation changed.
 function applyView(view) {
   if (!view || typeof view !== 'object') {
     return;
@@ -438,6 +455,10 @@ function applyView(view) {
   }
   if (view.tab) {
     selectTab(view.tab);
+    const current = listed(view.tab);
+    if (current && current.setScroll) {
+      current.setScroll(view.scroll || null);
+    }
   }
   const terminals = listed('terminals');
   if (terminals) {
