@@ -1495,12 +1495,17 @@ class TestStartWithoutSwitchModes:
     """`sre start` on a host whose network plugin only knows hubs."""
 
     @pytest.fixture
-    def failing_deploy(self, instructor_env, monkeypatch):
+    def failing_deploy(self, instructor_env):
+        # Not monkeypatch.setattr() on the mock: since pytest 9.2 the undo deletes an attribute
+        # the mock created on the fly (it was not in its __dict__), and a MagicMock remembers a
+        # deleted attribute: every later `deploy_lab` would raise AttributeError.
         from SRE import lib_sre as _lib_sre
+        deploy_lab = _lib_sre.Kathara.get_instance().deploy_lab
 
         def fail_with(error):
-            monkeypatch.setattr(_lib_sre.Kathara.get_instance(), 'deploy_lab', MagicMock(side_effect=error))
-        return fail_with
+            deploy_lab.side_effect = error
+        yield fail_with
+        deploy_lab.reset_mock(side_effect=True)
 
     def test_switch_lab_quits_with_what_to_install(self, failing_deploy, capsys):
         failing_deploy(DockerPluginError(_NO_SWITCH_MODES))

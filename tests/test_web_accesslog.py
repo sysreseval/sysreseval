@@ -198,7 +198,10 @@ class TestAccessLogFile:
         parsed = A.parse_line(lines[0])
         assert parsed['ts'][:2] == '20' and 'T' in parsed['ts'] and parsed['event'] == 'login'
         assert parsed['name'] == 'Alice Test' and parsed['addr'] == '10.0.1.7'
-        assert access.logger.handlers == [] and "rotated daily, 400 days" in access.describe()
+        # only our handler is checked: since pytest 9.2 the log capture attaches its own
+        # handlers to the loggers that do not propagate
+        assert not [h for h in access.logger.handlers if getattr(h, 'sreweb_access', False)]
+        assert "rotated daily, 400 days" in access.describe()
 
     def test_no_rotation_and_no_file(self, tmp_path):
         access = self._log(tmp_path, keep=0)

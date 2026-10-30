@@ -450,7 +450,9 @@ class TestConnectSwitch:
     def test_machines_still_connect_as_before(self, cli, monkeypatch):
         kathara = MagicMock()
         kathara.get_machine_stats.return_value = iter([SimpleNamespace(status='running')])
-        monkeypatch.setattr(connect.Kathara, 'get_instance', staticmethod(lambda: kathara))
+        # The module attribute, not `get_instance` of the shared Kathara mock: since pytest 9.2 the
+        # undo of monkeypatch.setattr() deletes an attribute a mock created on the fly, for good.
+        monkeypatch.setattr(connect, 'Kathara', SimpleNamespace(get_instance=lambda: kathara))
         cli.set_args('pc1')
         connect.action_connect()
         assert kathara.connect_tty.call_args.args[0] == 'pc1'

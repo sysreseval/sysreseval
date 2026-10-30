@@ -242,7 +242,9 @@ class TestActionConnectNoRecords:
         kathara = MagicMock(name='Kathara')
         kathara.get_machine_stats.return_value = iter([SimpleNamespace(status='running')])
         kathara.connect_tty.return_value = None
-        monkeypatch.setattr(_connect.Kathara, 'get_instance', staticmethod(lambda: kathara))
+        # The module attribute, not `get_instance` of the shared Kathara mock: since pytest 9.2 the
+        # undo of monkeypatch.setattr() deletes an attribute a mock created on the fly, for good.
+        monkeypatch.setattr(_connect, 'Kathara', SimpleNamespace(get_instance=lambda: kathara))
 
         # Make sure the recorder re-entry guard is not set.
         monkeypatch.delenv('SRE_IN_RECORDER', raising=False)
