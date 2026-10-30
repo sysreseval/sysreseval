@@ -446,6 +446,48 @@ class TestJavaScript:
         for cls in ('focusing', 'focused'):
             assert f"classList.add('{cls}')" in focus and f"classList.remove('{cls}')" in focus, cls
 
+    def test_pool_state_colours_tell_off_from_disabled(self):
+        """The State cell of the Pool page: a host whose agent does not answer (off) and a host
+        taken out of the pool by hand (disabled) have each a background of their own, so that
+        the two are told apart at a glance (both were the same grey): a rule and a colour token
+        each, the values different from each other and from the green / amber of the other
+        states."""
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        tokens = dict(re.findall(r'(--[a-z-]+-bg):\s*(#[0-9a-fA-F]+)', css))
+        rules = {}
+        for cls in ('off', 'disabled'):
+            rule = re.search(r'([^{}]*\.state\.%s\b[^{}]*)\{([^{}]*)\}' % cls, css)
+            assert rule, f"no rule for td.state.{cls}"
+            token = re.search(r'background:\s*var\((--[a-z-]+-bg)\)', rule.group(2))
+            assert token, f"td.state.{cls} has no background token"
+            assert token.group(1) in tokens, token.group(1)
+            rules[cls] = (rule.group(1).strip(), token.group(1))
+        assert rules['off'][0] != rules['disabled'][0], "one selector list for both states"
+        colours = {cls: tokens[token].lower() for cls, (_, token) in rules.items()}
+        assert colours['off'] != colours['disabled']
+        for other in ('--ok-bg', '--debug-bg'):
+            assert colours['off'] != tokens[other].lower() and colours['disabled'] != tokens[other].lower(), other
+
+    def test_pool_button_tones(self):
+        """The buttons of a host (pool.js) and the bulk ones of the bar (pool.html) carry a tone
+        class: Enable the green of the Connect buttons (ok, --ok-bg), Wake a lighter green
+        (ok-light, --ok-light-bg, a tint of its own), Disable and Power off the red text of danger;
+        the green rules come after button:hover so the colour stays under the mouse."""
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        tokens = dict(re.findall(r'(--[a-z-]+-bg):\s*(#[0-9a-fA-F]+)', css))
+        assert tokens['--ok-light-bg'].lower() != tokens['--ok-bg'].lower()
+        for cls, token in (('ok', '--ok-bg'), ('ok-light', '--ok-light-bg')):
+            rule = re.search(r'([^{}]*)\{[^{}]*var\(%s\)[^{}]*\}' % token, css[css.index(f'button.{cls} '):])
+            assert rule and f'button.{cls}' in [s.strip() for s in rule.group(1).split(',')], f"no rule for button.{cls}"
+            assert css.index('button:hover') < css.index(f'button.{cls} ')
+        pool = (JS / 'pool.js').read_text(encoding='utf-8')
+        assert "actionButton(row, 'enable', _('Enable'), {tone: 'ok'})" in pool
+        assert "actionButton(row, 'wake', _('Wake'), {tone: 'ok-light'," in pool
+        assert "actionButton(row, 'disable', _('Disable'), {tone: 'danger'})" in pool
+        html = render('pool.html', instructor=True)
+        for action, cls in (('enable', 'ok'), ('wake', 'ok-light'), ('disable', 'danger'), ('poweroff', 'danger')):
+            assert re.search(r'<button[^>]*data-action="%s"[^>]*class="%s"' % (action, cls), html), action
+
     def test_focus_never_names_a_private_terminal(self):
         """The terminal sub-tab a focus shares is taken from focusTarget() of the terminals tab,
         which leaves a private terminal out (the student must not see nor join an instructor's

@@ -720,10 +720,11 @@ What an instructor gets:
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
   instructors, power, drain, power off sent, restart sent), the agent's version and its last error, the line
   of `sre-web-tool status` above the table; the state cell is green (up), amber (waking,
-  occupied, exam, draining) or grey (off, disabled); sortable by any column, filtered by host
+  occupied, exam, draining), red (off: the agent does not answer) or grey (disabled, muted
+  text); sortable by any column, filtered by host
   name (one or several words: the hosts whose name contains any of them, `a01 a02 h` for
   those two and every `h…` host), refreshed every 5 s. The buttons of a row are the commands
-  of the tool: *Enable* / *Disable*, *Wake* (a host with a `mac` or a `wake_command`, while it
+  of the tool: *Enable* (green) / *Disable* (red), *Wake* (light green; a host with a `mac` or a `wake_command`, while it
   is off), *Drain*, *Power off* (asked to confirm; allowed by the agent's `allow_power_off`,
   refused while the host has a project or a local session), each disabled with the reason as
   its tooltip when it does not apply. A checkbox per row (the one of the header ticks the hosts

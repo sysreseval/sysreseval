@@ -243,9 +243,9 @@ async function actMany(action) {
 }
 
 // a button of the Actions cell: options.reason (a text) disables it with the reason as its tooltip,
-// options.confirm is asked before the action, options.danger draws it red
+// options.confirm is asked before the action, options.tone is its class: danger (red text), ok (green), ok-light (light green)
 function actionButton(row, action, label, options = {}) {
-  const button = el('button', {type: 'button', class: options.danger ? 'danger' : undefined,
+  const button = el('button', {type: 'button', class: options.tone,
                                title: options.reason || undefined}, label);
   if (options.reason) {
     button.disabled = true;
@@ -268,11 +268,11 @@ function actionButton(row, action, label, options = {}) {
 // the buttons of a row, always there (a stable layout), each with the reason it is disabled
 function actions(row) {
   return [
-    row.enabled ? actionButton(row, 'disable', _('Disable'), {danger: true}) : actionButton(row, 'enable', _('Enable')),
-    actionButton(row, 'wake', _('Wake'), {reason: actionReason(row, 'wake')}),
+    row.enabled ? actionButton(row, 'disable', _('Disable'), {tone: 'danger'}) : actionButton(row, 'enable', _('Enable'), {tone: 'ok'}),
+    actionButton(row, 'wake', _('Wake'), {tone: 'ok-light', reason: actionReason(row, 'wake')}),
     actionButton(row, 'drain', _('Drain'), {reason: actionReason(row, 'drain')}),
     actionButton(row, 'poweroff', _('Power off'),
-                 {danger: true, reason: actionReason(row, 'poweroff'), confirm: powerOffQuestion([row.name])}),
+                 {tone: 'danger', reason: actionReason(row, 'poweroff'), confirm: powerOffQuestion([row.name])}),
   ];
 }
 

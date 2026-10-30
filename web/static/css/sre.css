@@ -16,6 +16,7 @@
   --accent-text: #ffffff;
   --danger: #c62828;
   --ok-bg: #c8f0c8;                 /* the green cells of the Qt tables */
+  --ok-light-bg: #e0f7e0;           /* a lighter tint: the Wake button of the Pool page */
   --fail-bg: #f0c8c8;               /* the red cells */
   --debug-bg: #ffd9a0;              /* the orange Connect button of a debug project */
   --hidden-color: #d00000;          /* hidden machines of a debug project */
@@ -68,6 +69,8 @@ button.primary:hover, .button.primary:hover { background: #0d47a1; }
 button.danger { color: var(--danger); border-color: var(--danger); }
 button.connect { background: var(--ok-bg); }
 button.connect.debug { background: var(--debug-bg); }
+button.ok { background: var(--ok-bg); }                   /* the Enable button of the Pool page, the counterpart of the red Disable */
+button.ok-light { background: var(--ok-light-bg); }       /* the Wake button of the Pool page */
 button.toggle[aria-pressed="true"] { background: #cfd8e3; border-color: #90a4ae; }
 
 input[type="text"], input[type="password"], input:not([type]), select, textarea {
@@ -378,7 +381,8 @@ table.grid.pool td.state, table.grid.pool td.flags { white-space: nowrap; }
 table.grid.pool td.state.up { background: var(--ok-bg); }
 table.grid.pool td.state.waking, table.grid.pool td.state.occupied, table.grid.pool td.state.exam,
 table.grid.pool td.state.draining { background: var(--debug-bg); }
-table.grid.pool td.state.off, table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--muted); }
+table.grid.pool td.state.off { background: var(--fail-bg); }   /* a host that does not answer: red, the grey is for a disabled one */
+table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--muted); }
 .pool-status { margin: 0 8px 8px; }
 
 /* the History page of the administrators: the connection log read from its database */
