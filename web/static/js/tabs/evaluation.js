@@ -3,12 +3,14 @@
 // SRE/evaluation_table.py).  While the lab's cooldown runs, the button is replaced by a
 // countdown "Next evaluation allowed in {n} s", as in the Qt view.  An instructor on somebody
 // else's project (ctx.helper) first sees the last archived evaluation of the project
-// (GET {api_base}/evaluation), whoever ran it; so does a spectator of a presentation
-// (ctx.spectator, no button), again after each evaluation the presenter runs (reload); the
-// presenter's page calls ctx.onEvaluated() then.  The owner, instructor or not, gets the
-// student's tab: nothing loaded before the button, and the table its self-evaluation gives is
-// kept (the letters of a lab hiding the marks, which no archive holds).  The spectators follow
-// the presenter's scroll (scroll.js), applied again once the table is loaded.
+// (GET {api_base}/evaluation), whoever ran it, and again after each evaluation (reload).  The
+// owner, instructor or not, gets the student's tab: nothing loaded before the button, and the
+// table its self-evaluation gives is kept (the letters of a lab hiding the marks, which no
+// archive holds).  A spectator of a presentation (ctx.spectator, no button) shows the table of
+// the presenter's page as it is (setTable: header, rows, caption), whichever of the two it is:
+// the presenter's page calls ctx.onEvaluated() after each change of its table (present.js
+// publishes getTable()).  The spectators follow the presenter's scroll (scroll.js), applied
+// again once the table arrives.
 
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
@@ -29,13 +31,26 @@ export function createEvaluationTab(ctx) {
   let lastLoaded = false;
   let shown = false;
   let wantedScroll = null;   // a spectator: the presenter's scroll, applied again when the table arrives
+  let current = null;        // {header, rows, caption, title}: the table shown, published to the spectators
   const spectator = Boolean(ctx.spectator);
   if (spectator) {
     button.hidden = true;
   }
 
-  function renderTable(header, rows) {
+  // the table and its caption (none: hidden), kept for the spectators of a presentation (getTable)
+  function showTable(header, rows, captionText = '', title = '') {
     columns = renderEvaluationTable(table, header, rows);
+    caption.textContent = captionText;
+    caption.title = title;
+    caption.hidden = !captionText;
+    current = {header, rows, caption: captionText, title};
+  }
+
+  // the presenter's page: the spectators get the table as it is now
+  function published() {
+    if (ctx.onEvaluated) {
+      ctx.onEvaluated();
+    }
   }
 
   function errorRow(message) {
@@ -68,7 +83,7 @@ export function createEvaluationTab(ctx) {
     button.disabled = false;
   }
 
-  // a helper or a spectator: the last archived evaluation, with its date and the errors of the run
+  // a helper: the last archived evaluation, with its date and the errors of the run
   async function loadLast() {
     lastLoaded = true;
     let data;
@@ -76,24 +91,23 @@ export function createEvaluationTab(ctx) {
       data = await api.get(ctx.url('/evaluation'));
     } catch (e) {
       if (e.status === 404) {
-        caption.textContent = _('No archived evaluation yet.');
-        caption.hidden = false;
+        showTable([], [], _('No archived evaluation yet.'));
+        published();
       } else if (e.status !== 403) {
         errorRow(e.message);
       }
       return;
     }
-    renderTable(data.header || [], data.rows || []);
     const when = data.eval_date ? new Date(data.eval_date).toLocaleString() : '';
     let text = format(_('Last archived evaluation: {date}'), {date: when});
     if (data.error_count || data.warning_count) {
       text += ' — ' + format(_('{errors} error(s), {warnings} warning(s)'),
                              {errors: data.error_count || 0, warnings: data.warning_count || 0});
     }
-    caption.textContent = text;
-    caption.title = (data.errors || []).map((e) => `${e.category}: ${e.text}`).join('\n');
-    caption.hidden = false;
+    showTable(data.header || [], data.rows || [], text,
+              (data.errors || []).map((e) => `${e.category}: ${e.text}`).join('\n'));
     scroll.setScroll(wantedScroll);
+    published();
   }
 
   async function start() {
@@ -115,11 +129,8 @@ export function createEvaluationTab(ctx) {
     }
     const result = data.result || {};
     if (result.grades !== null && result.grades !== undefined) {
-      renderTable(data.header || [], data.rows || []);
-      caption.hidden = true;
-      if (ctx.onEvaluated) {
-        ctx.onEvaluated();      // the spectators load the archived evaluation again
-      }
+      showTable(data.header || [], data.rows || []);
+      published();
     }
     // grades null: still in the cooldown, the previous table stays
     const delay = Number(data.delay_before_self_grade || result.delay_before_self_grade || 0);
@@ -136,7 +147,7 @@ export function createEvaluationTab(ctx) {
     element: pane,
     show() {
       shown = true;
-      if ((ctx.helper || spectator) && !lastLoaded) {
+      if (ctx.helper && !lastLoaded) {
         loadLast();
       }
     },
@@ -145,13 +156,25 @@ export function createEvaluationTab(ctx) {
     },
     update() {},
     // the last archived evaluation again: a helper's page on the `evaluated` event (a periodic
-    // evaluation, the student's, another instructor's), a spectator's when the presenter
-    // evaluated; never the owner's page (project.js), whose own table stays
+    // evaluation, the student's, another instructor's); never the owner's page (project.js),
+    // whose own table stays, nor a spectator's, which shows the presenter's table (setTable)
     reload() {
       lastLoaded = false;
       if (shown) {
         loadLast();
       }
+    },
+    // the presenter's page: the table shown, or null before any (published by present.js)
+    getTable() {
+      return current;
+    },
+    // a spectator's page: the table of the presenter's page, as it is
+    setTable(t) {
+      if (!t || typeof t !== 'object') {
+        return;
+      }
+      showTable(t.header || [], t.rows || [], t.caption || '', t.title || '');
+      scroll.setScroll(wantedScroll);
     },
     getScroll: scroll.getScroll,
     setScroll(anchor) {

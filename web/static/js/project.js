@@ -143,9 +143,10 @@ if (!spectator) {
       focus.schedule();
     }
   };
+  // the table of the Evaluation tab changed: the spectators get it as it is
   ctx.onEvaluated = () => {
     if (presenter) {
-      presenter.bump('evaluated');
+      presenter.publishEvaluation();
     }
   };
   // the position inside the tab shown changed (a scroll, the pan and zoom of the schema): the
@@ -293,6 +294,11 @@ function applyProject(project) {
     pendingView = null;
     applyView(view);
   }
+  if (spectator && pendingEvaluation) {
+    const evaluation = pendingEvaluation;
+    pendingEvaluation = null;
+    applyEvaluation(evaluation);
+  }
 }
 
 // The Export Schema to PDF link downloads the drawing of the Schema tab with its current options
@@ -423,11 +429,13 @@ function presentationEnded() {
 // -- a spectator: the presenter's view ----------------------------------------------------------
 
 let pendingView = null;          // a view received before the project was loaded
+let pendingEvaluation = null;    // the presenter's evaluation table received before the project was loaded
 let presentationSocket = null;
 
 // The active tab, the terminals, the question, the schema options, the instructor texts, the
 // position inside the tab shown (applied once the pane is shown: a hidden pane ignores its
-// scroll), and the counters telling that the answers or the evaluation changed.
+// scroll), and the counter telling that the answers changed (the table of the Evaluation tab
+// comes by its own message: applyEvaluation).
 function applyView(view) {
   if (!view || typeof view !== 'object') {
     return;
@@ -468,8 +476,20 @@ function applyView(view) {
   if (terminals) {
     terminals.setView(view.terminals || {});
   }
-  if (previous && view.evaluated !== previous.evaluated && tabs.evaluation) {
-    tabs.evaluation.reload();
+}
+
+// The table of the presenter's Evaluation tab (header, rows, caption), shown as it is: the
+// archive of the project holds numbers only, the presenter's own self-evaluation may be letters.
+function applyEvaluation(evaluation) {
+  if (!evaluation || typeof evaluation !== 'object') {
+    return;
+  }
+  if (!state.project || state.closed) {
+    pendingEvaluation = evaluation;
+    return;
+  }
+  if (state.project.tabs.includes('evaluation')) {
+    tab('evaluation').setTable(evaluation);
   }
 }
 
@@ -501,10 +521,10 @@ function onEvent(ev) {
       break;
     case 'evaluated':
       // a new archived evaluation (periodic, the student's, an instructor's): the Evaluation tab
-      // of a helper's page, and of a spectator's, shows it; the owner's page, instructor or not,
-      // keeps the table of its own evaluation (letters when the lab hides the marks, which no
-      // archive holds)
-      if (tabs.evaluation && (ctx.helper || spectator)) {
+      // of a helper's page shows it; the owner's page, instructor or not, keeps the table of its
+      // own evaluation (letters when the lab hides the marks, which no archive holds), and a
+      // spectator's page shows the presenter's table (applyEvaluation)
+      if (tabs.evaluation && ctx.helper) {
         tabs.evaluation.reload();
       }
       break;
@@ -599,6 +619,7 @@ function setupControls() {
 if (isInstructor && !spectator && presentButton && presentationBar) {
   presenter = createPresenter(ctx, {
     host: body.dataset.host || '', rln: body.dataset.rln || '', login, groups: groupsEnabled, getView,
+    getEvaluation: () => (tabs.evaluation ? tabs.evaluation.getTable() : null),
     elements: {
       button: presentButton, bar: presentationBar,
       status: document.getElementById('presentation-status'),
@@ -622,12 +643,15 @@ async function main() {
   await i18n.init();
   setupControls();
   if (spectator) {
-    // the presenter's view, now and on every change; the socket is closed when the presentation
-    // is over (a closed presentation closes it at once: the page ends cleanly even before the load)
+    // the presenter's view, now and on every change, and the table of their Evaluation tab; the
+    // socket is closed when the presentation is over (a closed presentation closes it at once:
+    // the page ends cleanly even before the load)
     presentationSocket = new ReconnectingSocket(`/api/presentations/${encodeURIComponent(presentationId)}/ws`, {
       onMessage: (message) => {
         if (message.t === 'view' && message.view) {
           applyView(message.view);
+        } else if (message.t === 'evaluation') {
+          applyEvaluation(message.evaluation);
         }
       },
       onClose: (ev) => {

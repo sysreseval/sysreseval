@@ -84,7 +84,8 @@ PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', '
 KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/pool'),
                        ('GET', '/api/pool/status'), ('POST', '/api/projects/{host}/{rln}/touch'),
                        ('GET', '/api/presence'), ('GET', '/api/presentations'), ('GET', '/api/presentations/{id}'),
-                       ('PUT', '/api/presentations/{id}/view'), ('GET', '/api/presentations/{id}/ws'),
+                       ('PUT', '/api/presentations/{id}/view'), ('PUT', '/api/presentations/{id}/evaluation'),
+                       ('GET', '/api/presentations/{id}/ws'),
                        ('GET', '/api/focus'), ('GET', '/api/focus/{id}'), ('PUT', '/api/focus/{id}/view'),
                        ('GET', '/api/focus/{id}/ws')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence

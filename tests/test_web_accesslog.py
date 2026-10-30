@@ -100,6 +100,7 @@ class TestEventFor:
         ('GET', '/api/presence', None),
         ('GET', '/api/presence/ws', None),
         ('PUT', '/api/presentations/{id}/view', None),
+        ('PUT', '/api/presentations/{id}/evaluation', None),
         ('GET', '/api/projects', None),
         ('GET', '/api/projects/{host}/{rln}', None),
         ('PUT', '/api/projects/{host}/{rln}/answers', None),
@@ -119,6 +120,7 @@ class TestEventFor:
         assert '/api/presence/ws' in A.IGNORED
         assert ('GET', '/api/presence') in A.KEEPALIVE and ('PUT', '/api/presentations/{id}/view') in A.KEEPALIVE
         assert ('GET', '/api/presentations/{id}/ws') in A.KEEPALIVE
+        assert ('PUT', '/api/presentations/{id}/evaluation') in A.KEEPALIVE
         assert {'present_start', 'present_open', 'focus_start'} <= A.PROJECT_EVENTS
         assert ('GET', '/api/focus') in A.KEEPALIVE and ('PUT', '/api/focus/{id}/view') in A.KEEPALIVE
         assert ('GET', '/api/focus/{id}/ws') in A.KEEPALIVE and ('GET', '/api/focus/{id}') in A.KEEPALIVE

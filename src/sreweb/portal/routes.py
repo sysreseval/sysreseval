@@ -18,7 +18,7 @@ from .accesshistory import parse_filters, session_filters, session_of_row, sessi
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
-                           MAX_VIEW_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
+                           MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
 from .focus import Focus, Focuses, WS_FOCUS_ENDED
 from .ratelimit import RateLimiter
 from .relay import Relay
@@ -43,11 +43,12 @@ CSP_FRAMED = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
 #: ``(method, canonical route)`` of the project calls a spectator of a presentation may make: they
 #: are relayed with the presenter's identity (``Routes._target``), read-only by construction (the
 #: terminal socket must join a session and gets ``readonly=1``, the display socket ``readonly=1``).
+#: The last archived evaluation is not among them: the spectators show the table of the
+#: presenter's page, which their presentation socket carries (``Presentations.set_evaluation``).
 SPECTATOR_ROUTES = frozenset({
     ('GET', '/api/projects/{host}/{rln}'),
     ('GET', '/api/projects/{host}/{rln}/events'),
     ('GET', '/api/projects/{host}/{rln}/schema.svg'),
-    ('GET', '/api/projects/{host}/{rln}/evaluation'),
     ('GET', '/api/projects/{host}/{rln}/log'),
     ('GET', '/api/projects/{host}/{rln}/terminals/{device}'),
     ('GET', '/api/projects/{host}/{rln}/display'),
@@ -130,6 +131,7 @@ class Routes:
         r.add_get('/api/presentations/{id}', self.api_presentation_get)
         r.add_put('/api/presentations/{id}/audience', self.api_presentation_audience)
         r.add_put('/api/presentations/{id}/view', self.api_presentation_view)
+        r.add_put('/api/presentations/{id}/evaluation', self.api_presentation_evaluation)
         r.add_delete('/api/presentations/{id}', self.api_presentation_delete)
         r.add_get('/api/presentations/{id}/ws', self.api_presentation_ws)
         # focus: an instructor helping a student keeps the student's browser on the project
@@ -863,6 +865,25 @@ class Routes:
         view = body.get('view') if isinstance(body, dict) and 'view' in body else body
         try:
             await self.presentations.set_view(p.id, view)
+        except ValueError as e:
+            return json_error(400, str(e))
+        except KeyError:
+            return json_error(404, "no such presentation")
+        return web.Response(status=204)
+
+    async def api_presentation_evaluation(self, request):
+        """The table of the presenter's Evaluation tab (header, rows, caption), pushed to the
+        spectators as it is and sent to those attaching later."""
+        identity, p = self._presenter_of(request)
+        if request.content_length and request.content_length > MAX_EVALUATION_BYTES + 64:
+            return json_error(413, "evaluation too large")
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        evaluation = body.get('evaluation') if isinstance(body, dict) and 'evaluation' in body else body
+        try:
+            await self.presentations.set_evaluation(p.id, evaluation)
         except ValueError as e:
             return json_error(400, str(e))
         except KeyError:

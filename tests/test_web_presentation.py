@@ -192,6 +192,28 @@ class TestPresentationsRegistry:
         again = FakeWatcher()
         run(pres.attach_spectator(p.id, ALICE, again))
         assert again.sent == [{'t': 'view', 'view': {'tab': 'schema'}}]
+        # the table of the presenter's Evaluation tab: validated, stored, pushed; a spectator
+        # attaching later gets it right after the view; a dead socket is forgotten
+        with pytest.raises(ValueError):
+            run(pres.set_evaluation(p.id, {'rows': []}))                   # no header
+        with pytest.raises(ValueError):
+            run(pres.set_evaluation(p.id, {'header': [], 'rows': 'x'}))
+        with pytest.raises(ValueError):
+            run(pres.set_evaluation(p.id, {'header': [], 'rows': [], 'caption': 'y' * PR.MAX_EVALUATION_BYTES}))
+        with pytest.raises(KeyError):
+            run(pres.set_evaluation('nope', {'header': [], 'rows': []}))
+        table = {'header': ['Element', 'Grade', 'Max grade'], 'rows': [{'kind': 'element', 'cells': []}],
+                 'caption': '', 'title': ''}
+        dead = FakeWatcher(fail=True)
+        run(pres.attach_spectator(p.id, ALICE, dead))
+        run(pres.set_evaluation(p.id, table))
+        assert spectator.sent[-1] == {'t': 'evaluation', 'evaluation': table}
+        assert again.sent[-1] == {'t': 'evaluation', 'evaluation': table}
+        assert dead not in p.spectator_sockets['alice'] and p.evaluation == table
+        late = FakeWatcher()
+        run(pres.attach_spectator(p.id, ALICE, late))
+        assert late.sent == [{'t': 'view', 'view': {'tab': 'schema'}}, {'t': 'evaluation', 'evaluation': table}]
+        run(pres.detach_spectator(p.id, 'alice', late))
         run(pres.detach_spectator(p.id, 'alice', again))
         assert presenter.sent[-1] == {'t': 'audience', 'count': 1, 'connected': 1}
         # the audience changed: alice out (her socket closed, her browser told), bob in
@@ -393,6 +415,47 @@ class TestPresentationThroughThePortal:
                     await ws.close()
         P.run(go())
 
+    def test_evaluation_table_of_the_presenter(self, tmp_path):
+        """The spectators show the table of the presenter's Evaluation tab as their page sends it
+        (PUT .../evaluation: the presenter's own self-evaluation may be letters no archive holds),
+        at attach and on every change; they no longer read the last archived evaluation."""
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER) as h:
+                bob, prof = P.who('bob', 'Bob'), P.who('prof', 'Pr. Of', groups=P.TEACHERS)
+                rln = await start_project(h, prof)                 # the instructor's own project
+                pid = (await present(h, prof, rln, ['bob']))['id']
+                table = {'header': ['Element', 'Grade', 'Max grade'],
+                         'rows': [{'kind': 'element', 'bold': False, 'span': False,
+                                   'cells': [{'text': 'Default route of m1', 'color': None, 'align': 'left'},
+                                             {'text': 'OK', 'color': '#c8e6c9', 'align': 'center'},
+                                             {'text': '', 'color': None, 'align': 'center'}]}],
+                         'caption': '', 'title': ''}
+                assert (await h.client.put(f'/api/presentations/{pid}/evaluation', json={'evaluation': table},
+                                           headers={**bob, **P.CSRF})).status == 403          # the presenter only
+                assert (await h.client.put(f'/api/presentations/{pid}/evaluation', json={'evaluation': table},
+                                           headers=prof)).status == 403                        # no CSRF header
+                assert (await h.client.put(f'/api/presentations/{pid}/evaluation', json={'evaluation': [1]},
+                                           headers={**prof, **P.CSRF})).status == 400
+                big = {**table, 'caption': 'x' * PR.MAX_EVALUATION_BYTES}
+                assert (await h.client.put(f'/api/presentations/{pid}/evaluation', json={'evaluation': big},
+                                           headers={**prof, **P.CSRF})).status == 413
+                bob_ws = await h.client.ws_connect(f'/api/presentations/{pid}/ws', headers=bob)
+                assert await asyncio.wait_for(bob_ws.receive_json(), 5) == {'t': 'view', 'view': {}}
+                resp = await h.client.put(f'/api/presentations/{pid}/evaluation', json={'evaluation': table},
+                                          headers={**prof, **P.CSRF})
+                assert resp.status == 204
+                assert await asyncio.wait_for(bob_ws.receive_json(), 5) == {'t': 'evaluation', 'evaluation': table}
+                # a page of bob's opened now: the view, then the table; the listing stays small
+                late = await h.client.ws_connect(f'/api/presentations/{pid}/ws', headers=bob)
+                assert await asyncio.wait_for(late.receive_json(), 5) == {'t': 'view', 'view': {}}
+                assert await asyncio.wait_for(late.receive_json(), 5) == {'t': 'evaluation', 'evaluation': table}
+                assert 'evaluation' not in await (await h.client.get(f'/api/presentations/{pid}', headers=bob)).json()
+                # the last archived evaluation is no longer relayed to a spectator
+                assert (await h.client.get(f'/api/projects/a01/{rln}/evaluation', headers=bob)).status == 403
+                await late.close()
+                await bob_ws.close()
+        P.run(go())
+
     def test_spectator_relays(self, tmp_path):
         async def go():
             log = tmp_path / 'mock.log'
@@ -406,7 +469,7 @@ class TestPresentationThroughThePortal:
                 data = await (await h.client.get(base, headers=bob)).json()
                 assert data['owner'] == 'alice' and data['running_lab_name'] == rln and data['host'] == 'a01'
                 assert 'answers_readonly' not in data      # no flag: the portal refuses a spectator's PUT (below)
-                assert (await h.client.get(f'{base}/evaluation', headers=bob)).status == 404   # instructors only: 403 otherwise
+                assert (await h.client.get(f'{base}/evaluation', headers=bob)).status == 403   # the presenter's table comes by the presentation socket
                 assert (await h.client.get(f'{base}/schema.svg?curved=1', headers=bob)).status in (200, 500)
                 assert (await h.client.post(f'{base}/touch', headers={**bob, **P.CSRF})).status == 204
                 # everything that acts on the project, and the project page itself

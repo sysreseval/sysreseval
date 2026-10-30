@@ -6,13 +6,15 @@
 // audience changes it (PUT .../audience) and Stop presenting ends it (DELETE).  The view the
 // spectators follow (the active tab, the open terminals, the question, the schema options, the
 // instructor texts, the position inside the tab shown — the scroll, the pan and zoom of the
-// schema — and the counters telling that the answers or the evaluation changed) is published
-// with PUT .../view a moment after each change: the tabs call ctx.onViewChange() /
-// ctx.onEvaluated() / ctx.onScroll(), project.js builds the view (getView).  A scroll in
-// progress is followed: the PUT waits for a pause, PUBLISH_MAX_DELAY at most; a change leaving
-// the view as last sent (a terminal's scrollback scrolled) sends nothing.  A reloaded page
-// resumes its presentation (GET /api/presentations); the portal ends it when the page is gone
-// for a minute.
+// schema — and the counter telling that the answers changed) is published with PUT .../view a
+// moment after each change: the tabs call ctx.onViewChange() / ctx.onScroll(), project.js
+// builds the view (getView).  A scroll in progress is followed: the PUT waits for a pause,
+// PUBLISH_MAX_DELAY at most; a change leaving the view as last sent (a terminal's scrollback
+// scrolled) sends nothing.  The table of the Evaluation tab travels apart (PUT .../evaluation,
+// publishEvaluation, called through ctx.onEvaluated() after each change of the table and at the
+// start): the spectators show it as it is, the letters of the presenter's own self-evaluation
+// included, which no archive of the project holds.  A reloaded page resumes its presentation
+// (GET /api/presentations); the portal ends it when the page is gone for a minute.
 
 import * as api from './api.js';
 import {el, clear, toast} from './ui.js';
@@ -24,16 +26,18 @@ const PUBLISH_MAX_DELAY = 300;    // ms at most between the first change not sen
 const PRESENCE_REFRESH = 5000;    // ms between two refreshes of the connected users while the dialog is open
 const WS_PRESENTATION_ENDED = 4411;
 
-export function createPresenter(ctx, {host, rln, login, groups, getView, elements}) {
+export function createPresenter(ctx, {host, rln, login, groups, getView, getEvaluation, elements}) {
   let presentation = null;        // the JSON of the portal: {id, host, rln, presenter, audience, count, connected}
   let socket = null;
-  const counters = {evaluated: 0, answers: 0};
+  const counters = {answers: 0};
   let timer = null;
   let since = null;               // when the first change waiting for a PUT happened (ms)
   let inFlight = null;
   let dirty = false;
   let lastKey = null;             // the JSON of the last view PUT: the same view again is not sent
-  const warned = new Set();       // the statuses of the PUT view already shown as a toast
+  let evaluationQueue = Promise.resolve();   // the PUTs of the table, one after the other
+  let lastEvaluationKey = null;   // the JSON of the last table PUT: the same table again is not sent
+  const warned = new Set();       // the statuses of the PUTs already shown as a toast
 
   function isPresenting() {
     return presentation !== null;
@@ -102,6 +106,43 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     }
   }
 
+  // -- the evaluation table -----------------------------------------------------------------
+  // The table of the Evaluation tab as the page shows it (getEvaluation(): header, rows,
+  // caption; null before any), sent as it is to the spectators.  The PUTs are chained so that
+  // two quick changes reach the portal in order.
+  function publishEvaluation() {
+    evaluationQueue = evaluationQueue.then(sendEvaluation);
+    return evaluationQueue;
+  }
+
+  async function sendEvaluation() {
+    if (!presentation || !getEvaluation) {
+      return;
+    }
+    const evaluation = getEvaluation();
+    if (!evaluation) {
+      return;
+    }
+    const key = JSON.stringify(evaluation);
+    if (key === lastEvaluationKey) {
+      return;
+    }
+    try {
+      await api.put(presentationUrl(presentation.id, '/evaluation'), {evaluation});
+      lastEvaluationKey = key;
+    } catch (e) {
+      if (e.status === 404) {
+        leave();
+        toast(_('The presentation has ended.'));
+        return;
+      }
+      if (!warned.has(e.status)) {
+        warned.add(e.status);
+        toast(e.message, {error: true});
+      }
+    }
+  }
+
   // -- presenting ---------------------------------------------------------------------------
   function renderStatus(count, connected) {
     elements.status.textContent = format(_('Presenting to {n} students ({m} connected)'),
@@ -111,14 +152,14 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
   function enter(p) {
     presentation = p;
     if (p.view && typeof p.view === 'object') {
-      // a resumed page goes on with the counters of its last view
-      counters.evaluated = Number(p.view.evaluated) || 0;
+      // a resumed page goes on with the counter of its last view
       counters.answers = Number(p.view.answers) || 0;
     }
     elements.button.hidden = true;
     elements.bar.hidden = false;
     document.body.classList.add('presenting');
     lastKey = null;
+    lastEvaluationKey = null;
     renderStatus(p.count, p.connected);
     socket = new ReconnectingSocket(presentationUrl(p.id, '/ws'), {
       onMessage: (message) => {
@@ -137,6 +178,7 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     });
     socket.connect();
     publish();
+    publishEvaluation();      // the table shown now, if any (a resumed page publishes again once its tab has one)
   }
 
   function leave() {
@@ -152,6 +194,7 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
     since = null;
     dirty = false;
     lastKey = null;
+    lastEvaluationKey = null;
     presentation = null;
     elements.bar.hidden = true;
     elements.button.hidden = false;
@@ -359,5 +402,5 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, element
   });
   elements.stop.addEventListener('click', () => end());
 
-  return {resume, schedule, bump, end, isPresenting};
+  return {resume, schedule, bump, publishEvaluation, end, isPresenting};
 }

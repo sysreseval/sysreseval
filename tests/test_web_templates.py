@@ -447,22 +447,34 @@ class TestJavaScript:
 
     def test_last_archived_evaluation_keyed_on_the_helper(self):
         """The last archived evaluation (numeric, exo scope) is loaded by the Evaluation tab of a
-        helper (an instructor on somebody else's project, ctx.helper of project.js) and of a
-        spectator, on show and on the `evaluated` event; never by the owner's page, instructor
-        or not, which keeps the rows of its own self-evaluation (the letters of a lab hiding the
-        marks: an owner-instructor saw numbers until 2026-10-30)."""
+        helper (an instructor on somebody else's project, ctx.helper of project.js), on show and
+        on the `evaluated` event; never by the owner's page, instructor or not, which keeps the
+        rows of its own self-evaluation (the letters of a lab hiding the marks: an
+        owner-instructor saw numbers until 2026-10-30), nor by a spectator's page, which shows
+        the table the presenter's page publishes (present.js publishEvaluation → PUT
+        .../evaluation → the `evaluation` message of the presentation socket → setTable; the
+        spectators of an owner-instructor saw the numbers of the archive until 2026-10-30)."""
         project = (JS / 'project.js').read_text(encoding='utf-8')
         assert re.search(r'^const helper = isInstructor && !isOwner && !spectator;$', project, re.M)
         assert re.search(r'^  helper,$', project, re.M), "ctx.helper is not exposed to the tabs"
         evaluated = project[project.index("case 'evaluated':"):]
         evaluated = evaluated[:evaluated.index('break;')]
-        assert 'tabs.evaluation.reload()' in evaluated and '(ctx.helper || spectator)' in evaluated
-        assert 'isInstructor' not in evaluated
+        assert 'tabs.evaluation.reload()' in evaluated and 'if (tabs.evaluation && ctx.helper)' in evaluated
+        assert 'isInstructor' not in evaluated and 'spectator)' not in evaluated
+        apply_view = project[project.index('function applyView('):]
+        apply_view = apply_view[:apply_view.index('\n}\n')]
+        assert 'evaluated' not in apply_view and 'view.answers' in apply_view
+        assert "message.t === 'evaluation'" in project and 'applyEvaluation(message.evaluation)' in project
+        assert 'getEvaluation: () =>' in project and 'tabs.evaluation.getTable()' in project
+        assert 'presenter.publishEvaluation()' in project
         evaluation = (JS / 'tabs' / 'evaluation.js').read_text(encoding='utf-8')
         show = evaluation[evaluation.index('show() {'):]
         show = show[:show.index('hide() {')]
-        assert 'loadLast()' in show and '(ctx.helper || spectator)' in show
-        assert 'isInstructor' not in evaluation
+        assert 'loadLast()' in show and 'ctx.helper && !lastLoaded' in show and 'spectator' not in show
+        assert 'isInstructor' not in evaluation and 'getTable()' in evaluation and 'setTable(' in evaluation
+        present = (JS / 'present.js').read_text(encoding='utf-8')
+        assert 'function publishEvaluation()' in present and "'/evaluation'" in present
+        assert 'const counters = {answers: 0};' in present
         terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
         assert 'const helper = Boolean(ctx.helper);' in terminals
 

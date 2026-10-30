@@ -649,7 +649,9 @@ below), except `add` and `remove`, which stay with the token.
   instructor does; so does the position inside the tab: the scroll of the text, of the question
   (its description and the list of titles), of the tables and of the log (the line at the top of
   the instructor's pane is at the top of the student's, whatever the size of their window or
-  their font size), and the pan and zoom of the schema. The title bar of the presented project is coloured (lavender) and names the
+  their font size), and the pan and zoom of the schema. The Evaluation tab shows the table of
+  the instructor's page as it is (the letters of their own self-evaluation included), again
+  after each evaluation. The title bar of the presented project is coloured (lavender) and names the
   instructor presenting it. The student's own page is untouched underneath, terminals included:
   when the presentation ends it is back as it was.
 
@@ -813,8 +815,9 @@ What an instructor gets:
   shell, cannot type, and do not change its size), the question, the schema options, the
   *Instructor mode* texts, the Display tab view-only, the scroll of the tab shown and the pan and
   zoom of the schema (followed as the instructor scrolls, a few times a second), and the
-  Evaluation tab shows them the last
-  archived evaluation again after each evaluation of the project. A reloaded page goes on
+  Evaluation tab shows them the table of the instructor's page as it is, sent through the portal
+  after each evaluation, in the instructor's language (the archive of the project holds numbers
+  only, while the instructor's own self-evaluation may be letters). A reloaded page goes on
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.
 
@@ -933,8 +936,9 @@ the commands.
   instructor), and a private terminal is listed to instructors only. The operations log of an instructor-mode
   project goes to the subscribers allowed to read it only.
 - The spectators of a presentation reach the presented project through the portal only, on a
-  short list of read-only calls (the project, its events, the schema, the last evaluation, the
-  log, a terminal to *join*, the display), relayed to the agent under the presenter's identity
+  short list of read-only calls (the project, its events, the schema, the log, a terminal to
+  *join*, the display; the evaluation table comes from the presenter's page through the portal,
+  never from the agent), relayed to the agent under the presenter's identity
   (the agent trusts the portal for every identity anyway); everything else is refused, the
   portal never forwards what a spectator's browser sends on a terminal socket and the agent
   attaches a read-only client that cannot type nor resize, and the display socket of a spectator

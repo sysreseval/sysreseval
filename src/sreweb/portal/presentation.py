@@ -37,6 +37,7 @@ log = logging.getLogger('sreweb.portal')
 PRESENTER_GRACE = 60.0
 TICK = 10.0                   # period of the grace check
 MAX_VIEW_BYTES = 8 * 1024     # the serialized view dict
+MAX_EVALUATION_BYTES = 256 * 1024   # the serialized evaluation table of the presenter's page
 MAX_AUDIENCE = 1000           # logins + groups of one presentation
 MAX_PAGE_LENGTH = 200         # the ``?page=`` of a presence socket
 #: Close code of a presentation socket when the presentation is over.
@@ -146,6 +147,7 @@ class Presentation:
     groups: set
     started_at: float
     view: dict = field(default_factory=dict)
+    evaluation: dict | None = None   # the table of the presenter's Evaluation tab, as their page shows it
     presenter_sockets: set = field(default_factory=set)
     spectator_sockets: dict = field(default_factory=dict)     # login -> set[Watcher]
     presenter_absent_since: float | None = None               # None while a presenter socket is open
@@ -292,12 +294,31 @@ class Presentations:
         if len(json.dumps(view, separators=(',', ':')).encode('utf-8')) > MAX_VIEW_BYTES:
             raise ValueError("view too large")
         p.view = view
-        message = {'t': 'view', 'view': view}
+        await self._push_spectators(p, {'t': 'view', 'view': view})
+        return p
+
+    async def set_evaluation(self, presentation_id: str, evaluation) -> Presentation:
+        """The table of the presenter's Evaluation tab as their page shows it (the ``header`` and
+        ``rows`` lists the agent laid out, the caption), of at most ``MAX_EVALUATION_BYTES``,
+        pushed to every spectator socket and sent to the spectators attaching later: they show it
+        as it is, whatever its language.  The archive of the project holds numbers only, while
+        the presenter's own self-evaluation may be letters (``no_mark_on_self_grade``)."""
+        p = self._require(presentation_id)
+        if not isinstance(evaluation, dict) or not isinstance(evaluation.get('header'), list) \
+                or not isinstance(evaluation.get('rows'), list):
+            raise ValueError("the evaluation must be a JSON object with header and rows lists")
+        if len(json.dumps(evaluation, separators=(',', ':')).encode('utf-8')) > MAX_EVALUATION_BYTES:
+            raise ValueError("evaluation too large")
+        p.evaluation = evaluation
+        await self._push_spectators(p, {'t': 'evaluation', 'evaluation': evaluation})
+        return p
+
+    async def _push_spectators(self, p: Presentation, message: dict):
+        """*message* to every spectator socket; a socket that cannot be written is forgotten."""
         for login, watchers in list(p.spectator_sockets.items()):
             for watcher in list(watchers):
                 if not await watcher.send_quietly(message):
                     watchers.discard(watcher)
-        return p
 
     async def end(self, presentation_id: str, reason: str = 'requested') -> Presentation | None:
         """Over: every socket closed with ``WS_PRESENTATION_ENDED``, the browsers told
@@ -378,13 +399,16 @@ class Presentations:
             p.presenter_absent_since = self.clock()
 
     async def attach_spectator(self, presentation_id: str, identity: Identity, watcher: Watcher) -> bool:
-        """A spectator's page: it gets the view at once.  ``False`` when the presentation is
-        over or *identity* is not in the audience."""
+        """A spectator's page: it gets the view at once, then the presenter's evaluation table
+        when there is one.  ``False`` when the presentation is over or *identity* is not in the
+        audience."""
         p = self._presentations.get(presentation_id)
         if p is None or not p.includes(identity):
             return False
         p.spectator_sockets.setdefault(identity.login, set()).add(watcher)
         await watcher.send_quietly({'t': 'view', 'view': p.view})
+        if p.evaluation is not None:
+            await watcher.send_quietly({'t': 'evaluation', 'evaluation': p.evaluation})
         await self._notify_presenter(p)
         return True
 
