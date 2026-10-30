@@ -57,6 +57,7 @@ class PoolOptions:
     workdir: str = ''
     keep_workdir: bool = False
     debug: bool = False
+    administrators: list = field(default_factory=list)   # [auth] administrators of the portal (the History page)
     command: list = field(default_factory=list)
 
     @property
@@ -133,7 +134,8 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         f'secret = {toml_str(secrets.token_hex(32))}\n'
         'trusted_proxies = ["127.0.0.1", "::1"]\n'
         '[auth]\nmode = "proxy"\n'
-        '[auth.proxy]\n'
+        + (f'administrators = [{", ".join(toml_str(a) for a in opts.administrators)}]\n' if opts.administrators else '')
+        + '[auth.proxy]\n'
         'header_group = "X-Remote-Group"\n'
         'instructor_header = "X-Remote-Gid"\n'
         'instructor_values = ["2000"]\n'
@@ -278,6 +280,9 @@ def parse_args(argv=None) -> PoolOptions:
     p.add_argument('--workdir', default='', help="work directory (default: a temporary one)")
     p.add_argument('--keep-workdir', action='store_true', help="keep the work directory and its logs")
     p.add_argument('--debug', action='store_true', help="debug logging of the daemons")
+    p.add_argument('--administrators', default='',
+                   help="[auth] administrators of the portal, comma-separated logins (none): the History page, "
+                        "for an instructor (X-Remote-Gid 2000) among them")
     a = p.parse_args(argv)
     if a.hosts < 1:
         p.error("--hosts must be at least 1")
@@ -289,7 +294,8 @@ def parse_args(argv=None) -> PoolOptions:
                        eval_delay=a.eval_delay, max_concurrent_starts=a.max_concurrent_starts,
                        max_concurrent_evals=a.max_concurrent_evals, start_interval=a.start_interval,
                        eval_interval=a.eval_interval, poll_interval=a.poll_interval, workdir=a.workdir,
-                       keep_workdir=a.keep_workdir, debug=a.debug, command=command)
+                       keep_workdir=a.keep_workdir, debug=a.debug,
+                       administrators=[x.strip() for x in a.administrators.split(',') if x.strip()], command=command)
 
 
 def main(argv=None) -> int:

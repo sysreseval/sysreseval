@@ -14,7 +14,7 @@ from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
 from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
-from .accesshistory import parse_filters, HistoryError
+from .accesshistory import parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, HistoryError
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
@@ -104,6 +104,7 @@ class Routes:
         r.add_get('/api/watch', self.api_watch)
         r.add_get('/api/watch/evaluations', self.api_watch_evaluations)
         r.add_get('/api/history', self.api_history)
+        r.add_get('/api/history/sessions', self.api_history_sessions)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -531,6 +532,39 @@ class Routes:
             log.warning("access database: a history query failed: %s", e)
             return json_error(503, "the database of the connection log does not answer")
         return web.json_response({**page, 'limit': filters['limit'],
+                                  'database': self.access.db.status() if self.access.db is not None else None})
+
+    async def api_history_sessions(self, request):
+        """Administrators: the Sessions view of the History page.  ``open``: the sessions still
+        open, from the portal's memory (the first page only, newest first); ``rows``: the closed
+        ones from the database, one per ``session_close`` line, newest first, with the login /
+        address prefixes, the time window (on the closing time) and the cursor of
+        ``accesshistory.session_filters``.  Without a database the open sessions alone (no 409:
+        who is connected now needs none).  A ``history`` line with ``view=sessions`` (whatever
+        the answer) and the filters."""
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged['view'] = 'sessions'
+        self._require_administrator(request)
+        try:
+            filters = session_filters(parse_filters(request.query))
+        except ValueError as e:
+            return json_error(400, str(e))
+        if logged is not None:
+            logged.update({f'{key}_filter': value for key, value in filters.items() if key not in ('limit', 'event')})
+        open_sessions = []
+        if filters.get('before') is None:
+            open_sessions = sorted((session_of_visit(v) for v in self.access.visits.all() if visit_matches(v, filters)),
+                                   key=lambda s: s['start'], reverse=True)
+        page = {'rows': [], 'more': False}
+        if self.access.history is not None:
+            try:
+                page = await self.access.history.query(filters)
+            except HistoryError as e:
+                log.warning("access database: a history query failed: %s", e)
+                return json_error(503, "the database of the connection log does not answer")
+            page['rows'] = [session_of_row(row) for row in page['rows']]
+        return web.json_response({**page, 'open': open_sessions, 'limit': filters['limit'],
                                   'database': self.access.db.status() if self.access.db is not None else None})
 
     def _idle_timeout(self, identity: Identity) -> float:

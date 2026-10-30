@@ -71,8 +71,10 @@ EVENTS = {
     # focus: an instructor keeps a student's browser on the project they look at together
     ('POST', '/api/focus'): 'focus_start',
     ('DELETE', '/api/focus/{id}'): 'focus_stop',
-    # the History page: an administrator reading the log leaves a trace (the filters asked)
+    # the History page: an administrator reading the log leaves a trace (the filters asked;
+    # ``view=sessions`` for the Sessions view)
     ('GET', '/api/history'): 'history',
+    ('GET', '/api/history/sessions'): 'history',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
@@ -206,6 +208,10 @@ class Visits:
 
     def get(self, key) -> Visit | None:
         return self._visits.get(key)
+
+    def all(self) -> list:
+        """The open sessions (a snapshot: the Sessions view of the History page)."""
+        return list(self._visits.values())
 
     def touch(self, identity: Identity, addr: str, ua: str, now: float, *, count: bool = True) -> tuple:
         """``(visit, new)``: the session of *identity* from *addr*, opened now when there is
@@ -361,8 +367,11 @@ class AccessLog:
         self.record('login_failed', login=login, addr=self.address(request), reason=reason)
 
     def _closed(self, visit: Visit, reason: str):
-        self.record('session_close', login=visit.login, addr=visit.addr, reason=reason, since=iso_time(visit.first_seen),
-                    duration=round(visit.duration), requests=visit.requests, projects=visit.projects)
+        """The closing line: the role and name again (a session row of the History page is
+        built from this line alone), when and why it closed, what it did."""
+        self.record('session_close', login=visit.login, addr=visit.addr, role=visit.role, name=visit.name,
+                    reason=reason, since=iso_time(visit.first_seen), duration=round(visit.duration),
+                    requests=visit.requests, projects=visit.projects)
 
     def close_visit(self, key, reason: str):
         visit = self.visits.close(key)

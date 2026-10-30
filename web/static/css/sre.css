@@ -347,6 +347,7 @@ table.grid.watch td.actions .button, table.grid.watch td.actions button,
 table.grid.pool td.actions .button, table.grid.pool td.actions button { margin-right: 4px; }
 table.grid tr.row-errors td { background: var(--fail-bg); }
 table.grid tr.row-stale td { background: var(--debug-bg); }
+table.grid tr.row-open td { background: var(--ok-light-bg); }   /* a session still open (the History page) */
 .watch-filter { margin-left: 12px; width: 240px; }
 .watch-group { margin-left: 8px; }
 .watch-legend { margin: 0 8px 4px; font-size: 12px; }
@@ -394,8 +395,10 @@ table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--mute
 table.grid.history td.ts, table.grid.history td.num { white-space: nowrap; }
 table.grid.history td.details { font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 table.grid.history td.link { text-decoration: underline dotted; cursor: pointer; }
+.history-views { display: inline-flex; gap: 4px; margin-right: 12px; }
 .history-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 8px 8px; }
 .history-filters label { white-space: nowrap; }
+.history-filters.sessions .events-only { display: none; }   /* the Sessions view: login, address and time only */
 .history-filters input[type="datetime-local"] { padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; background: #fff; font: inherit; color: inherit; }
 .history-pager { display: flex; align-items: center; gap: 8px; margin: 0 8px 8px; }
 #history-notice { margin: 0 8px 8px; }

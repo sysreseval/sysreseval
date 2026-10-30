@@ -305,7 +305,7 @@ event=eval login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice stat
 event=project_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice duration=1803.6 code=1001
 event=stop login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice status=200 duration=3.0
 event=logout login=alice addr=10.0.1.7 status=200 duration=0.0
-event=session_close login=alice addr=10.0.1.7 reason=logout since=2026-10-26T09:11:50+0100 duration=1850 requests=14 projects=1761466323@@@dhcp@@@alice
+event=session_close login=alice addr=10.0.1.7 role=student name="Alice Test" reason=logout since=2026-10-26T09:11:50+0100 duration=1850 requests=14 projects=1761466323@@@dhcp@@@alice
 ```
 
 A **session** is the requests of one login from one client address (`addr`): it opens at the
@@ -313,10 +313,11 @@ first request (`session_open`: role, pseudonym or not, name, user agent) and clo
 (`session_close`) at a logout, after `session_timeout` without a request (`reason=idle`; the
 duration then ends at the last request, not at the expiry) or when the portal stops
 (`shutdown`); a session whose project page, terminal or desktop is still open never expires.
-The closing line gives the start, the duration in seconds, the number of requests (the polls of
-the pages and the keep-alive of a project are not counted) and the projects used. In proxy
-mode there is no login: the first request of a user opens the session and the request following
-a logout opens another one. The other events:
+The closing line repeats the role and the name and gives the start, the duration in seconds, the
+number of requests (the polls of the pages and the keep-alive of a project are not counted) and
+the projects used: the *Sessions* view of the History page (*Administrators* below) is built
+from that line alone. In proxy mode there is no login: the first request of a user opens the
+session and the request following a logout opens another one. The other events:
 
 - `login` (`mode`: `anonymous` or `ldap`) and `login_failed` (`reason`: `password`,
   `rate_limited`, `directory` when the directory does not answer, `proxy_mode`);
@@ -335,7 +336,7 @@ a logout opens another one. The other events:
   instructor (their `login`); `history`: an administrator read the log on the History page
   (*Administrators* below; the filters asked come as `login_filter`, `addr_filter`,
   `event_filter`, `host_filter`, `rln_filter`, `lab_filter`, `since_filter`, `until_filter`,
-  `before_filter`);
+  `before_filter`; `view=sessions` for the Sessions view);
 - the presentations (*Instructors* below): `present_start` (the instructor's `login`, `host`,
   `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
@@ -831,17 +832,47 @@ a user who is not an instructor never gets the rights whatever the lists say:
   `ldap_roles`).
 
 The History page needs `[access_log.database]` (*The connection log* above; without it the page
-says so): the events newest first, one row per event with its time (the local time of the
-browser), event, login, client address, host, project, lab, status, duration and the other
-fields of the line as `key=value`; a `denied` or `login_failed` line, a status of 400 or more
-and a failed start are red. The form filters by login and address (prefixes: `10.0.1.` is a
-subnet), event (every event name; in proxy mode without `login` and `login_failed`, which never
-occur there), host (exact), project and lab (substrings; the lab is only on the `start` lines)
-and a time window; the filters stay in the URL, so a filtered view reloads and can be
-sent to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a
-cursor on the row ids: a page is stable while new events arrive) and a click on an event,
-login, address, host or project cell filters on that value. Nothing is polled: *Search* asks
-again. Each query is a `history` line of the log itself, with the filters asked.
+says so) and has two views, chosen by the *Sessions* / *Events* buttons of its toolbar.
+
+The page opens on the **Sessions** view: the log as one row per session (*The connection log*
+above: one login from one client address, from its first request to the logout, the idle
+timeout or the shutdown): the sessions still open first, in green, from the portal's memory
+(listed even without a database), then the closed ones, newest first, each built from its
+`session_close` line: login, name, address, start, end (the last request: an idle session ends
+there, not at its expiry), duration, number of requests, the labs of the projects used (the
+running lab names as a tooltip) and what closed it (*Logout*, *Idle*, *Shutdown*; *Still open*
+with the number of pages, terminals and desktops connected). Only the login and address
+prefixes and the time window apply; the window bounds the time a session was **closed**
+(`session_timeout` after the last request for an idle one; an open session is listed when it
+was active in the window); the other filters are hidden. The *show* cell of a row opens the
+events view on that session: its login and address, from the minute of its start to the minute
+after its closing line. The sessions closed before the name and role were logged on the closing
+line show an empty name.
+
+The **Events** view (`?view=events` in the URL) lists the events newest first, one row per
+event with its time (the local time of the browser), event, login, client address, host,
+project, lab, status, duration and the other fields of the line as `key=value`; a `denied` or
+`login_failed` line, a status of 400 or more and a failed start are red. The form filters by
+login and address (prefixes: `10.0.1.` is a subnet), event (every event name; in proxy mode
+without `login` and `login_failed`, which never occur there), host (exact), project and lab
+(substrings; the lab is only on the `start` lines) and a time window.
+
+In both views the filters stay in the URL, so a filtered view reloads and can be sent to a
+colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a cursor on
+the row ids: a page is stable while new events arrive) and a click on a login, address or, in
+the events view, event, host or project cell filters on that value. Nothing is polled: *Search*
+asks again. Each query is a `history` line of the log itself, with the filters asked
+(`view=sessions` for the sessions).
+
+In proxy mode (the production site behind Apache) the page shows the same sessions: a session
+starts at the first request carrying the proxy's identity headers, right after the browser's
+password dialog (no `login` line: Apache authenticates, the portal only sees the result); the
+Logout button still closes it on the portal before the browser is sent to `logout_url`, where
+Apache's 401 makes it forget the Basic credentials; a tab closed without a logout ends it by the
+idle timeout like the other modes; the credentials the browser cached make a later return a new
+session without any dialog; the client address comes from `X-Forwarded-For` of the
+`trusted_proxies` peer (set in every mode: the proxy's address alone would merge the devices of
+a user); the authentications Apache refuses never reach the portal (its own log holds them).
 
 ### The Display tab
 
@@ -998,6 +1029,9 @@ venv/bin/python3 scripts/web-fake-pool.py --hosts 4 --max-projects 25 -- \
 Without a command the pool stays up until Ctrl-C (`portal=... admin_token=... workdir=...` is
 printed first), for runs by hand. The work directory (configs, `portal.log`, `access.log`, one
 `agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died.
+`--administrators prof,...` makes those logins administrators of the portal (`[auth]
+administrators`), so that an instructor among them (`X-Remote-Gid: 2000`) can exercise the
+History page; its Sessions view lists the open sessions without any database.
 
 ### Stage 2: the production pool
 

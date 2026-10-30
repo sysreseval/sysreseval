@@ -8,7 +8,13 @@ The filters: ``login`` and ``addr`` are prefixes (``10.0.1.`` = a subnet; a pref
 ``(login, ts)`` / ``(addr, ts)`` indexes), ``event`` a list of names, ``host`` exact, ``rln``
 and ``lab`` substrings (``lab`` is only on the ``start`` lines), ``since`` / ``until`` seconds
 since the epoch.  No count of the matching rows: ``limit + 1`` rows are asked and ``more`` says
-whether older ones exist (a ``COUNT(*)`` would scan the table of a year at every page)."""
+whether older ones exist (a ``COUNT(*)`` would scan the table of a year at every page).
+
+The Sessions view of the page (``GET /api/history/sessions``) is built on the same query: one
+row per session from its ``session_close`` line (``session_filters`` keeps the login / address
+prefixes, the time window and the cursor, and selects that event), turned into a session by
+``session_of_row``; the sessions still open come from the portal's memory (``session_of_visit``,
+``visit_matches``)."""
 import asyncio
 import json
 from datetime import datetime
@@ -18,6 +24,12 @@ from ..config import AccessDatabaseConfig
 
 FILTER_KEYS = ('login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'before', 'limit')
 TEXT_FILTERS = ('login', 'addr', 'host', 'rln', 'lab')
+#: The filters of the Sessions view (``since`` / ``until`` bound the time the session was closed).
+SESSION_FILTER_KEYS = ('login', 'addr', 'since', 'until', 'before', 'limit')
+SESSION_CLOSE_EVENT = 'session_close'
+#: The format of the ``since`` of a ``session_close`` line (``accesslog.iso_time``: the local
+#: time of the portal with its UTC offset, ``2026-10-26T09:11:50+0100``).
+TIME_FORMAT = '%Y-%m-%dT%H:%M:%S%z'
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 1000
 MAX_TEXT = 255
@@ -127,6 +139,86 @@ def build_select(table: str, filters: dict) -> tuple:
     sql += " ORDER BY id DESC LIMIT %s"
     params.append(int(filters.get('limit', DEFAULT_LIMIT)) + 1)
     return sql, params
+
+
+def session_filters(filters: dict) -> dict:
+    """The filters of the Sessions view from a ``parse_filters()`` result: the login / address
+    prefixes, the time window (on the time the sessions were closed), the cursor and the limit;
+    the rows asked are the ``session_close`` lines.  The event, host, project and lab filters of
+    the events view are left out."""
+    kept = {key: filters[key] for key in SESSION_FILTER_KEYS if key in filters}
+    kept['event'] = [SESSION_CLOSE_EVENT]
+    return kept
+
+
+def parse_time(text) -> float | None:
+    """Seconds since the epoch of the ``since`` of a line (``TIME_FORMAT``); ``None`` when
+    missing or malformed (the browser's ``Date.parse`` does not take the ``+0100`` offset, so the
+    server does it)."""
+    if not text:
+        return None
+    try:
+        return datetime.strptime(str(text), TIME_FORMAT).timestamp()
+    except ValueError:
+        return None
+
+
+def _int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def session_of_row(row: dict) -> dict:
+    """The session of a ``session_close`` row (a ``row_to_dict`` result): ``start`` / ``end`` in
+    seconds since the epoch (the start from the ``since`` of the line, else the row's time minus
+    the duration; the end is the last request of the session, ``duration`` after the start),
+    ``closed`` the time of the line itself (``session_timeout`` after the end for an idle
+    session), the request count, the projects (running lab names), ``reason`` (``logout``,
+    ``idle``, ``shutdown``), and the name and role of the user (``''`` on the lines written before
+    they were logged there)."""
+    details = row.get('details') or {}
+    duration = row.get('duration')
+    duration = float(duration) if duration is not None else 0.0
+    ts = row.get('ts')
+    start = parse_time(details.get('since'))
+    if start is None and ts is not None:
+        start = float(ts) - duration
+    projects = details.get('projects')
+    if isinstance(projects, str):
+        projects = [projects] if projects else []
+    elif not isinstance(projects, list):
+        projects = []
+    reason = details.get('reason')
+    return {'id': row.get('id'), 'login': row.get('login') or '', 'name': str(details.get('name') or ''),
+            'role': str(details.get('role') or ''), 'addr': row.get('addr') or '',
+            'start': start, 'end': start + duration if start is not None else None, 'closed': ts,
+            'duration': duration, 'requests': _int(details.get('requests')), 'projects': [str(p) for p in projects],
+            'reason': str(reason) if reason else None}
+
+
+def session_of_visit(visit) -> dict:
+    """The same keys for a session still open (an ``accesslog.Visit``): no id, no closing time
+    nor reason, the end is the last request, plus ``sockets``, the WebSockets open (a project
+    page, a terminal, a desktop)."""
+    return {'id': None, 'login': visit.login, 'name': visit.name, 'role': visit.role, 'addr': visit.addr,
+            'start': visit.first_seen, 'end': visit.last_seen, 'closed': None, 'duration': visit.duration,
+            'requests': visit.requests, 'projects': list(visit.projects), 'reason': None, 'sockets': visit.sockets}
+
+
+def visit_matches(visit, filters: dict) -> bool:
+    """Whether an open session passes the login / address prefixes of *filters* and overlaps
+    its time window (active after ``since``, started before ``until``)."""
+    if filters.get('login') and not visit.login.startswith(filters['login']):
+        return False
+    if filters.get('addr') and not visit.addr.startswith(filters['addr']):
+        return False
+    if filters.get('since') is not None and visit.last_seen < float(filters['since']):
+        return False
+    if filters.get('until') is not None and visit.first_seen >= float(filters['until']):
+        return False
+    return True
 
 
 def row_to_dict(names: list, row: tuple) -> dict:

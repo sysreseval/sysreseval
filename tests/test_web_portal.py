@@ -1156,3 +1156,85 @@ class TestHistory:
             assert server.committed[0][0] <= utc_datetime(time.time())          # UTC, not local time
         run(go())
 
+    def test_sessions_from_the_database(self, tmp_path):
+        """The Sessions view: the open sessions of the portal's memory on the first page, the
+        closed ones from their session_close rows (the fake server scripts them), the login
+        prefix and the cursor, the events-only filters ignored, the history line."""
+        from datetime import datetime
+        from test_web_accessdb import FakeServer, Down, NAMES
+        from sreweb.portal.accessdb import epoch
+        from sreweb.portal.accesshistory import parse_time
+        server = FakeServer(table_exists=True)
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['prof']},
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB}}
+        since = '2026-10-26T09:11:50+0100'
+        closed_at = datetime(2026, 10, 26, 8, 42, 40, 500000)          # UTC in the table
+        rows = [(9, closed_at, 'session_close', 'alice', '10.0.1.7', '', '', '', '', 1850.0,
+                 json.dumps({'role': 'student', 'name': 'Alice Test', 'reason': 'idle', 'since': since, 'requests': 14,
+                             'projects': ['1761466323@@@dhcp@@@alice']})),
+                (5, datetime(2026, 10, 26, 7, 0, 0), 'session_close', 'bob', '10.0.1.8', '', '', '', '', 60.0,
+                 json.dumps({'reason': 'logout', 'since': '2026-10-26T07:59:00+0100', 'requests': 2, 'projects': []}))]
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test')
+                await h.client.get('/api/me', headers=bob)                  # bob's session is open
+                server.select_names = NAMES
+                server.select_rows = rows
+                page = await (await h.client.get('/api/history/sessions', headers=prof)).json()
+                assert page['limit'] == 100 and page['more'] is False and page['database']['connected'] is True
+                start = parse_time(since)
+                assert page['rows'][0] == {'id': 9, 'login': 'alice', 'name': 'Alice Test', 'role': 'student',
+                                           'addr': '10.0.1.7', 'start': start, 'end': start + 1850.0,
+                                           'closed': epoch(closed_at), 'duration': 1850.0, 'requests': 14,
+                                           'projects': ['1761466323@@@dhcp@@@alice'], 'reason': 'idle'}
+                assert page['rows'][1]['name'] == '' and page['rows'][1]['reason'] == 'logout'
+                # the open sessions, newest first (prof's opened by this very call), the identity of the headers
+                assert [(s['login'], s['name'], s['role'], s['reason'], s['closed'], s['sockets']) for s in page['open']] == \
+                       [('prof', 'Prof Essor', 'instructor', None, None, 0), ('bob', 'Bob Test', 'student', None, None, 0)]
+                assert page['open'][0]['requests'] == 1 and page['open'][0]['projects'] == []
+                assert page['open'][0]['start'] <= page['open'][0]['end'] and page['open'][0]['id'] is None
+                # the login prefix on both kinds, the limit and the cursor; the events-only filters are ignored
+                page = await (await h.client.get('/api/history/sessions?login=b&limit=1&event=start&host=a01&lab=x',
+                                                 headers=prof)).json()
+                assert [s['login'] for s in page['open']] == ['bob'] and page['more'] is True and len(page['rows']) == 1
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT id'))
+                assert 'event IN (%s)' in sql and 'host = %s' not in sql and 'lab LIKE' not in sql
+                assert args == ['b%', 'session_close', 2]
+                page = await (await h.client.get('/api/history/sessions?before=9', headers=prof)).json()
+                assert page['open'] == [] and len(page['rows']) == 2
+                assert (await h.client.get('/api/history/sessions?since=yesterday', headers=prof)).status == 400
+                assert (await h.client.get('/api/history/sessions', headers=bob)).status == 403
+                server.down = True
+                resp = await h.client.get('/api/history/sessions', headers=prof)
+                assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
+                server.down = False
+            # the history lines carry the view and the filters; the close lines the name and role
+            history = [row for row in server.committed if row[1] == 'history']
+            assert json.loads(history[0][9])['view'] == 'sessions' and 'login_filter' not in json.loads(history[0][9])
+            assert json.loads(history[1][9])['login_filter'] == 'b' and 'event_filter' not in json.loads(history[1][9])
+            closes = {row[2]: json.loads(row[9]) for row in server.committed if row[1] == 'session_close'}
+            assert closes['bob']['name'] == 'Bob Test' and closes['bob']['role'] == 'student'
+            assert closes['prof']['role'] == 'instructor' and closes['prof']['reason'] == 'shutdown'
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            assert [l['view'] for l in lines if l['event'] == 'history'][:2] == ['sessions', 'sessions']
+            assert any(l['event'] == 'session_close' and l['name'] == 'Bob Test' and l['role'] == 'student' for l in lines)
+        run(go())
+
+    def test_sessions_without_database(self, tmp_path):
+        """No database: the Sessions view lists the open sessions alone (no 409: who is connected
+        now needs none), the events view keeps its 409."""
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['prof']}}
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+                prof = who('prof', 'Prof Essor', groups=TEACHERS)
+                assert (await h.client.get('/api/history', headers=prof)).status == 409
+                page = await (await h.client.get('/api/history/sessions', headers=prof)).json()
+                assert page['rows'] == [] and page['more'] is False and page['database'] is None and page['limit'] == 100
+                assert [(s['login'], s['role'], s['name'], s['reason']) for s in page['open']] == \
+                       [('prof', 'instructor', 'Prof Essor', None)]
+                assert (await h.client.get('/api/history/sessions', headers=who('bob'))).status == 403
+                assert (await h.client.get('/api/history/sessions')).status == 401
+        run(go())
+

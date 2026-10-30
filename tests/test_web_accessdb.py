@@ -10,7 +10,7 @@ import re
 import sys
 import time
 import types
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -18,6 +18,7 @@ import pytest
 pytest.importorskip('aiohttp', reason="aiohttp is not installed: the web front-end needs it: run `make venv`")
 
 from sreweb.config import AccessDatabaseConfig, AccessLogConfig, ConfigError  # noqa: E402
+from sreweb.identity import Identity  # noqa: E402
 from sreweb.portal import accessdb as D  # noqa: E402
 from sreweb.portal import accesshistory as H  # noqa: E402
 from sreweb.portal import accesslog as A  # noqa: E402
@@ -336,6 +337,74 @@ class TestBuildQuery:
                                         "host = %s", "rln LIKE %s ESCAPE '!'", "lab LIKE %s ESCAPE '!'", "ts >= %s",
                                         "ts < %s", "id < %s"]
         assert params == ['a%', '1%', 'x', 'h', '%r%', '%l%', utc_datetime(1.0), utc_datetime(2.0), 9, 6]
+
+
+class TestSessions:
+    """The Sessions view of the History page: the filters kept, a session_close row turned into
+    a session, the open sessions of the portal's memory."""
+    ALICE = Identity(login='alice', fullname='Alice Test', role='student', anonymous=False)
+    SINCE = '2026-10-26T09:11:50+0100'
+    ROW = {'id': 7, 'ts': 1761466800.25, 'event': 'session_close', 'login': 'alice', 'addr': '10.0.1.7', 'host': '',
+           'rln': '', 'lab': '', 'status': '', 'duration': 1850.0,
+           'details': {'role': 'student', 'name': 'Alice Test', 'reason': 'idle', 'since': SINCE, 'requests': 14,
+                       'projects': ['1761466323@@@dhcp@@@alice']}}
+
+    def test_filters_keep_the_session_keys_and_select_the_close_lines(self):
+        filters = parse_filters({'login': 'ali', 'addr': '10.', 'event': 'start', 'host': 'a01', 'rln': 'x', 'lab': 'y',
+                                 'since': '1000', 'until': '2000', 'before': '42', 'limit': '2'})
+        kept = H.session_filters(filters)
+        assert kept == {'login': 'ali', 'addr': '10.', 'since': 1000.0, 'until': 2000.0, 'before': 42, 'limit': 2,
+                        'event': ['session_close']}
+        sql, params = build_select('t', kept)
+        where = sql.split(' WHERE ')[1].split(' ORDER BY')[0]
+        assert where.split(' AND ') == ["login LIKE %s ESCAPE '!'", "addr LIKE %s ESCAPE '!'", "event IN (%s)",
+                                        "ts >= %s", "ts < %s", "id < %s"]
+        assert params == ['ali%', '10.%', 'session_close', utc_datetime(1000.0), utc_datetime(2000.0), 42, 3]
+        assert H.session_filters({'limit': 100}) == {'limit': 100, 'event': ['session_close']}
+
+    def test_parse_time(self):
+        assert H.parse_time(A.iso_time(1761466310.0)) == 1761466310.0           # the format of the lines
+        assert H.parse_time(self.SINCE) == datetime(2026, 10, 26, 8, 11, 50, tzinfo=timezone.utc).timestamp()
+        assert H.parse_time('') is None and H.parse_time(None) is None
+        assert H.parse_time('yesterday') is None and H.parse_time('2026-10-26 09:11:50') is None
+
+    def test_session_of_row(self):
+        start = H.parse_time(self.SINCE)
+        assert H.session_of_row(self.ROW) == {
+            'id': 7, 'login': 'alice', 'name': 'Alice Test', 'role': 'student', 'addr': '10.0.1.7', 'start': start,
+            'end': start + 1850.0, 'closed': 1761466800.25, 'duration': 1850.0, 'requests': 14,
+            'projects': ['1761466323@@@dhcp@@@alice'], 'reason': 'idle'}
+        # a line written before the name and role were logged, the projects as one string, no since:
+        # the start is the time of the line minus the duration
+        old = {**self.ROW, 'details': {'reason': 'logout', 'requests': '3', 'projects': '1@@@a@@@alice'}}
+        session = H.session_of_row(old)
+        assert (session['name'], session['role'], session['requests'], session['projects']) == \
+               ('', '', 3, ['1@@@a@@@alice'])
+        assert session['start'] == 1761466800.25 - 1850.0 and session['end'] == 1761466800.25
+        assert session['reason'] == 'logout'
+        bare = H.session_of_row({'id': 1, 'ts': 100.0, 'login': None, 'addr': None, 'duration': None, 'details': {}})
+        assert (bare['start'], bare['end'], bare['duration'], bare['projects']) == (100.0, 100.0, 0.0, [])
+        assert (bare['login'], bare['addr'], bare['reason'], bare['requests'], bare['name']) == ('', '', None, 0, '')
+        odd = H.session_of_row({'details': {'projects': 5, 'requests': 'x', 'since': 'garbage'}})
+        assert odd['projects'] == [] and odd['requests'] == 0 and odd['start'] is None and odd['end'] is None
+
+    def test_open_sessions(self):
+        visits = A.Visits()
+        visit, _ = visits.touch(self.ALICE, '10.0.1.7', 'UA', 1000.0)
+        visits.touch(self.ALICE, '10.0.1.7', 'UA', 1300.0)
+        visits.socket_opened(visit.key)
+        visits.add_project(visit.key, '1@@@a@@@alice')
+        session = H.session_of_visit(visit)
+        assert session == {'id': None, 'login': 'alice', 'name': 'Alice Test', 'role': 'student', 'addr': '10.0.1.7',
+                           'start': 1000.0, 'end': 1300.0, 'closed': None, 'duration': 300.0, 'requests': 2,
+                           'projects': ['1@@@a@@@alice'], 'reason': None, 'sockets': 1}
+        assert set(session) - {'sockets'} == set(H.session_of_row(self.ROW))      # the same keys as a closed one
+        assert H.visit_matches(visit, {}) and H.visit_matches(visit, {'login': 'ali', 'addr': '10.0.'})
+        assert not H.visit_matches(visit, {'login': 'bob'}) and not H.visit_matches(visit, {'addr': '10.1.'})
+        # the time window: the session overlaps it
+        assert H.visit_matches(visit, {'since': 1300.0}) and not H.visit_matches(visit, {'since': 1300.5})
+        assert H.visit_matches(visit, {'until': 1000.5}) and not H.visit_matches(visit, {'until': 1000.0})
+        assert H.visit_matches(visit, {'since': 900.0, 'until': 1100.0})
 
 
 # ---------------------------------------------------------------------------------------------

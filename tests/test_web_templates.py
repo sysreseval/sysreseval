@@ -221,7 +221,21 @@ class TestTemplates:
         assert '<option value="start">start</option>' in html and '<option value="">All events</option>' in html
         assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
         assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
-        assert 'colspan="10"' in html and html.count('<th>') == 10
+        # two tables of ten columns: the events (shown) and the sessions (hidden until chosen)
+        events_table, sessions_table = html.split('<table id="history-sessions"')
+        assert 'id="history"' in events_table and 'class="grid watch history" data-database' in events_table
+        assert events_table.count('<th>') == 10 and events_table.count('colspan="10"') == 1
+        assert sessions_table.startswith(' class="grid watch history sessions" hidden>')
+        assert sessions_table.count('<th>') == 10 and sessions_table.count('colspan="10"') == 1
+        for column in ('Login', 'Name', 'Address', 'Start time', 'End time', 'Duration', 'Requests', 'Projects',
+                       'Closed by', 'Events'):
+            assert f'<th>{column}</th>' in sessions_table, column
+        # the view switch (Sessions first and pressed: the page opens on it) and the filters of the events view alone
+        assert 'data-view="sessions" aria-pressed="true">Sessions<' in html
+        assert 'data-view="events" aria-pressed="false">Events<' in html
+        assert html.index('data-view="sessions"') < html.index('data-view="events"')
+        assert html.count('<label class="events-only">') == 4
+        assert 'For a session: the time it was closed' in html
         # without a database: the notice says what to configure, the table has nothing to show
         assert 'data-database="false"' in html and 'id="history-notice" class="muted">' in html
         assert 'not stored in a database' in html and 'access_log.database' in html

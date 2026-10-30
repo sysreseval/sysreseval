@@ -985,3 +985,55 @@ msgstr "page {n}"
 
 msgid "The last events may be missing: the database does not answer ({error})."
 msgstr "Les derniers événements peuvent manquer : la base de données ne répond pas ({error})."
+
+# the Sessions view of the History page
+msgid "Events"
+msgstr "Événements"
+
+msgid "Sessions"
+msgstr "Sessions"
+
+msgid "For a session: the time it was closed"
+msgstr "Pour une session : l'heure de sa fermeture"
+
+msgid "Start time"
+msgstr "Début"
+
+msgid "End time"
+msgstr "Fin"
+
+msgid "Requests"
+msgstr "Requêtes"
+
+msgid "Closed by"
+msgstr "Fermée par"
+
+msgid "show"
+msgstr "voir"
+
+msgid "The events of this session"
+msgstr "Les événements de cette session"
+
+msgid "Idle"
+msgstr "Inactivité"
+
+msgid "Shutdown"
+msgstr "Arrêt du portail"
+
+msgid "Still open"
+msgstr "En cours"
+
+msgid "Still open ({n} connection(s))"
+msgstr "En cours ({n} connexion(s))"
+
+msgid "{n} session(s) shown, older ones exist"
+msgstr "{n} session(s) affichée(s), il en existe de plus anciennes"
+
+msgid "{n} session(s) shown"
+msgstr "{n} session(s) affichée(s)"
+
+msgid "{n} open"
+msgstr "{n} en cours"
+
+msgid "No session matches the filters."
+msgstr "Aucune session ne correspond aux filtres."

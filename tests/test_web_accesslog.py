@@ -149,7 +149,9 @@ class TestVisits:
         visits.add_project(visit.key, None)
         visits.add_project(('nobody', 'x'), '3@@@c@@@x')
         assert visit.projects == ['1@@@a@@@alice', '2@@@b@@@alice'] and other.projects == []
+        assert visits.all() == [visit, other]                       # a snapshot: the Sessions view
         assert visits.close(visit.key) is visit and visits.close(visit.key) is None and len(visits) == 1
+        assert visits.all() == [other]
 
     def test_expiry_skips_open_sockets_and_excludes_the_idle_gap(self):
         visits = A.Visits()
@@ -281,8 +283,8 @@ class TestAccessLogFile:
         assert lines[0]['mode'] == 'ldap' and lines[0]['role'] == 'student' and lines[0]['anon'] == '0'
         assert lines[1]['ua'] == 'UA ' + 'x' * (A.MAX_USER_AGENT - 3)
         assert lines[2] == {'ts': lines[2]['ts'], 'event': 'session_close', 'login': 'alice', 'addr': '127.0.0.1',
-                            'reason': 'idle', 'since': A.iso_time(1000.0), 'duration': '500', 'requests': '1',
-                            'projects': '1@@@a@@@alice'}
+                            'role': 'student', 'name': 'Alice Test', 'reason': 'idle', 'since': A.iso_time(1000.0),
+                            'duration': '500', 'requests': '1', 'projects': '1@@@a@@@alice'}
         assert lines[3] == dict(ts=lines[3]['ts'], event='login_failed', login='mallory', addr='127.0.0.1', reason='password')
         assert lines[5]['reason'] == 'shutdown' and lines[5]['duration'] == '0' and lines[5]['projects'] == ''
 
