@@ -30,7 +30,7 @@ Island B (parts 3 to 5): ``inj`` (traceroute available) — ``lan3`` — a trian
 (``l12``) ``r2`` (``l23``) ``r3`` (``l31`` back to ``r1``) without any indirect route, and ``srv``
 behind ``r3`` on ``lan4`` (visible, no terminal: an HTTP server behind a firewall dropping UDP).
 The student builds the loop r1 → r2 → r3 → r1 with default routes and observes it with ``ping -t``,
-``traceroute`` and ``tcpdump`` (part 3), compares the UDP / ICMP / TCP methods against ``srv`` and
+``traceroute`` and ``tcpdump`` / ``tshark`` (part 3), compares the UDP / ICMP / TCP methods against ``srv`` and
 the user states ``srv_reject`` / ``srv_drop`` / ``r2_silent`` / ``r2_talkative`` (part 4), then reads
 the reply TTL, ``ping -R`` and the source addresses of the errors (``icmp_errors_use_inbound_ifaddr``)
 and sets ``ip_default_ttl`` on ``inj`` (part 5).  The ``final`` state applies the solution of parts
@@ -259,26 +259,28 @@ class NetScheme(NetScheme0):
 
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
-            + tr("""
-Ce TP étudie le champ **TTL** des paquets IPv4, le message ICMP *time exceeded* qu'il provoque, et
-l'outil **traceroute** qui en tire le chemin suivi par les paquets : son principe, ses variantes,
-ses limites, la façon de l'émuler avec `ping`, et ce que révèlent une **boucle de routage** ou un
-**chemin asymétrique**.
-""")
+#             + tr("""
+# Ce TP étudie le champ **TTL** des paquets IPv4, le message ICMP *time exceeded* qu'il provoque, et
+# l'outil **traceroute** qui en tire le chemin suivi par les paquets : son principe, ses variantes,
+# ses limites, la façon de l'émuler avec `ping`, et ce que révèlent une **boucle de routage** ou un
+# **chemin asymétrique**.
+# """)
             + tr("\n**Sommaire**\n") + info_toc()
             + info_subtitle(tr("Le champ TTL"), tag="ttl")
             + tr("""
 Chaque paquet IPv4 porte un champ **TTL** (*time to live*, 8 bits) fixé par l'émetteur et
 **décrémenté de 1 par chaque routeur** traversé. Un routeur qui reçoit un paquet dont le TTL vaut 1
-(il tomberait à 0) le **jette** au lieu de le retransmettre : c'est le garde-fou contre les boucles
-de routage (section @@ref:loops@@), sans lequel un paquet mal routé circulerait indéfiniment.
-Malgré son nom, le TTL compte des sauts, pas des secondes.
+le **détruit** au lieu de le retransmettre (il tomberait à 0). Sans ce garde-fou un paquet 
+pourrait circuler indéfiniment s'il existe une boucle de routage par suite d'une erreur de configuration
+(cf section @@ref:loops@@).
 
-La valeur initiale dépend du système : **64** pour Linux, macOS et les BSD, **128** pour Windows,
+La valeur initiale du TTL dépend du système : **64** pour Linux, macOS et les BSD, **128** pour Windows,
 **255** pour la plupart des routeurs (Cisco, Juniper). Sous Linux elle se lit et se change par
-`sysctl net.ipv4.ip_default_ttl` (paquets émis par la machine ; ceux qu'elle route ne sont pas
-concernés). On voit le TTL de chaque paquet capturé avec `tcpdump -n -v` (`ttl 63` dans l'en-tête
-IP) et celui des réponses d'écho dans la sortie de `ping` (`ttl=62`).
+`sysctl net.ipv4.ip_default_ttl`. 
+On voit le TTL de chaque paquet capturé avec `tcpdump -n -v` (`ttl 63` dans l'en-tête
+IP) ou avec `tshark -n` (`ttl=63` au bout de la ligne de chaque écho ; pour n'importe quel paquet,
+`tshark -n -T fields -e ip.src -e ip.dst -e ip.ttl -e _ws.col.Info`), et celui des réponses d'écho
+dans la sortie de `ping` (`ttl=62`).
 """)
             + info_subtitle(tr("Le message ICMP time exceeded"), tag="time-exceeded")
             + tr("""
@@ -287,7 +289,8 @@ code 0** (*time to live exceeded in transit*). Comme toute erreur ICMP, il conti
 paquet fautif et les 8 premiers octets de sa charge utile : l'émetteur reconnaît ainsi le paquet
 concerné (identifiant et numéro de séquence d'un écho ICMP, ports d'un datagramme UDP ou d'un
 segment TCP). `ping` l'affiche `From ADRESSE icmp_seq=1 Time to live exceeded` ; `tcpdump` le
-montre `ADRESSE > ÉMETTEUR: ICMP time exceeded in-transit`.
+montre `ADRESSE > ÉMETTEUR: ICMP time exceeded in-transit` et `tshark`
+`ADRESSE → ÉMETTEUR ICMP Time-to-live exceeded (Time to live exceeded in transit)`.
 
 **Quelle adresse source ?** Le routeur a plusieurs interfaces. Sous Linux, par défaut
 (`net.ipv4.icmp_errors_use_inbound_ifaddr = 0`), l'erreur ICMP part avec l'adresse de l'interface
@@ -379,7 +382,8 @@ puis les adresses de sortie au **retour**. L'en-tête IP n'a de place que pour *
 beaucoup de routeurs ignorent l'option : c'est un complément, pas un remplaçant.
 
 `tcpdump -n -v -i eth0 icmp` sur un routeur montre les sondes qui le traversent avec leur TTL
-(`ttl N`) et les erreurs qu'il émet (`ICMP time exceeded in-transit`).
+(`ttl N`) et les erreurs qu'il émet (`ICMP time exceeded in-transit`) ; `tshark -n -i eth0 icmp`
+de même (`ttl=N` au bout de la ligne de chaque écho, `Time-to-live exceeded`).
 """)
             + info_subtitle(tr("Émuler traceroute sans ICMP : UDP, nc et une capture"), tag="emulation-udp")
             + tr("""
@@ -405,7 +409,8 @@ nft add rule ip trace output udp dport 33434 ip ttl set 3
 `R > M: ICMP time exceeded in-transit` pour le routeur R qui a jeté la sonde, puis, quand le TTL
 suffit pour arriver, `D > M: ICMP D udp port 33434 unreachable` : la destination D est atteinte et
 la trace est finie. `tshark -n -i eth0 icmp` montre la même chose (`Time-to-live exceeded`,
-`Destination unreachable (Port unreachable)`).
+`Destination unreachable (Port unreachable)`) ; pour le détail d'un message, datagramme cité compris :
+`tcpdump -n -v -i eth0 icmp` ou `tshark -n -i eth0 -O icmp icmp`.
 
 Pourquoi une capture ? Le noyau ne transmet une erreur ICMP à un socket UDP que si elle est
 « dure » (*port unreachable*) ou si le programme a demandé toutes les erreurs (option `IP_RECVERR`,
@@ -464,7 +469,7 @@ erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne*
 | `tcpdump -n -i IFACE icmp`, `tshark -n -i IFACE icmp` | erreurs ICMP reçues : routeur qui répond, fin de parcours |
 | `traceroute -n -q 1 -w 1 -m 8 DEST` | trace UDP ; `-I` ICMP, `-T` TCP (port 80, `-p PORT`) |
 | `tracepath -n DEST`, `mtr -n DEST` | variantes |
-| `tcpdump -n -v -i IFACE icmp` | TTL des paquets, erreurs ICMP |
+| `tcpdump -n -v -i IFACE icmp`, `tshark -n -i IFACE -O icmp icmp` | TTL des paquets (`ttl N` ; `tshark -n` l'écrit déjà, `ttl=N`, sur la ligne de chaque écho), détail des erreurs ICMP |
 | `ip route`, `ip route get DEST` | table de routage, route choisie pour une destination |
 | `ip route add default via GW`, `ip route replace default via GW`, `ip route del default` | routes |
 | `sysctl net.ipv4.ip_default_ttl`, `sysctl -w net.ipv4.icmp_errors_use_inbound_ifaddr=1` | paramètres du noyau |
@@ -747,8 +752,8 @@ asymétriques, avec les commandes utiles.
 *Réseau 1* (partie 1) : votre poste `m1`, son routeur `gw` (visible, **sans terminal**) et, au-delà,
 un réseau **que vous ne voyez pas** : plusieurs routeurs puis la machine `target`. Sur `m1`, les
 outils de traçage (`traceroute`, `tracepath`, `mtr`, `nmap`, `hping3`…) ont été **retirés** : vous
-reconstituerez le chemin avec `ping` et `tcpdump`. Adresses et routes sont en place, `/etc/hosts`
-de `m1` connaît `gw` et `target`.
+reconstituerez le chemin avec `ping` et une capture (`tcpdump` ou `tshark`). Adresses et routes sont
+en place, `/etc/hosts` de `m1` connaît `gw` et `target`.
 """)
             + addressing_a
             + tr("""
@@ -837,15 +842,16 @@ pare-feu `fw`, les routes de `inj`, `r1`, `r2`, `r3` et deux paramètres du noya
             title=tr("Tracer le chemin de m1 à target avec ping"),
             description=tr("""
 Depuis `m1`, découvrez le chemin jusqu'à `target` ({target}) **sans traceroute** : les outils de
-traçage ont été retirés de `m1`. Il reste `ping`, `tcpdump` et les commandes habituelles.
+traçage ont été retirés de `m1`. Il reste `ping`, `tcpdump`, `tshark` et les commandes habituelles.
 
 1. Vérifiez que `ping -n -c 1 target` répond et notez le `ttl=` de la réponse.
 2. Envoyez des échos de TTL croissant : `ping -n -c 1 -W 1 -t 1 target`, puis `-t 2`, `-t 3`…
    (section @@ref:emulation@@). Chaque message `Time to live exceeded` révèle un routeur ; un TTL
    sans aucune réponse est un routeur **muet** (section @@ref:reading@@) : notez `*` et continuez.
    Arrêtez-vous quand `target` répond elle-même.
-3. Observez les messages ICMP reçus avec `tcpdump -n -v -i eth0 icmp` dans un second terminal de
-   `m1` : type, code, adresse source, et le paquet cité dans le message.
+3. Observez les messages ICMP reçus avec `tcpdump -n -v -i eth0 icmp` (ou
+   `tshark -n -i eth0 -O icmp icmp`) dans un second terminal de `m1` : type, code, adresse source,
+   et le paquet cité dans le message.
 4. Comparez avec `ping -n -c 1 -R target` (section @@ref:emulation@@) : quelles adresses sont
    enregistrées, combien, et pourquoi diffèrent-elles de celles de l'étape 2 ?
 5. Déduisez le nombre de routeurs entre `m1` et `target` et expliquez le `ttl=` de l'étape 1.
@@ -958,7 +964,8 @@ ne fonctionne donc plus : vous sonderez avec des **datagrammes UDP** et lirez le
 4. Déduisez le nombre de routeurs entre `m2` et `target2` et expliquez le `ttl=` de l'étape 1.
 """).format(target2=target2)
             + instructor(tr("""
-**Solution.** Sur `m2`, avec `tcpdump -n -i eth0 icmp` dans un second terminal :
+**Solution.** Sur `m2`, avec `tcpdump -n -i eth0 icmp` (ou `tshark -n -i eth0 icmp`) dans un second
+terminal :
 
 ```
 ping -n -c 1 target2                    # 64 bytes from {target2}: icmp_seq=1 ttl={reply_ttl2}
@@ -970,6 +977,8 @@ echo x | nc -u -w 1 -M 2 target2 33434    # capture : {second} > {m2}: ICMP time
 echo x | nc -u -w 1 -M {n1} target2 33434    # capture : {target2} > {m2}: ICMP {target2} udp port 33434 unreachable
 ```
 
+- Avec `tshark`, les mêmes lignes se lisent `{fw} → {m2} ICMP Time-to-live exceeded (Time to live
+  exceeded in transit)`, puis `{target2} → {m2} ICMP Destination unreachable (Port unreachable)`.
 - Chemin attendu (`fw` compris) : `{path2}` ; {n2} routeurs ; `target2` répond avec
   `ttl=64 − {n2} = {reply_ttl2}` (chemin retour symétrique).
 - `fw` jette, avant même de tester le TTL, les échos ICMP entrant par `eth0` avec un TTL inférieur
@@ -1062,8 +1071,8 @@ n'appartient à aucun réseau de la maquette.
    (`via r2_l12`), sur `r2` vers `r3` (`via r3_l23`), sur `r3` vers `r1` (`via r1_l31`). Relancez
    `ping -n -c 1 {far}` depuis `inj` : quel routeur répond, et pourquoi lui (section @@ref:loops@@) ?
 3. `traceroute -n -q 1 -w 1 -m 12 {far}` depuis `inj`. Puis lancez `tcpdump -n -v -i eth0 icmp`
-   sur `r2` pendant un `ping -n -c 1 {far}` : combien de fois le même paquet passe-t-il, avec quels
-   TTL ?
+   (ou `tshark -n -i eth0 icmp`, le `ttl=` au bout de chaque ligne) sur `r2` pendant un
+   `ping -n -c 1 {far}` : combien de fois le même paquet passe-t-il, avec quels TTL ?
 4. Prédisez puis vérifiez le routeur qui répond à `ping -n -c 1 -t {ttl_a} {far}` et à
    `ping -n -c 1 -t {ttl_b} {far}`.
 """).format(far=far, ttl_a=d.ttl_a, ttl_b=d.ttl_b)
@@ -1294,8 +1303,8 @@ Toujours depuis `inj` vers `srv`, la boucle de la partie 3 en place.
    `r3` appartiennent-elles ? Pourquoi (section @@ref:time-exceeded@@) ? Passez
    `net.ipv4.icmp_errors_use_inbound_ifaddr` à 1 sur `r2` et sur `r3` (`sysctl -w`) et recommencez.
 4. Sur `inj`, fixez le TTL des paquets émis à **{inj_ttl}** (`net.ipv4.ip_default_ttl`). Vérifiez
-   avec `tcpdump -n -v -i eth0 icmp` sur `r2` pendant un `ping -n -c 1 srv`, et observez le `ttl=`
-   de la réponse. Quel est le plus petit TTL initial qui atteint encore `srv` ? Avec un TTL initial
+   avec `tcpdump -n -v -i eth0 icmp` (ou `tshark -n -i eth0 icmp`) sur `r2` pendant un
+   `ping -n -c 1 srv`, et observez le `ttl=` de la réponse. Quel est le plus petit TTL initial qui atteint encore `srv` ? Avec un TTL initial
    de 3, qui répond ?
 """).format(inj_ttl=d.inj_ttl)
             + instructor(tr("""
@@ -1323,7 +1332,7 @@ ping -n -c 1 srv                      # ttl=62 toujours : c'est le TTL de srv, p
   (eth1 de `r3`, vers `r1`) : l'adresse de l'interface par laquelle chacun **retourne** vers `inj`
   (`icmp_errors_use_inbound_ifaddr = 0`). À 1, ce sont les adresses d'entrée `{r2_l12}` et `{r3_l23}`
   (eth0 de chacun).
-- Avec `ip_default_ttl={inj_ttl}`, `tcpdump` sur `eth0` de `r2` voit les échos avec le TTL
+- Avec `ip_default_ttl={inj_ttl}`, `tcpdump` (ou `tshark`) sur `eth0` de `r2` voit les échos avec le TTL
   {ttl_r2} ({inj_ttl} − 1 : `r1` traversé). `srv` est le saut 4 : un TTL initial de 4 suffit ; avec
   3, le paquet est jeté par `r3` (*time exceeded* de `{r3_l31}`).
 - Évaluation : `icmp_errors_use_inbound_ifaddr` lu sur `r2` et `r3` (2 points chacun),
