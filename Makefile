@@ -277,9 +277,12 @@ exam-tests:
 	PYTHONPATH=${ROOT_DIR}/src ${ROOT_DIR}/venv/bin/python ${ROOT_DIR}/tests/test_exam_mode.py $(EXAM_ARGS)
 
 # Docker integration tests with real containers (run as root on a host with Docker and the SRE images):
-# sre start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker API.
+# sre start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker API;
+# the database of the connection log against a MariaDB container (SRE_TEST_MYSQL=mysql://user:password@host:3306/db
+# for a server of yours, empty to skip it).
+SRE_TEST_MYSQL ?= docker
 docker-tests:
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_docker_lifecycle.py -v -p no:cacheprovider
+	SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) ${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_web_accessdb_live.py -v -p no:cacheprovider
 
 all-tests: tests functional-tests exam-tests docker-tests
 

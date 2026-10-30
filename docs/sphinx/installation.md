@@ -335,7 +335,7 @@ make tests                          # unit tests (excludes test_exam_mode.py)
 make test FILE=test_net_config.py   # single file
 make functional-tests               # functional tests (test_functional.py)
 make exam-tests                     # exam-mode integration tests (requires debug_mode=True)
-make docker-tests                   # Docker integration tests with real containers (root; start/stop, save/restore)
+make docker-tests                   # Docker integration tests with real containers (root; start/stop, save/restore, the connection log's database on a MariaDB container)
 make all-tests                      # tests + functional-tests + exam-tests + docker-tests
 ```
 

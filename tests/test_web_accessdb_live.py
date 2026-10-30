@@ -1,10 +1,14 @@
 """The database of the connection log against a real MariaDB / MySQL server, skipped unless
 ``SRE_TEST_MYSQL`` names one: ``mysql://user:password@host:3306/db`` or
-``mysql://user:password@/db?unix_socket=/run/mysqld/mysqld.sock``.  The account needs ``SELECT,
-INSERT, DELETE`` and ``CREATE`` / ``DROP`` (a table of its own is created and dropped).  The
-offline tests are in test_web_accessdb.py."""
+``mysql://user:password@/db?unix_socket=/run/mysqld/mysqld.sock`` (the account needs ``SELECT,
+INSERT, DELETE`` and ``CREATE`` / ``DROP``: a table of its own is created and dropped), or
+``docker`` / ``docker:<image>``: a MariaDB (``mariadb:11`` by default) or MySQL container started
+for the module on a port of the loopback and removed afterwards, what ``make docker-tests`` does
+(a reachable Docker daemon: root or the docker group; skipped without one).  The offline tests
+are in test_web_accessdb.py."""
 import math
 import os
+import secrets
 import time
 import urllib.parse
 
@@ -19,8 +23,76 @@ from sreweb.portal.accesshistory import AccessDatabase, parse_filters  # noqa: E
 from sreweb.portal.accesslog import ALL_EVENTS  # noqa: E402
 
 DSN = os.environ.get('SRE_TEST_MYSQL', '')
-pytestmark = pytest.mark.skipif(not DSN, reason="set SRE_TEST_MYSQL=mysql://user:password@host:3306/db to run "
-                                                "against a MariaDB / MySQL server")
+DOCKER_MODE = 'docker'
+DEFAULT_IMAGE = 'mariadb:11'
+READY_TIMEOUT = 90.0        # the first start of the image initialises its data directory
+pytestmark = pytest.mark.skipif(not DSN, reason="set SRE_TEST_MYSQL=mysql://user:password@host:3306/db, or "
+                                                "SRE_TEST_MYSQL=docker for a MariaDB container, to run against "
+                                                "a MariaDB / MySQL server")
+
+
+def docker_image(dsn: str) -> str | None:
+    """The image of ``docker`` / ``docker:<image>``, None for a server given by its URL."""
+    if dsn == DOCKER_MODE:
+        return DEFAULT_IMAGE
+    if dsn.startswith(DOCKER_MODE + ':'):
+        return dsn[len(DOCKER_MODE) + 1:]
+    return None
+
+
+@pytest.fixture(scope='module')
+def dsn():
+    """The URL of the server: SRE_TEST_MYSQL itself, or that of the container it asks for."""
+    image = docker_image(DSN)
+    if image is None:
+        yield DSN
+        return
+    docker = pytest.importorskip('docker')
+    try:
+        client = docker.from_env()
+        client.ping()
+    except Exception as e:  # noqa: BLE001 - any failure means "no usable daemon"
+        pytest.skip(f"Docker daemon not reachable: {e}")
+    try:
+        client.images.get(image)
+    except docker.errors.ImageNotFound:
+        client.images.pull(image)
+    password = secrets.token_hex(8)
+    # the MYSQL_* names of the mysql image, which the mariadb image accepts too
+    container = client.containers.run(
+        image, detach=True, name=f"sre-test-mysql-{os.getpid()}", labels={'sre-test': 'mysql'},
+        environment={'MYSQL_ROOT_PASSWORD': password, 'MYSQL_DATABASE': 'sre_test',
+                     'MYSQL_USER': 'sre_test', 'MYSQL_PASSWORD': password},
+        ports={'3306/tcp': ('127.0.0.1', None)})     # a free port of the loopback
+    try:
+        container.reload()
+        port = int(container.ports['3306/tcp'][0]['HostPort'])
+        url = f"mysql://sre_test:{password}@127.0.0.1:{port}/sre_test"
+        _wait_for_server(container, image, config_from_dsn(url, 'unused'))
+        yield url
+    finally:
+        container.remove(force=True)
+
+
+def _wait_for_server(container, image: str, cfg: AccessDatabaseConfig):
+    """Until the server accepts the account.  The images initialise their data directory on a
+    temporary server without networking, so a TCP connection means the final one, with the
+    account and the database created."""
+    deadline = time.monotonic() + READY_TIMEOUT
+    while True:
+        try:
+            pymysql.connect(host=cfg.host, port=cfg.port, user=cfg.user, password=cfg.password,
+                            database=cfg.name, connect_timeout=2).close()
+            return
+        except Exception as e:  # noqa: BLE001 - not up yet
+            error = e
+        container.reload()
+        if container.status != 'running':
+            logs = container.logs(tail=20).decode(errors='replace')
+            pytest.fail(f"the {image} container is {container.status}:\n{logs}")
+        if time.monotonic() >= deadline:
+            pytest.fail(f"the {image} server does not answer after {READY_TIMEOUT:.0f} s: {error}")
+        time.sleep(0.5)
 
 
 def config_from_dsn(dsn: str, table: str) -> AccessDatabaseConfig:
@@ -34,8 +106,8 @@ def config_from_dsn(dsn: str, table: str) -> AccessDatabaseConfig:
 
 
 @pytest.fixture
-def cfg():
-    cfg = config_from_dsn(DSN, f"sre_test_{os.getpid()}_{int(time.time())}")
+def cfg(dsn):
+    cfg = config_from_dsn(dsn, f"sre_test_{os.getpid()}_{int(time.time())}")
     yield cfg
     connect, _ = connector(cfg)
     conn = connect()
