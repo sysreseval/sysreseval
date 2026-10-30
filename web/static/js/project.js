@@ -49,9 +49,12 @@ let ownerName = '';
 const presentationId = body.dataset.presentation || '';
 const spectator = Boolean(presentationId);
 const groupsEnabled = body.dataset.groups === 'true';
-// an instructor on a student's project: the top bars take the helper colour (sre.css); the
-// student's own page and a spectator's page keep theirs
-if (isInstructor && !isOwner && !spectator) body.classList.add('helping');
+// an instructor on somebody else's project (the helper: joins the student's terminals, sees the
+// last archived evaluation, runs sre privileged): the top bars take the helper colour (sre.css);
+// the student's own page and a spectator's page keep theirs.  The owner, instructor or not, is
+// the student of their own project.
+const helper = isInstructor && !isOwner && !spectator;
+if (helper) body.classList.add('helping');
 
 const tabBar = document.getElementById('tabbar');
 const panes = document.getElementById('panes');
@@ -89,6 +92,7 @@ const ctx = {
   owner,
   login,
   spectator,
+  helper,
   url(suffix, params) {
     return api.withQuery(apiBase + suffix, {...(params || {}), view: state.instructorView ? 'instructor' : undefined});
   },
@@ -496,9 +500,11 @@ function onEvent(ev) {
       }
       break;
     case 'evaluated':
-      // a new archived evaluation (periodic, the student's, an instructor's): the instructor's
-      // Evaluation tab, and a spectator's, show it
-      if (tabs.evaluation && (ctx.isInstructor || spectator)) {
+      // a new archived evaluation (periodic, the student's, an instructor's): the Evaluation tab
+      // of a helper's page, and of a spectator's, shows it; the owner's page, instructor or not,
+      // keeps the table of its own evaluation (letters when the lab hides the marks, which no
+      // archive holds)
+      if (tabs.evaluation && (ctx.helper || spectator)) {
         tabs.evaluation.reload();
       }
       break;

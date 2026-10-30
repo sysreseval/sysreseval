@@ -25,15 +25,17 @@ def lang_priority(identity: Identity, info: dict) -> list:
 
 
 def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False,
-             connect_all: bool = False) -> dict:
-    """*connect_all*: every device opens (an instructor on a student's project, see
-    ``access.is_privileged_caller``), as in a debug project."""
+             privileged: bool = False) -> dict:
+    """*privileged*: an instructor on somebody else's project (``access.is_privileged_caller``):
+    every device opens, as in a debug project, and the Evaluation tab is shown whatever the lab
+    says (the last archived evaluation).  The owner, instructor or not, gets the student's view."""
     priority = lang_priority(identity, info)
     show_instructor = instructor_view_allowed(info, identity)
     display = bool(display_enabled) and display_available(info, identity)
-    open_all = bool(info.get('debug_project', False)) or bool(connect_all)
-    # an instructor gets the Evaluation tab of every project (the last archived evaluation)
-    evaluation = True if identity.is_instructor else None
+    open_all = bool(info.get('debug_project', False)) or bool(privileged)
+    # an instructor gets the Evaluation tab of every project of somebody else (the last archived
+    # evaluation); on their own project, allow_self_grade rules as for a student
+    evaluation = True if privileged else None
 
     def text(value) -> str:
         return common.resolve_text(value, priority, show_instructor=show_instructor)

@@ -437,10 +437,34 @@ class TestJavaScript:
         assert 'body.helping .topbar' in selectors and 'body.helping .project-bar' in selectors
         assert css.index('var(--helper-bg)') < css.index('var(--presentation-bg)')
         project = (JS / 'project.js').read_text(encoding='utf-8')
+        helper = next((l for l in project.splitlines() if l.startswith('const helper =')), None)
+        assert helper, "project.js never defines the helper"
+        for token in ('isInstructor', '!isOwner', '!spectator'):
+            assert token in helper, token
         line = next((l for l in project.splitlines() if "classList.add('helping')" in l), None)
         assert line, "project.js never sets body.helping"
-        for token in ('isInstructor', '!isOwner', '!spectator'):
-            assert token in line, token
+        assert 'if (helper)' in line
+
+    def test_last_archived_evaluation_keyed_on_the_helper(self):
+        """The last archived evaluation (numeric, exo scope) is loaded by the Evaluation tab of a
+        helper (an instructor on somebody else's project, ctx.helper of project.js) and of a
+        spectator, on show and on the `evaluated` event; never by the owner's page, instructor
+        or not, which keeps the rows of its own self-evaluation (the letters of a lab hiding the
+        marks: an owner-instructor saw numbers until 2026-10-30)."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert re.search(r'^const helper = isInstructor && !isOwner && !spectator;$', project, re.M)
+        assert re.search(r'^  helper,$', project, re.M), "ctx.helper is not exposed to the tabs"
+        evaluated = project[project.index("case 'evaluated':"):]
+        evaluated = evaluated[:evaluated.index('break;')]
+        assert 'tabs.evaluation.reload()' in evaluated and '(ctx.helper || spectator)' in evaluated
+        assert 'isInstructor' not in evaluated
+        evaluation = (JS / 'tabs' / 'evaluation.js').read_text(encoding='utf-8')
+        show = evaluation[evaluation.index('show() {'):]
+        show = show[:show.index('hide() {')]
+        assert 'loadLast()' in show and '(ctx.helper || spectator)' in show
+        assert 'isInstructor' not in evaluation
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert 'const helper = Boolean(ctx.helper);' in terminals
 
     def test_focus_colour_keyed_on_the_body(self):
         """While an instructor focuses a student on the project, both pages take --focus-bg on

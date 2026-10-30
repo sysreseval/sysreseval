@@ -1,11 +1,14 @@
 // The Evaluation tab: a "Start evaluation" button (POST {api_base}/eval) and the table of the
 // grades the agent lays out (header labels and rows with their colours, from
 // SRE/evaluation_table.py).  While the lab's cooldown runs, the button is replaced by a
-// countdown "Next evaluation allowed in {n} s", as in the Qt view.  An instructor first sees
-// the last archived evaluation of the project (GET {api_base}/evaluation), whoever ran it; so
-// does a spectator of a presentation (ctx.spectator, no button), again after each evaluation
-// the presenter runs (reload); the presenter's page calls ctx.onEvaluated() then.  The
-// spectators follow the presenter's scroll (scroll.js), applied again once the table is loaded.
+// countdown "Next evaluation allowed in {n} s", as in the Qt view.  An instructor on somebody
+// else's project (ctx.helper) first sees the last archived evaluation of the project
+// (GET {api_base}/evaluation), whoever ran it; so does a spectator of a presentation
+// (ctx.spectator, no button), again after each evaluation the presenter runs (reload); the
+// presenter's page calls ctx.onEvaluated() then.  The owner, instructor or not, gets the
+// student's tab: nothing loaded before the button, and the table its self-evaluation gives is
+// kept (the letters of a lab hiding the marks, which no archive holds).  The spectators follow
+// the presenter's scroll (scroll.js), applied again once the table is loaded.
 
 import * as api from '../api.js';
 import {el, clear, toast} from '../ui.js';
@@ -65,7 +68,7 @@ export function createEvaluationTab(ctx) {
     button.disabled = false;
   }
 
-  // instructors: the last archived evaluation, with its date and the errors of the run
+  // a helper or a spectator: the last archived evaluation, with its date and the errors of the run
   async function loadLast() {
     lastLoaded = true;
     let data;
@@ -133,7 +136,7 @@ export function createEvaluationTab(ctx) {
     element: pane,
     show() {
       shown = true;
-      if ((ctx.isInstructor || spectator) && !lastLoaded) {
+      if ((ctx.helper || spectator) && !lastLoaded) {
         loadLast();
       }
     },
@@ -141,9 +144,9 @@ export function createEvaluationTab(ctx) {
       shown = false;
     },
     update() {},
-    // the last archived evaluation again: an instructor's page on the `evaluated` event (a
-    // periodic evaluation, the student's, another instructor's), a spectator's when the
-    // presenter evaluated
+    // the last archived evaluation again: a helper's page on the `evaluated` event (a periodic
+    // evaluation, the student's, another instructor's), a spectator's when the presenter
+    // evaluated; never the owner's page (project.js), whose own table stays
     reload() {
       lastLoaded = false;
       if (shown) {

@@ -52,8 +52,9 @@ export function createTerminalsTab(ctx) {
   let remote = [];              // the live sessions of the project (setSessions): {id, device, created_by, private, clients}
   const dismissed = new Set();  // the remote sessions the user closed here: never joined again by themselves
   let shown = false;            // the tab has been shown at least once
-  // an instructor on somebody else's project: joins the owner's terminals, opens private ones
-  const helper = Boolean(ctx.isInstructor && !ctx.isOwner && !spectator);
+  // an instructor on somebody else's project (project.js): joins the owner's terminals, opens
+  // private ones
+  const helper = Boolean(ctx.helper);
 
   // the presenter's page: the sub-tabs changed (published to the spectators)
   function notify() {

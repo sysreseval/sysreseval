@@ -491,6 +491,21 @@ class TestEval:
         assert completed.returncode == 0
         assert json.loads(completed.stdout)['grades']
 
+    def test_no_mark_prints_letters_in_user_mode(self, pub, project):
+        """MOCK_NO_MARK (the lab's no_mark_on_self_grade): letters and no mark for
+        `--user eval --auto-eval`, numbers for a privileged eval and in every archive."""
+        env = {'MOCK_NO_MARK': '1'}
+        result = json.loads(run_mock(pub, 'eval', '--auto-eval', project, extra_env=env).stdout)
+        assert [(g['grade_letter'], g['grade'], g['max_grade'], g['bonus']) for g in result['grades']] == \
+            [('OK', None, None, False), ('MEH', None, None, False), ('OK', None, None, True)]
+        assert result['mark'] is None and result['maximum_mark'] is None
+        privileged = json.loads(run_mock(pub, 'eval', project, user=False, extra_env=env).stdout)
+        assert [g['grade_letter'] for g in privileged['grades']] == [None] * 3 and privileged['mark'] == 18.0
+        archives = list((pub / 'archives').iterdir())   # one or two: a name per second
+        assert archives
+        for archive in archives:
+            assert [g['grade'] for g in read_archive(str(archive))['grade_list']] == [2, 1.5, 1]
+
     def test_lock_file_while_evaluating(self, pub, project):
         lock = project_dir(pub, project) / params.private_dir_name / params.eval_in_progress_name
         proc = subprocess.Popen(_argv('eval', '--auto-eval', project), stdout=subprocess.PIPE, stderr=subprocess.PIPE,

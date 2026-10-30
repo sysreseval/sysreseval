@@ -761,7 +761,8 @@ What an instructor gets:
   the tooltip), shows each new one by itself (the periodic evaluations of the lab, the student's
   own, another instructor's: the agent tells the open pages) and *Start evaluation* runs a
   privileged `sre eval` (no cooldown, nothing counted on the student's side, the exo-eval marks);
-  the states apply through the privileged path too.
+  the states apply through the privileged path too. All this is for somebody else's project: on
+  their own, an instructor is the student (see *Instructor mode* below).
 - **Focus student on project**: the toggle button of a student's project page (off by default)
   brings the student to what the instructor is looking at. While it is on, every page of the
   student that does not show the project goes to it (now, and any page they open later: the
@@ -789,7 +790,11 @@ What an instructor gets:
   the states logged): the *Instructor mode* button of the project page then shows the
   `instructor()` texts of the Informations and Questions tabs, every state and the Log tab, as in
   the Qt GUI. A student's project holds no instructor text (the CLI strips them), so the button
-  does not appear there.
+  does not appear there. The Evaluation tab of the instructor's own project is the student's
+  one, as in the Qt GUI: *Start evaluation* runs the self-evaluation (`sre --user eval
+  --auto-eval`, the cooldown of the lab, the letters OK / MEH / FAIL when the lab hides the
+  marks with `no_mark_on_self_grade`) and the table it gives stays; the last archived evaluation
+  is shown on somebody else's project only (an archive holds the numbers).
 - **The host of a project**: the *Host* select of the Open page (shown when the pool has a host
   reserved for instructors, `instructors_only = true` in `[[hosts]]`) names one of them, with
   its state and its projects (greyed when off or full), or leaves the automatic placement: the
@@ -1018,7 +1023,9 @@ project of the synthetic logins (through the instructor identity) and exits.
 trusting the loopback, with the production `[limits]` (`--start-interval` / `--eval-interval`
 override them), `max_projects` per host and an admin token; then it runs the command given after
 `--` with `SRE_STRESS_PORTAL`, `SRE_STRESS_ADMIN_TOKEN` and `SRE_STRESS_WORKDIR` in its environment
-(the defaults of `--portal` and `--admin-token`) and stops everything:
+(the defaults of `--portal` and `--admin-token`) and stops everything. Every `MOCK_*` variable of
+its environment reaches the fake `sre` (`MOCK_NO_MARK=1`: the letters of a self-evaluation,
+`MOCK_EVAL_ERRORS`, `MOCK_COOLDOWN`, see the header of `tests/mock_sre.py`):
 
 ```sh
 venv/bin/python3 scripts/web-fake-pool.py --hosts 4 --max-projects 25 -- \

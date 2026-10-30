@@ -172,7 +172,7 @@ class Agent:
     def _view(self, project: Project, identity: Identity) -> dict:
         return sanitise(project.info, identity, exam_mode=self.exam_mode(),
                         display_enabled=self.displays.offered(project),
-                        connect_all=access.is_privileged_caller(project.rln, identity))
+                        privileged=access.is_privileged_caller(project.rln, identity))
 
     def _project(self, request, *, touch: bool = True) -> Project:
         """The project of the request, checked (a known running lab name the caller may access);
@@ -716,7 +716,11 @@ class Agent:
 
     async def evaluation_get(self, request):
         """Instructors: the last archived evaluation of the project (exo-eval scope), as rows of
-        the evaluation table, with the errors of the run."""
+        the evaluation table, with the errors of the run.  Open to every instructor, the owner
+        included: the spectators of a presentation carry the presenter's identity, who may be an
+        instructor presenting their own project.  The owner's page itself never asks for it: it
+        keeps the table of its own self-evaluation (letters when the lab hides the marks, which
+        no archive holds)."""
         project = self._project(request, touch=False)
         identity = request[IDENTITY_KEY]
         if not identity.is_instructor:

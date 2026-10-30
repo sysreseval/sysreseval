@@ -1071,6 +1071,40 @@ class TestInstructor:
                 assert data['eval_date'] and data['archive'].endswith('.zst')
         run(go())
 
+    def test_owner_instructor_keeps_the_letters_of_a_self_evaluation(self, tmp_path):
+        """A lab hiding the marks on a self-evaluation (no_mark_on_self_grade): the owner's
+        evaluation, instructor or not, is the student path and its rows carry the letters (a
+        blank Total, no Mark row), built from the answer of sre eval and never from the archive,
+        which is always numeric; an instructor on somebody else's project gets the numbers; the
+        last archived evaluation stays readable by any instructor, their own project included
+        (the spectators of a presentation carry the presenter's identity).  The page keeps the
+        rows of its own evaluation on an owner's page (project.js, tabs/evaluation.js)."""
+        def grade_cells(rows: list) -> list:
+            return [r['cells'][1]['text'] for r in rows if r['kind'] == 'element']
+
+        async def go():
+            async with Harness(tmp_path, {'MOCK_NO_MARK': '1'}) as h:
+                mine = await h.started(PROF_NOVIEW)
+                resp = await h.client.post(f'/v1/projects/{mine}/eval', headers=headers(PROF_NOVIEW))
+                data = await resp.json()
+                assert resp.status == 200 and h.calls()[-1] == ['--user', 'eval', '--auto-eval', mine]
+                assert data['result']['mark'] is None
+                assert grade_cells(data['rows']) == ['OK', 'MEH', 'OK']
+                total = data['rows'][-1]
+                assert total['kind'] == 'total' and [c['text'] for c in total['cells'][1:]] == ['', '']
+                # a student's project: the same letters for the student, the numbers for the instructor
+                rln = await h.started()
+                data = await (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).json()
+                assert grade_cells(data['rows']) == ['OK', 'MEH', 'OK']
+                data = await (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers(PROF))).json()
+                assert grade_cells(data['rows']) == ['2', '1.5', '1'] and data['rows'][-1]['kind'] == 'mark'
+                # the archives, numeric, read by any instructor, their own project included
+                for project in (mine, rln):
+                    resp = await h.client.get(f'/v1/projects/{project}/evaluation', headers=headers(PROF))
+                    assert resp.status == 200
+                    assert grade_cells((await resp.json())['rows']) == ['2', '1.5', '1']
+        run(go())
+
     def test_lab_evaluations(self, tmp_path):
         """The lab summary of the Watch page: every project of a lab with the elements of its
         last archived evaluation, matched across the students by a language-independent key."""

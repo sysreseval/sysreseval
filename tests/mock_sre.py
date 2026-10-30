@@ -34,6 +34,11 @@ Environment variables (all optional but the first):
                       and owner is younger than that (timestamp file of
                       params.self_grade_timestamp_file(lab, user)); also the delay_before_self_grade
                       of the grades JSON (0 without it)
+  MOCK_NO_MARK        set: the lab hides the marks on a self-evaluation (no_mark_on_self_grade):
+                      `--user eval --auto-eval` prints the grades as letters
+                      (GradeElement.to_grade_letter(): OK / MEH / FAIL, grade and max_grade null)
+                      and null mark / maximum_mark, as sre does; a privileged `eval` and the
+                      archive stay numeric
   MOCK_FAIL           the subcommand that exits 1 with `sre: mock failure` on stderr
 
 `main(argv, env)` runs one invocation and returns its exit code (the script itself runs
@@ -93,6 +98,7 @@ ENV_EVAL_DELAY = 'MOCK_EVAL_DELAY'
 ENV_EVAL_ERRORS = 'MOCK_EVAL_ERRORS'
 ENV_EVAL_INTERVAL = 'MOCK_EVAL_INTERVAL'
 ENV_COOLDOWN = 'MOCK_COOLDOWN'
+ENV_NO_MARK = 'MOCK_NO_MARK'       # set: letters and no mark on a self-evaluation (no_mark_on_self_grade)
 ENV_FAIL = 'MOCK_FAIL'
 ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an x11_host
 
@@ -489,15 +495,18 @@ class Mock:
                 time.sleep(delay)
             now = datetime.datetime.now()
             parts, elements, mark = stub_grades()
+            # no_mark_on_self_grade: sre converts the grades of a --user run to letters after the
+            # archive is written (SRE/command/eval.py), and prints no mark
+            no_mark = self.user_mode and bool(self.env.get(ENV_NO_MARK))
             result = {
                 params.running_lab_name_keyword: running_lab_name,
                 params.eval_date_keyword: now.isoformat(),
                 params.login_keyword: owner,
                 params.hostname_keyword: socket.gethostname(),
-                'grades': [asdict(e) for e in elements],
+                'grades': [asdict(e.to_grade_letter() if no_mark else e) for e in elements],
                 'grade_parts': [asdict(p) for p in parts],
-                'mark': mark,
-                'maximum_mark': params.default_maximum_mark,
+                'mark': None if no_mark else mark,
+                'maximum_mark': None if no_mark else params.default_maximum_mark,
                 'delay_before_self_grade': cooldown if self.user_mode else 0,
             }
             self.write_archive(running_lab_name, now, parts, elements, mark, auto_eval=auto_eval)

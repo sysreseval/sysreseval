@@ -11,6 +11,9 @@ given after ``--`` with ``SRE_STRESS_PORTAL``, ``SRE_STRESS_ADMIN_TOKEN`` and ``
 in its environment (``scripts/web-stress.py`` reads the first two), and exits with its status.
 Everything is stopped at the end; the work directory (configs, ``portal.log``, ``access.log``,
 ``<host>/agent.log`` and ``<host>/sre.log``) is removed unless ``--keep-workdir`` or a daemon died.
+Every ``MOCK_*`` variable of the environment reaches the fake ``sre`` (the wrapper exports it with
+the delays: the agents build the environment of ``sre`` from scratch), e.g. ``MOCK_NO_MARK=1`` for
+the letters of a self-evaluation or ``MOCK_EVAL_ERRORS`` for errors on the Watch page.
 
     venv/bin/python3 scripts/web-fake-pool.py --hosts 4 -- \\
         venv/bin/python3 scripts/web-stress.py --users 100 --ramp 60 --hold 120 --instructor --probe
@@ -21,6 +24,7 @@ import argparse
 import json
 import os
 import secrets
+import shlex
 import shutil
 import signal
 import subprocess
@@ -104,10 +108,15 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         (host_dir / 'pub').mkdir(parents=True, exist_ok=True)
         host = FakeHost(name=name, dir=host_dir, port=opts.port + 1 + i, token=secrets.token_hex(16))
         sre = host_dir / 'sre'
+        # the agent builds the environment of sre from scratch: the wrapper exports the delays and
+        # every other MOCK_* of this script's environment (MOCK_NO_MARK=1: the letters of a
+        # self-evaluation, MOCK_EVAL_ERRORS, MOCK_COOLDOWN...)
+        passed = ''.join(f' {name}={shlex.quote(value)}' for name, value in sorted(os.environ.items())
+                         if name.startswith('MOCK_') and name not in ('MOCK_START_DELAY', 'MOCK_EVAL_DELAY', 'MOCK_SRE_LOG'))
         sre.write_text(
             '#!/bin/sh\n'
             f'export MOCK_START_DELAY={opts.start_delay} MOCK_EVAL_DELAY={opts.eval_delay} '
-            f'MOCK_SRE_LOG={toml_str(str(host_dir / "sre.log"))}\n'
+            f'MOCK_SRE_LOG={toml_str(str(host_dir / "sre.log"))}{passed}\n'
             f'exec {toml_str(sys.executable)} -W ignore {toml_str(str(MOCK_SRE))} "$@"\n')
         sre.chmod(0o755)
         (host_dir / 'agent.toml').write_text(

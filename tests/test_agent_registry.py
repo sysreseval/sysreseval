@@ -489,18 +489,21 @@ class TestProjectView:
 
     def test_instructor_on_a_student_project(self):
         prof = Identity(login='prof', role='instructor')
-        view = projectview.sanitise(make_info(allow_self_grade=False), prof, connect_all=True)
+        view = projectview.sanitise(make_info(allow_self_grade=False), prof, privileged=True)
         # every device opens for them (privileged sre connect), as in a debug project
         assert [(d['name'], d['allow_connection']) for d in view['terminal_devices']] == \
             [('pc1', True), ('srv', True), ('probe', True), ('lan', True)]
         assert all(m['allow_connection'] for m in view['machines'])
-        # the Evaluation tab of every project for an instructor (the last archived evaluation)
+        # the Evaluation tab of every project of somebody else (the last archived evaluation)
         assert 'evaluation' in view['tabs']
         assert 'evaluation' not in projectview.sanitise(make_info(allow_self_grade=False), ALICE)['tabs']
-        # without connect_all the student's rules apply to the owner-instructor
+        # not privileged: the student's rules apply to the owner-instructor, the devices and the
+        # Evaluation tab alike (their own evaluation is a self-evaluation)
         own = projectview.sanitise(make_info(), prof)
         assert [(d['name'], d['allow_connection']) for d in own['terminal_devices']] == \
             [('pc1', True), ('srv', False), ('probe', True), ('lan', True)]
+        assert 'evaluation' in own['tabs']
+        assert 'evaluation' not in projectview.sanitise(make_info(allow_self_grade=False), prof)['tabs']
 
     def test_schema_svg(self):
         import shutil
