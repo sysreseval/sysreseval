@@ -221,15 +221,21 @@ class TestTemplates:
         assert '<option value="start">start</option>' in html and '<option value="">All events</option>' in html
         assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
         assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
-        # two tables of ten columns: the events (shown) and the sessions (hidden until chosen)
+        # two tables: the events (shown, ten columns) and the sessions (hidden until chosen, eleven
+        # columns, the Group one hidden unless a group source is configured, like the Watch page's)
         events_table, sessions_table = html.split('<table id="history-sessions"')
         assert 'id="history"' in events_table and 'class="grid watch history" data-database' in events_table
         assert events_table.count('<th>') == 10 and events_table.count('colspan="10"') == 1
-        assert sessions_table.startswith(' class="grid watch history sessions" hidden>')
-        assert sessions_table.count('<th>') == 10 and sessions_table.count('colspan="10"') == 1
+        assert sessions_table.startswith(' class="grid watch history sessions" data-groups="false" hidden>')
+        assert sessions_table.count('<th>') == 10 and sessions_table.count('colspan="11"') == 1
+        assert sessions_table.count('<th hidden>') == 1 and '<th hidden>Group</th>' in sessions_table
         for column in ('Login', 'Name', 'Address', 'Start time', 'End time', 'Duration', 'Requests', 'Projects',
                        'Closed by', 'Events'):
             assert f'<th>{column}</th>' in sessions_table, column
+        assert sessions_table.index('<th>Name</th>') < sessions_table.index('Group') < sessions_table.index('<th>Address</th>')
+        with_groups = render('history.html', instructor=True, administrator=True, history_database=False, events=events,
+                             groups=True)
+        assert 'data-groups="true"' in with_groups and '<th>Group</th>' in with_groups and '<th hidden>' not in with_groups
         # the view switch (Sessions first and pressed: the page opens on it) and the filters of the events view alone
         assert 'data-view="sessions" aria-pressed="true">Sessions<' in html
         assert 'data-view="events" aria-pressed="false">Events<' in html

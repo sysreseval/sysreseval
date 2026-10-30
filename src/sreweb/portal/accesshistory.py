@@ -176,8 +176,8 @@ def session_of_row(row: dict) -> dict:
     the duration; the end is the last request of the session, ``duration`` after the start),
     ``closed`` the time of the line itself (``session_timeout`` after the end for an idle
     session), the request count, the projects (running lab names), ``reason`` (``logout``,
-    ``idle``, ``shutdown``), and the name and role of the user (``''`` on the lines written before
-    they were logged there)."""
+    ``idle``, ``shutdown``), and the name, role and student group of the user (``''`` on the
+    lines written before they were logged there)."""
     details = row.get('details') or {}
     duration = row.get('duration')
     duration = float(duration) if duration is not None else 0.0
@@ -192,8 +192,8 @@ def session_of_row(row: dict) -> dict:
         projects = []
     reason = details.get('reason')
     return {'id': row.get('id'), 'login': row.get('login') or '', 'name': str(details.get('name') or ''),
-            'role': str(details.get('role') or ''), 'addr': row.get('addr') or '',
-            'start': start, 'end': start + duration if start is not None else None, 'closed': ts,
+            'role': str(details.get('role') or ''), 'group': str(details.get('group') or ''),
+            'addr': row.get('addr') or '', 'start': start, 'end': start + duration if start is not None else None, 'closed': ts,
             'duration': duration, 'requests': _int(details.get('requests')), 'projects': [str(p) for p in projects],
             'reason': str(reason) if reason else None}
 
@@ -202,8 +202,8 @@ def session_of_visit(visit) -> dict:
     """The same keys for a session still open (an ``accesslog.Visit``): no id, no closing time
     nor reason, the end is the last request, plus ``sockets``, the WebSockets open (a project
     page, a terminal, a desktop)."""
-    return {'id': None, 'login': visit.login, 'name': visit.name, 'role': visit.role, 'addr': visit.addr,
-            'start': visit.first_seen, 'end': visit.last_seen, 'closed': None, 'duration': visit.duration,
+    return {'id': None, 'login': visit.login, 'name': visit.name, 'role': visit.role, 'group': visit.group,
+            'addr': visit.addr, 'start': visit.first_seen, 'end': visit.last_seen, 'closed': None, 'duration': visit.duration,
             'requests': visit.requests, 'projects': list(visit.projects), 'reason': None, 'sockets': visit.sockets}
 
 

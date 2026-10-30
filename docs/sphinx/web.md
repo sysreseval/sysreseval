@@ -295,8 +295,8 @@ directory for the file or writes it under `/var/lib/sre-web`. The lines of the f
 a timestamp (`2026-10-26T09:12:03+0100`):
 
 ```
-event=login login=alice addr=10.0.1.7 mode=ldap role=student anon=0 name="Alice Test"
-event=session_open login=alice addr=10.0.1.7 role=student anon=0 name="Alice Test" ua="Mozilla/5.0 …"
+event=login login=alice addr=10.0.1.7 mode=ldap role=student anon=0 name="Alice Test" group=INFO1
+event=session_open login=alice addr=10.0.1.7 role=student anon=0 name="Alice Test" group=INFO1 ua="Mozilla/5.0 …"
 event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 host=a01 placement=load result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
 event=project_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice
 event=terminal_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0
@@ -305,18 +305,20 @@ event=eval login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice stat
 event=project_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice duration=1803.6 code=1001
 event=stop login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice status=200 duration=3.0
 event=logout login=alice addr=10.0.1.7 status=200 duration=0.0
-event=session_close login=alice addr=10.0.1.7 role=student name="Alice Test" reason=logout since=2026-10-26T09:11:50+0100 duration=1850 requests=14 projects=1761466323@@@dhcp@@@alice
+event=session_close login=alice addr=10.0.1.7 role=student name="Alice Test" group=INFO1 reason=logout since=2026-10-26T09:11:50+0100 duration=1850 requests=14 projects=1761466323@@@dhcp@@@alice
 ```
 
 A **session** is the requests of one login from one client address (`addr`): it opens at the
-first request (`session_open`: role, pseudonym or not, name, user agent) and closes
-(`session_close`) at a logout, after `session_timeout` without a request (`reason=idle`; the
-duration then ends at the last request, not at the expiry) or when the portal stops
+first request (`session_open`: role, pseudonym or not, name, student group, user agent) and
+closes (`session_close`) at a logout, after `session_timeout` without a request (`reason=idle`;
+the duration then ends at the last request, not at the expiry) or when the portal stops
 (`shutdown`); a session whose project page, terminal or desktop is still open never expires.
-The closing line repeats the role and the name and gives the start, the duration in seconds, the
-number of requests (the polls of the pages and the keep-alive of a project are not counted) and
-the projects used: the *Sessions* view of the History page (*Administrators* below) is built
-from that line alone. In proxy mode there is no login: the first request of a user opens the
+The closing line repeats the role, the name and the group (the student group of the directory
+or of the proxy, `attr_group` / `header_group`, `-` without one; the last non-empty value seen
+during the session, since a directory lookup may fail on the first request) and gives the
+start, the duration in seconds, the number of requests (the polls of the pages and the
+keep-alive of a project are not counted) and the projects used: the *Sessions* view of the
+History page (*Administrators* below) is built from that line alone. In proxy mode there is no login: the first request of a user opens the
 session and the request following a logout opens another one. The other events:
 
 - `login` (`mode`: `anonymous` or `ldap`) and `login_failed` (`reason`: `password`,
@@ -846,16 +848,18 @@ The page opens on the **Sessions** view: the log as one row per session (*The co
 above: one login from one client address, from its first request to the logout, the idle
 timeout or the shutdown): the sessions still open first, in green, from the portal's memory
 (listed even without a database), then the closed ones, newest first, each built from its
-`session_close` line: login, name, address, start, end (the last request: an idle session ends
-there, not at its expiry), duration, number of requests, the labs of the projects used (the
-running lab names as a tooltip) and what closed it (*Logout*, *Idle*, *Shutdown*; *Still open*
-with the number of pages, terminals and desktops connected). Only the login and address
+`session_close` line: login, name, student group (the column is shown when a group source is
+configured, `attr_group` or `header_group`, like the Group column of the Watch page), address,
+start, end (the last request: an idle session ends there, not at its expiry), duration, number
+of requests, the labs of the projects used (the running lab names as a tooltip) and what closed
+it (*Logout*, *Idle*, *Shutdown*; *Still open* with the number of pages, terminals and desktops
+connected). Only the login and address
 prefixes and the time window apply; the window bounds the time a session was **closed**
 (`session_timeout` after the last request for an idle one; an open session is listed when it
 was active in the window); the other filters are hidden. The *show* cell of a row opens the
 events view on that session: its login and address, from the minute of its start to the minute
-after its closing line. The sessions closed before the name and role were logged on the closing
-line show an empty name.
+after its closing line. The sessions closed before the name, role and group were logged on the
+closing line show an empty name and group.
 
 The **Events** view (`?view=events` in the URL) lists the events newest first, one row per
 event with its time (the local time of the browser), event, login, client address, host,

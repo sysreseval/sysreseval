@@ -52,11 +52,12 @@
   </thead>
   <tbody><tr><td colspan="10" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
-<table id="history-sessions" class="grid watch history sessions" hidden>
+<table id="history-sessions" class="grid watch history sessions" data-groups="{{ 'true' if groups else 'false' }}" hidden>
   <thead>
     <tr>
       <th>{{ _("Login") }}</th>
       <th>{{ _("Name") }}</th>
+      <th{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
       <th>{{ _("Address") }}</th>
       <th>{{ _("Start time") }}</th>
       <th>{{ _("End time") }}</th>
@@ -67,7 +68,7 @@
       <th>{{ _("Events") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="10" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="11" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 <div class="history-pager">
   <button type="button" id="history-newer" disabled>{{ _("Newer") }}</button>

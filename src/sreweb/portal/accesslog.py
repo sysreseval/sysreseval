@@ -185,6 +185,7 @@ class Visit:
     ua: str
     first_seen: float
     last_seen: float
+    group: str = ''                # the student group of the identity ('' = unknown)
     requests: int = 0
     sockets: int = 0               # the WebSockets open (a session with one never expires)
     projects: list = field(default_factory=list)   # running lab names, in order of first use
@@ -216,14 +217,18 @@ class Visits:
 
     def touch(self, identity: Identity, addr: str, ua: str, now: float, *, count: bool = True) -> tuple:
         """``(visit, new)``: the session of *identity* from *addr*, opened now when there is
-        none; *count* adds the request to the session's count."""
+        none; *count* adds the request to the session's count.  The group of the session is
+        the last non-empty one of the identity (a directory lookup may fail on the first
+        request and answer on a later one; an empty group never replaces a known one)."""
         key = (identity.login, addr)
         visit = self._visits.get(key)
         new = visit is None
         if new:
             visit = Visit(login=identity.login, addr=addr, role=identity.role, anon=identity.anonymous,
-                          name=identity.fullname, ua=ua, first_seen=now, last_seen=now)
+                          name=identity.fullname, ua=ua, first_seen=now, last_seen=now, group=identity.group)
             self._visits[key] = visit
+        elif identity.group and identity.group != visit.group:
+            visit.group = identity.group
         visit.last_seen = max(visit.last_seen, now)
         if count:
             visit.requests += 1
@@ -354,25 +359,25 @@ class AccessLog:
         visit, new = self.visits.touch(identity, addr, ua, self.clock(), count=count)
         if new:
             self.record('session_open', login=visit.login, addr=addr, role=visit.role, anon=visit.anon,
-                        name=visit.name, ua=visit.ua)
+                        name=visit.name, group=visit.group, ua=visit.ua)
         return visit
 
     def login(self, request, identity: Identity, mode: str):
         """A successful login (``mode``: anonymous or ldap); opens the session (the request
         carried no identity when the middleware ran)."""
         self.record('login', login=identity.login, addr=self.address(request), mode=mode, role=identity.role,
-                    anon=identity.anonymous, name=identity.fullname)
+                    anon=identity.anonymous, name=identity.fullname, group=identity.group)
         self.touch(request, identity)
 
     def login_failed(self, request, login: str, reason: str):
         self.record('login_failed', login=login, addr=self.address(request), reason=reason)
 
     def _closed(self, visit: Visit, reason: str):
-        """The closing line: the role and name again (a session row of the History page is
-        built from this line alone), when and why it closed, what it did."""
+        """The closing line: the role, name and group again (a session row of the History page
+        is built from this line alone), when and why it closed, what it did."""
         self.record('session_close', login=visit.login, addr=visit.addr, role=visit.role, name=visit.name,
-                    reason=reason, since=iso_time(visit.first_seen), duration=round(visit.duration),
-                    requests=visit.requests, projects=visit.projects)
+                    group=visit.group, reason=reason, since=iso_time(visit.first_seen),
+                    duration=round(visit.duration), requests=visit.requests, projects=visit.projects)
 
     def close_visit(self, key, reason: str):
         visit = self.visits.close(key)

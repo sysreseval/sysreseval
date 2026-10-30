@@ -4,7 +4,8 @@
 //
 // Sessions (GET /api/history/sessions, the default): one row per session of a login from one
 // address, the sessions still open first (the portal's memory, green), then the closed ones
-// from their session_close lines: login, name, address, start, end (the last request),
+// from their session_close lines: login, name, student group (the column is hidden unless a
+// group source is configured, like the Watch page's), address, start, end (the last request),
 // duration, number of requests, the labs of the projects used, why it closed (logout, idle
 // timeout, shutdown) and a link to the events of that session (the events view filtered on its
 // login, address and time window).  Only the login, address and time filters apply (the time
@@ -43,6 +44,7 @@ const newerButton = document.getElementById('history-newer');
 const olderButton = document.getElementById('history-older');
 const pageElement = document.getElementById('history-page');
 const databaseConfigured = tables.events.dataset.database === 'true';
+const groupsEnabled = tables.sessions.dataset.groups === 'true';   // a group source is configured: Group column shown
 
 // view: events or sessions; rows: the rows of the page (events, or closed sessions); open: the
 // open sessions (the first page of the sessions view); before: the cursor of the page shown
@@ -266,6 +268,7 @@ function renderSession(session) {
   return el('tr', {class: open ? 'row-open' : '', dataset: {id: session.id === null ? '' : String(session.id)}},
     filterCell('login', session.login),
     el('td', {title: session.role || ''}, session.name || ''),
+    el('td', {hidden: !groupsEnabled}, session.group || ''),
     filterCell('addr', session.addr),
     timeCell(session.start),
     open ? el('td', {class: 'ts'}, '') : timeCell(session.end),

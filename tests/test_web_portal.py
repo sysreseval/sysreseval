@@ -1170,14 +1170,14 @@ class TestHistory:
         since = '2026-10-26T09:11:50+0100'
         closed_at = datetime(2026, 10, 26, 8, 42, 40, 500000)          # UTC in the table
         rows = [(9, closed_at, 'session_close', 'alice', '10.0.1.7', '', '', '', '', 1850.0,
-                 json.dumps({'role': 'student', 'name': 'Alice Test', 'reason': 'idle', 'since': since, 'requests': 14,
-                             'projects': ['1761466323@@@dhcp@@@alice']})),
+                 json.dumps({'role': 'student', 'name': 'Alice Test', 'group': 'INFO1', 'reason': 'idle', 'since': since,
+                             'requests': 14, 'projects': ['1761466323@@@dhcp@@@alice']})),
                 (5, datetime(2026, 10, 26, 7, 0, 0), 'session_close', 'bob', '10.0.1.8', '', '', '', '', 60.0,
                  json.dumps({'reason': 'logout', 'since': '2026-10-26T07:59:00+0100', 'requests': 2, 'projects': []}))]
 
         async def go():
             async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
-                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test')
+                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test', group='INFO2')
                 await h.client.get('/api/me', headers=bob)                  # bob's session is open
                 server.select_names = NAMES
                 server.select_rows = rows
@@ -1185,13 +1185,16 @@ class TestHistory:
                 assert page['limit'] == 100 and page['more'] is False and page['database']['connected'] is True
                 start = parse_time(since)
                 assert page['rows'][0] == {'id': 9, 'login': 'alice', 'name': 'Alice Test', 'role': 'student',
-                                           'addr': '10.0.1.7', 'start': start, 'end': start + 1850.0,
+                                           'group': 'INFO1', 'addr': '10.0.1.7', 'start': start, 'end': start + 1850.0,
                                            'closed': epoch(closed_at), 'duration': 1850.0, 'requests': 14,
                                            'projects': ['1761466323@@@dhcp@@@alice'], 'reason': 'idle'}
-                assert page['rows'][1]['name'] == '' and page['rows'][1]['reason'] == 'logout'
+                assert page['rows'][1]['name'] == '' and page['rows'][1]['group'] == ''     # logged before the fields
+                assert page['rows'][1]['reason'] == 'logout'
                 # the open sessions, newest first (prof's opened by this very call), the identity of the headers
-                assert [(s['login'], s['name'], s['role'], s['reason'], s['closed'], s['sockets']) for s in page['open']] == \
-                       [('prof', 'Prof Essor', 'instructor', None, None, 0), ('bob', 'Bob Test', 'student', None, None, 0)]
+                assert [(s['login'], s['name'], s['role'], s['group'], s['reason'], s['closed'], s['sockets'])
+                        for s in page['open']] == \
+                       [('prof', 'Prof Essor', 'instructor', '', None, None, 0),
+                        ('bob', 'Bob Test', 'student', 'INFO2', None, None, 0)]
                 assert page['open'][0]['requests'] == 1 and page['open'][0]['projects'] == []
                 assert page['open'][0]['start'] <= page['open'][0]['end'] and page['open'][0]['id'] is None
                 # the login prefix on both kinds, the limit and the cursor; the events-only filters are ignored
@@ -1209,16 +1212,19 @@ class TestHistory:
                 resp = await h.client.get('/api/history/sessions', headers=prof)
                 assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
                 server.down = False
-            # the history lines carry the view and the filters; the close lines the name and role
+            # the history lines carry the view and the filters; the close lines the name, role and group
             history = [row for row in server.committed if row[1] == 'history']
             assert json.loads(history[0][9])['view'] == 'sessions' and 'login_filter' not in json.loads(history[0][9])
             assert json.loads(history[1][9])['login_filter'] == 'b' and 'event_filter' not in json.loads(history[1][9])
             closes = {row[2]: json.loads(row[9]) for row in server.committed if row[1] == 'session_close'}
             assert closes['bob']['name'] == 'Bob Test' and closes['bob']['role'] == 'student'
+            assert closes['bob']['group'] == 'INFO2' and closes['prof']['group'] == ''
             assert closes['prof']['role'] == 'instructor' and closes['prof']['reason'] == 'shutdown'
             lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
             assert [l['view'] for l in lines if l['event'] == 'history'][:2] == ['sessions', 'sessions']
-            assert any(l['event'] == 'session_close' and l['name'] == 'Bob Test' and l['role'] == 'student' for l in lines)
+            assert any(l['event'] == 'session_close' and l['name'] == 'Bob Test' and l['role'] == 'student'
+                       and l['group'] == 'INFO2' for l in lines)
+            assert any(l['event'] == 'session_open' and l['login'] == 'bob' and l['group'] == 'INFO2' for l in lines)
         run(go())
 
     def test_sessions_without_database(self, tmp_path):

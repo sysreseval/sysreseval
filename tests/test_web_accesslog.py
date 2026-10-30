@@ -136,8 +136,8 @@ class TestVisits:
         visits = A.Visits()
         visit, new = visits.touch(ALICE, '10.0.1.7', 'UA', 1000.0)
         assert new and len(visits) == 1 and visit.key == ('alice', '10.0.1.7')
-        assert (visit.login, visit.addr, visit.role, visit.anon, visit.name, visit.ua) == \
-               ('alice', '10.0.1.7', 'student', False, 'Alice Test', 'UA')
+        assert (visit.login, visit.addr, visit.role, visit.anon, visit.name, visit.group, visit.ua) == \
+               ('alice', '10.0.1.7', 'student', False, 'Alice Test', '', 'UA')
         assert visit.first_seen == visit.last_seen == 1000.0 and visit.requests == 1
         again, new = visits.touch(ALICE, '10.0.1.7', 'UA', 1030.0, count=False)   # a poll
         assert again is visit and not new and visit.last_seen == 1030.0 and visit.requests == 1
@@ -154,6 +154,22 @@ class TestVisits:
         assert visits.all() == [visit, other]                       # a snapshot: the Sessions view
         assert visits.close(visit.key) is visit and visits.close(visit.key) is None and len(visits) == 1
         assert visits.all() == [other]
+
+    def test_group_follows_the_identity(self):
+        """The group of a session is the last non-empty one of its identity (a directory
+        lookup failing on the first request answers on a later one); an empty one never
+        erases a known group."""
+        visits = A.Visits()
+        visit, _ = visits.touch(Identity(login='alice'), '10.0.1.7', 'UA', 1000.0)
+        assert visit.group == ''
+        visits.touch(Identity(login='alice', group='INFO1'), '10.0.1.7', 'UA', 1001.0, count=False)
+        assert visit.group == 'INFO1'
+        visits.touch(Identity(login='alice'), '10.0.1.7', 'UA', 1002.0)
+        assert visit.group == 'INFO1'
+        visits.touch(Identity(login='alice', group='INFO2'), '10.0.1.7', 'UA', 1003.0)
+        assert visit.group == 'INFO2' and len(visits) == 1
+        other, new = visits.touch(Identity(login='bob', group='INFO3'), '10.0.1.7', 'UA', 1003.0)
+        assert new and other.group == 'INFO3'
 
     def test_expiry_skips_open_sockets_and_excludes_the_idle_gap(self):
         visits = A.Visits()
@@ -283,10 +299,11 @@ class TestAccessLogFile:
         assert [l['event'] for l in lines] == ['login', 'session_open', 'session_close', 'login_failed',
                                                'session_open', 'session_close']
         assert lines[0]['mode'] == 'ldap' and lines[0]['role'] == 'student' and lines[0]['anon'] == '0'
-        assert lines[1]['ua'] == 'UA ' + 'x' * (A.MAX_USER_AGENT - 3)
+        assert lines[1]['ua'] == 'UA ' + 'x' * (A.MAX_USER_AGENT - 3) and lines[1]['group'] == ''
         assert lines[2] == {'ts': lines[2]['ts'], 'event': 'session_close', 'login': 'alice', 'addr': '127.0.0.1',
-                            'role': 'student', 'name': 'Alice Test', 'reason': 'idle', 'since': A.iso_time(1000.0),
-                            'duration': '500', 'requests': '1', 'projects': '1@@@a@@@alice'}
+                            'role': 'student', 'name': 'Alice Test', 'group': '', 'reason': 'idle',
+                            'since': A.iso_time(1000.0), 'duration': '500', 'requests': '1',
+                            'projects': '1@@@a@@@alice'}
         assert lines[3] == dict(ts=lines[3]['ts'], event='login_failed', login='mallory', addr='127.0.0.1', reason='password')
         assert lines[5]['reason'] == 'shutdown' and lines[5]['duration'] == '0' and lines[5]['projects'] == ''
 

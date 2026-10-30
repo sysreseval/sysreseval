@@ -342,12 +342,12 @@ class TestBuildQuery:
 class TestSessions:
     """The Sessions view of the History page: the filters kept, a session_close row turned into
     a session, the open sessions of the portal's memory."""
-    ALICE = Identity(login='alice', fullname='Alice Test', role='student', anonymous=False)
+    ALICE = Identity(login='alice', fullname='Alice Test', role='student', anonymous=False, group='INFO1')
     SINCE = '2026-10-26T09:11:50+0100'
     ROW = {'id': 7, 'ts': 1761466800.25, 'event': 'session_close', 'login': 'alice', 'addr': '10.0.1.7', 'host': '',
            'rln': '', 'lab': '', 'status': '', 'duration': 1850.0,
-           'details': {'role': 'student', 'name': 'Alice Test', 'reason': 'idle', 'since': SINCE, 'requests': 14,
-                       'projects': ['1761466323@@@dhcp@@@alice']}}
+           'details': {'role': 'student', 'name': 'Alice Test', 'group': 'INFO1', 'reason': 'idle', 'since': SINCE,
+                       'requests': 14, 'projects': ['1761466323@@@dhcp@@@alice']}}
 
     def test_filters_keep_the_session_keys_and_select_the_close_lines(self):
         filters = parse_filters({'login': 'ali', 'addr': '10.', 'event': 'start', 'host': 'a01', 'rln': 'x', 'lab': 'y',
@@ -371,15 +371,15 @@ class TestSessions:
     def test_session_of_row(self):
         start = H.parse_time(self.SINCE)
         assert H.session_of_row(self.ROW) == {
-            'id': 7, 'login': 'alice', 'name': 'Alice Test', 'role': 'student', 'addr': '10.0.1.7', 'start': start,
-            'end': start + 1850.0, 'closed': 1761466800.25, 'duration': 1850.0, 'requests': 14,
+            'id': 7, 'login': 'alice', 'name': 'Alice Test', 'role': 'student', 'group': 'INFO1', 'addr': '10.0.1.7',
+            'start': start, 'end': start + 1850.0, 'closed': 1761466800.25, 'duration': 1850.0, 'requests': 14,
             'projects': ['1761466323@@@dhcp@@@alice'], 'reason': 'idle'}
-        # a line written before the name and role were logged, the projects as one string, no since:
-        # the start is the time of the line minus the duration
+        # a line written before the name, role and group were logged, the projects as one string, no
+        # since: the start is the time of the line minus the duration
         old = {**self.ROW, 'details': {'reason': 'logout', 'requests': '3', 'projects': '1@@@a@@@alice'}}
         session = H.session_of_row(old)
-        assert (session['name'], session['role'], session['requests'], session['projects']) == \
-               ('', '', 3, ['1@@@a@@@alice'])
+        assert (session['name'], session['role'], session['group'], session['requests'], session['projects']) == \
+               ('', '', '', 3, ['1@@@a@@@alice'])
         assert session['start'] == 1761466800.25 - 1850.0 and session['end'] == 1761466800.25
         assert session['reason'] == 'logout'
         bare = H.session_of_row({'id': 1, 'ts': 100.0, 'login': None, 'addr': None, 'duration': None, 'details': {}})
@@ -395,7 +395,8 @@ class TestSessions:
         visits.socket_opened(visit.key)
         visits.add_project(visit.key, '1@@@a@@@alice')
         session = H.session_of_visit(visit)
-        assert session == {'id': None, 'login': 'alice', 'name': 'Alice Test', 'role': 'student', 'addr': '10.0.1.7',
+        assert session == {'id': None, 'login': 'alice', 'name': 'Alice Test', 'role': 'student', 'group': 'INFO1',
+                           'addr': '10.0.1.7',
                            'start': 1000.0, 'end': 1300.0, 'closed': None, 'duration': 300.0, 'requests': 2,
                            'projects': ['1@@@a@@@alice'], 'reason': None, 'sockets': 1}
         assert set(session) - {'sockets'} == set(H.session_of_row(self.ROW))      # the same keys as a closed one
