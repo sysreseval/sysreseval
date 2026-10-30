@@ -165,6 +165,9 @@ class TestTemplates:
         assert 'Running projects' in html and 'href="/open"' in html
         assert 'id="projects"' in html and 'restore' not in html.lower()
         assert '/static/js/projects.js' in html
+        # the logo of the empty page, hidden until the first answer of /api/projects
+        assert '<div id="no-project" class="empty-logo" hidden>' in html
+        assert '<img src="/static/img/sysreseval.svg"' in html
         assert 'Alice Martin' in html and 'action="/logout"' in html
         assert '<html lang="fr">' in html
 
@@ -574,3 +577,24 @@ class TestJavaScript:
         show = terminals[terminals.index('show({autoOpen = true} = {})'):terminals.index('hide() {}')]
         assert '} else if (autoOpen) {' in show and 'openNew(first.name)' in show
         assert show.index('autoJoin()') < show.index('else if (autoOpen)')     # the helper still joins
+
+    def test_empty_projects_page_shows_the_logo(self):
+        """Without a running project the Projects page shows the SRE logo in large, as the Qt GUI
+        does when no project is open (its _LogoWidget paints graphics/sysreseval.svg scaled to the
+        window, aspect ratio kept, centred): the same file copied under web/static/img/, an
+        element projects.js shows instead of the empty list on every poll, sized by CSS to the
+        space left under the toolbar."""
+        logo = STATIC / 'img' / 'sysreseval.svg'
+        assert logo.read_bytes() == (ROOT / 'graphics' / 'sysreseval.svg').read_bytes()
+        projects = (JS / 'projects.js').read_text(encoding='utf-8')
+        assert "document.getElementById('no-project')" in projects
+        assert 'logo.hidden = !empty' in projects and 'list.hidden = empty' in projects
+        assert 'No running project.' not in projects
+        error_path = projects[projects.index('} catch (e) {'):projects.index("class: 'error'")]
+        assert 'logo.hidden = true' in error_path and 'list.hidden = false' in error_path
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        box = re.search(r'\.empty-logo\s*\{([^{}]*)\}', css)
+        assert box and 'flex: 1' in box.group(1) and 'align-items: center' in box.group(1) \
+            and 'justify-content: center' in box.group(1)
+        img = re.search(r'\.empty-logo img\s*\{([^{}]*)\}', css)
+        assert img and 'object-fit: contain' in img.group(1)

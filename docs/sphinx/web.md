@@ -618,9 +618,11 @@ below), except `add` and `remove`, which stay with the token.
   proxy mode the web server in front has already asked, there is no login page.
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
   lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
-  deploys). Logout asks what to do with the running projects: close them (each as a Close does:
-  the last evaluation when the lab asks for it, then `sre stop`; the dialog waits for every
-  answer) or leave them running; with no running project the button logs out at once.
+  deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
+  when no project is open. Logout asks what to do with the running projects: close them (each
+  as a Close does: the last evaluation when the lab asks for it, then `sre stop`; the dialog
+  waits for every answer) or leave them running; with no running project the button logs out
+  at once.
 - **A project**: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
   same options (lines, spacing, order, icons); the questions and the forms are the same; the
   evaluation table has the same parts, subtotals, bonuses and colours; the terminals are

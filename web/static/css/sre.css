@@ -170,6 +170,11 @@ input:invalid { border-color: var(--danger); }
 .card .actions { display: flex; gap: 6px; }
 .card.debug h2::after { content: " (debug)"; color: var(--closed-color); font-weight: normal; }
 
+/* the Projects page without a running project: the logo of the Qt GUI (its _LogoWidget), as
+   large as the space under the toolbar allows, aspect ratio kept, centred */
+.empty-logo { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.empty-logo img { width: 100%; height: 100%; object-fit: contain; }
+
 /* lab tree */
 .lab-tree {
   flex: 1;

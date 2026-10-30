@@ -1,5 +1,6 @@
 // The Projects page: the running projects of the user (GET /api/projects every 5 s), one card
-// per project with its Open link and Close button.
+// per project with its Open link and Close button; without a running project, the SRE logo in
+// large (#no-project), as the Qt GUI shows it when no project is open.
 
 import './base.js';
 import * as api from './api.js';
@@ -11,6 +12,7 @@ import {projectUrl} from './creation.js';
 const REFRESH_INTERVAL = 5000;
 
 const list = document.getElementById('projects');
+const logo = document.getElementById('no-project');   // shown instead of the empty list
 const closing = new Set();   // running lab names whose close is in progress
 
 function projectApi(project) {
@@ -58,14 +60,15 @@ async function refresh() {
     projects = await api.get('/api/projects');
   } catch (e) {
     clear(list);
+    logo.hidden = true;
+    list.hidden = false;
     list.append(el('p', {class: 'error'}, e.message));
     return;
   }
   clear(list);
-  if (!projects.length) {
-    list.append(el('p', {class: 'muted'}, _('No running project.')));
-    return;
-  }
+  const empty = !projects.length;
+  logo.hidden = !empty;
+  list.hidden = empty;
   for (const project of projects) {
     list.append(card(project));
   }
