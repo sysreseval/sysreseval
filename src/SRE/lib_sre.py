@@ -1528,8 +1528,17 @@ class Network:
             yield m
 
 
+# Kathara's rule for a device name (``Kathara.model.Machine.__init__``), checked by ``Machine()`` so that
+# ``sre check`` refuses a bad name before any deployment: an uppercase letter, a dash or a dot would
+# otherwise only fail in ``get_new_lab_from_scheme()``, at ``sre start``.
+MACHINE_NAME_RE = _re.compile(r'[a-z0-9_]{1,30}')
+MACHINE_NAME_RULE = "1 to 30 characters among a-z, 0-9 and _ (lowercase only)"
+
+
 class Machine:
     """One container of the lab (built from ``NetScheme._machine_specs`` entries).
+
+    The name must follow Kathara's device-name rule (``MACHINE_NAME_RULE``): ``ValueError`` otherwise.
 
     Networking options:
 
@@ -1558,6 +1567,8 @@ class Machine:
                  shape=None):
         if ports is None:
             ports = []
+        if not isinstance(name, str) or not MACHINE_NAME_RE.fullmatch(name):
+            raise ValueError(f"invalid machine name {name!r}: Kathara device names are {MACHINE_NAME_RULE}")
         self.name = name
         self.image = image
         self.bridged = bridged

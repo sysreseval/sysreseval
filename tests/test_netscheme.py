@@ -114,6 +114,28 @@ class TestTopology:
         assert s.get_network('nonexistent') is None
 
 
+class TestMachineName:
+    """Kathara refuses a device name outside ``[a-z0-9_]{1,30}`` at deploy time: ``Machine()`` checks it
+    first, so that ``sre check`` reports the name without deploying."""
+
+    @pytest.mark.parametrize('name', ['m1', 'routeur', 'spy_h', '0', 'a' * 30])
+    def test_valid_names(self, name):
+        assert Machine(name=name).name == name
+
+    @pytest.mark.parametrize('name', ['mX', 'pc-1', 'm.1', 'm 1', ' m1', '', 'a' * 31, 'é', None])
+    def test_invalid_names(self, name):
+        with pytest.raises(ValueError, match="invalid machine name"):
+            Machine(name=name)
+
+    def test_scheme_names_the_bad_machine(self):
+        class BadScheme(NetScheme0):
+            _machine_specs = {'m1': {}, 'mX': {}}
+            _topology = {'net1': ['m1', 'mX']}
+
+        with pytest.raises(ValueError, match="'mX'"):
+            BadScheme(data=MockData(), running_lab_name=RUNNING_LAB)
+
+
 # ---------------------------------------------------------------------------
 # compute_state_ops
 # ---------------------------------------------------------------------------
