@@ -534,7 +534,9 @@ class TestRenderSchemaSvg:
 # the schema PDF (the Export Schema to PDF button of the web front-end)
 # ---------------------------------------------------------------------------
 
-NEEDS_RSVG = pytest.mark.skipif(shutil.which("rsvg-convert") is None, reason="rsvg-convert not installed")
+_SVG_TO_PNG_TOOLS = ("rsvg-convert", "inkscape", "convert")  # what svg_file_to_png() tries, in this order
+NEEDS_SVG_TO_PNG = pytest.mark.skipif(not any(shutil.which(tool) for tool in _SVG_TO_PNG_TOOLS),
+                                      reason=f"none of {', '.join(_SVG_TO_PNG_TOOLS)} is installed")
 
 
 class TestRenderSchemaPdf:
@@ -572,7 +574,7 @@ class TestRenderSchemaPdf:
         assert pdf.startswith(b"%PDF")
 
     @NEEDS_NEATO
-    @NEEDS_RSVG
+    @NEEDS_SVG_TO_PNG
     def test_icons_converted_once_per_file(self):
         converted = []
 
@@ -588,7 +590,7 @@ class TestRenderSchemaPdf:
 
 
 class TestSvgFileToPng:
-    @NEEDS_RSVG
+    @NEEDS_SVG_TO_PNG
     def test_converts(self, tmp_path):
         out = svg_file_to_png(str(Path(GRAPHICS) / "cloud.svg"), str(tmp_path))
         assert out == str(tmp_path / "cloud.png") and (tmp_path / "cloud.png").read_bytes().startswith(b"\x89PNG")
