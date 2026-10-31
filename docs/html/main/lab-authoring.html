@@ -336,6 +336,13 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#complete-minimal-example">Complete Minimal Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-list-of-labs">The list of labs</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-is-a-lab-and-its-name">What is a lab, and its name</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#exam-only-labs">Exam-only labs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#titles-sre-make-titles-and-titles-json">Titles: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code> and <code class="docutils literal notranslate"><span class="pre">titles.json</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-order-of-a-directory-sort">The order of a directory: <code class="docutils literal notranslate"><span class="pre">&quot;&#64;sort&quot;</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="switches.html">Hubs, switches and VLANs</a><ul>
@@ -2723,6 +2730,63 @@ views); <code class="docutils literal notranslate"><span class="pre">get_unbound
 </pre></div>
 </div>
 </section>
+<hr class="docutils" />
+<section id="the-list-of-labs">
+<h2>The list of labs<a class="headerlink" href="#the-list-of-labs" title="Link to this heading">¶</a></h2>
+<p>Everything a student can open comes from one tree, <code class="docutils literal notranslate"><span class="pre">/opt/sre/lab/</span></code> (<code class="docutils literal notranslate"><span class="pre">params.lab_dir</span></code>), walked by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span></code> and shown as a tree by the <em>Open project</em> dialog of the GUI (<a class="reference internal" href="gui.html#opening-a-project"><span class="std std-ref">Opening a project</span></a>) and by the Open page of the <a class="reference internal" href="web.html"><span class="std std-doc">web front-end</span></a>. This section gathers what decides which labs are listed, under which name, and in which order.</p>
+<section id="what-is-a-lab-and-its-name">
+<h3>What is a lab, and its name<a class="headerlink" href="#what-is-a-lab-and-its-name" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A <strong>file lab</strong> is any <code class="docutils literal notranslate"><span class="pre">.py</span></code> file of the tree (<code class="docutils literal notranslate"><span class="pre">s2/lab.py</span></code>, <code class="docutils literal notranslate"><span class="pre">sre/dhcp.py</span></code>).</p></li>
+<li><p>A <strong>directory lab</strong> is a directory holding a <code class="docutils literal notranslate"><span class="pre">srelab.py</span></code>, with its state directories next to it (<code class="docutils literal notranslate"><span class="pre">s4/tp_ssh/</span></code>); nothing below it is scanned.</p></li>
+<li><p>Any other directory only groups labs, as deep as you like (<code class="docutils literal notranslate"><span class="pre">class1/week3/tp_arp</span></code>). A directory without a lab below it is not listed.</p></li>
+</ul>
+<p>The name of a lab is its path relative to the tree, with the <code class="docutils literal notranslate"><span class="pre">.py</span></code> of a file lab: it is what <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span> <span class="pre">--labs</span></code> and the web API take, and what the running lab name carries. The shipped labs live in <code class="docutils literal notranslate"><span class="pre">lab/sre/</span></code> (a symbolic link to <code class="docutils literal notranslate"><span class="pre">/usr/share/sysreseval/lab</span></code> on a Debian install: links to directories are followed); <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">update</span></code> replaces that directory and leaves the others alone.</p>
+</section>
+<section id="exam-only-labs">
+<h3>Exam-only labs<a class="headerlink" href="#exam-only-labs" title="Link to this heading">¶</a></h3>
+<p>A lab whose name, or the name of any directory above it, contains <code class="docutils literal notranslate"><span class="pre">_EXAM_</span></code>, <code class="docutils literal notranslate"><span class="pre">_OLD_</span></code>, <code class="docutils literal notranslate"><span class="pre">_DRAFT_</span></code> or <code class="docutils literal notranslate"><span class="pre">_TESTS_</span></code> (<code class="docutils literal notranslate"><span class="pre">params.exam_only_affix</span></code>) is left out of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span></code> and of both pickers, and the directory is not even walked. It stays usable by the privileged commands (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">s4/ssh_EXAM_final.py</span></code>, <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">check</span></code>) and by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">set-exam</span> <span class="pre">--labs</span></code>, which is how an exam lab stays invisible until the exam starts, and how a draft stays out of the students’ sight: see <a class="reference internal" href="exam.html#exam-only-labs"><span class="std std-ref">Exam-only labs</span></a>.</p>
+</section>
+<section id="titles-sre-make-titles-and-titles-json">
+<h3>Titles: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code> and <code class="docutils literal notranslate"><span class="pre">titles.json</span></code><a class="headerlink" href="#titles-sre-make-titles-and-titles-json" title="Link to this heading">¶</a></h3>
+<p>The pickers show a lab by its <code class="docutils literal notranslate"><span class="pre">title</span></code> attribute (a string or a <code class="docutils literal notranslate"><span class="pre">tr()</span></code> text) instead of its file name once the titles are materialised: each directory of the tree may hold a <code class="docutils literal notranslate"><span class="pre">titles.json</span></code> mapping the local names of its entries (<code class="docutils literal notranslate"><span class="pre">&quot;dhcp.py&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;tp_ssh&quot;</span></code>) to a title, a plain string or a <code class="docutils literal notranslate"><span class="pre">{lang:</span> <span class="pre">text}</span></code> dict resolved in the language of the user. <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span> <span class="pre">-r</span> <span class="pre">/opt/sre/lab</span></code> (as root) imports every lab, exam-only ones included, and writes one file per directory; run it again after adding or renaming labs: a rerun keeps the options and the order of an existing file, replaces the titles of the labs found, drops the entries that name nothing on disk any more and appends the new labs by name. A lab without <code class="docutils literal notranslate"><span class="pre">title</span></code> is shown by its file name without <code class="docutils literal notranslate"><span class="pre">.py</span></code>. The title of a running project (the tab, the reports) comes from the lab itself through <code class="docutils literal notranslate"><span class="pre">info.json</span></code>, not from <code class="docutils literal notranslate"><span class="pre">titles.json</span></code>.</p>
+</section>
+<section id="the-order-of-a-directory-sort">
+<h3>The order of a directory: <code class="docutils literal notranslate"><span class="pre">&quot;&#64;sort&quot;</span></code><a class="headerlink" href="#the-order-of-a-directory-sort" title="Link to this heading">¶</a></h3>
+<p>Written by hand in the <code class="docutils literal notranslate"><span class="pre">titles.json</span></code> of a directory, the reserved key <code class="docutils literal notranslate"><span class="pre">&quot;&#64;sort&quot;</span></code> chooses the order of the entries of that directory, the same in the GUI and on the web (every key starting with <code class="docutils literal notranslate"><span class="pre">&#64;</span></code> is an option, never an entry):</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Order of the entries</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code></p></td>
+<td><p>By file name, byte-wise (capitals first). The default.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;title&quot;</span></code></p></td>
+<td><p>By title in the language of the user (the language priority of the GUI, the language of the page on the web): case and accents ignored, numbers compared as numbers so that “TP 2” comes before “TP 10”; an entry without title sorts by its name.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;manual&quot;</span></code></p></td>
+<td><p>The entries of the file in their order, then the unlisted ones by name.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: <code class="docutils literal notranslate"><span class="pre">/opt/sre/lab/titles.json</span></code> sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name) or <code class="docutils literal notranslate"><span class="pre">null</span></code> (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code> warns about it and keeps the file as it is.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;@sort&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;manual&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sre&quot;</span><span class="p">:</span><span class="w">               </span><span class="p">{</span><span class="nt">&quot;en&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Shipped labs&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;fr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;TP fournis&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;s4&quot;</span><span class="p">:</span><span class="w">                </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;static_routing.py&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;en&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Static routing&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;fr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Routage statique&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;tp_ssh&quot;</span><span class="p">:</span><span class="w">            </span><span class="kc">null</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>What the pickers receive is <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">--with-titles</span></code>: the tree flattened in display order, a directory entry before its content, each entry with its <code class="docutils literal notranslate"><span class="pre">title</span></code>, its <code class="docutils literal notranslate"><span class="pre">kind</span></code> (<code class="docutils literal notranslate"><span class="pre">dir</span></code> / <code class="docutils literal notranslate"><span class="pre">lab</span></code>) and the <code class="docutils literal notranslate"><span class="pre">sort</span></code> mode it is placed by; the front-ends keep that order and only sort the <code class="docutils literal notranslate"><span class="pre">&quot;title&quot;</span></code> mode themselves (see <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code> in the <a class="reference internal" href="cli.html"><span class="std std-doc">CLI reference</span></a>).</p>
+</section>
+</section>
 </section>
 
         </article>
@@ -2865,6 +2929,13 @@ views); <code class="docutils literal notranslate"><span class="pre">get_unbound
 </ul>
 </li>
 <li><a class="reference internal" href="#complete-minimal-example">Complete Minimal Example</a></li>
+<li><a class="reference internal" href="#the-list-of-labs">The list of labs</a><ul>
+<li><a class="reference internal" href="#what-is-a-lab-and-its-name">What is a lab, and its name</a></li>
+<li><a class="reference internal" href="#exam-only-labs">Exam-only labs</a></li>
+<li><a class="reference internal" href="#titles-sre-make-titles-and-titles-json">Titles: <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">make-titles</span></code> and <code class="docutils literal notranslate"><span class="pre">titles.json</span></code></a></li>
+<li><a class="reference internal" href="#the-order-of-a-directory-sort">The order of a directory: <code class="docutils literal notranslate"><span class="pre">&quot;&#64;sort&quot;</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
