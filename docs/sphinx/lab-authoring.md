@@ -1518,3 +1518,49 @@ class Grade(Grade0):
         if 'ip_forward' in answer or 'forward' in answer.lower():
             self.set_grade('Routing answer', 5)
 ```
+
+---
+
+## The list of labs
+
+Everything a student can open comes from one tree, `/opt/sre/lab/` (`params.lab_dir`), walked by `sre list` and shown as a tree by the *Open project* dialog of the GUI ([Opening a project](gui.md#opening-a-project)) and by the Open page of the [web front-end](web.md). This section gathers what decides which labs are listed, under which name, and in which order.
+
+### What is a lab, and its name
+
+- A **file lab** is any `.py` file of the tree (`s2/lab.py`, `sre/dhcp.py`).
+- A **directory lab** is a directory holding a `srelab.py`, with its state directories next to it (`s4/tp_ssh/`); nothing below it is scanned.
+- Any other directory only groups labs, as deep as you like (`class1/week3/tp_arp`). A directory without a lab below it is not listed.
+
+The name of a lab is its path relative to the tree, with the `.py` of a file lab: it is what `sre start`, `sre set-exam --labs` and the web API take, and what the running lab name carries. The shipped labs live in `lab/sre/` (a symbolic link to `/usr/share/sysreseval/lab` on a Debian install: links to directories are followed); `sre update` replaces that directory and leaves the others alone.
+
+### Exam-only labs
+
+A lab whose name, or the name of any directory above it, contains `_EXAM_`, `_OLD_`, `_DRAFT_` or `_TESTS_` (`params.exam_only_affix`) is left out of `sre list` and of both pickers, and the directory is not even walked. It stays usable by the privileged commands (`sre start s4/ssh_EXAM_final.py`, `sre check`) and by `sre set-exam --labs`, which is how an exam lab stays invisible until the exam starts, and how a draft stays out of the students' sight: see [Exam-only labs](exam.md#exam-only-labs).
+
+### Titles: `sre make-titles` and `titles.json`
+
+The pickers show a lab by its `title` attribute (a string or a `tr()` text) instead of its file name once the titles are materialised: each directory of the tree may hold a `titles.json` mapping the local names of its entries (`"dhcp.py"`, `"tp_ssh"`) to a title, a plain string or a `{lang: text}` dict resolved in the language of the user. `sre make-titles -r /opt/sre/lab` (as root) imports every lab, exam-only ones included, and writes one file per directory; run it again after adding or renaming labs: a rerun keeps the options and the order of an existing file, replaces the titles of the labs found, drops the entries that name nothing on disk any more and appends the new labs by name. A lab without `title` is shown by its file name without `.py`. The title of a running project (the tab, the reports) comes from the lab itself through `info.json`, not from `titles.json`.
+
+### The order of a directory: `"@sort"`
+
+Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` chooses the order of the entries of that directory, the same in the GUI and on the web (every key starting with `@` is an option, never an entry):
+
+| Value | Order of the entries |
+|-------|----------------------|
+| `"name"` | By file name, byte-wise (capitals first). The default. |
+| `"title"` | By title in the language of the user (the language priority of the GUI, the language of the page on the web): case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; an entry without title sorts by its name. |
+| `"manual"` | The entries of the file in their order, then the unlisted ones by name. |
+
+In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
+
+```json
+{
+  "@sort": "manual",
+  "sre":               {"en": "Shipped labs",   "fr": "TP fournis"},
+  "s4":                null,
+  "static_routing.py": {"en": "Static routing", "fr": "Routage statique"},
+  "tp_ssh":            null
+}
+```
+
+What the pickers receive is `sre list --with-titles`: the tree flattened in display order, a directory entry before its content, each entry with its `title`, its `kind` (`dir` / `lab`) and the `sort` mode it is placed by; the front-ends keep that order and only sort the `"title"` mode themselves (see `sre list` and `sre make-titles` in the [CLI reference](cli.md)).
