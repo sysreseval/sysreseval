@@ -310,9 +310,11 @@ Flavor.easy = Flavor(nb=1)
 Flavor.hard = Flavor(nb=5)
 ```
 
-The form takes the same fields as `question_form()` (`@@{field:regex}@@` single-line text,
-`@@{field:+N}@@` multi-line text of N lines, `@@{field:>a|b}@@` dropdown, `@@{field:?}@@`
-checkbox), plus `@@{name::Label}@@`, a button that submits the form.
+The form takes the same fields as `question_form()` (single-line text with a regex, multi-line
+text, dropdown, checkbox: the `@@{field:spec}@@` grammar is described in [Questions](#questions)),
+plus `@@{name::Label}@@`, a button that submits the form: the lab gets the pressed button as a
+true attribute of the `Flavor` and the other buttons as false. The dialog adds a *Submit* button
+when the form declares none, and refuses to submit while a text field does not match its regex.
 
 Module-level control:
 
@@ -875,9 +877,58 @@ def grade(self):
 During the student's self-eval, only the `SELF_EVAL_SCOPE` element appears: one row per part with a pass/fail score (no need for grade parts there). 
 During the instructor's evaluation, only the three `EXO_EVAL_SCOPE` rows appear. `scope` and `grade_part` compose freely — elements in the same part can have different scopes and will be subtotalled accordingly for each audience.
 
+### Questions
+
+Three kinds of questions, registered from `grade()` like the tests and shown in the Questions tab of the GUI and of the web front-end. The answers live in `answers/answers.json` under the hash of the question and come back as the return value of the registration call, on every pass of `grade()`.
+
+| Method | What the student sees | Returns |
+|--------|-----------------------|---------|
+| `self.question_text(title, description='', default_answer='', ...)` | the description (markdown) above one free-text box | the text typed, or `default_answer` (`''`) before the first answer |
+| `self.question_form(title, description='', ...)` | the description with one input in place of every `@@{field:spec}@@` marker | `{field: value}` with every field of the form, or `{}` before the first answer — read the fields with `.get()` |
+| `self.question_dummy(title, description='')` | the description alone | nothing: a heading, an instruction block |
+
+The three take `section=` (a prefix of the title, usually `self.section(level)`, see [Grade methods](#grade-methods)), `order=` (an integer sorting the questions in the tab; without it the questions get 100, 200, 300… in registration order, so `order=150` slips one between the first two) and `hash=` (the identity of the question in the answers file and in the archives: by default the SHA-256 of the title for a `question_text`, of the title and the description for the two others, so that a change of a form's description, a field spec included, detaches the stored answers unless `hash=` pins it; the instructor fragments and the numbering markers never count).
+
+**The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, a checkbox taking the row of the text before it. `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form); `spec` gives the kind of input:
+
+| Marker | Input | Value returned |
+|--------|-------|----------------|
+| `@@{name:regex}@@` | single-line text, meant to match the regex entirely (`[0-9]+`, `.+`, `[0-9.]+/[0-9]+`…); an empty spec, `@@{name:}@@`, puts no constraint | `str`, `''` for an untouched field |
+| `@@{name:+}@@` / `@@{name:+N}@@` | multi-line text of N visible lines (`params.default_form_field_lines` = 4 without N) | `str`, newlines kept |
+| `@@{name:>a\|b\|c}@@` | dropdown of the options, the first one selected by default | `str`, the option chosen |
+| `@@{name:Label A>>>a\|Label B>>>b}@@` | dropdown showing the labels | `str`, the value behind the label chosen |
+| `@@{name:?}@@` / `@@{name:?true}@@` | checkbox, unchecked at first with `?` alone or `?false`, checked with `?true` | `bool` |
+| `@@{name::Label}@@` | a button submitting the form — Flavor forms only (see [`Flavor` class](#flavor-class)); in a question form `:Label` is a regex | `bool`, true for the button pressed |
+
+- The regex is a Python one, matched with `re.fullmatch()`. The GUI installs it as the validator of the input (a keystroke that can lead to no match is refused), the web front-end marks the input invalid (the `pattern` attribute, so the regex must be a valid JavaScript one too); in both cases the answer is saved as typed, a field left halfway or empty included, so the lab checks the value itself, as it does for a `question_text` answer.
+- The options of a dropdown may hold spaces and accents; `|` separates them and `>>>` a label from its value, so neither can appear inside an option. The labelled form lets the student read a sentence while the lab compares a code.
+- The markers must be the same in every language of a `tr()` description: the field list is read from one of its values.
+
+```python
+q = self.question_form(
+    tr("Routing table of r1"),
+    section=self.section(1),
+    description=tr("""
+    Default gateway of `r1`: @@{gw:[0-9.]+}@@
+
+    Protocol that installed it: @@{proto:>static|ospf|bgp}@@
+
+    The route is in the kernel table: @@{installed:?}@@
+
+    Commands used: @@{commands:+4}@@
+    """),
+    cheat_answers={'final': {'gw': str(self.data.ips.gw.ip), 'proto': 'static',
+                             'installed': True, 'commands': 'ip route'}},
+)
+self.add_grade_element(tr("Default gateway"), max_grade=2,
+                       grade=2 if q.get('gw') == str(self.data.ips.gw.ip) else 0)
+self.add_grade_element(tr("Protocol"), max_grade=1,
+                       grade=1 if q.get('proto') == 'static' and q.get('installed') else 0)
+```
+
 ### Cheat answers
 
-`cheat_answers` on `question_text` / `question_form` maps a state name (e.g. `'final'`) to an answer value. When the student has applied that state, the cheat answer is used instead of the student's actual input. Useful when the instructor's `final` state should produce a fully-passing evaluation.
+`cheat_answers` on `question_text` / `question_form` maps a state name (e.g. `'final'`) to an answer: a string for a `question_text`, a `{field: value}` dict for a `question_form` (the values typed as the form returns them: `str`, `bool` for a checkbox, the value of a dropdown). When the student has applied that state, the cheat answer is used instead of the student's actual input. Useful when the instructor's `final` state should produce a fully-passing evaluation.
 
 ### Letter grades vs numeric marks
 
@@ -932,9 +983,9 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 | `self.test(machine, command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Register a command in a container; returns `(stdout, exit_code)` (placeholder on first pass, real result on subsequent passes). |
 | `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
 | `self.test_switch(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Same as `self.test` for one command of the management console of the managed switch `network` (`vlan/print`, `port/print @pc1`: `@machine` is the port number of the machine). The exit code is `0`, the error number given by the switch or `-2`. The result is archived with the tests of the machines, under the name of the network. See [Switches and VLANs](#switches-and-vlans). |
-| `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). |
-| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question with inline `@@{field:regex}@@` (single-line text), `@@{field:+N}@@` (multi-line free text of N lines, `params.default_form_field_lines` without N), `@@{field:>opt1|opt2}@@` (dropdown), or `@@{field:?true}@@` (checkbox) fields. Returns the student's answers as `{field: value}`. |
-| `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). |
+| `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). See [Questions](#questions). |
+| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question: one input per `@@{field:spec}@@` marker of the description — single-line text with a regex, multi-line text, dropdown, checkbox; the grammar is in [Questions](#questions). Returns the student's answers as `{field: value}`, `{}` before the first answer. |
+| `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). See [Questions](#questions). |
 | `self.add_grade_part(title, description='')` | Register a named group of grade elements and return the resulting `GradePart`. Pass it to `add_grade_element(..., grade_part=...)` to associate elements with this group; parts render in registration order with a subtotal row per part in the GUI Evaluations view and in `sre outline` PDFs. |
 | `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None, bonus=False)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. `bonus=True` makes a bonus element: its grade counts, its `max_grade` is shown (with "Bonus") but not counted, and the mark is capped at the maximum (see [Bonus elements](#bonus-elements)). |
 | `self.set_grade(title, grade)` | Set the score of a previously registered element. |
