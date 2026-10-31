@@ -272,7 +272,7 @@ class TestProjectsThroughThePortal:
             async with Harness(tmp_path) as h:
                 me = await h.login()
                 labs = await (await h.client.get('/api/labs')).json()
-                assert {l['name'] for l in labs} == {'sre/dhcp.py', 's4/tp_ssh'}
+                assert {l['name'] for l in labs} == {'sre', 'sre/dhcp.py', 's4', 's4/tp_ssh'}
                 result = await h.start()
                 assert result['status'] == 'created' and result['host'] == 'a01'
                 rln = result['running_lab_name']
@@ -657,7 +657,7 @@ class TestProxyMode:
                 bob, alice = who('bob'), who('alice', 'Alice', '', TEACHERS)
                 assert await (await h.client.get('/api/labs', headers=bob)).json() == []
                 labs = await (await h.client.get('/api/labs', headers=alice)).json()
-                assert {l['name'] for l in labs} == {'sre/dhcp.py', 's4/tp_ssh'}
+                assert {l['name'] for l in labs} == {'sre', 'sre/dhcp.py', 's4', 's4/tp_ssh'}
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
                 assert resp.status == 503 and 'no host' in (await resp.json())['error']
                 assert (await resp.json())['retry_after'] == 60

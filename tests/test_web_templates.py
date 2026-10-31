@@ -1,7 +1,10 @@
 """Tests of the browser side of the web front-end (``web/``): the Jinja2 templates render
 without a server, reference existing static files, every ``_("...")`` string of the templates
 and of the JavaScript has a French translation, and every JavaScript module parses."""
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -388,6 +391,57 @@ class TestTranslations:
 # ---------------------------------------------------------------------------------------------
 # JavaScript
 # ---------------------------------------------------------------------------------------------
+
+#: what GET /api/labs gives: the root in the "title" mode (its directories first by label, then
+#: its labs by label, accents and case ignored, "TP 2" before "TP 10"), z in the "manual" mode
+#: (the order of the CLI kept), a without title; the titles resolve to English (init() never ran)
+LAB_TREE_IN = [
+    {'name': 'tp10.py', 'title': 'TP 10', 'kind': 'lab', 'sort': 'title'},
+    {'name': 'z', 'title': {'en': 'Zone', 'fr': 'La zone'}, 'kind': 'dir', 'sort': 'title'},
+    {'name': 'z/b.py', 'title': None, 'kind': 'lab', 'sort': 'manual'},
+    {'name': 'z/a.py', 'title': 'Alpha', 'kind': 'lab', 'sort': 'manual'},
+    {'name': 'a', 'title': None, 'kind': 'dir', 'sort': 'title'},
+    {'name': 'a/x.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+    {'name': 'tp2.py', 'title': 'TP 2', 'kind': 'lab', 'sort': 'title'},
+    {'name': 'e.py', 'title': {'en': 'Study', 'fr': 'Étude'}, 'kind': 'lab', 'sort': 'title'},
+    {'name': 'f.py', 'title': 'Étude', 'kind': 'lab', 'sort': 'title'},
+    {'name': 'arp.py', 'title': None, 'kind': 'lab', 'sort': 'title'},
+]
+#: [name, label, titled, children] per directory, [name, label, titled] per lab
+LAB_TREE_OUT = [
+    ['a', 'a', False, [['a/x.py', 'x', False]]],
+    ['z', 'Zone', True, [['z/b.py', 'b', False], ['z/a.py', 'Alpha', True]]],
+    ['arp.py', 'arp', False], ['f.py', 'Étude', True], ['e.py', 'Study', True],
+    ['tp2.py', 'TP 2', True], ['tp10.py', 'TP 10', True],
+]
+LAB_TREE_RUNNER = """\
+import {labTree} from './tree.js';
+
+const outline = (node) => [
+  ...node.dirs.map((dir) => [dir.name, dir.label, dir.titled, outline(dir)]),
+  ...node.leaves.map((leaf) => [leaf.name, leaf.label, leaf.titled]),
+];
+process.stdout.write(JSON.stringify(outline(labTree(JSON.parse(process.argv[2]), process.argv[3]))));
+"""
+
+
+class TestLabTreeOrder:
+    """``labTree()`` of tree.js run under node (or bun) when one is installed, skipped otherwise:
+    the Open page keeps the order of the CLI but for the "title" mode, sorted by label."""
+
+    def test_order(self, tmp_path):
+        node = shutil.which('node') or shutil.which('bun')
+        if node is None:
+            pytest.skip("neither node nor bun is installed")
+        for name in ('tree.js', 'i18n.js', 'ui.js'):
+            shutil.copy(JS / name, tmp_path / name)
+        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
+        runner = tmp_path / 'run.mjs'
+        runner.write_text(LAB_TREE_RUNNER)
+        completed = subprocess.run([node, str(runner), json.dumps(LAB_TREE_IN), 'fr'],
+                                   capture_output=True, text=True, check=True)
+        assert json.loads(completed.stdout) == LAB_TREE_OUT
+
 
 class TestJavaScript:
     def test_every_module_parses(self):

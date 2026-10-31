@@ -481,3 +481,56 @@ class TestProjectAccessible:
         monkeypatch.setattr(params, 'check_project_owner', False)
         assert project_accessible('20260101000000@@@lab@@@alice', 'bob')
         assert project_accessible('no-separators', None)
+
+
+# ---------------------------------------------------------------------------
+# The order of the lab tree ("@sort" of titles.json), shared by the GUI and the web
+# ---------------------------------------------------------------------------
+
+from SRE.common import title_sort_key, order_tree_entries  # noqa: E402
+
+
+class TestTitleSortKey:
+    def test_numbers_compared_as_numbers(self):
+        assert title_sort_key("TP 2") < title_sort_key("TP 10")
+        assert sorted(["TP 10", "TP 9", "TP 1"], key=title_sort_key) == ["TP 1", "TP 9", "TP 10"]
+
+    def test_case_and_accents_ignored(self):
+        assert title_sort_key("Étude") == title_sort_key("etude")
+        assert title_sort_key("Routage") == title_sort_key("routage ")
+        assert sorted(["zèbre", "Épreuve", "arp"], key=title_sort_key) == ["arp", "Épreuve", "zèbre"]
+
+    def test_keys_always_compare(self):
+        # text at the even positions, integers at the odd ones, whatever the string
+        for a in ("", "10", "a1b2", "x", "1x"):
+            for b in ("", "2", "a10", "y3", "3"):
+                assert (title_sort_key(a) < title_sort_key(b)) in (True, False)
+        assert title_sort_key(None) == ("",)
+
+
+class TestOrderTreeEntries:
+    CHILDREN = [
+        {"kind": "lab", "name": "s/tp10.py", "label": "TP 10", "index": 0},
+        {"kind": "dir", "name": "s/z", "label": "Zone", "index": 1},
+        {"kind": "lab", "name": "s/tp2.py", "label": "TP 2", "index": 2, "extra": True},
+        {"kind": "dir", "name": "s/a", "label": "étude", "index": 3},
+        {"kind": "lab", "name": "s/b.py", "label": "tp 2", "index": 4},
+    ]
+
+    @staticmethod
+    def names(entries):
+        return [e["name"] for e in entries]
+
+    def test_directories_first_arrival_order_otherwise(self):
+        for mode in ("name", "manual", "whatever"):
+            assert self.names(order_tree_entries(self.CHILDREN, mode)) == [
+                "s/z", "s/a", "s/tp10.py", "s/tp2.py", "s/b.py"]
+
+    def test_title_mode_by_label_then_name(self):
+        ordered = order_tree_entries(self.CHILDREN, "title")
+        assert self.names(ordered) == ["s/a", "s/z", "s/b.py", "s/tp2.py", "s/tp10.py"]
+        assert ordered[3] is self.CHILDREN[2]                       # the dicts come back as they are
+
+    def test_missing_keys_tolerated(self):
+        assert order_tree_entries([{"name": "x"}, {"kind": "dir"}], "title") == [
+            {"kind": "dir"}, {"name": "x"}]

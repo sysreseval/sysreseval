@@ -320,7 +320,10 @@ class TestLabsAndStart:
         async def go():
             async with Harness(tmp_path) as h:
                 labs = await (await h.client.get('/v1/labs', headers=headers())).json()
-                assert labs[0] == {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP lab', 'fr': 'TP DHCP'}}
+                # the list of the CLI as it is: the tree in display order, directory entries included
+                assert [lab['name'] for lab in labs] == ['s4', 's4/tp_ssh', 'sre', 'sre/dhcp.py']
+                assert labs[3] == {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP lab', 'fr': 'TP DHCP'},
+                                   'kind': 'lab', 'sort': 'name'}
                 await h.client.get('/v1/labs', headers=headers(BOB))
                 assert sum(1 for c in h.calls() if 'list' in c) == 1
         run(go())

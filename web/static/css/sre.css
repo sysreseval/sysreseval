@@ -199,7 +199,7 @@ input:invalid { border-color: var(--danger); }
 .lab-tree button.lab::before { content: "📄 "; }
 .lab-tree button.lab:hover { background: #eef3fa; }
 .lab-tree button.lab[aria-selected="true"] { background: #d6e4f7; border-color: #90a4ae; }
-.lab-tree button.lab small { color: var(--muted); }
+.lab-tree button.lab small, .lab-tree summary small { color: var(--muted); }
 .start-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
 .start-row .selected { flex: 1; color: var(--muted); }
 

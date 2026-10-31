@@ -1,8 +1,10 @@
-"""Tests for get_lab_list: lab discovery, filtering, and sorting."""
+"""Tests for get_lab_list: lab discovery, filtering, and sorting; and for the lab tree of
+get_lab_list_with_titles (`sre list --with-titles`): the directory entries, the titles and the
+sort modes of titles.json."""
 import json
 
 import pytest
-from SRE import utils
+from SRE import params, utils
 from SRE.utils import get_lab_list, get_lab_list_with_titles
 
 
@@ -145,24 +147,117 @@ class TestGetLabListWithTitles:
             "ghost.py": {"en": "Ghost"},
         }))
         names = [e["name"] for e in get_lab_list_with_titles()]
-        assert names == ["sre/real.py"]
+        assert names == ["sre", "sre/real.py"]
 
     def test_no_titles_file_yields_none_titles(self, tmp_lab_dir):
         (tmp_lab_dir / 'a.py').touch()
         result = get_lab_list_with_titles()
-        assert result == [{"name": "a.py", "title": None}]
+        assert result == [{"name": "a.py", "title": None, "kind": "lab", "sort": "name"}]
 
     def test_malformed_titles_json_treated_as_empty(self, tmp_lab_dir):
         (tmp_lab_dir / 'a.py').touch()
         (tmp_lab_dir / 'titles.json').write_text("{not json")
         result = get_lab_list_with_titles()
-        assert result == [{"name": "a.py", "title": None}]
+        assert result == [{"name": "a.py", "title": None, "kind": "lab", "sort": "name"}]
 
     def test_result_sorted_by_name(self, tmp_lab_dir):
         for name in ('z.py', 'm.py', 'a.py'):
             (tmp_lab_dir / name).touch()
         names = [e["name"] for e in get_lab_list_with_titles()]
         assert names == sorted(names)
+
+
+def _touch(tmp_lab_dir, *names):
+    for name in names:
+        path = tmp_lab_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+
+
+def _titles(tmp_lab_dir, rel, data):
+    (tmp_lab_dir / rel / 'titles.json').write_text(json.dumps(data))
+
+
+class TestLabTree:
+    """`sre list --with-titles` is the lab tree flattened in display order: a directory entry
+    right before its content, the sub-directories of a directory before its labs, each group in
+    the order of the effective "@sort" of the directory's titles.json (its own, else the nearest
+    ancestor's, else by name), and every entry carries that mode."""
+
+    @staticmethod
+    def _names(result):
+        return [e["name"] for e in result]
+
+    def test_params(self):
+        assert params.titles_sort_key.startswith(params.titles_reserved_prefix)
+        assert set(params.titles_sort_modes) == {params.titles_sort_name, params.titles_sort_title,
+                                                 params.titles_sort_manual}
+
+    def test_directory_entries_before_their_content(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/tp_ssh/srelab.py', 's4/arp.py', 'root.py')
+        (tmp_lab_dir / 'empty' / 'deeper').mkdir(parents=True)     # no lab below: not listed
+        result = get_lab_list_with_titles()
+        assert self._names(result) == ['s4', 's4/arp.py', 's4/tp_ssh', 'root.py']
+        assert [e["kind"] for e in result] == ['dir', 'lab', 'lab', 'lab']
+        assert {e["sort"] for e in result} == {'name'}
+
+    def test_name_mode_directories_first_then_codepoint_order(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'b.py', 'Z.py', 'a.py', 'z/x.py', 'A/x.py')
+        assert self._names(get_lab_list_with_titles()) == [
+            'A', 'A/x.py', 'z', 'z/x.py', 'Z.py', 'a.py', 'b.py']
+
+    def test_manual_mode(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'b.py', 'c.py', 'late/x.py', 'first/x.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "c.py": "C", "late": {"en": "Late"},
+                                  "ghost.py": "Ghost", "a.py": None})
+        result = get_lab_list_with_titles()
+        # the listed entries in their order (a null title lists an entry too), the others by name
+        assert self._names(result) == ['late', 'late/x.py', 'first', 'first/x.py',
+                                       'c.py', 'a.py', 'b.py']
+        by_name = {e["name"]: e for e in result}
+        assert by_name['late']["title"] == {"en": "Late"} and by_name['late']["kind"] == 'dir'
+        assert by_name['c.py']["title"] == "C" and by_name['a.py']["title"] is None
+        assert {e["sort"] for e in result} == {'manual'}           # late/x.py inherits it
+
+    def test_title_mode_is_name_order_with_the_mode(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py', 'b.py')
+        _titles(tmp_lab_dir, '', {"@sort": "title", "b.py": "A lab", "a.py": "Z lab"})
+        result = get_lab_list_with_titles()
+        assert self._names(result) == ['a.py', 'b.py']               # the consumers sort by label
+        assert [e["sort"] for e in result] == ['title', 'title']
+
+    def test_inheritance_override_and_invalid_value(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's1/b.py', 's1/a.py', 's2/b.py', 's2/a.py', 's2/deep/x.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "s2": None, "s1": None})
+        _titles(tmp_lab_dir, 's1', {"@sort": "title"})
+        _titles(tmp_lab_dir, 's2/deep', {"@sort": "bogus"})
+        result = get_lab_list_with_titles()
+        assert self._names(result) == ['s2', 's2/deep', 's2/deep/x.py', 's2/a.py', 's2/b.py',
+                                       's1', 's1/a.py', 's1/b.py']
+        sorts = {e["name"]: e["sort"] for e in result}
+        assert sorts['s2'] == sorts['s1'] == 'manual'                 # placed by the root's mode
+        assert sorts['s2/a.py'] == sorts['s2/deep'] == 'manual'       # s2 inherits it
+        assert sorts['s2/deep/x.py'] == 'manual'                      # the invalid value is ignored
+        assert sorts['s1/a.py'] == 'title'                            # s1 overrides it
+
+    def test_option_keys_are_never_entries(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 'a.py')
+        _titles(tmp_lab_dir, '', {"@sort": "manual", "@future": {"x": 1}, "a.py": "A"})
+        assert self._names(get_lab_list_with_titles()) == ['a.py']
+
+    def test_subdirectory_titles(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/x.py', 'sre/y.py', 'em/z.py')
+        _titles(tmp_lab_dir, '', {"s4": {"en": "Semester 4", "fr": "Semestre 4"}, "sre": "Shipped",
+                                  "em": 5})
+        titles = {e["name"]: e["title"] for e in get_lab_list_with_titles() if e["kind"] == 'dir'}
+        assert titles == {'s4': {"en": "Semester 4", "fr": "Semestre 4"}, 'sre': "Shipped",
+                          'em': None}
+
+    def test_exam_only_entries_filtered_as_before(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, '_DRAFT_x/a.py', 's4/b_EXAM_.py', 's4/c.py')
+        assert self._names(get_lab_list_with_titles()) == ['s4', 's4/c.py']
+        assert self._names(get_lab_list_with_titles(include_exam_only_labs=True)) == [
+            '_DRAFT_x', '_DRAFT_x/a.py', 's4', 's4/b_EXAM_.py', 's4/c.py']
 
 
 class TestSymbolicLinks:

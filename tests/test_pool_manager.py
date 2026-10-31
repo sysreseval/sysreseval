@@ -545,13 +545,29 @@ class TestManager:
 
 # -- the lab list of the Open page --------------------------------------------------------------------
 
-LABS = ['s4/tp_ssh', {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP'}}, 'sre/dhcp.py']
-LABS_OUT = [{'name': 's4/tp_ssh', 'title': None}, {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP'}}]
+#: what an agent answers: the display order of the CLI (dhcp before s4 here, not the name order),
+#: an unknown sort mode, an entry without title / with an unknown kind, a bare name, a duplicate
+LABS = [{'name': 'sre/dhcp.py', 'title': {'en': 'DHCP'}, 'kind': 'lab', 'sort': 'title'},
+        {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'bogus'},
+        {'name': 's4/tp_ssh', 'kind': 'nope'},
+        's4/arp.py', 'sre/dhcp.py']
+LABS_OUT = [{'name': 'sre/dhcp.py', 'title': {'en': 'DHCP'}, 'kind': 'lab', 'sort': 'title'},
+            {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'name'},
+            {'name': 's4/tp_ssh', 'title': None, 'kind': 'lab', 'sort': 'name'},
+            {'name': 's4/arp.py', 'title': None, 'kind': 'lab', 'sort': 'name'}]
 
 
 class TestLabs:
     """``Pool.labs()``: one host, the likely placement of a new project, the next one when it
     fails; the list kept ``labs_cache_ttl`` seconds per role."""
+
+    def test_order_and_keys_kept(self):
+        """The order of the host is the display order (the browser sorts the ``title`` mode
+        alone): never sorted again; the entries normalised to {name, title, kind, sort}."""
+        pool, session = self._pool()
+        labs = run(pool.labs(Identity(login='bob')))
+        assert labs == LABS_OUT
+        assert [lab['name'] for lab in labs] != sorted(lab['name'] for lab in labs)
 
     @staticmethod
     def _pool(ttl=60.0):

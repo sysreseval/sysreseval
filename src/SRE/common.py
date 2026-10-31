@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, asdict, field
 from typing import List
 
@@ -552,6 +553,31 @@ def project_title(info: dict, lang_priority: list, fallback: str = '') -> str:
     name without ``.py``, else *fallback* (the running lab name)."""
     raw = info.get("title", info.get("lab_name", fallback).removesuffix('.py'))
     return TranslatedText.from_value(raw).resolve_priority(lang_priority) or str(raw)
+
+
+def title_sort_key(text: str) -> tuple:
+    """The key of the alphabetical order of the labels of the lab tree (``"@sort": "title"`` in
+    a ``titles.json``): accents and case ignored, the runs of digits compared as numbers ("TP 2"
+    before "TP 10"). The even positions of the tuple hold text, the odd ones integers, so two
+    keys always compare."""
+    decomposed = unicodedata.normalize('NFKD', text or '')
+    plain = ''.join(c for c in decomposed if not unicodedata.combining(c)).casefold().strip()
+    return tuple(int(part) if i % 2 else part for i, part in enumerate(re.split(r'(\d+)', plain)))
+
+
+def order_tree_entries(children: list, mode: str) -> list:
+    """The children of one directory of the lab tree in display order: the sub-directories first,
+    then the labs; within each group, by label in the ``title`` mode (``title_sort_key``, then
+    ``name``), else in arrival order (``index``: ``sre list --with-titles`` already gives the
+    ``name`` and ``manual`` orders, which the consumers must not sort again). Each child is a
+    dict with ``kind`` (``params.lab_list_kind_dir`` / ``_lab``), ``name``, ``label`` and
+    ``index``; the dicts come back as they are."""
+    def key(child):
+        group = 0 if child.get('kind') == params.lab_list_kind_dir else 1
+        if mode == params.titles_sort_title:
+            return (group, title_sort_key(child.get('label') or ''), child.get('name') or '')
+        return (group, child.get('index', 0))
+    return sorted(children, key=key)
 
 
 def listed_states(user_allowed_states: dict, admin_only_states, *, show_admin_only: bool) -> dict:

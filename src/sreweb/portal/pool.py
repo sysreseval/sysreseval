@@ -35,6 +35,13 @@ SOURCE_ADDED = 'added'
 PLACEMENT_LOAD = 'load'          # the least loaded host
 PLACEMENT_SESSION = 'session'    # the host of a local login session of the user (follow_local_sessions)
 PLACEMENT_NAMED = 'named'        # the host an instructor named
+#: The entries of the lab list (``sre list --with-titles`` through the agent) as the Open page
+#: reads them: ``kind`` dir / lab, ``sort`` the mode of the titles.json the entry is placed by.
+LAB_KIND_DIR = 'dir'
+LAB_KIND_LAB = 'lab'
+LAB_KINDS = (LAB_KIND_DIR, LAB_KIND_LAB)
+LAB_SORT_NAME = 'name'
+LAB_SORT_MODES = (LAB_SORT_NAME, 'title', 'manual')
 
 
 class PoolError(Exception):
@@ -506,9 +513,11 @@ class Pool:
         return [r[4] for r in rows]
 
     async def labs(self, identity: Identity) -> list:
-        """The lab list of the pool for *identity*, ``[{name, title}]`` sorted by name: the one
-        of the host a new project of theirs would most likely go to (every host of a pool serves
-        the same lab tree), the next candidate when it fails, nothing when no host answers.  Kept
+        """The lab list of the pool for *identity*, ``[{name, title, kind, sort}]`` in the display
+        order the host gives (``sre list --with-titles``: the tree flattened, a directory entry
+        before its content, the ``title`` mode sorted by the browser): the one of the host a new
+        project of theirs would most likely go to (every host of a pool serves the same lab
+        tree), the next candidate when it fails, nothing when no host answers.  Kept
         ``labs_cache_ttl`` seconds per role (the reserved hosts are the instructors' only), so
         that the Open page costs one ``sre list`` per minute whatever the size of the pool; the
         requests of one role wait for the one fetching."""
@@ -526,8 +535,9 @@ class Pool:
             return []
 
     async def _labs_of(self, host: HostConfig, identity: Identity) -> list | None:
-        """``GET /v1/labs`` of one host, normalised (``[{name, title}]``, a bare name accepted,
-        duplicates dropped, sorted); ``None`` when the host does not answer a list."""
+        """``GET /v1/labs`` of one host, normalised (``[{name, title, kind, sort}]``, a bare name
+        accepted as a lab, an unknown kind or sort mode replaced by the default, duplicates
+        dropped, the order kept); ``None`` when the host does not answer a list."""
         try:
             async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity),
                                         timeout=aiohttp.ClientTimeout(total=30)) as resp:
@@ -545,7 +555,10 @@ class Pool:
         seen: dict[str, dict] = {}
         for entry in labs:
             if isinstance(entry, str):
-                entry = {'name': entry, 'title': None}
+                entry = {'name': entry}
             if isinstance(entry, dict) and entry.get('name') and entry['name'] not in seen:
-                seen[entry['name']] = {'name': entry['name'], 'title': entry.get('title')}
-        return sorted(seen.values(), key=lambda e: e['name'])
+                kind, mode = entry.get('kind'), entry.get('sort')
+                seen[entry['name']] = {'name': entry['name'], 'title': entry.get('title'),
+                                       'kind': kind if kind in LAB_KINDS else LAB_KIND_LAB,
+                                       'sort': mode if mode in LAB_SORT_MODES else LAB_SORT_NAME}
+        return list(seen.values())

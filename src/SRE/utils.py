@@ -203,6 +203,36 @@ def _is_exam_only(name):
     return any(affix in name for affix in params.exam_only_affix)
 
 
+def _walk_lab_dirs(lab_dir_abs, *, include_exam_only_labs):
+    """Yield ``(dirpath, subdirs, labs)`` for every directory under *lab_dir_abs* that is not a
+    lab itself, top-down: *subdirs* the names of the sub-directories walked next (the exam-only
+    ones left out unless *include_exam_only_labs*; symbolic links to directories are followed,
+    the Debian package links the labs it ships into the lab directory, and a directory already
+    walked is never entered again: loops), *labs* the local names of its labs, ``"<name>.py"``
+    for a file lab, ``"<dirname>"`` for a directory holding ``srelab.py`` (not walked). The
+    order of the names is the one of the file system: the callers sort."""
+    seen = {os.path.realpath(lab_dir_abs)}
+    for dirpath, dirnames, filenames in os.walk(lab_dir_abs, followlinks=True):
+        if not include_exam_only_labs:
+            dirnames[:] = [d for d in dirnames if not _is_exam_only(d)]
+        kept, labs = [], []
+        for d in dirnames:
+            real = os.path.realpath(os.path.join(dirpath, d))
+            if real in seen:
+                continue
+            seen.add(real)
+            if os.path.isfile(os.path.join(dirpath, d, params.srelab_py_name)):
+                labs.append(d)          # a directory lab: itself an entry, nothing below it
+            else:
+                kept.append(d)
+        dirnames[:] = kept
+        for fname in filenames:
+            if fname.endswith('.py') and fname != params.srelab_py_name:
+                if include_exam_only_labs or not _is_exam_only(fname):
+                    labs.append(fname)
+        yield dirpath, list(kept), labs
+
+
 def _iter_labs(lab_dir, *, include_exam_only_labs, recursive=True):
     """Yield ``(parent_dir_abs, lab_local_name)`` pairs for every lab under *lab_dir*.
 
@@ -214,30 +244,10 @@ def _iter_labs(lab_dir, *, include_exam_only_labs, recursive=True):
     lab_dir_abs = os.path.abspath(lab_dir)
 
     if recursive:
-        # Symbolic links to directories are followed (the Debian package links the labs it ships
-        # into the lab directory); a directory already walked is never entered again (loops)
-        seen = {os.path.realpath(lab_dir_abs)}
-        for dirpath, dirnames, filenames in os.walk(lab_dir_abs, followlinks=True):
-            if not include_exam_only_labs:
-                dirnames[:] = [d for d in dirnames if not _is_exam_only(d)]
-            kept = []
-            for d in dirnames:
-                real = os.path.realpath(os.path.join(dirpath, d))
-                if real not in seen:
-                    seen.add(real)
-                    kept.append(d)
-            dirnames[:] = kept
-
-            # Directory containing srelab.py is itself a lab; stop recursion.
-            if dirpath != lab_dir_abs and params.srelab_py_name in filenames:
-                dirnames[:] = []
-                yield os.path.dirname(dirpath), os.path.basename(dirpath)
-                continue
-
-            for fname in filenames:
-                if fname.endswith('.py') and fname != params.srelab_py_name:
-                    if include_exam_only_labs or not _is_exam_only(fname):
-                        yield dirpath, fname
+        for dirpath, _subdirs, labs in _walk_lab_dirs(lab_dir_abs,
+                                                      include_exam_only_labs=include_exam_only_labs):
+            for name in labs:
+                yield dirpath, name
         return
 
     try:
@@ -285,28 +295,73 @@ def load_titles(parent_dir_abs: str) -> dict:
     return data
 
 
-def get_lab_list_with_titles(include_exam_only_labs=False):
-    """Walk the lab directory and return ``[{"name": rel_path, "title": dict|None}, ...]``.
+def _title_of(titles: dict, local_name: str):
+    """The title an entry of a ``titles.json`` dict gives to *local_name*: a dict or a string,
+    else ``None``."""
+    title = titles.get(local_name)
+    return title if isinstance(title, (dict, str)) else None
 
-    The filesystem walk is the source of truth: stale entries in ``titles.json``
-    that do not have a matching lab file/dir on disk are silently ignored.
+
+def _sort_mode(titles: dict, inherited: str) -> str:
+    """The sort mode a ``titles.json`` dict sets (``params.titles_sort_key``), else *inherited*
+    (the nearest ancestor's, ``params.titles_sort_name`` at the root); an unknown value is
+    ignored (``sre make-titles`` warns about it)."""
+    mode = titles.get(params.titles_sort_key)
+    return mode if isinstance(mode, str) and mode in params.titles_sort_modes else inherited
+
+
+def _ordered_names(names: list, mode: str, titles: dict) -> list:
+    """*names* (the sub-directories, or the labs, of one directory) in the order of *mode*:
+    ``manual`` = the entries of ``titles.json`` in their order, those among *names* only, then
+    the others by name; ``name`` and ``title`` = by name (the consumers of ``title`` sort by
+    label themselves, in the user's language)."""
+    if mode != params.titles_sort_manual:
+        return sorted(names)
+    wanted = set(names)
+    listed = [key for key in titles
+              if not key.startswith(params.titles_reserved_prefix) and key in wanted]
+    return listed + sorted(wanted.difference(listed))
+
+
+def _lab_list_entry(name: str, title, kind: str, mode: str) -> dict:
+    return {params.lab_list_name_key: name, params.lab_list_title_key: title,
+            params.lab_list_kind_key: kind, params.lab_list_sort_key: mode}
+
+
+def get_lab_list_with_titles(include_exam_only_labs=False):
+    """Walk the lab directory and return its tree flattened in display order: one
+    ``{"name": rel_path, "title": dict|str|None, "kind": "dir"|"lab", "sort": mode}`` per entry.
+
+    A directory (``kind`` ``dir``, listed only when a lab lies below) comes right before its
+    content; the sub-directories of a directory come before its labs (a directory lab is a
+    ``lab``); each group is in the order of the effective ``@sort`` of the directory: its own
+    ``titles.json``, else the nearest ancestor's, else by name (``_ordered_names``), and
+    ``sort`` is that mode, the one the entry is placed among its siblings by (the consumers
+    sort the ``title`` mode themselves). The titles come from the ``titles.json`` of the parent
+    directory; the file system is the source of truth, so its entries that match nothing on
+    disk are silently ignored.
     """
     lab_dir_abs = os.path.abspath(params.lab_dir)
-    result = []
-    for parent_dir_abs, lab_local_name in _iter_labs(
-        params.lab_dir, include_exam_only_labs=include_exam_only_labs
-    ):
-        titles = load_titles(parent_dir_abs)
-        title = titles.get(lab_local_name)
-        if title is not None and not isinstance(title, (dict, str)):
-            title = None
-        full_path = os.path.join(parent_dir_abs, lab_local_name)
-        result.append({
-            "name": os.path.relpath(full_path, lab_dir_abs),
-            "title": title,
-        })
-    result.sort(key=lambda e: e["name"])
-    return result
+    tree = {dirpath: (subdirs, labs) for dirpath, subdirs, labs in
+            _walk_lab_dirs(lab_dir_abs, include_exam_only_labs=include_exam_only_labs)}
+
+    def entries_of(dirpath, rel, inherited):
+        subdirs, labs = tree.get(dirpath, ([], []))
+        titles = load_titles(dirpath)
+        mode = _sort_mode(titles, inherited)
+        result = []
+        for d in _ordered_names(subdirs, mode, titles):
+            below = entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode)
+            if below:
+                result.append(_lab_list_entry(os.path.join(rel, d), _title_of(titles, d),
+                                              params.lab_list_kind_dir, mode))
+                result.extend(below)
+        for name in _ordered_names(labs, mode, titles):
+            result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
+                                          params.lab_list_kind_lab, mode))
+        return result
+
+    return entries_of(lab_dir_abs, '', params.titles_sort_name)
 
 
 def resolve_running_lab_name(partial: str) -> str:

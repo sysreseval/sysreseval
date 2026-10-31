@@ -1355,7 +1355,7 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `title` | `str` \| `TranslatedText` | filename without `.py` | Lab title shown in the GUI tab header and in exported reports. Pass a `TranslatedText` (via `tr()` / `make_tr()`) for multilingual titles. The same title is also surfaced in the GUI's *Open project* picker once an admin has run `sre make-titles` to materialise per-directory `titles.json` sidecars (see `sre make-titles` in the CLI reference) |
+| `title` | `str` \| `TranslatedText` | filename without `.py` | Lab title shown in the GUI tab header and in exported reports. Pass a `TranslatedText` (via `tr()` / `make_tr()`) for multilingual titles. The same title is also surfaced in the GUI's *Open project* picker and on the Open page of the web front-end once an admin has run `sre make-titles` to materialise per-directory `titles.json` sidecars, whose `"@sort"` option also chooses the order of the labs of a directory, by file name, by title or by hand (see `sre make-titles` in the CLI reference) |
 | `default_language` | `str` | `'en'` | Language code used to resolve `TranslatedText` values when the GUI's locale is unavailable and when `make_tr()` is called without an explicit `default_language=` |
 
 ### Student self-evaluation

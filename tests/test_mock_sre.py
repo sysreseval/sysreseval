@@ -209,19 +209,25 @@ class TestList:
         assert completed.stderr == b''
 
     def test_with_titles(self, pub):
+        """The tree in display order like the real CLI: a directory entry before its content."""
         completed = run_mock(pub, 'list', '--with-titles')
         assert json.loads(completed.stdout) == [
-            {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP lab', 'fr': 'TP DHCP'}},
-            {'name': 's4/tp_ssh', 'title': None},
+            {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'name'},
+            {'name': 's4/tp_ssh', 'title': None, 'kind': 'lab', 'sort': 'name'},
+            {'name': 'sre', 'title': None, 'kind': 'dir', 'sort': 'name'},
+            {'name': 'sre/dhcp.py', 'title': {'en': 'DHCP lab', 'fr': 'TP DHCP'}, 'kind': 'lab',
+             'sort': 'name'},
         ]
 
     def test_mock_lab_list(self, pub):
         labs = ['a/b.py', 'c', 'd/e']
         completed = run_mock(pub, 'list', '--with-titles', extra_env={'MOCK_LAB_LIST': json.dumps(labs)})
         data = json.loads(completed.stdout)
-        assert [entry['name'] for entry in data] == labs
-        assert data[0]['title'] == {'en': 'DHCP lab', 'fr': 'TP DHCP'}
-        assert [entry['title'] for entry in data[1:]] == [None, None]
+        assert [entry['name'] for entry in data] == ['a', 'a/b.py', 'd', 'd/e', 'c']
+        assert [entry['kind'] for entry in data] == ['dir', 'lab', 'dir', 'lab', 'lab']
+        titles = {entry['name']: entry['title'] for entry in data}
+        assert titles == {'a': None, 'a/b.py': {'en': 'DHCP lab', 'fr': 'TP DHCP'}, 'd': None,
+                          'd/e': None, 'c': None}
 
 
 # ---------------------------------------------------------------------------------------------

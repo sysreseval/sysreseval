@@ -17,7 +17,9 @@ Environment variables (all optional but the first):
   MOCK_SRE_LOG        a file where every invocation appends one JSON line
                       {"argv": [...], "env": {<the keys of LOGGED_ENV present in the environment>},
                        "username": <the SRE username of the call>, "user_mode": <--user given>}
-  MOCK_LAB_LIST       JSON list of the lab names `list` prints (default DEFAULT_LAB_LIST)
+  MOCK_LAB_LIST       JSON list of the lab names `list` prints (default DEFAULT_LAB_LIST);
+                      `list --with-titles` prints their tree in display order like the real CLI
+                      (the directory entries included, every entry in the "name" mode)
   MOCK_FLAVOR_FORM    when set, `start` without --flavor-json (user mode) exits 3 with the
                       flavor_form event, `form` being its value
   MOCK_FLAVOR_REFUSE  when set, `start --flavor-json` exits 4 with the flavor_error event carrying
@@ -291,6 +293,29 @@ class Mock:
         labs = self.lab_list()
         return dict(FIRST_LAB_TITLE) if labs and lab_cli_arg == labs[0] else None
 
+    def lab_tree(self, labs: list) -> list:
+        """The entries of `list --with-titles` as the real CLI prints them: the tree of the lab
+        names flattened in display order, a directory entry (no title) right before its content,
+        the sub-directories of a directory before its labs, each group by name."""
+        tree: dict = {}
+        for lab in labs:
+            parts = lab.split('/')
+            node = tree
+            for segment in parts[:-1]:
+                node = node.setdefault(segment, {})
+            node[parts[-1]] = None
+
+        def flatten(node, prefix):
+            result = []
+            for name in sorted(k for k, v in node.items() if v is not None):
+                result.append({"name": prefix + name, "title": None, "kind": "dir", "sort": "name"})
+                result.extend(flatten(node[name], f"{prefix}{name}/"))
+            for name in sorted(k for k, v in node.items() if v is None):
+                result.append({"name": prefix + name, "title": self.lab_title(prefix + name),
+                               "kind": "lab", "sort": "name"})
+            return result
+        return flatten(tree, '')
+
     def delay(self, name: str) -> float:
         value = self.env.get(name)
         return float(value) if value else 0.0
@@ -413,7 +438,7 @@ class Mock:
         self.not_allowed_in_exam_mode()
         labs = self.lab_list()
         if self.args.with_titles:
-            data = [{"name": lab, "title": self.lab_title(lab)} for lab in labs]
+            data = self.lab_tree(labs)
         else:
             data = labs
         print(json.dumps(data, ensure_ascii=False))

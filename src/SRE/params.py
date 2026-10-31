@@ -453,6 +453,20 @@ def parse_lab_entry(entry) -> tuple[str, str | None]:
 
 srelab_py_name = "srelab.py"
 titles_file_name = "titles.json"
+# The options of titles.json: every key starting with titles_reserved_prefix is an option, never an entry
+titles_reserved_prefix = "@"
+titles_sort_key = "@sort"           # the order of the entries of the directory in the lab tree
+titles_sort_name = "name"           # by file name (the default)
+titles_sort_title = "title"         # by title, in the user's language
+titles_sort_manual = "manual"       # the order of the entries in titles.json
+titles_sort_modes = (titles_sort_name, titles_sort_title, titles_sort_manual)
+# The keys of the entries of `sre list --with-titles`
+lab_list_name_key = "name"
+lab_list_title_key = "title"
+lab_list_kind_key = "kind"
+lab_list_sort_key = "sort"          # the titles_sort_* mode the entry is placed among its siblings by
+lab_list_kind_dir = "dir"
+lab_list_kind_lab = "lab"
 data_json_name = "data.json"
 # Keys/markers used inside data.json by Data0.to_dict()/from_dict()
 data_json_ips6_key = "ips6"          # Data0.ips6 container (IPv6Interface values)

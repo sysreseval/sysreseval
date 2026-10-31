@@ -1,35 +1,80 @@
-// The lab tree of the Open page, built from the names of GET /api/labs ("s4/tp_ssh",
-// "sre/dhcp.py"): the directories are collapsible (<details>, closed at first like the Qt
-// dialog), a leaf shows the title of the lab in the language of the page, else its file name
-// without ".py".
+// The lab tree of the Open page, built from the entries of GET /api/labs in their order, the
+// display order of the CLI (`sre list --with-titles`: a directory entry right before its content,
+// the sub-directories of a directory before its labs, each group in the "name" or "manual" order
+// of its titles.json); the "title" mode is sorted here, by label in the language of the page.
+// The directories are collapsible (<details>, closed at first like the Qt dialog); a directory
+// or a lab shows its title, else its name (without ".py" for a lab).
 
 import {el} from './ui.js';
-import {resolveText} from './i18n.js';
+import {resolveText, currentLanguage} from './i18n.js';
 
-// labs: [{name, title}]; onSelect(name) on a click, onOpen(name) on a double click.
-export function buildTree(container, labs, {onSelect, onOpen}) {
-  const root = {dirs: new Map(), leaves: []};
-  for (const lab of [...labs].sort((a, b) => a.name.localeCompare(b.name))) {
-    const parts = lab.name.split('/');
-    let node = root;
-    for (const segment of parts.slice(0, -1)) {
-      if (!node.dirs.has(segment)) {
-        node.dirs.set(segment, {dirs: new Map(), leaves: []});
-      }
-      node = node.dirs.get(segment);
+const KIND_DIR = 'dir';
+const SORT_TITLE = 'title';
+
+function newNode(segment, name, label) {
+  return {segment, name, label, titled: false, childSort: 'name', dirs: [], leaves: []};
+}
+
+// The tree of the entries: {segment, name, label, titled, childSort, dirs: [node], leaves: [node]},
+// the lists in display order; lang: the language of the "title" sort (the page's by default).
+// Pure: importable without a document.
+export function labTree(labs, lang = currentLanguage()) {
+  const root = newNode('', '', '');
+  const dirOf = (node, segment, name) => {
+    let dir = node.dirs.find((d) => d.segment === segment);
+    if (!dir) {
+      dir = newNode(segment, name, segment);
+      node.dirs.push(dir);
     }
-    node.leaves.push({name: lab.name, segment: parts[parts.length - 1], title: resolveText(lab.title)});
+    return dir;
+  };
+  for (const entry of labs) {
+    const parts = entry.name.split('/');
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      node = dirOf(node, parts[i], parts.slice(0, i + 1).join('/'));
+    }
+    const segment = parts[parts.length - 1];
+    const title = resolveText(entry.title);
+    node.childSort = entry.sort || 'name';
+    if (entry.kind === KIND_DIR) {
+      const dir = dirOf(node, segment, entry.name);
+      dir.label = title || segment;
+      dir.titled = Boolean(title);
+    } else {
+      const leaf = newNode(segment, entry.name, title || segment.replace(/\.py$/, ''));
+      leaf.titled = Boolean(title);
+      node.leaves.push(leaf);
+    }
   }
+  orderNodes(root, lang);
+  return root;
+}
+
+function orderNodes(node, lang) {
+  if (node.childSort === SORT_TITLE) {
+    const byLabel = (a, b) => a.label.localeCompare(b.label, lang, {sensitivity: 'base', numeric: true})
+                              || a.name.localeCompare(b.name);
+    node.dirs.sort(byLabel);
+    node.leaves.sort(byLabel);
+  }
+  for (const dir of node.dirs) {
+    orderNodes(dir, lang);
+  }
+}
+
+// labs: [{name, title, kind, sort}]; onSelect(name) on a click, onOpen(name) on a double click.
+export function buildTree(container, labs, {onSelect, onOpen}) {
   let selected = null;
   const render = (node) => {
     const list = el('ul');
-    for (const [segment, child] of node.dirs) {
-      list.append(el('li', {class: 'dir'}, el('details', {}, el('summary', {}, segment), render(child))));
+    for (const dir of node.dirs) {
+      const summary = el('summary', {}, dir.label, dir.titled ? el('small', {}, ' ' + dir.segment) : null);
+      list.append(el('li', {class: 'dir'}, el('details', {}, summary, render(dir))));
     }
     for (const leaf of node.leaves) {
-      const label = leaf.title || leaf.segment.replace(/\.py$/, '');
-      const button = el('button', {type: 'button', class: 'lab', title: leaf.name}, label,
-                        leaf.title ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
+      const button = el('button', {type: 'button', class: 'lab', title: leaf.name}, leaf.label,
+                        leaf.titled ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
       button.addEventListener('click', () => {
         if (selected) {
           selected.removeAttribute('aria-selected');
@@ -44,5 +89,5 @@ export function buildTree(container, labs, {onSelect, onOpen}) {
     return list;
   };
   container.textContent = '';
-  container.append(render(root));
+  container.append(render(labTree(labs)));
 }
