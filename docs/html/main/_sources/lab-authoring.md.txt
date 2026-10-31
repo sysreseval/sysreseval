@@ -340,7 +340,9 @@ from SRE.lib_sre import NetScheme0, sre_state, make_tr
 tr = make_tr('en')
 
 class NetScheme(NetScheme0):
-    # Declare machines: keys are machine names, values are Machine kwargs
+    # Declare machines: keys are machine names, values are Machine kwargs.
+    # A name follows Kathara's device-name rule: 1 to 30 characters among a-z, 0-9 and _
+    # (lowercase only; `mX` or `pc-1` are refused by `Machine()`, so `sre check` reports them)
     _machine_specs = {
         'router':  {'color': 'green'},
         'client':  {},

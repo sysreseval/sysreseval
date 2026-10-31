@@ -237,6 +237,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="web.html#what-the-users-see">What the users see</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="web.html#instructors">Instructors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#administrators">Administrators</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#the-display-tab">The Display tab</a></li>
 </ul>
 </li>
@@ -937,7 +938,7 @@ Set the <code class="docutils literal notranslate"><span class="pre">archive_dir
 make<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="nv">FILE</span><span class="o">=</span>test_net_config.py<span class="w">   </span><span class="c1"># single file</span>
 make<span class="w"> </span>functional-tests<span class="w">               </span><span class="c1"># functional tests (test_functional.py)</span>
 make<span class="w"> </span>exam-tests<span class="w">                     </span><span class="c1"># exam-mode integration tests (requires debug_mode=True)</span>
-make<span class="w"> </span>docker-tests<span class="w">                   </span><span class="c1"># Docker integration tests with real containers (root; start/stop, save/restore)</span>
+make<span class="w"> </span>docker-tests<span class="w">                   </span><span class="c1"># Docker integration tests with real containers (root; start/stop, save/restore, the connection log&#39;s database on a MariaDB container)</span>
 make<span class="w"> </span>all-tests<span class="w">                      </span><span class="c1"># tests + functional-tests + exam-tests + docker-tests</span>
 </pre></div>
 </div>
