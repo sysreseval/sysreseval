@@ -4,6 +4,10 @@
     "fr": "DHCP (Dynamic Host Configuration Protocol)"
   },
   "dns1.py": "DNS 1",
+  "latency.py": {
+    "en": "Latency: measuring the delay of an opaque network in each direction",
+    "fr": "Latence : mesurer le délai d'un réseau opaque dans chaque sens"
+  },
   "ssh.py": "SSH",
   "static_routing.py": {
     "en": "Static routing",
