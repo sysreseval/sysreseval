@@ -161,19 +161,23 @@ Scans lab `.py` files for `image=` / `'image':` patterns and `docker pull`s each
 
 ### `sre make-titles [-o <file> | -r] <directory>`
 
-Generates `titles.json` sidecars so the GUI shows friendly labels (e.g. `static_routing.py` → "Static routing"). Labs without a `title` attribute are skipped.
+Generates `titles.json` sidecars so the Open project dialog of the GUI and the Open page of the web front-end show friendly labels (e.g. `static_routing.py` → "Static routing"). Labs without a `title` attribute are skipped.
 
 | Option | Description |
 |--------|-------------|
 | `-o, --output-file <file>` | Write all titles to `<file>` (incompatible with `-r`). |
 | `-r, --recursive` | One `titles.json` per directory containing labs (incompatible with `-o`). |
 
-Output keys match `sre list`: `"<name>.py"` for file labs, `"<dirname>"` for directory labs. Files are written atomically with sorted keys; stale entries are dropped at read time by `sre list --with-titles`.
+Output keys match `sre list`: `"<name>.py"` for file labs, `"<dirname>"` for directory labs. A rerun merges into the existing file: its options and the order of its entries are kept (a manual order survives), the labs found now are updated, the entries naming nothing on disk any more are dropped, the new labs are appended by name; a fresh file lists the labs by name. The languages of a title are written sorted, the file atomically. Stale entries are also dropped at read time by `sre list --with-titles`.
+
+**Options and sub-directories** (written by hand): every key starting with `@` is an option, never an entry. `"@sort"` sets the order of the entries of the directory in the lab tree, the same in the GUI and on the web: `"name"` (the default: the file names, byte-wise), `"title"` (the labels in the language of the user, case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; a lab without title sorts by its file name) or `"manual"` (the order of the entries in the file, then the unlisted ones by name). In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor (so `/opt/sre/lab/titles.json` sets the whole tree); an unknown value is ignored and `sre make-titles` warns about it. A key may also name a sub-directory, with a title (shown instead of its name) or `null` (listed for its position in the manual order only); `sre make-titles` keeps such entries as they are.
 
 ```json
 {
+  "@sort": "manual",
+  "s4":               {"en": "Semester 4",      "fr": "Semestre 4"},
   "static_routing.py": {"en": "Static routing", "fr": "Routage statique"},
-  "tp_ssh":           {"en": "SSH lab",         "fr": "TP SSH"}
+  "tp_ssh":           null
 }
 ```
 
@@ -312,7 +316,7 @@ Name / email resolution: `--users-file` (if provided) → `fullname` / `email` f
 
 Prints a JSON array of lab names relative to `/opt/sre/lab/` (`s4/tp_ssh`, `s2/lab.py`, …). Labs whose components match `params.exam_only_affix` (`_EXAM_`, `_OLD_`, `_DRAFT_`, `_TESTS_`) are hidden.
 
-With `--with-titles`, output becomes `[{"name": <path>, "title": <dict|null>}, …]` — titles come from per-directory `titles.json` (see `sre make-titles`); stale entries are dropped, and labs missing a title get `"title": null` (GUI then falls back to the filename).
+With `--with-titles`, output becomes the lab tree flattened in display order: `[{"name": <path>, "title": <dict|string|null>, "kind": "dir"|"lab", "sort": <mode>}, …]`, a directory entry (`"dir"`, listed when a lab lies below it) right before its content, the sub-directories of a directory before its labs (a directory lab is a `"lab"`), each group in the order of the effective `"@sort"` of the directory's `titles.json` (see `sre make-titles`; `sort` is that mode, `"name"`, `"title"` or `"manual"`: the GUI and the browser keep this order and only sort the `"title"` mode themselves, since it depends on the language of the user). Titles come from per-directory `titles.json`; stale entries are dropped, and entries without a title get `"title": null` (the front-ends then fall back to the file name).
 
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 

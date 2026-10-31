@@ -620,7 +620,9 @@ below), except `add` and `remove`, which stay with the token.
 - **Login**: the directory account, or (anonymous mode) a display name and a language; in
   proxy mode the web server in front has already asked, there is no login page.
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
-  lab tree with its titles, the Flavor form when the lab has one, the progress of the pulls and
+  lab tree with its titles, in the order the `titles.json` of each directory sets, by file name,
+  by title in the language of the page or by hand, the sub-directories first, the same tree as
+  the Qt GUI's; the Flavor form when the lab has one; the progress of the pulls and
   deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
   when no project is open. Logout asks what to do with the running projects: close them (each
   as a Close does: the last evaluation when the lab asks for it, then `sre stop`; the dialog
