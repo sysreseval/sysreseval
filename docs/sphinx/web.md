@@ -338,7 +338,8 @@ session and the request following a logout opens another one. The other events:
   instructor (their `login`); `history`: an administrator read the log on the History page
   (*Administrators* below; the filters asked come as `login_filter`, `addr_filter`,
   `event_filter`, `host_filter`, `rln_filter`, `lab_filter`, `since_filter`, `until_filter`,
-  `before_filter`; `view=sessions` for the Sessions view);
+  `before_filter`; `view=sessions` for the Sessions view, `view=statistics` for the Statistics
+  view with the period resolved in `since_filter` / `until_filter`);
 - the presentations (*Instructors* below): `present_start` (the instructor's `login`, `host`,
   `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
@@ -844,7 +845,8 @@ a user who is not an instructor never gets the rights whatever the lists say:
   `ldap_roles`).
 
 The History page needs `[access_log.database]` (*The connection log* above; without it the page
-says so) and has two views, chosen by the *Sessions* / *Events* buttons of its toolbar.
+says so) and has three views, chosen by the *Sessions* / *Events* / *Statistics* buttons of its
+toolbar.
 
 The page opens on the **Sessions** view: the log as one row per session (*The connection log*
 above: one login from one client address, from its first request to the logout, the idle
@@ -871,12 +873,43 @@ login and address (prefixes: `10.0.1.` is a subnet), event (every event name; in
 without `login` and `login_failed`, which never occur there), host (exact), project and lab
 (substrings; the lab is only on the `start` lines) and a time window.
 
-In both views the filters stay in the URL, so a filtered view reloads and can be sent to a
-colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a cursor on
-the row ids: a page is stable while new events arrive) and a click on a login, address or, in
-the events view, event, host or project cell filters on that value. Nothing is polled: *Search*
-asks again. Each query is a `history` line of the log itself, with the filters asked
-(`view=sessions` for the sessions).
+The **Statistics** view (`?view=statistics`) says who connected over a period and for how
+long. The period is the *From* / *To* window of the form: switching to the view with an empty
+*From* fills it with the time 24 hours ago, and an empty *To* is now (the default period is
+the last 24 hours; the login and address prefixes apply, an address prefix being a room). A
+session counts when it was active during the period and only its part inside the period is
+counted; the time of a user is the union of their sessions (two devices at once are not
+counted twice); the sessions still open count up to their last request, the administrator's
+own among them. A user whose role is not *instructor* is a student (the sessions closed before
+the role was logged on the closing line count as students). The page shows the **totals**
+(users, students, instructors, groups, sessions, client addresses, the total connection time,
+the average, median and longest connection time of a student, the most users at once and
+when, the projects started, the projects used, the evaluations asked and the time spent on the
+project pages), the **groups** of the students (students, sessions, time, average, projects,
+evaluations; shown when a group source is configured, like the Group column; a click on a
+group lists the users of that group alone, a second click every user again), the **users**
+(name, group, role, sessions, connected time, time on the project pages, first and last
+request in the period, addresses, projects, evaluations, requests; sortable by the headers),
+the **labs** (one row per lab, every instance merged: projects, users, students, the time
+spent on the project pages and its average per user, the starts, the evaluations) and the
+**distribution** of the students' connection time (less than 15 minutes, 15 to 30, 30 to 60,
+1 to 2 hours, 2 to 4, more). The time on a project page is that of its `project_close` lines
+(the page open as long as its events WebSocket was), clipped to the period and merged per user
+and lab; a page still open is not counted yet, and the pages of the spectators of a
+presentation never are; the starts are the `start` lines with `result=created`, the
+evaluations the `eval` lines answered 200; the requests, projects and evaluations of a session
+are those of the whole session. The portal reads the lines of those four events from the
+start of the period to two days after its end (a session or a page active in the period but
+closed later than that is missed), 200 000 of them at most: beyond, the page says the
+statistics are computed on the newest rows only and asks to narrow the period.
+
+In the two list views the filters stay in the URL, so a filtered view reloads and can be sent
+to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a
+cursor on the row ids: a page is stable while new events arrive) and a click on a login,
+address or, in the events view, event, host or project cell filters on that value. Nothing is
+polled: *Search* asks again. Each query is a `history` line of the log itself, with the filters
+asked (`view=sessions` for the sessions, `view=statistics` and the period resolved for the
+statistics).
 
 In proxy mode (the production site behind Apache) the page shows the same sessions: a session
 starts at the first request carrying the proxy's identity headers, right after the browser's

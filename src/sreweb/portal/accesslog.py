@@ -72,9 +72,10 @@ EVENTS = {
     ('POST', '/api/focus'): 'focus_start',
     ('DELETE', '/api/focus/{id}'): 'focus_stop',
     # the History page: an administrator reading the log leaves a trace (the filters asked;
-    # ``view=sessions`` for the Sessions view)
+    # ``view=sessions`` for the Sessions view, ``view=statistics`` for the Statistics view)
     ('GET', '/api/history'): 'history',
     ('GET', '/api/history/sessions'): 'history',
+    ('GET', '/api/history/statistics'): 'history',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.

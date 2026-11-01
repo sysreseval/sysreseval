@@ -225,8 +225,10 @@ class TestTemplates:
         assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
         assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
         # two tables: the events (shown, ten columns) and the sessions (hidden until chosen, eleven
-        # columns, the Group one hidden unless a group source is configured, like the Watch page's)
-        events_table, sessions_table = html.split('<table id="history-sessions"')
+        # columns, the Group one hidden unless a group source is configured, like the Watch page's),
+        # then the container of the statistics view
+        events_table, rest = html.split('<table id="history-sessions"')
+        sessions_table, statistics = rest.split('<div id="history-statistics"')
         assert 'id="history"' in events_table and 'class="grid watch history" data-database' in events_table
         assert events_table.count('<th>') == 10 and events_table.count('colspan="10"') == 1
         assert sessions_table.startswith(' class="grid watch history sessions" data-groups="false" hidden>')
@@ -239,12 +241,37 @@ class TestTemplates:
         with_groups = render('history.html', instructor=True, administrator=True, history_database=False, events=events,
                              groups=True)
         assert 'data-groups="true"' in with_groups and '<th>Group</th>' in with_groups and '<th hidden>' not in with_groups
-        # the view switch (Sessions first and pressed: the page opens on it) and the filters of the events view alone
+        # the view switch (Sessions first and pressed: the page opens on it), the filters of the
+        # events view alone and the row count of the list views alone
         assert 'data-view="sessions" aria-pressed="true">Sessions<' in html
         assert 'data-view="events" aria-pressed="false">Events<' in html
-        assert html.index('data-view="sessions"') < html.index('data-view="events"')
-        assert html.count('<label class="events-only">') == 4
+        assert 'data-view="statistics" aria-pressed="false">Statistics<' in html
+        assert html.index('data-view="sessions"') < html.index('data-view="events"') < html.index('data-view="statistics"')
+        assert html.count('<label class="events-only">') == 4 and html.count('<label class="rows-only">') == 1
         assert 'For a session: the time it was closed' in html
+        # the statistics view: hidden until chosen, the totals, the groups (hidden unless a group
+        # source is configured, like the Group column of the users), the users and labs sortable,
+        # the distribution; the headers translated by the template, the cells filled by the script
+        assert statistics.startswith(' class="history-stats" data-groups="false" hidden>')
+        for table_id in ('stats-totals', 'stats-groups', 'stats-users', 'stats-labs', 'stats-distribution'):
+            assert f'<table id="{table_id}"' in statistics, table_id
+        for key in ('period', 'users', 'students', 'instructors', 'groups', 'sessions', 'addresses', 'time', 'average',
+                    'median', 'longest', 'peak', 'projects_started', 'projects_used', 'evaluations', 'page_time'):
+            assert f'<td data-key="{key}"></td>' in statistics, key
+        assert '<tr hidden><th>Groups</th>' in statistics and '<h2 hidden>Groups</h2>' in statistics
+        assert '<table id="stats-groups" class="grid watch history stats" hidden>' in statistics
+        assert '<th class="sortable" data-sort="group" hidden>Group</th>' in statistics
+        assert '<th class="sortable" data-sort="time">Connection time</th>' in statistics          # the users
+        assert '<th class="sortable" data-sort="time">On the project pages</th>' in statistics     # the labs
+        assert '<th>Connection time</th>' in statistics and '<th>Time</th>' not in statistics      # never "Time" (a date)
+        assert statistics.count('<th class="sortable" data-sort="lab">Lab</th>') == 1
+        assert statistics.count('<tbody></tbody>') == 4
+        statistics_with_groups = with_groups.split('<div id="history-statistics"')[1]
+        assert statistics_with_groups.startswith(' class="history-stats" data-groups="true" hidden>')
+        assert '<table id="stats-groups" class="grid watch history stats">' in statistics_with_groups
+        assert '<th class="sortable" data-sort="group">Group</th>' in statistics_with_groups
+        assert '<tr><th>Groups</th>' in statistics_with_groups and '<h2>Groups</h2>' in statistics_with_groups
+        assert '<tr hidden>' not in statistics_with_groups and '<h2 hidden>' not in statistics_with_groups
         # without a database: the notice says what to configure, the table has nothing to show
         assert 'data-database="false"' in html and 'id="history-notice" class="muted">' in html
         assert 'not stored in a database' in html and 'access_log.database' in html

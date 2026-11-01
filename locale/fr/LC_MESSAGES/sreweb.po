@@ -1037,3 +1037,106 @@ msgstr "{n} en cours"
 
 msgid "No session matches the filters."
 msgstr "Aucune session ne correspond aux filtres."
+
+# the Statistics view of the History page (history.html, history.js, history_stats.js)
+msgid "Statistics"
+msgstr "Statistiques"
+
+msgid "Totals"
+msgstr "Totaux"
+
+msgid "Period"
+msgstr "Période"
+
+msgid "Users"
+msgstr "Utilisateurs"
+
+msgid "Students"
+msgstr "Étudiants"
+
+msgid "Instructors"
+msgstr "Enseignants"
+
+msgid "Groups"
+msgstr "Groupes"
+
+msgid "Addresses"
+msgstr "Adresses"
+
+msgid "Total connection time"
+msgstr "Temps de connexion total"
+
+msgid "Average connection time of a student"
+msgstr "Temps de connexion moyen d'un étudiant"
+
+msgid "Median connection time of a student"
+msgstr "Temps de connexion médian d'un étudiant"
+
+msgid "Longest connection time of a student"
+msgstr "Temps de connexion le plus long d'un étudiant"
+
+msgid "Users at once"
+msgstr "Utilisateurs simultanés"
+
+msgid "Projects started"
+msgstr "Projets démarrés"
+
+msgid "Projects used"
+msgstr "Projets utilisés"
+
+msgid "Evaluations"
+msgstr "Évaluations"
+
+msgid "Time on the project pages"
+msgstr "Temps sur les pages de projet"
+
+msgid "On the project pages"
+msgstr "Sur les pages de projet"
+
+msgid "Role"
+msgstr "Rôle"
+
+msgid "First seen"
+msgstr "Première requête"
+
+msgid "Last seen"
+msgstr "Dernière requête"
+
+msgid "Starts"
+msgstr "Démarrages"
+
+msgid "Labs"
+msgstr "TP"
+
+msgid "Connection time of the students"
+msgstr "Temps de connexion des étudiants"
+
+msgid "Connection time"
+msgstr "Temps de connexion"
+
+msgid "student"
+msgstr "étudiant"
+
+msgid "less than {n} min"
+msgstr "moins de {n} min"
+
+msgid "{a} to {b} min"
+msgstr "{a} à {b} min"
+
+msgid "{a} to {b} h"
+msgstr "{a} à {b} h"
+
+msgid "more than {n} h"
+msgstr "plus de {n} h"
+
+msgid "{n} user(s) over the period"
+msgstr "{n} utilisateur(s) sur la période"
+
+msgid "No session in the period."
+msgstr "Aucune session sur la période."
+
+msgid "The statistics are computed on the {n} newest rows only: narrow the period."
+msgstr "Les statistiques ne portent que sur les {n} lignes les plus récentes : réduisez la période."
+
+msgid "Click to show the users of this group only (again: every user)"
+msgstr "Cliquer pour n'afficher que les utilisateurs de ce groupe (à nouveau : tous)"

@@ -1227,15 +1227,97 @@ class TestHistory:
             assert any(l['event'] == 'session_open' and l['login'] == 'bob' and l['group'] == 'INFO2' for l in lines)
         run(go())
 
+    def test_statistics_from_the_database(self, tmp_path):
+        """The Statistics view: the rows of the four events (the fake server scripts them) and
+        the open sessions aggregated over the window, the login prefix, the guards, the history
+        line with the window resolved."""
+        import time
+        from test_web_accessdb import FakeServer, Down, NAMES
+        from sreweb.portal.accessdb import utc_datetime
+        from sreweb.portal.accesslog import iso_time
+        from sreweb.portal.accessstats import MAX_ROWS, SLACK
+        server = FakeServer(table_exists=True)
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['prof']},
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB}}
+        now = float(int(time.time()))
+        since, until = now - 7200, now + 60
+        start = now - 3600                                   # alice's session: an hour ago, 1850 s
+        rln = '20261101100000@@@sre@dhcp.py@@@alice'
+        rows = [(9, utc_datetime(start + 1850 + 1), 'session_close', 'alice', '10.0.1.7', '', '', '', '', 1850.0,
+                 json.dumps({'role': 'student', 'name': 'Alice Test', 'group': 'INFO1', 'reason': 'logout',
+                             'since': iso_time(start), 'requests': 14, 'projects': [rln]})),
+                (8, utc_datetime(now - 100), 'project_close', 'alice', '10.0.1.7', 'a01', rln, '', '', 600.0,
+                 json.dumps({'code': 1001})),
+                (7, utc_datetime(now - 200), 'eval', 'alice', '10.0.1.7', 'a01', rln, '', '200', 8.1, json.dumps({})),
+                (6, utc_datetime(start + 10), 'start', 'alice', '10.0.1.7', 'a01', rln, 'sre/dhcp.py', '200', 12.4,
+                 json.dumps({'instructor': False, 'placement': 'load', 'result': 'created'}))]
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test', group='INFO2')
+                await h.client.get('/api/me', headers=bob)                  # bob's session is open
+                server.select_names = NAMES
+                server.select_rows = rows
+                stats = await (await h.client.get(f'/api/history/statistics?since={since}&until={until}',
+                                                  headers=prof)).json()
+                assert stats['since'] == since and stats['until'] == until
+                assert stats['truncated'] is False and stats['limit'] == MAX_ROWS and stats['database']['connected'] is True
+                users = {u['login']: u for u in stats['users']}
+                assert stats['users'][0]['login'] == 'alice' and set(users) == {'alice', 'bob', 'prof'}
+                assert users['alice']['time'] == 1850.0 and users['alice']['page_time'] == 600.0
+                assert users['alice']['group'] == 'INFO1' and users['alice']['evaluations'] == 1
+                assert users['alice']['projects'] == 1 and users['alice']['requests'] == 14
+                assert users['bob']['open'] == 1 and users['bob']['group'] == 'INFO2' and users['bob']['role'] == 'student'
+                assert users['prof']['role'] == 'instructor' and users['prof']['open'] == 1 and users['prof']['name'] == 'Prof Essor'
+                totals = stats['totals']
+                assert totals['users'] == 3 and totals['students'] == 2 and totals['instructors'] == 1
+                assert totals['groups'] == 2 and totals['sessions'] == 3 and totals['open'] == 2 and totals['addresses'] == 2
+                assert totals['projects_started'] == 1 and totals['projects_used'] == 1 and totals['evaluations'] == 1
+                assert totals['time'] == 1850.0 and totals['page_time'] == 600.0 and totals['longest'] == 1850.0
+                assert [g['group'] for g in stats['groups']] == ['INFO1', 'INFO2']
+                assert stats['labs'] == [{'lab': 'sre/dhcp.py', 'projects': 1, 'users': 1, 'students': 1, 'time': 600.0,
+                                          'average': 600.0, 'starts': 1, 'evaluations': 1}]
+                assert sum(r['users'] for r in stats['distribution']) == 2
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT id'))
+                assert 'event IN (%s, %s, %s, %s)' in sql and 'ORDER BY id DESC LIMIT %s' in sql
+                assert args == ['session_close', 'project_close', 'start', 'eval', utc_datetime(since),
+                                utc_datetime(until + SLACK), MAX_ROWS + 1]
+                # the login prefix: the open sessions filtered here, the rows by the server
+                stats = await (await h.client.get(f'/api/history/statistics?login=b&since={since}&until={until}',
+                                                  headers=prof)).json()
+                assert 'bob' in {u['login'] for u in stats['users']} and 'prof' not in {u['login'] for u in stats['users']}
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT id'))
+                assert args[0] == 'b%' and 'login LIKE' in sql
+                # the default window: the last 24 hours
+                stats = await (await h.client.get('/api/history/statistics', headers=prof)).json()
+                assert stats['until'] - stats['since'] == 86400.0 and abs(stats['until'] - time.time()) < 5
+                assert (await h.client.get('/api/history/statistics?since=yesterday', headers=prof)).status == 400
+                assert (await h.client.get('/api/history/statistics?since=2000&until=1000', headers=prof)).status == 400
+                assert (await h.client.get('/api/history/statistics', headers=bob)).status == 403
+                assert (await h.client.get('/api/history/statistics')).status == 401
+                server.down = True
+                resp = await h.client.get('/api/history/statistics', headers=prof)
+                assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
+                server.down = False
+            history = [json.loads(row[9]) for row in server.committed if row[1] == 'history']
+            assert history[0]['view'] == 'statistics' and history[0]['since_filter'] == since
+            assert history[0]['until_filter'] == until and 'event_filter' not in history[0]
+            assert history[1]['login_filter'] == 'b' and history[2]['until_filter'] - history[2]['since_filter'] == 86400.0
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            assert [l['view'] for l in lines if l['event'] == 'history'][:3] == ['statistics'] * 3
+            assert not any(l['event'] == 'denied' and l['path'] == '/api/history/statistics' for l in lines)
+        run(go())
+
     def test_sessions_without_database(self, tmp_path):
         """No database: the Sessions view lists the open sessions alone (no 409: who is connected
-        now needs none), the events view keeps its 409."""
+        now needs none), the events and statistics views keep their 409."""
         over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['prof']}}
 
         async def go():
             async with Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
                 prof = who('prof', 'Prof Essor', groups=TEACHERS)
                 assert (await h.client.get('/api/history', headers=prof)).status == 409
+                assert (await h.client.get('/api/history/statistics', headers=prof)).status == 409
                 page = await (await h.client.get('/api/history/sessions', headers=prof)).json()
                 assert page['rows'] == [] and page['more'] is False and page['database'] is None and page['limit'] == 100
                 assert [(s['login'], s['role'], s['name'], s['reason']) for s in page['open']] == \

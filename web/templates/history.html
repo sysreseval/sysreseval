@@ -7,6 +7,7 @@
   <div class="history-views">
     <button type="button" class="toggle" data-view="sessions" aria-pressed="true">{{ _("Sessions") }}</button>
     <button type="button" class="toggle" data-view="events" aria-pressed="false">{{ _("Events") }}</button>
+    <button type="button" class="toggle" data-view="statistics" aria-pressed="false">{{ _("Statistics") }}</button>
   </div>
   <span id="history-count" class="muted"></span>
 </div>
@@ -24,7 +25,7 @@
   <label class="events-only">{{ _("Lab") }} <input type="text" name="lab" size="12" title="{{ _("A part of the lab name (the start lines only)") }}"></label>
   <label title="{{ _("For a session: the time it was closed") }}">{{ _("From") }} <input type="datetime-local" name="since"></label>
   <label title="{{ _("For a session: the time it was closed") }}">{{ _("To") }} <input type="datetime-local" name="until"></label>
-  <label>{{ _("Rows") }}
+  <label class="rows-only">{{ _("Rows") }}
     <select name="limit">
       <option value="100">100</option>
       <option value="500">500</option>
@@ -74,6 +75,91 @@
   <button type="button" id="history-newer" disabled>{{ _("Newer") }}</button>
   <button type="button" id="history-older" disabled>{{ _("Older") }}</button>
   <span id="history-page" class="muted"></span>
+</div>
+<div id="history-statistics" class="history-stats" data-groups="{{ 'true' if groups else 'false' }}" hidden>
+  <h2>{{ _("Totals") }}</h2>
+  <table id="stats-totals" class="grid stats totals">
+    <tbody>
+      <tr><th>{{ _("Period") }}</th><td data-key="period"></td></tr>
+      <tr><th>{{ _("Users") }}</th><td data-key="users"></td></tr>
+      <tr><th>{{ _("Students") }}</th><td data-key="students"></td></tr>
+      <tr><th>{{ _("Instructors") }}</th><td data-key="instructors"></td></tr>
+      <tr{% if not groups %} hidden{% endif %}><th>{{ _("Groups") }}</th><td data-key="groups"></td></tr>
+      <tr><th>{{ _("Sessions") }}</th><td data-key="sessions"></td></tr>
+      <tr><th>{{ _("Addresses") }}</th><td data-key="addresses"></td></tr>
+      <tr><th>{{ _("Total connection time") }}</th><td data-key="time"></td></tr>
+      <tr><th>{{ _("Average connection time of a student") }}</th><td data-key="average"></td></tr>
+      <tr><th>{{ _("Median connection time of a student") }}</th><td data-key="median"></td></tr>
+      <tr><th>{{ _("Longest connection time of a student") }}</th><td data-key="longest"></td></tr>
+      <tr><th>{{ _("Users at once") }}</th><td data-key="peak"></td></tr>
+      <tr><th>{{ _("Projects started") }}</th><td data-key="projects_started"></td></tr>
+      <tr><th>{{ _("Projects used") }}</th><td data-key="projects_used"></td></tr>
+      <tr><th>{{ _("Evaluations") }}</th><td data-key="evaluations"></td></tr>
+      <tr><th>{{ _("Time on the project pages") }}</th><td data-key="page_time"></td></tr>
+    </tbody>
+  </table>
+  <h2{% if not groups %} hidden{% endif %}>{{ _("Groups") }}</h2>
+  <table id="stats-groups" class="grid watch history stats"{% if not groups %} hidden{% endif %}>
+    <thead>
+      <tr>
+        <th>{{ _("Group") }}</th>
+        <th>{{ _("Students") }}</th>
+        <th>{{ _("Sessions") }}</th>
+        <th>{{ _("Connection time") }}</th>
+        <th>{{ _("Average") }}</th>
+        <th>{{ _("Projects") }}</th>
+        <th>{{ _("Evaluations") }}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <h2>{{ _("Users") }}</h2>
+  <table id="stats-users" class="grid watch history stats">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort="login">{{ _("Login") }}</th>
+        <th class="sortable" data-sort="name">{{ _("Name") }}</th>
+        <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
+        <th class="sortable" data-sort="role">{{ _("Role") }}</th>
+        <th class="sortable" data-sort="sessions">{{ _("Sessions") }}</th>
+        <th class="sortable" data-sort="time">{{ _("Connection time") }}</th>
+        <th class="sortable" data-sort="page_time">{{ _("On the project pages") }}</th>
+        <th class="sortable" data-sort="first">{{ _("First seen") }}</th>
+        <th class="sortable" data-sort="last">{{ _("Last seen") }}</th>
+        <th class="sortable" data-sort="addresses">{{ _("Addresses") }}</th>
+        <th class="sortable" data-sort="projects">{{ _("Projects") }}</th>
+        <th class="sortable" data-sort="evaluations">{{ _("Evaluations") }}</th>
+        <th class="sortable" data-sort="requests">{{ _("Requests") }}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <h2>{{ _("Labs") }}</h2>
+  <table id="stats-labs" class="grid watch history stats">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort="lab">{{ _("Lab") }}</th>
+        <th class="sortable" data-sort="projects">{{ _("Projects") }}</th>
+        <th class="sortable" data-sort="users">{{ _("Users") }}</th>
+        <th class="sortable" data-sort="students">{{ _("Students") }}</th>
+        <th class="sortable" data-sort="time">{{ _("On the project pages") }}</th>
+        <th class="sortable" data-sort="average">{{ _("Average") }}</th>
+        <th class="sortable" data-sort="starts">{{ _("Starts") }}</th>
+        <th class="sortable" data-sort="evaluations">{{ _("Evaluations") }}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <h2>{{ _("Connection time of the students") }}</h2>
+  <table id="stats-distribution" class="grid stats">
+    <thead>
+      <tr>
+        <th>{{ _("Connection time") }}</th>
+        <th>{{ _("Students") }}</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 </div>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/history.js"></script>{% endblock %}

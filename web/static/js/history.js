@@ -1,6 +1,6 @@
-// The History page of the administrators: the connection log read from its database, in two
-// views chosen by the buttons of the toolbar (the events view is kept in the URL as
-// view=events; the page opens on the sessions).
+// The History page of the administrators: the connection log read from its database, in three
+// views chosen by the buttons of the toolbar (the events and statistics views are kept in the
+// URL as view=events / view=statistics; the page opens on the sessions).
 //
 // Sessions (GET /api/history/sessions, the default): one row per session of a login from one
 // address, the sessions still open first (the portal's memory, green), then the closed ones
@@ -17,6 +17,13 @@
 // fields of the line.  The form filters by login and address (prefixes), event, host (exact),
 // project and lab (substrings) and a time window.
 //
+// Statistics (GET /api/history/statistics): who connected over a period and for how long,
+// computed by the portal (history_stats.js draws the tables): the totals, the student groups,
+// the users, the labs and the distribution of the students' time.  The period is the From / To
+// window (the time of a session inside it alone counts); switching to the view with an empty
+// From fills it with now minus 24 hours (the default period), To empty = now.  The login and
+// address prefixes apply; the other filters, the row count and the pager are hidden.
+//
 // The filters and the view are kept in the URL (a filtered view reloads and can be shared).
 // Older / Newer page through the rows with a cursor (the id of the oldest row shown).  A
 // click on an event, login, address, host or project cell filters on that value.  Nothing is
@@ -26,30 +33,37 @@ import './base.js';
 import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
-import {el, clear, toast} from './ui.js';
+import {el, clear, toast, formatDuration} from './ui.js';
+import {createStatisticsView} from './history_stats.js';
 
 const FILTER_KEYS = ['login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'];
 const EVENTS_ONLY_KEYS = ['event', 'host', 'rln', 'lab'];
 const DEFAULT_LIMIT = '100';
-const VIEWS = ['sessions', 'events'];
+const VIEWS = ['sessions', 'events', 'statistics'];
 const DEFAULT_VIEW = 'sessions';
+const DEFAULT_PERIOD_S = 86400;         // the statistics without a From: the last 24 hours
 const ERROR_EVENTS = new Set(['denied', 'login_failed']);
 
 const form = document.getElementById('history-filters');
 const tables = {events: document.getElementById('history'), sessions: document.getElementById('history-sessions')};
+const statsRoot = document.getElementById('history-statistics');
+const views = {...tables, statistics: statsRoot};
 const viewButtons = Array.from(document.querySelectorAll('.history-views button[data-view]'));
 const notice = document.getElementById('history-notice');
 const countElement = document.getElementById('history-count');
 const newerButton = document.getElementById('history-newer');
 const olderButton = document.getElementById('history-older');
 const pageElement = document.getElementById('history-page');
+const pager = document.querySelector('.history-pager');
 const databaseConfigured = tables.events.dataset.database === 'true';
 const groupsEnabled = tables.sessions.dataset.groups === 'true';   // a group source is configured: Group column shown
+const stats = createStatisticsView(statsRoot, {groupsEnabled});
 
-// view: events or sessions; rows: the rows of the page (events, or closed sessions); open: the
-// open sessions (the first page of the sessions view); before: the cursor of the page shown
-// (null = the newest rows); cursors: those of the previous pages, for Newer
-const state = {view: DEFAULT_VIEW, rows: [], open: [], more: false, before: null, cursors: []};
+// view: events, sessions or statistics; rows: the rows of the page (events, or closed
+// sessions); open: the open sessions (the first page of the sessions view); before: the cursor
+// of the page shown (null = the newest rows); cursors: those of the previous pages, for Newer;
+// stats: the JSON of the statistics view
+const state = {view: DEFAULT_VIEW, rows: [], open: [], more: false, before: null, cursors: [], stats: null};
 
 function table() {
   return tables[state.view];
@@ -64,12 +78,16 @@ function columnCount() {
 }
 
 // the filters of the form as the query parameters of the API: the local times of the
-// datetime-local inputs become seconds since the epoch; the sessions view sends its own keys only
+// datetime-local inputs become seconds since the epoch; the sessions and statistics views send
+// their own keys only
 function readForm() {
   const data = new FormData(form);
   const filters = {};
   for (const key of FILTER_KEYS) {
-    if (state.view === 'sessions' && EVENTS_ONLY_KEYS.includes(key)) {
+    if (state.view !== 'events' && EVENTS_ONLY_KEYS.includes(key)) {
+      continue;
+    }
+    if (state.view === 'statistics' && key === 'limit') {
       continue;
     }
     const value = String(data.get(key) || '').trim();
@@ -121,15 +139,25 @@ function fillForm() {
   state.view = VIEWS.includes(view) ? view : DEFAULT_VIEW;
 }
 
-// the view chosen: the buttons, the table shown, the filters of the events view hidden
+// the view chosen: the buttons, the table shown, the filters of the other views hidden, the
+// pager hidden in the statistics view
 function applyView() {
   for (const button of viewButtons) {
     button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
   }
-  for (const [name, element] of Object.entries(tables)) {
+  for (const [name, element] of Object.entries(views)) {
     element.hidden = name !== state.view;
   }
   form.classList.toggle('sessions', state.view === 'sessions');
+  form.classList.toggle('statistics', state.view === 'statistics');
+  pager.hidden = state.view === 'statistics';
+}
+
+// the statistics view with an empty From: the last 24 hours (To empty = now)
+function ensurePeriod() {
+  if (state.view === 'statistics' && !form.elements.since.value) {
+    form.elements.since.value = localInputValue(Date.now() / 1000 - DEFAULT_PERIOD_S);
+  }
 }
 
 function valueText(value) {
@@ -175,25 +203,6 @@ function durationText(duration) {
     return '';
   }
   return (duration >= 10 ? String(Math.round(duration)) : duration.toFixed(1)) + ' s';
-}
-
-// the duration of a session: 42 s, 12 min 05 s, 1 h 02 min
-function sessionDuration(seconds) {
-  if (seconds === null || seconds === undefined) {
-    return '';
-  }
-  const total = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const rest = total % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  if (hours) {
-    return `${hours} h ${pad(minutes)} min`;
-  }
-  if (minutes) {
-    return `${minutes} min ${pad(rest)} s`;
-  }
-  return `${rest} s`;
 }
 
 function filterCell(key, value) {
@@ -272,7 +281,7 @@ function renderSession(session) {
     filterCell('addr', session.addr),
     timeCell(session.start),
     open ? el('td', {class: 'ts'}, '') : timeCell(session.end),
-    el('td', {class: 'num'}, sessionDuration(session.duration)),
+    el('td', {class: 'num'}, formatDuration(session.duration)),
     el('td', {class: 'num'}, session.requests === null || session.requests === undefined ? '' : String(session.requests)),
     el('td', {title: projects.join('\n')}, projects.map(labOf).join(', ')),
     el('td', {title: open ? timeText(session.end) : ''}, reasonText(session)),
@@ -283,6 +292,10 @@ function renderSession(session) {
 
 function countText() {
   const n = state.rows.length;
+  if (state.view === 'statistics') {
+    const totals = state.stats && state.stats.totals ? state.stats.totals : {};
+    return format(_('{n} user(s) over the period'), {n: totals.users || 0});
+  }
   if (state.view === 'sessions') {
     const parts = [state.more ? format(_('{n} session(s) shown, older ones exist'), {n})
                               : format(_('{n} session(s) shown'), {n})];
@@ -295,6 +308,12 @@ function countText() {
 }
 
 function render() {
+  if (state.view === 'statistics') {
+    stats.render(state.stats || {});
+    countElement.textContent = countText();
+    pageElement.textContent = '';
+    return;
+  }
   const tbody = body();
   clear(tbody);
   const sessions = state.view === 'sessions';
@@ -330,9 +349,13 @@ function showDatabase(status) {
 }
 
 function showError(e) {
-  const tbody = body();
-  clear(tbody);
-  tbody.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'error'}, e.message)));
+  if (state.view === 'statistics') {
+    stats.clear();
+  } else {
+    const tbody = body();
+    clear(tbody);
+    tbody.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'error'}, e.message)));
+  }
   countElement.textContent = '';
   pageElement.textContent = '';
   if (e.status === 409 || e.status === 503) {
@@ -342,9 +365,15 @@ function showError(e) {
   }
 }
 
+const URLS = {sessions: '/api/history/sessions', events: '/api/history', statistics: '/api/history/statistics'};
+
 async function load() {
-  if (!databaseConfigured && state.view === 'events') {
-    clear(body());          // the notice of the page says what to configure
+  if (!databaseConfigured && state.view !== 'sessions') {
+    if (state.view === 'statistics') {
+      stats.clear();        // the notice of the page says what to configure
+    } else {
+      clear(body());
+    }
     countElement.textContent = '';
     pageElement.textContent = '';
     olderButton.disabled = true;
@@ -359,9 +388,21 @@ async function load() {
   newerButton.disabled = true;
   let data;
   try {
-    data = await api.get(api.withQuery(state.view === 'sessions' ? '/api/history/sessions' : '/api/history', filters));
+    data = await api.get(api.withQuery(URLS[state.view], filters));
   } catch (e) {
     showError(e);
+    return;
+  }
+  if (state.view === 'statistics') {
+    state.stats = data;
+    if (databaseConfigured) {
+      showDatabase(data.database);
+    }
+    if (data.truncated) {
+      showNotice(format(_('The statistics are computed on the {n} newest rows only: narrow the period.'),
+                        {n: data.limit}), {error: true});
+    }
+    render();
     return;
   }
   state.rows = Array.isArray(data.rows) ? data.rows : [];
@@ -376,6 +417,7 @@ async function load() {
 function search() {
   state.before = null;
   state.cursors = [];
+  ensurePeriod();
   writeUrl();
   load();
 }
@@ -430,6 +472,7 @@ async function main() {
   fillForm();
   applyView();
   setupControls();
+  ensurePeriod();           // ?view=statistics without a From: the last 24 hours
   await load();
 }
 

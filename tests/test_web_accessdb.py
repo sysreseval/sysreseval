@@ -692,3 +692,5 @@ class TestEvents:
                 'login_failed', 'admin', 'start'} <= set(A.ALL_EVENTS)
         assert 'project' not in A.ALL_EVENTS and list(A.ALL_EVENTS) == sorted(set(A.ALL_EVENTS))
         assert A.event_for('GET', '/api/history') == 'history' and ('GET', '/api/history') not in A.KEEPALIVE
+        assert A.event_for('GET', '/api/history/sessions') == 'history'
+        assert A.event_for('GET', '/api/history/statistics') == 'history'

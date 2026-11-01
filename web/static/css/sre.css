@@ -399,10 +399,18 @@ table.grid.history td.link { text-decoration: underline dotted; cursor: pointer;
 .history-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 8px 8px; }
 .history-filters label { white-space: nowrap; }
 .history-filters.sessions .events-only { display: none; }   /* the Sessions view: login, address and time only */
+.history-filters.statistics .events-only, .history-filters.statistics .rows-only { display: none; }   /* the Statistics view: a period */
 .history-filters input[type="datetime-local"] { padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; background: #fff; font: inherit; color: inherit; }
 .history-pager { display: flex; align-items: center; gap: 8px; margin: 0 8px 8px; }
 #history-notice { margin: 0 8px 8px; }
 #history-notice.error { color: var(--danger); }
+/* the Statistics view: the totals, the groups, the users, the labs, the distribution */
+.history-stats { margin: 0 8px 8px; overflow-x: auto; }   /* the users table is wide: scrolled, not cut */
+.history-stats h2 { font-size: 1.1em; margin: 12px 0 2px; }
+.history-stats table.grid { margin: 4px 0 8px; }
+table.grid.totals th { text-align: left; white-space: nowrap; }
+table.grid.stats td.num { text-align: right; white-space: nowrap; }
+table.grid.stats tr.selected td { background: var(--ok-light-bg); }   /* the group whose users alone are listed */
 
 /* schema */
 .schema-view {

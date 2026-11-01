@@ -2,6 +2,7 @@
 agents (``relay.py``).  Every ``/api`` call needs the session cookie (in proxy mode, the identity
 headers of the reverse proxy); the non-GET ones and the WebSockets need the
 ``X-Requested-With: sre-web`` header (CSRF)."""
+import asyncio
 import contextlib
 import hmac
 import json
@@ -15,6 +16,7 @@ from aiohttp import web, WSMsgType
 from . import auth_anon, session as S
 from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
 from .accesshistory import parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, HistoryError
+from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
@@ -106,6 +108,7 @@ class Routes:
         r.add_get('/api/watch/evaluations', self.api_watch_evaluations)
         r.add_get('/api/history', self.api_history)
         r.add_get('/api/history/sessions', self.api_history_sessions)
+        r.add_get('/api/history/statistics', self.api_history_statistics)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -330,8 +333,9 @@ class Routes:
 
     async def history_page(self, request):
         """Administrators: the connection log, read from its database (``[access_log.database]``;
-        the page says so when none is configured).  The event select lists every event but, in
-        proxy mode, those of the login page (never logged there)."""
+        the page says so when none is configured), in three views: the sessions, the events, the
+        statistics of a period.  The event select lists every event but, in proxy mode, those of
+        the login page (never logged there)."""
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
         if not request[IDENTITY_KEY].administrator:
@@ -567,6 +571,35 @@ class Routes:
                 return json_error(503, "the database of the connection log does not answer")
             page['rows'] = [session_of_row(row) for row in page['rows']]
         return web.json_response({**page, 'open': open_sessions, 'limit': filters['limit'],
+                                  'database': self.access.db.status() if self.access.db is not None else None})
+
+    async def api_history_statistics(self, request):
+        """Administrators: the Statistics view of the History page (``accessstats``): who
+        connected over the period of ``since`` / ``until`` (the last 24 hours by default; the
+        login / address prefixes apply) and for how long, per user, student group and lab, with
+        the totals, from the rows of the database and the sessions still open.  409 without a
+        database like the events view.  A ``history`` line with ``view=statistics`` and the
+        window resolved (``since_filter`` / ``until_filter``)."""
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged['view'] = 'statistics'
+        self._require_administrator(request)
+        if self.access.history is None:
+            return json_error(409, "the connection log has no database ([access_log.database] of web.toml)")
+        try:
+            window = statistics_window(parse_filters(request.query), self.access.clock())
+        except ValueError as e:
+            return json_error(400, str(e))
+        if logged is not None:
+            logged.update({f'{key}_filter': value for key, value in window.items()})
+        open_sessions = [session_of_visit(v) for v in self.access.visits.all() if visit_matches(v, window)]
+        try:
+            page = await self.access.history.query(statistics_query(window))
+        except HistoryError as e:
+            log.warning("access database: a history query failed: %s", e)
+            return json_error(503, "the database of the connection log does not answer")
+        stats = await asyncio.to_thread(compute_statistics, page['rows'], open_sessions, window['since'], window['until'])
+        return web.json_response({**stats, 'truncated': page['more'], 'limit': MAX_ROWS,
                                   'database': self.access.db.status() if self.access.db is not None else None})
 
     def _idle_timeout(self, identity: Identity) -> float:

@@ -62,6 +62,26 @@ export function formatTimestamp(text) {
   return date ? date.toLocaleString() : (text || '');
 }
 
+// A duration in seconds as a session's: 42 s, 12 min 05 s, 1 h 02 min ('' when missing; the
+// units are the same in every language of the catalog).
+export function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) {
+    return '';
+  }
+  const total = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = total % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  if (hours) {
+    return `${hours} h ${pad(minutes)} min`;
+  }
+  if (minutes) {
+    return `${minutes} min ${pad(rest)} s`;
+  }
+  return `${rest} s`;
+}
+
 // A grade or a mark: a whole number without decimals, else *digits* decimals; '' when missing.
 export function formatNumber(value, digits = 1) {
   if (value === null || value === undefined) {
