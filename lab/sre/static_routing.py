@@ -1,7 +1,4 @@
 from typing import Dict, Tuple, Literal, List
-from unittest import case
-
-from fontTools.cffLib import topDictOperators
 
 import net_config
 from SRE.lib_sre import (
@@ -528,6 +525,25 @@ class Grade(Grade0):
         """Routers of the lab, gw first."""
         return ["gw"] + [m for m in self.get_data().routers if m != "gw"]
 
+    def _routed_destinations(self, m: str) -> List[Tuple[str, IPv4Interface]]:
+        """``(machine, address)`` of the other accessible machines *m* can only reach through a
+        router: the address `eval_ping()` pings (the first address of the first static interface
+        of `net_config_final`) when it is on none of the networks *m* is connected to.  The
+        machines of a shared network answer without any route: pinging them grades nothing."""
+        net_config_final = self.net_scheme.net_config_final
+        local_nets = {ip.network for nc in net_config_final[m] if isinstance(nc, tuple) for ip in nc[0]}
+        routed = []
+        for m_dest in self.net_scheme.get_accessible_machine_names():
+            if m_dest == m:
+                continue
+            first = net_config_final[m_dest][0]
+            if not isinstance(first, tuple) or not first[0]:
+                continue
+            addr = first[0][0]
+            if not any(addr.ip in net for net in local_nets):
+                routed.append((m_dest, addr))
+        return routed
+
     def _solution_route_commands(self) -> str:
         """`ip route add` commands of the solution, machine by machine: the routes the `final`
         state adds, each one followed by the same route written with names as a comment."""
@@ -703,17 +719,18 @@ compris.
                     grade=max(0, res.other_routes - res.wrong_routes),
                 )
 
-            nb_dest = 0
+            # Only the destinations behind a router are pinged: the machines of a shared network
+            # answer without any route, so they would grade routing that was never configured.
+            routed = self._routed_destinations(m)
             nb_pings = 0
 
-            for m_dest in self.net_scheme.get_accessible_machine_names():
-                if m == m_dest:
-                    continue
+            for m_dest, addr in routed:
                 pings[m, m_dest] = eval_ping(
                     grade=self,
                     src=m,
-                    dest=m_dest,
+                    dest=addr.ip,
                     net_config=self.net_scheme.net_config_final,
+                    allow_error=True,  # unreachable until the routes are set: not a test error
                 )
                 if self.net_scheme.debug_project:
                     self.add_grade_element(
@@ -723,15 +740,15 @@ compris.
                         grade=int(pings[m, m_dest]),
                     )
 
-                nb_dest += 1
                 nb_pings += int(pings[m, m_dest])
 
-            self.add_grade_element(
-                title=no_tr("pings_{m}").format(m=m),
-                max_grade=1,
-                description=tr("ping depuis {m}").format(m=m),
-                grade=nb_pings / nb_dest,
-            )
+            if routed:
+                self.add_grade_element(
+                    title=no_tr("pings_{m}").format(m=m),
+                    max_grade=1,
+                    description=tr("ping depuis {m}").format(m=m),
+                    grade=nb_pings / len(routed),
+                )
 
             if m in self.get_data().persistent_machines:
                 netconfig_persistant, erreurs = (
