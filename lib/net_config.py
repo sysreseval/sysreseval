@@ -1054,9 +1054,15 @@ def get_net_config_from_topology(
             if gateway is not None:
                 default_net = _DEFAULT_NET_BY_VERSION[fam]
                 if machine == gateway:
-                    # External default route on the lowest-index interface
+                    # External default route: on the interface of the network holding the hop when
+                    # it is a lab network (a machine standing for the outside world), else on the
+                    # lowest-index interface (the Docker bridge of a bridged gateway)
                     if external_hop[fam] is not None:
-                        route_triples.append((default_net, min(net_to_eth.values()), external_hop[fam]))
+                        hop = external_hop[fam]
+                        eth = next((net_to_eth[n] for n in sorted(start_nets, key=net_to_eth.get)
+                                    if net_has(n, fam) and hop in getattr(nets_containers[fam], n)),
+                                   min(net_to_eth.values()))
+                        route_triples.append((default_net, eth, hop))
                 else:
                     hop = first_hop_to_machine(start_nets, gateway)
                     if hop is not None:

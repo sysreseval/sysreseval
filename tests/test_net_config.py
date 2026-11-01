@@ -1452,6 +1452,28 @@ class TestGetNetConfigFromTopology:
         # Must use .ip (172.17.0.1), not the full interface string
         assert _all_routes(result['router']).get('0.0.0.0/0') == '172.17.0.1'
 
+    def test_gateway_default_route_on_the_interface_of_the_hop_network(self):
+        # The outside world is a lab machine on the gateway's second network: the default route
+        # goes with that interface (set_net_config_entry adds the routes of an interface right
+        # after its address, so a route on eth0 toward a network of eth1 would be unreachable).
+        topology = {'lan': ['pc1', 'router'], 'out': ['router', 'internet']}
+        ips = {'pc1': '10.0.0.1/24', 'router_lan': '10.0.0.254/24',
+               'router_out': '10.9.0.254/24', 'internet': '10.9.0.1/24'}
+        nets = {'lan': '10.0.0.0/24', 'out': '10.9.0.0/24'}
+        ns = make_topology_net_scheme(ips, nets, topology)
+        result = get_net_config_from_topology(ns, topology, gateway='router',
+                                              default_route=IPv4Interface('10.9.0.1/24'))
+        (_, eth0_routes), (_, eth1_routes) = result['router']
+        assert eth0_routes == []
+        assert [(str(n), str(g)) for n, g in eth1_routes] == [('0.0.0.0/0', '10.9.0.1')]
+        # the outside machine comes back through the gateway
+        assert _all_routes(result['internet']) == {'0.0.0.0/0': '10.9.0.254'}
+        # a hop outside every lab network (the Docker bridge) stays on the lowest interface
+        result = get_net_config_from_topology(ns, topology, gateway='router',
+                                              default_route=IPv4Interface('172.17.0.1/24'))
+        assert [(str(n), str(g)) for n, g in result['router'][0][1]] == [('0.0.0.0/0', '172.17.0.1')]
+        assert result['router'][1][1] == []
+
 
 
 # ===========================================================================
