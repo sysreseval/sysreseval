@@ -50,6 +50,11 @@ save_record_interval_during_exams = 60
 # points at most for the whole lab.
 forwarding_maximum_penalty = 3
 
+# The default bridge network of Docker: `gw` is bridged on it (its default route toward the
+# host, 172.17.0.1, goes through that interface), so no network of the lab may overlap it.
+# `Data.generate()` refuses any set of addresses that does.
+docker_network = IPv4Network("172.17.0.0/16")
+
 default_language = "fr"
 tr = make_tr(default_language)
 
@@ -187,7 +192,7 @@ class Data(Data0):
             nets = random_ipv4networks(
                 masks=[24] * len(data.topology.keys()),
                 from_private_network=True,
-                exclude=[IPv4Network("172.17.0.0/24"), IPv4Network("10.0.0.0/16")],
+                exclude=[docker_network, IPv4Network("10.0.0.0/16")],
             )
             for i in range(len(data.topology.keys())):
                 setattr(data.nets, f"net{i}", nets[i])
@@ -209,7 +214,7 @@ class Data(Data0):
                         "m1": IPv4Interface("192.168.182.214/24"),
                         "r3_net1": IPv4Interface("192.168.182.77/24"),
                         "r3_net3": IPv4Interface("192.168.236.21/24"),
-                        "r3_net7": IPv4Interface("172.17.47.39/24"),
+                        "r3_net7": IPv4Interface("172.19.47.39/24"),
                         "m2": IPv4Interface("172.18.15.131/24"),
                         "m3": IPv4Interface("192.168.236.46/24"),
                         "m4": IPv4Interface("172.30.4.219/24"),
@@ -217,7 +222,7 @@ class Data(Data0):
                         "r4_net6": IPv4Interface("172.29.15.148/24"),
                         "m5": IPv4Interface("192.168.161.218/24"),
                         "m6": IPv4Interface("172.29.15.71/24"),
-                        "m7": IPv4Interface("172.17.47.163/24"),
+                        "m7": IPv4Interface("172.19.47.163/24"),
                     }
                 case "set2":
                     ip_dict = {
@@ -253,6 +258,14 @@ class Data(Data0):
                     name = m if len(machine_nets[m]) == 1 else f"{m}_{net_name}"
                     setattr(data.ips, name, ip_dict[name])
                     setattr(data.nets, net_name, ip_dict[name].network)
+        overlapping = {
+            name: net for name, net in vars(data.nets).items() if net.overlaps(docker_network)
+        }
+        if overlapping:
+            raise ValueError(
+                f"networks overlapping the Docker bridge network {docker_network}: "
+                + ", ".join(f"{name} = {net}" for name, net in overlapping.items())
+            )
         return data
 
 

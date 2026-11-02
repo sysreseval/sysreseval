@@ -7,7 +7,7 @@ The tests run on tests/labs/static_routing_test_lab.py, a copy of lab/sre/static
 import datetime
 import importlib.util
 import re
-from ipaddress import ip_address
+from ipaddress import IPv4Network, ip_address
 from pathlib import Path
 
 import pytest
@@ -210,3 +210,39 @@ class TestPingsNeedRouting:
                 for command, timeout in commands if _PING_RE.match(command)]
         assert len(keys) == sum(len(targets) for targets in _SMALL_ROUTED.values())
         assert all(grade._allow_errors_in_tests.get(key) for key in keys)
+
+
+class TestDockerNetwork:
+    """No network of the lab overlaps the default bridge network of Docker (172.17.0.0/16, the one
+    `gw` is bridged on): the random networks exclude it, the fixed sets avoid it, and
+    `Data.generate()` refuses a set of addresses that does not."""
+
+    @staticmethod
+    def _nets(lab, ip_choice, size='large'):
+        flavor = lab.Flavor(network_size=size, ip_choice=ip_choice)
+        lab.Data.compute_pre_generate(flavor)
+        data = lab.Data.generate(flavor=flavor)
+        nets = vars(data.nets)
+        assert set(nets) == set(data.topology)
+        return nets
+
+    def test_docker_network(self, lab):
+        assert lab.docker_network == IPv4Network('172.17.0.0/16')
+
+    @pytest.mark.parametrize('ip_choice', ['set1', 'set2'])
+    @pytest.mark.parametrize('size', ['small', 'medium', 'large'])
+    def test_fixed_sets_avoid_the_docker_network(self, lab, ip_choice, size):
+        nets = self._nets(lab, ip_choice, size)
+        assert not any(net.overlaps(lab.docker_network) for net in nets.values()), nets
+
+    def test_random_networks_avoid_the_docker_network(self, lab):
+        for _ in range(20):
+            nets = self._nets(lab, 'random')
+            assert not any(net.overlaps(lab.docker_network) for net in nets.values()), nets
+            assert not any(net.overlaps(IPv4Network('10.0.0.0/16')) for net in nets.values()), nets
+
+    def test_generate_refuses_an_overlap(self, lab, monkeypatch):
+        # net0 of set 1 is 172.31.128.0/24
+        monkeypatch.setattr(lab, 'docker_network', IPv4Network('172.31.0.0/16'))
+        with pytest.raises(ValueError, match=r'172\.31\.0\.0/16: net0 = 172\.31\.128\.0/24$'):
+            self._nets(lab, 'set1')
