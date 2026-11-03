@@ -82,6 +82,9 @@ class Project:
     #: containers were started with them), and the open display WebSockets (``display.py``).
     display: dict | None = None
     display_clients: list = field(default_factory=list)
+    #: ``(inode, mtime, size)`` of ``answers/answers.json`` as the agent last wrote or saw it
+    #: (``AnswersStore``): a change is the write of another program, the Qt GUI of the student.
+    answers_sig: tuple | None = None
     _state_written: float = 0.0
 
     @property

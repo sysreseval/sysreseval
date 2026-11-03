@@ -259,6 +259,13 @@ class ProjectWidget(QWidget):
         except Exception:
             pass
 
+        # The answers another program wrote (the web agent, for the browser of the same student
+        # or of an instructor helping) are shown within a second
+        try:
+            self._questions_view.reload_if_changed()
+        except Exception:
+            pass
+
         # Tail the operations log of a debug or instructor-mode project on every tick (the file
         # grows while a state or an evaluation runs, independently of info.json)
         if self.info.get("debug_project", False) or self.info.get("instructor_mode", False):

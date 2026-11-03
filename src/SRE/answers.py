@@ -8,6 +8,13 @@ workstation, and by the web agent on behalf of a browser user; it is read by
 share: reading and writing the file, the metadata, the exam fields of ``exam.json``, and the
 cheat file ``answers/cheat.json`` that ``sre state`` writes for the GUI to merge.
 
+Both writers may be at work on the same project (the student logged in on a pool host opens
+their project in a browser too, an instructor helps from the web): each one reads the file
+before writing it, puts only the answers it changed on top, and replaces the file atomically
+(:func:`save_answers` with ``atomic=True``, which works whatever the owner of the previous
+file since the ``answers/`` directory is 0777), then watches the file's :func:`file_signature`
+to show what the other wrote.
+
 The identity is the caller's: the GUI takes it from its desktop session
 (:func:`session_identity`), the web agent passes the LDAP account or the pseudonym of the
 browser user to :func:`with_metadata`.
@@ -123,26 +130,42 @@ def consume_cheat_file(path: str | os.PathLike) -> dict | None:
     return cheat
 
 
-def save_answers(path: str | os.PathLike, data: dict, *, atomic: bool = False,
-                 owner: tuple[int, int] | None = None, mode: int | None = None) -> None:
-    """Write *data* to the answers file *path* as JSON (``indent=2``, ``ensure_ascii=False``),
-    creating the parent directory when missing; errors raise (``OSError``).
+def file_signature(path: str | os.PathLike) -> tuple | None:
+    """``(inode, mtime in ns, size)`` of the file *path*, ``None`` when it cannot be stat'ed:
+    what tells the two writers of the answers file (the GUI and the web agent, see
+    :func:`save_answers`) a write of the other from their own, which they know by the signature
+    :func:`save_answers` returns."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
 
-    Plain (the GUI): the file is opened and written in place. With ``atomic=True`` (the web
-    agent, whose project is evaluated while it writes): a temporary file in the directory of
-    *path* (mode 0600 until *mode* is applied), flushed to disk, then ``os.replace`` over
-    *path*, the pattern of ``Grade0.save_lab_info()``, so a reader never sees a partial file.
-    In both modes *mode* is applied with ``fchmod`` when given, and *owner* (``(uid, gid)``,
-    ``-1`` to leave one unchanged) with ``fchown`` when given and the process runs as root
-    (skipped silently otherwise)."""
+
+def save_answers(path: str | os.PathLike, data: dict, *, atomic: bool = False,
+                 owner: tuple[int, int] | None = None, mode: int | None = None) -> tuple:
+    """Write *data* to the answers file *path* as JSON (``indent=2``, ``ensure_ascii=False``),
+    creating the parent directory when missing; errors raise (``OSError``). Returns the
+    :func:`file_signature` of the file written.
+
+    Plain: the file is opened and written in place. With ``atomic=True`` (both writers: the web
+    agent, whose project is evaluated while it writes, and the GUI, whose file the agent may
+    have replaced as root, since ``os.replace`` needs the write permission on the ``answers/``
+    directory (0777) only): a temporary file in the directory of *path* (mode 0600 until *mode*
+    is applied: pass 0644 so that ``sre eval`` reads it), flushed to disk, then ``os.replace``
+    over *path*, the pattern of ``Grade0.save_lab_info()``, so a reader never sees a partial
+    file. In both modes *mode* is applied with ``fchmod`` when given, and *owner* (``(uid,
+    gid)``, ``-1`` to leave one unchanged) with ``fchown`` when given and the process runs as
+    root (skipped silently otherwise)."""
     path = Path(path)
     text = json.dumps(data, indent=2, ensure_ascii=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not atomic:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(text)
+            f.flush()
             _apply_file_attributes(f.fileno(), mode, owner)
-        return
+            return _fd_signature(f.fileno())
     fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -150,11 +173,18 @@ def save_answers(path: str | os.PathLike, data: dict, *, atomic: bool = False,
             f.flush()
             os.fsync(f.fileno())
             _apply_file_attributes(f.fileno(), mode, owner)
+            signature = _fd_signature(f.fileno())
         os.replace(temp_name, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temp_name)
         raise
+    return signature
+
+
+def _fd_signature(fd: int) -> tuple:
+    st = os.fstat(fd)
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
 
 
 def _apply_file_attributes(fd: int, mode: int | None, owner: tuple[int, int] | None) -> None:

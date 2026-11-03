@@ -1,4 +1,5 @@
 import json
+import sys
 
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import Qt, QFont
@@ -9,7 +10,8 @@ from PySide6.QtWidgets import (
 
 from SRE import params
 from SRE.answers import (
-    load_answers, merge_cheat, read_exam_json, save_answers, session_identity, with_metadata,
+    file_signature, load_answers, merge_cheat, read_exam_json, save_answers, session_identity,
+    with_metadata,
 )
 from SRE.common import TranslatedText
 from SRE.instructor_text import markdown_to_html, strip_instructor, unwrap_instructor
@@ -23,6 +25,10 @@ _DUMMY_TYPE = 0  # QuestionType.DUMMY.value
 # desktop session running the GUI: read once
 _SESSION_IDENTITY = session_identity()
 
+# the mode of the answers file written here: readable by the sre user, which evaluates
+# (the temporary file of an atomic write is created 0600)
+ANSWERS_FILE_MODE = 0o644
+
 
 class QuestionsView(QWidget):
     def __init__(self, questions: list, running_lab_name: str, parent=None):
@@ -30,6 +36,9 @@ class QuestionsView(QWidget):
 
         self._running_lab_name = running_lab_name
         self._answers: dict[str, str] = {}
+        self._pending: dict[str, str] = {}   # the answers changed here since the last successful write
+        self._file_sig = None                # SRE.answers.file_signature of the file as last read or written
+        self._save_error_reported = False
         self._current_hash: str | None = None
         self._loading = False  # guard: don't save while setting text programmatically
         self._font_size = settings.get_content_font_size()
@@ -153,9 +162,21 @@ class QuestionsView(QWidget):
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
+    # The file is shared with the web agent, which writes on it the answers typed in a browser
+    # (the student's own, or an instructor's helping).  Every save here reads the file first,
+    # puts only the answers changed in this GUI (_pending) on top and replaces the file
+    # atomically: a reader never sees a partial file, and the replacement needs the write
+    # permission on the answers/ directory (0777) only, whatever the owner of the previous
+    # file (the agent writes as root).  reload_if_changed() (every second, from
+    # ProjectWidget.refresh) shows what the other writer changed; the file written here is
+    # known by its signature.
+
+    def _answers_path(self) -> str:
+        return params.answers_filename(self._running_lab_name)
 
     def _load_answers(self):
-        self._answers = load_answers(params.answers_filename(self._running_lab_name))
+        self._file_sig = file_signature(self._answers_path())
+        self._answers = load_answers(self._answers_path())
         self._answers.update(_SESSION_IDENTITY)
 
     def save_answers(self):
@@ -163,9 +184,13 @@ class QuestionsView(QWidget):
         self._save_answers()
 
     def _save_answers(self):
+        """Write the file: its current content, the answers changed here on top, the metadata
+        of this session.  A failure keeps the pending answers for the next save and is reported
+        on stderr, once per failure streak."""
+        path = self._answers_path()
         try:
             data = with_metadata(
-                self._answers,
+                {**load_answers(path), **self._pending},
                 hostname=_SESSION_IDENTITY[params.hostname_keyword],
                 login=_SESSION_IDENTITY[params.login_keyword],
                 fullname=_SESSION_IDENTITY[params.fullname_keyword],
@@ -173,19 +198,62 @@ class QuestionsView(QWidget):
                 language=self._lang_priority[0] if self._lang_priority else 'en',
                 exam_data=read_exam_json(params.sre_pub_dir),
             )
-            save_answers(params.answers_filename(self._running_lab_name), data)
-        except Exception:
-            pass
+            self._file_sig = save_answers(path, data, atomic=True, mode=ANSWERS_FILE_MODE)
+        except Exception as e:
+            if not self._save_error_reported:
+                self._save_error_reported = True
+                print(f"sysreseval: cannot save the answers to {path}: {e}", file=sys.stderr, flush=True)
+            return
+        self._save_error_reported = False
+        self._pending = {}
+        self._answers = data
+
+    def _answer_changed(self, q_hash: str, value: str):
+        self._answers[q_hash] = value
+        self._pending[q_hash] = value
+        self._save_answers()
 
     def _on_answer_changed(self):
         if self._loading or self._current_hash is None:
             return
-        self._answers[self._current_hash] = self.answer_text.toPlainText()
-        self._save_answers()
+        self._answer_changed(self._current_hash, self.answer_text.toPlainText())
 
     def _on_form_answer_changed(self, q_hash: str, json_str: str):
-        self._answers[q_hash] = json_str
-        self._save_answers()
+        self._answer_changed(q_hash, json_str)
+
+    def reload_if_changed(self) -> bool:
+        """Read the file again when another program changed it (the web agent, for the browser
+        of the same student or of an instructor helping) and show the new value of the current
+        question; the writes of this view are known by their signature.  Returns True when the
+        answers were reloaded.  Called every second by ``ProjectWidget.refresh()``."""
+        sig = file_signature(self._answers_path())
+        if sig is None or sig == self._file_sig:
+            return False
+        data = load_answers(self._answers_path())
+        if not data and sig[2] > 0:
+            return False          # unreadable, or being replaced: again at the next tick
+        self._file_sig = sig
+        shown = self._answers.get(self._current_hash) if self._current_hash else None
+        self._answers = {**data, **self._pending, **_SESSION_IDENTITY}
+        if self._current_hash is not None and self._answers.get(self._current_hash) != shown:
+            self._show_current_value()
+        return True
+
+    def _show_current_value(self):
+        """Show the stored value of the current question in its widget (text or form)."""
+        value = self._answers.get(self._current_hash, "")
+        if self._right_panel.currentIndex() == 1:
+            if self._current_form_widget is not None:
+                try:
+                    d = json.loads(value or "{}")
+                except Exception:
+                    d = {}
+                self._current_form_widget.set_answers(d if isinstance(d, dict) else {})
+            return
+        if self.answer_text.toPlainText() != value:
+            self._loading = True
+            self.answer_text.setPlainText(value)
+            self._loading = False
 
     # ------------------------------------------------------------------
     # Data
@@ -222,25 +290,12 @@ class QuestionsView(QWidget):
 
     def apply_cheat(self, cheat: dict):
         """Populate answers from cheat dict (question_hash -> answer) and persist."""
+        shown = self._answers.get(self._current_hash) if self._current_hash else None
         self._answers = merge_cheat(self._answers, cheat)
+        self._pending.update(cheat)
         self._save_answers()
-        row = self.list_widget.currentRow()
-        if 0 <= row < len(self._questions):
-            q = self._questions[row]
-            q_hash = q.get("question_hash")
-            if q_hash not in cheat:
-                return
-            if q.get("question_type") == _FORM_TYPE:
-                if self._current_form_widget is not None:
-                    try:
-                        d = json.loads(cheat[q_hash])
-                    except Exception:
-                        d = {}
-                    self._current_form_widget.set_answers(d)
-            else:
-                self._loading = True
-                self.answer_text.setPlainText(self._answers.get(q_hash, ""))
-                self._loading = False
+        if self._current_hash is not None and self._answers.get(self._current_hash) != shown:
+            self._show_current_value()
 
     # ------------------------------------------------------------------
     # Display

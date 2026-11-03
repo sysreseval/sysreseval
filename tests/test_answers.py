@@ -17,8 +17,8 @@ import pytest
 
 from SRE import params
 from SRE.answers import (
-    consume_cheat_file, exam_fields, load_answers, merge_cheat, read_exam_json, save_answers,
-    session_identity, with_metadata,
+    consume_cheat_file, exam_fields, file_signature, load_answers, merge_cheat, read_exam_json,
+    save_answers, session_identity, with_metadata,
 )
 
 NOW = datetime(2026, 10, 21, 10, 30, 0)
@@ -223,11 +223,20 @@ class TestSaveAnswers:
 
     def test_atomic(self, tmp_path):
         path = tmp_path / params.answer_dir_name / params.answer_file_name
-        save_answers(path, {'h1': 'first'}, atomic=True)
-        save_answers(path, ANSWERS, atomic=True, mode=0o644)
+        first = save_answers(path, {'h1': 'first'}, atomic=True)
+        second = save_answers(path, ANSWERS, atomic=True, mode=0o644)
         assert path.read_text(encoding='utf-8') == json.dumps(ANSWERS, indent=2, ensure_ascii=False)
         assert _mode(path) == 0o644
         assert os.listdir(path.parent) == [params.answer_file_name]  # no temporary file left
+        # the signature of the file written, the one a stat gives afterwards: a writer tells its
+        # own write from another's by it
+        assert second == file_signature(path) and first != second
+        assert first[0] != second[0]                                  # a new inode every time
+
+    def test_plain_signature(self, tmp_path):
+        path = tmp_path / params.answer_file_name
+        assert save_answers(path, ANSWERS) == file_signature(path)
+        assert file_signature(tmp_path / 'missing') is None
 
     def test_atomic_owner_skipped_without_root(self, tmp_path, monkeypatch):
         path = tmp_path / params.answer_file_name

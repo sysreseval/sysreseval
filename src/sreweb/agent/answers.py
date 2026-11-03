@@ -16,10 +16,19 @@ the instructor's), only the update time and the exam fields are new.  Every ``pu
 the open pages of the project (the ``answers`` event), so the student's page shows what the
 instructor types and the instructor's page what the student types.  ``cheat.json`` written by
 ``sre state`` is merged the same way at the next tick and pushed too.
+
+The Qt GUI of the same student, logged in on the host, may write the file too (a project
+started there and opened in a browser, or the other way round).  The file it created keeps its
+owner, so that it goes on writing it (``_owner_of``: an agent writing ``sre:docker`` over the
+student's file left the GUI unable to save, every answer typed there afterwards was lost, until
+2026-11-03), and what it wrote is pushed to the open pages: ``watch_file``, a tick hook, compares
+the file's signature with the one of the agent's last write or read (``Project.answers_sig``).
 """
 import json
 import logging
+import os
 import socket
+import stat
 
 from SRE import params
 from SRE import answers as A
@@ -43,7 +52,9 @@ class AnswersStore:
         self.pub_dir = pub_dir or params.sre_pub_dir
         self.owner = owner if owner is not None else (params.sre_uid, params.docker_gid)
         self.mode = mode
+        registry.on_added.append(self.note_signature)
         registry.tick_hooks.append(self.consume_cheat)
+        registry.tick_hooks.append(self.watch_file)
 
     @staticmethod
     def path(project: Project):
@@ -123,8 +134,38 @@ class AnswersStore:
         return bool(identity.fullname and identity.fullname != self._stored(answers, params.fullname_keyword)
                     or identity.group and identity.group != self._stored(answers, params.group_keyword))
 
+    def _owner_of(self, path) -> tuple[int, int]:
+        """The owner to give the file: the one of the existing regular file (the Qt GUI of the
+        student created it and must go on writing it), else ``sre:docker``."""
+        try:
+            st = os.lstat(path)
+        except OSError:
+            return self.owner
+        return (st.st_uid, st.st_gid) if stat.S_ISREG(st.st_mode) else self.owner
+
     def _save(self, project: Project, data: dict):
-        A.save_answers(self.path(project), data, atomic=True, owner=self.owner, mode=self.mode)
+        path = self.path(project)
+        project.answers_sig = A.save_answers(path, data, atomic=True, owner=self._owner_of(path), mode=self.mode)
+
+    def note_signature(self, project: Project):
+        """``on_added`` hook: the file as it is when the project is found."""
+        project.answers_sig = A.file_signature(self.path(project))
+
+    async def watch_file(self, project: Project):
+        """Tick hook: when another program replaced or rewrote the file (the Qt GUI of the
+        student on this host), push its answers to the open pages of the project."""
+        async with project.answers_lock:
+            sig = A.file_signature(self.path(project))
+            if sig == project.answers_sig:
+                return
+            if sig is None or not project.subscribers:
+                project.answers_sig = sig
+                return
+            answers = self.read(project)
+            if not answers and sig[2] > 0:
+                return              # unreadable, or being replaced: again at the next tick
+            project.answers_sig = sig
+        await self.registry.broadcast(project, {'t': EVENT_ANSWERS, 'answers': self.public(answers, project)})
 
     async def put(self, project: Project, patch: dict, identity: Identity) -> dict:
         """Merge *patch* (``{question_hash: answer}``) into the file, push the new answers to
