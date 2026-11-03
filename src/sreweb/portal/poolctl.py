@@ -199,7 +199,7 @@ def main(argv, default_config: str) -> int:
     remove = sub.add_parser('remove', help="remove a host", parents=[common])
     remove.add_argument('name')
     remove.add_argument('--force', action='store_true', help="even with projects (they stay on the host)")
-    for action, text in (('enable', "place projects on the host again"), ('disable', "keep the host polled, place nothing"),
+    for action, text in (('enable', "place projects on the host again"), ('disable', "no new project (the running ones go on, the host is never powered off)"),
                          ('wake', "wake the host now"), ('poweroff', "power the host off now (refused with projects)"),
                          ('drain', "no new project, power off when empty")):
         sub.add_parser(action, help=text, parents=[common]).add_argument('name')

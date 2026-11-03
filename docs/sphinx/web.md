@@ -595,7 +595,7 @@ the *Pool* page of the instructors) shows it:
 | `occupied` | the agent answers, the host is used locally (`occupied_check`) | only the new projects of the users logged in there (`follow_local_sessions`); the web projects already running there go on |
 | `exam` | the agent answers, `exam.json` is on the host | no |
 | `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty |
-| `disabled` | `sre-web-tool disable`, or `enabled = false` | no |
+| `disabled` | `sre-web-tool disable`, or `enabled = false` | no; the projects already running there go on (listed, usable, evaluated and closed as usual), the host stays polled and is never powered off by the portal — `drain` is the way to empty a host and shut it down |
 
 **Placement.** A new project (`POST /api/projects`) goes to one host, chosen by the portal from
 the last status poll of every agent (`poll_interval`) without asking them again. The candidates
@@ -688,7 +688,8 @@ sre-web-tool list                 # one line per host: state, projects/max, load
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
-sre-web-tool disable a03 | enable a03 | wake a03 | poweroff a03 | drain a03
+sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
+sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powered off once the last project is closed
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 ```
 
