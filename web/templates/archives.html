@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Archives") }} - SRE{% endblock %}
+{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ _("Evaluation archives") }}</h1>
+  <div class="history-views">
+    <button type="button" class="toggle" data-view="evaluations" aria-pressed="true">{{ _("Evaluations") }}</button>
+    <button type="button" class="toggle" data-view="summary" aria-pressed="false">{{ _("Summary") }}</button>
+  </div>
+  <span id="archives-count" class="muted"></span>
+</div>
+<form id="archives-filters" class="history-filters">
+  <label>{{ _("Student") }} <input type="text" name="student" size="14" title="{{ _("The beginning of a login, or a part of a name") }}"></label>
+  <label{% if not groups %} hidden{% endif %}>{{ _("Group") }} <input type="text" name="group" size="6" list="archives-groups" title="{{ _("The student group (its exact name)") }}"></label>
+  <datalist id="archives-groups"></datalist>
+  <label>{{ _("Lab") }} <input type="text" name="lab" size="16" list="archives-labs" title="{{ _("A part of the lab name") }}"></label>
+  <datalist id="archives-labs"></datalist>
+  <label>{{ _("Host") }} <input type="text" name="host" size="6" title="{{ _("The exact name of a pool host") }}"></label>
+  <label title="{{ _("The time of the evaluation") }}">{{ _("From") }} <input type="datetime-local" name="since"></label>
+  <label title="{{ _("The time of the evaluation") }}">{{ _("To") }} <input type="datetime-local" name="until"></label>
+  <label>{{ _("Exam") }}
+    <select name="exam">
+      <option value="">{{ _("All") }}</option>
+      <option value="1">{{ _("Exam only") }}</option>
+      <option value="0">{{ _("No exam") }}</option>
+    </select>
+  </label>
+  <label>{{ _("Show") }}
+    <select name="show">
+      <option value="project">{{ _("The last evaluation of each project") }}</option>
+      <option value="student">{{ _("The last evaluation of each student") }}</option>
+      <option value="all">{{ _("Every evaluation") }}</option>
+    </select>
+  </label>
+  <label class="rows-only">{{ _("Rows") }}
+    <select name="limit">
+      <option value="100">100</option>
+      <option value="500">500</option>
+      <option value="1000">1000</option>
+    </select>
+  </label>
+  <button type="submit" class="primary">{{ _("Search") }}</button>
+  <button type="button" id="archives-reset">{{ _("Reset") }}</button>
+</form>
+<p id="archives-notice" class="muted"{% if archives_database %} hidden{% endif %}>{% if not archives_database %}{{ _("The evaluations are not stored in a database: set [access_log.database] in web.toml to browse them here.") }}{% endif %}</p>
+<table id="archives" class="grid watch archives" data-database="{{ 'true' if archives_database else 'false' }}" data-groups="{{ 'true' if groups else 'false' }}">
+  <thead>
+    <tr>
+      <th>{{ _("Time") }}</th>
+      <th>{{ _("Login") }}</th>
+      <th>{{ _("Name") }}</th>
+      <th{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
+      <th>{{ _("Lab") }}</th>
+      <th>{{ _("Host") }}</th>
+      <th>{{ _("Project start") }}</th>
+      <th>{{ _("Grade") }}</th>
+      <th>{{ _("Mark") }}</th>
+      <th>{{ _("Errors") }}</th>
+      <th title="{{ _("The number of self-evaluations the student had run") }}">{{ _("Self-evaluations") }}</th>
+      <th>{{ _("Exam") }}</th>
+    </tr>
+  </thead>
+  <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+</table>
+<div class="history-pager">
+  <button type="button" id="archives-newer" disabled>{{ _("Newer") }}</button>
+  <button type="button" id="archives-older" disabled>{{ _("Older") }}</button>
+  <span id="archives-page" class="muted"></span>
+</div>
+<div id="archives-summary" class="archives-summary" hidden></div>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/archives.js"></script>{% endblock %}

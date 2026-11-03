@@ -48,6 +48,8 @@ def main(argv=None) -> int:
     if cfg.auth.mode == AUTH_PROXY:
         logger.info("identity headers trusted from %s", ', '.join(str(n) for n in cfg.trusted_proxies))
     logger.info("connection log: %s", portal.access.describe())
+    if portal.archives is not None:
+        logger.info("evaluation archives: %s", portal.archives.describe())
     web.run_app(app, host=host, port=port, ssl_context=ssl_context, print=None)
     return 0
 

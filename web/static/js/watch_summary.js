@@ -187,7 +187,8 @@ function maxText(s, bonus) {
   return bonus && max ? format(_('{max} (Bonus)'), {max}) : max;
 }
 
-function renderMatrix(entries, groups) {
+// onRow(entry): a click handler of the rows (the Archives page opens the evaluation)
+function renderMatrix(entries, groups, onRow) {
   const columns = groups.flatMap((g) => g.columns);
   const evaluated = entries.filter((entry) => entry.elements);
   const table = el('table', {class: 'grid matrix'});
@@ -201,7 +202,8 @@ function renderMatrix(entries, groups) {
   table.append(el('thead', {}, head1, head2));
   const body = el('tbody');
   for (const entry of entries) {
-    const tr = el('tr', {}, el('td', {}, entry.owner || ''), el('td', {}, entry.fullname || ''));
+    const tr = el('tr', {class: onRow ? 'link' : undefined, onclick: onRow ? () => onRow(entry) : undefined},
+                  el('td', {}, entry.owner || ''), el('td', {}, entry.fullname || ''));
     if (!entry.elements) {
       tr.append(el('td', {colspan: columns.length, class: 'muted'}, _('never evaluated')));
     } else {
@@ -273,6 +275,22 @@ function renderElements(entries, groups) {
   }
   table.append(body);
   return table;
+}
+
+// The matrix and the elements table of the entries of one lab, appended to *container*
+// (emptied first): the dialog of the Watch page and the Summary view of the Archives page
+// (onRow: a click handler of the matrix rows).  An entry: {owner, fullname, last_eval: {grade,
+// max_grade, mark, maximum_mark}, elements: [{key, label, part, bonus, grade, max_grade,
+// grade_letter}] (null: never evaluated), parts: [{title, label}]}.
+export function renderSummaryTables(container, entries, {onRow = null} = {}) {
+  clear(container);
+  const evaluated = entries.filter((entry) => entry.elements);
+  if (!evaluated.length) {
+    container.append(el('p', {class: 'muted'}, _('No archived evaluation yet.')));
+    return;
+  }
+  const groups = groupsOf(columnsOf(evaluated), partsOf(evaluated));
+  container.append(renderMatrix(entries, groups, onRow), renderElements(entries, groups));
 }
 
 // -- the dialog -------------------------------------------------------------------------------
@@ -356,13 +374,7 @@ export function createSummaryDialog() {
   function render(c, entries) {
     const evaluated = entries.filter((entry) => entry.elements);
     c.caption.textContent = format(_('{n} project(s) shown, {m} evaluated'), {n: entries.length, m: evaluated.length});
-    clear(c.body);
-    if (!evaluated.length) {
-      c.body.append(el('p', {class: 'muted'}, _('No archived evaluation yet.')));
-      return;
-    }
-    const groups = groupsOf(columnsOf(evaluated), partsOf(evaluated));
-    c.body.append(renderMatrix(entries, groups), renderElements(entries, groups));
+    renderSummaryTables(c.body, entries);
   }
 
   return {open, update};

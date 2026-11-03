@@ -17,6 +17,7 @@ from . import auth_anon, session as S
 from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
 from .accesshistory import parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, HistoryError
 from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
+from .archives import ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS
 from .auth_ldap import LdapAuthenticator, LdapError
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
@@ -65,13 +66,15 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 
 class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
-                 presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None):
+                 presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
+                 archives: ArchiveStore | None = None):
         self.cfg = cfg
         self.pool = pool
         self.roles = roles       # the directory lookups (roles.RoleCache) completing the Watch rows' groups
         self.manager = manager
         self.relay = relay
         self.access = access
+        self.archives = archives     # the evaluation archives in the database (None without one)
         self.presentations = presentations if presentations is not None else Presentations(Presence())
         self.presence = self.presentations.presence
         self.focuses = focuses if focuses is not None else Focuses(self.presence)
@@ -90,6 +93,7 @@ class Routes:
         r.add_get('/watch', self.watch_page)
         r.add_get('/pool', self.pool_page)
         r.add_get('/history', self.history_page)
+        r.add_get('/archives', self.archives_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
         r.add_get(SITE_LOGO_PATH, self.site_logo)
@@ -109,6 +113,11 @@ class Routes:
         r.add_get('/api/history', self.api_history)
         r.add_get('/api/history/sessions', self.api_history_sessions)
         r.add_get('/api/history/statistics', self.api_history_statistics)
+        # the archives of the evaluations (the fixed paths before the id one)
+        r.add_get('/api/archives', self.api_archives)
+        r.add_get('/api/archives/summary', self.api_archives_summary)
+        r.add_get('/api/archives/options', self.api_archives_options)
+        r.add_get('/api/archives/{id}', self.api_archive)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -344,6 +353,17 @@ class Routes:
         return aiohttp_jinja2.render_template('history.html', request, self._page_context(
             request, history_database=self.access.history is not None, events=events))
 
+    async def archives_page(self, request):
+        """Instructors: the archives of the evaluations of the pool, read from the database
+        (``[archives]`` + ``[access_log.database]``; the page says so when none is configured):
+        the evaluations found by the filters, the detail of one, the lab summary."""
+        if not request.get(IDENTITY_KEY):
+            raise web.HTTPFound('/login')
+        if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
+            raise web.HTTPForbidden(text="instructors only")
+        return aiohttp_jinja2.render_template('archives.html', request, self._page_context(
+            request, archives_database=self.archives is not None))
+
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
@@ -572,6 +592,96 @@ class Routes:
             page['rows'] = [session_of_row(row) for row in page['rows']]
         return web.json_response({**page, 'open': open_sessions, 'limit': filters['limit'],
                                   'database': self.access.db.status() if self.access.db is not None else None})
+
+    # -- the archives of the evaluations ---------------------------------------------------------
+
+    def _archives_reader(self):
+        """The reader of the archives table, or 409 when the evaluations are not stored."""
+        if self.archives is None:
+            raise PoolError(409, "the evaluations are not stored in a database ([access_log.database] of web.toml)")
+        return self.archives.reader
+
+    @staticmethod
+    def _log_archive_filters(request, filters: dict, **extra):
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update({f'{key}_filter': value for key, value in filters.items() if key != 'limit'})
+            logged.update(extra)
+
+    async def api_archives(self, request):
+        """Instructors: a page of the archives of the evaluations, newest first, with the
+        filters of ``archives.parse_archive_filters`` (the newest evaluation of each project by
+        default) and a cursor for the older pages; an ``archives`` line of the log with the
+        filters asked (``<key>_filter``)."""
+        self._require_instructor(request)
+        reader = self._archives_reader()
+        try:
+            filters = parse_archive_filters(request.query)
+        except ValueError as e:
+            return json_error(400, str(e))
+        self._log_archive_filters(request, filters)
+        try:
+            page = await reader.query(filters)
+        except HistoryError as e:
+            log.warning("archives database: a query failed: %s", e)
+            return json_error(503, "the database of the archives does not answer")
+        return web.json_response({**page, 'limit': filters['limit'], 'database': self.archives.status()})
+
+    async def api_archives_summary(self, request):
+        """Instructors: the lab summary of the Archives page: the rows of the filters (the
+        newest evaluation of each student by default) with their elements, for one lab
+        (``lab`` required), at most ``MAX_SUMMARY_ROWS`` (``truncated``); an ``archives`` line
+        with ``view=summary``."""
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged['view'] = 'summary'
+        self._require_instructor(request)
+        reader = self._archives_reader()
+        try:
+            filters = parse_archive_filters(request.query, default_show=SHOW_STUDENT)
+        except ValueError as e:
+            return json_error(400, str(e))
+        if not filters.get('lab'):
+            return json_error(400, "a lab is expected")
+        self._log_archive_filters(request, filters)
+        try:
+            page = await reader.summary(filters)
+        except HistoryError as e:
+            log.warning("archives database: a query failed: %s", e)
+            return json_error(503, "the database of the archives does not answer")
+        return web.json_response({**page, 'limit': MAX_SUMMARY_ROWS, 'database': self.archives.status()})
+
+    async def api_archive(self, request):
+        """Instructors: one archived evaluation with its details (the elements with their raw
+        titles, the parts, the errors); 404 when unknown."""
+        self._require_instructor(request)
+        reader = self._archives_reader()
+        row_id = request.match_info['id']
+        if not row_id.isdigit():
+            return json_error(404, "unknown archive")
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged['archive_id'] = int(row_id)
+        try:
+            row = await reader.get(int(row_id))
+        except HistoryError as e:
+            log.warning("archives database: a query failed: %s", e)
+            return json_error(503, "the database of the archives does not answer")
+        if row is None:
+            return json_error(404, "unknown archive")
+        return web.json_response(row)
+
+    async def api_archives_options(self, request):
+        """Instructors: the labs and student groups the table knows (the suggestions of the
+        filters of the Archives page)."""
+        self._require_instructor(request)
+        reader = self._archives_reader()
+        try:
+            options = await reader.options()
+        except HistoryError as e:
+            log.warning("archives database: a query failed: %s", e)
+            return json_error(503, "the database of the archives does not answer")
+        return web.json_response(options)
 
     async def api_history_statistics(self, request):
         """Administrators: the Statistics view of the History page (``accessstats``): who

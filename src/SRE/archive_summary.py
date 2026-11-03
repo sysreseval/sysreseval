@@ -1,6 +1,7 @@
 """Summaries of the evaluation archives (the ``.zst`` files of ``params.archive_dirs``), without
-Qt and without the terminal: what the web agent shows on the instructors' Watch page, and what
-``sre watch`` computes for its rows.
+Qt and without the terminal: what the web agent shows on the instructors' Watch page, what
+``sre watch`` computes for its rows, and the record of an archive the web portal keeps in its
+database (:func:`archive_record`, served by the agent's ``GET /v1/archives``).
 
 An archive is a zstandard-compressed msgpack dict written by ``Grade0.save_tests_on_file()``:
 ``running_lab_name``, ``eval_date`` (an ISO string: ``datetime.now().isoformat()``), ``errors``
@@ -210,6 +211,119 @@ def _label(description, title, lang_priority) -> str:
         if text:
             return text
     return ''
+
+
+def lab_name_of_rln(running_lab_name: str) -> str:
+    """The lab of a running lab name as the lab list names it (``sre/dhcp.py``: the ``@`` of
+    the name turned back into ``/``), ``''`` when the name is malformed."""
+    m = re.match(params.running_lab_name_match_pattern, running_lab_name or '')
+    return m.group(2).replace('@', '/') if m else ''
+
+
+def archives_after(paths, after: str = '', limit: int | None = None) -> tuple[list, bool]:
+    """The paths of the archives of *paths* whose file name is greater than *after*, in the
+    order of the names (their 14-digit prefix: chronological, then by running lab name), one
+    per name (the same archive found in two directories counts once, the first path kept), at
+    most *limit* of them; the flag tells whether others follow.  ``''`` lists everything.
+    The collector of the portal walks the archives of a host with the last name it took as
+    *after*: a 14-digit prefix alone compares as expected against full names."""
+    by_name: dict = {}
+    for path in paths:
+        name = os.path.basename(path)
+        if not ARCHIVE_NAME_RE.fullmatch(name) or name <= after:
+            continue
+        by_name.setdefault(name, path)
+    names = sorted(by_name)
+    more = limit is not None and len(names) > limit
+    if limit is not None:
+        names = names[:limit]
+    return [by_name[n] for n in names], more
+
+
+def _raw_text(value) -> dict | str:
+    """A title or description as the archive holds it: a dict of languages (``{"en": ...}``),
+    else its text (``''`` for nothing).  The browser resolves the dict in its own language."""
+    if isinstance(value, dict):
+        return {str(k): str(v) for k, v in value.items()}
+    return '' if value is None else str(value)
+
+
+def _plain(value):
+    """A metadata value as JSON carries it (the exam fields of the answers)."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def archive_record(raw: dict, path: str) -> dict:
+    """Everything the portal keeps of an archive (``GET /v1/archives`` of the agent, the
+    archives table of the database): the file name (``archive``), the project, the lab in the
+    form of the lab list, the evaluation date as an aware ISO string (the clock of the host that
+    wrote it), the student's identity from the answers metadata (``login``, ``fullname``,
+    ``group``, ``email``, ``hostname``, ``language``), the exam flag and fields, the exo-eval
+    totals (``grade`` / ``max_grade`` / ``mark``, as :func:`summarize`) and the self-eval ones,
+    ``maximum_mark``, the errors (``[{'category', 'text'}]`` with their counts) and every
+    element of the grade list (``key`` as :func:`lab_elements`, the ``title`` / ``description``
+    **raw**, dict or string, the grade, maximum, letter, part, bonus flag and scope) with the
+    parts.  No answer of the student."""
+    summary = summarize(raw, path)
+    answers = raw.get('answers') or {}
+    if not isinstance(answers, dict):
+        answers = {}
+    eval_date = summary.eval_date
+    if eval_date.tzinfo is None:
+        eval_date = eval_date.astimezone()
+    elements = []
+    for e in raw.get('grade_list') or []:
+        if not isinstance(e, dict):
+            continue
+        title = e.get('title', '')
+        part = e.get('grade_part')
+        elements.append({
+            'key': _tt_hash_str(title),
+            'title': _raw_text(title),
+            'description': _raw_text(e.get('description', '')),
+            'grade': _float_or_none(e.get('grade')),
+            'max_grade': _float_or_none(e.get('max_grade')),
+            'grade_letter': str(e['grade_letter']) if e.get('grade_letter') else None,
+            'part': str(part) if part is not None else None,
+            'bonus': bool(e.get('bonus', False)),
+            'scope': int(e.get('scope', params.BOTH_EVAL_SCOPE) or params.BOTH_EVAL_SCOPE),
+        })
+    parts = [{'title': str(p.get('title', '')), 'description': _raw_text(p.get('description', ''))}
+             for p in (raw.get('grade_parts') or []) if isinstance(p, dict)]
+    re_eval = raw.get(params.re_eval_date_keyword)
+    return {
+        'archive': os.path.basename(path),
+        'running_lab_name': summary.running_lab_name,
+        'lab': lab_name_of_rln(summary.running_lab_name),
+        'eval_date': eval_date.isoformat(timespec='seconds'),
+        're_eval_date': str(re_eval) if re_eval else None,
+        'login': summary.login,
+        'fullname': summary.fullname,
+        'group': str(answers.get(params.group_keyword, '') or ''),
+        'email': str(answers.get(params.email_keyword, '') or ''),
+        'hostname': summary.hostname,
+        'language': str(answers.get(params.language_keyword, '') or ''),
+        'exam': bool(answers.get(params.sysreseval_exam_mode)) or params.exam_json_keyword in raw,
+        'exam_started_at': _plain(answers.get(params.sysreseval_exam_started_at)),
+        'exam_duration': _plain(answers.get(params.sysreseval_exam_duration)),
+        'exam_time_remaining': _plain(answers.get(params.sysreseval_exam_time_remaining)),
+        'auto_eval_count': summary.auto_eval_count,
+        'answers_updated_at': summary.answers_updated_at,
+        'grade': summary.grade,
+        'max_grade': summary.max_grade,
+        'mark': summary.mark,
+        'maximum_mark': summary.maximum_mark,
+        'self_grade': _float_or_none(raw.get('total_grade_self_eval')),
+        'self_max_grade': _float_or_none(raw.get('total_max_self_eval')),
+        'self_mark': _float_or_none(raw.get('mark_self_eval')),
+        'errors': error_entries(raw.get('errors')),
+        'error_count': summary.errors,
+        'warning_count': summary.warnings,
+        'elements': elements,
+        'parts': parts,
+    }
 
 
 def lab_elements(raw: dict, *, lang_priority, debug: bool = False) -> tuple[list, list]:

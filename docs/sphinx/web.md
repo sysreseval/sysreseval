@@ -17,6 +17,9 @@ The instructors get, on top of what a student sees (*Instructors* below):
 - a **Watch page**, the web counterpart of `sre watch`: every running project of the pool, one
   row per project with its owner, its lab, the grade and mark of its last evaluation, its age
   and its errors, refreshed every few seconds;
+- an **Archives page**: every evaluation of the pool hosts, the closed projects included, kept
+  in a database (the results, never the answers), searched by student, group, lab, host and
+  period, with the detail of an evaluation and the summary matrix of a lab;
 - the **projects of the students**, open to them to help: every tab of the project, and the
   student's terminals joined when the Terminals tab opens, so that the instructor and the
   student see the same shell and both type in it (a private terminal, unseen by the student, is
@@ -177,6 +180,7 @@ merges other files into this one, as for `web.toml` below.
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
 | `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`, a *Suggests* of the Debian package: optional) |
+| `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
@@ -416,13 +420,91 @@ beyond `keep` go at the next rotation, the rows older than `keep` days once a da
 `scripts/web-purge-log.py` applies a retention of its own, for a cron job or a timer of the host
 (run with the Python of the portal, PyMySQL included; it reads `web.toml`): `--days` (365 by
 default), `--dry-run`, `--optimize` (the table rebuilt after the deletion, so that the deleted
-rows no longer occupy its file; a short lock), `--files-only` / `--database-only`; the current
-file is never touched, a rotated file goes by its modification time. For instance in
+rows no longer occupy its file; a short lock), `--files-only` / `--database-only`,
+`--archives-days N` (the archives of the evaluations too, below; left alone otherwise); the
+current file is never touched, a rotated file goes by its modification time. For instance in
 `/etc/cron.d/sre-web`:
 
 ```
 15 4 * * * root /opt/sre/venv/bin/python3 /opt/sre/scripts/web-purge-log.py --days 365
 ```
+
+### The archives of the evaluations
+
+Every `sre eval` writes an archive on the host that ran it (`params.archive_dirs`,
+`/var/lib/sre/archives`: the student's self-evaluations, the periodic evaluations of the web
+agent, an instructor's, the final one of a project closed with `eval_before_exit`, those of the
+Qt GUI), and the Watch page reads the newest archive of each *running* project. With
+`[access_log.database]` configured, the portal also collects **every archive of every pool host
+into a second table of that database** (`[archives]` of `web.toml`: `table`, `archives` by
+default; `keep`, `0` = the rows are kept forever; `poll_interval`, `30s`), and the **Archives**
+page of the instructors (*Instructors* below) reads it: the results of a project survive its
+closing, the history of its evaluations is kept, and the results of a student or of a class group
+can be searched across the labs and the hosts.
+
+The portal pulls, as it does for everything else: every `poll_interval` the collector asks each
+reachable agent for the archives of its host it has not taken yet (`GET /v1/archives?after=<file
+name>&limit=50`, the token alone: the archives whose name is greater than the last one taken, in
+the order of the names, which start with the evaluation time; up to ten calls per host and
+round, so that a host with a backlog of thousands of archives, the first run on a site that
+already evaluated for months, is imported at about a thousand archives per minute), and queues
+one row per archive. The agent decodes the archives and sends what the page needs: the project,
+the lab, the evaluation time, the student's login, full name, group, e-mail, the host that
+evaluated, the exam flag and fields, the exo-eval and self-eval totals and marks, the errors and
+warnings, and every element of the grade list with its title and description as the lab wrote
+them (in every language of the lab: the browser shows the viewer's), its grade, maximum, letter,
+part and bonus flag. **The answers of the students are not sent and not stored.** The group and
+the full name an archive lacks (the projects of the Qt GUI) are completed from the directory
+when the portal reads one (`attr_group`, `ldap_roles` / `ldap_groups`), as on the Watch page.
+
+One cursor per host, the greatest archive name taken, lives in the portal's memory and is read
+from the table itself at the first round after a start (`SELECT host, MAX(archive) … GROUP BY
+host`): nothing is collected while the database does not answer, and a restart never imports a
+host again. The name of an archive is unique in the table (`UNIQUE (archive)`, `INSERT IGNORE`),
+so a host whose archive directory is shared with another one, or rows still queued when the
+portal stopped, only cost a harmless re-insert. An archive rewritten in
+place (`sre re-eval -p '' -d <archive dir>`) or named below the cursor (a host whose clock was
+set back) is not taken again, as `sre watch` would not see it either; an agent not yet updated
+answers 404 and is skipped with one warning until it is.
+
+The table is created like `access_log` when it is missing (the `CREATE` privilege, once); or
+create it by hand and grant `SELECT, INSERT, DELETE` on it (the same grant as the log's: the
+account needs no `UPDATE`):
+
+```sql
+CREATE TABLE sre.archives (
+  id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ts              DATETIME(3)     NOT NULL,            -- the evaluation time, UTC
+  host            VARCHAR(64)     NOT NULL DEFAULT '', -- the pool host (the name of [[hosts]])
+  archive         VARCHAR(300)    NOT NULL,            -- the file name: unique
+  rln             VARCHAR(255)    NOT NULL DEFAULT '', -- the running lab name
+  lab             VARCHAR(255)    NOT NULL DEFAULT '', -- sre/dhcp.py
+  login           VARCHAR(64)     NOT NULL DEFAULT '',
+  fullname        VARCHAR(255)    NOT NULL DEFAULT '',
+  grp             VARCHAR(64)     NOT NULL DEFAULT '', -- the student group
+  hostname        VARCHAR(64)     NOT NULL DEFAULT '', -- the host the archive names
+  grade           DOUBLE          NOT NULL DEFAULT 0,  -- exo-eval scope
+  max_grade       DOUBLE          NOT NULL DEFAULT 0,
+  mark            DOUBLE          NULL,
+  maximum_mark    DOUBLE          NULL,
+  errors          INT             NOT NULL DEFAULT 0,
+  warnings        INT             NOT NULL DEFAULT 0,
+  exam            TINYINT         NOT NULL DEFAULT 0,
+  auto_eval_count INT             NULL,                -- the self-evaluations of the student so far
+  details         MEDIUMTEXT      NOT NULL,            -- JSON: elements, parts, errors, self-eval totals, metadata
+  PRIMARY KEY (id), UNIQUE KEY archive (archive), KEY ts (ts), KEY login_lab_id (login, lab, id),
+  KEY rln_id (rln, id), KEY lab_ts (lab, ts), KEY grp_ts (grp, ts), KEY host_archive (host, archive)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+The rows go through the same kind of writer as the log's (batches, the rows waiting in memory
+while the server does not answer, a refused row dropped with a warning, a last attempt at
+shutdown) and are purged daily beyond `keep` days when set; `web-purge-log.py --archives-days N`
+applies a retention from a cron job. Expect about thirty rows per project and hour of
+auto-evaluation (`eval_interval_without_exam_mode`), a few kilobytes each. The table holds
+personal data (names, groups, results): the account of the portal should be the only one reading
+it, and the page is open to the instructors only. Every consultation of the Archives page is an
+`archives` line of the connection log, with the filters asked.
 
 ### Securing the pool (mutual TLS)
 
@@ -728,6 +810,35 @@ What an instructor gets:
   follow the polls: a new evaluation of the project, or of one of the projects of the lab,
   reloads the content, a project closed is said so. Reading the results of a student this way
   never counts as their activity (their project's idle clock is left alone).
+- **Archives** (the link in the header, `/archives`): the evaluations collected into the
+  database (*The archives of the evaluations* above; without `[access_log.database]` the page
+  says so), the closed projects included. The **Evaluations** view lists them newest first, one
+  row per evaluation with its time, the student (login, name, group when a group source is
+  configured), the lab, the pool host, the start of the project, the grade and the mark
+  (exo-eval scope), the errors / warnings counts, how many self-evaluations the student had run
+  and whether it was an exam; a row whose evaluation had errors is red. The form searches by
+  *Student* (the beginning of a login, or a part of a name), *Group* (a group of the table, with
+  suggestions), *Lab* (a part of its name, with suggestions), *Host*, a *From* / *To* window on
+  the evaluation time and the exam flag, and chooses what to *Show*: **the last evaluation of
+  each project** (the default: the final result of every project, among the evaluations matching
+  the window, the host and the exam flag), **the last evaluation of each student** (one row per
+  student and lab) or **every evaluation** (the progression of a project). *Rows* and the
+  *Older* / *Newer* buttons page through the result; a click on a login, group, lab or host cell
+  filters on that value; the filters and the view are kept in the URL (a search can be
+  bookmarked or shared; `?open=<id>` opens one evaluation: a link to a result). A **click on a
+  row** opens the evaluation as the Watch page's dialog
+  does (the student, the lab and the host in the title, the time of the evaluation and of the
+  start of the project, the table of its grade elements with the parts, the subtotals, the
+  bonuses, the total and the mark, laid out by the browser from the stored elements exactly as
+  the agent lays out the evaluation of a running project, then the errors and the warnings of
+  the run). The **Summary** view (the second button of the toolbar; a lab is required, the
+  search starts on the last evaluation of each student) is the lab summary of the Watch page
+  for the evaluations found: one block per lab matched, with the matrix of the students and
+  the grade elements (Total and Mark last, the rows *Max* / *Average* / *Success* below) and the
+  table of the elements with their statistics; a click on a row of the matrix opens the
+  evaluation. The summary is computed on the 500 newest evaluations found at most (the page
+  says so: narrow the filters). Searching the results of a class group is `Group` + `Lab` +
+  *Summary*; the results of one student across the labs, `Student` alone.
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for

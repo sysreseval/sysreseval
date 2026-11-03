@@ -103,7 +103,7 @@ def parse_po(path: Path) -> dict:
 class TestTemplates:
     def test_the_pages_exist(self):
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
-                'pool.html', 'history.html'} <= set(template_names())
+                'pool.html', 'history.html', 'archives.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -187,8 +187,10 @@ class TestTemplates:
         assert 'href="/pool"' in html
         html = render('projects.html', instructor=True)
         assert 'href="/watch"' in html and 'href="/pool"' in html and 'href="/history"' not in html
+        assert 'href="/archives"' in html                  # the Archives link of every instructor
         html = render('projects.html')
         assert 'href="/watch"' not in html and 'href="/pool"' not in html and 'href="/history"' not in html
+        assert 'href="/archives"' not in html
         # the History link of the administrators (instructors)
         html = render('projects.html', instructor=True, administrator=True)
         assert 'href="/history"' in html and 'href="/watch"' in html
@@ -213,6 +215,29 @@ class TestTemplates:
         assert 'a lab for the summary of the lab, a group for that summary restricted to the group</span>' in shown
         assert 'class="watch-group" title="Student group">' in shown
         assert 'data-sort="group" hidden' not in shown and 'title="Student group" hidden' not in shown
+
+    def test_archives_page(self):
+        """The Archives page of the instructors: the filters, the table (the Group column hidden
+        unless a group source is configured), the pager, the summary container, the notice
+        without a database."""
+        html = render('archives.html', instructor=True, archives_database=False)
+        assert 'id="archives"' in html and 'id="archives-filters"' in html and 'id="archives-count"' in html
+        assert '/static/js/archives.js' in html and 'href="/archives"' in html and 'data-login="alice"' in html
+        for name in ('student', 'group', 'lab', 'host', 'since', 'until', 'exam', 'show', 'limit'):
+            assert f'name="{name}"' in html, name
+        assert '<option value="project">The last evaluation of each project</option>' in html
+        assert '<option value="student">The last evaluation of each student</option>' in html
+        assert 'list="archives-labs"' in html and '<datalist id="archives-labs">' in html
+        assert 'class="grid watch archives" data-database="false" data-groups="false"' in html
+        assert 'id="archives-older"' in html and 'id="archives-newer"' in html and 'id="archives-reset"' in html
+        assert 'data-view="evaluations" aria-pressed="true"' in html and 'data-view="summary" aria-pressed="false"' in html
+        assert '<div id="archives-summary" class="archives-summary" hidden>' in html
+        assert len(re.findall(r'<th[ >]', html)) == 12 and 'colspan="12"' in html
+        assert '<th hidden>Group</th>' in html and '<label hidden>Group' in html
+        assert 'id="archives-notice" class="muted">' in html and 'not stored in a database' in html
+        with_db = render('archives.html', instructor=True, archives_database=True, groups=True)
+        assert 'data-database="true" data-groups="true"' in with_db and 'id="archives-notice" class="muted" hidden>' in with_db
+        assert '<th>Group</th>' in with_db and '<label>Group' in with_db and 'not stored in a database' not in with_db
 
     def test_history_page(self):
         events = ('denied', 'login', 'start')
@@ -357,6 +382,7 @@ class TestTemplates:
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE), render('watch.html', instructor=True),
                  render('pool.html', instructor=True),
                  render('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
+                 render('archives.html', instructor=True, archives_database=True),
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'})]
         checked = 0
         for html in pages:

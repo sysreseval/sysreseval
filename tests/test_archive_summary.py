@@ -1,4 +1,5 @@
 """Tests of SRE.archive_summary: the pure reader of the evaluation archives (Watch page, sre watch)."""
+import json
 from datetime import datetime, timedelta
 
 import msgpack
@@ -121,6 +122,86 @@ class TestScopes:
         assert [e['title'] for e in A.exo_grade_list(raw)] == ['both', 'exo only']
         assert [e['title'] for e in A.exo_grade_list(raw, debug=True)] == ['both', 'self only', 'exo only']
         assert A.exo_grade_list({}) == []
+
+
+class TestArchiveRecord:
+    """archive_record(): what the portal keeps of an archive, and archives_after(): the walk of
+    the collector through the archives of a host."""
+    GRADE_LIST = [
+        {'title': {'en': 'Default route', 'fr': 'Route par défaut'}, 'description': '', 'max_grade': 2, 'grade': 2,
+         'grade_letter': None, 'scope': 3, 'grade_part': 'Routing', 'bonus': False},
+        {'title': 'ssh', 'description': {'en': 'The ssh server', 'fr': 'Le serveur ssh'}, 'max_grade': None,
+         'grade': None, 'grade_letter': 'OK', 'scope': 3, 'grade_part': None, 'bonus': False},
+        {'title': 'self only', 'description': '', 'max_grade': 1, 'grade': 1, 'grade_letter': None,
+         'scope': params.SELF_EVAL_SCOPE, 'grade_part': None, 'bonus': True},
+    ]
+    PARTS = [{'title': 'Routing', 'description': {'en': 'Routing between lan and dmz', 'fr': 'Routage'}}]
+
+    def test_lab_name_of_rln(self):
+        assert A.lab_name_of_rln(RLN) == 'sre/dhcp.py'
+        assert A.lab_name_of_rln('20261025100000@@@em@_DRAFT_@x.py@@@bob') == 'em/_DRAFT_/x.py'
+        assert A.lab_name_of_rln('garbage') == '' and A.lab_name_of_rln('') == ''
+
+    def test_record(self, tmp_path):
+        raw = archive_dict(grade_list=self.GRADE_LIST, grade_parts=self.PARTS)
+        raw['answers'].update({params.group_keyword: 'INFO1', params.email_keyword: 'a@x.org',
+                               params.language_keyword: 'fr', params.sysreseval_exam_mode: True,
+                               params.sysreseval_exam_duration: 90, params.sysreseval_exam_time_remaining: 12.5})
+        path = write_archive(tmp_path, f'20261025100102_{RLN}.zst', raw)
+        r = A.archive_record(A.read_archive(path), path)
+        assert (r['archive'], r['running_lab_name'], r['lab']) == (f'20261025100102_{RLN}.zst', RLN, 'sre/dhcp.py')
+        # the evaluation date is aware (the zone of the host that wrote the archive)
+        assert datetime.fromisoformat(r['eval_date']).tzinfo is not None
+        assert datetime.fromisoformat(r['eval_date']).replace(tzinfo=None) == datetime(2026, 10, 25, 10, 1, 2)
+        assert (r['login'], r['fullname'], r['group'], r['email'], r['hostname'], r['language']) == \
+            ('alice', 'Alice A', 'INFO1', 'a@x.org', 'pool1', 'fr')
+        assert r['exam'] is True and (r['exam_duration'], r['exam_time_remaining'], r['exam_started_at']) == (90, 12.5, None)
+        assert (r['grade'], r['max_grade'], r['mark'], r['maximum_mark']) == (1.0, 3.0, 6.7, 20.0)
+        assert (r['self_grade'], r['self_max_grade'], r['self_mark']) == (2.0, 3.0, 13.3)
+        assert (r['auto_eval_count'], r['answers_updated_at'], r['re_eval_date']) == (3, '20261025100030', None)
+        assert r['errors'] == [{'category': 'ERROR', 'text': 'm1 unreachable'}, {'category': 'WARNING', 'text': 'slow'}]
+        assert (r['error_count'], r['warning_count']) == (1, 1)
+        # every element, the titles raw (the browser resolves the language), the key of lab_elements
+        assert [e['title'] for e in r['elements']] == [{'en': 'Default route', 'fr': 'Route par défaut'}, 'ssh', 'self only']
+        assert r['elements'][1]['description'] == {'en': 'The ssh server', 'fr': 'Le serveur ssh'}
+        assert [e['key'] for e in r['elements']] == [e['key'] for e in A.lab_elements(raw, lang_priority=['en'], debug=True)[0]]
+        assert [(e['grade'], e['max_grade'], e['grade_letter'], e['part'], e['bonus'], e['scope']) for e in r['elements']] == [
+            (2.0, 2.0, None, 'Routing', False, 3), (None, None, 'OK', None, False, 3), (1.0, 1.0, None, None, True, 1)]
+        assert r['parts'] == [{'title': 'Routing', 'description': {'en': 'Routing between lan and dmz', 'fr': 'Routage'}}]
+        assert 'answers' not in r and 'tests' not in r and 'data_json' not in r
+        json.dumps(r)                                     # JSON-able as it is
+
+    def test_record_of_a_legacy_archive(self, tmp_path):
+        raw = archive_dict(answers={}, errors=['old style text'], grade_list=[], grade_parts=[])
+        del raw['total_grade_exo_eval'], raw['total_max_exo_eval'], raw['mark_exo_eval']
+        raw['total_grade'], raw['total_max'] = 4, 5
+        r = A.archive_record(raw, str(tmp_path / f'20261025100102_{RLN}.zst'))
+        assert (r['login'], r['group'], r['exam'], r['grade'], r['max_grade'], r['mark']) == ('', '', False, 4.0, 5.0, None)
+        assert r['errors'] == [{'category': 'ERROR', 'text': 'old style text'}] and r['elements'] == []
+        raw[params.exam_json_keyword] = {'labs': []}
+        assert A.archive_record(raw, str(tmp_path / 'x.zst'))['exam'] is True
+
+    def test_archives_after(self, tmp_path):
+        other = '20261025090000@@@sre@dhcp.py@@@bob'
+        names = [f'20261025100102_{RLN}.zst', f'20261025100500_{RLN}.zst', f'20261025090100_{other}.zst']
+        (tmp_path / 'a').mkdir()
+        (tmp_path / 'b').mkdir()
+        for name in names:
+            (tmp_path / 'a' / name).write_bytes(b'')
+        (tmp_path / 'b' / names[0]).write_bytes(b'')          # the same archive in a second directory
+        (tmp_path / 'a' / 'junk.zst').write_bytes(b'')
+        paths = A.scan_archive_dirs([str(tmp_path / 'a'), str(tmp_path / 'b')])
+        found, more = A.archives_after(paths)
+        assert [p.rsplit('/', 1)[1] for p in found] == [names[2], names[0], names[1]] and more is False
+        assert all(p.startswith(str(tmp_path / 'a')) for p in found)      # the first path of a duplicate name
+        found, more = A.archives_after(paths, after=names[2], limit=1)
+        assert [p.rsplit('/', 1)[1] for p in found] == [names[0]] and more is True
+        found, more = A.archives_after(paths, after=names[0], limit=5)
+        assert [p.rsplit('/', 1)[1] for p in found] == [names[1]] and more is False
+        assert A.archives_after(paths, after=names[1]) == ([], False)
+        # a 14-digit prefix compares as expected against full names
+        assert len(A.archives_after(paths, after='20261025095959')[0]) == 2
+        assert A.archives_after([], limit=10) == ([], False)
 
 
 class TestLabElements:

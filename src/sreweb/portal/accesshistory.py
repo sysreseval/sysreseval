@@ -241,6 +241,30 @@ def row_to_dict(names: list, row: tuple) -> dict:
     return data
 
 
+def fetch(connect, sql: str, params=()) -> tuple[list, list]:
+    """``(column names, rows)`` of one statement run on a fresh connection of *connect* (the
+    ``connector()`` of ``accessdb.py``, or a fake), closed afterwards; ``HistoryError`` when the
+    server cannot be used.  Meant for a worker thread (the readers of the History and Archives
+    pages)."""
+    try:
+        conn = connect()
+    except Exception as e:
+        raise HistoryError(str(e) or type(e).__name__) from e
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            names = [d[0] for d in cur.description or ()]
+            rows = cur.fetchall()
+    except Exception as e:
+        raise HistoryError(str(e) or type(e).__name__) from e
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return names, list(rows or ())
+
+
 class AccessDatabase:
     """The queries of the History page, each on a fresh connection of *connect* (the
     ``connector()`` of ``accessdb.py``, or a fake) in a worker thread."""
@@ -255,22 +279,7 @@ class AccessDatabase:
         when the server cannot be used."""
         sql, params = build_select(self.table, filters)
         limit = int(filters.get('limit', DEFAULT_LIMIT))
-        try:
-            conn = self.connect()
-        except Exception as e:
-            raise HistoryError(str(e) or type(e).__name__) from e
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                names = [d[0] for d in cur.description]
-                rows = cur.fetchall()
-        except Exception as e:
-            raise HistoryError(str(e) or type(e).__name__) from e
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        names, rows = fetch(self.connect, sql, params)
         rows = [row_to_dict(names, row) for row in rows]
         return {'rows': rows[:limit], 'more': len(rows) > limit}
 

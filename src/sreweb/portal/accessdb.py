@@ -15,6 +15,9 @@ The table is probed with a ``SELECT`` and created only when missing: ``CREATE TA
 EXISTS`` wants the ``CREATE`` privilege even when the table exists, and the account of the
 portal needs ``SELECT, INSERT, DELETE`` only once the table is there.  The driver is imported
 when a database is configured, never before (``import_pymysql``).
+
+The sink is generic: a ``TableSpec`` names the table and its statements, so the archives of
+the evaluations (``archives.py``) go through a second sink on the same connection settings.
 """
 import functools
 import json
@@ -23,7 +26,9 @@ import math
 import queue
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 from ..config import AccessDatabaseConfig, ConfigError
 
@@ -68,6 +73,31 @@ INSERT = ("INSERT INTO `{table}` (ts, event, login, addr, host, rln, lab, status
           "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
 PURGE = "DELETE FROM `{table}` WHERE ts < %s LIMIT " + str(PURGE_BATCH)
 SELECT = "SELECT id, ts, event, login, addr, host, rln, lab, status, duration, details FROM `{table}`"
+
+
+def _describe_access_row(row: tuple) -> str:
+    return f"event={row[1]} login={row[2]}"
+
+
+@dataclass(frozen=True)
+class TableSpec:
+    """A table the sink writes: its name, its statements (``{table}`` inside), how long its rows
+    are kept (days, 0 = forever: no purge), the words of its log lines, the name of its writer
+    thread and how a dropped row is named in a warning.  The connection log's is the default
+    (:func:`access_log_spec`); the archives of the evaluations have their own (``archives.py``).
+    The purge (``PURGE``: the rows whose ``ts`` is older than ``keep`` days) and the probe are
+    shared: every table has a ``ts`` column."""
+    name: str
+    ddl: str
+    insert: str
+    keep: int = 0
+    label: str = 'access database'
+    thread_name: str = 'sreweb-access-db'
+    describe_row: Callable = _describe_access_row
+
+
+def access_log_spec(cfg: AccessDatabaseConfig) -> TableSpec:
+    return TableSpec(name=cfg.table, ddl=DDL, insert=INSERT, keep=cfg.keep)
 
 
 def import_pymysql():
@@ -167,16 +197,20 @@ def _rollback_quietly(conn):
 class DatabaseSink:
     """The writer: a queue and one daemon thread (see the module docstring).  *connect* and
     *transient* come from :func:`connector` (the tests give a fake connection and their own
-    exception class); *clock* (``time.time``) dates the purges, *sleep* waits out the backoff."""
+    exception class); *clock* (``time.time``) dates the purges, *sleep* waits out the backoff;
+    *spec* names the table and its statements (the connection log's by default)."""
 
-    def __init__(self, cfg: AccessDatabaseConfig, *, connect, transient=(), clock=time.time, sleep=time.sleep):
+    def __init__(self, cfg: AccessDatabaseConfig, *, connect, transient=(), clock=time.time, sleep=time.sleep,
+                 spec: TableSpec | None = None):
         self.cfg = cfg
+        self.spec = spec if spec is not None else access_log_spec(cfg)
         self.connect = connect
         self.transient = tuple(transient)
         self.clock = clock
         self.sleep = sleep
-        self.table = cfg.table
-        self._insert = INSERT.format(table=self.table)
+        self.table = self.spec.name
+        self.label = self.spec.label
+        self._insert = self.spec.insert.format(table=self.table)
         self._purge_sql = PURGE.format(table=self.table)
         self._queue = queue.Queue(maxsize=cfg.queue)
         self._lock = threading.Lock()          # the idle flag against the queue
@@ -199,7 +233,7 @@ class DatabaseSink:
     def start(self):
         if self._thread is None or not self._thread.is_alive():
             self._stop.clear()
-            self._thread = threading.Thread(target=self._run, name='sreweb-access-db', daemon=True)
+            self._thread = threading.Thread(target=self._run, name=self.spec.thread_name, daemon=True)
             self._thread.start()
 
     @property
@@ -207,15 +241,22 @@ class DatabaseSink:
         return self._thread is not None and self._thread.is_alive()
 
     def put(self, ts: float, event: str, fields: dict) -> bool:
-        """Queue one line (the row is built here, in the caller's thread).  Never raises: a bad
-        value is logged.  ``False`` when a row was lost: the sink is closed, or the queue is full
-        and its oldest row went (warned once per episode)."""
+        """Queue one line of the connection log (the row is built here, in the caller's
+        thread).  Never raises: a bad value is logged.  ``False`` when a row was lost: the sink
+        is closed, or the queue is full and its oldest row went (warned once per episode)."""
         if self._closed:
             return False
         try:
             row = row_of(ts, event, fields)
         except Exception:
-            log.exception("access database: cannot build the row of %s", event)
+            log.exception("%s: cannot build the row of %s", self.label, event)
+            return False
+        return self.put_row(row)
+
+    def put_row(self, row: tuple) -> bool:
+        """Queue one row already in the order of the table's ``INSERT``; ``False`` when it was
+        lost (see :meth:`put`)."""
+        if self._closed:
             return False
         lost = False
         with self._lock:
@@ -236,7 +277,7 @@ class DatabaseSink:
             self.dropped += 1
             if not self._drop_warned:
                 self._drop_warned = True
-                log.warning("access database: %d rows wait for the server, the oldest are dropped", self.cfg.queue)
+                log.warning("%s: %d rows wait for the server, the oldest are dropped", self.label, self.cfg.queue)
         return not lost
 
     def flush(self, timeout: float = 5.0) -> bool:
@@ -263,12 +304,12 @@ class DatabaseSink:
             return
         thread.join(timeout)
         if thread.is_alive():
-            log.warning("access database: the writer did not stop within %.0f s (%d row(s) queued)",
-                        timeout, self._queue.qsize())
+            log.warning("%s: the writer did not stop within %.0f s (%d row(s) queued)",
+                        self.label, timeout, self._queue.qsize())
 
     def describe(self) -> str:
         where = self.cfg.unix_socket or f"{self.cfg.host}:{self.cfg.port}"
-        kept = f"{self.cfg.keep} days kept" if self.cfg.keep else "rows kept forever"
+        kept = f"{self.spec.keep} days kept" if self.spec.keep else "rows kept forever"
         return f"database {self.cfg.name} on {where} (table {self.table}, {kept})"
 
     def status(self) -> dict:
@@ -317,7 +358,7 @@ class DatabaseSink:
             except queue.Empty:
                 break
         if lost:
-            log.warning("access database: %d row(s) not written at shutdown", lost)
+            log.warning("%s: %d row(s) not written at shutdown", self.label, lost)
 
     def _take(self) -> list:
         """Up to ``BATCH`` rows, waiting ``POLL`` for the first one; ``[]`` when none came (the
@@ -347,8 +388,8 @@ class DatabaseSink:
                 except Exception as e:
                     if _errno(e) != NO_SUCH_TABLE:
                         raise
-                    cur.execute(DDL.format(table=self.table))
-                    log.info("access database: table %s created", self.table)
+                    cur.execute(self.spec.ddl.format(table=self.table))
+                    log.info("%s: table %s created", self.label, self.table)
             conn.commit()
         except Exception:
             _close_quietly(conn)
@@ -366,7 +407,7 @@ class DatabaseSink:
             raise
         except Exception as e:
             _rollback_quietly(conn)
-            log.warning("access database: a batch of %d row(s) was refused (%s): written one by one", len(rows), e)
+            log.warning("%s: a batch of %d row(s) was refused (%s): written one by one", self.label, len(rows), e)
             self._write_each(conn, rows)
 
     def _write_each(self, conn, rows: list):
@@ -382,7 +423,7 @@ class DatabaseSink:
                 raise
             except Exception as e:
                 _rollback_quietly(conn)
-                log.warning("access database: row dropped (%s): event=%s login=%s", e, row[1], row[2])
+                log.warning("%s: row dropped (%s): %s", self.label, e, self.spec.describe_row(row))
             rows.pop(0)
 
     def _fail(self, exc):
@@ -394,12 +435,12 @@ class DatabaseSink:
         self.last_error = message
         if message not in self._warned:
             self._warned.add(message)
-            log.warning("access database: %s (the rows wait in memory: %d queued)", message, self._queue.qsize())
+            log.warning("%s: %s (the rows wait in memory: %d queued)", self.label, message, self._queue.qsize())
 
     def _recovered(self):
         if self._failures:
             waited = self.clock() - (self._failed_since if self._failed_since is not None else self.clock())
-            log.info("access database: writing again after %d attempt(s) and %.0f s%s", self._failures, waited,
+            log.info("%s: writing again after %d attempt(s) and %.0f s%s", self.label, self._failures, waited,
                      f", {self.dropped} row(s) dropped" if self.dropped else "")
         self._failures = 0
         self._failed_since = None
@@ -409,12 +450,12 @@ class DatabaseSink:
         self.connected = True
 
     def _purge_due(self) -> bool:
-        return bool(self.cfg.keep) and (self._last_purge is None or self.clock() - self._last_purge >= PURGE_PERIOD)
+        return bool(self.spec.keep) and (self._last_purge is None or self.clock() - self._last_purge >= PURGE_PERIOD)
 
     def _purge(self, conn):
         """Delete the rows older than ``keep`` days, ``PURGE_BATCH`` at a time; the connection
         back (``None`` when the server went: the next batch reconnects)."""
-        cutoff = utc_datetime(self.clock() - self.cfg.keep * 86400)
+        cutoff = utc_datetime(self.clock() - self.spec.keep * 86400)
         try:
             while True:
                 with conn.cursor() as cur:
@@ -434,6 +475,6 @@ class DatabaseSink:
             message = f"purge: {e}"
             if message not in self._warned:
                 self._warned.add(message)
-                log.warning("access database: %s (the rows older than %d days stay until tomorrow)", message,
-                            self.cfg.keep)
+                log.warning("%s: %s (the rows older than %d days stay until tomorrow)", self.label, message,
+                            self.spec.keep)
             return conn

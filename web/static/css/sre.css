@@ -359,16 +359,17 @@ table.grid tr.row-open td { background: var(--ok-light-bg); }   /* a session sti
    the rows shown, or for one student group) */
 table.grid.watch tbody tr[data-rln] { cursor: pointer; }
 table.grid.watch td.lab, table.grid.watch td.group { text-decoration: underline dotted; }
-dialog.watch-detail { width: 760px; overflow: auto; }
+dialog.watch-detail, dialog.archive-detail { width: 760px; overflow: auto; }
 dialog.watch-summary { width: 95vw; overflow: auto; }
-dialog.watch-detail h2, dialog.watch-summary h2 { margin: 0 0 6px; font-size: 1.2em; }
-dialog.watch-detail table.grid.evaluation { margin: 8px 0; width: 100%; }
+dialog.watch-detail h2, dialog.watch-summary h2, dialog.archive-detail h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.watch-detail table.grid.evaluation, dialog.archive-detail table.grid.evaluation { margin: 8px 0; width: 100%; }
 .evaluation-errors { margin: 4px 0; padding-left: 20px; }
 .evaluation-errors li.error { color: var(--danger); }
 .evaluation-errors li.warning { color: var(--muted); }
 a.button.disabled { pointer-events: none; opacity: 0.5; }
 .watch-summary-tables { display: flex; flex-direction: column; gap: 8px; }
 .watch-summary-tables table.grid { margin: 0; }
+table.grid.matrix tbody tr.link { cursor: pointer; }   /* the Archives page: a row opens the evaluation */
 table.grid.matrix th.part, table.grid.matrix th.element { text-align: center; }
 table.grid.matrix th.element { min-width: 2em; cursor: help; }
 table.grid.matrix td.num, table.grid.elements td.num { text-align: right; white-space: nowrap; }
@@ -405,6 +406,13 @@ table.grid.history td.link { text-decoration: underline dotted; cursor: pointer;
 #history-notice { margin: 0 8px 8px; }
 #history-notice.error { color: var(--danger); }
 /* the Statistics view: the totals, the groups, the users, the labs, the distribution */
+/* the Archives page of the instructors: the evaluations read from the database, the summary blocks per lab */
+table.grid.archives td.link { text-decoration: underline dotted; }
+table.grid.archives tbody tr[data-id] { cursor: pointer; }
+.archives-summary { margin: 0 8px 8px; overflow-x: auto; }
+.archives-summary h2 { font-size: 1.1em; margin: 12px 0 2px; }
+.archives-summary p.muted { margin: 0 0 4px; }
+.archives-summary .watch-summary-tables { margin-bottom: 12px; }
 .history-stats { margin: 0 8px 8px; overflow-x: auto; }   /* the users table is wide: scrolled, not cut */
 .history-stats h2 { font-size: 1.1em; margin: 12px 0 2px; }
 .history-stats table.grid { margin: 4px 0 8px; }

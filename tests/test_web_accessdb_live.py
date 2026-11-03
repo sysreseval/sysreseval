@@ -208,3 +208,103 @@ class TestLive:
         assert again.flush(10)
         again.close()
         assert len(AccessDatabase(cfg, connect=connect).query_sync(parse_filters({}))['rows']) == 2
+
+
+class TestLiveArchives:
+    """The archives of the evaluations on a real server: the table, a duplicate name left as it
+    is, the queries of the Archives page (the newest of each project / student among the rows of
+    the filters, the student / group / lab / host / exam filters, the cursor pages, the detail,
+    the options, the cursors of the collector)."""
+
+    @pytest.fixture
+    def archives_cfg(self, cfg):
+        from sreweb.config import ArchivesConfig
+        acfg = ArchivesConfig(table=cfg.table + '_archives')
+        yield acfg
+        connect, _ = connector(cfg)
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP TABLE IF EXISTS `{acfg.table}`")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_round_trip(self, cfg, archives_cfg):
+        from datetime import datetime, timezone
+        from sreweb.portal.archives import ArchiveDatabase, row_of_record, table_spec, parse_archive_filters
+        from test_web_archives import record, RLN
+        other = '20261025110000@@@sre@dhcp.py@@@alice'
+        bob = '20261025100000@@@sre@dhcp.py@@@bob'
+        carol = '20261025100000@@@other.py@@@carol'
+        names = [f'20261025100102_{RLN}.zst', f'20261025100500_{RLN}.zst', f'20261025110500_{other}.zst',
+                 f'20261025100300_{bob}.zst', f'20261025100400_{carol}.zst']
+        records = [
+            record(archive=names[0], eval_date='2026-10-25T10:01:02+02:00', grade=1.0),
+            record(archive=names[1], eval_date='2026-10-25T10:05:00+02:00', grade=2.0),
+            record(archive=names[2], running_lab_name=other, eval_date='2026-10-25T11:05:00+02:00', grade=3.0),
+            record(archive=names[3], running_lab_name=bob, login='bob', fullname='Bob B', group='INFO2',
+                   eval_date='2026-10-25T10:03:00+02:00', grade=0.5, exam=True),
+            record(archive=names[4], running_lab_name=carol, lab='other.py', login='carol', fullname='Carol C',
+                   group='', eval_date='2026-10-25T10:04:00+02:00', grade=5.0),
+        ]
+        connect, transient = connector(cfg)
+        sink = DatabaseSink(cfg, connect=connect, transient=transient, spec=table_spec(archives_cfg))
+        sink.start()
+        for r in records:
+            sink.put_row(row_of_record('a01', r))
+        sink.put_row(row_of_record('b02', records[0]))            # the same archive seen from another host: left as it is
+        assert sink.flush(10), sink.status()
+        db = ArchiveDatabase(archives_cfg.table, connect=connect)
+
+        def rows_of(**query) -> list:
+            return db.query_sync(parse_archive_filters({k: str(v) for k, v in query.items()}))['rows']
+
+        every = rows_of(show='all')
+        assert [r['archive'] for r in every] == names[::-1] and {r['host'] for r in every} == {'a01'}
+        assert every[-1]['ts'] == datetime(2026, 10, 25, 8, 1, 2, tzinfo=timezone.utc).timestamp()
+        assert (every[-1]['group'], every[-1]['exam'], every[1]['exam'], every[-1]['mark']) == ('INFO1', False, True, 6.7)
+        assert 'details' not in every[0]
+        # the newest of each project, of each student and lab
+        assert [r['archive'] for r in rows_of()] == [names[4], names[3], names[2], names[1]]
+        assert [(r['login'], r['archive']) for r in rows_of(show='student')] == \
+            [('carol', names[4]), ('bob', names[3]), ('alice', names[2])]
+        # among the rows of the window: alice's first project at 10:01, bob's at 10:03
+        until = datetime(2026, 10, 25, 8, 4, tzinfo=timezone.utc).timestamp()
+        assert [r['archive'] for r in rows_of(until=until)] == [names[3], names[0]]
+        assert [r['archive'] for r in rows_of(show='student', until=until)] == [names[3], names[0]]
+        # the student (a login prefix or a part of a name, case-insensitive), group, lab, host and exam filters
+        assert [r['login'] for r in rows_of(student='ali', show='all')] == ['alice'] * 3
+        assert [r['login'] for r in rows_of(student='ob b')] == ['bob'] and rows_of(student='zz') == []
+        assert [r['login'] for r in rows_of(group='INFO2')] == ['bob'] and rows_of(group='INFO') == []
+        assert [r['login'] for r in rows_of(lab='other')] == ['carol'] and len(rows_of(lab='dhcp', show='all')) == 4
+        assert [r['login'] for r in rows_of(exam=1)] == ['bob'] and len(rows_of(exam=0, show='all')) == 4
+        assert rows_of(host='b02') == [] and len(rows_of(host='a01', show='all')) == 5
+        # the detail, the options, the cursors of the collector
+        full = db.get_sync(every[-1]['id'])
+        assert full['details']['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'} and full['login'] == 'alice'
+        assert db.get_sync(999999999) is None
+        assert db.options_sync() == {'labs': ['other.py', 'sre/dhcp.py'], 'groups': ['INFO1', 'INFO2']}
+        assert db.cursors_sync() == {'a01': max(names)}
+        # the summary: by student, with the details, capped
+        summary = db.summary_sync(parse_archive_filters({'lab': 'dhcp'}, default_show='student'), limit=1)
+        assert summary['truncated'] is True and [r['login'] for r in summary['rows']] == ['alice']
+        assert summary['rows'][0]['archive'] == names[2] and summary['rows'][0]['details']['managed'] is True
+        # the cursor pages of every row
+        seen, before = [], None
+        while True:
+            page = db.query_sync(parse_archive_filters({'show': 'all', 'limit': '2', **({'before': str(before)} if before else {})}))
+            seen.extend(r['id'] for r in page['rows'])
+            if not page['more']:
+                break
+            before = page['rows'][-1]['id']
+        assert len(seen) == len(set(seen)) == 5
+        sink.close()
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SHOW CREATE TABLE `{archives_cfg.table}`")
+                definition = cur.fetchall()[0][1].lower()
+        finally:
+            conn.close()
+        assert 'unique key `archive`' in definition and 'mediumtext' in definition and 'login_lab_id' in definition

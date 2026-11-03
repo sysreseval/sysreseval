@@ -47,6 +47,8 @@ TEMPLATES = {
     'pool.html': '<html><title>Pool</title>{{ identity.login }} {{ instructor }}</html>',
     'history.html': '<html><title>History</title>{{ identity.login }} {{ administrator }} {{ history_database }} '
                     '{{ events | length }}</html>',
+    'archives.html': '<html><title>Archives</title>{{ identity.login }} {{ instructor }} {{ archives_database }} '
+                     '{{ groups }}</html>',
 }
 
 
@@ -1009,6 +1011,110 @@ class TestInstructorThroughThePortal:
         failing = RoleCache(FakeRoleResolver({}, fail=True), ttl=600)
         before = [{'owner': 'alice', 'group': ''}, {'owner': 'alice', 'group': 'G', 'fullname': 'alice', 'managed': False}]
         assert run(complete_owners([dict(r) for r in before], failing)) == before
+
+
+class TestArchives:
+    """The Archives page of the instructors and the collection of the evaluation archives into
+    the database: the guards, the collector driven by hand on the real agent (the archives the
+    fake sre writes), the queries on the fake database (test_web_accessdb.FakeServer), the
+    archives lines of the log."""
+    DB = {'host': 'db.example.org', 'user': 'sre_web', 'name': 'sre'}
+
+    def test_guards_without_database(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=PROXY_OVER) as h:
+                bob, prof = who('bob'), who('prof', groups=TEACHERS)
+                assert h.portal.archives is None
+                assert (await h.client.get('/archives', allow_redirects=False)).status == 302
+                assert (await h.client.get('/archives', headers=bob)).status == 403
+                page = await h.client.get('/archives', headers=prof)         # an instructor, no administrator needed
+                assert page.status == 200 and 'prof True False True' in await page.text()   # no database; a group source
+                assert (await h.client.get('/api/archives')).status == 401
+                assert (await h.client.get('/api/archives', headers=bob)).status == 403
+                for path in ('/api/archives', '/api/archives/summary?lab=x', '/api/archives/options', '/api/archives/3'):
+                    resp = await h.client.get(path, headers=prof)
+                    assert resp.status == 409 and 'access_log.database' in (await resp.json())['error'], path
+        run(go())
+
+    def test_collected_from_the_agent_and_queried(self, tmp_path):
+        from test_web_accessdb import FakeServer, Down
+        from sreweb.portal.archives import COLUMNS, row_to_dict
+        server = FakeServer(table_exists=True)
+        over = {**PROXY_OVER, 'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB},
+                'archives': {'poll_interval': '1h'}}
+        names, full = ['id', *COLUMNS[:-1]], ['id', *COLUMNS]
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                store = h.portal.archives
+                assert store is not None and 'table archives' in store.describe() and store.collector is not None
+                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob', 'Bob Test', group='INFO2')
+                page = await h.client.get('/archives', headers=prof)
+                assert page.status == 200 and 'prof True True True' in await page.text()
+                # bob starts and evaluates a project through the portal: the fake sre writes an archive
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
+                lines = [json.loads(l) for l in (await resp.text()).splitlines()]
+                rln = lines[-1]['running_lab_name']
+                assert (await h.client.post(f'/api/projects/a01/{rln}/eval', headers={**bob, **CSRF})).status == 200
+                # the collector, driven by hand: the cursors from the (empty) table, then the agent's archives
+                server.select_names, server.select_rows = ['host', 'archive'], []
+                await store.tick()
+                assert store.sink.flush(5)
+                rows = [r for r in server.committed if len(r) == len(COLUMNS)]
+                assert len(rows) == 1 and store.collector.cursors['a01'].endswith(f'_{rln}.zst')
+                row = row_to_dict(full, (1, *rows[0]))
+                assert (row['host'], row['rln'], row['lab'], row['login'], row['fullname'], row['group'], row['hostname']) == \
+                    ('a01', rln, 'sre/dhcp.py', 'bob', 'Bob Test', 'INFO2', 'pool1')
+                assert (row['grade'], row['max_grade'], row['mark'], row['maximum_mark'], row['errors'], row['exam']) == \
+                    (4.5, 5.0, 18.0, 20.0, 0, False)
+                assert [e['title'] for e in row['details']['elements']] == ['Default route of m1', 'Address of m2',
+                                                                            'IPv6 route of m1']
+                assert row['details']['managed'] is True and row['details']['parts'][0]['title'] == 'Routing'
+                kind, sql, args = server.statements_of('INSERT IGNORE INTO `archives`')[-1]
+                assert kind == 'many' and len(args) == 1
+                await store.tick()                                             # nothing new on the host
+                assert len([r for r in server.committed if len(r) == len(COLUMNS)]) == 1
+                # the reader answers what the fake server scripts
+                server.select_names, server.select_rows = names, [(5, *rows[0][:-1])]
+                page = await (await h.client.get('/api/archives?student=bo&group=INFO2&lab=dhcp&limit=2', headers=prof)).json()
+                assert page['limit'] == 2 and page['more'] is False and len(page['rows']) == 1
+                assert page['rows'][0]['id'] == 5 and page['rows'][0]['group'] == 'INFO2' and 'details' not in page['rows'][0]
+                assert page['database']['connected'] is True and page['database']['collector']['collected'] == 1
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
+                assert 't.login LIKE %s' in sql and 't.grp = %s' in sql and 'NOT EXISTS' in sql
+                assert args == ['bo%', '%bo%', 'INFO2', '%dhcp%', 3]
+                assert (await h.client.get('/api/archives?show=best', headers=prof)).status == 400
+                assert (await h.client.get('/api/archives', headers=bob)).status == 403
+                # the detail, the summary, the options
+                server.select_names, server.select_rows = full, [(5, *rows[0])]
+                detail = await (await h.client.get('/api/archives/5', headers=prof)).json()
+                assert detail['id'] == 5 and detail['details']['elements'][1]['grade'] == 1.5 and detail['login'] == 'bob'
+                assert (await h.client.get('/api/archives/x', headers=prof)).status == 404
+                server.select_rows = []
+                assert (await h.client.get('/api/archives/6', headers=prof)).status == 404
+                server.select_rows = [(5, *rows[0])]
+                summary = await (await h.client.get('/api/archives/summary?lab=dhcp', headers=prof)).json()
+                assert summary['truncated'] is False and summary['limit'] == 500
+                assert summary['rows'][0]['details']['parts'][0]['title'] == 'Routing'
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
+                assert 't2.login = t.login' in sql and 'ORDER BY t.login' in sql and args == ['%dhcp%', 501]
+                assert (await h.client.get('/api/archives/summary', headers=prof)).status == 400
+                server.select_names, server.select_rows = ['lab'], [('sre/dhcp.py',), ('other.py',)]
+                options = await (await h.client.get('/api/archives/options', headers=prof)).json()
+                assert options['labs'] == ['sre/dhcp.py', 'other.py']      # the fake answers the same rows to both queries
+                server.down = True
+                resp = await h.client.get('/api/archives', headers=prof)
+                assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
+                server.down = False
+            # the archives lines of the log: the filters, the view, the id; a student's call has a status, not denied
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            archives = [l for l in lines if l['event'] == 'archives']
+            assert archives[0]['login'] == 'prof' and archives[0]['student_filter'] == 'bo'
+            assert archives[0]['show_filter'] == 'project' and archives[0]['status'] == '200'
+            assert any(l.get('archive_id') == '5' for l in archives) and any(l.get('view') == 'summary' for l in archives)
+            assert any(l['login'] == 'bob' and l['status'] == '403' for l in archives)
+            assert not any(l['path'].startswith('/api/archives') for l in lines if l['event'] == 'denied')
+        run(go())
 
 
 class TestHistory:

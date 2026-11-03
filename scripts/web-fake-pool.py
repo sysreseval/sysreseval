@@ -62,6 +62,7 @@ class PoolOptions:
     keep_workdir: bool = False
     debug: bool = False
     administrators: list = field(default_factory=list)   # [auth] administrators of the portal (the History page)
+    extra_web_config: str = ''     # a TOML file appended to the portal's web.toml ([access_log.database], [archives]...)
     command: list = field(default_factory=list)
 
     @property
@@ -152,6 +153,7 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         f'[admin]\ntoken = {toml_str(admin_token)}\nstate_file = {toml_str(str(workdir / "pool.json"))}\n'
         f'[access_log]\nfile = {toml_str(str(workdir / "access.log"))}\njournal = false\n'
         + limits
+        + (Path(opts.extra_web_config).read_text() + '\n' if opts.extra_web_config else '')
         + ''.join(f'[[hosts]]\nname = {toml_str(h.name)}\nurl = {toml_str(h.url)}\ntoken = {toml_str(h.token)}\n'
                   f'max_projects = {opts.max_projects}\n' for h in hosts))
     web_toml = workdir / 'web.toml'
@@ -292,6 +294,9 @@ def parse_args(argv=None) -> PoolOptions:
     p.add_argument('--administrators', default='',
                    help="[auth] administrators of the portal, comma-separated logins (none): the History page, "
                         "for an instructor (X-Remote-Gid 2000) among them")
+    p.add_argument('--extra-web-config', default='', metavar='FILE',
+                   help="a TOML file appended to the portal's web.toml, before the [[hosts]] tables: e.g. "
+                        "[access_log.database] and [archives] for the History and Archives pages")
     a = p.parse_args(argv)
     if a.hosts < 1:
         p.error("--hosts must be at least 1")
@@ -304,7 +309,8 @@ def parse_args(argv=None) -> PoolOptions:
                        max_concurrent_evals=a.max_concurrent_evals, start_interval=a.start_interval,
                        eval_interval=a.eval_interval, poll_interval=a.poll_interval, workdir=a.workdir,
                        keep_workdir=a.keep_workdir, debug=a.debug,
-                       administrators=[x.strip() for x in a.administrators.split(',') if x.strip()], command=command)
+                       administrators=[x.strip() for x in a.administrators.split(',') if x.strip()],
+                       extra_web_config=a.extra_web_config, command=command)
 
 
 def main(argv=None) -> int:

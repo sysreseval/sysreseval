@@ -25,7 +25,8 @@ from aiohttp import web, WSMsgType, WSCloseCode
 
 from SRE import params
 from SRE import common
-from SRE.archive_summary import error_entries, exo_grade_list, lab_elements
+from SRE.archive_summary import (error_entries, exo_grade_list, lab_elements, archive_record, archives_after,
+                                 read_archive, scan_archive_dirs)
 from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
@@ -64,6 +65,9 @@ WS_LIMIT = 4409
 MAX_TERMINAL_COLS, MAX_TERMINAL_ROWS = 500, 300
 CLIENT_MAX_SIZE = 4 << 20        # the answers of a PUT (the portal caps them lower)
 WS_HEARTBEAT = 30.0
+#: ``GET /v1/archives``: archives read per call by default, and at most (``?limit=``).
+ARCHIVES_PAGE = 50
+ARCHIVES_PAGE_MAX = 200
 
 
 def json_error(status: int, message: str) -> web.Response:
@@ -213,6 +217,7 @@ class Agent:
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_get(f'{p}/evaluations', self.evaluations_list)
+        app.router.add_get(f'{p}/archives', self.archives_list)
         app.router.add_post(f'{p}/projects', self.projects_create)
         app.router.add_get(f'{p}/projects/{{rln}}', self.project_get)
         app.router.add_delete(f'{p}/projects/{{rln}}', self.project_close)
@@ -321,7 +326,8 @@ class Agent:
         scheme, _, token = auth.partition(' ')
         if scheme.lower() != 'bearer' or not hmac.compare_digest(token.strip(), self.cfg.token):
             return json_error(401, "bad agent token")
-        if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart'):
+        if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart',
+                            f'{API_PREFIX}/archives'):
             request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
         try:
@@ -772,6 +778,40 @@ class Agent:
                 row['elements'], row['parts'] = lab_elements(raw, lang_priority=lang_priority(identity, p.info))
             rows.append(row)
         return web.json_response(rows)
+
+    async def archives_list(self, request):
+        """The collector of the portal (the token alone, no user behind it): the archives of
+        the host (the directories of the archive index, ``params.archive_dirs``) whose file name
+        is greater than ``?after=`` (``''``: every one), in the order of the names (their
+        14-digit prefix: chronological), ``?limit=`` of them (``ARCHIVES_PAGE`` by default,
+        ``ARCHIVES_PAGE_MAX`` at most) read in a thread and given as the records of
+        ``SRE.archive_summary.archive_record`` plus ``managed`` (whether the project is one the
+        agent manages, while it runs); ``more`` tells whether others follow, ``last`` is the
+        greatest name listed (the next ``after``: an unreadable archive, logged and skipped, is
+        not listed again).  The idle clocks are left alone."""
+        after = request.query.get('after', '')
+        try:
+            limit = int(request.query.get('limit', ARCHIVES_PAGE))
+        except ValueError:
+            raise AccessError(400, "limit must be a number")
+        limit = max(1, min(limit, ARCHIVES_PAGE_MAX))
+        records, more, last = await asyncio.to_thread(self._archive_records, after, limit)
+        for record in records:
+            project = self.registry.projects.get(record['running_lab_name'])
+            record['managed'] = bool(project is not None and project.managed)
+        return web.json_response({'archives': records, 'more': more, 'last': last})
+
+    def _archive_records(self, after: str, limit: int) -> tuple:
+        """``(records, more, last name)`` of the archives after *after* (a thread)."""
+        paths, more = archives_after(scan_archive_dirs(self.results.directories()), after, limit)
+        records = []
+        for path in paths:
+            try:
+                records.append(archive_record(read_archive(path), path))
+            except Exception as e:
+                log.warning("cannot read the archive %s: %s", path, e)
+        last = os.path.basename(paths[-1]) if paths else ''
+        return records, more, last
 
     # -- WebSockets -----------------------------------------------------------------------------
 

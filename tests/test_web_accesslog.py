@@ -128,7 +128,8 @@ class TestEventFor:
         assert A.LOGIN_EVENTS == {'login', 'login_failed'} and A.LOGIN_EVENTS <= set(A.ALL_EVENTS)
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
-                                                                            'focus_stop', 'history'}
+                                                                            'focus_stop', 'history', 'archives'}
+        assert ('GET', '/api/archives/options') in A.KEEPALIVE and A.EVENTS[('GET', '/api/archives/{id}')] == 'archives'
 
 
 class TestVisits:

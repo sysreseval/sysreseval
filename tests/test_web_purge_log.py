@@ -92,6 +92,16 @@ class TestDatabase:
         with pytest.raises(Exception, match="Can't connect"):
             purge.purge_database(self.cfg(), 1000.0, connect=server.connect)
 
+    def test_another_table(self):
+        """The archives of the evaluations: the same deletion on the [archives] table."""
+        purge = load_script()
+        server = FakeServer(table_exists=True)
+        server.select_names, server.select_rows = ['n'], [(2,)]
+        server.purge_counts = [2]
+        assert purge.purge_database(self.cfg(), 1000.0, connect=server.connect, table='archives') == 2
+        assert server.statements[0][1] == "SELECT COUNT(*) FROM `archives` WHERE ts < %s"
+        assert server.statements[1][1] == f"DELETE FROM `archives` WHERE ts < %s LIMIT {purge.BATCH}"
+
 
 class TestCommandLine:
     @staticmethod

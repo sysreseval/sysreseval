@@ -350,6 +350,17 @@ class AccessLogConfig:
     database: AccessDatabaseConfig = field(default_factory=AccessDatabaseConfig)
 
 
+@dataclass
+class ArchivesConfig:
+    """``[archives]``: the evaluation archives of the pool hosts collected into the database of
+    the connection log (``sreweb/portal/archives.py``: one row per archive, the results without
+    the answers) for the Archives page of the instructors; on iff ``[access_log.database]`` is
+    configured."""
+    table: str = 'archives'
+    keep: int = 0                       # days of rows kept (purged daily); 0 = forever
+    poll_interval: float = 30.0         # seconds between two collections from the agents
+
+
 _URL_PREFIXES = ('/', 'http://', 'https://')
 
 
@@ -417,6 +428,16 @@ def _check_access_database(db: AccessDatabaseConfig, path: str):
                 raise ConfigError(f"{where}{name} is required with a database")
 
 
+def _check_archives(cfg: ArchivesConfig, path: str):
+    where = f"{path}: archives."
+    if not isinstance(cfg.table, str) or not _TABLE_NAME_RE.match(cfg.table):
+        raise ConfigError(f"{where}table must be a plain SQL identifier (letters, digits, _)")
+    if isinstance(cfg.keep, bool) or not isinstance(cfg.keep, int) or cfg.keep < 0:
+        raise ConfigError(f"{where}keep must be a number of days (0 = rows kept forever)")
+    if cfg.poll_interval <= 0:
+        raise ConfigError(f"{where}poll_interval must be positive")
+
+
 def _check_site(site: SiteConfig, path: str):
     where = f"{path}: site."
     if not isinstance(site.logo, str):
@@ -451,6 +472,7 @@ class WebConfig:
     limits: LimitsConfig = field(default_factory=LimitsConfig)
     admin: AdminConfig = field(default_factory=AdminConfig)
     access_log: AccessLogConfig = field(default_factory=AccessLogConfig)
+    archives: ArchivesConfig = field(default_factory=ArchivesConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
     hosts: list = field(default_factory=list)
 
@@ -586,6 +608,10 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
                         session_timeout=parse_duration(access_data.get('session_timeout', 1800.0),
                                                        'access_log.session_timeout'))
     _check_access_log(access_log, path)
+    archives_data = _section(data, 'archives', path)
+    archives = _build(ArchivesConfig, archives_data, f"{path}: [archives]",
+                      poll_interval=parse_duration(archives_data.get('poll_interval', 30.0), 'archives.poll_interval'))
+    _check_archives(archives, path)
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
@@ -599,9 +625,9 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items()
-           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'site', 'hosts')}
+           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'site', 'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
-                 site=site, hosts=hosts,
+                 archives=archives, site=site, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:

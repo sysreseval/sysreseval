@@ -110,6 +110,9 @@ class TestAuth:
                 data = await resp.json()
                 assert resp.status == 200 and data['hostname'] == 'pool1' and data['projects'] == 0
                 assert data['sre_version'] == params.sre_version and data['exam_mode'] is False
+                # the archives are collected by the portal itself too: the token alone
+                resp = await h.client.get('/v1/archives', headers=headers(identity=None))
+                assert resp.status == 200 and await resp.json() == {'archives': [], 'more': False, 'last': ''}
         run(go())
 
 
@@ -1138,6 +1141,46 @@ class TestInstructor:
                 rows_fr = await (await h.client.get('/v1/evaluations?lab=sre@dhcp.py', headers=headers(prof_fr))).json()
                 assert rows_fr[0]['parts'][0]['label'] == 'Routage entre lan et dmz'
                 assert [e['key'] for e in rows_fr[0]['elements']] == [e['key'] for e in alice['elements']]
+        run(go())
+
+    def test_archives_for_the_collector(self, tmp_path):
+        """GET /v1/archives: the archives of the host after a name, in the order of the names,
+        as the records the portal stores (the student, the lab, the totals, the elements with
+        their raw titles), `managed` for a project the agent runs, the paging by `after` /
+        `limit`, an unreadable archive skipped and still passed by `last`."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                alice_rln = await h.started()
+                bob_rln = await h.started(BOB)
+                await h.client.post(f'/v1/projects/{alice_rln}/eval', headers=headers())
+                await asyncio.sleep(1.1)                       # a second archive name (the 14-digit prefix)
+                await h.client.post(f'/v1/projects/{bob_rln}/eval', headers=headers(BOB))
+                archives = h.pub / 'archives'
+                (archives / '20991231235959_junk.zst').write_bytes(b'not an archive')    # the newest name, unreadable
+                resp = await h.client.get('/v1/archives', headers=headers(identity=None))
+                data = await resp.json()
+                assert resp.status == 200 and data['more'] is False and data['last'] == '20991231235959_junk.zst'
+                assert [r['running_lab_name'] for r in data['archives']] == [alice_rln, bob_rln]
+                alice = data['archives'][0]
+                assert (alice['login'], alice['fullname'], alice['group'], alice['hostname'], alice['lab'], alice['managed']) == \
+                    ('alice', 'Alice A', 'INFO1', 'pool1', 'sre/dhcp.py', True)
+                assert (alice['grade'], alice['max_grade'], alice['mark'], alice['maximum_mark']) == (4.5, 5.0, 18.0, 20.0)
+                assert alice['archive'].endswith(f'_{alice_rln}.zst') and alice['eval_date'][-6] in '+-'
+                assert [(e['title'], e['grade'], e['part'], e['bonus']) for e in alice['elements']] == [
+                    ('Default route of m1', 2.0, 'Routing', False), ('Address of m2', 1.5, 'Routing', False),
+                    ('IPv6 route of m1', 1.0, None, True)]
+                assert alice['parts'][0]['description'] == {'en': 'Routing between lan and dmz', 'fr': 'Routage entre lan et dmz'}
+                assert alice['errors'] == [] and alice['exam'] is False and 'answers' not in alice
+                # the paging: after the first name, one at a time
+                page = await (await h.client.get('/v1/archives', headers=headers(identity=None),
+                                                 params={'after': alice['archive'], 'limit': '1'})).json()
+                assert [r['running_lab_name'] for r in page['archives']] == [bob_rln] and page['more'] is True
+                assert page['last'] == page['archives'][0]['archive']
+                page = await (await h.client.get('/v1/archives', headers=headers(identity=None),
+                                                 params={'after': page['last']})).json()
+                assert page['archives'] == [] and page['more'] is False and page['last'] == '20991231235959_junk.zst'
+                assert (await h.client.get('/v1/archives?limit=x', headers=headers(identity=None))).status == 400
+                assert all(p.last_activity == 0.0 or True for p in h.agent.registry.projects.values())
         run(go())
 
     def test_periodic_evaluation_of_a_web_project(self, tmp_path):

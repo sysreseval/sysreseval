@@ -10,7 +10,9 @@ portal (PyMySQL for the database):
 
 The current file is never touched (the portal writes it); a rotated file goes by its modification
 time.  ``--optimize`` rebuilds the table after the deletion, so that the deleted rows no longer
-occupy its file (a short lock of the table; the portal's writer retries meanwhile).  Exit status:
+occupy its file (a short lock of the table; the portal's writer retries meanwhile).  The archives
+of the evaluations (the ``[archives]`` table of the same database) are left alone unless
+``--archives-days N`` is given.  Exit status:
 0, 1 when a store could not be purged (the reason on stderr; the other store is still done), 2 on
 a usage or configuration error.  Nothing happens when ``[access_log]`` names no file and no database.
 """
@@ -51,31 +53,34 @@ def purge_files(log_file: str, cutoff: float, *, dry_run: bool = False) -> list:
     return removed
 
 
-def purge_database(db, cutoff: float, *, dry_run: bool = False, optimize: bool = False, connect=None) -> int:
-    """Delete the rows of the table of *db* (an ``AccessDatabaseConfig``) whose ``ts`` is before
+def purge_database(db, cutoff: float, *, dry_run: bool = False, optimize: bool = False, connect=None,
+                   table: str | None = None) -> int:
+    """Delete the rows of the table of *db* (an ``AccessDatabaseConfig``; *table* names another
+    table of the same database: the archives of the evaluations) whose ``ts`` is before
     *cutoff*, ``BATCH`` at a time; the number deleted (or to delete, with *dry_run*).  *connect*
     replaces the driver's connection (the tests)."""
     from sreweb.portal.accessdb import connector, utc_datetime
     if connect is None:
         connect, _ = connector(db)
+    table = table or db.table
     before = utc_datetime(cutoff)
     conn = connect()
     try:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT COUNT(*) FROM `{db.table}` WHERE ts < %s", (before,))
+            cur.execute(f"SELECT COUNT(*) FROM `{table}` WHERE ts < %s", (before,))
             count = int(cur.fetchone()[0])
             if dry_run:
                 return count
             deleted = 0
             while True:
-                cur.execute(f"DELETE FROM `{db.table}` WHERE ts < %s LIMIT {BATCH}", (before,))
+                cur.execute(f"DELETE FROM `{table}` WHERE ts < %s LIMIT {BATCH}", (before,))
                 conn.commit()
                 affected = cur.rowcount if cur.rowcount is not None else 0
                 deleted += max(affected, 0)
                 if affected < BATCH:
                     break
             if optimize:
-                cur.execute(f"OPTIMIZE TABLE `{db.table}`")
+                cur.execute(f"OPTIMIZE TABLE `{table}`")
                 cur.fetchall()
                 conn.commit()
         return deleted
@@ -93,9 +98,14 @@ def main(argv=None) -> int:
     parser.add_argument('--optimize', action='store_true', help="rebuild the table after the deletion (OPTIMIZE TABLE)")
     parser.add_argument('--files-only', action='store_true', help="the rotated files, not the database")
     parser.add_argument('--database-only', action='store_true', help="the database, not the files")
+    parser.add_argument('--archives-days', type=int, default=None, metavar='DAYS',
+                        help="also remove the archives of the evaluations ([archives] table) older than this many "
+                             "days (not touched otherwise)")
     args = parser.parse_args(argv)
     if args.days < 1:
         parser.error("--days must be at least 1")
+    if args.archives_days is not None and args.archives_days < 1:
+        parser.error("--archives-days must be at least 1")
     if args.files_only and args.database_only:
         parser.error("--files-only and --database-only exclude each other")
     try:
@@ -128,6 +138,17 @@ def main(argv=None) -> int:
         except Exception as e:
             print(f"web-purge-log: database {db.name} on {where}: {e}", file=sys.stderr)
             status = 1
+        if args.archives_days is not None:
+            table = cfg.archives.table
+            try:
+                count = purge_database(db, time.time() - args.archives_days * 86400, dry_run=args.dry_run,
+                                       optimize=args.optimize, table=table)
+                rebuilt = ", table rebuilt" if args.optimize and not args.dry_run else ""
+                print(f"web-purge-log: {verb} {count} evaluation(s) of {db.name}.{table} on {where} older than "
+                      f"{args.archives_days} days{rebuilt}")
+            except Exception as e:
+                print(f"web-purge-log: database {db.name} on {where}, table {table}: {e}", file=sys.stderr)
+                status = 1
     if not stores:
         print("web-purge-log: nothing to purge ([access_log] names no file and no database, or the store asked is not configured)")
     return status

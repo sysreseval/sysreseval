@@ -76,6 +76,11 @@ EVENTS = {
     ('GET', '/api/history'): 'history',
     ('GET', '/api/history/sessions'): 'history',
     ('GET', '/api/history/statistics'): 'history',
+    # the Archives page: an instructor reading the evaluation results leaves a trace (the
+    # filters asked; ``view=summary`` for the lab summary, ``archive_id`` for one evaluation)
+    ('GET', '/api/archives'): 'archives',
+    ('GET', '/api/archives/summary'): 'archives',
+    ('GET', '/api/archives/{id}'): 'archives',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
@@ -88,7 +93,7 @@ KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', 
                        ('PUT', '/api/presentations/{id}/view'), ('PUT', '/api/presentations/{id}/evaluation'),
                        ('GET', '/api/presentations/{id}/ws'),
                        ('GET', '/api/focus'), ('GET', '/api/focus/{id}'), ('PUT', '/api/focus/{id}/view'),
-                       ('GET', '/api/focus/{id}/ws')})
+                       ('GET', '/api/focus/{id}/ws'), ('GET', '/api/archives/options')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
 #: socket every page keeps open is one of them: the session expiry stays what it was.
 IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws'})

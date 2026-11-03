@@ -12,7 +12,9 @@ import jinja2
 from aiohttp import web
 
 from . import session as S
+from .accessdb import connector
 from .accesslog import AccessLog
+from .archives import ArchiveStore
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
 from .roles import RoleCache
@@ -53,7 +55,15 @@ class Portal:
         self.presentations: Presentations | None = None
         self.focuses: Focuses | None = None
         self._proxy_warned: set = set()
-        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies, connect=db_connect)
+        # the (connect, transient) pair of the database, shared by the connection log and the
+        # archives of the evaluations (a ConfigError without the driver, like a bad log file)
+        connect = db_connect
+        if connect is None and cfg.access_log.database.enabled:
+            connect = connector(cfg.access_log.database)
+        self.access = AccessLog(cfg.access_log, cfg.trusted_proxies, connect=connect)
+        self.archives: ArchiveStore | None = None       # the evaluation archives ([archives], same database)
+        if connect is not None and cfg.access_log.database.enabled:
+            self.archives = ArchiveStore(cfg.access_log.database, cfg.archives, connect=connect[0], transient=connect[1])
         self._administrators = set(cfg.auth.administrators)    # [auth] administrators: logins (instructors only)
         self.roles: RoleCache | None = None
         if cfg.directory_lookups:
@@ -61,6 +71,8 @@ class Portal:
 
     def make_app(self) -> web.Application:
         self.access.open()     # the log file: a bad path fails here, before the server starts
+        if self.archives is not None:
+            self.archives.open()
         app = web.Application(middlewares=[self.identity_middleware, self.access.middleware, self.csrf_middleware,
                                            self.error_middleware],
                               client_max_size=max(1 << 20, self.cfg.limits.max_answer_bytes))
@@ -78,7 +90,7 @@ class Portal:
         self.focuses = Focuses(self.presence)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
-                             focuses=self.focuses)
+                             focuses=self.focuses, archives=self.archives)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -117,6 +129,8 @@ class Portal:
         await self.pool.refresh()
         self.pool.start()
         self.manager.start()
+        if self.archives is not None:
+            self.archives.start(self.pool, self.roles)     # the collector of the evaluation archives
         self.access.start()
         self.presentations.start_loop()
         self.focuses.start_loop()
@@ -132,9 +146,13 @@ class Portal:
 
     async def _on_cleanup(self, app):
         # after the in-flight handlers (the WebSockets) are done: their close lines come first
+        if self.archives is not None:
+            await self.archives.stop()      # no fetch in flight when the session closes
         await self.access.stop()
         self.access.close_all('shutdown')
         self.access.close()
+        if self.archives is not None:
+            self.archives.close()           # the queued rows written, like the log's
         await self.manager.stop()
         await self.pool.stop()
         await self.session.close()

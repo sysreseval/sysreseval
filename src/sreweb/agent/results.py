@@ -40,7 +40,8 @@ class ArchiveIndex:
         self._lock = asyncio.Lock()
         self.scans = 0
 
-    def _dirs(self) -> list:
+    def directories(self) -> list:
+        """The archive directories scanned (those given, else ``params.archive_dirs``)."""
         return self.dirs if self.dirs is not None else list(params.archive_dirs)
 
     def _fresh(self) -> bool:
@@ -75,7 +76,7 @@ class ArchiveIndex:
 
     def _scan(self) -> dict:
         newest = {}
-        for rln, path in newest_by_running_lab_name(scan_archive_dirs(self._dirs())).items():
+        for rln, path in newest_by_running_lab_name(scan_archive_dirs(self.directories())).items():
             try:
                 st = os.stat(path)
             except OSError:

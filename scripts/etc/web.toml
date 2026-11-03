@@ -194,6 +194,19 @@ session_timeout = "30m"
 # queue = 10000
 # connect_timeout = 5
 
+[archives]
+# The archives of the evaluations (every `sre eval` of the pool hosts: the students'
+# self-evaluations, the periodic ones of the agents, the final one of a closing project, those of
+# the Qt GUI) in a second table of the database above, collected from the agents every
+# poll_interval (GET /v1/archives), for the Archives page of the instructors: the results (the
+# grade elements, the totals, the mark, the errors, the student, the group, the lab, the host, the
+# time), never the answers.  On iff [access_log.database] is set.  The table is created like
+# access_log (or create it by hand: see the documentation); keep: days of rows kept (purged
+# daily), 0 = forever.
+# table = "archives"
+# keep = 0
+# poll_interval = "30s"
+
 [site]
 # The institution, shown next to the SRE logo in the header of every page (the login page too):
 # the absolute path of an image file (JPG, PNG, SVG...; readable by sre-web, served at

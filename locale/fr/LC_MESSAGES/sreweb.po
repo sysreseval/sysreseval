@@ -1140,3 +1140,98 @@ msgstr "Les statistiques ne portent que sur les {n} lignes les plus récentes : 
 
 msgid "Click to show the users of this group only (again: every user)"
 msgstr "Cliquer pour n'afficher que les utilisateurs de ce groupe (à nouveau : tous)"
+
+# --- the Archives page of the instructors: archives.html, archives.js, archive_detail.js, base.html ---
+
+msgid "Archives"
+msgstr "Archives"
+
+msgid "Evaluation archives"
+msgstr "Archives des évaluations"
+
+msgid "Summary"
+msgstr "Synthèse"
+
+msgid "Student"
+msgstr "Étudiant"
+
+msgid "The beginning of a login, or a part of a name"
+msgstr "Le début d'un identifiant, ou une partie d'un nom"
+
+msgid "The student group (its exact name)"
+msgstr "Le groupe d'étudiants (son nom exact)"
+
+msgid "A part of the lab name"
+msgstr "Une partie du nom du TP"
+
+msgid "The time of the evaluation"
+msgstr "L'heure de l'évaluation"
+
+msgid "Exam"
+msgstr "Examen"
+
+msgid "All"
+msgstr "Tous"
+
+msgid "Exam only"
+msgstr "Examen seulement"
+
+msgid "No exam"
+msgstr "Hors examen"
+
+msgid "Show"
+msgstr "Afficher"
+
+msgid "The last evaluation of each project"
+msgstr "La dernière évaluation de chaque projet"
+
+msgid "The last evaluation of each student"
+msgstr "La dernière évaluation de chaque étudiant"
+
+msgid "Every evaluation"
+msgstr "Toutes les évaluations"
+
+msgid "The evaluations are not stored in a database: set [access_log.database] in web.toml to browse them here."
+msgstr "Les évaluations ne sont pas enregistrées dans une base de données : renseignez [access_log.database] dans web.toml pour les consulter ici."
+
+msgid "Project start"
+msgstr "Début du projet"
+
+msgid "The number of self-evaluations the student had run"
+msgstr "Le nombre d'auto-évaluations lancées par l'étudiant"
+
+msgid "Self-evaluations"
+msgstr "Auto-évaluations"
+
+msgid "errors / warnings"
+msgstr "erreurs / avertissements"
+
+msgid "No evaluation matches the filters."
+msgstr "Aucune évaluation ne correspond aux filtres."
+
+msgid "{n} evaluation(s)"
+msgstr "{n} évaluation(s)"
+
+msgid "{n} evaluation(s) in the summary"
+msgstr "{n} évaluation(s) dans la synthèse"
+
+msgid "{n} evaluation(s) shown, older ones exist"
+msgstr "{n} évaluation(s) affichée(s), il en existe de plus anciennes"
+
+msgid "{n} evaluation(s) shown"
+msgstr "{n} évaluation(s) affichée(s)"
+
+msgid "The last evaluations may be missing: the database does not answer ({error})."
+msgstr "Les dernières évaluations peuvent manquer : la base de données ne répond pas ({error})."
+
+msgid "Give a lab to see its summary."
+msgstr "Indiquez un TP pour voir sa synthèse."
+
+msgid "The summary shows the {n} newest evaluations only: narrow the filters."
+msgstr "La synthèse ne porte que sur les {n} évaluations les plus récentes : réduisez les filtres."
+
+msgid "Evaluation of {date}"
+msgstr "Évaluation du {date}"
+
+msgid "project started {date}"
+msgstr "projet démarré le {date}"
