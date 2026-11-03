@@ -23,12 +23,18 @@ owner, so that it goes on writing it (``_owner_of``: an agent writing ``sre:dock
 student's file left the GUI unable to save, every answer typed there afterwards was lost, until
 2026-11-03), and what it wrote is pushed to the open pages: ``watch_file``, a tick hook, compares
 the file's signature with the one of the agent's last write or read (``Project.answers_sig``).
+Every read-merge-write here is done under the advisory lock on the ``answers/`` directory the
+GUI takes too (``SRE.answers.AnswersLock``, waited for without blocking the loop: ``_locked``),
+so that a write of the GUI at the same moment is not undone.
 """
+import asyncio
+import contextlib
 import json
 import logging
 import os
 import socket
 import stat
+import time
 
 from SRE import params
 from SRE import answers as A
@@ -42,6 +48,7 @@ from ..identity import Identity
 log = logging.getLogger('sreweb.agent')
 
 HASH_LENGTH = 64   # sha256 hex
+LOCK_TIMEOUT = 2.0   # s: the GUI holds the file lock for a millisecond; a stopped one must not block the agent
 
 
 class AnswersStore:
@@ -147,6 +154,29 @@ class AnswersStore:
         path = self.path(project)
         project.answers_sig = A.save_answers(path, data, atomic=True, owner=self._owner_of(path), mode=self.mode)
 
+    @contextlib.asynccontextmanager
+    async def _locked(self, project: Project):
+        """The lock on the ``answers/`` directory shared with the Qt GUI
+        (``SRE.answers.AnswersLock``) around a read-merge-write, waited for with the loop
+        running; given up after ``LOCK_TIMEOUT`` with a warning, the write done anyway."""
+        lock = A.AnswersLock(self.path(project))
+        deadline = time.monotonic() + LOCK_TIMEOUT
+        try:
+            while True:
+                try:
+                    if lock.try_acquire():
+                        break
+                except OSError:
+                    break               # no answers/ directory yet: nothing to share
+                if time.monotonic() >= deadline:
+                    log.warning("answers of %s: the file lock was not obtained in %.0f s, writing anyway",
+                                project.rln, LOCK_TIMEOUT)
+                    break
+                await asyncio.sleep(lock.POLL)
+            yield
+        finally:
+            lock.release()
+
     def note_signature(self, project: Project):
         """``on_added`` hook: the file as it is when the project is found."""
         project.answers_sig = A.file_signature(self.path(project))
@@ -172,7 +202,7 @@ class AnswersStore:
         the open pages of the project and return the file's new content.  The owner's metadata
         comes from *identity*; a non-owner (an instructor helping) leaves the stored one alone."""
         normalized = self.normalize(project, patch)
-        async with project.answers_lock:
+        async with project.answers_lock, self._locked(project):
             answers = self.read(project)
             answers.update(normalized)
             if identity.login == project.owner:
@@ -187,7 +217,7 @@ class AnswersStore:
     async def rewrite(self, project: Project, identity: Identity) -> dict:
         """Write the file again with the current metadata: at the creation of the project (the
         file then holds the metadata alone), or for a new language, the exam fields..."""
-        async with project.answers_lock:
+        async with project.answers_lock, self._locked(project):
             data = self._with_metadata(self.read(project), identity)
             self._save(project, data)
         return data
@@ -212,12 +242,13 @@ class AnswersStore:
                 return None
             if cheat is None:
                 return None
-            answers = A.merge_cheat(self.read(project), cheat)
-            try:
-                self._save(project, answers)
-            except OSError as e:
-                log.warning("cannot write the answers of %s: %s", project.rln, e)
-                return None
+            async with self._locked(project):
+                answers = A.merge_cheat(self.read(project), cheat)
+                try:
+                    self._save(project, answers)
+                except OSError as e:
+                    log.warning("cannot write the answers of %s: %s", project.rln, e)
+                    return None
         await self.registry.broadcast(project, {'t': EVENT_ANSWERS, 'answers': self.public(answers, project)})
         return answers
 

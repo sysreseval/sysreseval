@@ -11,6 +11,8 @@ Offscreen Qt.
 import json
 import os
 import stat
+import threading
+import time
 
 import pytest
 
@@ -20,6 +22,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from SRE import params  # noqa: E402
+from SRE.answers import AnswersLock, load_answers  # noqa: E402
 from SRE.form_spec import form_fields  # noqa: E402
 from sysreseval.view.questions_view import QuestionsView  # noqa: E402
 
@@ -117,6 +120,33 @@ class TestSharedAnswersFile:
         assert view._answers[Q1] == 'one' and view.answer_text.toPlainText() == 'one'
         web_write(answers_dir, {Q1: 'back'})
         assert view.reload_if_changed() is True and view.answer_text.toPlainText() == 'back'
+
+    def test_simultaneous_write_of_the_other_writer_is_kept(self, answers_dir):
+        """The web agent reads the file and writes it a moment later (its read-merge-write
+        under the lock on the directory): a keystroke here meanwhile waits for it instead of
+        being undone by it."""
+        view = view_on()
+        type_text(view, 'one')
+        path = answers_dir / params.answer_file_name
+        holding = threading.Event()
+
+        def agent():
+            lock = AnswersLock(path)
+            assert lock.acquire(2.0)
+            holding.set()
+            data = load_answers(path)
+            time.sleep(0.3)
+            web_write(answers_dir, {**data, Q2: 'from the web'})
+            lock.release()
+        t = threading.Thread(target=agent)
+        t.start()
+        assert holding.wait(2.0)
+        t0 = time.monotonic()
+        type_text(view, 'two')                   # waits for the agent's write
+        assert time.monotonic() - t0 >= 0.2
+        t.join()
+        data = read(answers_dir)
+        assert data[Q1] == 'two' and data[Q2] == 'from the web' and view._pending == {}
 
     def test_cheat_answers_are_saved_and_shown(self, answers_dir):
         view = view_on()

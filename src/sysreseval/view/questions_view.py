@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
 
 from SRE import params
 from SRE.answers import (
-    file_signature, load_answers, merge_cheat, read_exam_json, save_answers, session_identity,
-    with_metadata,
+    answers_lock, file_signature, load_answers, merge_cheat, read_exam_json, save_answers,
+    session_identity, with_metadata,
 )
 from SRE.common import TranslatedText
 from SRE.instructor_text import markdown_to_html, strip_instructor, unwrap_instructor
@@ -167,9 +167,11 @@ class QuestionsView(QWidget):
     # puts only the answers changed in this GUI (_pending) on top and replaces the file
     # atomically: a reader never sees a partial file, and the replacement needs the write
     # permission on the answers/ directory (0777) only, whatever the owner of the previous
-    # file (the agent writes as root).  reload_if_changed() (every second, from
-    # ProjectWidget.refresh) shows what the other writer changed; the file written here is
-    # known by its signature.
+    # file (the agent writes as root).  The read and the write are done under the advisory
+    # lock on the answers/ directory both writers take (SRE.answers.AnswersLock), so that a
+    # write of the agent at the same moment is not undone.  reload_if_changed() (every
+    # second, from ProjectWidget.refresh) shows what the other writer changed; the file
+    # written here is known by its signature.
 
     def _answers_path(self) -> str:
         return params.answers_filename(self._running_lab_name)
@@ -189,16 +191,17 @@ class QuestionsView(QWidget):
         on stderr, once per failure streak."""
         path = self._answers_path()
         try:
-            data = with_metadata(
-                {**load_answers(path), **self._pending},
-                hostname=_SESSION_IDENTITY[params.hostname_keyword],
-                login=_SESSION_IDENTITY[params.login_keyword],
-                fullname=_SESSION_IDENTITY[params.fullname_keyword],
-                email=_SESSION_IDENTITY.get(params.email_keyword),
-                language=self._lang_priority[0] if self._lang_priority else 'en',
-                exam_data=read_exam_json(params.sre_pub_dir),
-            )
-            self._file_sig = save_answers(path, data, atomic=True, mode=ANSWERS_FILE_MODE)
+            with answers_lock(path):
+                data = with_metadata(
+                    {**load_answers(path), **self._pending},
+                    hostname=_SESSION_IDENTITY[params.hostname_keyword],
+                    login=_SESSION_IDENTITY[params.login_keyword],
+                    fullname=_SESSION_IDENTITY[params.fullname_keyword],
+                    email=_SESSION_IDENTITY.get(params.email_keyword),
+                    language=self._lang_priority[0] if self._lang_priority else 'en',
+                    exam_data=read_exam_json(params.sre_pub_dir),
+                )
+                self._file_sig = save_answers(path, data, atomic=True, mode=ANSWERS_FILE_MODE)
         except Exception as e:
             if not self._save_error_reported:
                 self._save_error_reported = True

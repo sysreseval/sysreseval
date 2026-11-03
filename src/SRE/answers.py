@@ -13,13 +13,16 @@ their project in a browser too, an instructor helps from the web): each one read
 before writing it, puts only the answers it changed on top, and replaces the file atomically
 (:func:`save_answers` with ``atomic=True``, which works whatever the owner of the previous
 file since the ``answers/`` directory is 0777), then watches the file's :func:`file_signature`
-to show what the other wrote.
+to show what the other wrote.  The read and the write are done under :class:`AnswersLock`, an
+advisory lock on the ``answers/`` directory itself, so that two writes at the same moment do
+not lose one of them.
 
 The identity is the caller's: the GUI takes it from its desktop session
 (:func:`session_identity`), the web agent passes the LDAP account or the pseudonym of the
 browser user to :func:`with_metadata`.
 """
 import contextlib
+import fcntl
 import getpass
 import json
 import os
@@ -27,6 +30,7 @@ import pwd
 import re
 import socket
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -140,6 +144,75 @@ def file_signature(path: str | os.PathLike) -> tuple | None:
     except OSError:
         return None
     return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+#: how long a writer waits for the :class:`AnswersLock` before writing without it
+ANSWERS_LOCK_TIMEOUT = 1.0
+
+
+class AnswersLock:
+    """The lock the writers of the answers file take around their read-merge-write (the Qt
+    GUI as the student, the web agent as root): an advisory ``flock`` on the ``answers/``
+    directory itself, which any of them opens read-only whatever its owner, so nothing is
+    created and the save files carry no lock file.  Without it two writes within the same
+    millisecond (the student typing in the GUI while the instructor types in a browser) would
+    each replace the file with the copy they had read, and one answer would be lost.
+
+    Best effort: :meth:`acquire` gives up after its timeout (a writer stopped while holding
+    the lock must not freeze the other) and the caller writes anyway; a missing directory
+    gives no lock either.  :meth:`try_acquire` is the non-blocking step of a caller waiting
+    its own way (the agent's event loop)."""
+
+    POLL = 0.005   # s between two attempts of acquire()
+
+    def __init__(self, path: str | os.PathLike):
+        self.directory = Path(path).parent
+        self._fd: int | None = None
+
+    def try_acquire(self) -> bool:
+        """Take the lock without waiting: ``False`` when another process holds it.  Raises
+        ``OSError`` when the directory cannot be opened."""
+        if self._fd is None:
+            self._fd = os.open(self.directory, os.O_RDONLY)
+        try:
+            fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        return True
+
+    def acquire(self, timeout: float = ANSWERS_LOCK_TIMEOUT) -> bool:
+        """Take the lock, waiting up to *timeout* seconds: ``False`` when it could not be
+        (held for longer by another process, or no directory)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if self.try_acquire():
+                    return True
+            except OSError:
+                return False
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(self.POLL)
+
+    def release(self) -> None:
+        """Release the lock when held; harmless otherwise."""
+        if self._fd is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+            os.close(self._fd)
+            self._fd = None
+
+
+@contextlib.contextmanager
+def answers_lock(path: str | os.PathLike, timeout: float = ANSWERS_LOCK_TIMEOUT):
+    """``with answers_lock(path) as locked:`` around a read-merge-write of the answers file
+    *path* (:class:`AnswersLock`); *locked* says whether the lock was obtained within
+    *timeout* seconds, and the block runs in both cases."""
+    lock = AnswersLock(path)
+    try:
+        yield lock.acquire(timeout)
+    finally:
+        lock.release()
 
 
 def save_answers(path: str | os.PathLike, data: dict, *, atomic: bool = False,

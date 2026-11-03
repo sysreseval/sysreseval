@@ -10,6 +10,10 @@ import pwd
 import re
 import socket
 import stat
+import subprocess
+import sys
+import threading
+import time
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -17,8 +21,8 @@ import pytest
 
 from SRE import params
 from SRE.answers import (
-    consume_cheat_file, exam_fields, file_signature, load_answers, merge_cheat, read_exam_json,
-    save_answers, session_identity, with_metadata,
+    AnswersLock, answers_lock, consume_cheat_file, exam_fields, file_signature, load_answers,
+    merge_cheat, read_exam_json, save_answers, session_identity, with_metadata,
 )
 
 NOW = datetime(2026, 10, 21, 10, 30, 0)
@@ -271,6 +275,95 @@ class TestSaveAnswers:
         (tmp_path / 'file').write_text('')
         with pytest.raises(OSError):
             save_answers(path, ANSWERS)
+
+
+#: run in another process: 'busy' when the directory given is locked, 'free' otherwise
+LOCK_PROBE = ("import fcntl, os, sys\n"
+              "fd = os.open(sys.argv[1], os.O_RDONLY)\n"
+              "try:\n    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+              "except BlockingIOError:\n    print('busy')\nelse:\n    print('free')\n")
+
+
+def answers_path(tmp_path):
+    path = tmp_path / params.answer_dir_name / params.answer_file_name
+    path.parent.mkdir()
+    return path
+
+
+class TestAnswersLock:
+    """The advisory lock on the answers/ directory the GUI and the web agent take around their
+    read-merge-write of the file."""
+
+    def test_exclusive_between_two_openings(self, tmp_path):
+        path = answers_path(tmp_path)
+        first, second = AnswersLock(path), AnswersLock(path)
+        assert first.try_acquire() is True
+        assert second.try_acquire() is False       # another open file description, same process
+        first.release()
+        assert second.try_acquire() is True
+        second.release()
+        first.release()                            # harmless when not held
+
+    def test_held_against_another_process(self, tmp_path):
+        path = answers_path(tmp_path)
+
+        def probe():
+            r = subprocess.run([sys.executable, '-I', '-c', LOCK_PROBE, str(path.parent)],
+                               capture_output=True, text=True, check=True)
+            return r.stdout.strip()
+        with answers_lock(path) as locked:
+            assert locked is True and probe() == 'busy'
+        assert probe() == 'free'
+
+    def test_acquire_waits_for_the_holder(self, tmp_path):
+        path = answers_path(tmp_path)
+        holder = AnswersLock(path)
+        assert holder.try_acquire()
+        threading.Timer(0.2, holder.release).start()
+        t0 = time.monotonic()
+        assert AnswersLock(path).acquire(2.0) is True
+        assert time.monotonic() - t0 >= 0.15
+
+    def test_acquire_gives_up_after_the_timeout(self, tmp_path):
+        path = answers_path(tmp_path)
+        holder = AnswersLock(path)
+        assert holder.try_acquire()
+        t0 = time.monotonic()
+        with answers_lock(path, timeout=0.2) as locked:
+            assert locked is False
+        assert 0.2 <= time.monotonic() - t0 < 1.5
+        holder.release()
+
+    def test_missing_directory_gives_no_lock_at_once(self, tmp_path):
+        lock = AnswersLock(tmp_path / 'none' / params.answer_file_name)
+        t0 = time.monotonic()
+        assert lock.acquire(5.0) is False and time.monotonic() - t0 < 0.5
+        lock.release()
+        with answers_lock(tmp_path / 'none' / params.answer_file_name) as locked:
+            assert locked is False
+
+    def test_lost_update_prevented(self, tmp_path):
+        """Two writers reading the file then writing it a moment later: the second waits for the
+        first instead of replacing the file with the copy it had read."""
+        path = answers_path(tmp_path)
+        save_answers(path, {'h1': 'a'}, atomic=True)
+        holding = threading.Event()
+
+        def slow_writer():
+            with answers_lock(path):
+                holding.set()
+                data = load_answers(path)
+                time.sleep(0.3)
+                save_answers(path, {**data, 'h2': 'from the web'}, atomic=True)
+        t = threading.Thread(target=slow_writer)
+        t.start()
+        assert holding.wait(2.0)
+        t0 = time.monotonic()
+        with answers_lock(path) as locked:            # waits for the slow writer
+            assert locked is True and time.monotonic() - t0 >= 0.2
+            save_answers(path, {**load_answers(path), 'h1': 'typed'}, atomic=True)
+        t.join()
+        assert load_answers(path) == {'h1': 'typed', 'h2': 'from the web'}
 
 
 class TestSessionIdentity:

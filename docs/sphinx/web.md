@@ -46,9 +46,10 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
 - **`sre-agent`** runs on every pool host, as root, next to `sre`. It drives the `sre` CLI in user
   mode on behalf of the web users exactly as `sre-wrapper` + `sudo` do for the students of a
   workstation (`sre --user <cmd>` with `SUDO_USER=<login>`), owns the terminals (a pseudo-terminal
-  per `sre connect`), writes the answers file with the user's identity (atomically, the owner of
-  a file the Qt GUI of the same student created kept, so that the GUI goes on writing it; what
-  that GUI writes is pushed to the open pages, which show the same answers), merges the cheat
+  per `sre connect`), writes the answers file with the user's identity (atomically and under the
+  advisory lock on the `answers/` directory the Qt GUI takes too, the owner of a file the Qt GUI
+  of the same student created kept, so that the GUI goes on writing it; what that GUI writes is
+  pushed to the open pages, which show the same answers), merges the cheat
   answers of the states, tails the operations log and schedules what the Qt GUI used to schedule: the
   periodic evaluations of a lab (`eval_interval_without_exam_mode`), the evaluation before a
   project is closed (`eval_before_exit`), and an idle reaper closing the projects nobody touched
