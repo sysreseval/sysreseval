@@ -19,6 +19,8 @@ from .accesshistory import parse_filters, session_filters, session_of_row, sessi
 from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
 from .archives import ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS
 from .auth_ldap import LdapAuthenticator, LdapError
+from .groups import (Memberships, GroupError, KINDS, KIND_CUSTOM, MAX_BATCH, MAX_DESCRIPTION, check_group_name,
+                     group_dict, group_key, parse_group_key, sort_key as group_sort_key)
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
                            MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
@@ -28,7 +30,8 @@ from .relay import Relay
 from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
-from ..identity import Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY
+from ..identity import (Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY,
+                        is_valid_login)
 
 #: Where the institution's logo of ``[site] logo`` is served.
 SITE_LOGO_PATH = '/site/logo'
@@ -67,7 +70,7 @@ def json_error(status: int, message: str, **extra) -> web.Response:
 class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
                  presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
-                 archives: ArchiveStore | None = None):
+                 archives: ArchiveStore | None = None, memberships: Memberships | None = None):
         self.cfg = cfg
         self.pool = pool
         self.roles = roles       # the directory lookups (roles.RoleCache) completing the Watch rows' groups
@@ -75,6 +78,8 @@ class Routes:
         self.relay = relay
         self.access = access
         self.archives = archives     # the evaluation archives in the database (None without one)
+        # the user groups (groups.Memberships: the directory and the custom groups, either may be missing)
+        self.memberships = memberships if memberships is not None else Memberships()
         self.presentations = presentations if presentations is not None else Presentations(Presence())
         self.presence = self.presentations.presence
         self.focuses = focuses if focuses is not None else Focuses(self.presence)
@@ -94,6 +99,7 @@ class Routes:
         r.add_get('/pool', self.pool_page)
         r.add_get('/history', self.history_page)
         r.add_get('/archives', self.archives_page)
+        r.add_get('/groups', self.groups_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
         r.add_get(SITE_LOGO_PATH, self.site_logo)
@@ -118,6 +124,15 @@ class Routes:
         r.add_get('/api/archives/summary', self.api_archives_summary)
         r.add_get('/api/archives/options', self.api_archives_options)
         r.add_get('/api/archives/{id}', self.api_archive)
+        # the user groups (the fixed paths before the parametrised ones)
+        r.add_get('/api/groups', self.api_groups)
+        r.add_post('/api/groups', self.api_group_create)
+        r.add_get('/api/groups/people', self.api_groups_people)
+        r.add_get('/api/groups/{kind}/{name}', self.api_group)
+        r.add_put('/api/groups/custom/{name}', self.api_group_update)
+        r.add_delete('/api/groups/custom/{name}', self.api_group_delete)
+        r.add_post('/api/groups/custom/{name}/members', self.api_group_members_add)
+        r.add_delete('/api/groups/custom/{name}/members/{login}', self.api_group_member_remove)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -184,7 +199,8 @@ class Routes:
             'language': language,
             'instructor': bool(identity and identity.role == ROLE_INSTRUCTOR),
             'administrator': bool(identity and identity.administrator),   # the History link
-            'groups': self.cfg.groups_configured,     # the Watch page shows the student groups
+            'groups': self.cfg.groups_configured,     # the Watch page shows the student groups (its Group column)
+            'group_sources': self.cfg.group_sources,  # any user groups: the group select, the Present audience
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
             **extra,
@@ -364,6 +380,18 @@ class Routes:
         return aiohttp_jinja2.render_template('archives.html', request, self._page_context(
             request, archives_database=self.archives is not None))
 
+    async def groups_page(self, request):
+        """Instructors: the user groups (the departments and the groups of the directory, the
+        custom groups of the database), the members of each, the editing of the custom ones; the
+        page says what is not configured."""
+        if not request.get(IDENTITY_KEY):
+            raise web.HTTPFound('/login')
+        if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
+            raise web.HTTPForbidden(text="instructors only")
+        return aiohttp_jinja2.render_template('groups.html', request, self._page_context(
+            request, groups_directory=self.memberships.directory is not None,
+            groups_database=self.memberships.store is not None))
+
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
@@ -523,7 +551,8 @@ class Routes:
         rows = await self.pool.projects_of(identity, all_projects=True)
         if self.roles is not None:
             await complete_owners(rows, self.roles)
-        return web.json_response(rows)
+        await self.memberships.refresh()
+        return web.json_response(self.memberships.annotate(rows))
 
     async def api_watch_evaluations(self, request):
         """Instructors: the lab summary of the Watch page, every running project of the lab
@@ -536,7 +565,8 @@ class Routes:
         rows = await self.pool.evaluations_of(identity, lab)
         if self.roles is not None:
             await complete_owners(rows, self.roles)
-        return web.json_response(rows)
+        await self.memberships.refresh()
+        return web.json_response(self.memberships.annotate(rows))
 
     async def api_history(self, request):
         """Administrators: a page of the connection log from its database, newest first, with
@@ -682,6 +712,266 @@ class Routes:
             log.warning("archives database: a query failed: %s", e)
             return json_error(503, "the database of the archives does not answer")
         return web.json_response(options)
+
+    # -- the user groups ----------------------------------------------------------------------------
+
+    def _group_store(self):
+        """The store of the custom groups, or 409 when the database is not configured."""
+        store = self.memberships.store
+        if store is None:
+            raise PoolError(409, "the groups are not stored in a database ([access_log.database] of web.toml)")
+        return store
+
+    def _directory_status(self) -> dict:
+        if self.memberships.directory is not None:
+            return self.memberships.directory.status()
+        return {'configured': False, 'loaded_at': None, 'error': self.cfg.group_directory_reason, 'people': 0}
+
+    @staticmethod
+    def _log_group(request, **fields):
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(fields)
+
+    @staticmethod
+    def _groups_db_error(e) -> web.Response:
+        log.warning("groups database: %s", e)
+        return json_error(503, "the database of the groups does not answer")
+
+    async def _group_body(self, request) -> dict:
+        try:
+            body = await request.json()
+        except ValueError:
+            raise PoolError(400, "a JSON body is expected")
+        if not isinstance(body, dict):
+            raise PoolError(400, "a JSON object is expected")
+        return body
+
+    def _check_group_name(self, value) -> str:
+        """A name for a custom group: 400 when malformed, 409 when a department or a directory
+        group has it (the filters would be ambiguous)."""
+        try:
+            name = check_group_name(value)
+        except ValueError as e:
+            raise PoolError(400, str(e))
+        if name in self.memberships.names_in_use():
+            raise PoolError(409, f"a department or a directory group is named {name!r}")
+        return name
+
+    @staticmethod
+    def _check_description(value) -> str:
+        if value is None:
+            return ''
+        if not isinstance(value, str):
+            raise PoolError(400, "the description must be a string")
+        text = value.strip()
+        if len(text) > MAX_DESCRIPTION:
+            raise PoolError(400, f"the description is limited to {MAX_DESCRIPTION} characters")
+        return text
+
+    async def _resync_presentations(self):
+        """After a change of the memberships: the connected users get the presentations their
+        groups now include them in, or no longer."""
+        with contextlib.suppress(Exception):
+            await self.presentations.resync(self.presence.logins())
+
+    async def api_groups(self, request):
+        """Instructors: every group of every kind (the departments and the directory groups of
+        the snapshot, the custom groups of the database) with its size, sorted by kind then name,
+        plus the state of the directory read (``?refresh=1`` reads it again) and of the database
+        (``null`` without one; the custom groups are missing when it does not answer, said by
+        ``database.last_error``)."""
+        self._require_instructor(request)
+        refresh = request.query.get('refresh', '') in ('1', 'true')
+        await self.memberships.refresh(force=refresh)
+        groups = self.memberships.directory_groups()
+        database = None
+        store = self.memberships.store
+        if store is not None:
+            try:
+                groups.extend(g.to_dict() for g in await store.list())
+            except HistoryError as e:
+                log.warning("groups database: a query failed: %s", e)
+            database = store.status()
+        groups.sort(key=group_sort_key)
+        return web.json_response({'groups': groups, 'directory': self._directory_status(), 'database': database})
+
+    async def api_groups_people(self, request):
+        """Instructors: the people of the directory whose login or name contains ``?q=`` (at most
+        ``MAX_PEOPLE``, ``more`` when cut), for the Add row of the Groups page; none without a
+        directory."""
+        self._require_instructor(request)
+        await self.memberships.refresh()
+        snapshot = self.memberships.snapshot()
+        if snapshot is None:
+            return web.json_response({'people': [], 'more': False})
+        people, more = snapshot.search(request.query.get('q', '').strip())
+        return web.json_response({'people': [{'login': p.login, 'fullname': p.fullname, 'group': p.group} for p in people],
+                                  'more': more})
+
+    async def api_group(self, request):
+        """Instructors: one group with its members (login, full name and department from the
+        directory; who added a member of a custom group and when); 404 when unknown."""
+        self._require_instructor(request)
+        kind, name = request.match_info['kind'], request.match_info['name']
+        self._log_group(request, kind=kind, group=name)
+        if kind not in KINDS:
+            return json_error(404, "unknown group")
+        await self.memberships.refresh()
+        if kind == KIND_CUSTOM:
+            store = self._group_store()
+            try:
+                group, members = await store.get(name)
+            except GroupError as e:
+                return json_error(e.status, str(e))
+            except HistoryError as e:
+                return self._groups_db_error(e)
+            rows = [{**self.memberships.person_row(m['login']), 'added_by': m['added_by'], 'added_at': m['added_at']}
+                    for m in members]
+            return web.json_response({'group': group.to_dict(), 'members': rows})
+        snapshot = self.memberships.snapshot()
+        logins = snapshot.members_of(kind, name) if snapshot is not None else None
+        if logins is None:
+            return json_error(404, "unknown group")
+        rows = [{**self.memberships.person_row(login), 'added_by': None, 'added_at': None} for login in sorted(logins)]
+        return web.json_response({'group': group_dict(kind, name, len(logins)), 'members': rows})
+
+    async def api_group_create(self, request):
+        """Instructors: a new custom group (``name``, ``description``); 400 on a bad name, 409 when
+        the name is taken (a custom group, a department or a directory group)."""
+        identity = self._require_instructor(request)
+        store = self._group_store()
+        body = await self._group_body(request)
+        wanted = body.get('name')
+        self._log_group(request, action='create', group=wanted if isinstance(wanted, str) else None)
+        await self.memberships.refresh()
+        name = self._check_group_name(wanted)
+        description = self._check_description(body.get('description'))
+        self._log_group(request, group=name)
+        try:
+            group = await store.create(name, description, identity.login)
+        except GroupError as e:
+            return json_error(e.status, str(e))
+        except HistoryError as e:
+            return self._groups_db_error(e)
+        await self.memberships.refresh()
+        return web.json_response({'group': group.to_dict()}, status=201)
+
+    async def api_group_update(self, request):
+        """Instructors: rename a custom group and / or change its description (the keys given)."""
+        self._require_instructor(request)
+        store = self._group_store()
+        name = request.match_info['name']
+        body = await self._group_body(request)
+        self._log_group(request, action='update', group=name)
+        await self.memberships.refresh()
+        new_name = None
+        if body.get('name') is not None and body.get('name') != name:
+            if isinstance(body.get('name'), str):
+                self._log_group(request, new_name=body.get('name'))
+            new_name = self._check_group_name(body.get('name'))
+            self._log_group(request, new_name=new_name)
+        description = self._check_description(body['description']) if 'description' in body else None
+        try:
+            group = await store.update(name, new_name=new_name, description=description)
+        except GroupError as e:
+            return json_error(e.status, str(e))
+        except HistoryError as e:
+            return self._groups_db_error(e)
+        await self.memberships.refresh()
+        await self._resync_presentations()
+        return web.json_response({'group': group.to_dict()})
+
+    async def api_group_delete(self, request):
+        """Instructors: delete a custom group and its memberships."""
+        self._require_instructor(request)
+        store = self._group_store()
+        name = request.match_info['name']
+        self._log_group(request, action='delete', group=name)
+        try:
+            await store.delete(name)
+        except GroupError as e:
+            return json_error(e.status, str(e))
+        except HistoryError as e:
+            return self._groups_db_error(e)
+        await self.memberships.refresh()
+        await self._resync_presentations()
+        return web.Response(status=204)
+
+    async def api_group_members_add(self, request):
+        """Instructors: add ``logins`` to a custom group, or every member of the group ``from``
+        (a key); the logins the directory does not know are refused as a whole (400 with
+        ``unknown``) when the directory is loaded; ``added`` = the newcomers, ``members`` = the
+        size afterwards."""
+        identity = self._require_instructor(request)
+        store = self._group_store()
+        name = request.match_info['name']
+        body = await self._group_body(request)
+        self._log_group(request, action='add', group=name)
+        await self.memberships.refresh()
+        if 'from' in body:
+            source = body['from']
+            if not isinstance(source, str):
+                return json_error(400, "from must be a group key")
+            kind, source_name = parse_group_key(source.strip())
+            if kind == KIND_CUSTOM:
+                try:
+                    _source_group, members = await store.get(source_name)
+                except GroupError:
+                    return json_error(404, "unknown source group")
+                except HistoryError as e:
+                    return self._groups_db_error(e)
+                logins = sorted(m['login'] for m in members)
+            else:
+                snapshot = self.memberships.snapshot()
+                found = snapshot.members_of(kind, source_name) if snapshot is not None else None
+                if found is None:
+                    return json_error(404, "unknown source group")
+                logins = sorted(found)
+            self._log_group(request, source=group_key(kind, source_name))
+        else:
+            logins = body.get('logins')
+            if not isinstance(logins, list) or not all(isinstance(login, str) for login in logins):
+                return json_error(400, "logins must be a list of logins")
+            logins = [login.strip() for login in logins]
+            if len(logins) > MAX_BATCH:
+                return json_error(400, f"at most {MAX_BATCH} logins per call")
+            bad = [login for login in logins if not is_valid_login(login)]
+            if bad:
+                return json_error(400, f"invalid login {bad[0]!r}")
+            if self.memberships.knows_people():
+                known = self.memberships.snapshot().people
+                unknown = sorted({login for login in logins if login not in known})
+                if unknown:
+                    return json_error(400, "unknown logins", unknown=unknown)
+        self._log_group(request, count=len(logins))
+        try:
+            added, members = await store.add_members(name, logins, identity.login)
+        except GroupError as e:
+            return json_error(e.status, str(e))
+        except HistoryError as e:
+            return self._groups_db_error(e)
+        await self.memberships.refresh()
+        await self._resync_presentations()
+        return web.json_response({'added': added, 'members': members, 'unknown': []})
+
+    async def api_group_member_remove(self, request):
+        """Instructors: remove a member from a custom group (404 when not a member)."""
+        self._require_instructor(request)
+        store = self._group_store()
+        name, login = request.match_info['name'], request.match_info['login']
+        self._log_group(request, action='remove', group=name, member=login)
+        if not is_valid_login(login):
+            return json_error(404, f"{login!r} is not a member of {name!r}")
+        try:
+            await store.remove_member(name, login)
+        except GroupError as e:
+            return json_error(e.status, str(e))
+        except HistoryError as e:
+            return self._groups_db_error(e)
+        await self.memberships.refresh()
+        await self._resync_presentations()
+        return web.Response(status=204)
 
     async def api_history_statistics(self, request):
         """Administrators: the Statistics view of the History page (``accessstats``): who
@@ -902,6 +1192,7 @@ class Routes:
         if not identity:
             raise web.HTTPFound('/login')
         p = self._presentation(request)
+        await self.memberships.refresh()
         if not p.includes(identity):
             raise PoolError(403, "not in the audience")
         host = self.pool.host(p.host)
@@ -922,6 +1213,7 @@ class Routes:
         page = request.query.get('page', '')
         if not (page.startswith('/') and len(page) <= MAX_PAGE_LENGTH and page.isprintable()):
             page = ''
+        await self.memberships.refresh()        # the groups of the user, for the presentations including them
         ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
         await ws.prepare(request)
         watcher = self._watcher(ws)
@@ -942,10 +1234,13 @@ class Routes:
         return ws
 
     async def api_presence(self, request):
-        """Instructors: the connected users (the audience to choose from)."""
+        """Instructors: the connected users (the audience to choose from), with the keys of
+        their groups."""
         identity = self._require_instructor(request)
+        await self.memberships.refresh()
         return web.json_response(self.presence.connected(exclude_login=identity.login,
-                                                         presentation_of=self.presentations.presentation_id_of))
+                                                         presentation_of=self.presentations.presentation_id_of,
+                                                         groups_of=self.memberships.groups_of_identity))
 
     async def api_presentations(self, request):
         self._require_instructor(request)
@@ -970,12 +1265,14 @@ class Routes:
         logged = request.get(ACCESS_KEY)
         if logged is not None:
             logged.update(host=host.name, rln=rln, audience=audience_size(audience))
+        await self.memberships.refresh()
         p = await self.presentations.start(identity, host.name, rln, audience)
         return web.json_response(p.to_dict(self.presence), status=201)
 
     async def api_presentation_get(self, request):
         identity = self._require_identity(request)
         p = self._presentation(request)
+        await self.memberships.refresh()
         if identity.login != p.presenter.login and not p.includes(identity):
             raise PoolError(403, "not in the audience")
         return web.json_response(p.to_dict(self.presence))
@@ -993,6 +1290,7 @@ class Routes:
         logged = request.get(ACCESS_KEY)
         if logged is not None:
             logged.update(host=p.host, rln=p.rln, audience=audience_size(audience))
+        await self.memberships.refresh()
         p = await self.presentations.set_audience(p.id, audience)
         return web.json_response(p.to_dict(self.presence))
 
@@ -1056,8 +1354,10 @@ class Routes:
             await ws.close(code=WS_PRESENTATION_ENDED, message=b"the presentation has ended")
             return ws
         presenter = identity.login == p.presenter.login
-        if not presenter and not p.includes(identity):
-            raise PoolError(403, "not in the audience")
+        if not presenter:
+            await self.memberships.refresh()
+            if not p.includes(identity):
+                raise PoolError(403, "not in the audience")
         await ws.prepare(request)
         watcher = self._watcher(ws)
         if presenter:

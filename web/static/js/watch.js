@@ -2,8 +2,10 @@
 // 5 s), one row per project with its owner (login and full name, and their student group when
 // the site configures one), its lab, when it started, its last archived evaluation (age, grade,
 // mark, errors), its terminals and whether the web (or the Qt GUI) runs it.  The rows can be
-// sorted by any column, filtered by text and restricted to one group (the select; kept in the
-// URL as ?group=); a row without a recent evaluation is amber, one whose last evaluation had
+// sorted by any column, filtered by text and restricted to one group (the select, by kind: the
+// departments, the directory groups and the custom groups of GET /api/groups and of the rows,
+// groups_model.js; kept in the URL as ?group=kind:name, a bare name being a department); a row
+// without a recent evaluation is amber, one whose last evaluation had
 // errors is red.  Open goes to the project page (the instructor joins the student's terminals
 // there), Close stops the project.  A click on a row opens the dialog of its last archived
 // evaluation (watch_detail.js), a click on its lab cell the summary of that lab for the rows
@@ -19,6 +21,8 @@ import {el, clear, toast, formatTimestamp, formatNumber} from './ui.js';
 import {projectUrl} from './creation.js';
 import {createDetailDialog} from './watch_detail.js';
 import {createSummaryDialog} from './watch_summary.js';
+import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, rowGroupKeys, rowMatchesGroup, sortGroups,
+        kindsLabel} from './groups_model.js';
 
 const REFRESH_INTERVAL = 5000;
 const STALE_AFTER_S = 900;     // without an evaluation younger than this (or 2 × the lab's interval): amber
@@ -27,14 +31,16 @@ const table = document.getElementById('watch');
 const body = table.querySelector('tbody');
 const filterInput = document.getElementById('watch-filter');
 const groupSelect = document.getElementById('watch-group');
-const groupsEnabled = table.dataset.groups === 'true';   // a group source is configured: column + select shown
+const groupsEnabled = table.dataset.groups === 'true';   // a department source is configured: the Group column shown
+const groupSourcesEnabled = table.dataset.groupSources === 'true';   // any group source: the select shown
 const countElement = document.getElementById('watch-count');
 const closing = new Set();     // running lab names whose close is in progress
 
-// group: null = every group, '' = the rows without group, else one group; shown: the rows
-// after the filters, in the order of the table
+// group: null = every group, '' = the rows without department, else the key of one group; shown:
+// the rows after the filters, in the order of the table
 const state = {rows: [], shown: [], sortKey: 'started_at', sortAsc: false, filter: '', group: null};
 let listedGroups = '';         // the groups the select offers, joined: rebuilt only when they change
+let catalog = [];              // the groups of GET /api/groups (every kind), read once per page load
 
 function columnCount() {
   return table.querySelectorAll('thead th:not([hidden])').length;
@@ -101,10 +107,7 @@ function compare(a, b) {
 }
 
 function matchesGroup(row) {
-  if (state.group === null) {
-    return true;
-  }
-  return state.group === '' ? !row.group : row.group === state.group;
+  return rowMatchesGroup(row, state.group);
 }
 
 function matches(row) {
@@ -114,12 +117,14 @@ function matches(row) {
   if (!state.filter) {
     return true;
   }
-  const haystack = [row.host, row.owner, row.fullname, row.group, title(row), row.lab_name].join(' ').toLowerCase();
+  const names = [...rowGroupKeys(row)].map((key) => parseKey(key).name);
+  const haystack = [row.host, row.owner, row.fullname, row.group, ...names, title(row), row.lab_name].join(' ').toLowerCase();
   return state.filter.split(/\s+/).every((word) => haystack.includes(word));
 }
 
-// the group select: its fixed entries (every group, no group) then the groups of the rows, plus
-// the selected one while its projects are gone (the filter does not reset by itself)
+// the group select: its fixed entries (every group, no department) then, by kind, the groups of
+// GET /api/groups and those of the rows (so an empty custom group can be chosen), plus the
+// selected one while it is gone (the filter does not reset by itself)
 function selectGroup() {
   const kind = state.group === null ? 'all' : (state.group === '' ? 'none' : 'group');
   for (const option of groupSelect.options) {
@@ -128,30 +133,64 @@ function selectGroup() {
 }
 
 function fillGroups() {
-  const groups = new Set(state.rows.map((row) => row.group).filter((group) => group));
-  if (state.group) {
-    groups.add(state.group);
+  const entries = new Map();
+  for (const group of catalog) {
+    entries.set(group.key, group);
   }
-  const sorted = [...groups].sort((a, b) => a.localeCompare(b));
-  const joined = sorted.join('\n');
+  for (const row of state.rows) {
+    for (const key of rowGroupKeys(row)) {
+      if (!entries.has(key)) {
+        entries.set(key, {key, ...parseKey(key)});
+      }
+    }
+  }
+  if (state.group && !entries.has(state.group)) {
+    entries.set(state.group, {key: state.group, ...parseKey(state.group)});
+  }
+  const sorted = sortGroups([...entries.values()], {key: 'kind'});
+  const joined = sorted.map((group) => group.key).join('\n');
   if (joined === listedGroups) {
     return;
   }
   listedGroups = joined;
-  for (const option of [...groupSelect.options]) {
-    if (option.dataset.kind === 'group') {
-      option.remove();
+  for (const child of [...groupSelect.children]) {
+    if (child.tagName === 'OPTGROUP' || child.dataset.kind === 'group') {
+      child.remove();
     }
   }
-  for (const group of sorted) {
-    groupSelect.append(el('option', {value: group, dataset: {kind: 'group'}}, group));
+  for (const kind of KINDS) {
+    const ofKind = sorted.filter((group) => group.kind === kind);
+    if (!ofKind.length) {
+      continue;
+    }
+    const optgroup = el('optgroup', {label: kindsLabel(kind)});
+    for (const group of ofKind) {
+      optgroup.append(el('option', {value: group.key, dataset: {kind: 'group'}}, group.name));
+    }
+    groupSelect.append(optgroup);
   }
   selectGroup();
 }
 
+// the groups of every kind, for the select (an empty group has no row to be found in)
+async function loadCatalog() {
+  try {
+    const data = await api.get('/api/groups');
+    catalog = Array.isArray(data.groups) ? data.groups : [];
+  } catch (e) {
+    catalog = [];
+  }
+  listedGroups = null;
+  fillGroups();
+}
+
 function groupFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.has('group') ? params.get('group') : null;
+  if (!params.has('group')) {
+    return null;
+  }
+  const raw = params.get('group');
+  return raw === '' ? '' : normalizeKey(raw);     // an old ?group=1A link: the department
 }
 
 function storeGroupInUrl() {
@@ -177,7 +216,7 @@ function rowClass(row) {
 
 function render() {
   clear(body);
-  if (groupsEnabled) {
+  if (groupSourcesEnabled) {
     fillGroups();
   }
   const rows = state.rows.filter(matches).sort(compare);
@@ -229,7 +268,9 @@ function renderRow(row) {
     el('td', {}, row.fullname || ''),
     el('td', {hidden: !groupsEnabled, class: row.group ? 'group' : null,
               title: row.group ? _('Summary of the lab for the students of the group') : null,
-              onclick: row.group ? () => summary.open(row.lab_name, title(row), () => state.rows, {group: row.group}) : null},
+              onclick: row.group
+                ? () => summary.open(row.lab_name, title(row), () => state.rows, {group: groupKey(KIND_DEPARTMENT, row.group)})
+                : null},
        row.group || ''),
     el('td', {class: 'lab', title: _('Summary of the lab for the projects shown'),
               onclick: () => summary.open(row.lab_name, title(row), () => state.shown)}, title(row)),
@@ -286,7 +327,7 @@ function setupControls() {
     state.filter = filterInput.value.trim().toLowerCase();
     render();
   });
-  if (groupsEnabled) {
+  if (groupSourcesEnabled) {
     state.group = groupFromUrl();
     selectGroup();
     groupSelect.addEventListener('change', () => {
@@ -302,6 +343,9 @@ function setupControls() {
 async function main() {
   await i18n.init();
   setupControls();
+  if (groupSourcesEnabled) {
+    loadCatalog();
+  }
   await refresh();
   window.setInterval(refresh, REFRESH_INTERVAL);
 }

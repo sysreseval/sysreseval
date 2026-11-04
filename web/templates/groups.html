@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Groups") }} - SRE{% endblock %}
+{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ _("User groups") }}</h1>
+  <input type="text" id="groups-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Group name, description or creator") }}">
+  <div id="groups-kinds" class="history-views">
+    <button type="button" class="toggle" data-kind="department" aria-pressed="true">{{ _("Departments") }}</button>
+    <button type="button" class="toggle" data-kind="directory" aria-pressed="true">{{ _("Directory groups") }}</button>
+    <button type="button" class="toggle" data-kind="custom" aria-pressed="true">{{ _("Custom groups") }}</button>
+  </div>
+  <span id="groups-count" class="muted"></span>
+  <button type="button" id="groups-refresh" title="{{ _("Read the directory again") }}">{{ _("Refresh") }}</button>
+  <button type="button" id="groups-new" class="primary"{% if not groups_database %} hidden{% endif %}>{{ _("New group") }}</button>
+</div>
+<p id="groups-hints" class="muted"{% if groups_directory and groups_database %} hidden{% endif %}>{% if not groups_directory %}{{ _("No LDAP directory is configured: set uri and search_base of [auth.ldap] in web.toml to list the departments and the directory groups.") }} {% endif %}{% if not groups_database %}{{ _("The custom groups are not stored in a database: set [access_log.database] in web.toml to create groups here.") }}{% endif %}</p>
+<p id="groups-notice" class="muted" hidden></p>
+<p id="groups-status" class="muted"></p>
+<table id="groups" class="grid watch groups" data-directory="{{ 'true' if groups_directory else 'false' }}" data-database="{{ 'true' if groups_database else 'false' }}">
+  <thead>
+    <tr>
+      <th class="sortable" data-sort="kind">{{ _("Kind") }}</th>
+      <th class="sortable" data-sort="name">{{ _("Name") }}</th>
+      <th class="sortable" data-sort="members">{{ _("Members") }}</th>
+      <th>{{ _("Description") }}</th>
+      <th class="sortable" data-sort="created_by"{% if not groups_database %} hidden{% endif %}>{{ _("Created by") }}</th>
+      <th class="sortable" data-sort="created_at"{% if not groups_database %} hidden{% endif %}>{{ _("Created") }}</th>
+      <th>{{ _("Actions") }}</th>
+    </tr>
+  </thead>
+  <tbody><tr><td colspan="7" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+</table>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/groups.js"></script>{% endblock %}

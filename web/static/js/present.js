@@ -20,6 +20,7 @@ import * as api from './api.js';
 import {el, clear, toast} from './ui.js';
 import {_, format} from './i18n.js';
 import {ReconnectingSocket} from './events.js';
+import {KINDS, parseKey, normalizeKey, rowGroupKeys, sortGroups, kindsLabel} from './groups_model.js';
 
 const PUBLISH_DELAY = 150;        // ms between the last change of the view and its PUT
 const PUBLISH_MAX_DELAY = 300;    // ms at most between the first change not sent yet and its PUT (a scroll going on)
@@ -228,15 +229,18 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
   }
 
   // -- the audience dialog ------------------------------------------------------------------
-  // The connected users (refreshed while the dialog is open), a text filter, the student groups
-  // among them (a checked group takes its connected members and those connecting later), the
-  // users one by one; resolves to {logins, groups} or null (cancelled).
+  // The connected users (refreshed while the dialog is open), a text filter, the groups by kind
+  // (those of GET /api/groups: the departments, the directory groups, the custom groups, plus
+  // those of the connected users; a checked group takes its connected members and those
+  // connecting later, keyed as groups_model.js does), the users one by one; resolves to
+  // {logins, groups} or null (cancelled).
   function openAudienceDialog({logins: checkedLogins, groups: checkedGroups, mode}) {
     return new Promise((resolve) => {
       const logins = new Set(checkedLogins || []);
-      const groupSet = new Set(checkedGroups || []);
+      const groupSet = new Set((checkedGroups || []).map(normalizeKey));   // a bare name: a department
       let rows = [];
       let result = null;
+      let catalog = null;       // the groups of GET /api/groups, read once per opening
       const filter = el('input', {type: 'text', class: 'present-filter', placeholder: _('Filter…')});
       const groupBox = el('div', {class: 'present-groups'});
       groupBox.hidden = !groups;
@@ -254,9 +258,10 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
 
       const matches = (row) => {
         const text = filter.value.trim().toLowerCase();
-        return !text || [row.login, row.fullname, row.group].some((v) => (v || '').toLowerCase().includes(text));
+        const names = [...rowGroupKeys(row)].map((key) => parseKey(key).name);
+        return !text || [row.login, row.fullname, row.group, ...names].some((v) => (v || '').toLowerCase().includes(text));
       };
-      const viaGroup = (row) => Boolean(row.group && groupSet.has(row.group));
+      const viaGroup = (row) => [...rowGroupKeys(row)].some((key) => groupSet.has(key));
 
       function updateCount() {
         const selected = new Set(logins);
@@ -271,26 +276,58 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
 
       function renderGroups() {
         clear(groupBox);
-        const members = new Map();
+        const connected = new Map();      // key -> connected members
         for (const row of rows) {
-          if (row.group) {
-            members.set(row.group, (members.get(row.group) || 0) + 1);
+          for (const key of rowGroupKeys(row)) {
+            connected.set(key, (connected.get(key) || 0) + 1);
           }
         }
-        for (const group of [...new Set([...members.keys(), ...groupSet])].sort()) {
-          const box = el('input', {type: 'checkbox'});
-          box.checked = groupSet.has(group);
-          box.addEventListener('change', () => {
-            if (box.checked) {
-              groupSet.add(group);
-            } else {
-              groupSet.delete(group);
-            }
-            renderList();
-            updateCount();
-          });
-          groupBox.append(el('label', {}, box, format(_('{group} ({n} connected)'), {group, n: members.get(group) || 0})));
+        const entries = new Map();
+        for (const group of catalog || []) {
+          entries.set(group.key, group);
         }
+        for (const key of [...connected.keys(), ...groupSet]) {
+          if (!entries.has(key)) {
+            entries.set(key, {key, ...parseKey(key), members: null});
+          }
+        }
+        const sorted = sortGroups([...entries.values()], {key: 'kind'});
+        for (const kind of KINDS) {
+          const ofKind = sorted.filter((group) => group.kind === kind);
+          if (!ofKind.length) {
+            continue;
+          }
+          const section = el('div', {class: 'present-kind'}, el('span', {class: `kind kind-${kind}`}, kindsLabel(kind)));
+          for (const group of ofKind) {
+            const box = el('input', {type: 'checkbox'});
+            box.checked = groupSet.has(group.key);
+            box.addEventListener('change', () => {
+              if (box.checked) {
+                groupSet.add(group.key);
+              } else {
+                groupSet.delete(group.key);
+              }
+              renderList();
+              updateCount();
+            });
+            const n = connected.get(group.key) || 0;
+            const label = group.members === null || group.members === undefined
+              ? format(_('{group} ({n} connected)'), {group: group.name, n})
+              : format(_('{group} ({n} connected, {m} members)'), {group: group.name, n, m: group.members});
+            section.append(el('label', {}, box, label));
+          }
+          groupBox.append(section);
+        }
+      }
+
+      async function loadCatalog() {
+        try {
+          const data = await api.get('/api/groups');
+          catalog = Array.isArray(data.groups) ? data.groups : [];
+        } catch (e) {
+          catalog = [];
+        }
+        renderGroups();
       }
 
       function renderList() {
@@ -369,6 +406,9 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
       dialog.showModal();
       updateCount();
       refresh();
+      if (groups) {
+        loadCatalog();
+      }
     });
   }
 

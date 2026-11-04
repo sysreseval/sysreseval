@@ -1,5 +1,7 @@
 """The aiohttp application of the portal: middlewares (session, connection log, CSRF, errors,
 security headers), Jinja2 templates, static files, the pool refresh task."""
+import asyncio
+import contextlib
 import logging
 import ssl
 import urllib.parse
@@ -17,6 +19,7 @@ from .accesslog import AccessLog
 from .archives import ArchiveStore
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
+from .groups import DirectoryCache, DirectoryListing, GroupStore, Memberships
 from .roles import RoleCache
 from .manager import PoolManager
 from .pool import Pool, PoolError
@@ -36,13 +39,16 @@ PROXY_WARNINGS_MAX = 100
 
 
 class Portal:
-    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs, role_resolver=None, db_connect=None):
+    def __init__(self, cfg: WebConfig, *, web_dir: str, localedirs, role_resolver=None, db_connect=None,
+                 directory_listing=None):
         """*role_resolver*: an object with ``resolve(login) -> DirectoryLookup`` (the
         ``LdapRoleResolver`` of ``[auth.ldap]`` by default; the tests inject a fake), used when
         ``cfg.directory_lookups`` (proxy mode with ``ldap_roles`` / ``ldap_groups``, LDAP mode with
         ``attr_group``: the groups of the Watch rows).  *db_connect*: the ``(connect, transient)``
         pair of the connection log's database (``accessdb.connector`` by default; the tests
-        inject a fake connection)."""
+        inject a fake connection).  *directory_listing*: an object with ``load(now) ->
+        DirectorySnapshot`` (``groups.DirectoryListing`` of ``[auth.ldap]`` by default; a fake in
+        the tests), used when ``cfg.group_directory``: the people and groups of the Groups page."""
         self.cfg = cfg
         self.web_dir = Path(web_dir)
         self.localedirs = list(localedirs)
@@ -68,6 +74,17 @@ class Portal:
         self.roles: RoleCache | None = None
         if cfg.directory_lookups:
             self.roles = RoleCache(role_resolver or LdapRoleResolver(cfg.auth.ldap), ttl=cfg.auth.proxy.ldap_roles_ttl)
+        # the user groups of the Groups page: the custom groups in the database, the departments
+        # and groups of the directory when [auth.ldap] can be listed
+        self.groups: GroupStore | None = None
+        if connect is not None and cfg.access_log.database.enabled:
+            self.groups = GroupStore(cfg.access_log.database, cfg.groups, connect=connect[0])
+        self.directory: DirectoryCache | None = None
+        if cfg.group_directory:
+            self.directory = DirectoryCache(directory_listing or DirectoryListing(cfg.auth.ldap),
+                                            ttl=cfg.groups.directory_ttl)
+        self.memberships = Memberships(directory=self.directory, store=self.groups)
+        self._warmup: asyncio.Task | None = None
 
     def make_app(self) -> web.Application:
         self.access.open()     # the log file: a bad path fails here, before the server starts
@@ -86,11 +103,11 @@ class Portal:
         self.manager = PoolManager(self.pool, self.cfg.pool)
         self.relay = Relay(self.pool, None)
         self.presence = Presence()
-        self.presentations = Presentations(self.presence)
+        self.presentations = Presentations(self.presence, memberships=self.memberships)
         self.focuses = Focuses(self.presence)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
-                             focuses=self.focuses, archives=self.archives)
+                             focuses=self.focuses, archives=self.archives, memberships=self.memberships)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -134,6 +151,20 @@ class Portal:
         self.access.start()
         self.presentations.start_loop()
         self.focuses.start_loop()
+        if self.memberships.available:
+            # the directory and the custom groups read now rather than by the first request
+            self._warmup = asyncio.ensure_future(self.memberships.refresh())
+
+    def describe_groups(self) -> str:
+        """The sources of the user groups, for the startup log."""
+        ldap = self.cfg.auth.ldap
+        if self.directory is not None:
+            groups = f", groups of {ldap.group_search_base}" if ldap.group_search_base else ", no group base"
+            directory = f"directory {ldap.uri} (people of {ldap.search_base}{groups})"
+        else:
+            directory = f"no directory listing ({self.cfg.group_directory_reason})"
+        database = self.groups.describe() if self.groups is not None else "no database for the custom groups"
+        return f"{directory}; {database}"
 
     async def _on_shutdown(self, app):
         # before the connections are torn down: the spectators' browsers get the end of the
@@ -146,6 +177,10 @@ class Portal:
 
     async def _on_cleanup(self, app):
         # after the in-flight handlers (the WebSockets) are done: their close lines come first
+        if self._warmup is not None and not self._warmup.done():
+            self._warmup.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._warmup
         if self.archives is not None:
             await self.archives.stop()      # no fetch in flight when the session closes
         await self.access.stop()

@@ -176,7 +176,7 @@ merges other files into this one, as for `web.toml` below.
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
 | `[auth] administrators` | `[]` | the logins of the administrators: instructors who may read the connection log on the History page (*Administrators* below); a login that is not an instructor gets nothing. By group: `administrator_groups` / `administrator_group_filter` of `[auth.ldap]`, `administrator_groups` of `[auth.proxy]` |
-| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); the administrator tests (*Administrators* below): `administrator_groups` (DNs, tested like `instructor_groups`) and `administrator_group_filter` (a group search under `group_search_base`, none by default); `start_tls`; `timeout`. Also read in proxy mode with `ldap_roles` / `ldap_groups` |
+| `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); the administrator tests (*Administrators* below): `administrator_groups` (DNs, tested like `instructor_groups`) and `administrator_group_filter` (a group search under `group_search_base`, none by default); `start_tls`; `timeout`. The listing of the directory for the Groups page (*User groups* below), in every mode: `attr_login` (none = the attribute of a `search_filter` of the form `(attribute={login})`), `groups_filter` (`"(objectClass=posixGroup)"`: the groups listed under `group_search_base`; `""` = none), `attr_group_name` (`cn`), `attr_group_members` (`memberUid`; a value may be the login, the `uid` or the DN of a person). Also read in proxy mode with `ldap_roles` / `ldap_groups` |
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes` |
@@ -184,6 +184,7 @@ merges other files into this one, as for `web.toml` below.
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
 | `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`, a *Suggests* of the Debian package: optional) |
 | `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents) |
+| `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
@@ -509,6 +510,81 @@ personal data (names, groups, results): the account of the portal should be the 
 it, and the page is open to the instructors only. Every consultation of the Archives page is an
 `archives` line of the connection log, with the filters asked.
 
+### User groups
+
+The **Groups** page of the instructors (`/groups`, the link in the header) lists the groups of
+users the portal knows, of three kinds, each with its members (login, name, department):
+
+- **departments**: the values of `attr_group` of `[auth.ldap]` (`departmentNumber`) over every
+  person of `search_base`, the student group the portal has always carried per user (the Group
+  column of the Watch page), listed as groups;
+- **directory groups**: the entries of `group_search_base` matching `groups_filter`
+  (`posixGroup` by default), named by `attr_group_name` (`cn`), their members the values of
+  `attr_group_members` (`memberUid`): each value is looked up among the people as their login,
+  their `uid` or their DN (a `groupOfNames` with `member` DNs works with `attr_group_members =
+  "member"`); a value matching nobody but shaped like a login counts as that login, the DN of a
+  nested group is dropped;
+- **custom groups**: the groups the instructors create on the page (a name of at most 64
+  characters without `:` nor `/`, which may not be that of a department or of a directory group, a
+  description), fill (logins typed or picked among the people of the directory, which refuses an
+  unknown login; or every member of another group of any kind at once), empty and delete. Any
+  instructor may change any custom group; the creator and the dates are shown. A user may belong
+  to several groups.
+
+The directory is read whole, with the service account (or anonymously) of `[auth.ldap]`: two
+paged searches of `PAGE = 500` entries (the people base of a site exceeds the default size limit
+of a server), kept `directory_ttl` and read again on demand (the *Refresh* button). The listing
+needs `uri`, `search_base` and the login attribute of the people: `attr_login`, or the attribute
+of a `search_filter` of the form `(attribute={login})` (`(supannAliasLogin={login})`); the
+departments need `attr_group`, the directory groups `group_search_base`. It works in every
+authentication mode, proxy mode included. The page says what is not configured, and shows the
+error of a directory read that failed (the previous reading stays until the next attempt, one
+minute later).
+
+The custom groups live in two tables of the database of `[access_log.database]` (`[groups]
+table`, `user_groups` by default, and `<table>_members`), on iff that section is set. The tables
+are created when they are missing (the `CREATE` privilege, once), or create them by hand; the
+account needs `SELECT, INSERT, UPDATE, DELETE` on these two tables (`UPDATE`: a renamed group or a
+changed description; the other tables keep `SELECT, INSERT, DELETE`):
+
+```sql
+CREATE TABLE sre.user_groups (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name        VARCHAR(64)     CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  description VARCHAR(255)    NOT NULL DEFAULT '',
+  created_by  VARCHAR(64)     NOT NULL DEFAULT '',
+  created_at  DATETIME(3)     NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE sre.user_groups_members (
+  group_id    BIGINT UNSIGNED NOT NULL,
+  login       VARCHAR(64)     CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  added_by    VARCHAR(64)     NOT NULL DEFAULT '',
+  added_at    DATETIME(3)     NOT NULL,
+  PRIMARY KEY (group_id, login),
+  KEY login (login)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+GRANT SELECT, INSERT, UPDATE, DELETE ON sre.user_groups TO 'sre_web'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON sre.user_groups_members TO 'sre_web'@'%';
+```
+
+The `name` and `login` columns are binary-collated: the names and logins are exact and
+case-sensitive, like the logins everywhere else (a table created with the default collation
+would find `INFO1` for `info1`). The members of a deleted group are deleted with it, in one
+transaction; the rows are never purged.
+
+Every group is named by a key `kind:name` (`department:1A`, `directory:etudiants`,
+`custom:TP lundi`; a bare name is a department: the links and audiences made before the kinds
+keep working). The groups of every kind are offered by the group select of the Watch page (the
+column still shows the department) and by the audience dialog of a presentation: a student is in
+the audience when one of their groups is chosen, the department by the group of their identity,
+the others by the memberships the portal knows, read again every 30 s and after every change made
+on the page (a student added to a presented group is told at once, one removed loses the
+presentation). Every reading of the page is a `groups` line of the connection log, every change a
+`group_edit` line (`action` = `create` / `update` / `delete` / `add` / `remove`, `group`, and
+`member`, `count`, `source` or `new_name`).
+
 ### Securing the pool (mutual TLS)
 
 The portal and the agents can authenticate each other with certificates of one private CA, on
@@ -786,10 +862,11 @@ What an instructor gets:
   of its last archived evaluation, its grade and mark (exo-eval scope, as `sre watch` shows
   them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
   sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
-  by the select listing the groups of the rows (every group, one group, or *No group*: the
-  projects started on the Qt GUI carry none unless the portal reads the directory, above), the
-  chosen group kept in the URL (`?group=`, a
-  bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
+  by the select listing the groups by kind (the departments of the rows, the directory groups
+  and the custom groups of the Groups page, *User groups* above; every group, one group, or *No
+  group*: the projects whose owner has no department, those started on the Qt GUI carrying none
+  unless the portal reads the directory, above), the chosen group kept in the URL
+  (`?group=kind:name`, a bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
   red, one without an evaluation younger than 15 minutes (or twice the lab's evaluation
   interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
   their own host (`params.archive_dirs`) on demand, nothing is scanned while nobody watches.
@@ -918,14 +995,18 @@ What an instructor gets:
   --auto-eval`, the cooldown of the lab, the letters OK / MEH / FAIL when the lab hides the
   marks with `no_mark_on_self_grade`) and the table it gives stays; the last archived evaluation
   is shown on somebody else's project only (an archive holds the numbers).
+- **Groups** (the link in the header, `/groups`): the user groups of the site by kind (the
+  departments, the groups of the directory, the custom groups), their members, and the editing
+  of the custom groups (*User groups* above).
 - **The host of a project**: the *Host* select of the Open page (shown when the pool has a host
   reserved for instructors, `instructors_only = true` in `[[hosts]]`) names one of them, with
   its state and its projects (greyed when off or full), or leaves the automatic placement: the
   least loaded host the instructor may use, reserved or shared. `POST /api/projects` takes the
   optional `host`; a student sending one gets 403.
 - **Present**: the *Present* button of a project page (the instructor's own project, or a
-  student's) opens the list of the users connected to the site (a text filter, the student
-  groups among them when the site configures one, *Select all*): the chosen students, one by one
+  student's) opens the list of the users connected to the site (a text filter, the groups of
+  every kind with the number of their members connected: the departments, the directory groups
+  and the custom groups of the Groups page, *Select all*): the chosen students, one by one
   and by group (a group takes its members connected now and those connecting later), see the
   project read-only on their own browsers (above). The top of the page (the site bar, the
   project bar and the bar under it) then takes the presentation colour (lavender), a reminder

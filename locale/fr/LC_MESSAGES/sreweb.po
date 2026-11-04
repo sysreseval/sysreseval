@@ -1238,3 +1238,147 @@ msgstr "Évaluation du {date}"
 
 msgid "project started {date}"
 msgstr "projet démarré le {date}"
+
+# --- the Groups page of the instructors: groups.html, groups.js, group_members.js, groups_model.js, base.html;
+# --- the group keys of watch.js / present.js ---
+
+msgid "User groups"
+msgstr "Groupes d'utilisateurs"
+
+msgid "Group name, description or creator"
+msgstr "Nom du groupe, description ou créateur"
+
+msgid "Departments"
+msgstr "Départements"
+
+msgid "Directory groups"
+msgstr "Groupes de l'annuaire"
+
+msgid "Custom groups"
+msgstr "Groupes personnalisés"
+
+msgid "Department"
+msgstr "Département"
+
+msgid "Directory"
+msgstr "Annuaire"
+
+msgid "Custom"
+msgstr "Personnalisé"
+
+msgid "Read the directory again"
+msgstr "Relire l'annuaire"
+
+msgid "Refresh"
+msgstr "Actualiser"
+
+msgid "New group"
+msgstr "Nouveau groupe"
+
+msgid "No LDAP directory is configured: set uri and search_base of [auth.ldap] in web.toml to list the departments and the directory groups."
+msgstr "Aucun annuaire LDAP n'est configuré : renseignez uri et search_base de [auth.ldap] dans web.toml pour lister les départements et les groupes de l'annuaire."
+
+msgid "The custom groups are not stored in a database: set [access_log.database] in web.toml to create groups here."
+msgstr "Les groupes personnalisés ne sont pas enregistrés dans une base de données : renseignez [access_log.database] dans web.toml pour créer des groupes ici."
+
+msgid "Kind"
+msgstr "Type"
+
+msgid "Members"
+msgstr "Membres"
+
+msgid "Description"
+msgstr "Description"
+
+msgid "Created by"
+msgstr "Créé par"
+
+msgid "Created"
+msgstr "Créé le"
+
+msgid "{n} group(s)"
+msgstr "{n} groupe(s)"
+
+msgid "{n} of {total} group(s)"
+msgstr "{n} groupe(s) sur {total}"
+
+msgid "No group."
+msgstr "Aucun groupe."
+
+msgid "No group matches the filter."
+msgstr "Aucun groupe ne correspond au filtre."
+
+msgid "Edit"
+msgstr "Modifier"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Delete the group {name}? Its members are not affected."
+msgstr "Supprimer le groupe {name} ? Ses membres ne sont pas concernés."
+
+msgid "Edit the group"
+msgstr "Modifier le groupe"
+
+msgid "Create"
+msgstr "Créer"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "1 to 64 characters, without \":\" or \"/\""
+msgstr "1 à 64 caractères, sans « : » ni « / »"
+
+msgid "The group no longer exists."
+msgstr "Le groupe n'existe plus."
+
+msgid "Directory read {date}: {n} people"
+msgstr "Annuaire lu le {date} : {n} personnes"
+
+msgid "The directory could not be read: {error}"
+msgstr "L'annuaire n'a pas pu être lu : {error}"
+
+msgid "The custom groups may be missing: the database does not answer ({error})."
+msgstr "Les groupes personnalisés peuvent manquer : la base de données ne répond pas ({error})."
+
+msgid "{n} member(s)"
+msgstr "{n} membre(s)"
+
+msgid "created by {login} on {date}"
+msgstr "créé par {login} le {date}"
+
+msgid "Login or name…"
+msgstr "Identifiant ou nom…"
+
+msgid "More people match: type more of the name"
+msgstr "D'autres personnes correspondent : précisez le nom"
+
+msgid "Add"
+msgstr "Ajouter"
+
+msgid "Add the members of…"
+msgstr "Ajouter les membres de…"
+
+msgid "Remove"
+msgstr "Retirer"
+
+msgid "Added by"
+msgstr "Ajouté par"
+
+msgid "Added"
+msgstr "Ajouté le"
+
+msgid "Unknown logins: {logins}"
+msgstr "Identifiants inconnus : {logins}"
+
+msgid "{n} member(s) added"
+msgstr "{n} membre(s) ajouté(s)"
+
+msgid "No member."
+msgstr "Aucun membre."
+
+msgid "No member matches the filter."
+msgstr "Aucun membre ne correspond au filtre."
+
+msgid "{group} ({n} connected, {m} members)"
+msgstr "{group} ({n} connecté(s), {m} membres)"

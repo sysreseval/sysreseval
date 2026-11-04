@@ -12,6 +12,7 @@
 import * as api from './api.js';
 import {el, clear, formatNumber} from './ui.js';
 import {_, format} from './i18n.js';
+import {parseKey, rowMatchesGroup} from './groups_model.js';
 
 const LETTER_ORDER = ['OK', 'MEH', 'FAIL'];
 const LETTER_CLASSES = {OK: 'g-ok', MEH: 'g-meh', FAIL: 'g-fail'};
@@ -305,8 +306,8 @@ export function createSummaryDialog() {
 
   // labName: the lab of the rows (row.lab_name); labTitle: as the table shows it; source: a
   // function giving the candidate rows (the rows of the table after the filters, or every row
-  // of the pool), in their order, called at open and at every update; group: the student group
-  // to keep (null: every row of the lab)
+  // of the pool), in their order, called at open and at every update; group: the key of the
+  // group to keep (groups_model.js; null: every row of the lab)
   function open(labName, labTitle, source, {group = null} = {}) {
     if (current) {
       current.dialog.close();
@@ -316,7 +317,7 @@ export function createSummaryDialog() {
     const close = el('button', {type: 'button'}, _('Close'));
     const heading = group === null
       ? format(_('Lab summary: {lab}'), {lab: labTitle})
-      : format(_('Lab summary: {lab}, group {group}'), {lab: labTitle, group});
+      : format(_('Lab summary: {lab}, group {group}'), {lab: labTitle, group: parseKey(group).name});
     const dialog = el('dialog', {class: 'modal watch-summary'},
       el('h2', {}, heading), caption, body,
       el('div', {class: 'buttons'}, close));
@@ -339,7 +340,7 @@ export function createSummaryDialog() {
     if (!c) {
       return;
     }
-    const shown = c.source().filter((r) => r.lab_name === c.lab && (c.group === null || r.group === c.group));
+    const shown = c.source().filter((r) => r.lab_name === c.lab && rowMatchesGroup(r, c.group));
     const signature = signatureOf(shown);
     if (signature === c.signature) {
       return;

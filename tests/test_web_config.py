@@ -137,6 +137,15 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'attr_group': '(cn)'}}}, 'attr_group'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'header_group': 'X Remote'}}}, 'header_group'),
         ({'secret': SECRET, 'hosts': [HOST], 'auth': {'proxy': {'header_group': ['X-Remote-Group']}}}, 'header_group'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'attr_login': '(x)'}}}, 'attr_login'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'attr_group_members': ''}}}, 'attr_group_members'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'attr_group_name': 3}}}, 'attr_group_name'),
+        ({'secret': SECRET, 'hosts': [HOST], 'auth': {'ldap': {'groups_filter': 'objectClass=x'}}}, 'groups_filter'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'table': 'bad-name'}}, 'groups.table'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'table': 'g' * 57}}, 'groups.table'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'directory_ttl': 0}}, 'directory_ttl'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'directory_ttl': 'soon'}}, 'directory_ttl'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'typo': 1}}, 'typo'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
           'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True}}}, 'ldap_roles'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
@@ -202,6 +211,38 @@ class TestWebConfig:
         assert web_config_from_dict({**base, 'auth': {'mode': 'ldap', 'ldap': {**directory, 'attr_group': 'departmentNumber'}}}).directory_lookups
         assert not web_config_from_dict({**base, 'auth': {'mode': 'ldap', 'ldap': directory}}).directory_lookups
         assert not web_config_from_dict({**base, 'auth': {'mode': 'anonymous'}}).directory_lookups
+
+    def test_groups_section_and_the_directory_listing(self):
+        """[groups] (the Groups page) and the keys of [auth.ldap] listing the directory: the login
+        attribute inferred from a simple search_filter, the sources of the user groups."""
+        base = {'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1']}
+        cfg = web_config_from_dict(base)
+        assert (cfg.groups.table, cfg.groups.members_table, cfg.groups.directory_ttl) == ('user_groups', 'user_groups_members', 600)
+        assert cfg.auth.ldap.login_attribute == 'uid'            # of the default search_filter "(uid={login})"
+        assert (cfg.auth.ldap.attr_login, cfg.auth.ldap.groups_filter) == ('', '(objectClass=posixGroup)')
+        assert (cfg.auth.ldap.attr_group_name, cfg.auth.ldap.attr_group_members) == ('cn', 'memberUid')
+        assert not cfg.group_directory and 'uri and search_base' in cfg.group_directory_reason and not cfg.group_sources
+        cfg = web_config_from_dict({**base, 'groups': {'table': 'grp', 'directory_ttl': '5m'},
+                                    'auth': {'mode': 'proxy',
+                                             'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
+                                                      'search_filter': '(supannAliasLogin={login})',
+                                                      'attr_group_members': ' member ', 'attr_group_name': 'cn',
+                                                      'groups_filter': '(objectClass=groupOfNames)'}}})
+        assert (cfg.groups.table, cfg.groups.members_table, cfg.groups.directory_ttl) == ('grp', 'grp_members', 300)
+        assert cfg.auth.ldap.login_attribute == 'supannAliasLogin' and cfg.auth.ldap.attr_group_members == 'member'
+        assert cfg.auth.ldap.groups_filter == '(objectClass=groupOfNames)'
+        assert cfg.group_directory and cfg.group_directory_reason is None and cfg.group_sources
+        assert not cfg.groups_configured        # the Group column still needs a department source
+        # a search filter that does not name the login attribute alone needs attr_login
+        ldap = {'uri': 'ldap://x', 'search_base': 'ou=people', 'search_filter': '(|(uid={login})(mail={login}))'}
+        cfg = web_config_from_dict({**base, 'auth': {'ldap': ldap}})
+        assert cfg.auth.ldap.login_attribute == '' and not cfg.group_directory and 'attr_login' in cfg.group_directory_reason
+        cfg = web_config_from_dict({**base, 'auth': {'ldap': {**ldap, 'attr_login': ' uid '}}})
+        assert cfg.auth.ldap.login_attribute == 'uid' and cfg.group_directory
+        # the database alone is a source of groups (the custom ones), no directory groups filter = no directory groups
+        cfg = web_config_from_dict({**base, 'access_log': {'database': {'host': 'db', 'user': 'u', 'name': 'sre'}},
+                                    'auth': {'ldap': {'groups_filter': ''}}})
+        assert not cfg.group_directory and cfg.group_sources and cfg.auth.ldap.groups_filter == ''
 
     def test_site(self, tmp_path):
         logo = tmp_path / 'logo.jpg'

@@ -18,6 +18,11 @@ when a database is configured, never before (``import_pymysql``).
 
 The sink is generic: a ``TableSpec`` names the table and its statements, so the archives of
 the evaluations (``archives.py``) go through a second sink on the same connection settings.
+
+The user groups of the instructors (``groups.py``) are written from the requests themselves,
+not through a sink: :func:`transaction` runs one unit of work on a fresh connection and commits
+it (in a worker thread), :func:`ensure_table` is the probe-then-create of the sink shared with
+it, and :class:`HistoryError` is the database error every reader and writer raises.
 """
 import functools
 import json
@@ -73,6 +78,10 @@ INSERT = ("INSERT INTO `{table}` (ts, event, login, addr, host, rln, lab, status
           "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
 PURGE = "DELETE FROM `{table}` WHERE ts < %s LIMIT " + str(PURGE_BATCH)
 SELECT = "SELECT id, ts, event, login, addr, host, rln, lab, status, duration, details FROM `{table}`"
+
+
+class HistoryError(Exception):
+    """The database could not answer (the message is the driver's)."""
 
 
 def _describe_access_row(row: tuple) -> str:
@@ -192,6 +201,46 @@ def _rollback_quietly(conn):
         conn.rollback()
     except Exception:
         pass
+
+
+def ensure_table(cur, table: str, ddl: str, label: str = 'database') -> bool:
+    """Probe *table* with a ``SELECT`` and create it with *ddl* (``{table}`` inside) when the
+    probe says it does not exist (errno 1146); any other error propagates.  ``True`` when the
+    table was created.  The caller commits."""
+    try:
+        cur.execute(PROBE.format(table=table))
+        cur.fetchall()
+    except Exception as e:
+        if _errno(e) != NO_SUCH_TABLE:
+            raise
+        cur.execute(ddl.format(table=table))
+        log.info("%s: table %s created", label, table)
+        return True
+    return False
+
+
+def transaction(connect, work: Callable, *, passthrough: tuple = ()):
+    """Run ``work(cursor)`` on a fresh connection of *connect* and commit; its result.  A failure
+    rolls back and raises ``HistoryError`` (the driver's message), except the exception classes
+    of *passthrough*, re-raised as they are (the outcomes of the work itself: a missing row, a
+    duplicate).  The connection is always closed.  Meant for a worker thread."""
+    try:
+        conn = connect()
+    except Exception as e:
+        raise HistoryError(str(e) or type(e).__name__) from e
+    try:
+        with conn.cursor() as cur:
+            result = work(cur)
+        conn.commit()
+        return result
+    except passthrough:
+        _rollback_quietly(conn)
+        raise
+    except Exception as e:
+        _rollback_quietly(conn)
+        raise HistoryError(str(e) or type(e).__name__) from e
+    finally:
+        _close_quietly(conn)
 
 
 class DatabaseSink:
@@ -382,14 +431,7 @@ class DatabaseSink:
         conn = self.connect()
         try:
             with conn.cursor() as cur:
-                try:
-                    cur.execute(PROBE.format(table=self.table))
-                    cur.fetchall()
-                except Exception as e:
-                    if _errno(e) != NO_SUCH_TABLE:
-                        raise
-                    cur.execute(self.spec.ddl.format(table=self.table))
-                    log.info("%s: table %s created", self.label, self.table)
+                ensure_table(cur, self.table, self.spec.ddl, self.label)
             conn.commit()
         except Exception:
             _close_quietly(conn)

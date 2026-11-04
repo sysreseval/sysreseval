@@ -180,6 +180,11 @@ class HostConfig:
         return bool(self.mac or self.wake_command)
 
 
+_ATTRIBUTE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9;-]*$')
+#: A ``search_filter`` naming the login attribute alone: ``(uid={login})``, ``(supannAliasLogin={login})``.
+_SIMPLE_FILTER_RE = re.compile(r'^\(([A-Za-z][A-Za-z0-9;-]*)=\{login\}\)$')
+
+
 @dataclass
 class LdapConfig:
     uri: str = ''
@@ -193,6 +198,15 @@ class LdapConfig:
     # The student group of the user ("departmentNumber"...; the first value of a multi-valued
     # attribute): shown on the Watch page, kept in the answers files; '' = no group.
     attr_group: str = ''
+    # The listing of the directory for the Groups page (portal/groups.py): the login attribute of
+    # the people of search_base ('' = the attribute of a search_filter of the form
+    # "(attribute={login})"), the filter of the groups listed under group_search_base ('' = no
+    # directory groups), the attributes holding a group's name and its members (a member value
+    # may be the login, the uid or the DN of a person).
+    attr_login: str = ''
+    groups_filter: str = '(objectClass=posixGroup)'
+    attr_group_name: str = 'cn'
+    attr_group_members: str = 'memberUid'
     instructor_groups: list = field(default_factory=list)   # DNs; members get the instructor role
     group_filter: str = ''            # "(member={dn})" group search when memberOf is not available
     # The instructor role is the OR of every configured test (a test with an empty key is skipped):
@@ -218,6 +232,16 @@ class LdapConfig:
         """Whether a directory test of the administrators is configured (a lookup is worth
         running for an instructor)."""
         return bool(self.administrator_groups or str(self.administrator_group_filter).strip())
+
+    @property
+    def login_attribute(self) -> str:
+        """The attribute holding the login of a person, for the listing of the directory:
+        ``attr_login``, else the attribute of a ``search_filter`` of the form
+        ``(attribute={login})``; ``''`` when neither gives it."""
+        if self.attr_login:
+            return self.attr_login
+        m = _SIMPLE_FILTER_RE.match(str(self.search_filter).strip())
+        return m.group(1) if m else ''
 
 
 @dataclass
@@ -361,6 +385,20 @@ class ArchivesConfig:
     poll_interval: float = 30.0         # seconds between two collections from the agents
 
 
+@dataclass
+class GroupsConfig:
+    """``[groups]``: the user groups of the Groups page (``sreweb/portal/groups.py``): the table
+    of the groups the instructors create in the database of the connection log (their members in
+    ``<table>_members``; on iff ``[access_log.database]`` is configured) and how long the people
+    and groups read from the directory are kept."""
+    table: str = 'user_groups'          # "groups" is a reserved word of MySQL 8
+    directory_ttl: float = 600.0        # seconds
+
+    @property
+    def members_table(self) -> str:
+        return self.table + '_members'
+
+
 _URL_PREFIXES = ('/', 'http://', 'https://')
 
 
@@ -438,6 +476,15 @@ def _check_archives(cfg: ArchivesConfig, path: str):
         raise ConfigError(f"{where}poll_interval must be positive")
 
 
+def _check_groups(cfg: GroupsConfig, path: str):
+    where = f"{path}: groups."
+    # the members table is <table>_members: both must stay identifiers of at most 64 characters
+    if not isinstance(cfg.table, str) or not _TABLE_NAME_RE.match(cfg.table) or len(cfg.table) > 56:
+        raise ConfigError(f"{where}table must be a plain SQL identifier of at most 56 characters (letters, digits, _)")
+    if cfg.directory_ttl <= 0:
+        raise ConfigError(f"{where}directory_ttl must be positive")
+
+
 def _check_site(site: SiteConfig, path: str):
     where = f"{path}: site."
     if not isinstance(site.logo, str):
@@ -473,8 +520,32 @@ class WebConfig:
     admin: AdminConfig = field(default_factory=AdminConfig)
     access_log: AccessLogConfig = field(default_factory=AccessLogConfig)
     archives: ArchivesConfig = field(default_factory=ArchivesConfig)
+    groups: GroupsConfig = field(default_factory=GroupsConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
     hosts: list = field(default_factory=list)
+
+    @property
+    def group_directory_reason(self) -> str | None:
+        """Why the directory cannot be listed for the Groups page (``None`` when it can, in every
+        auth mode): ``[auth.ldap]`` needs ``uri``, ``search_base`` and a login attribute."""
+        ldap = self.auth.ldap
+        if not ldap.uri or not ldap.search_base:
+            return "auth.ldap.uri and search_base are required to list the directory"
+        if not ldap.login_attribute:
+            return "auth.ldap.attr_login is required: search_filter is not of the form (attribute={login})"
+        return None
+
+    @property
+    def group_directory(self) -> bool:
+        """Whether the Groups page can list the departments and the groups of the directory."""
+        return self.group_directory_reason is None
+
+    @property
+    def group_sources(self) -> bool:
+        """Whether any source of user groups is configured (the Groups page has something to
+        list, the Watch page shows its group select, the Present dialog its groups): the
+        directory, or the database holding the custom groups."""
+        return self.group_directory or self.access_log.database.enabled
 
     @property
     def groups_configured(self) -> bool:
@@ -548,7 +619,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     for name in ('instructor_groups', 'administrator_groups'):
         if not isinstance(getattr(ldap, name), list):
             raise ConfigError(f"{path}: auth.ldap.{name} must be a list")
-    for name in ('instructor_filter', 'group_filter', 'instructor_group_filter', 'administrator_group_filter'):
+    for name in ('instructor_filter', 'group_filter', 'instructor_group_filter', 'administrator_group_filter',
+                 'groups_filter'):
         value = str(getattr(ldap, name)).strip()
         if value and not (value.startswith('(') and value.endswith(')')):
             raise ConfigError(f"{path}: auth.ldap.{name} must be an LDAP filter between parentheses")
@@ -562,6 +634,12 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
                                                 and not re.match(r'^[A-Za-z][A-Za-z0-9;-]*$', ldap.attr_group.strip())):
         raise ConfigError(f"{path}: auth.ldap.attr_group must be an LDAP attribute name")
     ldap.attr_group = ldap.attr_group.strip()
+    for name in ('attr_login', 'attr_group_name', 'attr_group_members'):
+        value = getattr(ldap, name)
+        if not isinstance(value, str) or (value.strip() and not _ATTRIBUTE_RE.match(value.strip())) \
+                or (name != 'attr_login' and not value.strip()):
+            raise ConfigError(f"{path}: auth.ldap.{name} must be an LDAP attribute name")
+        setattr(ldap, name, value.strip())
     if auth.mode == AUTH_PROXY and proxy.ldap_groups and not ldap.attr_group:
         raise ConfigError(f"{path}: auth.ldap.attr_group is required with auth.proxy.ldap_groups")
     for name in ('header_login', 'header_fullname', 'header_email', 'header_groups', 'groups_separator'):
@@ -612,6 +690,10 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     archives = _build(ArchivesConfig, archives_data, f"{path}: [archives]",
                       poll_interval=parse_duration(archives_data.get('poll_interval', 30.0), 'archives.poll_interval'))
     _check_archives(archives, path)
+    groups_data = _section(data, 'groups', path)
+    groups = _build(GroupsConfig, groups_data, f"{path}: [groups]",
+                    directory_ttl=parse_duration(groups_data.get('directory_ttl', 600.0), 'groups.directory_ttl'))
+    _check_groups(groups, path)
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
@@ -625,9 +707,9 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items()
-           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'site', 'hosts')}
+           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'site', 'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
-                 archives=archives, site=site, hosts=hosts,
+                 archives=archives, groups=groups, site=site, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:

@@ -42,8 +42,8 @@ def environment() -> jinja2.Environment:
 def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
-            'language': 'fr', 'instructor': False, 'administrator': False, 'groups': False, 'logout_url': '',
-            'site': {'name': '', 'url': '', 'logo_url': ''}}
+            'language': 'fr', 'instructor': False, 'administrator': False, 'groups': False, 'group_sources': False,
+            'logout_url': '', 'site': {'name': '', 'url': '', 'logo_url': ''}}
     base.update(extra)
     return base
 
@@ -103,7 +103,7 @@ def parse_po(path: Path) -> dict:
 class TestTemplates:
     def test_the_pages_exist(self):
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
-                'pool.html', 'history.html', 'archives.html'} <= set(template_names())
+                'pool.html', 'history.html', 'archives.html', 'groups.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -188,9 +188,11 @@ class TestTemplates:
         html = render('projects.html', instructor=True)
         assert 'href="/watch"' in html and 'href="/pool"' in html and 'href="/history"' not in html
         assert 'href="/archives"' in html                  # the Archives link of every instructor
+        assert 'href="/groups"' in html                    # the Groups link too, right after Watch
+        assert html.index('href="/watch"') < html.index('href="/groups"') < html.index('href="/archives"')
         html = render('projects.html')
         assert 'href="/watch"' not in html and 'href="/pool"' not in html and 'href="/history"' not in html
-        assert 'href="/archives"' not in html
+        assert 'href="/archives"' not in html and 'href="/groups"' not in html
         # the History link of the administrators (instructors)
         html = render('projects.html', instructor=True, administrator=True)
         assert 'href="/history"' in html and 'href="/watch"' in html
@@ -206,15 +208,19 @@ class TestTemplates:
         assert 'click a row for its last evaluation, a lab for the summary of the lab</span>' in html   # the dialogs
         assert 'a group for that summary' not in html
         assert 'data-login="alice"' in html
-        # the group column and select exist, hidden without a configured group source
-        assert 'data-groups="false"' in html and 'data-sort="group" hidden>' in html
+        # the group column and select exist, hidden without a configured group source: the column
+        # needs a department source (groups), the select any source (group_sources: the custom
+        # groups of the database, the directory groups)
+        assert 'data-groups="false" data-group-sources="false"' in html and 'data-sort="group" hidden>' in html
         assert 'id="watch-group"' in html and 'data-kind="all"' in html and 'data-kind="none"' in html
-        assert 'class="watch-group" title="Student group" hidden>' in html
-        shown = render('watch.html', instructor=True, groups=True)
-        assert 'data-groups="true"' in shown and 'data-sort="group">' in shown
+        assert 'class="watch-group" title="Group" hidden>' in html
+        shown = render('watch.html', instructor=True, groups=True, group_sources=True)
+        assert 'data-groups="true" data-group-sources="true"' in shown and 'data-sort="group">' in shown
         assert 'a lab for the summary of the lab, a group for that summary restricted to the group</span>' in shown
-        assert 'class="watch-group" title="Student group">' in shown
-        assert 'data-sort="group" hidden' not in shown and 'title="Student group" hidden' not in shown
+        assert 'class="watch-group" title="Group">' in shown
+        assert 'data-sort="group" hidden' not in shown and 'title="Group" hidden' not in shown
+        select_only = render('watch.html', instructor=True, group_sources=True)
+        assert 'class="watch-group" title="Group">' in select_only and 'data-sort="group" hidden>' in select_only
 
     def test_archives_page(self):
         """The Archives page of the instructors: the filters, the table (the Group column hidden
@@ -335,15 +341,42 @@ class TestTemplates:
         # an instructor may present the project; a student has no such control
         for control in ('present', 'presentation-bar', 'presentation-edit', 'presentation-stop'):
             assert f'id="{control}"' in html, control
-        assert 'Stop presenting' in html and 'data-groups="false"' in html and 'data-presentation' not in html
+        assert 'Stop presenting' in html and 'data-group-sources="false"' in html and 'data-presentation' not in html
         # an instructor may focus the student on the project (the button is shown by project.js on
         # a student's project only); every page has the label of a followed student
         assert 'id="focus-student" class="toggle" aria-pressed="false" hidden' in html and 'Focus student on project' in html
         assert 'id="focus-label" class="presenter-name" hidden' in html
-        student = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=False, groups=True)
+        student = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=False, group_sources=True)
         assert 'id="present"' not in student and 'id="presentation-bar"' not in student
         assert 'id="focus-student"' not in student and 'id="focus-label"' in student
-        assert 'data-groups="true"' in student and 'id="close-project" class="danger">' in student
+        assert 'data-group-sources="true"' in student and 'id="close-project" class="danger">' in student
+
+    def test_groups_page(self):
+        """The Groups page of the instructors: the toolbar (filter, kind toggles, Refresh, New
+        group), the hints of what is not configured, the table (the creator columns hidden without
+        a database), the data attributes groups.js reads."""
+        html = render('groups.html', instructor=True, groups_directory=False, groups_database=False)
+        for element in ('groups', 'groups-filter', 'groups-kinds', 'groups-count', 'groups-refresh', 'groups-new',
+                        'groups-hints', 'groups-notice', 'groups-status'):
+            assert f'id="{element}"' in html, element
+        for key in ('kind', 'name', 'members', 'created_by', 'created_at'):
+            assert f'data-sort="{key}"' in html, key
+        for kind in ('department', 'directory', 'custom'):
+            assert f'data-kind="{kind}" aria-pressed="true"' in html, kind
+        assert 'class="grid watch groups" data-directory="false" data-database="false"' in html
+        assert len(re.findall(r'<th[ >]', html)) == 7 and 'colspan="7"' in html
+        assert 'data-sort="created_by" hidden>' in html and 'data-sort="created_at" hidden>' in html
+        assert 'id="groups-new" class="primary" hidden>' in html
+        assert 'id="groups-hints" class="muted">' in html and '[auth.ldap]' in html and '[access_log.database]' in html
+        assert 'id="groups-notice" class="muted" hidden>' in html and '/static/js/groups.js' in html
+        assert 'href="/groups"' in html and 'href="/watch"' in html
+        both = render('groups.html', instructor=True, groups_directory=True, groups_database=True)
+        assert 'data-directory="true" data-database="true"' in both and 'id="groups-hints" class="muted" hidden>' in both
+        assert 'id="groups-new" class="primary">' in both and 'data-sort="created_by">' in both
+        assert 'data-sort="created_at">' in both and ' hidden>' not in both.split('<table')[1].split('</thead>')[0]
+        directory_only = render('groups.html', instructor=True, groups_directory=True, groups_database=False)
+        assert '[auth.ldap]' not in directory_only and '[access_log.database]' in directory_only
+        assert 'id="groups-new" class="primary" hidden>' in directory_only
 
     def test_project_page_of_a_spectator(self):
         """The page in the iframe of /present/{id}: the data attributes project.js keys on, no
@@ -383,6 +416,7 @@ class TestTemplates:
                  render('pool.html', instructor=True),
                  render('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
                  render('archives.html', instructor=True, archives_database=True),
+                 render('groups.html', instructor=True, groups_directory=True, groups_database=True),
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'})]
         checked = 0
         for html in pages:
@@ -496,7 +530,81 @@ class TestLabTreeOrder:
         assert json.loads(completed.stdout) == LAB_TREE_OUT
 
 
+GROUPS_MODEL_RUNNER = """\
+import {parseKey, normalizeKey, rowGroupKeys, rowMatchesGroup, sortGroups} from './groups_model.js';
+
+const rows = JSON.parse(process.argv[2]);
+const keys = [null, '', '1A', 'department:1A', 'custom:Project X', 'department:2B'];
+const groups = [{kind: 'custom', name: 'b'}, {kind: 'department', name: '2A'}, {kind: 'directory', name: 'x'},
+                {kind: 'department', name: '1A'}, {kind: 'custom', name: 'A'}, {kind: 'custom', name: 'a10'},
+                {kind: 'custom', name: 'a9'}];
+process.stdout.write(JSON.stringify({
+  parsed: ['custom:a:b', '1A', 'nope:x', 'department:1A', ''].map(parseKey),
+  normalized: ['1A', 'custom:x', 'directory:y:z'].map(normalizeKey),
+  keys: rows.map((row) => [...rowGroupKeys(row)]),
+  matches: keys.map((key) => rows.map((row) => rowMatchesGroup(row, key))),
+  byKind: sortGroups(groups).map((g) => `${g.kind}:${g.name}`),
+  byNameDesc: sortGroups(groups, {key: 'name', asc: false}).map((g) => g.name),
+}));
+"""
+GROUPS_MODEL_ROWS = [{'group': '1A', 'groups': ['department:1A', 'directory:students', 'custom:Project X']},
+                     {'group': '', 'groups': []}, {'group': '2B'}]
+GROUPS_MODEL_OUT = {
+    'parsed': [{'kind': 'custom', 'name': 'a:b'}, {'kind': 'department', 'name': '1A'},
+               {'kind': 'department', 'name': 'nope:x'}, {'kind': 'department', 'name': '1A'},
+               {'kind': 'department', 'name': ''}],
+    'normalized': ['department:1A', 'custom:x', 'directory:y:z'],
+    'keys': [['department:1A', 'directory:students', 'custom:Project X'], [], ['department:2B']],
+    'matches': [[True, True, True], [False, True, False], [True, False, False], [True, False, False],
+                [True, False, False], [False, False, True]],
+    'byKind': ['department:1A', 'department:2A', 'directory:x', 'custom:A', 'custom:a9', 'custom:a10', 'custom:b'],
+    'byNameDesc': ['x', 'b', 'a10', 'a9', 'A', '2A', '1A'],
+}
+
+
+class TestGroupsModel:
+    """groups_model.js (the keys of the user groups shared by the Groups, Watch and project pages)
+    run under node or bun when one is installed, skipped otherwise."""
+
+    def test_keys_and_matching(self, tmp_path):
+        node = shutil.which('node') or shutil.which('bun')
+        if node is None:
+            pytest.skip("neither node nor bun is installed")
+        for name in ('groups_model.js', 'i18n.js'):
+            shutil.copy(JS / name, tmp_path / name)
+        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
+        runner = tmp_path / 'run.mjs'
+        runner.write_text(GROUPS_MODEL_RUNNER)
+        completed = subprocess.run([node, str(runner), json.dumps(GROUPS_MODEL_ROWS)], capture_output=True, text=True,
+                                   check=True)
+        assert json.loads(completed.stdout) == GROUPS_MODEL_OUT
+
+
 class TestJavaScript:
+    def test_group_matching_shared_by_the_pages(self):
+        """The pages match a row against a group through groups_model.js (one notion of a group
+        key), never by comparing the department string themselves."""
+        for name in ('watch.js', 'watch_summary.js', 'present.js', 'groups.js', 'group_members.js'):
+            assert "from './groups_model.js'" in (JS / name).read_text(encoding='utf-8'), name
+        watch = (JS / 'watch.js').read_text(encoding='utf-8')
+        assert 'rowMatchesGroup(row, state.group)' in watch and "el('optgroup'" in watch
+        assert "table.dataset.groupSources === 'true'" in watch and 'row.group === state.group' not in watch
+        summary = (JS / 'watch_summary.js').read_text(encoding='utf-8')
+        assert 'rowMatchesGroup(r, c.group)' in summary and 'r.group === c.group' not in summary
+        present = (JS / 'present.js').read_text(encoding='utf-8')
+        assert 'rowGroupKeys(row)' in present and "api.get('/api/groups')" in present and 'normalizeKey' in present
+        assert 'groupSet.has(row.group)' not in present
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "body.dataset.groupSources === 'true'" in project and 'groups: groupSourcesEnabled' in project
+        assert not re.search(r'\bdocument\.', (JS / 'groups_model.js').read_text(encoding='utf-8'))   # pure: runs under node
+
+    def test_group_names_are_url_encoded(self):
+        """Every group name or login put in a path of the groups API goes through encodeURIComponent."""
+        for name in ('groups.js', 'group_members.js'):
+            text = (JS / name).read_text(encoding='utf-8')
+            for match in re.finditer(r'/api/groups/[^`]*?\$\{([^}]*)\}', text):
+                assert match.group(1).startswith('encodeURIComponent('), f"{name}: {match.group(0)}"
+
     def test_every_module_parses(self):
         esprima = pytest.importorskip('esprima')
         modules = js_modules()

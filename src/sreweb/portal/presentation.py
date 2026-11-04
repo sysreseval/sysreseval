@@ -8,8 +8,10 @@ wrapping the WebSockets, the tests hand them fakes):
   a presentation; the instructors read it as the list of connected users (``GET /api/presence``).
 - ``Presentations``: the running presentations.  One holds the presenter (the identity relayed
   for the spectators, see ``routes.Routes._target``), the host and running lab name of the
-  project, the audience (explicit logins and student groups: a student of a listed group who
-  connects later is included), the ``view`` the presenter's page publishes (the active tab, the
+  project, the audience (explicit logins and groups, as ``groups.py`` keys them: a student of a
+  listed group who connects later is included; a department by the group string of the identity,
+  a directory or custom group by the memberships the portal knows, ``Presentations(memberships=)``),
+  the ``view`` the presenter's page publishes (the active tab, the
   open terminals...: opaque here but for ``instructorView``), and the sockets of the presenter's
   page and of the spectators' pages (``GET /api/presentations/{id}/ws``).
 
@@ -29,6 +31,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Iterable
 
 from .accesslog import iso_time
+from .groups import KIND_DEPARTMENT, department_member, group_key, parse_group_key
 from ..identity import Identity, clean_group, is_valid_login, request_key
 
 log = logging.getLogger('sreweb.portal')
@@ -111,18 +114,24 @@ class Presence:
             return set()
         return {login for login in self._sockets if (self.identity_of(login) or Identity(login)).group == group}
 
-    def connected(self, exclude_login: str | None = None, *, presentation_of=lambda identity: None) -> list:
-        """One row per connected login, sorted: identity fields, the distinct pages open, the
-        time of the oldest socket and, through *presentation_of(identity)*, the presentation
-        shown to them (``None`` when none)."""
+    def connected(self, exclude_login: str | None = None, *, presentation_of=lambda identity: None,
+                  groups_of=None) -> list:
+        """One row per connected login, sorted: identity fields, the keys of their groups
+        (*groups_of(identity)*, ``groups.Memberships.groups_of_identity``; the department alone
+        without it), the distinct pages open, the time of the oldest socket and, through
+        *presentation_of(identity)*, the presentation shown to them (``None`` when none)."""
         rows = []
         for login in sorted(self._sockets):
             sockets = self._sockets[login]
             if login == exclude_login or not sockets:
                 continue
             identity = self.identity_of(login)
+            if groups_of is not None:
+                groups = groups_of(identity)
+            else:
+                groups = [group_key(KIND_DEPARTMENT, identity.group)] if identity.group else []
             rows.append({'login': login, 'fullname': identity.fullname, 'group': identity.group, 'role': identity.role,
-                         'pages': sorted({s.page for s in sockets if s.page}),
+                         'groups': groups, 'pages': sorted({s.page for s in sockets if s.page}),
                          'since': iso_time(min(s.since for s in sockets)),
                          'presentation': presentation_of(identity)})
         return rows
@@ -152,18 +161,29 @@ class Presentation:
     spectator_sockets: dict = field(default_factory=dict)     # login -> set[Watcher]
     presenter_absent_since: float | None = None               # None while a presenter socket is open
     last_audience: dict | None = None                         # the last counts sent to the presenter
+    memberships: object = field(default=None, repr=False)     # groups.Memberships: the directory / custom groups
 
     def includes(self, identity: Identity | None) -> bool:
-        """Whether *identity* belongs to the audience (by login or by group; never the presenter)."""
+        """Whether *identity* belongs to the audience (by login or by group; never the presenter):
+        a department by the group of the identity, the other kinds by the memberships."""
         if identity is None or identity.login == self.presenter.login:
             return False
-        return identity.login in self.logins or bool(identity.group and identity.group in self.groups)
+        if identity.login in self.logins:
+            return True
+        if self.memberships is not None:
+            return self.memberships.is_member(identity.login, self.groups, department=identity.group)
+        return department_member(identity.group, self.groups)
 
     def members(self, presence: Presence) -> set:
         """The explicit logins and the connected members of the groups."""
         members = set(self.logins)
-        for group in self.groups:
-            members |= presence.logins_of_group(group)
+        connected = presence.logins()
+        for key in self.groups:
+            kind, name = parse_group_key(key)
+            if kind == KIND_DEPARTMENT:
+                members |= presence.logins_of_group(name)
+            if self.memberships is not None:
+                members |= self.memberships.members_of([key]) & connected
         members.discard(self.presenter.login)
         return members
 
@@ -181,8 +201,9 @@ class Presentation:
 
 def parse_audience(value, presenter_login: str) -> tuple:
     """``(logins, groups)`` from the ``audience`` of a request: ``{"logins": [...], "groups": [...]}``
-    (a bare list = logins); valid logins, non-empty groups, the presenter dropped;
-    ``ValueError`` otherwise."""
+    (a bare list = logins); valid logins, the groups as canonical keys (``kind:name``, a bare
+    name being a department) with non-empty names, the presenter dropped; ``ValueError``
+    otherwise."""
     if isinstance(value, list):
         value = {'logins': value}
     if not isinstance(value, dict):
@@ -196,12 +217,15 @@ def parse_audience(value, presenter_login: str) -> tuple:
     for login in logins:
         if not isinstance(login, str) or not is_valid_login(login):
             raise ValueError(f"invalid login {login!r}")
-    cleaned = set()
+    keys = set()
     for group in groups:
-        if not isinstance(group, str) or not clean_group(group) or clean_group(group) != group.strip():
+        if not isinstance(group, str):
             raise ValueError(f"invalid group {group!r}")
-        cleaned.add(group.strip())
-    return set(logins) - {presenter_login}, cleaned
+        kind, name = parse_group_key(group.strip())
+        if not name or clean_group(name) != name:
+            raise ValueError(f"invalid group {group!r}")
+        keys.add(group_key(kind, name))
+    return set(logins) - {presenter_login}, keys
 
 
 def audience_size(audience: tuple) -> int:
@@ -213,10 +237,13 @@ class Presentations:
     of the presentation pushed to its pages).  *clock* (``time.time``) dates the starts and
     the presenter's absence (the tests move it)."""
 
-    def __init__(self, presence: Presence, *, clock=time.time, grace: float = PRESENTER_GRACE):
+    def __init__(self, presence: Presence, *, clock=time.time, grace: float = PRESENTER_GRACE, memberships=None):
+        """*memberships* (``groups.Memberships``): who belongs to the directory and custom groups
+        of an audience; without it a group is a department matched by the identity's group."""
         self.presence = presence
         self.clock = clock
         self.grace = grace
+        self.memberships = memberships
         self._presentations: dict[str, Presentation] = {}
         self.shown: dict[str, str] = {}
         self._task: asyncio.Task | None = None
@@ -267,8 +294,8 @@ class Presentations:
             await self.end(old.id, 'replaced')
         now = self.clock()
         logins, groups = audience
-        p = Presentation(self._new_id(), presenter, host, rln, set(logins) - {presenter.login}, set(groups), now,
-                         presenter_absent_since=now)
+        p = Presentation(self._new_id(), presenter, host, rln, set(logins) - {presenter.login},
+                         self._keys(groups), now, presenter_absent_since=now, memberships=self.memberships)
         self._presentations[p.id] = p
         log.info("presentation %s: %s presents %s on %s to %d login(s) and %d group(s)", p.id, presenter.login, rln, host,
                  len(p.logins), len(p.groups))
@@ -280,10 +307,16 @@ class Presentations:
         before = p.members(self.presence)
         logins, groups = audience
         p.logins = set(logins) - {p.presenter.login}
-        p.groups = set(groups)
+        p.groups = self._keys(groups)
         await self.resync(before | p.members(self.presence))
         await self._notify_presenter(p)
         return p
+
+    @staticmethod
+    def _keys(groups) -> set:
+        """The groups of an audience as canonical keys (``parse_audience`` gives keys; the tests
+        and older callers may give bare department names)."""
+        return {group_key(*parse_group_key(g)) for g in groups}
 
     async def set_view(self, presentation_id: str, view) -> Presentation:
         """The presenter's view: a JSON object of at most ``MAX_VIEW_BYTES``, pushed to every

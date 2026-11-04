@@ -128,8 +128,17 @@ class TestEventFor:
         assert A.LOGIN_EVENTS == {'login', 'login_failed'} and A.LOGIN_EVENTS <= set(A.ALL_EVENTS)
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
-                                                                            'focus_stop', 'history', 'archives'}
+                                                                            'focus_stop', 'history', 'archives',
+                                                                            'groups', 'group_edit'}
         assert ('GET', '/api/archives/options') in A.KEEPALIVE and A.EVENTS[('GET', '/api/archives/{id}')] == 'archives'
+        # the Groups page: the listings are read, every write of a custom group is a group_edit
+        assert ('GET', '/api/groups/people') in A.KEEPALIVE
+        assert A.EVENTS[('GET', '/api/groups')] == A.EVENTS[('GET', '/api/groups/{kind}/{name}')] == 'groups'
+        assert {A.EVENTS[route] for route in (('POST', '/api/groups'), ('PUT', '/api/groups/custom/{name}'),
+                                              ('DELETE', '/api/groups/custom/{name}'),
+                                              ('POST', '/api/groups/custom/{name}/members'),
+                                              ('DELETE', '/api/groups/custom/{name}/members/{login}'))} == {'group_edit'}
+        assert 'groups' in A.ALL_EVENTS and 'group_edit' in A.ALL_EVENTS
 
 
 class TestVisits:

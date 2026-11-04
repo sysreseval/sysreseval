@@ -308,3 +308,65 @@ class TestLiveArchives:
         finally:
             conn.close()
         assert 'unique key `archive`' in definition and 'mediumtext' in definition and 'login_lab_id' in definition
+
+
+class TestLiveGroups:
+    """The custom groups of the Groups page on a real server: the two tables created at the first
+    operation, the exact names and logins (binary collation), a duplicate, the members, a rename,
+    the deletion of a group with its members."""
+
+    @pytest.fixture
+    def groups_cfg(self, cfg):
+        from sreweb.config import GroupsConfig
+        gcfg = GroupsConfig(table=cfg.table + '_groups')
+        yield gcfg
+        connect, _ = connector(cfg)
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP TABLE IF EXISTS `{gcfg.members_table}`")
+                cur.execute(f"DROP TABLE IF EXISTS `{gcfg.table}`")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_round_trip(self, cfg, groups_cfg):
+        from sreweb.portal.groups import GroupStore, GroupExists, GroupNotFound
+        connect, _ = connector(cfg)
+        store = GroupStore(cfg, groups_cfg, connect=connect)
+        assert store.list_sync() == []                         # the tables created
+        group = store.create_sync('TP lundi', 'Lundi 8h', 'prof')
+        assert group.name == 'TP lundi' and group.members == 0 and group.id > 0
+        with pytest.raises(GroupExists):
+            store.create_sync('TP lundi', '', 'prof')
+        other = store.create_sync('tp lundi', '', 'prof')      # binary collation: another name
+        assert other.id != group.id
+        assert store.add_members_sync('TP lundi', ['alice', 'bob', 'alice'], 'prof') == (2, 2)
+        assert store.add_members_sync('TP lundi', ['bob', 'carol'], 'prof') == (1, 3)
+        assert store.add_members_sync('TP lundi', ['Alice'], 'prof') == (1, 4)    # the logins are exact too
+        found, members = store.get_sync('TP lundi')
+        assert found.members == 4 and [m['login'] for m in members] == ['Alice', 'alice', 'bob', 'carol']
+        assert members[0]['added_by'] == 'prof' and members[0]['added_at'].endswith('+00:00')
+        assert [(g.name, g.members) for g in store.list_sync()] == [('TP lundi', 4), ('tp lundi', 0)]
+        renamed = store.update_sync('TP lundi', new_name='TP mardi', description='Mardi')
+        assert (renamed.name, renamed.description, renamed.members) == ('TP mardi', 'Mardi', 4)
+        with pytest.raises(GroupExists):
+            store.update_sync('TP mardi', new_name='tp lundi')
+        store.remove_member_sync('TP mardi', 'Alice')
+        with pytest.raises(GroupNotFound):
+            store.remove_member_sync('TP mardi', 'Alice')
+        assert store.memberships_sync() == {'TP mardi': frozenset({'alice', 'bob', 'carol'}), 'tp lundi': frozenset()}
+        store.delete_sync('TP mardi')
+        with pytest.raises(GroupNotFound):
+            store.get_sync('TP mardi')
+        assert store.memberships_sync() == {'tp lundi': frozenset()}
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) FROM `{groups_cfg.members_table}`")
+                assert cur.fetchone()[0] == 0                  # the members went with the group
+                cur.execute(f"SHOW CREATE TABLE `{groups_cfg.table}`")
+                assert 'utf8mb4_bin' in cur.fetchone()[1]
+        finally:
+            conn.close()
+        assert store.status() == {'connected': True, 'last_error': None}

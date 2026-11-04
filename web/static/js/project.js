@@ -48,7 +48,7 @@ let ownerName = '';
 // by the presenter's view
 const presentationId = body.dataset.presentation || '';
 const spectator = Boolean(presentationId);
-const groupsEnabled = body.dataset.groups === 'true';
+const groupSourcesEnabled = body.dataset.groupSources === 'true';   // any user group source: the groups of the audience dialog
 // an instructor on somebody else's project (the helper: joins the student's terminals, sees the
 // last archived evaluation, runs sre privileged): the top bars take the helper colour (sre.css);
 // the student's own page and a spectator's page keep theirs.  The owner, instructor or not, is
@@ -618,7 +618,7 @@ function setupControls() {
 
 if (isInstructor && !spectator && presentButton && presentationBar) {
   presenter = createPresenter(ctx, {
-    host: body.dataset.host || '', rln: body.dataset.rln || '', login, groups: groupsEnabled, getView,
+    host: body.dataset.host || '', rln: body.dataset.rln || '', login, groups: groupSourcesEnabled, getView,
     getEvaluation: () => (tabs.evaluation ? tabs.evaluation.getTable() : null),
     elements: {
       button: presentButton, bar: presentationBar,

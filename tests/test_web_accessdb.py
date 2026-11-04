@@ -46,6 +46,7 @@ class FakeCursor:
         self.server = conn.server
         self.description = None
         self.rowcount = -1
+        self.lastrowid = None
         self._rows = []
 
     def __enter__(self):
@@ -57,6 +58,8 @@ class FakeCursor:
     def execute(self, sql, args=None):
         self.server.statements.append(('one', sql, args))
         self.server.maybe_fail(sql, args)
+        if self.server.dispatch(self, sql, args):
+            return
         if sql.startswith('SELECT 1 FROM'):
             if not self.server.table_exists:
                 raise Broken(D.NO_SUCH_TABLE, "Table 'sre.access_log' doesn't exist")
@@ -65,6 +68,7 @@ class FakeCursor:
             self.server.created += 1
         elif sql.startswith('INSERT'):
             self.conn.pending.append(tuple(args))
+            self.rowcount = 1
         elif sql.startswith('DELETE'):
             self.rowcount = self.server.purge_counts.pop(0) if self.server.purge_counts else 0
         elif sql.startswith('SELECT'):
@@ -75,7 +79,10 @@ class FakeCursor:
         rows = list(rows)
         self.server.statements.append(('many', sql, rows))
         self.server.maybe_fail(sql, rows)
+        if self.server.dispatch(self, sql, rows):
+            return
         self.conn.pending.extend(tuple(r) for r in rows)
+        self.rowcount = len(rows)
 
     def fetchall(self):
         return list(self._rows)
@@ -113,7 +120,9 @@ class FakeServer:
     """``connect()`` gives a FakeConnection (or raises Down while ``down``); every statement is
     recorded in ``statements`` as ``(kind, sql, args)``, the committed rows in ``committed``;
     ``fail_next`` holds ``(predicate(sql, args), exception)`` pairs raised once at the first
-    matching statement; the SELECTs of the reader answer ``select_names`` / ``select_rows``."""
+    matching statement; the SELECTs of the reader answer ``select_names`` / ``select_rows``.
+    A subclass may answer some statements itself through ``dispatch(cursor, sql, args)`` (``True``
+    = handled: the generic branches are skipped), e.g. a model of a table (test_web_groups.py)."""
 
     def __init__(self, table_exists=False):
         self.down = False
@@ -142,6 +151,10 @@ class FakeServer:
             if match(sql, args):
                 del self.fail_next[i]
                 raise exc
+
+    def dispatch(self, cursor, sql, args) -> bool:
+        """A hook for the subclasses answering statements themselves; the base handles none."""
+        return False
 
     def statements_of(self, kind: str) -> list:
         return [s for s in self.statements if s[1].startswith(kind)]
@@ -694,3 +707,51 @@ class TestEvents:
         assert A.event_for('GET', '/api/history') == 'history' and ('GET', '/api/history') not in A.KEEPALIVE
         assert A.event_for('GET', '/api/history/sessions') == 'history'
         assert A.event_for('GET', '/api/history/statistics') == 'history'
+
+
+class TestTransaction:
+    """``transaction()`` and ``ensure_table()``: the unit of work of the groups store
+    (``groups.py``), shared probe-then-create with the sink."""
+
+    def test_commit_rollback_and_passthrough(self):
+        server = FakeServer(table_exists=True)
+
+        def work(cur):
+            cur.execute("INSERT INTO `t` (x) VALUES (%s)", (1,))
+            return 'done'
+
+        assert D.transaction(server.connect, work) == 'done'
+        assert server.committed == [(1,)] and server.closed == 1
+        # a failure: rolled back, a HistoryError with the driver's message
+        server.fail_next.append((lambda sql, args: sql.startswith('INSERT'), Broken(1366, "Incorrect string value")))
+        with pytest.raises(D.HistoryError, match='Incorrect string value'):
+            D.transaction(server.connect, work)
+        assert server.committed == [(1,)] and server.closed == 2
+
+        class Outcome(Exception):
+            pass
+
+        def refusing(cur):
+            raise Outcome('no')
+
+        # the outcomes of the work itself pass through, anything else is the database's error
+        with pytest.raises(Outcome):
+            D.transaction(server.connect, refusing, passthrough=(Outcome,))
+        with pytest.raises(D.HistoryError, match='no'):
+            D.transaction(server.connect, refusing)
+        assert server.closed == 4
+        server.down = True
+        with pytest.raises(D.HistoryError, match="Can't connect"):
+            D.transaction(server.connect, work)
+
+    def test_ensure_table(self):
+        server = FakeServer(table_exists=False)
+        conn = server.connect()
+        with conn.cursor() as cur:
+            assert D.ensure_table(cur, 'access_log', D.DDL) is True
+            assert D.ensure_table(cur, 'access_log', D.DDL) is False
+        assert server.created == 1 and [s[1] for s in server.statements_of('CREATE')] == [D.DDL.format(table='access_log')]
+        server.fail_next.append((lambda sql, args: sql.startswith('SELECT 1'), Broken(1142, "SELECT command denied")))
+        with conn.cursor() as cur:
+            with pytest.raises(Broken, match='denied'):
+                D.ensure_table(cur, 'access_log', D.DDL)

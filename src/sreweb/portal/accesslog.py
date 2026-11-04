@@ -81,6 +81,15 @@ EVENTS = {
     ('GET', '/api/archives'): 'archives',
     ('GET', '/api/archives/summary'): 'archives',
     ('GET', '/api/archives/{id}'): 'archives',
+    # the Groups page: the listings, and every change of a custom group (``action`` = create /
+    # update / delete / add / remove, ``group``, ``member`` / ``count`` / ``source`` / ``new_name``)
+    ('GET', '/api/groups'): 'groups',
+    ('GET', '/api/groups/{kind}/{name}'): 'groups',
+    ('POST', '/api/groups'): 'group_edit',
+    ('PUT', '/api/groups/custom/{name}'): 'group_edit',
+    ('DELETE', '/api/groups/custom/{name}'): 'group_edit',
+    ('POST', '/api/groups/custom/{name}/members'): 'group_edit',
+    ('DELETE', '/api/groups/custom/{name}/members/{login}'): 'group_edit',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
@@ -93,7 +102,8 @@ KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', 
                        ('PUT', '/api/presentations/{id}/view'), ('PUT', '/api/presentations/{id}/evaluation'),
                        ('GET', '/api/presentations/{id}/ws'),
                        ('GET', '/api/focus'), ('GET', '/api/focus/{id}'), ('PUT', '/api/focus/{id}/view'),
-                       ('GET', '/api/focus/{id}/ws'), ('GET', '/api/archives/options')})
+                       ('GET', '/api/focus/{id}/ws'), ('GET', '/api/archives/options'),
+                       ('GET', '/api/groups/people')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
 #: socket every page keeps open is one of them: the session expiry stays what it was.
 IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws'})

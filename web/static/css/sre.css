@@ -227,7 +227,7 @@ dialog.modal {
   border-radius: 4px;
 }
 dialog.modal::backdrop { background: rgba(0, 0, 0, 0.3); }
-dialog.flavor .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
+dialog.flavor .form-error, dialog.group-edit .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
 dialog.modal .buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 dialog.logout { width: 520px; }
 dialog.logout #logout-projects { margin: 6px 0 10px 20px; }
@@ -421,6 +421,34 @@ table.grid.archives tbody tr[data-id] { cursor: pointer; }
 table.grid.totals th { text-align: left; white-space: nowrap; }
 table.grid.stats td.num { text-align: right; white-space: nowrap; }
 table.grid.stats tr.selected td { background: var(--ok-light-bg); }   /* the group whose users alone are listed */
+
+/* the Groups page of the instructors, and the group keys of the Watch select and of the audience
+   dialog: a badge per kind, the members and edit dialogs, the chips of the Add row */
+.kind { display: inline-block; font-size: 11px; padding: 0 6px; border: 1px solid var(--border); border-radius: 8px;
+        background: var(--bar-bg); white-space: nowrap; vertical-align: middle; }
+.kind-department { background: var(--ok-light-bg); }
+.kind-directory { background: #d6e4f7; }
+.kind-custom { background: var(--debug-bg); }
+table.grid.groups tbody tr[data-key] { cursor: pointer; }
+table.grid.groups td.description { max-width: 32em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#groups-hints, #groups-notice, #groups-status { margin: 0 8px 8px; }
+#groups-notice.error { color: var(--danger); }
+dialog.group-members { width: 760px; overflow: auto; }
+dialog.group-members h2, dialog.group-edit h2 { margin: 0 0 6px; font-size: 1.2em; }
+dialog.group-members h2 .kind { margin-right: 6px; }
+dialog.group-members .members-toolbar { margin: 6px 0; }
+dialog.group-members table.grid { margin: 8px 0; width: 100%; }
+dialog.group-edit { width: 480px; }
+dialog.group-edit label { display: block; margin: 8px 0; }
+dialog.group-edit input[type="text"], dialog.group-edit textarea { display: block; width: 100%; margin-top: 3px; box-sizing: border-box; }
+.group-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.group-add input[type="text"] { width: 220px; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 6px; border: 1px solid var(--border);
+        border-radius: 10px; background: var(--pane-bg); }
+.chip.unknown { border-color: var(--danger); color: var(--danger); }
+.chip button { border: none; background: none; padding: 0 2px; color: var(--muted); }
+.present-groups .present-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; width: 100%; }
 
 /* schema */
 .schema-view {

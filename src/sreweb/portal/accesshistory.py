@@ -19,7 +19,7 @@ import asyncio
 import json
 from datetime import datetime
 
-from .accessdb import SELECT, epoch, utc_datetime
+from .accessdb import SELECT, HistoryError, epoch, utc_datetime   # noqa: F401  (HistoryError: re-exported)
 from ..config import AccessDatabaseConfig
 
 FILTER_KEYS = ('login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'before', 'limit')
@@ -34,10 +34,6 @@ DEFAULT_LIMIT = 100
 MAX_LIMIT = 1000
 MAX_TEXT = 255
 LIKE_ESCAPE = '!'      # the ESCAPE of the LIKE patterns: independent of the backslash handling of sql_mode
-
-
-class HistoryError(Exception):
-    """The database could not answer (the message is the driver's)."""
 
 
 def escape_like(text: str, esc: str = LIKE_ESCAPE) -> str:

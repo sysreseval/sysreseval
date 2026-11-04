@@ -259,7 +259,10 @@ class TestPresentationsRegistry:
 
     def test_parse_audience(self):
         assert PR.parse_audience(['alice', 'prof'], 'prof') == ({'alice'}, set())
-        assert PR.parse_audience({'logins': ['bob'], 'groups': [' INFO1 ']}, 'prof') == ({'bob'}, {'INFO1'})
+        assert PR.parse_audience({'logins': ['bob'], 'groups': [' INFO1 ']}, 'prof') == ({'bob'}, {'department:INFO1'})
+        # the keys of groups.py: a bare name is a department, the other kinds keep their prefix
+        assert PR.parse_audience({'groups': ['custom:TP lundi', 'directory:etudiants', 'department:INFO2']}, 'prof') \
+            == (set(), {'custom:TP lundi', 'directory:etudiants', 'department:INFO2'})
         assert PR.parse_audience({}, 'prof') == (set(), set())
         assert PR.audience_size(({'a', 'b'}, {'g'})) == 3
         for bad in ('x', None, {'logins': 'alice'}, ['bad login!'], [1], {'groups': ['']}, {'groups': ['a\x00b']},
@@ -344,7 +347,8 @@ class TestPresentationThroughThePortal:
                 p = await present(h, prof, rln, {'logins': ['bob'], 'groups': ['INFO2']})
                 pid = p['id']
                 assert (p['host'], p['rln'], p['presenter']) == ('a01', rln, {'login': 'prof', 'fullname': 'Pr. Of'})
-                assert p['audience'] == {'logins': ['bob'], 'groups': ['INFO2']} and (p['count'], p['connected']) == (2, 0)
+                assert p['audience'] == {'logins': ['bob'], 'groups': ['department:INFO2']} \
+                    and (p['count'], p['connected']) == (2, 0)
                 told = {'t': 'presentation', 'id': pid, 'url': f'/present/{pid}', 'presenter': 'Pr. Of'}
                 assert await asyncio.wait_for(bob_ws.receive_json(), 5) == told
                 assert await asyncio.wait_for(carol_ws.receive_json(), 5) == told

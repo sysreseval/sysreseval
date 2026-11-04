@@ -57,6 +57,14 @@ attr_mail = "mail"
 # The student group of the users (the first value of a multi-valued attribute): shown on the
 # Watch page of the instructors, who can filter it, and kept in the answers files; "" = none.
 # attr_group = "departmentNumber"
+# The listing of the directory for the Groups page of the instructors (every mode): the login
+# attribute of the people of search_base ("" = the attribute of a search_filter of the form
+# "(attribute={login})"), the groups listed under group_search_base ("" = none), the attributes
+# holding a group's name and its members (a value may be the login, the uid or the DN of a person).
+# attr_login = ""
+# groups_filter = "(objectClass=posixGroup)"
+# attr_group_name = "cn"
+# attr_group_members = "memberUid"
 # Who is an instructor: the OR of the tests below (an empty key skips its test).
 # 1. The members of these groups (DNs; the memberOf attribute of the user, or a group search
 #    with group_filter = "(member={dn})" under group_search_base).
@@ -206,6 +214,16 @@ session_timeout = "30m"
 # table = "archives"
 # keep = 0
 # poll_interval = "30s"
+
+[groups]
+# The user groups of the Groups page of the instructors: the departments (attr_group of
+# [auth.ldap]) and the groups of the directory (group_search_base + groups_filter), and the custom
+# groups the instructors create there, in two tables of the database above (table and
+# <table>_members, created when missing; or create them by hand with GRANT SELECT, INSERT, UPDATE,
+# DELETE: see the documentation; on iff [access_log.database] is set).  directory_ttl: how long
+# the people and groups read from the directory are kept (the page's Refresh reads them again).
+# table = "user_groups"
+# directory_ttl = "10m"
 
 [site]
 # The institution, shown next to the SRE logo in the header of every page (the login page too):

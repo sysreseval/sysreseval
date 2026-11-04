@@ -49,6 +49,8 @@ TEMPLATES = {
                     '{{ events | length }}</html>',
     'archives.html': '<html><title>Archives</title>{{ identity.login }} {{ instructor }} {{ archives_database }} '
                      '{{ groups }}</html>',
+    'groups.html': '<html><title>Groups</title>{{ identity.login }} {{ instructor }} {{ groups_directory }} '
+                   '{{ groups_database }} {{ group_sources }}</html>',
 }
 
 
@@ -67,10 +69,11 @@ class Harness:
     """A real agent on the fake sre, and a portal whose only host is that agent."""
 
     def __init__(self, tmp_path, *, auth_mode='anonymous', mock_env=None, web_over=None, hosts=1, agent_over=None,
-                 role_resolver=None, host_over=None, db_connect=None):
+                 role_resolver=None, host_over=None, db_connect=None, directory_listing=None):
         self.tmp = tmp_path
         self.role_resolver = role_resolver
         self.db_connect = db_connect           # the (connect, transient) pair of a fake access database
+        self.directory_listing = directory_listing   # a fake groups.DirectoryListing (the Groups page)
         self.host_over = host_over or {}       # merged into the [[hosts]] entry of the agent (a01)
         self.pub = tmp_path / 'pub'
         (self.pub / 'projects').mkdir(parents=True)
@@ -109,7 +112,7 @@ class Harness:
         cfg = web_config_from_dict({'secret': SECRET, 'auth': {'mode': self.auth_mode},
                                     'pool': {'poll_interval': 0.1}, 'hosts': hosts, **self.web_over})
         self.portal = Portal(cfg, web_dir=str(self.web_dir), localedirs=[], role_resolver=self.role_resolver,
-                             db_connect=self.db_connect)
+                             db_connect=self.db_connect, directory_listing=self.directory_listing)
         self.client = TestClient(TestServer(self.portal.make_app()))
         await self.client.start_server()
         return self
