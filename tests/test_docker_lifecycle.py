@@ -33,7 +33,11 @@ import pytest
 from SRE import params
 from net_config import REMOUNT_PROC_SYS_CMD
 
-pytestmark = pytest.mark.skipif(os.geteuid() != 0, reason="Docker lifecycle tests must run as root")
+# Skipped as a whole, like the Linux-only GUI tests: one line of the `-ra` summary of `make tests`
+# (a skipif mark, or a skip raised in a fixture, is reported once per test).  Run alone as a normal
+# user, the file collects nothing and pytest exits 5.
+if os.geteuid() != 0:
+    pytest.skip("Docker lifecycle tests must run as root", allow_module_level=True)
 
 SRE_PY = Path(params.__file__).resolve().parents[2] / 'src' / 'sre.py'
 # hub / switch / managed switch networks, VLANs, states and a grade using the switch console

@@ -331,12 +331,12 @@ systemctl enable --now sre-preload-images.service
 ### Tests
 
 ```bash
-make tests                          # unit tests (excludes test_exam_mode.py)
+make tests                          # every test under tests/, the functional, web and Docker tests included (excludes test_exam_mode.py, a script)
 make test FILE=test_net_config.py   # single file
 make functional-tests               # functional tests (test_functional.py)
 make exam-tests                     # exam-mode integration tests (requires debug_mode=True)
-make docker-tests                   # Docker integration tests with real containers (root; start/stop, save/restore, the connection log's database on a MariaDB container)
-make all-tests                      # tests + functional-tests + exam-tests + docker-tests
+make docker-tests                   # the Docker integration tests alone (root, real containers: start/stop, save/restore, the connection log's database on a MariaDB container; make tests skips them without root or Docker)
+make all-tests                      # tests + exam-tests
 ```
 
 Unit tests don't need Docker or Kathara — they cover serialization, topology, grading logic, and pure-Python helpers. Functional and exam-mode tests stand up more of the system: see `tests/conftest.py` for the shared fixtures (`mock_sre_args`, `tmp_lab_dir`, `tmp_pub_dir`).

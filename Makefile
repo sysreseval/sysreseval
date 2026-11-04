@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests test functional-tests exam-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests docker-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 
@@ -230,32 +230,41 @@ remove-debug-mode:
 		&& echo "debug_mode = False" || { echo "ERROR: failed to unset debug_mode"; exit 1; }
 
 
+# The pytest command line of every test target: -p no:cacheprovider (the production install
+# /opt/sre is read-only), -ra = a short summary at the end naming the skipped tests with their
+# reason (and the failures, errors, xfails), not only their number.  SRE_TEST_MYSQL (see
+# docker-tests below) reaches tests/test_web_accessdb_live.py whatever the target.
+PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) ${ROOT_DIR}/venv/bin/python -m pytest -v -p no:cacheprovider -ra
 
+# Every test file under tests/, sub-directories included (tests/lab/ holds the tests of the labs):
+# the web tests of `make web-tests`, the functional tests of `make functional-tests` and the Docker
+# tests of `make docker-tests` run here too (the Docker ones skip themselves without root or a
+# Docker daemon).  Only tests/test_exam_mode.py is left out: a script, not a pytest module
+# (`make exam-tests`).
+TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py
 tests:
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/ -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_docker_lifecycle.py
+	$(PYTEST) ${ROOT_DIR}/tests/ $(TESTS_IGNORE)
 
-# The tests of the web front-end only (part of `make tests`): the agent on the fake sre of
-# tests/mock_sre.py, the portal in front of it, the pty, the templates
+# The tests of the web front-end only (all of them part of `make tests`): the agent on the fake
+# sre of tests/mock_sre.py, the portal in front of it, the pty, the templates, the pool, the
+# connection log and its database, the archives, the stress tools.  Every test_web_*.py,
+# test_agent_*.py and test_pool_*.py file, plus the files named here: a new web test file with
+# one of those prefixes is run without touching this list.
+WEB_TESTS = $(sort $(wildcard ${ROOT_DIR}/tests/test_web_*.py ${ROOT_DIR}/tests/test_agent_*.py ${ROOT_DIR}/tests/test_pool_*.py)) \
+	${ROOT_DIR}/tests/test_mock_sre.py ${ROOT_DIR}/tests/test_archive_summary.py \
+	${ROOT_DIR}/tests/test_answers_gui_and_web.py ${ROOT_DIR}/tests/test_make_web_hosts.py
 web-tests:
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_mock_sre.py ${ROOT_DIR}/tests/test_agent_runner.py ${ROOT_DIR}/tests/test_agent_main.py \
-		${ROOT_DIR}/tests/test_agent_pty.py ${ROOT_DIR}/tests/test_agent_access.py ${ROOT_DIR}/tests/test_agent_registry.py \
-		${ROOT_DIR}/tests/test_agent_api.py ${ROOT_DIR}/tests/test_agent_occupancy.py ${ROOT_DIR}/tests/test_web_config.py \
-		${ROOT_DIR}/tests/test_web_identity.py ${ROOT_DIR}/tests/test_web_auth_proxy.py ${ROOT_DIR}/tests/test_web_portal.py \
-		${ROOT_DIR}/tests/test_pool_manager.py ${ROOT_DIR}/tests/test_agent_terminals.py \
-		${ROOT_DIR}/tests/test_archive_summary.py ${ROOT_DIR}/tests/test_web_auth_ldap.py \
-		${ROOT_DIR}/tests/test_pool_admin.py ${ROOT_DIR}/tests/test_web_templates.py ${ROOT_DIR}/tests/test_web_tls.py \
-		${ROOT_DIR}/tests/test_web_accesslog.py ${ROOT_DIR}/tests/test_web_presentation.py \
-		${ROOT_DIR}/tests/test_agent_rfb_filter.py ${ROOT_DIR}/tests/test_web_stress.py \
-		-v -p no:cacheprovider
+	$(PYTEST) $(WEB_TESTS)
 
-# Run a single test file: make test FILE=test_net_config.py
+# Run a single test file: make test FILE=test_net_config.py (a file of a sub-directory:
+# FILE=lab/test_latency_lab.py)
 FILE ?=
 test:
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/$(FILE) -v -p no:cacheprovider --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_docker_lifecycle.py
+	$(PYTEST) ${ROOT_DIR}/tests/$(FILE) $(TESTS_IGNORE)
 
 functional-tests:
 	rm -rf /tmp/pytest-sre-functional
-	${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_functional.py -v -p no:cacheprovider --basetemp=/tmp/pytest-sre-functional
+	$(PYTEST) ${ROOT_DIR}/tests/test_functional.py --basetemp=/tmp/pytest-sre-functional
 
 # Exam-mode integration tests (run as root/sre user).
 # Usage: make exam-tests [EXAM_USER=etudiant] [EXAM_LAB=...] [EXAM_LAB2=...] [SCENARIOS="1 4 8"]
@@ -276,15 +285,18 @@ exam-tests:
 		|| { echo "ERROR: debug_mode is False in params.py — set debug_mode = True before running exam-tests"; exit 1; }
 	PYTHONPATH=${ROOT_DIR}/src ${ROOT_DIR}/venv/bin/python ${ROOT_DIR}/tests/test_exam_mode.py $(EXAM_ARGS)
 
-# Docker integration tests with real containers (run as root on a host with Docker and the SRE images):
-# sre start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker API;
-# the database of the connection log against a MariaDB container (SRE_TEST_MYSQL=mysql://user:password@host:3306/db
-# for a server of yours, empty to skip it).
+# Docker integration tests with real containers, the Docker part of `make tests` (run as root on a
+# host with Docker and the SRE images, skipped otherwise): sre start/stop for a non-privileged and a
+# privileged lab, sre save/restore, checked on the Docker API; the database of the connection log
+# against a MariaDB container (SRE_TEST_MYSQL=mysql://user:password@host:3306/db for a server of
+# yours, empty to skip it).
 SRE_TEST_MYSQL ?= docker
 docker-tests:
-	SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) ${ROOT_DIR}/venv/bin/python -m pytest ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_web_accessdb_live.py -v -p no:cacheprovider
+	$(PYTEST) ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_web_accessdb_live.py
 
-all-tests: tests functional-tests exam-tests docker-tests
+# `make tests` already runs the functional and the Docker tests; the exam tests need root and
+# debug_mode = True.
+all-tests: tests exam-tests
 
 images:
 	$(MAKE) -C ${ROOT_DIR}/images all
