@@ -10,14 +10,18 @@
 // socket brings the focus an instructor puts on the student's project ({"t": "focus", "id",
 // "url", "host", "rln", "instructor"} / {..., "ended": true}): a page that does not show that
 // project navigates to it, the project page itself is told (the `sre-focus` event on the
-// document, handled by focus.js) and follows the instructor.  Nothing of this runs inside the
+// document, handled by focus.js) and follows the instructor.  The same socket tells a student
+// that the phase of the exam they are in changed ({"t": "exam", "id", "phase"}): the message is
+// handed to exam.js (the `sre-exam-push` event), which fetches the state again and shows the
+// exam bar, the countdowns and the end overlay on every page.  Nothing of this runs inside the
 // presentation iframe.  The Logout button asks about the running projects before the form is
-// submitted (logout.js).  No _() here: base.js loads no catalog.
+// submitted (logout.js).  No _() here: base.js loads no catalog (exam.js loads its own).
 
 import * as api from './api.js';
 import {el, toast} from './ui.js';
 import {ReconnectingSocket} from './events.js';
 import {setupLogout} from './logout.js';
+import {setupExam} from './exam.js';
 
 const select = document.getElementById('language-select');
 if (select) {
@@ -98,6 +102,10 @@ function onPresence(message) {
     onFocus(message);
     return;
   }
+  if (message.t === 'exam') {
+    document.dispatchEvent(new CustomEvent('sre-exam-push', {detail: message}));   // exam.js fetches the state
+    return;
+  }
   if (message.t !== 'presentation') {
     return;
   }
@@ -122,4 +130,5 @@ if (body.dataset.login && !framed) {
       removeOverlay();
     }
   });
+  setupExam();
 }

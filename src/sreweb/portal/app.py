@@ -20,6 +20,9 @@ from .archives import ArchiveStore
 from .auth_ldap import LdapRoleResolver
 from .auth_proxy import identity_from_headers
 from .groups import DirectoryCache, DirectoryListing, GroupStore, Memberships
+from .exams import Exams
+from .examstore import ExamStore
+from .examprojects import ExamProjects
 from .roles import RoleCache
 from .manager import PoolManager
 from .pool import Pool, PoolError
@@ -84,6 +87,12 @@ class Portal:
             self.directory = DirectoryCache(directory_listing or DirectoryListing(cfg.auth.ldap),
                                             ttl=cfg.groups.directory_ttl)
         self.memberships = Memberships(directory=self.directory, store=self.groups)
+        # the exams of the web front-end: in the same database (none = they cannot be created)
+        self.exam_store: ExamStore | None = None
+        if connect is not None and cfg.access_log.database.enabled:
+            self.exam_store = ExamStore(cfg.access_log.database, cfg.exams, connect=connect[0])
+        self.exams: Exams | None = None
+        self.exam_projects: ExamProjects | None = None
         self._warmup: asyncio.Task | None = None
 
     def make_app(self) -> web.Application:
@@ -105,9 +114,13 @@ class Portal:
         self.presence = Presence()
         self.presentations = Presentations(self.presence, memberships=self.memberships)
         self.focuses = Focuses(self.presence)
+        self.exams = Exams(self.presence, self.exam_store, memberships=self.memberships, cfg=self.cfg.exams)
+        self.exam_projects = ExamProjects(self.exams, self.pool, self.relay)
+        self.exams.on_tick.append(self.exam_projects.reconcile)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
-                             focuses=self.focuses, archives=self.archives, memberships=self.memberships)
+                             focuses=self.focuses, archives=self.archives, memberships=self.memberships,
+                             exams=self.exams, exam_projects=self.exam_projects)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -151,6 +164,8 @@ class Portal:
         self.access.start()
         self.presentations.start_loop()
         self.focuses.start_loop()
+        await self.exams.load()          # the exams of the database (tried again by the tick when it fails)
+        self.exams.start_loop()
         if self.memberships.available:
             # the directory and the custom groups read now rather than by the first request
             self._warmup = asyncio.ensure_future(self.memberships.refresh())
@@ -174,6 +189,7 @@ class Portal:
         await self.presentations.shutdown()
         await self.focuses.stop_loop()
         await self.focuses.shutdown()
+        await self.exams.stop_loop()        # the exams themselves persist (the database)
 
     async def _on_cleanup(self, app):
         # after the in-flight handlers (the WebSockets) are done: their close lines come first

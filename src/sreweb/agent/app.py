@@ -34,8 +34,10 @@ from SRE.form_spec import parse_form_description, chunks_to_json
 from . import access, occupancy
 from .access import AccessError
 from .answers import AnswersStore
-from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED
-from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED
+from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED, WS_DISPLAY_GONE
+from .exam import (parse_exam, check_flavor_preset, view as exam_view, end_epoch, is_over as exam_is_over,
+                   KEY_ENDED_AT, KEY_FINAL_EVAL_AT, SKEW_WARNING)
+from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
@@ -142,9 +144,12 @@ class Agent:
         self.displays = DisplayManager(cfg.display, registry=self.registry)
         self.answers = AnswersStore(self.registry, hostname=self.hostname, pub_dir=self.pub_dir)
         self.schedulers = Schedulers(self.registry, self.runner, exam_mode=self.exam_mode,
-                                     default_idle_timeout=cfg.max_idle, on_evaluated=self._evaluated)
+                                     default_idle_timeout=cfg.max_idle, on_evaluated=self._evaluated,
+                                     on_exam_ended=self._exam_ended)
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
+        self._all_labs_cache: tuple[float, list] | None = None
+        self._all_labs_lock = asyncio.Lock()
         self._refused_clients: set = set()
         self._occupancy: tuple[float, tuple] | None = None
         self._started_at = time.monotonic()
@@ -174,35 +179,67 @@ class Agent:
         await self.registry.broadcast(project, {'t': EVENT_EVALUATED})
 
     def _view(self, project: Project, identity: Identity) -> dict:
-        return sanitise(project.info, identity, exam_mode=self.exam_mode(),
-                        display_enabled=self.displays.offered(project),
-                        privileged=access.is_privileged_caller(project.rln, identity))
+        """The sanitised view: the owner of an exam project (``exam.py``) gets the exam-mode
+        tabs of the Qt GUI (no Evaluation, no Apply Config), an instructor on it keeps them."""
+        privileged = access.is_privileged_caller(project.rln, identity)
+        return sanitise(project.info, identity,
+                        exam_mode=self.exam_mode() or (project.exam is not None and not privileged),
+                        display_enabled=self.displays.offered(project), privileged=privileged,
+                        exam=exam_view(project.exam))
 
     def _project(self, request, *, touch: bool = True) -> Project:
         """The project of the request, checked (a known running lab name the caller may access);
         its idle clock is reset unless *touch* is false (an instructor reading the results of a
-        student is not the student's activity)."""
+        student is not the student's activity), nor by the owner of an exam project once the
+        exam ended (its idle timeout counts from the end)."""
         rln = access.check_running_lab_name(request.match_info.get('rln', ''))
         project = self.registry.require(rln)
-        access.check_owner(rln, request[IDENTITY_KEY])
-        if touch:
+        identity = request[IDENTITY_KEY]
+        access.check_owner(rln, identity)
+        if touch and not (project.exam_over and identity.login == project.owner):
             project.touch()
         return project
 
+    async def _run_list(self, login: str, args: list, *, privileged: bool = False) -> list:
+        result = await self.runner.run(login, args, privileged=privileged)
+        try:
+            labs = json.loads(result.stdout.decode('utf-8', 'replace'))
+        except ValueError:
+            raise CommandError(0, "sre list gave no JSON", result.stderr)
+        if not isinstance(labs, list):
+            raise CommandError(0, "sre list gave no list", result.stderr)
+        return labs
+
     async def labs(self, login: str) -> list:
+        """The labs a student may start (``sre --user list --with-titles``), cached for
+        ``lab_list_cache_ttl``."""
         async with self._labs_lock:
             now = time.monotonic()
             if self._labs_cache is not None and now - self._labs_cache[0] < self.cfg.lab_list_cache_ttl:
                 return self._labs_cache[1]
-            result = await self.runner.run(login, ['list', '--with-titles'])
-            try:
-                labs = json.loads(result.stdout.decode('utf-8', 'replace'))
-            except ValueError:
-                raise CommandError(0, "sre list gave no JSON", result.stderr)
-            if not isinstance(labs, list):
-                raise CommandError(0, "sre list gave no list", result.stderr)
+            labs = await self._run_list(login, ['list', '--with-titles'])
             self._labs_cache = (now, labs)
             return labs
+
+    async def all_labs(self, login: str) -> list:
+        """Every lab, the exam-only ones included (a privileged ``sre list --with-titles
+        --include-exam-only``): what an instructor chooses the labs of an exam from, and what an
+        exam start is checked against; its own cache."""
+        async with self._all_labs_lock:
+            now = time.monotonic()
+            if self._all_labs_cache is not None and now - self._all_labs_cache[0] < self.cfg.lab_list_cache_ttl:
+                return self._all_labs_cache[1]
+            labs = await self._run_list(login, ['list', '--with-titles', '--include-exam-only'], privileged=True)
+            self._all_labs_cache = (now, labs)
+            return labs
+
+    @staticmethod
+    def _lab_names(labs: list) -> set:
+        return {entry.get('name') if isinstance(entry, dict) else entry for entry in labs}
+
+    def _log_skew(self, project: str, exam: dict, skew: float | None):
+        if skew is not None and abs(skew) > SKEW_WARNING:
+            log.warning("exam %s of %s: the portal's clock is %.1f s off this host", exam.get('id'), project, skew)
 
     # -- application ----------------------------------------------------------------------------
 
@@ -225,6 +262,8 @@ class Agent:
         app.router.add_get(f'{p}/projects/{{rln}}/schema.svg', self.schema)
         app.router.add_get(f'{p}/projects/{{rln}}/schema.pdf', self.schema_pdf)
         app.router.add_put(f'{p}/projects/{{rln}}/answers', self.answers_put)
+        app.router.add_put(f'{p}/projects/{{rln}}/exam', self.exam_put)
+        app.router.add_delete(f'{p}/projects/{{rln}}/exam', self.exam_delete)
         app.router.add_post(f'{p}/projects/{{rln}}/eval', self.eval_post)
         app.router.add_get(f'{p}/projects/{{rln}}/evaluation', self.evaluation_get)
         app.router.add_post(f'{p}/projects/{{rln}}/states/{{state}}', self.state_post)
@@ -265,9 +304,17 @@ class Agent:
         the system is going down, unless ``close_projects_on_stop`` says always / never; within
         *timeout* seconds (``shutdown_timeout``)."""
         mode = self.cfg.close_projects_on_stop
-        if mode == 'never' or (mode == 'shutdown' and not self.system_stopping()):
+        stopping = self.system_stopping()
+        if mode == 'never' or (mode == 'shutdown' and not stopping):
             return
-        projects = [p for p in self.registry.projects.values() if p.managed and not p.closing]
+        # a restart of the agent (``always``) must not destroy the exams in progress: their
+        # projects are kept, the state file resumes them; a halt of the machine closes them too
+        projects = [p for p in self.registry.projects.values() if p.managed and not p.closing
+                    and (stopping or not p.exam_running)]
+        kept = sum(1 for p in self.registry.projects.values() if p.managed and not p.closing and p.exam_running
+                   and not stopping)
+        if kept:
+            log.info("stopping: %d exam project(s) in progress kept", kept)
         if not projects:
             return
         timeout = self.cfg.shutdown_timeout if timeout is None else timeout
@@ -373,7 +420,9 @@ class Agent:
             'local_projects': self.registry.count() - managed,
             'terminals': sum(p.terminal_count() for p in self.registry.projects.values()),
             'displays': self.displays.running_count(),
-            'exam_mode': self.exam_mode(), 'load1': load1, 'mem_available_mb': _mem_available_mb(),
+            'exam_mode': self.exam_mode(),
+            'exam_projects': sum(1 for p in self.registry.projects.values() if p.managed and p.exam_running),
+            'load1': load1, 'mem_available_mb': _mem_available_mb(),
             'occupied': occupied, 'occupied_by': reasons,
             'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
             'power_off_allowed': self.cfg.allow_power_off,
@@ -438,9 +487,15 @@ class Agent:
             self.restarting = None
 
     async def labs_handler(self, request):
+        """The labs a student may start; with ``?all=1`` (instructors only) every lab, the
+        exam-only ones included (the labs an exam may test)."""
+        identity = request[IDENTITY_KEY]
+        everyone = request.query.get('all', '') in ('1', 'true')
+        if everyone and not identity.is_instructor:
+            raise AccessError(403, "instructors only")
         if self.exam_mode():
             return web.json_response([])
-        return web.json_response(await self.labs(request[IDENTITY_KEY].login))
+        return web.json_response(await (self.all_labs(identity.login) if everyone else self.labs(identity.login)))
 
     # -- projects --------------------------------------------------------------------------------
 
@@ -485,21 +540,38 @@ class Agent:
         lab = body.get('lab')
         if not isinstance(lab, str) or not lab:
             raise AccessError(400, "lab is required")
-        labs = await self.labs(identity.login)
-        if lab not in {entry.get('name') if isinstance(entry, dict) else entry for entry in labs}:
-            raise AccessError(404, f"unknown lab {lab}")
+        # an exam project (``exam.py``): the portal says so; the lab may be an exam-only one,
+        # the start is privileged with the student as owner (as ``sre pre-start-exam`` does:
+        # a flavor preset, no flavor form)
+        exam = skew = None
+        if body.get('exam') is not None:
+            exam, skew = parse_exam(body['exam'])
         # an instructor's own project in instructor mode: privileged start (the texts kept, every
         # state listed); the project is theirs and follows the student path afterwards
         instructor_mode = bool(body.get('instructor_mode', False))
         if instructor_mode and not identity.is_instructor:
             raise AccessError(403, "instructors only")
-        args = ['start'] + (['--instructor-mode'] if instructor_mode else [])
+        preset = body.get('flavor')
         flavor = body.get('flavor_json')
-        if flavor is not None:
+        if preset is not None:
+            preset = check_flavor_preset(preset)
+            if exam is None and not instructor_mode:
+                raise AccessError(400, "a flavor preset needs an exam or the instructor mode")
+            if flavor is not None:
+                raise AccessError(400, "flavor and flavor_json are exclusive")
+        labs = await (self.all_labs(identity.login) if exam is not None else self.labs(identity.login))
+        if lab not in self._lab_names(labs):
+            raise AccessError(404, f"unknown lab {lab}")
+        args = ['start'] + (['--instructor-mode'] if instructor_mode else [])
+        if preset is not None:
+            args += ['--set-flavor-name', preset]
+        elif flavor is not None:
             if not isinstance(flavor, dict):
                 raise AccessError(400, "flavor_json must be an object")
             args += ['--flavor-json', json.dumps(flavor)]
         args.append(lab)
+        if exam is not None:
+            self._log_skew(lab, exam, skew)
         # the virtual desktop of the project: its number and cookie go to sre start (the containers
         # keep them), kept when the lab turns out to have an x11_host machine
         reservation = None
@@ -510,14 +582,17 @@ class Agent:
                 raise AccessError(503, str(e))
         try:
             return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
-                                               reservation=reservation, privileged=instructor_mode)
+                                               reservation=reservation, privileged=instructor_mode or exam is not None,
+                                               exam=exam)
         finally:
             if reservation is not None:
                 self.displays.release(reservation)
 
     async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None,
-                               privileged: bool = False):
-        """``sre start`` as an NDJSON stream (privileged: ``--instructor-mode``)."""
+                               privileged: bool = False, exam: dict | None = None):
+        """``sre start`` as an NDJSON stream (privileged: ``--instructor-mode``, or an exam
+        project, whose deploy events lose the names of the machines a privileged start gives:
+        the hidden ones among them)."""
         try:
             idle = None if idle_timeout is None else max(0.0, float(idle_timeout))
         except (TypeError, ValueError):
@@ -532,6 +607,8 @@ class Agent:
             run = await self.runner.stream(identity.login, args, privileged=privileged, lang=identity.language,
                                            env=self.displays.env_for(reservation) if reservation else None)
             async for event in run.events():
+                if exam is not None and isinstance(event, dict) and event.get('phase') == 'deploy':
+                    event.pop('machine', None)
                 await line(event)
             run.result()
         except FlavorFormNeeded as e:
@@ -562,6 +639,9 @@ class Agent:
         project.touch()
         if reservation is not None and access.display_available(project.info, identity):
             self.displays.commit(project, reservation)
+        if exam is not None:
+            project.exam = exam
+            self.schedulers.arm(project)
         self.registry.write_state(project, force=True)
         # the answers metadata (login, full name, group...) from the start: the Watch page names
         # the owner before the first answer; a failure must not cut the stream, the first PUT
@@ -601,6 +681,8 @@ class Agent:
 
     async def project_close(self, request):
         project = self._project(request)
+        access.check_exam_action(project.exam, privileged=access.is_privileged_caller(project.rln, request[IDENTITY_KEY]),
+                                 during=True)
         await self.schedulers.close_project(project)
         with contextlib.suppress(Exception):
             await self.registry.tick()
@@ -658,6 +740,7 @@ class Agent:
         project (the student's file, the student's metadata kept; a non-owner is an instructor,
         ``_project`` lets nobody else in)."""
         project = self._project(request)
+        access.check_exam_action(project.exam, privileged=access.is_privileged_caller(project.rln, request[IDENTITY_KEY]))
         body = await self._read_json(request)
         patch = body.get('answers', body)
         if not isinstance(patch, dict):
@@ -676,6 +759,7 @@ class Agent:
         if not privileged:
             access.check_self_grade(project.info)
         access.check_not_exam(self.pub_dir)
+        access.check_exam_action(project.exam, privileged=privileged, during=True)
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
         async with project.lock:
@@ -709,9 +793,10 @@ class Agent:
         state = request.match_info.get('state', '')
         access.check_state(project.info, state, identity)
         access.check_not_exam(self.pub_dir)
+        privileged = access.is_privileged_caller(project.rln, identity)
+        access.check_exam_action(project.exam, privileged=privileged, during=True)
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
-        privileged = access.is_privileged_caller(project.rln, identity)
         async with project.lock:
             await self.runner.run(identity.login if privileged else project.owner, ['state', project.rln, state],
                                   privileged=privileged, lang=identity.language)
@@ -719,6 +804,66 @@ class Agent:
         if answers is None:
             answers = self.answers.read(project)
         return web.json_response({'ok': True, 'answers': AnswersStore.public(answers, project)})
+
+    # -- the exam of a project -------------------------------------------------------------------
+
+    async def _exam_changed(self, project: Project):
+        """After a change of the exam of a project (set, moved, ended, removed): the periodic
+        evaluation planned again, the state file and the answers metadata (the exam fields)
+        written, the open pages told (the ``exam`` event, then ``info``: the tabs changed)."""
+        self.schedulers.arm(project)
+        self.registry.write_state(project, force=True)
+        try:
+            await self.answers.rewrite_kept(project)
+        except OSError as e:
+            log.warning("cannot write the answers metadata of %s: %s", project.rln, e)
+        await self.registry.broadcast(project, {'t': EVENT_EXAM, 'ended': project.exam_over,
+                                                'exam': exam_view(project.exam)})
+        await self.registry.broadcast(project, lambda identity, p=project: self._info_event(p, identity))
+
+    async def _exam_ended(self, project: Project):
+        """The schedulers ended the exam of a project: the display clients are cut, the pages told."""
+        await self.displays.disconnect(project, WS_DISPLAY_GONE, "the exam is over")
+        await self._exam_changed(project)
+
+    def _exam_project(self, request) -> Project:
+        project = self._project(request, touch=False)
+        if not request[IDENTITY_KEY].is_instructor:
+            raise AccessError(403, "instructors only")
+        return project
+
+    async def exam_put(self, request):
+        """The portal sets or moves the exam of a project (instructors; the project must be one
+        this agent manages): the object replaces the previous one; a new end in the future on an
+        ended exam resumes it (``ended_at`` dropped), else what the end recorded is kept."""
+        project = self._exam_project(request)
+        if not project.managed:
+            raise AccessError(409, "this project is not managed by the agent")
+        exam, skew = parse_exam(await self._read_json(request))
+        self._log_skew(project.rln, exam, skew)
+        previous = project.exam
+        if exam_is_over(previous):
+            end = end_epoch(exam)
+            if end is None or end <= time.time():
+                for key in (KEY_ENDED_AT, KEY_FINAL_EVAL_AT):
+                    if key in previous:
+                        exam[key] = previous[key]
+            else:
+                log.info("exam %s of %s resumed until %s", exam.get('id'), project.rln, exam.get('end_at'))
+        project.exam = exam
+        project.exam_retry_at = None
+        await self._exam_changed(project)
+        return web.json_response({'ok': True, 'exam': exam_view(project.exam)})
+
+    async def exam_delete(self, request):
+        """The exam of a project removed (instructors): a plain project again; nothing to do
+        when it had none."""
+        project = self._exam_project(request)
+        if project.exam is not None:
+            project.exam = None
+            project.exam_retry_at = None
+            await self._exam_changed(project)
+        return web.json_response({'ok': True, 'exam': None})
 
     async def evaluation_get(self, request):
         """Instructors: the last archived evaluation of the project (exo-eval scope), as rows of
@@ -850,6 +995,7 @@ class Agent:
         readonly = q.get('readonly', '') in ('1', 'true')
         try:
             access.check_not_exam(self.pub_dir)
+            access.check_exam_action(project.exam, privileged=access.is_privileged_caller(project.rln, identity))
             if project.closing:
                 raise AccessError(404, "the project is closing")
             join = q.get('join', '')
@@ -984,6 +1130,7 @@ class Agent:
         identity = request[IDENTITY_KEY]
         access.check_display(project.info, identity)
         access.check_not_exam(self.pub_dir)
+        access.check_exam_action(project.exam, privileged=access.is_privileged_caller(project.rln, identity))
         if project.closing or project.display is None:
             raise AccessError(404, "no display for this project")
         try:
@@ -1007,6 +1154,7 @@ class Agent:
         try:
             access.check_display(project.info, identity)
             access.check_not_exam(self.pub_dir)
+            access.check_exam_action(project.exam, privileged=access.is_privileged_caller(project.rln, identity))
             if project.closing or project.display is None:
                 raise AccessError(404, "no display for this project")
             session = await self.displays.ensure(project)

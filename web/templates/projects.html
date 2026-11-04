@@ -6,6 +6,8 @@
   <h1>{{ _("Running projects") }}</h1>
   <a class="button primary" href="/open">{{ _("Open a lab") }}</a>
 </div>
+<p id="exam-note" class="exam-note muted" hidden></p>
+<div id="exam-progress" class="progress-box" hidden></div>
 <div id="projects" class="cards"><p class="muted">{{ _("Loading…") }}</p></div>
 <div id="no-project" class="empty-logo" hidden><img src="/static/img/sysreseval.svg" alt="SysResEval"></div>
 {% endblock %}

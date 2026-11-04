@@ -25,10 +25,14 @@ from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
                            MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
 from .focus import Focus, Focuses, WS_FOCUS_ENDED
+from .exams import (Exams, Exam, Member, PHASE_STARTING, START_PHASES, REASON_ADDRESS, lab_of_rln, normal_lab,
+                    parse_exam, parse_labs, parse_selection, parse_extra_minutes)
+from .examprojects import ExamProjects, exam_payload, instructor_identity
+from .pool import LAB_KIND_LAB, LAB_SORT_NAME
 from .ratelimit import RateLimiter
 from .relay import Relay
 from .roles import complete_owners
-from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR
+from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREATED
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
 from ..identity import (Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY,
                         is_valid_login)
@@ -67,10 +71,19 @@ def json_error(status: int, message: str, **extra) -> web.Response:
     return web.json_response({'error': message, 'status': status, **extra}, status=status)
 
 
+class ExamRefusal(PoolError):
+    """A project call of a student refused by the rules of their exam (403; the pages redirect
+    to the Projects page, where the exam bar says why)."""
+
+    def __init__(self, reason: str):
+        super().__init__(403, reason)
+
+
 class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
                  presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
-                 archives: ArchiveStore | None = None, memberships: Memberships | None = None):
+                 archives: ArchiveStore | None = None, memberships: Memberships | None = None,
+                 exams: Exams | None = None, exam_projects: ExamProjects | None = None):
         self.cfg = cfg
         self.pool = pool
         self.roles = roles       # the directory lookups (roles.RoleCache) completing the Watch rows' groups
@@ -83,6 +96,10 @@ class Routes:
         self.presentations = presentations if presentations is not None else Presentations(Presence())
         self.presence = self.presentations.presence
         self.focuses = focuses if focuses is not None else Focuses(self.presence)
+        # the exams (exams.Exams: in memory, the database behind when there is one) and their
+        # projects on the agents (examprojects.ExamProjects, None = the agents are not told)
+        self.exams = exams if exams is not None else Exams(self.presence, memberships=self.memberships, cfg=cfg.exams)
+        self.exam_projects = exam_projects
         self.localedirs = localedirs
         self.limiter = RateLimiter()
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
@@ -100,6 +117,7 @@ class Routes:
         r.add_get('/history', self.history_page)
         r.add_get('/archives', self.archives_page)
         r.add_get('/groups', self.groups_page)
+        r.add_get('/exams', self.exams_page)
         r.add_get('/projects/{host}/{rln}', self.project_page)
         r.add_get('/i18n/{lang}.json', self.i18n_catalog)
         r.add_get(SITE_LOGO_PATH, self.site_logo)
@@ -133,6 +151,19 @@ class Routes:
         r.add_delete('/api/groups/custom/{name}', self.api_group_delete)
         r.add_post('/api/groups/custom/{name}/members', self.api_group_members_add)
         r.add_delete('/api/groups/custom/{name}/members/{login}', self.api_group_member_remove)
+        # the exams: the student's own (the exam binding them), then the instructors' (the fixed
+        # paths before the id one)
+        r.add_get('/api/exam', self.api_exam)
+        r.add_post('/api/exam/{id}/dismiss', self.api_exam_dismiss)
+        r.add_get('/api/exams', self.api_exams)
+        r.add_post('/api/exams', self.api_exam_create)
+        r.add_get('/api/exams/{id}', self.api_exam_get)
+        r.add_put('/api/exams/{id}', self.api_exam_update)
+        r.add_delete('/api/exams/{id}', self.api_exam_delete)
+        r.add_post('/api/exams/{id}/end', self.api_exam_end)
+        r.add_post('/api/exams/{id}/adjust', self.api_exam_adjust)
+        r.add_post('/api/exams/{id}/labs', self.api_exam_labs)
+        r.add_post('/api/exams/{id}/close-projects', self.api_exam_close_projects)
         r.add_post('/api/projects', self.api_projects_create)
         r.add_get('/api/projects/{host}/{rln}', self.api_project_get)
         r.add_delete('/api/projects/{host}/{rln}', self.api_project_close)
@@ -257,10 +288,58 @@ class Routes:
             if presentation.view.get('instructorView') is True:
                 presenter = presenter.with_view(VIEW_INSTRUCTOR)
             return host, rln, presenter
+        if identity.role != ROLE_INSTRUCTOR:
+            self._exam_check(request, identity, rln=rln)     # a student in an exam: its projects only
         view = request.query.get('view', '')
         if view == VIEW_INSTRUCTOR and identity.role == ROLE_INSTRUCTOR:
             identity = identity.with_view(VIEW_INSTRUCTOR)
         return host, rln, identity
+
+    # -- the exam of a student (the rules of exams.Exams on the project routes) -------------------
+
+    def _exam_binding(self, identity: Identity) -> tuple | None:
+        """``(exam, member, phase)`` of the exam binding a student now; an instructor is never
+        bound."""
+        if identity.is_instructor:
+            return None
+        return self.exams.for_login(identity.login, identity.group)
+
+    def _exam_check(self, request, identity: Identity, *, rln: str | None = None, lab: str | None = None):
+        """``ExamRefusal`` (403) when the exam rules forbid a student's call: a browser outside
+        the networks of their exam, a project that is not of the exam (*rln*) or a start of a
+        lab that is not of the exam or too early (*lab*)."""
+        binding = self._exam_binding(identity)
+        if binding is not None:
+            address = self.access.address(request)
+            if not self.exams.address_allowed(binding[0], address):
+                raise ExamRefusal(REASON_ADDRESS.format(address=address))
+        if rln is not None:
+            allowed, reason = self.exams.project_access(identity.login, identity.group, rln)
+        elif lab is not None:
+            allowed, reason = self.exams.start_access(identity.login, identity.group, lab)
+        else:
+            return
+        if not allowed:
+            raise ExamRefusal(reason)
+
+    async def _sync_exam_member(self, exam: Exam, member: Member):
+        """The agents of a student's exam projects told their exam object (best effort: the
+        reconcile pass of ``ExamProjects`` tries again)."""
+        if self.exam_projects is None:
+            return
+        try:
+            await self.exam_projects.sync_member(exam, member)
+        except Exception:
+            log.exception("exam %d: syncing the projects of %s failed", exam.id, member.login)
+
+    async def _lab_titles(self, exam: Exam) -> dict:
+        """The titles of the labs, the exam-only ones included (the list of the instructors,
+        fetched in the name of the exam's creator; cached by the pool)."""
+        try:
+            await self.pool.labs(instructor_identity(exam), all_labs=True)
+        except Exception:
+            log.exception("exam %d: the lab list could not be fetched", exam.id)
+        return self.pool.lab_titles()
 
     def _check_language(self, language: str) -> str:
         return language if language in self.cfg.languages else self.cfg.languages[0]
@@ -337,6 +416,8 @@ class Routes:
     async def open_page(self, request):
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
+        if self._exam_binding(request[IDENTITY_KEY]) is not None:
+            raise web.HTTPFound('/projects')      # a student in an exam: the exam projects start by themselves
         return aiohttp_jinja2.render_template('open.html', request, self._page_context(request))
 
     async def watch_page(self, request):
@@ -392,10 +473,28 @@ class Routes:
             request, groups_directory=self.memberships.directory is not None,
             groups_database=self.memberships.store is not None))
 
+    async def exams_page(self, request):
+        """Instructors: the exams (scheduled, running, past), the form of a new one, the detail
+        of one with its students and the actions during the exam; the page says what is not
+        configured (the database holding the exams, a mode without stable logins)."""
+        if not request.get(IDENTITY_KEY):
+            raise web.HTTPFound('/login')
+        if request[IDENTITY_KEY].role != ROLE_INSTRUCTOR:
+            raise web.HTTPForbidden(text="instructors only")
+        exams = self.cfg.exams
+        return aiohttp_jinja2.render_template('exams.html', request, self._page_context(
+            request, exams_database=self.exams.store is not None,
+            exams_available=self.cfg.auth.mode != AUTH_ANONYMOUS,
+            exam_defaults={'lead': exams.lead / 60, 'pre_start': exams.pre_start / 60,
+                           'eval_interval': exams.eval_interval}))
+
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
             raise web.HTTPFound('/login')
-        host, rln, identity = self._target(request)
+        try:
+            host, rln, identity = self._target(request)
+        except ExamRefusal:
+            raise web.HTTPFound('/projects')      # the exam bar of the Projects page says why
         return aiohttp_jinja2.render_template('project.html', request, self._page_context(
             request, host=host.name, rln=rln, api_base=f"/api/projects/{host.name}/{urllib.parse.quote(rln)}"))
 
@@ -446,7 +545,20 @@ class Routes:
     # -- labs, pool, projects -------------------------------------------------------------------
 
     async def api_labs(self, request):
+        """The lab tree; ``?all=1`` (instructors) the exam-only labs too; a student in an exam
+        gets its labs alone (nothing from a browser outside its networks, nothing once over)."""
         identity = self._require_identity(request)
+        if request.query.get('all', '') in ('1', 'true'):
+            self._require_instructor(request)
+            return web.json_response(await self.pool.labs(identity, all_labs=True))
+        binding = self._exam_binding(identity)
+        if binding is not None:
+            exam, member, phase = binding
+            if phase not in START_PHASES or not self.exams.address_allowed(exam, self.access.address(request)):
+                return web.json_response([])
+            titles = await self._lab_titles(exam)
+            return web.json_response([{'name': l.lab, 'title': titles.get(l.lab), 'kind': LAB_KIND_LAB,
+                                       'sort': LAB_SORT_NAME} for l in exam.labs_of(identity.login)])
         return web.json_response(await self.pool.labs(identity))
 
     # -- the pool: sre-web-tool with the admin token; the listing and the actions (not add /
@@ -539,8 +651,24 @@ class Routes:
         return next((row for row in self.pool.summary() if row['name'] == name), {'name': name})
 
     async def api_projects(self, request):
+        """The caller's running projects on the pool.  A student in an exam sees the exam
+        projects alone (nothing from a browser outside its networks); their rows are how the
+        portal learns that their exam projects are created (``Exams.observe``: their clock
+        starts); the exam projects of an exam over for them stay hidden until closed."""
         identity = self._require_identity(request)
-        return web.json_response(await self.pool.projects_of(identity))
+        rows = await self.pool.projects_of(identity)
+        if identity.is_instructor:
+            return web.json_response(rows)
+        binding = self._exam_binding(identity)
+        if binding is not None:
+            exam, member, phase = binding
+            address = self.access.address(request)
+            if not self.exams.address_allowed(exam, address):
+                await self.exams.note_seen(exam, identity.login, address)
+                return web.json_response([])
+            if await self.exams.observe(exam, identity.login, rows, address=address):
+                await self._sync_exam_member(exam, exam.members[identity.login])
+        return web.json_response(self.exams.visible_rows(identity.login, identity.group, rows))
 
     async def api_watch(self, request):
         """Instructors: every project of every reachable host, with its owner and the summary of
@@ -1024,6 +1152,20 @@ class Routes:
             return json_error(403, "instructors only")
         if wanted and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
+        # a student in an exam: its labs only, from the pre-start on, one project per lab (two
+        # browsers of the student start the same lab); the agent gets the exam object
+        exam_member = None
+        if identity.role != ROLE_INSTRUCTOR:
+            binding = self._exam_binding(identity)
+            if binding is not None and logged is not None:
+                logged.update(exam=binding[0].id)      # a refused start names the exam too
+            self._exam_check(request, identity, lab=body['lab'])
+            if binding is not None:
+                exam = binding[0]
+                running = await self.pool.projects_of(identity)
+                if any(normal_lab(row.get('lab_name')) == body['lab'] for row in running):
+                    return json_error(409, "a project of this lab is already running")
+                exam_member = (exam, await self.exams.note_seen(exam, identity.login, self.access.address(request)))
         # The start slot of the user is taken now (two simultaneous starts of one user are refused)
         # and given back unless a start reached the agent and went past the flavor form: the form
         # of a lab with flavor_form_at_startup is fetched by a start that ends on it, and the
@@ -1044,12 +1186,24 @@ class Routes:
                 payload['flavor_json'] = body['flavor']
             if body.get('instructor_mode'):
                 payload['instructor_mode'] = True     # an instructor's own project in instructor mode
+            if exam_member is not None:
+                exam, member = exam_member
+                payload['exam'] = exam_payload(exam, member, self.exams.clock())
+                preset = exam.flavor_of(identity.login, body['lab'])
+                if preset is not None:
+                    payload['flavor'] = preset
+                    payload.pop('flavor_json', None)
+                payload['idle_timeout'] = self.cfg.exams.close_after    # counted from the end of the exam
 
             def on_result(obj: dict):
                 nonlocal started
                 started = obj.get('status') not in (RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR)
                 if logged is not None:
                     logged.update(result=obj.get('status'), rln=obj.get('running_lab_name'))
+                if exam_member is not None and obj.get('status') == RESULT_CREATED and obj.get('running_lab_name'):
+                    row = {'lab_name': body['lab'].replace('/', '@'), 'running_lab_name': obj['running_lab_name'],
+                           'host': host.name, 'owner': identity.login}
+                    asyncio.ensure_future(self._exam_project_created(exam_member[0], identity, [row]))
 
             return await self._forward_json(request, host, identity, payload, on_result=on_result)
         finally:
@@ -1079,10 +1233,24 @@ class Routes:
             body['host'] = host.name   # as the browser names it, not as the agent calls itself
         return web.json_response(body, status=status)
 
+    async def _exam_project_created(self, exam: Exam, identity: Identity, rows: list):
+        """A start of an exam project ended: recorded at once (the student's clock may start
+        with it) and the agent told."""
+        try:
+            if await self.exams.observe(exam, identity.login, rows):
+                await self._sync_exam_member(exam, exam.members[identity.login])
+        except Exception:
+            log.exception("exam %d: recording the new project of %s failed", exam.id, identity.login)
+
     async def api_project_get(self, request):
         return await self._relay_json(request, 'GET')
 
     async def api_project_close(self, request):
+        identity = self._require_identity(request)
+        if identity.role != ROLE_INSTRUCTOR:
+            binding = self._exam_binding(identity)
+            if binding is not None and lab_of_rln(request.match_info['rln']) in binding[0].lab_names(identity.login):
+                raise ExamRefusal("an exam project cannot be closed during the exam")
         return await self._relay_json(request, 'DELETE', timeout=900)
 
     async def api_touch(self, request):
@@ -1159,6 +1327,246 @@ class Routes:
                                           self._path(rln, f"/terminals/{urllib.parse.quote(device, safe='')}"),
                                           protocols=(TERMINAL_SUBPROTOCOL,), params=params, upstream=not spectator)
 
+    # -- exams ------------------------------------------------------------------------------------
+    # The state lives in ``exams.py`` (the database behind it in ``examstore.py``, the agents
+    # told by ``examprojects.py``); here the student's own exam (what their browser shows) and
+    # the API of the Exams page of the instructors.
+
+    async def api_exam(self, request):
+        """The exam binding the caller now (``null`` for an instructor or a student in none):
+        the phase, the instants of the countdowns, the labs, whether their address is allowed;
+        ``now`` is the portal's time (the browser computes its offset).  While the student's
+        projects are being started, their rows are read here too (the clock starts once every
+        lab has one)."""
+        identity = self._require_identity(request)
+        binding = self._exam_binding(identity)
+        if binding is None:
+            return web.json_response({'now': self.exams.clock(), 'exam': None})
+        exam, member, phase = binding
+        address = self.access.address(request)
+        allowed = self.exams.address_allowed(exam, address)
+        member = await self.exams.note_seen(exam, identity.login, address)
+        if allowed and phase == PHASE_STARTING:
+            rows = await self.pool.projects_of(identity)
+            if await self.exams.observe(exam, identity.login, rows, address=address):
+                await self._sync_exam_member(exam, member)
+            phase = exam.phase(member, self.exams.clock())
+        titles = await self._lab_titles(exam) if allowed else {}
+        return web.json_response({'now': self.exams.clock(),
+                                  'exam': self.exams.student_view(exam, member, phase, address=address, allowed=allowed,
+                                                                  titles=titles)})
+
+    async def api_exam_dismiss(self, request):
+        """The student has seen the end banner of their exam: the usual pages come back."""
+        identity = self._require_identity(request)
+        exam = self._exam(request)
+        try:
+            phase = await self.exams.dismiss(exam.id, identity.login)
+        except ValueError as e:
+            raise PoolError(409, str(e))
+        self._log_exam(request, exam=exam.id)
+        return web.json_response({'ok': True, 'phase': phase})
+
+    def _exam(self, request) -> Exam:
+        exam = self.exams.get(request.match_info['id'])
+        if exam is None:
+            raise PoolError(404, "no such exam")
+        return exam
+
+    def _exam_store_required(self):
+        if self.exams.store is None:
+            raise PoolError(409, "the exams are not stored in a database ([access_log.database] of web.toml)")
+
+    @staticmethod
+    def _log_exam(request, **fields):
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(fields)
+
+    @staticmethod
+    def _exams_db_error(e) -> web.Response:
+        log.warning("exams database: %s", e)
+        return json_error(503, "the database of the exams does not answer")
+
+    async def _known_labs(self, identity: Identity) -> set | None:
+        """The names of the labs of the pool (the exam-only ones included) to check an exam
+        against; ``None`` when no host answers (the exam is taken as it is, with a warning)."""
+        labs = await self.pool.labs(identity, all_labs=True)
+        if not labs:
+            log.warning("exams: no host answers the lab list: the labs of the exam are not checked")
+            return None
+        return {e['name'] for e in labs if e.get('kind') == LAB_KIND_LAB}
+
+    def _exam_summary(self, exam: Exam, now: float | None = None) -> dict:
+        now = self.exams.clock() if now is None else now
+        return exam.to_dict(now, len(self.exams.members_of(exam)))
+
+    async def _exam_selection(self, exam: Exam, body: dict) -> set | None:
+        """The students an action applies to: ``None`` for everybody, else the logins resolved
+        now (400 when the selection is malformed or names somebody outside the audience)."""
+        try:
+            everybody, logins, groups = parse_selection(body)
+            if everybody:
+                return None
+            await self.memberships.refresh()
+            return self.exams.resolve(exam, logins, groups)
+        except ValueError as e:
+            raise PoolError(400, str(e))
+
+    async def _sync_exam(self, exam: Exam, logins: set | None = None):
+        for login in sorted(exam.members if logins is None else logins):
+            member = exam.members.get(login)
+            if member is not None:
+                await self._sync_exam_member(exam, member)
+
+    async def api_exams(self, request):
+        """Instructors: every exam with its status and the size of its audience."""
+        self._require_instructor(request)
+        await self.memberships.refresh()
+        now = self.exams.clock()
+        store = self.exams.store
+        return web.json_response({'exams': [self._exam_summary(e, now) for e in self.exams.listing()], 'now': now,
+                                  'database': store.status() if store is not None else None})
+
+    async def api_exam_create(self, request):
+        identity = self._require_instructor(request)
+        self._exam_store_required()
+        self._log_exam(request, action='create')
+        body = await self._group_body(request)
+        try:
+            spec = parse_exam(body, cfg=self.cfg.exams, now=self.exams.clock(),
+                              known_labs=await self._known_labs(identity))
+        except ValueError as e:
+            raise PoolError(400, str(e))
+        await self.memberships.refresh()
+        try:
+            exam = await self.exams.create(identity, spec)
+        except HistoryError as e:
+            return self._exams_db_error(e)
+        self._log_exam(request, action='create', exam=exam.id, count=len(self.exams.members_of(exam)))
+        return web.json_response(self._exam_summary(exam), status=201)
+
+    async def api_exam_get(self, request):
+        """Instructors: an exam and its students: the ones the portal can name (the explicit
+        logins, the members of its groups, those it has seen), each with their phase, their
+        clock, their adjustments and their running exam projects."""
+        identity = self._require_instructor(request)
+        exam = self._exam(request)
+        await self.memberships.refresh()
+        now = self.exams.clock()
+        rows = await self.exam_projects.rows_of(exam, identity) if self.exam_projects is not None else {}
+        members = []
+        for login in sorted(self.exams.members_of(exam)):
+            m = exam.members.get(login)
+            connected = self.presence.identity_of(login)
+            person = self.memberships.person_row(login)
+            members.append({'login': login,
+                            'fullname': connected.fullname if connected is not None else person.get('fullname', ''),
+                            'group': connected.group if connected is not None else person.get('group', ''),
+                            'connected': connected is not None, 'address': m.address if m is not None else '',
+                            'phase': exam.phase(m, now), 'first_seen': m.first_seen if m is not None else None,
+                            'started_at': m.started_at if m is not None else None, 'end_at': exam.end_at(m),
+                            'ended_at': m.ended_at if m is not None else None,
+                            'dismissed_at': m.dismissed_at if m is not None else None,
+                            'extra_minutes': m.extra_minutes if m is not None else 0,
+                            'labs': [l.to_dict() for l in exam.labs_of(login)], 'projects': rows.get(login, [])})
+        return web.json_response({**self._exam_summary(exam, now), 'members': members, 'now': now})
+
+    async def api_exam_update(self, request):
+        """Instructors: the definition edited (the keys given replace the current ones; the
+        students keep their clocks and adjustments)."""
+        identity = self._require_instructor(request)
+        self._exam_store_required()
+        exam = self._exam(request)
+        self._log_exam(request, action='update', exam=exam.id)
+        body = await self._group_body(request)
+        try:
+            known = await self._known_labs(identity) if 'labs' in body else None
+            spec = parse_exam(body, cfg=self.cfg.exams, now=self.exams.clock(), known_labs=known, current=exam)
+        except ValueError as e:
+            raise PoolError(400, str(e))
+        await self.memberships.refresh()
+        exam = await self.exams.update(exam.id, spec, resume='end_before' in body or 'duration' in body)
+        await self._sync_exam(exam)
+        self._log_exam(request, action='update', exam=exam.id, count=len(self.exams.members_of(exam)))
+        return web.json_response(self._exam_summary(exam))
+
+    async def api_exam_delete(self, request):
+        """Instructors: the exam deleted; its projects become normal projects, or are closed
+        with ``?close=1``."""
+        self._require_instructor(request)
+        exam = self._exam(request)
+        self._log_exam(request, action='delete', exam=exam.id)
+        closed = 0
+        if self.exam_projects is not None:
+            if request.query.get('close', '') in ('1', 'true'):
+                closed = await self.exam_projects.close(exam, set(exam.members))
+            else:
+                await self.exam_projects.release(exam)
+        await self.exams.delete(exam.id)
+        self._log_exam(request, action='delete', exam=exam.id, count=closed)
+        return web.json_response({'ok': True, 'closed': closed})
+
+    async def api_exam_end(self, request):
+        """Instructors: the exam over now, for everybody (no selection) or for the students
+        selected."""
+        self._require_instructor(request)
+        exam = self._exam(request)
+        self._log_exam(request, action='end', exam=exam.id)
+        body = await self._group_body(request)
+        logins = None if not body else await self._exam_selection(exam, body)
+        exam = await self.exams.end_now(exam.id, logins)
+        await self._sync_exam(exam, logins)
+        self._log_exam(request, action='end', exam=exam.id, count=len(logins) if logins is not None else 0)
+        return web.json_response(self._exam_summary(exam))
+
+    async def api_exam_adjust(self, request):
+        """Instructors: minutes added (or taken) to everybody or to the students selected."""
+        self._require_instructor(request)
+        exam = self._exam(request)
+        self._log_exam(request, action='adjust', exam=exam.id)
+        body = await self._group_body(request)
+        try:
+            minutes = parse_extra_minutes(body.get('extra_minutes'))
+        except ValueError as e:
+            raise PoolError(400, str(e))
+        logins = await self._exam_selection(exam, body)
+        exam = await self.exams.adjust(exam.id, logins, minutes)
+        await self._sync_exam(exam, logins)
+        self._log_exam(request, action='adjust', exam=exam.id, minutes=minutes,
+                       count=len(logins) if logins is not None else 0)
+        return web.json_response(self._exam_summary(exam))
+
+    async def api_exam_labs(self, request):
+        """Instructors: the labs changed for everybody or for the students selected (their
+        browsers start the new ones; the projects of the labs dropped stay, as plain projects)."""
+        identity = self._require_instructor(request)
+        exam = self._exam(request)
+        self._log_exam(request, action='labs', exam=exam.id)
+        body = await self._group_body(request)
+        try:
+            labs = parse_labs(body.get('labs'), await self._known_labs(identity))
+        except ValueError as e:
+            raise PoolError(400, str(e))
+        logins = await self._exam_selection(exam, body)
+        exam = await self.exams.set_labs(exam.id, logins, labs)
+        await self._sync_exam(exam, logins)
+        self._log_exam(request, action='labs', exam=exam.id, count=len(logins) if logins is not None else 0)
+        return web.json_response(self._exam_summary(exam))
+
+    async def api_exam_close_projects(self, request):
+        """Instructors: the exam projects of everybody or of the students selected closed."""
+        self._require_instructor(request)
+        exam = self._exam(request)
+        self._log_exam(request, action='close', exam=exam.id)
+        body = await self._group_body(request)
+        logins = await self._exam_selection(exam, body)
+        closed = 0
+        if self.exam_projects is not None:
+            closed = await self.exam_projects.close(exam, set(exam.members) if logins is None else logins)
+        self._log_exam(request, action='close', exam=exam.id, count=closed)
+        return web.json_response({'closed': closed})
+
     # -- presentations ----------------------------------------------------------------------------
     # An instructor's project shown read-only on the browsers of the chosen students: the state
     # lives in ``presentation.py``; here the page of a spectator, the presence sockets of every
@@ -1222,6 +1630,7 @@ class Routes:
             await self.presentations.resync({identity.login})    # a presentation already running for them
             await self.focuses.resync({identity.login})          # a focus on them already
             await self.focuses.tell(identity.login, watcher)     # ... their other pages knew of
+            await self.exams.resync({identity.login})            # an exam binding them already
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
@@ -1231,6 +1640,8 @@ class Routes:
                 await self.presentations.resync({identity.login})
             with contextlib.suppress(Exception):
                 await self.focuses.resync({identity.login})
+            with contextlib.suppress(Exception):
+                await self.exams.resync({identity.login})
         return ws
 
     async def api_presence(self, request):

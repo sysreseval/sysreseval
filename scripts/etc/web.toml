@@ -225,6 +225,25 @@ session_timeout = "30m"
 # table = "user_groups"
 # directory_ttl = "10m"
 
+[exams]
+# The exams of the Exams page of the instructors (an audience of logins and/or groups, the labs
+# to do, a duration and/or a window, the networks the students' browsers must come from), in
+# two tables of the database above (table and <table>_members, created when missing; or create
+# them by hand with GRANT SELECT, INSERT, UPDATE, DELETE: see the documentation; on iff
+# [access_log.database] is set).  The defaults of a new exam, each adjustable per exam: lead,
+# how long before the start the other projects of the students are hidden and the countdown
+# shown; pre_start, how long before the start their exam projects are started in the
+# background; eval_interval, the period of the evaluations the agents run during the exam.
+# close_after: how long after the end of a student's exam their exam projects are closed (0 =
+# never: an instructor closes them from the page).  keep: days the past exams are kept (0 =
+# forever).
+# lead = "10m"
+# pre_start = "5m"
+# eval_interval = "60s"
+# close_after = "1h"
+# table = "exams"
+# keep = 0
+
 [site]
 # The institution, shown next to the SRE logo in the header of every page (the login page too):
 # the absolute path of an image file (JPG, PNG, SVG...; readable by sre-web, served at

@@ -8,8 +8,7 @@ import * as i18n from './i18n.js';
 import {_} from './i18n.js';
 import {el, clear} from './ui.js';
 import {buildTree} from './tree.js';
-import {Form} from './form.js';
-import {ProgressBox, runCreation, projectUrl} from './creation.js';
+import {ProgressBox, runCreation, projectUrl, flavorDialog} from './creation.js';
 
 const treeElement = document.getElementById('labs');
 const selectedElement = document.getElementById('selected-lab');
@@ -18,7 +17,7 @@ const progress = new ProgressBox(document.getElementById('progress'));
 
 let selectedLab = null;
 let starting = false;
-let flavor = null;   // {lab, dialog, form, error} of the Flavor form being filled
+let flavor = null;   // {lab, dialog} of the Flavor form being filled (creation.js flavorDialog)
 
 function setBusy(busy) {
   starting = busy;
@@ -35,31 +34,14 @@ function showFlavorForm(lab, result) {
     if (flavor) {
       flavor.dialog.remove();
     }
-    const error = el('div', {class: 'form-error'});
-    const body = el('div', {class: 'form-body'});
-    const cancel = el('button', {type: 'button'}, _('Cancel'));
-    const dialog = el('dialog', {class: 'modal flavor'},
-      el('h2', {}, _('Lab configuration')), error, body, el('div', {class: 'buttons'}, cancel));
-    if (Array.isArray(result.form_size) && result.form_size.length === 2) {
-      dialog.style.width = result.form_size[0] + 'px';
-    }
-    const form = new Form(body, result.chunks || [], {
-      allowSubmit: true,
-      onSubmit: () => {
-        dialog.close();
-        start(lab, form.getAnswers());
-      },
+    const dialog = flavorDialog(result, {
+      onSubmit: (answers) => start(lab, answers),
+      onCancel: () => progress.hide(),
     });
-    cancel.addEventListener('click', () => {
-      dialog.close();
-      progress.hide();
-    });
-    dialog.addEventListener('cancel', () => progress.hide());
-    document.body.append(dialog);
-    flavor = {lab, dialog, form, error};
+    flavor = {lab, dialog};
   }
-  flavor.error.textContent = result.status === 'flavor_error' ? (result.message || _('This flavor is not allowed.')) : '';
-  flavor.dialog.showModal();
+  flavor.dialog.setError(result.status === 'flavor_error' ? (result.message || _('This flavor is not allowed.')) : '');
+  flavor.dialog.show();
 }
 
 async function start(lab, flavorAnswers = null) {

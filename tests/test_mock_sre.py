@@ -190,7 +190,7 @@ class TestEntry:
         before = params.sre_pub_dir, params.sre_projects_dir
         env = {'SRE_PUB_DIR': str(pub), 'LOGNAME': 'root'}
         assert module.main(['list'], env) == 0
-        assert json.loads(capsys.readouterr().out) == module.DEFAULT_LAB_LIST
+        assert json.loads(capsys.readouterr().out) == module.DEFAULT_LAB_LIST[:2]   # the exam-only lab left out
         assert module.main(['bogus'], env) == 2
         assert module.main(['--user', 'list'], env) == 1   # no SUDO_USER
         assert 'invalid username' in capsys.readouterr().err
@@ -228,6 +228,22 @@ class TestList:
         titles = {entry['name']: entry['title'] for entry in data}
         assert titles == {'a': None, 'a/b.py': {'en': 'DHCP lab', 'fr': 'TP DHCP'}, 'd': None,
                           'd/e': None, 'c': None}
+
+    def test_exam_only_labs_need_the_flag(self, pub):
+        """The exam-only labs (a component holding one of params.exam_only_affix) are listed with
+        --include-exam-only only, which user mode refuses, like the real CLI."""
+        completed = run_mock(pub, 'list', '--include-exam-only', user=False)
+        assert completed.returncode == 0
+        assert json.loads(completed.stdout) == ['sre/dhcp.py', 's4/tp_ssh', 'sre/_EXAM_/exam1.py']
+        completed = run_mock(pub, 'list', '--with-titles', '--include-exam-only', user=False)
+        names = [entry['name'] for entry in json.loads(completed.stdout)]
+        assert names == ['s4', 's4/tp_ssh', 'sre', 'sre/_EXAM_', 'sre/_EXAM_/exam1.py', 'sre/dhcp.py']
+        completed = run_mock(pub, 'list', '--include-exam-only')
+        assert completed.returncode == 1
+        assert completed.stderr.decode().strip() == "sre: you're not allowed to run this command"
+        labs = ['x/_DRAFT_/a.py', 'y_OLD_.py', 'z/b.py']
+        completed = run_mock(pub, 'list', extra_env={'MOCK_LAB_LIST': json.dumps(labs)})
+        assert json.loads(completed.stdout) == ['z/b.py']
 
 
 # ---------------------------------------------------------------------------------------------
@@ -380,6 +396,23 @@ class TestStart:
         info = info_of(pub, running_lab_name)
         assert info['instructor_mode'] is True and info['debug_project'] is False
         assert [m['name'] for m in info['machines']] == ['m1', 'm2']   # hidden machines stay hidden
+
+    def test_exam_only_lab_starts_in_user_mode(self, pub):
+        """`sre start` checks the name against every lab, the exam-only ones included (an exam
+        project is started by its exact name)."""
+        running_lab_name = start_project(pub, 'sre/_EXAM_/exam1.py')
+        assert params.get_lab_name_from_running_lab_name(running_lab_name) == 'sre@_EXAM_@exam1.py'
+
+    def test_set_flavor_name_in_privileged_mode(self, pub):
+        running_lab_name = start_project(pub, '--set-flavor-name', 'hard', FIRST_LAB, user=False,
+                                         extra_env={'MOCK_FLAVOR_FORM': 'x'})
+        flavor_file = project_dir(pub, running_lab_name) / params.private_dir_name / 'flavor.json'
+        assert json.loads(flavor_file.read_text()) == {'@preset': 'hard'}
+        completed = run_mock(pub, 'start', '--set-flavor-name', 'nope', FIRST_LAB, user=False,
+                             extra_env={'MOCK_FLAVOR_PRESETS': '["easy", "hard"]'})
+        assert completed.returncode == 1
+        assert completed.stderr.decode().strip() == "sre: Flavor has no preset named 'nope'"
+        assert events(completed) == []
 
     def test_flavor_form_needed(self, pub):
         form = 'Clients: @@{nb:[0-9]+}@@'

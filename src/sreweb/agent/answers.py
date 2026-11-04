@@ -42,6 +42,7 @@ from SRE.common import QuestionType
 from SRE.form_spec import parse_form_description, coerce_answers
 
 from .access import AccessError
+from .exam import exam_json_data
 from .registry import Project, Registry, EVENT_ANSWERS
 from ..identity import Identity
 
@@ -108,27 +109,38 @@ class AnswersStore:
     def _stored(answers: dict, key: str) -> str:
         return str(answers.get(key, '') or '')
 
-    def _with_metadata(self, answers: dict, identity: Identity) -> dict:
+    def _exam_data(self, project: Project) -> dict | None:
+        """The ``exam.json``-shaped dict of the exam fields: the host's ``exam.json`` when it
+        exists (the host-wide exam mode), else the exam of the project (``exam.py``), else
+        ``None`` (no exam)."""
+        data = A.read_exam_json(self.pub_dir)
+        if data is not None:
+            return data
+        return exam_json_data(project.exam) if project.exam is not None else None
+
+    def _with_metadata(self, project: Project, answers: dict, identity: Identity) -> dict:
         """*answers* with the metadata of *identity*: its full name and group when it gives
         them, else the stored ones (a request without the header must not erase what an
         earlier one wrote), like the e-mail."""
         return A.with_metadata(answers, hostname=self.hostname, login=identity.login,
                                fullname=identity.fullname or self._stored(answers, params.fullname_keyword),
                                email=identity.email or None, language=identity.language,
-                               exam_data=A.read_exam_json(self.pub_dir),
+                               exam_data=self._exam_data(project),
                                group=identity.group or self._stored(answers, params.group_keyword))
 
-    def _kept_metadata(self, project: Project, answers: dict, identity: Identity) -> dict:
+    def _kept_metadata(self, project: Project, answers: dict, identity: Identity | None) -> dict:
         """*answers* with the stored metadata written again: the file of a student written by
         an instructor (*identity*) keeps the student's login (the owner of the project when the
         file has none), full name, e-mail, group and language (the writer's language when the
-        file has none); the update time and the exam fields are new."""
+        file has none, the lab's without a writer); the update time and the exam fields are new."""
+        fallback_language = identity.language if identity is not None \
+            else (project.info.get('default_language') or 'en')
         return A.with_metadata(answers, hostname=self.hostname,
                                login=self._stored(answers, params.login_keyword) or project.owner,
                                fullname=self._stored(answers, params.fullname_keyword),
                                email=self._stored(answers, params.email_keyword) or None,
-                               language=self._stored(answers, params.language_keyword) or identity.language,
-                               exam_data=A.read_exam_json(self.pub_dir),
+                               language=self._stored(answers, params.language_keyword) or fallback_language,
+                               exam_data=self._exam_data(project),
                                group=self._stored(answers, params.group_keyword))
 
     def metadata_stale(self, answers: dict, identity: Identity) -> bool:
@@ -206,7 +218,7 @@ class AnswersStore:
             answers = self.read(project)
             answers.update(normalized)
             if identity.login == project.owner:
-                data = self._with_metadata(answers, identity)
+                data = self._with_metadata(project, answers, identity)
             else:
                 data = self._kept_metadata(project, answers, identity)
             self._save(project, data)
@@ -218,7 +230,15 @@ class AnswersStore:
         """Write the file again with the current metadata: at the creation of the project (the
         file then holds the metadata alone), or for a new language, the exam fields..."""
         async with project.answers_lock, self._locked(project):
-            data = self._with_metadata(self.read(project), identity)
+            data = self._with_metadata(project, self.read(project), identity)
+            self._save(project, data)
+        return data
+
+    async def rewrite_kept(self, project: Project) -> dict:
+        """Write the file again with its stored metadata and fresh exam fields: the exam of
+        the project changed (``PUT`` / ``DELETE …/exam``, its end), whoever asked."""
+        async with project.answers_lock, self._locked(project):
+            data = self._kept_metadata(project, self.read(project), None)
             self._save(project, data)
         return data
 

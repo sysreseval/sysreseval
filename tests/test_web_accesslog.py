@@ -129,7 +129,18 @@ class TestEventFor:
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
                                                                             'focus_stop', 'history', 'archives',
-                                                                            'groups', 'group_edit'}
+                                                                            'groups', 'group_edit',
+                                                                            'exam_edit', 'exam_dismiss'}
+        # the Exams page: the polls of the student's exam and of the listings are keepalives,
+        # every change of an exam is an exam_edit, the dismiss of the end banner its own event
+        assert ('GET', '/api/exam') in A.KEEPALIVE and ('GET', '/api/exams') in A.KEEPALIVE
+        assert ('GET', '/api/exams/{id}') in A.KEEPALIVE
+        assert {A.EVENTS[route] for route in (('POST', '/api/exams'), ('PUT', '/api/exams/{id}'),
+                                              ('DELETE', '/api/exams/{id}'), ('POST', '/api/exams/{id}/end'),
+                                              ('POST', '/api/exams/{id}/adjust'), ('POST', '/api/exams/{id}/labs'),
+                                              ('POST', '/api/exams/{id}/close-projects'))} == {'exam_edit'}
+        assert A.EVENTS[('POST', '/api/exam/{id}/dismiss')] == 'exam_dismiss'
+        assert {'exam_edit', 'exam_dismiss'} <= set(A.ALL_EVENTS)
         assert ('GET', '/api/archives/options') in A.KEEPALIVE and A.EVENTS[('GET', '/api/archives/{id}')] == 'archives'
         # the Groups page: the listings are read, every write of a custom group is a group_edit
         assert ('GET', '/api/groups/people') in A.KEEPALIVE

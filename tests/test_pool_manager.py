@@ -171,7 +171,7 @@ class FakeSession:
         self.posts = []
         self.post_status, self.post_data = 200, {'ok': True}
 
-    def get(self, url, headers=None, timeout=None):
+    def get(self, url, headers=None, timeout=None, params=None):
         self.gets.append(url)
         base, _, path = url.rpartition('/v1/')
         if path == 'labs' and base in self.labs:
@@ -630,7 +630,7 @@ class TestLabs:
         assert run(pool.labs(alice)) == LABS_OUT and len(self.asked(session)) == 1      # same role: cached
         assert run(pool.labs(prof)) == LABS_OUT and len(self.asked(session)) == 2       # the other role: fetched
         assert run(pool.labs(prof)) == LABS_OUT and len(self.asked(session)) == 2
-        pool._labs_cache[False] = (time.monotonic() - 61, LABS_OUT)                     # expired
+        pool._labs_cache[(False, False)] = (time.monotonic() - 61, LABS_OUT)            # expired
         assert run(pool.labs(bob)) == LABS_OUT and len(self.asked(session)) == 3
         pool, session = self._pool(ttl=0)
         for _ in range(3):

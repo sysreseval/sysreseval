@@ -633,6 +633,13 @@ msgstr ""
 "émettre une liste d'objets {name, title}, en lisant les titres traduits "
 "depuis les titles.json de chaque répertoire"
 
+msgid ""
+"also list the exam-only labs (a name holding _EXAM_, _OLD_, _DRAFT_ or "
+"_TESTS_; privileged only)"
+msgstr ""
+"lister aussi les TP réservés aux examens (un nom contenant _EXAM_, _OLD_, "
+"_DRAFT_ ou _TESTS_ ; utilisateurs privilégiés seulement)"
+
 msgid "display version and exit"
 msgstr "afficher la version et quitter"
 

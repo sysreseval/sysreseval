@@ -310,6 +310,78 @@ class TestLiveArchives:
         assert 'unique key `archive`' in definition and 'mediumtext' in definition and 'login_lab_id' in definition
 
 
+class TestLiveExams:
+    """The exams of the Exams page on a real server: the two tables created at the first
+    operation, an exam inserted then updated, its members replaced, everything read back as it
+    was kept, the deletion of an exam with its members, the purge of the past ones."""
+
+    @pytest.fixture
+    def exams_cfg(self, cfg):
+        from sreweb.config import ExamsConfig
+        xcfg = ExamsConfig(table=cfg.table + '_exams')
+        yield xcfg
+        connect, _ = connector(cfg)
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP TABLE IF EXISTS `{xcfg.members_table}`")
+                cur.execute(f"DROP TABLE IF EXISTS `{xcfg.table}`")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_round_trip(self, cfg, exams_cfg):
+        import ipaddress
+        from sreweb.identity import Identity
+        from sreweb.portal.exams import Exam, ExamLab, Member
+        from sreweb.portal.examstore import ExamStore
+        connect, _ = connector(cfg)
+        now = math.floor(time.time() * 1000) / 1000
+        store = ExamStore(cfg, exams_cfg, connect=connect, clock=lambda: now)
+        assert store.load_all() == []                                  # the tables created
+        exam = Exam(id=0, title='Partiel réseau', created_by='prof', created_at=now, updated_at=now,
+                    logins={'dave'}, groups={'department:INFO1', 'custom:TP lundi'},
+                    labs=[ExamLab('sre/_EXAM_/exam1.py', 'hard'), ExamLab('s4/tp_ssh')],
+                    duration=5400.0, start_after=now + 3600, end_before=now + 9000, lead=720.0, pre_start=300.0,
+                    networks=[ipaddress.ip_network('10.0.0.0/8')], eval_interval=30.0)
+        exam.id = store.save_exam(exam)
+        assert exam.id > 0
+        alice = Member('alice', first_seen=now, started_at=now + 3600, extra_minutes=5, address='10.0.0.5',
+                       projects={'sre/_EXAM_/exam1.py': {'host': 'a01', 'rln': 'r1', 'synced': None}})
+        bob = Member('bob', labs=[ExamLab('s4/tp_ssh')], ended_at=now + 4000, dismissed_at=now + 4001)
+        store.save_member(exam.id, alice)
+        store.save_member(exam.id, bob)
+        alice.extra_minutes = 10                                        # replaced, not duplicated
+        store.save_member(exam.id, alice)
+        exam.ended_at = now + 5000
+        exam.title = 'Partiel'
+        store.save_exam(exam)
+        loaded = store.load_all()
+        assert len(loaded) == 1
+        back = loaded[0]
+        assert (back.id, back.title, back.created_by, back.created_at) == (exam.id, 'Partiel', 'prof', now)
+        assert (back.logins, back.groups) == ({'dave'}, {'department:INFO1', 'custom:TP lundi'})
+        assert back.labs == exam.labs and back.networks == exam.networks
+        assert (back.duration, back.start_after, back.end_before, back.ended_at) == (5400.0, now + 3600, now + 9000, now + 5000)
+        assert (back.lead, back.pre_start, back.eval_interval) == (720.0, 300.0, 30.0)
+        a, b = back.members['alice'], back.members['bob']
+        assert (a.first_seen, a.started_at, a.extra_minutes, a.address, a.labs) == (now, now + 3600, 10, '10.0.0.5', None)
+        assert a.projects == alice.projects and a.orphans == []
+        assert (b.labs, b.ended_at, b.dismissed_at, b.started_at) == ([ExamLab('s4/tp_ssh')], now + 4000, now + 4001, None)
+        assert store.status() == {'connected': True, 'last_error': None}
+        # the purge: a past exam last changed before the limit goes, with its members
+        assert store.purge(now - 1) == 0
+        assert store.purge(now + 1) == 1 and store.load_all() == []
+        other = Exam(id=0, title='Other', created_by='prof', created_at=now, updated_at=now, logins=set(), groups=set(),
+                     labs=[ExamLab('s4/tp_ssh')], duration=600.0, start_after=None, end_before=None, lead=0.0,
+                     pre_start=0.0, networks=[], eval_interval=60.0)
+        other.id = store.save_exam(other)
+        store.save_member(other.id, Member('carol'))
+        store.delete_exam(other.id)
+        assert store.load_all() == []
+        assert Identity(login='prof', role='instructor').is_instructor   # the identity the agents are called with
+
+
 class TestLiveGroups:
     """The custom groups of the Groups page on a real server: the two tables created at the first
     operation, the exact names and logins (binary collation), a duplicate, the members, a rename,

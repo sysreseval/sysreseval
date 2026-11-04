@@ -27,6 +27,7 @@ from SRE import params
 from sysreseval.util import load_projects, load_info
 
 from .access import AccessError
+from .exam import load_exam, view as exam_view, is_over as exam_is_over
 from ..identity import Identity
 
 log = logging.getLogger('sreweb.agent')
@@ -38,6 +39,7 @@ EVENT_LOG = 'log'
 EVENT_REMOVED = 'removed'
 EVENT_TERMINALS = 'terminals'
 EVENT_EVALUATED = 'evaluated'   # a new archived evaluation (periodic, the student's, an instructor's)
+EVENT_EXAM = 'exam'             # the exam of the project ended, was changed or removed (``exam.py``)
 
 LOG_CHUNK = 1 << 18          # bytes of operations.log read per tick at most
 STATE_WRITE_INTERVAL = 60.0  # seconds between two writes of the state file of a project
@@ -85,11 +87,26 @@ class Project:
     #: ``(inode, mtime, size)`` of ``answers/answers.json`` as the agent last wrote or saw it
     #: (``AnswersStore``): a change is the write of another program, the Qt GUI of the student.
     answers_sig: tuple | None = None
+    #: The exam of the project as the portal told it (``exam.py``; kept in the state file): the
+    #: project then behaves like one of the Qt GUI in exam mode; ``exam_ending`` while the end
+    #: runs, ``exam_retry_at`` (monotonic) when the final evaluation failed and waits.
+    exam: dict | None = None
+    exam_ending: bool = False
+    exam_retry_at: float | None = None
     _state_written: float = 0.0
 
     @property
     def holds_instructor_texts(self) -> bool:
         return self.debug or self.instructor
+
+    @property
+    def exam_over(self) -> bool:
+        return exam_is_over(self.exam)
+
+    @property
+    def exam_running(self) -> bool:
+        """An exam project whose exam has not ended (its clock started or not)."""
+        return self.exam is not None and not self.exam_over
 
     # the files of the project, from its own path (not from params.sre_projects_dir: the agent may
     # watch another directory, as the tests do)
@@ -146,6 +163,7 @@ class Project:
             'terminals': self.terminal_count(),
             'managed': self.managed,
             'eval_interval': int(self.info.get('eval_interval_without_exam_mode', 0) or 0),
+            'exam': exam_view(self.exam),
         }
 
 
@@ -221,9 +239,14 @@ class Registry:
                     and not isinstance(display.get('number'), bool) and isinstance(display.get('cookie'), str)
                     and _HEX.fullmatch(display['cookie'])):
                 project.display = {'number': display['number'], 'cookie': display['cookie']}
+            if state.get('exam') is not None:
+                project.exam = load_exam(state['exam'])
+                if project.exam is None:
+                    log.warning("the state file of %s holds an unusable exam, ignored", project.rln)
 
     def write_state(self, project: Project, force: bool = False):
-        """The state file of a managed project (idle clock, idle timeout), at most once a minute."""
+        """The state file of a managed project (idle clock, idle timeout, the exam), at most
+        once a minute."""
         if self.state_dir is None or not project.managed:
             return
         now = time.monotonic()
@@ -234,6 +257,8 @@ class Registry:
                  'last_activity_at': time.time() - project.idle_seconds(), 'owner': project.owner}
         if project.display:
             state['display'] = dict(project.display)
+        if project.exam is not None:
+            state['exam'] = dict(project.exam)
         try:
             self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             tmp = self.state_dir / f".{project.rln}.json.tmp"

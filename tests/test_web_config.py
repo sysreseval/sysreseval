@@ -146,6 +146,14 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'directory_ttl': 0}}, 'directory_ttl'),
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'directory_ttl': 'soon'}}, 'directory_ttl'),
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'typo': 1}}, 'typo'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'lead': 'soon'}}, 'exams.lead'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'lead': -1}}, 'lead'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'pre_start': '-5m'}}, 'pre_start'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'eval_interval': 0}}, 'eval_interval'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'close_after': -1}}, 'close_after'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'table': 'bad-name'}}, 'exams.table'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'keep': -1}}, 'keep'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'typo': 1}}, 'typo'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
           'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True}}}, 'ldap_roles'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
@@ -232,6 +240,23 @@ class TestWebConfig:
         assert cfg.auth.ldap.login_attribute == 'supannAliasLogin' and cfg.auth.ldap.attr_group_members == 'member'
         assert cfg.auth.ldap.groups_filter == '(objectClass=groupOfNames)'
         assert cfg.group_directory and cfg.group_directory_reason is None and cfg.group_sources
+
+    def test_exams(self):
+        """[exams] (the Exams page): the defaults of a new exam, the tables, the retention."""
+        base = {'secret': SECRET, 'hosts': [HOST]}
+        cfg = web_config_from_dict(base)
+        exams = cfg.exams
+        assert (exams.lead, exams.pre_start, exams.eval_interval, exams.close_after) == (600, 300, 60, 3600)
+        assert (exams.table, exams.members_table, exams.keep) == ('exams', 'exams_members', 0)
+        assert not cfg.exams_available                    # no database: the exams cannot be stored
+        cfg = web_config_from_dict({**base, 'exams': {'lead': '15m', 'pre_start': 120, 'eval_interval': '2m',
+                                                      'close_after': 0, 'table': 'ex', 'keep': 30},
+                                    'access_log': {'database': {'host': 'db', 'user': 'u', 'password': 'p',
+                                                                'name': 'sre'}}})
+        exams = cfg.exams
+        assert (exams.lead, exams.pre_start, exams.eval_interval, exams.close_after) == (900, 120, 120, 0)
+        assert (exams.table, exams.members_table, exams.keep) == ('ex', 'ex_members', 30)
+        assert cfg.exams_available
         assert not cfg.groups_configured        # the Group column still needs a department source
         # a search filter that does not name the login attribute alone needs attr_login
         ldap = {'uri': 'ldap://x', 'search_base': 'ou=people', 'search_filter': '(|(uid={login})(mail={login}))'}

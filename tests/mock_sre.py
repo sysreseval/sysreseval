@@ -17,13 +17,19 @@ Environment variables (all optional but the first):
   MOCK_SRE_LOG        a file where every invocation appends one JSON line
                       {"argv": [...], "env": {<the keys of LOGGED_ENV present in the environment>},
                        "username": <the SRE username of the call>, "user_mode": <--user given>}
-  MOCK_LAB_LIST       JSON list of the lab names `list` prints (default DEFAULT_LAB_LIST);
+  MOCK_LAB_LIST       JSON list of the lab names `list` prints (default DEFAULT_LAB_LIST); the
+                      exam-only ones (a component holding one of params.exam_only_affix, like
+                      `sre/_EXAM_/exam1.py` of the default) only with `--include-exam-only`
+                      (privileged only, like the real CLI; `start` accepts them in user mode too);
                       `list --with-titles` prints their tree in display order like the real CLI
                       (the directory entries included, every entry in the "name" mode)
   MOCK_FLAVOR_FORM    when set, `start` without --flavor-json (user mode) exits 3 with the
                       flavor_form event, `form` being its value
   MOCK_FLAVOR_REFUSE  when set, `start --flavor-json` exits 4 with the flavor_error event carrying
                       this message
+  MOCK_FLAVOR_PRESETS JSON list of the preset names `start --set-flavor-name` (privileged only)
+                      accepts (any name without it); the preset is stored as
+                      {"@preset": <name>} in .private/flavor.json
   MOCK_START_DELAY    seconds (float) slept between two progress events of start / restore
   MOCK_EVAL_DELAY     seconds (float) slept by `eval` while it holds .private/eval_in_progress
   MOCK_EVAL_ERRORS    JSON list of [category, text] pairs: the `errors` of the archives `eval` writes
@@ -95,6 +101,7 @@ ENV_LOG = 'MOCK_SRE_LOG'
 ENV_LAB_LIST = 'MOCK_LAB_LIST'
 ENV_FLAVOR_FORM = 'MOCK_FLAVOR_FORM'
 ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
+ENV_FLAVOR_PRESETS = 'MOCK_FLAVOR_PRESETS'
 ENV_START_DELAY = 'MOCK_START_DELAY'
 ENV_EVAL_DELAY = 'MOCK_EVAL_DELAY'
 ENV_EVAL_ERRORS = 'MOCK_EVAL_ERRORS'
@@ -108,7 +115,11 @@ ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an
 LOGGED_ENV = ('SUDO_USER', 'USER_USERNAME', 'LOGNAME', 'SUDO_COMMAND', 'SRE_IN_RECORDER', 'TERM',
               'SRE_XAUTH_COOKIE', 'SRE_X11_DISPLAY')
 
-DEFAULT_LAB_LIST = ["sre/dhcp.py", "s4/tp_ssh"]
+DEFAULT_LAB_LIST = ["sre/dhcp.py", "s4/tp_ssh", "sre/_EXAM_/exam1.py"]
+#: the exam-only lab of the default list (listed with `--include-exam-only` only)
+EXAM_ONLY_LAB = DEFAULT_LAB_LIST[2]
+#: the key of the preset name in .private/flavor.json (`start --set-flavor-name`)
+FLAVOR_PRESET_KEY = '@preset'
 #: the title of the first lab of the list (`list --with-titles`, `info.json`); the others have none
 FIRST_LAB_TITLE = {"en": "DHCP lab", "fr": "TP DHCP"}
 DEFAULT_LANGUAGE = 'en'
@@ -285,9 +296,15 @@ class Mock:
 
     # --- environment ---
 
-    def lab_list(self) -> list:
+    def lab_list(self, include_exam_only: bool = False) -> list:
+        """The lab names, the exam-only ones (a component holding one of
+        ``params.exam_only_affix``, the rule of ``SRE.utils``) left out unless asked."""
         value = self.env.get(ENV_LAB_LIST)
-        return json.loads(value) if value else list(DEFAULT_LAB_LIST)
+        labs = json.loads(value) if value else list(DEFAULT_LAB_LIST)
+        if include_exam_only:
+            return labs
+        return [lab for lab in labs
+                if not any(affix in component for component in lab.split('/') for affix in params.exam_only_affix)]
 
     def lab_title(self, lab_cli_arg: str):
         labs = self.lab_list()
@@ -436,7 +453,9 @@ class Mock:
 
     def action_list(self):
         self.not_allowed_in_exam_mode()
-        labs = self.lab_list()
+        if self.args.include_exam_only and self.user_mode:
+            error_quit("you're not allowed to run this command")
+        labs = self.lab_list(include_exam_only=bool(self.args.include_exam_only))
         if self.args.with_titles:
             data = self.lab_tree(labs)
         else:
@@ -462,11 +481,16 @@ class Mock:
         is_path = bool(args.path) or bool(args.debug_project)
         if is_path and self.user_mode:
             error_quit("--user and --path options are mutually exclusive")
-        if not is_path and args.lab not in self.lab_list():
+        if not is_path and args.lab not in self.lab_list(include_exam_only=True):
             error_quit(f"lab '{args.lab}' does not exist")
 
         flavor = None
-        if args.flavor_json is not None or args.flavor is not None:
+        if args.set_flavor_name is not None:
+            presets = self.env.get(ENV_FLAVOR_PRESETS)
+            if presets and args.set_flavor_name not in json.loads(presets):
+                error_quit(f"Flavor has no preset named '{args.set_flavor_name}'")
+            flavor = {FLAVOR_PRESET_KEY: args.set_flavor_name}
+        elif args.flavor_json is not None or args.flavor is not None:
             if args.flavor_json is not None:
                 try:
                     flavor = json.loads(args.flavor_json)
@@ -854,6 +878,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser_list = subparsers.add_parser('list')
     parser_list.add_argument('--with-titles', action='store_true')
+    parser_list.add_argument('--include-exam-only', dest='include_exam_only', action='store_true')
 
     parser_export = subparsers.add_parser('export')
     parser_export.add_argument('running_lab', metavar='running_lab')

@@ -90,6 +90,18 @@ EVENTS = {
     ('DELETE', '/api/groups/custom/{name}'): 'group_edit',
     ('POST', '/api/groups/custom/{name}/members'): 'group_edit',
     ('DELETE', '/api/groups/custom/{name}/members/{login}'): 'group_edit',
+    # the Exams page: every change of an exam (``action`` = create / update / delete / end /
+    # adjust / labs / close, ``exam``, ``count`` of students, ``minutes``); a student dismissing
+    # the end banner of their exam (``exam``); the ``start`` lines of the exam projects carry
+    # ``exam`` too
+    ('POST', '/api/exams'): 'exam_edit',
+    ('PUT', '/api/exams/{id}'): 'exam_edit',
+    ('DELETE', '/api/exams/{id}'): 'exam_edit',
+    ('POST', '/api/exams/{id}/end'): 'exam_edit',
+    ('POST', '/api/exams/{id}/adjust'): 'exam_edit',
+    ('POST', '/api/exams/{id}/labs'): 'exam_edit',
+    ('POST', '/api/exams/{id}/close-projects'): 'exam_edit',
+    ('POST', '/api/exam/{id}/dismiss'): 'exam_dismiss',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
@@ -103,7 +115,8 @@ KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', 
                        ('GET', '/api/presentations/{id}/ws'),
                        ('GET', '/api/focus'), ('GET', '/api/focus/{id}'), ('PUT', '/api/focus/{id}/view'),
                        ('GET', '/api/focus/{id}/ws'), ('GET', '/api/archives/options'),
-                       ('GET', '/api/groups/people')})
+                       ('GET', '/api/groups/people'),
+                       ('GET', '/api/exam'), ('GET', '/api/exams'), ('GET', '/api/exams/{id}')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
 #: socket every page keeps open is one of them: the session expiry stays what it was.
 IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws'})

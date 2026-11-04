@@ -279,3 +279,29 @@ class TestSymbolicLinks:
         (tmp_lab_dir / 'a' / 'x.py').touch()
         (tmp_lab_dir / 'a' / 'loop').symlink_to(tmp_lab_dir)
         assert get_lab_list() == ['a/x.py']
+
+
+class TestActionList:
+    """`sre list [--with-titles] [--include-exam-only]`: the exam-only labs for the privileged
+    callers only (the web agent lists them to an instructor programming an exam)."""
+
+    def test_include_exam_only_is_privileged(self, tmp_lab_dir, mock_sre_args, capsys):
+        from SRE.command.list import action_list
+        _touch(tmp_lab_dir, '_EXAM_x/a.py', 's4/c.py')
+        with pytest.raises(SystemExit) as e:
+            action_list()
+        assert e.value.code == 0 and json.loads(capsys.readouterr().out) == ['s4/c.py']
+        with pytest.raises(SystemExit) as e:
+            action_list(include_exam_only=True)
+        assert e.value.code == 0 and json.loads(capsys.readouterr().out) == ['_EXAM_x/a.py', 's4/c.py']
+        with pytest.raises(SystemExit) as e:
+            action_list(with_titles=True, include_exam_only=True)
+        names = [entry['name'] for entry in json.loads(capsys.readouterr().out)]
+        assert names == ['_EXAM_x', '_EXAM_x/a.py', 's4', 's4/c.py']
+        mock_sre_args.user = True
+        with pytest.raises(SystemExit) as e:
+            action_list(include_exam_only=True)
+        assert e.value.code == 1 and "not allowed" in capsys.readouterr().err
+        with pytest.raises(SystemExit) as e:
+            action_list()
+        assert e.value.code == 0 and json.loads(capsys.readouterr().out) == ['s4/c.py']

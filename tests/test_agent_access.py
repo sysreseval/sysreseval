@@ -145,6 +145,24 @@ class TestFlags:
             A.check_not_exam(str(tmp_path))
         assert e.value.status == 409
 
+    def test_exam_action(self):
+        """The owner of an exam project (the exam the portal programmed): nothing once it ended,
+        and with *during* nothing while it runs either; an instructor on it (privileged) and a
+        plain project are never refused."""
+        running = {'id': 'e1', 'end_at': '2026-11-04T10:00:00+00:00'}
+        over = {**running, params.exam_ended_at: '2026-11-04T10:00:01+00:00'}
+        A.check_exam_action(None, privileged=False, during=True)
+        A.check_exam_action(running, privileged=False)
+        with pytest.raises(AccessError) as e:
+            A.check_exam_action(running, privileged=False, during=True)
+        assert (e.value.status, e.value.message) == (409, "exam in progress")
+        for during in (False, True):
+            with pytest.raises(AccessError) as e:
+                A.check_exam_action(over, privileged=False, during=during)
+            assert (e.value.status, e.value.message) == (409, "the exam is over")
+            A.check_exam_action(over, privileged=True, during=during)
+            A.check_exam_action(running, privileged=True, during=during)
+
 
 class TestDisplay:
     def test_available_with_a_visible_x11_machine(self):

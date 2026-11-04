@@ -53,7 +53,9 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   answers of the states, tails the operations log and schedules what the Qt GUI used to schedule: the
   periodic evaluations of a lab (`eval_interval_without_exam_mode`), the evaluation before a
   project is closed (`eval_before_exit`), and an idle reaper closing the projects nobody touched
-  for the configured time.
+  for the configured time. For an exam project of the web site (*Exams* below) it applies the
+  rules of the Qt GUI's exam mode to that project alone: the evaluations at the period of the
+  exam, the final one at its end, the owner cut off then.
 - **`sre-web-tool`** is the command line next to the portal: `sre-web-tool …` lists and
   changes the pool of the running portal through its administration API (*The pool* below).
 - The pool hosts share the lab tree as today (NFS, rsync or the Debian package) and, if the
@@ -77,7 +79,9 @@ The agent enforces what the `sre` CLI does not check: the exact running lab name
 resolves substrings) and its owner (a user only reaches their own projects, an instructor every
 project; the CLI's own check, `params.check_project_owner`, lets a `--user` caller reach their
 own projects and root's only, which is why an instructor is served by privileged calls; the
-`wipe`, `stop-all`, `exec` and exam commands have no endpoint), `allow_connection` of the
+`wipe`, `stop-all`, `exec` and host-wide exam commands have no endpoint: an exam of the web site
+is a `POST /v1/projects` with an `exam` object, adjusted with `PUT` / `DELETE …/exam`),
+`allow_connection` of the
 devices, `allow_self_grade`, the
 user-allowed states, the `export_schema_pdf` flag of the lab (the *Export Schema to PDF*
 button). Save, restore and the Kathara export are not offered on the web. An instructor acting on
@@ -185,6 +189,7 @@ merges other files into this one, as for `web.toml` below.
 | `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`, a *Suggests* of the Debian package: optional) |
 | `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents) |
 | `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept) |
+| `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
@@ -584,6 +589,144 @@ on the page (a student added to a presented group is told at once, one removed l
 presentation). Every reading of the page is a `groups` line of the connection log, every change a
 `group_edit` line (`action` = `create` / `update` / `delete` / `add` / `remove`, `group`, and
 `member`, `count`, `source` or `new_name`).
+
+### Exams
+
+The **Exams** page of the instructors (`/exams`, the link in the header) programs the exams of
+the web site. An exam is a title, an **audience** (logins and/or groups of any kind of the
+Groups page: a department, a directory group, a custom group), the **labs** to do (the exam-only
+labs, whose names hold `_EXAM_`, `_OLD_`, `_DRAFT_` or `_TESTS_`, are offered here and nowhere
+else; each lab may name a preset of its `Flavor` class, as `sre set-exam --labs lab:preset`
+does), a **duration** and/or a **window** (`start_after`, `end_before`; no start time = the exam
+starts when created, for each student as soon as they log in), two delays before the start — the
+**lead** (the other projects of the students are hidden and a countdown appears) and the
+**pre-start** (their exam projects are started in the background) —, the **networks** the
+students' browsers must come from (none = anywhere; the address is the client's, through
+`trusted_proxies`) and the **evaluation interval** of the agents during the exam. The defaults
+of the delays and of the interval are those of `[exams]`.
+
+Unlike the exam mode of the Qt GUI (`sre set-exam`, `exam.json`, which locks a whole
+workstation and keeps a pool host out of the pool), an exam of the web site binds **its students
+only**, wherever their projects run: the portal computes the phase of each student and enforces
+it on every request, the agents apply the exam rules to the exam projects alone. Instructors are
+never bound, even when listed in the audience.
+
+What a student sees, in order:
+
+- **scheduled**: nothing changes before the lead window.
+- **waiting** (the lead window, 10 min by default): a bar on every page counts down to the
+  start; their other projects are hidden and refused (the Open page too); from the pre-start
+  (5 min before) their Projects page starts the exam projects in the background, one at a time
+  (the start slot and the placement of a normal start; a lab asking a flavor form shows it), and
+  shows them without an Open link.
+- **starting**: the start passed (or the exam has no start time), the exam projects are being
+  started; the clock of the student starts when every lab of theirs has a running project.
+- **active**: the countdown to their end; the Projects page lists the exam projects alone (a
+  single one is opened by itself at the start); the project page has no Close button, no
+  Evaluation tab nor Apply Configuration tab (as in the Qt GUI); the agent evaluates the project
+  every `eval_interval` of the exam. Each student has an individual clock: their end is
+  `min(started + duration, end_before)` plus the minutes an instructor adds to them; an *End
+  now* ends everybody's exam, or a selection's, at once.
+- **ended**: the end banner (*That's all folks*) until the student presses *Continue*; the agent
+  has cut the terminals and the X desktop, run the final evaluation and refuses every change
+  (the answers included). After *Continue* the usual pages are back; the exam projects stay
+  hidden from the student (and refused) until they are closed: `close_after` after the end by
+  the agent (the idle timeout of an exam project counts from its end), or by the instructor
+  (*Close projects* on the page, or the Watch page).
+- A student connecting from an address outside the networks of their exam gets the bar in red
+  naming their address, and no project at all (neither the exam's nor the others) while the exam
+  binds them.
+
+A student in several exams at once follows the one started first. The phases are pushed to the
+open pages through the presence socket (`{"t": "exam", "id", "phase"}`: the pages read
+`GET /api/exam` then) and the countdowns use the portal's time.
+
+On the page the instructor sees, per exam, every student the portal can name (the logins, the
+members of the groups it knows, those it has seen), connected or not, with their address, their
+phase, their clock, their extra minutes and their running exam projects (a link to each: the
+instructor's view of the student's project, the Evaluation tab included), and can, for everybody
+or for a selection (the checked rows): add or take minutes (for everybody the duration and the
+end time move together and an *End now* is lifted; for a selection their extra minutes,
+cumulative), *End now*, change the labs (the browsers start the new ones; the projects of a lab
+dropped stay as plain projects), *Close projects*, *Start now* (the start time set to now), *Edit*
+(every field; the students keep their clocks and adjustments) and *Delete* (the projects become
+plain projects, or are closed with the checkbox). The listing shows the scheduled, the running
+and the past exams.
+
+The exams live in two tables of the database of `[access_log.database]` (`[exams] table`, `exams`
+by default, and `<table>_members`), on iff that section is set (the page says so otherwise): an
+exam survives a restart of the portal, the clocks of the students included, and the agents are
+told again what they missed. The tables are created when they are missing (the `CREATE`
+privilege, once), or create them by hand; the account needs `SELECT, INSERT, UPDATE, DELETE` on
+the exams table (an edited exam) and `SELECT, INSERT, DELETE` on the members one (its rows are
+replaced):
+
+```sql
+CREATE TABLE sre.exams (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  title       VARCHAR(200)    NOT NULL,
+  created_by  VARCHAR(64)     NOT NULL DEFAULT '',
+  created_at  DATETIME(3)     NOT NULL,
+  updated_at  DATETIME(3)     NOT NULL,
+  start_after DATETIME(3)     NULL,
+  end_before  DATETIME(3)     NULL,
+  duration    INT             NULL,
+  ended_at    DATETIME(3)     NULL,
+  details     MEDIUMTEXT      NOT NULL,
+  PRIMARY KEY (id),
+  KEY start_after (start_after),
+  KEY created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE sre.exams_members (
+  exam_id       BIGINT UNSIGNED NOT NULL,
+  login         VARCHAR(64)     CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  first_seen    DATETIME(3)     NULL,
+  started_at    DATETIME(3)     NULL,
+  ended_at      DATETIME(3)     NULL,
+  dismissed_at  DATETIME(3)     NULL,
+  extra_minutes INT             NOT NULL DEFAULT 0,
+  address       VARCHAR(64)     NOT NULL DEFAULT '',
+  details       TEXT            NOT NULL,
+  updated_at    DATETIME(3)     NOT NULL,
+  PRIMARY KEY (exam_id, login)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+GRANT SELECT, INSERT, UPDATE, DELETE ON sre.exams TO 'sre_web'@'%';
+GRANT SELECT, INSERT, DELETE ON sre.exams_members TO 'sre_web'@'%';
+```
+
+`duration` is in seconds; `details` holds the audience, the labs, the delays, the networks and
+the interval (JSON), the members' `details` their labs and their exam projects. The times are
+UTC, truncated to the millisecond like the rows of the connection log. The past exams are kept
+`keep` days (`0` = forever), their members with them.
+
+The agents: an exam project is started by the portal with an `exam` object (`POST
+/v1/projects`: the id and title of the exam, the start and end of the student's clock once
+known, the evaluation interval) and a privileged `sre start` run under the student's login
+(`LOGNAME`), which accepts the exam-only labs and the flavor presets (`--set-flavor-name`); the
+agent keeps the object in the project's state file and in the rows of its listings (`exam`),
+evaluates the project at the interval of the exam once its clock runs, never reaps it before
+the end, refuses the owner's self-evaluation, states and close during the exam and every change
+after the end, and at the end cuts the terminals and the display, runs the final evaluation
+(`sre --user eval`: the exo-eval scope, like `sre end-exam`) and tells the open pages (`{"t":
+"exam", "ended": true}` on the events socket). The portal updates the object with `PUT
+/v1/projects/{rln}/exam` when the clock starts or the instructor adjusts the student (every
+5 s until the agent has it), and drops it with `DELETE …/exam` when the exam is deleted or the
+lab is no longer the student's. The answers metadata of an exam project carry the exam fields of
+the Qt GUI's exam mode (`exam_mode`, `exam_started_at`, `exam_duration`,
+`exam_time_remaining`), so the archives carry the exam flag and the Archives page filters on it.
+The exam-only labs of the pool are listed by `GET /v1/labs?all=1` (instructors), a privileged
+`sre list --with-titles --include-exam-only`.
+
+Connection log: every change of an exam is an `exam_edit` line (`action` = `create` / `update` /
+`delete` / `end` / `adjust` / `labs` / `close`, `exam`, `count` of students, `minutes`), a student
+dismissing the end banner an `exam_dismiss` line, and the `start` lines of the exam projects
+carry `exam`; the polls of the page and of the student's exam are keepalives.
+
+Limitations: the session records (`record_sessions`) are not archived by the agents (the lab's
+attribute decides whether `records/` exists, `sre stop` deletes it); the archives of a web exam
+hold no `exam_json` document (the `exam` flag comes from the answers); anonymous mode has no
+stable logins to schedule; a page loaded before the portal was updated has no exam script until
+it is reloaded (the server still refuses what it must).
 
 ### Securing the pool (mutual TLS)
 
@@ -998,6 +1141,8 @@ What an instructor gets:
 - **Groups** (the link in the header, `/groups`): the user groups of the site by kind (the
   departments, the groups of the directory, the custom groups), their members, and the editing
   of the custom groups (*User groups* above).
+- **Exams** (the link in the header, `/exams`): the exams of the web site, programmed for an
+  audience of logins and/or groups, followed and adjusted while they run (*Exams* above).
 - **The host of a project**: the *Host* select of the Open page (shown when the pool has a host
   reserved for instructors, `instructors_only = true` in `[[hosts]]`) names one of them, with
   its state and its projects (greyed when off or full), or leaves the automatic placement: the
@@ -1200,8 +1345,9 @@ the browser reaches a desktop through the owner check of the portal and of the a
 - The virtual X desktops die with the agent (a restart of its unit): they are started again,
   empty, at the next use of the Display tab; the applications shown must be launched again.
 - The `ports` of the bridged machines are bound on the pool host and shown with its name.
-- A host in exam mode (`exam.json`) is excluded from the pool: the exam mode of the web site is a
-  later phase, as is the save of the terminal sessions across a restart of the agent.
+- The exam mode of the Qt GUI (`exam.json` on a host) still excludes that host from the pool: the
+  web site has its own exams (*Exams* above), per student rather than per host. The save of the
+  terminal sessions across a restart of the agent is a later phase.
 - A terminal session ends when its last viewer leaves: a page reload loses it unless another
   viewer (an instructor who joined) keeps it alive, in which case Reconnect joins it again.
   A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.

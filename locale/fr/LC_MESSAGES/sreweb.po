@@ -1382,3 +1382,328 @@ msgstr "Aucun membre ne correspond au filtre."
 
 msgid "{group} ({n} connected, {m} members)"
 msgstr "{group} ({n} connecté(s), {m} membres)"
+
+# --- exams: base.html, exam.js (every page of a student), projects.html, projects.js, project.js ---
+
+msgid "Exams"
+msgstr "Examens"
+
+msgid "Exam «{title}»"
+msgstr "Examen « {title} »"
+
+msgid "starts in"
+msgstr "commence dans"
+
+msgid "the exam is being prepared: its projects are starting…"
+msgstr "l'examen se prépare : ses projets démarrent…"
+
+msgid "time left:"
+msgstr "temps restant :"
+
+msgid "the exam is over."
+msgstr "l'examen est terminé."
+
+msgid "your address {address} is not allowed for this exam."
+msgstr "votre adresse {address} n'est pas autorisée pour cet examen."
+
+msgid "your other projects are hidden until it ends"
+msgstr "vos autres projets sont masqués jusqu'à sa fin"
+
+msgid "The exam «{title}» is over."
+msgstr "L'examen « {title} » est terminé."
+
+msgid "Your work has been evaluated. Press Continue to get back to your projects."
+msgstr "Votre travail a été évalué. Appuyez sur Continuer pour revenir à vos projets."
+
+msgid "Available when the exam starts"
+msgstr "Disponible au début de l'examen"
+
+msgid "Exam: "
+msgstr "Examen : "
+
+msgid "The exam is reserved to the browsers of its rooms: no project is available from your address."
+msgstr "L'examen est réservé aux navigateurs de ses salles : aucun projet n'est disponible depuis votre adresse."
+
+msgid "Your other projects are hidden until the end of the exam. Its projects will be prepared shortly before it starts."
+msgstr "Vos autres projets sont masqués jusqu'à la fin de l'examen. Ses projets seront préparés peu avant son début."
+
+msgid "Your other projects are hidden until the end of the exam. Its projects are being prepared."
+msgstr "Vos autres projets sont masqués jusqu'à la fin de l'examen. Ses projets sont en cours de préparation."
+
+msgid "The exam has started: its projects are being prepared."
+msgstr "L'examen a commencé : ses projets sont en cours de préparation."
+
+msgid "The exam is in progress: only its projects are available."
+msgstr "L'examen est en cours : seuls ses projets sont disponibles."
+
+msgid "The exam is over."
+msgstr "L'examen est terminé."
+
+msgid "Starting {lab} for the exam…"
+msgstr "Démarrage de {lab} pour l'examen…"
+
+msgid "Next attempt in {n} s"
+msgstr "Nouvel essai dans {n} s"
+
+# --- the Exams page of the instructors: exams.html, exams.js, exams_form.js, login_picker.js ---
+
+msgid "Title, lab, audience or creator"
+msgstr "Titre, TP, public ou créateur"
+
+msgid "Scheduled"
+msgstr "Programmés"
+
+msgid "Running"
+msgstr "En cours"
+
+msgid "Past"
+msgstr "Passés"
+
+msgid "New exam"
+msgstr "Nouvel examen"
+
+msgid "The exams are not stored in a database: set [access_log.database] in web.toml to program exams here."
+msgstr "Les examens ne sont pas enregistrés dans une base de données : renseignez [access_log.database] dans web.toml pour programmer des examens ici."
+
+msgid "The users are anonymous (the login of a guest is not known in advance): no exam can be programmed."
+msgstr "Les utilisateurs sont anonymes (l'identifiant d'un invité n'est pas connu à l'avance) : aucun examen ne peut être programmé."
+
+msgid "Title"
+msgstr "Titre"
+
+msgid "End"
+msgstr "Fin"
+
+msgid "Audience"
+msgstr "Public"
+
+msgid "Start the exam now: its members are bound at once"
+msgstr "Commencer l'examen maintenant : ses membres y sont soumis immédiatement"
+
+msgid "Start now"
+msgstr "Commencer maintenant"
+
+msgid "End the exam now for everybody: the final evaluation runs, the banner is shown"
+msgstr "Terminer l'examen maintenant pour tout le monde : l'évaluation finale est lancée, la bannière de fin s'affiche"
+
+msgid "End now"
+msgstr "Terminer maintenant"
+
+msgid "Minutes"
+msgstr "Minutes"
+
+msgid "Lengthen the exam for everybody (its duration and its end)"
+msgstr "Allonger l'examen pour tout le monde (sa durée et sa fin)"
+
+msgid "+ for all"
+msgstr "+ pour tous"
+
+msgid "Shorten the exam for everybody (its duration and its end)"
+msgstr "Raccourcir l'examen pour tout le monde (sa durée et sa fin)"
+
+msgid "− for all"
+msgstr "− pour tous"
+
+msgid "Extra minutes beyond the end of the exam, for the selected members"
+msgstr "Minutes supplémentaires au-delà de la fin de l'examen, pour les membres sélectionnés"
+
+msgid "+ for selected"
+msgstr "+ pour la sélection"
+
+msgid "Fewer minutes for the selected members"
+msgstr "Moins de minutes pour les membres sélectionnés"
+
+msgid "− for selected"
+msgstr "− pour la sélection"
+
+msgid "End the exam now for the selected members"
+msgstr "Terminer l'examen maintenant pour les membres sélectionnés"
+
+msgid "End for selected"
+msgstr "Terminer pour la sélection"
+
+msgid "Change the labs of the selected members (their missing labs are started by their browsers)"
+msgstr "Changer les TP des membres sélectionnés (les TP manquants sont démarrés par leurs navigateurs)"
+
+msgid "Change labs…"
+msgstr "Changer les TP…"
+
+msgid "Close the exam projects of the selected members (all of them when none is selected)"
+msgstr "Fermer les projets d'examen des membres sélectionnés (de tous quand aucun n'est sélectionné)"
+
+msgid "Close projects…"
+msgstr "Fermer les projets…"
+
+msgid "Select the members shown"
+msgstr "Sélectionner les membres affichés"
+
+msgid "Connected"
+msgstr "Connecté"
+
+msgid "Phase"
+msgstr "Phase"
+
+msgid "Extra"
+msgstr "Supplément"
+
+msgid "Logins"
+msgstr "Identifiants"
+
+msgid "The exam binds the logins listed and every member of the groups chosen; instructors are never bound."
+msgstr "L'examen s'applique aux identifiants listés et à chaque membre des groupes choisis ; les enseignants n'y sont jamais soumis."
+
+msgid "The exam-only labs (_EXAM_) are listed too; the preset is the name of a Flavor preset of the lab, when it defines one."
+msgstr "Les TP réservés aux examens (_EXAM_) sont listés aussi ; le préréglage est le nom d'un préréglage Flavor du TP, quand il en définit."
+
+msgid "When"
+msgstr "Quand"
+
+msgid "Start after"
+msgstr "Début à partir de"
+
+msgid "End before"
+msgstr "Fin avant"
+
+msgid "Duration (min)"
+msgstr "Durée (min)"
+
+msgid "Without a start time the exam starts for each student when they log in; the end-before time wins over the duration; a duration or an end-before time is required."
+msgstr "Sans heure de début, l'examen commence pour chaque étudiant à sa connexion ; l'heure de fin l'emporte sur la durée ; une durée ou une heure de fin est requise."
+
+msgid "Hide the other projects (min before)"
+msgstr "Masquer les autres projets (min avant)"
+
+msgid "Start the projects (min before)"
+msgstr "Démarrer les projets (min avant)"
+
+msgid "Evaluation every (s)"
+msgstr "Évaluation toutes les (s)"
+
+msgid "Browsers"
+msgstr "Navigateurs"
+
+msgid "Allowed networks (one address or network per line; empty: anywhere)"
+msgstr "Réseaux autorisés (une adresse ou un réseau par ligne ; vide : partout)"
+
+msgid "{n} exam(s)"
+msgstr "{n} examen(s)"
+
+msgid "{n} of {total} exam(s)"
+msgstr "{n} examen(s) sur {total}"
+
+msgid "No exam matches the filter."
+msgstr "Aucun examen ne correspond au filtre."
+
+msgid "No exam."
+msgstr "Aucun examen."
+
+msgid "scheduled"
+msgstr "programmé"
+
+msgid "running"
+msgstr "en cours"
+
+msgid "past"
+msgstr "passé"
+
+msgid "not yet"
+msgstr "pas encore"
+
+msgid "waiting"
+msgstr "en attente"
+
+msgid "starting"
+msgstr "démarrage"
+
+msgid "in progress"
+msgstr "en cours"
+
+msgid "ended"
+msgstr "terminé"
+
+msgid "did not take part"
+msgstr "n'a pas participé"
+
+msgid "when the student logs in"
+msgstr "à la connexion de l'étudiant"
+
+msgid "ended {date}"
+msgstr "terminé le {date}"
+
+msgid "{n} login(s)"
+msgstr "{n} identifiant(s)"
+
+msgid "Delete the exam «{title}»? OK also closes its running projects; Cancel keeps everything."
+msgstr "Supprimer l'examen « {title} » ? OK ferme aussi ses projets en cours ; Annuler conserve tout."
+
+msgid "Delete the exam «{title}» and leave its projects running?"
+msgstr "Supprimer l'examen « {title} » en laissant ses projets en cours ?"
+
+msgid "{n} project(s) closed"
+msgstr "{n} projet(s) fermé(s)"
+
+msgid "The exam no longer exists."
+msgstr "L'examen n'existe plus."
+
+msgid "start: {text}"
+msgstr "début : {text}"
+
+msgid "duration: {text}"
+msgstr "durée : {text}"
+
+msgid "end: {text}"
+msgstr "fin : {text}"
+
+msgid "labs: {text}"
+msgstr "TP : {text}"
+
+msgid "hidden {lead} min before, started {pre} min before, evaluated every {eval} s"
+msgstr "masqué {lead} min avant, démarré {pre} min avant, évalué toutes les {eval} s"
+
+msgid "networks: {text}"
+msgstr "réseaux : {text}"
+
+msgid "no member selected"
+msgstr "aucun membre sélectionné"
+
+msgid "End the exam now for everybody?"
+msgstr "Terminer l'examen maintenant pour tout le monde ?"
+
+msgid "End the exam now for {n} member(s)?"
+msgstr "Terminer l'examen maintenant pour {n} membre(s) ?"
+
+msgid "Labs of {n} member(s)"
+msgstr "TP de {n} membre(s)"
+
+msgid "Close the exam projects of every member? Their machines will be stopped."
+msgstr "Fermer les projets d'examen de tous les membres ? Leurs machines seront arrêtées."
+
+msgid "Close the exam projects of {n} member(s)? Their machines will be stopped."
+msgstr "Fermer les projets d'examen de {n} membre(s) ? Leurs machines seront arrêtées."
+
+msgid "No lab is available: is a host of the pool up?"
+msgstr "Aucun TP n'est disponible : un hôte du pool est-il allumé ?"
+
+msgid "preset"
+msgstr "préréglage"
+
+msgid "The name of a Flavor preset of the lab (optional)"
+msgstr "Le nom d'un préréglage Flavor du TP (facultatif)"
+
+msgid "A title is required."
+msgstr "Un titre est requis."
+
+msgid "Choose at least one lab."
+msgstr "Choisissez au moins un TP."
+
+msgid "A duration or an end-before time is required."
+msgstr "Une durée ou une heure de fin est requise."
+
+msgid "The end-before time must come after the start."
+msgstr "L'heure de fin doit suivre le début."
+
+msgid "Edit the exam «{title}»"
+msgstr "Modifier l'examen « {title} »"
+
+msgid "No lab chosen: the members get the labs of the exam again."
+msgstr "Aucun TP choisi : les membres retrouvent les TP de l'examen."

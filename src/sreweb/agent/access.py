@@ -143,3 +143,17 @@ def check_not_exam(pub_dir: str = None):
     spawning (409)."""
     if exam_mode_on(pub_dir):
         raise AccessError(409, "this host is in exam mode")
+
+
+def check_exam_action(exam: dict | None, *, privileged: bool, during: bool = False):
+    """The owner of an exam project (``exam.py``: the exam the portal programmed for it): 409
+    "the exam is over" once it ended and, with *during*, 409 "exam in progress" while it runs
+    (the self-evaluation, the states and the close: what the Qt GUI hides in exam mode).  An
+    instructor on somebody else's project (*privileged*) is never refused, a plain project
+    neither."""
+    if exam is None or privileged:
+        return
+    if exam.get(params.exam_ended_at):
+        raise AccessError(409, "the exam is over")
+    if during:
+        raise AccessError(409, "exam in progress")

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Exams") }} - SRE{% endblock %}
+{% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>{{ _("Exams") }}</h1>
+  <input type="text" id="exams-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Title, lab, audience or creator") }}">
+  <div id="exams-status" class="history-views">
+    <button type="button" class="toggle" data-status="scheduled" aria-pressed="true">{{ _("Scheduled") }}</button>
+    <button type="button" class="toggle" data-status="running" aria-pressed="true">{{ _("Running") }}</button>
+    <button type="button" class="toggle" data-status="past" aria-pressed="false">{{ _("Past") }}</button>
+  </div>
+  <span id="exams-count" class="muted"></span>
+  <button type="button" id="exams-new" class="primary"{% if not exams_database or not exams_available %} hidden{% endif %}>{{ _("New exam") }}</button>
+</div>
+<p id="exams-hints" class="muted"{% if exams_database and exams_available %} hidden{% endif %}>{% if not exams_database %}{{ _("The exams are not stored in a database: set [access_log.database] in web.toml to program exams here.") }} {% endif %}{% if not exams_available %}{{ _("The users are anonymous (the login of a guest is not known in advance): no exam can be programmed.") }}{% endif %}</p>
+<p id="exams-notice" class="muted" hidden></p>
+<table id="exams" class="grid watch exams" data-database="{{ 'true' if exams_database else 'false' }}" data-available="{{ 'true' if exams_available else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}" data-lead="{{ exam_defaults.lead }}" data-pre-start="{{ exam_defaults.pre_start }}" data-eval-interval="{{ exam_defaults.eval_interval }}">
+  <thead>
+    <tr>
+      <th class="sortable" data-sort="title">{{ _("Title") }}</th>
+      <th class="sortable" data-sort="status">{{ _("Status") }}</th>
+      <th class="sortable" data-sort="start">{{ _("Start") }}</th>
+      <th class="sortable" data-sort="end">{{ _("End") }}</th>
+      <th class="sortable" data-sort="duration">{{ _("Duration") }}</th>
+      <th>{{ _("Labs") }}</th>
+      <th>{{ _("Audience") }}</th>
+      <th class="sortable" data-sort="members">{{ _("Members") }}</th>
+      <th class="sortable" data-sort="created_by">{{ _("Created by") }}</th>
+      <th>{{ _("Actions") }}</th>
+    </tr>
+  </thead>
+  <tbody><tr><td colspan="10" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+</table>
+<section id="exam-detail" class="exam-detail" hidden>
+  <div class="toolbar">
+    <h2 id="exam-detail-title"></h2>
+    <span id="exam-detail-summary" class="muted"></span>
+    <button type="button" id="exam-detail-close">{{ _("Close") }}</button>
+  </div>
+  <p id="exam-detail-notice" class="muted" hidden></p>
+  <div id="exam-actions" class="exam-actions">
+    <button type="button" id="exam-start-now" class="primary" title="{{ _("Start the exam now: its members are bound at once") }}">{{ _("Start now") }}</button>
+    <button type="button" id="exam-end-now" class="danger" title="{{ _("End the exam now for everybody: the final evaluation runs, the banner is shown") }}">{{ _("End now") }}</button>
+    <span class="exam-adjust">
+      <label>{{ _("Minutes") }} <input type="number" id="exam-minutes" value="5" min="1" max="1440" step="1"></label>
+      <button type="button" id="exam-extend-all" title="{{ _("Lengthen the exam for everybody (its duration and its end)") }}">{{ _("+ for all") }}</button>
+      <button type="button" id="exam-reduce-all" title="{{ _("Shorten the exam for everybody (its duration and its end)") }}">{{ _("− for all") }}</button>
+      <button type="button" id="exam-extend-selected" title="{{ _("Extra minutes beyond the end of the exam, for the selected members") }}">{{ _("+ for selected") }}</button>
+      <button type="button" id="exam-reduce-selected" title="{{ _("Fewer minutes for the selected members") }}">{{ _("− for selected") }}</button>
+      <button type="button" id="exam-end-selected" class="danger" title="{{ _("End the exam now for the selected members") }}">{{ _("End for selected") }}</button>
+    </span>
+    <button type="button" id="exam-labs-selected" title="{{ _("Change the labs of the selected members (their missing labs are started by their browsers)") }}">{{ _("Change labs…") }}</button>
+    <button type="button" id="exam-close-projects" class="danger" title="{{ _("Close the exam projects of the selected members (all of them when none is selected)") }}">{{ _("Close projects…") }}</button>
+    <span class="spacer"></span>
+    <button type="button" id="exam-edit">{{ _("Edit") }}</button>
+    <button type="button" id="exam-delete" class="danger">{{ _("Delete") }}</button>
+  </div>
+  <table id="exam-members" class="grid watch members">
+    <thead>
+      <tr>
+        <th class="select"><input type="checkbox" id="exam-select-all" title="{{ _("Select the members shown") }}"></th>
+        <th class="sortable" data-sort="login">{{ _("Login") }}</th>
+        <th class="sortable" data-sort="fullname">{{ _("Name") }}</th>
+        <th class="sortable" data-sort="group"{% if not group_sources %} hidden{% endif %}>{{ _("Group") }}</th>
+        <th class="sortable" data-sort="connected">{{ _("Connected") }}</th>
+        <th class="sortable" data-sort="address">{{ _("Address") }}</th>
+        <th class="sortable" data-sort="phase">{{ _("Phase") }}</th>
+        <th class="sortable" data-sort="started_at">{{ _("Start") }}</th>
+        <th class="sortable" data-sort="end_at">{{ _("End") }}</th>
+        <th class="sortable" data-sort="extra_minutes">{{ _("Extra") }}</th>
+        <th>{{ _("Labs") }}</th>
+        <th>{{ _("Projects") }}</th>
+      </tr>
+    </thead>
+    <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  </table>
+</section>
+<dialog id="exam-form" class="modal exam">
+  <h2 id="exam-form-title">{{ _("New exam") }}</h2>
+  <form id="exam-form-fields">
+    <label>{{ _("Title") }} <input type="text" id="exam-title" name="title" required maxlength="200"></label>
+    <fieldset>
+      <legend>{{ _("Audience") }}</legend>
+      <div id="exam-logins" class="group-add"></div>
+      <label>{{ _("Groups") }} <select id="exam-groups" name="groups" multiple size="5"></select></label>
+      <span class="muted">{{ _("The exam binds the logins listed and every member of the groups chosen; instructors are never bound.") }}</span>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _("Labs") }}</legend>
+      <div id="exam-labs" class="exam-labs"><span class="muted">{{ _("Loading…") }}</span></div>
+      <span class="muted">{{ _("The exam-only labs (_EXAM_) are listed too; the preset is the name of a Flavor preset of the lab, when it defines one.") }}</span>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _("When") }}</legend>
+      <div class="exam-times">
+        <label>{{ _("Start after") }} <input type="datetime-local" id="exam-start-after" name="start_after"></label>
+        <label>{{ _("End before") }} <input type="datetime-local" id="exam-end-before" name="end_before"></label>
+        <label>{{ _("Duration (min)") }} <input type="number" id="exam-duration" name="duration" min="1" max="1440" step="1"></label>
+      </div>
+      <span class="muted">{{ _("Without a start time the exam starts for each student when they log in; the end-before time wins over the duration; a duration or an end-before time is required.") }}</span>
+      <div class="exam-times">
+        <label>{{ _("Hide the other projects (min before)") }} <input type="number" id="exam-lead" name="lead" min="0" max="1440" step="1"></label>
+        <label>{{ _("Start the projects (min before)") }} <input type="number" id="exam-pre-start" name="pre_start" min="0" max="1440" step="1"></label>
+        <label>{{ _("Evaluation every (s)") }} <input type="number" id="exam-eval-interval" name="eval_interval" min="10" max="86400" step="1"></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _("Browsers") }}</legend>
+      <label>{{ _("Allowed networks (one address or network per line; empty: anywhere)") }} <textarea id="exam-networks" name="networks" rows="3" placeholder="10.0.0.0/8"></textarea></label>
+    </fieldset>
+    <p id="exam-form-error" class="form-error" hidden></p>
+    <div class="buttons">
+      <button type="button" id="exam-form-cancel">{{ _("Cancel") }}</button>
+      <span class="spacer"></span>
+      <button type="submit" id="exam-form-submit" class="primary">{{ _("Save") }}</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/exams.js"></script>{% endblock %}

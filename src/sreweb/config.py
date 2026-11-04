@@ -399,6 +399,29 @@ class GroupsConfig:
         return self.table + '_members'
 
 
+@dataclass
+class ExamsConfig:
+    """``[exams]``: the exams of the web front-end (``sreweb/portal/exams.py``, the Exams page of
+    the instructors): the defaults of a new exam, adjustable per exam — ``lead``, how long before
+    the start the other projects of the students are hidden and the countdown shown;
+    ``pre_start``, how long before the start their exam projects are started in the background;
+    ``eval_interval``, the period of the evaluations the agents run during the exam —,
+    ``close_after``, how long after the end of a student's exam their exam projects are closed
+    (0 = never: an instructor closes them), and the tables holding the exams and their members
+    in the database of the connection log (on iff ``[access_log.database]`` is configured;
+    ``keep``: days the past exams are kept, 0 = forever)."""
+    lead: float = 600.0                 # seconds
+    pre_start: float = 300.0            # seconds
+    eval_interval: float = 60.0         # seconds
+    close_after: float = 3600.0         # seconds
+    table: str = 'exams'
+    keep: int = 0
+
+    @property
+    def members_table(self) -> str:
+        return self.table + '_members'
+
+
 _URL_PREFIXES = ('/', 'http://', 'https://')
 
 
@@ -485,6 +508,19 @@ def _check_groups(cfg: GroupsConfig, path: str):
         raise ConfigError(f"{where}directory_ttl must be positive")
 
 
+def _check_exams(cfg: ExamsConfig, path: str):
+    where = f"{path}: exams."
+    if not isinstance(cfg.table, str) or not _TABLE_NAME_RE.match(cfg.table) or len(cfg.table) > 56:
+        raise ConfigError(f"{where}table must be a plain SQL identifier of at most 56 characters (letters, digits, _)")
+    for name in ('lead', 'pre_start', 'close_after'):
+        if getattr(cfg, name) < 0:
+            raise ConfigError(f"{where}{name} cannot be negative")
+    if cfg.eval_interval <= 0:
+        raise ConfigError(f"{where}eval_interval must be positive")
+    if isinstance(cfg.keep, bool) or not isinstance(cfg.keep, int) or cfg.keep < 0:
+        raise ConfigError(f"{where}keep must be a number of days (0 = exams kept forever)")
+
+
 def _check_site(site: SiteConfig, path: str):
     where = f"{path}: site."
     if not isinstance(site.logo, str):
@@ -521,8 +557,15 @@ class WebConfig:
     access_log: AccessLogConfig = field(default_factory=AccessLogConfig)
     archives: ArchivesConfig = field(default_factory=ArchivesConfig)
     groups: GroupsConfig = field(default_factory=GroupsConfig)
+    exams: ExamsConfig = field(default_factory=ExamsConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
     hosts: list = field(default_factory=list)
+
+    @property
+    def exams_available(self) -> bool:
+        """Whether the exams of the web front-end can be stored (the database of the connection
+        log): the Exams page says what to configure otherwise."""
+        return self.access_log.database.enabled
 
     @property
     def group_directory_reason(self) -> str | None:
@@ -694,6 +737,11 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     groups = _build(GroupsConfig, groups_data, f"{path}: [groups]",
                     directory_ttl=parse_duration(groups_data.get('directory_ttl', 600.0), 'groups.directory_ttl'))
     _check_groups(groups, path)
+    exams_data = _section(data, 'exams', path)
+    exams = _build(ExamsConfig, exams_data, f"{path}: [exams]",
+                   **{k: parse_duration(exams_data[k], f'exams.{k}') for k in
+                      ('lead', 'pre_start', 'eval_interval', 'close_after') if k in exams_data})
+    _check_exams(exams, path)
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",
                     **{k: parse_duration(limits_data[k], f'limits.{k}') for k in
@@ -707,9 +755,9 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items()
-           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'site', 'hosts')}
+           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'exams', 'site', 'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
-                 archives=archives, groups=groups, site=site, hosts=hosts,
+                 archives=archives, groups=groups, exams=exams, site=site, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:

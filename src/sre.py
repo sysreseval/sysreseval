@@ -356,6 +356,9 @@ def parse_args():
     parser_list.add_argument('--with-titles', action='store_true',
                              help=_('emit a list of {name, title} objects, '
                                     'reading translated titles from per-directory titles.json'))
+    parser_list.add_argument('--include-exam-only', dest='include_exam_only', action='store_true',
+                             help=_('also list the exam-only labs (a name holding _EXAM_, _OLD_, _DRAFT_ or '
+                                    '_TESTS_; privileged only)'))
 
     parser_export = subparsers.add_parser('export',
                                           help=_(
@@ -445,7 +448,7 @@ match SRE.args.action:
     case 'wipe':
         action_wipe()
     case 'list':
-        action_list(with_titles=SRE.args.with_titles)
+        action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only)
     case 'make-titles':
         action_make_titles(SRE.args.directory, SRE.args.output_file, SRE.args.recursive)
     case 'start':

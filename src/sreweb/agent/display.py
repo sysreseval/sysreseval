@@ -335,6 +335,11 @@ class DisplayManager:
             with contextlib.suppress(Exception):
                 await ws.close(code=code, message=message.encode())
 
+    async def disconnect(self, project: Project, code: int, message: str):
+        """Close the display WebSockets of a project (the end of its exam); the X server stays,
+        it dies with the project."""
+        await self._close_clients(project, code, message)
+
     async def stop(self, project: Project):
         """The project is gone (or the agent stops): its desktop too."""
         session = self.sessions.pop(project.rln, None)

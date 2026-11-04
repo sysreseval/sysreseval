@@ -1,16 +1,16 @@
 // The members dialog of the Groups page: the members of one group (GET /api/groups/{kind}/{name}:
 // login, name, department; who added a member of a custom group and when), a text filter, and
-// for a custom group when the database is configured the Add row (a login input with the
-// suggestions of the directory, GET /api/groups/people?q=, the logins typed or picked kept as
-// chips until Add posts them; a select adding every member of another group) and a Remove
-// button per member.  Every write reloads the dialog and tells the page (onChanged).
+// for a custom group when the database is configured the Add row (the login picker of
+// login_picker.js: a login input with the suggestions of the directory, GET
+// /api/groups/people?q=, the logins typed or picked kept as chips until Add posts them; a select
+// adding every member of another group) and a Remove button per member.  Every write reloads
+// the dialog and tells the page (onChanged).
 
 import * as api from './api.js';
 import {el, clear, toast} from './ui.js';
 import {_, format} from './i18n.js';
 import {KINDS, KIND_CUSTOM, kindLabel, kindsLabel, sortGroups} from './groups_model.js';
-
-const SUGGEST_DELAY = 200;      // ms after the last keystroke before the directory is asked
+import {createLoginPicker} from './login_picker.js';
 
 export function customUrl(name, suffix = '') {
   return `/api/groups/custom/${encodeURIComponent(name)}${suffix}`;
@@ -167,70 +167,17 @@ export function createMembersDialog({canEdit = false, getGroups = () => [], onCh
     onChanged();
   }
 
-  // the Add row of a custom group: a login input with the suggestions of the directory, the
-  // chips of the logins to add, the Add button, the select copying the members of another group
+  // the Add row of a custom group: the login picker (login_picker.js: a login input with the
+  // suggestions of the directory, the chips of the logins to add), the Add button, the select
+  // copying the members of another group
   function buildAddRow() {
-    const input = el('input', {type: 'text', class: 'group-login', list: 'group-people', autocomplete: 'off',
-                               placeholder: _('Login or name…')});
-    const datalist = el('datalist', {id: 'group-people'});
-    const chips = el('span', {class: 'chips'});
-    const more = el('span', {class: 'muted more'});
     const add = el('button', {type: 'button', class: 'primary'}, _('Add'));
+    const picker = createLoginPicker({datalistId: 'group-people', onChange: () => {
+      add.disabled = picker.size() === 0;
+    }});
     const from = el('select', {class: 'group-from'});
-    const element = el('div', {class: 'group-add'}, input, datalist, chips, add, from, more);
-    const pending = new Map();      // login -> its chip
-    let suggested = new Map();      // login -> the person suggested
-    let timer = null;
+    const element = el('div', {class: 'group-add'}, picker.input, picker.datalist, picker.chips, add, from, picker.more);
     add.disabled = true;
-
-    function addChip(login) {
-      login = login.trim();
-      if (!login || pending.has(login)) {
-        return;
-      }
-      const chip = el('span', {class: 'chip'}, login,
-        el('button', {type: 'button', title: _('Remove'), onclick: () => {
-          chip.remove();
-          pending.delete(login);
-          add.disabled = pending.size === 0;
-        }}, '×'));
-      pending.set(login, chip);
-      chips.append(chip);
-      add.disabled = false;
-    }
-
-    // what is typed becomes chips (several logins at once: spaces, commas)
-    function takeInput() {
-      for (const part of input.value.split(/[\s,;]+/)) {
-        addChip(part);
-      }
-      input.value = '';
-    }
-
-    async function suggest() {
-      const q = input.value.trim();
-      if (!q) {
-        clear(datalist);
-        more.textContent = '';
-        return;
-      }
-      let data;
-      try {
-        data = await api.get(api.withQuery('/api/groups/people', {q}));
-      } catch (e) {
-        return;
-      }
-      if (input.value.trim() !== q) {
-        return;
-      }
-      clear(datalist);
-      suggested = new Map();
-      for (const p of data.people || []) {
-        suggested.set(p.login, p);
-        datalist.append(el('option', {value: p.login}, [p.fullname, p.group].filter(Boolean).join(' · ')));
-      }
-      more.textContent = data.more ? _('More people match: type more of the name') : '';
-    }
 
     async function post(body) {
       const c = current;
@@ -240,20 +187,12 @@ export function createMembersDialog({canEdit = false, getGroups = () => [], onCh
       add.disabled = true;
       try {
         const result = await api.post(customUrl(c.group.name, '/members'), body);
-        for (const chip of pending.values()) {
-          chip.remove();
-        }
-        pending.clear();
+        picker.clear();
         toast(format(_('{n} member(s) added'), {n: result.added}));
       } catch (e) {
         if (e.status === 400 && e.data && Array.isArray(e.data.unknown) && e.data.unknown.length) {
           toast(format(_('Unknown logins: {logins}'), {logins: e.data.unknown.join(', ')}), {error: true});
-          for (const login of e.data.unknown) {
-            const chip = pending.get(login);
-            if (chip) {
-              chip.classList.add('unknown');
-            }
-          }
+          picker.markUnknown(e.data.unknown);
         } else if (e.status === 404) {
           toast(_('The group no longer exists.'), {error: true});
           c.dialog.close();
@@ -263,32 +202,16 @@ export function createMembersDialog({canEdit = false, getGroups = () => [], onCh
           toast(e.message, {error: true});
         }
       } finally {
-        add.disabled = pending.size === 0;
+        add.disabled = picker.size() === 0;
       }
       await load();
       onChanged();
     }
 
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ',') {
-        event.preventDefault();
-        takeInput();
-      }
-    });
-    input.addEventListener('change', () => {
-      if (suggested.has(input.value.trim())) {
-        takeInput();      // a suggestion picked
-      }
-    });
-    input.addEventListener('blur', takeInput);
-    input.addEventListener('input', () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(suggest, SUGGEST_DELAY);
-    });
     add.addEventListener('click', async () => {
-      takeInput();
-      if (pending.size) {
-        await post({logins: [...pending.keys()]});
+      picker.take();
+      if (picker.size()) {
+        await post({logins: picker.logins()});
       }
     });
     from.addEventListener('change', async () => {

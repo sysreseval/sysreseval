@@ -25,10 +25,13 @@ def lang_priority(identity: Identity, info: dict) -> list:
 
 
 def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False,
-             privileged: bool = False) -> dict:
+             privileged: bool = False, exam: dict | None = None) -> dict:
     """*privileged*: an instructor on somebody else's project (``access.is_privileged_caller``):
     every device opens, as in a debug project, and the Evaluation tab is shown whatever the lab
-    says (the last archived evaluation).  The owner, instructor or not, gets the student's view."""
+    says (the last archived evaluation).  The owner, instructor or not, gets the student's view.
+    *exam_mode*: the host-wide ``exam.json``, or an exam project (``agent/exam.py``) seen by its
+    owner: no Evaluation nor Apply Config tab, as in the Qt GUI; *exam* is the view of that exam
+    (``exam.view``), given back as ``exam`` (null for a plain project)."""
     priority = lang_priority(identity, info)
     show_instructor = instructor_view_allowed(info, identity)
     display = bool(display_enabled) and display_available(info, identity)
@@ -96,6 +99,7 @@ def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display
         'tabs': common.visible_tabs(info, exam_mode=exam_mode, instructor_shown=show_instructor, display=display,
                                     evaluation=evaluation),
         'display': {'available': display},
+        'exam': exam,
         'allow_self_grade': bool(info.get('allow_self_grade', True)),
         'export_schema_pdf': bool(info.get('export_schema_pdf', True)),
         'delay_between_self_grade': info.get('delay_between_self_grade', 0) or 0,

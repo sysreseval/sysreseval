@@ -51,6 +51,9 @@ TEMPLATES = {
                      '{{ groups }}</html>',
     'groups.html': '<html><title>Groups</title>{{ identity.login }} {{ instructor }} {{ groups_directory }} '
                    '{{ groups_database }} {{ group_sources }}</html>',
+    'exams.html': '<html><title>Exams</title>{{ identity.login }} {{ instructor }} {{ exams_database }} '
+                  '{{ exams_available }} {{ exam_defaults.lead }} {{ exam_defaults.pre_start }} '
+                  '{{ exam_defaults.eval_interval }}</html>',
 }
 
 

@@ -1,10 +1,12 @@
 // The progress of a project creation (POST /api/projects): the
 // NDJSON events of `sre start` (SRE/progress.py) shown like the Qt
-// StartProgressDialog, and the final "result" line.
+// StartProgressDialog, the final "result" line, and the dialog of the Flavor form a lab may ask
+// before starting (the Open page and the automatic starts of an exam).
 
 import * as api from './api.js';
 import {el} from './ui.js';
 import {_, format} from './i18n.js';
+import {Form} from './form.js';
 
 // A label, a progress bar, the last plain line of stderr as detail, an error with a Retry button.
 export class ProgressBox {
@@ -136,4 +138,48 @@ export async function runCreation(box, label, method, url, options) {
 // The page of a project just created.
 export function projectUrl(host, runningLabName) {
   return `/projects/${encodeURIComponent(host)}/${encodeURIComponent(runningLabName)}`;
+}
+
+// The dialog of the Flavor form of a lab, built from a "flavor_form" result (its chunks and
+// size): onSubmit(answers) when the form is submitted, onCancel() when the dialog is closed
+// without.  The dialog stays in the page so that a refused flavor ("flavor_error") shows the
+// same form again with its message and the values kept (setError); remove() drops it.
+export function flavorDialog(result, {onSubmit, onCancel = () => {}}) {
+  const error = el('div', {class: 'form-error'});
+  const body = el('div', {class: 'form-body'});
+  const cancel = el('button', {type: 'button'}, _('Cancel'));
+  const dialog = el('dialog', {class: 'modal flavor'},
+    el('h2', {}, _('Lab configuration')), error, body, el('div', {class: 'buttons'}, cancel));
+  if (Array.isArray(result.form_size) && result.form_size.length === 2) {
+    dialog.style.width = result.form_size[0] + 'px';
+  }
+  let submitted = false;
+  const form = new Form(body, result.chunks || [], {
+    allowSubmit: true,
+    onSubmit: () => {
+      submitted = true;
+      dialog.close();
+      onSubmit(form.getAnswers());
+    },
+  });
+  cancel.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    if (!submitted) {
+      onCancel();
+    }
+  });
+  document.body.append(dialog);
+  return {
+    dialog, form,
+    setError(text) {
+      error.textContent = text || '';
+    },
+    show() {
+      submitted = false;
+      dialog.showModal();
+    },
+    remove() {
+      dialog.remove();
+    },
+  };
 }

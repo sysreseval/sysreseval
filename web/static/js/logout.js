@@ -4,8 +4,9 @@
 // of the Close button of the Projects page (DELETE /api/projects/{host}/{rln}: the last
 // evaluation when the lab asks for it, then sre stop), waits for every answer, then submits the
 // logout form; "Log out" leaves them running; with no running project (or when the list cannot
-// be fetched) the form is submitted at once, as before.  Every text of the dialog comes from the
-// template (base.html): no catalog is loaded here.
+// be fetched) the form is submitted at once, as before.  The projects of an exam (the rows
+// carrying `exam`) are never closed: a student cannot close them, the instructor does.  Every
+// text of the dialog comes from the template (base.html): no catalog is loaded here.
 
 import * as api from './api.js';
 import {clear, el} from './ui.js';
@@ -124,7 +125,8 @@ export function setupLogout() {
       logout();     // the list is unknown: the plain logout, as before
       return;
     }
-    if (!Array.isArray(found) || found.length === 0) {
+    found = Array.isArray(found) ? found.filter((project) => !project.exam) : [];   // the exam projects stay
+    if (found.length === 0) {
       logout();
       return;
     }

@@ -12,6 +12,11 @@
 // focus the student on it (focus.js: the Focus student on project button, the tab, the terminal
 // and the question shared both ways with the student's own page, which follows through the same
 // module).
+//
+// During an exam (exam.js: the `sre-exam` event, currentExam()) a student's page of an exam
+// project has no Close button, and is shut down when the exam ends (the overlay of exam.js
+// covers it; the agent's {"t": "exam", "ended": true} event on the events socket ends it too);
+// a bound student on any other project, or before the exam starts, is sent to the Projects page.
 
 import './base.js';
 import * as api from './api.js';
@@ -22,6 +27,7 @@ import {el, clear, toast} from './ui.js';
 import {ProjectEvents, ReconnectingSocket} from './events.js';
 import {createPresenter} from './present.js';
 import {createFocus} from './focus.js';
+import {currentExam, isBound, labOfRunningLabName, refreshExam} from './exam.js';
 import {createSchemaTab} from './tabs/schema.js';
 import {createInformationsTab} from './tabs/informations.js';
 import {createMachinesTab} from './tabs/machines.js';
@@ -531,8 +537,40 @@ function onEvent(ev) {
     case 'removed':
       projectClosed();
       break;
+    case 'exam':
+      // the agent: the exam of this project ended (the owner is cut off), or its times changed
+      if (ev.ended && !ctx.helper) {
+        shutDown();
+      }
+      refreshExam();
+      break;
     default:
       break;
+  }
+}
+
+// -- the exam ----------------------------------------------------------------------------------
+
+// The exam binding the student (never an instructor nor a spectator): this page is sent to the
+// Projects page unless it shows an exam project during the exam; the exam project has no Close
+// button; the end shuts the page down (exam.js shows the overlay).
+function applyExam(examState) {
+  if (isInstructor || spectator || !examState) {
+    return;
+  }
+  const exam = examState.exam;
+  if (!isBound(exam)) {
+    return;
+  }
+  const lab = labOfRunningLabName(body.dataset.rln || '');
+  const examLab = (exam.labs || []).some((entry) => entry.lab_name === lab);
+  if (exam.address_allowed === false || !examLab || exam.phase === 'waiting' || exam.phase === 'starting') {
+    window.location.assign('/projects');
+    return;
+  }
+  closeButton.hidden = true;
+  if (exam.phase === 'ended') {
+    shutDown();
   }
 }
 
@@ -642,6 +680,8 @@ if (!spectator && focusLabel && (isOwner || (isInstructor && focusButton))) {
 async function main() {
   await i18n.init();
   setupControls();
+  document.addEventListener('sre-exam', (ev) => applyExam(ev.detail));
+  applyExam(currentExam());
   if (spectator) {
     // the presenter's view, now and on every change, and the table of their Evaluation tab; the
     // socket is closed when the presentation is over (a closed presentation closes it at once:

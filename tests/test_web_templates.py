@@ -103,7 +103,7 @@ def parse_po(path: Path) -> dict:
 class TestTemplates:
     def test_the_pages_exist(self):
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
-                'pool.html', 'history.html', 'archives.html', 'groups.html'} <= set(template_names())
+                'pool.html', 'history.html', 'archives.html', 'groups.html', 'exams.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -173,6 +173,9 @@ class TestTemplates:
         assert '<img src="/static/img/sysreseval.svg"' in html
         assert 'Alice Martin' in html and 'action="/logout"' in html
         assert '<html lang="fr">' in html
+        # the exam: the note above the cards and the progress of the automatic starts (projects.js)
+        assert '<p id="exam-note" class="exam-note muted" hidden>' in html
+        assert '<div id="exam-progress" class="progress-box" hidden>' in html
 
     def test_open_page(self):
         html = render('open.html')
@@ -189,10 +192,12 @@ class TestTemplates:
         assert 'href="/watch"' in html and 'href="/pool"' in html and 'href="/history"' not in html
         assert 'href="/archives"' in html                  # the Archives link of every instructor
         assert 'href="/groups"' in html                    # the Groups link too, right after Watch
-        assert html.index('href="/watch"') < html.index('href="/groups"') < html.index('href="/archives"')
+        assert 'href="/exams"' in html                     # and the Exams link, between Groups and Archives
+        assert html.index('href="/watch"') < html.index('href="/groups"') < html.index('href="/exams"')
+        assert html.index('href="/exams"') < html.index('href="/archives"')
         html = render('projects.html')
         assert 'href="/watch"' not in html and 'href="/pool"' not in html and 'href="/history"' not in html
-        assert 'href="/archives"' not in html and 'href="/groups"' not in html
+        assert 'href="/archives"' not in html and 'href="/groups"' not in html and 'href="/exams"' not in html
         # the History link of the administrators (instructors)
         html = render('projects.html', instructor=True, administrator=True)
         assert 'href="/history"' in html and 'href="/watch"' in html
@@ -378,6 +383,54 @@ class TestTemplates:
         assert '[auth.ldap]' not in directory_only and '[access_log.database]' in directory_only
         assert 'id="groups-new" class="primary" hidden>' in directory_only
 
+    def test_exams_page(self):
+        """The Exams page of the instructors: the toolbar (filter, status toggles with the past
+        exams hidden at first, New exam), the hints of what is missing, the table with the
+        defaults exams.js reads, the detail section with its actions and the members table (the
+        Group column hidden without a group source), the form dialog with every field."""
+        defaults = {'lead': 10, 'pre_start': 5, 'eval_interval': 60}
+        html = render('exams.html', instructor=True, exams_database=True, exams_available=True, exam_defaults=defaults)
+        for element in ('exams', 'exams-filter', 'exams-status', 'exams-count', 'exams-new', 'exams-hints', 'exams-notice',
+                        'exam-detail', 'exam-detail-title', 'exam-detail-summary', 'exam-detail-close', 'exam-detail-notice',
+                        'exam-actions', 'exam-start-now', 'exam-end-now', 'exam-minutes', 'exam-extend-all', 'exam-reduce-all',
+                        'exam-extend-selected', 'exam-reduce-selected', 'exam-end-selected', 'exam-labs-selected',
+                        'exam-close-projects', 'exam-edit', 'exam-delete', 'exam-members', 'exam-select-all',
+                        'exam-form', 'exam-form-title', 'exam-form-fields', 'exam-title', 'exam-logins', 'exam-groups',
+                        'exam-labs', 'exam-start-after', 'exam-end-before', 'exam-duration', 'exam-lead', 'exam-pre-start',
+                        'exam-eval-interval', 'exam-networks', 'exam-form-error', 'exam-form-cancel', 'exam-form-submit'):
+            assert f'id="{element}"' in html, element
+        for status, pressed in (('scheduled', 'true'), ('running', 'true'), ('past', 'false')):
+            assert f'data-status="{status}" aria-pressed="{pressed}"' in html, status
+        for key in ('title', 'status', 'start', 'end', 'duration', 'members', 'created_by'):
+            assert f'data-sort="{key}"' in html, key
+        assert ('class="grid watch exams" data-database="true" data-available="true" data-group-sources="false" '
+                'data-lead="10" data-pre-start="5" data-eval-interval="60"') in html
+        table, rest = html.split('<section id="exam-detail"')
+        assert len(re.findall(r'<th[ >]', table)) == 10 and 'colspan="10"' in table
+        detail, form = rest.split('<dialog id="exam-form"')
+        assert detail.startswith(' class="exam-detail" hidden>')
+        assert len(re.findall(r'<th[ >]', detail)) == 12 and 'colspan="12"' in detail
+        assert 'data-sort="group" hidden>' in detail
+        for key in ('login', 'fullname', 'group', 'connected', 'address', 'phase', 'started_at', 'end_at', 'extra_minutes'):
+            assert f'data-sort="{key}"' in detail, key
+        assert form.startswith(' class="modal exam">')
+        assert 'type="datetime-local" id="exam-start-after"' in form and 'type="datetime-local" id="exam-end-before"' in form
+        assert 'id="exam-groups" name="groups" multiple' in form and '<textarea id="exam-networks"' in form
+        assert 'id="exams-new" class="primary">' in html and 'id="exams-hints" class="muted" hidden>' in html
+        assert '/static/js/exams.js' in html and 'href="/exams"' in html and 'data-login="alice"' in html
+        # without a database, or with anonymous users: no New exam button, the hint says why
+        no_db = render('exams.html', instructor=True, exams_database=False, exams_available=True, exam_defaults=defaults)
+        assert 'id="exams-new" class="primary" hidden>' in no_db and 'id="exams-hints" class="muted">' in no_db
+        assert '[access_log.database]' in no_db and 'The users are anonymous' not in no_db and 'data-database="false"' in no_db
+        anonymous = render('exams.html', instructor=True, exams_database=True, exams_available=False, exam_defaults=defaults)
+        assert 'id="exams-new" class="primary" hidden>' in anonymous and 'The users are anonymous' in anonymous
+        assert '[access_log.database]' not in anonymous and 'data-available="false"' in anonymous
+        # the Group column of the members with a group source
+        with_groups = render('exams.html', instructor=True, exams_database=True, exams_available=True,
+                             exam_defaults=defaults, group_sources=True)
+        assert 'data-group-sources="true"' in with_groups and 'data-sort="group">' in with_groups
+        assert 'data-sort="group" hidden' not in with_groups
+
     def test_project_page_of_a_spectator(self):
         """The page in the iframe of /present/{id}: the data attributes project.js keys on, no
         control of the presenter's, no navigation out of the frame, the presenter named."""
@@ -417,7 +470,12 @@ class TestTemplates:
                  render('history.html', instructor=True, administrator=True, history_database=True, events=('login',)),
                  render('archives.html', instructor=True, archives_database=True),
                  render('groups.html', instructor=True, groups_directory=True, groups_database=True),
+                 render('exams.html', instructor=True, exams_database=True, exams_available=True,
+                        exam_defaults={'lead': 10, 'pre_start': 5, 'eval_interval': 60}),
                  render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'})]
+        # the image of the end overlay of an exam is referenced by exam.js, not by a template
+        assert (STATIC / 'img' / 'thats_all_folks.svg').is_file()
+        assert "'/static/img/thats_all_folks.svg'" in (JS / 'exam.js').read_text(encoding='utf-8')
         checked = 0
         for html in pages:
             references = static_references(html)
@@ -580,7 +638,71 @@ class TestGroupsModel:
         assert json.loads(completed.stdout) == GROUPS_MODEL_OUT
 
 
+EXAMS_FORM_RUNNER = """\
+import {toLocalInput, fromLocalInput, labsText, labLabel} from './exams_form.js';
+
+const epochs = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  roundTrip: epochs.map((e) => fromLocalInput(toLocalInput(e))),
+  shape: epochs.map((e) => /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(toLocalInput(e))),
+  empty: [toLocalInput(null), toLocalInput('x'), fromLocalInput(''), fromLocalInput('nope')],
+  labs: labsText([{lab: 'sre/dhcp.py', flavor: null}, {lab: 'sre/_EXAM_/x.py', flavor: 'hard'}]),
+  labels: [labLabel({name: 'sre/dhcp.py', title: {en: 'DHCP lab', fr: 'TP DHCP'}}), labLabel({name: 'sre/dhcp.py', title: null})],
+}));
+"""
+
+
+class TestExamsForm:
+    """The conversions of exams_form.js (the datetime-local inputs of the exam form, the lab
+    texts) run under node or bun when one is installed, skipped otherwise."""
+
+    def test_conversions(self, tmp_path):
+        node = shutil.which('node') or shutil.which('bun')
+        if node is None:
+            pytest.skip("neither node nor bun is installed")
+        for name in ('exams_form.js', 'i18n.js', 'ui.js', 'login_picker.js', 'api.js', 'groups_model.js'):
+            shutil.copy(JS / name, tmp_path / name)
+        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
+        runner = tmp_path / 'run.mjs'
+        runner.write_text(EXAMS_FORM_RUNNER)
+        epochs = [1792999980, 1793005440, 0]      # whole minutes: the inputs carry no seconds
+        completed = subprocess.run([node, str(runner), json.dumps(epochs)], capture_output=True, text=True, check=True)
+        out = json.loads(completed.stdout)
+        assert out['roundTrip'] == epochs and out['shape'] == [True, True, True]
+        assert out['empty'] == ['', '', None, None]
+        assert out['labs'] == 'sre/dhcp.py, sre/_EXAM_/x.py:hard'
+        assert out['labels'] == ['DHCP lab', 'sre/dhcp']
+
+
 class TestJavaScript:
+    def test_exam_state_shared_by_the_pages(self):
+        """One notion of the exam a student is in: exam.js fetches GET /api/exam (on the pushes
+        of the presence socket base.js hands it, and as a fallback poll), paints the body and
+        dispatches `sre-exam`; the Projects and project pages read that state, never /api/exam
+        themselves; the top bars take --exam-bg through the body class; the Logout dialog
+        leaves the exam projects alone."""
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert '--exam-bg:' in css and re.search(r'body\.exam-bound \.topbar[^{]*\{[^}]*var\(--exam-bg\)', css)
+        assert '#exam-ended' in css and 'z-index: 1100' in css.split('#exam-ended')[1].split('}')[0]
+        exam = (JS / 'exam.js').read_text(encoding='utf-8')
+        assert "api.get('/api/exam')" in exam and "'sre-exam-push'" in exam and "new CustomEvent('sre-exam'" in exam
+        assert "'exam-bound'" in exam and '/dismiss' in exam and 'i18n.init()' in exam
+        base = (JS / 'base.js').read_text(encoding='utf-8')
+        assert "message.t === 'exam'" in base and "'sre-exam-push'" in base and 'setupExam()' in base
+        for name in ('projects.js', 'project.js'):
+            text = (JS / name).read_text(encoding='utf-8')
+            assert "from './exam.js'" in text and "'sre-exam'" in text and "'/api/exam'" not in text, name
+        projects = (JS / 'projects.js').read_text(encoding='utf-8')
+        assert 'prestart_at' in projects and 'flavorDialog(' in projects and 'http_status === 409' in projects
+        assert 'closeButton.hidden = true' in (JS / 'project.js').read_text(encoding='utf-8')
+        logout = (JS / 'logout.js').read_text(encoding='utf-8')
+        assert 'project.exam' in logout
+        # the Open page and the members dialog share the dialogs of creation.js / login_picker.js
+        assert "from './login_picker.js'" in (JS / 'group_members.js').read_text(encoding='utf-8')
+        assert "from './login_picker.js'" in (JS / 'exams_form.js').read_text(encoding='utf-8')
+        assert 'flavorDialog(' in (JS / 'open.js').read_text(encoding='utf-8')
+        assert "from './form.js'" not in (JS / 'open.js').read_text(encoding='utf-8')
+
     def test_group_matching_shared_by_the_pages(self):
         """The pages match a row against a group through groups_model.js (one notion of a group
         key), never by comparing the department string themselves."""

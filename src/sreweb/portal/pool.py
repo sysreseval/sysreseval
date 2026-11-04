@@ -112,8 +112,8 @@ class Pool:
         self.labs_cache_ttl = labs_cache_ttl
         #: The lab list of the Open page per role (``labs``), kept labs_cache_ttl seconds, and the
         #: lock making the requests of a role wait for the one fetching it.
-        self._labs_cache: dict[bool, tuple[float, list]] = {}
-        self._labs_locks: dict[bool, asyncio.Lock] = {}
+        self._labs_cache: dict[tuple, tuple[float, list]] = {}      # (instructor, all labs) -> (when, labs)
+        self._labs_locks: dict[tuple, asyncio.Lock] = {}
         self._config_hosts = {h.name: h for h in hosts}
         self._removed: set = set()      # config hosts removed by hand (``enable`` brings them back)
         #: The projects being started on each host: a reservation counts as a project until the
@@ -512,7 +512,7 @@ class Pool:
         rows.sort(key=lambda r: r[:4])
         return [r[4] for r in rows]
 
-    async def labs(self, identity: Identity) -> list:
+    async def labs(self, identity: Identity, *, all_labs: bool = False) -> list:
         """The lab list of the pool for *identity*, ``[{name, title, kind, sort}]`` in the display
         order the host gives (``sre list --with-titles``: the tree flattened, a directory entry
         before its content, the ``title`` mode sorted by the browser): the one of the host a new
@@ -520,26 +520,37 @@ class Pool:
         tree), the next candidate when it fails, nothing when no host answers.  Kept
         ``labs_cache_ttl`` seconds per role (the reserved hosts are the instructors' only), so
         that the Open page costs one ``sre list`` per minute whatever the size of the pool; the
-        requests of one role wait for the one fetching."""
-        key = identity.is_instructor
+        requests of one role wait for the one fetching.  *all_labs* (an instructor: the exam-only
+        labs too, ``GET /v1/labs?all=1``) is a list of its own."""
+        key = (identity.is_instructor, all_labs)
         lock = self._labs_locks.setdefault(key, asyncio.Lock())
         async with lock:
             cached = self._labs_cache.get(key)
             if cached is not None and time.monotonic() - cached[0] < self.labs_cache_ttl:
                 return cached[1]
             for host in self._labs_hosts(identity):
-                labs = await self._labs_of(host, identity)
+                labs = await self._labs_of(host, identity, {'all': '1'} if all_labs else None)
                 if labs is not None:
                     self._labs_cache[key] = (time.monotonic(), labs)
                     return labs
             return []
 
-    async def _labs_of(self, host: HostConfig, identity: Identity) -> list | None:
+    def lab_titles(self) -> dict:
+        """The titles of the labs any cached list knows (``{name: title}``; the names of the
+        exam-only labs come from the ``all_labs`` list of the instructors)."""
+        titles = {}
+        for _, labs in self._labs_cache.values():
+            for entry in labs:
+                if entry.get('kind') == LAB_KIND_LAB and entry.get('title') is not None:
+                    titles.setdefault(entry['name'], entry['title'])
+        return titles
+
+    async def _labs_of(self, host: HostConfig, identity: Identity, params=None) -> list | None:
         """``GET /v1/labs`` of one host, normalised (``[{name, title, kind, sort}]``, a bare name
         accepted as a lab, an unknown kind or sort mode replaced by the default, duplicates
         dropped, the order kept); ``None`` when the host does not answer a list."""
         try:
-            async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity),
+            async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity), params=params,
                                         timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status != 200:
                     log.warning("host %s: GET /v1/labs answered %s: %s", host.name, resp.status,

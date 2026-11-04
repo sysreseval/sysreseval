@@ -24,6 +24,7 @@
   --presentation-bg: #d1c4e9;       /* the top bars of a page while a presentation is on */
   --helper-bg: #b2dfdb;             /* the top bars of an instructor's page on a student's project */
   --focus-bg: #80cbc4;              /* the top bars of both pages while the instructor focuses the student on it */
+  --exam-bg: #ffe082;               /* the bar and the top bar of a student's page while an exam binds them */
 }
 
 * { box-sizing: border-box; }
@@ -635,3 +636,55 @@ dialog.present { width: 540px; }
 dialog.modal .buttons .spacer { flex: 1; }
 .terminal-box.readonly .xterm-wrap { display: flex; align-items: center; justify-content: center; overflow: hidden; background: #303030; }
 .terminal-box.readonly .xterm-wrap .xterm { height: auto; flex: none; }
+
+/* exams: the bar under the site bar of a bound student (exam.js: the countdown to the start, the
+   time left, the end, or the refused address), the top bar in the exam colour (body.exam-bound,
+   set by exam.js; an instructor is never bound, so the helper / focus / presentation rules above
+   never meet it), the end overlay above everything (the presentation overlay included), the
+   cards of the Projects page, and the Exams page of the instructors */
+.exam-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--exam-bg); border-bottom: 1px solid var(--border); flex: none; }
+.exam-bar .exam-title { font-weight: bold; white-space: nowrap; }
+.exam-bar .countdown { font-weight: bold; font-variant-numeric: tabular-nums; }
+.exam-bar.denied { background: var(--danger); color: #fff; }
+.exam-bar.denied .muted { color: #fff; }
+body.exam-bound .topbar { background: var(--exam-bg); }
+body.exam-bound a[href="/open"] { display: none; }
+body.has-exam-ended { overflow: hidden; }
+#exam-ended { position: fixed; inset: 0; z-index: 1100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--bg); }
+#exam-ended img { max-width: 70%; max-height: 55%; }
+#exam-ended .exam-ended-title { font-size: 18px; font-weight: bold; margin: 0; }
+#exam-ended p { margin: 0; }
+.exam-note { margin: 0 0 8px; }
+.card.exam h2::after { content: " (exam)"; color: var(--accent); font-weight: normal; }
+.card .meta .exam { color: var(--accent); }
+table.grid.exams td.status.running { color: #2e7d32; font-weight: bold; }
+table.grid.exams td.status.past { color: var(--muted); }
+table.grid.exams tbody tr { cursor: pointer; }
+table.grid.exams tbody tr.open { background: #fff8e1; }
+table.grid.exams td.labs, table.grid.members td.labs { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exam-detail { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
+.exam-detail .toolbar h2 { margin: 0; font-size: 16px; }
+.exam-detail .toolbar .muted { flex: 1; }
+.exam-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.exam-actions .exam-adjust { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--border-light); border-radius: 3px; }
+.exam-actions .exam-adjust input { width: 60px; }
+.exam-actions .spacer { flex: 1; }
+table.grid.members td.phase.active { color: #2e7d32; font-weight: bold; }
+table.grid.members td.phase.ended, table.grid.members td.phase.done { color: var(--muted); }
+table.grid.members td.connected { text-align: center; }
+dialog.exam { width: 720px; }
+dialog.exam fieldset { border: 1px solid var(--border-light); border-radius: 3px; margin: 8px 0; padding: 6px 10px; }
+dialog.exam legend { color: var(--muted); padding: 0 4px; }
+dialog.exam label { display: block; margin: 6px 0; }
+dialog.exam input[type="text"], dialog.exam textarea, dialog.exam select { display: block; width: 100%; margin-top: 3px; box-sizing: border-box; }
+dialog.exam .exam-times { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+dialog.exam .exam-times label { display: inline-block; }
+dialog.exam .exam-times input { width: 100%; margin-top: 3px; box-sizing: border-box; }
+dialog.exam .group-add .label { margin-right: 4px; }
+dialog.exam .group-add input[type="text"] { display: inline-block; width: 220px; margin: 0; }
+.exam-labs { display: flex; flex-direction: column; gap: 2px; max-height: 40vh; overflow: auto; }
+.exam-labs label.exam-lab { display: flex; align-items: center; gap: 6px; margin: 0; }
+.exam-labs label.exam-lab .name { flex: 0 0 auto; }
+.exam-labs label.exam-lab input.preset { width: 120px; margin: 0; display: inline-block; }
+dialog.exam-labs-dialog { width: 520px; }
+dialog.exam .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }
