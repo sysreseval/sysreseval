@@ -835,8 +835,9 @@ What an instructor gets:
   start of the project, the table of its grade elements with the parts, the subtotals, the
   bonuses, the total and the mark, laid out by the browser from the stored elements exactly as
   the agent lays out the evaluation of a running project, then the errors and the warnings of
-  the run). The **Summary** view (the second button of the toolbar; a lab is required, the
-  search starts on the last evaluation of each student) is the lab summary of the Watch page
+  the run). The **Summary** view (the second button of the toolbar; a lab is required: without
+  one the view lists the labs of the archives, a click on one loads its summary; the search
+  starts on the last evaluation of each student) is the lab summary of the Watch page
   for the evaluations found: one block per lab matched, with the matrix of the students and
   the grade elements (Total and Mark last, the rows *Max* / *Average* / *Success* below) and the
   table of the elements with their statistics; a click on a row of the matrix opens the

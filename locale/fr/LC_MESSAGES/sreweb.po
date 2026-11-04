@@ -1227,6 +1227,9 @@ msgstr "Les dernières évaluations peuvent manquer : la base de données ne ré
 msgid "Give a lab to see its summary."
 msgstr "Indiquez un TP pour voir sa synthèse."
 
+msgid "Choose a lab to see its summary:"
+msgstr "Choisissez un TP pour voir sa synthèse :"
+
 msgid "The summary shows the {n} newest evaluations only: narrow the filters."
 msgstr "La synthèse ne porte que sur les {n} évaluations les plus récentes : réduisez les filtres."
 

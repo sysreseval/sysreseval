@@ -413,6 +413,8 @@ table.grid.archives tbody tr[data-id] { cursor: pointer; }
 .archives-summary h2 { font-size: 1.1em; margin: 12px 0 2px; }
 .archives-summary p.muted { margin: 0 0 4px; }
 .archives-summary .watch-summary-tables { margin-bottom: 12px; }
+.archives-summary ul.lab-choice { margin: 0 0 8px 20px; padding: 0; }     /* the labs to choose from, without a lab */
+.archives-summary ul.lab-choice li { margin: 2px 0; }
 .history-stats { margin: 0 8px 8px; overflow-x: auto; }   /* the users table is wide: scrolled, not cut */
 .history-stats h2 { font-size: 1.1em; margin: 12px 0 2px; }
 .history-stats table.grid { margin: 4px 0 8px; }

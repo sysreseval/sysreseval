@@ -16,7 +16,9 @@
 // Summary (GET /api/archives/summary): the lab summary of the Watch page for the evaluations
 // found by the same filters (a lab is required; the last evaluation of each student by default):
 // one block per lab, the matrix of the students and the elements, then the elements table
-// (watch_summary.js); a click on a matrix row opens the evaluation.
+// (watch_summary.js); a click on a matrix row opens the evaluation.  Without a lab the view
+// lists the labs of the archives (the suggestions of the Lab field), a click on one loads its
+// summary.
 //
 // The filters and the view are kept in the URL (a filtered view reloads and can be shared;
 // ?open=<id> opens the evaluation of that id once the page is loaded: a link to one result).
@@ -55,8 +57,9 @@ const detail = createArchiveDialog();
 
 // view: evaluations or summary; rows: the rows of the page (or of the summary); before: the
 // cursor of the page shown (null = the newest rows); cursors: those of the previous pages, for
-// Newer; truncated: the summary holds its newest rows only
-const state = {view: DEFAULT_VIEW, rows: [], more: false, before: null, cursors: [], truncated: false};
+// Newer; truncated: the summary holds its newest rows only; labs: the labs of the archives
+// (GET /api/archives/options; null until they are known)
+const state = {view: DEFAULT_VIEW, rows: [], more: false, before: null, cursors: [], truncated: false, labs: null};
 
 function body() {
   return table.querySelector('tbody');
@@ -237,6 +240,34 @@ function renderSummary() {
   }
 }
 
+// the summary view without a lab: the labs of the archives, each a link loading its summary
+// (the plain hint while they are not known: the options are loading, or could not be read)
+function renderLabChoice() {
+  clear(summaryRoot);
+  if (state.labs === null) {
+    summaryRoot.append(el('p', {class: 'muted'}, _('Give a lab to see its summary.')));
+    return;
+  }
+  if (!state.labs.length) {
+    summaryRoot.append(el('p', {class: 'muted'}, _('No archived evaluation yet.')));
+    return;
+  }
+  summaryRoot.append(el('p', {class: 'muted'}, _('Choose a lab to see its summary:')));
+  const list = el('ul', {class: 'lab-choice'});
+  for (const lab of state.labs) {
+    const link = el('a', {href: '#', onclick: (event) => {
+      event.preventDefault();
+      setFilter('lab', lab);
+    }}, lab);
+    list.append(el('li', {}, link));
+  }
+  summaryRoot.append(list);
+}
+
+function showsLabChoice() {
+  return state.view === 'summary' && databaseConfigured && !readForm().lab;
+}
+
 // -- the page -------------------------------------------------------------------------------
 
 function countText() {
@@ -316,9 +347,9 @@ async function load() {
   }
   const filters = readForm();
   if (state.view === 'summary' && !filters.lab) {
-    clear(summaryRoot);
-    summaryRoot.append(el('p', {class: 'muted'}, _('Give a lab to see its summary.')));
+    renderLabChoice();
     countElement.textContent = '';
+    pageElement.textContent = '';
     return;
   }
   if (state.before !== null) {
@@ -364,6 +395,10 @@ async function loadOptions() {
   };
   fill('archives-labs', options.labs);
   fill('archives-groups', options.groups);
+  state.labs = Array.isArray(options.labs) ? options.labs.map(String) : [];
+  if (showsLabChoice()) {
+    renderLabChoice();      // the choice drawn before the labs were known
+  }
 }
 
 function search() {
