@@ -428,6 +428,11 @@ class TestLiveGroups:
         with pytest.raises(GroupNotFound):
             store.remove_member_sync('TP mardi', 'Alice')
         assert store.memberships_sync() == {'TP mardi': frozenset({'alice', 'bob', 'carol'}), 'tp lundi': frozenset()}
+        assert store.remove_members_sync('TP mardi', ['bob', 'Alice', 'zed']) == (1, 2)   # Alice gone, zed never there
+        assert store.remove_members_sync('TP mardi', []) == (0, 2)
+        with pytest.raises(GroupNotFound):
+            store.remove_members_sync('nope', ['alice'])
+        assert store.memberships_sync() == {'TP mardi': frozenset({'alice', 'carol'}), 'tp lundi': frozenset()}
         store.delete_sync('TP mardi')
         with pytest.raises(GroupNotFound):
             store.get_sync('TP mardi')

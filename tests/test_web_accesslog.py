@@ -148,6 +148,7 @@ class TestEventFor:
         assert {A.EVENTS[route] for route in (('POST', '/api/groups'), ('PUT', '/api/groups/custom/{name}'),
                                               ('DELETE', '/api/groups/custom/{name}'),
                                               ('POST', '/api/groups/custom/{name}/members'),
+                                              ('DELETE', '/api/groups/custom/{name}/members'),
                                               ('DELETE', '/api/groups/custom/{name}/members/{login}'))} == {'group_edit'}
         assert 'groups' in A.ALL_EVENTS and 'group_edit' in A.ALL_EVENTS
 

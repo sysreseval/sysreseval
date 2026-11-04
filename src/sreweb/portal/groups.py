@@ -555,6 +555,19 @@ class GroupStore:
                 raise GroupNotFound(f"{login} is not a member of {name!r}")
         self._run(work)
 
+    def remove_members_sync(self, name: str, logins: Iterable[str]) -> tuple:
+        """``(removed, members)``: the members of the group among *logins* taken out (the logins
+        not in the group do not count) and the size of the group afterwards."""
+        def work(cur):
+            group = self._find(cur, name)
+            cur.execute(self._q(SELECT_MEMBERS), (group.id,))
+            present = {str(row[0]) for row in cur.fetchall()}
+            gone = sorted(present & set(logins))
+            for login in gone:
+                cur.execute(self._q(DELETE_MEMBER), (group.id, login))
+            return len(gone), self._count(cur, group.id)
+        return self._run(work)
+
     def memberships_sync(self) -> dict:
         """Every custom group with its logins (an empty group included)."""
         def work(cur):
@@ -597,6 +610,11 @@ class GroupStore:
     async def remove_member(self, name: str, login: str):
         await asyncio.to_thread(self.remove_member_sync, name, login)
         self.invalidate()
+
+    async def remove_members(self, name: str, logins: Iterable[str]) -> tuple:
+        result = await asyncio.to_thread(self.remove_members_sync, name, list(logins))
+        self.invalidate()
+        return result
 
     def _fresh(self) -> bool:
         return self._loaded is not None and self.monotonic() - self._loaded < MEMBERSHIPS_TTL

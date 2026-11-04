@@ -89,6 +89,7 @@ EVENTS = {
     ('PUT', '/api/groups/custom/{name}'): 'group_edit',
     ('DELETE', '/api/groups/custom/{name}'): 'group_edit',
     ('POST', '/api/groups/custom/{name}/members'): 'group_edit',
+    ('DELETE', '/api/groups/custom/{name}/members'): 'group_edit',
     ('DELETE', '/api/groups/custom/{name}/members/{login}'): 'group_edit',
     # the Exams page: every change of an exam (``action`` = create / update / delete / end /
     # adjust / labs / close, ``exam``, ``count`` of students, ``minutes``); a student dismissing

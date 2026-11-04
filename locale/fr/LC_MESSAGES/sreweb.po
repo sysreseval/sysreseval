@@ -1359,6 +1359,15 @@ msgstr "Ajouter"
 msgid "Add the members of…"
 msgstr "Ajouter les membres de…"
 
+msgid "Remove the members of…"
+msgstr "Retirer les membres de…"
+
+msgid "Remove from this group every member of {name}?"
+msgstr "Retirer de ce groupe tous les membres de {name} ?"
+
+msgid "{n} member(s) removed"
+msgstr "{n} membre(s) retiré(s)"
+
 msgid "Remove"
 msgstr "Retirer"
 

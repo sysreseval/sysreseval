@@ -409,6 +409,14 @@ class TestGroupStore:
             store.remove_member_sync('TP mardi', 'ghost')
         store.remove_member_sync('TP mardi', 'alice')
         assert store.memberships_sync() == {'TP mardi': frozenset({'bob', 'carol'}), 'autre': frozenset()}
+        # the members of another group taken out: only those present count, in one transaction
+        assert store.remove_members_sync('TP mardi', ['carol', 'alice', 'zed']) == (1, 1)
+        assert [s[1] for s in server.statements if s[1].startswith('DELETE')][-1:] == \
+            [G.DELETE_MEMBER.format(members='user_groups_members')]
+        assert store.remove_members_sync('TP mardi', []) == (0, 1)
+        with pytest.raises(G.GroupNotFound):
+            store.remove_members_sync('nope', ['bob'])
+        assert store.memberships_sync() == {'TP mardi': frozenset({'bob'}), 'autre': frozenset()}
         store.delete_sync('TP mardi')
         deletes = [s[1] for s in server.statements if s[1].startswith('DELETE')]
         assert deletes[-2:] == [G.DELETE_MEMBERS_OF.format(members='user_groups_members'),
@@ -700,11 +708,22 @@ class TestGroupsThroughThePortal:
                 assert (await h.client.put('/api/groups/custom/nope', json={'description': 'x'}, headers=hp)).status == 404
                 resp = await h.client.put('/api/groups/custom/TP%20mardi', json={'name': 'TP mardi'}, headers=hp)
                 assert resp.status == 200 and (await resp.json())['group']['description'] == 'Mardi'   # the same name: no rename
-                # remove members, delete the group
+                # remove members: one, then those of another group; delete the group
                 assert (await h.client.delete('/api/groups/custom/TP%20mardi/members/carol', headers=hp)).status == 204
                 assert (await h.client.delete('/api/groups/custom/TP%20mardi/members/carol', headers=hp)).status == 404
                 assert (await h.client.delete('/api/groups/custom/TP%20mardi/members/bad%20login', headers=hp)).status == 404
                 assert (await (await h.client.get('/api/groups/custom/TP%20mardi', headers=prof)).json())['group']['members'] == 3
+                for bad, status in (('', 400), ('custom:nope', 404), ('directory:nope', 404), ('nope', 404)):
+                    resp = await h.client.delete(f'/api/groups/custom/TP%20mardi/members?from={bad}', headers=hp)
+                    assert resp.status == status, (bad, await resp.text())
+                assert (await h.client.delete('/api/groups/custom/TP%20mardi/members', headers=hp)).status == 400
+                assert (await h.client.delete('/api/groups/custom/nope/members?from=department:1A', headers=hp)).status == 404
+                resp = await h.client.delete('/api/groups/custom/TP%20mardi/members?from=department:1A', headers=hp)
+                assert resp.status == 200 and await resp.json() == {'removed': 2, 'members': 1}      # alice and bob
+                resp = await h.client.delete('/api/groups/custom/TP%20mardi/members?from=department:1A', headers=hp)
+                assert resp.status == 200 and await resp.json() == {'removed': 0, 'members': 1}
+                data = await (await h.client.get('/api/groups/custom/TP%20mardi', headers=prof)).json()
+                assert [m['login'] for m in data['members']] == ['ghost']
                 assert (await h.client.delete('/api/groups/custom/TP%20mardi', headers=hp)).status == 204
                 assert (await h.client.get('/api/groups/custom/TP%20mardi', headers=prof)).status == 404
                 assert (await h.client.delete('/api/groups/custom/TP%20mardi', headers=hp)).status == 404
@@ -713,6 +732,7 @@ class TestGroupsThroughThePortal:
                 server.down = True
                 assert (await h.client.get('/api/groups/custom/x', headers=prof)).status == 503
                 assert (await h.client.post('/api/groups', json={'name': 'y'}, headers=hp)).status == 503
+                assert (await h.client.delete('/api/groups/custom/x/members?from=department:1A', headers=hp)).status == 503
                 data = await (await h.client.get('/api/groups', headers=prof)).json()
                 assert len(data['groups']) == 4 and data['database']['connected'] is False and data['database']['last_error']
             lines = [parse_line(line) for line in (tmp_path / 'access.log').read_text().splitlines()]
@@ -728,6 +748,9 @@ class TestGroupsThroughThePortal:
             assert (rename['group'], rename['new_name']) == ('TP lundi', 'TP mardi')
             removed = next(l for l in lines if l.get('action') == 'remove' and l.get('status') == '204')
             assert removed['member'] == 'carol'
+            by_source = [l for l in lines if l.get('action') == 'remove' and l.get('source') == 'department:1A']
+            assert [(l['status'], l.get('count'), l.get('member')) for l in by_source] == \
+                [('404', None, None), ('200', '2', None), ('200', '0', None), ('503', None, None)]
             reads = [(l.get('kind'), l.get('group')) for l in lines if l.get('event') == 'groups']
             assert (None, None) in reads and ('custom', 'TP lundi') in reads
             assert not any(l.get('event') == 'denied' for l in lines)

@@ -532,7 +532,8 @@ users the portal knows, of three kinds, each with its members (login, name, depa
 - **custom groups**: the groups the instructors create on the page (a name of at most 64
   characters without `:` nor `/`, which may not be that of a department or of a directory group, a
   description), fill (logins typed or picked among the people of the directory, which refuses an
-  unknown login; or every member of another group of any kind at once), empty and delete. Any
+  unknown login; or every member of another group of any kind at once), empty (one member at a
+  time, or at once every member who also belongs to another group of any kind) and delete. Any
   instructor may change any custom group; the creator and the dates are shown. A user may belong
   to several groups.
 
@@ -588,7 +589,8 @@ the others by the memberships the portal knows, read again every 30 s and after 
 on the page (a student added to a presented group is told at once, one removed loses the
 presentation). Every reading of the page is a `groups` line of the connection log, every change a
 `group_edit` line (`action` = `create` / `update` / `delete` / `add` / `remove`, `group`, and
-`member`, `count`, `source` or `new_name`).
+`member` (the one member removed), `source` (the group whose members were added or removed),
+`count` (the logins given to an add, the members a removal by source took out) or `new_name`).
 
 ### Exams
 

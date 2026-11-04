@@ -150,6 +150,7 @@ class Routes:
         r.add_put('/api/groups/custom/{name}', self.api_group_update)
         r.add_delete('/api/groups/custom/{name}', self.api_group_delete)
         r.add_post('/api/groups/custom/{name}/members', self.api_group_members_add)
+        r.add_delete('/api/groups/custom/{name}/members', self.api_group_members_remove)
         r.add_delete('/api/groups/custom/{name}/members/{login}', self.api_group_member_remove)
         # the exams: the student's own (the exam binding them), then the instructors' (the fixed
         # paths before the id one)
@@ -1026,6 +1027,25 @@ class Routes:
         await self._resync_presentations()
         return web.Response(status=204)
 
+    async def _source_logins(self, store, source) -> tuple:
+        """``(key, logins)`` of the group *source* (a key of any kind) named by an add or a removal
+        of members: 400 when not a key, 404 when unknown; a ``HistoryError`` of the database
+        propagates."""
+        if not isinstance(source, str) or not source.strip():
+            raise PoolError(400, "from must be a group key")
+        kind, source_name = parse_group_key(source.strip())
+        if kind == KIND_CUSTOM:
+            try:
+                _source_group, members = await store.get(source_name)
+            except GroupError:
+                raise PoolError(404, "unknown source group")
+            return group_key(kind, source_name), sorted(m['login'] for m in members)
+        snapshot = self.memberships.snapshot()
+        found = snapshot.members_of(kind, source_name) if snapshot is not None else None
+        if found is None:
+            raise PoolError(404, "unknown source group")
+        return group_key(kind, source_name), sorted(found)
+
     async def api_group_members_add(self, request):
         """Instructors: add ``logins`` to a custom group, or every member of the group ``from``
         (a key); the logins the directory does not know are refused as a whole (400 with
@@ -1038,25 +1058,11 @@ class Routes:
         self._log_group(request, action='add', group=name)
         await self.memberships.refresh()
         if 'from' in body:
-            source = body['from']
-            if not isinstance(source, str):
-                return json_error(400, "from must be a group key")
-            kind, source_name = parse_group_key(source.strip())
-            if kind == KIND_CUSTOM:
-                try:
-                    _source_group, members = await store.get(source_name)
-                except GroupError:
-                    return json_error(404, "unknown source group")
-                except HistoryError as e:
-                    return self._groups_db_error(e)
-                logins = sorted(m['login'] for m in members)
-            else:
-                snapshot = self.memberships.snapshot()
-                found = snapshot.members_of(kind, source_name) if snapshot is not None else None
-                if found is None:
-                    return json_error(404, "unknown source group")
-                logins = sorted(found)
-            self._log_group(request, source=group_key(kind, source_name))
+            try:
+                source, logins = await self._source_logins(store, body['from'])
+            except HistoryError as e:
+                return self._groups_db_error(e)
+            self._log_group(request, source=source)
         else:
             logins = body.get('logins')
             if not isinstance(logins, list) or not all(isinstance(login, str) for login in logins):
@@ -1082,6 +1088,28 @@ class Routes:
         await self.memberships.refresh()
         await self._resync_presentations()
         return web.json_response({'added': added, 'members': members, 'unknown': []})
+
+    async def api_group_members_remove(self, request):
+        """Instructors: remove from a custom group every member who also belongs to the group
+        ``?from=`` (a key of any kind; 400 without one, 404 when unknown); ``removed`` = the
+        members taken out, ``members`` = the size afterwards."""
+        self._require_instructor(request)
+        store = self._group_store()
+        name = request.match_info['name']
+        self._log_group(request, action='remove', group=name)
+        await self.memberships.refresh()
+        try:
+            source, logins = await self._source_logins(store, request.query.get('from'))
+            self._log_group(request, source=source)
+            removed, members = await store.remove_members(name, logins)
+        except GroupError as e:
+            return json_error(e.status, str(e))
+        except HistoryError as e:
+            return self._groups_db_error(e)
+        self._log_group(request, count=removed)
+        await self.memberships.refresh()
+        await self._resync_presentations()
+        return web.json_response({'removed': removed, 'members': members})
 
     async def api_group_member_remove(self, request):
         """Instructors: remove a member from a custom group (404 when not a member)."""

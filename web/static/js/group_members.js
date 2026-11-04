@@ -3,8 +3,9 @@
 // for a custom group when the database is configured the Add row (the login picker of
 // login_picker.js: a login input with the suggestions of the directory, GET
 // /api/groups/people?q=, the logins typed or picked kept as chips until Add posts them; a select
-// adding every member of another group) and a Remove button per member.  Every write reloads
-// the dialog and tells the page (onChanged).
+// adding every member of another group; a select removing the members who also belong to
+// another group) and a Remove button per member.  Every write reloads the dialog and tells the
+// page (onChanged).
 
 import * as api from './api.js';
 import {el, clear, toast} from './ui.js';
@@ -169,14 +170,16 @@ export function createMembersDialog({canEdit = false, getGroups = () => [], onCh
 
   // the Add row of a custom group: the login picker (login_picker.js: a login input with the
   // suggestions of the directory, the chips of the logins to add), the Add button, the select
-  // copying the members of another group
+  // copying the members of another group, the select removing the members of another group
   function buildAddRow() {
     const add = el('button', {type: 'button', class: 'primary'}, _('Add'));
     const picker = createLoginPicker({datalistId: 'group-people', onChange: () => {
       add.disabled = picker.size() === 0;
     }});
     const from = el('select', {class: 'group-from'});
-    const element = el('div', {class: 'group-add'}, picker.input, picker.datalist, picker.chips, add, from, picker.more);
+    const removeFrom = el('select', {class: 'group-from'});
+    const element = el('div', {class: 'group-add'}, picker.input, picker.datalist, picker.chips, add, from, removeFrom,
+                       picker.more);
     add.disabled = true;
 
     async function post(body) {
@@ -214,6 +217,22 @@ export function createMembersDialog({canEdit = false, getGroups = () => [], onCh
         await post({logins: picker.logins()});
       }
     });
+    // the members of the group *key* taken out of the group (DELETE …/members?from=)
+    async function removeMembersOf(key) {
+      const c = current;
+      if (!c) {
+        return;
+      }
+      try {
+        const result = await api.del(api.withQuery(customUrl(c.group.name, '/members'), {from: key}));
+        toast(format(_('{n} member(s) removed'), {n: result.removed}));
+      } catch (e) {
+        toast(e.message, {error: true});
+      }
+      await load();                 // closes the dialog itself when the group is gone
+      onChanged();
+    }
+
     from.addEventListener('change', async () => {
       const key = from.value;
       from.value = '';
@@ -221,21 +240,37 @@ export function createMembersDialog({canEdit = false, getGroups = () => [], onCh
         await post({from: key});
       }
     });
-    return {element, from};
+    removeFrom.addEventListener('change', async () => {
+      const key = removeFrom.value;
+      removeFrom.value = '';
+      if (!key) {
+        return;
+      }
+      const source = (getGroups() || []).find((g) => g.key === key);
+      const name = source ? source.name : key;
+      if (window.confirm(format(_('Remove from this group every member of {name}?'), {name}))) {
+        await removeMembersOf(key);
+      }
+    });
+    return {element, from, removeFrom};
   }
 
-  // the select of the Add row: the other groups of the page, by kind, with their sizes
+  // the selects of the Add row: the other groups of the page, by kind, with their sizes
   function fillSources() {
     const c = current;
     if (!c || !c.addRow) {
       return;
     }
-    const select = c.addRow.from;
+    fillSelect(c.addRow.from, _('Add the members of…'), c.group.key);
+    fillSelect(c.addRow.removeFrom, _('Remove the members of…'), c.group.key);
+  }
+
+  function fillSelect(select, placeholder, ownKey) {
     clear(select);
-    select.append(el('option', {value: ''}, _('Add the members of…')));
+    select.append(el('option', {value: ''}, placeholder));
     const groups = getGroups() || [];
     for (const kind of KINDS) {
-      const ofKind = sortGroups(groups.filter((g) => g.kind === kind && g.key !== c.group.key), {key: 'name'});
+      const ofKind = sortGroups(groups.filter((g) => g.kind === kind && g.key !== ownKey), {key: 'name'});
       if (!ofKind.length) {
         continue;
       }
