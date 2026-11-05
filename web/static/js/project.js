@@ -553,7 +553,10 @@ function onEvent(ev) {
 
 // The exam binding the student (never an instructor nor a spectator): this page is sent to the
 // Projects page unless it shows an exam project during the exam; the exam project has no Close
-// button; the end shuts the page down (exam.js shows the overlay).
+// button; the end shuts the page down (exam.js shows the overlay); time added after the end
+// (the exam resumed) loads the page again, since the project is still running.
+let examShut = false;      // the page was shut down by the end of the exam
+
 function applyExam(examState) {
   if (isInstructor || spectator || !examState) {
     return;
@@ -571,6 +574,9 @@ function applyExam(examState) {
   closeButton.hidden = true;
   if (exam.phase === 'ended') {
     shutDown();
+    examShut = true;
+  } else if (examShut) {
+    window.location.reload();
   }
 }
 

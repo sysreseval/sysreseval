@@ -235,6 +235,10 @@ class TestPhases:
         m.ended_at = None
         exam.ended_at = NOW + 50
         assert exam.end_at(m) == NOW + 50 and exam.status(NOW + 50) == X.STATUS_PAST
+        # minutes taken beyond the time left: the end is the start, never before (the agents refuse it)
+        exam.ended_at = None
+        m.extra_minutes = -200
+        assert exam.end_at(m) == NOW and exam.phase(m, NOW + 1) == X.PHASE_ENDED
         # the extra minutes push past end_before too (an explicit decision of the instructor)
         exam = self.exam(start_after=NOW + 60, end_before=NOW + 1000)
         m = exam.member('alice', create=True)
@@ -285,7 +289,7 @@ class TestRegistry:
         exam = run(reg.create(PROF, spec()))
         assert exam.id == 1 and reg.get(1) is exam and reg.get('1') is exam and reg.get('x') is None
         assert wa.sent == [pushed(1, 'starting')] and wb.sent == [] and wp.sent == []
-        assert reg.shown == {'alice': (1, 'starting')}
+        assert set(reg.shown) == {'alice'} and reg.shown['alice'][:2] == (1, 'starting')
         assert reg.for_login('alice', 'INFO1') == (exam, None, 'starting')
         assert reg.for_login('carol', 'INFO2') is None and reg.for_login('prof') is None
         # a second page of alice: nothing new for her login (the browser asks GET /api/exam)
@@ -401,15 +405,22 @@ class TestRegistry:
             run(reg.observe(exam, login, [row(DHCP, rln, owner=login)]))
         a, b = exam.members['alice'], exam.members['bob']
         assert exam.end_at(a) == exam.end_at(b) == NOW + 5400
-        # everybody: the duration and the end time shift together
+        assert wa.sent[-1] == wb.sent[-1] == pushed(1, 'active')
+        told = len(wa.sent), len(wb.sent)
+        # everybody: the duration and the end time shift together; the pages are told (the phase
+        # is the same, the end is not: the countdown follows at once)
         run(reg.adjust(exam.id, None, 10))
         assert (exam.duration, exam.end_before) == (6000, NOW + 7800) and exam.end_at(a) == NOW + 6000
+        assert (len(wa.sent), len(wb.sent)) == (told[0] + 1, told[1] + 1) and wa.sent[-1] == pushed(1, 'active')
         run(reg.adjust(exam.id, None, -20))
         assert (exam.duration, exam.end_before) == (4800, NOW + 6600)
-        # a selection: their extra minutes, cumulative
+        # a selection: their extra minutes, cumulative; only their pages are told
         run(reg.adjust(exam.id, {'alice'}, 5))
         run(reg.adjust(exam.id, {'alice'}, 5))
         assert (a.extra_minutes, exam.end_at(a), exam.end_at(b)) == (10, NOW + 5400, NOW + 4800)
+        assert (len(wa.sent), len(wb.sent)) == (told[0] + 4, told[1] + 2)
+        run(reg.tick())                                       # nothing changed: nothing pushed
+        assert (len(wa.sent), len(wb.sent)) == (told[0] + 4, told[1] + 2)
         # End now for bob, then 5 more minutes for him: ended lifted, the extra counts from the base
         clock.now = NOW + 1000
         run(reg.end_now(exam.id, {'bob'}))
@@ -431,9 +442,12 @@ class TestRegistry:
         assert exam.ended_at == clock.now and wa.sent[-1] == pushed(1, 'ended')
         run(reg.adjust(exam.id, None, 30))
         assert exam.ended_at is None and wa.sent[-1] == pushed(1, 'active')
-        # the labs: of a selection (the DHCP project of alice becomes an orphan), of everybody
+        # the labs: of a selection (the DHCP project of alice becomes an orphan; her pages are
+        # told, so that they start the new lab at once), of everybody
+        told = len(wa.sent)
         run(reg.set_labs(exam.id, {'alice'}, [X.ExamLab(SSH)]))
         assert exam.labs_of('alice') == [X.ExamLab(SSH)] and exam.labs_of('bob') == [X.ExamLab(DHCP)]
+        assert len(wa.sent) == told + 1 and wa.sent[-1] == pushed(1, 'active')
         assert a.projects == {} and a.orphans == [{'host': 'a01', 'rln': 'ra'}] and a.started_at is not None
         run(reg.set_labs(exam.id, None, [X.ExamLab(SSH), X.ExamLab(DHCP, 'hard')]))
         assert a.labs is None and b.labs is None and exam.flavor_of('bob', DHCP) == 'hard'
@@ -923,6 +937,7 @@ class TestThroughThePortal:
                 assert status == 200, data
                 assert (await api(h, 'GET', '/api/exam', alice))[1]['exam']['end_at'] == member['end_at'] + 300
                 assert spy.calls[-1][1:3] == ('PUT', f"/projects/{urllib.parse.quote(rln, safe='')}/exam")
+                assert await receive(ws) == {'t': 'exam', 'id': xid, 'phase': 'active'}     # her end moved: told
                 assert (await api(h, 'POST', f'/api/exams/{xid}/adjust', prof, {'logins': ['carol'],
                                                                                  'extra_minutes': 5}))[0] == 400
                 # the end for everybody: the banner, the project refused, then dismissed
@@ -1013,9 +1028,11 @@ class TestThroughThePortal:
                 status, data = await api(h, 'POST', f'/api/exams/{xid}/adjust', prof, {'all': True, 'extra_minutes': 30})
                 assert status == 200 and data['duration'] == 90 and data['end_before'] == start + 9000
                 assert (await api(h, 'GET', '/api/exam', alice))[1]['exam']['end_at'] == start + 5400
+                assert await receive(ws) == {'t': 'exam', 'id': xid, 'phase': 'active'}     # the end moved: told
                 # Start now = the start time edited to now, End now by a PUT of end_before
                 status, data = await api(h, 'PUT', f'/api/exams/{xid}', prof, {'title': 'Renamed'})
                 assert status == 200 and data['title'] == 'Renamed' and data['duration'] == 90
+                assert await receive(ws) == {'t': 'exam', 'id': xid, 'phase': 'active'}     # the title changed: told
                 clock.now = start + 5400
                 await exams.tick()
                 assert await receive(ws) == {'t': 'exam', 'id': xid, 'phase': 'ended'}

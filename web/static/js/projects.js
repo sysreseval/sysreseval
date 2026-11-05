@@ -7,8 +7,8 @@
 // the page starts the exam labs the student has no project of (one at a time, through the
 // usual POST /api/projects: the progress in #exam-progress, the Flavor form when the lab asks
 // one), from the pre-start instant of the countdown or as soon as the exam binds a student who
-// logs in later; when the exam starts (or once the single exam project is created during it)
-// the page opens it.
+// logs in later; when the exam starts (or once the single exam project is created during it,
+// or when time added after the end resumes the exam) the page opens it.
 
 import './base.js';
 import * as api from './api.js';
@@ -265,7 +265,8 @@ function applyExam(state) {
   const previous = exam;
   exam = state && isBound(state.exam) ? state.exam : null;
   const wasPreparing = previous !== null && (previous.phase === 'waiting' || previous.phase === 'starting');
-  if (exam && exam.phase === 'active' && (wasPreparing || previous === null)) {
+  const resumed = previous !== null && previous.phase === 'ended';     // time added after the end
+  if (exam && exam.phase === 'active' && (wasPreparing || resumed || previous === null)) {
     openWhenActive = true;
   }
   if (!exam) {

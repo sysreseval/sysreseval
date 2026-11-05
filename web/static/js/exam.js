@@ -30,6 +30,7 @@ let overlay = null;         // the end overlay, while shown
 let timer = null;           // the 1 s countdown
 let refreshing = null;      // the GET in progress
 let lastPhase = null;       // the phase last rendered (null: unbound)
+let lastLabs = null;        // the lab names last rendered (a lab added: the Projects page starts it)
 let crossed = false;        // the countdown reached zero: one refresh asked
 
 // The state the page learnt last (null before the first answer): {exam, now, offset}.
@@ -239,17 +240,28 @@ function render() {
   lastPhase = phase;
 }
 
-// Where a page goes when the exam changes phase: the Projects page when the exam starts (it
-// opens the exam project), or when the user is bound while on the Open page; the project
-// page of an exam project stays (project.js handles it).
+// Where a page goes when the exam changes: the Projects page when the exam starts (it opens
+// the exam project), when the user is bound while on the Open page, or when a lab is added to
+// the exam while the page shows an exam project (the Projects page starts the new one); the
+// project page of an exam project stays otherwise (project.js handles it).
 function navigate(exam, phase) {
-  if (!phase || phase === lastPhase) {
+  const labs = phase ? examLabNames(exam) : null;
+  const previousLabs = lastLabs;
+  lastLabs = labs;
+  if (!phase) {
     return;
   }
   const path = window.location.pathname;
   const onProjects = path === '/projects' || path === '/';
   const rln = body.dataset.rln || '';
-  const onExamProject = Boolean(rln) && examLabNames(exam).includes(labOfRunningLabName(rln));
+  const onExamProject = Boolean(rln) && labs.includes(labOfRunningLabName(rln));
+  if (phase === lastPhase) {
+    const added = previousLabs !== null && labs.some((name) => !previousLabs.includes(name));
+    if (added && onExamProject && (phase === PHASE_ACTIVE || phase === PHASE_STARTING)) {
+      window.location.assign('/projects');
+    }
+    return;
+  }
   const wasPreparing = lastPhase === PHASE_WAITING || lastPhase === PHASE_STARTING;
   if (phase === PHASE_ACTIVE && wasPreparing && !onProjects && !onExamProject) {
     window.location.assign('/projects');

@@ -213,8 +213,9 @@ class Exam:
 
     def end_at(self, member: Member | None) -> float | None:
         """The end of a student's exam: ``min(started + duration, end_before)`` plus their extra
-        minutes, capped by an *End now* (of everybody or of them); ``None`` until their clock
-        started."""
+        minutes (never before their start: minutes taken beyond the time left end the exam at
+        once, and the agents refuse an end before the start), capped by an *End now* (of
+        everybody or of them); ``None`` until their clock started."""
         if member is None or member.started_at is None:
             return None
         end = math.inf
@@ -224,7 +225,7 @@ class Exam:
             end = min(end, self.end_before)
         if end == math.inf:
             return None
-        end += member.extra_minutes * 60
+        end = max(end + member.extra_minutes * 60, member.started_at)
         for cap in (self.ended_at, member.ended_at):
             if cap is not None:
                 end = min(end, cap)
@@ -439,8 +440,8 @@ def parse_extra_minutes(value) -> int:
 # -- the registry ------------------------------------------------------------------------------
 
 class Exams:
-    """The exams, what the students' browsers were told (``shown``: login -> (exam id, phase))
-    and the store behind (``examstore.ExamStore`` or ``None``: in memory only).  *clock*
+    """The exams, what the students' browsers were told (``shown``: login -> the ``_told``
+    tuple, the exam id and the phase first) and the store behind (``examstore.ExamStore`` or ``None``: in memory only).  *clock*
     (``time.time``) is the time of every phase (the tests move it)."""
 
     def __init__(self, presence: Presence, store=None, *, memberships=None, clock=time.time,
@@ -889,10 +890,21 @@ class Exams:
 
     # -- the browsers ---------------------------------------------------------------------------
 
+    @staticmethod
+    def _told(exam: Exam, member: Member | None, phase: str) -> tuple:
+        """What a student's pages know of their exam, compared by ``resync``: the phase, but
+        also the start and the end of their clock, their labs and the title, so that a time an
+        instructor adds or takes, a lab added or the Start now of a scheduled exam reach the
+        countdown and the automatic starts at once instead of at the next fallback poll."""
+        login = None if member is None else member.login
+        return (exam.id, phase, exam.start_after, exam.pre_start, exam.end_at(member),
+                tuple(lab.lab for lab in exam.labs_of(login)), exam.title)
+
     async def resync(self, logins: Iterable[str], now: float | None = None):
         """For each login, the exam binding them now compared with what their pages were told
-        (``shown``): one push of the difference, ``{"t": "exam", "id", "phase"}`` (``phase``
-        ``null`` when no exam binds them any more)."""
+        (``shown``, what ``_told`` gives): one push of the difference, ``{"t": "exam", "id",
+        "phase"}`` (``phase`` ``null`` when no exam binds them any more); the pages fetch the
+        state again on every push."""
         now = self._at(now)
         for login in set(logins):
             identity = self.presence.identity_of(login)
@@ -902,7 +914,7 @@ class Exams:
             if identity.is_instructor:
                 continue
             binding = self.for_login(login, identity.group, now)
-            current = None if binding is None else (binding[0].id, binding[2])
+            current = None if binding is None else self._told(*binding)
             shown = self.shown.get(login)
             if current == shown:
                 continue
