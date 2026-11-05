@@ -244,7 +244,7 @@ class TestLoginAndPages:
 
     def test_ldap_mode_without_directory(self, tmp_path):
         async def go():
-            over = {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldap://127.0.0.1:1', 'bind_dn_template': 'uid={login},dc=x',
+            over = {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldaps://127.0.0.1:1', 'bind_dn_template': 'uid={login},dc=x',
                                                      'timeout': 1}}}
             async with Harness(tmp_path, auth_mode='ldap', web_over=over) as h:
                 resp = await h.client.post('/api/login', json={'login': 'alice', 'password': 'x'}, headers=CSRF)
@@ -548,7 +548,7 @@ class TestAccessLog:
 
     def test_login_failures(self, tmp_path):
         async def go():
-            over = {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldap://127.0.0.1:1', 'bind_dn_template': 'uid={login},dc=x',
+            over = {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldaps://127.0.0.1:1', 'bind_dn_template': 'uid={login},dc=x',
                                                      'timeout': 1}}, **self.over(tmp_path)}
             async with Harness(tmp_path, auth_mode='ldap', web_over=over) as h:
                 resp = await h.client.post('/api/login', json={'login': 'alice', 'password': 'x'}, headers=CSRF)

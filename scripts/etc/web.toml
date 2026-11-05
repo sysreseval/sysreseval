@@ -83,7 +83,15 @@ instructor_filter = "(gidNumber=2000)"
 #    user (like instructor_group_filter; no default: the test is off).
 # administrator_groups = []
 # administrator_group_filter = "(&(objectClass=posixGroup)(cn=sre-admins)(memberUid={login}))"
+# The connection: an ldaps:// uri, or ldap:// with start_tls = true.  The server certificate is
+# always verified (the chain against the system CA store, or against tls_ca: a CA bundle or the
+# self-signed certificate of the server itself; the host of the uri against the names of the
+# certificate, so name the server as its certificate does).  A plain ldap:// without start_tls
+# sends the passwords and takes the roles and groups from an unauthenticated connection: the
+# portal refuses to start unless allow_cleartext = true.
 start_tls = false
+# tls_ca = "/etc/sreweb/ldap-ca.pem"
+# allow_cleartext = false
 timeout = 10
 
 [auth.proxy]

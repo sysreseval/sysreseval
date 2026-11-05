@@ -14,6 +14,10 @@ tests, ``administrator_groups`` and ``administrator_group_filter``, run for the 
 (``[auth] administrators`` names logins directly, applied by the portal).  Every ldap3 call runs
 in a thread (the library is synchronous).
 
+Every connection (``ldaps://`` or ``start_tls``; a plain ``ldap://`` needs ``allow_cleartext`` in
+the config) verifies the server certificate (``tls_ca`` or the system CA store, the host of the
+uri against the names of the certificate) and a StartTLS the server declines aborts the login.
+
 In LDAP mode the role is baked into the session cookie: a rule change applies at the next login.
 In proxy mode, :class:`LdapRoleResolver` runs the same tests for the login the proxy gives
 (``ldap_roles``) and reads the group, the :class:`DirectoryLookup` being cached per login by
@@ -22,8 +26,10 @@ In proxy mode, :class:`LdapRoleResolver` runs the same tests for the login the p
 import asyncio
 import logging
 import math
+import ssl
 import warnings
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from ..config import LdapConfig
 from ..identity import Identity, ROLE_INSTRUCTOR, ROLE_STUDENT, clean_group, is_valid_login
@@ -58,6 +64,15 @@ def _escape_rdn(value: str) -> str:
         warnings.simplefilter('ignore', DeprecationWarning)
         from ldap3.utils.dn import escape_rdn
     return escape_rdn(value)
+
+
+def _uri_host(uri: str) -> str | None:
+    """The host named by an ``ldap://`` / ``ldaps://`` uri (the SNI of the TLS handshake),
+    ``None`` when the uri names none."""
+    try:
+        return urlsplit(uri).hostname or None
+    except ValueError:
+        return None
 
 
 def _first(entry, attribute: str) -> str:
@@ -111,17 +126,34 @@ class _Directory:
         ``parse_duration``) made every bind fail with *required argument is not an integer*."""
         return max(1, math.ceil(self.cfg.timeout))
 
+    def _tls(self):
+        """The TLS settings of every connection (``ldaps://`` and StartTLS alike): the server
+        certificate is required and verified against the system CA store, or against ``tls_ca``
+        (a CA bundle or the server's own self-signed certificate), and ldap3 checks the host of
+        the uri against the names of the certificate after the handshake (``validate=CERT_REQUIRED``;
+        the library's default ``Tls()`` is ``CERT_NONE`` and accepted any certificate, so an on-path
+        attacker could read every password and answer the role searches).  The host name is sent
+        as SNI."""
+        import ldap3
+        return ldap3.Tls(validate=ssl.CERT_REQUIRED, ca_certs_file=self.cfg.tls_ca or None,
+                         sni=_uri_host(self.cfg.uri))
+
     def _server(self):
         import ldap3
         return ldap3.Server(self.cfg.uri, use_ssl=self.cfg.uri.lower().startswith('ldaps://'),
-                            get_info=ldap3.NONE, connect_timeout=self._timeout())
+                            get_info=ldap3.NONE, connect_timeout=self._timeout(), tls=self._tls())
 
     def _connect(self, user, password):
+        """A bound connection, ``None`` when the bind is refused (a wrong password); a certificate
+        the server cannot prove raises an ``LDAPException`` (the callers turn it into
+        :class:`LdapError`), and so does a StartTLS the server refuses: nothing is ever sent in
+        clear when ``start_tls`` is set."""
         import ldap3
         conn = ldap3.Connection(self._server(), user=user or None, password=password or None,
                                 receive_timeout=self._timeout(), auto_bind=ldap3.AUTO_BIND_NONE)
-        if self.cfg.start_tls:
-            conn.start_tls()
+        if self.cfg.start_tls and not conn.start_tls():
+            conn.unbind()
+            raise LdapError("the directory did not start TLS")
         if not conn.bind():
             conn.unbind()
             return None
@@ -230,7 +262,9 @@ class LdapRoleResolver(_Directory):
             finally:
                 conn.unbind()
         except LDAPException as e:
-            log.warning("LDAP failure resolving the role of %s: %s", login, e)
+            # str(e), not e: a log record kept by a handler would hold the exception, hence the
+            # traceback and the socket ldap3 leaves open after a failed StartTLS name check
+            log.warning("LDAP failure resolving the role of %s: %s", login, str(e))
             raise LdapError(str(e)) from e
 
 
@@ -277,7 +311,7 @@ class LdapAuthenticator(_Directory):
             finally:
                 service.unbind()
         except LDAPException as e:
-            log.warning("LDAP failure for %s: %s", login, e)
+            log.warning("LDAP failure for %s: %s", login, str(e))
             raise LdapError(str(e)) from e
 
     def _identity(self, conn, login: str, dn: str, entry, language: str) -> Identity:

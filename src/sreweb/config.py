@@ -224,8 +224,22 @@ class LdapConfig:
     # an instructor is never an administrator; [auth] administrators names logins directly.
     administrator_groups: list = field(default_factory=list)
     administrator_group_filter: str = ''
+    # The connection: ldaps:// (TLS from the start) or ldap:// + start_tls.  The server certificate
+    # is always verified: its chain against the system CA store, or against tls_ca (a CA bundle,
+    # or the self-signed certificate of the server itself), and the host of the uri against its
+    # names (subjectAltName, else the CN).  A plain ldap:// without start_tls sends the passwords
+    # (LDAP mode) and takes the roles, groups and administrators from an unauthenticated connection:
+    # refused unless allow_cleartext says so.
     start_tls: bool = False
+    tls_ca: str = ''
+    allow_cleartext: bool = False
     timeout: float = 10.0
+
+    @property
+    def uses_tls(self) -> bool:
+        """Whether the connection to the directory is encrypted and the server authenticated:
+        an ``ldaps://`` uri, or ``start_tls``."""
+        return self.uri.lower().startswith('ldaps://') or bool(self.start_tls)
 
     @property
     def administrator_tests(self) -> bool:
@@ -632,6 +646,38 @@ def host_config_from_dict(h: dict, where: str) -> HostConfig:
     return host
 
 
+_LDAP_SCHEMES = ('ldap://', 'ldaps://')
+
+
+def _check_ldap_connection(ldap: LdapConfig, path: str):
+    """The connection keys of ``[auth.ldap]`` whenever a directory is named (every mode: the
+    Groups page lists it too): a known scheme, TLS unless ``allow_cleartext``, ``start_tls`` on
+    an ``ldap://`` uri only, ``tls_ca`` a readable file."""
+    where = f"{path}: auth.ldap."
+    for name in ('start_tls', 'allow_cleartext'):
+        if not isinstance(getattr(ldap, name), bool):
+            raise ConfigError(f"{where}{name} must be true or false")
+    if not isinstance(ldap.uri, str):
+        raise ConfigError(f"{where}uri must be a string")
+    if not isinstance(ldap.tls_ca, str):
+        raise ConfigError(f"{where}tls_ca must be the absolute path of a PEM file")
+    if ldap.tls_ca:
+        if not os.path.isabs(ldap.tls_ca):
+            raise ConfigError(f"{where}tls_ca must be the absolute path of a PEM file")
+        if not os.path.isfile(ldap.tls_ca) or not os.access(ldap.tls_ca, os.R_OK):
+            raise ConfigError(f"{where}tls_ca: {ldap.tls_ca} is not a readable file")
+    if not ldap.uri:
+        return
+    scheme = ldap.uri.lower()
+    if not scheme.startswith(_LDAP_SCHEMES):
+        raise ConfigError(f"{where}uri must start with ldap:// or ldaps://")
+    if scheme.startswith('ldaps://') and ldap.start_tls:
+        raise ConfigError(f"{where}start_tls applies to an ldap:// uri (ldaps:// is TLS from the start)")
+    if not ldap.uses_tls and not ldap.allow_cleartext:
+        raise ConfigError(f"{where}uri {ldap.uri} is in clear (the passwords and the directory's answers): "
+                          "use ldaps://, or start_tls = true, or say allow_cleartext = true")
+
+
 def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     auth_data = _section(data, 'auth', path)
     ldap_data = _section(auth_data, 'ldap', path)
@@ -655,6 +701,7 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
             raise ConfigError(f"{path}: auth.ldap.uri is required {why}")
         if not ldap.bind_dn_template and not ldap.search_base:
             raise ConfigError(f"{path}: auth.ldap needs bind_dn_template or search_base {why}")
+    _check_ldap_connection(ldap, path)
     if not isinstance(auth.administrators, list) or not all(isinstance(a, str) and a.strip()
                                                              for a in auth.administrators):
         raise ConfigError(f"{path}: auth.administrators must be a list of logins")

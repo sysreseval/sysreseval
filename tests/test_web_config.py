@@ -188,14 +188,14 @@ class TestWebConfig:
 
     @pytest.mark.parametrize('auth, expected', [
         ({'mode': 'anonymous', 'ldap': {'attr_group': 'departmentNumber'}, 'proxy': {'header_group': 'X-Remote-Group'}}, False),
-        ({'mode': 'ldap', 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people', 'attr_group': 'departmentNumber'}}, True),
-        ({'mode': 'ldap', 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}}, False),
+        ({'mode': 'ldap', 'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people', 'attr_group': 'departmentNumber'}}, True),
+        ({'mode': 'ldap', 'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people'}}, False),
         ({'mode': 'proxy', 'proxy': {'header_group': 'X-Remote-Group'}}, True),
         ({'mode': 'proxy', 'ldap': {'attr_group': 'departmentNumber'}}, False),       # no lookup without ldap_roles
-        ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
+        ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people',
                                                                    'attr_group': 'departmentNumber'}}, True),
-        ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}}, False),
-        ({'mode': 'proxy', 'proxy': {'ldap_groups': True}, 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
+        ({'mode': 'proxy', 'proxy': {'ldap_roles': True}, 'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people'}}, False),
+        ({'mode': 'proxy', 'proxy': {'ldap_groups': True}, 'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people',
                                                                     'attr_group': 'departmentNumber'}}, True),
     ])
     def test_groups_configured(self, auth, expected):
@@ -204,7 +204,7 @@ class TestWebConfig:
 
     def test_ldap_groups_needs_the_directory_and_attr_group(self):
         base = {'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1']}
-        directory = {'uri': 'ldap://x', 'search_base': 'ou=people'}
+        directory = {'uri': 'ldaps://x', 'search_base': 'ou=people'}
         with pytest.raises(ConfigError, match='auth.ldap.uri is required with auth.proxy.ldap_groups'):
             web_config_from_dict({**base, 'auth': {'mode': 'proxy', 'proxy': {'ldap_groups': True}}})
         with pytest.raises(ConfigError, match='attr_group is required with auth.proxy.ldap_groups'):
@@ -232,7 +232,7 @@ class TestWebConfig:
         assert not cfg.group_directory and 'uri and search_base' in cfg.group_directory_reason and not cfg.group_sources
         cfg = web_config_from_dict({**base, 'groups': {'table': 'grp', 'directory_ttl': '5m'},
                                     'auth': {'mode': 'proxy',
-                                             'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people',
+                                             'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people',
                                                       'search_filter': '(supannAliasLogin={login})',
                                                       'attr_group_members': ' member ', 'attr_group_name': 'cn',
                                                       'groups_filter': '(objectClass=groupOfNames)'}}})
@@ -259,7 +259,7 @@ class TestWebConfig:
         assert cfg.exams_available
         assert not cfg.groups_configured        # the Group column still needs a department source
         # a search filter that does not name the login attribute alone needs attr_login
-        ldap = {'uri': 'ldap://x', 'search_base': 'ou=people', 'search_filter': '(|(uid={login})(mail={login}))'}
+        ldap = {'uri': 'ldaps://x', 'search_base': 'ou=people', 'search_filter': '(|(uid={login})(mail={login}))'}
         cfg = web_config_from_dict({**base, 'auth': {'ldap': ldap}})
         assert cfg.auth.ldap.login_attribute == '' and not cfg.group_directory and 'attr_login' in cfg.group_directory_reason
         cfg = web_config_from_dict({**base, 'auth': {'ldap': {**ldap, 'attr_login': ' uid '}}})
@@ -604,9 +604,9 @@ class TestImports:
         origins = {}
         first = {'auth': {'mode': 'ldap'}, 'hosts': [], 'secret': 's'}
         base = merge_config({}, first, origins, 'a')
-        merged = merge_config(base, {'auth': {'ldap': {'uri': 'ldap://x'}}, 'hosts': [{'name': 'h'}], 'listen': ':1'},
+        merged = merge_config(base, {'auth': {'ldap': {'uri': 'ldaps://x'}}, 'hosts': [{'name': 'h'}], 'listen': ':1'},
                               origins, 'b')
-        assert merged == {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldap://x'}}, 'hosts': [{'name': 'h'}],
+        assert merged == {'auth': {'mode': 'ldap', 'ldap': {'uri': 'ldaps://x'}}, 'hosts': [{'name': 'h'}],
                           'secret': 's', 'listen': ':1'}
         assert origins['auth.mode'] == 'a' and origins['auth.ldap.uri'] == 'b' and origins['listen'] == 'b'
         assert base == first == {'auth': {'mode': 'ldap'}, 'hosts': [], 'secret': 's'}     # not mutated
@@ -635,3 +635,55 @@ class TestImports:
         assert import_paths([absolute], '/elsewhere') == [absolute]
         assert names(import_paths(['missing.toml'], d)) == ['missing.toml']
         assert import_paths([], d) == []
+
+
+class TestLdapConnection:
+    """The connection keys of ``[auth.ldap]``: the directory is reached over TLS (``ldaps://`` or
+    ``start_tls``) with the server certificate verified, unless ``allow_cleartext`` says so; checked
+    whenever a uri is given, in every mode (the Groups page lists the directory too)."""
+
+    BASE = {'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1']}
+
+    def ldap(self, **ldap):
+        return web_config_from_dict({**self.BASE, 'auth': {'mode': 'ldap', 'ldap': {'search_base': 'ou=people', **ldap}}}).auth.ldap
+
+    def test_tls_forms_accepted(self, tmp_path):
+        ca = tmp_path / 'ldap-ca.pem'
+        ca.write_text('-----BEGIN CERTIFICATE-----\n')
+        cfg = self.ldap(uri='ldaps://ldap.example.org')
+        assert cfg.uses_tls and not cfg.start_tls and cfg.tls_ca == '' and cfg.allow_cleartext is False
+        cfg = self.ldap(uri='ldap://ldap.example.org', start_tls=True, tls_ca=str(ca))
+        assert cfg.uses_tls and cfg.start_tls and cfg.tls_ca == str(ca)
+        cfg = self.ldap(uri='ldap://ldap.example.org', allow_cleartext=True)
+        assert not cfg.uses_tls and cfg.allow_cleartext
+        assert self.ldap(uri='LDAPS://ldap.example.org:636/').uses_tls
+        # no directory at all: nothing to check
+        assert not web_config_from_dict({**self.BASE, 'auth': {'ldap': {'allow_cleartext': True}}}).auth.ldap.uri
+
+    @pytest.mark.parametrize('ldap, fragment', [
+        ({'uri': 'ldap://ldap.example.org'}, 'in clear'),
+        ({'uri': 'ldap.example.org'}, 'ldap:// or ldaps://'),
+        ({'uri': 'ldapi:///'}, 'ldap:// or ldaps://'),
+        ({'uri': 'ldaps://ldap.example.org', 'start_tls': True}, 'start_tls applies to an ldap:// uri'),
+        ({'uri': 'ldaps://ldap.example.org', 'start_tls': 'yes'}, 'start_tls must be true or false'),
+        ({'uri': 'ldap://ldap.example.org', 'allow_cleartext': 1}, 'allow_cleartext must be true or false'),
+        ({'uri': 'ldaps://ldap.example.org', 'tls_ca': 'relative/ca.pem'}, 'absolute path'),
+        ({'uri': 'ldaps://ldap.example.org', 'tls_ca': '/nonexistent/ldap-ca.pem'}, 'not a readable file'),
+        ({'uri': 'ldaps://ldap.example.org', 'tls_ca': 3}, 'tls_ca must be the absolute path'),
+        ({'uri': 3}, 'uri must be a string'),
+    ])
+    def test_refused(self, ldap, fragment):
+        with pytest.raises(ConfigError, match=fragment):
+            self.ldap(**ldap)
+
+    def test_checked_in_every_mode(self):
+        """A proxy-mode site whose Groups page lists the directory, or that runs ldap_groups: the
+        same rule (the roles and the groups would come from an unauthenticated connection)."""
+        for auth in ({'mode': 'proxy', 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}},
+                     {'mode': 'proxy', 'proxy': {'ldap_groups': True},
+                      'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people', 'attr_group': 'departmentNumber'}},
+                     {'mode': 'anonymous', 'ldap': {'uri': 'ldap://x', 'search_base': 'ou=people'}}):
+            with pytest.raises(ConfigError, match='in clear'):
+                web_config_from_dict({**self.BASE, 'auth': auth})
+            auth['ldap']['allow_cleartext'] = True
+            assert web_config_from_dict({**self.BASE, 'auth': auth}).auth.ldap.allow_cleartext
