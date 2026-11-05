@@ -1251,7 +1251,8 @@ class Routes:
         # student's real start, seconds later, must not be refused; a placement refused by the
         # pool, an agent not answering or a relay broken before the result line cost nothing
         # either (the agent's start lock per user and max_projects still bound that user).
-        wait, previous = self.limiter.take_every('start', identity.login, self.cfg.limits.start_interval)
+        limit_key = self._limit_key(request, identity)
+        wait, previous = self.limiter.take_every('start', limit_key, self.cfg.limits.start_interval)
         if wait:
             return json_error(429, "please wait before starting another project", retry_after=round(wait))
         started = False
@@ -1289,7 +1290,7 @@ class Routes:
             if reservation is not None:
                 self.pool.release(reservation)
             if not started:
-                self.limiter.give_back('start', identity.login, previous)
+                self.limiter.give_back('start', limit_key, previous)
 
     async def _forward_json(self, request, host, identity, payload: dict, *, on_result=None):
         """Relay a JSON POST that answers an NDJSON stream."""
@@ -1360,9 +1361,15 @@ class Routes:
     async def api_evaluation(self, request):
         return await self._relay_json(request, 'GET', '/evaluation')
 
+    def _limit_key(self, request, identity: Identity) -> str:
+        """The key of the start / evaluation budget of a user: the login, or in anonymous mode
+        the client address, since a new pseudonym costs one ``POST /login`` and would otherwise
+        come with a fresh budget (the address is the one the login limit counts too)."""
+        return identity.login if not identity.anonymous else 'addr:' + self.access.address(request)
+
     async def api_eval(self, request):
         identity = self._require_identity(request)
-        wait = self.limiter.allow_every('eval', identity.login, self.cfg.limits.eval_interval)
+        wait = self.limiter.allow_every('eval', self._limit_key(request, identity), self.cfg.limits.eval_interval)
         if wait:
             return json_error(429, "please wait before evaluating again", retry_after=round(wait))
         return await self._relay_json(request, 'POST', '/eval', timeout=900)

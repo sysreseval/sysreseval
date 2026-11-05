@@ -408,6 +408,30 @@ class TestProjectsThroughThePortal:
                 assert (await h.client.get('/api/pool')).status == 403
         run(go())
 
+    def test_anonymous_budget_is_per_client_address(self, tmp_path):
+        """A new pseudonym costs one POST /login: in anonymous mode the start and evaluation
+        budgets count per client address, not per login (security review, fourth Low finding);
+        an authenticated identity keeps its own budget."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                a = await h.login('A')
+                result = await h.start()
+                assert result['status'] == 'created'
+                rln = result['running_lab_name']
+                resp = await h.client.post(f'/api/projects/a01/{rln}/eval', headers=CSRF)
+                assert resp.status == 200
+                h.client.session.cookie_jar.clear()
+                b = await h.login('B')                       # another guest from the same address
+                assert b['login'] != a['login']
+                status, error = await h.start_refused()      # A's start slot, taken seconds ago
+                assert status == 429 and error['retry_after'] > 0
+            # authenticated users: their own budget each, whatever the address
+            async with Harness(tmp_path / 'proxy', web_over=PROXY_OVER) as h:
+                for user in ('bob', 'carol'):
+                    resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**who(user), **CSRF})
+                    assert resp.status == 200, (user, await resp.text())
+        run(go())
+
     def test_flavor_form_round_trip(self, tmp_path):
         async def go():
             async with Harness(tmp_path, mock_env={'MOCK_FLAVOR_FORM': 'N: @@{nb:[0-9]+}@@'}) as h:
