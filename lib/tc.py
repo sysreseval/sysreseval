@@ -884,9 +884,9 @@ def parse_nft_json(text: str) -> Dict[str, Any]:
     return result
 
 
-def _nft_addresses(right) -> List[Any]:
+def nft_addresses(right) -> List[Any]:
     """Right-hand side of an ``ip saddr`` match → list of IPv4Network / IPv4Address /
-    (first, last) ranges."""
+    (first, last) ranges (a ``set`` is flattened)."""
     out: List[Any] = []
     if isinstance(right, str):
         try:
@@ -909,11 +909,14 @@ def _nft_addresses(right) -> List[Any]:
                 pass
         elif 'set' in right:
             for item in right['set']:
-                out.extend(_nft_addresses(item))
+                out.extend(nft_addresses(item))
     elif isinstance(right, list):
         for item in right:
-            out.extend(_nft_addresses(item))
+            out.extend(nft_addresses(item))
     return out
+
+
+_nft_addresses = nft_addresses   # former private name
 
 
 def nft_mark_rules(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -947,9 +950,9 @@ def nft_mark_rules(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
                 payload = left.get('payload', {})
                 meta = left.get('meta', {})
                 if payload.get('protocol') == 'ip' and payload.get('field') == 'saddr':
-                    entry['saddr'].extend(_nft_addresses(right))
+                    entry['saddr'].extend(nft_addresses(right))
                 elif payload.get('protocol') == 'ip' and payload.get('field') == 'daddr':
-                    entry['daddr'].extend(_nft_addresses(right))
+                    entry['daddr'].extend(nft_addresses(right))
                 elif payload.get('protocol') == 'ip' and payload.get('field') == 'protocol':
                     entry['l4proto'] = right if isinstance(right, str) else entry['l4proto']
                 elif meta.get('key') == 'l4proto':

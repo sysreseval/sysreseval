@@ -13,7 +13,15 @@ This module holds the firewall side of it:
 2. the ``probe_*`` functions test connectivity **through / to the clone** from
    the hidden controlled machines (step 3), where the expected policy is known;
 3. ``setup_http_server`` / ``setup_banner_server`` / ``setup_udp_echo_server``
-   run the controlled services the probes talk to (call them from ``initial()``).
+   run the controlled services the probes talk to (call them from ``initial()``);
+4. the *structure* helpers read ``nft -j list ruleset`` (:func:`get_nft_json`, built on
+   ``tc.parse_nft_json``): :func:`base_chains` / :func:`input_policy`, :func:`hook_rules` /
+   :func:`chain_rules` / :func:`user_chains` (ordered rules), and per rule :func:`rule_verdict`,
+   :func:`rule_matches` (``iif``, ``saddr``, ``l4proto``, ``dport``, ``icmp_type``, ``ct_state``…),
+   :func:`rule_log`, :func:`rule_limit`, :func:`rule_has_counter`, with :func:`rule_index` /
+   :func:`find_rules` to check the order of the rules.  They grade what a ruleset *says*
+   (a ``reject`` naming m2, a ``limit rate 5/minute`` on the ``log``…) where the probes grade
+   what it *does*.
 
 Because the clone is byte-for-byte identical in addressing and interface names,
 a ruleset written with ``iifname``, ``ip saddr``, ``ct state`` … behaves exactly
@@ -25,10 +33,17 @@ files with ``from firewall import ...``.
 """
 
 import base64
-from ipaddress import IPv4Address, IPv4Interface
+from ipaddress import IPv4Address, IPv4Interface, ip_network
+from typing import Any, Callable, Dict, List, Optional
 
 from SRE.lib_sre import Grade0, NetScheme0
 from state_helpers import setup_simple_tcp_server
+from tc import addresses_cover, nft_addresses, parse_nft_json  # noqa: F401  (re-exported)
+
+#: ``nft -j list ruleset``: the JSON form of the ruleset, read by :func:`get_nft_json`
+NFT_JSON_CMD = "nft -j list ruleset"
+#: the families whose base chains filter IPv4: an ``inet`` table (recommended) or an ``ip`` one
+IPV4_FAMILIES = ('inet', 'ip')
 
 
 # ---------------------------------------------------------------------------
@@ -179,10 +194,12 @@ def transplant_ruleset(grade: Grade0, src: str, dst: str,
 
     The empty-ruleset guard matters: it keeps a single, stable apply-command in
     the test map (no phantom "apply of the empty string" from the registration
-    pass), and an empty student ruleset correctly leaves the flushed clone in
-    accept-all state.
+    pass).  A plain ``nft flush ruleset`` is always registered on *dst* first (it
+    is stable too), so that an empty student ruleset leaves the clone in the
+    accept-all state instead of keeping the rules loaded by an earlier evaluation.
     """
     ruleset = get_ruleset(grade, src, step=download_step)
+    grade.test(dst, "nft flush ruleset", step=apply_step, allow_error=True)
     if ruleset.strip():
         b64 = base64.b64encode(ruleset.encode()).decode()
         apply_cmd = f"sh -c 'nft flush ruleset; echo {b64} | base64 -d | nft -f -'"
@@ -285,3 +302,280 @@ def probe_http_backends(grade: Grade0, src: str, dst_ip, port: int = 80, n: int 
         body, _ = probe_http(grade, src, dst_ip, port=port, path=f"/?probe={i}", step=step)
         names.append(http_field(body, "SERVER"))
     return names
+
+
+# ---------------------------------------------------------------------------
+# ruleset structure (grade side): what the ruleset says, from `nft -j list ruleset`
+# ---------------------------------------------------------------------------
+
+def get_nft_json(grade: Grade0, machine: str, step: int = 1) -> Dict[str, Any]:
+    """The ruleset of *machine* parsed by ``tc.parse_nft_json``: ``{'chains': {(family, table,
+    name): chain}, 'rules': [rule, ...]}`` (``{'chains': {}, 'rules': []}`` until the tests have
+    run or when ``nft`` failed).  Rules keep the order of the listing, i.e. their order in each
+    chain, and carry the ``hook`` of their chain (or of the base chain jumping to it)."""
+    out, _ = grade.test(machine, NFT_JSON_CMD, step=step, allow_error=True)
+    return parse_nft_json(out or '')
+
+
+def base_chains(parsed: Dict[str, Any], hook: Optional[str] = None, families=IPV4_FAMILIES,
+                chain_type: Optional[str] = 'filter') -> List[Dict[str, Any]]:
+    """The base chains (those with a hook) of *parsed*, restricted to *hook*, *families* and
+    *chain_type* when given (``None`` = any), in listing order."""
+    chains = []
+    for chain in parsed.get('chains', {}).values():
+        if not chain.get('hook'):
+            continue
+        if hook is not None and chain.get('hook') != hook:
+            continue
+        if families is not None and chain.get('family') not in families:
+            continue
+        if chain_type is not None and chain.get('type') != chain_type:
+            continue
+        chains.append(chain)
+    return chains
+
+
+def input_policy(parsed: Dict[str, Any], families=IPV4_FAMILIES) -> Optional[str]:
+    """``'drop'`` when a filter base chain hooked on ``input`` has the policy ``drop`` (a packet
+    accepted by one base chain still crosses the others of the same hook, so one dropping chain
+    drops), ``'accept'`` when every input chain accepts, ``None`` without an input chain."""
+    chains = base_chains(parsed, hook='input', families=families)
+    if not chains:
+        return None
+    return 'drop' if any(chain.get('policy', 'accept') == 'drop' for chain in chains) else 'accept'
+
+
+def chain_rules(parsed: Dict[str, Any], family: str, table: str, chain: str) -> List[Dict[str, Any]]:
+    """The rules of one chain, in order."""
+    return [rule for rule in parsed.get('rules', [])
+            if (rule.get('family'), rule.get('table'), rule.get('chain')) == (family, table, chain)]
+
+
+def hook_rules(parsed: Dict[str, Any], hook: str, families=IPV4_FAMILIES) -> List[Dict[str, Any]]:
+    """The rules of the base chains hooked on *hook* (not those of the chains they jump to),
+    chain after chain, each chain in order."""
+    rules = []
+    for chain in base_chains(parsed, hook=hook, families=families, chain_type=None):
+        rules.extend(chain_rules(parsed, chain['family'], chain['table'], chain['name']))
+    return rules
+
+
+def user_chains(parsed: Dict[str, Any], family: Optional[str] = None, table: Optional[str] = None,
+                families=IPV4_FAMILIES) -> List[Dict[str, Any]]:
+    """The regular (named, hook-less) chains, optionally of one *family* / *table*."""
+    chains = []
+    for chain in parsed.get('chains', {}).values():
+        if chain.get('hook'):
+            continue
+        if family is not None and chain.get('family') != family:
+            continue
+        if family is None and families is not None and chain.get('family') not in families:
+            continue
+        if table is not None and chain.get('table') != table:
+            continue
+        chains.append(chain)
+    return chains
+
+
+def rule_verdict(rule: Dict[str, Any]):
+    """``'accept'`` / ``'drop'`` / ``'reject'`` / ``'return'``, ``('jump', target)`` /
+    ``('goto', target)``, or ``None`` for a rule without verdict (``counter``, ``log``…)."""
+    for expr in rule.get('expr', []):
+        if not isinstance(expr, dict):
+            continue
+        for verdict in ('accept', 'drop', 'reject', 'return'):
+            if verdict in expr:
+                return verdict
+        for verdict in ('jump', 'goto'):
+            if verdict in expr:
+                target = expr[verdict].get('target') if isinstance(expr[verdict], dict) else None
+                return (verdict, target)
+    return None
+
+
+def _nft_ports(right) -> List[Any]:
+    """Right-hand side of a port match → list of ints and ``(first, last)`` ranges."""
+    out: List[Any] = []
+    if isinstance(right, int):
+        out.append(right)
+    elif isinstance(right, str) and right.isdigit():
+        out.append(int(right))
+    elif isinstance(right, dict):
+        if 'set' in right:
+            for item in right['set']:
+                out.extend(_nft_ports(item))
+        elif 'range' in right and isinstance(right['range'], list) and len(right['range']) == 2:
+            try:
+                out.append((int(right['range'][0]), int(right['range'][1])))
+            except (TypeError, ValueError):
+                pass
+    elif isinstance(right, list):
+        for item in right:
+            out.extend(_nft_ports(item))
+    return out
+
+
+def ports_cover(ports: List[Any], port: int) -> bool:
+    """True when *port* is one of *ports* (ints) or inside one of its ``(first, last)`` ranges."""
+    for item in ports:
+        if isinstance(item, tuple):
+            if item[0] <= int(port) <= item[1]:
+                return True
+        elif item == int(port):
+            return True
+    return False
+
+
+def _nft_values(right) -> List[str]:
+    """Right-hand side of a string match (interface, state, icmp type) → list of strings."""
+    if isinstance(right, str):
+        return [right]
+    if isinstance(right, dict) and 'set' in right:
+        out: List[str] = []
+        for item in right['set']:
+            out.extend(_nft_values(item))
+        return out
+    if isinstance(right, list):
+        out = []
+        for item in right:
+            out.extend(_nft_values(item))
+        return out
+    return []
+
+
+EMPTY_MATCHES: Dict[str, Any] = {'iif': [], 'iifname': [], 'oif': [], 'oifname': [], 'saddr': [], 'daddr': [],
+                                 'l4proto': set(), 'dport': [], 'sport': [], 'icmp_type': [], 'ct_state': set(),
+                                 'negated': []}
+
+
+def rule_matches(rule: Dict[str, Any]) -> Dict[str, Any]:
+    """The selectors of a rule: ``iif`` / ``iifname`` / ``oif`` / ``oifname`` (interface names),
+    ``saddr`` / ``daddr`` (``tc.nft_addresses`` form: addresses, networks, ranges; test them
+    with :func:`saddr_covers`), ``l4proto`` (set of ``'tcp'`` / ``'udp'`` / ``'icmp'``…, from
+    ``meta l4proto``, ``ip protocol`` or the protocol of a ``tcp dport``-like match),
+    ``dport`` / ``sport`` (ints and ranges, see :func:`ports_cover`), ``icmp_type`` (names) and
+    ``ct_state`` (set of state names).  A negated match (``!=``) is kept apart in ``negated``
+    (``[(key, values)]``) so that ``ip saddr != X accept`` does not count as accepting X."""
+    found: Dict[str, Any] = {key: (set() if isinstance(value, set) else []) for key, value in EMPTY_MATCHES.items()}
+    for expr in rule.get('expr', []):
+        if not isinstance(expr, dict) or 'match' not in expr:
+            continue
+        match = expr['match']
+        left, right, op = match.get('left', {}), match.get('right'), match.get('op', '==')
+        if not isinstance(left, dict):
+            continue
+        negated = op in ('!=',)
+        payload, meta, ct = left.get('payload', {}), left.get('meta', {}), left.get('ct', {})
+        key, values = None, None
+        if meta.get('key') in ('iif', 'iifname', 'oif', 'oifname'):
+            key, values = meta['key'], _nft_values(right)
+        elif meta.get('key') == 'l4proto' or (payload.get('protocol') == 'ip' and payload.get('field') == 'protocol'):
+            key, values = 'l4proto', _nft_values(right)
+        elif payload.get('protocol') == 'ip' and payload.get('field') in ('saddr', 'daddr'):
+            key, values = payload['field'], nft_addresses(right)
+        elif payload.get('protocol') in ('tcp', 'udp', 'sctp', 'dccp') and payload.get('field') in ('dport', 'sport'):
+            if not negated:
+                found['l4proto'].add(payload['protocol'])
+            key, values = payload['field'], _nft_ports(right)
+        elif payload.get('protocol') in ('icmp', 'icmpv6') and payload.get('field') == 'type':
+            if not negated:
+                found['l4proto'].add(payload['protocol'])
+            key, values = 'icmp_type', _nft_values(right)
+        elif ct.get('key') == 'state':
+            key, values = 'ct_state', _nft_values(right)
+        if key is None:
+            continue
+        if negated:
+            found['negated'].append((key, values))
+        elif isinstance(found[key], set):
+            found[key].update(values)
+        else:
+            found[key].extend(values)
+    return found
+
+
+def saddr_covers(matches: Dict[str, Any], address, key: str = 'saddr') -> bool:
+    """True when the ``saddr`` (or *key*) selectors of :func:`rule_matches` contain *address*
+    (an IPv4Interface / IPv4Address / str; the prefix of an interface is ignored)."""
+    return addresses_cover(matches.get(key, []), ip_network(ip_str(address)))
+
+
+def rule_log(rule: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """``{'prefix': str, 'group': int | None}`` of the ``log`` statement of a rule, ``None``
+    without one (``log`` alone gives ``{'prefix': '', 'group': None}``)."""
+    for expr in rule.get('expr', []):
+        if isinstance(expr, dict) and 'log' in expr:
+            value = expr['log'] if isinstance(expr['log'], dict) else {}
+            group = value.get('group')
+            return {'prefix': value.get('prefix', '') or '', 'group': group if isinstance(group, int) else None}
+    return None
+
+
+def rule_limit(rule: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """``{'rate': int, 'per': 'second' | 'minute' | 'hour' | 'day', 'burst': int | None,
+    'over': bool}`` of the ``limit rate`` statement of a rule, ``None`` without one."""
+    for expr in rule.get('expr', []):
+        if isinstance(expr, dict) and 'limit' in expr and isinstance(expr['limit'], dict):
+            value = expr['limit']
+            rate = value.get('rate')
+            burst = value.get('burst')
+            return {'rate': rate if isinstance(rate, int) else None, 'per': value.get('per', 'second'),
+                    'burst': burst if isinstance(burst, int) else None, 'over': bool(value.get('inv', False))}
+    return None
+
+
+def rule_has_counter(rule: Dict[str, Any]) -> bool:
+    """True when the rule has a ``counter`` statement."""
+    return any(isinstance(expr, dict) and 'counter' in expr for expr in rule.get('expr', []))
+
+
+def rule_index(rules: List[Dict[str, Any]], predicate: Callable[[Dict[str, Any]], bool]) -> Optional[int]:
+    """Index of the first rule satisfying *predicate*, ``None`` when none does (to compare the
+    positions of two rules of the same chain)."""
+    for index, rule in enumerate(rules):
+        if predicate(rule):
+            return index
+    return None
+
+
+def find_rules(rules: List[Dict[str, Any]], verdict=None, **criteria) -> List[Dict[str, Any]]:
+    """The rules whose verdict is *verdict* (when given) and whose selectors satisfy every
+    *criteria*: ``iif='lo'`` (any of ``iif`` / ``iifname`` names it), ``l4proto='udp'``,
+    ``dport=8080`` / ``sport=`` (:func:`ports_cover`), ``saddr=`` / ``daddr=`` (an address
+    covered, :func:`saddr_covers`), ``icmp_type='echo-reply'``, ``ct_state={'established',
+    'related'}`` (every state present).  A verdict ``'jump'`` matches any jump / goto."""
+    out = []
+    for rule in rules:
+        if verdict is not None:
+            actual = rule_verdict(rule)
+            kind = actual[0] if isinstance(actual, tuple) else actual
+            if verdict == 'jump':
+                if kind not in ('jump', 'goto'):
+                    continue
+            elif actual != verdict:
+                continue
+        matches = rule_matches(rule)
+        ok = True
+        for key, wanted in criteria.items():
+            if key == 'iif':
+                ok = wanted in matches['iif'] or wanted in matches['iifname']
+            elif key == 'oif':
+                ok = wanted in matches['oif'] or wanted in matches['oifname']
+            elif key == 'l4proto':
+                ok = wanted in matches['l4proto']
+            elif key in ('dport', 'sport'):
+                ok = ports_cover(matches[key], wanted)
+            elif key in ('saddr', 'daddr'):
+                ok = saddr_covers(matches, wanted, key=key)
+            elif key == 'icmp_type':
+                ok = wanted in matches['icmp_type']
+            elif key == 'ct_state':
+                wanted_states = {wanted} if isinstance(wanted, str) else set(wanted)
+                ok = wanted_states <= matches['ct_state']
+            else:
+                raise TypeError(f"find_rules(): unknown criterion {key!r}")
+            if not ok:
+                break
+        if ok:
+            out.append(rule)
+    return out
