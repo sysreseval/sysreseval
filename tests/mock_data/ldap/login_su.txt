@@ -1,0 +1,1 @@
+{"ok": true, "login": "nmichel", "home": "/home/nmichel", "home_exists": true, "prompted": true, "exit": 0, "timeout": false, "output": "Password: \r\nSRE_LOGIN_OK\r\nLOGIN=nmichel\r\nHOME=/home/nmichel\r\nHOME_EXISTS=1\r\n"}

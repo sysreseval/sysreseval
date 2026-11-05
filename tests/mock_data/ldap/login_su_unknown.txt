@@ -1,0 +1,1 @@
+{"ok": false, "login": "", "home": "", "home_exists": null, "prompted": false, "exit": 1, "timeout": false, "output": "su: user nmichel does not exist or the user entry does not contain all the required fields\r\n"}

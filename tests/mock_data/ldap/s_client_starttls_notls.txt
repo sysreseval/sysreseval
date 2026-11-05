@@ -1,0 +1,3 @@
+CONNECTED(00000003)
+Verify return code: 0 (ok)
+===END

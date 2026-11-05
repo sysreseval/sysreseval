@@ -1,0 +1,71 @@
+dn: cn=config
+objectClass: olcGlobal
+cn: config
+olcArgsFile: /var/run/slapd/slapd.args
+olcLocalSSF: 128
+olcLogLevel: stats
+olcPidFile: /var/run/slapd/slapd.pid
+olcTLSCACertificateFile: /etc/ldap/tls/ca.crt
+olcTLSCertificateFile: /etc/ldap/tls/ldap1.crt
+olcTLSCertificateKeyFile: /etc/ldap/tls/ldap1.key
+olcToolThreads: 1
+
+dn: cn=module{0},cn=config
+objectClass: olcModuleList
+cn: module{0}
+olcModulePath: /usr/lib/ldap
+olcModuleLoad: {0}back_mdb
+olcModuleLoad: {1}syncprov
+
+dn: olcDatabase={-1}frontend,cn=config
+objectClass: olcDatabaseConfig
+objectClass: olcFrontendConfig
+olcDatabase: {-1}frontend
+olcAccess: {0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external
+ ,cn=auth manage by * break
+olcAccess: {1}to dn.exact="" by * read
+olcAccess: {2}to dn.base="cn=Subschema" by * read
+olcSizeLimit: 500
+
+dn: olcDatabase={0}config,cn=config
+objectClass: olcDatabaseConfig
+olcDatabase: {0}config
+olcAccess: {0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external
+ ,cn=auth manage by * break
+olcRootDN: cn=admin,cn=config
+
+dn: olcDatabase={1}mdb,cn=config
+objectClass: olcDatabaseConfig
+objectClass: olcMdbConfig
+olcDatabase: {1}mdb
+olcDbDirectory: /var/lib/ldap
+olcSuffix: dc=corp,dc=lan
+olcAccess: {0}to attrs=userPassword by self write by set="[cn=helpdesk,ou=grou
+ ps,dc=corp,dc=lan]/memberUid & user/uid" write by dn.exact="cn=replicator,dc=
+ corp,dc=lan" read by anonymous auth by * none
+olcAccess: {1}to attrs=shadowLastChange by self write by set="[cn=helpdesk,ou=
+ groups,dc=corp,dc=lan]/memberUid & user/uid" write by users read by * none
+olcAccess: {2}to attrs=telephoneNumber,mobile,mail by self write by set="[cn=h
+ elpdesk,ou=groups,dc=corp,dc=lan]/memberUid & user/uid" write by users read b
+ y * none
+olcAccess: {3}to * by users read by * none
+olcLastMod: TRUE
+olcRootDN: cn=admin,dc=corp,dc=lan
+olcRootPW: {SSHA}MMVEgR2XPY9wEzu32tKJdS1nKHkpHxkt
+olcDbCheckpoint: 512 30
+olcDbIndex: objectClass eq
+olcDbIndex: cn,uid eq
+olcDbIndex: uidNumber,gidNumber eq
+olcDbIndex: member,memberUid eq
+olcDbIndex: entryCSN,entryUUID eq
+olcDbMaxSize: 1073741824
+olcSecurity: simple_bind=128
+
+dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: {0}syncprov
+olcSpCheckpoint: 100 10
+olcSpSessionlog: 100
+
+===RC 0

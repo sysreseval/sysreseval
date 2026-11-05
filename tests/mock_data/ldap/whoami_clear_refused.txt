@@ -1,0 +1,3 @@
+ldap_bind: Confidentiality required (13)
+	additional info: confidentiality required
+===RC 13

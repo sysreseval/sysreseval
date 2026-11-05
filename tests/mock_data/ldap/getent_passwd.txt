@@ -1,0 +1,1 @@
+cguerin:x:5228:5200:Chloe Guerin:/home/cguerin:/bin/bash

@@ -1,0 +1,5 @@
+dn: uid=cguerin,ou=people,dc=corp,dc=lan
+uid: cguerin
+cn: Chloe Guerin
+
+===RC 0

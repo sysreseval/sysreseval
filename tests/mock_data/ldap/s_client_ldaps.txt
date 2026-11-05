@@ -1,0 +1,7 @@
+verify return:1
+verify return:1
+CONNECTED(00000003)
+subject=CN = ldap1.corp.lan
+issuer=CN = CA corp.lan
+Verify return code: 0 (ok)
+===END

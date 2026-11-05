@@ -1,0 +1,123 @@
+dn: dc=corp,dc=lan
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+dc: corp
+o: Corp
+
+dn: cn=nslcd,dc=corp,dc=lan
+objectClass: top
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: nslcd
+userPassword:: e1NTSEF9djl3NFJFcGxQZjFYc3MzVGlNRWdFYXV6Mmg1T3hXTjk=
+description: nslcd service account
+
+dn: ou=groups,dc=corp,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=people,dc=corp,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: people
+
+dn: cn=replicator,dc=corp,dc=lan
+objectClass: top
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: replicator
+userPassword:: e1NTSEF9MXJyZ0RLc2JNZkYxZ2RyVEhjMTIxb0liU0NtMStKUVI=
+description: syncrepl consumer
+
+dn: cn=dev,ou=groups,dc=corp,dc=lan
+objectClass: top
+objectClass: posixGroup
+cn: dev
+gidNumber: 5201
+memberUid: cguerin
+memberUid: nmichel
+
+dn: cn=staff,ou=groups,dc=corp,dc=lan
+objectClass: top
+objectClass: posixGroup
+cn: staff
+gidNumber: 5200
+memberUid: cguerin
+memberUid: nmichel
+memberUid: irichard
+memberUid: klaurent
+
+dn: cn=helpdesk,ou=groups,dc=corp,dc=lan
+objectClass: top
+objectClass: posixGroup
+cn: helpdesk
+gidNumber: 5202
+memberUid: irichard
+
+dn: uid=cguerin,ou=people,dc=corp,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: cguerin
+cn: Chloe Guerin
+sn: Guerin
+givenName: Chloe
+uidNumber: 5228
+gidNumber: 5200
+homeDirectory: /home/cguerin
+loginShell: /bin/bash
+mail: cguerin@corp.lan
+userPassword:: e1NTSEF9aUNGZThuM3N2S1UvREdQV0NzNWhWeDgrdDYrcVN4Tk4=
+
+dn: uid=nmichel,ou=people,dc=corp,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: nmichel
+cn: Nadia Michel
+sn: Michel
+givenName: Nadia
+uidNumber: 5229
+gidNumber: 5200
+homeDirectory: /home/nmichel
+loginShell: /bin/bash
+userPassword:: e1NTSEF9azRQdkJnNk1QZmorRC9JVUR4VHNWaU1JMEI2ZXBaRy8=
+mail: nmichel@corp.lan
+
+dn: uid=irichard,ou=people,dc=corp,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: irichard
+cn: Ines Richard
+sn: Richard
+givenName: Ines
+uidNumber: 5230
+gidNumber: 5200
+homeDirectory: /home/irichard
+loginShell: /bin/bash
+userPassword:: e1NTSEF9SGo4L2wwZlVSZ2lad1ZML2M1OWc0YTJDRVNEcmcrdEU=
+mail: irichard@corp.lan
+
+dn: uid=klaurent,ou=people,dc=corp,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: klaurent
+cn: Karim Laurent
+sn: Laurent
+givenName: Karim
+uidNumber: 5232
+gidNumber: 5200
+homeDirectory: /home/klaurent
+loginShell: /bin/bash
+userPassword:: e1NTSEF9TFdZbVdia0EzMmtWQnIyc1l3YXhsaW9NNnJEc1hVdDM=
+mail: klaurent@corp.lan
+
+===RC 0

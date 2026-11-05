@@ -1,0 +1,2 @@
+ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)
+===RC 255

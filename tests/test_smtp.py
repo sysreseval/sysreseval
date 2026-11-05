@@ -1,7 +1,7 @@
 """Tests for lib/smtp.py and lib/smtp_probe.py (mail labs: Postfix, Dovecot, OpenDKIM, SPF).
 
 Fixtures in tests/mock_data/smtp/ were captured on 2026-10-06 from the SMTP lab
-(lab/sre/misc/smtp.py) running on the mail image (images/mail, published as sysreseval/mail:1.30; Debian 12:
+(lab/sre/misc/smtp.py) running on the mail image (images/ldap-mail, published as sysreseval/ldap-mail; Debian 12:
 Postfix 3.7.11, Dovecot 2.3.19, OpenDKIM 2.11.0, postfix-policyd-spf-python 3.0.4, Python
 3.11.2): the test outputs (`sre cat --tests --json`) of one evaluation in the initial state
 (`*_initial.*`, nothing configured on mx1) and of one in the `final` state (`*_final.*`, 80/80).

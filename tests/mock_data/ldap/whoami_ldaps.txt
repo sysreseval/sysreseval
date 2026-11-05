@@ -1,0 +1,2 @@
+dn:cn=admin,dc=corp,dc=lan
+===RC 0

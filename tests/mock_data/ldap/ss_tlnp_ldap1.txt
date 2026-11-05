@@ -1,0 +1,6 @@
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess                         
+LISTEN 0      2048         0.0.0.0:636        0.0.0.0:*    users:(("slapd",pid=586,fd=10))
+LISTEN 0      2048         0.0.0.0:389        0.0.0.0:*    users:(("slapd",pid=586,fd=8)) 
+LISTEN 0      4096      127.0.0.11:41721      0.0.0.0:*                                   
+LISTEN 0      2048            [::]:636           [::]:*    users:(("slapd",pid=586,fd=11))
+LISTEN 0      2048            [::]:389           [::]:*    users:(("slapd",pid=586,fd=9)) 

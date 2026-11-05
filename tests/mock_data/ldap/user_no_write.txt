@@ -1,0 +1,4 @@
+ldap_modify: Insufficient access (50)
+modifying entry "uid=cguerin,ou=people,dc=corp,dc=lan"
+
+===RC 50

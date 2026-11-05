@@ -1,0 +1,3 @@
+modifying entry "uid=klaurent,ou=people,dc=corp,dc=lan"
+
+===RC 0
