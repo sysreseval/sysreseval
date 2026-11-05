@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION   ?= 1.31
+VERSION   ?= 1.32
 NAMESPACE ?= sysreseval
 
 IMAGES := base init frr ldap-mail
