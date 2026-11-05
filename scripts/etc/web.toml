@@ -229,9 +229,12 @@ session_timeout = "30m"
 # groups the instructors create there, in two tables of the database above (table and
 # <table>_members, created when missing; or create them by hand with GRANT SELECT, INSERT, UPDATE,
 # DELETE: see the documentation; on iff [access_log.database] is set).  directory_ttl: how long
-# the people and groups read from the directory are kept (the page's Refresh reads them again).
+# the people and groups read from the directory are kept (the page's Refresh reads them again);
+# refresh_interval: the least time between two reads forced by Refresh (the clicks arriving
+# during a read share it; 0 = none).
 # table = "user_groups"
 # directory_ttl = "10m"
+# refresh_interval = "10s"
 
 [exams]
 # The exams of the Exams page of the instructors (an audience of logins and/or groups, the labs

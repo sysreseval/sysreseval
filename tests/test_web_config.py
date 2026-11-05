@@ -145,6 +145,8 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'table': 'g' * 57}}, 'groups.table'),
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'directory_ttl': 0}}, 'directory_ttl'),
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'directory_ttl': 'soon'}}, 'directory_ttl'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'refresh_interval': -1}}, 'refresh_interval'),
+        ({'secret': SECRET, 'hosts': [HOST], 'groups': {'refresh_interval': 'soon'}}, 'refresh_interval'),
         ({'secret': SECRET, 'hosts': [HOST], 'groups': {'typo': 1}}, 'typo'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'lead': 'soon'}}, 'exams.lead'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'lead': -1}}, 'lead'),
@@ -226,17 +228,19 @@ class TestWebConfig:
         base = {'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1']}
         cfg = web_config_from_dict(base)
         assert (cfg.groups.table, cfg.groups.members_table, cfg.groups.directory_ttl) == ('user_groups', 'user_groups_members', 600)
+        assert cfg.groups.refresh_interval == 10
         assert cfg.auth.ldap.login_attribute == 'uid'            # of the default search_filter "(uid={login})"
         assert (cfg.auth.ldap.attr_login, cfg.auth.ldap.groups_filter) == ('', '(objectClass=posixGroup)')
         assert (cfg.auth.ldap.attr_group_name, cfg.auth.ldap.attr_group_members) == ('cn', 'memberUid')
         assert not cfg.group_directory and 'uri and search_base' in cfg.group_directory_reason and not cfg.group_sources
-        cfg = web_config_from_dict({**base, 'groups': {'table': 'grp', 'directory_ttl': '5m'},
+        cfg = web_config_from_dict({**base, 'groups': {'table': 'grp', 'directory_ttl': '5m', 'refresh_interval': '30s'},
                                     'auth': {'mode': 'proxy',
                                              'ldap': {'uri': 'ldaps://x', 'search_base': 'ou=people',
                                                       'search_filter': '(supannAliasLogin={login})',
                                                       'attr_group_members': ' member ', 'attr_group_name': 'cn',
                                                       'groups_filter': '(objectClass=groupOfNames)'}}})
         assert (cfg.groups.table, cfg.groups.members_table, cfg.groups.directory_ttl) == ('grp', 'grp_members', 300)
+        assert cfg.groups.refresh_interval == 30
         assert cfg.auth.ldap.login_attribute == 'supannAliasLogin' and cfg.auth.ldap.attr_group_members == 'member'
         assert cfg.auth.ldap.groups_filter == '(objectClass=groupOfNames)'
         assert cfg.group_directory and cfg.group_directory_reason is None and cfg.group_sources

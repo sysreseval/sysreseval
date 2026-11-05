@@ -14,8 +14,9 @@ audience of a presentation): who belongs to what, from three sources.
 
 A group is named by a key ``kind:name`` (:func:`group_key`); a bare name is a department (the
 ``?group=`` of the Watch page and the audiences of the presentations predate the kinds).  The
-directory is read whole (two paged searches) and kept ``directory_ttl`` seconds
-(:class:`DirectoryCache`); the custom memberships are kept ``MEMBERSHIPS_TTL`` seconds and
+directory is read whole (two paged searches) and kept ``directory_ttl`` seconds, a forced read
+(the Refresh button) at most every ``refresh_interval`` seconds and shared by the requests
+arriving during it (:class:`DirectoryCache`); the custom memberships are kept ``MEMBERSHIPS_TTL`` seconds and
 reloaded after every write of this process (:class:`GroupStore`); :class:`Memberships` answers
 the synchronous questions of the routes, the presence and the presentations from those caches
 (``await refresh()`` first: a few comparisons when they are fresh).
@@ -44,6 +45,7 @@ KEY_SEPARATOR = ':'
 FORBIDDEN_IN_NAME = ':/'
 NEGATIVE_TTL = 60.0            # seconds before the directory is read again after a failure
 MEMBERSHIPS_TTL = 30.0         # seconds the custom memberships are kept (a write of this process reloads them)
+REFRESH_INTERVAL = 10.0        # seconds: the least time between two reads forced by the Refresh button
 PAGE = 500                     # entries per page of the LDAP searches (OpenLDAP's default sizelimit)
 MAX_PEOPLE = 50                # people returned by a search of the Add row
 MAX_DESCRIPTION = 255          # the column width
@@ -327,29 +329,43 @@ class DirectoryCache:
     the cache, *wall* (``time.time``) dates the snapshot."""
 
     def __init__(self, listing: DirectoryListing, *, ttl: float, negative_ttl: float = NEGATIVE_TTL,
+                 refresh_interval: float = REFRESH_INTERVAL,
                  clock: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time):
         self.listing = listing
         self.ttl = ttl
         self.negative_ttl = negative_ttl
+        self.refresh_interval = max(0.0, float(refresh_interval))
         self.clock = clock
         self.wall = wall
         self.snapshot: DirectorySnapshot | None = None
         self.error: str | None = None
         self.loads = 0
         self._expires: float | None = None
+        self._last_read: float | None = None     # clock() at the end of the last read, failed or not
         self._lock = asyncio.Lock()
         self._warned: set = set()
 
     def fresh(self) -> bool:
         return self._expires is not None and self._expires > self.clock()
 
+    def _read_recently(self, arrived: float) -> bool:
+        """A forced read is pointless: a read ended after the request arrived (the requests
+        waiting on the lock during a read share it), or less than ``refresh_interval`` seconds
+        ago (the Refresh button of the Groups page cannot dump the directory at every click)."""
+        return self._last_read is not None and (self._last_read > arrived
+                                                or self.clock() - self._last_read < self.refresh_interval)
+
     async def get(self, *, refresh: bool = False) -> DirectorySnapshot | None:
         """The snapshot (``None`` before the first successful read); *refresh* reads again
-        whatever the age."""
+        whatever the age, unless a read ended since the request arrived or less than
+        ``refresh_interval`` seconds ago (:meth:`_read_recently`)."""
         if not refresh and self.fresh():
             return self.snapshot
+        arrived = self.clock()
         async with self._lock:
             if not refresh and self.fresh():
+                return self.snapshot
+            if refresh and self._read_recently(arrived):
                 return self.snapshot
             self.loads += 1
             try:
@@ -365,6 +381,7 @@ class DirectoryCache:
                 self.error = None
                 self._warned.clear()
                 self._expires = self.clock() + self.ttl
+            self._last_read = self.clock()
             return self.snapshot
 
     def status(self) -> dict:
@@ -421,6 +438,7 @@ class GroupStore:
         self.monotonic = monotonic
         self.table = cfg.table
         self.members_table = cfg.members_table
+        self.refresh_interval = max(0.0, float(cfg.refresh_interval))
         self._ready = False
         self.connected = False
         self.last_error: str | None = None
@@ -625,9 +643,13 @@ class GroupStore:
         ones stay in ``cached()``)."""
         if not refresh and self._fresh():
             return self._memberships
+        arrived = self.monotonic()
         async with self._lock:
             if not refresh and self._fresh():
                 return self._memberships
+            if refresh and self._loaded is not None and (self._loaded > arrived
+                                                         or self.monotonic() - self._loaded < self.refresh_interval):
+                return self._memberships    # read since the request arrived, or less than refresh_interval ago
             self._memberships = await asyncio.to_thread(self.memberships_sync)
             self._loaded = self.monotonic()
             return self._memberships

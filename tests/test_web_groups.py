@@ -323,8 +323,56 @@ class TestDirectoryCache:
             assert not cache.fresh()
             await cache.get()
             assert listing.loads == 2
+            clock.now += G.REFRESH_INTERVAL
             await cache.get(refresh=True)
             assert listing.loads == 3
+        run(go())
+
+    def test_forced_reads_are_shared_and_rate_limited(self):
+        """The Refresh button of the Groups page (security review finding 6): the requests
+        arriving during a read get that read (one dump of the directory, not one per click), and
+        a forced read less than refresh_interval seconds after the last one gets the snapshot."""
+        async def go():
+            clock = types.SimpleNamespace(now=100.0)
+
+            class SlowListing(FakeListing):
+                def load(self, loaded_at):
+                    clock.now += 20          # the dump takes a while: the clock moves on meanwhile
+                    return super().load(loaded_at)
+
+            listing = SlowListing()
+            cache = G.DirectoryCache(listing, ttl=600, refresh_interval=10, clock=lambda: clock.now, wall=lambda: NOW)
+            await cache.get()
+            assert listing.loads == 1
+            clock.now += 30
+            # three clicks at once: one read, the two others get it
+            snapshots = await asyncio.gather(*(cache.get(refresh=True) for _ in range(3)))
+            assert listing.loads == 2 and all(s is snapshots[0] for s in snapshots)
+            # a click within the interval: the snapshot just read
+            await cache.get(refresh=True)
+            assert listing.loads == 2
+            clock.now += 9
+            await cache.get(refresh=True)
+            assert listing.loads == 2
+            clock.now += 1
+            await cache.get(refresh=True)
+            assert listing.loads == 3
+            # a failed read counts too: a directory that is down is not hammered either
+            listing.fail = LdapError('down')
+            clock.now += 10
+            await cache.get(refresh=True)
+            assert listing.loads == 4 and cache.error == 'down'
+            await cache.get(refresh=True)
+            assert listing.loads == 4
+            clock.now += 10
+            listing.fail = None
+            await cache.get(refresh=True)
+            assert listing.loads == 5 and cache.error is None
+            # without an interval the forced reads are only shared
+            direct = G.DirectoryCache(SlowListing(), ttl=600, refresh_interval=0, clock=lambda: clock.now, wall=lambda: NOW)
+            await direct.get()
+            await direct.get(refresh=True)
+            assert direct.listing.loads == 2
         run(go())
 
     def test_a_failure_keeps_the_snapshot(self):
@@ -471,9 +519,13 @@ class TestGroupStore:
             assert selects() == 2
             await store.remove_member('TP', 'alice')        # a write of this process: read again
             assert await store.memberships() == {'TP': frozenset()} and selects() == 3
+            await store.memberships(refresh=True)           # forced within refresh_interval: the last read
+            assert selects() == 3
+            clock.now += G.REFRESH_INTERVAL
             await store.memberships(refresh=True)
             assert selects() == 4
             server.down = True
+            clock.now += G.REFRESH_INTERVAL
             with pytest.raises(HistoryError):
                 await store.memberships(refresh=True)
             assert store.cached() == {'TP': frozenset()}     # the previous ones stay
@@ -491,7 +543,7 @@ class TestGroupStore:
 
 class TestMemberships:
     def make(self, *, directory=True, store=True):
-        cache = G.DirectoryCache(FakeListing(), ttl=600) if directory else None
+        cache = G.DirectoryCache(FakeListing(), ttl=600, refresh_interval=0) if directory else None
         server = FakeGroupsServer()
         groups = make_store(server) if store else None
         if groups is not None:
@@ -553,20 +605,39 @@ class TestMemberships:
 # through the portal
 # ---------------------------------------------------------------------------------------------
 
-def web_over(tmp_path, *, database=True, directory=True) -> dict:
+def web_over(tmp_path, *, database=True, directory=True, refresh_interval=0.0) -> dict:
+    # refresh_interval 0: the tests force a read right after another; the limit has its own test
     auth = {**P.PROXY_OVER['auth'], **({'ldap': LDAP} if directory else {})}
     access_log = {'file': str(tmp_path / 'access.log'), 'journal': False, **({'database': DB} if database else {})}
-    return {**P.PROXY_OVER, 'auth': auth, 'access_log': access_log, 'archives': {'poll_interval': '1h'}}
+    return {**P.PROXY_OVER, 'auth': auth, 'access_log': access_log, 'archives': {'poll_interval': '1h'},
+            'groups': {'refresh_interval': refresh_interval}}
 
 
-def harness(tmp_path, server=None, listing=None, **kw):
+def harness(tmp_path, server=None, listing=None, *, refresh_interval=0.0, **kw):
     return P.Harness(tmp_path, auth_mode='proxy', web_over=web_over(tmp_path, database=server is not None,
-                                                                    directory=listing is not None),
+                                                                    directory=listing is not None,
+                                                                    refresh_interval=refresh_interval),
                      db_connect=(server.connect, (Down,)) if server is not None else None,
                      directory_listing=listing, **kw)
 
 
 class TestGroupsThroughThePortal:
+    def test_forced_refresh_is_rate_limited(self, tmp_path):
+        """GET /api/groups?refresh=1 (the Refresh button): the directory is dumped at most once
+        per refresh_interval whatever the number of clicks (security review finding 6)."""
+        async def go():
+            prof = P.who('prof', groups=P.TEACHERS)
+            listing = FakeListing()
+            async with harness(tmp_path, FakeGroupsServer(), listing, refresh_interval=600) as h:
+                data = await (await h.client.get('/api/groups', headers=prof)).json()
+                assert data['directory']['people'] == 4
+                loads = listing.loads
+                responses = await asyncio.gather(*(h.client.get('/api/groups?refresh=1', headers=prof) for _ in range(5)))
+                assert all(r.status == 200 for r in responses) and listing.loads == loads
+                data = await (await h.client.get('/api/groups?refresh=1', headers=prof)).json()
+                assert data['directory']['people'] == 4 and listing.loads == loads
+        run(go())
+
     def test_page_guards_and_sources(self, tmp_path):
         async def go():
             bob, prof = P.who('bob'), P.who('prof', groups=P.TEACHERS)

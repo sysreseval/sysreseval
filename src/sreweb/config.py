@@ -415,6 +415,9 @@ class GroupsConfig:
     and groups read from the directory are kept."""
     table: str = 'user_groups'          # "groups" is a reserved word of MySQL 8
     directory_ttl: float = 600.0        # seconds
+    # the least time between two reads of the directory forced by the Refresh button of the page
+    # (the requests arriving during a read share it); 0 = none
+    refresh_interval: float = 10.0      # seconds
 
     @property
     def members_table(self) -> str:
@@ -528,6 +531,8 @@ def _check_groups(cfg: GroupsConfig, path: str):
         raise ConfigError(f"{where}table must be a plain SQL identifier of at most 56 characters (letters, digits, _)")
     if cfg.directory_ttl <= 0:
         raise ConfigError(f"{where}directory_ttl must be positive")
+    if cfg.refresh_interval < 0:
+        raise ConfigError(f"{where}refresh_interval must not be negative")
 
 
 def _check_exams(cfg: ExamsConfig, path: str):
@@ -790,7 +795,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     _check_archives(archives, path)
     groups_data = _section(data, 'groups', path)
     groups = _build(GroupsConfig, groups_data, f"{path}: [groups]",
-                    directory_ttl=parse_duration(groups_data.get('directory_ttl', 600.0), 'groups.directory_ttl'))
+                    directory_ttl=parse_duration(groups_data.get('directory_ttl', 600.0), 'groups.directory_ttl'),
+                    refresh_interval=parse_duration(groups_data.get('refresh_interval', 10.0), 'groups.refresh_interval'))
     _check_groups(groups, path)
     exams_data = _section(data, 'exams', path)
     exams = _build(ExamsConfig, exams_data, f"{path}: [exams]",

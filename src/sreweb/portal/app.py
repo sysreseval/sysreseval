@@ -85,7 +85,7 @@ class Portal:
         self.directory: DirectoryCache | None = None
         if cfg.group_directory:
             self.directory = DirectoryCache(directory_listing or DirectoryListing(cfg.auth.ldap),
-                                            ttl=cfg.groups.directory_ttl)
+                                            ttl=cfg.groups.directory_ttl, refresh_interval=cfg.groups.refresh_interval)
         self.memberships = Memberships(directory=self.directory, store=self.groups)
         # the exams of the web front-end: in the same database (none = they cannot be created)
         self.exam_store: ExamStore | None = None
