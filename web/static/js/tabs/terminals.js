@@ -411,6 +411,7 @@ export function createTerminalsTab(ctx) {
       join: joinId,
       private: priv,
       readonly: spectator,
+      links: Boolean(ctx.isOwner) && !spectator,     // the hyperlinks of the output open on the owner's page only
       onReady: (info) => {
         entry.remoteId = info.session || entry.remoteId;
         if (info.private && !entry.private) {

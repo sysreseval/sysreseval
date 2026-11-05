@@ -408,6 +408,9 @@ msgstr "Envoyer au presse-papiers X"
 msgid "Text to paste into the X desktop"
 msgstr "Texte à coller dans le bureau X"
 
+msgid "Open this link in a new tab?"
+msgstr "Ouvrir ce lien dans un nouvel onglet ?"
+
 msgid "Text to paste into the X desktop, or received from it"
 msgstr "Texte à coller dans le bureau X, ou reçu de celui-ci"
 

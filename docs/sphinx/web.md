@@ -1388,6 +1388,9 @@ once.
 - What the applications of a project's desktop copy (the X selection, which any X client of the
   containers can set) is received by the owner's browser only, where the Display tab puts it
   into the clipboard; the page of an instructor helping on the project does not listen to it.
+  Likewise the hyperlinks a program prints in a terminal (OSC 8 sequences) open, after a
+  confirmation naming the target, on the owner's page only; on an instructor's or a spectator's
+  page they are inert, the target shown as a tooltip.
 - The spectators of a presentation reach the presented project through the portal only, on a
   short list of read-only calls (the project, its events, the schema, the log, a terminal to
   *join*, the display; the evaluation table comes from the presenter's page through the portal,

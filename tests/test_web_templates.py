@@ -910,6 +910,22 @@ class TestJavaScript:
         assert "ctx.isOwner ? _('Text to paste into the X desktop, or received from it') : _('Text to paste into the X desktop')" in display
         assert "rfb.clipboardPasteFrom(clipboard.value)" in display      # sending stays for everybody but a spectator
 
+    def test_terminal_links_open_on_the_owners_page_only(self):
+        """The OSC 8 hyperlinks of a terminal's output (the student's containers print them)
+        open, http(s) only and after a confirm naming the target, on the owner's page only; a
+        helping instructor's or a spectator's page keeps them inert (security review, first Low
+        finding): xterm.js gets a linkHandler instead of its default confirm + window.open."""
+        terminal = (JS / 'terminal.js').read_text(encoding='utf-8')
+        assert 'linkHandler: this.linkHandler(links),' in terminal
+        handler = terminal[terminal.index('  linkHandler(links) {'):terminal.index('  constructor(')]
+        assert 'allowNonHttpProtocols: false,' in handler
+        assert "if (!links || !/^https?:\\/\\//i.test(uri)) {" in handler
+        assert "window.confirm(_('Open this link in a new tab?') + '\\n\\n' + uri)" in handler
+        assert "window.open(uri, '_blank', 'noopener,noreferrer');" in handler
+        assert 'container.title = uri;' in handler and "container.title = '';" in handler
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert 'links: Boolean(ctx.isOwner) && !spectator,' in terminals
+
     def test_focus_colour_keyed_on_the_body(self):
         """While an instructor focuses a student on the project, both pages take --focus-bg on
         their top bars (body.focusing on the instructor's page, body.focused on the student's,

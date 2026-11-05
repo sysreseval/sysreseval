@@ -10,7 +10,8 @@
 // `private` opens one the student does not see (instructors).  After a disconnection, Reconnect
 // joins the same session again while another viewer keeps it alive.  `readonly` (a spectator of
 // a presentation) only watches: nothing is sent, the terminal renders the grid of the pty as the
-// `ready` and `size` frames give it, with the largest font that fits the box.
+// `ready` and `size` frames give it, with the largest font that fits the box.  `links` lets the
+// OSC 8 hyperlinks of the output be opened (the owner's page only, see linkHandler()).
 
 import {wsUrl, withQuery} from './api.js';
 import {el} from './ui.js';
@@ -41,12 +42,39 @@ function closeMessage(code) {
 }
 
 export class TerminalSession {
+  // The OSC 8 hyperlinks of the output (ESC ] 8 ; ; URL ESC \): xterm.js would confirm then
+  // open them on every page.  The output comes from the containers of the project, i.e. from
+  // the student: a link is navigable on the owner's page only (links), http(s) only, after a
+  // confirm naming the target; elsewhere (a helping instructor, a spectator) it is inert, the
+  // target shown as the tooltip of the box while the pointer is on the link.
+  linkHandler(links) {
+    const container = this.container;
+    return {
+      allowNonHttpProtocols: false,
+      hover(event, uri) {
+        container.title = uri;
+      },
+      leave() {
+        container.title = '';
+      },
+      activate(event, uri) {
+        if (!links || !/^https?:\/\//i.test(uri)) {
+          return;
+        }
+        if (window.confirm(_('Open this link in a new tab?') + '\n\n' + uri)) {
+          window.open(uri, '_blank', 'noopener,noreferrer');
+        }
+      },
+    };
+  }
+
   // container: a .terminal-box element; path: {api_base}/terminals/{device} (+ query);
   // join: the id of a live session to attach to; private: a new session hidden from the student;
   // onReady(info): the ready frame (the session id, the number of viewers); readonly: a
-  // spectator (join required): nothing sent, the grid of the pty rendered
+  // spectator (join required): nothing sent, the grid of the pty rendered; links: the OSC 8
+  // hyperlinks of the output open on a click (the owner's page), see linkHandler()
   constructor(container, path, {fontSize, scheme, join = null, private: priv = false, onReady = null,
-                                readonly = false}) {
+                                readonly = false, links = false}) {
     this.path = path;
     this.join = join;
     this.private = priv;
@@ -78,6 +106,7 @@ export class TerminalSession {
       disableStdin: readonly,
       scrollback: 5000,
       allowProposedApi: false,
+      linkHandler: this.linkHandler(links),
     });
     this.fit = new window.FitAddon.FitAddon();
     this.term.loadAddon(this.fit);
