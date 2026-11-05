@@ -115,6 +115,17 @@ def build_argv(sre_exe: str, args, *, privileged: bool = False) -> list:
     return [sre_exe] + ([] if privileged else ['--user']) + [str(a) for a in args]
 
 
+def sre_args(command: str, *positionals, options=()) -> list:
+    """The arguments of one ``sre`` command: the options, then ``--`` and the positional values
+    (a lab, a running lab name, a device, a state), so that a value starting with a dash can
+    never be read as an option; every value is validated upstream, this is belt and braces."""
+    args = [command, *(str(o) for o in options)]
+    if positionals:
+        args.append('--')
+        args.extend(str(p) for p in positionals)
+    return args
+
+
 def parse_stderr_line(line: str) -> dict:
     """A stderr line of ``sre``: the JSON event it holds, else a ``message`` event."""
     text = line.rstrip('\r\n')

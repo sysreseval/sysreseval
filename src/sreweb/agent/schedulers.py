@@ -23,7 +23,7 @@ from SRE import params
 
 from .exam import KEY_END_AT, KEY_EVAL_INTERVAL, KEY_ENDED_AT, KEY_FINAL_EVAL_AT, end_epoch, now_iso
 from .registry import Project, Registry
-from .runner import SreRunner, CommandError
+from .runner import SreRunner, CommandError, sre_args
 
 log = logging.getLogger('sreweb.agent')
 
@@ -99,7 +99,7 @@ class Schedulers:
             return
         async with project.lock:
             try:
-                await self.runner.run(project.owner, ['eval', project.rln])
+                await self.runner.run(project.owner, sre_args('eval', project.rln))
             except CommandError as e:
                 log.warning("periodic evaluation of %s failed: %s", project.rln, e.message)
                 return
@@ -153,7 +153,7 @@ class Schedulers:
                 if project.closing or project.exam is None:
                     return
                 try:
-                    await self.runner.run(project.owner, ['eval', project.rln])
+                    await self.runner.run(project.owner, sre_args('eval', project.rln))
                 except CommandError as e:
                     log.warning("final evaluation of %s failed: %s (again in %.0f s)", project.rln, e.message,
                                 FINAL_EVAL_RETRY)
@@ -206,11 +206,11 @@ class Schedulers:
                 evaluate = bool(project.info.get('eval_before_exit', False)) and not self.exam_mode()
             if evaluate:
                 try:
-                    await self.runner.run(project.owner, ['eval', project.rln])
+                    await self.runner.run(project.owner, sre_args('eval', project.rln))
                 except CommandError as e:
                     log.warning("final evaluation of %s failed: %s", project.rln, e.message)
             try:
-                await self.runner.run(project.owner, ['stop', project.rln])
+                await self.runner.run(project.owner, sre_args('stop', project.rln))
             except CommandError as e:
                 log.error("sre stop %s failed: %s", project.rln, e.message)
                 project.closing = False

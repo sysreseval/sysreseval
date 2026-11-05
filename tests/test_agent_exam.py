@@ -168,7 +168,7 @@ class TestExamSchedulers:
             p.next_eval_at = time.monotonic() - 1
             await reg.tick()
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['eval', R.RLN])]
+            assert runner.calls == [('alice', ['eval', '--', R.RLN])]
             # the clock of the student not started: no periodic evaluation yet
             p.exam['started_at'] = p.exam['end_at'] = None
             sched.arm(p)
@@ -221,7 +221,7 @@ class TestExamSchedulers:
                 await asyncio.sleep(0.05)
                 assert p.exam_over and runner.calls == [] and 'final_eval_at' not in p.exam
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['eval', R.RLN])] and p.exam['final_eval_at']
+            assert runner.calls == [('alice', ['eval', '--', R.RLN])] and p.exam['final_eval_at']
         run(go())
 
     def test_failed_final_eval_is_retried(self, tmp_pub_dir):
@@ -265,7 +265,7 @@ class TestExamSchedulers:
             reg.subscribe(p, lambda e: None, ALICE)        # the owner's page keeps nothing alive now
             await reg.tick()
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['stop', R.RLN])]
+            assert runner.calls == [('alice', ['stop', '--', R.RLN])]
         run(go())
 
     def test_instructor_page_keeps_an_ended_exam_project(self, tmp_pub_dir):
@@ -292,7 +292,7 @@ class TestExamSchedulers:
         sched = Schedulers(reg, runner, exam_mode=lambda: False)
         run(reg.tick())
         run(sched.close_project(reg.get(R.RLN)))
-        assert runner.calls == [('alice', ['eval', R.RLN]), ('alice', ['stop', R.RLN])]   # in progress: evaluated
+        assert runner.calls == [('alice', ['eval', '--', R.RLN]), ('alice', ['stop', '--', R.RLN])]   # in progress: evaluated
         import shutil
         shutil.rmtree(tmp_pub_dir / 'projects' / R.RLN)
         exam_project(tmp_pub_dir, {**exam_body(end=-10), 'ended_at': iso(-9), 'final_eval_at': iso(-5)},
@@ -302,7 +302,7 @@ class TestExamSchedulers:
         sched = Schedulers(reg, runner, exam_mode=lambda: False)
         run(reg.tick())
         run(sched.close_project(reg.get(R.RLN)))
-        assert runner.calls == [('alice', ['stop', R.RLN])]                                # over: stop only
+        assert runner.calls == [('alice', ['stop', '--', R.RLN])]                                # over: stop only
 
     def test_restart_after_the_end_evaluates_late(self, tmp_pub_dir):
         """The agent restarted between the end and the final evaluation (the state file holds
@@ -322,7 +322,7 @@ class TestExamSchedulers:
             await reg.tick()
             await asyncio.sleep(0.05)
             p = reg.get(R.RLN)
-            assert runner.calls == [('alice', ['eval', R.RLN])] and p.exam['final_eval_at'] and ended == []
+            assert runner.calls == [('alice', ['eval', '--', R.RLN])] and p.exam['final_eval_at'] and ended == []
         run(go())
 
     def test_state_file_keeps_the_exam(self, tmp_pub_dir):
@@ -420,7 +420,7 @@ class TestExamApi:
                 assert result['status'] == 'created', result
                 rln = result['running_lab_name']
                 assert rln.endswith('@@@sre@_EXAM_@exam1.py@@@alice')
-                A.privileged_call(h.entries()[-1], ['start', '--set-flavor-name', 'hard', EXAM_LAB], 'alice')
+                A.privileged_call(h.entries()[-1], ['start', '--set-flavor-name', 'hard', '--', EXAM_LAB], 'alice')
                 deploys = [l for l in lines if l.get('phase') == 'deploy' and l.get('status') == 'progress']
                 assert len(deploys) == 3 and all('machine' not in l for l in deploys)   # the hidden machines stay hidden
                 flavor = json.loads((h.pub / 'projects' / rln / '.private' / 'flavor.json').read_text())
@@ -442,7 +442,7 @@ class TestExamApi:
                 assert answers[params.login_keyword] == 'alice' and answers[params.fullname_keyword] == 'Alice A'
                 # an exam project of a plain lab, without preset, the clock not started yet
                 rln2 = await h.started(BOB, exam=exam_body(start=None, end=None))
-                A.privileged_call(h.entries()[-1], ['start', 'sre/dhcp.py'], 'bob')
+                A.privileged_call(h.entries()[-1], ['start', '--', 'sre/dhcp.py'], 'bob')
                 row = (await (await h.client.get('/v1/projects', headers=headers(BOB))).json())[0]
                 assert row['running_lab_name'] == rln2 and row['exam']['remaining'] is None
         run(go())
@@ -497,7 +497,7 @@ class TestExamApi:
                 # an instructor on it: the privileged evaluation and the states still run
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers(PROF))
                 assert resp.status == 200 and (await resp.json())['result']['grades']
-                A.privileged_call(h.entries()[-1], ['eval', rln], 'prof')
+                A.privileged_call(h.entries()[-1], ['eval', '--', rln], 'prof')
                 assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
         run(go())
 
@@ -508,7 +508,7 @@ class TestExamApi:
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
                 await receive_event(ws, 'evaluated', timeout=5)
                 entry = h.entries()[-1]
-                assert (entry['argv'], entry['user_mode'], entry['username']) == (['--user', 'eval', rln], True, 'alice')
+                assert (entry['argv'], entry['user_mode'], entry['username']) == (['--user', 'eval', '--', rln], True, 'alice')
                 await receive_event(ws, 'evaluated', timeout=5)
                 await ws.close()
         run(go())
@@ -527,7 +527,7 @@ class TestExamApi:
                 assert info['project']['exam']['ended'] is True
                 assert await terminal_gone(term)
                 await receive_event(ws, 'evaluated', timeout=10)      # the final evaluation
-                assert ['--user', 'eval', rln] in h.calls()
+                assert ['--user', 'eval', '--', rln] in h.calls()
                 row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
                 assert row['exam']['ended'] is True and row['exam']['final_eval_at'] and row['last_eval'] is not None
                 records = (await (await h.client.get('/v1/archives', headers=headers(None))).json())['archives']
@@ -552,7 +552,7 @@ class TestExamApi:
                 await term.close()
                 assert (await h.client.delete(f'/v1/projects/{rln}', headers=headers())).status == 409
                 assert (await h.client.delete(f'/v1/projects/{rln}', headers=headers(PROF))).status == 200
-                assert h.calls()[-1] == ['--user', 'stop', rln] and h.calls()[-2] != ['--user', 'eval', rln]
+                assert h.calls()[-1] == ['--user', 'stop', '--', rln] and h.calls()[-2] != ['--user', 'eval', '--', rln]
                 assert not (h.pub / 'projects' / rln).exists()
                 await ws.close()
         run(go())
@@ -604,7 +604,7 @@ class TestExamApi:
                 assert (await receive_event(ws, EVENT_EXAM, timeout=5))['exam'] is None
                 assert 'evaluation' in (await receive_event(ws, EVENT_INFO, timeout=5))['project']['tabs']
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 200
-                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', rln]
+                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', '--', rln]
                 assert 'exam' not in json.loads((tmp_path / 'web-agent' / f'{rln}.json').read_text())
                 assert (await h.client.delete(f'/v1/projects/{rln}/exam', headers=headers(PROF))).status == 200   # idempotent
                 assert (await h.client.delete(f'/v1/projects/{rln}/exam', headers=headers())).status == 403
@@ -615,11 +615,11 @@ class TestExamApi:
         async def go():
             async with Harness(tmp_path) as h:
                 rln = await h.started(ALICE, exam=exam_body(start=-60, end=1.5, eval_interval=0))
-                assert ['--user', 'eval', rln] not in h.calls()
+                assert ['--user', 'eval', '--', rln] not in h.calls()
             await asyncio.sleep(1.6)
             async with Harness(tmp_path) as h:
                 async with asyncio.timeout(10):
-                    while ['--user', 'eval', rln] not in h.calls():
+                    while ['--user', 'eval', '--', rln] not in h.calls():
                         await asyncio.sleep(0.1)
                 row = (await (await h.client.get('/v1/projects', headers=headers())).json())[0]
                 assert row['managed'] is True and row['exam']['ended'] is True
@@ -640,7 +640,7 @@ class TestExamApi:
                 h.agent.system_stopping = lambda: True
                 await h.agent.close_managed_projects()
                 assert not (h.pub / 'projects' / exam_rln).exists()
-                assert h.calls()[-2:] == [['--user', 'eval', exam_rln], ['--user', 'stop', exam_rln]]
+                assert h.calls()[-2:] == [['--user', 'eval', '--', exam_rln], ['--user', 'stop', '--', exam_rln]]
         run(go())
 
     def test_skew_warning(self, tmp_path):

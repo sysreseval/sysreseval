@@ -379,7 +379,7 @@ class TestSchedulers:
             p.next_eval_at = time.monotonic() - 1
             await reg.tick()
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['eval', RLN])] and evaluated == [RLN]
+            assert runner.calls == [('alice', ['eval', '--', RLN])] and evaluated == [RLN]
             # a locked project is skipped, not queued
             p.next_eval_at = time.monotonic() - 1
             async with p.lock:
@@ -422,7 +422,7 @@ class TestSchedulers:
             p.next_eval_at = time.monotonic() - 1
             await reg.tick()
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['eval', RLN])] and evaluated == [RLN]
+            assert runner.calls == [('alice', ['eval', '--', RLN])] and evaluated == [RLN]
             # adopted before any tick saw it (a quick start): armed as well
             other = RLN.replace('alice', 'bob')
             make_project(tmp_pub_dir, rln=other, managed=False, eval_interval_without_exam_mode=1)
@@ -451,7 +451,7 @@ class TestSchedulers:
         sched = Schedulers(reg, runner, exam_mode=lambda: False)
         run(reg.tick())
         run(sched.close_project(reg.get(RLN)))
-        assert runner.calls == [('alice', ['eval', RLN]), ('alice', ['stop', RLN])]
+        assert runner.calls == [('alice', ['eval', '--', RLN]), ('alice', ['stop', '--', RLN])]
 
     def test_close_project_failed_stop(self, tmp_pub_dir):
         make_project(tmp_pub_dir)
@@ -486,7 +486,7 @@ class TestSchedulers:
             p.idle_timeout = None
             await reg.tick()
             await asyncio.sleep(0.05)
-            assert runner.calls == [('alice', ['stop', RLN])]
+            assert runner.calls == [('alice', ['stop', '--', RLN])]
         run(go())
 
 

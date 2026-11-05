@@ -40,7 +40,7 @@ from .exam import (parse_exam, check_flavor_preset, view as exam_view, end_epoch
 from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
-from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv,
+from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv, sre_args,
                      RESULT_CREATED, RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_ERROR,
                      build_env, PHASE_PROJECT)
 from .schedulers import Schedulers
@@ -221,7 +221,7 @@ class Agent:
             now = time.monotonic()
             if self._labs_cache is not None and now - self._labs_cache[0] < self.cfg.lab_list_cache_ttl:
                 return self._labs_cache[1]
-            labs = await self._run_list(login, ['list', '--with-titles'])
+            labs = await self._run_list(login, sre_args('list', options=['--with-titles']))
             self._labs_cache = (now, labs)
             return labs
 
@@ -233,7 +233,8 @@ class Agent:
             now = time.monotonic()
             if self._all_labs_cache is not None and now - self._all_labs_cache[0] < self.cfg.lab_list_cache_ttl:
                 return self._all_labs_cache[1]
-            labs = await self._run_list(login, ['list', '--with-titles', '--include-exam-only'], privileged=True)
+            labs = await self._run_list(login, sre_args('list', options=['--with-titles', '--include-exam-only']),
+                                        privileged=True)
             self._all_labs_cache = (now, labs)
             return labs
 
@@ -566,17 +567,17 @@ class Agent:
         labs = await (self.all_labs(identity.login) if exam is not None else self.labs(identity.login))
         if lab not in self._lab_names(labs):
             raise AccessError(404, f"unknown lab {lab}")
-        args = ['start'] + (['--instructor-mode'] if instructor_mode else [])
+        options = ['--instructor-mode'] if instructor_mode else []
         if preset is not None:
-            args += ['--set-flavor-name', preset]
+            options += ['--set-flavor-name', preset]
         elif flavor is not None:
             if not isinstance(flavor, dict):
                 raise AccessError(400, "flavor_json must be an object")
             encoded = json.dumps(flavor)
             if len(encoded.encode('utf-8')) > MAX_FLAVOR_JSON:
                 raise AccessError(400, f"flavor_json is too big (at most {MAX_FLAVOR_JSON} bytes)")
-            args += ['--flavor-json', encoded]
-        args.append(lab)
+            options += ['--flavor-json', encoded]
+        args = sre_args('start', lab, options=options)
         if exam is not None:
             self._log_skew(lab, exam, skew)
         # the virtual desktop of the project: its number and cookie go to sre start (the containers
@@ -782,10 +783,10 @@ class Agent:
             raise AccessError(409, "the project is busy")
         async with project.lock:
             if privileged:
-                result = await self.runner.run(identity.login, ['eval', project.rln], privileged=True,
+                result = await self.runner.run(identity.login, sre_args('eval', project.rln), privileged=True,
                                                lang=identity.language)
             else:
-                result = await self.runner.run(project.owner, ['eval', '--auto-eval', project.rln],
+                result = await self.runner.run(project.owner, sre_args('eval', project.rln, options=['--auto-eval']),
                                                lang=identity.language)
         try:
             data = json.loads(result.stdout.decode('utf-8', 'replace'))
@@ -816,7 +817,7 @@ class Agent:
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
         async with project.lock:
-            await self.runner.run(identity.login if privileged else project.owner, ['state', project.rln, state],
+            await self.runner.run(identity.login if privileged else project.owner, sre_args('state', project.rln, state),
                                   privileged=privileged, lang=identity.language)
         answers = await self.answers.consume_cheat(project)
         if answers is None:
@@ -1066,7 +1067,7 @@ class Agent:
             env.update(self.runner.extra_env)
             session = TerminalSession(
                 self._new_terminal_id(project), device,
-                build_argv(self.cfg.sre_exe, ['connect', project.rln, device], privileged=privileged), env,
+                build_argv(self.cfg.sre_exe, sre_args('connect', project.rln, device), privileged=privileged), env,
                 created_by=identity.login, private=private, cols=cols, rows=rows, linger=self.cfg.terminals_linger,
                 on_change=lambda: self._terminals_changed(project),
                 on_closed=lambda s: self._terminal_closed(project, s), on_activity=project.touch)

@@ -187,7 +187,7 @@ class TestOccupancyAndPower:
                 h.agent.system_stopping = lambda: True
                 await h.agent.close_managed_projects()
                 assert not (h.pub / 'projects' / rln).exists()       # the shutdown closes them
-                assert h.calls()[-1] == ['--user', 'stop', rln]
+                assert h.calls()[-1] == ['--user', 'stop', '--', rln]
         run(go())
 
 
@@ -341,7 +341,7 @@ class TestLabsAndStart:
                 assert result['status'] == 'created' and result['host'] == 'pool1'
                 rln = result['running_lab_name']
                 assert rln.endswith('@@@sre@dhcp.py@@@alice')
-                assert h.calls()[-1] == ['--user', 'start', 'sre/dhcp.py']
+                assert h.calls()[-1] == ['--user', 'start', '--', 'sre/dhcp.py']
                 projects = await (await h.client.get('/v1/projects', headers=headers())).json()
                 assert [p['running_lab_name'] for p in projects] == [rln] and projects[0]['lab_name'] == 'sre@dhcp.py'
                 assert await (await h.client.get('/v1/projects', headers=headers(BOB))).json() == []
@@ -440,7 +440,7 @@ class TestProject:
                 assert resp.status == 200 and data['result']['grades'] and data['delay_before_self_grade'] == 60
                 kinds = [r['kind'] for r in data['rows']]
                 assert kinds[0] == 'part_header' and 'mark' in kinds and data['header'][0] == 'Element'
-                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', rln]
+                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', '--', rln]
                 # the cooldown of the CLI
                 data = await (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).json()
                 assert data['result']['grades'] is None and data['rows'] == [] and 0 < data['delay_before_self_grade'] <= 60
@@ -453,7 +453,7 @@ class TestProject:
                 assert (await h.client.post(f'/v1/projects/{rln}/states/nope', headers=headers())).status == 403
                 # close: the directory is gone
                 resp = await h.client.delete(f'/v1/projects/{rln}', headers=headers())
-                assert resp.status == 200 and h.calls()[-1] == ['--user', 'stop', rln]
+                assert resp.status == 200 and h.calls()[-1] == ['--user', 'stop', '--', rln]
                 assert not (h.pub / 'projects' / rln).exists()
                 assert (await h.client.get(f'/v1/projects/{rln}', headers=headers())).status == 404
         run(go())
@@ -551,7 +551,7 @@ class TestWebSockets:
                             break
                         assert msg.type in (aiohttp.WSMsgType.BINARY, aiohttp.WSMsgType.TEXT), msg
                 await ws.close()
-                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', '--', rln, 'm1']]
         run(go())
 
     def test_two_terminals_on_one_device(self, tmp_path):
@@ -577,7 +577,7 @@ class TestWebSockets:
                 await end_terminal(terms[0])
                 await asyncio.sleep(0.3)
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
-                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']] * 2
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', '--', rln, 'm1']] * 2
                 await end_terminal(terms[1])
         run(go())
 
@@ -1062,15 +1062,15 @@ class TestInstructor:
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers(PROF))
                 data = await resp.json()
                 assert resp.status == 200 and data['rows'] and data['delay_before_self_grade'] == 0
-                privileged_call(h.entries()[-1], ['eval', rln], 'prof')
+                privileged_call(h.entries()[-1], ['eval', '--', rln], 'prof')
                 assert not (h.pub / 'last_self_grades').exists()      # alice's cooldown untouched
                 # alice's own evaluation afterwards is her first one (grades, not the cooldown answer)
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
                 assert (await resp.json())['result']['grades'] is not None
-                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', rln]
+                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', '--', rln]
                 # states: privileged too
                 assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
-                privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
+                privileged_call(h.entries()[-1], ['state', '--', rln, 'final'], 'prof')
                 # the answers: the instructor writes in the student's file (no sre call), the
                 # student's metadata kept, and every save is pushed to the pages of both
                 ws_alice = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
@@ -1089,12 +1089,12 @@ class TestInstructor:
                 assert (await receive_event(ws_alice, 'answers'))['answers'][TEXT_HASH] == 'y'
                 await ws_alice.close()
                 await ws_prof.close()
-                privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
+                privileged_call(h.entries()[-1], ['state', '--', rln, 'final'], 'prof')
                 import shutil
                 if shutil.which('neato'):   # the schema PDF of a non-owner: rendered by the agent, no sre call
                     resp = await h.client.get(f'/v1/projects/{rln}/schema.pdf', headers=headers(PROF))
                     assert resp.status == 200 and (await resp.read()).startswith(b'%PDF')
-                    privileged_call(h.entries()[-1], ['state', rln, 'final'], 'prof')
+                    privileged_call(h.entries()[-1], ['state', '--', rln, 'final'], 'prof')
                 data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json()
                 assert data['owner'] == 'alice' and data['answers'][TEXT_HASH] == 'y' and 'answers_readonly' not in data
                 # the student's full name (the answers metadata, kept under the instructor's
@@ -1109,7 +1109,7 @@ class TestInstructor:
                 mine = await h.started(PROF_NOVIEW)
                 assert mine.endswith('@@@prof')
                 await h.client.post(f'/v1/projects/{mine}/eval', headers=headers(PROF_NOVIEW))
-                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', mine]
+                assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', '--', mine]
                 assert h.entries()[-1]['env']['SUDO_USER'] == 'prof'
         run(go())
 
@@ -1149,7 +1149,7 @@ class TestInstructor:
                 mine = await h.started(PROF_NOVIEW)
                 resp = await h.client.post(f'/v1/projects/{mine}/eval', headers=headers(PROF_NOVIEW))
                 data = await resp.json()
-                assert resp.status == 200 and h.calls()[-1] == ['--user', 'eval', '--auto-eval', mine]
+                assert resp.status == 200 and h.calls()[-1] == ['--user', 'eval', '--auto-eval', '--', mine]
                 assert data['result']['mark'] is None
                 assert grade_cells(data['rows']) == ['OK', 'MEH', 'OK']
                 total = data['rows'][-1]
@@ -1251,7 +1251,7 @@ class TestInstructor:
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
                 await receive_event(ws, 'evaluated', timeout=5)
                 entry = h.entries()[-1]
-                assert (entry['argv'], entry['user_mode'], entry['username']) == (['--user', 'eval', rln], True, 'alice')
+                assert (entry['argv'], entry['user_mode'], entry['username']) == (['--user', 'eval', '--', rln], True, 'alice')
                 row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
                 assert row['eval_interval'] == 1 and row['managed'] is True
                 first = row['last_eval']
@@ -1285,7 +1285,7 @@ class TestInstructor:
                 rln = await h.started(PROF_NOVIEW, instructor_mode=True)
                 assert rln.endswith('@@@prof')
                 privileged_call([e for e in h.entries() if 'start' in e['argv']][-1],
-                                ['start', '--instructor-mode', 'sre/dhcp.py'], 'prof')
+                                ['start', '--instructor-mode', '--', 'sre/dhcp.py'], 'prof')
                 view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['project']
                 assert view['instructor_mode'] and view['has_instructor_texts'] and view['instructor_view']
                 assert 'Solution' in view['informations_html'] and 'log' in view['tabs']
@@ -1352,7 +1352,7 @@ class TestSharedTerminals:
                 assert (await receive_event(events, 'terminals'))['terminals'] == []
                 await asyncio.sleep(0.2)
                 assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
-                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', '--', rln, 'm1']]
                 await events.close()
         run(go())
 
@@ -1371,7 +1371,7 @@ class TestSharedTerminals:
                 assert ready['t'] == 'ready' and ready['private'] is True and not ready['joined']
                 pid = ready['session']
                 await read_until(prof, b'mock$')
-                privileged_call([e for e in h.entries() if 'connect' in e['argv']][-1], ['connect', rln, 'm2'], 'prof')
+                privileged_call([e for e in h.entries() if 'connect' in e['argv']][-1], ['connect', '--', rln, 'm2'], 'prof')
                 assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
                 mine = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['terminals']
                 assert [(t['id'], t['private'], t['created_by']) for t in mine] == [(pid, True, 'prof')]
@@ -1423,7 +1423,7 @@ class TestSharedTerminals:
                 assert ready['t'] == 'ready'
                 pid = ready['session']
                 await read_until(prof, b'mock$')          # the fake sre logs its call before the shell
-                privileged_call([e for e in h.entries() if 'connect' in e['argv']][-1], ['connect', rln, 'm2'], 'prof')
+                privileged_call([e for e in h.entries() if 'connect' in e['argv']][-1], ['connect', '--', rln, 'm2'], 'prof')
                 assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
                 mine = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['terminals']
                 assert [(t['id'], t['private'], t['created_by']) for t in mine] == [(pid, True, 'prof')]
@@ -1607,7 +1607,7 @@ class TestLingeringTerminals:
                 # the user closes it: gone at once
                 await end_terminal(again)
                 assert (await receive_event(events, 'terminals'))['terminals'] == []
-                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', '--', rln, 'm1']]
                 await events.close()
         run(go())
 

@@ -73,6 +73,18 @@ class TestEnvAndArgv:
         assert R.build_argv('/usr/sbin/sre', ['start', 'sre/dhcp.py']) == ['/usr/sbin/sre', '--user', 'start', 'sre/dhcp.py']
         assert R.build_argv('/usr/sbin/sre', ['exec', 'x'], privileged=True) == ['/usr/sbin/sre', 'exec', 'x']
 
+    def test_sre_args(self):
+        """The options come first, then -- and the positional values: a value starting with a
+        dash can never be read as an option (security review, ninth Low finding)."""
+        assert R.sre_args('eval', 'rln') == ['eval', '--', 'rln']
+        assert R.sre_args('eval', 'rln', options=['--auto-eval']) == ['eval', '--auto-eval', '--', 'rln']
+        assert R.sre_args('state', 'rln', '-final') == ['state', '--', 'rln', '-final']
+        assert R.sre_args('start', 'sre/dhcp.py', options=['--flavor-json', '{"nb": 1}']) == \
+            ['start', '--flavor-json', '{"nb": 1}', '--', 'sre/dhcp.py']
+        assert R.sre_args('list', options=['--with-titles']) == ['list', '--with-titles']
+        assert R.build_argv('/usr/sbin/sre', R.sre_args('connect', 'rln', 'pc1')) == \
+            ['/usr/sbin/sre', '--user', 'connect', '--', 'rln', 'pc1']
+
     def test_parse_stderr_line(self):
         assert R.parse_stderr_line('{"phase": "pull", "status": "start"}\n') == {'phase': 'pull', 'status': 'start'}
         assert R.parse_stderr_line('sre: boom\n') == {'phase': 'message', 'line': 'sre: boom'}
