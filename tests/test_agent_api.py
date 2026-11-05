@@ -717,6 +717,22 @@ def alive(pid: int) -> bool:
     return True
 
 
+class TestAgentToken:
+    def test_non_ascii_token_is_a_401_not_a_500(self, tmp_path):
+        """hmac.compare_digest() on str raises on a non-ASCII character, and the auth middleware
+        is the outermost one (security review, tenth Low finding): a bad token with an accent
+        was a 500, it is a 401 like any other."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                for token in ('sécret', TOKEN + 'é', 'ÿ' * 8, 'ключ'):
+                    resp = await h.client.get('/v1/status', headers={'Authorization': f'Bearer {token}'})
+                    assert resp.status == 401, token
+                    assert (await resp.json())['error'] == 'bad agent token'
+                resp = await h.client.get('/v1/status', headers={'Authorization': f'Bearer {TOKEN}'})
+                assert resp.status == 200
+        run(go())
+
+
 class TestFlavorSize:
     def test_oversized_flavor_json_is_refused_before_the_spawn(self, tmp_path):
         """The flavor answers travel as one argv element of sre start, which Linux caps at

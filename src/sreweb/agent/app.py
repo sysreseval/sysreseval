@@ -376,7 +376,10 @@ class Agent:
             return json_error(403, "client address not allowed")
         auth = request.headers.get('Authorization', '')
         scheme, _, token = auth.partition(' ')
-        if scheme.lower() != 'bearer' or not hmac.compare_digest(token.strip(), self.cfg.token):
+        # compared as bytes: compare_digest() on str raises on a non-ASCII character, and this
+        # middleware is the outermost one (no error middleware around it to make that a 500)
+        if scheme.lower() != 'bearer' or not hmac.compare_digest(token.strip().encode('utf-8', 'surrogateescape'),
+                                                                 self.cfg.token.encode('utf-8', 'surrogateescape')):
             return json_error(401, "bad agent token")
         if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart',
                             f'{API_PREFIX}/archives'):
