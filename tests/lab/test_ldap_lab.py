@@ -1,4 +1,4 @@
-"""Offline tests of the LDAP lab (lab/em/_DRAFT_/ldap.py): the data (five people, three groups,
+"""Offline tests of the LDAP lab (lab/sre/_DRAFT_misc/ldap.py): the data (five people, three groups,
 the CA and the server certificates), the topology (three init machines, the hidden probe), the
 state ops (the fresh server of `initial`, the client defaults, the whole solution of `final`, every
 command on one line), the multi-pass grading contract with synthetic outputs (nothing done: 0,
@@ -31,7 +31,7 @@ sys.path.insert(0, str(_REPO / 'src' / 'tools'))
 
 import openldap as ol  # noqa: E402
 
-_LAB_PATH = _REPO / 'lab' / 'em' / '_DRAFT_' / 'ldap.py'
+_LAB_PATH = _REPO / 'lab' / 'sre' / '_DRAFT_misc' / 'ldap.py'
 RC0 = "===RC 0\n"
 NO_SUCH_OBJECT = "No such object (32)\n===RC 32\n"
 INVALID = "ldap_bind: Invalid credentials (49)\n===RC 49\n"

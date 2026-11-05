@@ -1,4 +1,4 @@
-"""OpenLDAP grading and state helpers of the LDAP lab (``lab/em/_DRAFT_/ldap.py``).
+"""OpenLDAP grading and state helpers of the LDAP lab (``lab/sre/_DRAFT_misc/ldap.py``).
 
 Facts and formats are those of slapd 2.5.13, ldap-utils 2.5.13 and nss-pam-ldapd 0.9.12 (Debian
 12: ``slapd`` and ``ldap-utils`` in ``sysreseval/base``, ``nslcd``, ``libnss-ldapd`` and
