@@ -79,7 +79,13 @@ RUN apt install -y \
     systemd-resolved \
     openvpn \
     wireguard \
-    easy-rsa
+    easy-rsa \
+    strongswan-swanctl \
+    charon-systemd \
+    strongswan-pki \
+    libcharon-extra-plugins \
+    libstrongswan-extra-plugins \
+    libstrongswan-standard-plugins
 
 WORKDIR /tmp
 # web
