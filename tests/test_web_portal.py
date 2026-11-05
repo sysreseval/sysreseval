@@ -432,6 +432,22 @@ class TestProjectsThroughThePortal:
                     assert resp.status == 200, (user, await resp.text())
         run(go())
 
+    def test_oversized_flavor_answers_are_refused_before_the_relay(self, tmp_path):
+        """The flavor answers of a start become one argv element on the agent (128 KiB cap): the
+        portal refuses them above MAX_FLAVOR_JSON with a 400 before the relay and gives the start
+        slot back (security review, eighth Low finding)."""
+        from sreweb.portal.routes import MAX_FLAVOR_JSON
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                await h.login()
+                status, error = await h.start_refused(flavor={'nb': 'x' * (MAX_FLAVOR_JSON + 1)})
+                assert status == 400 and 'too big' in error['error']
+                assert not h.portal.routes.limiter._last                    # the slot given back
+                result = await h.start(flavor={'nb': '2'})
+                assert result['status'] == 'created'
+        run(go())
+
     def test_flavor_form_round_trip(self, tmp_path):
         async def go():
             async with Harness(tmp_path, mock_env={'MOCK_FLAVOR_FORM': 'N: @@{nb:[0-9]+}@@'}) as h:

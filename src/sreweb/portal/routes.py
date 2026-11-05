@@ -88,6 +88,10 @@ HEAVY_QUERIES = 2
 HEAVY_WAIT = 10.0
 HEAVY_RETRY_AFTER = 5
 
+#: The flavor answers of a start, as the agent passes them in one argv element of ``sre start``
+#: (Linux caps one at 128 KiB): refused here with a 400, before the relay, above this.
+MAX_FLAVOR_JSON = 64 << 10
+
 #: Why a sign-in fails, by code (the ``reason`` of the ``login_failed`` lines of the connection
 #: log too): the status and message of the JSON API.  The form redirects to ``/login?error=<code>``
 #: and ``login.html`` shows its own text for the code, never a text taken from the URL (a link
@@ -1295,6 +1299,8 @@ class Routes:
                 logged.update(host=host.name, placement=reservation.placement)
             payload = {'lab': body['lab'], 'idle_timeout': self._idle_timeout(identity)}
             if isinstance(body.get('flavor'), dict):
+                if len(json.dumps(body['flavor']).encode('utf-8')) > MAX_FLAVOR_JSON:
+                    return json_error(400, f"the flavor answers are too big (at most {MAX_FLAVOR_JSON} bytes)")
                 payload['flavor_json'] = body['flavor']
             if body.get('instructor_mode'):
                 payload['instructor_mode'] = True     # an instructor's own project in instructor mode

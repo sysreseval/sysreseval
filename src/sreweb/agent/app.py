@@ -66,6 +66,9 @@ WS_NOT_FOUND = 4404
 WS_LIMIT = 4409
 MAX_TERMINAL_COLS, MAX_TERMINAL_ROWS = 500, 300
 CLIENT_MAX_SIZE = 4 << 20        # the answers of a PUT (the portal caps them lower)
+#: The flavor answers of a start travel as one argv element of ``sre start --flavor-json``, which
+#: Linux caps at 128 KiB (E2BIG after the NDJSON stream began): refused above this with a 400.
+MAX_FLAVOR_JSON = 64 << 10
 WS_HEARTBEAT = 30.0
 #: ``GET /v1/archives``: archives read per call by default, and at most (``?limit=``).
 ARCHIVES_PAGE = 50
@@ -569,7 +572,10 @@ class Agent:
         elif flavor is not None:
             if not isinstance(flavor, dict):
                 raise AccessError(400, "flavor_json must be an object")
-            args += ['--flavor-json', json.dumps(flavor)]
+            encoded = json.dumps(flavor)
+            if len(encoded.encode('utf-8')) > MAX_FLAVOR_JSON:
+                raise AccessError(400, f"flavor_json is too big (at most {MAX_FLAVOR_JSON} bytes)")
+            args += ['--flavor-json', encoded]
         args.append(lab)
         if exam is not None:
             self._log_skew(lab, exam, skew)

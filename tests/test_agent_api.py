@@ -717,6 +717,26 @@ def alive(pid: int) -> bool:
     return True
 
 
+class TestFlavorSize:
+    def test_oversized_flavor_json_is_refused_before_the_spawn(self, tmp_path):
+        """The flavor answers travel as one argv element of sre start, which Linux caps at
+        128 KiB: above MAX_FLAVOR_JSON the agent answers 400 before any stream (security review,
+        eighth Low finding) instead of E2BIG once the NDJSON response began."""
+        from sreweb.agent.app import MAX_FLAVOR_JSON
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                big = {'nb': 'x' * (MAX_FLAVOR_JSON + 1)}
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py', 'flavor_json': big},
+                                           headers=headers())
+                assert resp.status == 400 and 'too big' in (await resp.json())['error']
+                assert [c for c in h.calls() if 'start' in c] == []
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py', 'flavor_json': {'nb': 'x' * 1000}},
+                                           headers=headers())
+                assert resp.status == 200
+        run(go())
+
+
 class TestDisplay:
     def test_start_gets_a_display_and_the_browser_reaches_it(self, tmp_path, short_dir):
         async def go():
