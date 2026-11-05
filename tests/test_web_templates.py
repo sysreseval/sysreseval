@@ -897,6 +897,19 @@ class TestJavaScript:
         assert 'if privileged and not access.device_open_to_students(project.info, device):' in app
         assert "'private': session.private" in app
 
+    def test_display_clipboard_received_by_the_owner_only(self):
+        """The X selection of a project's desktop is set by any X client of its containers: the
+        Display tab writes it into the textarea and the browser's clipboard on the owner's page
+        only (security review finding 4); a helping instructor can still send text."""
+        display = (JS / 'tabs' / 'display.js').read_text(encoding='utf-8')
+        guard = display.index('if (!spectator && ctx.isOwner) {')
+        listener = display.index("session.addEventListener('clipboard'")
+        write = display.index('navigator.clipboard.writeText(')
+        assert guard < listener < write
+        assert display.count("addEventListener('clipboard'") == 1 and display.count('writeText(') == 1
+        assert "ctx.isOwner ? _('Text to paste into the X desktop, or received from it') : _('Text to paste into the X desktop')" in display
+        assert "rfb.clipboardPasteFrom(clipboard.value)" in display      # sending stays for everybody but a spectator
+
     def test_focus_colour_keyed_on_the_body(self):
         """While an instructor focuses a student on the project, both pages take --focus-bg on
         their top bars (body.focusing on the instructor's page, body.focused on the student's,

@@ -7,7 +7,9 @@
 // works without it, only this tab reports the missing file.  A spectator of a presentation
 // (ctx.spectator) sees the desktop view-only (noVNC's viewOnly; the agent drops the input
 // messages anyway), scaled to the tab, without the clipboard and resize controls, and never
-// starts the X server (GET instead of POST).
+// starts the X server (GET instead of POST).  What the applications copy (the X selection, set
+// by any X client of the containers) is received by the owner's page only (ctx.isOwner): a
+// helping instructor can send text to the desktop, never gets its selection into their browser.
 
 import * as api from '../api.js';
 import {wsUrl} from '../api.js';
@@ -38,7 +40,7 @@ export function createDisplayTab(ctx) {
   const resizeBox = el('input', {type: 'checkbox'});
   resizeBox.checked = true;
   const clipboard = el('textarea', {class: 'display-clipboard', rows: '1',
-    title: _('Text to paste into the X desktop, or received from it')});
+    title: ctx.isOwner ? _('Text to paste into the X desktop, or received from it') : _('Text to paste into the X desktop')});
   const sendButton = el('button', {type: 'button'}, _('Send to the X clipboard'));
   const desktopName = el('span', {class: 'display-name'});
   const spectator = Boolean(ctx.spectator);
@@ -125,7 +127,10 @@ export function createDisplayTab(ctx) {
       session.addEventListener('desktopname', (ev) => {
         desktopName.textContent = ev.detail.name;
       });
-      if (!spectator) {
+      // the X selection is set by any X client of the containers (they hold the cookie): it
+      // reaches the textarea and the system clipboard of the owner's browser only, never a
+      // helping instructor's (a line pasted later into a terminal would run there)
+      if (!spectator && ctx.isOwner) {
         session.addEventListener('clipboard', (ev) => {
           clipboard.value = ev.detail.text;
           if (navigator.clipboard && navigator.clipboard.writeText) {

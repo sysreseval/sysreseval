@@ -405,6 +405,9 @@ msgstr "Redimensionner le bureau"
 msgid "Send to the X clipboard"
 msgstr "Envoyer au presse-papiers X"
 
+msgid "Text to paste into the X desktop"
+msgstr "Texte à coller dans le bureau X"
+
 msgid "Text to paste into the X desktop, or received from it"
 msgstr "Texte à coller dans le bureau X, ou reçu de celui-ci"
 

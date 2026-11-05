@@ -1318,7 +1318,9 @@ containers reach display `:N` on TCP port 6000+N of the host with the cookie of 
 sets `DISPLAY` from them); the browser reaches the RFB Unix socket of the server through the
 agent and the portal, as a WebSocket of binary frames. The desktop follows the size of the tab
 (*Resize the desktop*; *Fit to window* scales it instead), the text box of the bar sends text to
-the X clipboard and shows what the applications copy, *Reconnect* opens the stream again. The
+the X clipboard and, on the owner's page only, shows what the applications copy (put into the
+browser's clipboard too; an instructor helping on the project can send text but receives none:
+any X client of the containers can set the selection), *Reconnect* opens the stream again. The
 number and the cookie of a project never change: a desktop that died, or that was lost when the
 agent restarted (its X server is a child of the agent), is started again at the next use of the
 tab, empty. `[display]` of `agent.toml` holds the geometry, the range of display numbers and
@@ -1383,6 +1385,9 @@ once.
   machine) is private whatever the page asks, since a shared session is joined without the
   device check. The operations log of an instructor-mode
   project goes to the subscribers allowed to read it only.
+- What the applications of a project's desktop copy (the X selection, which any X client of the
+  containers can set) is received by the owner's browser only, where the Display tab puts it
+  into the clipboard; the page of an instructor helping on the project does not listen to it.
 - The spectators of a presentation reach the presented project through the portal only, on a
   short list of read-only calls (the project, its events, the schema, the log, a terminal to
   *join*, the display; the evaluation table comes from the presenter's page through the portal,
