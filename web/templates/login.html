@@ -3,7 +3,11 @@
 {% block content %}
 <div class="login-box">
   <h1>{{ _("Sign in") }}</h1>
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {# error: a code of routes.LOGIN_ERRORS, never a text of the URL #}
+  {% if error == "password" %}<p class="error">{{ _("Wrong login or password.") }}</p>
+  {% elif error == "rate_limited" %}<p class="error">{{ _("Too many sign-in attempts: try again in a minute.") }}</p>
+  {% elif error == "directory" %}<p class="error">{{ _("The directory does not answer.") }}</p>
+  {% endif %}
   {% if auth_mode == "proxy" %}
   <p class="error">{{ _("The web server passed no identity.") }}</p>
   <p class="hint">{{ _("The sign-in is done by the web server in front of this site: check its configuration.") }}</p>

@@ -80,6 +80,27 @@ class ExamRefusal(PoolError):
         super().__init__(403, reason)
 
 
+#: Why a sign-in fails, by code (the ``reason`` of the ``login_failed`` lines of the connection
+#: log too): the status and message of the JSON API.  The form redirects to ``/login?error=<code>``
+#: and ``login.html`` shows its own text for the code, never a text taken from the URL (a link
+#: ``?error=Your+account+is+locked…`` would otherwise show inside the real sign-in box).
+LOGIN_ERRORS = {
+    'password': (401, "wrong login or password"),
+    'rate_limited': (429, "too many login attempts, try again in a minute"),
+    'directory': (502, "the directory does not answer"),
+    'proxy_mode': (403, "the authentication is done by the reverse proxy"),
+}
+
+
+class LoginRefused(PoolError):
+    """A sign-in that failed for one of the ``LOGIN_ERRORS`` codes."""
+
+    def __init__(self, code: str):
+        status, message = LOGIN_ERRORS[code]
+        super().__init__(status, message)
+        self.code = code
+
+
 class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
                  presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
@@ -354,8 +375,9 @@ class Routes:
     async def login_page(self, request):
         if request.get(IDENTITY_KEY):
             raise web.HTTPFound('/projects')
+        code = request.query.get('error', '')       # a LOGIN_ERRORS code: the page has its own text for it
         return aiohttp_jinja2.render_template('login.html', request,
-                                              self._page_context(request, error=request.query.get('error', '')))
+                                              self._page_context(request, error=code if code in LOGIN_ERRORS else ''))
 
     async def _authenticate(self, request, data: dict) -> Identity:
         """The identity of a login request; the outcome goes to the connection log (the
@@ -363,7 +385,7 @@ class Routes:
         login = str(data.get('login', '')).strip()
         if self.proxy_mode:
             self.access.login_failed(request, login, 'proxy_mode')
-            raise PoolError(403, "the authentication is done by the reverse proxy")
+            raise LoginRefused('proxy_mode')
         language = self._check_language(str(data.get('language', '') or self._language(request)))
         if self.cfg.auth.mode == AUTH_ANONYMOUS:
             identity = auth_anon.new_guest(str(data.get('display_name', '')), language)
@@ -372,17 +394,17 @@ class Routes:
         # per client address: the one the proxy forwards, else every user shares the proxy's budget
         if not self.limiter.allow_per_minute('login', self.access.address(request), self.cfg.limits.login_per_minute):
             self.access.login_failed(request, login, 'rate_limited')
-            raise PoolError(429, "too many login attempts, try again in a minute")
+            raise LoginRefused('rate_limited')
         password = str(data.get('password', ''))
         try:
             identity = await self.ldap.authenticate(login, password, language)
         except LdapError as e:
             log.error("LDAP error: %s", e)
             self.access.login_failed(request, login, 'directory')
-            raise PoolError(502, "the directory does not answer")
+            raise LoginRefused('directory')
         if identity is None:
             self.access.login_failed(request, login, 'password')
-            raise PoolError(401, "wrong login or password")
+            raise LoginRefused('password')
         self.access.login(request, identity, self.cfg.auth.mode)
         return identity
 
@@ -390,8 +412,10 @@ class Routes:
         data = await request.post()
         try:
             identity = await self._authenticate(request, dict(data))
-        except PoolError as e:
-            raise web.HTTPFound('/login?' + urllib.parse.urlencode({'error': e.message}))
+        except LoginRefused as e:
+            raise web.HTTPFound('/login?' + urllib.parse.urlencode({'error': e.code}))
+        except PoolError:
+            raise web.HTTPFound('/login')
         response = web.HTTPFound('/projects')
         S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request))
         raise response

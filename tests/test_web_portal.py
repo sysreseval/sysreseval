@@ -252,7 +252,14 @@ class TestLoginAndPages:
                 resp = await h.client.post('/api/login', json={'login': '../x', 'password': 'x'}, headers=CSRF)
                 assert resp.status == 401
                 resp = await h.client.post('/login', data={'login': 'alice', 'password': 'x'}, allow_redirects=False)
-                assert resp.status == 302 and resp.headers['Location'].startswith('/login?error=')
+                assert resp.status == 302
+                assert resp.headers['Location'] in ('/login?error=directory', '/login?error=password')
+                # the page gets a known code (its own text for it: test_web_templates), never a
+                # text put in the URL (the stub template of the harness prints the variable raw)
+                page = await (await h.client.get('/login?error=password')).text()
+                assert 'password' in page
+                page = await (await h.client.get('/login?error=Your+account+is+locked%2C+call+0800')).text()
+                assert 'account is locked' not in page
         run(go())
 
 
@@ -624,7 +631,7 @@ class TestProxyMode:
                                            headers={**who('alice'), **CSRF})
                 assert resp.status == 403 and 'reverse proxy' in await resp.text()
                 resp = await h.client.post('/login', data={'display_name': 'x'}, allow_redirects=False)
-                assert resp.status == 302 and resp.headers['Location'].startswith('/login?error=')
+                assert resp.status == 302 and resp.headers['Location'] == '/login?error=proxy_mode'
         run(go())
 
     def test_language_cookie(self, tmp_path):

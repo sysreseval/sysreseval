@@ -1358,7 +1358,8 @@ once.
   naming the login (`memberUid`, which matches case-exactly) use that form too. In proxy mode the
   proxy must pass that form (`AuthLDAPRemoteUserAttribute` in the Apache example).
 - Rate limits per user (evaluations, starts) and per client address (logins); the size of the
-  answers is capped.
+  answers is capped. The sign-in page shows its own messages only (`/login?error=<code>`:
+  `password`, `rate_limited`, `directory`), never a text taken from the URL.
 - The `answers/` directory of a project is world-writable (the Qt GUI of the student writes
   there) and the agent, as root, merges the cheat answers `sre state` leaves in it
   (`answers/cheat.json`): that file is opened without following a symbolic link and read only

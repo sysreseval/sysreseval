@@ -411,6 +411,15 @@ msgstr "Texte à coller dans le bureau X"
 msgid "Open this link in a new tab?"
 msgstr "Ouvrir ce lien dans un nouvel onglet ?"
 
+msgid "Wrong login or password."
+msgstr "Identifiant ou mot de passe incorrect."
+
+msgid "Too many sign-in attempts: try again in a minute."
+msgstr "Trop de tentatives de connexion : réessayez dans une minute."
+
+msgid "The directory does not answer."
+msgstr "L'annuaire ne répond pas."
+
 msgid "Text to paste into the X desktop, or received from it"
 msgstr "Texte à coller dans le bureau X, ou reçu de celui-ci"
 

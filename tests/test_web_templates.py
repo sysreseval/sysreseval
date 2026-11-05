@@ -107,8 +107,8 @@ class TestTemplates:
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
-        html = render('login.html', identity=None, auth_mode=auth_mode, error='wrong login or password')
-        assert 'wrong login or password' in html
+        html = render('login.html', identity=None, auth_mode=auth_mode, error='password')
+        assert 'Wrong login or password.' in html
         if auth_mode == 'proxy':
             # the reverse proxy authenticates: no form, a message (the page is only seen on a misconfiguration)
             assert 'action="/login"' not in html and 'name="language"' not in html
@@ -159,9 +159,19 @@ class TestTemplates:
         # nothing configured: no block at all
         assert 'institution' not in render('projects.html')
 
-    def test_login_error_is_escaped(self):
-        html = render('login.html', identity=None, error='<script>alert(1)</script>')
-        assert '<script>alert(1)' not in html and '&lt;script&gt;' in html
+    def test_login_error_is_a_code_never_a_text(self):
+        """The page shows its own message for a LOGIN_ERRORS code; a text in the URL (a phishing
+        link ``?error=Your+account+is+locked…``, second Low finding of the security review) shows
+        nothing, not even escaped."""
+        html = render('login.html', identity=None, auth_mode='ldap', error='<script>alert(1)</script>')
+        assert 'alert(1)' not in html and '&lt;script&gt;' not in html and 'class="error"' not in html
+        html = render('login.html', identity=None, auth_mode='ldap', error='Your account is locked, call 0800')
+        assert 'account is locked' not in html and 'class="error"' not in html
+        for code, text in (('password', 'Wrong login or password.'),
+                           ('rate_limited', 'Too many sign-in attempts: try again in a minute.'),
+                           ('directory', 'The directory does not answer.')):
+            html = render('login.html', identity=None, auth_mode='ldap', error=code)
+            assert text in html and html.count('class="error"') == 1, code
 
     def test_projects_page(self):
         html = render('projects.html')
