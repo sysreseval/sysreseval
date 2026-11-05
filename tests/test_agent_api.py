@@ -1274,6 +1274,7 @@ class TestSharedTerminals:
                                                   protocols=(TERMINAL_SUBPROTOCOL,))
                 ready = await asyncio.wait_for(alice.receive_json(), 5)
                 assert ready['t'] == 'ready' and ready['device'] == 'm1' and ready['clients'] == 1 and not ready['joined']
+                assert ready['private'] is False
                 sid = ready['session']
                 listed = (await receive_event(events, 'terminals'))['terminals']
                 assert len(listed) == 1 and listed[0]['id'] == sid and listed[0]['created_by'] == 'alice'
@@ -1304,6 +1305,48 @@ class TestSharedTerminals:
                 assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
                 assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
                 await events.close()
+        run(go())
+
+    def test_closed_device_makes_the_instructors_terminal_private(self, tmp_path):
+        """A terminal an instructor opens on a device the student may not open themself (the
+        closed machine: the privileged ``sre connect`` lets the instructor in) is private whatever
+        the page asked, since a shared session is joined without the device check; on the open
+        machine a shared terminal of the instructor stays joinable."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                alice_events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m2', headers=headers(PROF),
+                                                 protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(prof.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['private'] is True and not ready['joined']
+                pid = ready['session']
+                await read_until(prof, b'mock$')
+                privileged_call([e for e in h.entries() if 'connect' in e['argv']][-1], ['connect', rln, 'm2'], 'prof')
+                assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
+                mine = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF))).json())['terminals']
+                assert [(t['id'], t['private'], t['created_by']) for t in mine] == [(pid, True, 'prof')]
+                assert (await receive_event(alice_events, 'terminals'))['terminals'] == []
+                ws = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m2?join={pid}', headers=headers(),
+                                               protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(ws.receive_json(), 5))['t'] == 'error'
+                closing = await ws.receive()
+                assert closing.type == aiohttp.WSMsgType.CLOSE and ws.close_code == 4403
+                await end_terminal(prof)
+                # the open machine: a shared terminal, joined by the student
+                prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(PROF),
+                                                 protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(prof.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['private'] is False
+                sid = ready['session']
+                await read_until(prof, b'mock$')
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(alice.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['joined'] and ready['private'] is False
+                await alice.close()
+                await end_terminal(prof)
+                await alice_events.close()
         run(go())
 
     def test_private_terminals_and_refusals(self, tmp_path):

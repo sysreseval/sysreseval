@@ -96,6 +96,24 @@ def check_device(info: dict, device: str, identity: Identity, *, connect_all: bo
     raise AccessError(404, f"unknown device {device}")
 
 
+#: A student-path probe: what the owner of a project may do (the role decides, not the login).
+_STUDENT_PATH = Identity(login='student')
+
+
+def device_open_to_students(info: dict, device: str) -> bool:
+    """Whether a student may open a terminal on *device* themself: what :func:`check_device`
+    grants without *connect_all* (a visible machine or a managed switch with
+    ``allow_connection``, every listed device of a debug project but the hidden machines,
+    which a student never sees).  A session an instructor opens on any other device exists
+    thanks to the privileged call only: the agent makes it private whatever the page asked,
+    since a shared session is joined without the device check."""
+    try:
+        check_device(info, device, _STUDENT_PATH, connect_all=False)
+    except AccessError:
+        return False
+    return True
+
+
 def display_available(info: dict, identity: Identity) -> bool:
     """The lab has a machine the user sees that draws on the X server of the host
     (``x11_host``): the project gets a virtual desktop (the Display tab)."""

@@ -809,6 +809,9 @@ msgstr "Terminal privé (l'étudiant ne le voit pas)"
 msgid "Shared terminal (the student can join it)"
 msgstr "Terminal partagé (l'étudiant peut s'y joindre)"
 
+msgid "Closed to the student: private terminal only"
+msgstr "Fermé à l'étudiant : terminal privé seulement"
+
 msgid "{n} viewers"
 msgstr "{n} participants"
 

@@ -69,6 +69,21 @@ class TestDevices:
             A.check_device(info(), 'nope', PROF)
         assert e.value.status == 404
 
+    def test_device_open_to_students(self):
+        """What the student may open themself: an instructor's terminal elsewhere (opened by the
+        privileged call) is made private by the agent, since a join skips the device check."""
+        assert A.device_open_to_students(info(), 'pc1')
+        assert not A.device_open_to_students(info(), 'srv')         # allow_connection false
+        assert not A.device_open_to_students(info(), 'probe')       # hidden: unknown to a student
+        assert A.device_open_to_students(info(), 'lan')
+        assert not A.device_open_to_students(info(), 'closed')      # a closed managed switch
+        assert not A.device_open_to_students(info(), 'dmz')         # no console on a plain switch
+        assert not A.device_open_to_students(info(), 'nope')
+        # a debug project opens every listed device to its owner, but the hidden machines they never see
+        assert A.device_open_to_students(info(debug_project=True), 'srv')
+        assert A.device_open_to_students(info(debug_project=True), 'closed')
+        assert not A.device_open_to_students(info(debug_project=True), 'probe')
+
     def test_switch(self):
         assert A.check_device(info(), 'lan', STUDENT) == A.DEVICE_SWITCH
         for name in ('closed', 'dmz'):

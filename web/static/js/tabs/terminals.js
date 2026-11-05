@@ -177,6 +177,14 @@ export function createTerminalsTab(ctx) {
     return Boolean(device.allow_connection || debug);
   }
 
+  // what the student may open themself: a device they see with allow_connection (every one of a
+  // debug project, the hidden machines apart, which the agent never shows them).  An
+  // instructor's terminal on any other device is made private by the agent whatever the page
+  // asks: a shared session is joined without the device check.
+  function openToStudent(device) {
+    return Boolean(!device.hidden && (device.allow_connection || debug));
+  }
+
   function deviceOf(name) {
     return devices.find((d) => d.name === name);
   }
@@ -195,7 +203,10 @@ export function createTerminalsTab(ctx) {
     select.append(el('option', {value: ''}, placeholder));
     const options = (prefix) => devices.map((device) => {
       const option = el('option', {value: prefix + device.name, class: deviceClass(device)}, device.name);
-      option.disabled = !canOpen(device);
+      option.disabled = !canOpen(device) || (prefix === 'shared:' && !openToStudent(device));
+      if (prefix === 'shared:' && canOpen(device) && !openToStudent(device)) {
+        option.title = _('Closed to the student: private terminal only');
+      }
       return option;
     });
     if (helper) {
@@ -310,6 +321,17 @@ export function createTerminalsTab(ctx) {
     return Boolean(entry.private || (r && r.private));
   }
 
+  // the title of a terminal, on its sub-tab (the text before the badge) and on its window
+  function setTitle(entry, title) {
+    entry.title = title;
+    if (entry.tab && entry.tab.firstChild) {
+      entry.tab.firstChild.textContent = title;
+    }
+    if (entry.win) {
+      entry.win.setTitle(title);
+    }
+  }
+
   // the viewer count of a sub-tab or a window (the session is shared when it is above one): the
   // browsers typing in it and the read-only spectators of a presentation
   function updateBadge(entry) {
@@ -391,6 +413,11 @@ export function createTerminalsTab(ctx) {
       readonly: spectator,
       onReady: (info) => {
         entry.remoteId = info.session || entry.remoteId;
+        if (info.private && !entry.private) {
+          // the agent made it private: a device the student may not open (see openToStudent)
+          entry.private = true;
+          setTitle(entry, format(_('{title} (private)'), {title: entry.title}));
+        }
         updateBadge(entry);
         renderLive();
         notify();         // the session id is known: the spectators can join it

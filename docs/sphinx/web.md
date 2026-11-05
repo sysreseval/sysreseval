@@ -1125,7 +1125,9 @@ What an instructor gets:
   instructor sees the student's shell and may type in it, the student sees the same; a closed
   sub-tab is not joined again), and the selects offer a **private terminal** (the student does
   not see it in their list; what the instructor types there stays with them) or a shared one,
-  the Connect buttons a private one in a window;
+  the Connect buttons a private one in a window; a terminal on a device the student cannot open
+  themself (a closed machine or switch, a hidden machine) is **always private**, whatever the
+  choice: the shared kind is greyed for it and the agent makes the session private anyway;
   the Evaluation tab opens on the **last archived evaluation** of the project (date, errors in
   the tooltip), shows each new one by itself (the periodic evaluations of the lab, the student's
   own, another instructor's: the agent tells the open pages) and *Start evaluation* runs a
@@ -1370,7 +1372,10 @@ the commands.
   runs a command as the student for them: a non-owner's `eval`, `state` and `connect` are
   privileged `sre` calls under the instructor's own login, the answers a non-owner writes go
   into the student's file with the student's metadata kept (the file never names the
-  instructor), and a private terminal is listed to instructors only. The operations log of an instructor-mode
+  instructor), and a private terminal is listed to instructors only; a terminal an instructor
+  opens on a device the student may not open themself (a closed machine or switch, a hidden
+  machine) is private whatever the page asks, since a shared session is joined without the
+  device check. The operations log of an instructor-mode
   project goes to the subscribers allowed to read it only.
 - The spectators of a presentation reach the presented project through the portal only, on a
   short list of read-only calls (the project, its events, the schema, the log, a terminal to

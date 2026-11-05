@@ -881,6 +881,22 @@ class TestJavaScript:
         terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
         assert 'const helper = Boolean(ctx.helper);' in terminals
 
+    def test_shared_terminals_only_on_devices_open_to_the_student(self):
+        """A terminal an instructor opens on a device the student may not open themself (a closed
+        machine or switch, a hidden machine) is made private by the agent whatever the page asks
+        (security review finding 5): the page greys the shared kind of the selects for such a
+        device and retitles a terminal the ready frame reports private."""
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert 'function openToStudent(device)' in terminals
+        assert 'return Boolean(!device.hidden && (device.allow_connection || debug));' in terminals
+        assert "option.disabled = !canOpen(device) || (prefix === 'shared:' && !openToStudent(device));" in terminals
+        assert "option.title = _('Closed to the student: private terminal only');" in terminals
+        assert 'if (info.private && !entry.private) {' in terminals
+        assert "setTitle(entry, format(_('{title} (private)'), {title: entry.title}));" in terminals
+        app = (ROOT / 'src' / 'sreweb' / 'agent' / 'app.py').read_text(encoding='utf-8')
+        assert 'if privileged and not access.device_open_to_students(project.info, device):' in app
+        assert "'private': session.private" in app
+
     def test_focus_colour_keyed_on_the_body(self):
         """While an instructor focuses a student on the project, both pages take --focus-bg on
         their top bars (body.focusing on the instructor's page, body.focused on the student's,

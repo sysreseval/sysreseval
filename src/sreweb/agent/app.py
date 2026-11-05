@@ -982,7 +982,10 @@ class Agent:
         browser on a live session of the project (``terminals.TerminalSession``: everybody types
         into the same pty and sees the same output).  A session of a non-owner instructor runs
         ``sre connect`` privileged (every listed device opens); ``?private=1`` (instructors) keeps
-        it out of the student's list.  ``?readonly=1`` with ``join`` attaches a read-only client
+        it out of the student's list, and a session on a device the student may not open
+        themself (``access.device_open_to_students()``: a closed machine or switch, a hidden
+        machine) is private whatever the query asks, since a join skips the device check (the
+        ``ready`` frame says ``private``).  ``?readonly=1`` with ``join`` attaches a read-only client
         (a spectator of a presentation): its frames are ignored, it is told the size of the pty
         (``cols`` / ``rows`` in ``ready``, then ``{"t": "size"}`` frames), it has its own cap.
         The text frame ``{"t": "close"}`` says the user closed the terminal: the session ends at
@@ -1022,6 +1025,8 @@ class Agent:
                     raise AccessError(403, "private terminals are for instructors")
                 privileged = access.is_privileged_caller(project.rln, identity)
                 access.check_device(project.info, device, identity, connect_all=privileged)
+                if privileged and not access.device_open_to_students(project.info, device):
+                    private = True   # opened thanks to the privileged call only: never offered to the student
                 if project.terminals_on(device) >= self.cfg.terminals_per_device:
                     self._evict_lingering(project, device)
                 if project.terminal_count() >= self.cfg.terminals_per_project:
@@ -1071,7 +1076,7 @@ class Agent:
         await ws.send_json({'t': 'ready', 'session': session.id, 'device': session.device,
                             'clients': session.writer_count(), 'viewers': session.viewer_count(),
                             'cols': session.size[0], 'rows': session.size[1], 'readonly': readonly,
-                            'joined': bool(q.get('join', ''))})
+                            'joined': bool(q.get('join', '')), 'private': session.private})
         pump = asyncio.ensure_future(session.pump(client))
         ended = False          # the user closed the terminal (its ×): no linger
         try:
