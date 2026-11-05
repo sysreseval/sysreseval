@@ -52,6 +52,20 @@ class Subscriber:
     identity: Identity
 
 
+def interval_seconds(value) -> int:
+    """An evaluation interval of ``info.json`` (``eval_interval_without_exam_mode``) or of an
+    exam as whole seconds: 0 (no periodic evaluation) for ``nan``, ``±Infinity`` (a lab's
+    ``= inf`` made ``int()`` raise ``OverflowError`` from the registry hooks and abort every
+    tick), a negative value or anything that is not a number."""
+    try:
+        interval = float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    if interval != interval or interval in (float('inf'), float('-inf')) or interval <= 0:
+        return 0
+    return int(interval)
+
+
 @dataclass
 class Project:
     rln: str
@@ -170,7 +184,7 @@ class Project:
             'info_mtime': self.info_mtime,
             'terminals': self.terminal_count(),
             'managed': self.managed,
-            'eval_interval': int(self.info.get('eval_interval_without_exam_mode', 0) or 0),
+            'eval_interval': interval_seconds(self.info.get('eval_interval_without_exam_mode', 0)),
             'exam': exam_view(self.exam),
         }
 

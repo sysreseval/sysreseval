@@ -22,7 +22,7 @@ from typing import Awaitable, Callable
 from SRE import params
 
 from .exam import KEY_END_AT, KEY_EVAL_INTERVAL, KEY_ENDED_AT, KEY_FINAL_EVAL_AT, end_epoch, now_iso
-from .registry import Project, Registry
+from .registry import Project, Registry, interval_seconds
 from .runner import SreRunner, CommandError, sre_args
 
 log = logging.getLogger('sreweb.agent')
@@ -64,10 +64,7 @@ class Schedulers:
             value = project.exam.get(KEY_EVAL_INTERVAL, 0)
         else:
             value = project.info.get('eval_interval_without_exam_mode', 0)
-        try:
-            return int(value or 0)
-        except (TypeError, ValueError):
-            return 0
+        return interval_seconds(value)      # 0 for nan, ±Infinity, a negative or non-numeric value
 
     def arm(self, project: Project):
         """Plan the next periodic evaluation from info.json (0 = none), as the Qt GUI does when

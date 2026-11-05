@@ -361,6 +361,32 @@ class TestAnswersStore:
 
 
 class TestSchedulers:
+    def test_odd_eval_interval_does_not_abort_the_tick(self, tmp_pub_dir):
+        """A lab's eval_interval_without_exam_mode = inf made int() raise OverflowError from
+        arm() inside on_added, which aborted every tick (security review, thirteenth Low
+        finding): nan, the infinities, negative and non-numeric values mean no periodic
+        evaluation, in the scheduler and in the project rows alike."""
+        from sreweb.agent.registry import interval_seconds
+        assert [interval_seconds(v) for v in (60, '60', 59.9, 0, None, '', 'soon', -5, float('nan'),
+                                              float('inf'), float('-inf'))] == [60, 60, 59, 0, 0, 0, 0, 0, 0, 0, 0]
+        assert interval_seconds(1e300) == int(1e300)
+        make_project(tmp_pub_dir, eval_interval_without_exam_mode=float('inf'))
+        reg = registry()
+        sched = Schedulers(reg, FakeRunner(), exam_mode=lambda: False)
+
+        async def go():
+            await reg.tick()
+            p = reg.get(RLN)
+            assert p is not None and p.next_eval_at is None and p.to_dict()['eval_interval'] == 0
+            assert Schedulers.eval_interval(p) == 0
+            p.info['eval_interval_without_exam_mode'] = float('nan')
+            sched.arm(p)
+            assert p.next_eval_at is None
+            p.info['eval_interval_without_exam_mode'] = 30
+            sched.arm(p)
+            assert p.next_eval_at is not None
+        run(go())
+
     def test_periodic_eval(self, tmp_pub_dir):
         make_project(tmp_pub_dir, eval_interval_without_exam_mode=1)
         reg = registry()
