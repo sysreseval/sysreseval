@@ -90,6 +90,35 @@ def test_close_hangs_up_and_reaps():
     run(go())
 
 
+def test_pending_input_is_capped(monkeypatch):
+    """The child stops reading (a stopped foreground job) while a client keeps sending: the
+    pending input is capped at INPUT_HIGH_WATER and the rest dropped, never kept forever
+    (security review, twelfth Low finding).  The master is stalled by hand: on Linux the kernel
+    pushes back once its queue is full, on macOS the line discipline discards the input."""
+    from sreweb.agent import pty_session
+    from sreweb.agent.pty_session import INPUT_HIGH_WATER
+
+    def stalled(fd, data):
+        raise BlockingIOError
+
+    async def go():
+        h = Harness()
+        await h.session.start()
+        await h.expect('tty=True')
+        assert h.session.pid
+        monkeypatch.setattr(pty_session, '_os_write', stalled)       # the kernel takes nothing more
+        chunk = b'x' * 65536
+        for _ in range(INPUT_HIGH_WATER // len(chunk)):
+            assert h.session.write(chunk) is True
+        assert h.session.dropped_in == 0 and len(h.session._pending_in) == INPUT_HIGH_WATER
+        assert h.session.write(b'more') is False and h.session.dropped_in == 4
+        assert h.session.write(b'again') is False and h.session.dropped_in == 9
+        assert len(h.session._pending_in) == INPUT_HIGH_WATER
+        monkeypatch.setattr(pty_session, '_os_write', os.write)      # the program reads again
+        await h.session.close(grace=2.0)
+    run(go())
+
+
 def test_backpressure_pauses_reading():
     async def go():
         h = Harness()

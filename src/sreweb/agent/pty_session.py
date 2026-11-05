@@ -12,15 +12,25 @@ Session recording (``asciinema``) happens inside ``sre connect`` when the lab as
 """
 import asyncio
 import fcntl
+import logging
 import os
 import signal
 import struct
 import termios
 from typing import Callable
 
+log = logging.getLogger('sreweb.agent')
+
 READ_SIZE = 1 << 16
 #: Pending output above which the master is no longer read until the consumer catches up.
 OUTPUT_HIGH_WATER = 1 << 20
+#: Pending input above which what the clients send is dropped: the child stopped reading (a
+#: stopped foreground job) while a client keeps sending; never kept forever.
+INPUT_HIGH_WATER = 1 << 20
+
+#: The write on the master (the tests stall it: a child that reads no more pushes back on Linux
+#: only, macOS's line discipline discards what it cannot queue).
+_os_write = os.write
 
 
 def _window_size(cols: int, rows: int) -> bytes:
@@ -48,6 +58,7 @@ class PtySession:
         self._master: int | None = None
         self._proc: asyncio.subprocess.Process | None = None
         self._pending_in = bytearray()
+        self.dropped_in = 0             # bytes of input dropped above INPUT_HIGH_WATER (warned once)
         self._pending_out = 0
         self._reading = False
         self._writer_registered = False
@@ -178,28 +189,49 @@ class PtySession:
 
     # -- input: consumer -> master ----------------------------------------------------------------
 
-    def write(self, data: bytes):
+    @property
+    def pid(self) -> int | None:
+        return self._proc.pid if self._proc is not None else None
+
+    def _drop_input(self, data: bytes):
+        if not self.dropped_in:
+            log.warning("terminal input dropped: the program on %s stopped reading (%d bytes pending)",
+                        self.argv[-1] if self.argv else '?', len(self._pending_in))
+        self.dropped_in += len(data)
+
+    def write(self, data: bytes) -> bool:
+        """Input for the child; ``False`` when nothing of it was written nor kept: the master
+        is gone, or ``INPUT_HIGH_WATER`` bytes are pending already (the child stopped reading
+        while a client keeps sending) and *data* is dropped."""
         if self._master is None or not data:
-            return
+            return False
         if self._pending_in:
+            if len(self._pending_in) + len(data) > INPUT_HIGH_WATER:
+                self._drop_input(data)
+                return False
             self._pending_in += data
-            return
+            return True
         try:
-            n = os.write(self._master, data)
+            n = _os_write(self._master, data)
         except BlockingIOError:
             n = 0
         except OSError:
-            return
+            return False
         if n < len(data):
-            self._pending_in += data[n:]
+            rest = data[n:]
+            if len(rest) > INPUT_HIGH_WATER:
+                self._drop_input(rest)
+                return n > 0
+            self._pending_in += rest
             self._loop.add_writer(self._master, self._flush_pending)
             self._writer_registered = True
+        return True
 
     def _flush_pending(self):
         if self._master is None:
             return
         try:
-            n = os.write(self._master, bytes(self._pending_in))
+            n = _os_write(self._master, bytes(self._pending_in))
         except BlockingIOError:
             return
         except OSError:
