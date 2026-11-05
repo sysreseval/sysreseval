@@ -1340,7 +1340,10 @@ once.
   address with 403. Without TLS the token and the terminals cross the network in clear: keep the
   agents on a trusted management network or behind a tunnel (the agent warns at startup).
 - The session cookie is signed (HMAC-SHA256), `HttpOnly`, `SameSite=Strict`, `Secure` behind
-  HTTPS; the state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
+  HTTPS; it lives 14 days from the sign-in (a language change sets it again with its original
+  date: a session never slides) and carries the role, group and administrator flag of the
+  sign-in (a change in the directory applies at the next sign-in: Logout, or the expiry); the
+  state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
   matching `Origin`; the pages carry a `Content-Security-Policy`.
 - In proxy mode nothing is stored in a cookie: every request carries the identity set by the
   reverse proxy, accepted from the peers of `trusted_proxies` only (a request reaching the

@@ -170,8 +170,56 @@ class TestSessionCookie:
         body, _, sig = value.rpartition('.')
         assert S.decode('eyJ4IjoxfQ.' + sig, SECRET, now=2000) is None   # another payload, same signature
 
+    def test_reissue_keeps_the_issue_date(self):
+        """A session never slides (security review, third Low finding): the cookie set again at
+        a language change carries the original iat and the time left, and expires with it."""
+        class Response:
+            def __init__(self):
+                self.cookies = {}
+
+            def set_cookie(self, name, value, **options):
+                self.cookies[name] = (value, options)
+
+        me = Identity(login='alice', language='fr', anonymous=True)
+        value = S.encode(me, SECRET, now=1000)
+        assert S.decode_iat(value, SECRET, now=2000) == (me, 1000)
+        assert S.decode_iat('garbage', SECRET) == (None, None)
+        assert S.decode_iat(value, SECRET, now=1000 + S.MAX_AGE + 1) == (None, None)
+        again = Response()
+        S.set_cookie(again, Identity(login='alice', language='en', anonymous=True), SECRET, secure=True,
+                     issued_at=1000, now=1000 + 3600)
+        value, options = again.cookies[S.COOKIE_NAME]
+        identity, iat = S.decode_iat(value, SECRET, now=1000 + 3600)
+        assert identity.language == 'en' and iat == 1000
+        assert options['max_age'] == S.MAX_AGE - 3600 and options['httponly'] and options['samesite'] == 'Strict'
+        assert S.decode(value, SECRET, now=1000 + S.MAX_AGE + 1) is None     # expires with the sign-in's cookie
+        fresh = Response()
+        S.set_cookie(fresh, me, SECRET, secure=True, now=5000)                # a sign-in: a new date
+        value, options = fresh.cookies[S.COOKIE_NAME]
+        assert S.decode_iat(value, SECRET, now=5000) == (me, 5000) and options['max_age'] == S.MAX_AGE
+        late = Response()
+        S.set_cookie(late, me, SECRET, secure=True, issued_at=1000, now=1000 + S.MAX_AGE + 50)
+        assert late.cookies[S.COOKIE_NAME][1]['max_age'] == 1                # already over: dropped at once
+
 
 class TestLoginAndPages:
+    def test_language_change_keeps_the_session_date(self, tmp_path):
+        """The cookie set again by /api/language carries the issue date of the sign-in, so a
+        session never lives past MAX_AGE from it (security review, third Low finding)."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                await h.login('A')
+                first = [c for c in h.client.session.cookie_jar if c.key == S.COOKIE_NAME][0].value
+                me, issued = S.decode_iat(first, SECRET)
+                assert me is not None and issued is not None
+                resp = await h.client.post('/api/language', json={'language': 'en'}, headers=CSRF)
+                assert resp.status == 200
+                again = resp.cookies[S.COOKIE_NAME]
+                identity, iat = S.decode_iat(again.value, SECRET)
+                assert identity.login == me.login and identity.language == 'en' and iat == issued
+                assert int(again['max-age']) <= S.MAX_AGE
+        run(go())
+
     def test_anonymous_login_pages_and_logout(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:

@@ -565,7 +565,8 @@ class Routes:
         response = web.json_response({'identity': identity.to_dict()})
         S.set_language_cookie(response, language, secure=self._secure(request))
         if not self.proxy_mode:       # the session cookie carries the language; proxy mode has none
-            S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request))
+            S.set_cookie(response, identity, self.cfg.secret, secure=self._secure(request),
+                         issued_at=request.get(S.SESSION_IAT_KEY))     # the session keeps its date: it never slides
         return response
 
     # -- labs, pool, projects -------------------------------------------------------------------

@@ -242,8 +242,9 @@ class Portal:
                     identity = identity.with_administrator(administrator)
             request[IDENTITY_KEY] = self._administrator(identity)
         else:
-            request[IDENTITY_KEY] = self._administrator(S.decode(request.cookies.get(S.COOKIE_NAME, ''),
-                                                                 self.cfg.secret))
+            identity, issued_at = S.decode_iat(request.cookies.get(S.COOKIE_NAME, ''), self.cfg.secret)
+            request[IDENTITY_KEY] = self._administrator(identity)
+            request[S.SESSION_IAT_KEY] = issued_at      # kept by a re-issue: the session never slides
         response = await handler(request)
         response.headers.setdefault('Content-Security-Policy', CSP)
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
