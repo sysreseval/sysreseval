@@ -42,7 +42,8 @@ from datetime import datetime
 import aiohttp
 
 from .accessdb import DatabaseSink, TableSpec, utc_datetime, epoch
-from .accesshistory import (HistoryError, escape_like, fetch, DEFAULT_LIMIT, MAX_LIMIT, MAX_TEXT, LIKE_ESCAPE)
+from .accesshistory import (HistoryError, escape_like, fetch, parse_epoch, DEFAULT_LIMIT, MAX_LIMIT, MAX_TEXT,
+                            LIKE_ESCAPE)
 from .roles import complete_owners
 from ..config import AccessDatabaseConfig, ArchivesConfig
 
@@ -227,10 +228,7 @@ def parse_archive_filters(query, *, default_show: str = SHOW_PROJECT) -> dict:
     for key in ('since', 'until'):
         value = str(query.get(key, '') or '').strip()
         if value:
-            try:
-                filters[key] = float(value)
-            except ValueError:
-                raise ValueError(f"{key}: seconds since the epoch are expected") from None
+            filters[key] = parse_epoch(key, value)
     exam = str(query.get('exam', '') or '').strip().lower()
     if exam:
         if exam not in ('1', '0', 'true', 'false'):

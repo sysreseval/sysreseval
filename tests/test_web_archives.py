@@ -104,6 +104,7 @@ class TestFilters:
 
     @pytest.mark.parametrize('query, key', [
         ({'since': 'yesterday'}, 'since'), ({'until': '2026-10-29'}, 'until'), ({'exam': 'maybe'}, 'exam'),
+        ({'since': 'nan'}, 'since'), ({'until': 'inf'}, 'until'), ({'since': '-1'}, 'since'), ({'until': '1e30'}, 'until'),
         ({'show': 'best'}, 'show'), ({'before': 'x'}, 'before'), ({'limit': '0'}, 'limit'), ({'limit': '5000'}, 'limit'),
     ])
     def test_refused(self, query, key):

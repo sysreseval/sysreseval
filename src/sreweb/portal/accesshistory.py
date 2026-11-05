@@ -21,6 +21,7 @@ prefixes, the time window and the cursor, and selects that event), turned into a
 ``visit_matches``)."""
 import asyncio
 import json
+import math
 from datetime import datetime
 
 from .accessdb import SELECT, HistoryError, epoch, utc_datetime   # noqa: F401  (HistoryError: re-exported)
@@ -59,6 +60,24 @@ def _values(query, key: str) -> list:
     return list(value) if isinstance(value, (list, tuple)) else [value]
 
 
+#: The last second a time filter may name (9999-12-31T23:59:59Z, what a datetime holds).
+MAX_EPOCH = 253402300799.0
+
+
+def parse_epoch(key: str, text: str) -> float:
+    """A time filter (*key*: ``since`` / ``until``) as seconds since the epoch: a finite number
+    from 0 to ``MAX_EPOCH``, else ``ValueError`` naming the parameter (a 400).  ``float()``
+    alone takes ``nan``, ``inf`` and huge values, which ``utc_datetime()`` could not turn into
+    a datetime: an exception in the worker thread, a 500."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise ValueError(f"{key}: seconds since the epoch are expected") from None
+    if not math.isfinite(value) or not 0 <= value <= MAX_EPOCH:
+        raise ValueError(f"{key}: seconds since the epoch are expected")
+    return value
+
+
 def parse_filters(query) -> dict:
     """The filters of a request from its query string (aiohttp's ``MultiDictProxy``, or a plain
     dict), typed: the text filters stripped (an empty one dropped), ``event`` as a list (the
@@ -85,10 +104,7 @@ def parse_filters(query) -> dict:
     for key in ('since', 'until'):
         value = str(query.get(key, '') or '').strip()
         if value:
-            try:
-                filters[key] = float(value)
-            except ValueError:
-                raise ValueError(f"{key}: seconds since the epoch are expected") from None
+            filters[key] = parse_epoch(key, value)
     before = str(query.get('before', '') or '').strip()
     if before:
         if not before.isdigit():

@@ -306,6 +306,19 @@ class TestFilters:
         assert parse_filters({'limit': '5000'})['limit'] == H.MAX_LIMIT
         assert parse_filters({'limit': '1'})['limit'] == 1
 
+    @pytest.mark.parametrize('value', ['nan', 'inf', '-inf', '1e400', '-1', '1e30', str(H.MAX_EPOCH + 1), 'yesterday', ''])
+    def test_time_filters_must_be_finite_epoch_seconds(self, value):
+        """nan, inf and huge values pass float() but not utc_datetime(): a 400 instead of an
+        exception in the worker thread (security review, fifth Low finding)."""
+        for key in ('since', 'until'):
+            if value == '':
+                assert key not in parse_filters({key: value})
+                continue
+            with pytest.raises(ValueError, match=key):
+                parse_filters({key: value})
+        assert H.parse_epoch('since', '0') == 0.0 and H.parse_epoch('until', str(H.MAX_EPOCH)) == H.MAX_EPOCH
+        assert H.parse_epoch('since', ' 1761400000.5 ') == 1761400000.5
+
     def test_group(self):
         """The group filter: a canonical key (a bare name is a department), resolved into the
         logins of the members by the route (resolve_group on the memberships)."""
