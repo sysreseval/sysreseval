@@ -1,5 +1,5 @@
 """Tests for lib/ipsec.py (fixtures captured on strongSwan 5.9.8 / Linux 6.12 in the containers of
-lab/em/_DRAFT_/ipsec.py on 2026-11-05: tests/mock_data/ipsec/)."""
+lab/sre/_DRAFT_misc/ipsec.py on 2026-11-05: tests/mock_data/ipsec/)."""
 import sys
 from ipaddress import IPv4Network
 from pathlib import Path

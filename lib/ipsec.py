@@ -5,7 +5,7 @@ around one command each, in the style of ``lib/wireguard.py``: the ``--raw`` vic
 ``swanctl`` (``--list-sas``, ``--list-conns``, ``--list-pools``), ``swanctl --list-certs``,
 ``ip xfrm state`` / ``ip xfrm policy``, the ``swanctl.conf`` syntax, the ``tcpdump -n`` lines
 of IKE / ESP / NAT-T traffic, plus the road-warrior probe a hidden machine plays against the
-student's gateway.  Fixtures captured in the containers of ``lab/em/_DRAFT_/ipsec.py``
+student's gateway.  Fixtures captured in the containers of ``lab/sre/_DRAFT_misc/ipsec.py``
 (Debian 12 images, strongSwan 5.9.8-5+deb12u6, Linux 6.12) live in ``tests/mock_data/ipsec/``.
 
 Every wrapper registers its command unconditionally (two-pass contract of ``Grade0.grade()``)

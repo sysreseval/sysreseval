@@ -1,4 +1,4 @@
-"""Offline tests of the IPsec / IKEv2 lab (lab/em/_DRAFT_/ipsec.py): data generation, topology, the
+"""Offline tests of the IPsec / IKEv2 lab (lab/sre/_DRAFT_misc/ipsec.py): data generation, topology, the
 ops of the states, the reference texts, the two-pass grading contract with synthetic outputs
 (nothing done: 0, the reference solution: 100), the texts and the instructor fragments, English
 identifiers.
@@ -23,10 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'tools'))
 
 import strip_instructor  # noqa: E402
 
-_LAB_PATH = Path(__file__).parent.parent / 'lab' / 'em' / '_DRAFT_' / 'ipsec.py'
+_LAB_PATH = Path(__file__).parent.parent / 'lab' / 'sre' / '_DRAFT_misc' / 'ipsec.py'
 _MOCK = Path(__file__).parent / 'mock_data' / 'ipsec'
-
-pytestmark = pytest.mark.skipif(not _LAB_PATH.exists(), reason="lab/em/_DRAFT_/ipsec.py is not in this checkout")
 
 
 @pytest.fixture(scope='module')
