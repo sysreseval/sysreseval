@@ -142,6 +142,7 @@ class Agent:
             project.debug or access.instructor_view_allowed(project.info, identity))
         self.results = ArchiveIndex(archive_dirs)
         self.displays = DisplayManager(cfg.display, registry=self.registry)
+        self._display_warning = ''      # the last reason no desktop could be reserved, logged once
         self.answers = AnswersStore(self.registry, hostname=self.hostname, pub_dir=self.pub_dir)
         self.schedulers = Schedulers(self.registry, self.runner, exam_mode=self.exam_mode,
                                      default_idle_timeout=cfg.max_idle, on_evaluated=self._evaluated,
@@ -579,7 +580,11 @@ class Agent:
             try:
                 reservation = self.displays.reserve()
             except DisplayError as e:
-                raise AccessError(503, str(e))
+                # a number is taken by a lock file in /tmp or a listener on 6000+N, which any local
+                # user can leave: the project starts without a desktop rather than not at all
+                self._warn_display(f"no virtual desktop for the new projects: {e}")
+            else:
+                self._display_warning = ''
         try:
             return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
                                                reservation=reservation, privileged=instructor_mode or exam is not None,
@@ -587,6 +592,13 @@ class Agent:
         finally:
             if reservation is not None:
                 self.displays.release(reservation)
+
+    def _warn_display(self, message: str):
+        """One warning per reason the desktops cannot be reserved (every start would repeat it);
+        cleared by the next reservation that succeeds."""
+        if message != self._display_warning:
+            self._display_warning = message
+            log.warning("%s", message)
 
     async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None,
                                privileged: bool = False, exam: dict | None = None):

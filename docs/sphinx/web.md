@@ -1322,7 +1322,10 @@ the X clipboard and shows what the applications copy, *Reconnect* opens the stre
 number and the cookie of a project never change: a desktop that died, or that was lost when the
 agent restarted (its X server is a child of the agent), is started again at the next use of the
 tab, empty. `[display]` of `agent.toml` holds the geometry, the range of display numbers and
-the commands.
+the commands. When no number of the range is free (every one taken by a project, by the lock
+file of another X server in `/tmp` or by a listener on its TCP port, which any local user can
+leave), a project still starts, without a desktop (no Display tab); the agent logs the reason
+once.
   Session recording (`asciinema`) applies as on a workstation, since it happens in `sre connect`.
 - The answers are saved as the user types (debounced), with the identity of the session.
 

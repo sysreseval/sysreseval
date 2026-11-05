@@ -17,7 +17,7 @@ from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from SRE import params
 from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup
-from sreweb.agent.display import parse_xauthority, WS_DISPLAY_FAILED
+from sreweb.agent.display import DisplayError, parse_xauthority, WS_DISPLAY_FAILED
 from sreweb.config import agent_config_from_dict
 from sreweb.identity import Identity
 
@@ -854,6 +854,35 @@ class TestDisplay:
                 cookie = [e for e in h.entries() if 'start' in e['argv']][0]['env']['SRE_XAUTH_COOKIE']
                 records = parse_xauthority((short_dir / 'display' / '90.xauth').read_bytes())
                 assert records[0][4].hex() == cookie
+        run(go())
+
+    def test_no_free_number_starts_the_project_without_a_desktop(self, tmp_path, short_dir, caplog):
+        """A display number is taken by a lock file in /tmp or a listener on 6000+N, which any
+        local user can leave (security review finding 7): a reservation that fails no longer
+        refuses every start of the host, the project starts without a desktop and the reason is
+        logged once."""
+        async def go():
+            async with Harness(tmp_path, mock_env=x11_env(), **display_cfg(short_dir)) as h:
+                def refuse():
+                    raise DisplayError("no free display number on this host")
+                h.agent.displays.reserve = refuse
+                caplog.set_level('WARNING', logger='sreweb.agent')
+                rln = await h.started()
+                env = [e for e in h.entries() if 'start' in e['argv']][0]['env']
+                assert 'SRE_XAUTH_COOKIE' not in env and 'SRE_X11_DISPLAY' not in env
+                assert json.loads((tmp_path / 'web-agent' / f'{rln}.json').read_text()).get('display') is None
+                view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['project']
+                assert view['display'] == {'available': False} and 'display' not in view['tabs']
+                resp = await h.client.post(f'/v1/projects/{rln}/display', headers=headers())
+                assert resp.status == 404 and 'no display' in (await resp.json())['error']
+                await h.started(BOB)                                   # a second start: the same reason, not logged again
+                warnings = [r.message for r in caplog.records if 'virtual desktop' in r.message]
+                assert warnings == ['no virtual desktop for the new projects: no free display number on this host']
+                assert xvnc_runs(short_dir) == []
+                del h.agent.displays.reserve                           # numbers free again: a desktop, the warning cleared
+                rln = await h.started(PROF)
+                assert json.loads((tmp_path / 'web-agent' / f'{rln}.json').read_text())['display']['number'] == 90
+                assert h.agent._display_warning == ''
         run(go())
 
     def test_server_failures(self, tmp_path, short_dir):
