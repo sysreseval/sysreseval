@@ -80,6 +80,14 @@ class ExamRefusal(PoolError):
         super().__init__(403, reason)
 
 
+#: The reports reading thousands of rows (the statistics of the History page, the lab summary of
+#: the Archives page): HEAVY_QUERIES at a time, a request waiting HEAVY_WAIT seconds at most for
+#: a slot, else a 503 asking to retry after HEAVY_RETRY_AFTER (the clicks of the administrators
+#: and instructors cannot pile such reads up in the thread executor every query shares).
+HEAVY_QUERIES = 2
+HEAVY_WAIT = 10.0
+HEAVY_RETRY_AFTER = 5
+
 #: Why a sign-in fails, by code (the ``reason`` of the ``login_failed`` lines of the connection
 #: log too): the status and message of the JSON API.  The form redirects to ``/login?error=<code>``
 #: and ``login.html`` shows its own text for the code, never a text taken from the URL (a link
@@ -124,6 +132,8 @@ class Routes:
         self.exam_projects = exam_projects
         self.localedirs = localedirs
         self.limiter = RateLimiter()
+        self._heavy = asyncio.Semaphore(HEAVY_QUERIES)     # the slots of the heavy reports (_heavy_acquire)
+        self.heavy_wait = HEAVY_WAIT
         self.ldap = LdapAuthenticator(cfg.auth.ldap) if cfg.auth.mode == AUTH_LDAP else None
 
     def register(self, app: web.Application):
@@ -855,11 +865,16 @@ class Routes:
         if not filters.get('lab'):
             return json_error(400, "a lab is expected")
         self._log_archive_filters(request, filters)
+        if not await self._heavy_acquire():
+            return json_error(503, "other reports are being computed, try again in a moment",
+                              retry_after=HEAVY_RETRY_AFTER)
         try:
             page = await reader.summary(filters)
         except HistoryError as e:
             log.warning("archives database: a query failed: %s", e)
             return json_error(503, "the database of the archives does not answer")
+        finally:
+            self._heavy.release()
         return web.json_response({**page, 'limit': MAX_SUMMARY_ROWS, 'database': self.archives.status()})
 
     async def api_archive(self, request):
@@ -1181,6 +1196,16 @@ class Routes:
         await self._resync_presentations()
         return web.Response(status=204)
 
+    async def _heavy_acquire(self) -> bool:
+        """A slot of the heavy reports (``HEAVY_QUERIES``), waited for ``heavy_wait`` seconds at
+        most: ``False`` when none came free (the route answers 503); ``self._heavy.release()``
+        once the report is done."""
+        try:
+            await asyncio.wait_for(self._heavy.acquire(), self.heavy_wait)
+        except TimeoutError:
+            return False
+        return True
+
     async def api_history_statistics(self, request):
         """Administrators: the Statistics view of the History page (``accessstats``): who
         connected over the period of ``since`` / ``until`` (the last 24 hours by default; the
@@ -1200,12 +1225,19 @@ class Routes:
             return json_error(400, str(e))
         self._log_history_filters(logged, window)
         open_sessions = [session_of_visit(v) for v in self.access.visits.all() if visit_matches(v, window)]
+        if not await self._heavy_acquire():
+            return json_error(503, "other reports are being computed, try again in a moment",
+                              retry_after=HEAVY_RETRY_AFTER)
         try:
-            page = await self.access.history.query(statistics_query(window))
-        except HistoryError as e:
-            log.warning("access database: a history query failed: %s", e)
-            return json_error(503, "the database of the connection log does not answer")
-        stats = await asyncio.to_thread(compute_statistics, page['rows'], open_sessions, window['since'], window['until'])
+            try:
+                page = await self.access.history.query(statistics_query(window))
+            except HistoryError as e:
+                log.warning("access database: a history query failed: %s", e)
+                return json_error(503, "the database of the connection log does not answer")
+            stats = await asyncio.to_thread(compute_statistics, page['rows'], open_sessions, window['since'],
+                                            window['until'])
+        finally:
+            self._heavy.release()
         return web.json_response({**stats, 'truncated': page['more'], 'limit': MAX_ROWS, **self._group_fields(window),
                                   'database': self.access.db.status() if self.access.db is not None else None})
 

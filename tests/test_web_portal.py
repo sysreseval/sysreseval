@@ -1178,6 +1178,14 @@ class TestArchives:
                 server.select_rows = []
                 assert (await h.client.get('/api/archives/6', headers=prof)).status == 404
                 server.select_rows = [(5, *rows[0])]
+                routes = h.portal.routes                                       # the two report slots busy: 503
+                routes.heavy_wait = 0.2
+                await routes._heavy.acquire()
+                await routes._heavy.acquire()
+                resp = await h.client.get('/api/archives/summary?lab=dhcp', headers=prof)
+                assert resp.status == 503 and (await resp.json())['retry_after'] == 5
+                routes._heavy.release()
+                routes._heavy.release()
                 summary = await (await h.client.get('/api/archives/summary?lab=dhcp', headers=prof)).json()
                 assert summary['truncated'] is False and summary['limit'] == 500
                 assert summary['rows'][0]['details']['parts'][0]['title'] == 'Routing'
@@ -1416,6 +1424,35 @@ class TestHistory:
             assert any(l['event'] == 'session_close' and l['name'] == 'Bob Test' and l['role'] == 'student'
                        and l['group'] == 'INFO2' for l in lines)
             assert any(l['event'] == 'session_open' and l['login'] == 'bob' and l['group'] == 'INFO2' for l in lines)
+        run(go())
+
+    def test_heavy_reports_run_two_at_a_time(self, tmp_path):
+        """The statistics and the lab summaries take a slot of HEAVY_QUERIES (security review,
+        sixth Low finding): with none free within heavy_wait the route answers 503 with a
+        retry_after instead of piling a 200 000-row read up in the thread executor."""
+        from test_web_accessdb import FakeServer, Down, NAMES
+        server = FakeServer(table_exists=True)
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['prof']},
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB}}
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                prof = who('prof', 'Prof Essor', groups=TEACHERS)
+                server.select_names = NAMES
+                server.select_rows = []
+                routes = h.portal.routes
+                resp = await h.client.get('/api/history/statistics', headers=prof)
+                assert resp.status == 200 and not routes._heavy.locked()      # the slot given back
+                routes.heavy_wait = 0.2
+                await routes._heavy.acquire()
+                await routes._heavy.acquire()                                  # both slots busy
+                assert routes._heavy.locked()
+                resp = await h.client.get('/api/history/statistics', headers=prof)
+                assert resp.status == 503 and (await resp.json())['retry_after'] == 5
+                routes._heavy.release()
+                resp = await h.client.get('/api/history/statistics', headers=prof)
+                assert resp.status == 200
+                routes._heavy.release()
         run(go())
 
     def test_statistics_from_the_database(self, tmp_path):

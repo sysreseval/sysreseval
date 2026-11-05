@@ -1361,7 +1361,9 @@ once.
   naming the login (`memberUid`, which matches case-exactly) use that form too. In proxy mode the
   proxy must pass that form (`AuthLDAPRemoteUserAttribute` in the Apache example).
 - Rate limits per user (evaluations, starts; per client address in anonymous mode, where a new
-  pseudonym is free) and per client address (logins); the size of the answers is capped. The sign-in page shows its own messages only (`/login?error=<code>`:
+  pseudonym is free) and per client address (logins); the size of the answers is capped; the
+  reports reading thousands of rows (the Statistics view, the summary of a lab on the Archives
+  page) run two at a time, a third waits ten seconds for a slot then gets a 503 to retry. The sign-in page shows its own messages only (`/login?error=<code>`:
   `password`, `rate_limited`, `directory`), never a text taken from the URL.
 - The `answers/` directory of a project is world-writable (the Qt GUI of the student writes
   there) and the agent, as root, merges the cheat answers `sre state` leaves in it
