@@ -60,14 +60,16 @@ def smtp_query(query_id: str, host: str, port: int = 25, helo: str = 'probe.inva
                starttls: bool = False, auth: tuple[str, str] | None = None,
                send: bool = True, token: str | None = None, subject: str | None = None,
                body: str = '', headers: dict[str, str] | None = None,
-               source_ip: str | None = None) -> dict:
+               source_ip: str | None = None, ssl: bool = False) -> dict:
     """One SMTP query of a probe spec.
 
     The dialogue is EHLO, [STARTTLS, EHLO], [AUTH *auth*], then, when *mail_from* is given,
     MAIL FROM, one RCPT TO per *rcpt_to* and, with *send*, DATA (only if a recipient was
     accepted).  The message carries ``X-SRE-Probe: token`` and ``X-SRE-Probe-Query: query_id``
-    so that :func:`find_messages` recognises it in a Maildir.  *host* should be an address (the
-    probe does not depend on the lab's DNS).
+    so that :func:`find_messages` recognises it in a Maildir; a header of *headers* named like
+    a default one (``From``, ``To``...) replaces it.  *host* should be an address (the probe
+    does not depend on the lab's DNS).  *ssl* opens an implicit TLS session (SMTPS, port 465)
+    instead of the STARTTLS command of *starttls*.
     """
     data = None
     if send and mail_from is not None:
@@ -79,7 +81,7 @@ def smtp_query(query_id: str, host: str, port: int = 25, helo: str = 'probe.inva
         data = {'headers': data_headers, 'body': body}
     return {
         'id': query_id, 'kind': 'smtp', 'host': str(host), 'port': int(port), 'helo': helo,
-        'starttls': bool(starttls), 'auth': list(auth) if auth else None,
+        'starttls': bool(starttls), 'ssl': bool(ssl), 'auth': list(auth) if auth else None,
         'mail_from': mail_from, 'rcpt_to': list(rcpt_to), 'data': data,
         'source_ip': str(source_ip) if source_ip else None,
     }
@@ -98,6 +100,18 @@ def imap_query(query_id: str, host: str, user: str, password: str, port: int = 1
         'id': query_id, 'kind': 'imap', 'host': str(host), 'port': int(port), 'user': user,
         'password': password, 'starttls': bool(starttls), 'ssl': bool(ssl),
         'header': list(header) if header else None, 'poll': int(poll), 'fetch': list(fetch),
+    }
+
+
+def managesieve_query(query_id: str, host: str, user: str | None = None, password: str | None = None,
+                      port: int = 4190, starttls: bool = True) -> dict:
+    """One ManageSieve query of a probe spec (RFC 5804, port 4190): the capabilities, STARTTLS
+    unless *starttls* is false, then with *user* AUTHENTICATE PLAIN and LISTSCRIPTS.  The result
+    fills ``capabilities``, ``starttls`` (the reply line), ``tls_version``, ``login`` and
+    ``scripts`` (``[{'name', 'active'}]``, see :attr:`ProbeResult.active_scripts`)."""
+    return {
+        'id': query_id, 'kind': 'managesieve', 'host': str(host), 'port': int(port),
+        'user': user, 'password': password, 'starttls': bool(starttls),
     }
 
 
@@ -129,7 +143,14 @@ class ProbeResult:
     login: str | None = None
     count: int | None = None
     messages: list[dict] = field(default_factory=list)
+    capabilities: dict[str, str] | None = None  # ManageSieve
+    scripts: list[dict] | None = None  # ManageSieve: [{'name', 'active'}]
     error: str | None = None
+
+    @property
+    def active_scripts(self) -> list[str]:
+        """Names of the active Sieve scripts listed by a ManageSieve query (at most one)."""
+        return [s.get('name', '') for s in (self.scripts or []) if s.get('active')]
 
     @staticmethod
     def code(reply: list | None) -> int:
@@ -479,10 +500,15 @@ def body_contains(msg: email.message.Message, sentence: str) -> bool:
     return bool(needle) and needle in normalize_text(body_text(msg))
 
 
+# The parenthesised comments after the client name: `(name [ip])`, then with
+# `smtpd_tls_received_header = yes` `(using TLSv1.3 ...)`, `(No client certificate requested)`
+# and `(Authenticated sender: alice)`.
+_COMMENT = r'\((?:[^()]|\([^()]*\))*\)'  # a parenthesised comment, one level of nesting allowed
 _RECEIVED_RE = re.compile(
-    r'(?:from\s+(?P<from>\S+)(?:\s+\((?P<from_info>[^)]*)\))?\s+)?'
-    r'by\s+(?P<by>\S+)(?:\s+\([^)]*\))?'
-    r'(?:\s+with\s+(?P<with>\S+))?(?:\s+id\s+(?P<id>\S+))?'
+    r'(?:from\s+(?P<from>\S+)(?:\s+\((?P<from_info>[^()]*)\))?(?:\s+' + _COMMENT + r')*\s+)?'
+    r'by\s+(?P<by>\S+)(?:\s+' + _COMMENT + r')?'
+    r'(?:\s+with\s+(?P<with>\S+))?(?:\s+id\s+(?P<id>[^\s;]+))?'
+    r'(?:\s+' + _COMMENT + r')?'  # Dovecot LMTP: `(envelope-from <...>)` before `for`
     r'(?:\s+for\s+<?(?P<for>[^>;\s]+)>?)?', re.S)
 _IP_RE = re.compile(r'\[(\d+\.\d+\.\d+\.\d+)\]')
 

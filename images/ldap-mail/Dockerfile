@@ -4,8 +4,8 @@ ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
 #
-# Electronic mail and LDAP image (the SMTP labs and the LDAP lab): Postfix, Dovecot (IMAP),
-# OpenDKIM, policyd-spf and the clients swaks and mutt, plus the LDAP client side, nss-pam-ldapd
+# Electronic mail and LDAP image (the SMTP labs and the LDAP lab): Postfix, Dovecot (IMAP, LMTP,
+# Sieve + ManageSieve), OpenDKIM, policyd-spf and the clients swaks and mutt, plus the LDAP client side, nss-pam-ldapd
 # (nslcd, libnss-ldapd, libpam-ldapd; slapd and ldap-utils come from the base image), on top of
 # the init image so that the servers run under a genuine systemd (systemctl, journalctl; the
 # systemctl replacement of the base image cannot stop an init.d-started slapd).  Declare the
@@ -40,6 +40,9 @@ RUN apt update && apt install -y \
     postfix-policyd-spf-python \
     dovecot-core \
     dovecot-imapd \
+    dovecot-lmtpd \
+    dovecot-sieve \
+    dovecot-managesieved \
     opendkim \
     opendkim-tools \
     swaks \

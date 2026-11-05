@@ -8,13 +8,21 @@
 #
 # spec = {"timeout": 5, "queries": [query, ...]}
 # SMTP query = {"id": "ext_in", "kind": "smtp", "host": "192.0.2.10", "port": 25,
-#               "helo": "sonde.example", "starttls": false, "auth": ["alice", "secret"] or null,
+#               "helo": "sonde.example", "starttls": false, "ssl": false,
+#               "auth": ["alice", "secret"] or null,
 #               "mail_from": "sonde@example", "rcpt_to": ["alice@alpha.tp"],
 #               "data": {"headers": {"Subject": "test"}, "body": "..."} or null,
 #               "source_ip": null}
+#              ("ssl": implicit TLS from the first byte, port 465; "starttls": the STARTTLS
+#              command after EHLO, ports 25 / 587)
 # IMAP query = {"id": "imap_alice", "kind": "imap", "host": "192.0.2.10", "port": 143,
 #               "user": "alice", "password": "secret", "starttls": false, "ssl": false,
 #               "header": ["X-SRE-Probe", "token"], "poll": 8, "fetch": ["Subject", "Received"]}
+# ManageSieve query = {"id": "sieve_alice", "kind": "managesieve", "host": "192.0.2.10",
+#               "port": 4190, "user": "alice", "password": "secret", "starttls": true}
+#              (RFC 5804: the capabilities, STARTTLS, AUTHENTICATE PLAIN, LISTSCRIPTS; the result
+#              holds "capabilities", "starttls", "tls_version", "login" and "scripts" =
+#              [{"name": "filters", "active": true}])
 #
 # The queries run one after the other, in the order given.  An SMTP query follows the usual
 # dialogue, EHLO, [STARTTLS, EHLO], [AUTH], MAIL FROM, RCPT TO..., [DATA], QUIT, and records the
@@ -30,6 +38,7 @@ import imaplib
 import json
 import re
 import smtplib
+import socket
 import ssl
 import sys
 import time
@@ -65,10 +74,16 @@ def queue_id(text):
 
 
 def build_message(mail_from, rcpt_to, data, helo):
-    """RFC 5322 text (CRLF, UTF-8 bytes) of the probe message."""
-    headers = [('From', mail_from), ('To', ', '.join(rcpt_to)),
-               ('Date', formatdate(localtime=True)), ('Message-ID', make_msgid(domain=helo))]
-    for name, value in (data.get('headers') or {}).items():
+    """RFC 5322 text (CRLF, UTF-8 bytes) of the probe message.  The headers of *data*
+    replace the default From / To / Date / Message-ID of the same name (a message whose
+    ``From:`` differs from the envelope sender)."""
+    given = data.get('headers') or {}
+    given_names = {name.lower() for name in given}
+    headers = [(name, value) for name, value in (
+        ('From', mail_from), ('To', ', '.join(rcpt_to)),
+        ('Date', formatdate(localtime=True)), ('Message-ID', make_msgid(domain=helo)))
+        if name.lower() not in given_names]
+    for name, value in given.items():
         headers.append((name, value))
     if not any(name.lower() == 'subject' for name, _ in headers):
         headers.append(('Subject', 'probe'))
@@ -90,14 +105,20 @@ def smtp_query(q, timeout):
          'tls_version': None, 'extensions_tls': None, 'auth': None, 'mail': None, 'rcpt': {},
          'data': None, 'queue_id': None, 'error': None}
     helo = q.get('helo') or 'probe.invalid'
-    s = smtplib.SMTP(local_hostname=helo, timeout=timeout)
+    if q.get('ssl'):  # implicit TLS (SMTPS, port 465): the whole session is encrypted
+        s = smtplib.SMTP_SSL(local_hostname=helo, timeout=timeout, context=_tls_context())
+    else:
+        s = smtplib.SMTP(local_hostname=helo, timeout=timeout)
     try:
         source = (q['source_ip'], 0) if q.get('source_ip') else None
-        r['banner'] = _reply(s.connect(q['host'], int(q.get('port', 25)), source_address=source))
-        # smtplib only records the host given to the constructor; starttls() needs it as the
-        # TLS server_hostname (an empty one is refused even without hostname checking).
+        # smtplib only records the host given to the constructor; SMTP_SSL.connect() and
+        # starttls() need it as the TLS server_hostname (an empty one is refused even without
+        # hostname checking), so it is set before the connection.
         s._host = q['host']
+        r['banner'] = _reply(s.connect(q['host'], int(q.get('port', 25)), source_address=source))
         r['connected'] = True
+        if q.get('ssl'):
+            r['tls_version'] = s.sock.version()
         if r['banner'][0] != 220:
             return r
         r['ehlo'] = _reply(s.ehlo())
@@ -209,6 +230,89 @@ def imap_query(q, timeout):
     return r
 
 
+class _Lines:
+    """Line reader on a socket (plain or TLS) for the ManageSieve dialogue."""
+
+    def __init__(self, sock):
+        self.sock, self.buf = sock, b''
+
+    def readline(self):
+        while b'\n' not in self.buf:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise EOFError('connection closed')
+            self.buf += chunk
+        line, self.buf = self.buf.split(b'\n', 1)
+        return line.decode('utf-8', 'replace').rstrip('\r')
+
+    def response(self):
+        """The lines of one response, the final OK / NO / BYE line last."""
+        lines = []
+        while True:
+            text = self.readline()
+            lines.append(text)
+            if re.match(r'^(OK|NO|BYE)(\s|$)', text):
+                return lines
+
+
+def _sieve_capabilities(lines):
+    """{"IMPLEMENTATION": "Dovecot Pigeonhole", "SIEVE": "fileinto ...", "STARTTLS": "", ...}
+    from the capability lines of a greeting (the final OK excluded)."""
+    caps = {}
+    for text in lines[:-1]:
+        m = re.match(r'^"([^"]+)"(?:\s+"(.*)")?$', text)
+        if m:
+            caps[m.group(1).upper()] = m.group(2) or ''
+    return caps
+
+
+def managesieve_query(q, timeout):
+    """Run one ManageSieve query (RFC 5804): greeting, [STARTTLS], [AUTHENTICATE PLAIN then
+    LISTSCRIPTS], LOGOUT; see the module comment."""
+    r = {'connected': False, 'capabilities': None, 'starttls': None, 'tls_version': None,
+         'login': None, 'scripts': None, 'error': None}
+    sock = None
+    try:
+        sock = socket.create_connection((q['host'], int(q.get('port') or 4190)), timeout=timeout)
+        r['connected'] = True
+        lines = _Lines(sock)
+        r['capabilities'] = _sieve_capabilities(lines.response())
+        if q.get('starttls'):
+            sock.sendall(b'STARTTLS\r\n')
+            reply = lines.response()[-1]
+            r['starttls'] = reply
+            if not reply.startswith('OK'):
+                return r
+            sock = _tls_context().wrap_socket(sock, server_hostname=q['host'])
+            r['tls_version'] = sock.version()
+            lines = _Lines(sock)
+            r['capabilities'] = _sieve_capabilities(lines.response())  # sent again in TLS
+        if q.get('user') is not None:
+            token = base64.b64encode(f"\0{q['user']}\0{q.get('password') or ''}".encode()).decode()
+            sock.sendall(f'AUTHENTICATE "PLAIN" "{token}"\r\n'.encode())
+            reply = lines.response()[-1]
+            r['login'] = 'OK' if reply.startswith('OK') else f'NO: {reply}'
+            if r['login'] != 'OK':
+                return r
+            sock.sendall(b'LISTSCRIPTS\r\n')
+            scripts = []
+            for text in lines.response()[:-1]:
+                m = re.match(r'^"(.*)"(\s+ACTIVE)?$', text)
+                if m:
+                    scripts.append({'name': m.group(1), 'active': bool(m.group(2))})
+            r['scripts'] = scripts
+        sock.sendall(b'LOGOUT\r\n')
+    except Exception as e:
+        r['error'] = f'{type(e).__name__}: {e}'
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+    return r
+
+
 def main(argv):
     errors, results = [], {}
     try:
@@ -218,6 +322,8 @@ def main(argv):
             try:
                 if q.get('kind') == 'imap':
                     results[q['id']] = imap_query(q, timeout)
+                elif q.get('kind') == 'managesieve':
+                    results[q['id']] = managesieve_query(q, timeout)
                 else:
                     results[q['id']] = smtp_query(q, timeout)
             except Exception as e:

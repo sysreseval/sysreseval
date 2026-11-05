@@ -8,6 +8,7 @@ Postfix 3.7.11, Dovecot 2.3.19, OpenDKIM 2.11.0, postfix-policyd-spf-python 3.0.
 `commands_final.json` keeps the exact grader command of every fixture.
 """
 import base64
+import email
 import json
 import socket
 import sys
@@ -36,7 +37,7 @@ from smtp import (  # noqa: E402
     body_text, deferred_to, dkim_txt_record, doveconf_listener, doveconf_value, find_messages,
     generate_dkim_keypair, get_doveconf, get_mailq, get_master_services, get_postconf,
     imap_query, install_smtp_probe, is_bounce, maildir_cleanup_command, maildir_dump_command,
-    mynetworks_covers, normalize_text, parse_authentication_results, parse_dkim_signature,
+    managesieve_query, mynetworks_covers, normalize_text, parse_authentication_results, parse_dkim_signature,
     parse_dkim_txt, parse_doveconf, parse_dsn, parse_maildir_dump, parse_mailq,
     parse_master_services, parse_postconf, parse_received_spf, parse_smtp_probe, parse_spf,
     parse_txt_strings, queue_cleanup_command, received_hops, relayhost_target,
@@ -81,7 +82,21 @@ class TestProbeSpec:
         q = smtp_query('relay', '192.0.2.10', mail_from='a@b', rcpt_to=['c@d'], send=False,
                        starttls=True, auth=('alice', 'pw'), port=587)
         assert q['data'] is None and q['starttls'] is True and q['auth'] == ['alice', 'pw']
-        assert q['port'] == 587
+        assert q['port'] == 587 and q['ssl'] is False
+
+    def test_smtp_query_with_implicit_tls(self):
+        q = smtp_query('smtps', '192.0.2.10', port=465, ssl=True, auth=('alice', 'pw'),
+                       mail_from='alice@firm.tp', rcpt_to=['sink@other.tp'], token='t',
+                       headers={'From': 'Bob <bob@other.tp>'})
+        assert q['ssl'] is True and q['starttls'] is False and q['port'] == 465
+        assert q['data']['headers']['From'] == 'Bob <bob@other.tp>'
+
+    def test_managesieve_query(self):
+        q = managesieve_query('sieve', '192.0.2.10', 'alice', 'pw')
+        assert q == {'id': 'sieve', 'kind': 'managesieve', 'host': '192.0.2.10', 'port': 4190,
+                     'user': 'alice', 'password': 'pw', 'starttls': True}
+        r = ProbeResult(query_id='sieve', scripts=[{'name': 'filters', 'active': True}, {'name': 'old', 'active': False}])
+        assert r.active_scripts == ['filters'] and ProbeResult(query_id='x').active_scripts == []
 
     def test_imap_query_searches_the_token_header(self):
         q = imap_query('imap', '192.0.2.10', 'alice', 'pw', token='abcd', poll=8)
@@ -289,6 +304,34 @@ class TestMaildirDump:
                            'with': 'ESMTPS', 'id': hops[0]['id'], 'for': 'alice@alpha.tp'}
         assert hops[1]['from'] == '' and hops[1]['by'] == 'pc1.alpha.tp'  # pickup: no "from"
 
+    def test_received_hops_with_tls_comments(self):
+        # smtpd_tls_received_header = yes: comment groups between the client and "by"
+        msg = email.message_from_string(
+            "Received: from laptop.isp.tp (laptop.isp.tp [192.0.2.77])\n"
+            "\t(using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 (256/256 bits)\n"
+            "\t key-exchange X25519 server-signature RSA-PSS (2048 bits) server-digest SHA256)\n"
+            "\t(No client certificate requested)\n"
+            "\t(Authenticated sender: alice)\n"
+            "\tby mail.firm.tp (Postfix) with ESMTPSA id 4ABC12\n"
+            "\tfor <bob@other.tp>; Thu,  5 Nov 2026 10:00:00 +0000 (UTC)\n"
+            "Received: by mail.firm.tp (Postfix) id 3CA8A18978F; Thu,  5 Nov 2026 09:59:59 +0000 (UTC)\n"
+            "Subject: x\n\nbody\n")
+        hops = received_hops(msg)
+        assert hops[0] == {'from': 'laptop.isp.tp', 'from_ip': '192.0.2.77', 'by': 'mail.firm.tp',
+                           'with': 'ESMTPSA', 'id': '4ABC12', 'for': 'bob@other.tp'}
+        assert hops[1] == {'from': '', 'from_ip': '', 'by': 'mail.firm.tp', 'with': '', 'id': '3CA8A18978F', 'for': ''}
+
+    def test_received_hops_of_a_dovecot_lmtp_delivery(self):
+        msg = email.message_from_string(
+            "Received: from mail.firm.tp ([192.0.2.10])\n\tby mail.firm.tp with LMTP\n\tid 7KxSB3kVC2nG8wgA\n"
+            "\t(envelope-from <someone@isp.tp>)\n\tfor <alice@firm.tp>; Thu, 05 Nov 2026 10:00:01 +0000\n"
+            "Received: from mx.isp.tp (unknown [192.0.2.77]) by mail.firm.tp (Postfix) with ESMTP id 4ABC\n"
+            "\tfor <alice@firm.tp>; Thu,  5 Nov 2026 10:00:00 +0000 (UTC)\nSubject: x\n\nbody\n")
+        hops = received_hops(msg)
+        assert hops[0] == {'from': 'mail.firm.tp', 'from_ip': '192.0.2.10', 'by': 'mail.firm.tp', 'with': 'LMTP',
+                           'id': '7KxSB3kVC2nG8wgA', 'for': 'alice@firm.tp'}
+        assert hops[1]['with'] == 'ESMTP' and hops[1]['from_ip'] == '192.0.2.77'
+
     def test_bounce(self):
         msgs = parse_maildir_dump(load('maildir_dump_mx1_final.txt'))
         dsn = [m for m in msgs if is_bounce(m.message)]
@@ -428,18 +471,33 @@ class TestDnsRecords:
 # ---------------------------------------------------------------------------
 
 class FakeSmtpServer(threading.Thread):
-    """Minimal SMTP server: accepts recipients at @local.test, refuses the others."""
+    """Minimal SMTP server: accepts recipients at @local.test, refuses the others.  With
+    *tls*, the session is wrapped in TLS from the first byte (SMTPS, port 465) with a
+    self-signed certificate."""
 
-    def __init__(self):
+    def __init__(self, tls=False):
         super().__init__(daemon=True)
         self.sock = socket.socket()
         self.sock.bind(('127.0.0.1', 0))
         self.sock.listen(1)
         self.port = self.sock.getsockname()[1]
         self.received = b''
+        self.context = None
+        if tls:
+            import ssl
+            import tempfile
+            from tls import generate_ca_pem
+            cert_pem, key_pem = generate_ca_pem('fake.test')
+            self._pem = tempfile.NamedTemporaryFile('w', suffix='.pem')
+            self._pem.write(cert_pem + key_pem)
+            self._pem.flush()
+            self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            self.context.load_cert_chain(self._pem.name)
 
     def run(self):
         conn, _ = self.sock.accept()
+        if self.context is not None:
+            conn = self.context.wrap_socket(conn, server_side=True)
         f = conn.makefile('rwb')
 
         def send(line):
@@ -480,7 +538,92 @@ class FakeSmtpServer(threading.Thread):
         conn.close()
 
 
+class FakeManageSieveServer(threading.Thread):
+    """Minimal ManageSieve server: capabilities, STARTTLS with a self-signed certificate,
+    AUTHENTICATE PLAIN for alice / secret, LISTSCRIPTS with one active script; *connections*
+    sessions one after the other."""
+
+    def __init__(self, connections=1):
+        super().__init__(daemon=True)
+        import ssl
+        import tempfile
+        from tls import generate_ca_pem
+        self.sock = socket.socket()
+        self.sock.bind(('127.0.0.1', 0))
+        self.sock.listen(2)
+        self.port = self.sock.getsockname()[1]
+        self.connections = connections
+        self.commands = []
+        cert_pem, key_pem = generate_ca_pem('fake.test')
+        self._pem = tempfile.NamedTemporaryFile('w', suffix='.pem')
+        self._pem.write(cert_pem + key_pem)
+        self._pem.flush()
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.context.load_cert_chain(self._pem.name)
+
+    @staticmethod
+    def _send(conn, *lines):
+        conn.sendall(''.join(line + '\r\n' for line in lines).encode())
+
+    @staticmethod
+    def _caps(tls):
+        sasl = '"SASL" "PLAIN"' if tls else '"SASL" ""'
+        return (['"IMPLEMENTATION" "Fake Pigeonhole"', '"SIEVE" "fileinto envelope"', sasl]
+                + ([] if tls else ['"STARTTLS"']) + ['"VERSION" "1.0"', 'OK "Fake ready."'])
+
+    def run(self):
+        for _ in range(self.connections):
+            conn, _ = self.sock.accept()
+            self._send(conn, *self._caps(False))
+            f = conn.makefile('rb')
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                cmd = line.decode().strip()
+                self.commands.append(cmd)
+                word = cmd.split(' ', 1)[0].upper()
+                if word == 'STARTTLS':
+                    self._send(conn, 'OK "Begin TLS negotiation now."')
+                    conn = self.context.wrap_socket(conn, server_side=True)
+                    f = conn.makefile('rb')
+                    self._send(conn, *self._caps(True))
+                elif word == 'AUTHENTICATE':
+                    token = cmd.split('"')[3]
+                    ok = base64.b64decode(token) == b'\0alice\0secret'
+                    self._send(conn, 'OK "Logged in."' if ok else 'NO "Authentication failed."')
+                elif word == 'LISTSCRIPTS':
+                    self._send(conn, '"filters" ACTIVE', '"old"', 'OK "Listscripts completed."')
+                elif word == 'LOGOUT':
+                    self._send(conn, 'OK "Logout completed."')
+                    break
+                else:
+                    self._send(conn, 'NO "unknown command"')
+            conn.close()
+
+
 class TestProbeScript:
+    def test_managesieve_against_a_fake_server(self, capsys):
+        pytest.importorskip('cryptography')
+        server = FakeManageSieveServer(connections=2)
+        server.start()
+        spec = {'timeout': 5, 'queries': [
+            managesieve_query('sieve', '127.0.0.1', 'alice', 'secret', port=server.port),
+            managesieve_query('bad', '127.0.0.1', 'alice', 'wrong', port=server.port),
+        ]}
+        assert probe_script.main(['smtp_probe.py', smtp_probe_command(spec).split()[-1]]) == 0
+        doc = json.loads(capsys.readouterr().out)
+        assert doc['errors'] == []
+        results = parse_smtp_probe(json.dumps(doc))
+        ok, bad = results['sieve'], results['bad']
+        assert ok.connected and ok.error is None and ok.starttls.startswith('OK') and ok.tls_version.startswith('TLS')
+        assert ok.capabilities['SASL'] == 'PLAIN' and ok.capabilities['IMPLEMENTATION'] == 'Fake Pigeonhole'
+        assert ok.logged_in and ok.scripts == [{'name': 'filters', 'active': True}, {'name': 'old', 'active': False}]
+        assert ok.active_scripts == ['filters']
+        assert bad.connected and bad.login.startswith('NO') and bad.scripts is None
+        server.join(5)
+        assert server.commands.count('STARTTLS') == 2 and 'LISTSCRIPTS' in server.commands
+
     def test_helpers(self):
         assert probe_script.queue_id('2.0.0 Ok: queued as 4ABC') == '4ABC'
         assert probe_script.queue_id('2.0.0 Ok') is None and probe_script.queue_id(None) is None
@@ -489,6 +632,10 @@ class TestProbeScript:
         msg = probe_script.build_message('a@b', ['c@d', 'e@f'], {'headers': {'X-Test': '1'}, 'body': 'line1\nline2'}, 'h.test')
         assert msg.startswith(b'From: a@b\r\nTo: c@d, e@f\r\nDate: ') and b'\r\nX-Test: 1\r\nSubject: probe\r\n\r\nline1\r\nline2\r\n' in msg
         assert b'Message-ID: <' in msg and b'@h.test>' in msg
+        # a header given in the spec replaces the default one of the same name
+        msg = probe_script.build_message('sink@other.tp', ['alice@firm.tp'], {'headers': {'from': 'Bob <bob@other.tp>'}}, 'h')
+        assert msg.count(b'\r\nfrom: Bob <bob@other.tp>\r\n') == 1 and not msg.startswith(b'From:')
+        assert msg.startswith(b'To: alice@firm.tp\r\n')
 
     def test_main_against_a_fake_server(self, capsys):
         server = FakeSmtpServer()
@@ -506,6 +653,23 @@ class TestProbeScript:
         assert r.sent and r.queue_id == 'FAKE123' and r.error is None and r.starttls is None
         server.join(5)
         assert b'X-SRE-Probe: tok\r\n' in server.received and b'hello\r\n' in server.received
+
+    def test_implicit_tls_server(self, capsys):
+        pytest.importorskip('cryptography')
+        server = FakeSmtpServer(tls=True)
+        server.start()
+        spec = {'timeout': 5, 'queries': [
+            smtp_query('smtps', '127.0.0.1', port=server.port, ssl=True, helo='probe.test',
+                       mail_from='a@b.test', rcpt_to=['x@local.test'], token='tok'),
+        ]}
+        assert probe_script.main(['smtp_probe.py', smtp_probe_command(spec).split()[-1]]) == 0
+        doc = json.loads(capsys.readouterr().out)
+        r = parse_smtp_probe(json.dumps(doc))['smtps']
+        assert r.error is None and r.connected and r.banner[0] == 220
+        assert r.tls_version.startswith('TLS') and r.starttls is None
+        assert r.sent and r.queue_id == 'FAKE123'
+        server.join(5)
+        assert b'X-SRE-Probe: tok\r\n' in server.received
 
     def test_closed_port_and_bad_spec(self, capsys):
         sock = socket.socket()
