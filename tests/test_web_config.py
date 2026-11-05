@@ -687,3 +687,14 @@ class TestLdapConnection:
                 web_config_from_dict({**self.BASE, 'auth': auth})
             auth['ldap']['allow_cleartext'] = True
             assert web_config_from_dict({**self.BASE, 'auth': auth}).auth.ldap.allow_cleartext
+
+    def test_login_attribute_from_the_template(self):
+        """The login attribute (the login of the identity in LDAP mode, the people of the Groups
+        page): attr_login, else a simple search_filter, else the RDN of bind_dn_template."""
+        assert self.ldap(uri='ldaps://ldap.example.org', search_filter='(&(objectClass=person)(uid={login}))').login_attribute == ''
+        template = {'uri': 'ldaps://ldap.example.org', 'bind_dn_template': 'uid={login},ou=people,dc=x'}
+        assert web_config_from_dict({**self.BASE, 'auth': {'mode': 'ldap', 'ldap': template}}).auth.ldap.login_attribute == 'uid'
+        assert web_config_from_dict({**self.BASE, 'auth': {'mode': 'ldap', 'ldap': {**template, 'attr_login': 'supannAliasLogin'}}}
+                                    ).auth.ldap.login_attribute == 'supannAliasLogin'
+        assert web_config_from_dict({**self.BASE, 'auth': {'mode': 'ldap', 'ldap': {**template, 'search_filter': '(cn={login})'}}}
+                                    ).auth.ldap.login_attribute == 'cn'

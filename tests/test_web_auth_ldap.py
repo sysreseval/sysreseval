@@ -315,7 +315,7 @@ class FakeDirectoryResolver(L.LdapRoleResolver):
 class TestGroup:
     def test_attribute_requested_and_read(self):
         auth = L.LdapAuthenticator(cfg(attr_group='departmentNumber'))
-        assert auth._attributes() == ['cn', 'mail', 'departmentNumber']
+        assert auth._attributes() == ['cn', 'mail', 'uid', 'departmentNumber']     # uid: the login attribute
         assert 'departmentNumber' not in L.LdapAuthenticator(cfg())._attributes()
         entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=['a@x'], departmentNumber=[' INFO1 ', 'RT'])
         me = auth._identity(FakeConn(), 'alice', ALICE_DN, entry, 'fr')
@@ -515,3 +515,55 @@ class TestCertificateValidation:
         assert events == ['starttls_request', 'handshake_failed'] and 'CERTIFICATE_VERIFY_FAILED' in error
         events, error = self.run_case(pki, starttls=True, host='127.0.0.1', tls_ca=pki['ca'])
         assert events == ['starttls_request', 'no_request'] and "doesn't match any name" in error
+
+
+class TestCanonicalLogin:
+    """Finding 2 of the 2026-11-05 review: the directory matches ``Bob`` for ``bob`` (``uid`` is
+    caseIgnoreMatch) and binds either, but the portal keys the projects, the exam audiences, the
+    custom groups and every page on the exact string: the identity must carry the login as the
+    directory stores it, whatever the user typed."""
+
+    def test_identity_takes_the_stored_login(self):
+        auth = L.LdapAuthenticator(cfg())                  # search_filter (uid={login}): uid is the login attribute
+        assert 'uid' in auth._attributes()
+        entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=['a@x'], uid=['alice'])
+        for typed in ('alice', 'Alice', 'ALICE'):
+            assert auth._identity(FakeConn(), typed, ALICE_DN, entry, 'fr').login == 'alice'
+
+    def test_attr_login_names_the_attribute(self):
+        """The stored value of ``attr_login``, whatever attribute the filter matched."""
+        auth = L.LdapAuthenticator(cfg(search_filter='(|(uid={login})(supannAliasLogin={login}))',
+                                       attr_login='supannAliasLogin'))
+        assert 'supannAliasLogin' in auth._attributes()
+        entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=[], supannAliasLogin=['atest1'], uid=['alice.test1'])
+        assert auth._identity(FakeConn(), 'Alice.Test1', ALICE_DN, entry, 'fr').login == 'atest1'
+
+    def test_template_mode_reads_the_rdn_attribute(self):
+        auth = L.LdapAuthenticator(cfg(search_base='', bind_dn_template='uid={login},' + PEOPLE))
+        assert auth.cfg.login_attribute == 'uid' and 'uid' in auth._attributes()
+        entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=[], uid=['alice'])
+        assert auth._identity(FakeConn(), 'Alice', ALICE_DN, entry, 'fr').login == 'alice'
+        assert auth._identity(FakeConn(), 'Alice', ALICE_DN, None, 'fr').login == 'alice'    # unreadable entry: lower-cased
+
+    def test_fallback_is_the_lower_cased_typed_login(self):
+        auth = L.LdapAuthenticator(cfg(search_filter='(&(objectClass=person)(uid={login}))'))   # no login attribute known
+        assert auth.cfg.login_attribute == '' and 'uid' not in auth._attributes()
+        entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=[], uid=['alice'])
+        assert auth._identity(FakeConn(), 'Alice', ALICE_DN, entry, 'fr').login == 'alice'
+        bad = FakeEntry(ALICE_DN, cn=['Alice'], mail=[], uid=['al ice'])                   # an unusable stored value
+        assert L.LdapAuthenticator(cfg())._identity(FakeConn(), 'Alice', ALICE_DN, bad, 'fr').login == 'alice'
+
+    def test_role_tests_use_the_stored_login(self):
+        """``memberUid`` matches case-exactly: the posixGroup test names the stored login, in LDAP
+        mode and in the proxy-mode resolver."""
+        answers = {(GROUPS, POSIX.format(login='alice')): [FakeEntry(f'cn=teachers,{GROUPS}')]}
+        conn = FakeConn(answers)
+        auth = L.LdapAuthenticator(cfg(group_search_base=GROUPS, instructor_group_filter=POSIX))
+        entry = FakeEntry(ALICE_DN, cn=['Alice'], mail=[], uid=['alice'])
+        me = auth._identity(conn, 'Alice', ALICE_DN, entry, 'fr')
+        assert (me.login, me.role) == ('alice', ROLE_INSTRUCTOR)
+        assert conn.calls[-1][1] == POSIX.format(login='alice')
+        resolver = FakeDirectoryResolver(cfg(group_search_base=GROUPS, instructor_group_filter=POSIX),
+                                         {**answers, (PEOPLE, '(uid=Alice)'): [entry]})
+        assert resolver.resolve('Alice').role == ROLE_INSTRUCTOR
+        assert resolver.conns[0].calls[-1][1] == POSIX.format(login='alice')

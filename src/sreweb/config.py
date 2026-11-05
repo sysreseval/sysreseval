@@ -183,6 +183,7 @@ class HostConfig:
 _ATTRIBUTE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9;-]*$')
 #: A ``search_filter`` naming the login attribute alone: ``(uid={login})``, ``(supannAliasLogin={login})``.
 _SIMPLE_FILTER_RE = re.compile(r'^\(([A-Za-z][A-Za-z0-9;-]*)=\{login\}\)$')
+_TEMPLATE_RDN_RE = re.compile(r'^([A-Za-z][A-Za-z0-9;-]*)=\{login\},')
 
 
 @dataclass
@@ -198,11 +199,13 @@ class LdapConfig:
     # The student group of the user ("departmentNumber"...; the first value of a multi-valued
     # attribute): shown on the Watch page, kept in the answers files; '' = no group.
     attr_group: str = ''
-    # The listing of the directory for the Groups page (portal/groups.py): the login attribute of
-    # the people of search_base ('' = the attribute of a search_filter of the form
-    # "(attribute={login})"), the filter of the groups listed under group_search_base ('' = no
-    # directory groups), the attributes holding a group's name and its members (a member value
-    # may be the login, the uid or the DN of a person).
+    # The login attribute of the people of search_base ('' = the attribute of a search_filter of
+    # the form "(attribute={login})", else the RDN attribute of bind_dn_template): in LDAP mode the
+    # identity carries its value, the login as the directory stores it, whatever case the user
+    # typed (the directory matches "Bob" and "bob": one user, not two), and the Groups page
+    # (portal/groups.py) lists the people by it.  Then, for that listing: the filter of the groups
+    # listed under group_search_base ('' = no directory groups), the attributes holding a group's
+    # name and its members (a member value may be the login, the uid or the DN of a person).
     attr_login: str = ''
     groups_filter: str = '(objectClass=posixGroup)'
     attr_group_name: str = 'cn'
@@ -249,12 +252,17 @@ class LdapConfig:
 
     @property
     def login_attribute(self) -> str:
-        """The attribute holding the login of a person, for the listing of the directory:
-        ``attr_login``, else the attribute of a ``search_filter`` of the form
-        ``(attribute={login})``; ``''`` when neither gives it."""
+        """The attribute holding the login of a person, for the listing of the directory and for
+        the login of an identity in LDAP mode (the value the directory stores, whatever case the
+        user typed): ``attr_login``, else the attribute of a ``search_filter`` of the form
+        ``(attribute={login})``, else the attribute of the RDN of ``bind_dn_template``
+        (``uid={login},…``); ``''`` when none gives it."""
         if self.attr_login:
             return self.attr_login
         m = _SIMPLE_FILTER_RE.match(str(self.search_filter).strip())
+        if m:
+            return m.group(1)
+        m = _TEMPLATE_RDN_RE.match(str(self.bind_dn_template).strip())
         return m.group(1) if m else ''
 
 

@@ -161,6 +161,8 @@ class _Directory:
 
     def _attributes(self) -> list:
         attrs = [self.cfg.attr_fullname, self.cfg.attr_mail]
+        if self.cfg.login_attribute and self.cfg.login_attribute not in attrs:
+            attrs.append(self.cfg.login_attribute)
         if self.cfg.attr_group:
             attrs.append(self.cfg.attr_group)
         if (self.cfg.instructor_groups or self.cfg.administrator_groups) and not self.cfg.group_filter:
@@ -177,6 +179,18 @@ class _Directory:
     def _fullname(self, entry) -> str:
         """The full name of *entry* (the first value of ``attr_fullname``), ``''`` without it."""
         return _first(entry, self.cfg.attr_fullname) if entry is not None else ''
+
+    def _canonical_login(self, login: str, entry) -> str:
+        """The one login of the user *entry* was found for: the value the directory stores in
+        the login attribute (``cfg.login_attribute``), else the typed *login* lower-cased.  The
+        directory matches ``Bob`` and ``bob`` (``uid`` is caseIgnoreMatch) and binds either, but
+        the portal keys the projects, the exam audiences, the custom groups, the Watch and
+        Archives rows on the exact string: an identity named after what the user typed made two
+        users of one account.  Only a value :func:`is_valid_login` accepts is taken (the typed
+        login was validated before any directory call, so its lower-cased form always is)."""
+        attribute = self.cfg.login_attribute
+        stored = _first(entry, attribute) if entry is not None and attribute else ''
+        return stored if is_valid_login(stored) else login.lower()
 
     def _group_base(self) -> str:
         return self.cfg.group_search_base or self.cfg.search_base
@@ -255,6 +269,8 @@ class LdapRoleResolver(_Directory):
                         return DirectoryLookup()
                     entry = conn.entries[0]
                     dn = entry.entry_dn
+                # the group tests name the login (memberUid matches case-exactly): the stored form
+                login = self._canonical_login(login, entry)
                 instructor = self._is_instructor(conn, login, dn, entry)
                 administrator = self.cfg.administrator_tests and self._is_administrator(conn, login, dn, entry)
                 return DirectoryLookup(ROLE_INSTRUCTOR if instructor else ROLE_STUDENT, self._group(entry),
@@ -315,6 +331,10 @@ class LdapAuthenticator(_Directory):
             raise LdapError(str(e)) from e
 
     def _identity(self, conn, login: str, dn: str, entry, language: str) -> Identity:
+        """The identity of the user *entry* (found for the typed *login*, bound as *dn*): named
+        by the canonical login (:meth:`_canonical_login`), which the role tests use too
+        (``memberUid`` matches case-exactly)."""
+        login = self._canonical_login(login, entry)
         fullname = self._fullname(entry)
         email = _first(entry, self.cfg.attr_mail) if entry is not None else ''
         instructor = self._is_instructor(conn, login, dn, entry)
