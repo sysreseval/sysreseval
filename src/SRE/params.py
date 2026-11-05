@@ -498,6 +498,7 @@ info_json_name = "info.json"
 answer_dir_name = "answers"
 answer_file_name = "answers.json"
 cheat_file_name = "cheat.json"
+cheat_file_max_size = 1_000_000  # bytes: a bigger answers/cheat.json is refused (answers.consume_cheat_file)
 
 hostname_keyword = "hostname"
 login_keyword = "login"

@@ -2,6 +2,7 @@
 directories (no sre, no Docker)."""
 import asyncio
 import json
+import logging
 import os
 import time
 
@@ -316,6 +317,47 @@ class TestAnswersStore:
         assert not cheat.exists()
         assert events == [{'t': EVENT_ANSWERS, 'answers': {text_hash: '42'}}]
         assert store.read(p)[text_hash] == '42' and store.read(p)[params.login_keyword] == 'alice'
+
+    def test_planted_symlink_removed_at_the_tick_not_read(self, tmp_pub_dir, caplog):
+        """The agent reads the cheat file as root in the 0777 answers/ directory: a symbolic
+        link planted there is removed without being followed, the answers stay as they are."""
+        path = make_project(tmp_pub_dir)
+        reg = registry()
+        store = AnswersStore(reg, hostname='pool1', pub_dir=str(tmp_pub_dir), owner=None)
+        run(reg.tick())
+        p = reg.get(RLN)
+        text_hash = p.info['questions'][0]['question_hash']
+        run(store.put(p, {text_hash: 'mine'}, ALICE))
+        events = []
+        reg.subscribe(p, lambda e: _collect(events, e), ALICE)
+        secret = tmp_pub_dir / 'secret.json'
+        secret.write_text(json.dumps({text_hash: 'root-readable'}))
+        cheat = path / params.answer_dir_name / params.cheat_file_name
+        cheat.symlink_to(secret)
+        with caplog.at_level(logging.WARNING, logger='sreweb.agent'):
+            run(reg.tick())
+        assert not cheat.is_symlink() and secret.exists()
+        assert events == []
+        assert store.read(p)[text_hash] == 'mine'
+        assert [r.message for r in caplog.records] == [f"cheat file refused: {cheat}: a symbolic link"]
+        assert p.cheat_warning.startswith('cheat file refused')
+        cheat.write_text(json.dumps({text_hash: '42'}))    # a real cheat file afterwards
+        run(reg.tick())
+        assert store.read(p)[text_hash] == '42' and p.cheat_warning == ''
+
+    def test_planted_directory_warned_once(self, tmp_pub_dir, caplog):
+        path = make_project(tmp_pub_dir)
+        reg = registry()
+        AnswersStore(reg, hostname='pool1', pub_dir=str(tmp_pub_dir), owner=None)
+        cheat = path / params.answer_dir_name / params.cheat_file_name
+        cheat.mkdir()
+        (cheat / 'x').write_text('')
+        with caplog.at_level(logging.WARNING, logger='sreweb.agent'):
+            run(reg.tick())
+            run(reg.tick())
+            run(reg.tick())
+        assert cheat.is_dir()
+        assert [r.message for r in caplog.records] == [f"cheat file refused: {cheat}: a directory (not removed)"]
 
 
 class TestSchedulers:

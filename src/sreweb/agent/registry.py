@@ -87,6 +87,9 @@ class Project:
     #: ``(inode, mtime, size)`` of ``answers/answers.json`` as the agent last wrote or saw it
     #: (``AnswersStore``): a change is the write of another program, the Qt GUI of the student.
     answers_sig: tuple | None = None
+    #: The last warning about ``answers/cheat.json`` (``AnswersStore._warn_cheat``): logged once
+    #: until it changes, since the tick hook runs every second; ``''`` once the file is consumed.
+    cheat_warning: str = ''
     #: The exam of the project as the portal told it (``exam.py``; kept in the state file): the
     #: project then behaves like one of the Qt GUI in exam mode; ``exam_ending`` while the end
     #: runs, ``exam_retry_at`` (monotonic) when the final evaluation failed and waits.

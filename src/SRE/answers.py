@@ -29,6 +29,7 @@ import os
 import pwd
 import re
 import socket
+import stat
 import tempfile
 import time
 from datetime import datetime
@@ -115,19 +116,112 @@ def merge_cheat(answers: dict, cheat: dict) -> dict:
     return {**answers, **cheat}
 
 
+class CheatFileRefused(ValueError):
+    """What :func:`consume_cheat_file` found at the path is not a cheat file written by
+    ``sre state`` (*reason*: a symbolic link, a directory, a FIFO, a file of another user, a
+    hard link, a file above ``params.cheat_file_max_size``); *removed* tells whether the entry
+    could be removed."""
+
+    def __init__(self, path, reason: str, removed: bool):
+        super().__init__(f"{path}: {reason}" + ('' if removed else ' (not removed)'))
+        self.path = path
+        self.reason = reason
+        self.removed = removed
+
+
+def trusted_cheat_uids() -> set[int]:
+    """The owners a cheat file may have: root, ``params.sre_uid`` (``sre state`` writes the
+    file as the sre user) and the reader itself (the student's GUI reads its own project;
+    the tests write the file as the user running them)."""
+    return {0, params.sre_uid, os.geteuid()}
+
+
+def _cheat_entry_problem(st: os.stat_result) -> str | None:
+    """Why the entry *st* (``fstat`` of the opened file, or ``lstat`` of a path that could not
+    be opened) is not a cheat file to read: ``None`` when it may be read."""
+    if not stat.S_ISREG(st.st_mode):
+        if stat.S_ISLNK(st.st_mode):
+            kind = 'a symbolic link'
+        elif stat.S_ISDIR(st.st_mode):
+            kind = 'a directory'
+        elif stat.S_ISFIFO(st.st_mode):
+            kind = 'a FIFO'
+        elif stat.S_ISSOCK(st.st_mode):
+            kind = 'a socket'
+        else:
+            kind = 'not a regular file'
+        return kind
+    if st.st_nlink > 1:
+        return f"a file with {st.st_nlink} links"
+    if st.st_uid not in trusted_cheat_uids():
+        return f"a file owned by uid {st.st_uid}"
+    if st.st_size > params.cheat_file_max_size:
+        return f"{st.st_size} bytes, above {params.cheat_file_max_size}"
+    return None
+
+
+def _remove_entry(path: Path) -> bool:
+    """Remove the directory entry *path* (a file, a symbolic link, a FIFO: the link itself,
+    never a target; an empty directory): whether it is gone."""
+    try:
+        os.unlink(path)
+        return True
+    except FileNotFoundError:
+        return True
+    except OSError:
+        pass
+    try:
+        os.rmdir(path)
+        return True
+    except OSError:
+        return not os.path.lexists(path)
+
+
 def consume_cheat_file(path: str | os.PathLike) -> dict | None:
     """Read and remove the cheat file *path* (``params.cheat_filename(...)``, written by
     ``sre state``): its dict, or ``None`` when the file does not exist.
 
-    The file is removed once its content is read and parsed; an unreadable file or one that is
-    not a JSON object raises (``OSError`` / ``ValueError``) and stays in place, so that a caller
-    polling the project directory tries again later."""
+    The ``answers/`` directory is world-writable (the student's GUI writes there) and the web
+    agent reads the file as root: only a regular file with one link, owned by one of
+    :func:`trusted_cheat_uids` and at most ``params.cheat_file_max_size`` bytes is read, opened
+    with ``O_NOFOLLOW`` (a symbolic link is never followed) and ``O_NONBLOCK`` (a FIFO does not
+    block). Anything else found at the path is removed (the entry only, never what a link
+    points to) and :class:`CheatFileRefused` raised, with ``removed`` false when the entry
+    could not be removed (a non-empty directory).
+
+    The file is removed once its content is read and parsed; a file that cannot be opened or
+    one that is not a JSON object raises (``OSError`` / ``ValueError``) and stays in place, so
+    that a caller polling the project directory tries again later (``sre state`` truncates the
+    file before writing it)."""
     path = Path(path)
     try:
-        text = path.read_text(encoding='utf-8')
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
         return None
-    cheat = json.loads(text)
+    except OSError as e:
+        # ELOOP: a symbolic link under O_NOFOLLOW; ENXIO: a socket; EACCES...: judged on lstat
+        try:
+            st = os.lstat(path)
+        except FileNotFoundError:
+            return None
+        reason = _cheat_entry_problem(st)
+        if reason is None:
+            raise
+        raise CheatFileRefused(path, reason, _remove_entry(path)) from None
+    try:
+        reason = _cheat_entry_problem(os.fstat(fd))
+        if reason is None:
+            with os.fdopen(fd, 'rb') as f:
+                fd = None
+                data = f.read(params.cheat_file_max_size + 1)
+            if len(data) > params.cheat_file_max_size:
+                reason = f"above {params.cheat_file_max_size} bytes"
+    finally:
+        if fd is not None:
+            os.close(fd)
+    if reason is not None:
+        raise CheatFileRefused(path, reason, _remove_entry(path))
+    cheat = json.loads(data.decode('utf-8'))
     if not isinstance(cheat, dict):
         raise ValueError(f"{path}: not a JSON object")
     path.unlink()

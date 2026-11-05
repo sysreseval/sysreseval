@@ -15,7 +15,10 @@ as it is (``_kept_metadata``: the student's login, full name, e-mail, group and 
 the instructor's), only the update time and the exam fields are new.  Every ``put`` is pushed to
 the open pages of the project (the ``answers`` event), so the student's page shows what the
 instructor types and the instructor's page what the student types.  ``cheat.json`` written by
-``sre state`` is merged the same way at the next tick and pushed too.
+``sre state`` is merged the same way at the next tick and pushed too; the agent reads it as
+root in a world-writable directory, so ``SRE.answers.consume_cheat_file`` takes a regular file
+of a trusted owner only and removes anything else planted at that name (a symbolic link...),
+warned about once (``Project.cheat_warning``).
 
 The Qt GUI of the same student, logged in on the host, may write the file too (a project
 started there and opened in a browser, or the other way round).  The file it created keeps its
@@ -257,9 +260,13 @@ class AnswersStore:
         async with project.answers_lock:
             try:
                 cheat = A.consume_cheat_file(cheat_path)
-            except (OSError, ValueError) as e:
-                log.warning("cannot read %s: %s", cheat_path, e)
+            except A.CheatFileRefused as e:
+                self._warn_cheat(project, f"cheat file refused: {e}")
                 return None
+            except (OSError, ValueError) as e:
+                self._warn_cheat(project, f"cannot read {cheat_path}: {e}")
+                return None
+            project.cheat_warning = ''
             if cheat is None:
                 return None
             async with self._locked(project):
@@ -271,6 +278,14 @@ class AnswersStore:
                     return None
         await self.registry.broadcast(project, {'t': EVENT_ANSWERS, 'answers': self.public(answers, project)})
         return answers
+
+    @staticmethod
+    def _warn_cheat(project: Project, message: str):
+        """One warning per problem with the cheat file of *project*: the hook runs every second
+        and an entry that cannot be removed (a non-empty directory) stays."""
+        if message != project.cheat_warning:
+            project.cheat_warning = message
+            log.warning("%s", message)
 
     @staticmethod
     def public(answers: dict, project: Project) -> dict:

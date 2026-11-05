@@ -12,17 +12,19 @@ import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from SRE import params
+from SRE import answers as answers_module, params
 from SRE.answers import (
-    AnswersLock, answers_lock, consume_cheat_file, exam_fields, file_signature, load_answers,
-    merge_cheat, read_exam_json, save_answers, session_identity, with_metadata,
+    AnswersLock, CheatFileRefused, answers_lock, consume_cheat_file, exam_fields, file_signature,
+    load_answers, merge_cheat, read_exam_json, save_answers, session_identity, with_metadata,
 )
 
 NOW = datetime(2026, 10, 21, 10, 30, 0)
@@ -163,6 +165,126 @@ class TestConsumeCheatFile:
         with pytest.raises(ValueError):
             consume_cheat_file(path)
         assert path.exists()
+
+    # The agent reads the file as root in the world-writable answers/ directory: anything planted
+    # there under the cheat file's name is refused and removed (the entry, never a target)
+
+    def test_symlink_refused_and_removed(self, tmp_path):
+        target = tmp_path / 'secret.json'
+        target.write_text(json.dumps({'cookie': 'c0ffee'}))
+        link = tmp_path / params.cheat_file_name
+        link.symlink_to(target)
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(link)
+        assert isinstance(e.value, ValueError)
+        assert e.value.reason == 'a symbolic link' and e.value.removed
+        assert str(e.value) == f"{link}: a symbolic link"
+        assert not link.is_symlink() and not link.exists()
+        assert target.read_text() == json.dumps({'cookie': 'c0ffee'})
+
+    def test_dangling_symlink_refused_and_removed(self, tmp_path):
+        link = tmp_path / params.cheat_file_name
+        link.symlink_to(tmp_path / 'nowhere')
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(link)
+        assert e.value.reason == 'a symbolic link' and e.value.removed
+        assert not link.is_symlink()
+
+    def test_fifo_does_not_block_and_is_removed(self, tmp_path):
+        path = tmp_path / params.cheat_file_name
+        os.mkfifo(path)
+        t0 = time.monotonic()
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(path)
+        assert time.monotonic() - t0 < 2
+        assert e.value.reason == 'a FIFO' and e.value.removed
+        assert not path.exists()
+
+    def test_socket_refused_and_removed(self):
+        # a short directory: an AF_UNIX path is limited to ~100 characters, pytest's tmp_path is longer
+        with tempfile.TemporaryDirectory() as short_dir:
+            path = Path(short_dir) / params.cheat_file_name
+            with socket.socket(socket.AF_UNIX) as s:
+                try:
+                    s.bind(str(path))
+                except OSError as e:
+                    pytest.skip(f"cannot bind a socket there: {e}")
+                with pytest.raises(CheatFileRefused) as e:
+                    consume_cheat_file(path)
+            assert e.value.reason == 'a socket' and e.value.removed
+            assert not path.exists()
+
+    def test_empty_directory_refused_and_removed(self, tmp_path):
+        path = tmp_path / params.cheat_file_name
+        path.mkdir()
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(path)
+        assert e.value.reason == 'a directory' and e.value.removed
+        assert not path.exists()
+
+    def test_non_empty_directory_refused_and_kept(self, tmp_path):
+        path = tmp_path / params.cheat_file_name
+        path.mkdir()
+        (path / 'x').write_text('')
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(path)
+        assert e.value.reason == 'a directory' and not e.value.removed
+        assert str(e.value) == f"{path}: a directory (not removed)"
+        assert path.is_dir()
+
+    def test_hard_link_refused_and_removed(self, tmp_path):
+        original = tmp_path / 'original.json'
+        original.write_text(json.dumps({'h1': 'x'}))
+        path = tmp_path / params.cheat_file_name
+        try:
+            os.link(original, path)
+        except OSError as e:
+            pytest.skip(f"no hard links here: {e}")
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(path)
+        assert e.value.reason == 'a file with 2 links' and e.value.removed
+        assert not path.exists() and original.read_text() == json.dumps({'h1': 'x'})
+
+    def test_foreign_owner_refused_and_removed(self, tmp_path, monkeypatch):
+        me = os.geteuid()
+        if me in (0, 1100):
+            pytest.skip("the test user is a trusted owner")
+        path = tmp_path / params.cheat_file_name
+        path.write_text(json.dumps({'h1': 'x'}))
+        monkeypatch.setattr(answers_module, 'trusted_cheat_uids', lambda: {0, 1100})
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(path)
+        assert e.value.reason == f"a file owned by uid {me}" and e.value.removed
+        assert not path.exists()
+
+    def test_trusted_owners(self, monkeypatch):
+        monkeypatch.setattr(params, 'sre_uid', 1234)
+        assert answers_module.trusted_cheat_uids() == {0, 1234, os.geteuid()}
+
+    def test_too_big_refused_and_removed(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(params, 'cheat_file_max_size', 16)
+        path = tmp_path / params.cheat_file_name
+        path.write_text(json.dumps({'h1': 'x' * 32}))
+        size = path.stat().st_size
+        with pytest.raises(CheatFileRefused) as e:
+            consume_cheat_file(path)
+        assert e.value.reason == f"{size} bytes, above 16"
+        assert e.value.removed and not path.exists()
+        path.write_text(json.dumps({'h1': 'x'}))     # 12 bytes: fine
+        assert consume_cheat_file(path) == {'h1': 'x'}
+
+    def test_unreadable_trusted_file_stays(self, tmp_path):
+        if os.geteuid() == 0:
+            pytest.skip("root reads everything")
+        path = tmp_path / params.cheat_file_name
+        path.write_text(json.dumps({'h1': 'x'}))
+        path.chmod(0)
+        try:
+            with pytest.raises(PermissionError):
+                consume_cheat_file(path)
+            assert path.exists()
+        finally:
+            path.chmod(0o644)
 
 
 class TestLoadAnswers:

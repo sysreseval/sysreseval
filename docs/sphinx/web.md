@@ -1349,6 +1349,12 @@ the commands.
   proxy must pass that form (`AuthLDAPRemoteUserAttribute` in the Apache example).
 - Rate limits per user (evaluations, starts) and per client address (logins); the size of the
   answers is capped.
+- The `answers/` directory of a project is world-writable (the Qt GUI of the student writes
+  there) and the agent, as root, merges the cheat answers `sre state` leaves in it
+  (`answers/cheat.json`): that file is opened without following a symbolic link and read only
+  when it is a regular file with one link, owned by root, `sre` or the reader, of at most
+  `cheat_file_max_size` bytes (one million); anything else planted under that name is removed
+  (the entry, never what a link points to) and logged once.
 - The connection log (`[access_log]`) keeps who did what from where: the sessions with their
   duration and projects, the logins and their failures, the denied calls, the administration
   calls. The only header it reads is `X-Forwarded-For`, from the peers of `trusted_proxies`,
