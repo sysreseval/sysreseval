@@ -94,6 +94,25 @@ class TestSummary:
         assert abs(A.archive_eval_date({}, str(other)) - mtime) < timedelta(seconds=1)
 
 
+class TestSizeCap:
+    def test_oversized_archive_refused(self, tmp_path, monkeypatch):
+        """A zstd bomb in an archive directory cannot exhaust the agent's memory (security
+        review, eleventh Low finding): the decompressed archive is read up to
+        params.archive_max_size and refused beyond, which the agent logs once."""
+        raw = archive_dict(data_json=json.dumps({'blob': 'x' * 10000}))
+        path = write_archive(tmp_path, 'big.zst', raw)
+        assert A.read_archive(path)['running_lab_name'] == RLN
+        monkeypatch.setattr(params, 'archive_max_size', 4096)
+        with pytest.raises(ValueError, match='bigger than 4096'):
+            A.read_archive(path)
+        assert A.read_archive(path, max_size=1 << 20)['running_lab_name'] == RLN
+        bomb = tmp_path / 'bomb.zst'
+        bomb.write_bytes(zstd.ZstdCompressor().compress(b'\0' * (8 << 20)))   # 8 MiB of zeros in a few bytes
+        assert bomb.stat().st_size < 4096
+        with pytest.raises(ValueError, match='bigger than 1048576'):
+            A.read_archive(str(bomb), max_size=1 << 20)
+
+
 class TestScan:
     def test_newest_per_project_and_junk_names(self, tmp_path):
         other = '20261025090000@@@sre@dhcp.py@@@bob'

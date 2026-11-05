@@ -499,6 +499,9 @@ answer_dir_name = "answers"
 answer_file_name = "answers.json"
 cheat_file_name = "cheat.json"
 cheat_file_max_size = 1_000_000  # bytes: a bigger answers/cheat.json is refused (answers.consume_cheat_file)
+# decompressed bytes of an evaluation archive the web agent reads at most (archive_summary.read_archive: the
+# archive directories may be a site or NFS directory; a zstd bomb there must not exhaust the agent)
+archive_max_size = 64 << 20
 
 hostname_keyword = "hostname"
 login_keyword = "login"

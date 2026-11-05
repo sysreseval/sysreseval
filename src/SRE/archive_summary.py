@@ -67,14 +67,20 @@ class ArchiveSummary:
         }
 
 
-def read_archive(path: str) -> dict:
+def read_archive(path: str, max_size: int | None = None) -> dict:
     """The dict of an archive: strings decoded, arrays as tuples (``use_list=False``, as ``sre
     cat`` reads them: the keys of ``tests`` are ``(machine, step)`` and ``(command, timeout)``
-    tuples, written as msgpack arrays, and a list is no dict key)."""
+    tuples, written as msgpack arrays, and a list is no dict key).  At most *max_size*
+    (``params.archive_max_size``) decompressed bytes are read: a bigger archive (a zstd bomb in
+    an archive directory, which may be a site or NFS directory) is a ``ValueError``, never the
+    agent's memory."""
+    limit = int(params.archive_max_size if max_size is None else max_size)
     dctx = zstd.ZstdDecompressor()
     with open(path, 'rb') as f:
         with dctx.stream_reader(f) as reader:
-            data = reader.read()
+            data = reader.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f"{path}: archive bigger than {limit} bytes once decompressed")
     return msgpack.unpackb(data, raw=False, use_list=False, strict_map_key=False)
 
 
