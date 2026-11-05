@@ -683,6 +683,57 @@ class TestExamsForm:
         assert out['labels'] == ['DHCP lab', 'sre/dhcp']
 
 
+TERMINAL_GEOMETRY_RUNNER = """\
+import {clampRect, toFractions, toPixels, cascadePosition, defaultSize, parseFloating, CASCADE_WRAP} from './terminal_windows.js';
+
+const area = {width: 1000, height: 800};
+const rect = {x: 100, y: 50, w: 500, h: 400};
+process.stdout.write(JSON.stringify({
+  fractions: toFractions(rect, area),
+  roundTrip: toPixels(toFractions(rect, area), area),
+  pushedBack: clampRect({x: 900, y: 700, w: 500, h: 400}, area),
+  shrunk: clampRect({x: 0, y: 0, w: 2000, h: 2000}, area),
+  tiny: clampRect({x: 50, y: 50, w: 300, h: 200}, {width: 100, height: 100}),
+  cascade: [0, 1, CASCADE_WRAP, CASCADE_WRAP + 1].map((i) => cascadePosition(i, area, {w: 300, h: 200})),
+  parsed: [undefined, null, 'x', {x: 'a', y: 0, w: 0.5, h: 0.5}, {x: 0, y: 0, w: 0, h: 0.5}, {x: 1.5, y: 0, w: 0.5, h: 0.5},
+           {x: 0, y: 0, w: 1, h: 1}, {x: 0.25, y: 0.5, w: 0.5, h: 0.25}].map(parseFloating),
+  large: defaultSize(12, area),
+  small: defaultSize(12, {width: 400, height: 300}),
+  noArea: toFractions(rect, {width: 0, height: 0}),
+}));
+"""
+
+
+class TestTerminalGeometry:
+    """The pure helpers of terminal_windows.js (the floating terminal windows: a window kept
+    inside the panes, its geometry as fractions of them for the spectators of a presentation, the
+    cascade of the new windows, the default size of a font) run under node or bun when one is
+    installed, skipped otherwise."""
+
+    def test_geometry(self, tmp_path):
+        node = shutil.which('node') or shutil.which('bun')
+        if node is None:
+            pytest.skip("neither node nor bun is installed")
+        for name in ('terminal_windows.js', 'i18n.js', 'ui.js'):
+            shutil.copy(JS / name, tmp_path / name)
+        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
+        runner = tmp_path / 'run.mjs'
+        runner.write_text(TERMINAL_GEOMETRY_RUNNER)
+        completed = subprocess.run([node, str(runner)], capture_output=True, text=True, check=True)
+        out = json.loads(completed.stdout)
+        assert out['fractions'] == {'x': 0.1, 'y': 0.0625, 'w': 0.5, 'h': 0.5}
+        assert out['roundTrip'] == {'x': 100, 'y': 50, 'w': 500, 'h': 400}
+        assert out['pushedBack'] == {'x': 500, 'y': 400, 'w': 500, 'h': 400}
+        assert out['shrunk'] == {'x': 0, 'y': 0, 'w': 1000, 'h': 800}
+        assert out['tiny'] == {'x': 0, 'y': 0, 'w': 240, 'h': 140}        # the minimums, at the corner
+        assert out['cascade'] == [{'x': 16, 'y': 16, 'w': 300, 'h': 200}, {'x': 44, 'y': 44, 'w': 300, 'h': 200},
+                                  {'x': 16, 'y': 16, 'w': 300, 'h': 200}, {'x': 44, 'y': 44, 'w': 300, 'h': 200}]
+        assert out['parsed'] == [None] * 6 + [{'x': 0, 'y': 0, 'w': 1, 'h': 1}, {'x': 0.25, 'y': 0.5, 'w': 0.5, 'h': 0.25}]
+        assert out['large'] == {'w': 596, 'h': 392}                          # 80 x 24 cells of a 12 px font
+        assert out['small'] == {'w': 360, 'h': 270}                          # 90 % of a small area
+        assert out['noArea'] is None
+
+
 class TestJavaScript:
     def test_exam_state_shared_by_the_pages(self):
         """One notion of the exam a student is in: exam.js fetches GET /api/exam (on the pushes
@@ -1000,3 +1051,40 @@ class TestJavaScript:
             and 'justify-content: center' in box.group(1)
         img = re.search(r'\.empty-logo img\s*\{([^{}]*)\}', css)
         assert img and 'object-fit: contain' in img.group(1)
+
+    def test_floating_terminal_windows(self):
+        """A terminal floats over the page in a window (terminal_windows.js: the chrome, the drag
+        by the title bar, the geometry as fractions of #panes), the Connect buttons of the
+        Machines / Networks tabs open one without leaving their tab, the terminals tab owns every
+        session, docked or in a window (the ⧉ of a sub-tab and the dock button of a window move the
+        same xterm, told by moved()), the presenter's view carries the geometry of the windows for
+        the spectators' read-only ones, a focus shares the terminal last gone to; the layer sits
+        under the toasts and the overlays and lets the clicks between the windows through."""
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert "from '../terminal_windows.js'" in terminals and 'overlay: windows.element' in terminals
+        for name in ('undock', 'dock'):
+            body = terminals[terminals.index(f'function {name}('):]
+            assert 'entry.session.moved()' in body[:body.index('\n  }\n')], name
+        get_view = terminals[terminals.index('function getView()'):terminals.index('function setView(')]
+        assert 'floating' in get_view and 'lastFocused' in get_view
+        set_view = terminals[terminals.index('function setView('):terminals.index('function focusTarget()')]
+        assert 'parseFloating(o.floating)' in set_view and 'setFractions(' in set_view
+        target = terminals[terminals.index('function focusTarget()'):terminals.index('function focusSession(')]
+        assert 'lastFocused' in target
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        start = project.index('openTerminal(device) {')
+        open_terminal = project[start:project.index('selectTab,', start)]
+        assert 'openWindow(' in open_terminal and 'selectTab' not in open_terminal
+        assert 'panes.append(created.overlay)' in project
+        for name in ('machines', 'networks'):
+            assert 'ctx.openTerminal(' in (JS / 'tabs' / f'{name}.js').read_text(encoding='utf-8'), name
+        windows = (JS / 'terminal_windows.js').read_text(encoding='utf-8')
+        assert 'setPointerCapture(' in windows and 'clampRect(' in windows and 'readonly' in windows
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        layer = re.search(r'\.terminal-windows\s*\{([^{}]*)\}', css).group(1)
+        assert 'pointer-events: none' in layer
+        z_index = lambda selector: int(re.search(selector + r'\s*\{[^{}]*z-index:\s*(\d+)', css).group(1))
+        assert z_index(r'\.terminal-windows') < z_index(r'\.toasts') < z_index(r'#presentation-overlay')
+        assert re.search(r'\.terminal-window\.readonly\s*\{[^{}]*resize: none', css)
+        focus = (JS / 'focus.js').read_text(encoding='utf-8')
+        assert "const VIEW_KEYS = ['tab', 'terminal', 'question'];" in focus     # no geometry in a focus

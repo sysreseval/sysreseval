@@ -370,6 +370,15 @@ msgstr "Nouveau terminal…"
 msgid "Close terminal"
 msgstr "Fermer le terminal"
 
+msgid "New window…"
+msgstr "Nouvelle fenêtre…"
+
+msgid "Open in a window"
+msgstr "Ouvrir dans une fenêtre"
+
+msgid "Dock into the Terminals tab"
+msgstr "Ancrer dans l'onglet Terminaux"
+
 msgid "{device} ({n})"
 msgstr "{device} ({n})"
 

@@ -1,6 +1,7 @@
 // The Machines tab: one row per visible machine, like the Qt table: Name, NAT network to host
-// (Yes / No, green / red), Connection (a green Connect button opening the terminal of the
-// machine, or an empty red cell when the lab forbids it), Ports.
+// (Yes / No, green / red), Connection (a green Connect button opening a terminal of the machine
+// in a floating window over the page, like the external xterm of the Qt GUI, or an empty red
+// cell when the lab forbids it), Ports.
 
 import {el, clear} from '../ui.js';
 import {_} from '../i18n.js';

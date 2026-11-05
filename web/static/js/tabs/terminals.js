@@ -1,31 +1,38 @@
-// The Terminals tab: one sub-tab per open terminal.  Each Connect button of the Machines and
-// Networks tabs opens a new terminal on its device (like a new xterm in the Qt GUI), so a
-// machine may have several (titled "gw", "gw (2)", ...); the select at the end of the bar opens
-// one on any device.  Every terminal is an xterm.js on the WebSocket of its device
-// (terminal.js), closed with the × of its sub-tab.  A device closed to the students is disabled
-// (orange; a debug project opens it all the same, as `sre connect` lets a debug project in), a
-// hidden machine of a debug project is red, like the Qt view.  The font size and colour scheme
-// controls are on the right.
+// The Terminals tab: one sub-tab per docked terminal, and the floating windows over the page.
+// Each Connect button of the Machines and Networks tabs opens a new terminal on its device in a
+// floating window (like a new xterm window in the Qt GUI: the window floats over whatever tab is
+// shown, dragged by its title bar, resized by its corner, closed by its ×), so a machine may have
+// several (titled "gw", "gw (2)", ...); the "New terminal…" select of the bar opens one as a
+// sub-tab, the "New window…" select one in a window; the ⧉ of a sub-tab moves the terminal into
+// a window, the dock button of a window brings it back as a sub-tab (the same shell goes on: the
+// box of the xterm is moved, terminal_windows.js).  Every terminal is an xterm.js on the
+// WebSocket of its device (terminal.js).  A device closed to the students is disabled (orange; a
+// debug project opens it all the same, as `sre connect` lets a debug project in), a hidden
+// machine of a debug project is red, like the Qt view.  The font size and colour scheme controls
+// are on the right and apply to every terminal, docked or floating.
 //
 // A terminal is a session shared by its viewers: the live sessions of the project the user does
 // not have on this page are listed under the bar with a Join button (the same shell, everybody
-// sees and types), a sub-tab shows how many viewers its session has.  An instructor on a
-// student's project joins the student's terminals by default when the tab opens, and can open
-// private terminals the student does not see (the select offers both kinds).
+// sees and types), a sub-tab or a window shows how many viewers its session has.  An instructor
+// on a student's project joins the student's terminals by default when the tab opens, and can
+// open private terminals the student does not see (the selects offer both kinds).
 //
 // On the page of a spectator of a presentation (ctx.spectator) nothing can be opened or closed:
-// the sub-tabs are those of the presenter's page (setView, read-only sessions joined by their
-// id), the active one follows; on the presenter's page every change calls ctx.onViewChange().
+// the sub-tabs and the windows are those of the presenter's page (setView, read-only sessions
+// joined by their id, the windows at the same relative place and size), the active one follows;
+// on the presenter's page every change calls ctx.onViewChange().
 
 import * as settings from '../settings.js';
 import {el, clear} from '../ui.js';
 import {_, format} from '../i18n.js';
 import {TerminalSession} from '../terminal.js';
+import {createTerminalWindows, parseFloating} from '../terminal_windows.js';
 
 export function createTerminalsTab(ctx) {
   const spectator = Boolean(ctx.spectator);
   const tabs = el('div', {class: 'terminal-tabs', role: 'tablist'});
   const newSelect = el('select', {class: 'new-terminal', title: _('New terminal…')});
+  const newWindowSelect = el('select', {class: 'new-terminal new-window', title: _('New window…')});
   const live = el('div', {class: 'live-sessions'});
   const host = el('div', {class: 'terminal-host'});
   const schemeSelect = el('select', {title: _('Color scheme')},
@@ -37,18 +44,26 @@ export function createTerminalsTab(ctx) {
   const larger = el('button', {type: 'button', title: _('Larger terminal font')}, 'A+');
   smaller.addEventListener('click', () => settings.set('terminal_font_size', settings.get('terminal_font_size') - 1));
   larger.addEventListener('click', () => settings.set('terminal_font_size', settings.get('terminal_font_size') + 1));
-  const bar = el('div', {class: 'ctrl-bar'}, tabs, newSelect, el('span', {class: 'spacer'}), schemeSelect, smaller, larger);
+  const bar = el('div', {class: 'ctrl-bar'}, tabs, newSelect, newWindowSelect, el('span', {class: 'spacer'}),
+    schemeSelect, smaller, larger);
   const pane = el('div', {class: 'pane no-scroll'}, el('div', {class: 'terminals'}, bar, live, host));
   newSelect.hidden = spectator;
+  newWindowSelect.hidden = spectator;
   live.hidden = spectator;
+  // the layer of the floating windows, appended to #panes by project.js (tab.overlay): a
+  // spectator's windows are read-only and placed by the presenter's fractions
+  const windows = createTerminalWindows({readonly: spectator, onChange: notify});
 
-  const sessions = new Map();   // id -> {id, device, title, box, tab, badge, session, remoteId}, in opening order
+  // id -> {id, device, title, box, tab, badge, session, remoteId, private, mode, win}, in opening
+  // order; mode 'tab' (a sub-tab, the box in the host) or 'window' (the box in a floating window,
+  // win its handle)
+  const sessions = new Map();
   const counters = new Map();   // device -> number of terminals opened on it so far (the titles)
   let nextId = 1;
   let devices = [];
   let debug = false;
-  let current = null;           // the id of the shown terminal
-  let pending = null;           // a device being opened by a Connect button: show() must not auto-open
+  let current = null;           // the id of the docked terminal shown in the host (null: none docked)
+  let lastFocused = null;       // the id of the terminal the user last went to, docked or floating
   let remote = [];              // the live sessions of the project (setSessions): {id, device, created_by, private, clients}
   const dismissed = new Set();  // the remote sessions the user closed here: never joined again by themselves
   let shown = false;            // the tab has been shown at least once
@@ -56,7 +71,7 @@ export function createTerminalsTab(ctx) {
   // private ones
   const helper = Boolean(ctx.helper);
 
-  // the presenter's page: the sub-tabs changed (published to the spectators)
+  // the presenter's page: the sub-tabs or the windows changed (published to the spectators)
   function notify() {
     if (ctx.onViewChange) {
       ctx.onViewChange();
@@ -89,37 +104,48 @@ export function createTerminalsTab(ctx) {
     return device.hidden ? 'hidden-device' : (device.allow_connection ? null : 'closed-device');
   }
 
-  // the select opening a new terminal on a device (two kinds for a helping instructor)
-  function renderSelect() {
-    clear(newSelect);
-    newSelect.append(el('option', {value: ''}, _('New terminal…')));
+  // a select opening a new terminal on a device (two kinds for a helping instructor): the same
+  // list for the sub-tabs and for the windows
+  function fillSelect(select, placeholder) {
+    clear(select);
+    select.append(el('option', {value: ''}, placeholder));
     const options = (prefix) => devices.map((device) => {
       const option = el('option', {value: prefix + device.name, class: deviceClass(device)}, device.name);
       option.disabled = !canOpen(device);
       return option;
     });
     if (helper) {
-      newSelect.append(el('optgroup', {label: _('Private terminal (the student does not see it)')}, ...options('private:')));
-      newSelect.append(el('optgroup', {label: _('Shared terminal (the student can join it)')}, ...options('shared:')));
+      select.append(el('optgroup', {label: _('Private terminal (the student does not see it)')}, ...options('private:')));
+      select.append(el('optgroup', {label: _('Shared terminal (the student can join it)')}, ...options('shared:')));
     } else {
-      newSelect.append(...options(''));
+      select.append(...options(''));
     }
-    newSelect.value = '';
+    select.value = '';
   }
-  newSelect.addEventListener('change', () => {
-    const value = newSelect.value;
-    newSelect.value = '';
-    if (!value) {
-      return;
-    }
+  function renderSelect() {
+    fillSelect(newSelect, _('New terminal…'));
+    fillSelect(newWindowSelect, _('New window…'));
+  }
+  // the value of an option: the device and the kind of session
+  function choiceOf(value) {
     if (value.startsWith('private:')) {
-      openNew(value.slice('private:'.length), {priv: true});
-    } else if (value.startsWith('shared:')) {
-      openNew(value.slice('shared:'.length));
-    } else {
-      openNew(value);
+      return {name: value.slice('private:'.length), priv: true};
     }
-  });
+    if (value.startsWith('shared:')) {
+      return {name: value.slice('shared:'.length), priv: false};
+    }
+    return {name: value, priv: false};
+  }
+  for (const select of [newSelect, newWindowSelect]) {
+    select.addEventListener('change', () => {
+      const value = select.value;
+      select.value = '';
+      if (value) {
+        const {name, priv} = choiceOf(value);
+        openNew(name, {priv, floating: select === newWindowSelect});
+      }
+    });
+  }
 
   function titleFor(name) {
     const n = (counters.get(name) || 0) + 1;
@@ -135,24 +161,43 @@ export function createTerminalsTab(ctx) {
       button.disabled = true;      // the presenter chooses the terminal shown
       return button;
     }
+    const popout = el('span', {class: 'popout', role: 'button', title: _('Open in a window'),
+      'aria-label': _('Open in a window')}, '⧉');
+    popout.addEventListener('click', (event) => {
+      event.stopPropagation();
+      undock(entry.id);
+    });
     const close = el('span', {class: 'close', role: 'button', title: _('Close terminal'),
       'aria-label': _('Close terminal')}, '×');
     close.addEventListener('click', (event) => {
       event.stopPropagation();
       closeSession(entry.id);
     });
-    button.append(close);
+    button.append(popout, close);
     button.addEventListener('click', () => select(entry.id));
     return button;
   }
 
+  // the terminal the user goes to: a window is raised, a sub-tab shown in the host (the other
+  // sub-tabs hidden); the keyboard focus goes to it
   function select(id) {
     const entry = sessions.get(id);
     if (!entry) {
       return;
     }
+    if (entry.mode === 'window') {
+      entry.win.raise();
+      if (!spectator) {
+        entry.session.focus();
+      }
+      focused(entry);
+      return;
+    }
     current = id;
     for (const other of sessions.values()) {
+      if (other.mode !== 'tab') {
+        continue;
+      }
       other.box.hidden = other !== entry;
       other.tab.setAttribute('aria-selected', other === entry ? 'true' : 'false');
     }
@@ -160,6 +205,13 @@ export function createTerminalsTab(ctx) {
     if (!spectator) {
       entry.session.focus();
     }
+    focused(entry);
+  }
+
+  // the terminal last gone to, docked or floating: the active one of the presenter's view and
+  // the target of a focus
+  function focused(entry) {
+    lastFocused = entry.id;
     notify();
   }
 
@@ -174,17 +226,35 @@ export function createTerminalsTab(ctx) {
     return Boolean(entry.private || (r && r.private));
   }
 
-  // the viewer count of a sub-tab (the session is shared when it is above one): the browsers
-  // typing in it and the read-only spectators of a presentation
+  // the viewer count of a sub-tab or a window (the session is shared when it is above one): the
+  // browsers typing in it and the read-only spectators of a presentation
   function updateBadge(entry) {
     const r = remoteOf(entry);
     const n = r ? (Number(r.clients) || 0) + (Number(r.viewers) || 0) : (entry.session.clients || 0);
-    entry.badge.textContent = n > 1 ? `(${n})` : '';
-    entry.badge.title = n > 1 ? format(_('{n} viewers'), {n}) : '';
+    const text = n > 1 ? `(${n})` : '';
+    const tooltip = n > 1 ? format(_('{n} viewers'), {n}) : '';
+    entry.badge.textContent = text;
+    entry.badge.title = tooltip;
+    if (entry.win) {
+      entry.win.setViewers(text, tooltip);
+    }
   }
 
   function attachedIds() {
     return new Set([...sessions.values()].map((e) => e.remoteId).filter(Boolean));
+  }
+
+  // the ids of the docked terminals, in opening order (the neighbours of a sub-tab)
+  function dockedIds() {
+    return [...sessions.values()].filter((e) => e.mode === 'tab').map((e) => e.id);
+  }
+
+  // the sub-tab next to the one at index in ids (the one after, else the one before) shown
+  function showNeighbour(ids, index) {
+    const neighbour = sessions.has(ids[index + 1]) ? ids[index + 1] : ids[index - 1];
+    if (neighbour !== undefined && sessions.has(neighbour)) {
+      select(neighbour);
+    }
   }
 
   // the live sessions of the project not on this page: a Join button each
@@ -211,8 +281,9 @@ export function createTerminalsTab(ctx) {
   }
 
   // a new terminal on a device (or, with join, one more viewer of a live session): a new box, a
-  // new sub-tab, a new WebSocket
-  function openNew(name, {join: joinId = null, priv = false, title = null} = {}) {
+  // new WebSocket, and a new sub-tab, or a floating window (floating: true for the cascade, a
+  // spectator's fractions to place it)
+  function openNew(name, {join: joinId = null, priv = false, title = null, floating = null} = {}) {
     const device = deviceOf(name);
     // a joined session is addressed by its id: its device need not be listed (a spectator's view
     // may name a session before the terminals event does)
@@ -223,7 +294,7 @@ export function createTerminalsTab(ctx) {
     const box = el('div', {class: 'terminal-box'});
     host.append(box);
     const entry = {id, device: name, title: title || titleFor(name), box, session: null, tab: null, badge: null,
-                   remoteId: joinId, private: priv};
+                   remoteId: joinId, private: priv, mode: 'tab', win: null};
     if (priv) {
       entry.title = format(_('{title} (private)'), {title: entry.title});
     }
@@ -242,9 +313,14 @@ export function createTerminalsTab(ctx) {
     });
     entry.session = session;
     entry.tab = makeTab(entry);
-    tabs.append(entry.tab);
     sessions.set(id, entry);
-    select(id);
+    if (floating) {
+      // laid out before connect(): the size of the box gives the cols / rows of the socket
+      undock(id, floating === true ? null : floating);
+    } else {
+      tabs.append(entry.tab);
+      select(id);
+    }
     session.connect();
     renderLive();
     return entry;
@@ -256,8 +332,9 @@ export function createTerminalsTab(ctx) {
     openNew(r.device, {join: r.id, title});
   }
 
-  // the × of a sub-tab (or a device gone from the project): the WebSocket is closed, which ends
-  // `sre connect` on the host when nobody else is attached; the neighbouring terminal is shown
+  // the × of a sub-tab or of a window (or a device gone from the project): the WebSocket is
+  // closed, which ends `sre connect` on the host when nobody else is attached; the neighbouring
+  // sub-tab is shown
   function closeSession(id) {
     const entry = sessions.get(id);
     if (!entry) {
@@ -266,28 +343,90 @@ export function createTerminalsTab(ctx) {
     if (entry.remoteId) {
       dismissed.add(entry.remoteId);
     }
-    const ids = [...sessions.keys()];
-    const index = ids.indexOf(id);
+    const docked = dockedIds();
+    const index = docked.indexOf(id);
     entry.session.close();
+    if (entry.win) {
+      entry.win.close();
+      entry.win = null;
+    }
     entry.box.remove();
     entry.tab.remove();
     sessions.delete(id);
+    if (lastFocused === id) {
+      lastFocused = null;
+    }
     if (current === id) {
       current = null;
-      const neighbour = sessions.has(ids[index + 1]) ? ids[index + 1] : ids[index - 1];
-      if (neighbour !== undefined && sessions.has(neighbour)) {
-        select(neighbour);
-      }
+      showNeighbour(docked, index);
     }
     renderLive();
     notify();
   }
 
-  // -- the presenter's view of the sub-tabs, and a spectator following it --------------------
+  // the ⧉ of a sub-tab (or a terminal opened in a window): the box of the xterm moves into a
+  // floating window (placed by fractions when a spectator's view gives them), the neighbouring
+  // sub-tab is shown; the shell goes on
+  function undock(id, fractions = null) {
+    const entry = sessions.get(id);
+    if (!entry || entry.mode !== 'tab') {
+      return;
+    }
+    const docked = dockedIds();
+    const index = docked.indexOf(id);
+    entry.mode = 'window';
+    entry.tab.remove();
+    entry.box.hidden = false;
+    entry.win = windows.open(entry.box, {
+      title: entry.title,
+      className: deviceClass(deviceOf(entry.device)),
+      fractions,
+      fontSize: settings.get('terminal_font_size'),
+      onDock: () => dock(id),
+      onClose: () => closeSession(id),
+      onFocus: () => focused(entry),
+    });
+    updateBadge(entry);
+    if (current === id) {
+      current = null;
+      showNeighbour(docked, index);
+    }
+    entry.session.moved();
+    focused(entry);
+  }
+
+  // the dock button of a window: the box goes back into the host as a sub-tab, shown
+  function dock(id) {
+    const entry = sessions.get(id);
+    if (!entry || entry.mode !== 'window') {
+      return;
+    }
+    entry.mode = 'tab';
+    entry.win.close();
+    entry.win = null;
+    host.append(entry.box);
+    tabs.append(entry.tab);
+    updateBadge(entry);
+    entry.session.moved();
+    if (!spectator) {
+      ctx.selectTab('terminals');
+    }
+    select(id);
+  }
+
+  // -- the presenter's view of the sub-tabs and the windows, and a spectator following it ------
   function getView() {
-    const open = [...sessions.values()].filter((e) => e.remoteId)
-      .map((e) => ({id: e.remoteId, device: e.device, title: e.title}));
-    const entry = current !== null ? sessions.get(current) : null;
+    const open = [...sessions.values()].filter((e) => e.remoteId).map((e) => {
+      const item = {id: e.remoteId, device: e.device, title: e.title};
+      if (e.mode === 'window') {
+        const floating = e.win.fractions();
+        if (floating) {
+          item.floating = floating;
+        }
+      }
+      return item;
+    });
+    const entry = lastFocused !== null ? sessions.get(lastFocused) : null;
     return {open, active: entry && entry.remoteId ? entry.remoteId : null};
   }
 
@@ -301,16 +440,24 @@ export function createTerminalsTab(ctx) {
     }
     const byRemote = new Map([...sessions.values()].map((e) => [e.remoteId, e]));
     for (const o of open) {
-      if (!byRemote.has(o.id)) {
-        const entry = openNew(o.device, {join: o.id, title: o.title || o.device});
+      const floating = parseFloating(o.floating);    // a window of the presenter's, placed like it
+      let entry = byRemote.get(o.id);
+      if (!entry) {
+        entry = openNew(o.device, {join: o.id, title: o.title || o.device, floating});
         if (entry) {
           byRemote.set(o.id, entry);
         }
+      } else if (floating && entry.mode === 'tab') {
+        undock(entry.id, floating);
+      } else if (!floating && entry.mode === 'window') {
+        dock(entry.id);
+      } else if (floating) {
+        entry.win.setFractions(floating);
       }
     }
     for (const o of open) {              // the order of the presenter's sub-tabs
       const entry = byRemote.get(o.id);
-      if (entry) {
+      if (entry && entry.mode === 'tab') {
         tabs.append(entry.tab);
       }
     }
@@ -320,16 +467,17 @@ export function createTerminalsTab(ctx) {
     }
   }
 
-  // -- a focus (focus.js): the sub-tab shown, shared with the other page by the id of its
-  // session.  Never a private terminal: the student must not see nor join one.
+  // -- a focus (focus.js): the terminal the user last went to, sub-tab or window, shared with
+  // the other page by the id of its session.  Never a private terminal: the student must not see
+  // nor join one.
   function focusTarget() {
-    const entry = current !== null ? sessions.get(current) : null;
+    const entry = lastFocused !== null ? sessions.get(lastFocused) : null;
     return entry && entry.remoteId && !isPrivate(entry) ? entry.remoteId : null;
   }
 
-  // the sub-tab the other page shows: shown when it is open here, joined when it is a live
-  // session of the project this page may see (never a private one), else kept until the
-  // terminals event lists it
+  // the terminal the other page shows: shown (a window raised) when it is open here, joined as
+  // a sub-tab when it is a live session of the project this page may see (never a private one),
+  // else kept until the terminals event lists it
   let wantedSession = null;
   function focusSession(remoteId) {
     if (!remoteId) {
@@ -338,7 +486,7 @@ export function createTerminalsTab(ctx) {
     const entry = [...sessions.values()].find((e) => e.remoteId === remoteId);
     if (entry) {
       wantedSession = null;
-      if (current !== entry.id) {
+      if (entry.mode === 'window' || current !== entry.id) {
         select(entry.id);
       }
       return;
@@ -370,16 +518,19 @@ export function createTerminalsTab(ctx) {
   return {
     id: 'terminals',
     element: pane,
+    // the layer of the floating windows, over every pane (project.js appends it to #panes)
+    overlay: windows.element,
     // autoOpen false: the tab is shown by a focus (the other page went there), not by the
     // user: no terminal is opened for them (the instructor's new terminal, a private one say,
-    // would otherwise be echoed by a terminal of the student's own on the first machine)
+    // would otherwise be echoed by a terminal of the student's own on the first machine).  A
+    // floating window is a session too: nothing is opened while one exists.
     show({autoOpen = true} = {}) {
       shown = true;
       if (current !== null) {
         select(current);
       } else if (spectator) {
         // the presenter's view says what is open: nothing by itself
-      } else if (sessions.size === 0 && pending === null) {
+      } else if (sessions.size === 0) {
         if (helper) {
           autoJoin();   // the student's terminals; nothing when there is none
         } else if (autoOpen) {
@@ -415,16 +566,11 @@ export function createTerminalsTab(ctx) {
         focusSession(wantedSession);
       }
     },
-    // the Connect buttons of the Machines / Networks tabs: a new terminal every time (a private
-    // one for a helping instructor)
-    openNew(name) {
-      pending = name;
-      try {
-        ctx.selectTab('terminals');
-      } finally {
-        pending = null;
-      }
-      openNew(name, {priv: helper});
+    // the Connect buttons of the Machines / Networks tabs: a new terminal every time, in a
+    // floating window over the page whatever the tab shown, like the external xterm of the Qt
+    // GUI (a private one for a helping instructor)
+    openWindow(name) {
+      openNew(name, {priv: helper, floating: true});
     },
     closeAll() {
       for (const entry of sessions.values()) {

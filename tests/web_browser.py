@@ -125,6 +125,39 @@ class Page:
         await self.evaluate(f"(() => {{ const e = document.querySelector({json.dumps(selector)}); "
                             f"if (!e) throw new Error('no element {selector}'); e.click(); return true; }})()")
 
+    # -- input events (the drag of a floating terminal window, typing in an xterm) --------------
+
+    async def mouse(self, kind: str, x: float, y: float):
+        """One left-button mouse event (``mousePressed`` / ``mouseMoved`` / ``mouseReleased``) at
+        page coordinates; a move carries the pressed button (a drag)."""
+        params = {'type': kind, 'x': x, 'y': y, 'button': 'left', 'clickCount': 1}
+        if kind == 'mouseMoved':
+            params['buttons'] = 1
+        await self.browser.send('Input.dispatchMouseEvent', params, session_id=self.session_id)
+
+    async def click_at(self, x: float, y: float):
+        await self.mouse('mousePressed', x, y)
+        await self.mouse('mouseReleased', x, y)
+
+    async def drag(self, x0: float, y0: float, x1: float, y1: float, steps: int = 4):
+        """Press at (x0, y0), move in *steps* to (x1, y1), release there."""
+        await self.mouse('mousePressed', x0, y0)
+        for i in range(1, steps + 1):
+            await self.mouse('mouseMoved', x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps)
+        await self.mouse('mouseReleased', x1, y1)
+
+    async def insert_text(self, text: str):
+        """Type *text* into the focused element (one ``input`` event, as an IME commits)."""
+        await self.browser.send('Input.insertText', {'text': text}, session_id=self.session_id)
+
+    async def press_enter(self):
+        for kind in ('keyDown', 'keyUp'):
+            params = {'type': kind, 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13,
+                      'nativeVirtualKeyCode': 13}
+            if kind == 'keyDown':
+                params.update(text='\r', unmodifiedText='\r')
+            await self.browser.send('Input.dispatchKeyEvent', params, session_id=self.session_id)
+
     async def close(self):
         if not self.closed:
             self.closed = True

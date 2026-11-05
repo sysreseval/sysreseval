@@ -1,4 +1,5 @@
-// One terminal of the Terminals tab: an xterm.js terminal (vendored UMD builds loaded by
+// One terminal of the Terminals tab, in a sub-tab or in a floating window over the page
+// (terminal_windows.js): an xterm.js terminal (vendored UMD builds loaded by
 // project.html as classic scripts: window.Terminal, window.FitAddon) attached to the WebSocket
 // {api_base}/terminals/{device} with the subprotocol "sre-term.v1":
 //   binary frames   raw bytes both ways (keystrokes to the pty, its output to the terminal)
@@ -263,6 +264,16 @@ export class TerminalSession {
 
   focus() {
     this.term.focus();
+  }
+
+  // The box was moved in the DOM (a sub-tab to a floating window, or back): measured and drawn
+  // again, the keyboard focus back in the terminal.
+  moved() {
+    this.refit();
+    this.term.refresh(0, this.term.rows - 1);
+    if (!this.readonly) {
+      this.term.focus();
+    }
   }
 
   setFontSize(size) {

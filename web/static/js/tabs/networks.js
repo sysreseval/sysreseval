@@ -1,7 +1,8 @@
 // The Networks tab: the networks of the project seen as switches: Name, Type (Hub, Switch,
 // Manageable switch; red when a manageable switch is closed to the students) and, for a
-// manageable switch open to the students, a Connect button opening its management console (in
-// a debug project a closed switch gets an orange button all the same, like the Qt view).
+// manageable switch open to the students, a Connect button opening its management console in a
+// floating window over the page (in a debug project a closed switch gets an orange button all
+// the same, like the Qt view).
 
 import {el, clear} from '../ui.js';
 import {_} from '../i18n.js';

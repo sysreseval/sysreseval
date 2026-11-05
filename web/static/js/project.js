@@ -126,8 +126,10 @@ const ctx = {
       tabs.questions.setAnswers(state.answers);
     }
   },
+  // a new terminal every time, in a floating window over the page whatever the tab shown, like
+  // the external xterm the Connect buttons of the Qt GUI open
   openTerminal(device) {
-    tabs.terminals.openNew(device);   // a new terminal every time, like a new xterm in the Qt GUI
+    tabs.terminals.openWindow(device);
   },
   selectTab,
   onSchemaOptions(query) {
@@ -208,6 +210,9 @@ function tab(id) {
     created.element.hidden = true;
     created.element.setAttribute('role', 'tabpanel');
     panes.append(created.element);
+    if (created.overlay) {
+      panes.append(created.overlay);    // the floating terminal windows: over every pane, gone with them
+    }
   }
   return tabs[id];
 }
@@ -376,7 +381,8 @@ async function load() {
 }
 
 // The page is over (the project closed, or the presentation ended): every socket closed, the
-// tabs hidden; false when it already was.
+// tabs hidden (the floating terminal windows with them: their layer lives in #panes); false
+// when it already was.
 function shutDown() {
   if (state.closed) {
     return false;

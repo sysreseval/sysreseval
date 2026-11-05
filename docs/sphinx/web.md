@@ -950,10 +950,15 @@ below), except `add` and `remove`, which stay with the token.
 - **A project**: the tabs of the Qt GUI. The schema is drawn by the agent (graphviz) with the
   same options (lines, spacing, order, icons); the questions and the forms are the same; the
   evaluation table has the same parts, subtotals, bonuses and colours; the terminals are
-  `xterm.js` windows on `sre connect`: every Connect button opens a new one on its machine (like
-  a new xterm in the Qt GUI: `gw`, `gw (2)`, …), the select of the Terminals tab opens one on
-  any device (the machines open to the students and the managed switches), the × of a sub-tab
-  closes it, `terminals_per_device` caps them; the Log tab appears for debug projects. *Export
+  `xterm.js` terminals on `sre connect`: every Connect button of the Machines and Networks tabs
+  opens a new one on its device in a **floating window** over the page (like the external xterm
+  of the Qt GUI: `gw`, `gw (2)`, …; the window stays while the tabs change, is dragged by its
+  title bar, resized by its bottom-right corner and closed by its ×, and takes the font size and
+  the colour scheme of the Terminals tab), the two selects of the Terminals tab open one on any
+  device (the machines open to the students and the managed switches) as a sub-tab or in a
+  window, the ⧉ of a sub-tab moves its terminal into a window and the dock button of a window
+  brings it back as a sub-tab (the same shell goes on), the × of a sub-tab closes it,
+  `terminals_per_device` caps them; the Log tab appears for debug projects. *Export
   Schema to PDF* downloads the drawing of the Schema tab with its current options (never the
   hidden machines), rendered by the agent as the GUI's File → Export Schema to PDF does, unless
   the lab sets `export_schema_pdf = False`; the icons need `rsvg-convert` (`librsvg2-bin`) on the
@@ -961,13 +966,14 @@ below), except `add` and `remove`, which stay with the token.
   A terminal is a session shared by its viewers: the live sessions of the project that are not
   on the page are listed under the bar with a Join button (the same shell for everybody, the
   last 64 KiB of output replayed to the newcomer, the pty sized to the smallest window), a
-  sub-tab shows how many viewers its session has, and a session ends when its last viewer leaves
+  sub-tab or a window shows how many viewers its session has, and a session ends when its last viewer leaves
   (or when the shell exits). After a disconnection, Reconnect joins the same session again while
   another viewer kept it alive.
 - **A presentation**: when an instructor presents a project to the class (*Present* below), the
   page of every chosen student is covered by that project, read-only: every tab is there but
   nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
-  their exact size, at the largest font that fits), the question selected, the drawing options
+  their exact size, at the largest font that fits; the instructor's floating windows float on
+  the student's page too, at the same relative place and size), the question selected, the drawing options
   of the schema, the instructor texts and the virtual desktop (view-only) follow what the
   instructor does; so does the position inside the tab: the scroll of the text, of the question
   (its description and the list of titles), of the tables and of the log (the line at the top of
@@ -1111,8 +1117,9 @@ What an instructor gets:
   (the student's page stays grey; the presentation colour replaces it while the project is
   presented); the Terminals tab **joins the student's live terminals** when it opens (the
   instructor sees the student's shell and may type in it, the student sees the same; a closed
-  sub-tab is not joined again), and the select offers a **private terminal** (the student does
-  not see it in their list; what the instructor types there stays with them) or a shared one;
+  sub-tab is not joined again), and the selects offer a **private terminal** (the student does
+  not see it in their list; what the instructor types there stays with them) or a shared one,
+  the Connect buttons a private one in a window;
   the Evaluation tab opens on the **last archived evaluation** of the project (date, errors in
   the tooltip), shows each new one by itself (the periodic evaluations of the lab, the student's
   own, another instructor's: the agent tells the open pages) and *Start evaluation* runs a
@@ -1126,9 +1133,9 @@ What an instructor gets:
   site bar and the project bar) takes the **focus colour** (a deeper teal than the helper
   colour, which comes back on the instructor's page when the mode is off), the student's page
   names the instructor following them, and the two pages share the **tab** shown, the
-  **terminal** sub-tab shown (a terminal the student may see: their own sessions and the
-  shared ones, joined by both: a terminal one page shows is joined by the other when it has
-  not got it; a private terminal of the instructor is never shown nor named to the student,
+  **terminal** last gone to, sub-tab or floating window (a terminal the student may see: their
+  own sessions and the shared ones, joined by both: a terminal one page shows is joined by the
+  other, as a sub-tab, when it has not got it; a private terminal of the instructor is never shown nor named to the student,
   whose page keeps its sub-tab while the instructor is on one; a page brought to the Terminals
   tab by the focus opens no terminal of its own, as it does when its user clicks the tab for
   the first time) and the **question** selected,
