@@ -1,0 +1,28 @@
+
+List of X.509 End Entity Certificates
+
+  subject:  "C=FR, O=Lab, CN=gwa.lab"
+  issuer:   "C=FR, O=Lab, CN=Lab CA"
+  validity:  not before Nov 04 23:42:37 2026, ok
+             not after  Nov 03 23:42:37 2031, ok (expires in 1824 days)
+  serial:    69:8a:8d:b0:de:8e:04:2b
+  altNames:  gwa.lab
+  flags:     
+  authkeyId: 15:f7:a8:6c:17:59:50:29:2a:08:ee:1c:2c:f8:be:34:55:33:3a:f4
+  subjkeyId: a7:59:0b:da:76:26:13:a2:16:57:f7:d1:2d:ac:af:bf:56:a4:12:13
+  pubkey:    ED25519 256 bits
+  keyid:     92:ac:1f:55:85:91:1f:70:7a:ae:8e:48:da:31:e6:e0:f5:47:a5:3c
+  subjkey:   a7:59:0b:da:76:26:13:a2:16:57:f7:d1:2d:ac:af:bf:56:a4:12:13
+
+List of X.509 CA Certificates
+
+  subject:  "C=FR, O=Lab, CN=Lab CA"
+  issuer:   "C=FR, O=Lab, CN=Lab CA"
+  validity:  not before Nov 04 23:42:37 2026, ok
+             not after  Nov 01 23:42:37 2036, ok (expires in 3649 days)
+  serial:    52:d1:4d:bb:92:87:25:1b
+  flags:     CA CRLSign self-signed 
+  subjkeyId: 15:f7:a8:6c:17:59:50:29:2a:08:ee:1c:2c:f8:be:34:55:33:3a:f4
+  pubkey:    ED25519 256 bits
+  keyid:     8f:98:9e:c2:d0:7c:f9:ca:4a:a3:ec:76:85:7b:d3:38:21:fc:6a:0e
+  subjkey:   15:f7:a8:6c:17:59:50:29:2a:08:ee:1c:2c:f8:be:34:55:33:3a:f4

@@ -1,0 +1,7 @@
+[IKE] establishing CHILD_SA lans{4}
+[ENC] generating IKE_AUTH request 1 [ IDi N(INIT_CONTACT) CERTREQ IDr AUTH SA TSi TSr N(MOBIKE_SUP) N(ADD_4_ADDR) N(MULT_AUTH) N(EAP_ONLY) N(MSG_ID_SYN_SUP) ]
+[NET] sending packet: from 198.51.100.252[4500] to 198.51.100.187[4500] (304 bytes)
+[NET] received packet: from 198.51.100.187[4500] to 198.51.100.252[4500] (80 bytes)
+[ENC] parsed IKE_AUTH response 1 [ N(AUTH_FAILED) ]
+[IKE] received AUTHENTICATION_FAILED notify error
+RC=0

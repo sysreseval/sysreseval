@@ -1,0 +1,22 @@
+siteb: #3, ESTABLISHED, IKEv2, c61eb2ea15e648d5_i a499cdd5b8093304_r*
+  local  'gwa.lab' @ 198.51.100.187[4500]
+  remote 'gwb.lab' @ 198.51.100.252[4500]
+  AES_CBC-256/HMAC_SHA2_256_128/PRF_HMAC_SHA2_256/CURVE_25519
+  established 143s ago, rekeying in 13781s
+  lans: #2, reqid 2, INSTALLED, TUNNEL, ESP:AES_GCM_16-256
+    installed 143s ago, rekeying in 412s, expires in 517s
+    in  c718eee7,   1161 bytes,    13 packets,     9s ago
+    out c391ce2d,   1154 bytes,    15 packets,     9s ago
+    local  10.22.190.0/24 10.249.82.0/24
+    remote 10.149.215.0/24
+rw: #2, ESTABLISHED, IKEv2, 739a470f702f7ab6_i ab0e2bf0e147dee0_r*
+  local  'gwa.lab' @ 198.51.100.187[4500]
+  remote '10.41.30.116' @ 198.51.100.202[4500] EAP: 'laptop' [10.22.190.1]
+  AES_CBC-256/HMAC_SHA2_256_128/PRF_HMAC_SHA2_256/CURVE_25519
+  established 143s ago, rekeying in 12945s
+  rw: #1, reqid 1, INSTALLED, TUNNEL-in-UDP, ESP:AES_GCM_16-256
+    installed 143s ago, rekeying in 3244s, expires in 3817s
+    in  c8cb6f77,   2173 bytes,    31 packets,     9s ago
+    out ca7ee8ec,   2207 bytes,    23 packets,     9s ago
+    local  0.0.0.0/0
+    remote 10.22.190.1/32

@@ -1,0 +1,28 @@
+src 10.22.190.1/32 dst 0.0.0.0/0 
+	dir out priority 383615 ptype main 
+	tmpl src 10.41.30.116 dst 198.51.100.187
+		proto esp spi 0xc8cb6f77 reqid 1 mode tunnel
+src 0.0.0.0/0 dst 10.22.190.1/32 
+	dir fwd priority 383615 ptype main 
+	tmpl src 198.51.100.187 dst 10.41.30.116
+		proto esp reqid 1 mode tunnel
+src 0.0.0.0/0 dst 10.22.190.1/32 
+	dir in priority 383615 ptype main 
+	tmpl src 198.51.100.187 dst 10.41.30.116
+		proto esp reqid 1 mode tunnel
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket in priority 0 ptype main 
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket out priority 0 ptype main 
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket in priority 0 ptype main 
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket out priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket in priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket out priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket in priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket out priority 0 ptype main 

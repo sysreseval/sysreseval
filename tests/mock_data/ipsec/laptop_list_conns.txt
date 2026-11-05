@@ -1,0 +1,10 @@
+gwa: IKEv2, no reauthentication, rekeying every 14400s, dpd delay 30s
+  local:  %any
+  remote: 198.51.100.187
+  local EAP_MD5 authentication:
+    eap_id: laptop
+  remote public key authentication:
+    id: gwa.lab
+  gwa: TUNNEL, rekeying every 3600s, dpd action is none
+    local:  dynamic
+    remote: 0.0.0.0/0

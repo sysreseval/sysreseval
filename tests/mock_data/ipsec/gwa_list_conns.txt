@@ -1,0 +1,22 @@
+rw: IKEv2, no reauthentication, rekeying every 14400s, dpd delay 30s
+  local:  198.51.100.187
+  remote: %any
+  local public key authentication:
+    id: gwa.lab
+    certs: C=FR, O=Lab, CN=gwa.lab
+  remote EAP_MD5 authentication:
+    eap_id: %any
+  rw: TUNNEL, rekeying every 3600s, dpd action is none
+    local:  0.0.0.0/0
+    remote: dynamic
+siteb: IKEv2, no reauthentication, rekeying every 14400s
+  local:  198.51.100.187
+  remote: 198.51.100.252
+  local public key authentication:
+    id: gwa.lab
+    certs: C=FR, O=Lab, CN=gwa.lab
+  remote public key authentication:
+    id: gwb.lab
+  lans: TUNNEL, rekeying every 600s
+    local:  10.249.82.0/24 10.22.190.0/24
+    remote: 10.149.215.0/24

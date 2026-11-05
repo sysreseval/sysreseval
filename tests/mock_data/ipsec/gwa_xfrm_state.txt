@@ -1,0 +1,40 @@
+src 198.51.100.187 dst 198.51.100.252
+	proto esp spi 0xc391ce2d reqid 2 mode tunnel
+	replay-window 0 flag af-unspec
+	aead rfc4106(gcm(aes)) 0xe4cf3f9e829e5337c02e806f4ce350ebbd840797ecd75dfab64357dd1f7a32e346d96a22 128
+	lastused 2026-11-04 23:44:52
+	anti-replay context: seq 0x0, oseq 0xf, bitmap 0x00000000
+src 198.51.100.252 dst 198.51.100.187
+	proto esp spi 0xc718eee7 reqid 2 mode tunnel
+	replay-window 32 flag af-unspec
+	aead rfc4106(gcm(aes)) 0x6ef567885926209a8a113f49a7d76a596b51a07d295d3181792da9919d9ebb8c0209c1f3 128
+	lastused 2026-11-04 23:44:52
+	anti-replay context: seq 0xd, oseq 0x0, bitmap 0x00001fff
+src 198.51.100.187 dst 198.51.100.202
+	proto esp spi 0xca7ee8ec reqid 1 mode tunnel
+	replay-window 0 flag af-unspec
+	aead rfc4106(gcm(aes)) 0xcd00a3928c4b93a6601e3da94de66cc57c86fbc10bed662ffc599fd841880b7bc550eee1 128
+	encap type espinudp sport 4500 dport 4500 addr 0.0.0.0
+	lastused 2026-11-04 23:44:52
+	anti-replay context: seq 0x0, oseq 0x17, bitmap 0x00000000
+src 198.51.100.202 dst 198.51.100.187
+	proto esp spi 0xc8cb6f77 reqid 1 mode tunnel
+	replay-window 32 flag af-unspec
+	aead rfc4106(gcm(aes)) 0x42c64e1b50e885351a698d0b271ac272c41be108642c9c665092810b068b0029bf350dc4 128
+	encap type espinudp sport 4500 dport 4500 addr 0.0.0.0
+	lastused 2026-11-04 23:44:52
+	anti-replay context: seq 0x1f, oseq 0x0, bitmap 0x7fffffff
+src 198.51.100.252 dst 198.51.100.187
+	proto esp spi 0x4f91a770 reqid 100 mode transport
+	replay-window 0 
+	aead rfc4106(gcm(aes)) 0xe7e1e23fb09b4950a66e9e97eb789cbb5e09cf13 128
+	lastused 2026-11-04 23:44:54
+	anti-replay context: seq 0x0, oseq 0x0, bitmap 0x00000000
+	sel src 0.0.0.0/0 dst 0.0.0.0/0 
+src 198.51.100.187 dst 198.51.100.252
+	proto esp spi 0x90da6559 reqid 100 mode transport
+	replay-window 0 
+	aead rfc4106(gcm(aes)) 0xfc636ea70ed177623d71a0947793259a4a7c2931 128
+	lastused 2026-11-04 23:44:54
+	anti-replay context: seq 0x0, oseq 0x6, bitmap 0x00000000
+	sel src 0.0.0.0/0 dst 0.0.0.0/0 

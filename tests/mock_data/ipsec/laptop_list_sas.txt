@@ -1,0 +1,11 @@
+gwa: #1, ESTABLISHED, IKEv2, 739a470f702f7ab6_i* ab0e2bf0e147dee0_r
+  local  '10.41.30.116' @ 10.41.30.116[4500] [10.22.190.1]
+  remote 'gwa.lab' @ 198.51.100.187[4500]
+  AES_CBC-256/HMAC_SHA2_256_128/PRF_HMAC_SHA2_256/CURVE_25519
+  established 146s ago, rekeying in 13985s
+  gwa: #1, reqid 1, INSTALLED, TUNNEL-in-UDP, ESP:AES_GCM_16-256
+    installed 146s ago, rekeying in 3104s, expires in 3814s
+    in  ca7ee8ec,   2207 bytes,    23 packets,    12s ago
+    out c8cb6f77,   2173 bytes,    31 packets,    12s ago
+    local  10.22.190.1/32
+    remote 0.0.0.0/0

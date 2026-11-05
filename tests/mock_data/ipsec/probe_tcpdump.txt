@@ -1,0 +1,48 @@
+23:45:07.058603 IP 198.51.100.187 > 198.51.100.252: ESP(spi=0x90da6559,seq=0x7), length 100
+23:45:07.058637 IP 198.51.100.252 > 198.51.100.187: ESP(spi=0x4f91a770,seq=0x7), length 100
+23:45:07.110450 IP 198.51.100.202.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  inf2[I]
+23:45:07.111229 IP 198.51.100.187.4500 > 198.51.100.202.4500: NONESP-encap: isakmp: child_sa  inf2[R]
+23:45:08.065081 IP 198.51.100.187 > 198.51.100.252: ESP(spi=0x90da6559,seq=0x8), length 100
+23:45:08.065747 IP 198.51.100.252 > 198.51.100.187: ESP(spi=0x4f91a770,seq=0x8), length 100
+23:45:08.133173 IP 198.51.100.202.500 > 198.51.100.187.500: isakmp: parent_sa ikev2_init[I]
+23:45:08.133758 IP 198.51.100.187.500 > 198.51.100.202.500: isakmp: parent_sa ikev2_init[R]
+23:45:08.135438 IP 198.51.100.202.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[I]
+23:45:08.135928 IP 198.51.100.187.4500 > 198.51.100.202.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[R]
+23:45:08.137372 IP 198.51.100.202.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[I]
+23:45:08.137742 IP 198.51.100.187.4500 > 198.51.100.202.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[R]
+23:45:08.138415 IP 198.51.100.202.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[I]
+23:45:08.138828 IP 198.51.100.187.4500 > 198.51.100.202.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[R]
+23:45:08.139267 IP 198.51.100.202.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[I]
+23:45:08.140161 IP 198.51.100.187.4500 > 198.51.100.202.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[R]
+23:45:09.118352 IP 198.51.100.187 > 198.51.100.252: ESP(spi=0xc391ce2d,seq=0x10), length 120
+23:45:09.118881 IP 198.51.100.252 > 198.51.100.187: ESP(spi=0xc718eee7,seq=0xe), length 120
+23:45:10.119030 IP 198.51.100.187 > 198.51.100.252: ESP(spi=0xc391ce2d,seq=0x11), length 120
+23:45:10.120232 IP 198.51.100.252 > 198.51.100.187: ESP(spi=0xc718eee7,seq=0xf), length 120
+23:45:11.108043 IP 198.51.100.252.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  inf2[I]
+23:45:11.108526 IP 198.51.100.187.4500 > 198.51.100.252.4500: NONESP-encap: isakmp: child_sa  inf2[R]
+23:45:12.128763 ARP, Request who-has 198.51.100.187 tell 198.51.100.202, length 46
+23:45:12.129128 ARP, Reply 198.51.100.187 is-at aa:77:f6:f4:cd:0e, length 46
+23:45:12.131111 IP 198.51.100.252.500 > 198.51.100.187.500: isakmp: parent_sa ikev2_init[I]
+23:45:12.131812 IP 198.51.100.187.500 > 198.51.100.252.500: isakmp: parent_sa ikev2_init[R]
+23:45:12.133590 IP 198.51.100.252.4500 > 198.51.100.187.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[I]
+23:45:12.135140 IP 198.51.100.187.4500 > 198.51.100.252.4500: NONESP-encap: isakmp: child_sa  ikev2_auth[R]
+23:45:15.088369 IP 198.51.100.202.4500 > 198.51.100.187.4500: UDP-encap: ESP(spi=0xce236b75,seq=0x1), length 96
+23:45:15.088574 IP 198.51.100.187.42242 > 192.0.2.185.80: Flags [S], seq 538799478, win 64240, options [mss 1460,sackOK,TS val 3124010733 ecr 0,nop,wscale 7], length 0
+23:45:15.088989 IP 192.0.2.185.80 > 198.51.100.187.42242: Flags [S.], seq 2065067498, ack 538799479, win 65160, options [mss 1460,sackOK,TS val 1153203369 ecr 3124010733,nop,wscale 7], length 0
+23:45:15.089191 IP 198.51.100.187.4500 > 198.51.100.202.4500: UDP-encap: ESP(spi=0xc853086c,seq=0x1), length 96
+23:45:15.089758 IP 198.51.100.202.4500 > 198.51.100.187.4500: UDP-encap: ESP(spi=0xce236b75,seq=0x2), length 88
+23:45:15.090057 IP 198.51.100.187.42242 > 192.0.2.185.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 3124010734 ecr 1153203369], length 0
+23:45:15.090331 IP 198.51.100.202.4500 > 198.51.100.187.4500: UDP-encap: ESP(spi=0xce236b75,seq=0x3), length 164
+23:45:15.090540 IP 198.51.100.187.42242 > 192.0.2.185.80: Flags [P.], seq 1:76, ack 1, win 502, options [nop,nop,TS val 3124010734 ecr 1153203369], length 75: HTTP: GET / HTTP/1.1
+23:45:15.091279 IP 192.0.2.185.80 > 198.51.100.187.42242: Flags [.], ack 76, win 509, options [nop,nop,TS val 1153203371 ecr 3124010734], length 0
+23:45:15.091285 IP 198.51.100.187.4500 > 198.51.100.202.4500: UDP-encap: ESP(spi=0xc853086c,seq=0x2), length 88
+23:45:15.091806 IP 192.0.2.185.80 > 198.51.100.187.42242: Flags [P.], seq 1:190, ack 76, win 509, options [nop,nop,TS val 1153203372 ecr 3124010734], length 189: HTTP: HTTP/1.1 200 OK
+23:45:15.091980 IP 198.51.100.187.4500 > 198.51.100.202.4500: UDP-encap: ESP(spi=0xc853086c,seq=0x3), length 276
+23:45:15.092452 IP 198.51.100.202.4500 > 198.51.100.187.4500: UDP-encap: ESP(spi=0xce236b75,seq=0x4), length 88
+23:45:15.092672 IP 198.51.100.187.42242 > 192.0.2.185.80: Flags [.], ack 190, win 501, options [nop,nop,TS val 3124010737 ecr 1153203372], length 0
+23:45:15.092861 IP 198.51.100.202.4500 > 198.51.100.187.4500: UDP-encap: ESP(spi=0xce236b75,seq=0x5), length 88
+23:45:15.093058 IP 198.51.100.187.42242 > 192.0.2.185.80: Flags [F.], seq 76, ack 190, win 501, options [nop,nop,TS val 3124010737 ecr 1153203372], length 0
+23:45:15.093834 IP 192.0.2.185.80 > 198.51.100.187.42242: Flags [F.], seq 190, ack 77, win 509, options [nop,nop,TS val 1153203373 ecr 3124010737], length 0
+23:45:15.093841 IP 198.51.100.187.4500 > 198.51.100.202.4500: UDP-encap: ESP(spi=0xc853086c,seq=0x4), length 88
+23:45:15.094089 IP 198.51.100.202.4500 > 198.51.100.187.4500: UDP-encap: ESP(spi=0xce236b75,seq=0x6), length 88
+23:45:15.094306 IP 198.51.100.187.42242 > 192.0.2.185.80: Flags [.], ack 191, win 501, options [nop,nop,TS val 3124010739 ecr 1153203373], length 0

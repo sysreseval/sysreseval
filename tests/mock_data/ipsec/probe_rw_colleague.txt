@@ -1,0 +1,50 @@
+[IKE] initiating IKE_SA probe[1] to 198.51.100.187
+[ENC] generating IKE_SA_INIT request 0 [ SA KE No N(NATD_S_IP) N(NATD_D_IP) N(FRAG_SUP) N(HASH_ALG) N(REDIR_SUP) ]
+[NET] sending packet: from 198.51.100.240[500] to 198.51.100.187[500] (1048 bytes)
+[NET] received packet: from 198.51.100.187[500] to 198.51.100.240[500] (273 bytes)
+[ENC] parsed IKE_SA_INIT response 0 [ SA KE No N(NATD_S_IP) N(NATD_D_IP) CERTREQ N(FRAG_SUP) N(HASH_ALG) N(CHDLESS_SUP) N(MULT_AUTH) ]
+[CFG] selected proposal: IKE:AES_CBC_256/HMAC_SHA2_256_128/PRF_HMAC_SHA2_256/CURVE_25519
+[IKE] received cert request for "C=FR, O=Lab, CN=Lab CA"
+[IKE] sending cert request for "C=FR, O=Lab, CN=Lab CA"
+[IKE] establishing CHILD_SA probe{1}
+[ENC] generating IKE_AUTH request 1 [ IDi CERTREQ CPRQ(ADDR DNS) SA TSi TSr N(MOBIKE_SUP) N(NO_ADD_ADDR) N(MULT_AUTH) N(EAP_ONLY) N(MSG_ID_SYN_SUP) ]
+[NET] sending packet: from 198.51.100.240[4500] to 198.51.100.187[4500] (368 bytes)
+[NET] received packet: from 198.51.100.187[4500] to 198.51.100.240[4500] (512 bytes)
+[ENC] parsed IKE_AUTH response 1 [ IDr CERT AUTH EAP/REQ/ID ]
+[IKE] received end entity cert "C=FR, O=Lab, CN=gwa.lab"
+[CFG]   using certificate "C=FR, O=Lab, CN=gwa.lab"
+[CFG]   using trusted ca certificate "C=FR, O=Lab, CN=Lab CA"
+[CFG]   reached self-signed root ca with a path length of 0
+[CFG] checking certificate status of "C=FR, O=Lab, CN=gwa.lab"
+[CFG] certificate status is not available
+[IKE] authentication of 'gwa.lab' with ED25519 successful
+[IKE] server requested EAP_IDENTITY (id 0x00), sending 'colleague'
+[ENC] generating IKE_AUTH request 2 [ EAP/RES/ID ]
+[NET] sending packet: from 198.51.100.240[4500] to 198.51.100.187[4500] (96 bytes)
+[NET] received packet: from 198.51.100.187[4500] to 198.51.100.240[4500] (96 bytes)
+[ENC] parsed IKE_AUTH response 2 [ EAP/REQ/MD5 ]
+[IKE] server requested EAP_MD5 authentication (id 0xCF)
+[ENC] generating IKE_AUTH request 3 [ EAP/RES/MD5 ]
+[NET] sending packet: from 198.51.100.240[4500] to 198.51.100.187[4500] (96 bytes)
+[NET] received packet: from 198.51.100.187[4500] to 198.51.100.240[4500] (80 bytes)
+[ENC] parsed IKE_AUTH response 3 [ EAP/SUCC ]
+[IKE] EAP method EAP_MD5 succeeded, no MSK established
+[IKE] authentication of 'colleague' (myself) with EAP
+[ENC] generating IKE_AUTH request 4 [ AUTH ]
+[NET] sending packet: from 198.51.100.240[4500] to 198.51.100.187[4500] (112 bytes)
+[NET] received packet: from 198.51.100.187[4500] to 198.51.100.240[4500] (240 bytes)
+[ENC] parsed IKE_AUTH response 4 [ AUTH CPRP(ADDR) SA TSi TSr N(MOBIKE_SUP) N(ADD_4_ADDR) ]
+[IKE] authentication of 'gwa.lab' with EAP successful
+[IKE] installing new virtual IP 10.22.190.2
+[IKE] peer supports MOBIKE
+[IKE] IKE_SA probe[1] established between 198.51.100.240[colleague]...198.51.100.187[gwa.lab]
+[IKE] scheduling rekeying in 14031s
+[IKE] maximum IKE_SA lifetime 15471s
+[CFG] selected proposal: ESP:AES_GCM_16_256/NO_EXT_SEQ
+[IKE] CHILD_SA probe{1} established with SPIs cbe86531_i ca932752_o and TS 10.22.190.2/32 === 10.249.82.0/24
+initiate completed successfully
+INITIATE=0
+list-sa event {probe {uniqueid=1 version=2 state=ESTABLISHED local-host=198.51.100.240 local-port=4500 local-id=colleague remote-host=198.51.100.187 remote-port=4500 remote-id=gwa.lab initiator=yes initiator-spi=f2714373ce01e89e responder-spi=b1677bfeaf67e156 encr-alg=AES_CBC encr-keysize=256 integ-alg=HMAC_SHA2_256_128 prf-alg=PRF_HMAC_SHA2_256 dh-group=CURVE_25519 established=0 rekey-time=14031 local-vips=[10.22.190.2] child-sas {probe-1 {name=probe uniqueid=1 reqid=1 state=INSTALLED mode=TUNNEL protocol=ESP spi-in=cbe86531 spi-out=ca932752 encr-alg=AES_GCM_16 encr-keysize=256 bytes-in=0 packets-in=0 bytes-out=0 packets-out=0 rekey-time=3240 life-time=3960 install-time=0 local-ts=[10.22.190.2/32] remote-ts=[10.249.82.0/24]}}}}
+list-sas reply {}
+PING=0
+cleaned

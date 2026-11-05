@@ -1,0 +1,1 @@
+[{"dst":"10.22.190.1","gateway":"198.51.100.202","dev":"eth0","protocol":"static","flags":[]},{"dst":"10.149.215.0/24","gateway":"198.51.100.252","dev":"eth0","protocol":"static","prefsrc":"10.249.82.241","flags":[]}]

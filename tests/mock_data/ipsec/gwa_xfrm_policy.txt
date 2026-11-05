@@ -1,0 +1,60 @@
+src 10.249.82.0/24 dst 10.149.215.0/24 
+	dir out priority 375423 ptype main 
+	tmpl src 198.51.100.187 dst 198.51.100.252
+		proto esp spi 0xc391ce2d reqid 2 mode tunnel
+src 10.149.215.0/24 dst 10.249.82.0/24 
+	dir fwd priority 375423 ptype main 
+	tmpl src 198.51.100.252 dst 198.51.100.187
+		proto esp reqid 2 mode tunnel
+src 10.149.215.0/24 dst 10.249.82.0/24 
+	dir in priority 375423 ptype main 
+	tmpl src 198.51.100.252 dst 198.51.100.187
+		proto esp reqid 2 mode tunnel
+src 10.22.190.0/24 dst 10.149.215.0/24 
+	dir out priority 375423 ptype main 
+	tmpl src 198.51.100.187 dst 198.51.100.252
+		proto esp spi 0xc391ce2d reqid 2 mode tunnel
+src 10.149.215.0/24 dst 10.22.190.0/24 
+	dir fwd priority 375423 ptype main 
+	tmpl src 198.51.100.252 dst 198.51.100.187
+		proto esp reqid 2 mode tunnel
+src 10.149.215.0/24 dst 10.22.190.0/24 
+	dir in priority 375423 ptype main 
+	tmpl src 198.51.100.252 dst 198.51.100.187
+		proto esp reqid 2 mode tunnel
+src 0.0.0.0/0 dst 10.22.190.1/32 
+	dir out priority 383615 ptype main 
+	tmpl src 198.51.100.187 dst 198.51.100.202
+		proto esp spi 0xca7ee8ec reqid 1 mode tunnel
+src 10.22.190.1/32 dst 0.0.0.0/0 
+	dir fwd priority 383615 ptype main 
+	tmpl src 198.51.100.202 dst 198.51.100.187
+		proto esp reqid 1 mode tunnel
+src 10.22.190.1/32 dst 0.0.0.0/0 
+	dir in priority 383615 ptype main 
+	tmpl src 198.51.100.202 dst 198.51.100.187
+		proto esp reqid 1 mode tunnel
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket in priority 0 ptype main 
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket out priority 0 ptype main 
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket in priority 0 ptype main 
+src 0.0.0.0/0 dst 0.0.0.0/0 
+	socket out priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket in priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket out priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket in priority 0 ptype main 
+src ::/0 dst ::/0 
+	socket out priority 0 ptype main 
+src 198.51.100.252/32 dst 198.51.100.187/32 proto icmp 
+	dir in priority 0 ptype main 
+	tmpl src 198.51.100.252 dst 198.51.100.187
+		proto esp reqid 100 mode transport
+src 198.51.100.187/32 dst 198.51.100.252/32 proto icmp 
+	dir out priority 0 ptype main 
+	tmpl src 198.51.100.187 dst 198.51.100.252
+		proto esp reqid 100 mode transport
