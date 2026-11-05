@@ -900,6 +900,7 @@ class AgentConfig:
     max_idle: float = 24 * 3600.0     # default idle timeout of a project (the portal may give its own)
     terminals_per_project: int = 16
     terminals_per_device: int = 4     # each Connect of the web opens a new terminal on the machine
+    terminals_linger: float = 7200.0  # a terminal whose last typing browser left is kept this long (0: ends with it)
     max_concurrent_starts: int = 2
     max_concurrent_evals: int = 2
     lab_list_cache_ttl: float = 60.0
@@ -946,7 +947,7 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
                         if 'start_timeout' in display_data else {}))
     top = {k: v for k, v in data.items() if k not in ('timeouts', 'display')}
     converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl',
-                                                        'shutdown_timeout') if k in top}
+                                                        'shutdown_timeout', 'terminals_linger') if k in top}
     cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
                  allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:

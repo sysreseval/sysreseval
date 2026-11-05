@@ -34,6 +34,10 @@ terminals_per_project = 16
 terminals_per_device = 4
 max_concurrent_starts = 2
 max_concurrent_evals = 2
+# A terminal whose last browser left (the page closed or reloaded, another project opened, the
+# network cut) is kept this long for the browser to come back to it: "120m"; "0" ends it at
+# once. A terminal closed by its × ends at once in any case.
+terminals_linger = "120m"
 # Seconds the lab list is cached.
 lab_list_cache_ttl = 60
 # TLS between the portal and this agent: the certificate of this host, and with tls_ca the CA

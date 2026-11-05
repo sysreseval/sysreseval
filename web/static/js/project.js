@@ -279,11 +279,13 @@ function applyProject(project) {
       }
     }
   }
+  if (tabs.terminals) {
+    // before the first tab is shown: the page's own terminals are joined again first, so that
+    // the Terminals tab, if it is the one shown, opens no terminal of its own
+    tabs.terminals.setSessions(state.terminals);
+  }
   if (!currentTab || !project.tabs.includes(currentTab)) {
     selectTab(project.tabs[0]);
-  }
-  if (tabs.terminals) {
-    tabs.terminals.setSessions(state.terminals);
   }
   instructorToggle.hidden = spectator || !(isInstructor && project.has_instructor_texts);
   instructorToggle.setAttribute('aria-pressed', state.instructorView ? 'true' : 'false');

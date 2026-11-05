@@ -3,7 +3,7 @@
 // project.html as classic scripts: window.Terminal, window.FitAddon) attached to the WebSocket
 // {api_base}/terminals/{device} with the subprotocol "sre-term.v1":
 //   binary frames   raw bytes both ways (keystrokes to the pty, its output to the terminal)
-//   text frames     JSON; sent: {"t": "resize", "cols", "rows"}
+//   text frames     JSON; sent: {"t": "resize", "cols", "rows"} | {"t": "close"} (the user closed it)
 //                   received: {"t": "ready", "session", "device", "clients", "viewers", "cols", "rows", "joined"}
 //                             | {"t": "size", "cols", "rows"} | {"t": "exit", "code"} | {"t": "error", "message"}
 // A session is shared: `join` attaches to a live session (its id) instead of opening a new one,
@@ -296,11 +296,41 @@ export class TerminalSession {
     this.term.options.theme = THEMES[scheme];
   }
 
-  close() {
+  // The page leaves (pagehide: another page, a reload, the tab closed): the socket is closed, the
+  // terminal kept.  The browser keeps a page it navigated away from in its back/forward cache
+  // with its sockets open, so the agent would go on seeing the user in the terminal: closed
+  // here, the session lingers on the agent instead, and rejoin() takes it again when the page
+  // comes back from the cache (pageshow).
+  disconnect() {
+    if (this.socket) {
+      const socket = this.socket;
+      this.socket = null;
+      socket.close();
+    }
+  }
+
+  // Back from the back/forward cache: the same session joined again (it lingers on the agent
+  // while a browser may come back), the screen drawn again from the replay.
+  rejoin() {
+    if (this.socket || !this.sessionId) {
+      return;
+    }
+    this.join = this.sessionId;
+    this.term.reset();
+    this.connect();
+  }
+
+  // end: the user closed the terminal (the × of its sub-tab or window): the agent is told, so
+  // that the session ends at once when nobody else types in it, instead of being kept for a
+  // browser to come back to it (a page left, reloaded or cut).
+  close({end = false} = {}) {
     this.observer.disconnect();
     if (this.socket) {
       const socket = this.socket;
       this.socket = null;
+      if (end && !this.readonly && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({t: 'close'}));
+      }
       socket.close();
     }
     this.term.dispose();

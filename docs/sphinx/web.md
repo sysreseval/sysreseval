@@ -150,7 +150,8 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `sre_exe` | the installation's `sre` | the command run for the users |
 | `poll_interval` | `1` | seconds between two scans of the projects directory (the Qt GUI polls every second too) |
 | `max_idle` | `24h` | default idle timeout of a project (the portal gives its own per user); `0` = never |
-| `terminals_per_project`, `terminals_per_device` | `16`, `4` | caps on the open terminals (every Connect opens a new terminal on the machine) |
+| `terminals_per_project`, `terminals_per_device` | `16`, `4` | caps on the open terminals (every Connect opens a new terminal on the machine); at a cap, the idle terminal that has waited longest gives way |
+| `terminals_linger` | `120m` | how long a terminal whose last browser left (the page closed or reloaded, another project opened, the network cut) is kept for the browser to come back to it; `0` = it ends at once; the × of a terminal ends it at once in any case |
 | `max_concurrent_starts`, `max_concurrent_evals` | `2`, `2` | concurrent `sre start` / `sre eval` on the host |
 | `lab_list_cache_ttl` | `60` | seconds the output of `sre list` is cached |
 | `state_dir` | `/var/lib/sre/web-agent` | the idle clocks of the projects, kept across restarts |
@@ -957,8 +958,8 @@ below), except `add` and `remove`, which stay with the token.
   the colour scheme of the Terminals tab), the two selects of the Terminals tab open one on any
   device (the machines open to the students and the managed switches) as a sub-tab or in a
   window, the ⧉ of a sub-tab moves its terminal into a window and the dock button of a window
-  brings it back as a sub-tab (the same shell goes on), the × of a sub-tab closes it,
-  `terminals_per_device` caps them; the Log tab appears for debug projects. *Export
+  brings it back as a sub-tab (the same shell goes on), the × of a sub-tab or of a window closes
+  it, `terminals_per_device` caps them; the Log tab appears for debug projects. *Export
   Schema to PDF* downloads the drawing of the Schema tab with its current options (never the
   hidden machines), rendered by the agent as the GUI's File → Export Schema to PDF does, unless
   the lab sets `export_schema_pdf = False`; the icons need `rsvg-convert` (`librsvg2-bin`) on the
@@ -966,9 +967,14 @@ below), except `add` and `remove`, which stay with the token.
   A terminal is a session shared by its viewers: the live sessions of the project that are not
   on the page are listed under the bar with a Join button (the same shell for everybody, the
   last 64 KiB of output replayed to the newcomer, the pty sized to the smallest window), a
-  sub-tab or a window shows how many viewers its session has, and a session ends when its last viewer leaves
-  (or when the shell exits). After a disconnection, Reconnect joins the same session again while
-  another viewer kept it alive.
+  sub-tab or a window shows how many viewers its session has, and a session ends when the shell
+  exits or when its last viewer closes it with its ×. A viewer that just goes away (the page
+  closed, reloaded or cut, another project opened) leaves the session running for
+  `terminals_linger` of the agent (120 minutes by default), listed *idle* meanwhile, and the
+  page coming back to the project finds the user's own terminals again, sub-tabs and windows
+  where they were on that browser, with the last 64 KiB of output (a page the browser kept in
+  its back/forward cache, brought back by the Back button, joins its sessions again by itself);
+  after a disconnection, Reconnect joins the same session again.
 - **A presentation**: when an instructor presents a project to the class (*Present* below), the
   page of every chosen student is covered by that project, read-only: every tab is there but
   nothing can be done on it, and the tab shown, the terminals open (the instructor's shells, in
@@ -1392,9 +1398,10 @@ the browser reaches a desktop through the owner check of the portal and of the a
 - The exam mode of the Qt GUI (`exam.json` on a host) still excludes that host from the pool: the
   web site has its own exams (*Exams* above), per student rather than per host. The save of the
   terminal sessions across a restart of the agent is a later phase.
-- A terminal session ends when its last viewer leaves: a page reload loses it unless another
-  viewer (an instructor who joined) keeps it alive, in which case Reconnect joins it again.
-  A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button.
+- A terminal is lost when the agent restarts; its sub-tab offers a Reconnect button. A page
+  that left keeps its terminals for `terminals_linger` only (120 minutes by default); where
+  each one was (a sub-tab, a window) is remembered by the browser, another browser of the same
+  user gets them back as sub-tabs.
 - The replay a joining viewer gets may start inside an escape sequence; the next prompt or
   redraw of the application settles the display.
 - The `[limits] eval_interval` of the portal (10 s between two evaluations of a login) also

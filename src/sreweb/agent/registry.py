@@ -134,6 +134,11 @@ class Project:
         """The live sessions (a browser joining a session opens no new one)."""
         return len(self.terminals)
 
+    def active_terminal_count(self) -> int:
+        """The sessions a browser is typing in: a lingering one (its last browser left, the agent
+        keeps it for a while) does not keep the project from its idle close."""
+        return sum(1 for t in self.terminals.values() if not getattr(t, 'lingering', False))
+
     def terminals_on(self, device: str) -> int:
         return sum(1 for t in self.terminals.values() if getattr(t, 'device', None) == device)
 

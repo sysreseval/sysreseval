@@ -17,6 +17,16 @@
 // on a student's project joins the student's terminals by default when the tab opens, and can
 // open private terminals the student does not see (the selects offer both kinds).
 //
+// The agent keeps a session for a while after its last browser left (a page closed, reloaded
+// or cut, another project opened: `terminals_linger` of agent.toml), so the page coming back
+// joins the user's own sessions again (resumeOwn, at the first list of the project), each
+// where it was on this browser: a sub-tab, or a window at its place, with its title (the
+// layouts are kept in localStorage by session id).  The × of a sub-tab or of a window tells
+// the agent to end the session at once (TerminalSession.close({end: true})).  The browser
+// keeps a page it navigated away from in its back/forward cache with its sockets open: the
+// sockets are closed on pagehide (the sessions linger on the agent) and the same sessions
+// joined again on a pageshow from the cache (the Back button).
+//
 // On the page of a spectator of a presentation (ctx.spectator) nothing can be opened or closed:
 // the sub-tabs and the windows are those of the presenter's page (setView, read-only sessions
 // joined by their id, the windows at the same relative place and size), the active one follows;
@@ -70,9 +80,83 @@ export function createTerminalsTab(ctx) {
   // an instructor on somebody else's project (project.js): joins the owner's terminals, opens
   // private ones
   const helper = Boolean(ctx.helper);
+  let resumed = false;          // the page's own sessions joined again (the first list of the project)
 
-  // the presenter's page: the sub-tabs or the windows changed (published to the spectators)
+  // -- the layout of the terminals across the pages of this browser: where each session was
+  // (a sub-tab, or a window at its place) and its title, by session id, so that a page coming
+  // back to the project finds its terminals where they were; never on a spectator's page
+  const LAYOUT_KEY = 'sreweb.terminal_layouts';
+  const LAYOUT_MAX_AGE = 2 * 24 * 3600 * 1000;    // ms: the entries of sessions long gone are dropped
+  const SAVE_DELAY = 300;                          // ms: the layouts are written after a pause
+  let layouts = loadLayouts();
+  let saveTimer = null;
+
+  function loadLayouts() {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(LAYOUT_KEY) || '{}');
+      const now = Date.now();
+      const kept = {};
+      for (const [id, layout] of Object.entries(stored && typeof stored === 'object' ? stored : {})) {
+        if (layout && typeof layout === 'object' && now - (Number(layout.t) || 0) < LAYOUT_MAX_AGE) {
+          kept[id] = layout;
+        }
+      }
+      return kept;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveLayouts() {
+    saveTimer = null;
+    const now = Date.now();
+    for (const entry of sessions.values()) {
+      if (entry.remoteId) {
+        layouts[entry.remoteId] = {mode: entry.mode, title: entry.title, t: now,
+                                   floating: entry.mode === 'window' && entry.win ? entry.win.fractions() : null};
+      }
+    }
+    try {
+      window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(layouts));
+    } catch (e) {
+      // private browsing: the layouts last for the page only
+    }
+  }
+
+  function scheduleSave() {
+    if (spectator) {
+      return;
+    }
+    if (saveTimer !== null) {
+      window.clearTimeout(saveTimer);
+    }
+    saveTimer = window.setTimeout(saveLayouts, SAVE_DELAY);
+  }
+
+  // the page leaves: the layouts written now, the sockets closed (the agent keeps the sessions
+  // for a while; a page the browser keeps in its back/forward cache would otherwise hold them
+  // open); back from that cache, the same sessions are joined again
+  window.addEventListener('pagehide', () => {
+    if (!spectator && saveTimer !== null) {
+      window.clearTimeout(saveTimer);
+      saveLayouts();
+    }
+    for (const entry of sessions.values()) {
+      entry.session.disconnect();
+    }
+  });
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      for (const entry of sessions.values()) {
+        entry.session.rejoin();
+      }
+    }
+  });
+
+  // the sub-tabs or the windows changed: the layouts are saved; on the presenter's page the
+  // view is published to the spectators
   function notify() {
+    scheduleSave();
     if (ctx.onViewChange) {
       ctx.onViewChange();
     }
@@ -274,7 +358,8 @@ export function createTerminalsTab(ctx) {
       const who = r.created_by === ctx.login ? _('you') : r.created_by;
       const button = el('button', {type: 'button', class: r.private ? 'private' : null,
         title: format(_('{n} viewers'), {n: r.clients})},
-        format(_('Join {device} ({who})'), {device: r.device, who}) + (r.private ? ' · ' + _('private') : ''));
+        format(_('Join {device} ({who})'), {device: r.device, who}) + (r.private ? ' · ' + _('private') : '')
+        + (r.lingering ? ' · ' + _('idle') : ''));
       button.addEventListener('click', () => join(r));
       live.append(button);
     }
@@ -332,9 +417,10 @@ export function createTerminalsTab(ctx) {
     openNew(r.device, {join: r.id, title});
   }
 
-  // the × of a sub-tab or of a window (or a device gone from the project): the WebSocket is
-  // closed, which ends `sre connect` on the host when nobody else is attached; the neighbouring
-  // sub-tab is shown
+  // the × of a sub-tab or of a window (or a device gone from the project): the agent is told the
+  // user closed it, so that `sre connect` ends on the host at once when nobody else is attached
+  // (a session nobody closed is kept for a while for a page to come back to it); the
+  // neighbouring sub-tab is shown
   function closeSession(id) {
     const entry = sessions.get(id);
     if (!entry) {
@@ -342,10 +428,11 @@ export function createTerminalsTab(ctx) {
     }
     if (entry.remoteId) {
       dismissed.add(entry.remoteId);
+      delete layouts[entry.remoteId];
     }
     const docked = dockedIds();
     const index = docked.indexOf(id);
-    entry.session.close();
+    entry.session.close({end: true});
     if (entry.win) {
       entry.win.close();
       entry.win = null;
@@ -515,6 +602,29 @@ export function createTerminalsTab(ctx) {
     }
   }
 
+  // the page's own terminals, as the first list of the project gives them: the sessions this
+  // login opened (kept by the agent for a while after their last browser left), joined again
+  // where they were on this browser (a sub-tab, or a window at its place, the title kept), in
+  // their order; the later lists never join by themselves (a session opened from another
+  // browser of the same login stays a Join button)
+  function resumeOwn() {
+    if (resumed || spectator) {
+      return;
+    }
+    resumed = true;
+    const attached = attachedIds();
+    for (const r of remote) {
+      if (r.created_by !== ctx.login || attached.has(r.id)) {
+        continue;
+      }
+      const layout = layouts[r.id];
+      const stored = layout && typeof layout.title === 'string' ? layout.title : '';
+      const title = titleFor(r.device);       // the counter of the device advances
+      const floating = layout && layout.mode === 'window' ? (parseFloating(layout.floating) || true) : null;
+      openNew(r.device, {join: r.id, title: stored || title, priv: !stored && Boolean(r.private), floating});
+    }
+  }
+
   return {
     id: 'terminals',
     element: pane,
@@ -557,6 +667,7 @@ export function createTerminalsTab(ctx) {
     // the live sessions of the project (GET of the project, then the terminals events)
     setSessions(list) {
       remote = Array.isArray(list) ? list : [];
+      resumeOwn();
       for (const entry of sessions.values()) {
         updateBadge(entry);
       }

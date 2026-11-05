@@ -379,6 +379,9 @@ msgstr "Ouvrir dans une fenêtre"
 msgid "Dock into the Terminals tab"
 msgstr "Ancrer dans l'onglet Terminaux"
 
+msgid "idle"
+msgstr "inactif"
+
 msgid "{device} ({n})"
 msgstr "{device} ({n})"
 

@@ -383,12 +383,16 @@ class TestAgentConfig:
         assert cfg.listen == ('127.0.0.1', 8451) and cfg.sre_exe == '/opt/sre/sbin/sre'
         assert cfg.state_dir == '/var/lib/sre/web-agent' and cfg.timeouts == DEFAULT_TIMEOUTS
         assert cfg.max_idle == 86400 and cfg.terminals_per_project == 16 and cfg.terminals_per_device == 4
+        assert cfg.terminals_linger == 7200           # two hours for a page to come back to its terminals
 
     def test_values(self):
         cfg = agent_config_from_dict({'token': 't' * 32, 'listen': '10.0.0.11:8451', 'sre_exe': '/usr/sbin/sre',
-                                      'max_idle': '2h', 'timeouts': {'start': '15m', 'eval': 30}},
+                                      'max_idle': '2h', 'timeouts': {'start': '15m', 'eval': 30},
+                                      'terminals_linger': '10m'},
                                      sre_exe='/x', state_dir='/y')
-        assert cfg.sre_exe == '/usr/sbin/sre' and cfg.max_idle == 7200
+        assert cfg.sre_exe == '/usr/sbin/sre' and cfg.max_idle == 7200 and cfg.terminals_linger == 600
+        zero = agent_config_from_dict({'token': 't' * 32, 'terminals_linger': 0}, sre_exe='/x', state_dir='/y')
+        assert zero.terminals_linger == 0             # a session ends with its last browser, as before
         assert cfg.timeouts['start'] == 900 and cfg.timeouts['eval'] == 30 and cfg.timeouts['stop'] == 300
 
     def test_occupancy_and_power(self):
@@ -423,6 +427,8 @@ class TestAgentConfig:
         ({'token': 't' * 32, 'allowed_clients': '10.0.0.1'}, 'allowed_clients'),
         ({'token': 't' * 32, 'timeouts': {'bogus': 1}}, 'bogus'),
         ({'token': 't' * 32, 'terminals_per_device': 0}, 'terminals_per_device'),
+        ({'token': 't' * 32, 'terminals_linger': 'soon'}, 'terminals_linger'),
+        ({'token': 't' * 32, 'terminals_linger': -1}, 'terminals_linger'),
         ({'token': 't' * 32, 'poll_interval': 0}, 'poll_interval'),
         ({'token': 't' * 32, 'nope': 1}, 'nope'),
     ])

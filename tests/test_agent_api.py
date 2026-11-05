@@ -574,11 +574,11 @@ class TestWebSockets:
                             msg = await ws.receive()
                             assert msg.type == aiohttp.WSMsgType.BINARY, msg
                             out += msg.data
-                await terms[0].close()
+                await end_terminal(terms[0])
                 await asyncio.sleep(0.3)
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
                 assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']] * 2
-                await terms[1].close()
+                await end_terminal(terms[1])
         run(go())
 
     def test_terminal_waiting_for_the_user(self, tmp_path):
@@ -914,6 +914,13 @@ async def events_of(ws, duration=1.0) -> list:
     except TimeoutError:
         pass
     return seen
+
+
+async def end_terminal(ws):
+    """The user closed the terminal (the × of its sub-tab or window): the close frame, then the
+    socket; the session ends at once instead of lingering."""
+    await ws.send_str(json.dumps({'t': 'close'}))
+    await ws.close()
 
 
 async def read_until(ws, needle: bytes, timeout=10.0, after: bytes = b'') -> bytes:
@@ -1291,7 +1298,7 @@ class TestSharedTerminals:
                 assert (await receive_event(events, 'terminals'))['terminals'][0]['clients'] == 1
                 await alice.send_bytes(b'echo STILL\n')
                 await read_until(alice, b'STILL', after=b'echo STILL')
-                await alice.close()
+                await end_terminal(alice)
                 assert (await receive_event(events, 'terminals'))['terminals'] == []
                 await asyncio.sleep(0.2)
                 assert (await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json())['terminals'] == []
@@ -1335,7 +1342,7 @@ class TestSharedTerminals:
                 assert (await receive_event(alice_events, 'terminals'))['terminals'] == []
                 await refused(f'm2?join={pid}', ALICE, 4403)
                 await refused(f'm1?join={pid}', PROF, 4404)          # the right device is part of the address
-                await prof.close()
+                await end_terminal(prof)
                 await asyncio.sleep(0.2)
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 0
                 assert (await receive_event(prof_events, 'terminals'))['terminals'] == []
@@ -1440,7 +1447,7 @@ class TestReadOnlyClients:
                                                    headers=headers(PROF), protocols=(TERMINAL_SUBPROTOCOL,))
                 assert (await asyncio.wait_for(viewer.receive_json(), 5))['t'] == 'ready'
                 assert (await receive_event(events, 'terminals'))['terminals'][0]['viewers'] == 1
-                await alice.close()
+                await end_terminal(alice)
                 assert (await receive_text(viewer, 'exit', timeout=10))['t'] == 'exit'
                 await viewer.receive()
                 assert viewer.close_code == 1000
@@ -1468,4 +1475,91 @@ class TestReadOnlyClients:
                 assert closing.type == aiohttp.WSMsgType.CLOSE and ws.close_code == 4403
                 await asyncio.sleep(0.1)
                 assert h.agent.registry.projects[rln].display_clients == []
+        run(go())
+
+
+class TestLingeringTerminals:
+    def test_session_kept_after_the_browser_left_and_joined_again(self, tmp_path):
+        """A socket that just goes away (a page closed or reloaded) leaves its session running for
+        terminals_linger: listed idle, joined again by its id with the replay; the close frame of
+        the × ends it at once."""
+        async def go():
+            async with Harness(tmp_path, terminals_linger=5) as h:
+                rln = await h.started()
+                events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                sid = (await asyncio.wait_for(alice.receive_json(), 5))['session']
+                assert (await receive_event(events, 'terminals'))['terminals'][0]['lingering'] is False
+                await read_until(alice, b'mock$')
+                await alice.send_bytes(b'echo lin$((1+1))ger\n')
+                await read_until(alice, b'lin2ger')
+                # the page goes away: the session lingers
+                await alice.close()
+                listed = (await receive_event(events, 'terminals'))['terminals']
+                assert len(listed) == 1 and listed[0]['id'] == sid and listed[0]['clients'] == 0
+                assert listed[0]['lingering'] is True and 0 <= listed[0]['linger_left'] <= 5
+                data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json()
+                assert data['terminals'][0]['lingering'] is True
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
+                # the page comes back: the replay holds what was typed, the linger is over
+                again = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(again.receive_json(), 5)
+                assert ready['session'] == sid and ready['joined'] and ready['clients'] == 1
+                assert b'lin2ger' in await read_until(again, b'lin2ger')
+                listed = (await receive_event(events, 'terminals'))['terminals']
+                assert listed[0]['lingering'] is False and listed[0]['linger_left'] is None
+                await again.send_bytes(b'echo STILL\n')
+                await read_until(again, b'STILL', after=b'echo STILL')
+                # the user closes it: gone at once
+                await end_terminal(again)
+                assert (await receive_event(events, 'terminals'))['terminals'] == []
+                assert [c for c in h.calls() if 'connect' in c] == [['--user', 'connect', rln, 'm1']]
+                await events.close()
+        run(go())
+
+    def test_lingering_session_closed_after_the_linger(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, terminals_linger=1) as h:
+                rln = await h.started()
+                events = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                await asyncio.wait_for(alice.receive_json(), 5)
+                await receive_event(events, 'terminals')
+                await read_until(alice, b'mock$')
+                await alice.close()
+                assert (await receive_event(events, 'terminals'))['terminals'][0]['lingering'] is True
+                assert (await receive_event(events, 'terminals', timeout=10))['terminals'] == []
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 0
+                await events.close()
+        run(go())
+
+    def test_lingering_session_gives_way_at_the_cap(self, tmp_path):
+        """At the cap of a device, the idle session gives way to a new terminal; a session
+        somebody types in holds the cap as before."""
+        async def go():
+            async with Harness(tmp_path, terminals_per_device=1, terminals_linger=60) as h:
+                rln = await h.started()
+                first = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                sid = (await asyncio.wait_for(first.receive_json(), 5))['session']
+                await read_until(first, b'mock$')
+                refused = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                    protocols=(TERMINAL_SUBPROTOCOL,))
+                await asyncio.wait_for(refused.receive_json(), 5)
+                await refused.receive()
+                assert refused.close_code == 4409
+                await first.close()
+                await asyncio.sleep(0.2)
+                second = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                   protocols=(TERMINAL_SUBPROTOCOL,))
+                ready = await asyncio.wait_for(second.receive_json(), 5)
+                assert ready['t'] == 'ready' and ready['session'] != sid
+                await asyncio.sleep(0.2)
+                data = await (await h.client.get(f'/v1/projects/{rln}', headers=headers())).json()
+                assert [t['id'] for t in data['terminals']] == [ready['session']]
+                assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
+                await end_terminal(second)
         run(go())

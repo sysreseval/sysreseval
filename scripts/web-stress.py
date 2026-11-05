@@ -1020,6 +1020,10 @@ class Student:
         if self.terminal_task:
             self.terminal_task.cancel()
         if self.terminal:
+            try:
+                await self.terminal.send_str(json.dumps({'t': 'close'}))   # the user closed it: no linger
+            except Exception:     # noqa: BLE001  (the socket may be gone)
+                pass
             await self.terminal.close()
         await self.close_presence()
         if self.events_task:

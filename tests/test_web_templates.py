@@ -1088,3 +1088,37 @@ class TestJavaScript:
         assert re.search(r'\.terminal-window\.readonly\s*\{[^{}]*resize: none', css)
         focus = (JS / 'focus.js').read_text(encoding='utf-8')
         assert "const VIEW_KEYS = ['tab', 'terminal', 'question'];" in focus     # no geometry in a focus
+
+    def test_terminals_survive_the_page(self):
+        """A terminal session is kept by the agent after its last browser left: the × of a sub-tab
+        or a window sends the close frame (the session ends at once), the plain close of a page
+        shut down does not; the page joins the user's own sessions again at its first list, before
+        the first tab is shown (no terminal opened on top), where they were on this browser (the
+        layouts kept in localStorage, read and written under try/catch)."""
+        terminal = (JS / 'terminal.js').read_text(encoding='utf-8')
+        close = terminal[terminal.index('close({end = false} = {}) {'):]
+        assert "socket.send(JSON.stringify({t: 'close'}))" in close[:close.index('this.term.dispose()')]
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        close_session = terminals[terminals.index('function closeSession('):terminals.index('function undock(')]
+        assert 'entry.session.close({end: true})' in close_session
+        close_all = terminals[terminals.index('closeAll() {'):terminals.index('getView,')]
+        assert 'entry.session.close()' in close_all and 'end: true' not in close_all
+        resume = terminals[terminals.index('function resumeOwn()'):terminals.index("return {\n    id: 'terminals'")]
+        assert 'r.created_by !== ctx.login' in resume and 'parseFloating(layout.floating)' in resume
+        assert 'if (resumed || spectator) {' in resume
+        set_sessions = terminals[terminals.index('setSessions(list) {'):terminals.index('openWindow(name) {')]
+        assert set_sessions.index('remote = ') < set_sessions.index('resumeOwn();') < set_sessions.index('autoJoin();')
+        assert "const LAYOUT_KEY = 'sreweb.terminal_layouts';" in terminals
+        for name in ('function loadLayouts()', 'function saveLayouts()'):
+            body = terminals[terminals.index(name):]
+            assert 'try {' in body[:body.index('\n  }\n')], name
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        apply_project = project[project.index('function applyProject('):project.index('function updateSchemaPdfLink()')]
+        assert apply_project.index('tabs.terminals.setSessions(state.terminals)') < apply_project.index('selectTab(project.tabs[0])')
+        # a page navigated away from stays in the browser's back/forward cache with its sockets open:
+        # closed on pagehide (the sessions linger), joined again on a pageshow from the cache
+        hide = terminals[terminals.index("window.addEventListener('pagehide'"):terminals.index("window.addEventListener('pageshow'")]
+        assert 'entry.session.disconnect()' in hide and 'saveLayouts()' in hide
+        show = terminals[terminals.index("window.addEventListener('pageshow'"):]
+        assert 'event.persisted' in show[:show.index('});')] and 'entry.session.rejoin()' in show[:show.index('});')]
+        assert 'rejoin() {' in terminal and 'disconnect() {' in terminal

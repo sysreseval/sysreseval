@@ -10,13 +10,19 @@ who joined to help), every one typing into the same pty and getting the same out
 - Each client has its own output buffer and sender task: a client that falls
   :data:`CLIENT_HIGH_WATER` bytes behind is dropped (close code :data:`WS_OVERRUN`), the session
   and the other clients go on; the pty is throttled by the slowest live client up to that point.
-- The session ends when its last client leaves, or when the child exits (every client then gets
-  ``{"t": "exit", "code": N}`` and a normal close).
+- The session ends when the child exits (every client then gets ``{"t": "exit", "code": N}`` and
+  a normal close), when its last client that can type leaves saying that the user closed the
+  terminal (``detach(end=True)``: the × of its sub-tab or window), or, when that client just
+  went away (a page closed, reloaded or cut), after *linger* seconds without a client that can
+  type: the shell is kept for a browser to come back to it (``terminals_linger`` of agent.toml,
+  120 minutes by default; 0 ends the session at once).  The list of the sessions says which
+  ones linger (``lingering`` / ``linger_left`` of ``to_dict()``).
 - A read-only client (``attach(readonly=True)``: the spectators of a presentation) only watches:
   what it sends is ignored by the app, it does not count in the size of the pty nor in
   :data:`MAX_CLIENTS_PER_SESSION` (its own cap is :data:`MAX_READONLY_CLIENTS_PER_SESSION`), it
   is told the size (``{"t": "size", "cols": C, "rows": R}`` whenever the pty is resized), it
-  never slows the pty down, and the session ends with its last client that can type.
+  never slows the pty down, and it does not hold the session: it ends, or lingers, with its
+  last client that can type.
 - The keystrokes typed before the shell shows up are held: Kathara switches the pty to raw mode
   with ``TCSAFLUSH`` when it attaches, which discards whatever is queued on it.  But a machine
   whose startup never ends (an ``/sbin/init`` machine without ``/tmp/EOS``) shows nothing until
@@ -73,12 +79,13 @@ class TerminalClient:
 class TerminalSession:
     """One ``sre connect`` on a pty and its clients (see the module docstring).
 
-    *on_change()* is called when the list of clients changes (the app pushes the ``terminals``
-    event), *on_closed(session)* once when the session is over (child exited or closed),
+    *on_change()* is called when the list of clients changes or the session starts lingering
+    (the app pushes the ``terminals`` event), *on_closed(session)* once when the session is
+    over (child exited or closed),
     *on_activity()* whenever output reaches a client (the idle clock of the project)."""
 
     def __init__(self, session_id: str, device: str, argv: list, env: dict, *, created_by: str,
-                 private: bool = False, cols: int = 80, rows: int = 24,
+                 private: bool = False, cols: int = 80, rows: int = 24, linger: float = 0.0,
                  on_change: Callable[[], None] | None = None,
                  on_closed: Callable[['TerminalSession'], None] | None = None,
                  on_activity: Callable[[], None] | None = None):
@@ -97,6 +104,9 @@ class TerminalSession:
         self.exit_code: int | None = None
         self.closing = False
         self._closed_reported = False
+        self.linger = max(0.0, float(linger))      # seconds a session without a writer is kept
+        self._linger_handle: asyncio.TimerHandle | None = None
+        self.linger_until: float | None = None    # time.monotonic() of the end of the linger
         self._started = asyncio.Event()
         self._early_input = bytearray()
         self._probed = False
@@ -116,6 +126,7 @@ class TerminalSession:
         if self.closing:
             return
         self.closing = True
+        self._cancel_linger()
         if self._release_task is not None:
             self._release_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -124,6 +135,7 @@ class TerminalSession:
         self._finished()
 
     def _finished(self):
+        self._cancel_linger()
         if self._closed_reported:
             return
         self._closed_reported = True
@@ -134,6 +146,15 @@ class TerminalSession:
     def alive(self) -> bool:
         return self.pty.alive and not self.closing
 
+    @property
+    def lingering(self) -> bool:
+        """Nobody can type in the session: it is kept for a while for a browser to come back."""
+        return self._linger_handle is not None
+
+    def linger_left(self) -> int | None:
+        """Seconds before a lingering session is closed; ``None`` when it is not lingering."""
+        return None if self.linger_until is None else max(0, int(self.linger_until - time.monotonic()))
+
     def visible_to(self, identity: Identity) -> bool:
         """A private session is listed to the instructors (and its creator) only."""
         return not self.private or identity.is_instructor or identity.login == self.created_by
@@ -142,6 +163,7 @@ class TerminalSession:
         """``clients`` are the browsers that share the shell, ``viewers`` the read-only ones."""
         return {'id': self.id, 'device': self.device, 'created_by': self.created_by, 'private': self.private,
                 'clients': len(self._writers()), 'viewers': len(self._viewers()),
+                'lingering': self.lingering, 'linger_left': self.linger_left(),
                 'created_at': datetime.fromtimestamp(self.created_at).isoformat(timespec='seconds')}
 
     # -- clients --------------------------------------------------------------------------------
@@ -158,20 +180,48 @@ class TerminalSession:
             client.buffer.extend(self.replay)
             client.wake.set()
         if not readonly:
+            self._cancel_linger()       # a browser came back (or another joined) in time
             self._apply_size()
         self._changed()
         return client
 
-    def detach(self, client: TerminalClient):
-        """A client left: the last one that could type takes the session with it (a shell
-        nobody can type into is not kept for its viewers)."""
+    def detach(self, client: TerminalClient, *, end: bool = False):
+        """A client left.  Without a client that can type left, the session is kept for
+        :attr:`linger` seconds for a browser to come back to it, unless *end* (the user closed
+        the terminal) or the linger is 0: it then closes at once (a shell nobody can type into is
+        not kept for its viewers)."""
         self.clients.pop(client.id, None)
-        if not self._writers():
-            if not self.closing:
-                asyncio.ensure_future(self.close())
+        if self._writers():
+            self._apply_size()
+            self._changed()
             return
-        self._apply_size()
+        if self.closing:
+            return
+        if end or self.linger <= 0:
+            asyncio.ensure_future(self.close())
+            return
+        self._start_linger()
+
+    def _start_linger(self):
+        if self._linger_handle is not None:
+            return
+        self._linger_handle = asyncio.get_running_loop().call_later(self.linger, self._linger_expired)
+        self.linger_until = time.monotonic() + self.linger
+        log.info("terminal %s/%s: nobody left, kept for %.0f s", self.device, self.id, self.linger)
         self._changed()
+
+    def _cancel_linger(self):
+        if self._linger_handle is not None:
+            self._linger_handle.cancel()
+            self._linger_handle = None
+        self.linger_until = None
+
+    def _linger_expired(self):
+        self._linger_handle = None
+        self.linger_until = None
+        if not self._writers() and not self.closing:
+            log.info("terminal %s/%s: nobody came back, closed", self.device, self.id)
+            asyncio.ensure_future(self.close())
 
     def resize_client(self, client: TerminalClient, cols: int, rows: int):
         if client.readonly:

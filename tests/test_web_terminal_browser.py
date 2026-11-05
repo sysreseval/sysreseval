@@ -34,6 +34,7 @@ SHELL_WAIT = 15.0     # the mock `sre connect`, the pty, the first prompt
 # -- what the page shows, as JavaScript expressions ---------------------------------------------
 
 TABBAR_SHOWN = "!document.getElementById('tabbar').hidden && document.querySelectorAll('#tabbar [role=tab]').length > 0"
+ON_PROJECT_PAGE = "window.location.pathname.startsWith('/projects/a01/')"
 SELECTED_TAB = "(document.querySelector('#tabbar [role=tab][aria-selected=\"true\"]') || {dataset: {}}).dataset.tab || ''"
 WINDOWS = "document.querySelectorAll('#panes .terminal-windows .terminal-window').length"
 SUBTABS = "document.querySelectorAll('.terminal-tabs [role=tab]').length"
@@ -49,6 +50,13 @@ RECT = """(() => { const w = document.querySelector('.terminal-window'); const p
 def centre_of(selector: str) -> str:
     return (f"(() => {{ const e = document.querySelector({selector!r}); if (!e) {{ return null; }} "
             f"const r = e.getBoundingClientRect(); return {{x: r.left + r.width / 2, y: r.top + r.height / 2}}; }})()")
+# the first open device of the "New terminal…" select (a sub-tab)
+OPEN_SUBTAB = ("(() => { const s = document.querySelector('select.new-terminal:not(.new-window)'); "
+               "const o = [...s.options].find((o) => o.value && !o.disabled); s.value = o.value; "
+               "s.dispatchEvent(new Event('change')); return true; })()")
+# the titles of the windows and of the sub-tabs
+TITLES = ("({windows: [...document.querySelectorAll('.terminal-window .terminal-window-title .title')].map((e) => e.textContent), "
+          "tabs: [...document.querySelectorAll('.terminal-tabs [role=tab]')].map((b) => b.firstChild.textContent)})")
 # a spectator's page is in the iframe of the presentation overlay: the read-only window there
 SPECTATOR_WINDOW = """(() => { const f = document.querySelector('#presentation-overlay iframe');
   if (!f || !f.contentDocument) { return null; } const d = f.contentDocument;
@@ -158,6 +166,66 @@ class TestFloatingTerminals:
                 no_errors(page)
         run(scenario())
 
+    def test_terminals_come_back_after_leaving_the_page(self, tmp_path):
+        """The agent keeps the sessions after the page left: back on the project, the window and
+        the sub-tab are there, where they were, with their screens (nothing opened on top); the ×
+        of each ends its session."""
+        async def scenario():
+            async with browsing(tmp_path, ALICE) as (h, browser, urls):
+                rln = await T.start_project(h, ALICE)
+                page = await project_page(browser, urls['alice'], rln)
+                await page.click('#tabbar [data-tab="machines"]')
+                await page.click('.machines button.connect')
+                await page.wait_for(f"{WINDOW_STATUS} === 'Connected.'", timeout=SHELL_WAIT, what="the window's terminal")
+                await type_command(page, '.terminal-window .xterm-screen', WINDOW_TEXT, 'echo win$((1))dow', 'win1dow')
+                rect = await page.evaluate(RECT)
+                x0, y0 = rect['left'] + rect['w'] / 2, rect['top'] + 10
+                await page.drag(x0, y0, x0 + 200, y0 + 120)
+                before = await page.evaluate(RECT)
+                # a sub-tab from the select of the Terminals tab
+                await page.click('#tabbar [data-tab="terminals"]')
+                await page.evaluate(OPEN_SUBTAB)
+                await page.wait_for(f'{SUBTABS} === 1', what="one sub-tab")
+                await type_command(page, '.terminal-host .xterm-screen', HOST_TEXT, 'echo sub$((1))tab', 'sub1tab')
+                titles = await page.evaluate(TITLES)
+                # away (the page goes to the browser's back/forward cache, its sockets closed by
+                # the page itself), and back with the Back button: the same page, its sessions
+                # joined again
+                await page.goto(f"{urls['alice']}/projects")
+                await until(lambda: lingering(h, rln, 2), 10.0, "both sessions kept on the agent")
+                await page.evaluate('history.back(); true')
+                await page.wait_for(f"{ON_PROJECT_PAGE} && {WINDOWS} === 1 && {SUBTABS} === 1", timeout=SHELL_WAIT,
+                                    what="the page back from the cache")
+                await page.wait_for(f"{WINDOW_STATUS} === 'Connected.'", timeout=SHELL_WAIT, what="the window joined again")
+                await until(lambda: attached(h, rln, 2), 10.0, "both sessions attached again")
+                await type_command(page, '.terminal-window .xterm-screen', WINDOW_TEXT, 'echo ba$((1))ck', 'ba1ck')
+                # away again, and back by a fresh load of the page: the terminals resumed from the
+                # agent's list, where they were
+                await page.goto(f"{urls['alice']}/projects")
+                await until(lambda: lingering(h, rln, 2), 10.0, "both sessions kept on the agent again")
+                await page.goto(f'{urls["alice"]}/projects/a01/{quote(rln, safe="")}')
+                await page.wait_for(TABBAR_SHOWN, what="the tab bar")
+                await page.wait_for(f'{WINDOWS} === 1 && {SUBTABS} === 1', timeout=SHELL_WAIT,
+                                    what="the window and the sub-tab back")
+                await page.wait_for(f"{WINDOW_STATUS} === 'Connected.'", timeout=SHELL_WAIT, what="the window joined")
+                assert await page.evaluate(TITLES) == titles
+                after = await page.evaluate(RECT)
+                for key, size in (('x', 'aw'), ('w', 'aw'), ('y', 'ah'), ('h', 'ah')):
+                    assert abs(after[key] / after[size] - before[key] / before[size]) <= 0.02, (key, before, after)
+                await page.wait_for(f"({WINDOW_TEXT}).includes('ba1ck')", timeout=SHELL_WAIT, what="the replay")
+                await page.click('#tabbar [data-tab="terminals"]')
+                assert await page.evaluate(SUBTABS) == 1                     # no terminal opened on top
+                await page.wait_for(f"({HOST_TEXT}).includes('sub1tab')", timeout=SHELL_WAIT, what="the sub-tab's replay")
+                sessions = await terminals_of(h, rln)
+                assert len(sessions) == 2 and all(s['clients'] == 1 and not s['lingering'] for s in sessions), sessions
+                await type_command(page, '.terminal-window .xterm-screen', WINDOW_TEXT, 'echo ba$((2))ck', 'ba2ck')
+                # the × of each: the sessions end on the agent
+                await page.click('.terminal-window button.close')
+                await page.click('.terminal-tabs .close')
+                await until(lambda: terminals_gone(h, rln), 10.0, "no session left on the agent")
+                no_errors(page)
+        run(scenario())
+
     def test_presenter_windows_float_on_the_spectator_page(self, tmp_path):
         async def scenario():
             async with browsing(tmp_path, PROF, ALICE) as (h, browser, urls):
@@ -202,7 +270,24 @@ class TestFloatingTerminals:
         run(scenario())
 
 
-async def terminals_gone(h, rln) -> bool:
+async def terminals_of(h, rln) -> list:
+    """The live sessions of the project as the agent lists them to the student."""
     resp = await h.client.get(f'/api/projects/a01/{quote(rln, safe="")}', headers=ALICE)
     data = await resp.json()
-    return resp.status == 200 and not data.get('terminals')
+    return (data.get('terminals') or []) if resp.status == 200 else []
+
+
+async def terminals_gone(h, rln) -> bool:
+    return not await terminals_of(h, rln)
+
+
+async def lingering(h, rln, n: int) -> bool:
+    """Whether the project has exactly *n* sessions, all kept without a browser."""
+    sessions = await terminals_of(h, rln)
+    return len(sessions) == n and all(s.get('lingering') and s.get('clients') == 0 for s in sessions)
+
+
+async def attached(h, rln, n: int) -> bool:
+    """Whether the project has exactly *n* sessions, each with one browser typing in it."""
+    sessions = await terminals_of(h, rln)
+    return len(sessions) == n and all(not s.get('lingering') and s.get('clients') == 1 for s in sessions)

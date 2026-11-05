@@ -182,7 +182,7 @@ class Schedulers:
         timeout = self.idle_timeout(project)
         # once the exam ended, the owner's pages (told the exam is over) keep nothing alive
         subscribers = [s for s in project.subscribers if not (project.exam_over and s.identity.login == project.owner)]
-        if (timeout <= 0 or project.terminal_count() or subscribers or project.display_clients
+        if (timeout <= 0 or project.active_terminal_count() or subscribers or project.display_clients
                 or project.lock.locked()):
             return
         if project.idle_seconds() > timeout:

@@ -303,3 +303,70 @@ def test_slow_viewer_is_dropped_and_never_throttles():
         assert not h.session.closing and h.session.to_dict() ['viewers'] == 0
         await h.finish()
     run(go())
+
+
+def test_last_writer_leaving_lets_the_session_linger():
+    """With a linger, the last client that can type leaving keeps the session running for that
+    long (a page closed or reloaded comes back to it); a client back in time cancels the linger;
+    the list says the session lingers."""
+    async def go():
+        h = Harness(linger=0.5)
+        await h.session.start()
+        a, ca = h.attach(ALICE)
+        await a.expect('tty=True')
+        changes = h.changes
+        h.session.detach(ca)
+        await asyncio.sleep(0.1)
+        d = h.session.to_dict()
+        assert h.session.alive and h.session.lingering and h.closed == []
+        assert d['clients'] == 0 and d['lingering'] is True and 0 <= d['linger_left'] <= 1 and h.changes == changes + 1
+        # back in time: the linger is cancelled, the shell answers
+        b, cb = h.attach(ALICE)
+        await b.expect('tty=True')                           # the replay
+        assert not h.session.lingering and h.session.to_dict()['lingering'] is False
+        assert h.session.to_dict()['linger_left'] is None
+        await asyncio.sleep(0.6)
+        assert h.session.alive and h.closed == []
+        h.session.type_in(b'hello\n')
+        await b.expect('echo:hello')
+        # gone for good: closed after the linger
+        h.session.detach(cb)
+        await asyncio.sleep(0.2)
+        assert h.session.alive and h.session.lingering
+        await wait_for(lambda: h.closed == [h.session], timeout=5)
+        assert not h.session.alive and not h.session.lingering
+        await h.finish()
+    run(go())
+
+
+def test_user_closing_the_terminal_ends_it_at_once():
+    """The × of a sub-tab or of a window: detach(end=True) closes the session whatever the linger."""
+    async def go():
+        h = Harness(linger=5.0)
+        await h.session.start()
+        a, ca = h.attach(ALICE)
+        await a.expect('tty=True')
+        h.session.detach(ca, end=True)
+        await wait_for(lambda: h.closed == [h.session], timeout=5)
+        assert not h.session.alive and not h.session.lingering
+        await h.finish()
+    run(go())
+
+
+def test_viewers_do_not_hold_a_lingering_session():
+    """A read-only viewer stays attached while the session lingers and is told the end."""
+    async def go():
+        h = Harness(linger=0.5)
+        await h.session.start()
+        a, ca = h.attach(ALICE)
+        await a.expect('tty=True')
+        viewer, cv = attach_readonly(h, PROF)
+        await viewer.expect('tty=True')
+        h.session.detach(ca)
+        await asyncio.sleep(0.1)
+        assert h.session.lingering and h.session.to_dict()['viewers'] == 1
+        await wait_for(lambda: viewer.closed is not None, timeout=5)      # the linger over: exit, then close
+        assert viewer.frames[-1]['t'] == 'exit' and viewer.closed[0] == 1000
+        assert h.closed == [h.session]
+        await h.finish()
+    run(go())

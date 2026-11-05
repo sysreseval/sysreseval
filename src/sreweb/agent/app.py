@@ -984,7 +984,11 @@ class Agent:
         ``sre connect`` privileged (every listed device opens); ``?private=1`` (instructors) keeps
         it out of the student's list.  ``?readonly=1`` with ``join`` attaches a read-only client
         (a spectator of a presentation): its frames are ignored, it is told the size of the pty
-        (``cols`` / ``rows`` in ``ready``, then ``{"t": "size"}`` frames), it has its own cap."""
+        (``cols`` / ``rows`` in ``ready``, then ``{"t": "size"}`` frames), it has its own cap.
+        The text frame ``{"t": "close"}`` says the user closed the terminal: the session ends at
+        once when nobody else types in it; a socket that just goes away (a page closed, reloaded
+        or cut) leaves the session lingering for ``terminals_linger`` seconds, for a page to join
+        it again.  At a cap, the lingering session that has waited longest gives way."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
         device = request.match_info.get('device', '')
@@ -1018,6 +1022,10 @@ class Agent:
                     raise AccessError(403, "private terminals are for instructors")
                 privileged = access.is_privileged_caller(project.rln, identity)
                 access.check_device(project.info, device, identity, connect_all=privileged)
+                if project.terminals_on(device) >= self.cfg.terminals_per_device:
+                    self._evict_lingering(project, device)
+                if project.terminal_count() >= self.cfg.terminals_per_project:
+                    self._evict_lingering(project, None)
                 if (project.terminal_count() >= self.cfg.terminals_per_project
                         or project.terminals_on(device) >= self.cfg.terminals_per_device):
                     raise AccessError(429, "too many terminals")
@@ -1036,7 +1044,7 @@ class Agent:
             session = TerminalSession(
                 self._new_terminal_id(project), device,
                 build_argv(self.cfg.sre_exe, ['connect', project.rln, device], privileged=privileged), env,
-                created_by=identity.login, private=private, cols=cols, rows=rows,
+                created_by=identity.login, private=private, cols=cols, rows=rows, linger=self.cfg.terminals_linger,
                 on_change=lambda: self._terminals_changed(project),
                 on_closed=lambda s: self._terminal_closed(project, s), on_activity=project.touch)
             project.terminals[session.id] = session
@@ -1065,6 +1073,7 @@ class Agent:
                             'cols': session.size[0], 'rows': session.size[1], 'readonly': readonly,
                             'joined': bool(q.get('join', ''))})
         pump = asyncio.ensure_future(session.pump(client))
+        ended = False          # the user closed the terminal (its ×): no linger
         try:
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
@@ -1085,13 +1094,31 @@ class Agent:
                     elif isinstance(obj, dict) and obj.get('t') == 'input' and isinstance(obj.get('data'), str):
                         session.type_in(obj['data'].encode('utf-8'))
                         project.touch()
+                    elif isinstance(obj, dict) and obj.get('t') == 'close':
+                        ended = True
+                        break
         finally:
             pump.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await pump
-            session.detach(client)   # the last client takes the session with it
+            # the last writer leaving: the session lingers, or ends when the user closed it
+            session.detach(client, end=ended)
             log.info("terminal %s/%s left by %s", project.rln, device, identity.login)
         return ws
+
+    def _evict_lingering(self, project: Project, device: str | None):
+        """At a cap: the lingering session (nobody typing in it) of *device* (or of the whole
+        project) that has waited longest gives way to the new terminal; nothing when none lingers
+        (the cap then holds).  The session leaves the count at once, its close goes on behind."""
+        candidates = [s for s in project.terminals.values()
+                      if getattr(s, 'lingering', False) and not s.closing and (device is None or s.device == device)]
+        if not candidates:
+            return
+        session = min(candidates, key=lambda s: s.linger_until or 0.0)
+        project.terminals.pop(session.id, None)       # _terminal_closed then finds nothing to pop
+        log.info("terminal %s/%s of %s evicted: the cap is reached", project.rln, session.device, session.created_by)
+        asyncio.ensure_future(session.close())
+        self._terminals_changed(project)
 
     @staticmethod
     def _new_terminal_id(project: Project) -> str:
