@@ -200,6 +200,51 @@ def run(coro):
     return asyncio.run(coro)
 
 
+class TestStatusCoercion:
+    def test_status_json_is_coerced(self):
+        """A broken or hostile agent cannot plant a string where pick() sorts by a number, nor
+        stay reachable with a body that is not an object (security review, seventh Low finding)."""
+        from sreweb.portal.pool import status_from_json, MAX_STATUS_TEXT
+        st = status_from_json(up(projects=3, load1=1.5, occupied_by=['session:bob']), extra_projects=2)
+        assert (st.reachable, st.projects, st.managed_projects, st.load1, st.occupied_by, st.uptime, st.agent_uptime,
+                st.hostname, st.sre_version, st.power_off_allowed, st.restart_allowed, st.error) == \
+            (True, 5, 3, 1.5, ['session:bob'], 100, 500, 'h', '1', True, True, '')
+        odd = status_from_json({'projects': '3', 'managed_projects': -2, 'terminals': 2.9, 'load1': 'high',
+                                'exam_mode': 1, 'occupied': 'yes', 'occupied_by': 'bob', 'uptime': 'x',
+                                'power_off_allowed': None, 'agent_uptime': float('nan'), 'restart_allowed': True,
+                                'restarting': 0, 'hostname': 5, 'sre_version': ['1']})
+        assert odd.reachable and odd.error == ''
+        assert (odd.projects, odd.managed_projects, odd.terminals, odd.load1, odd.exam_mode, odd.occupied,
+                odd.occupied_by, odd.uptime, odd.power_off_allowed, odd.agent_uptime, odd.restart_allowed,
+                odd.restarting, odd.hostname, odd.sre_version) == \
+            (0, 0, 2, None, False, False, [], None, False, None, True, False, '', '')
+        assert status_from_json({'load1': float('inf')}).load1 is None
+        assert status_from_json({'load1': True}).load1 is None and status_from_json({'load1': 2}).load1 == 2.0
+        assert status_from_json({'occupied_by': ['a', 3, None, 'b']}).occupied_by == ['a', 'b']
+        assert status_from_json({'hostname': 'x' * 500}).hostname == 'x' * MAX_STATUS_TEXT
+        for body in ([1, 2], 'up', None, 3):
+            st = status_from_json(body)
+            assert not st.reachable and 'object' in st.error, body
+
+    def test_one_odd_agent_does_not_break_the_placement(self):
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10)]
+        session = FakeSession()
+        session.answers['http://a'] = up(load1='high', projects='2')
+        session.answers['http://b'] = up(load1=0.3, projects=1)
+        pool = Pool(hosts, session)
+
+        async def go():
+            await pool.refresh()
+            a = pool.status['a']
+            assert a.reachable and a.load1 is None and a.projects == 0
+            assert pool.pick()[0].name == 'a'              # no project, load unknown (0): the least loaded
+            session.answers['http://a'] = [1, 2]            # not an object: unreachable, not kept up forever
+            await pool.refresh()
+            assert not pool.status['a'].reachable and 'object' in pool.status['a'].error
+            assert pool.pick()[0].name == 'b'
+        run(go())
+
+
 class TestStates:
     def test_state_of_and_pick(self):
         hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abcdefg']

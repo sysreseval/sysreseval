@@ -81,6 +81,62 @@ class HostStatus:
     updated: float = field(default_factory=time.monotonic)
 
 
+#: The longest text (hostname, sre_version, an occupied_by entry) and list kept from a status.
+MAX_STATUS_TEXT = 200
+MAX_OCCUPIED_BY = 100
+
+
+def _number(value) -> float | None:
+    """A finite number of the status JSON (a bool is not one), else ``None``."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if value != value or value in (float('inf'), float('-inf')):
+        return None
+    return float(value)
+
+
+def _count(value) -> int:
+    number = _number(value)
+    return max(0, int(number)) if number is not None else 0
+
+
+def _seconds(value) -> int | None:
+    number = _number(value)
+    return max(0, int(number)) if number is not None else None
+
+
+def _text(value) -> str:
+    return value[:MAX_STATUS_TEXT] if isinstance(value, str) else ''
+
+
+def status_from_json(data, extra_projects: int = 0) -> HostStatus:
+    """The ``HostStatus`` of the JSON of ``GET /v1/status``, every field coerced to its type: a
+    broken or hostile agent cannot plant a string where ``pick()`` sorts by a number (every
+    start of the pool failed on the ``TypeError``), nor stay reachable with a body that is not
+    an object (an error, like a bad HTTP status).  *extra_projects*: the reservations counted
+    on top of the projects."""
+    if not isinstance(data, dict):
+        return HostStatus(error="status: not a JSON object")
+    occupied_by = data.get('occupied_by')
+    return HostStatus(reachable=True,
+                      projects=_count(data.get('projects')) + extra_projects,
+                      managed_projects=_count(data.get('managed_projects')),
+                      local_projects=_count(data.get('local_projects')),
+                      terminals=_count(data.get('terminals')),
+                      load1=_number(data.get('load1')),
+                      exam_mode=data.get('exam_mode') is True,
+                      occupied=data.get('occupied') is True,
+                      occupied_by=([_text(x) for x in occupied_by if isinstance(x, str)][:MAX_OCCUPIED_BY]
+                                   if isinstance(occupied_by, list) else []),
+                      uptime=_seconds(data.get('uptime')),
+                      power_off_allowed=data.get('power_off_allowed') is True,
+                      agent_uptime=_seconds(data.get('agent_uptime')),
+                      restart_allowed=data.get('restart_allowed') is True,
+                      restarting=data.get('restarting') is True,
+                      hostname=_text(data.get('hostname')),
+                      sre_version=_text(data.get('sre_version')))
+
+
 @dataclass
 class HostRuntime:
     """What the portal remembers about a host between polls."""
@@ -260,22 +316,7 @@ class Pool:
                     status = HostStatus(error=f"status {resp.status}")
                 else:
                     data = await resp.json()
-                    status = HostStatus(reachable=True,
-                                        projects=int(data.get('projects', 0)) + self._consume(host.name, polled_at),
-                                        managed_projects=int(data.get('managed_projects', 0)),
-                                        local_projects=int(data.get('local_projects', 0)),
-                                        terminals=int(data.get('terminals', 0)), load1=data.get('load1'),
-                                        exam_mode=bool(data.get('exam_mode', False)),
-                                        occupied=bool(data.get('occupied', False)),
-                                        occupied_by=list(data.get('occupied_by', []) or []),
-                                        uptime=data.get('uptime'),
-                                        power_off_allowed=bool(data.get('power_off_allowed', False)),
-                                        agent_uptime=(int(data['agent_uptime'])
-                                                      if isinstance(data.get('agent_uptime'), (int, float)) else None),
-                                        restart_allowed=bool(data.get('restart_allowed', False)),
-                                        restarting=bool(data.get('restarting', False)),
-                                        hostname=str(data.get('hostname', '')),
-                                        sre_version=str(data.get('sre_version', '')))
+                    status = status_from_json(data, self._consume(host.name, polled_at))
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
             status = HostStatus(error=str(e) or type(e).__name__)
         if host.name not in self.status:
