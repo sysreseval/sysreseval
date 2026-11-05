@@ -15,7 +15,8 @@ from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
 from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
-from .accesshistory import parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, HistoryError
+from .accesshistory import (parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, resolve_group,
+                            UNLOGGED_FILTERS, HistoryError)
 from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
 from .archives import ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS
 from .auth_ldap import LdapAuthenticator, LdapError
@@ -697,46 +698,72 @@ class Routes:
         await self.memberships.refresh()
         return web.json_response(self.memberships.annotate(rows))
 
+    async def _resolve_group(self, filters: dict) -> dict:
+        """The ``group`` filter of a History query turned into the ``logins`` of the members of
+        that group, of any kind (``accesshistory.resolve_group`` on the fresh memberships);
+        ``ValueError`` (a 400) without any source of user groups: the select of the page is
+        hidden then."""
+        if filters.get('group'):
+            if not self.memberships.available:
+                raise ValueError("group: no source of user groups is configured")
+            await self.memberships.refresh()
+            resolve_group(filters, self.memberships)
+        return filters
+
+    @staticmethod
+    def _group_fields(filters: dict) -> dict:
+        """For the answer of a History query filtered by group: the key asked and the number of
+        members found (0: the page says the table is empty for that reason)."""
+        if not filters.get('group'):
+            return {}
+        return {'group': filters['group'], 'group_members': len(filters.get('logins') or ())}
+
+    @staticmethod
+    def _log_history_filters(logged, filters: dict, *skipped: str):
+        """The filters asked on the ``history`` line (``<key>_filter``), but ``UNLOGGED_FILTERS``
+        and *skipped*."""
+        if logged is not None:
+            logged.update({f'{key}_filter': value for key, value in filters.items()
+                           if key not in UNLOGGED_FILTERS and key not in skipped})
+
     async def api_history(self, request):
         """Administrators: a page of the connection log from its database, newest first, with
-        the filters of ``accesshistory.parse_filters`` and a cursor for the older pages; the
-        call is a ``history`` line of the log carrying the filters asked (``<key>_filter``)."""
+        the filters of ``accesshistory.parse_filters`` (the group resolved into its members) and
+        a cursor for the older pages; the call is a ``history`` line of the log carrying the
+        filters asked (``<key>_filter``)."""
         self._require_administrator(request)
         if self.access.history is None:
             return json_error(409, "the connection log has no database ([access_log.database] of web.toml)")
         try:
-            filters = parse_filters(request.query)
+            filters = await self._resolve_group(parse_filters(request.query))
         except ValueError as e:
             return json_error(400, str(e))
-        logged = request.get(ACCESS_KEY)
-        if logged is not None:
-            logged.update({f'{key}_filter': value for key, value in filters.items() if key != 'limit'})
+        self._log_history_filters(request.get(ACCESS_KEY), filters)
         try:
             page = await self.access.history.query(filters)
         except HistoryError as e:
             log.warning("access database: a history query failed: %s", e)
             return json_error(503, "the database of the connection log does not answer")
-        return web.json_response({**page, 'limit': filters['limit'],
+        return web.json_response({**page, 'limit': filters['limit'], **self._group_fields(filters),
                                   'database': self.access.db.status() if self.access.db is not None else None})
 
     async def api_history_sessions(self, request):
         """Administrators: the Sessions view of the History page.  ``open``: the sessions still
         open, from the portal's memory (the first page only, newest first); ``rows``: the closed
         ones from the database, one per ``session_close`` line, newest first, with the login /
-        address prefixes, the time window (on the closing time) and the cursor of
-        ``accesshistory.session_filters``.  Without a database the open sessions alone (no 409:
-        who is connected now needs none).  A ``history`` line with ``view=sessions`` (whatever
-        the answer) and the filters."""
+        address prefixes, the group (its members, open sessions included), the time window (on
+        the closing time) and the cursor of ``accesshistory.session_filters``.  Without a
+        database the open sessions alone (no 409: who is connected now needs none).  A
+        ``history`` line with ``view=sessions`` (whatever the answer) and the filters."""
         logged = request.get(ACCESS_KEY)
         if logged is not None:
             logged['view'] = 'sessions'
         self._require_administrator(request)
         try:
-            filters = session_filters(parse_filters(request.query))
+            filters = await self._resolve_group(session_filters(parse_filters(request.query)))
         except ValueError as e:
             return json_error(400, str(e))
-        if logged is not None:
-            logged.update({f'{key}_filter': value for key, value in filters.items() if key not in ('limit', 'event')})
+        self._log_history_filters(logged, filters, 'event')
         open_sessions = []
         if filters.get('before') is None:
             open_sessions = sorted((session_of_visit(v) for v in self.access.visits.all() if visit_matches(v, filters)),
@@ -749,7 +776,7 @@ class Routes:
                 log.warning("access database: a history query failed: %s", e)
                 return json_error(503, "the database of the connection log does not answer")
             page['rows'] = [session_of_row(row) for row in page['rows']]
-        return web.json_response({**page, 'open': open_sessions, 'limit': filters['limit'],
+        return web.json_response({**page, 'open': open_sessions, 'limit': filters['limit'], **self._group_fields(filters),
                                   'database': self.access.db.status() if self.access.db is not None else None})
 
     # -- the archives of the evaluations ---------------------------------------------------------
@@ -1132,10 +1159,10 @@ class Routes:
     async def api_history_statistics(self, request):
         """Administrators: the Statistics view of the History page (``accessstats``): who
         connected over the period of ``since`` / ``until`` (the last 24 hours by default; the
-        login / address prefixes apply) and for how long, per user, student group and lab, with
-        the totals, from the rows of the database and the sessions still open.  409 without a
-        database like the events view.  A ``history`` line with ``view=statistics`` and the
-        window resolved (``since_filter`` / ``until_filter``)."""
+        login / address prefixes and the group apply) and for how long, per user, student group
+        and lab, with the totals, from the rows of the database and the sessions still open.
+        409 without a database like the events view.  A ``history`` line with
+        ``view=statistics`` and the window resolved (``since_filter`` / ``until_filter``)."""
         logged = request.get(ACCESS_KEY)
         if logged is not None:
             logged['view'] = 'statistics'
@@ -1143,11 +1170,10 @@ class Routes:
         if self.access.history is None:
             return json_error(409, "the connection log has no database ([access_log.database] of web.toml)")
         try:
-            window = statistics_window(parse_filters(request.query), self.access.clock())
+            window = statistics_window(await self._resolve_group(parse_filters(request.query)), self.access.clock())
         except ValueError as e:
             return json_error(400, str(e))
-        if logged is not None:
-            logged.update({f'{key}_filter': value for key, value in window.items()})
+        self._log_history_filters(logged, window)
         open_sessions = [session_of_visit(v) for v in self.access.visits.all() if visit_matches(v, window)]
         try:
             page = await self.access.history.query(statistics_query(window))
@@ -1155,7 +1181,7 @@ class Routes:
             log.warning("access database: a history query failed: %s", e)
             return json_error(503, "the database of the connection log does not answer")
         stats = await asyncio.to_thread(compute_statistics, page['rows'], open_sessions, window['since'], window['until'])
-        return web.json_response({**stats, 'truncated': page['more'], 'limit': MAX_ROWS,
+        return web.json_response({**stats, 'truncated': page['more'], 'limit': MAX_ROWS, **self._group_fields(window),
                                   'database': self.access.db.status() if self.access.db is not None else None})
 
     def _idle_timeout(self, identity: Identity) -> float:

@@ -1716,3 +1716,12 @@ msgstr "Modifier l'examen « {title} »"
 
 msgid "No lab chosen: the members get the labs of the exam again."
 msgstr "Aucun TP choisi : les membres retrouvent les TP de l'examen."
+
+msgid "The members of a user group of any kind: a department, a directory group, a custom group"
+msgstr "Les membres d'un groupe d'utilisateurs de toute sorte : un département, un groupe de l'annuaire, un groupe personnalisé"
+
+msgid "Click to filter on this group"
+msgstr "Cliquer pour filtrer sur ce groupe"
+
+msgid "The group has no member known to the portal."
+msgstr "Le groupe n'a aucun membre connu du portail."

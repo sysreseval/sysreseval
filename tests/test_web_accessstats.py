@@ -58,6 +58,13 @@ class TestWindow:
         assert window == {'login': 'ali', 'addr': '10.', 'since': 500.0, 'until': now}
         assert ST.statistics_window({'until': 800.0}, now) == {'since': 800.0 - ST.DEFAULT_PERIOD, 'until': 800.0}
         assert ST.statistics_window({'since': 1.0, 'until': 2.0}, now) == {'since': 1.0, 'until': 2.0}
+        # the group filter and its members (an empty list kept: nobody matches)
+        window = ST.statistics_window({'group': 'custom:TP', 'logins': [], 'limit': 100}, now)
+        assert window == {'group': 'custom:TP', 'logins': [], 'since': now - ST.DEFAULT_PERIOD, 'until': now}
+        query = ST.statistics_query(ST.statistics_window({'group': 'department:1A', 'logins': ['al', 'bo']}, now))
+        assert query['logins'] == ['al', 'bo'] and query['group'] == 'department:1A'
+        sql, params = build_select('t', query)
+        assert 'login IN (%s, %s)' in sql and params[:2] == ['al', 'bo'] and '1A' not in sql
 
     def test_empty_period_refused(self):
         with pytest.raises(ValueError, match='since'):

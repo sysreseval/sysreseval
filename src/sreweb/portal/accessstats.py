@@ -47,10 +47,13 @@ OK_STATUS = '200'
 
 def statistics_window(filters: dict, now: float) -> dict:
     """The window of the statistics from a ``parse_filters()`` result: the login / address
-    prefixes, ``until`` (``now`` by default) and ``since`` (``DEFAULT_PERIOD`` before ``until``
-    by default), as floats; the event, host, project, lab and cursor filters of the events view
-    are dropped.  ``ValueError`` when the period is empty (a 400)."""
+    prefixes, the group and its ``logins`` (the members, when the route resolved them: an empty
+    list is kept, nobody matches), ``until`` (``now`` by default) and ``since``
+    (``DEFAULT_PERIOD`` before ``until`` by default), as floats; the event, host, project, lab
+    and cursor filters of the events view are dropped.  ``ValueError`` when the period is empty
+    (a 400)."""
     window = {key: filters[key] for key in ('login', 'addr') if filters.get(key)}
+    window.update({key: filters[key] for key in ('group', 'logins') if key in filters})
     until = float(filters['until']) if filters.get('until') is not None else float(now)
     since = float(filters['since']) if filters.get('since') is not None else until - DEFAULT_PERIOD
     if since >= until:

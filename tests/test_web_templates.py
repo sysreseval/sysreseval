@@ -255,9 +255,18 @@ class TestTemplates:
         html = render('history.html', instructor=True, administrator=True, history_database=False, events=events)
         assert 'id="history"' in html and 'id="history-filters"' in html and 'id="history-count"' in html
         assert '/static/js/history.js' in html and 'href="/history"' in html and 'data-login="alice"' in html
-        for name in ('login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'):
+        for name in ('login', 'addr', 'group', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'):
             assert f'name="{name}"' in html, name
         assert '<option value="start">start</option>' in html and '<option value="">All events</option>' in html
+        # the Group select: every view, hidden with its label unless a source of user groups is
+        # configured (the Watch page's rule), the "All groups" entry alone (the script adds the kinds)
+        assert 'class="history-filters" data-group-sources="false"' in html
+        assert '<label hidden>Group\n    <select name="group" id="history-group"' in html
+        assert html.count('<option value="">All groups</option>') == 1
+        with_sources = render('history.html', instructor=True, administrator=True, history_database=False, events=events,
+                              group_sources=True)
+        assert 'data-group-sources="true"' in with_sources and '<label hidden>' not in with_sources
+        assert '<label>Group\n    <select name="group" id="history-group"' in with_sources
         assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
         assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
         # two tables: the events (shown, ten columns) and the sessions (hidden until chosen, eleven

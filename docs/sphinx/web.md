@@ -350,9 +350,10 @@ session and the request following a logout opens another one. The other events:
   in; `admin`: a call of `sre-web-tool` changing the pool, or an action of the Pool page of an
   instructor (their `login`); `history`: an administrator read the log on the History page
   (*Administrators* below; the filters asked come as `login_filter`, `addr_filter`,
-  `event_filter`, `host_filter`, `rln_filter`, `lab_filter`, `since_filter`, `until_filter`,
-  `before_filter`; `view=sessions` for the Sessions view, `view=statistics` for the Statistics
-  view with the period resolved in `since_filter` / `until_filter`);
+  `event_filter`, `host_filter`, `rln_filter`, `lab_filter`, `group_filter` (the key of the
+  group, `kind:name`), `since_filter`, `until_filter`, `before_filter`; `view=sessions` for
+  the Sessions view, `view=statistics` for the Statistics view with the period resolved in
+  `since_filter` / `until_filter`);
 - the presentations (*Instructors* below): `present_start` (the instructor's `login`, `host`,
   `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
@@ -1246,6 +1247,18 @@ are those of the whole session. The portal reads the lines of those four events 
 start of the period to two days after its end (a session or a page active in the period but
 closed later than that is missed), 200 000 of them at most: beyond, the page says the
 statistics are computed on the newest rows only and asks to narrow the period.
+
+The **Group** select of the form (shown when a source of user groups is configured, *User
+groups* above: the departments, the directory groups and the custom groups, listed by kind as
+`GET /api/groups` gives them) restricts the three views to the members of one group, whatever
+its kind: the portal resolves the group into the logins of its current members and asks the
+database for their rows alone (one `IN` list on the indexed `login` column, so the sessions,
+the events or the statistics of a class group are one query; the open sessions are filtered
+the same way). A group nobody belongs to as far as the portal knows (a custom group emptied or
+deleted since, a department of nobody) gives nothing and the page says so. The department cell
+of a session filters on that department. The filter is kept in the URL as `group=kind:name` (a
+bare name is a department, like the Watch page's) and logged as `group_filter`; without any
+group source the parameter is refused (400).
 
 In the two list views the filters stay in the URL, so a filtered view reloads and can be sent
 to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a

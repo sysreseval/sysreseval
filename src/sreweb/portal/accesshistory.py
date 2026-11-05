@@ -7,8 +7,12 @@ request of an administrator: no pool, no state, no stale connection to handle).
 The filters: ``login`` and ``addr`` are prefixes (``10.0.1.`` = a subnet; a prefix uses the
 ``(login, ts)`` / ``(addr, ts)`` indexes), ``event`` a list of names, ``host`` exact, ``rln``
 and ``lab`` substrings (``lab`` is only on the ``start`` lines), ``since`` / ``until`` seconds
-since the epoch.  No count of the matching rows: ``limit + 1`` rows are asked and ``more`` says
-whether older ones exist (a ``COUNT(*)`` would scan the table of a year at every page).
+since the epoch, ``group`` the key of a user group of any kind (``groups.py``: ``kind:name``, a
+bare name being a department), which the route resolves into ``logins``, the current members
+of the group (``resolve_group``), an ``IN`` list on the ``login`` column (the same index; a
+group without member matches no row).  No count of the matching rows: ``limit + 1`` rows are
+asked and ``more`` says whether older ones exist (a ``COUNT(*)`` would scan the table of a
+year at every page).
 
 The Sessions view of the page (``GET /api/history/sessions``) is built on the same query: one
 row per session from its ``session_close`` line (``session_filters`` keeps the login / address
@@ -20,12 +24,16 @@ import json
 from datetime import datetime
 
 from .accessdb import SELECT, HistoryError, epoch, utc_datetime   # noqa: F401  (HistoryError: re-exported)
+from .groups import group_key, parse_group_key
 from ..config import AccessDatabaseConfig
 
-FILTER_KEYS = ('login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'before', 'limit')
+FILTER_KEYS = ('login', 'addr', 'event', 'host', 'rln', 'lab', 'group', 'since', 'until', 'before', 'limit')
 TEXT_FILTERS = ('login', 'addr', 'host', 'rln', 'lab')
 #: The filters of the Sessions view (``since`` / ``until`` bound the time the session was closed).
-SESSION_FILTER_KEYS = ('login', 'addr', 'since', 'until', 'before', 'limit')
+SESSION_FILTER_KEYS = ('login', 'addr', 'group', 'logins', 'since', 'until', 'before', 'limit')
+#: The keys of a filters dict not logged as ``<key>_filter`` on the ``history`` line: the page
+#: size, and the logins resolved from the group (``group_filter`` names it).
+UNLOGGED_FILTERS = ('limit', 'logins')
 SESSION_CLOSE_EVENT = 'session_close'
 #: The format of the ``since`` of a ``session_close`` line (``accesslog.iso_time``: the local
 #: time of the portal with its UTC offset, ``2026-10-26T09:11:50+0100``).
@@ -54,14 +62,18 @@ def _values(query, key: str) -> list:
 def parse_filters(query) -> dict:
     """The filters of a request from its query string (aiohttp's ``MultiDictProxy``, or a plain
     dict), typed: the text filters stripped (an empty one dropped), ``event`` as a list (the
-    parameter repeated or comma-separated), ``since`` / ``until`` as floats, ``before`` as an
-    int, ``limit`` 1..``MAX_LIMIT`` (``DEFAULT_LIMIT`` without).  ``ValueError`` names the bad
+    parameter repeated or comma-separated), ``group`` as a canonical group key (``kind:name``,
+    a bare name being a department), ``since`` / ``until`` as floats, ``before`` as an int,
+    ``limit`` 1..``MAX_LIMIT`` (``DEFAULT_LIMIT`` without).  ``ValueError`` names the bad
     parameter (a 400)."""
     filters = {}
     for key in TEXT_FILTERS:
         value = str(query.get(key, '') or '').strip()
         if value:
             filters[key] = value[:MAX_TEXT]
+    group = str(query.get('group', '') or '').strip()
+    if group:
+        filters['group'] = group_key(*parse_group_key(group[:MAX_TEXT]))
     events = []
     for value in _values(query, 'event'):
         for name in str(value).split(','):
@@ -92,6 +104,17 @@ def parse_filters(query) -> dict:
     return filters
 
 
+def resolve_group(filters: dict, memberships) -> dict:
+    """*filters* with ``logins`` = the current members of the group ``filters['group']`` names,
+    sorted, from a ``groups.Memberships`` whose caches are fresh (the route refreshed them);
+    nothing added without a group filter.  An unknown group, or one nobody belongs to, gives
+    ``[]``: no row."""
+    key = filters.get('group')
+    if key:
+        filters['logins'] = sorted(memberships.members_of([key]))
+    return filters
+
+
 def build_where(filters: dict) -> tuple:
     """``(fragments, params)`` of the ``WHERE`` clause of *filters* (joined with ``AND``)."""
     parts, params = [], []
@@ -99,6 +122,13 @@ def build_where(filters: dict) -> tuple:
     if filters.get('login'):
         parts.append(f"login {like}")
         params.append(escape_like(filters['login']) + '%')
+    if filters.get('logins') is not None:
+        logins = [str(login) for login in filters['logins']]
+        if logins:
+            parts.append("login IN (" + ', '.join(['%s'] * len(logins)) + ")")
+            params.extend(logins)
+        else:
+            parts.append("1 = 0")           # a group without member: no row
     if filters.get('addr'):
         parts.append(f"addr {like}")
         params.append(escape_like(filters['addr']) + '%')
@@ -139,9 +169,10 @@ def build_select(table: str, filters: dict) -> tuple:
 
 def session_filters(filters: dict) -> dict:
     """The filters of the Sessions view from a ``parse_filters()`` result: the login / address
-    prefixes, the time window (on the time the sessions were closed), the cursor and the limit;
-    the rows asked are the ``session_close`` lines.  The event, host, project and lab filters of
-    the events view are left out."""
+    prefixes, the group (and its logins when resolved already), the time window (on the time
+    the sessions were closed), the cursor and the limit; the rows asked are the
+    ``session_close`` lines.  The event, host, project and lab filters of the events view are
+    left out."""
     kept = {key: filters[key] for key in SESSION_FILTER_KEYS if key in filters}
     kept['event'] = [SESSION_CLOSE_EVENT]
     return kept
@@ -204,9 +235,13 @@ def session_of_visit(visit) -> dict:
 
 
 def visit_matches(visit, filters: dict) -> bool:
-    """Whether an open session passes the login / address prefixes of *filters* and overlaps
-    its time window (active after ``since``, started before ``until``)."""
+    """Whether an open session passes the login / address prefixes of *filters*, belongs to one
+    of its ``logins`` (the members of the group asked, when resolved) and overlaps its time
+    window (active after ``since``, started before ``until``)."""
     if filters.get('login') and not visit.login.startswith(filters['login']):
+        return False
+    logins = filters.get('logins')
+    if logins is not None and visit.login not in logins:
         return False
     if filters.get('addr') and not visit.addr.startswith(filters['addr']):
         return False

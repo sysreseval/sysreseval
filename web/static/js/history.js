@@ -24,6 +24,14 @@
 // From fills it with now minus 24 hours (the default period), To empty = now.  The login and
 // address prefixes apply; the other filters, the row count and the pager are hidden.
 //
+// The Group select (shown when a source of user groups is configured, like the Watch page's)
+// restricts the three views to the members of one group of any kind (groups_model.js: the
+// departments, the directory groups and the custom groups of GET /api/groups, by kind): the
+// portal resolves the group into the logins of its members and asks the database for their
+// rows alone (the open sessions filtered the same way); a group nobody belongs to gives
+// nothing, and the notice says so.  The department cell of a session filters on that
+// department.
+//
 // The filters and the view are kept in the URL (a filtered view reloads and can be shared).
 // Older / Newer page through the rows with a cursor (the id of the oldest row shown).  A
 // click on an event, login, address, host or project cell filters on that value.  Nothing is
@@ -35,8 +43,9 @@ import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, clear, toast, formatDuration} from './ui.js';
 import {createStatisticsView} from './history_stats.js';
+import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, sortGroups, kindsLabel} from './groups_model.js';
 
-const FILTER_KEYS = ['login', 'addr', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'];
+const FILTER_KEYS = ['login', 'addr', 'group', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'];
 const EVENTS_ONLY_KEYS = ['event', 'host', 'rln', 'lab'];
 const DEFAULT_LIMIT = '100';
 const VIEWS = ['sessions', 'events', 'statistics'];
@@ -56,8 +65,11 @@ const olderButton = document.getElementById('history-older');
 const pageElement = document.getElementById('history-page');
 const pager = document.querySelector('.history-pager');
 const databaseConfigured = tables.events.dataset.database === 'true';
-const groupsEnabled = tables.sessions.dataset.groups === 'true';   // a group source is configured: Group column shown
+const groupsEnabled = tables.sessions.dataset.groups === 'true';   // a department source is configured: Group column shown
+const groupSourcesEnabled = form.dataset.groupSources === 'true';   // any group source: the Group select shown
+const groupSelect = document.getElementById('history-group');
 const stats = createStatisticsView(statsRoot, {groupsEnabled});
+let catalog = [];              // the groups of GET /api/groups (every kind), read once per page load
 
 // view: events, sessions or statistics; rows: the rows of the page (events, or closed
 // sessions); open: the open sessions (the first page of the sessions view); before: the cursor
@@ -87,7 +99,7 @@ function readForm() {
     if (state.view !== 'events' && EVENTS_ONLY_KEYS.includes(key)) {
       continue;
     }
-    if (state.view === 'statistics' && key === 'limit') {
+    if ((state.view === 'statistics' && key === 'limit') || (key === 'group' && !groupSourcesEnabled)) {
       continue;
     }
     const value = String(data.get(key) || '').trim();
@@ -131,12 +143,75 @@ function fillForm() {
   const params = new URLSearchParams(window.location.search);
   for (const key of FILTER_KEYS) {
     const field = form.elements[key];
-    if (field && params.has(key)) {
-      field.value = params.get(key);
+    if (!field || !params.has(key)) {
+      continue;
     }
+    let value = params.get(key);
+    if (key === 'group') {
+      if (!groupSourcesEnabled) {
+        continue;
+      }
+      value = value ? normalizeKey(value) : '';       // an old ?group=1A link: the department
+      if (value) {
+        ensureGroupOption(value);
+      }
+    }
+    field.value = value;
   }
   const view = params.get('view');
   state.view = VIEWS.includes(view) ? view : DEFAULT_VIEW;
+}
+
+// -- the group select -------------------------------------------------------------------------
+
+// the groups of every kind as optgroups by kind after the "All groups" entry: the catalog of
+// GET /api/groups (the departments and directory groups of the directory, the custom groups of
+// the database) plus *keep*, the key chosen, when the catalog does not list it (a custom group
+// deleted since, a department nobody of the directory has any more): the filter still applies
+function fillGroupSelect(groups, keep) {
+  for (const child of [...groupSelect.children]) {
+    if (child.tagName === 'OPTGROUP') {
+      child.remove();
+    }
+  }
+  const entries = new Map();
+  for (const group of groups) {
+    const key = normalizeKey(group.key);
+    entries.set(key, {...group, key});
+  }
+  if (keep && !entries.has(keep)) {
+    entries.set(keep, {key: keep, ...parseKey(keep)});
+  }
+  const sorted = sortGroups([...entries.values()]);
+  for (const kind of KINDS) {
+    const ofKind = sorted.filter((group) => group.kind === kind);
+    if (!ofKind.length) {
+      continue;
+    }
+    const optgroup = el('optgroup', {label: kindsLabel(kind)});
+    for (const group of ofKind) {
+      optgroup.append(el('option', {value: group.key}, group.name));
+    }
+    groupSelect.append(optgroup);
+  }
+}
+
+// an option for *key* when the select has none (the URL, a click on a department cell)
+function ensureGroupOption(key) {
+  if (![...groupSelect.options].some((option) => option.value === key)) {
+    fillGroupSelect(catalog, key);
+  }
+}
+
+async function loadGroups() {
+  try {
+    const data = await api.get('/api/groups');
+    catalog = Array.isArray(data.groups) ? data.groups : [];
+  } catch (e) {
+    catalog = [];
+    toast(e.message, {error: true});
+  }
+  fillGroupSelect(catalog, groupSelect.value);
 }
 
 // the view chosen: the buttons, the table shown, the filters of the other views hidden, the
@@ -271,13 +346,22 @@ function showEvents(session) {
   search();
 }
 
+// the department of a session: a click filters on it as a group (when the select is shown)
+function groupCell(group) {
+  if (!group || !groupSourcesEnabled) {
+    return el('td', {hidden: !groupsEnabled}, group || '');
+  }
+  return el('td', {hidden: !groupsEnabled, class: 'link', title: _('Click to filter on this group'),
+                   onclick: () => setGroupFilter(groupKey(KIND_DEPARTMENT, group))}, group);
+}
+
 function renderSession(session) {
   const open = isOpen(session);
   const projects = Array.isArray(session.projects) ? session.projects : [];
   return el('tr', {class: open ? 'row-open' : '', dataset: {id: session.id === null ? '' : String(session.id)}},
     filterCell('login', session.login),
     el('td', {title: session.role || ''}, session.name || ''),
-    el('td', {hidden: !groupsEnabled}, session.group || ''),
+    groupCell(session.group),
     filterCell('addr', session.addr),
     timeCell(session.start),
     open ? el('td', {class: 'ts'}, '') : timeCell(session.end),
@@ -348,6 +432,14 @@ function showDatabase(status) {
   }
 }
 
+// a group filter whose group has no member known to the portal: the empty table is explained
+// (the notice of the database, when there is one, comes first)
+function showGroup(data) {
+  if (data.group && data.group_members === 0 && notice.hidden) {
+    showNotice(_('The group has no member known to the portal.'));
+  }
+}
+
 function showError(e) {
   if (state.view === 'statistics') {
     stats.clear();
@@ -402,6 +494,7 @@ async function load() {
       showNotice(format(_('The statistics are computed on the {n} newest rows only: narrow the period.'),
                         {n: data.limit}), {error: true});
     }
+    showGroup(data);
     render();
     return;
   }
@@ -411,6 +504,7 @@ async function load() {
   if (databaseConfigured) {     // without one the notice of the page stays
     showDatabase(data.database);
   }
+  showGroup(data);
   render();
 }
 
@@ -429,6 +523,11 @@ function setFilter(key, value) {
   }
   field.value = value;
   search();
+}
+
+function setGroupFilter(key) {
+  ensureGroupOption(key);
+  setFilter('group', key);
 }
 
 function setupControls() {
@@ -469,6 +568,9 @@ function setupControls() {
 
 async function main() {
   await i18n.init();
+  if (groupSourcesEnabled) {
+    await loadGroups();       // the options of the Group select, before the URL fills the form
+  }
   fillForm();
   applyView();
   setupControls();

@@ -807,3 +807,96 @@ class TestGroupsThroughThePortal:
                 for ws in (bob_ws, carol_ws, dave_ws):
                     await ws.close()
         run(go())
+
+
+class TestHistoryByGroup:
+    """The Group filter of the History page: the three views restricted to the members of a group
+    of any kind (a department and a group of the directory, a custom group of the database), the
+    rows asked by login, the open sessions filtered too, the history line, a group without
+    member, the guards."""
+
+    def test_filter_by_group_of_any_kind(self, tmp_path):
+        import time
+        from test_web_accessdb import NAMES
+
+        async def go():
+            server, listing = FakeGroupsServer(), FakeListing()
+            over = web_over(tmp_path)
+            over['auth'] = {**over['auth'], 'administrators': ['prof']}
+            prof = P.who('prof', 'Pr. Of', groups=P.TEACHERS)
+            bob, carol = P.who('bob', 'Bob B', group='1A'), P.who('carol', 'Carol C', group='2B')
+            hp = {**prof, **P.CSRF}
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,)),
+                                 directory_listing=listing) as h:
+                await h.client.get('/api/me', headers=bob)            # the open sessions: bob, then carol
+                await h.client.get('/api/me', headers=carol)
+                assert (await h.client.post('/api/groups', json={'name': 'TP'}, headers=hp)).status == 201   # prof's session
+                resp = await h.client.post('/api/groups/custom/TP/members', json={'logins': ['carol', 'prof']}, headers=hp)
+                assert resp.status == 200
+                server.select_names = NAMES
+                server.select_rows = []
+
+                def last_select():
+                    return next(s for s in reversed(server.statements) if s[1].startswith('SELECT id'))
+
+                # the events view, a department (a bare name): the rows of its members
+                page = await (await h.client.get('/api/history?group=1A&limit=10', headers=prof)).json()
+                assert page['group'] == 'department:1A' and page['group_members'] == 2 and page['rows'] == []
+                kind, sql, args = last_select()
+                assert 'WHERE login IN (%s, %s) ORDER BY' in sql and args == ['alice', 'bob', 11]
+                # the sessions view, a directory group: the open sessions of its members only (prof's
+                # session is not one), the close lines asked by login
+                page = await (await h.client.get('/api/history/sessions?group=directory:etudiants', headers=prof)).json()
+                assert [s['login'] for s in page['open']] == ['carol', 'bob'] and page['group_members'] == 4
+                kind, sql, args = last_select()
+                assert 'login IN (%s, %s, %s, %s)' in sql and args == ['alice', 'bob', 'carol', 'ghost', 'session_close', 101]
+                # a custom group: carol and prof
+                page = await (await h.client.get('/api/history/sessions?group=custom:TP&login=c', headers=prof)).json()
+                assert [s['login'] for s in page['open']] == ['carol'] and page['group'] == 'custom:TP'
+                kind, sql, args = last_select()
+                assert args == ['c%', 'carol', 'prof', 'session_close', 101]
+                # a group without member (or unknown): nothing, and the answer says so
+                page = await (await h.client.get('/api/history/sessions?group=custom:nobody', headers=prof)).json()
+                assert page['open'] == [] and page['rows'] == [] and page['group_members'] == 0
+                kind, sql, args = last_select()
+                assert 'WHERE 1 = 0 AND event IN (%s)' in sql and args == ['session_close', 101]
+                # the statistics: the users of the group alone (carol's open session; the window asked)
+                now = float(int(time.time()))
+                stats = await (await h.client.get(f'/api/history/statistics?group=2B&since={now - 3600}&until={now + 60}',
+                                                  headers=prof)).json()
+                assert [u['login'] for u in stats['users']] == ['carol'] and stats['group'] == 'department:2B'
+                assert stats['group_members'] == 1 and stats['totals']['students'] == 1
+                kind, sql, args = last_select()
+                assert 'login IN (%s)' in sql and args[0] == 'carol' and 'event IN' in sql
+                # no group filter: nothing of it in the answer
+                stats = await (await h.client.get('/api/history/statistics', headers=prof)).json()
+                assert 'group' not in stats and 'group_members' not in stats
+                page = await (await h.client.get('/api/history/sessions', headers=prof)).json()
+                assert 'group' not in page and [s['login'] for s in page['open']] == ['prof', 'carol', 'bob']
+            # the history lines: the key (canonical) logged, never the logins
+            history = [json.loads(row[9]) for row in server.committed if row[1] == 'history']
+            assert history[0]['group_filter'] == 'department:1A' and 'logins_filter' not in history[0]
+            assert history[1]['view'] == 'sessions' and history[1]['group_filter'] == 'directory:etudiants'
+            assert history[2]['group_filter'] == 'custom:TP' and history[2]['login_filter'] == 'c'
+            assert history[4]['view'] == 'statistics' and history[4]['group_filter'] == 'department:2B'
+            assert 'logins_filter' not in history[4] and 'group_filter' not in history[5]
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            assert [l['group_filter'] for l in lines if l['event'] == 'history' and 'group_filter' in l] == \
+                   ['department:1A', 'directory:etudiants', 'custom:TP', 'custom:nobody', 'department:2B']
+        run(go())
+
+    def test_without_any_group_source(self, tmp_path):
+        """No directory nor database: the select is hidden, a ?group= of the URL is refused (the
+        open sessions of the Sessions view need no database, so the check is reached there)."""
+        async def go():
+            over = web_over(tmp_path, database=False, directory=False)
+            over['auth'] = {**over['auth'], 'administrators': ['prof']}
+            prof = P.who('prof', 'Pr. Of', groups=P.TEACHERS)
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+                page = await h.client.get('/history', headers=prof)
+                assert page.status == 200
+                resp = await h.client.get('/api/history/sessions?group=1A', headers=prof)
+                assert resp.status == 400 and 'no source of user groups' in (await resp.json())['error']
+                page = await (await h.client.get('/api/history/sessions', headers=prof)).json()
+                assert [s['login'] for s in page['open']] == ['prof'] and 'group' not in page
+        run(go())

@@ -306,6 +306,26 @@ class TestFilters:
         assert parse_filters({'limit': '5000'})['limit'] == H.MAX_LIMIT
         assert parse_filters({'limit': '1'})['limit'] == 1
 
+    def test_group(self):
+        """The group filter: a canonical key (a bare name is a department), resolved into the
+        logins of the members by the route (resolve_group on the memberships)."""
+        assert parse_filters({'group': ' 1A '})['group'] == 'department:1A'
+        assert parse_filters({'group': 'department:1A'})['group'] == 'department:1A'
+        assert parse_filters({'group': 'custom:TP 3'})['group'] == 'custom:TP 3'
+        assert parse_filters({'group': 'directory:profs'})['group'] == 'directory:profs'
+        assert parse_filters({'group': 'other:x'})['group'] == 'department:other:x'       # not a kind: a department
+        assert 'group' not in parse_filters({'group': ' '}) and 'group' not in parse_filters({})
+
+        class Memberships:
+            def members_of(self, keys):
+                assert list(keys) == ['custom:TP']
+                return {'bob', 'alice'}
+
+        filters = H.resolve_group(parse_filters({'group': 'custom:TP', 'login': 'a'}), Memberships())
+        assert filters == {'group': 'custom:TP', 'logins': ['alice', 'bob'], 'login': 'a', 'limit': 100}
+        assert H.resolve_group({'limit': 100}, None) == {'limit': 100}               # no group: nothing resolved
+        assert H.UNLOGGED_FILTERS == ('limit', 'logins')
+
     @pytest.mark.parametrize('query, fragment', [
         ({'since': 'yesterday'}, 'since'), ({'until': '2026-10-29'}, 'until'), ({'before': '-1'}, 'before'),
         ({'before': 'x'}, 'before'), ({'limit': '0'}, 'limit'), ({'limit': 'many'}, 'limit'),
@@ -351,6 +371,18 @@ class TestBuildQuery:
                                         "ts < %s", "id < %s"]
         assert params == ['a%', '1%', 'x', 'h', '%r%', '%l%', utc_datetime(1.0), utc_datetime(2.0), 9, 6]
 
+    def test_group_logins(self):
+        """The members of the group asked: an IN list on the login column, after the login
+        prefix; a group without member matches no row; the key itself is not in the SQL."""
+        sql, params = build_select('t', {'login': 'a', 'group': 'custom:TP', 'logins': ['alice', 'anna'], 'addr': '1',
+                                         'limit': 10})
+        where = sql.split(' WHERE ')[1].split(' ORDER BY')[0]
+        assert where.split(' AND ') == ["login LIKE %s ESCAPE '!'", "login IN (%s, %s)", "addr LIKE %s ESCAPE '!'"]
+        assert params == ['a%', 'alice', 'anna', '1%', 11] and 'TP' not in sql
+        sql, params = build_select('t', {'group': 'custom:TP', 'logins': [], 'limit': 10})
+        assert ' WHERE 1 = 0 ORDER BY id DESC LIMIT %s' in sql and params == [11]
+        assert ' WHERE ' not in build_select('t', {'group': 'custom:TP', 'limit': 10})[0]     # not resolved: no filter
+
 
 class TestSessions:
     """The Sessions view of the History page: the filters kept, a session_close row turned into
@@ -374,6 +406,9 @@ class TestSessions:
                                         "ts >= %s", "ts < %s", "id < %s"]
         assert params == ['ali%', '10.%', 'session_close', utc_datetime(1000.0), utc_datetime(2000.0), 42, 3]
         assert H.session_filters({'limit': 100}) == {'limit': 100, 'event': ['session_close']}
+        # the group and its logins (resolved before or after: the route does it after) are kept
+        assert H.session_filters({'group': 'custom:TP', 'logins': [], 'limit': 2}) == \
+               {'group': 'custom:TP', 'logins': [], 'limit': 2, 'event': ['session_close']}
 
     def test_parse_time(self):
         assert H.parse_time(A.iso_time(1761466310.0)) == 1761466310.0           # the format of the lines
@@ -419,6 +454,9 @@ class TestSessions:
         assert H.visit_matches(visit, {'since': 1300.0}) and not H.visit_matches(visit, {'since': 1300.5})
         assert H.visit_matches(visit, {'until': 1000.5}) and not H.visit_matches(visit, {'until': 1000.0})
         assert H.visit_matches(visit, {'since': 900.0, 'until': 1100.0})
+        # the members of the group asked (None = no group filter; [] = nobody)
+        assert H.visit_matches(visit, {'logins': ['alice', 'bob']}) and H.visit_matches(visit, {'logins': None})
+        assert not H.visit_matches(visit, {'logins': ['bob']}) and not H.visit_matches(visit, {'logins': []})
 
 
 # ---------------------------------------------------------------------------------------------
