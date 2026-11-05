@@ -234,6 +234,15 @@ class TestRowOf:
         assert json.loads(row_of(1.0, 'x', {'ua': 'x' * 70000})[9]) == {'truncated': True, 'keys': ['ua']}
         assert json.loads(row_of(1.0, 'x', {'when': datetime(2026, 1, 2)})[9]) == {'when': '2026-01-02 00:00:00'}
         assert 'É' in row_of(1.0, 'x', {'name': 'Émile'})[9]          # not escaped
+        # a lone surrogate (legal JSON: the lab of a start request, logged before its validation)
+        # in a column or in the details is replaced: no raised encode, no refused batch
+        # (security review, last Low finding)
+        row = row_of(1.0, 'start', {'lab': 'a\ud800b', 'login': 'bob', 'ua': 'x\udc00y', 'n': 1})
+        assert row[6] == 'a?b' and json.loads(row[9]) == {'ua': 'x?y', 'n': 1}
+        for value in row:
+            if isinstance(value, str):
+                value.encode('utf-8')
+        assert D.clean_text('plain Émile') == 'plain Émile' and D.clean_text('\ud800') == '?'
 
 
 class TestSql:

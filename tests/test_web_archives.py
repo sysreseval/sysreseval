@@ -59,6 +59,17 @@ class TestRows:
         assert (len(row[1]), len(row[2]), len(row[6])) == (64, 300, 255) and row[11:13] == (None, None)
         assert row[15] == 1 and row[16] is None
         assert R.row_of_record('a01', {'archive': NAME, 'running_lab_name': RLN})[9:17] == (0.0, 0.0, None, None, 0, 0, 0, None)
+        # what an agent may send: a lone surrogate in a name, NaN / Infinity grades (MySQL refuses
+        # the row): the text cleaned, the numbers defaulted (security review, last Low finding)
+        odd = R.row_of_record('a01', {'archive': NAME, 'running_lab_name': RLN, 'fullname': 'Al\ud800ice',
+                                      'grade': float('nan'), 'max_grade': float('inf'), 'mark': '12.5',
+                                      'elements': [{'label': 'x\udc00'}]})
+        assert odd[6] == 'Al?ice' and odd[9:13] == (0.0, 0.0, 12.5, None)
+        assert '\ud800' not in odd[-1] and '\udc00' not in odd[-1] and '"x?"' in odd[-1]
+        for value in odd:
+            if isinstance(value, str):
+                value.encode('utf-8')
+        assert R._float('nan') is None and R._float('-inf', 0.0) == 0.0 and R._float(7) == 7.0
 
     def test_record_time(self):
         assert R.record_time(record()) == datetime(2026, 10, 25, 8, 1, 2, tzinfo=timezone.utc).timestamp()

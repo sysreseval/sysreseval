@@ -152,6 +152,18 @@ def _json_default(value):
     return str(value)
 
 
+def clean_text(text: str) -> str:
+    """*text* with its lone surrogates replaced by ``?``: legal in JSON (``"\\ud800"``, a lab
+    name of a start request, a full name an agent reports), refused by MySQL, and ``encode()``
+    raised on them: the row was dropped with a traceback, or a whole batch failed at
+    ``executemany`` and was rewritten row by row."""
+    try:
+        text.encode('utf-8')
+        return text
+    except UnicodeEncodeError:
+        return text.encode('utf-8', 'replace').decode('utf-8')
+
+
 def _column(value, width: int) -> str:
     """A text column: nothing (``None``, ``''`` and the ``-`` of the lines) is ``''``, a bool
     ``1`` / ``0`` like the lines, the rest its text cut at *width*."""
@@ -159,7 +171,7 @@ def _column(value, width: int) -> str:
         return ''
     if isinstance(value, bool):
         return '1' if value else '0'
-    return str(value)[:width]
+    return clean_text(str(value)[:width])
 
 
 def row_of(ts: float, event: str, fields: dict) -> tuple:
@@ -175,7 +187,7 @@ def row_of(ts: float, event: str, fields: dict) -> tuple:
         duration = None
     else:
         duration = float(duration)
-    details = json.dumps(rest, ensure_ascii=False, separators=(',', ':'), default=_json_default)
+    details = clean_text(json.dumps(rest, ensure_ascii=False, separators=(',', ':'), default=_json_default))
     if len(details.encode('utf-8')) > MAX_DETAILS:
         details = json.dumps({'truncated': True, 'keys': sorted(rest)})
     return (utc_datetime(ts), str(event)[:WIDTHS['event']], columns['login'], columns['addr'], columns['host'],

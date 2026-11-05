@@ -1262,7 +1262,7 @@ class Routes:
         wanted = wanted or None
         logged = request.get(ACCESS_KEY)      # the line of the connection log: the lab, the host, the outcome
         if logged is not None:
-            logged.update(lab=body['lab'], instructor=bool(body.get('instructor_mode')))
+            logged.update(lab=str(body['lab'])[:256], instructor=bool(body.get('instructor_mode')))   # not validated yet
         if body.get('instructor_mode') and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
         if wanted and identity.role != ROLE_INSTRUCTOR:

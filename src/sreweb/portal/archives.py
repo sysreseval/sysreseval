@@ -41,7 +41,7 @@ from datetime import datetime
 
 import aiohttp
 
-from .accessdb import DatabaseSink, TableSpec, utc_datetime, epoch
+from .accessdb import DatabaseSink, TableSpec, utc_datetime, epoch, clean_text
 from .accesshistory import (HistoryError, escape_like, fetch, parse_epoch, DEFAULT_LIMIT, MAX_LIMIT, MAX_TEXT,
                             LIKE_ESCAPE)
 from .roles import complete_owners
@@ -146,14 +146,19 @@ def record_time(record: dict) -> float:
 
 
 def _text(value, width: int) -> str:
-    return '' if value is None else str(value)[:width]
+    return '' if value is None else clean_text(str(value)[:width])
 
 
 def _float(value, default=None):
+    """A number of a record, *default* for ``None``, a non-number, ``NaN`` or an infinity (an
+    agent may send them as JSON: MySQL refuses the row)."""
     try:
-        return default if value is None else float(value)
+        number = default if value is None else float(value)
     except (TypeError, ValueError):
         return default
+    if number is not None and (number != number or number in (float('inf'), float('-inf'))):
+        return default
+    return number
 
 
 def _int(value, default=None):
@@ -171,12 +176,12 @@ def row_of_record(host: str, record: dict) -> tuple:
     ``details`` (the elements, parts and errors dropped with ``truncated`` when it exceeds
     ``MAX_DETAILS``)."""
     details = {key: record.get(key) for key in DETAIL_KEYS if key in record}
-    text = json.dumps(details, ensure_ascii=False, separators=(',', ':'), default=str)
+    text = clean_text(json.dumps(details, ensure_ascii=False, separators=(',', ':'), default=str))
     if len(text.encode('utf-8')) > MAX_DETAILS:
         for key in ('elements', 'parts', 'errors'):
             details.pop(key, None)
         details['truncated'] = True
-        text = json.dumps(details, ensure_ascii=False, separators=(',', ':'), default=str)
+        text = clean_text(json.dumps(details, ensure_ascii=False, separators=(',', ':'), default=str))
     return (utc_datetime(record_time(record)), _text(host, WIDTHS['host']), _text(record.get('archive'), WIDTHS['archive']),
             _text(record.get('running_lab_name'), WIDTHS['rln']), _text(record.get('lab'), WIDTHS['lab']),
             _text(record.get('login'), WIDTHS['login']), _text(record.get('fullname'), WIDTHS['fullname']),
