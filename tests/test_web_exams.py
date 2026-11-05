@@ -672,6 +672,29 @@ class FakeRelay:
         return self.answers.get((method, suffix), 200), {'ok': True}
 
 
+class SlowRelay(FakeRelay):
+    """A relay whose calls take a moment (and wait for ``gate`` when set): the concurrency of a
+    close job is observable."""
+
+    def __init__(self, answers=None, delay=0.01):
+        super().__init__(answers)
+        self.delay = delay
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self.gate: asyncio.Event | None = None
+
+    async def json(self, host, identity, method, path, *, json=None, params=None, timeout=60.0):
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            if self.gate is not None:
+                await self.gate.wait()
+            await asyncio.sleep(self.delay)
+            return await super().json(host, identity, method, path, json=json, params=params, timeout=timeout)
+        finally:
+            self.in_flight -= 1
+
+
 class FakePool:
     def __init__(self, hosts=('a01',), rows=None):
         self._hosts = {name: P.HostConfig(name=name, url=f'http://{name}', token=P.TOKEN) for name in hosts}
@@ -699,6 +722,56 @@ class TestExamProjects:
         assert XP.exam_payload(exam, m, NOW + 1)['started_at'] == '2023-11-14T22:13:20+00:00'
         assert XP.exam_payload(exam, m, NOW + 1)['end_at'] == '2023-11-14T23:43:20+00:00'
         assert XP.instructor_identity(exam) == Identity(login='prof', role='instructor')
+
+    def test_close_job(self):
+        """The close runs in the background, CLOSE_CONCURRENCY stops at a time, its progress
+        readable on the job; a failed stop keeps the project; a second close meanwhile gets the
+        same job; a finished job is forgotten CLOSE_KEEP after its end; shutdown cancels a
+        running one (security review: the close ran sequentially inside the request)."""
+        clock, presence, reg = registry()
+        relay, pool = SlowRelay(), FakePool()
+        xp = XP.ExamProjects(reg, pool, relay, clock=clock)
+        exam = run(reg.create(PROF, spec(labs=[DHCP, SSH])))
+
+        async def go():
+            for i in range(20):
+                login = f'user{i:02d}'
+                await reg.observe(exam, login, [row(DHCP, f'd{i}', owner=login), row(SSH, f's{i}', owner=login)])
+            # nothing to close: a job finished at once, no task
+            empty = await xp.close(exam, {'nobody'})
+            assert empty.total == 0 and not empty.running and empty.task is None
+            # 40 stops, at most CLOSE_CONCURRENCY in flight; a second close meanwhile: the same job
+            relay.gate = asyncio.Event()
+            job = await xp.close(exam, set(exam.members))
+            assert job.total == 40 and job.running and xp.closing_of(exam) is job
+            await asyncio.sleep(0.02)
+            assert relay.in_flight == XP.CLOSE_CONCURRENCY and job.done == 0
+            assert await xp.close(exam, {'user00'}) is job
+            relay.gate.set()
+            await job.task
+            assert (job.done, job.closed, job.failed, job.running) == (40, 40, 0, False)
+            assert relay.max_in_flight == XP.CLOSE_CONCURRENCY
+            assert all(m.projects == {} for m in exam.members.values())
+            assert job.to_dict()['running'] is False and job.to_dict()['finished_at'] is not None
+            assert [c[3] for c in relay.calls[-40:]] == ['DELETE'] * 40
+            # forgotten CLOSE_KEEP after its end
+            assert xp.closing_of(exam) is job
+            clock.now += XP.CLOSE_KEEP + 1
+            assert xp.closing_of(exam) is None
+            # a failed stop keeps the project
+            await reg.observe(exam, 'user00', [row(DHCP, 'd0b', owner='user00')])
+            relay.answers[('DELETE', '')] = 500
+            job = await xp.close(exam, {'user00'})
+            await job.task
+            assert (job.total, job.closed, job.failed) == (1, 0, 1) and DHCP in exam.members['user00'].projects
+            # shutdown cancels a running job
+            relay.answers[('DELETE', '')] = 200
+            relay.gate = asyncio.Event()
+            job = await xp.close(exam, {'user00'})
+            assert job.running
+            await xp.shutdown()
+            assert not job.running and xp.closing_of(exam) is None
+        run(go())
 
     def test_sync_release_and_close(self):
         clock, presence, reg = registry()
@@ -740,8 +813,13 @@ class TestExamProjects:
         run(reg.adjust(exam.id, {'alice'}, 1))
         run(xp.sync_member(exam, m))
         assert m.projects[SSH]['synced'][1] == X.iso_utc(NOW + 5820)
-        # close and release
-        assert run(xp.close(exam, {'alice', 'nobody'})) == 1 and m.projects == {}
+        # close (a background job, awaited here in the same loop) and release
+        async def close_alice():
+            job = await xp.close(exam, {'alice', 'nobody'})
+            await job.task
+            return job
+        job = run(close_alice())
+        assert (job.total, job.closed, job.failed, job.running) == (1, 1, 0, False) and m.projects == {}
         assert relay.calls[-1][3:5] == ('DELETE', '/projects/r2')
         run(reg.observe(exam, 'alice', [row(SSH, 'r5')]))
         run(xp.release(exam))
@@ -960,12 +1038,21 @@ class TestThroughThePortal:
                 assert (await api(h, 'GET', f'/api/projects/a01/{rln_ssh}', alice))[0] == 200
                 # prof closes her exam project, then deletes the exam
                 status, data = await api(h, 'POST', f'/api/exams/{xid}/close-projects', prof, {'all': True})
-                assert status == 200 and data == {'closed': 1}
-                await asyncio.sleep(0.3)
+                assert status == 202 and data['closed'] == 0                 # the stops run in the background
+                assert data['closing']['total'] == 1 and data['closing']['running'] is True
+                detail = None
+                for _ in range(50):
+                    await asyncio.sleep(0.1)
+                    detail = (await api(h, 'GET', f'/api/exams/{xid}', prof))[1]
+                    if detail['closing'] and not detail['closing']['running']:
+                        break
+                assert detail['closing']['closed'] == 1 and detail['closing']['failed'] == 0
                 rows = (await api(h, 'GET', '/api/projects', prof))[1]
                 assert rln not in [r['running_lab_name'] for r in rows]
+                status, data = await api(h, 'POST', f'/api/exams/{xid}/close-projects', prof, {'all': True})
+                assert status == 200 and data['closing']['total'] == 0       # nothing left to close
                 status, data = await api(h, 'DELETE', f'/api/exams/{xid}', prof)
-                assert status == 200 and data == {'ok': True, 'closed': 0}
+                assert status == 200 and data == {'ok': True, 'closed': 0, 'closing': None}
                 assert (await api(h, 'GET', '/api/exams', prof))[1]['exams'] == []
                 await ws.close()
                 # the log: the start of the exam project carries the exam, the edits their action
@@ -975,7 +1062,7 @@ class TestThroughThePortal:
                 assert [l['status'] for l in starts] == ['200', '403', '200', '409']
                 edits = [(l['action'], l['status']) for l in lines if l['event'] == 'exam_edit']
                 assert edits == [('create', '201'), ('adjust', '200'), ('adjust', '400'), ('end', '200'),
-                                 ('close', '200'), ('delete', '200')]
+                                 ('close', '202'), ('close', '200'), ('delete', '200')]
                 assert [l['status'] for l in lines if l['event'] == 'exam_dismiss'] == ['200', '409']
                 denied = [l for l in lines if l['event'] == 'denied' and l['login'] == 'alice']
                 assert len(denied) >= 3

@@ -443,6 +443,12 @@ function summaryText(exam) {
   if ((exam.networks || []).length) {
     parts.push(format(_('networks: {text}'), {text: exam.networks.join(', ')}));
   }
+  if (exam.closing) {
+    // a close of the exam projects running in the background, or just finished
+    parts.push(exam.closing.running
+      ? format(_('closing projects: {done}/{total} ({failed} failed)'), exam.closing)
+      : format(_('{n} project(s) closed'), {n: exam.closing.closed}));
+  }
   return parts.join(' · ');
 }
 
@@ -482,6 +488,7 @@ function renderDetail() {
   buttons.startNow.disabled = isNumber(exam.start_at) && exam.start_at <= state.now;
   buttons.startNow.hidden = exam.status === 'past';
   buttons.endNow.disabled = !running;
+  buttons.closeProjects.disabled = Boolean(exam.closing && exam.closing.running);   // one close at a time
   buttons.edit.hidden = buttons.delete.hidden = !(databaseConfigured && available);
   clear(membersBody);
   for (const th of membersTable.querySelectorAll('th.sortable')) {
@@ -570,7 +577,12 @@ async function act(button, call) {
     } else if (result && result.id !== undefined) {
       state.exams = state.exams.map((e) => (String(e.id) === String(result.id) ? result : e));
     }
-    if (result && isNumber(result.closed)) {
+    if (result && result.closing && result.closing.running) {
+      // the stops run in the background: the detail (polled) shows the progress
+      toast(format(_('Closing {n} project(s)…'), {n: result.closing.total}));
+    } else if (result && result.closing && result.closing.total === 0) {
+      toast(_('No project to close'));
+    } else if (result && isNumber(result.closed)) {
       toast(format(_('{n} project(s) closed'), {n: result.closed}));
     }
   } catch (e) {

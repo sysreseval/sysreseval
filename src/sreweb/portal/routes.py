@@ -1594,7 +1594,9 @@ class Routes:
                             'dismissed_at': m.dismissed_at if m is not None else None,
                             'extra_minutes': m.extra_minutes if m is not None else 0,
                             'labs': [l.to_dict() for l in exam.labs_of(login)], 'projects': rows.get(login, [])})
-        return web.json_response({**self._exam_summary(exam, now), 'members': members, 'now': now})
+        job = self.exam_projects.closing_of(exam) if self.exam_projects is not None else None
+        return web.json_response({**self._exam_summary(exam, now), 'members': members, 'now': now,
+                                  'closing': job.to_dict() if job is not None else None})
 
     async def api_exam_update(self, request):
         """Instructors: the definition edited (the keys given replace the current ones; the
@@ -1621,15 +1623,16 @@ class Routes:
         self._require_instructor(request)
         exam = self._exam(request)
         self._log_exam(request, action='delete', exam=exam.id)
-        closed = 0
+        closed, closing, count = 0, None, 0
         if self.exam_projects is not None:
             if request.query.get('close', '') in ('1', 'true'):
-                closed = await self.exam_projects.close(exam, set(exam.members))
+                job = await self.exam_projects.close(exam, set(exam.members))   # goes on after the deletion
+                closed, closing, count = job.closed, job.to_dict(), job.total
             else:
                 await self.exam_projects.release(exam)
         await self.exams.delete(exam.id)
-        self._log_exam(request, action='delete', exam=exam.id, count=closed)
-        return web.json_response({'ok': True, 'closed': closed})
+        self._log_exam(request, action='delete', exam=exam.id, count=count)
+        return web.json_response({'ok': True, 'closed': closed, 'closing': closing})
 
     async def api_exam_end(self, request):
         """Instructors: the exam over now, for everybody (no selection) or for the students
@@ -1685,11 +1688,14 @@ class Routes:
         self._log_exam(request, action='close', exam=exam.id)
         body = await self._group_body(request)
         logins = await self._exam_selection(exam, body)
-        closed = 0
+        job = None
         if self.exam_projects is not None:
-            closed = await self.exam_projects.close(exam, set(exam.members) if logins is None else logins)
-        self._log_exam(request, action='close', exam=exam.id, count=closed)
-        return web.json_response({'closed': closed})
+            job = await self.exam_projects.close(exam, set(exam.members) if logins is None else logins)
+        # 202: the stops run in the background (the detail the page polls carries the progress)
+        self._log_exam(request, action='close', exam=exam.id, count=job.total if job is not None else 0)
+        return web.json_response({'closed': job.closed if job is not None else 0,
+                                  'closing': job.to_dict() if job is not None else None},
+                                 status=202 if job is not None and job.running else 200)
 
     # -- presentations ----------------------------------------------------------------------------
     # An instructor's project shown read-only on the browsers of the chosen students: the state

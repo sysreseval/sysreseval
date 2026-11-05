@@ -3,9 +3,12 @@ portal (``PUT /v1/projects/{rln}/exam`` when a student's clock starts or an inst
 them, ``DELETE …/exam`` when a project is no longer an exam one), the exam projects closed on
 request, and their rows for the members table of the Exams page.  The calls to the agents
 carry the identity of the instructor who created the exam (the agent wants an instructor)."""
+import asyncio
+import contextlib
 import logging
 import time
 import urllib.parse
+from dataclasses import dataclass, field
 
 from .exams import Exams, Exam, Member, iso_utc, normal_lab
 from .pool import Pool, PoolError
@@ -17,6 +20,31 @@ log = logging.getLogger('sreweb.portal')
 RECONCILE_INTERVAL = 5.0        # seconds between two passes over the exam projects
 RETRY_DELAY = 15.0              # before an agent call that failed is tried again
 CLOSE_TIMEOUT = 900.0           # the stop of a project (the agent's own timeout is 300 s)
+CLOSE_CONCURRENCY = 8           # stops of a close job in flight at once (each agent evaluates first)
+CLOSE_KEEP = 300.0              # seconds a finished close job stays readable on the exam's detail
+
+
+@dataclass
+class CloseJob:
+    """A close of exam projects running in the background (``ExamProjects.close()``): the
+    request answers at once with it, the Exams page shows its progress on the detail it polls."""
+    exam_id: int
+    total: int
+    started_at: float
+    done: int = 0
+    closed: int = 0
+    failed: int = 0
+    finished_at: float | None = None
+    task: asyncio.Task | None = field(default=None, repr=False)
+
+    @property
+    def running(self) -> bool:
+        return self.finished_at is None
+
+    def to_dict(self) -> dict:
+        return {'total': self.total, 'done': self.done, 'closed': self.closed, 'failed': self.failed,
+                'running': self.running, 'started_at': iso_utc(self.started_at),
+                'finished_at': iso_utc(self.finished_at) if self.finished_at is not None else None}
 
 
 def exam_payload(exam: Exam, member: Member | None, now: float) -> dict:
@@ -44,6 +72,7 @@ class ExamProjects:
         self._last_pass = 0.0
         self._retry_at: dict[tuple, float] = {}      # (host, rln) -> not before
         self._warned: set = set()
+        self._closing: dict[int, CloseJob] = {}      # exam id -> its close job (running, or kept CLOSE_KEEP)
 
     @staticmethod
     def _path(rln: str, suffix: str = '') -> str:
@@ -127,22 +156,73 @@ class ExamProjects:
             for orphan in list(m.orphans):
                 await self._call(exam, orphan.get('host', ''), orphan.get('rln', ''), 'DELETE', '/exam')
 
-    async def close(self, exam: Exam, logins: set) -> int:
-        """The exam projects of the students given closed (the agents stop them); how many
-        were (a project already gone counts)."""
-        closed = 0
-        for login in sorted(logins):
-            m = exam.members.get(login)
-            if m is None:
-                continue
-            for lab, p in list(m.projects.items()):
+    async def close(self, exam: Exam, logins: set) -> CloseJob:
+        """The exam projects of the students given closed by a background job (the agents stop
+        them, ``CLOSE_CONCURRENCY`` at a time, each within ``CLOSE_TIMEOUT``; a project already
+        gone counts as closed): the job, running — a second close of the exam meanwhile gets the
+        same one, the selection is not merged — or finished at once when there is nothing to
+        close.  ``closing_of()`` reads it afterwards.  A close ran sequentially inside the request
+        before, which a reverse proxy cut long before the end of a class."""
+        running = self._closing.get(exam.id)
+        if running is not None and running.running:
+            return running
+        pending = [(login, m, lab, p) for login in sorted(logins) if (m := exam.members.get(login)) is not None
+                   for lab, p in list(m.projects.items())]
+        job = CloseJob(exam_id=exam.id, total=len(pending), started_at=self.clock())
+        self._closing[exam.id] = job
+        if not pending:
+            job.finished_at = self.clock()
+            return job
+        job.task = asyncio.ensure_future(self._run_close(job, exam, pending))
+        return job
+
+    async def _run_close(self, job: CloseJob, exam: Exam, pending: list):
+        sem = asyncio.Semaphore(CLOSE_CONCURRENCY)
+        touched: dict = {}
+        try:
+            await asyncio.gather(*(self._close_one(job, exam, login, m, lab, p, sem, touched)
+                                   for login, m, lab, p in pending), return_exceptions=True)
+            if self.exams.get(exam.id) is exam:     # not deleted meanwhile (DELETE /api/exams/{id}?close=1)
+                for m in touched.values():
+                    await self.exams._persist_member(exam, m)
+        finally:
+            job.finished_at = self.clock()
+
+    async def _close_one(self, job: CloseJob, exam: Exam, login: str, m: Member, lab: str, p: dict,
+                         sem: asyncio.Semaphore, touched: dict):
+        try:
+            async with sem:
                 status = await self._call(exam, p.get('host', ''), p.get('rln', ''), 'DELETE', timeout=CLOSE_TIMEOUT)
-                if status is not None and (status < 400 or status == 404):
-                    closed += 1
-                    del m.projects[lab]
-            if closed:
-                await self.exams._persist_member(exam, m)
-        return closed
+            if status is not None and (status < 400 or status == 404):
+                job.closed += 1
+                m.projects.pop(lab, None)
+                touched[login] = m
+            else:
+                job.failed += 1
+        finally:
+            job.done += 1
+
+    def closing_of(self, exam: Exam) -> CloseJob | None:
+        """The close job of the exam: running, or finished less than ``CLOSE_KEEP`` seconds ago."""
+        job = self._closing.get(exam.id)
+        if job is None:
+            return None
+        if not job.running and self.clock() - job.finished_at > CLOSE_KEEP:
+            del self._closing[exam.id]
+            return None
+        return job
+
+    async def shutdown(self):
+        """The portal stops: the running close jobs are cancelled (the stops already sent go on
+        at the agents)."""
+        for job in list(self._closing.values()):
+            if job.task is not None and not job.task.done():
+                job.task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await job.task
+            if job.finished_at is None:          # a task cancelled before its first step ran no finally
+                job.finished_at = self.clock()
+        self._closing.clear()
 
     # -- the members table ----------------------------------------------------------------------
 

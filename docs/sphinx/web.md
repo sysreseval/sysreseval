@@ -649,7 +649,9 @@ What a student sees, in order:
   (the answers included). After *Continue* the usual pages are back; the exam projects stay
   hidden from the student (and refused) until they are closed: `close_after` after the end by
   the agent (the idle timeout of an exam project counts from its end), or by the instructor
-  (*Close projects* on the page, or the Watch page).
+  (*Close projects* on the page, or the Watch page; the page stops them in the background,
+  eight at a time, and shows the progress under the title of the exam; a second click while a
+  close runs changes nothing).
 - A student connecting from an address outside the networks of their exam gets the bar in red
   naming their address, and no project at all (neither the exam's nor the others) while the exam
   binds them.

@@ -420,6 +420,15 @@ msgstr "Trop de tentatives de connexion : réessayez dans une minute."
 msgid "The directory does not answer."
 msgstr "L'annuaire ne répond pas."
 
+msgid "Closing {n} project(s)…"
+msgstr "Fermeture de {n} projet(s)…"
+
+msgid "No project to close"
+msgstr "Aucun projet à fermer"
+
+msgid "closing projects: {done}/{total} ({failed} failed)"
+msgstr "fermeture des projets : {done}/{total} ({failed} en échec)"
+
 msgid "Text to paste into the X desktop, or received from it"
 msgstr "Texte à coller dans le bureau X, ou reçu de celui-ci"
 

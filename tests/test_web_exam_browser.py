@@ -143,7 +143,7 @@ async def create_exam(h, **over) -> dict:
 
 async def act(h, xid, action, body) -> dict:
     status, data = await api(h, 'POST', f'/api/exams/{xid}/{action}', PROF, body)
-    assert status == 200, data
+    assert status in (200, 202), data         # 202: a close running in the background
     return data
 
 
@@ -292,7 +292,8 @@ class TestTimeChanges:
                 await page.wait_for(f"{ON_PROJECTS_PAGE} && !{BOUND} && {LOGO}", what="the usual Projects page")
                 # the project closed by the instructor, then +5 minutes for everybody: the exam
                 # resumes and the page starts a new project
-                assert await act(h, xid, 'close-projects', {'all': True}) == {'closed': 1}
+                closing = (await act(h, xid, 'close-projects', {'all': True}))['closing']    # 202: in the background
+                assert closing['total'] == 1 and closing['running'] is True
                 await until(lambda: _gone(h, rln), SYNC_WAIT, "the project closed")
                 await act(h, xid, 'adjust', {'all': True, 'extra_minutes': 5})
                 state = await exam_state(h)

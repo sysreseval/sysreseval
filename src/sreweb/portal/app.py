@@ -189,6 +189,8 @@ class Portal:
         await self.presentations.shutdown()
         await self.focuses.stop_loop()
         await self.focuses.shutdown()
+        if self.exam_projects is not None:
+            await self.exam_projects.shutdown()   # the running close jobs cancelled (the stops sent go on)
         await self.exams.stop_loop()        # the exams themselves persist (the database)
 
     async def _on_cleanup(self, app):
