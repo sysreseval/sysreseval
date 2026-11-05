@@ -1,6 +1,6 @@
 """TP traceroute et TTL (IPv4 only): emulating traceroute with ping, then with UDP datagrams and a
-capture behind a firewall, a routing loop, the traceroute methods against a firewall and a silent
-router, what the TTL of the replies and the source address of the ICMP errors reveal.
+capture behind a firewall, a routing loop, what the TTL of the replies and the source address of
+the ICMP errors reveal.
 
 Three independent networks in one project.
 
@@ -26,21 +26,20 @@ the ICMP errors in a ``tcpdump`` / ``tshark`` capture (``nc`` prints nothing: th
 report *time exceeded* to a UDP socket).  ``fw`` counts the non-ICMP probes of a small TTL: the evaluation reads
 that counter.  No silent router on this island.
 
-Island B (parts 3 to 5): ``inj`` (traceroute available) — ``lan3`` — a triangle of routers ``r1``
+Island B (parts 3 and 4): ``inj`` (traceroute available) — ``lan3`` — a triangle of routers ``r1``
 (``l12``) ``r2`` (``l23``) ``r3`` (``l31`` back to ``r1``) without any indirect route, and ``srv``
 behind ``r3`` on ``lan4`` (visible, no terminal: an HTTP server behind a firewall dropping UDP).
 The student builds the loop r1 → r2 → r3 → r1 with default routes and observes it with ``ping -t``,
-``traceroute`` and ``tcpdump`` / ``tshark`` (part 3), compares the UDP / ICMP / TCP methods against ``srv`` and
-the user states ``srv_reject`` / ``srv_drop`` / ``r2_silent`` / ``r2_talkative`` (part 4), then reads
-the reply TTL, ``ping -R`` and the source addresses of the errors (``icmp_errors_use_inbound_ifaddr``)
-and sets ``ip_default_ttl`` on ``inj`` (part 5).  The ``final`` state applies the solution of parts
-3 and 5, sends the UDP probes of part 2 from ``m2`` and fills every form.  Every question ends with its solution in an ``instructor()`` block.
+``traceroute`` and ``tcpdump`` / ``tshark`` (part 3), then reads the reply TTL, ``ping -R`` and the
+source addresses of the errors (``icmp_errors_use_inbound_ifaddr``) and sets ``ip_default_ttl`` on
+``inj`` (part 4).  The ``final`` state applies the solution of parts 3 and 4, sends the UDP probes
+of part 2 from ``m2`` and fills every form.  Every question ends with its solution in an
+``instructor()`` block.
 
 Pure helpers (commands, parsers, loop arithmetic, nft texts, scoring of the typed path) are in
 ``lib/traceroute.py``.
 """
 import random
-import re
 from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv4Interface, IPv4Network
 from typing import Dict, List, Tuple
@@ -73,9 +72,9 @@ allow_save_restore = True
 
 DOMAIN = "tp-trace.lan"
 HTTP_PORT = 80
-SILENT_TABLE = "silent"            # the hidden silent router and r2_silent: no ICMP time exceeded
+SILENT_TABLE = "silent"            # the hidden silent router: no ICMP time exceeded
 SILENT_RULES = "/root/silent.nft"
-FW_TABLE = "fw"                    # srv: UDP dropped (srv_drop) or rejected (srv_reject)
+FW_TABLE = "fw"                    # srv: UDP dropped
 FW_RULES = "/root/fw.nft"
 TTLFW_TABLE = "ttlfw"              # fw: echo requests of a small TTL dropped, other probes counted
 TTLFW_RULES = "/root/ttlfw.nft"
@@ -275,40 +274,41 @@ pourrait circuler indéfiniment s'il existe une boucle de routage par suite d'un
 (cf section @@ref:loops@@).
 
 La valeur initiale du TTL dépend du système : **64** pour Linux, macOS et les BSD, **128** pour Windows,
-**255** pour la plupart des routeurs (Cisco, Juniper). Sous Linux elle se lit et se change par
+**255** pour la plupart des routeurs (Cisco, Juniper). 
+
+Sous Linux elle se lit et se change par
 `sysctl net.ipv4.ip_default_ttl`. 
-On voit le TTL de chaque paquet capturé avec `tcpdump -n -v` (`ttl 63` dans l'en-tête
-IP) ou avec `tshark -n` (`ttl=63` au bout de la ligne de chaque écho ; pour n'importe quel paquet,
-`tshark -n -T fields -e ip.src -e ip.dst -e ip.ttl -e _ws.col.Info`), et celui des réponses d'écho
-dans la sortie de `ping` (`ttl=62`).
+
+On voit le TTL de chaque paquet capturé avec `tcpdump -n -v` ou avec `tshark -n`
+(on peut spécifier les champs à afficher ainsi :
+
+``tshark -n -T fields -e ip.src -e ip.dst -e ip.ttl -e _ws.col.Info``
 """)
             + info_subtitle(tr("Le message ICMP time exceeded"), tag="time-exceeded")
             + tr("""
-Le routeur qui jette un paquet au TTL épuisé renvoie à l'**émetteur** un message ICMP **type 11,
-code 0** (*time to live exceeded in transit*). Comme toute erreur ICMP, il contient l'en-tête IP du
+Le routeur qui détruit un paquet au TTL 1 renvoie à **l'émetteur du paquet** un message ICMP *time to live exceeded in transit*
+(**type 11, code 0**). Comme toute erreur ICMP, il contient l'en-tête IP du
 paquet fautif et les 8 premiers octets de sa charge utile : l'émetteur reconnaît ainsi le paquet
 concerné (identifiant et numéro de séquence d'un écho ICMP, ports d'un datagramme UDP ou d'un
-segment TCP). `ping` l'affiche `From ADRESSE icmp_seq=1 Time to live exceeded` ; `tcpdump` le
-montre `ADRESSE > ÉMETTEUR: ICMP time exceeded in-transit` et `tshark`
-`ADRESSE → ÉMETTEUR ICMP Time-to-live exceeded (Time to live exceeded in transit)`.
+segment TCP). La commande `ping` et les analyseurs réseaux `tcpdump` et `tshark` le montrent.
 
-**Quelle adresse source ?** Le routeur a plusieurs interfaces. Sous Linux, par défaut
-(`net.ipv4.icmp_errors_use_inbound_ifaddr = 0`), l'erreur ICMP part avec l'adresse de l'interface
-**par laquelle elle est émise**, c'est-à-dire celle que donne la route du routeur vers l'émetteur.
-Quand le chemin retour reprend le lien d'arrivée (cas habituel), c'est l'adresse d'entrée du paquet ;
-sinon c'est une autre interface du même routeur. Avec le paramètre à 1, c'est toujours l'adresse de
-l'interface par laquelle le paquet fautif est **arrivé**, ce que font la plupart des routeurs dédiés
-et ce qu'un administrateur attend en général.
+**Adresse source du message TTL exceeded.** Sous Linux, l'erreur ICMP part avec 
+l'adresse de l'interface du routeur
+**par laquelle elle est émise** si le paramètre `net.ipv4.icmp_errors_use_inbound_ifaddr` vaut `0`.
 
-Les routeurs **limitent le débit** des erreurs ICMP qu'ils émettent (Linux :
-`net.ipv4.icmp_ratelimit`, une par seconde et par destination après une rafale de quelques
-messages ; `icmp_msgs_per_sec` au total) : une sonde sans réponse n'est pas forcément un routeur
-muet. Dans cette maquette la limitation est désactivée.
+Avec le paramètre à 1, c'est toujours l'adresse de
+l'interface par laquelle le paquet fautif est **arrivé**, ce que font également la plupart des routeurs dédiés.
+
+**limitation du débit par les routeurs** Les routeurs limitent souvent le débit
+des erreurs ICMP qu'ils émettent. Une sonde sans réponse n'est pas forcément un routeur muet.
+
+Sous Linux, les paramètres `net.ipv4.icmp_ratelimit` et `icmp_msgs_per_sec` contrôlent cette limitation.
+ Dans ce projet la limitation est désactivée.
 """)
             + info_subtitle(tr("Le principe de traceroute"), tag="principle")
             + tr("""
 `traceroute` exploite ce mécanisme pour **découvrir les routeurs** d'un chemin : il envoie une sonde
-avec un **TTL de 1** (le premier routeur la jette et répond *time exceeded* : son adresse est
+avec un **TTL de 1** (le premier routeur la détruit et répond *time exceeded* : son adresse est
 connue), puis une sonde avec un TTL de 2, de 3… jusqu'à ce que la **destination elle-même** réponde.
 La réponse de la destination dépend de la sonde (section @@ref:methods@@) : *port unreachable*
 (ICMP type 3, code 3) pour un datagramme UDP vers un port fermé, *echo reply* pour un écho ICMP,
@@ -339,7 +339,7 @@ sondes successives peuvent suivre des chemins différents quand un routeur répa
   en débit) : le chemin fonctionne. Des `*` **jusqu'à la fin** sans que la destination apparaisse :
   les sondes ou les réponses sont filtrées quelque part, ou la destination est injoignable.
 - `!H`, `!N` : *host* / *network unreachable* renvoyé par un routeur ; `!X` : *communication
-  administratively prohibited*, un pare-feu qui **rejette** au lieu de jeter (ICMP type 3, code 13) ;
+  administratively prohibited*, un pare-feu qui **rejette** au lieu de détruire la paquet (ICMP type 3, code 13) ;
   `!P` : protocole inaccessible. La trace s'arrête à ce saut.
 - Une suite d'adresses qui se **répète** (`A B C A B C …`) jusqu'au nombre maximal de sauts : boucle
   de routage (section @@ref:loops@@).
@@ -352,6 +352,10 @@ Options utiles : `-n` (pas de noms), `-q 1` (une sonde par saut), `-w 1` (une se
 """)
             + info_subtitle(tr("Les méthodes : UDP, ICMP, TCP et les pare-feu"), tag="methods")
             + tr("""
+`traceroute` peut fonctionner avec n'importe quel type de paquet IP, seul compte le TTL.
+Par défaut `traceroute` utilise des paquets UDP mais s'ils sont détruits par un parefeu sur le chemin on
+peut utiliser des paquets ICMP ou TCP.           
+
 | méthode | sondes | fin de parcours | remarque |
 |---------|--------|-----------------|----------|
 | UDP (défaut sous Linux) | datagrammes vers les ports 33434, 33435… (« improbables ») | ICMP *port unreachable* de la destination | souvent filtré par les pare-feu : des `*` à la fin |
@@ -361,64 +365,64 @@ Options utiles : `-n` (pas de noms), `-q 1` (une sonde par saut), `-w 1` (une se
 Autres outils : `tracepath` (UDP, sans privilèges, affiche aussi le MTU du chemin ; `no reply` pour
 un saut muet), `mtr` (ICMP, trace répétée avec statistiques de pertes), `nmap --traceroute`.
 
-**Pare-feu.** Un hôte qui **jette** (*drop*) les datagrammes UDP ne renvoie jamais le *port
+**Pare-feu.** Un hôte qui **détruit** (*drop*) les datagrammes UDP ne renvoie jamais le *port
 unreachable* : `traceroute` affiche des `*` jusqu'à `-m` alors que la machine répond à `ping` et
 sert ses pages web ; `traceroute -I` ou `traceroute -T` l'atteignent. Un pare-feu qui **rejette**
 (*reject*) avec *admin prohibited* termine la trace par `!X`. Un routeur qui filtre ses propres
 erreurs *time exceeded* apparaît comme un saut muet.
 """)
-            + info_subtitle(tr("Émuler traceroute avec ping"), tag="emulation")
-            + tr("""
-`ping` fixe le TTL de ses échos avec `-t` : `ping -n -c 1 -W 1 -t 1 DEST` fait répondre le premier
-routeur (`From ADRESSE icmp_seq=1 Time to live exceeded`), `-t 2` le deuxième, et ainsi de suite
-jusqu'à la réponse de la destination (`64 bytes from DEST`). C'est exactement traceroute en mode
-ICMP, une sonde par saut ; un saut muet donne `1 packets transmitted, 0 received`. Options utiles :
-`-n` (pas de résolution inverse), `-W 1` (une seconde d'attente), `-c 1` (un seul écho).
-
-`ping -R` demande aux routeurs d'**enregistrer leur adresse** dans le paquet (option IP *record
-route*) : la réponse affiche, après `RR:`, l'adresse de l'émetteur, les adresses de **sortie** de
-chaque routeur à l'aller, la destination (deux fois : à l'arrivée, puis comme source de la réponse),
-puis les adresses de sortie au **retour**. L'en-tête IP n'a de place que pour **neuf** adresses et
-beaucoup de routeurs ignorent l'option : c'est un complément, pas un remplaçant.
-
-`tcpdump -n -v -i eth0 icmp` sur un routeur montre les sondes qui le traversent avec leur TTL
-(`ttl N`) et les erreurs qu'il émet (`ICMP time exceeded in-transit`) ; `tshark -n -i eth0 icmp`
-de même (`ttl=N` au bout de la ligne de chaque écho, `Time-to-live exceeded`).
-""")
-            + info_subtitle(tr("Émuler traceroute sans ICMP : UDP, nc et une capture"), tag="emulation-udp")
-            + tr("""
-Le TTL est un champ de l'en-tête **IP** : n'importe quel paquet fait l'affaire, pas seulement un
-écho ICMP. C'est ce que fait `traceroute` lui-même avec ses datagrammes UDP (section
-@@ref:methods@@), et c'est indispensable quand un pare-feu filtre les échos ICMP (ou seulement ceux
-de TTL faible, pour gêner la cartographie de son réseau) tout en laissant passer le reste.
-
-**Envoyer la sonde** : `echo x | nc -u -w 1 -M 3 DEST 33434` envoie un datagramme UDP de TTL 3
-vers un port « improbable » de la destination (`-M` fixe le TTL avec le netcat d'OpenBSD de Debian
-12 ; `-w 1` fait quitter `nc` après une seconde sans réponse). Sans cette option, on fixe le TTL
-des paquets émis soit pour toute la machine avec `sysctl -w net.ipv4.ip_default_ttl=3` (à remettre
-à 64 ensuite), soit pour les seuls datagrammes concernés avec une règle nftables qui réécrit le
-champ :
-
-```
-nft add table ip trace
-nft 'add chain ip trace output { type filter hook output priority mangle; }'
-nft add rule ip trace output udp dport 33434 ip ttl set 3
-```
-
-**Lire la réponse** dans un second terminal : `tcpdump -n -i eth0 icmp` affiche
-`R > M: ICMP time exceeded in-transit` pour le routeur R qui a jeté la sonde, puis, quand le TTL
-suffit pour arriver, `D > M: ICMP D udp port 33434 unreachable` : la destination D est atteinte et
-la trace est finie. `tshark -n -i eth0 icmp` montre la même chose (`Time-to-live exceeded`,
-`Destination unreachable (Port unreachable)`) ; pour le détail d'un message, datagramme cité compris :
-`tcpdump -n -v -i eth0 icmp` ou `tshark -n -i eth0 -O icmp icmp`.
-
-Pourquoi une capture ? Le noyau ne transmet une erreur ICMP à un socket UDP que si elle est
-« dure » (*port unreachable*) ou si le programme a demandé toutes les erreurs (option `IP_RECVERR`,
-ce que fait `traceroute`) : `nc` ne voit pas passer les *time exceeded*, et il se termine sans
-rien dire dans tous les cas (seul son code de retour change, avec `-v`, quand le port est
-inaccessible). Un SYN TCP (`nc -w 1 -M 3 DEST 80`) fonctionne de la même façon, comme
-`traceroute -T`.
-""")
+#             + info_subtitle(tr("Émuler traceroute avec ping"), tag="emulation")
+#             + tr("""
+# `ping` fixe le TTL de ses échos avec `-t` : `ping -n -c 1 -W 1 -t 1 DEST` fait répondre le premier
+# routeur (`From ADRESSE icmp_seq=1 Time to live exceeded`), `-t 2` le deuxième, et ainsi de suite
+# jusqu'à la réponse de la destination (`64 bytes from DEST`). C'est exactement traceroute en mode
+# ICMP, une sonde par saut ; un saut muet donne `1 packets transmitted, 0 received`. Options utiles :
+# `-n` (pas de résolution inverse), `-W 1` (une seconde d'attente), `-c 1` (un seul écho).
+#
+# `ping -R` demande aux routeurs d'**enregistrer leur adresse** dans le paquet (option IP *record
+# route*) : la réponse affiche, après `RR:`, l'adresse de l'émetteur, les adresses de **sortie** de
+# chaque routeur à l'aller, la destination (deux fois : à l'arrivée, puis comme source de la réponse),
+# puis les adresses de sortie au **retour**. L'en-tête IP n'a de place que pour **neuf** adresses et
+# beaucoup de routeurs ignorent l'option : c'est un complément, pas un remplaçant.
+#
+# `tcpdump -n -v -i eth0 icmp` sur un routeur montre les sondes qui le traversent avec leur TTL
+# (`ttl N`) et les erreurs qu'il émet (`ICMP time exceeded in-transit`) ; `tshark -n -i eth0 icmp`
+# de même (`ttl=N` au bout de la ligne de chaque écho, `Time-to-live exceeded`).
+# """)
+#             + info_subtitle(tr("Émuler traceroute sans ICMP : UDP, nc et une capture"), tag="emulation-udp")
+#             + tr("""
+# Le TTL est un champ de l'en-tête **IP** : n'importe quel paquet fait l'affaire, pas seulement un
+# écho ICMP. C'est ce que fait `traceroute` lui-même avec ses datagrammes UDP (section
+# @@ref:methods@@), et c'est indispensable quand un pare-feu filtre les échos ICMP (ou seulement ceux
+# de TTL faible, pour gêner la cartographie de son réseau) tout en laissant passer le reste.
+#
+# **Envoyer la sonde** : `echo x | nc -u -w 1 -M 3 DEST 33434` envoie un datagramme UDP de TTL 3
+# vers un port « improbable » de la destination (`-M` fixe le TTL avec le netcat d'OpenBSD de Debian
+# 12 ; `-w 1` fait quitter `nc` après une seconde sans réponse). Sans cette option, on fixe le TTL
+# des paquets émis soit pour toute la machine avec `sysctl -w net.ipv4.ip_default_ttl=3` (à remettre
+# à 64 ensuite), soit pour les seuls datagrammes concernés avec une règle nftables qui réécrit le
+# champ :
+#
+# ```
+# nft add table ip trace
+# nft 'add chain ip trace output { type filter hook output priority mangle; }'
+# nft add rule ip trace output udp dport 33434 ip ttl set 3
+# ```
+#
+# **Lire la réponse** dans un second terminal : `tcpdump -n -i eth0 icmp` affiche
+# `R > M: ICMP time exceeded in-transit` pour le routeur R qui a jeté la sonde, puis, quand le TTL
+# suffit pour arriver, `D > M: ICMP D udp port 33434 unreachable` : la destination D est atteinte et
+# la trace est finie. `tshark -n -i eth0 icmp` montre la même chose (`Time-to-live exceeded`,
+# `Destination unreachable (Port unreachable)`) ; pour le détail d'un message, datagramme cité compris :
+# `tcpdump -n -v -i eth0 icmp` ou `tshark -n -i eth0 -O icmp icmp`.
+#
+# Pourquoi une capture ? Le noyau ne transmet une erreur ICMP à un socket UDP que si elle est
+# « dure » (*port unreachable*) ou si le programme a demandé toutes les erreurs (option `IP_RECVERR`,
+# ce que fait `traceroute`) : `nc` ne voit pas passer les *time exceeded*, et il se termine sans
+# rien dire dans tous les cas (seul son code de retour change, avec `-v`, quand le port est
+# inaccessible). Un SYN TCP (`nc -w 1 -M 3 DEST 80`) fonctionne de la même façon, comme
+# `traceroute -T`.
+# """)
             + info_subtitle(tr("Le TTL des réponses"), tag="reply-ttl")
             + tr("""
 Le `ttl=` affiché par `ping` est celui de l'*echo reply* à son arrivée : la destination l'a émis
@@ -459,22 +463,22 @@ traceroute depuis l'autre extrémité (*reverse traceroute*), ou des indices : l
 erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne** vers l'émetteur
 (section @@ref:time-exceeded@@).
 """)
-            + info_subtitle(tr("Outils"), tag="tools")
-            + tr("""
-| outil | usage |
-|-------|-------|
-| `ping -n -c 1 -W 1 -t N DEST` | sonde au TTL N : le routeur du saut N répond |
-| `ping -n -c 1 -R DEST` | adresses de sortie enregistrées (neuf au plus, aller puis retour) |
-| `echo x \\| nc -u -w 1 -M N DEST 33434` | sonde UDP de TTL N (sinon `sysctl -w net.ipv4.ip_default_ttl=N` ou une règle `ip ttl set`) |
-| `tcpdump -n -i IFACE icmp`, `tshark -n -i IFACE icmp` | erreurs ICMP reçues : routeur qui répond, fin de parcours |
-| `traceroute -n -q 1 -w 1 -m 8 DEST` | trace UDP ; `-I` ICMP, `-T` TCP (port 80, `-p PORT`) |
-| `tracepath -n DEST`, `mtr -n DEST` | variantes |
-| `tcpdump -n -v -i IFACE icmp`, `tshark -n -i IFACE -O icmp icmp` | TTL des paquets (`ttl N` ; `tshark -n` l'écrit déjà, `ttl=N`, sur la ligne de chaque écho), détail des erreurs ICMP |
-| `ip route`, `ip route get DEST` | table de routage, route choisie pour une destination |
-| `ip route add default via GW`, `ip route replace default via GW`, `ip route del default` | routes |
-| `sysctl net.ipv4.ip_default_ttl`, `sysctl -w net.ipv4.icmp_errors_use_inbound_ifaddr=1` | paramètres du noyau |
-| `nft list ruleset` | règles de filtrage d'une machine |
-""")
+#             + info_subtitle(tr("Outils"), tag="tools")
+#             + tr("""
+# | outil | usage |
+# |-------|-------|
+# | `ping -n -c 1 -W 1 -t N DEST` | sonde au TTL N : le routeur du saut N répond |
+# | `ping -n -c 1 -R DEST` | adresses de sortie enregistrées (neuf au plus, aller puis retour) |
+# | `echo x \\| nc -u -w 1 -M N DEST 33434` | sonde UDP de TTL N (sinon `sysctl -w net.ipv4.ip_default_ttl=N` ou une règle `ip ttl set`) |
+# | `tcpdump -n -i IFACE icmp`, `tshark -n -i IFACE icmp` | erreurs ICMP reçues : routeur qui répond, fin de parcours |
+# | `traceroute -n -q 1 -w 1 -m 8 DEST` | trace UDP ; `-I` ICMP, `-T` TCP (port 80, `-p PORT`) |
+# | `tracepath -n DEST`, `mtr -n DEST` | variantes |
+# | `tcpdump -n -v -i IFACE icmp`, `tshark -n -i IFACE -O icmp icmp` | TTL des paquets (`ttl N` ; `tshark -n` l'écrit déjà, `ttl=N`, sur la ligne de chaque écho), détail des erreurs ICMP |
+# | `ip route`, `ip route get DEST` | table de routage, route choisie pour une destination |
+# | `ip route add default via GW`, `ip route replace default via GW`, `ip route del default` | routes |
+# | `sysctl net.ipv4.ip_default_ttl`, `sysctl -w net.ipv4.icmp_errors_use_inbound_ifaddr=1` | paramètres du noyau |
+# | `nft list ruleset` | règles de filtrage d'une machine |
+# """)
             + info_subtitle(tr("Dépannage"), tag="troubleshooting")
             + tr("""
 | symptôme | cause probable |
@@ -543,20 +547,9 @@ erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne*
 
     # -- states ------------------------------------------------------------------
 
-    def _srv_firewall(self, policy: str):
-        self.file('srv', FW_RULES, trc.nft_udp_policy(FW_TABLE, policy))
-        self.cmd('srv', f"nft delete table ip {FW_TABLE} 2>/dev/null; nft -f {FW_RULES}")
-
-    def _r2_silent(self, silent: bool):
-        if silent:
-            self.file('r2', SILENT_RULES, trc.nft_drop_icmp_types(SILENT_TABLE))
-            self.cmd('r2', f"nft delete table ip {SILENT_TABLE} 2>/dev/null; nft -f {SILENT_RULES}")
-        else:
-            self.cmd('r2', f"nft delete table ip {SILENT_TABLE} 2>/dev/null; true")
-
     def _configure_network(self):
         """Runtime configuration, applied at start and again after a restore (addresses, routes,
-        nft tables and daemons do not survive it); the user states are reset to their initial value."""
+        nft tables and daemons do not survive it)."""
         d = self.data
         for m, nc in self.net_config.items():
             set_net_config_entry(net_scheme=self, machine_name=m, nc_entry=nc)
@@ -572,10 +565,10 @@ erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne*
         self.file('fw', TTLFW_RULES, trc.nft_ttl_firewall(TTLFW_TABLE, d.ttl_min, iif='eth0',
                                                           probe_ttl_limit=PROBE_TTL_LIMIT, comment=PROBE_COUNTER))
         self.cmd('fw', f"nft delete table ip {TTLFW_TABLE} 2>/dev/null; nft -f {TTLFW_RULES}")
-        # srv: UDP dropped, web server; r2 talkative
-        self._srv_firewall('drop')
+        # srv: UDP dropped, web server
+        self.file('srv', FW_RULES, trc.nft_udp_policy(FW_TABLE, 'drop'))
+        self.cmd('srv', f"nft delete table ip {FW_TABLE} 2>/dev/null; nft -f {FW_RULES}")
         setup_http_server(self, 'srv', HTTP_PORT, 'srv')
-        self._r2_silent(False)
         # names: m1 / m2 know themselves, their gateway and their target only (nothing of the hidden
         # graphs); island B knows itself
         for island in (ISLAND_A, ISLAND_C):
@@ -597,31 +590,10 @@ erreurs ICMP, qui désignent l'interface par laquelle chaque routeur **retourne*
     def restore(self):
         self._configure_network()
 
-    @sre_state(user_allowed=True,
-               description=tr("srv rejette les datagrammes UDP (ICMP « administrativement interdit ») au lieu de les jeter"))
-    def srv_reject(self):
-        self._srv_firewall('reject')
-
-    @sre_state(user_allowed=True,
-               description=tr("srv jette les datagrammes UDP sans répondre (état initial)"))
-    def srv_drop(self):
-        self._srv_firewall('drop')
-
-    @sre_state(user_allowed=True,
-               description=tr("r2 n'émet plus de message ICMP « time exceeded » (routeur muet)"))
-    def r2_silent(self):
-        self._r2_silent(True)
-
-    @sre_state(user_allowed=True,
-               description=tr("r2 émet de nouveau ses messages ICMP « time exceeded » (état initial)"))
-    def r2_talkative(self):
-        self._r2_silent(False)
-
     @sre_state(user_allowed=False)
     def final(self):
-        """Reference solution of parts 3 and 5 (idempotent; the user states are left as they are),
-        one UDP probe of part 2 from m2 so that the counter of fw is not zero; nothing to configure
-        for parts 1 and 4 (answers only)."""
+        """Reference solution of parts 3 and 4 (idempotent), one UDP probe of part 2 from m2 so that
+        the counter of fw is not zero; nothing to configure for part 1 (answers only)."""
         d = self.data
         self.cmd('m2', f"{trc.nc_udp_cmd(self.target_address(ISLAND_C).ip, ttl=PROBE_TTL)}; true", timeout=10)
         for m, entries in self.net_config_final.items():
@@ -708,11 +680,6 @@ class Grade(Grade0):
         loop_out, _ = self.test('inj', loop_cmd, timeout=15, allow_error=True)
         from_64 = owner(trc.error_from(tc.section_text(loop_out, 'T64')) or '')
         from_b = owner(trc.error_from(tc.section_text(loop_out, 'TB')) or '')
-        http_out, _ = self.test('inj', f"curl -s -m 5 http://{srv}:{HTTP_PORT}/", allow_error=True)
-        http_ok = 'SERVER=srv' in (http_out or '')
-        tcp_hops = trc.traceroute_path(trc.traceroute_run(self, 'inj', srv, method='tcp', max_hops=6))
-        tcp_routers = sum(int(k < len(tcp_hops) and owner(tcp_hops[k] or '') == CYCLE[k]) for k in range(3))
-        tcp_srv = len(tcp_hops) >= 4 and tcp_hops[3] == srv
         inbound = {r: get_sysctl_int(self, r, 'net.ipv4.icmp_errors_use_inbound_ifaddr') for r in ('r2', 'r3')}
         inj_ttl = get_sysctl_int(self, 'inj', 'net.ipv4.ip_default_ttl')
 
@@ -764,7 +731,7 @@ IP : vous sonderez avec des datagrammes UDP (`nc`) et une capture (`tcpdump` ou 
 """)
             + addressing_c
             + tr("""
-*Réseau 3* (parties 3 à 5) : le poste `inj`, trois routeurs `r1`, `r2`, `r3` reliés en triangle, et
+*Réseau 3* (parties 3 et 4) : le poste `inj`, trois routeurs `r1`, `r2`, `r3` reliés en triangle, et
 le serveur web `srv` (visible, sans terminal) derrière `r3`. Adresses en place, routage des paquets
 activé sur `r1`, `r2`, `r3`, noms dans `/etc/hosts` (`r1_lan3`, `r2_l23`, `srv`…), mais **aucune
 route indirecte** : vous les ajouterez. `inj` dispose de `traceroute`.
@@ -775,15 +742,9 @@ route indirecte** : vous les ajouterez. `inj` dispose de `traceroute`.
 `ping -n -c 1 -W 1`, `traceroute -n -q 1 -w 1 -m 8`. L'adresse de destination de la partie 3
 n'appartient à aucun réseau de la maquette : c'est voulu.
 
-**États.** L'onglet **Appliquer une configuration** propose quatre états pour la partie 4, que vous
-appliquez vous-même au moment indiqué : `srv_reject` / `srv_drop` (le pare-feu de `srv` rejette ou
-jette les datagrammes UDP) et `r2_silent` / `r2_talkative` (`r2` n'émet plus, ou émet de nouveau,
-ses messages *time exceeded*). L'évaluation ne dépend pas de l'état en cours.
-
 **Évaluation.** Chaque évaluation lit vos réponses aux formulaires, le compteur de sondes du
 pare-feu `fw`, les routes de `inj`, `r1`, `r2`, `r3` et deux paramètres du noyau, puis lance depuis
-`inj` deux `ping -t` vers la destination de la partie 3, un `traceroute -T` et une requête web vers
-`srv` (une dizaine de secondes). Elle ne modifie rien.
+`inj` deux `ping -t` vers la destination de la partie 3 (quelques secondes). Elle ne modifie rien.
 """)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour ce projet.
@@ -808,22 +769,20 @@ pare-feu `fw`, les routes de `inj`, `r1`, `r2`, `r3` et deux paramètres du noya
   répond pour N ≥ {ttl_min} seulement.
 - Partie 3 : destination `{far}`, boucle attendue `r1 → r2 → r3 → r1` ; `ping -t {ttl_a}` → `r2`,
   `ping -t {ttl_b}` → `r3`, TTL 64 → `r1`.
-- Partie 5 : TTL à régler sur `inj` : {inj_ttl}.
-- L'état `final` (onglet *Appliquer une configuration*) applique la solution des parties 3 et 5
+- Partie 4 : TTL à régler sur `inj` : {inj_ttl}.
+- L'état `final` (onglet *Appliquer une configuration*) applique la solution des parties 3 et 4
   (routes de la boucle sur `inj`, `r1`, `r2`, `r3`, `icmp_errors_use_inbound_ifaddr=1` sur `r2` et
   `r3`, `ip_default_ttl={inj_ttl}` sur `inj`), envoie depuis `m2` un datagramme UDP de TTL
   {probe_ttl} vers `target2` (le compteur de `fw` n'est plus nul ; après une restauration du projet
-  il faut renvoyer une sonde) et remplit tous les formulaires ; il ne touche pas aux états de la
-  partie 4. Rien à configurer pour les parties 1 et 4.
+  il faut renvoyer une sonde) et remplit tous les formulaires. Rien à configurer pour la partie 1.
 - Évaluation : compteur de `fw` ; `ip route` de `inj`, `r1`, `r2`, `r3` ; depuis `inj` : `ping -t 64`
-  et `ping -t {ttl_b}` vers `{far}` (adresse source du *time exceeded*),
-  `traceroute -n -T -q 1 -w 1 -m 6 {srv}`, `curl` vers `srv` ; `sysctl` sur `r2`, `r3`, `inj` ; les
-  formulaires.
+  et `ping -t {ttl_b}` vers `{far}` (adresse source du *time exceeded*) ; `sysctl` sur `r2`, `r3`,
+  `inj` ; les formulaires.
 """).format(n=n_routers, silent_hop=silent_hop, silent=d.silent, hops=self._hidden_hops_table(), target=target,
             reply_ttl=trc.reply_ttl(n_routers), n2=n_routers2, ttl_min=d.ttl_min, probe_limit=PROBE_TTL_LIMIT,
             counter=PROBE_COUNTER, hops2=self._hidden_hops_table(ISLAND_C), target2=target2,
             reply_ttl2=trc.reply_ttl(n_routers2), probe_ttl=PROBE_TTL,
-            far=far, ttl_a=d.ttl_a, ttl_b=d.ttl_b, inj_ttl=d.inj_ttl, srv=srv)),
+            far=far, ttl_a=d.ttl_a, ttl_b=d.ttl_b, inj_ttl=d.inj_ttl)),
         )
 
         # =====================================================================
@@ -845,14 +804,14 @@ Depuis `m1`, découvrez le chemin jusqu'à `target` ({target}) **sans traceroute
 traçage ont été retirés de `m1`. Il reste `ping`, `tcpdump`, `tshark` et les commandes habituelles.
 
 1. Vérifiez que `ping -n -c 1 target` répond et notez le `ttl=` de la réponse.
-2. Envoyez des échos de TTL croissant : `ping -n -c 1 -W 1 -t 1 target`, puis `-t 2`, `-t 3`…
-   (section @@ref:emulation@@). Chaque message `Time to live exceeded` révèle un routeur ; un TTL
+2. Envoyez des échos de TTL croissant : `ping -n -c 1 -W 1 -t 1 target`, puis `-t 2`, `-t 3`…. 
+Chaque message `Time to live exceeded` révèle un routeur ; un TTL
    sans aucune réponse est un routeur **muet** (section @@ref:reading@@) : notez `*` et continuez.
    Arrêtez-vous quand `target` répond elle-même.
 3. Observez les messages ICMP reçus avec `tcpdump -n -v -i eth0 icmp` (ou
    `tshark -n -i eth0 -O icmp icmp`) dans un second terminal de `m1` : type, code, adresse source,
    et le paquet cité dans le message.
-4. Comparez avec `ping -n -c 1 -R target` (section @@ref:emulation@@) : quelles adresses sont
+4. Comparez avec `ping -n -c 1 -R target` : quelles adresses sont
    enregistrées, combien, et pourquoi diffèrent-elles de celles de l'étape 2 ?
 5. Déduisez le nombre de routeurs entre `m1` et `target` et expliquez le `ttl=` de l'étape 1.
 """).format(target=target)
@@ -949,7 +908,7 @@ Depuis `m2`, découvrez le chemin jusqu'à `target2` ({target2}). Les outils de 
 retirés comme sur `m1`, mais cette fois le routeur `fw` est un **pare-feu** : il jette les échos
 ICMP de TTL faible, et ceux qui portent une option IP (*record route*). La méthode de la partie 1
 ne fonctionne donc plus : vous sonderez avec des **datagrammes UDP** et lirez les réponses dans une
-**capture** (section @@ref:emulation-udp@@).
+**capture**.
 
 1. Vérifiez que `ping -n -c 1 target2` répond et notez le `ttl=`. Essayez
    `ping -n -c 1 -W 1 -t 1 target2`, `-t 2`… : plus aucune réponse. Trouvez par essais successifs
@@ -1176,119 +1135,15 @@ ping -n -c 1 -t {ttl_b} {far}             # From {r3_l31} ... (r3)
         )
 
         # =====================================================================
-        # Part 4 — the traceroute methods, firewall, silent router
+        # Part 4 — reply TTL, asymmetry, source addresses
         # =====================================================================
-        part4 = self.add_grade_part(no_tr("part4"), tr("Partie 4 — Méthodes de traceroute, pare-feu et routeur muet"))
+        part4 = self.add_grade_part(no_tr("part4"), tr("Partie 4 — TTL des réponses, chemin retour et adresses sources"))
         q4_answers = {
-            "udp_result": "stars", "icmp_hop": "4", "tcp_cmd": "traceroute -n -q 1 -w 1 -m 8 -T srv",
-            "end_type": str(trc.ICMP_PORT_UNREACHABLE[0]), "end_code": str(trc.ICMP_PORT_UNREACHABLE[1]),
-            "tracert_method": "ICMP", "reject_flag": "x", "silent_hop2": "star", "silent_reach": "oui",
-        }
-        q4 = self.question_form(
-            section=self.section(0),
-            title=tr("UDP, ICMP, TCP : traceroute face à un pare-feu et à un routeur muet"),
-            description=tr("""
-`srv` ({srv}), derrière `r3`, est un serveur web protégé par un pare-feu qui **jette** tout
-datagramme UDP (il répond à `ping` et sert `http://srv/`). Avec la boucle de la partie 3 en place,
-les paquets de `inj` vers `srv` passent par `r1`, `r2` puis `r3`. Utilisez toujours
-`-n -q 1 -w 1 -m 8`.
-
-1. `traceroute srv` (méthode UDP, section @@ref:methods@@) : que se passe-t-il après le saut 3,
-   et pourquoi ? `curl http://srv/` fonctionne-t-il pendant ce temps ?
-2. `traceroute -I srv` puis `traceroute -T srv` : à quel saut `srv` apparaît-il ? Par quel message
-   une destination termine-t-elle normalement une trace UDP ?
-3. Appliquez l'état `srv_reject` (le pare-feu rejette au lieu de jeter) et relancez
-   `traceroute srv` (section @@ref:reading@@). Revenez avec `srv_drop`.
-4. Appliquez `r2_silent` (`r2` n'émet plus d'erreur *time exceeded*) : `traceroute -I srv`. Comment
-   distinguer un routeur muet d'un chemin coupé ? Revenez avec `r2_talkative`.
-""").format(srv=srv)
-            + instructor(tr("""
-**Solution.** Depuis `inj` :
-
-```
-traceroute -n -q 1 -w 1 -m 8 srv      # {r1}, {r2}, {r3}, puis * aux sauts 4 à 8
-curl http://srv/                      # SERVER=srv ... : le web passe pendant ce temps
-traceroute -n -q 1 -w 1 -m 8 -I srv   # ... 4  {srv}
-traceroute -n -q 1 -w 1 -m 8 -T srv   # ... 4  {srv}  (SYN sur le port 80, SYN/ACK en retour)
-# état srv_reject
-traceroute -n -q 1 -w 1 -m 8 srv      # ... 4  {srv} !X   (ICMP type 3, code 13)
-# état r2_silent
-traceroute -n -q 1 -w 1 -m 8 -I srv   #  1 {r1}   2 *   3 {r3}   4 {srv}
-```
-
-- Les sondes UDP arrivent à `srv` avec le TTL 1 restant, mais `srv` les jette sans *port
-  unreachable* : traceroute ne sait pas qu'il est arrivé et continue jusqu'à `-m`. Les échos ICMP
-  et les SYN TCP sont acceptés : `srv` apparaît au saut 4. Une trace UDP se termine normalement par
-  un ICMP type 3, code 3 (*port unreachable*) ; `tracert` de Windows utilise des échos ICMP.
-- `srv_reject` : la réponse *administrativement interdit* (type 3, code 13) est affichée `!X` et
-  termine la trace.
-- Routeur muet : le saut 2 reste `*` mais les sauts suivants et la destination répondent : le chemin
-  fonctionne (un chemin coupé donne des `*` jusqu'à la fin, et `ping` échoue).
-- Évaluation : `curl` vers `srv` depuis `inj` (2 points), `traceroute -T` depuis `inj` dont les
-  sauts 1 à 3 sont `r1`, `r2`, `r3` (1 point chacun) et le saut 4 `srv` (2 points), quel que soit
-  l'état de la partie 4 en cours ; les formulaires.
-""").format(r1=addr('r1', 'lan3').ip, r2=addr('r2', 'l23').ip, r3=addr('r3', 'l31').ip, srv=srv))
-            + tr("""
-**Observations.**
-
-- `traceroute srv` (UDP) après le saut 3 : @@{udp_result:>des étoiles jusqu'au nombre maximal de sauts>>>stars|srv au saut 4>>>srv|srv au saut 4 avec !X>>>reject}@@
-- Saut auquel `srv` apparaît avec `traceroute -I` : @@{icmp_hop:[0-9]+}@@
-- Commande utilisée pour une trace TCP vers le port 80 de `srv` : @@{tcp_cmd:.+}@@
-- Message ICMP qui termine normalement une trace UDP : type @@{end_type:[0-9]+}@@, code @@{end_code:[0-9]+}@@
-- Méthode de `tracert` (Windows) : @@{tracert_method:>UDP|ICMP|TCP}@@
-- Avec `srv_reject`, le saut 4 affiche : @@{reject_flag:>srv suivi de !X>>>x|srv suivi de !H>>>h|une étoile>>>stars|srv sans annotation>>>plain}@@
-- Avec `r2_silent`, le saut 2 affiche : @@{silent_hop2:>une étoile>>>star|l'adresse de r2>>>r2|l'adresse de srv>>>srv}@@
-- Avec `r2_silent`, la trace atteint-elle encore `srv` ? @@{silent_reach:>oui|non}@@
-""")
-            + instructor(tr("""
-**Réponses.** des étoiles jusqu'au bout ; `srv` au saut `{icmp_hop}` ; `{tcp_cmd}` (ou
-`tcptraceroute`) ; type `{end_type}` code `{end_code}` ; `tracert` : `{tracert_method}` ; `!X` ;
-une étoile au saut 2 ; la trace atteint encore `srv` : `{silent_reach}`.
-""").format(**q4_answers)),
-            cheat_answers={"final": q4_answers},
-        )
-        self.add_grade_element(
-            title=no_tr("http_srv"), max_grade=2, grade_part=part4,
-            grade=2 * int(http_ok),
-            description=tr("page web de srv obtenue depuis inj"),
-        )
-        self.add_grade_element(
-            title=no_tr("tcp_trace_routers"), max_grade=3, grade_part=part4,
-            grade=tcp_routers,
-            description=tr("traceroute -T depuis inj : r1, r2, r3 aux sauts 1 à 3"),
-        )
-        self.add_grade_element(
-            title=no_tr("tcp_trace_srv"), max_grade=2, grade_part=part4,
-            grade=2 * int(tcp_srv),
-            description=tr("traceroute -T depuis inj : srv au saut 4"),
-        )
-        for key, points, description, check in (
-                ("udp_result", 2, tr("trace UDP vers srv : des étoiles jusqu'au bout"), lambda v: v == "stars"),
-                ("icmp_hop", 2, tr("saut de srv dans la trace ICMP"), lambda v: _is(v, 4)),
-                ("tcp_cmd", 2, tr("commande d'une trace TCP"),
-                 lambda v: bool(re.search(r'traceroute.*\s-T\b|tcptraceroute', (q4.get("tcp_cmd") or '').strip()))),
-                ("end_type", 2, tr("message ICMP qui termine une trace UDP"),
-                 lambda v: _is(v, 3) and _is(q4.get("end_code"), 3)),
-                ("tracert_method", 1, tr("méthode de tracert"), lambda v: v == "icmp"),
-                ("reject_flag", 2, tr("annotation d'un rejet administratif"), lambda v: v == "x"),
-                ("silent_hop2", 1, tr("saut 2 avec r2 muet"), lambda v: v == "star"),
-                ("silent_reach", 1, tr("la trace atteint srv malgré le routeur muet"), lambda v: v == "oui")):
-            self.add_grade_element(
-                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
-                grade=points * int(check(_norm(q4.get(key)))),
-                description=description,
-            )
-
-        # =====================================================================
-        # Part 5 — reply TTL, asymmetry, source addresses
-        # =====================================================================
-        part5 = self.add_grade_part(no_tr("part5"), tr("Partie 5 — TTL des réponses, chemin retour et adresses sources"))
-        q5_answers = {
             "reply_ttl_srv": str(trc.reply_ttl(2)), "return_routers": "2", "forward_routers": "3", "asym_path": "r3_r1",
             "rr_r3": "eth2", "r2_iface": "eth1", "r2_iface_after": "eth0",
             "min_ttl": str(trc.min_ttl_to_reach(3)), "router_ttl3": "r3", "ttl_seen_r2": str(d.inj_ttl - 1),
         }
-        q5 = self.question_form(
+        q4 = self.question_form(
             section=self.section(0),
             title=tr("Ce que révèlent le TTL des réponses, ping -R et les adresses sources"),
             description=tr("""
@@ -1356,17 +1211,17 @@ ping -n -c 1 srv                      # ttl=62 toujours : c'est le TTL de srv, p
 **Réponses.** `ttl={reply_ttl_srv}` ; retour `{return_routers}` routeurs, aller `{forward_routers}` ;
 retour par `r3` puis `r1` ; `ping -R` : eth2 de `r3` ; saut 2 : eth1 de `r2` avant, eth0 après ;
 TTL minimal `{min_ttl}` ; avec 3 : `{router_ttl3}` ; TTL vu sur `r2` : `{ttl_seen_r2}`.
-""").format(**q5_answers)),
-            cheat_answers={"final": q5_answers},
+""").format(**q4_answers)),
+            cheat_answers={"final": q4_answers},
         )
         for r in ('r2', 'r3'):
             self.add_grade_element(
-                title=no_tr(f"inbound_ifaddr_{r}"), max_grade=2, grade_part=part5,
+                title=no_tr(f"inbound_ifaddr_{r}"), max_grade=2, grade_part=part4,
                 grade=2 * int(inbound[r] == 1),
                 description=tr("icmp_errors_use_inbound_ifaddr à 1 sur {r}").format(r=r),
             )
         self.add_grade_element(
-            title=no_tr("inj_default_ttl"), max_grade=3, grade_part=part5,
+            title=no_tr("inj_default_ttl"), max_grade=3, grade_part=part4,
             grade=3 * int(inj_ttl == d.inj_ttl),
             description=tr("TTL par défaut de inj réglé à {t}").format(t=d.inj_ttl),
         )
@@ -1382,8 +1237,8 @@ TTL minimal `{min_ttl}` ; avec 3 : `{router_ttl3}` ; TTL vu sur `r2` : `{ttl_see
                 ("router_ttl3", 2, tr("routeur qui répond à un TTL initial de 3"), lambda v: v == "r3"),
                 ("ttl_seen_r2", 1, tr("TTL des échos de inj sur r2"), lambda v: _is(v, d.inj_ttl - 1))):
             self.add_grade_element(
-                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
-                grade=points * int(check(_norm(q5.get(key)))),
+                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+                grade=points * int(check(_norm(q4.get(key)))),
                 description=description,
             )
 

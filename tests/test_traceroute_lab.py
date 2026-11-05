@@ -1,11 +1,11 @@
 """Offline tests of the traceroute lab (lab/sre/_DRAFT_misc/traceroute.py): data generation, the
 hidden lines of islands A and C, their destinations and routes, the state ops (tool removal, hosts files without
 any hidden address, firewalls and silent router, the UDP probe of the final state), the two-pass
-grading contract with synthetic outputs (nothing done: 0, everything done: 120), the instructor
+grading contract with synthetic outputs (nothing done: 0, everything done: 100), the instructor
 texts, the stripped lab file and the English identifiers.
 
 No Docker: the outputs of the containers are rendered from the generated data in the format of the
-real tools (ping, traceroute, ip route, sysctl, curl).
+real tools (ping, ip route, sysctl).
 """
 import datetime
 import importlib.util
@@ -107,7 +107,6 @@ def _synthetic(lab, ns, machine, command, final=True):
     """(output, code) of *command* on *machine* in a project where everything is done."""
     d = ns.data
     far = str(d.far_address)
-    srv = str(d.ips.srv.ip)
     if command in ('ip route', 'ip route show', 'ip -4 route'):
         return _ip_route(ns, machine, final), 0
     if command == 'ip a':
@@ -119,15 +118,6 @@ def _synthetic(lab, ns, machine, command, final=True):
             return "===T64\nping: connect: Network is unreachable\n===TB\nping: connect: Network is unreachable\n", 0
         return ("===T64\n" + _ping_error(far, ns.addr('r1', 'lan3').ip)
                 + "===TB\n" + _ping_error(far, ns.addr('r3', 'l31').ip)), 0
-    if command.startswith('curl '):
-        return ("SERVER=srv\nSERVER_IP=%s\nSERVER_PORT=80\nCLIENT_IP=%s\nCLIENT_PORT=40000\n" % (srv, d.ips.inj.ip), 0) \
-            if final else ('', 7)
-    if command.startswith('traceroute '):
-        if not final:
-            return f"traceroute to {srv} ({srv}), 6 hops max, 60 byte packets\n 1  *\n 2  *\n 3  *\n 4  *\n 5  *\n 6  *\n", 0
-        hops = [ns.addr('r1', 'lan3').ip, ns.addr('r2', 'l23').ip, ns.addr('r3', 'l31').ip, srv]
-        return (f"traceroute to {srv} ({srv}), 6 hops max, 60 byte packets\n"
-                + "".join(f" {k + 1}  {a}  0.{k + 2}00 ms\n" for k, a in enumerate(hops))), 0
     if command == 'cat /proc/sys/net/ipv4/icmp_errors_use_inbound_ifaddr':
         return ('1\n' if final else '0\n'), 0
     if command == 'cat /proc/sys/net/ipv4/ip_default_ttl':
@@ -351,10 +341,10 @@ class TestStates:
         assert any(f"nft -f {lab.SILENT_RULES}" in c for c in _cmds(ops, 1, data.silent))
         for r in set(lab.HIDDEN_ROUTERS) - {data.silent}:
             assert lab.SILENT_RULES not in _files(ops, 1, r), r
-        # srv: UDP dropped, web server; r2 talkative
+        # srv: UDP dropped, web server; nothing on r2
         assert 'meta l4proto udp drop' in _files(ops, 1, 'srv')[lab.FW_RULES]
         assert any('sre_http_server_80.py' in c for c in _cmds(ops, 1, 'srv'))
-        assert any(f"nft delete table ip {lab.SILENT_TABLE}" in c for c in _cmds(ops, 1, 'r2'))
+        assert lab.SILENT_RULES not in _files(ops, 1, 'r2') and not any('nft' in c for c in _cmds(ops, 1, 'r2'))
         # the hosts file of m1 names m1, gw (lan1) and target only
         hosts = _files(ops, 1, 'm1')['/etc/hosts']
         assert f"{data.ips.m1.ip}\t\tm1" in hosts and f"{ns.addr('gw', 'lan1').ip}\t\tgw" in hosts
@@ -381,7 +371,7 @@ class TestStates:
         for h in lab.HIDDEN_ROUTERS + lab.HIDDEN_ROUTERS2 + ['gw', 'fw']:
             assert '/etc/hosts' not in _files(ops, 1, h), h
 
-    def test_restore_and_user_states(self, lab, data):
+    def test_restore_and_states(self, lab, data):
         # two instances: the remount of /proc/sys is registered once per machine and instance
         initial = _state_ops(lab.NetScheme(data=data, running_lab_name=_running_name()), 'initial')
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())
@@ -392,17 +382,9 @@ class TestStates:
         assert set(initial) == set(restore)
         for k in initial:
             assert summary(initial)[k] == summary(restore)[k], k
-        reject = _state_ops(ns, 'srv_reject')
-        assert 'reject with icmp type admin-prohibited' in _files(reject, 1, 'srv')[lab.FW_RULES]
-        assert list(reject) == [(1, 'srv')]
-        drop = _state_ops(ns, 'srv_drop')
-        assert 'meta l4proto udp drop' in _files(drop, 1, 'srv')[lab.FW_RULES]
-        silent = _state_ops(ns, 'r2_silent')
-        assert 'icmp type time-exceeded drop' in _files(silent, 1, 'r2')[lab.SILENT_RULES] and list(silent) == [(1, 'r2')]
-        talkative = _state_ops(ns, 'r2_talkative')
-        assert _cmds(talkative, 1, 'r2') == [f"nft delete table ip {lab.SILENT_TABLE} 2>/dev/null; true"]
+        # no user state: the lifecycle states and the reference solution only
         states = {name for name in dir(lab.NetScheme) if getattr(getattr(lab.NetScheme, name), '_is_sre_state', False)}
-        assert {'initial', 'restore', 'final', 'srv_reject', 'srv_drop', 'r2_silent', 'r2_talkative'} <= states
+        assert states == {'initial', 'save', 'restore', 'final'}
 
     def test_final(self, lab, data):
         ns = lab.NetScheme(data=data, running_lab_name=_running_name())
@@ -427,16 +409,16 @@ class TestStates:
 class TestGrading:
     def test_everything_done(self, lab, data, tmp_pub_dir):
         grade, ns = _simulate(lab, data, tmp_pub_dir, everything=True)
-        assert _totals(grade) == (120, 120)
+        assert _totals(grade) == (100, 100)
         parts = {}
         for e in grade.get_grade_list():
             parts[e.grade_part] = parts.get(e.grade_part, 0) + e.max_grade
-        assert parts == {'part1': 20, 'part2': 20, 'part3': 30, 'part4': 20, 'part5': 30}
+        assert parts == {'part1': 20, 'part2': 20, 'part3': 30, 'part4': 30}
         assert grade.max_step == 1
 
     def test_nothing_done(self, lab, data, tmp_pub_dir):
         grade, ns = _simulate(lab, data, tmp_pub_dir, everything=False)
-        assert _totals(grade) == (0, 120)
+        assert _totals(grade) == (0, 100)
         assert _by_title(grade)['probes_fw'].grade == 0
 
     def test_path2_scoring(self, lab, data, tmp_pub_dir):
@@ -558,10 +540,10 @@ class TestTexts:
         g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
         g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
         assert [q.question_hash for q in g0.get_questions_ordered()] == [q.question_hash for q in g1.get_questions_ordered()]
-        assert len(g1.get_questions_ordered()) == 6
+        assert len(g1.get_questions_ordered()) == 5
         assert not any(has_instructor(t) for _, t in _all_texts(g0, ns0))
         with_fragment = [w for w, t in _all_texts(g1, ns1) if has_instructor(t)]
-        assert len(with_fragment) == 6 and 'informations' not in with_fragment
+        assert len(with_fragment) == 5 and 'informations' not in with_fragment
 
     def test_texts_are_formatted_and_numbered(self, lab, data, tmp_pub_dir):
         g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
@@ -574,12 +556,10 @@ class TestTexts:
         from SRE.informations import resolve_informations
         resolved, numbering = resolve_informations(ns1.informations)
         informations = _text(resolved)
-        assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 13)]
+        assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 10)]
         assert '## <a id="ttl"></a>1. Le champ TTL' in informations
-        assert '## <a id="emulation-udp"></a>7. Émuler traceroute sans ICMP' in informations
-        assert '## <a id="loops"></a>9. Les boucles de routage' in informations
-        assert '- [9. Les boucles de routage](#loops)' in informations and '(section [9](#loops))' in informations
-        assert '(section [7](#emulation-udp))' in "\n".join(_text(q.description) for q in g1.get_questions_ordered()) or True
+        assert '## <a id="loops"></a>7. Les boucles de routage' in informations
+        assert '- [7. Les boucles de routage](#loops)' in informations and '(section [7](#loops))' in informations
         assert 'IPv6' not in informations and 'traceroute6' not in informations
 
     def test_student_texts_never_show_the_hidden_path(self, lab, data, tmp_pub_dir):
@@ -618,7 +598,7 @@ class TestTexts:
             for m in re.finditer(r'@@\{([^:}]+):([^}]*)\}@@', _text(q.description)):
                 fields += 1
                 assert '}' not in m.group(2)
-        assert fields == 7 + 6 + 6 + 9 + 10
+        assert fields == 7 + 6 + 6 + 10
         kinds = {f['name']: f for q in g1.get_questions_ordered() for f in (getattr(q, 'fields', None) or [])}
         assert kinds['path'] == {'name': 'path', 'lines': 8}
         assert kinds['path2'] == {'name': 'path2', 'lines': 6}
@@ -629,14 +609,14 @@ class TestTexts:
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         result = strip_source(_LAB_PATH.read_bytes())
-        assert result.calls == 11 and result.warnings == []
+        assert result.calls == 9 and result.warnings == []
         stripped = tmp_path / 'traceroute_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('traceroute_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
-        assert _totals(grade) == (120, 120)
+        assert _totals(grade) == (100, 100)
         assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
 
     def test_english_identifiers(self, lab, data):
