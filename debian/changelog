@@ -1,3 +1,9 @@
+sysreseval (0.15.0-1) unstable; urgency=medium
+
+  * exam mode for sre-web and various other improvements
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Fri, 06 Nov 2026 10:25:04 +0100
+
 sysreseval (0.14.5-1) unstable; urgency=medium
 
   * Release 0.14.5.
