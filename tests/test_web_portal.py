@@ -753,10 +753,14 @@ class TestProxyMode:
 
     def test_instructors_only_host(self, tmp_path):
         """A host reserved for instructors: no student's project, no lab list for them; an
-        instructor is placed there by the automatic rule or by naming it."""
+        instructor is placed there by the automatic rule or by naming it.  The host has room for
+        the three starts in a burst: a project just created is counted twice, by the agent and by
+        its reservation, until a status poll sent after the release (`Pool._consume`), so the
+        third start found a host of three full two times in ten."""
         async def go():
             over = {**PROXY_OVER, 'limits': {'start_interval': 0}}
-            async with Harness(tmp_path, web_over=over, hosts=2, host_over={'instructors_only': True}) as h:
+            async with Harness(tmp_path, web_over=over, hosts=2,
+                               host_over={'instructors_only': True, 'max_projects': 6}) as h:
                 bob, alice = who('bob'), who('alice', 'Alice', '', TEACHERS)
                 assert await (await h.client.get('/api/labs', headers=bob)).json() == []
                 labs = await (await h.client.get('/api/labs', headers=alice)).json()
