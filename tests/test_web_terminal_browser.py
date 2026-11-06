@@ -103,15 +103,42 @@ async def project_page(browser, url, rln):
     return page
 
 
+def focused_in(selector: str) -> str:
+    """Whether the keyboard focus is in the terminal box holding the element at *selector*."""
+    return (f"(() => {{ const e = document.querySelector({selector!r}); const b = e && e.closest('.terminal-box'); "
+            f"return !!(b && b.contains(document.activeElement)); }})()")
+
+
+# every terminal of the page, for the message of a failed wait: where it is, its status, the
+# keyboard focus, its rows and the text of its non-empty rows
+TERMINALS = """(() => { const a = document.activeElement;
+  const boxes = [...document.querySelectorAll('.terminal-box')].map((b) => ({
+    where: b.closest('.terminal-window') ? 'window' : (b.closest('.terminal-host') ? 'host' : 'other'),
+    hidden: b.hidden, status: (b.querySelector('.status span') || {textContent: ''}).textContent, focused: b.contains(a),
+    rows: b.querySelectorAll('.xterm-rows > div').length,
+    text: [...b.querySelectorAll('.xterm-rows > div')].map((r) => r.textContent.trimEnd()).filter((t) => t).join('|').slice(-300)}));
+  return {active: a ? a.tagName + '.' + a.className : null, boxes}; })()"""
+
+
 async def type_command(page, screen_selector: str, text_expression: str, command: str, output: str):
     """Click in the xterm at *screen_selector*, type *command* + Enter, wait for *output* in the
-    text of the terminal (an output the command line itself does not contain)."""
+    text of the terminal (an output the command line itself does not contain).  The keystrokes go
+    to the focused element and a terminal drops them while its socket is not open, so the click
+    is checked to have given the focus to that terminal, again once the prompt of its shell has
+    come (another terminal connecting meanwhile takes the focus), before anything is typed."""
     at = await page.wait_for(point_in(screen_selector), what=f"a visible point of the terminal {screen_selector}")
-    await page.click_at(at['x'], at['y'])
-    await page.wait_for(f"({text_expression}).includes('$')", timeout=SHELL_WAIT, what="the prompt of the shell")
+    for _ in range(2):
+        await page.click_at(at['x'], at['y'])
+        await page.wait_for(focused_in(screen_selector), what=f"the keyboard focus in the terminal {screen_selector}")
+        await page.wait_for(f"({text_expression}).includes('$')", timeout=SHELL_WAIT, what="the prompt of the shell")
+        if await page.evaluate(focused_in(screen_selector)):
+            break
     await page.insert_text(command)
     await page.press_enter()
-    await page.wait_for(f"({text_expression}).includes({output!r})", timeout=SHELL_WAIT, what=f"the output {output!r}")
+    try:
+        await page.wait_for(f"({text_expression}).includes({output!r})", timeout=SHELL_WAIT, what=f"the output {output!r}")
+    except AssertionError as e:
+        raise AssertionError(f"{e}; the terminals: {await page.evaluate(TERMINALS)}") from None
 
 
 async def until(check, timeout: float, what: str):
