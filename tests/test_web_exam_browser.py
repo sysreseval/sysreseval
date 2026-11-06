@@ -204,8 +204,11 @@ class TestStudentFlow:
                 state = await exam_state(h)
                 assert state['phase'] == 'active' and state['started_at'] is not None
                 assert state['end_at'] == state['started_at'] + 120
-                view = await until(lambda: agent_exam(h, rln), SYNC_WAIT, "the agent's exam object")
-                assert view['id'] == str(xid) and same_time(view['end_at'], state['end_at']) and not view['ended']
+                # the agent holds the exam object from the project's creation, without end time
+                # until the reconcile pass of the portal (5 s) tells it the student's clock
+                view = await until(lambda: _agent_end(h, rln, state['end_at']), SYNC_WAIT,
+                                   "the agent's exam object with the end time")
+                assert view['id'] == str(xid) and not view['ended']
                 # End now: the banner, the page shut down, the agent ends the exam
                 await act(h, xid, 'end', {'all': True})
                 await page.wait_for(f"{OVERLAY} && document.getElementById('tabbar').hidden", what="the end banner")
@@ -304,8 +307,9 @@ class TestTimeChanges:
                 rln2 = await page.evaluate(RLN)
                 assert rln2 != rln and '@@@sre@dhcp.py@@@alice' in rln2
                 await countdown_follows(page, end0 + 300)
-                view = await until(lambda: agent_exam(h, rln2), SYNC_WAIT, "the new project's exam object")
-                assert view['id'] == str(xid) and not view['ended'] and same_time(view['end_at'], end0 + 300)
+                view = await until(lambda: _agent_end(h, rln2, end0 + 300), SYNC_WAIT,
+                                   "the new project's exam object with the end time")
+                assert view['id'] == str(xid) and not view['ended']
                 assert js_errors(page) == [], page.errors
                 lines = access_lines(tmp_path)
                 starts = [l for l in lines if l['event'] == 'start' and l.get('login') == 'alice' and l['status'] == '200']
