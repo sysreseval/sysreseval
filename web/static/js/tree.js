@@ -63,8 +63,10 @@ function orderNodes(node, lang) {
   }
 }
 
-// labs: [{name, title, kind, sort}]; onSelect(name) on a click, onOpen(name) on a double click.
-export function buildTree(container, labs, {onSelect, onOpen}) {
+// labs: [{name, title, kind, sort}]; onSelect(name) on a click, onOpen(name) on a double click;
+// selected: the name of the lab drawn selected from the start (the selection kept across a
+// rebuild of the tree), its directories opened, when the list holds it.
+export function buildTree(container, labs, {onSelect, onOpen, selected: initial = null}) {
   let selected = null;
   const render = (node) => {
     const list = el('ul');
@@ -75,6 +77,10 @@ export function buildTree(container, labs, {onSelect, onOpen}) {
     for (const leaf of node.leaves) {
       const button = el('button', {type: 'button', class: 'lab', title: leaf.name}, leaf.label,
                         leaf.titled ? el('small', {}, ' ' + leaf.segment.replace(/\.py$/, '')) : null);
+      if (initial !== null && leaf.name === initial) {
+        selected = button;
+        button.setAttribute('aria-selected', 'true');
+      }
       button.addEventListener('click', () => {
         if (selected) {
           selected.removeAttribute('aria-selected');
@@ -90,4 +96,8 @@ export function buildTree(container, labs, {onSelect, onOpen}) {
   };
   container.textContent = '';
   container.append(render(labTree(labs)));
+  for (let details = selected ? selected.closest('details') : null; details;
+       details = details.parentElement ? details.parentElement.closest('details') : null) {
+    details.open = true;
+  }
 }

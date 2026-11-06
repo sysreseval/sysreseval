@@ -98,8 +98,16 @@ def action_start():
             error_quit("data_version argument is only available to privileged users")
     if getattr(SRE.args, 'set_flavor_name', None) is not None and in_user_mode():
         error_quit("--set-flavor-name is not available in user mode")
-    if getattr(SRE.args, 'debug_project', False) and in_user_mode():
+    debug_project = bool(getattr(SRE.args, 'debug_project', False))
+    debug_web_project = bool(getattr(SRE.args, 'debug_web_project', False))
+    if debug_project and in_user_mode():
         error_quit("--debug-project is not available in user mode")
+    if debug_web_project and in_user_mode():
+        error_quit("--debug-web-project is not available in user mode")
+    # --debug-web-project: the same debug project, the lab given by its name as for a normal start
+    # (what the web agent runs); --debug-project reads the lab argument as a path
+    if debug_web_project and (debug_project or (hasattr(SRE.args, 'path') and SRE.args.path)):
+        error_quit("--debug-web-project and --path/--debug-project are mutually exclusive")
     instructor_mode = bool(getattr(SRE.args, 'instructor_mode', False))
     if instructor_mode and in_user_mode():
         error_quit("--instructor-mode is not available in user mode")
@@ -114,7 +122,7 @@ def action_start():
         # SRE_XAUTH_COOKIE pipeline (lib_sre._resolve_xauth_cookie) picks it up.
         os.environ[params.sre_xauth_cookie_env_variable] = cookie
     user_not_allowed_in_exam_mode()
-    treat_as_path = (hasattr(SRE.args, 'path') and SRE.args.path) or getattr(SRE.args, 'debug_project', False)
+    treat_as_path = (hasattr(SRE.args, 'path') and SRE.args.path) or debug_project
     if treat_as_path:
         if SRE.args.user is True:
             error_quit("--user and --path options are mutually exclusive")
@@ -230,7 +238,8 @@ def do_action_start(lab_cli_arg, lab_cli_arg_is_path=False,
     setup = ProjectSetup(running_lab_name=running_lab_name)
     try:
         create_project_directories(setup, module_rvlab, current_srelab_file,
-                                   debug_project=bool(getattr(SRE.args, 'debug_project', False)),
+                                   debug_project=bool(getattr(SRE.args, 'debug_project', False)
+                                                      or getattr(SRE.args, 'debug_web_project', False)),
                                    instructor_mode=instructor_mode)
 
         net_scheme = module_rvlab.NetScheme(data=data, running_lab_name=running_lab_name)

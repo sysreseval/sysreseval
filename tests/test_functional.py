@@ -1134,6 +1134,30 @@ class TestInstructorMode:
         assert _instructor_marker(restored).exists()
         assert _info(restored)['instructor_mode'] is True and has_instructor(_info(restored)['informations'])
 
+    def test_debug_web_project_is_a_debug_project(self, instructor_env, mock_sre_args, capsys):
+        """--debug-web-project (what the web agent runs): the debug marker like --debug-project;
+        refused with --path / --debug-project and in user mode."""
+        from SRE.command.start import action_start
+        mock_sre_args.debug_web_project = True
+        rln = _start_instructor_lab(False)
+        info = _info(rln)
+        assert info['debug_project'] is True and info['instructor_mode'] is False
+        assert Path(params.debug_project_marker_filename(rln)).exists() and not _instructor_marker(rln).exists()
+        mock_sre_args.lab = str(_INSTRUCTOR_LAB_PATH)
+        mock_sre_args.xauth_file = None
+        mock_sre_args.path = False
+        for flag in ('path', 'debug_project'):
+            setattr(mock_sre_args, flag, True)
+            with pytest.raises(SystemExit):
+                action_start()
+            assert '--debug-web-project and --path/--debug-project are mutually exclusive' in capsys.readouterr().err
+            setattr(mock_sre_args, flag, False)
+        mock_sre_args.user = True
+        with pytest.raises(SystemExit):
+            action_start()
+        assert '--debug-web-project is not available in user mode' in capsys.readouterr().err
+        assert _project_dirs() == [rln]
+
     def test_user_mode_refusals(self, instructor_env, mock_sre_args, capsys):
         from SRE.command.instructor_mode import action_remove_instructor_mode, action_set_instructor_mode
         from SRE.command.start import action_start

@@ -554,23 +554,26 @@ class Agent:
         exam = skew = None
         if body.get('exam') is not None:
             exam, skew = parse_exam(body['exam'])
-        # an instructor's own project in instructor mode: privileged start (the texts kept, every
-        # state listed); the project is theirs and follows the student path afterwards
+        # an instructor's own project in instructor mode (privileged start: the texts kept, every
+        # state listed) or in debug mode (``sre start --debug-web-project``: the debug project of
+        # ``--debug-project`` with the lab given by its name, chosen among every lab of the host,
+        # the exam-only ones included); the project is theirs and follows the student path afterwards
         instructor_mode = bool(body.get('instructor_mode', False))
-        if instructor_mode and not identity.is_instructor:
+        debug_project = bool(body.get('debug_project', False))
+        if (instructor_mode or debug_project) and not identity.is_instructor:
             raise AccessError(403, "instructors only")
         preset = body.get('flavor')
         flavor = body.get('flavor_json')
         if preset is not None:
             preset = check_flavor_preset(preset)
-            if exam is None and not instructor_mode:
-                raise AccessError(400, "a flavor preset needs an exam or the instructor mode")
+            if exam is None and not (instructor_mode or debug_project):
+                raise AccessError(400, "a flavor preset needs an exam, the instructor mode or the debug mode")
             if flavor is not None:
                 raise AccessError(400, "flavor and flavor_json are exclusive")
-        labs = await (self.all_labs(identity.login) if exam is not None else self.labs(identity.login))
+        labs = await (self.all_labs(identity.login) if exam is not None or debug_project else self.labs(identity.login))
         if lab not in self._lab_names(labs):
             raise AccessError(404, f"unknown lab {lab}")
-        options = ['--instructor-mode'] if instructor_mode else []
+        options = (['--debug-web-project'] if debug_project else []) + (['--instructor-mode'] if instructor_mode else [])
         if preset is not None:
             options += ['--set-flavor-name', preset]
         elif flavor is not None:
@@ -597,7 +600,8 @@ class Agent:
                 self._display_warning = ''
         try:
             return await self._stream_creation(request, identity, args, body.get('idle_timeout'),
-                                               reservation=reservation, privileged=instructor_mode or exam is not None,
+                                               reservation=reservation,
+                                               privileged=instructor_mode or debug_project or exam is not None,
                                                exam=exam)
         finally:
             if reservation is not None:
@@ -612,9 +616,10 @@ class Agent:
 
     async def _stream_creation(self, request, identity: Identity, args: list, idle_timeout, *, reservation=None,
                                privileged: bool = False, exam: dict | None = None):
-        """``sre start`` as an NDJSON stream (privileged: ``--instructor-mode``, or an exam
-        project, whose deploy events lose the names of the machines a privileged start gives:
-        the hidden ones among them)."""
+        """``sre start`` as an NDJSON stream (privileged: ``--instructor-mode``,
+        ``--debug-web-project``, or an exam project, whose deploy events lose the names of the
+        machines a privileged start gives: the hidden ones among them; a debug project shows
+        them to its instructor anyway)."""
         try:
             idle = None if idle_timeout is None else max(0.0, float(idle_timeout))
         except (TypeError, ValueError):

@@ -643,6 +643,21 @@ msgstr "Total (exo)"
 msgid "(keeps the instructor texts, lists every state, logs the states applied)"
 msgstr "(conserve les textes enseignant, liste tous les états, journalise les états appliqués)"
 
+msgid "Project mode"
+msgstr "Mode du projet"
+
+msgid "Standard"
+msgstr "Standard"
+
+msgid "(the project as a student gets it)"
+msgstr "(le projet tel qu'un étudiant l'obtient)"
+
+msgid "Debug mode"
+msgstr "Mode débogage"
+
+msgid "(every machine, the hidden ones included, every state and grade, the evaluations logged, no cooldown; every lab listed, the drafts included)"
+msgstr "(toutes les machines, cachées comprises, tous les états et toutes les notes, les évaluations journalisées, pas de délai ; tous les TP listés, brouillons compris)"
+
 # --- the instructor role: pool.html, pool.js, base.html -------------------------------------
 
 msgid "Pool"

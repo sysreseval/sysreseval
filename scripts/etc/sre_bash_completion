@@ -124,7 +124,7 @@ pre-start-exam start-exam"
         start)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "-d --data -p --path --flavor \
---flavor-json --set-flavor-name --debug-project --instructor-mode \
+--flavor-json --set-flavor-name --debug-project --debug-web-project --instructor-mode \
 --xauth-file --help" -- "$cur"))
             else
                 COMPREPLY=($(_sre_labs "$cur"))

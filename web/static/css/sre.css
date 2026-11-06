@@ -381,6 +381,10 @@ table.grid td.g-ok { background: #a8f0a8; }
 table.grid td.g-meh { background: #f0e8a8; }
 table.grid td.g-fail { background: #f0a8a8; }
 .instructor-option { display: block; margin: 8px; }
+/* the project mode of the Open page (instructors): three radios, one per line */
+fieldset.start-mode { border: 0; padding: 0; }
+fieldset.start-mode legend { padding: 0; }
+fieldset.start-mode label { display: block; margin: 4px 0; }
 
 /* the Pool page of the instructors: the state cell coloured, the status line, the selection bar */
 table.grid.pool th.select, table.grid.pool td.select { width: 1px; text-align: center; }

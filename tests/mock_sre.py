@@ -473,11 +473,16 @@ class Mock:
             error_quit("--set-flavor-name is not available in user mode")
         if args.debug_project and self.user_mode:
             error_quit("--debug-project is not available in user mode")
+        if args.debug_web_project and self.user_mode:
+            error_quit("--debug-web-project is not available in user mode")
+        if args.debug_web_project and (args.debug_project or args.path):
+            error_quit("--debug-web-project and --path/--debug-project are mutually exclusive")
         if args.instructor_mode and self.user_mode:
             error_quit("--instructor-mode is not available in user mode")
         if args.xauth_file is not None and self.user_mode:
             error_quit("--xauth-file is only available to privileged users")
         self.not_allowed_in_exam_mode()
+        # --debug-web-project: the same debug project, the lab given by its name (like start.py)
         is_path = bool(args.path) or bool(args.debug_project)
         if is_path and self.user_mode:
             error_quit("--user and --path options are mutually exclusive")
@@ -512,7 +517,7 @@ class Mock:
                   "form_size": FORM_SIZE})
             raise _Quit(params.exit_code_flavor_form_needed)
 
-        self.create_project(args.lab, is_path=is_path, debug_project=bool(args.debug_project),
+        self.create_project(args.lab, is_path=is_path, debug_project=bool(args.debug_project or args.debug_web_project),
                             instructor_mode=bool(args.instructor_mode), flavor=flavor)
 
     def action_eval(self):
@@ -841,6 +846,7 @@ def build_parser() -> argparse.ArgumentParser:
     flavor_group.add_argument('--flavor-json', metavar='flavor_json')
     flavor_group.add_argument('--set-flavor-name', metavar='flavor_name')
     parser_start.add_argument('--debug-project', dest='debug_project', action='store_true')
+    parser_start.add_argument('--debug-web-project', dest='debug_web_project', action='store_true')
     parser_start.add_argument('--instructor-mode', dest='instructor_mode', action='store_true')
     parser_start.add_argument('--xauth-file', metavar='x-authority-file', dest='xauth_file', default=None)
 

@@ -119,6 +119,9 @@ def parse_args():
     parser_start.add_argument('--debug-project', dest='debug_project', action='store_true',
                               help=_('start the project in debug mode (privileged only): exposes all grade scopes, '
                                      'lifts user-mode restrictions, surfaces every machine'))
+    parser_start.add_argument('--debug-web-project', dest='debug_web_project', action='store_true',
+                              help=_('start the project in debug mode like --debug-project, the lab given by its '
+                                     'name as for a normal start (privileged only; what the web agent runs)'))
     parser_start.add_argument('--instructor-mode', dest='instructor_mode', action='store_true',
                               help=_('start the project in instructor mode (privileged only): keeps the '
                                      'instructor() texts of the lab and logs what the states execute'))

@@ -1,6 +1,8 @@
-// The Open page: the lab tree (GET /api/labs), the start of a lab (POST /api/projects, an
-// NDJSON stream of progress events), the Flavor form a lab may ask before starting and, for
-// the instructors, the Host select (a host reserved for them, or the automatic placement).
+// The Open page: the lab tree (GET /api/labs; every lab of the host, the exam-only and draft
+// ones included, while an instructor picks the debug mode: GET /api/labs?all=1), the start of a
+// lab (POST /api/projects, an NDJSON stream of progress events), the Flavor form a lab may ask
+// before starting and, for the instructors, the project mode (standard, instructor mode, debug
+// mode) and the Host select (a host reserved for them, or the automatic placement).
 
 import './base.js';
 import * as api from './api.js';
@@ -18,12 +20,23 @@ const progress = new ProgressBox(document.getElementById('progress'));
 let selectedLab = null;
 let starting = false;
 let flavor = null;   // {lab, dialog} of the Flavor form being filled (creation.js flavorDialog)
+let labsRequest = 0; // the number of the last request of the lab list: an older answer is dropped
+
+// The project mode an instructor chose: 'standard', 'instructor' or 'debug' (the students have no
+// radios: 'standard').
+function currentMode() {
+  const checked = document.querySelector('input[name="mode"]:checked');
+  return checked ? checked.value : 'standard';
+}
 
 function setBusy(busy) {
   starting = busy;
   startButton.disabled = busy || !selectedLab;
   for (const button of treeElement.querySelectorAll('button.lab')) {
     button.disabled = busy;
+  }
+  for (const radio of document.querySelectorAll('input[name="mode"]')) {
+    radio.disabled = busy;
   }
 }
 
@@ -50,9 +63,11 @@ async function start(lab, flavorAnswers = null) {
   }
   setBusy(true);
   const body = flavorAnswers ? {lab, flavor: flavorAnswers} : {lab};
-  const instructorBox = document.getElementById('instructor-mode');
-  if (instructorBox && instructorBox.checked) {
+  const mode = currentMode();
+  if (mode === 'instructor') {
     body.instructor_mode = true;   // an instructor's own project in instructor mode (privileged start)
+  } else if (mode === 'debug') {
+    body.debug_project = true;     // ... or in debug mode (sre start --debug-web-project)
   }
   const hostSelect = document.getElementById('host');
   if (hostSelect && hostSelect.value) {
@@ -101,21 +116,28 @@ async function fillHosts() {
   }
 }
 
-async function main() {
-  await i18n.init();
-  fillHosts();
-  startButton.addEventListener('click', () => {
-    if (selectedLab) {
-      start(selectedLab);
-    }
-  });
+// The lab tree: the student catalog, or every lab of the host (the exam-only and draft ones too)
+// in debug mode; the lab selected stays selected when the new list holds it.
+async function loadLabs() {
+  const request = ++labsRequest;
+  const all = currentMode() === 'debug';
   let labs;
   try {
-    labs = await api.get('/api/labs');
+    labs = await api.get(all ? '/api/labs?all=1' : '/api/labs');
   } catch (e) {
-    clear(treeElement);
-    treeElement.append(el('p', {class: 'error'}, e.message));
+    if (request === labsRequest) {
+      clear(treeElement);
+      treeElement.append(el('p', {class: 'error'}, e.message));
+    }
     return;
+  }
+  if (request !== labsRequest) {
+    return;   // a newer list is on its way
+  }
+  if (selectedLab && !labs.some((lab) => lab.name === selectedLab)) {
+    selectedLab = null;
+    selectedElement.textContent = '';
+    startButton.disabled = true;
   }
   if (!labs.length) {
     clear(treeElement);
@@ -123,6 +145,7 @@ async function main() {
     return;
   }
   buildTree(treeElement, labs, {
+    selected: selectedLab,
     onSelect: (name) => {
       selectedLab = name;
       selectedElement.textContent = name;
@@ -134,6 +157,28 @@ async function main() {
       start(name);
     },
   });
+}
+
+async function main() {
+  await i18n.init();
+  fillHosts();
+  startButton.addEventListener('click', () => {
+    if (selectedLab) {
+      start(selectedLab);
+    }
+  });
+  // the list changes between the debug mode and the two others only
+  let allLabs = currentMode() === 'debug';
+  for (const radio of document.querySelectorAll('input[name="mode"]')) {
+    radio.addEventListener('change', () => {
+      const all = currentMode() === 'debug';
+      if (all !== allLabs) {
+        allLabs = all;
+        loadLabs();
+      }
+    });
+  }
+  await loadLabs();
 }
 
 main();

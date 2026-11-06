@@ -1262,8 +1262,9 @@ class Routes:
         wanted = wanted or None
         logged = request.get(ACCESS_KEY)      # the line of the connection log: the lab, the host, the outcome
         if logged is not None:
-            logged.update(lab=str(body['lab'])[:256], instructor=bool(body.get('instructor_mode')))   # not validated yet
-        if body.get('instructor_mode') and identity.role != ROLE_INSTRUCTOR:
+            logged.update(lab=str(body['lab'])[:256], instructor=bool(body.get('instructor_mode')),
+                          debug=bool(body.get('debug_project')))   # not validated yet
+        if (body.get('instructor_mode') or body.get('debug_project')) and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
         if wanted and identity.role != ROLE_INSTRUCTOR:
             return json_error(403, "instructors only")
@@ -1304,6 +1305,8 @@ class Routes:
                 payload['flavor_json'] = body['flavor']
             if body.get('instructor_mode'):
                 payload['instructor_mode'] = True     # an instructor's own project in instructor mode
+            if body.get('debug_project'):
+                payload['debug_project'] = True       # ... or in debug mode (sre start --debug-web-project)
             if exam_member is not None:
                 exam, member = exam_member
                 payload['exam'] = exam_payload(exam, member, self.exams.clock())

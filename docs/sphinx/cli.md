@@ -34,6 +34,8 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 | `--set-flavor-name <name>` | Use a named preset `Flavor` (privileged only). |
 | `--xauth-file <file>` | Read `SRE_XAUTH_COOKIE` from an X authority file instead of the env var (privileged only; for `x11_host=True` machines). |
 | `--instructor-mode` | Start the project in [instructor mode](#sre-set-instructor-mode-running_lab-and-sre-remove-instructor-mode-running_lab) (privileged only). |
+| `--debug-project` | Start a debug project (see [Lab Authoring](lab-authoring.md); privileged only): `lab` is read as a path, `-p` implied. |
+| `--debug-web-project` | The same debug project, `lab` read as a lab name as for a normal start (the exam-only labs accepted), so that the project keeps the lab name of the catalog; privileged only, what the web agent runs; incompatible with `-p` and `--debug-project`. |
 
 ### `sre stop <running_lab>`
 

@@ -36,6 +36,7 @@ def mock_sre_args():
     mock.user = False
     mock.debug = False
     mock.instructor_mode = False
+    mock.debug_web_project = False     # getattr(mock, name, False) would give a truthy child mock
     params.SRE.args = mock
     yield mock
     params.SRE.args = None

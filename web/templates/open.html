@@ -12,11 +12,24 @@
   <button type="button" id="start-button" class="primary" disabled>{{ _("Start") }}</button>
 </div>
 {% if instructor %}
-<label class="instructor-option">
-  <input type="checkbox" id="instructor-mode">
-  {{ _("Instructor mode") }}
-  <span class="muted">{{ _("(keeps the instructor texts, lists every state, logs the states applied)") }}</span>
-</label>
+<fieldset class="instructor-option start-mode" id="start-mode">
+  <legend>{{ _("Project mode") }}</legend>
+  <label>
+    <input type="radio" name="mode" id="mode-standard" value="standard" checked>
+    {{ _("Standard") }}
+    <span class="muted">{{ _("(the project as a student gets it)") }}</span>
+  </label>
+  <label>
+    <input type="radio" name="mode" id="mode-instructor" value="instructor">
+    {{ _("Instructor mode") }}
+    <span class="muted">{{ _("(keeps the instructor texts, lists every state, logs the states applied)") }}</span>
+  </label>
+  <label>
+    <input type="radio" name="mode" id="mode-debug" value="debug">
+    {{ _("Debug mode") }}
+    <span class="muted">{{ _("(every machine, the hidden ones included, every state and grade, the evaluations logged, no cooldown; every lab listed, the drafts included)") }}</span>
+  </label>
+</fieldset>
 <label class="instructor-option" id="host-option" hidden>
   {{ _("Host") }}
   <select id="host"><option value="">{{ _("Automatic placement") }}</option></select>

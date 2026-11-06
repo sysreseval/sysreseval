@@ -80,11 +80,19 @@ class TestParsing:
 
     def test_start_without_the_option(self, sre_cli):
         result = sre_cli(['start', 'mylab'])
-        assert result.args.instructor_mode is False
+        assert result.args.instructor_mode is False and result.args.debug_web_project is False
 
     def test_start_option_does_not_imply_a_path(self, sre_cli):
         """Unlike --debug-project, the lab argument stays a lab name."""
         result = sre_cli(['start', '--instructor-mode', 'mylab'])
+        assert result.args.path is False and result.args.debug_project is False
+
+    def test_debug_web_project_option(self, sre_cli):
+        """The debug project by lab name (what the web agent runs): neither --path nor
+        --debug-project is implied."""
+        result = sre_cli(['start', '--debug-web-project', 'mylab'])
+        assert result.code == 0 and result.events[-1] == 'action_start'
+        assert result.args.debug_web_project is True and result.args.lab == 'mylab'
         assert result.args.path is False and result.args.debug_project is False
 
     def test_restore_option(self, sre_cli):

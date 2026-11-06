@@ -367,6 +367,7 @@ class TestStart:
     @pytest.mark.parametrize('args, message', [
         (['-p', PATH_LAB], '--user and --path options are mutually exclusive'),
         (['--debug-project', FIRST_LAB], '--debug-project is not available in user mode'),
+        (['--debug-web-project', FIRST_LAB], '--debug-web-project is not available in user mode'),
         (['--instructor-mode', FIRST_LAB], '--instructor-mode is not available in user mode'),
         (['--set-flavor-name', 'hard', FIRST_LAB], '--set-flavor-name is not available in user mode'),
         (['--xauth-file', '/tmp/x', FIRST_LAB], '--xauth-file is only available to privileged users'),
@@ -387,6 +388,31 @@ class TestStart:
         info = info_of(pub, running_lab_name)
         assert info['debug_project'] is True and info['instructor_mode'] is False
         assert [(m['name'], m['hidden']) for m in info['machines']] == [('m1', False), ('m2', False), ('probe', True)]
+
+    def test_debug_web_project_in_privileged_mode(self, pub):
+        """--debug-web-project (what the web agent runs): the same debug project, the lab given by
+        its name: the lab name of the catalog, not a path; the exam-only labs accepted."""
+        running_lab_name = start_project(pub, '--debug-web-project', FIRST_LAB, user=False)
+        assert params.get_lab_name_from_running_lab_name(running_lab_name) == FIRST_LAB.replace('/', '@')
+        d = project_dir(pub, running_lab_name) / params.private_dir_name
+        assert (d / params.debug_project_marker_name).is_file()
+        assert not (d / params.instructor_mode_marker_name).exists()
+        info = info_of(pub, running_lab_name)
+        assert info['debug_project'] is True and info['instructor_mode'] is False
+        assert [(m['name'], m['hidden']) for m in info['machines']] == [('m1', False), ('m2', False), ('probe', True)]
+        # an exam-only lab, with the instructor mode on top
+        both = start_project(pub, '--debug-web-project', '--instructor-mode', 'sre/_EXAM_/exam1.py', user=False)
+        assert params.get_lab_name_from_running_lab_name(both) == 'sre@_EXAM_@exam1.py'
+        assert info_of(pub, both)['debug_project'] is True and info_of(pub, both)['instructor_mode'] is True
+        # a path or --debug-project with it is refused; the argument is a lab name
+        for args in (['--debug-web-project', '-p', PATH_LAB], ['--debug-web-project', '--debug-project', PATH_LAB]):
+            completed = run_mock(pub, 'start', *args, user=False)
+            assert completed.returncode == 1 and events(completed) == []
+            assert completed.stderr.decode().strip() == \
+                'sre: --debug-web-project and --path/--debug-project are mutually exclusive'
+        completed = run_mock(pub, 'start', '--debug-web-project', PATH_LAB, user=False)
+        assert completed.returncode == 1
+        assert completed.stderr.decode().strip() == f"sre: lab '{PATH_LAB}' does not exist"
 
     def test_instructor_mode_in_privileged_mode(self, pub):
         running_lab_name = start_project(pub, '--instructor-mode', FIRST_LAB, user=False)

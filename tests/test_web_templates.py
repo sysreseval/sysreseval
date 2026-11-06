@@ -205,12 +205,14 @@ class TestTemplates:
     def test_open_page(self):
         html = render('open.html')
         assert 'id="labs"' in html and 'id="start-button"' in html and '/static/js/open.js' in html
-        assert 'id="instructor-mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
+        assert 'name="mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
         assert 'href="/pool"' not in html
-        # the instructor's extras: the Instructor mode box and the Host select of the Open page, the Watch
-        # and Pool links of every page
+        # the instructor's extras: the project mode radios (standard, instructor mode, debug mode) and
+        # the Host select of the Open page, the Watch and Pool links of every page
         html = render('open.html', instructor=True)
-        assert 'id="instructor-mode"' in html and 'href="/watch"' in html and 'Instructor mode' in html
+        assert 'id="mode-standard" value="standard" checked' in html and 'id="mode-instructor"' in html
+        assert 'id="mode-debug"' in html and 'Instructor mode' in html and 'Debug mode' in html
+        assert 'href="/watch"' in html
         assert 'id="host"' in html and 'Automatic placement' in html and 'id="host-option" hidden' in html
         assert 'href="/pool"' in html
         html = render('projects.html', instructor=True)

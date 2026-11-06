@@ -1314,6 +1314,35 @@ class TestInstructor:
                 assert not view['has_instructor_texts'] and 'Solution' not in view['informations_html']
         run(go())
 
+    def test_debug_mode_project(self, tmp_path):
+        """The debug mode of the Open page: a privileged ``sre start --debug-web-project`` (the lab
+        by its name, chosen among every lab of the host), then the page of a debug project."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/dhcp.py', 'debug_project': True},
+                                           headers=headers())
+                assert resp.status == 403
+                rln = await h.started(PROF_NOVIEW, debug_project=True)
+                assert rln.endswith('@@@prof') and '@@@sre@dhcp.py@@@' in rln     # the lab name of the catalog
+                privileged_call([e for e in h.entries() if 'start' in e['argv']][-1],
+                                ['start', '--debug-web-project', '--', 'sre/dhcp.py'], 'prof')
+                view = (await (await h.client.get(f'/v1/projects/{rln}', headers=headers(PROF_NOVIEW))).json())['project']
+                assert view['debug_project'] and view['has_instructor_texts'] and not view['instructor_mode']
+                assert 'full_schema' in view['tabs'] and 'log' in view['tabs']      # without the instructor view
+                assert [(m['name'], m['hidden']) for m in view['machines']] == [('m1', False), ('m2', False), ('probe', True)]
+                assert (await h.client.get(f'/v1/projects/{rln}/log', headers=headers(PROF_NOVIEW))).status == 200
+                # the exam-only labs in debug mode only; a flavor preset accepted; the instructor
+                # mode on top gives both options
+                resp = await h.client.post('/v1/projects', json={'lab': 'sre/_EXAM_/exam1.py'}, headers=headers(PROF_NOVIEW))
+                assert resp.status == 404
+                exam_only = await h.started(PROF_NOVIEW, lab='sre/_EXAM_/exam1.py', debug_project=True)
+                assert '@@@sre@_EXAM_@exam1.py@@@' in exam_only
+                await h.started(PROF_NOVIEW, debug_project=True, instructor_mode=True, flavor='hard')
+                privileged_call([e for e in h.entries() if 'start' in e['argv']][-1],
+                                ['start', '--debug-web-project', '--instructor-mode', '--set-flavor-name', 'hard',
+                                 '--', 'sre/dhcp.py'], 'prof')
+        run(go())
+
     def test_log_reaches_the_allowed_subscribers_only(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:

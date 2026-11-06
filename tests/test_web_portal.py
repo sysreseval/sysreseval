@@ -516,6 +516,25 @@ class TestAccessLog:
                         return line
                 await asyncio.sleep(0.02)
 
+    def test_start_line_of_a_debug_project(self, tmp_path):
+        """The ``debug`` field of the start line, next to ``instructor``: a student's refused
+        start carries it too (the fields are logged before the checks)."""
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over={**PROXY_OVER, **self.over(tmp_path)}) as h:
+                bob, prof = who('bob'), who('prof', groups=TEACHERS)
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'debug_project': True},
+                                           headers={**bob, **CSRF})
+                assert resp.status == 403
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'debug_project': True},
+                                           headers={**prof, **CSRF})
+                assert resp.status == 200
+                await resp.text()
+        run(go())
+        starts = [l for l in self.lines(tmp_path) if l['event'] == 'start']
+        assert [(l['login'], l['instructor'], l['debug'], l['status']) for l in starts] == \
+            [('bob', '0', '1', '403'), ('prof', '0', '1', '200')]
+        assert starts[-1]['result'] == 'created' and '@@@sre@dhcp.py@@@prof' in starts[-1]['rln']
+
     def test_full_flow(self, tmp_path):
         async def go():
             async with Harness(tmp_path, web_over=self.over(tmp_path)) as h:
@@ -551,8 +570,8 @@ class TestAccessLog:
         assert lines[0]['mode'] == 'anonymous' and lines[0]['anon'] == '1' and lines[0]['name'] == 'Alice Test'
         assert lines[1]['role'] == 'student' and lines[1]['ua'].startswith('Python/')
         start = lines[2]
-        assert (start['lab'], start['instructor'], start['host'], start['placement'], start['result'], start['rln'],
-                start['status']) == ('sre/dhcp.py', '0', 'a01', 'load', 'created', rln, '200')
+        assert (start['lab'], start['instructor'], start['debug'], start['host'], start['placement'], start['result'],
+                start['rln'], start['status']) == ('sre/dhcp.py', '0', '0', 'a01', 'load', 'created', rln, '200')
         assert float(start['duration']) >= 0
         assert lines[3] == dict(ts=lines[3]['ts'], event='project_open', login=login, addr='127.0.0.1', host='a01', rln=rln)
         assert lines[4]['code'] == '1000' and float(lines[4]['duration']) >= 0
@@ -920,7 +939,9 @@ class FakeRoleResolver:
 class TestInstructorThroughThePortal:
     def test_watch_evaluation_and_instructor_mode(self, tmp_path):
         async def go():
-            async with Harness(tmp_path, auth_mode='proxy', web_over=PROXY_OVER) as h:
+            # three projects on the host: a status poll landing during a start counts the project
+            # and its reservation, so the default cap of 3 refused the third start under load
+            async with Harness(tmp_path, auth_mode='proxy', web_over=PROXY_OVER, host_over={'max_projects': 6}) as h:
                 alice, bob, prof = who('alice', 'Alice', group='INFO1'), who('bob'), who('prof', groups=TEACHERS)
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
                 rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
@@ -975,6 +996,24 @@ class TestInstructorThroughThePortal:
                 view = (await (await h.client.get(f"/api/projects/a01/{result['running_lab_name']}?view=instructor",
                                                   headers=prof)).json())['project']
                 assert view['instructor_mode'] and view['instructor_view'] and 'Solution' in view['informations_html']
+                # a debug project (sre start --debug-web-project, the lab by its catalog name): refused
+                # to a student too; the exam-only labs are listed to the instructor for it (another
+                # instructor: a user has one start per start_interval)
+                prof2 = who('prof2', groups=TEACHERS)
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'debug_project': True},
+                                           headers={**bob, **CSRF})
+                assert resp.status == 403
+                assert (await h.client.get('/api/labs?all=1', headers=bob)).status == 403
+                names = [l['name'] for l in await (await h.client.get('/api/labs?all=1', headers=prof2)).json()]
+                assert 'sre/_EXAM_/exam1.py' in names
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'debug_project': True},
+                                           headers={**prof2, **CSRF})
+                result = [json.loads(l) for l in (await resp.text()).splitlines()][-1]
+                assert result['status'] == 'created', result
+                assert '@@@sre@dhcp.py@@@prof2' in result['running_lab_name']
+                view = (await (await h.client.get(f"/api/projects/a01/{result['running_lab_name']}",
+                                                  headers=prof2)).json())['project']
+                assert view['debug_project'] and 'full_schema' in view['tabs'] and 'log' in view['tabs']
         run(go())
 
     def test_join_through_the_portal(self, tmp_path):

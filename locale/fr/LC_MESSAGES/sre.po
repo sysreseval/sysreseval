@@ -601,6 +601,14 @@ msgstr ""
 "scopes de notes, lève les restrictions du mode utilisateur, affiche toutes "
 "les machines"
 
+msgid ""
+"start the project in debug mode like --debug-project, the lab given by its "
+"name as for a normal start (privileged only; what the web agent runs)"
+msgstr ""
+"démarrer le projet en mode debug comme --debug-project, le TP donné par son "
+"nom comme pour un démarrage normal (privilégiés uniquement ; ce que lance "
+"l'agent web)"
+
 msgid "Generate titles.json file(s) for a lab directory"
 msgstr "Générer les fichiers titles.json pour un répertoire de labs"
 

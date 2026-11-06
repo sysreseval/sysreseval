@@ -321,7 +321,7 @@ a timestamp (`2026-10-26T09:12:03+0100`):
 ```
 event=login login=alice addr=10.0.1.7 mode=ldap role=student anon=0 name="Alice Test" group=INFO1
 event=session_open login=alice addr=10.0.1.7 role=student anon=0 name="Alice Test" group=INFO1 ua="Mozilla/5.0 …"
-event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 host=a01 placement=load result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
+event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 debug=0 host=a01 placement=load result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
 event=project_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice
 event=terminal_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0
 event=terminal_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0 duration=612.3 code=1000
@@ -349,8 +349,8 @@ session and the request following a logout opens another one. The other events:
   `rate_limited`, `directory` when the directory does not answer, `proxy_mode`);
 - `start`: the lab, the host chosen and `placement`, why that host (`load`: the least loaded,
   `session`: the user is logged in at its keyboard, `named`: the instructor named it), whether
-  the instructor mode was asked, `result` (`created`, `flavor_form`, `flavor_error`, `error`)
-  and `rln`, the running lab name of the new project;
+  the instructor mode or the debug mode was asked (`instructor`, `debug`), `result` (`created`,
+  `flavor_form`, `flavor_error`, `error`) and `rln`, the running lab name of the new project;
 - `project_open` / `project_close`: the project page, open as long as its events WebSocket is
   (`duration` in seconds, `code`: the WebSocket close code; `view=instructor` for the instructor
   view); `terminal_open` / `terminal_close` (`device`, `join`: the session joined, `private`)
@@ -1171,6 +1171,20 @@ What an instructor gets:
   --auto-eval`, the cooldown of the lab, the letters OK / MEH / FAIL when the lab hides the
   marks with `no_mark_on_self_grade`) and the table it gives stays; the last archived evaluation
   is shown on somebody else's project only (an archive holds the numbers).
+- **Debug mode** on the Open page: the third of the *Project mode* radios of the instructors
+  (*Standard*, *Instructor mode*, *Debug mode*). The instructor's own project is started with
+  `sre start --debug-web-project`: the debug project of `sre start --debug-project` (see *Lab
+  Authoring*) with the lab given by its name, so that it keeps the lab name of the catalog and
+  is grouped with the lab's other projects on the Watch and Archives pages. While *Debug mode*
+  is chosen the lab tree lists every lab of the host, the exam-only and draft ones included
+  (`GET /api/labs?all=1`, as the Exams page does; the selection is kept when the lab is still
+  listed). The project page then shows what the Qt GUI shows for a debug project: every machine,
+  the hidden ones in red, each with a Connect button, the *Full Schema* tab (the hidden machines
+  drawn while the *Instructor mode* button is on), every state, the Log tab with the states and
+  the evaluations, the evaluation table with both scopes, no self-evaluation cooldown.
+  `POST /api/projects` takes `instructor_mode` or `debug_project` (both together is accepted); a
+  student sending either gets 403. Presenting a debug project shows its hidden machines to the
+  spectators, who see the presenter's page.
 - **Groups** (the link in the header, `/groups`): the user groups of the site by kind (the
   departments, the groups of the directory, the custom groups), their members, and the editing
   of the custom groups (*User groups* above).
