@@ -945,12 +945,12 @@ Set the <code class="docutils literal notranslate"><span class="pre">archive_dir
 </section>
 <section id="tests">
 <h3>Tests<a class="headerlink" href="#tests" title="Link to this heading">¶</a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>tests<span class="w">                          </span><span class="c1"># every test under tests/, the functional, web and Docker tests included (excludes test_exam_mode.py, a script)</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>tests<span class="w">                          </span><span class="c1"># every test under tests/, the functional and web tests included (excludes test_exam_mode.py, a script, and the Docker tests of make docker-tests)</span>
 make<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="nv">FILE</span><span class="o">=</span>test_net_config.py<span class="w">   </span><span class="c1"># single file</span>
 make<span class="w"> </span>functional-tests<span class="w">               </span><span class="c1"># functional tests (test_functional.py)</span>
 make<span class="w"> </span>exam-tests<span class="w">                     </span><span class="c1"># exam-mode integration tests (requires debug_mode=True)</span>
-make<span class="w"> </span>docker-tests<span class="w">                   </span><span class="c1"># the Docker integration tests alone (root, real containers: start/stop, save/restore, the connection log&#39;s database on a MariaDB container; make tests skips them without root or Docker)</span>
-make<span class="w"> </span>all-tests<span class="w">                      </span><span class="c1"># tests + exam-tests</span>
+make<span class="w"> </span>docker-tests<span class="w">                   </span><span class="c1"># the Docker integration tests, left out of make tests and run by make all-tests (root, real containers: start/stop, save/restore, the connection log&#39;s database on a MariaDB container)</span>
+make<span class="w"> </span>all-tests<span class="w">                      </span><span class="c1"># tests + docker-tests + exam-tests</span>
 </pre></div>
 </div>
 <p>Unit tests don’t need Docker or Kathara — they cover serialization, topology, grading logic, and pure-Python helpers. Functional and exam-mode tests stand up more of the system: see <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> for the shared fixtures (<code class="docutils literal notranslate"><span class="pre">mock_sre_args</span></code>, <code class="docutils literal notranslate"><span class="pre">tmp_lab_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">tmp_pub_dir</span></code>).</p>

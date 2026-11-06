@@ -1455,6 +1455,14 @@ the browser reaches a desktop through the owner check of the portal and of the a
 the whole site works without Docker. The French catalog is `locale/fr/LC_MESSAGES/sreweb.po`
 (hand-maintained, `make web-translations`).
 
+The pure JavaScript modules (the lab tree of the Open page, the group keys, the exam form, the
+floating terminal windows) are tested under `node` or `bun`; on a machine with neither, `make
+tests` runs them under bun in a throwaway container of the `oven/bun` image instead
+(`SRE_TEST_JS=docker`, what the Makefile passes then: the image is pulled once, the tests skip
+without a reachable Docker daemon, root or the `docker` group; `SRE_TEST_JS=docker:<image>` names
+another image, `SRE_TEST_JS=` leaves them skipped). Installing a runtime (`apt install nodejs`)
+is the lighter alternative.
+
 ## Stress test
 
 `scripts/web-stress.py` simulates a class of students on a portal through its HTTP / WebSocket

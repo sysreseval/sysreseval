@@ -2112,6 +2112,12 @@ too; while one is on, the student’s other browser tabs all go to the project.<
 <code class="docutils literal notranslate"><span class="pre">sre_exe</span></code> pointed at a wrapper of <code class="docutils literal notranslate"><span class="pre">tests/mock_sre.py</span></code> (<code class="docutils literal notranslate"><span class="pre">SRE_PUB_DIR</span></code> exported in the wrapper),
 the whole site works without Docker. The French catalog is <code class="docutils literal notranslate"><span class="pre">locale/fr/LC_MESSAGES/sreweb.po</span></code>
 (hand-maintained, <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">web-translations</span></code>).</p>
+<p>The pure JavaScript modules (the lab tree of the Open page, the group keys, the exam form, the
+floating terminal windows) are tested under <code class="docutils literal notranslate"><span class="pre">node</span></code> or <code class="docutils literal notranslate"><span class="pre">bun</span></code>; on a machine with neither, <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">tests</span></code> runs them under bun in a throwaway container of the <code class="docutils literal notranslate"><span class="pre">oven/bun</span></code> image instead
+(<code class="docutils literal notranslate"><span class="pre">SRE_TEST_JS=docker</span></code>, what the Makefile passes then: the image is pulled once, the tests skip
+without a reachable Docker daemon, root or the <code class="docutils literal notranslate"><span class="pre">docker</span></code> group; <code class="docutils literal notranslate"><span class="pre">SRE_TEST_JS=docker:&lt;image&gt;</span></code> names
+another image, <code class="docutils literal notranslate"><span class="pre">SRE_TEST_JS=</span></code> leaves them skipped). Installing a runtime (<code class="docutils literal notranslate"><span class="pre">apt</span> <span class="pre">install</span> <span class="pre">nodejs</span></code>)
+is the lighter alternative.</p>
 </section>
 <section id="stress-test">
 <h2>Stress test<a class="headerlink" href="#stress-test" title="Link to this heading">¶</a></h2>
