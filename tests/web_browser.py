@@ -191,9 +191,15 @@ class Browser:
                 '--remote-debugging-port=0', 'about:blank']
         if hasattr(os, 'geteuid') and os.geteuid() == 0:
             args.insert(1, '--no-sandbox')          # Chrome refuses its sandbox as root
+        # On Linux, Chrome asks the session bus (the desktop portal) for the proxy settings at its
+        # first navigation; a session bus without a desktop (root over ssh: pam_systemd exports
+        # DBUS_SESSION_BUS_ADDRESS, nothing answers) makes it wait the 25 s D-Bus timeout, longer
+        # than the command timeout below (measured on a Debian 13 workstation, Chrome 157 and
+        # Chromium 150 alike; 0.3 s with the address below, which Chrome takes as "no bus").
+        env = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': '/dev/null'}
         try:
             self.process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL)
+                                            stderr=subprocess.DEVNULL, env=env)
         except OSError as e:
             raise BrowserError(f"cannot run {self.chrome}: {e}") from e
         try:

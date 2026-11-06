@@ -47,9 +47,16 @@ RECT = """(() => { const w = document.querySelector('.terminal-window'); const p
   if (!w || !p) { return null; } const r = w.getBoundingClientRect(), a = p.getBoundingClientRect();
   return {x: r.left - a.left, y: r.top - a.top, w: r.width, h: r.height, aw: a.width, ah: a.height,
           left: r.left, top: r.top}; })()"""
-def centre_of(selector: str) -> str:
+def point_in(selector: str) -> str:
+    """A point of the element at *selector* where a click reaches it: its centre, else a corner
+    (a floating window may cover the centre of the terminal docked under it: it did on the Linux
+    font metrics, where the dragged window of the second test hid the sub-tab's shell)."""
     return (f"(() => {{ const e = document.querySelector({selector!r}); if (!e) {{ return null; }} "
-            f"const r = e.getBoundingClientRect(); return {{x: r.left + r.width / 2, y: r.top + r.height / 2}}; }})()")
+            f"const r = e.getBoundingClientRect(), d = 12; "
+            f"const points = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + d, r.top + d], "
+            f"[r.right - d, r.top + d], [r.left + d, r.bottom - d], [r.right - d, r.bottom - d]]; "
+            f"for (const [x, y] of points) {{ const at = document.elementFromPoint(x, y); "
+            f"if (at && e.contains(at)) {{ return {{x, y}}; }} }} return null; }})()")
 # the first open device of the "New terminal…" select (a sub-tab)
 OPEN_SUBTAB = ("(() => { const s = document.querySelector('select.new-terminal:not(.new-window)'); "
                "const o = [...s.options].find((o) => o.value && !o.disabled); s.value = o.value; "
@@ -99,7 +106,7 @@ async def project_page(browser, url, rln):
 async def type_command(page, screen_selector: str, text_expression: str, command: str, output: str):
     """Click in the xterm at *screen_selector*, type *command* + Enter, wait for *output* in the
     text of the terminal (an output the command line itself does not contain)."""
-    at = await page.wait_for(centre_of(screen_selector), what=f"the terminal {screen_selector}")
+    at = await page.wait_for(point_in(screen_selector), what=f"a visible point of the terminal {screen_selector}")
     await page.click_at(at['x'], at['y'])
     await page.wait_for(f"({text_expression}).includes('$')", timeout=SHELL_WAIT, what="the prompt of the shell")
     await page.insert_text(command)
