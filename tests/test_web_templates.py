@@ -1,7 +1,10 @@
 """Tests of the browser side of the web front-end (``web/``): the Jinja2 templates render
 without a server, reference existing static files, every ``_("...")`` string of the templates
-and of the JavaScript has a French translation, and every JavaScript module parses."""
+and of the JavaScript has a French translation, and every JavaScript module parses.  The pure
+modules (the lab tree, the group keys, the exam form, the terminal windows) run under node or bun,
+or under bun in a container when the machine has neither (``SRE_TEST_JS``, below)."""
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -17,6 +20,18 @@ TEMPLATES = WEB / 'templates'
 STATIC = WEB / 'static'
 JS = STATIC / 'js'
 PO = ROOT / 'locale' / 'fr' / 'LC_MESSAGES' / 'sreweb.po'
+
+#: SRE_TEST_JS: how the tests running a module of web/static/js (TestLabTreeOrder, TestGroupsModel,
+#: TestExamsForm, TestTerminalGeometry) get a JavaScript runtime.  Unset: node, then bun, on the
+#: PATH, the tests skipped without.  `docker` / `docker:<image>`: bun in a throwaway container of
+#: the oven/bun image (pulled when missing), what the Makefile passes on a machine with neither
+#: node nor bun; skipped without a reachable Docker daemon (root or the docker group).  Anything
+#: else: the name on the PATH, or the path, of a runtime.
+JS_RUNTIME_ENV = 'SRE_TEST_JS'
+JS_DOCKER = 'docker'
+JS_DOCKER_IMAGE = 'oven/bun:1-alpine'
+JS_DOCKER_PULL_TIMEOUT = 600        # seconds: the image is 115 MB on disk
+JS_DOCKER_PROBE_TIMEOUT = 30        # the daemon, the presence of the image, one run
 
 #: the vendored files of `make xterm` / `make novnc` are not committed: a missing one is not an error here
 VENDORED = ('vendor/xterm/', 'vendor/novnc/')
@@ -556,6 +571,149 @@ class TestTranslations:
 # JavaScript
 # ---------------------------------------------------------------------------------------------
 
+_JS_RUNTIME: list = []      # the JsRuntime resolved once per session, or the reason of the skip
+
+
+class JsRuntime:
+    """What runs the ES modules of the tests below: node or bun of the machine, or bun in a
+    container of the ``oven/bun`` image when the machine has none (``SRE_TEST_JS``, at the top)."""
+
+    def __init__(self, executable: str, image: str | None = None):
+        self.executable = executable        # node, bun, or the docker client
+        self.image = image                  # the image of the container, None for a runtime of the machine
+
+    @classmethod
+    def resolve(cls) -> 'JsRuntime':
+        """The runtime of the session, probed once (the daemon, the pull of the image); the test
+        is skipped when there is none."""
+        if not _JS_RUNTIME:
+            _JS_RUNTIME.append(cls._resolve(os.environ.get(JS_RUNTIME_ENV, '')))
+        if isinstance(_JS_RUNTIME[0], str):
+            pytest.skip(_JS_RUNTIME[0])
+        return _JS_RUNTIME[0]
+
+    @classmethod
+    def _resolve(cls, spec: str) -> 'JsRuntime | str':
+        """The runtime ``spec`` (the value of SRE_TEST_JS) asks for, or the reason of the skip."""
+        if spec == JS_DOCKER or spec.startswith(JS_DOCKER + ':'):
+            return cls._docker(spec[len(JS_DOCKER) + 1:] or JS_DOCKER_IMAGE)
+        for name in ([spec] if spec else ['node', 'bun']):
+            executable = shutil.which(name)
+            if executable:
+                return cls(executable)
+        if spec:
+            return f"{JS_RUNTIME_ENV}={spec}: no such JavaScript runtime"
+        return f"neither node nor bun is installed ({JS_RUNTIME_ENV}=docker runs bun in a container)"
+
+    @classmethod
+    def _docker(cls, image: str) -> 'JsRuntime | str':
+        """Bun in a container of ``image``: the daemon probed, the image pulled when missing."""
+        docker = shutil.which(JS_DOCKER)
+        if docker is None:
+            return f"{JS_RUNTIME_ENV}={JS_DOCKER}: docker is not installed"
+        try:
+            probe = subprocess.run([docker, 'version', '--format', '{{.Server.Version}}'],
+                                   capture_output=True, text=True, timeout=JS_DOCKER_PROBE_TIMEOUT)
+            if probe.returncode:
+                return f"Docker daemon not reachable: {_last_line(probe.stderr)}"
+            present = subprocess.run([docker, 'image', 'inspect', image], capture_output=True, text=True,
+                                     timeout=JS_DOCKER_PROBE_TIMEOUT)
+            if present.returncode:
+                pull = subprocess.run([docker, 'pull', '--quiet', image], capture_output=True, text=True,
+                                      timeout=JS_DOCKER_PULL_TIMEOUT)
+                if pull.returncode:
+                    return f"cannot pull {image}: {_last_line(pull.stderr)}"
+        except subprocess.TimeoutExpired as e:
+            return f"docker does not answer: {e}"
+        return cls(docker, image)
+
+    def run(self, directory: Path, script: str, *args: str) -> str:
+        """The stdout of ``script``, an ES module of ``directory``, run with ``args``."""
+        if self.image is None:
+            argv = [self.executable, str(directory / script), *args]
+        else:
+            # the caller's uid: pytest creates the directory with mode 0700 and the image would run
+            # as its own user `bun`; a writable HOME for the runtime; no network: the modules import
+            # nothing but each other
+            argv = [self.executable, 'run', '--rm', '--network', 'none', '--user', f'{os.getuid()}:{os.getgid()}',
+                    '--env', 'HOME=/tmp', '--volume', f'{directory}:/work:ro', '--workdir', '/work',
+                    self.image, 'bun', script, *args]
+        completed = subprocess.run(argv, capture_output=True, text=True, timeout=JS_DOCKER_PROBE_TIMEOUT)
+        if completed.returncode:
+            pytest.fail(f"{script} exited {completed.returncode}:\n{completed.stderr}")
+        return completed.stdout
+
+
+def _last_line(text: str) -> str:
+    """The last line of a docker error, up to its first `; ` (the hints of the client)."""
+    lines = text.strip().splitlines()
+    return lines[-1].split('; ')[0] if lines else ''
+
+
+@pytest.fixture
+def js() -> JsRuntime:
+    """The JavaScript runtime of the session (skips the test without one)."""
+    return JsRuntime.resolve()
+
+
+def js_project(directory: Path, runner: str, *modules: str) -> str:
+    """``modules`` of web/static/js copied into ``directory`` next to ``run.mjs`` = ``runner`` and
+    the package.json making them ES modules; returns the name of the runner."""
+    for name in modules:
+        shutil.copy(JS / name, directory / name)
+    (directory / 'package.json').write_text('{"type": "module"}\n')
+    (directory / 'run.mjs').write_text(runner)
+    return 'run.mjs'
+
+
+class TestJsRuntime:
+    """The resolution of SRE_TEST_JS and the command lines (Docker itself is never called)."""
+
+    def test_resolution(self, monkeypatch):
+        found = {'node': '/usr/bin/node', 'bun': '/usr/local/bin/bun', 'docker': '/usr/bin/docker'}
+        monkeypatch.setattr(shutil, 'which', lambda name: found.get(name))
+        assert JsRuntime._resolve('').executable == '/usr/bin/node'
+        assert JsRuntime._resolve('bun').executable == '/usr/local/bin/bun'
+        assert JsRuntime._resolve('deno') == 'SRE_TEST_JS=deno: no such JavaScript runtime'
+        found.pop('node')
+        assert JsRuntime._resolve('').executable == '/usr/local/bin/bun'
+        found.pop('bun')
+        assert JsRuntime._resolve('') == ('neither node nor bun is installed '
+                                          '(SRE_TEST_JS=docker runs bun in a container)')
+        found.pop('docker')
+        assert JsRuntime._resolve('docker') == 'SRE_TEST_JS=docker: docker is not installed'
+        images = []
+        monkeypatch.setattr(JsRuntime, '_docker',
+                            classmethod(lambda cls, image: images.append(image) or cls('/usr/bin/docker', image)))
+        assert JsRuntime._resolve('docker').image == JS_DOCKER_IMAGE
+        assert JsRuntime._resolve('docker:oven/bun:1-slim').image == 'oven/bun:1-slim'
+        assert images == [JS_DOCKER_IMAGE, 'oven/bun:1-slim']
+
+    def test_command_lines(self, monkeypatch, tmp_path):
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout='"ok"', stderr='')
+
+        monkeypatch.setattr(subprocess, 'run', fake_run)
+        assert JsRuntime('/usr/bin/node').run(tmp_path, 'run.mjs', 'a', 'b') == '"ok"'
+        assert calls[0] == ['/usr/bin/node', str(tmp_path / 'run.mjs'), 'a', 'b']
+        assert JsRuntime('/usr/bin/docker', 'oven/bun:1-alpine').run(tmp_path, 'run.mjs', 'a') == '"ok"'
+        argv = calls[1]
+        assert argv[:3] == ['/usr/bin/docker', 'run', '--rm']
+        assert argv[-4:] == ['oven/bun:1-alpine', 'bun', 'run.mjs', 'a']      # the runner relative to /work
+        assert argv[argv.index('--user') + 1] == f'{os.getuid()}:{os.getgid()}'
+        assert argv[argv.index('--volume') + 1] == f'{tmp_path}:/work:ro'
+        assert argv[argv.index('--network') + 1] == 'none'
+
+    def test_failure_reported_with_stderr(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(subprocess, 'run',
+                            lambda argv, **kw: subprocess.CompletedProcess(argv, 1, stdout='', stderr='boom'))
+        with pytest.raises(pytest.fail.Exception, match='run.mjs exited 1:\nboom'):
+            JsRuntime('/usr/bin/node').run(tmp_path, 'run.mjs')
+
+
 #: what GET /api/labs gives: the root in the "title" mode (its directories first by label, then
 #: its labs by label, accents and case ignored, "TP 2" before "TP 10"), z in the "manual" mode
 #: (the order of the CLI kept), a without title; the titles resolve to English (init() never ran)
@@ -590,21 +748,13 @@ process.stdout.write(JSON.stringify(outline(labTree(JSON.parse(process.argv[2]),
 
 
 class TestLabTreeOrder:
-    """``labTree()`` of tree.js run under node (or bun) when one is installed, skipped otherwise:
-    the Open page keeps the order of the CLI but for the "title" mode, sorted by label."""
+    """``labTree()`` of tree.js run by the ``js`` runtime (node, bun, or bun in a container:
+    SRE_TEST_JS), skipped without one: the Open page keeps the order of the CLI but for the
+    "title" mode, sorted by label."""
 
-    def test_order(self, tmp_path):
-        node = shutil.which('node') or shutil.which('bun')
-        if node is None:
-            pytest.skip("neither node nor bun is installed")
-        for name in ('tree.js', 'i18n.js', 'ui.js'):
-            shutil.copy(JS / name, tmp_path / name)
-        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
-        runner = tmp_path / 'run.mjs'
-        runner.write_text(LAB_TREE_RUNNER)
-        completed = subprocess.run([node, str(runner), json.dumps(LAB_TREE_IN), 'fr'],
-                                   capture_output=True, text=True, check=True)
-        assert json.loads(completed.stdout) == LAB_TREE_OUT
+    def test_order(self, tmp_path, js):
+        runner = js_project(tmp_path, LAB_TREE_RUNNER, 'tree.js', 'i18n.js', 'ui.js')
+        assert json.loads(js.run(tmp_path, runner, json.dumps(LAB_TREE_IN), 'fr')) == LAB_TREE_OUT
 
 
 GROUPS_MODEL_RUNNER = """\
@@ -641,20 +791,11 @@ GROUPS_MODEL_OUT = {
 
 class TestGroupsModel:
     """groups_model.js (the keys of the user groups shared by the Groups, Watch and project pages)
-    run under node or bun when one is installed, skipped otherwise."""
+    run by the ``js`` runtime, skipped without one."""
 
-    def test_keys_and_matching(self, tmp_path):
-        node = shutil.which('node') or shutil.which('bun')
-        if node is None:
-            pytest.skip("neither node nor bun is installed")
-        for name in ('groups_model.js', 'i18n.js'):
-            shutil.copy(JS / name, tmp_path / name)
-        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
-        runner = tmp_path / 'run.mjs'
-        runner.write_text(GROUPS_MODEL_RUNNER)
-        completed = subprocess.run([node, str(runner), json.dumps(GROUPS_MODEL_ROWS)], capture_output=True, text=True,
-                                   check=True)
-        assert json.loads(completed.stdout) == GROUPS_MODEL_OUT
+    def test_keys_and_matching(self, tmp_path, js):
+        runner = js_project(tmp_path, GROUPS_MODEL_RUNNER, 'groups_model.js', 'i18n.js')
+        assert json.loads(js.run(tmp_path, runner, json.dumps(GROUPS_MODEL_ROWS))) == GROUPS_MODEL_OUT
 
 
 EXAMS_FORM_RUNNER = """\
@@ -673,20 +814,13 @@ process.stdout.write(JSON.stringify({
 
 class TestExamsForm:
     """The conversions of exams_form.js (the datetime-local inputs of the exam form, the lab
-    texts) run under node or bun when one is installed, skipped otherwise."""
+    texts) run by the ``js`` runtime, skipped without one."""
 
-    def test_conversions(self, tmp_path):
-        node = shutil.which('node') or shutil.which('bun')
-        if node is None:
-            pytest.skip("neither node nor bun is installed")
-        for name in ('exams_form.js', 'i18n.js', 'ui.js', 'login_picker.js', 'api.js', 'groups_model.js'):
-            shutil.copy(JS / name, tmp_path / name)
-        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
-        runner = tmp_path / 'run.mjs'
-        runner.write_text(EXAMS_FORM_RUNNER)
+    def test_conversions(self, tmp_path, js):
+        runner = js_project(tmp_path, EXAMS_FORM_RUNNER,
+                            'exams_form.js', 'i18n.js', 'ui.js', 'login_picker.js', 'api.js', 'groups_model.js')
         epochs = [1792999980, 1793005440, 0]      # whole minutes: the inputs carry no seconds
-        completed = subprocess.run([node, str(runner), json.dumps(epochs)], capture_output=True, text=True, check=True)
-        out = json.loads(completed.stdout)
+        out = json.loads(js.run(tmp_path, runner, json.dumps(epochs)))
         assert out['roundTrip'] == epochs and out['shape'] == [True, True, True]
         assert out['empty'] == ['', '', None, None]
         assert out['labs'] == 'sre/dhcp.py, sre/_EXAM_/x.py:hard'
@@ -717,20 +851,12 @@ process.stdout.write(JSON.stringify({
 class TestTerminalGeometry:
     """The pure helpers of terminal_windows.js (the floating terminal windows: a window kept
     inside the panes, its geometry as fractions of them for the spectators of a presentation, the
-    cascade of the new windows, the default size of a font) run under node or bun when one is
-    installed, skipped otherwise."""
+    cascade of the new windows, the default size of a font) run by the ``js`` runtime, skipped
+    without one."""
 
-    def test_geometry(self, tmp_path):
-        node = shutil.which('node') or shutil.which('bun')
-        if node is None:
-            pytest.skip("neither node nor bun is installed")
-        for name in ('terminal_windows.js', 'i18n.js', 'ui.js'):
-            shutil.copy(JS / name, tmp_path / name)
-        (tmp_path / 'package.json').write_text('{"type": "module"}\n')
-        runner = tmp_path / 'run.mjs'
-        runner.write_text(TERMINAL_GEOMETRY_RUNNER)
-        completed = subprocess.run([node, str(runner)], capture_output=True, text=True, check=True)
-        out = json.loads(completed.stdout)
+    def test_geometry(self, tmp_path, js):
+        runner = js_project(tmp_path, TERMINAL_GEOMETRY_RUNNER, 'terminal_windows.js', 'i18n.js', 'ui.js')
+        out = json.loads(js.run(tmp_path, runner))
         assert out['fractions'] == {'x': 0.1, 'y': 0.0625, 'w': 0.5, 'h': 0.5}
         assert out['roundTrip'] == {'x': 100, 'y': 50, 'w': 500, 'h': 400}
         assert out['pushedBack'] == {'x': 500, 'y': 400, 'w': 500, 'h': 400}

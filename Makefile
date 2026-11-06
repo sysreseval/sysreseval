@@ -233,8 +233,13 @@ remove-debug-mode:
 # The pytest command line of every test target: -p no:cacheprovider (the production install
 # /opt/sre is read-only), -ra = a short summary at the end naming the skipped tests with their
 # reason (and the failures, errors, xfails), not only their number.  SRE_TEST_MYSQL (see
-# docker-tests below) reaches tests/test_web_accessdb_live.py whatever the target.
-PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) ${ROOT_DIR}/venv/bin/python -m pytest -v -p no:cacheprovider -ra
+# docker-tests below) reaches tests/test_web_accessdb_live.py whatever the target, and SRE_TEST_JS
+# tests/test_web_templates.py: the runtime of the tests running a module of web/static/js, node or
+# bun of the machine, else bun in a container of the oven/bun image (`docker`: the image pulled
+# once, the tests skipped without a reachable Docker daemon; `docker:<image>` another image;
+# empty = the tests skipped on a machine with neither node nor bun).
+SRE_TEST_JS ?= $(if $(shell command -v node || command -v bun),,docker)
+PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) SRE_TEST_JS=$(SRE_TEST_JS) ${ROOT_DIR}/venv/bin/python -m pytest -v -p no:cacheprovider -ra
 
 # Every test file under tests/, sub-directories included (tests/lab/ holds the tests of the labs):
 # the web tests of `make web-tests`, the functional tests of `make functional-tests` and the Docker
