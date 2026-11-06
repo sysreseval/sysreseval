@@ -349,7 +349,7 @@ class TestFocusThroughThePortal:
         assert (start['login'], start['host'], start['rln'], start['student'], start['status']) == ('prof', 'a01', rln, 'alice', '201')
         stop = by_event['focus_stop'][0]
         assert (stop['login'], stop['instructor'], stop['student'], stop['rln']) == ('prof', 'prof', 'alice', rln)
-        text = (tmp_path / 'access.log').read_text()
-        assert '/view' not in text and '/ws' not in text and 'GET' not in text   # the view, the sockets, the listing: not logged
+        events = {l['event'] for l in lines}
+        assert events <= {'session_open', 'session_close', 'start', 'focus_start', 'focus_stop'}   # the view, the sockets, the listing: not logged
         alice_session = [l for l in by_event['session_close'] if l['login'] == 'alice'][0]
         assert alice_session['requests'] == '1'                  # the start of the project; the rest keeps alive
