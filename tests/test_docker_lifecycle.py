@@ -33,9 +33,9 @@ import pytest
 from SRE import params
 from net_config import REMOUNT_PROC_SYS_CMD
 
-# Skipped as a whole, like the Linux-only GUI tests: one line of the `-ra` summary of `make tests`
-# (a skipif mark, or a skip raised in a fixture, is reported once per test).  Run alone as a normal
-# user, the file collects nothing and pytest exits 5.
+# Skipped as a whole, like the Linux-only GUI tests: one line of the `-ra` summary of
+# `make docker-tests` (a skipif mark, or a skip raised in a fixture, is reported once per test).
+# Run alone as a normal user, the file collects nothing and pytest exits 5.
 if os.geteuid() != 0:
     pytest.skip("Docker lifecycle tests must run as root", allow_module_level=True)
 

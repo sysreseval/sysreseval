@@ -242,27 +242,31 @@ SRE_TEST_JS ?= $(if $(shell command -v node || command -v bun),,docker)
 PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) SRE_TEST_JS=$(SRE_TEST_JS) ${ROOT_DIR}/venv/bin/python -m pytest -v -p no:cacheprovider -ra
 
 # Every test file under tests/, sub-directories included (tests/lab/ holds the tests of the labs):
-# the web tests of `make web-tests`, the functional tests of `make functional-tests` and the Docker
-# tests of `make docker-tests` run here too (the Docker ones skip themselves without root or a
-# Docker daemon).  Only tests/test_exam_mode.py is left out: a script, not a pytest module
-# (`make exam-tests`).
-TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py
+# the web tests of `make web-tests` and the functional tests of `make functional-tests` run here
+# too.  Left out: tests/test_exam_mode.py, a script, not a pytest module (`make exam-tests`), and
+# the Docker tests of `make docker-tests` (real containers, root), which `make all-tests` runs
+# after these.  The same ignore list serves `make test`: pytest's --ignore spares the paths given
+# on the command line, so `make test FILE=test_docker_lifecycle.py` still runs that file.
+DOCKER_TESTS = ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_web_accessdb_live.py
+TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py $(addprefix --ignore=,$(DOCKER_TESTS))
 tests:
 	$(PYTEST) ${ROOT_DIR}/tests/ $(TESTS_IGNORE)
 
 # The tests of the web front-end only (all of them part of `make tests`): the agent on the fake
 # sre of tests/mock_sre.py, the portal in front of it, the pty, the templates, the pool, the
 # connection log and its database, the archives, the stress tools.  Every test_web_*.py,
-# test_agent_*.py and test_pool_*.py file, plus the files named here: a new web test file with
-# one of those prefixes is run without touching this list.
-WEB_TESTS = $(sort $(wildcard ${ROOT_DIR}/tests/test_web_*.py ${ROOT_DIR}/tests/test_agent_*.py ${ROOT_DIR}/tests/test_pool_*.py)) \
+# test_agent_*.py and test_pool_*.py file but the Docker one (test_web_accessdb_live.py, the
+# database on a MariaDB container: `make docker-tests`), plus the files named here: a new web test
+# file with one of those prefixes is run without touching this list.
+WEB_TESTS = $(filter-out $(DOCKER_TESTS), \
+	$(sort $(wildcard ${ROOT_DIR}/tests/test_web_*.py ${ROOT_DIR}/tests/test_agent_*.py ${ROOT_DIR}/tests/test_pool_*.py))) \
 	${ROOT_DIR}/tests/test_mock_sre.py ${ROOT_DIR}/tests/test_archive_summary.py \
 	${ROOT_DIR}/tests/test_answers_gui_and_web.py ${ROOT_DIR}/tests/test_make_web_hosts.py
 web-tests:
 	$(PYTEST) $(WEB_TESTS)
 
 # Run a single test file: make test FILE=test_net_config.py (a file of a sub-directory:
-# FILE=lab/test_latency_lab.py)
+# FILE=lab/test_latency_lab.py; a Docker test file named here is run too)
 FILE ?=
 test:
 	$(PYTEST) ${ROOT_DIR}/tests/$(FILE) $(TESTS_IGNORE)
@@ -290,18 +294,18 @@ exam-tests:
 		|| { echo "ERROR: debug_mode is False in params.py — set debug_mode = True before running exam-tests"; exit 1; }
 	PYTHONPATH=${ROOT_DIR}/src ${ROOT_DIR}/venv/bin/python ${ROOT_DIR}/tests/test_exam_mode.py $(EXAM_ARGS)
 
-# Docker integration tests with real containers, the Docker part of `make tests` (run as root on a
-# host with Docker and the SRE images, skipped otherwise): sre start/stop for a non-privileged and a
-# privileged lab, sre save/restore, checked on the Docker API; the database of the connection log
-# against a MariaDB container (SRE_TEST_MYSQL=mysql://user:password@host:3306/db for a server of
-# yours, empty to skip it).
+# Docker integration tests with real containers, left out of `make tests` and run by
+# `make all-tests` (as root on a host with Docker and the SRE images, skipped otherwise): sre
+# start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker
+# API; the database of the connection log against a MariaDB container
+# (SRE_TEST_MYSQL=mysql://user:password@host:3306/db for a server of yours, empty to skip it).
 SRE_TEST_MYSQL ?= docker
 docker-tests:
-	$(PYTEST) ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_web_accessdb_live.py
+	$(PYTEST) $(DOCKER_TESTS)
 
-# `make tests` already runs the functional and the Docker tests; the exam tests need root and
-# debug_mode = True.
-all-tests: tests exam-tests
+# `make tests` already runs the functional tests; the Docker tests need root and a Docker daemon,
+# the exam tests root and debug_mode = True.
+all-tests: tests docker-tests exam-tests
 
 images:
 	$(MAKE) -C ${ROOT_DIR}/images all
