@@ -230,6 +230,9 @@
 <li class="toctree-l3"><a class="reference internal" href="web.html#web-toml"><code class="docutils literal notranslate"><span class="pre">web.toml</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#authentication-by-the-reverse-proxy">Authentication by the reverse proxy</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#the-connection-log">The connection log</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#the-archives-of-the-evaluations">The archives of the evaluations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#user-groups">User groups</a></li>
+<li class="toctree-l3"><a class="reference internal" href="web.html#exams">Exams</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="web.html#a-pool-of-workstations">A pool of workstations</a></li>
@@ -468,7 +471,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles-include-exam-only"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span> <span class="pre">[--include-exam-only]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-pre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code></a></li>
@@ -942,12 +945,12 @@ Set the <code class="docutils literal notranslate"><span class="pre">archive_dir
 </section>
 <section id="tests">
 <h3>Tests<a class="headerlink" href="#tests" title="Link to this heading">¶</a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>tests<span class="w">                          </span><span class="c1"># unit tests (excludes test_exam_mode.py)</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>tests<span class="w">                          </span><span class="c1"># every test under tests/, the functional, web and Docker tests included (excludes test_exam_mode.py, a script)</span>
 make<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="nv">FILE</span><span class="o">=</span>test_net_config.py<span class="w">   </span><span class="c1"># single file</span>
 make<span class="w"> </span>functional-tests<span class="w">               </span><span class="c1"># functional tests (test_functional.py)</span>
 make<span class="w"> </span>exam-tests<span class="w">                     </span><span class="c1"># exam-mode integration tests (requires debug_mode=True)</span>
-make<span class="w"> </span>docker-tests<span class="w">                   </span><span class="c1"># Docker integration tests with real containers (root; start/stop, save/restore, the connection log&#39;s database on a MariaDB container)</span>
-make<span class="w"> </span>all-tests<span class="w">                      </span><span class="c1"># tests + functional-tests + exam-tests + docker-tests</span>
+make<span class="w"> </span>docker-tests<span class="w">                   </span><span class="c1"># the Docker integration tests alone (root, real containers: start/stop, save/restore, the connection log&#39;s database on a MariaDB container; make tests skips them without root or Docker)</span>
+make<span class="w"> </span>all-tests<span class="w">                      </span><span class="c1"># tests + exam-tests</span>
 </pre></div>
 </div>
 <p>Unit tests don’t need Docker or Kathara — they cover serialization, topology, grading logic, and pure-Python helpers. Functional and exam-mode tests stand up more of the system: see <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> for the shared fixtures (<code class="docutils literal notranslate"><span class="pre">mock_sre_args</span></code>, <code class="docutils literal notranslate"><span class="pre">tmp_lab_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">tmp_pub_dir</span></code>).</p>
