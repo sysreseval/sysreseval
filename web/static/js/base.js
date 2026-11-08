@@ -13,15 +13,22 @@
 // document, handled by focus.js) and follows the instructor.  The same socket tells a student
 // that the phase of the exam they are in changed ({"t": "exam", "id", "phase"}): the message is
 // handed to exam.js (the `sre-exam-push` event), which fetches the state again and shows the
-// exam bar, the countdowns and the end overlay on every page.  Nothing of this runs inside the
+// exam bar, the countdowns and the end overlay on every page.  The same socket brings the web
+// conference (BigBlueButton) an instructor put the user in ({"t": "webconf", "id", "name",
+// "owner", "role", "join_url"} / {..., "ended": true}): webconf.js shows the client in an iframe
+// over the page (a floating window, the Webconf tab of a project, full page), and
+// webconf_dialog.js is the Webconf button of the instructors.  Nothing of this runs inside the
 // presentation iframe.  The Logout button asks about the running projects before the form is
-// submitted (logout.js).  No _() here: base.js loads no catalog (exam.js loads its own).
+// submitted (logout.js).  No _() here: base.js loads no catalog (exam.js and webconf.js load
+// their own).
 
 import * as api from './api.js';
 import {el, toast} from './ui.js';
 import {ReconnectingSocket} from './events.js';
 import {setupLogout} from './logout.js';
 import {setupExam} from './exam.js';
+import * as webconf from './webconf.js';
+import {setupWebconfDialog} from './webconf_dialog.js';
 
 const select = document.getElementById('language-select');
 if (select) {
@@ -106,6 +113,10 @@ function onPresence(message) {
     document.dispatchEvent(new CustomEvent('sre-exam-push', {detail: message}));   // exam.js fetches the state
     return;
   }
+  if (message.t === 'webconf') {
+    webconf.onPush(message);
+    return;
+  }
   if (message.t !== 'presentation') {
     return;
   }
@@ -131,4 +142,6 @@ if (body.dataset.login && !framed) {
     }
   });
   setupExam();
+  webconf.setup();
+  setupWebconfDialog();      // nothing without the Webconf button (a student, or no [bbb])
 }

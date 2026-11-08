@@ -26,6 +26,8 @@ from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
                            MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
 from .focus import Focus, Focuses, WS_FOCUS_ENDED
+from .bbb import BbbError, BbbUnavailable
+from .webconf import Webconfs, Room, RoomGone, ROOM_ID_RE, ROLE_NAMES
 from .exams import (Exams, Exam, Member, PHASE_STARTING, START_PHASES, REASON_ADDRESS, lab_of_rln, normal_lab,
                     parse_exam, parse_labs, parse_selection, parse_extra_minutes)
 from .examprojects import ExamProjects, exam_payload, instructor_identity
@@ -51,6 +53,18 @@ LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français'}
 #: an iframe of the student's current page, so it alone allows a same-origin frame ancestor.
 CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
 CSP_FRAMED = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+
+
+def security_policies(cfg: WebConfig) -> tuple:
+    """``(csp, csp_framed)`` of the pages: the defaults above, plus ``frame-src 'self' <BBB
+    origin>`` when ``[bbb]`` is set (the iframe of a web conference loads a same-origin URL that
+    answers a 302 to the server, and a redirect target is checked against frame-src too)."""
+    csp = CSP
+    if cfg.bbb.enabled:
+        csp = csp.replace("connect-src 'self'", f"connect-src 'self'; frame-src 'self' {cfg.bbb.origin}")
+    return csp, csp.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+
+
 #: ``(method, canonical route)`` of the project calls a spectator of a presentation may make: they
 #: are relayed with the presenter's identity (``Routes._target``), read-only by construction (the
 #: terminal socket must join a session and gets ``readonly=1``, the display socket ``readonly=1``).
@@ -117,8 +131,10 @@ class Routes:
     def __init__(self, cfg: WebConfig, pool: Pool, relay: Relay, *, localedirs, manager=None, access: AccessLog,
                  presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
                  archives: ArchiveStore | None = None, memberships: Memberships | None = None,
-                 exams: Exams | None = None, exam_projects: ExamProjects | None = None):
+                 exams: Exams | None = None, exam_projects: ExamProjects | None = None,
+                 webconfs: Webconfs | None = None):
         self.cfg = cfg
+        self.csp, self.csp_framed = security_policies(cfg)
         self.pool = pool
         self.roles = roles       # the directory lookups (roles.RoleCache) completing the Watch rows' groups
         self.manager = manager
@@ -134,6 +150,8 @@ class Routes:
         # projects on the agents (examprojects.ExamProjects, None = the agents are not told)
         self.exams = exams if exams is not None else Exams(self.presence, memberships=self.memberships, cfg=cfg.exams)
         self.exam_projects = exam_projects
+        # the web conferences (webconf.Webconfs: the BigBlueButton rooms; disabled without [bbb])
+        self.webconfs = webconfs if webconfs is not None else Webconfs(self.presence, None)
         self.localedirs = localedirs
         self.limiter = RateLimiter()
         self._heavy = asyncio.Semaphore(HEAVY_QUERIES)     # the slots of the heavy reports (_heavy_acquire)
@@ -236,6 +254,15 @@ class Routes:
         r.add_put('/api/focus/{id}/view', self.api_focus_view)
         r.add_delete('/api/focus/{id}', self.api_focus_delete)
         r.add_get('/api/focus/{id}/ws', self.api_focus_ws)
+        # web conferences (BigBlueButton): the rooms of the instructors, the join redirect of every participant
+        r.add_get('/webconf/left', self.webconf_left_page)
+        r.add_get('/api/webconfs', self.api_webconfs)
+        r.add_post('/api/webconfs', self.api_webconf_create)
+        r.add_get('/api/webconfs/{id}', self.api_webconf_get)
+        r.add_put('/api/webconfs/{id}/audience', self.api_webconf_audience)
+        r.add_post('/api/webconfs/{id}/attend', self.api_webconf_attend)
+        r.add_delete('/api/webconfs/{id}', self.api_webconf_delete)
+        r.add_get('/api/webconfs/{id}/join', self.api_webconf_join)
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -269,6 +296,7 @@ class Routes:
             'administrator': bool(identity and identity.administrator),   # the History link
             'groups': self.cfg.groups_configured,     # the Watch page shows the student groups (its Group column)
             'group_sources': self.cfg.group_sources,  # any user groups: the group select, the Present audience
+            'webconf': self.cfg.webconf_available,    # the Webconf button of the instructors ([bbb])
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
             **extra,
@@ -1743,7 +1771,7 @@ class Routes:
         response = aiohttp_jinja2.render_template('project.html', request, self._page_context(
             request, host=host.name, rln=p.rln, api_base=f"/api/projects/{host.name}/{urllib.parse.quote(p.rln)}",
             presentation={'id': p.id, 'presenter': p.presenter.fullname or p.presenter.login}))
-        response.headers['Content-Security-Policy'] = CSP_FRAMED
+        response.headers['Content-Security-Policy'] = self.csp_framed
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         return response
 
@@ -1764,6 +1792,8 @@ class Routes:
             await self.focuses.resync({identity.login})          # a focus on them already
             await self.focuses.tell(identity.login, watcher)     # ... their other pages knew of
             await self.exams.resync({identity.login})            # an exam binding them already
+            await self.webconfs.tell(identity.login, watcher)    # the web conference their other pages show
+            await self.webconfs.resync({identity.login})         # ... or one they were not told of yet
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
@@ -1775,6 +1805,8 @@ class Routes:
                 await self.focuses.resync({identity.login})
             with contextlib.suppress(Exception):
                 await self.exams.resync({identity.login})
+            with contextlib.suppress(Exception):
+                await self.webconfs.resync({identity.login})
         return ws
 
     async def api_presence(self, request):
@@ -1784,7 +1816,8 @@ class Routes:
         await self.memberships.refresh()
         return web.json_response(self.presence.connected(exclude_login=identity.login,
                                                          presentation_of=self.presentations.presentation_id_of,
-                                                         groups_of=self.memberships.groups_of_identity))
+                                                         groups_of=self.memberships.groups_of_identity,
+                                                         webconf_of=self.webconfs.webconf_id_of))
 
     async def api_presentations(self, request):
         self._require_instructor(request)
@@ -2038,3 +2071,142 @@ class Routes:
                 with contextlib.suppress(Exception):
                     await self.focuses.detach_student(f.id, watcher)
         return ws
+
+    # -- web conferences (BigBlueButton) ---------------------------------------------------------
+    # The rooms live in ``webconf.Webconfs``; every participant's browser learns of its room
+    # through the presence socket (above) and shows the client in an iframe whose src is the
+    # join redirect below (``webconf.js``); the instructors manage the rooms from the Webconf
+    # dialog (``webconf_dialog.js``).  Nothing here without ``[bbb]``: 404.
+
+    def _origin(self, request) -> str:
+        """The URL of the portal as the browsers reach it (``public_url``, else this request's):
+        the ``logoutURL`` of a meeting."""
+        return self.cfg.public_url.rstrip('/') or f"{request.scheme}://{request.host}"
+
+    def _webconf(self, request) -> Room:
+        if not self.webconfs.enabled:
+            raise PoolError(404, "web conferences are not configured")
+        room = self.webconfs.get(request.match_info['id'])
+        if room is None:
+            raise PoolError(404, "no such web conference")
+        return room
+
+    async def api_webconfs(self, request):
+        """Instructors: every room of the portal, with who is connected and who is in."""
+        self._require_instructor(request)
+        if not self.webconfs.enabled:
+            raise PoolError(404, "web conferences are not configured")
+        await self.memberships.refresh()
+        return web.json_response([room.to_dict(self.presence) for room in self.webconfs.listing()])
+
+    async def api_webconf_create(self, request):
+        """Instructors: a new room, ``{"name", "audience": {"logins", "groups"}}``; the meeting is
+        created on the server first (502 when it refuses, 503 when it does not answer)."""
+        identity = self._require_instructor(request)
+        if not self.webconfs.enabled:
+            raise PoolError(404, "web conferences are not configured")
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        if not isinstance(body, dict):
+            return json_error(400, "a JSON object is expected")
+        try:
+            audience = parse_audience(body.get('audience', {}), identity.login)
+        except ValueError as e:
+            return json_error(400, str(e))
+        await self.memberships.refresh()
+        try:
+            room = await self.webconfs.start(identity, body.get('name'), audience, request_origin=self._origin(request))
+        except ValueError as e:
+            return json_error(400, str(e))
+        except BbbError as e:
+            return json_error(502, f"BigBlueButton refused the meeting: {e.message or e.message_key}")
+        except BbbUnavailable:
+            return json_error(503, "the BigBlueButton server does not answer")
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(webconf=room.id, name=room.name, audience=audience_size(audience))
+        return web.json_response(room.to_dict(self.presence), status=201)
+
+    async def api_webconf_get(self, request):
+        identity = self._require_identity(request)
+        room = self._webconf(request)
+        await self.memberships.refresh()
+        if not identity.is_instructor and not room.includes(identity):
+            raise PoolError(403, "not in the audience")
+        return web.json_response(room.to_dict(self.presence))
+
+    async def api_webconf_audience(self, request):
+        """Any instructor: the audience of a room, ``{"audience": {"logins", "groups"}}``."""
+        identity = self._require_instructor(request)
+        room = self._webconf(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return json_error(400, "a JSON body is expected")
+        try:
+            audience = parse_audience(body.get('audience') if isinstance(body, dict) else body, room.owner.login)
+        except ValueError as e:
+            return json_error(400, str(e))
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(webconf=room.id, audience=audience_size(audience), owner=room.owner.login)
+        await self.memberships.refresh()
+        await self.webconfs.set_audience(room.id, audience)
+        return web.json_response(room.to_dict(self.presence))
+
+    async def api_webconf_attend(self, request):
+        """An instructor joins a room: the one their browser shows from now on."""
+        identity = self._require_instructor(request)
+        room = self._webconf(request)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(webconf=room.id, owner=room.owner.login)
+        await self.memberships.refresh()
+        await self.webconfs.attend(room.id, identity)
+        return web.json_response(room.to_dict(self.presence))
+
+    async def api_webconf_delete(self, request):
+        """Any instructor ends a room."""
+        self._require_instructor(request)
+        room = self._webconf(request)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(webconf=room.id, name=room.name, owner=room.owner.login)
+        await self.webconfs.end(room.id)
+        return web.json_response({'ok': True})
+
+    async def api_webconf_join(self, request):
+        """The ``src`` of the iframe: a 302 to the signed join URL of the caller on the server (a
+        moderator for an instructor, a viewer otherwise); 410 when the room ended meanwhile."""
+        identity = self._require_identity(request)
+        room = self._webconf(request)
+        await self.memberships.refresh()
+        if not identity.is_instructor and not room.includes(identity):
+            raise PoolError(403, "not in the audience")
+        try:
+            url = await self.webconfs.join_url_for(identity, room)
+        except RoomGone:
+            raise PoolError(410, "the web conference has ended") from None
+        except BbbUnavailable:
+            raise PoolError(503, "the BigBlueButton server does not answer") from None
+        except BbbError as e:
+            raise PoolError(502, f"BigBlueButton refused the join: {e.message or e.message_key}") from None
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(webconf=room.id, role=ROLE_NAMES[self.webconfs.role_of(identity)])
+        return web.Response(status=302, headers={'Location': url, 'Cache-Control': 'no-store'})
+
+    async def webconf_left_page(self, request):
+        """What the client shows after *Leave meeting* (the ``logoutURL`` of the meetings), inside
+        the iframe of a page of the site or in a popped-out window: the page tells the one that
+        holds it (``webconf_left.js``).  Framed by the portal itself, hence the headers."""
+        room_id = request.query.get('id', '')
+        if not ROOM_ID_RE.match(room_id):
+            raise web.HTTPBadRequest(text="bad id")
+        response = aiohttp_jinja2.render_template('webconf_left.html', request,
+                                                  self._page_context(request, webconf_id=room_id))
+        response.headers['Content-Security-Policy'] = self.csp_framed
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        return response

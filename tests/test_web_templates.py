@@ -58,7 +58,7 @@ def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
             'language': 'fr', 'instructor': False, 'administrator': False, 'groups': False, 'group_sources': False,
-            'logout_url': '', 'site': {'name': '', 'url': '', 'logo_url': ''}}
+            'webconf': False, 'logout_url': '', 'site': {'name': '', 'url': '', 'logo_url': ''}}
     base.update(extra)
     return base
 
@@ -118,7 +118,8 @@ def parse_po(path: Path) -> dict:
 class TestTemplates:
     def test_the_pages_exist(self):
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
-                'pool.html', 'history.html', 'archives.html', 'groups.html', 'exams.html'} <= set(template_names())
+                'pool.html', 'history.html', 'archives.html', 'groups.html', 'exams.html',
+                'webconf_left.html'} <= set(template_names())
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -228,6 +229,22 @@ class TestTemplates:
         # the History link of the administrators (instructors)
         html = render('projects.html', instructor=True, administrator=True)
         assert 'href="/history"' in html and 'href="/watch"' in html
+
+    def test_webconf_button_and_flags(self):
+        """The Webconf button of the instructors, after the Pool link, when [bbb] is set; the
+        body attributes every page carries for webconf.js and webconf_dialog.js; the page the
+        BBB client lands on after Leave meeting."""
+        html = render('projects.html', instructor=True, webconf=True)
+        assert 'id="webconf-button"' in html and html.index('href="/pool"') < html.index('id="webconf-button"')
+        assert 'data-webconf="true"' in html and 'data-fullname="Alice Martin"' in html and 'data-group-sources="false"' in html
+        assert 'id="webconf-button"' not in render('projects.html', instructor=True)
+        assert 'id="webconf-button"' not in render('projects.html', webconf=True)
+        assert 'data-webconf="false"' in render('projects.html')
+        assert 'data-group-sources="true"' in render('watch.html', instructor=True, group_sources=True)
+        left = render('webconf_left.html', webconf_id='<r>', language='fr')
+        assert '<html lang="fr">' in left and 'data-webconf-id="&lt;r&gt;"' in left and '/static/js/webconf_left.js' in left
+        assert 'data-join-url="/api/webconfs/&lt;r&gt;/join"' in left and 'id="webconf-rejoin"' in left
+        assert 'You have left the conference.' in left
 
     def test_watch_page(self):
         html = render('watch.html', instructor=True)
@@ -519,7 +536,8 @@ class TestTemplates:
                  render('groups.html', instructor=True, groups_directory=True, groups_database=True),
                  render('exams.html', instructor=True, exams_database=True, exams_available=True,
                         exam_defaults={'lead': 10, 'pre_start': 5, 'eval_interval': 60}),
-                 render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'})]
+                 render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': 'P'}),
+                 render('webconf_left.html', webconf_id='r1')]
         # the image of the end overlay of an exam is referenced by exam.js, not by a template
         assert (STATIC / 'img' / 'thats_all_folks.svg').is_file()
         assert "'/static/img/thats_all_folks.svg'" in (JS / 'exam.js').read_text(encoding='utf-8')
@@ -840,6 +858,86 @@ class TestExamsForm:
         assert out['labels'] == ['DHCP lab', 'sre/dhcp']
 
 
+WEBCONF_MODEL_RUNNER = """\
+import * as M from './webconf_model.js';
+
+const push = {t: 'webconf', id: 'r1', name: 'Salle 1', owner: {login: 'prof', fullname: 'Pr. Of'}, role: 'viewer',
+              join_url: '/api/webconfs/r1/join'};
+const room = M.roomOf(push);
+const bad = [M.roomOf(null), M.roomOf({t: 'webconf', id: 'r1'}), M.roomOf({id: 'r1', join_url: 'https://evil/join'}),
+             M.roomOf({id: '', join_url: '/api/webconfs/x/join'})];
+const s0 = M.nextState(null, {type: 'push', room, stored: null});
+const again = M.nextState(s0, {type: 'push', room: {...room, name: 'Renamed'}, stored: null});
+const stored = {id: 'r1', mode: 'tab', fractions: {x: 0.1, y: 0.2, w: 0.5, h: 0.4}};
+const restored = M.nextState(null, {type: 'push', room, stored});
+const otherStored = M.nextState(null, {type: 'push', room, stored: {...stored, id: 'r2'}});
+const steps = [];
+let s = s0;
+for (const type of ['minimize', 'restore', 'dock', 'undock', 'full', 'window', 'leave', 'window', 'popout', 'left-page',
+                    'window', 'minimize', 'dock', 'minimize', 'full', 'leave', 'leave', 'dock']) {
+  s = M.nextState(s, {type});
+  steps.push(s.mode);
+}
+const moved = M.nextState(s0, {type: 'moved', fractions: {x: 0.1, y: 0.1, w: 0.3, h: 0.3}});
+const movedMinimized = M.nextState(M.nextState(s0, {type: 'minimize'}), {type: 'moved', fractions: {x: 0.1, y: 0.1, w: 0.3, h: 0.3}});
+process.stdout.write(JSON.stringify({
+  room, bad, s0, againName: again.name, againMode: again.mode, restoredMode: restored.mode,
+  restoredFractions: restored.fractions, otherStoredMode: otherStored.mode, steps,
+  movedFractions: moved.fractions, movedMinimizedFractions: movedMinimized.fractions,
+  badMoveSame: M.nextState(s0, {type: 'moved', fractions: {x: 2, y: 0, w: 1, h: 1}}) === s0,
+  ended: M.nextState(s0, {type: 'ended', id: 'r1'}), endedOtherSame: M.nextState(s0, {type: 'ended', id: 'r2'}) === s0,
+  unknownSame: M.nextState(s0, {type: 'bogus'}) === s0, nullSame: M.nextState(s0, null) === s0,
+  fromNothing: M.nextState(null, {type: 'dock'}),
+  effective: [M.effectiveMode(restored, {hasTabHost: true}), M.effectiveMode(restored, {hasTabHost: false}),
+              M.effectiveMode(s0, {}), M.effectiveMode(null, {})],
+  parsed: [M.parseStored(null, 1000), M.parseStored('garbage', 1000),
+           M.parseStored(JSON.stringify({id: 'r1', mode: 'flying', t: 900}), 1000),
+           M.parseStored(JSON.stringify({id: 'r1', mode: 'window', t: 900, fractions: {x: 5}}), 1000),
+           M.parseStored(JSON.stringify({id: 'r1', mode: 'tab', t: 1000 - M.STORED_MAX_AGE}), 1000),
+           M.parseStored(JSON.stringify(M.storedOf(moved, 900)), 1000)],
+  storedNull: M.storedOf(null, 1), storedOf: M.storedOf(moved, 42),
+  sizes: [M.defaultWindowSize({width: 1600, height: 1000}), M.defaultWindowSize({width: 800, height: 600}),
+          M.defaultWindowSize({width: 300, height: 200})],
+  fractions: M.defaultWindowFractions({width: 1600, height: 1000}), noArea: M.defaultWindowFractions({width: 0, height: 0}),
+  full: M.fullRect({width: 1280, height: 720}, 32), fullTiny: M.fullRect({width: 100, height: 10}, 32),
+  live: M.MODES.map(M.isLive),
+}));
+"""
+
+
+class TestWebconfModel:
+    """The pure model of the web conference shown by a page (webconf_model.js: the room of a
+    push, the modes and their transitions, the stored state, the default geometry), run by the
+    ``js`` runtime, skipped without one."""
+
+    def test_model(self, tmp_path, js):
+        runner = js_project(tmp_path, WEBCONF_MODEL_RUNNER, 'webconf_model.js', 'terminal_windows.js', 'i18n.js', 'ui.js')
+        out = json.loads(js.run(tmp_path, runner))
+        room = {'id': 'r1', 'name': 'Salle 1', 'owner': {'login': 'prof', 'fullname': 'Pr. Of'}, 'role': 'viewer',
+                'joinUrl': '/api/webconfs/r1/join'}
+        assert out['room'] == room and out['bad'] == [None] * 4
+        assert out['s0'] == {**room, 'mode': 'window', 'fractions': None}
+        assert (out['againName'], out['againMode']) == ('Renamed', 'window')          # the same room: the mode kept
+        assert out['restoredMode'] == 'tab' and out['restoredFractions'] == {'x': 0.1, 'y': 0.2, 'w': 0.5, 'h': 0.4}
+        assert out['otherStoredMode'] == 'window'                                     # another room's state
+        assert out['steps'] == ['minimized', 'window', 'tab', 'window', 'full', 'window', 'left', 'window', 'popout',
+                                'left', 'window', 'minimized', 'tab', 'tab', 'full', 'left', 'left', 'left']
+        assert out['movedFractions'] == {'x': 0.1, 'y': 0.1, 'w': 0.3, 'h': 0.3} and out['movedMinimizedFractions'] is None
+        assert out['badMoveSame'] and out['endedOtherSame'] and out['unknownSame'] and out['nullSame']
+        assert out['ended'] is None and out['fromNothing'] is None
+        assert out['effective'] == ['tab', 'window', 'window', None]
+        assert out['parsed'][:3] == [None, None, None]
+        assert out['parsed'][3] == {'id': 'r1', 'mode': 'window', 'fractions': None}    # bad fractions dropped alone
+        assert out['parsed'][4] is None                                                  # too old
+        assert out['parsed'][5] == {'id': 'r1', 'mode': 'window', 'fractions': {'x': 0.1, 'y': 0.1, 'w': 0.3, 'h': 0.3}}
+        assert out['storedNull'] is None
+        assert out['storedOf'] == {'id': 'r1', 'mode': 'window', 'fractions': {'x': 0.1, 'y': 0.1, 'w': 0.3, 'h': 0.3}, 't': 42}
+        assert out['sizes'] == [{'w': 640, 'h': 480}, {'w': 480, 'h': 360}, {'w': 320, 'h': 200}]
+        assert out['fractions'] == {'x': 0.59, 'y': 0.504, 'w': 0.4, 'h': 0.48} and out['noArea'] is None
+        assert out['full'] == {'x': 0, 'y': 32, 'w': 1280, 'h': 688} and out['fullTiny'] == {'x': 0, 'y': 32, 'w': 100, 'h': 0}
+        assert out['live'] == [True, True, True, True, False, False]
+
+
 TERMINAL_GEOMETRY_RUNNER = """\
 import {clampRect, toFractions, toPixels, cascadePosition, defaultSize, parseFloating, CASCADE_WRAP} from './terminal_windows.js';
 
@@ -968,20 +1066,66 @@ class TestJavaScript:
 
     def test_group_matching_shared_by_the_pages(self):
         """The pages match a row against a group through groups_model.js (one notion of a group
-        key), never by comparing the department string themselves."""
-        for name in ('watch.js', 'watch_summary.js', 'present.js', 'groups.js', 'group_members.js'):
+        key), never by comparing the department string themselves; the audience dialog of the
+        presentations and of the web conferences is one module."""
+        for name in ('watch.js', 'watch_summary.js', 'audience_dialog.js', 'groups.js', 'group_members.js'):
             assert "from './groups_model.js'" in (JS / name).read_text(encoding='utf-8'), name
         watch = (JS / 'watch.js').read_text(encoding='utf-8')
         assert 'rowMatchesGroup(row, state.group)' in watch and "el('optgroup'" in watch
         assert "table.dataset.groupSources === 'true'" in watch and 'row.group === state.group' not in watch
         summary = (JS / 'watch_summary.js').read_text(encoding='utf-8')
         assert 'rowMatchesGroup(r, c.group)' in summary and 'r.group === c.group' not in summary
+        audience = (JS / 'audience_dialog.js').read_text(encoding='utf-8')
+        assert 'rowGroupKeys(row)' in audience and "api.get('/api/groups')" in audience and 'normalizeKey' in audience
+        assert 'groupSet.has(row.group)' not in audience and "_('in a conference')" in audience
         present = (JS / 'present.js').read_text(encoding='utf-8')
-        assert 'rowGroupKeys(row)' in present and "api.get('/api/groups')" in present and 'normalizeKey' in present
-        assert 'groupSet.has(row.group)' not in present
+        assert "from './audience_dialog.js'" in present and "'/api/presence'" not in present and 'rowGroupKeys' not in present
+        assert 'groupSources: groups' in present
+        assert "from './audience_dialog.js'" in (JS / 'webconf_dialog.js').read_text(encoding='utf-8')
         project = (JS / 'project.js').read_text(encoding='utf-8')
         assert "body.dataset.groupSources === 'true'" in project and 'groups: groupSourcesEnabled' in project
         assert not re.search(r'\bdocument\.', (JS / 'groups_model.js').read_text(encoding='utf-8'))   # pure: runs under node
+
+    def test_webconf_wiring(self):
+        """The web conference (webconf.js): one iframe fixed over a slot, never moved in the DOM,
+        hidden with visibility (alive) while its slot is not shown; the push handed over by
+        base.js on every page of a logged-in user outside the presentation iframe; the Webconf tab
+        of the project page and the generalised chrome of the terminal windows; the pure model."""
+        base = (JS / 'base.js').read_text(encoding='utf-8')
+        assert "message.t === 'webconf'" in base and 'webconf.onPush(message)' in base
+        guarded = base[base.index('if (body.dataset.login && !framed)'):]
+        assert 'webconf.setup()' in guarded and 'setupWebconfDialog()' in guarded
+        webconf = (JS / 'webconf.js').read_text(encoding='utf-8')
+        assert "from './webconf_model.js'" in webconf and "from './terminal_windows.js'" in webconf
+        assert "'camera *; microphone *; display-capture *; fullscreen; autoplay'" in webconf
+        assert "id: 'webconf-frame'" in webconf and "visibility = 'hidden'" in webconf
+        assert "display = 'none'" not in webconf and 'display: none' not in webconf
+        assert "window.open(state.joinUrl, 'sre-webconf-' + state.id, POPUP_FEATURES)" in webconf
+        assert "ev.data.t !== 'webconf-left'" in webconf and 'ev.origin !== window.location.origin' in webconf
+        assert "new BroadcastChannel(CHANNEL)" in webconf and "'pagehide'" in webconf and "'pageshow'" in webconf
+        assert "'sreweb.webconf'" not in webconf                      # the storage key lives in the model
+        model = (JS / 'webconf_model.js').read_text(encoding='utf-8')
+        assert "STORAGE_KEY = 'sreweb.webconf'" in model
+        assert not re.search(r'\b(document|window)\.', model)       # pure: runs under node
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "case 'webconf': return spectator ? null : createWebconfTab(ctx);" in project
+        shut_down = project[project.index('function shutDown()'):project.index('function projectClosed()')]
+        assert 'setWebconfTabHost(null)' in shut_down
+        select_tab = project[project.index('function selectTab('):project.index('function renderTabBar(')]
+        assert '!isListed(id)' in select_tab
+        for name in ('function focusView()', 'function getView()'):
+            body = project[project.index(name):]
+            assert 'tab: sharedTab()' in body[:body.index('\n}\n')], name
+        assert "currentTab === 'webconf' ? null : currentTab" in project
+        tab = (JS / 'tabs' / 'webconf.js').read_text(encoding='utf-8')
+        assert 'setTabHost({' in tab and "from '../webconf.js'" in tab
+        windows = (JS / 'terminal_windows.js').read_text(encoding='utf-8')
+        assert 'buttons = null' in windows and 'onMove = null' in windows and 'onMove(rect)' in windows
+        left = (JS / 'webconf_left.js').read_text(encoding='utf-8')
+        assert "t: 'webconf-left'" in left and 'window.location.origin' in left
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert re.search(r'#webconf-frame\s*\{[^{}]*position: fixed', css)
+        assert re.search(r'#webconf-frame\.dragging\s*\{[^{}]*pointer-events: none', css)
 
     def test_group_names_are_url_encoded(self):
         """Every group name or login put in a path of the groups API goes through encodeURIComponent."""
@@ -1332,7 +1476,10 @@ class TestJavaScript:
         layer = re.search(r'\.terminal-windows\s*\{([^{}]*)\}', css).group(1)
         assert 'pointer-events: none' in layer
         z_index = lambda selector: int(re.search(selector + r'\s*\{[^{}]*z-index:\s*(\d+)', css).group(1))
-        assert z_index(r'\.terminal-windows') < z_index(r'\.toasts') < z_index(r'#presentation-overlay')
+        # the web conference above the presentation overlay (a spectator talks while watching),
+        # under the exam end overlay; the toasts above every overlay
+        assert z_index(r'\.terminal-windows') < z_index(r'#presentation-overlay') < z_index(r'#webconf-layer')
+        assert z_index(r'#webconf-layer') < z_index(r'#webconf-frame') < z_index(r'#exam-ended') < z_index(r'\.toasts')
         assert re.search(r'\.terminal-window\.readonly\s*\{[^{}]*resize: none', css)
         focus = (JS / 'focus.js').read_text(encoding='utf-8')
         assert "const VIEW_KEYS = ['tab', 'terminal', 'question'];" in focus     # no geometry in a focus

@@ -265,6 +265,25 @@ session_timeout = "30m"
 # name = { fr = "Institut Exemple", en = "Example Institute" }
 # url = "https://www.example.org/"
 
+[bbb]
+# The BigBlueButton server behind the Webconf button of the instructors: an instructor opens a
+# room for chosen students or groups, and the client is shown in a window over their pages (see
+# the documentation, "Web conference").  Nothing here: no button.  The portal calls the API of
+# the server (url + secret: `bbb-conf --secret` on the server), the browsers load its client, so
+# the server must be reachable from both, over HTTPS, and its nginx must let the portal frame
+# the client; public_url (above) is required: the client comes back to it after Leave meeting.
+# url = "https://bbb.example.org/"
+# secret = "the shared secret of the API"
+# checksum = "sha1"          # sha1 (default), sha256 or sha512 (supportedChecksumAlgorithms of the server)
+# welcome = { fr = "Bienvenue", en = "Welcome" }   # the welcome message of the client; the server's by default
+# record = false             # record the meetings
+# mute_on_start = false      # everybody muted when joining
+# duration = 0               # "2h": the server ends a meeting after that; 0 = unlimited
+# max_participants = 0       # 0 = unlimited
+# poll_interval = "10s"      # how often the participants and the ended meetings are read from the server
+# [bbb.userdata]             # the bbb_* client settings sent with every join (userdata-bbb_* of the API reference)
+# bbb_skip_check_audio = true
+
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user
 start_interval = 30       # seconds between two starts of one user

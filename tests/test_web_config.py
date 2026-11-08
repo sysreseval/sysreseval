@@ -156,6 +156,8 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'table': 'bad-name'}}, 'exams.table'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'keep': -1}}, 'keep'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'typo': 1}}, 'typo'),
+        ({'secret': SECRET, 'hosts': [HOST], 'bbb': {'url': 'https://bbb.example.org/'}}, 'secret'),
+        ({'secret': SECRET, 'hosts': [HOST], 'bbb': {'typo': 1}}, 'typo'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
           'auth': {'mode': 'proxy', 'proxy': {'ldap_roles': True}}}, 'ldap_roles'),
         ({'secret': SECRET, 'hosts': [HOST], 'trusted_proxies': ['127.0.0.1'],
@@ -305,6 +307,72 @@ class TestWebConfig:
     def test_site_refused(self, site, fragment):
         with pytest.raises(ConfigError, match=fragment):
             web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'site': site})
+
+    def test_bbb(self):
+        """[bbb] (the Webconf button): off without url and secret; the URL of the server in its
+        three spellings; the welcome message by language; the durations; the client settings."""
+        base = {'secret': SECRET, 'hosts': [HOST], 'languages': ['fr', 'en']}
+        cfg = web_config_from_dict(base)
+        assert not cfg.bbb.enabled and not cfg.webconf_available
+        assert cfg.bbb.api_url == '' and cfg.bbb.origin == '' and cfg.bbb.checksum == 'sha1'
+        assert (cfg.bbb.record, cfg.bbb.mute_on_start, cfg.bbb.duration, cfg.bbb.max_participants) == (False, False, 0, 0)
+        assert cfg.bbb.poll_interval == 10 and cfg.bbb.userdata == {} and cfg.bbb.duration_minutes == 0
+        for url in ('https://bbb.example.org', 'https://bbb.example.org/', 'https://bbb.example.org/bigbluebutton/',
+                    'https://bbb.example.org/bigbluebutton', 'https://bbb.example.org/bigbluebutton/api/',
+                    ' https://bbb.example.org/bigbluebutton/api '):
+            cfg = web_config_from_dict({**base, 'bbb': {'url': url, 'secret': 'sekret'}})
+            assert cfg.bbb.enabled and cfg.webconf_available
+            assert cfg.bbb.api_url == 'https://bbb.example.org/bigbluebutton/api/', url
+            assert cfg.bbb.origin == 'https://bbb.example.org', url
+        cfg = web_config_from_dict({**base, 'bbb': {'url': 'http://bbb.lan:8080/prefix/', 'secret': 's'}})
+        assert cfg.bbb.api_url == 'http://bbb.lan:8080/prefix/bigbluebutton/api/' and cfg.bbb.origin == 'http://bbb.lan:8080'
+        cfg = web_config_from_dict({**base, 'bbb': {
+            'url': 'https://bbb.example.org/', 'secret': 'sekret', 'checksum': 'sha256',
+            'welcome': {'fr': 'Bienvenue', 'en': 'Welcome'}, 'record': True, 'mute_on_start': True,
+            'duration': '2h', 'max_participants': 30, 'poll_interval': '5s',
+            'userdata': {'bbb_skip_check_audio': True, 'bbb_listen_only_mode': False, 'bbb_client_title': 'SRE',
+                         'bbb_shortcuts': 3}}})
+        bbb = cfg.bbb
+        assert bbb.checksum == 'sha256' and bbb.record and bbb.mute_on_start
+        assert bbb.duration == 7200 and bbb.duration_minutes == 120 and bbb.max_participants == 30 and bbb.poll_interval == 5
+        assert bbb.welcome_for('en', cfg.languages) == 'Welcome' and bbb.welcome_for('fr', cfg.languages) == 'Bienvenue'
+        assert bbb.welcome_for('de', cfg.languages) == 'Bienvenue'       # the first configured language
+        assert bbb.userdata == {'bbb_skip_check_audio': True, 'bbb_listen_only_mode': False, 'bbb_client_title': 'SRE',
+                                'bbb_shortcuts': 3}
+        plain = web_config_from_dict({**base, 'bbb': {'url': 'https://x.org', 'secret': 's', 'welcome': 'Hello',
+                                                      'duration': 90}})
+        assert plain.bbb.welcome_for('fr', plain.languages) == 'Hello' and plain.bbb.duration_minutes == 2
+        assert web_config_from_dict({**base, 'bbb': {'url': 'https://x.org', 'secret': 's', 'welcome': {}}}) \
+            .bbb.welcome_for('fr', ['fr']) == ''
+
+    @pytest.mark.parametrize('bbb, fragment', [
+        ({'url': 'https://x.org'}, 'go together'),
+        ({'secret': 's'}, 'go together'),
+        ({'url': 'ftp://x.org', 'secret': 's'}, 'url'),
+        ({'url': 'https://', 'secret': 's'}, 'url'),
+        ({'url': 3, 'secret': 's'}, 'url'),
+        ({'url': 'https://x.org', 'secret': 3}, 'secret'),
+        ({'url': 'https://x.org', 'secret': 's', 'checksum': 'md5'}, 'checksum'),
+        ({'url': 'https://x.org', 'secret': 's', 'welcome': 3}, 'welcome'),
+        ({'url': 'https://x.org', 'secret': 's', 'welcome': {'fr': 3}}, 'welcome'),
+        ({'url': 'https://x.org', 'secret': 's', 'record': 'yes'}, 'record'),
+        ({'url': 'https://x.org', 'secret': 's', 'mute_on_start': 1}, 'mute_on_start'),
+        ({'url': 'https://x.org', 'secret': 's', 'duration': -1}, 'duration'),
+        ({'url': 'https://x.org', 'secret': 's', 'duration': 'soon'}, 'duration'),
+        ({'url': 'https://x.org', 'secret': 's', 'max_participants': -1}, 'max_participants'),
+        ({'url': 'https://x.org', 'secret': 's', 'max_participants': True}, 'max_participants'),
+        ({'url': 'https://x.org', 'secret': 's', 'poll_interval': 0}, 'poll_interval'),
+        ({'url': 'https://x.org', 'secret': 's', 'poll_interval': 'soon'}, 'poll_interval'),
+        ({'url': 'https://x.org', 'secret': 's', 'userdata': 'x'}, 'table'),
+        ({'url': 'https://x.org', 'secret': 's', 'userdata': {'Bad-Key': 1}}, 'Bad-Key'),
+        ({'url': 'https://x.org', 'secret': 's', 'userdata': {'bbb_x': [1]}}, 'bbb_x'),
+        ({'url': 'https://x.org', 'secret': 's', 'userdata': {'bbb_x': 1.5}}, 'bbb_x'),
+        ({'typo': 1}, 'typo'),
+        ('x', 'table'),
+    ])
+    def test_bbb_refused(self, bbb, fragment):
+        with pytest.raises(ConfigError, match=fragment):
+            web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'bbb': bbb})
 
     def test_site_logo_must_be_an_image(self, tmp_path):
         text = tmp_path / 'logo.txt'

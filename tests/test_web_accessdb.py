@@ -762,7 +762,7 @@ class TestEvents:
         assert literals <= set(A.ALL_EVENTS), literals - set(A.ALL_EVENTS)
         assert {e for e in A.EVENTS.values() if e not in A.WS_EVENTS} <= set(A.ALL_EVENTS)
         assert {'project_open', 'terminal_close', 'display_open', 'history', 'denied', 'session_close',
-                'login_failed', 'admin', 'start'} <= set(A.ALL_EVENTS)
+                'login_failed', 'admin', 'start', 'webconf_start', 'webconf_join'} <= set(A.ALL_EVENTS)
         assert 'project' not in A.ALL_EVENTS and list(A.ALL_EVENTS) == sorted(set(A.ALL_EVENTS))
         assert A.event_for('GET', '/api/history') == 'history' and ('GET', '/api/history') not in A.KEEPALIVE
         assert A.event_for('GET', '/api/history/sessions') == 'history'

@@ -30,7 +30,10 @@ The instructors get, on top of what a student sees (*Instructors* below):
   question, changing the drawing of the schema, …) is shown at once on the students' browsers;
 - the **focus** on one student: while helping a student on their project, the instructor brings
   the student's browser to that project and keeps the two pages on the same tab, the same
-  terminal and the same question, whichever of the two changes it.
+  terminal and the same question, whichever of the two changes it;
+- the **web conference**: an instructor opens a BigBlueButton room for chosen students or groups
+  (or the whole class) and talks to them, camera and screen if they wish, in a window over the
+  pages of the site while everybody goes on working (*Web conference* below).
 
 ## Architecture
 
@@ -192,6 +195,7 @@ merges other files into this one, as for `web.toml` below.
 | `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept), `refresh_interval` (`10s`: the least time between two reads forced by the *Refresh* button of the page; the clicks arriving during a read share it, `0` = none) |
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
+| `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
 
@@ -373,7 +377,13 @@ session and the request following a logout opens another one. The other events:
   presenter publishes are not logged;
 - the focus on a student (*Instructors* below): `focus_start` (the instructor's `login`, `host`,
   `rln`, the `student`) and `focus_stop` (the `instructor` of the focus, the `student`); the
-  view the two pages share and their sockets are not logged.
+  view the two pages share and their sockets are not logged;
+- the web conferences (*Web conference* below): `webconf_start` (the instructor's `login`,
+  `webconf` = the id of the room, its `name`, `audience` = the number of logins and groups),
+  `webconf_audience` (the audience changed, the `owner` of the room), `webconf_attend` (an
+  instructor joining a room), `webconf_stop`, and `webconf_join` (a join URL served to a
+  participant: their `login`, `webconf`, `role`, status 302); the listing of the rooms is a
+  keepalive, the page the client comes back to after *Leave meeting* is not logged.
 
 The client address is the last entry of `X-Forwarded-For` when the TCP peer is one of
 `trusted_proxies` (the Apache and nginx examples set that header), the peer address otherwise:
@@ -746,6 +756,79 @@ attribute decides whether `records/` exists, `sre stop` deletes it); the archive
 hold no `exam_json` document (the `exam` flag comes from the answers); anonymous mode has no
 stable logins to schedule; a page loaded before the portal was updated has no exam script until
 it is reloaded (the server still refuses what it must).
+
+### Web conference (BigBlueButton)
+
+An instructor talks to a student, a group or the whole class without leaving the site: the
+portal opens **rooms** on a BigBlueButton (BBB) server and shows its client to the participants
+in an iframe over the pages of the site, while everybody goes on working on their projects.
+Nothing is installed on the pool hosts; the portal needs the API of the server, the browsers the
+server itself.
+
+```toml
+[bbb]
+url = "https://bbb.example.org/"     # the server (its bigbluebutton/ or bigbluebutton/api/ path works too)
+secret = "..."                        # the shared secret of its API: bbb-conf --secret
+# checksum = "sha1"                   # sha1 (default), sha256 or sha512: supportedChecksumAlgorithms of the server
+# welcome = { fr = "Bienvenue", en = "Welcome" }   # the welcome message of the client (the server's by default)
+# record = false
+# mute_on_start = false
+# duration = 0                        # "2h": the server ends a meeting after that; 0 = unlimited
+# max_participants = 0
+# poll_interval = "10s"               # the participants and the ended meetings are read that often
+# [bbb.userdata]                      # the client settings of every join (userdata-bbb_*, the BBB API reference)
+# bbb_skip_check_audio = true
+```
+
+**The instructors**: the *Webconf* button of the site bar opens the dialog of the rooms: those
+open on the portal, with their owner, the size of their audience, who is connected to the site
+and who is in the room (read from the server every `poll_interval`), each with *Join* (this
+browser shows the room, as a moderator: any instructor may join any room), *Audience…* and
+*End* (any instructor); and a *New room* form: a name (the instructor's by default) and an
+audience chosen as for a presentation (the connected users one by one; the groups: departments,
+directory groups, custom groups; a member of a group connecting later is put in the room too).
+A student is in at most one room at a time (the newest one including them); an instructor sees
+the room they created or joined last.
+
+**The participants**: the client appears in a floating window over the page (dragged by its
+title bar, resized by its corner), with buttons to minimize it to its title bar, to dock it into
+the **Webconf** tab of the project page, to show it full page (a bar above it comes back), to
+pop it out to a separate browser window, and to leave (×). How it is shown and where the window
+is are remembered by the browser: the next page shows the conference the same way (in a window
+where there is no project tab). A participant who left, or whose client is in a separate window,
+keeps a pill in the site bar to rejoin or to bring it back; the *Leave meeting* of the client
+itself leads to that pill. Every page of the site loads the client again (a new join of the same
+room: a few seconds, the audio to join again), which a site of several pages cannot avoid: the
+separate window does. Two tabs of the same user never join twice: one holds the client, the
+others show a pill to bring it there.
+
+**The server**: the meeting is created when the room is (a server that refuses or does not
+answer leaves no room: the dialog says so); a join is a URL signed for the user (`fullName` =
+their name, `userID` = their login, the role by their instructor flag: a moderator for an
+instructor, a viewer otherwise, the `bbb.userdata` settings), served by the portal as a redirect
+(`GET /api/webconfs/{id}/join`, the `src` of the iframe): the secret never leaves the portal. A
+meeting nobody joined expires on the server after a few minutes
+(`meetingExpireIfNoUserJoinedInMinutes`): the portal creates it again at the next join. A
+meeting everybody left expires about a minute later (`meetingExpireWhenLastUserLeftInMinutes`),
+like one a moderator ended from the client: the room ends on the portal at its next poll, every
+participant told. *End* in the dialog ends the meeting on the server. The rooms live in memory:
+a portal restart forgets them (the meetings expire on their own, the clients already in them stay
+until then).
+
+**Prerequisites**: the portal reached over HTTPS, with `public_url` set (the `logoutURL` of the
+meetings, where the client comes back after *Leave meeting*, is built from it: `/webconf/left`);
+the server reachable from the portal (its API) and from the browsers (the client, over HTTPS);
+the nginx of the server must not forbid framing by the portal's origin (an `X-Frame-Options`
+header or a `frame-ancestors` directive on the client would leave the frame empty: the separate
+window is the fallback); the pages of the portal allow the server's origin in the `frame-src` of
+their `Content-Security-Policy`, nothing else. BBB 2.4 at least (the `role` of the join; the
+passwords are still passed for older servers). Safari may refuse the camera in a cross-origin
+frame: pop the client out.
+
+The connection log gets the `webconf_*` events (*The connection log* above). Tests:
+`tests/test_bbb_client.py`, `tests/test_web_webconf.py` (the registry on a fake client, the
+portal in front of the fake server of `tests/fake_bbb.py`), `tests/test_web_webconf_browser.py`
+(headless Chrome).
 
 ### Securing the pool (mutual TLS)
 
@@ -1215,6 +1298,11 @@ What an instructor gets:
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.
 
+- **Webconf**: the button of the site bar (when `[bbb]` of `web.toml` names a BigBlueButton
+  server, *Web conference* above) opens the rooms: start one for chosen students and groups,
+  join a colleague's as a moderator, change its audience, end it. The students put in a room get
+  the client in a window over their page.
+
 ### Administrators
 
 An administrator is an instructor who may read the connection log on the **History** page (the
@@ -1365,7 +1453,8 @@ once.
   date: a session never slides) and carries the role, group and administrator flag of the
   sign-in (a change in the directory applies at the next sign-in: Logout, or the expiry); the
   state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
-  matching `Origin`; the pages carry a `Content-Security-Policy`.
+  matching `Origin`; the pages carry a `Content-Security-Policy` (the origin of the BigBlueButton
+  server added to its `frame-src` when `[bbb]` is set: the only other origin a page may frame).
 - In proxy mode nothing is stored in a cookie: every request carries the identity set by the
   reverse proxy, accepted from the peers of `trusted_proxies` only (a request reaching the
   portal from anywhere else has no identity, headers or not).
@@ -1463,6 +1552,10 @@ the browser reaches a desktop through the owner check of the portal and of the a
   spectator's terminal shows the presenter's grid at a smaller font when their window is smaller;
   a presented project never idles out while it is watched. A focus ends when the portal restarts
   too; while one is on, the student's other browser tabs all go to the project.
+- A web conference is forgotten when the portal restarts (the meeting goes on on the
+  BigBlueButton server until it expires); every page of the site joins the meeting again (a few
+  seconds); two tabs of one user hand the client over to each other, but two pages loading at the
+  same instant may both join.
 
 ## Development
 

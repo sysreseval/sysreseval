@@ -101,6 +101,7 @@ Depends: ${misc:Depends},
          adduser,
          python3-aiohttp,
          python3-aiohttp-jinja2,
+         python3-yarl,
          python3-jinja2
 Recommends: python3-ldap3
 Suggests: nginx | apache2 | caddy, sysreseval-agent, python3-pymysql

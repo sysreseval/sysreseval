@@ -40,7 +40,8 @@ TEMPLATES = {
     'login.html': '<html lang="{{ language }}"><title>Login</title>{{ auth_mode }} {{ error }}'
                   '{% for code, name in languages %}<option>{{ code }}</option>{% endfor %}'
                   '{% if site.logo_url %}<img src="{{ site.logo_url }}">{% endif %}[{{ site.name }}]</html>',
-    'projects.html': '<html><title>Projects</title>{{ identity.login }}</html>',
+    'projects.html': '<html><title>Projects</title>{{ identity.login }} webconf={{ webconf }}</html>',
+    'webconf_left.html': '<html><title>Left</title>{{ webconf_id }}</html>',
     'open.html': '<html><title>Open</title>{{ identity.login }}</html>',
     'project.html': '<html><title>Project</title>{{ host }} {{ rln }} {{ api_base }} {{ _("Schema") }}</html>',
     'watch.html': '<html><title>Watch</title>{{ identity.login }} {{ instructor }} {{ groups }}</html>',

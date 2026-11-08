@@ -1779,3 +1779,101 @@ msgstr "Cliquer pour filtrer sur ce groupe"
 
 msgid "The group has no member known to the portal."
 msgstr "Le groupe n'a aucun membre connu du portail."
+
+# --- web conferences (BigBlueButton): base.html, webconf_left.html, webconf.js, webconf_dialog.js, tabs/webconf.js, audience_dialog.js ---
+
+msgid "Webconf"
+msgstr "Visio"
+
+msgid "You have left the conference."
+msgstr "Vous avez quitté la conférence."
+
+msgid "Rejoin"
+msgstr "Rejoindre à nouveau"
+
+msgid "Web conference"
+msgstr "Visioconférence"
+
+msgid "Web conferences"
+msgstr "Visioconférences"
+
+msgid "{name} ({owner})"
+msgstr "{name} ({owner})"
+
+msgid "Minimize"
+msgstr "Réduire"
+
+msgid "Restore"
+msgstr "Restaurer"
+
+msgid "Dock into the Webconf tab"
+msgstr "Ancrer dans l'onglet Visio"
+
+msgid "Full screen"
+msgstr "Plein écran"
+
+msgid "Open in a separate browser window"
+msgstr "Ouvrir dans une fenêtre séparée du navigateur"
+
+msgid "Leave the conference"
+msgstr "Quitter la conférence"
+
+msgid "Back to a window"
+msgstr "Revenir en fenêtre"
+
+msgid "Show in the Webconf tab"
+msgstr "Afficher dans l'onglet Visio"
+
+msgid "Webconf: {name}"
+msgstr "Visio : {name}"
+
+msgid "Webconf in a separate window"
+msgstr "Visio dans une fenêtre séparée"
+
+msgid "Bring back"
+msgstr "Ramener ici"
+
+msgid "Webconf open in another tab"
+msgstr "Visio ouverte dans un autre onglet"
+
+msgid "Bring here"
+msgstr "Ramener dans cet onglet"
+
+msgid "The conference {name} has ended"
+msgstr "La conférence {name} est terminée"
+
+msgid "The browser blocked the separate window."
+msgstr "Le navigateur a bloqué la fenêtre séparée."
+
+msgid "New room"
+msgstr "Nouvelle salle"
+
+msgid "Room name"
+msgstr "Nom de la salle"
+
+msgid "Audience…"
+msgstr "Public…"
+
+msgid "Audience of the conference…"
+msgstr "Public de la conférence…"
+
+msgid "Choose"
+msgstr "Choisir"
+
+msgid "{n} users, {m} groups"
+msgstr "{n} utilisateurs, {m} groupes"
+
+msgid "Join"
+msgstr "Rejoindre"
+
+msgid "In the room"
+msgstr "Dans la salle"
+
+msgid "End the conference «{name}»? Its participants will be disconnected."
+msgstr "Terminer la conférence « {name} » ? Ses participants seront déconnectés."
+
+msgid "No room is open."
+msgstr "Aucune salle n'est ouverte."
+
+msgid "in a conference"
+msgstr "en visioconférence"

@@ -115,11 +115,12 @@ class Presence:
         return {login for login in self._sockets if (self.identity_of(login) or Identity(login)).group == group}
 
     def connected(self, exclude_login: str | None = None, *, presentation_of=lambda identity: None,
-                  groups_of=None) -> list:
+                  groups_of=None, webconf_of=lambda identity: None) -> list:
         """One row per connected login, sorted: identity fields, the keys of their groups
         (*groups_of(identity)*, ``groups.Memberships.groups_of_identity``; the department alone
         without it), the distinct pages open, the time of the oldest socket and, through
-        *presentation_of(identity)*, the presentation shown to them (``None`` when none)."""
+        *presentation_of(identity)* / *webconf_of(identity)*, the presentation shown to them and
+        the web conference they are in (``None`` when none)."""
         rows = []
         for login in sorted(self._sockets):
             sockets = self._sockets[login]
@@ -133,7 +134,7 @@ class Presence:
             rows.append({'login': login, 'fullname': identity.fullname, 'group': identity.group, 'role': identity.role,
                          'groups': groups, 'pages': sorted({s.page for s in sockets if s.page}),
                          'since': iso_time(min(s.since for s in sockets)),
-                         'presentation': presentation_of(identity)})
+                         'presentation': presentation_of(identity), 'webconf': webconf_of(identity)})
         return rows
 
     async def push(self, login: str, message: dict):

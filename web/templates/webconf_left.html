@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ _("Webconf") }} - SRE</title>
+<link rel="stylesheet" href="/static/css/sre.css">
+</head>
+<body class="webconf-left" data-webconf-id="{{ webconf_id }}" data-join-url="/api/webconfs/{{ webconf_id }}/join">
+<main class="page webconf-left">
+  <p>{{ _("You have left the conference.") }}</p>
+  <p><button type="button" id="webconf-rejoin" class="primary">{{ _("Rejoin") }}</button></p>
+</main>
+<script type="module" src="/static/js/webconf_left.js"></script>
+</body>
+</html>

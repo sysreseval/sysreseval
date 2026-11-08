@@ -38,6 +38,8 @@ import {createTerminalsTab} from './tabs/terminals.js';
 import {createDisplayTab} from './tabs/display.js';
 import {createStatesTab} from './tabs/states.js';
 import {createLogTab} from './tabs/log.js';
+import {createWebconfTab} from './tabs/webconf.js';
+import {setTabHost as setWebconfTabHost} from './webconf.js';
 
 const TOUCH_INTERVAL = 60000;   // ms
 
@@ -139,6 +141,21 @@ const ctx = {
       presenter.schedule();
     }
   },
+  // the Webconf tab listed while a web conference is shown on this page (webconf.js through
+  // tabs/webconf.js); gone with the conference, the page goes back to the first tab
+  setWebconfTab(live) {
+    if (spectator || live === webconfTab) {
+      return;
+    }
+    webconfTab = live;
+    if (!state.project) {
+      return;
+    }
+    renderTabBar(tabIds());
+    if (!live && currentTab === 'webconf') {
+      selectTab(state.project.tabs[0]);
+    }
+  },
 };
 if (!spectator) {
   // the hooks of the tabs publishing the presenter's view and the view shared by a focus
@@ -173,14 +190,27 @@ if (!spectator) {
 
 const tabs = {};        // id -> the tab object (created on first use, kept across updates)
 let currentTab = null;
+// the Webconf tab (tabs/webconf.js): listed while a web conference is shown on this page
+// (webconf.js tells through ctx.setWebconfTab), never for a spectator
+let webconfTab = false;
 
 function tabLabels() {
   return {
     schema: _('Schema'), full_schema: _('Full Schema'), informations: _('Informations'),
     machines: _('Machines'), networks: _('Networks'), questions: _('Questions'),
     evaluation: _('Evaluation'), terminals: _('Terminals'), display: _('Display'),
-    apply_config: _('Apply Configuration'), log: _('Log'),
+    apply_config: _('Apply Configuration'), log: _('Log'), webconf: _('Webconf'),
   };
+}
+
+// The tabs of the page: the project's (the agent lists them) and the Webconf tab while it is shown.
+function tabIds() {
+  const ids = state.project ? state.project.tabs : [];
+  return webconfTab ? [...ids, 'webconf'] : ids;
+}
+
+function isListed(id) {
+  return id === 'webconf' ? webconfTab : Boolean(state.project && state.project.tabs.includes(id));
 }
 
 function createTab(id) {
@@ -196,6 +226,7 @@ function createTab(id) {
     case 'display': return createDisplayTab(ctx);
     case 'apply_config': return createStatesTab(ctx);
     case 'log': return createLogTab(ctx);
+    case 'webconf': return spectator ? null : createWebconfTab(ctx);
     default: return null;
   }
 }
@@ -220,7 +251,7 @@ function tab(id) {
 // options: what the tab's show() takes (the terminals tab: autoOpen false when a focus brings
 // the page there, so that no terminal is opened for the user)
 function selectTab(id, options = {}) {
-  if (!state.project || !state.project.tabs.includes(id) || !tab(id)) {
+  if (!state.project || !isListed(id) || !tab(id)) {
     return;
   }
   if (currentTab && currentTab !== id && tabs[currentTab]) {
@@ -263,7 +294,7 @@ function applyProject(project) {
   // name when the answers metadata give it, with the login
   const who = ownerName ? `${ownerName} (${owner})` : owner;
   titleElement.textContent = isOwner || !owner ? name : `${name} — ${who}`;
-  renderTabBar(project.tabs);
+  renderTabBar(tabIds());
   for (const id of project.tabs) {
     const t = tab(id);
     if (t) {
@@ -272,7 +303,7 @@ function applyProject(project) {
   }
   // the tabs that are no longer listed (the Log tab after the instructor view is turned off)
   for (const [id, t] of Object.entries(tabs)) {
-    if (!project.tabs.includes(id)) {
+    if (!isListed(id)) {
       t.element.hidden = true;
       if (currentTab === id) {
         currentTab = null;
@@ -284,7 +315,7 @@ function applyProject(project) {
     // the Terminals tab, if it is the one shown, opens no terminal of its own
     tabs.terminals.setSessions(state.terminals);
   }
-  if (!currentTab || !project.tabs.includes(currentTab)) {
+  if (!currentTab || !isListed(currentTab)) {
     selectTab(project.tabs[0]);
   }
   instructorToggle.hidden = spectator || !(isInstructor && project.has_instructor_texts);
@@ -324,12 +355,17 @@ function updateSchemaPdfLink() {
   }
 }
 
+// The tab shown as the other pages may know it: the Webconf tab is this page's alone.
+function sharedTab() {
+  return currentTab === 'webconf' ? null : currentTab;
+}
+
 // The view a focus shares both ways (focus.js): the active tab, the terminal sub-tab shown (by
 // the id of its session: the two pages share the student's sessions; never a private terminal
 // of the instructor, which the student must not see) and the question selected.
 function focusView() {
   return {
-    tab: currentTab,
+    tab: sharedTab(),
     terminal: tabs.terminals ? tabs.terminals.focusTarget() : null,
     question: tabs.questions ? tabs.questions.getSelected() : null,
   };
@@ -362,7 +398,7 @@ function applyFocusView(view) {
 function getView() {
   const current = currentTab ? tabs[currentTab] : null;
   return {
-    tab: currentTab,
+    tab: sharedTab(),
     terminals: tabs.terminals ? tabs.terminals.getView() : {open: [], active: null},
     question: tabs.questions ? tabs.questions.getSelected() : null,
     schema: state.exportQuery,
@@ -403,6 +439,7 @@ function shutDown() {
   if (tabs.display) {
     tabs.display.close();
   }
+  setWebconfTabHost(null);      // the conference goes on in a window over the page
   tabBar.hidden = true;
   panes.hidden = true;
   closeButton.disabled = true;
@@ -730,6 +767,9 @@ async function main() {
     return;
   }
   events.connect();
+  if (!spectator) {
+    tab('webconf');           // the Webconf tab registered as the host of a conference (webconf.js)
+  }
   touchTimer = window.setInterval(() => {
     api.post(ctx.url('/touch')).catch(() => {});
   }, TOUCH_INTERVAL);

@@ -52,6 +52,7 @@ def main(argv=None) -> int:
         logger.info("evaluation archives: %s", portal.archives.describe())
     logger.info("user groups: %s", portal.describe_groups())
     logger.info("exams: %s", portal.exams.describe())
+    logger.info("webconf: %s", portal.webconfs.describe())
     web.run_app(app, host=host, port=port, ssl_context=ssl_context, print=None)
     return 0
 

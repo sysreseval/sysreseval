@@ -103,6 +103,14 @@ EVENTS = {
     ('POST', '/api/exams/{id}/labs'): 'exam_edit',
     ('POST', '/api/exams/{id}/close-projects'): 'exam_edit',
     ('POST', '/api/exam/{id}/dismiss'): 'exam_dismiss',
+    # web conferences (BigBlueButton): the rooms opened, their audience edited, an instructor
+    # joining one, the rooms ended (``webconf`` = the room id, ``name``, ``audience`` = its size,
+    # ``owner``), and every join URL served (``webconf``, ``role``; status 302 when served)
+    ('POST', '/api/webconfs'): 'webconf_start',
+    ('PUT', '/api/webconfs/{id}/audience'): 'webconf_audience',
+    ('POST', '/api/webconfs/{id}/attend'): 'webconf_attend',
+    ('DELETE', '/api/webconfs/{id}'): 'webconf_stop',
+    ('GET', '/api/webconfs/{id}/join'): 'webconf_join',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.
@@ -117,10 +125,12 @@ KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', 
                        ('GET', '/api/focus'), ('GET', '/api/focus/{id}'), ('PUT', '/api/focus/{id}/view'),
                        ('GET', '/api/focus/{id}/ws'), ('GET', '/api/archives/options'),
                        ('GET', '/api/groups/people'),
-                       ('GET', '/api/exam'), ('GET', '/api/exams'), ('GET', '/api/exams/{id}')})
+                       ('GET', '/api/exam'), ('GET', '/api/exams'), ('GET', '/api/exams/{id}'),
+                       ('GET', '/api/webconfs'), ('GET', '/api/webconfs/{id}')})
 #: Routes that neither touch the session nor count ('' = no route: 404 / 405).  The presence
-#: socket every page keeps open is one of them: the session expiry stays what it was.
-IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws'})
+#: socket every page keeps open is one of them: the session expiry stays what it was; the page
+#: the BBB client lands on after *Leave meeting* (inside the iframe) too.
+IGNORED = frozenset({'', '/static', '/i18n/{lang}.json', '/site/logo', '/api/presence/ws', '/webconf/left'})
 #: A failed login is logged as ``login_failed`` by the handler, not as a denied call.
 LOGIN_ROUTES = frozenset({('POST', '/login'), ('POST', '/api/login')})
 DENIED_STATUSES = frozenset({401, 403, 429})

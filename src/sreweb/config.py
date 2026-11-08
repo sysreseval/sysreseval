@@ -7,10 +7,12 @@ by ``read_config``."""
 import dataclasses
 import glob
 import ipaddress
+import math
 import mimetypes
 import os
 import re
 import tomllib
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -470,6 +472,71 @@ class SiteConfig:
         return next(iter(self.name.values()), '')
 
 
+#: The checksum algorithms of the BigBlueButton API (sha256 and sha512 since BBB 2.5).
+BBB_CHECKSUMS = ('sha1', 'sha256', 'sha512')
+_BBB_USERDATA_KEY_RE = re.compile(r'^[a-z0-9_]+$')
+_BBB_API_SUFFIX = '/bigbluebutton/api'
+
+
+@dataclass
+class BbbConfig:
+    """``[bbb]``: the BigBlueButton server behind the Webconf button of the instructors
+    (``sreweb/portal/webconf.py`` holds the rooms, ``sreweb/portal/bbb.py`` calls the API).  Off
+    unless ``url`` and ``secret`` are both set."""
+    url: str = ''                     # https://bbb.example.org/, .../bigbluebutton/ or .../bigbluebutton/api/
+    secret: str = ''                  # the shared secret of the API (`bbb-conf --secret`)
+    checksum: str = 'sha1'            # sha1 | sha256 | sha512 (supportedChecksumAlgorithms of the server)
+    welcome: object = ''              # str, or {language: str}; '' = the default message of the server
+    record: bool = False              # record the meetings
+    mute_on_start: bool = False       # everybody muted when joining
+    duration: float = 0.0             # seconds; the server ends the meeting after that; 0 = unlimited
+    max_participants: int = 0         # 0 = unlimited
+    poll_interval: float = 10.0       # seconds between two getMeetingInfo rounds (the participants, the ended meetings)
+    userdata: dict = field(default_factory=dict)   # bbb_* -> str | bool | int, sent as userdata-<key> on every join
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url and self.secret)
+
+    @property
+    def api_url(self) -> str:
+        """The base of the API calls, ``<scheme>://<host>[/prefix]/bigbluebutton/api/``, from the
+        URL as written (the server, its ``bigbluebutton/`` or its ``bigbluebutton/api/`` path)."""
+        if not self.url:
+            return ''
+        parts = urllib.parse.urlsplit(self.url.strip())
+        path = parts.path.rstrip('/')
+        if path.endswith(_BBB_API_SUFFIX):
+            pass
+        elif path.endswith('/bigbluebutton'):
+            path += '/api'
+        else:
+            path += _BBB_API_SUFFIX
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path + '/', '', ''))
+
+    @property
+    def origin(self) -> str:
+        """``scheme://host[:port]`` of the server: the ``frame-src`` of the pages' security policy
+        (the client is shown in an iframe)."""
+        parts = urllib.parse.urlsplit(self.url.strip())
+        return f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else ''
+
+    @property
+    def duration_minutes(self) -> int:
+        """``duration`` as the API wants it (whole minutes, 0 = unlimited)."""
+        return math.ceil(self.duration / 60) if self.duration else 0
+
+    def welcome_for(self, language: str, languages: list) -> str:
+        """The welcome message in *language*, else in the first of *languages*, else the first
+        one given (like ``SiteConfig.name_for``)."""
+        if not isinstance(self.welcome, dict):
+            return self.welcome
+        for lang in (language, *languages):
+            if self.welcome.get(lang):
+                return self.welcome[lang]
+        return next(iter(self.welcome.values()), '')
+
+
 def _check_access_log(cfg: AccessLogConfig, path: str):
     where = f"{path}: access_log."
     if not isinstance(cfg.file, str):
@@ -568,6 +635,40 @@ def _check_site(site: SiteConfig, path: str):
         raise ConfigError(f"{where}url must be a path or an absolute URL")
 
 
+def _check_bbb(bbb: BbbConfig, path: str):
+    where = f"{path}: bbb."
+    for key in ('url', 'secret', 'checksum'):
+        if not isinstance(getattr(bbb, key), str):
+            raise ConfigError(f"{where}{key} must be a string")
+    if bool(bbb.url) != bool(bbb.secret):
+        raise ConfigError(f"{where}url and secret go together")
+    if bbb.url and not bbb.url.strip().lower().startswith(('http://', 'https://')):
+        raise ConfigError(f"{where}url must be the URL of the BigBlueButton server (https://bbb.example.org/)")
+    if bbb.url and not bbb.origin:
+        raise ConfigError(f"{where}url must name the server (https://bbb.example.org/)")
+    if bbb.checksum not in BBB_CHECKSUMS:
+        raise ConfigError(f"{where}checksum must be one of {', '.join(BBB_CHECKSUMS)}")
+    if isinstance(bbb.welcome, dict):
+        if not all(isinstance(k, str) and isinstance(v, str) for k, v in bbb.welcome.items()):
+            raise ConfigError(f"{where}welcome must be a string or a table of strings by language")
+    elif not isinstance(bbb.welcome, str):
+        raise ConfigError(f"{where}welcome must be a string or a table of strings by language")
+    for key in ('record', 'mute_on_start'):
+        if not isinstance(getattr(bbb, key), bool):
+            raise ConfigError(f"{where}{key} must be true or false")
+    if isinstance(bbb.max_participants, bool) or not isinstance(bbb.max_participants, int) or bbb.max_participants < 0:
+        raise ConfigError(f"{where}max_participants must be a number (0 = unlimited)")
+    if bbb.poll_interval <= 0:
+        raise ConfigError(f"{where}poll_interval must be positive")
+    if not isinstance(bbb.userdata, dict):
+        raise ConfigError(f"{path}: [bbb.userdata] must be a table")
+    for key, value in bbb.userdata.items():
+        if not isinstance(key, str) or not _BBB_USERDATA_KEY_RE.match(key):
+            raise ConfigError(f"{path}: [bbb.userdata] keys are the bbb_* names of the client settings, got {key!r}")
+        if not isinstance(value, (str, bool, int)):
+            raise ConfigError(f"{path}: [bbb.userdata] {key} must be a string, a boolean or an integer")
+
+
 @dataclass
 class WebConfig:
     listen: tuple = ('127.0.0.1', 8450)
@@ -586,6 +687,7 @@ class WebConfig:
     groups: GroupsConfig = field(default_factory=GroupsConfig)
     exams: ExamsConfig = field(default_factory=ExamsConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
+    bbb: BbbConfig = field(default_factory=BbbConfig)
     hosts: list = field(default_factory=list)
 
     @property
@@ -593,6 +695,12 @@ class WebConfig:
         """Whether the exams of the web front-end can be stored (the database of the connection
         log): the Exams page says what to configure otherwise."""
         return self.access_log.database.enabled
+
+    @property
+    def webconf_available(self) -> bool:
+        """Whether the Webconf button of the instructors has a BigBlueButton server behind it
+        (``[bbb]`` url and secret)."""
+        return self.bbb.enabled
 
     @property
     def group_directory_reason(self) -> str | None:
@@ -809,6 +917,14 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
                        ('eval_interval', 'start_interval') if k in limits_data})
     site = _build(SiteConfig, _section(data, 'site', path), f"{path}: [site]")
     _check_site(site, path)
+    bbb_data = _section(data, 'bbb', path)
+    userdata = bbb_data.get('userdata', {})
+    if not isinstance(userdata, dict):
+        raise ConfigError(f"{path}: [bbb.userdata] must be a table")
+    bbb = _build(BbbConfig, {k: v for k, v in bbb_data.items() if k != 'userdata'}, f"{path}: [bbb]", userdata=userdata,
+                 duration=parse_duration(bbb_data.get('duration', 0), 'bbb.duration'),
+                 poll_interval=parse_duration(bbb_data.get('poll_interval', 10.0), 'bbb.poll_interval'))
+    _check_bbb(bbb, path)
     hosts_data = data.get('hosts', [])
     if not isinstance(hosts_data, list):
         raise ConfigError(f"{path}: [[hosts]] must be an array of tables")
@@ -816,9 +932,10 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     if len({h.name for h in hosts}) != len(hosts):
         raise ConfigError(f"{path}: host names must be unique")
     top = {k: v for k, v in data.items()
-           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'exams', 'site', 'hosts')}
+           if k not in ('auth', 'pool', 'limits', 'admin', 'access_log', 'archives', 'groups', 'exams', 'site', 'bbb',
+                        'hosts')}
     cfg = _build(WebConfig, top, path, auth=auth, pool=pool, limits=limits, admin=admin, access_log=access_log,
-                 archives=archives, groups=groups, exams=exams, site=site, hosts=hosts,
+                 archives=archives, groups=groups, exams=exams, site=site, bbb=bbb, hosts=hosts,
                  listen=parse_listen(top.get('listen', '127.0.0.1:8450')),
                  trusted_proxies=parse_networks(top.get('trusted_proxies', []), f'{path}: trusted_proxies'))
     if auth.mode == AUTH_PROXY and not cfg.trusted_proxies:

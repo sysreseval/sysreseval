@@ -6,9 +6,11 @@
 // (#panes: the windows float over whatever tab is shown and go with the panes when the page is
 // over).  The geometry of a window is published to the spectators of a presentation as fractions
 // of the layer (x, y, w, h in [0, 1]) and applied on their layer, whatever its size, as read-only
-// windows (no buttons, no drag, no resize).  The pure helpers (clampRect, toFractions, toPixels,
-// cascadePosition, defaultSize, parseFloating) are tested under node / bun: nothing of the DOM at
-// the module top level.
+// windows (no buttons, no drag, no resize).  The same chrome holds the window of a web
+// conference (webconf.js: its own layer over the whole page, its own buttons, a default size of
+// its own, the iframe placed over the window's body through onMove).  The pure helpers
+// (clampRect, toFractions, toPixels, cascadePosition, defaultSize, parseFloating) are tested
+// under node / bun: nothing of the DOM at the module top level.
 
 import {el} from './ui.js';
 import {_} from './i18n.js';
@@ -118,25 +120,37 @@ export function createTerminalWindows({readonly = false, onChange = null} = {}) 
     new ResizeObserver(() => relayout()).observe(element);
   }
 
-  // A window around `box` (a .terminal-box): fractions place it (a spectator's), else the
-  // cascade and the default size for the font; className colours the title (a closed or a
-  // hidden device); the callbacks are the buttons and the clicks (ignored on a readonly layer,
-  // which has no buttons).
-  function open(box, {title = '', className = null, fractions = null, fontSize = 12,
-                      onDock = null, onClose = null, onFocus = null} = {}) {
+  // A window around `box` (a .terminal-box, or the slot of a web conference): fractions place
+  // it (a spectator's, a stored one), else the cascade and `size`, or the default size for the
+  // font; `mins` are its minimums ({minWidth, minHeight}, the terminal's by default); className
+  // colours the title (a closed or a hidden device); the buttons of the title bar are the dock
+  // and close ones calling onDock / onClose, or the `buttons` given ([{name, label, title,
+  // onClick}], the handle exposes them by name); onFocus on a click, onMove(rect) after every
+  // placement (a drag step, a relayout, the fractions applied).  A readonly layer has no
+  // buttons and ignores the clicks.
+  function open(box, {title = '', className = null, fractions = null, fontSize = 12, size = null, mins = undefined,
+                      buttons = null, onDock = null, onClose = null, onFocus = null, onMove = null} = {}) {
     const titleText = el('span', {class: 'title'}, title);
     const viewers = el('span', {class: 'viewers'});
     const bar = el('div', {class: 'terminal-window-title'}, titleText, viewers);
     const win = el('div', {class: 'terminal-window' + (readonly ? ' readonly' : '') + (className ? ' ' + className : '')});
+    const buttonElements = {};
     if (!readonly) {
-      const dock = el('button', {type: 'button', class: 'dock', title: _('Dock into the Terminals tab')}, '⇲');
-      const close = el('button', {type: 'button', class: 'close', title: _('Close terminal')}, '×');
-      dock.addEventListener('click', () => onDock && onDock());
-      close.addEventListener('click', () => onClose && onClose());
-      bar.append(dock, close);
+      const spec = buttons || [
+        {name: 'dock', label: '⇲', title: _('Dock into the Terminals tab'), onClick: onDock},
+        {name: 'close', label: '×', title: _('Close terminal'), onClick: onClose},
+      ];
+      for (const b of spec) {
+        const button = el('button', {type: 'button', class: b.name, title: b.title}, b.label);
+        button.addEventListener('click', () => b.onClick && b.onClick());
+        bar.append(button);
+        buttonElements[b.name] = button;
+      }
     }
     win.append(bar, box);
     element.append(win);
+    const minWidth = (mins && mins.minWidth) || MIN_WIDTH;
+    const minHeight = (mins && mins.minHeight) || MIN_HEIGHT;
     let stored = fractions;      // a spectator's window: the presenter's fractions, applied again on a relayout
     let drag = null;
     let observer = null;
@@ -157,8 +171,11 @@ export function createTerminalWindows({readonly = false, onChange = null} = {}) 
       if (!readonly) {
         // the native resize handle cannot drag the window past the layer
         const a = area();
-        win.style.maxWidth = Math.max(MIN_WIDTH, a.width - rect.x) + 'px';
-        win.style.maxHeight = Math.max(MIN_HEIGHT, a.height - rect.y) + 'px';
+        win.style.maxWidth = Math.max(minWidth, a.width - rect.x) + 'px';
+        win.style.maxHeight = Math.max(minHeight, a.height - rect.y) + 'px';
+      }
+      if (onMove) {
+        onMove(rect);
       }
     }
 
@@ -197,7 +214,7 @@ export function createTerminalWindows({readonly = false, onChange = null} = {}) 
           return;
         }
         const p = pointer(ev);
-        place(clampRect({x: p.x - drag.dx, y: p.y - drag.dy, w: drag.w, h: drag.h}, area()));
+        place(clampRect({x: p.x - drag.dx, y: p.y - drag.dy, w: drag.w, h: drag.h}, area(), mins));
       });
       const stop = (ev) => {
         if (!drag) {
@@ -220,12 +237,13 @@ export function createTerminalWindows({readonly = false, onChange = null} = {}) 
     }
 
     const a = area();
-    place(fractions ? toPixels(fractions, a) : cascadePosition(opened, a, defaultSize(fontSize, a)));
+    place(fractions ? toPixels(fractions, a, mins) : cascadePosition(opened, a, size || defaultSize(fontSize, a), mins));
     opened += 1;
     raise();
 
     const handle = {
       element: win,
+      buttons: buttonElements,     // name -> the button of the title bar (a caller hides one)
       raise,
       setTitle(text) {
         titleText.textContent = text;
@@ -241,13 +259,13 @@ export function createTerminalWindows({readonly = false, onChange = null} = {}) 
       // a spectator's window: the presenter's geometry
       setFractions(f) {
         stored = f;
-        place(toPixels(f, area()));
+        place(toPixels(f, area(), mins));
       },
       relayout(areaNow) {
         if (readonly && stored) {
-          place(toPixels(stored, areaNow));
+          place(toPixels(stored, areaNow, mins));
         } else if (!readonly) {
-          place(clampRect(current(), areaNow));
+          place(clampRect(current(), areaNow, mins));
         }
       },
       // the chrome removed; the caller takes the box back

@@ -28,8 +28,10 @@ from .manager import PoolManager
 from .pool import Pool, PoolError
 from .presentation import Presence, Presentations
 from .focus import Focuses
+from .bbb import BbbClient
+from .webconf import Webconfs
 from .relay import Relay
-from .routes import Routes, json_error, CSP
+from .routes import Routes, json_error
 from ..identity import IDENTITY_KEY, IdentityError, ROLE_INSTRUCTOR, ROLE_STUDENT
 from ..config import WebConfig, AUTH_PROXY, client_allowed
 
@@ -63,6 +65,8 @@ class Portal:
         self.presence: Presence | None = None
         self.presentations: Presentations | None = None
         self.focuses: Focuses | None = None
+        self.bbb: BbbClient | None = None               # the BigBlueButton server of [bbb] (None: no web conferences)
+        self.webconfs: Webconfs | None = None
         self._proxy_warned: set = set()
         # the (connect, transient) pair of the database, shared by the connection log and the
         # archives of the evaluations (a ConfigError without the driver, like a bad log file)
@@ -114,13 +118,18 @@ class Portal:
         self.presence = Presence()
         self.presentations = Presentations(self.presence, memberships=self.memberships)
         self.focuses = Focuses(self.presence)
+        # the web conferences: the BigBlueButton server of [bbb] (none: the routes answer 404, no button)
+        if self.cfg.bbb.enabled:
+            self.bbb = BbbClient(self.cfg.bbb.api_url, self.cfg.bbb.secret, self.cfg.bbb.checksum)
+        self.webconfs = Webconfs(self.presence, self.bbb, memberships=self.memberships, cfg=self.cfg.bbb,
+                                 public_url=self.cfg.public_url, languages=self.cfg.languages)
         self.exams = Exams(self.presence, self.exam_store, memberships=self.memberships, cfg=self.cfg.exams)
         self.exam_projects = ExamProjects(self.exams, self.pool, self.relay)
         self.exams.on_tick.append(self.exam_projects.reconcile)
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
                              focuses=self.focuses, archives=self.archives, memberships=self.memberships,
-                             exams=self.exams, exam_projects=self.exam_projects)
+                             exams=self.exams, exam_projects=self.exam_projects, webconfs=self.webconfs)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -164,6 +173,9 @@ class Portal:
         self.access.start()
         self.presentations.start_loop()
         self.focuses.start_loop()
+        if self.bbb is not None:
+            self.bbb.open()      # its own plain session: the one above presents the client certificate of [pool]
+        self.webconfs.start_loop()
         await self.exams.load()          # the exams of the database (tried again by the tick when it fails)
         self.exams.start_loop()
         if self.memberships.available:
@@ -184,7 +196,9 @@ class Portal:
     async def _on_shutdown(self, app):
         # before the connections are torn down: the spectators' browsers get the end of the
         # presentations (their sockets closed, the overlays removed), the students' pages the
-        # end of the focuses
+        # end of the focuses and of the web conferences (their meetings ended on the server)
+        await self.webconfs.stop_loop()
+        await self.webconfs.shutdown()
         await self.presentations.stop_loop()
         await self.presentations.shutdown()
         await self.focuses.stop_loop()
@@ -208,6 +222,8 @@ class Portal:
             self.archives.close()           # the queued rows written, like the log's
         await self.manager.stop()
         await self.pool.stop()
+        if self.bbb is not None:
+            await self.bbb.close()
         await self.session.close()
 
     @staticmethod
@@ -248,7 +264,7 @@ class Portal:
             request[IDENTITY_KEY] = self._administrator(identity)
             request[S.SESSION_IAT_KEY] = issued_at      # kept by a re-issue: the session never slides
         response = await handler(request)
-        response.headers.setdefault('Content-Security-Policy', CSP)
+        response.headers.setdefault('Content-Security-Policy', self.routes.csp)
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('Referrer-Policy', 'same-origin')
         response.headers.setdefault('X-Frame-Options', 'DENY')

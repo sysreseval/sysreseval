@@ -5,7 +5,7 @@
 <script defer src="/static/vendor/xterm/xterm.js"></script>
 <script defer src="/static/vendor/xterm/addon-fit.js"></script>
 {% endblock %}
-{% block body_attrs %}data-api-base="{{ api_base }}" data-host="{{ host }}" data-rln="{{ rln }}" data-group-sources="{{ 'true' if group_sources else 'false' }}"{% if presentation %} data-presentation="{{ presentation.id }}" data-presenter="{{ presentation.presenter }}"{% endif %}{% endblock %}
+{% block body_attrs %}data-api-base="{{ api_base }}" data-host="{{ host }}" data-rln="{{ rln }}"{% if presentation %} data-presentation="{{ presentation.id }}" data-presenter="{{ presentation.presenter }}"{% endif %}{% endblock %}
 {% block main_class %}project{% endblock %}
 {% block nav %}{% if not presentation %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endif %}{% endblock %}
 {% block content %}

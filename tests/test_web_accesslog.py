@@ -97,6 +97,13 @@ class TestEventFor:
         ('PUT', '/api/presentations/{id}/audience', 'present_audience'),
         ('DELETE', '/api/presentations/{id}', 'present_stop'),
         ('GET', '/present/{id}', 'present_open'),
+        ('POST', '/api/webconfs', 'webconf_start'),
+        ('PUT', '/api/webconfs/{id}/audience', 'webconf_audience'),
+        ('POST', '/api/webconfs/{id}/attend', 'webconf_attend'),
+        ('DELETE', '/api/webconfs/{id}', 'webconf_stop'),
+        ('GET', '/api/webconfs/{id}/join', 'webconf_join'),
+        ('GET', '/api/webconfs', None),
+        ('GET', '/webconf/left', None),
         ('GET', '/api/presence', None),
         ('GET', '/api/presence/ws', None),
         ('PUT', '/api/presentations/{id}/view', None),
@@ -130,7 +137,14 @@ class TestEventFor:
                                                                             'present_audience', 'present_stop',
                                                                             'focus_stop', 'history', 'archives',
                                                                             'groups', 'group_edit',
-                                                                            'exam_edit', 'exam_dismiss'}
+                                                                            'exam_edit', 'exam_dismiss',
+                                                                            'webconf_start', 'webconf_audience',
+                                                                            'webconf_attend', 'webconf_stop',
+                                                                            'webconf_join'}
+        # the web conferences: the listings are keepalives, the page of the iframe after Leave is ignored
+        assert ('GET', '/api/webconfs') in A.KEEPALIVE and ('GET', '/api/webconfs/{id}') in A.KEEPALIVE
+        assert '/webconf/left' in A.IGNORED and A.EVENTS[('GET', '/api/webconfs/{id}/join')] == 'webconf_join'
+        assert {'webconf_start', 'webconf_join', 'webconf_stop'} <= set(A.ALL_EVENTS)
         # the Exams page: the polls of the student's exam and of the listings are keepalives,
         # every change of an exam is an exam_edit, the dismiss of the end banner its own event
         assert ('GET', '/api/exam') in A.KEEPALIVE and ('GET', '/api/exams') in A.KEEPALIVE
