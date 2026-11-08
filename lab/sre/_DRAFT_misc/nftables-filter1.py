@@ -153,7 +153,7 @@ class NetScheme(NetScheme0):
 
 Un **pare-feu** (*firewall*) examine les paquets IP qui **entrent** dans une machine, en
 **sortent** ou la **traversent**, et applique à chacun une **politique** : le laisser passer
-(*accept*), le jeter en silence (*drop*) ou le refuser en prévenant l'émetteur (*reject*), selon
+(*accept*), le détruire en silence (*drop*) ou le refuser en prévenant l'émetteur (*reject*), selon
 des critères comme l'interface d'arrivée, les adresses, le protocole, les ports ou l'état de la
 connexion. Un pare-feu *de machine* (*host firewall*) protège la machine sur laquelle il tourne :
 c'est le sujet de ce TP, qui ne filtre que ce qui **entre** dans `m1`. Un pare-feu *de réseau*
@@ -190,7 +190,7 @@ Netfilter offre cinq **points d'accrochage** (*hooks*) sur le trajet d'un paquet
 
 Un paquet émis par `m1` vers `m2` passe par `output` ; la réponse de `m2` arrive dans `input`.
 Un paquet de `m1` vers elle-même (`127.0.0.1`, ou sa propre adresse) passe par `output` **puis**
-par `input`, via l'interface `lo` : un pare-feu qui jette tout en `input` casse aussi les
+par `input`, via l'interface `lo` : un pare-feu qui détruit tout en `input` casse aussi les
 communications locales. Dans ce TP, on travaille uniquement dans le hook **`input`** de `m1`.
 """)
             + info_subtitle(tr("Tables, chaînes, règles"), tag="structure")
@@ -220,7 +220,7 @@ est interdit* : c'est la bonne façon de construire un pare-feu.
 
 Une **chaîne nommée** (ou *régulière*) n'a pas de hook : on y arrive par un saut (`jump`, `goto`)
 depuis une autre chaîne ; elle sert à regrouper des règles (par exemple « journaliser puis
-jeter »).
+détruire »).
 
 Une **règle** est une suite de **critères** (section @@ref:selectors@@) suivie d'**actions** et
 d'un **verdict** (section @@ref:verdicts@@). Les règles d'une chaîne sont évaluées **dans l'ordre** ;
@@ -249,7 +249,7 @@ Plusieurs critères dans une même règle sont tous requis (un **et**).
             + tr("""
 
 - **`accept`** : le paquet passe (l'évaluation de la chaîne s'arrête) ;
-- **`drop`** : le paquet est jeté **sans rien dire** : l'émetteur attend, réessaie, puis renonce
+- **`drop`** : le paquet est détruit **sans rien dire** : l'émetteur attend, réessaie, puis renonce
   (délai d'attente, *timeout*) ;
 - **`reject`** : le paquet est refusé et l'émetteur est **prévenu** par un message d'erreur, par
   défaut un ICMP *port unreachable* ; `reject with tcp reset` envoie un segment TCP RST (ce que
@@ -265,10 +265,10 @@ Plusieurs critères dans une même règle sont tous requis (un **et**).
 `counter`, `log` et `limit` sont des **actions sans verdict** : le paquet continue vers la règle
 suivante. Elles se combinent dans une règle, dans l'ordre où elles sont écrites : `limit rate
 5/minute log prefix "x" ` journalise au plus cinq paquets par minute ; `counter drop` compte puis
-jette.
+détruit.
 
-Faut-il jeter ou refuser ? `drop` ne révèle rien à un attaquant et ne coûte rien ; `reject` est
-plus agréable pour les utilisateurs légitimes et pour le diagnostic. Vers l'extérieur on jette ;
+Faut-il détruire ou refuser ? `drop` ne révèle rien à un attaquant et ne coûte rien ; `reject` est
+plus agréable pour les utilisateurs légitimes et pour le diagnostic. Vers l'extérieur on détruit ;
 à l'intérieur on refuse souvent.
 """)
             + info_subtitle(tr("Le suivi de connexion : filtrage à états"), tag="conntrack")
@@ -345,7 +345,7 @@ group 0'`), sinon le shell retire les guillemets et `nft` ne comprend plus la co
 
 `log` n'est pas un verdict : on le fait suivre d'un `drop` (ou d'un `accept`) dans la même règle
 ou dans la règle suivante. L'usage est d'écrire une **chaîne nommée** `logdrop` qui journalise
-puis jette, et de sauter dedans (`jump logdrop`) en dernière règle des chaînes concernées, plutôt
+puis détruit, et de sauter dedans (`jump logdrop`) en dernière règle des chaînes concernées, plutôt
 que de répéter `log` partout.
 """)
             + info_subtitle(tr("Observer et tester un pare-feu"), tag="testing")
@@ -373,7 +373,7 @@ Connection refused` **immédiat** signale un `reject` (ou un port fermé sans pa
 `Connection timed out` **après le délai** signale un `drop` (ou une machine éteinte). `nc -u -w 1`
 se termine sans rien afficher quand aucune réponse n'arrive (`drop`, ou le datagramme de réponse
 bloqué). `ping -c 2 -W 1 m1` : `100% packet loss` quand les requêtes ou les réponses sont
-jetées. `tcpdump -n -i eth0 icmp or tcp port 80` sur le client montre ce qu'il reçoit (le message
+détruites. `tcpdump -n -i eth0 icmp or tcp port 80` sur le client montre ce qu'il reçoit (le message
 ICMP *port unreachable* d'un `reject`, ou rien), `tcpdump -n -i eth0 'port 80 or port 530'` sur le
 serveur ce qui lui arrive malgré tout. Enfin `nft list ruleset` avec des `counter` dit quelle
 règle a vu les paquets : la méthode de diagnostic de base d'un pare-feu.
@@ -658,13 +658,13 @@ L'évaluation (miroir caché, `lib/hidden_mirror.py` / `lib/firewall.py`) : `nft
 (étape 1), chargé tel quel sur `{fw_h}` après un `nft flush ruleset` (étape 2 ; un jeu de règles
 vide laisse la copie sans filtre), puis les sondes (étape 3) depuis `{m2_h}`, `{m3_h}`, `{ext1_h}` et
 `{fw_h}` elle-même : `curl` des serveurs de test (HTTP 80 / 8080), `nc -u` (UDP {udp_port}), `ping`,
-connexions TCP par `bash` (`/dev/tcp`, délai {timeout} s : `RC=0` ouvert, `RC=124` jeté, autre code
+connexions TCP par `bash` (`/dev/tcp`, délai {timeout} s : `RC=0` ouvert, `RC=124` détruit, autre code
 refusé). Les copies cachées répondent sous les noms visibles (`SERVER=m2`…). La structure du jeu de
 règles (politique, critères, verdicts, ordre, `log` / `limit`) est lue dans `nft -j list ruleset` de
 `m1` : une chaîne de base `filter` du hook `input`, famille `inet` ou `ip`. Ce que le pare-feu
 **laisse passer** (sondes positives) ne compte qu'une fois la politique `drop` en place : un jeu de
 règles vide laisse tout passer et vaut 0. Une évaluation dure une
-dizaine de secondes (les sondes que le pare-feu doit jeter attendent {timeout} s). Les machines ne
+dizaine de secondes (les sondes que le pare-feu doit détruire attendent {timeout} s). Les machines ne
 peuvent pas lire le journal du noyau (pas de `CAP_SYSLOG`) : la question 9 journalise vers nflog
 (`log … group {group}`, `tcpdump -n -i nflog:0`), mais toute règle `log` est acceptée.
 """).format(fw_h=fw_h, m2_h=m2_h, m3_h=m3_h, ext1_h=ext1_h, udp_port=UDP_PORT, timeout=PROBE_TIMEOUT,
@@ -731,7 +731,7 @@ essais de la question 1 **depuis `m1`** (`curl -m 3 http://m2/`, `echo bonjour |
 530`, `ping -c 2 -W 1 m2`) : ils échouent aussi. Pourquoi ?
 """)
             + tr("""
-- pourquoi `m1` ne joint-elle plus `m2`, alors que seule la chaîne `input` filtre ? @@{why:>les requêtes de m1 partent (output n'est pas filtré) mais les réponses de m2 arrivent dans input et sont jetées : la connexion n'aboutit pas>>>replies_dropped|la politique drop s'applique à toutes les chaînes, output comprise>>>all_chains|m2 ne reçoit plus les requêtes de m1>>>no_requests|la table inet ne gère pas IPv4>>>inet_ipv6}@@
+- pourquoi `m1` ne joint-elle plus `m2`, alors que seule la chaîne `input` filtre ? @@{why:>les requêtes de m1 partent (output n'est pas filtré) mais les réponses de m2 arrivent dans input et sont détruites : la connexion n'aboutit pas>>>replies_dropped|la politique drop s'applique à toutes les chaînes, output comprise>>>all_chains|m2 ne reçoit plus les requêtes de m1>>>no_requests|la table inet ne gère pas IPv4>>>inet_ipv6}@@
 """)
             + instructor(tr("""
 **Solution.** Sur `m1` :
@@ -740,11 +740,11 @@ essais de la question 1 **depuis `m1`** (`curl -m 3 http://m2/`, `echo bonjour |
 {cmds}```
 
 `nft list ruleset` affiche la table et la chaîne vide avec `policy drop`. Tout ce qui arrive sur
-`m1` est jeté, y compris les **réponses** (SYN-ACK de `m2`, datagrammes UDP de retour, `echo-reply`)
+`m1` est détruit, y compris les **réponses** (SYN-ACK de `m2`, datagrammes UDP de retour, `echo-reply`)
 à ce que `m1` émet : les requêtes partent (`output` n'est pas filtré), rien ne revient, `curl` et
 `nc` expirent, `ping` perd tout.
 
-- Réponse : les réponses de m2 sont jetées dans input.
+- Réponse : les réponses de m2 sont détruites dans input.
 - L'évaluation lit `nft -j list ruleset` sur `m1` : une chaîne de base de type `filter` accrochée au
   hook `input` (famille `inet` ou `ip`) avec `policy drop`, de priorité 0.
 """).format(cmds=_lines(self.net_scheme.cmds_policy()))),
@@ -764,7 +764,7 @@ essais de la question 1 **depuis `m1`** (`curl -m 3 http://m2/`, `echo bonjour |
         self.add_grade_element(
             title=no_tr("q_policy"), max_grade=4, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
             grade=4 * int(_norm(q2.get("why")) == "replies_dropped"),
-            description=tr("pourquoi m1 ne joint plus m2 : les réponses sont jetées dans input"),
+            description=tr("pourquoi m1 ne joint plus m2 : les réponses sont détruites dans input"),
         )
 
         # =====================================================================
@@ -819,7 +819,7 @@ tête : sans elle, les services locaux (bases de données, résolveur, X11…) n
 Ajoutez à la chaîne `input` de `m1` une règle acceptant les paquets ICMP de type **`echo-reply`**
 (les réponses aux `ping`, critère `icmp type` ; `nft describe icmp type` liste les types).
 Vérifiez que `m1` peut de nouveau pinguer `m2` (`{m2}`) et `ext1` (`{ext1}`), mais que `m2` ne
-peut toujours pas pinguer `m1` : ses requêtes (`echo-request`) sont jetées. Observez-les avec
+peut toujours pas pinguer `m1` : ses requêtes (`echo-request`) sont détruites. Observez-les avec
 `tcpdump -n -i eth0 icmp` sur `m1`.
 """).format(m2=m2.ip, ext1=ext1.ip)
             + instructor(tr("""
@@ -828,7 +828,7 @@ peut toujours pas pinguer `m1` : ses requêtes (`echo-request`) sont jetées. Ob
 ```
 {cmds}```
 
-`m1` reçoit les réponses à ses propres `ping` ; les `echo-request` de `m2` sont jetés par la
+`m1` reçoit les réponses à ses propres `ping` ; les `echo-request` de `m2` sont détruits par la
 politique (`tcpdump` sur `m1` les voit arriver, sans réponse). Accepter `icmp type echo-request`
 rendrait `m1` pingable ; la règle à états de la question 7 acceptera aussi les `echo-reply` (une
 réponse est `established`), mais la règle explicite reste.
@@ -846,7 +846,7 @@ réponse est `established`), mais la règle explicite reste.
         self.add_grade_element(
             title=no_tr("ping_in_blocked"), max_grade=3, grade_part=part4,
             grade=3 * int(not ping_from_m2),
-            description=tr("m2 ne pingue pas m1 (les echo-request sont jetés)"),
+            description=tr("m2 ne pingue pas m1 (les echo-request sont détruits)"),
         )
         self.add_grade_element(
             title=no_tr("icmp_rule"), max_grade=2, grade_part=part4,
@@ -872,7 +872,7 @@ toujours pas : la réponse de `m2` est un paquet UDP venant de `m2`. Puis, **dep
 `echo bonjour | nc -u -w 1 m1 530` : `ext1` obtient-elle une réponse du serveur UDP de `m1` ?
 """).format(ext1=ext1.ip)
             + tr("""
-- depuis `ext1`, `nc -u m1 530` obtient-il une réponse ? @@{ext1_queries:>oui : la règle accepte tout datagramme UDP venant de ext1, requête ou réponse, elle ne distingue pas le sens de l'échange>>>yes_stateless|non : seules les réponses aux requêtes de m1 passent>>>answers_only|non : ext1 est dans un autre réseau IP, ses paquets sont routés et jetés par gw>>>other_network|oui, mais seulement sur le port 630>>>only_630}@@
+- depuis `ext1`, `nc -u m1 530` obtient-il une réponse ? @@{ext1_queries:>oui : la règle accepte tout datagramme UDP venant de ext1, requête ou réponse, elle ne distingue pas le sens de l'échange>>>yes_stateless|non : seules les réponses aux requêtes de m1 passent>>>answers_only|non : ext1 est dans un autre réseau IP, ses paquets sont routés et détruits par gw>>>other_network|oui, mais seulement sur le port 630>>>only_630}@@
 """)
             + instructor(tr("""
 **Solution.** Sur `m1` :
@@ -926,7 +926,7 @@ bonne réponse au besoin « recevoir les réponses à mes requêtes » ; celle-c
             title=tr("Différence entre drop et reject"),
             description=tr("""
 Ajoutez à la chaîne `input` de `m1` une règle **rejetant** (`reject`) tous les paquets venant de
-`m2` (`{m2}`) ; ceux de `m3` (`{m3}`) restent jetés par la politique `drop`. Comparez, en lisant
+`m2` (`{m2}`) ; ceux de `m3` (`{m3}`) restent détruits par la politique `drop`. Comparez, en lisant
 les messages d'erreur et le temps de réponse (section @@ref:testing@@ des Informations) :
 
 - depuis `m2` : `curl -m 5 http://m1/` ;
@@ -938,8 +938,8 @@ que reçoit `m2` de `m1` ?
 """).format(m2=m2.ip, m3=m3.ip)
             + tr("""
 - depuis `m2`, `curl http://m1/` : @@{from_m2:>échoue immédiatement, « Connection refused » : m1 répond par une erreur (ICMP port unreachable) au SYN de m2>>>refused|attend puis expire (délai d'attente) : rien ne revient>>>timeout|la page s'affiche>>>works}@@
-- depuis `m3`, `curl http://m1/` : @@{from_m3:>attend puis expire (délai d'attente) : le SYN est jeté sans réponse>>>timeout|échoue immédiatement, « Connection refused »>>>refused|la page s'affiche>>>works}@@
-- depuis `m1`, vers `m2` et vers `m3` : @@{from_m1:>les deux échouent après le délai : les requêtes partent mais les réponses (SYN-ACK) arrivent dans input, rejetée pour m2 (c'est m2 qui reçoit l'erreur), jetée pour m3>>>both_fail|seule m3 répond>>>only_m3|seule m2 répond>>>only_m2|les deux pages s'affichent : output n'est pas filtré>>>both_work}@@
+- depuis `m3`, `curl http://m1/` : @@{from_m3:>attend puis expire (délai d'attente) : le SYN est détruit sans réponse>>>timeout|échoue immédiatement, « Connection refused »>>>refused|la page s'affiche>>>works}@@
+- depuis `m1`, vers `m2` et vers `m3` : @@{from_m1:>les deux échouent après le délai : les requêtes partent mais les réponses (SYN-ACK) arrivent dans input, rejetée pour m2 (c'est m2 qui reçoit l'erreur), détruite pour m3>>>both_fail|seule m3 répond>>>only_m3|seule m2 répond>>>only_m2|les deux pages s'affichent : output n'est pas filtré>>>both_work}@@
 """)
             + instructor(tr("""
 **Solution.** Sur `m1` :
@@ -951,9 +951,9 @@ Depuis `m2`, `curl` échoue **aussitôt** : `curl: (7) Failed to connect to m1 p
 refused` ; `tcpdump` sur `m2` montre son SYN puis `IP {m1} > {m2}: ICMP {m1} tcp port 80 unreachable`
 (`reject with tcp reset` donnerait un RST ; `nft list ruleset` affiche la règle sous sa forme complète,
 `reject with icmp port-unreachable`). Depuis `m3`, `curl` attend
-les 5 s puis `Connection timed out` : le SYN est jeté, `m3` le retransmet, rien ne revient. Depuis
+les 5 s puis `Connection timed out` : le SYN est détruit, `m3` le retransmet, rien ne revient. Depuis
 `m1`, les deux `curl` expirent : la requête part, le SYN-ACK de `m2` est rejeté (le message ICMP
-part vers `m2`, pas vers le processus `curl`), celui de `m3` est jeté.
+part vers `m2`, pas vers le processus `curl`), celui de `m3` est détruit.
 
 - Réponses : refusé immédiatement ; délai d'attente ; les deux échouent après le délai.
 - L'évaluation ouvre une connexion TCP vers le port {port} de la copie de `m1` depuis les copies de
@@ -1013,7 +1013,7 @@ les réponses de `ext1`, et pourquoi reste-t-elle gênante ?
 `nft list ruleset` la montre en tête. Le suivi de connexion reconnaît les réponses (SYN-ACK, segments
 suivants, datagrammes UDP de retour, `echo-reply`) à ce que `m1` a émis : elles sont `established`
 et acceptées, quel que soit l'émetteur. Les **nouvelles** connexions vers `m1` (SYN de `m2` ou `m3`,
-premier datagramme UDP) ne sont ni `established` ni `related` : refusées pour `m2`, jetées pour `m3`.
+premier datagramme UDP) ne sont ni `established` ni `related` : refusées pour `m2`, détruites pour `m3`.
 La règle de la question 5 est devenue inutile pour les réponses de `ext1` et reste gênante parce
 qu'elle accepte aussi ses requêtes ; on la garde pour l'évaluation.
 
@@ -1076,7 +1076,7 @@ le port {open} répond (`SERVER=m1`, `TTL=63` pour `ext1`) ; le port {closed} re
 sans réponse pour `m3` et `ext1`.
 
 - L'évaluation : connexion TCP vers le port {open} de la copie de `m1` depuis les copies de `m2`,
-  `m3` et `ext1` (ouvert), vers le port {closed} depuis `ext1` (jeté), et une règle `accept` avec
+  `m3` et `ext1` (ouvert), vers le port {closed} depuis `ext1` (détruit), et une règle `accept` avec
   `tcp dport {open}` placée **avant** la règle `reject` de `m2` dans `input`.
 """).format(cmds=_lines(self.net_scheme.cmds_open_port()), open=OPEN_PORT, closed=CLOSED_PORT)),
         )
@@ -1089,7 +1089,7 @@ sans réponse pour `m3` et `ext1`.
         self.add_grade_element(
             title=no_tr("closed_port_blocked"), max_grade=3, grade_part=part8,
             grade=2 * int(verdict_ext1 != 'open') + int(verdict_ext1 == 'dropped'),
-            description=tr("le port {closed} de m1 reste fermé à ext1 (jeté)").format(closed=CLOSED_PORT),
+            description=tr("le port {closed} de m1 reste fermé à ext1 (détruit)").format(closed=CLOSED_PORT),
         )
         self.add_grade_element(
             title=no_tr("open_rule_order"), max_grade=3, grade_part=part8,
@@ -1108,9 +1108,9 @@ sans réponse pour `m3` et `ext1`.
             title=tr("Journal des paquets et chaîne nommée"),
             description=tr("""
 **(a)** Ajoutez en fin de chaîne `input` une règle qui **journalise** les paquets qui vont être
-jetés : `log prefix "input drop: " group {group}` (section @@ref:logging@@ des Informations ; dans le
+détruits : `log prefix "input drop: " group {group}` (section @@ref:logging@@ des Informations ; dans le
 shell, protégez toute la règle par des apostrophes à cause des guillemets du préfixe). Sur `m1`,
-lancez `tcpdump -n -i nflog:{group}` et, depuis `m3`, `curl -m 3 http://m1/` : les SYN jetés
+lancez `tcpdump -n -i nflog:{group}` et, depuis `m3`, `curl -m 3 http://m1/` : les SYN détruits
 apparaissent. Pourquoi les paquets de `m2` n'y sont-ils pas ?
 
 **(b)** Créez une chaîne nommée **`{chain}`** (sans hook) contenant une règle `log` suivie d'une
@@ -1118,7 +1118,7 @@ règle `drop` (ou `counter drop`).
 
 **(c)** Remplacez la règle `log` de la chaîne `input` par un saut vers `{chain}` (`jump {chain}`),
 en **dernière règle** : supprimez l'ancienne avec `nft -a list ruleset` et `nft delete rule inet
-filter input handle N`. Vérifiez que les paquets de `m3` sont toujours journalisés puis jetés.
+filter input handle N`. Vérifiez que les paquets de `m3` sont toujours journalisés puis détruits.
 
 **(d)** Pour que `m1` ne soit pas submergée par les journaux, limitez la journalisation à **{rate}
 paquets par minute** (`limit rate {rate}/minute` devant `log`, dans la règle de `{chain}`). Depuis
@@ -1138,10 +1138,10 @@ paquets par minute** (`limit rate {rate}/minute` devant `log`, dans la règle de
 secondes), rien de `m2` : ses paquets sont rejetés par la règle `reject`, placée avant, et
 n'atteignent jamais la fin de la chaîne. Sans `group`, `log` écrit dans le journal du noyau, que les
 conteneurs du TP ne peuvent pas lire (`dmesg` : *Operation not permitted*). (b) et (c) : la chaîne
-`{chain}` journalise puis jette ; `jump {chain}` en dernière règle de `input` ; la politique `drop`
+`{chain}` journalise puis détruit ; `jump {chain}` en dernière règle de `input` ; la politique `drop`
 reste en filet de sécurité. (d) `limit rate {rate}/minute` est un seau à jetons : {rate} jetons au
 départ (la rafale par défaut), puis un toutes les 12 s ; sur les 20 `echo-request` de `m3`, `tcpdump`
-n'affiche que les premiers (une seule ligne si des paquets jetés juste avant ont vidé le seau), le
+n'affiche que les premiers (une seule ligne si des paquets détruits juste avant ont vidé le seau), le
 `counter` de la règle `drop` en compte 20.
 
 - Réponse : avec `tcpdump -n -i nflog:0` (ou dans le journal du noyau d'une vraie machine).
@@ -1155,7 +1155,7 @@ n'affiche que les premiers (une seule ligne si des paquets jetés juste avant on
         self.add_grade_element(
             title=no_tr("log_chain"), max_grade=4, grade_part=part9,
             grade=2 * int(log_chain is not None) + 2 * int(log_chain is not None and log_chain_drops),
-            description=tr("une chaîne nommée qui journalise (log) puis jette (drop)"),
+            description=tr("une chaîne nommée qui journalise (log) puis détruit (drop)"),
         )
         self.add_grade_element(
             title=no_tr("log_jump"), max_grade=3, grade_part=part9,

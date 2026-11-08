@@ -36,7 +36,7 @@ eval_before_exit = True
 SSH_PORT = 22
 HTTP_PORT = 80
 REJECT_PORT = 8080   # doit être *rejeté* (refus explicite)
-DROP_PORT = 9090     # doit être *jeté* (silencieux, par la politique)
+DROP_PORT = 9090     # doit être *détruit* (silencieux, par la politique)
 
 _TOPOLOGY = {
     # tout le monde sur un seul LAN : srv filtre le trafic entrant par source.
@@ -169,7 +169,7 @@ s'applique plus (le paquet « déborde ») :
 # n'accepter que 3 nouvelles connexions SSH par minute (anti-brute-force)
 tcp dport 22 ct state new limit rate 3/minute accept
 
-# limiter les pings à 1/seconde, jeter le surplus
+# limiter les pings à 1/seconde, détruire le surplus
 ip protocol icmp limit rate 1/second accept
 ```
 
@@ -194,7 +194,7 @@ On peut **marquer** un paquet (`meta mark set 0x1`) pour le routage avancé.
 
 ## 6. Anti-usurpation (`fib`) et *flowtables* (pour info)
 
-- `fib saddr . iif oif missing drop` jette les paquets dont l'adresse source
+- `fib saddr . iif oif missing drop` détruit les paquets dont l'adresse source
   n'est **pas routable** par l'interface d'arrivée (anti-*spoofing*, uRPF).
 - Une **flowtable** décharge (*offload*) le suivi des connexions établies vers un
   chemin rapide, pour de très hauts débits.
@@ -203,7 +203,7 @@ On peut **marquer** un paquet (`meta mark set 0x1`) pour le routage avancé.
 
 Voir les questions : sur **`srv`** (chaîne `input`, `policy drop`), mettez en
 place une liste noire, une liste blanche SSH, un port *rejeté* et un port
-*jeté*, une limitation de débit, ainsi que des compteurs / de la journalisation.
+*détruit*, une limitation de débit, ainsi que des compteurs / de la journalisation.
 """)
 
     @sre_state(user_allowed=False)
@@ -288,7 +288,7 @@ machines sont sur le même LAN `net1` ({_arg0}). Vous disposez de trois sources 
             title=tr("1. Liste noire (ensemble nommé)"),
             description=tr("""
 Créez un **ensemble nommé** `liste_noire` (`type ipv4_addr`) contenant l'adresse
-de **`bad`** ({_arg0}) et **jetez** tout trafic provenant de ses membres. Les
+de **`bad`** ({_arg0}) et **détruisez** tout trafic provenant de ses membres. Les
 autres machines gardent un accès HTTP (port {_arg1}) normal à `srv`.
 """).format(_arg0=d.ips.bad.ip, _arg1=HTTP_PORT),
         )
@@ -309,7 +309,7 @@ SSH depuis `user` doit être refusé.
             description=tr("""
 Faites en sorte que :
 - le port **{_arg0}** soit **rejeté** (`reject`) — le client reçoit un refus immédiat ;
-- le port **{_arg1}** soit **jeté** (`drop`) — le client n'obtient aucune réponse
+- le port **{_arg1}** soit **détruit** (`drop`) — le client n'obtient aucune réponse
   (délai d'attente).
 """).format(_arg0=REJECT_PORT, _arg1=DROP_PORT),
         )
