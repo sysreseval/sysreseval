@@ -2,12 +2,13 @@
 // into the skeleton tables of history.html (their headers are in the template, translated by
 // Jinja2): the totals of the period, the student groups (a click on a group row shows the
 // users of that group alone, a second click every user again), the users and the labs (both
-// sortable by their headers, the time first) and the distribution of the students' connection
-// time.  Nothing is fetched here and nothing happens at module load: history.js creates the
-// view and hands it the JSON.
+// sortable by their headers through table_sort.js, the time first) and the distribution of the
+// students' connection time.  Nothing is fetched here and nothing happens at module load:
+// history.js creates the view and hands it the JSON.
 
 import {el, clear, formatDuration} from './ui.js';
 import {_, format} from './i18n.js';
+import {sortRows, markSort, setupSort} from './table_sort.js';
 
 const ROLE_INSTRUCTOR = 'instructor';
 // the columns sorted ascending on the first click (the others, numbers and times, descending)
@@ -27,26 +28,6 @@ function durationCell(seconds) {
 
 function numCell(n) {
   return el('td', {class: 'num'}, n === null || n === undefined ? '' : String(n));
-}
-
-// the rows sorted on *key* (numbers numerically, the rest as text), the ties by *tieKey*
-function sortRows(rows, {key, asc}, tieKey) {
-  return rows.slice().sort((a, b) => {
-    const va = a[key];
-    const vb = b[key];
-    let result;
-    if (typeof va === 'number' && typeof vb === 'number') {
-      result = va - vb;
-    } else {
-      const ta = va === null || va === undefined ? '' : String(va);
-      const tb = vb === null || vb === undefined ? '' : String(vb);
-      result = ta.localeCompare(tb);
-    }
-    if (result === 0) {
-      result = String(a[tieKey]).localeCompare(String(b[tieKey]));
-    }
-    return asc ? result : -result;
-  });
 }
 
 // the label of a bucket of the distribution (seconds; max null = no upper bound)
@@ -89,13 +70,6 @@ export function createStatisticsView(root, {groupsEnabled = false} = {}) {
 
   function emptyRow(name) {
     return el('tr', {}, el('td', {colspan: columnCount(name), class: 'muted'}, _('No session in the period.')));
-  }
-
-  function markSort(name) {
-    const sort = state.sort[name];
-    for (const th of tables[name].querySelectorAll('th.sortable')) {
-      th.setAttribute('aria-sort', th.dataset.sort === sort.key ? (sort.asc ? 'ascending' : 'descending') : 'none');
-    }
   }
 
   function fillTotals(data) {
@@ -151,7 +125,7 @@ export function createStatisticsView(root, {groupsEnabled = false} = {}) {
   function renderUsers() {
     const tbody = body('users');
     clear(tbody);
-    markSort('users');
+    markSort(tables.users, state.sort.users);
     let users = state.data && Array.isArray(state.data.users) ? state.data.users : [];
     if (state.group !== null) {
       users = users.filter((u) => u.group === state.group);
@@ -160,7 +134,7 @@ export function createStatisticsView(root, {groupsEnabled = false} = {}) {
       tbody.append(emptyRow('users'));
       return;
     }
-    for (const u of sortRows(users, state.sort.users, 'login')) {
+    for (const u of sortRows(users, state.sort.users, {tieKey: 'login'})) {
       tbody.append(el('tr', {class: u.open ? 'row-open' : ''},
         el('td', {}, u.login),
         el('td', {}, u.name || ''),
@@ -181,13 +155,13 @@ export function createStatisticsView(root, {groupsEnabled = false} = {}) {
   function renderLabs() {
     const tbody = body('labs');
     clear(tbody);
-    markSort('labs');
+    markSort(tables.labs, state.sort.labs);
     const labs = state.data && Array.isArray(state.data.labs) ? state.data.labs : [];
     if (!labs.length) {
       tbody.append(emptyRow('labs'));
       return;
     }
-    for (const l of sortRows(labs, state.sort.labs, 'lab')) {
+    for (const l of sortRows(labs, state.sort.labs, {tieKey: 'lab'})) {
       tbody.append(el('tr', {},
         el('td', {}, l.lab),
         numCell(l.projects),
@@ -209,24 +183,9 @@ export function createStatisticsView(root, {groupsEnabled = false} = {}) {
     }
   }
 
-  function setupSort(name, render) {
-    for (const th of tables[name].querySelectorAll('th.sortable')) {
-      th.addEventListener('click', () => {
-        const key = th.dataset.sort;
-        const sort = state.sort[name];
-        if (sort.key === key) {
-          sort.asc = !sort.asc;
-        } else {
-          sort.key = key;
-          sort.asc = TEXT_KEYS.has(key);
-        }
-        render();
-      });
-    }
-  }
-
-  setupSort('users', renderUsers);
-  setupSort('labs', renderLabs);
+  const ascFirst = (key) => TEXT_KEYS.has(key);
+  setupSort(tables.users, state.sort.users, {ascFirst, onChange: renderUsers});
+  setupSort(tables.labs, state.sort.labs, {ascFirst, onChange: renderLabs});
 
   return {
     // the JSON of GET /api/history/statistics

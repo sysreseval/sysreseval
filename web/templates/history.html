@@ -44,16 +44,16 @@
 <table id="history" class="grid watch history" data-database="{{ 'true' if history_database else 'false' }}">
   <thead>
     <tr>
-      <th>{{ _("Time") }}</th>
-      <th>{{ _("Event") }}</th>
-      <th>{{ _("Login") }}</th>
-      <th>{{ _("Address") }}</th>
-      <th>{{ _("Host") }}</th>
-      <th>{{ _("Project") }}</th>
-      <th>{{ _("Lab") }}</th>
-      <th>{{ _("Status") }}</th>
-      <th>{{ _("Duration") }}</th>
-      <th>{{ _("Details") }}</th>
+      <th class="sortable" data-sort="ts">{{ _("Time") }}</th>
+      <th class="sortable" data-sort="event">{{ _("Event") }}</th>
+      <th class="sortable" data-sort="login">{{ _("Login") }}</th>
+      <th class="sortable" data-sort="addr">{{ _("Address") }}</th>
+      <th class="sortable" data-sort="host">{{ _("Host") }}</th>
+      <th class="sortable" data-sort="rln">{{ _("Project") }}</th>
+      <th class="sortable" data-sort="lab">{{ _("Lab") }}</th>
+      <th class="sortable" data-sort="status">{{ _("Status") }}</th>
+      <th class="sortable" data-sort="duration">{{ _("Duration") }}</th>
+      <th class="sortable" data-sort="details">{{ _("Details") }}</th>
     </tr>
   </thead>
   <tbody><tr><td colspan="10" class="muted">{{ _("Loading…") }}</td></tr></tbody>
@@ -61,16 +61,16 @@
 <table id="history-sessions" class="grid watch history sessions" data-groups="{{ 'true' if groups else 'false' }}" hidden>
   <thead>
     <tr>
-      <th>{{ _("Login") }}</th>
-      <th>{{ _("Name") }}</th>
-      <th{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
-      <th>{{ _("Address") }}</th>
-      <th>{{ _("Start time") }}</th>
-      <th>{{ _("End time") }}</th>
-      <th>{{ _("Duration") }}</th>
-      <th>{{ _("Requests") }}</th>
-      <th>{{ _("Projects") }}</th>
-      <th>{{ _("Closed by") }}</th>
+      <th class="sortable" data-sort="login">{{ _("Login") }}</th>
+      <th class="sortable" data-sort="name">{{ _("Name") }}</th>
+      <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
+      <th class="sortable" data-sort="addr">{{ _("Address") }}</th>
+      <th class="sortable" data-sort="start">{{ _("Start time") }}</th>
+      <th class="sortable" data-sort="end">{{ _("End time") }}</th>
+      <th class="sortable" data-sort="duration">{{ _("Duration") }}</th>
+      <th class="sortable" data-sort="requests">{{ _("Requests") }}</th>
+      <th class="sortable" data-sort="projects">{{ _("Projects") }}</th>
+      <th class="sortable" data-sort="reason">{{ _("Closed by") }}</th>
       <th>{{ _("Events") }}</th>
     </tr>
   </thead>

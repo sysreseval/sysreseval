@@ -1246,7 +1246,10 @@ configured, `attr_group` or `header_group`, like the Group column of the Watch p
 start, end (the last request: an idle session ends there, not at its expiry), duration, number
 of requests, the labs of the projects used (the running lab names as a tooltip) and what closed
 it (*Logout*, *Idle*, *Shutdown*; *Still open* with the number of pages, terminals and desktops
-connected). Only the login and address
+connected). A click on a header sorts the rows by that column, a second click reverses the
+order (the default is the end time, newest first, an open session counting as not ended yet,
+hence first); the sort applies to the rows shown, the page, not to the whole log: widen the
+page with *Rows* or narrow the filters. Only the login and address
 prefixes and the time window apply; the window bounds the time a session was **closed**
 (`session_timeout` after the last request for an idle one; an open session is listed when it
 was active in the window); the other filters are hidden. The *show* cell of a row opens the
@@ -1257,7 +1260,8 @@ closing line show an empty name and group.
 The **Events** view (`?view=events` in the URL) lists the events newest first, one row per
 event with its time (the local time of the browser), event, login, client address, host,
 project, lab, status, duration and the other fields of the line as `key=value`; a `denied` or
-`login_failed` line, a status of 400 or more and a failed start are red. The form filters by
+`login_failed` line, a status of 400 or more and a failed start are red. The headers sort the
+rows shown the same way (the time, newest first, by default). The form filters by
 login and address (prefixes: `10.0.1.` is a subnet), event (every event name; in proxy mode
 without `login` and `login_failed`, which never occur there), host (exact), project and lab
 (substrings; the lab is only on the `start` lines) and a time window.
@@ -1304,9 +1308,10 @@ of a session filters on that department. The filter is kept in the URL as `group
 bare name is a department, like the Watch page's) and logged as `group_filter`; without any
 group source the parameter is refused (400).
 
-In the two list views the filters stay in the URL, so a filtered view reloads and can be sent
-to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a
-cursor on the row ids: a page is stable while new events arrive) and a click on a login,
+In the two list views the filters stay in the URL (the sort of the headers does not), so a
+filtered view reloads and can be sent to a colleague; *Older* / *Newer* page through the rows
+(100, 500 or 1000 at a time, by a cursor on the row ids: a page is stable while new events
+arrive; each page is sorted on its own) and a click on a login,
 address or, in the events view, event, host or project cell filters on that value. Nothing is
 polled: *Search* asks again. Each query is a `history` line of the log itself, with the filters
 asked (`view=sessions` for the sessions, `view=statistics` and the period resolved for the

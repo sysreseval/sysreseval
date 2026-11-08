@@ -296,23 +296,34 @@ class TestTemplates:
         assert '<label>Group\n    <select name="group" id="history-group"' in with_sources
         assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
         assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
-        # two tables: the events (shown, ten columns) and the sessions (hidden until chosen, eleven
-        # columns, the Group one hidden unless a group source is configured, like the Watch page's),
-        # then the container of the statistics view
+        # two tables: the events (shown, ten columns, every one a sortable header: table_sort.js
+        # sorts the rows shown) and the sessions (hidden until chosen, eleven columns: ten sortable,
+        # the Group one hidden unless a group source is configured, like the Watch page's, and the
+        # Events link column), then the container of the statistics view
         events_table, rest = html.split('<table id="history-sessions"')
         sessions_table, statistics = rest.split('<div id="history-statistics"')
         assert 'id="history"' in events_table and 'class="grid watch history" data-database' in events_table
-        assert events_table.count('<th>') == 10 and events_table.count('colspan="10"') == 1
+        assert events_table.count('<th class="sortable" data-sort="') == 10 and events_table.count('<th>') == 0
+        assert events_table.count('colspan="10"') == 1
+        for key, column in (('ts', 'Time'), ('event', 'Event'), ('login', 'Login'), ('addr', 'Address'), ('host', 'Host'),
+                            ('rln', 'Project'), ('lab', 'Lab'), ('status', 'Status'), ('duration', 'Duration'),
+                            ('details', 'Details')):
+            assert f'<th class="sortable" data-sort="{key}">{column}</th>' in events_table, key
         assert sessions_table.startswith(' class="grid watch history sessions" data-groups="false" hidden>')
-        assert sessions_table.count('<th>') == 10 and sessions_table.count('colspan="11"') == 1
-        assert sessions_table.count('<th hidden>') == 1 and '<th hidden>Group</th>' in sessions_table
-        for column in ('Login', 'Name', 'Address', 'Start time', 'End time', 'Duration', 'Requests', 'Projects',
-                       'Closed by', 'Events'):
-            assert f'<th>{column}</th>' in sessions_table, column
-        assert sessions_table.index('<th>Name</th>') < sessions_table.index('Group') < sessions_table.index('<th>Address</th>')
+        assert sessions_table.count('<th class="sortable" data-sort="') == 10 and sessions_table.count('colspan="11"') == 1
+        assert sessions_table.count('<th>') == 1 and '<th>Events</th>' in sessions_table
+        assert '<th class="sortable" data-sort="group" hidden>Group</th>' in sessions_table
+        for key, column in (('login', 'Login'), ('name', 'Name'), ('addr', 'Address'), ('start', 'Start time'),
+                            ('end', 'End time'), ('duration', 'Duration'), ('requests', 'Requests'),
+                            ('projects', 'Projects'), ('reason', 'Closed by')):
+            assert f'<th class="sortable" data-sort="{key}">{column}</th>' in sessions_table, key
+        assert sessions_table.index('>Name</th>') < sessions_table.index('Group') < sessions_table.index('>Address</th>')
         with_groups = render('history.html', instructor=True, administrator=True, history_database=False, events=events,
                              groups=True)
-        assert 'data-groups="true"' in with_groups and '<th>Group</th>' in with_groups and '<th hidden>' not in with_groups
+        with_groups_sessions = with_groups.split('<table id="history-sessions"')[1].split('<div id="history-statistics"')[0]
+        assert with_groups_sessions.startswith(' class="grid watch history sessions" data-groups="true" hidden>')
+        assert '<th class="sortable" data-sort="group">Group</th>' in with_groups_sessions
+        assert ' hidden>Group</th>' not in with_groups
         # the view switch (Sessions first and pressed: the page opens on it), the filters of the
         # events view alone and the row count of the list views alone
         assert 'data-view="sessions" aria-pressed="true">Sessions<' in html
@@ -872,7 +883,61 @@ class TestTerminalGeometry:
         assert out['noArea'] is None
 
 
+TABLE_SORT_RUNNER = """\
+import {compareValues, sortRows} from './table_sort.js';
+
+const rows = JSON.parse(process.argv[2]);
+const missing = (row, key) => (row[key] === null || row[key] === undefined ? -Infinity : row[key]);
+const logins = (sorted) => sorted.map((row) => row.login);
+process.stdout.write(JSON.stringify({
+  compare: [compareValues(2, 10), compareValues('2', '10'), compareValues('etu10', 'etu9'), compareValues('10.0.1.9', '10.0.1.10'),
+            compareValues('Étude', 'etude'), compareValues(null, ''), compareValues(undefined, 'a'), compareValues(-Infinity, 0),
+            compareValues(Infinity, 5), compareValues(3, '3'), compareValues(NaN, -Infinity)].map(Math.sign),
+  byLoginAsc: logins(sortRows(rows, {key: 'login', asc: true})),
+  byLoginDesc: logins(sortRows(rows, {key: 'login', asc: false})),
+  byTimeDesc: logins(sortRows(rows, {key: 'time', asc: false}, {value: missing})),
+  byTimeAsc: logins(sortRows(rows, {key: 'time', asc: true}, {value: missing})),
+  byNameTies: logins(sortRows(rows, {key: 'name', asc: true})),
+  byNameTieKey: logins(sortRows(rows, {key: 'name', asc: true}, {tieKey: 'login'})),
+  untouched: logins(rows),
+}));
+"""
+TABLE_SORT_ROWS = [{'login': 'etu10', 'name': 'b', 'time': 5}, {'login': 'etu9', 'name': 'A', 'time': None},
+                   {'login': 'Etu2', 'name': 'b', 'time': 50}, {'login': 'prof', 'name': '', 'time': 5}]
+
+
+class TestTableSort:
+    """table_sort.js (the headers sorting the tables of the History page) run by the ``js``
+    runtime, skipped without one: numbers numerically, texts with the collation of the site
+    (accents and case ignored, digit runs as numbers), the ties by a key or in the arrival order."""
+
+    def test_compare_and_sort(self, tmp_path, js):
+        runner = js_project(tmp_path, TABLE_SORT_RUNNER, 'table_sort.js')
+        out = json.loads(js.run(tmp_path, runner, json.dumps(TABLE_SORT_ROWS)))
+        assert out['compare'] == [-1, -1, 1, -1, 0, 0, -1, -1, 1, 0, 0]
+        assert out['byLoginAsc'] == ['Etu2', 'etu9', 'etu10', 'prof']
+        assert out['byLoginDesc'] == ['prof', 'etu10', 'etu9', 'Etu2']
+        assert out['byTimeDesc'] == ['Etu2', 'etu10', 'prof', 'etu9']       # the ties in the arrival order
+        assert out['byTimeAsc'] == ['etu9', 'etu10', 'prof', 'Etu2']
+        assert out['byNameTies'] == ['prof', 'etu9', 'etu10', 'Etu2']
+        assert out['byNameTieKey'] == ['prof', 'etu9', 'Etu2', 'etu10']
+        assert out['untouched'] == ['etu10', 'etu9', 'Etu2', 'prof']        # a sorted copy
+
+
 class TestJavaScript:
+    def test_table_sort_shared_by_the_history_views(self):
+        """The two list tables of the History page and the users / labs tables of its statistics
+        sort their rows through table_sort.js (one notion of a sortable header), a pure module
+        (runs under node); the default orders are the server's."""
+        for name in ('history.js', 'history_stats.js'):
+            text = (JS / name).read_text(encoding='utf-8')
+            assert "from './table_sort.js'" in text, name
+            assert 'function sortRows' not in text and 'function markSort' not in text and 'function setupSort' not in text, name
+        history = (JS / 'history.js').read_text(encoding='utf-8')
+        assert "events: {key: 'ts', asc: false}" in history and "sessions: {key: 'end', asc: false}" in history
+        assert 'isOpen(session) ? Infinity' in history
+        assert not re.search(r'\bdocument\.', (JS / 'table_sort.js').read_text(encoding='utf-8'))   # pure: runs under node
+
     def test_exam_state_shared_by_the_pages(self):
         """One notion of the exam a student is in: exam.js fetches GET /api/exam (on the pushes
         of the presence socket base.js hands it, and as a fallback poll), paints the body and

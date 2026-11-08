@@ -36,6 +36,12 @@
 // Older / Newer page through the rows with a cursor (the id of the oldest row shown).  A
 // click on an event, login, address, host or project cell filters on that value.  Nothing is
 // polled: the page shows what was asked, Search asks again.
+//
+// The two tables are sorted by a click on their headers (table_sort.js, shared with the tables
+// of the statistics): the rows shown, the page, not the whole log (Rows widens the page), one
+// sort per view kept across the searches and the pages, not in the URL.  The default orders are
+// the server's: the events by time, newest first; the sessions by end time, an open session
+// being not ended yet, hence first, then the closed ones newest first.
 
 import './base.js';
 import * as api from './api.js';
@@ -43,6 +49,7 @@ import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, clear, toast, formatDuration} from './ui.js';
 import {createStatisticsView} from './history_stats.js';
+import {sortRows, markSort, setupSort} from './table_sort.js';
 import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, sortGroups, kindsLabel} from './groups_model.js';
 
 const FILTER_KEYS = ['login', 'addr', 'group', 'event', 'host', 'rln', 'lab', 'since', 'until', 'limit'];
@@ -52,6 +59,9 @@ const VIEWS = ['sessions', 'events', 'statistics'];
 const DEFAULT_VIEW = 'sessions';
 const DEFAULT_PERIOD_S = 86400;         // the statistics without a From: the last 24 hours
 const ERROR_EVENTS = new Set(['denied', 'login_failed']);
+// the columns of the two tables sorted descending on the first click (the times and numbers);
+// the others, texts, ascending
+const DESC_FIRST_KEYS = new Set(['ts', 'status', 'duration', 'start', 'end', 'requests']);
 
 const form = document.getElementById('history-filters');
 const tables = {events: document.getElementById('history'), sessions: document.getElementById('history-sessions')};
@@ -72,10 +82,20 @@ const stats = createStatisticsView(statsRoot, {groupsEnabled});
 let catalog = [];              // the groups of GET /api/groups (every kind), read once per page load
 
 // view: events, sessions or statistics; rows: the rows of the page (events, or closed
-// sessions); open: the open sessions (the first page of the sessions view); before: the cursor
-// of the page shown (null = the newest rows); cursors: those of the previous pages, for Newer;
-// stats: the JSON of the statistics view
-const state = {view: DEFAULT_VIEW, rows: [], open: [], more: false, before: null, cursors: [], stats: null};
+// sessions); open: the open sessions (the first page of the sessions view); loadedView: the
+// view whose rows are in rows / open (null while nothing is loaded); before: the cursor of the
+// page shown (null = the newest rows); cursors: those of the previous pages, for Newer; stats:
+// the JSON of the statistics view; sort: the column and direction of each list table
+const state = {view: DEFAULT_VIEW, rows: [], open: [], loadedView: null, more: false, before: null, cursors: [], stats: null,
+               sort: {events: {key: 'ts', asc: false}, sessions: {key: 'end', asc: false}}};
+
+function ascFirst(key) {
+  return !DESC_FIRST_KEYS.has(key);
+}
+
+function numberOr(value, missing) {
+  return value === null || value === undefined || value === '' ? missing : Number(value);
+}
 
 function table() {
   return tables[state.view];
@@ -302,6 +322,18 @@ function renderRow(row) {
     el('td', {class: 'details'}, detailsText(row.details)));
 }
 
+// the value a column of the events table sorts on: the time, status and duration as numbers (a
+// missing one the smallest), the details as the cell shows them, the rest as text
+function eventSortValue(row, key) {
+  switch (key) {
+    case 'ts': return numberOr(row.ts, -Infinity);
+    case 'status': return numberOr(row.status, -Infinity);
+    case 'duration': return numberOr(row.duration, -Infinity);
+    case 'details': return detailsText(row.details);
+    default: return row[key] || '';
+  }
+}
+
 // -- the sessions view ------------------------------------------------------------------------
 
 function isOpen(session) {
@@ -372,6 +404,22 @@ function renderSession(session) {
     el('td', {class: 'link', title: _('The events of this session'), onclick: () => showEvents(session)}, _('show')));
 }
 
+// the value a column of the sessions table sorts on: the times and counts as numbers (a missing
+// one the smallest), the end of an open session being "not yet", the greatest, so that the
+// default order (end time, newest first) keeps the open sessions first; the projects and the
+// reason as the cells show them, the rest as text
+function sessionSortValue(session, key) {
+  switch (key) {
+    case 'start': return numberOr(session.start, -Infinity);
+    case 'end': return isOpen(session) ? Infinity : numberOr(session.end, -Infinity);
+    case 'duration': return numberOr(session.duration, -Infinity);
+    case 'requests': return numberOr(session.requests, -Infinity);
+    case 'projects': return (Array.isArray(session.projects) ? session.projects : []).map(labOf).join(', ');
+    case 'reason': return reasonText(session);
+    default: return session[key] || '';
+  }
+}
+
 // -- the page -------------------------------------------------------------------------------
 
 function countText() {
@@ -401,7 +449,10 @@ function render() {
   const tbody = body();
   clear(tbody);
   const sessions = state.view === 'sessions';
-  const rows = sessions ? [...state.open, ...state.rows] : state.rows;
+  const sort = state.sort[state.view];
+  markSort(table(), sort);
+  const rows = sortRows(sessions ? [...state.open, ...state.rows] : state.rows, sort,
+                        {value: sessions ? sessionSortValue : eventSortValue});
   if (!rows.length) {
     const text = sessions ? _('No session matches the filters.') : _('No event matches the filters.');
     tbody.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'muted'}, text)));
@@ -441,6 +492,7 @@ function showGroup(data) {
 }
 
 function showError(e) {
+  state.loadedView = null;
   if (state.view === 'statistics') {
     stats.clear();
   } else {
@@ -461,6 +513,7 @@ const URLS = {sessions: '/api/history/sessions', events: '/api/history', statist
 
 async function load() {
   if (!databaseConfigured && state.view !== 'sessions') {
+    state.loadedView = null;
     if (state.view === 'statistics') {
       stats.clear();        // the notice of the page says what to configure
     } else {
@@ -500,6 +553,7 @@ async function load() {
   }
   state.rows = Array.isArray(data.rows) ? data.rows : [];
   state.open = state.view === 'sessions' && Array.isArray(data.open) ? data.open : [];
+  state.loadedView = state.view;
   state.more = Boolean(data.more);
   if (databaseConfigured) {     // without one the notice of the page stays
     showDatabase(data.database);
@@ -548,6 +602,15 @@ function setupControls() {
       applyView();
       search();
     });
+  }
+  // the headers of the two tables sort the rows shown (drawn again only once they are those of
+  // the view: a click during a load must not replace the Loading row nor draw the other view's)
+  for (const name of ['events', 'sessions']) {
+    setupSort(tables[name], state.sort[name], {ascFirst, onChange: () => {
+      if (state.loadedView === state.view) {
+        render();
+      }
+    }});
   }
   olderButton.addEventListener('click', () => {
     if (!state.rows.length) {
