@@ -994,7 +994,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 | `self.current_section(level=0, fmt=None, show=None, pad=None)` | Same formatting as `section()` but without incrementing — read the current label for the same level. |
 | `self.add_error(error, category=ErrorCategory.ERROR, step=1)` / `self.add_warning(warning, step=1)` | Record an error/warning in the archive. Only registered when `self.step == step` so the same call doesn't fire on every pass. `add_warning` is a thin alias for `add_error(..., category=ErrorCategory.WARNING)`. |
 | `self.data`, `self.step`, `self.max_step`, `self.net_scheme` | Instance attributes available inside `grade()`. |
-| `self.auto_eval_count` | Number of student-triggered self-evaluations performed on this project *before* the current run (read from `.private/auto_eval.log`; `0` for the first self-evaluation, instructor evaluations, periodic background evals, and re-evaluations of legacy archives). Lets `grade()` apply a penalty per retry, gate hints, etc. |
+| `self.auto_eval_count` | Number of self-evaluations the student has run on this project so far, the current run excluded when it is one (the lines of `.private/auto_eval.log`, appended after the run by `sre --user eval --auto-eval` only): `0` for the first self-evaluation; an instructor's or a periodic background evaluation sees the student's count too and adds nothing to it; a re-evaluation (`sre re-eval` / `sre check-eval`) takes the value the archive holds, `0` for a legacy archive without it. Lets `grade()` apply a penalty per retry, gate hints, etc. |
 
 
 ## Grading Library Reference
