@@ -111,6 +111,10 @@ class Project:
     exam_ending: bool = False
     exam_retry_at: float | None = None
     _state_written: float = 0.0
+    #: ``(mtime_ns, size)`` of ``.private/auto_eval.log`` when its lines were last counted, and
+    #: that count (:meth:`self_eval_count`): the file is read again only when it changed.
+    _self_eval_sig: tuple | None = None
+    _self_eval_count: int = 0
 
     @property
     def holds_instructor_texts(self) -> bool:
@@ -142,6 +146,35 @@ class Project:
     @property
     def log_path(self) -> Path:
         return self.path / params.operations_log_name
+
+    @property
+    def auto_eval_log_path(self) -> Path:
+        return self.private_dir / params.auto_eval_log_name
+
+    def self_eval_count(self) -> int:
+        """The number of self-evaluations the student has run on the project: the lines of
+        ``.private/auto_eval.log``, one per ``sre --user eval --auto-eval`` (the rule of
+        ``SRE.command.eval._read_auto_eval_count``, not imported here: that module loads Kathara);
+        the periodic and the instructors' evaluations add none.  Live, unlike the
+        ``auto_eval_count`` of an archive, the count *before* that evaluation.  One ``stat`` per
+        call, the lines counted again only when the file changed; 0 without the file."""
+        try:
+            st = os.stat(self.auto_eval_log_path)
+        except OSError:
+            self._self_eval_sig = None
+            self._self_eval_count = 0
+            return 0
+        sig = (st.st_mtime_ns, st.st_size)
+        if sig != self._self_eval_sig:
+            try:
+                with open(self.auto_eval_log_path) as f:
+                    self._self_eval_count = sum(1 for _ in f)
+            except OSError:
+                self._self_eval_sig = None
+                self._self_eval_count = 0
+                return 0
+            self._self_eval_sig = sig
+        return self._self_eval_count
 
     def read_markers(self):
         self.debug = (self.private_dir / params.debug_project_marker_name).exists()

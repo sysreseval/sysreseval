@@ -538,6 +538,9 @@ class TestEval:
         assert raw['tests'][('m1', 1)][('cat /etc/hostname', 10)] == ('m1\n', 0)
         assert not (project_dir(pub, project) / params.private_dir_name / params.eval_in_progress_name).exists()
         assert not (pub / 'last_self_grades').exists()   # no cooldown without MOCK_COOLDOWN
+        # the self-evaluation counted like sre does: one line of .private/auto_eval.log
+        log = project_dir(pub, project) / params.private_dir_name / params.auto_eval_log_name
+        assert log.read_text().splitlines() == [result[params.eval_date_keyword]]
 
     def test_archive_errors_from_the_environment(self, pub, project):
         completed = run_mock(pub, 'eval', project, extra_env={'MOCK_EVAL_ERRORS': '[["ERROR", "m1 down"], ["WARNING", "slow"]]'})
@@ -550,11 +553,13 @@ class TestEval:
         assert completed.returncode == 0
         assert completed.stdout == b''
         assert len(list((pub / 'archives').iterdir())) == 1
+        assert not (project_dir(pub, project) / params.private_dir_name / params.auto_eval_log_name).exists()
 
     def test_privileged_eval_prints_the_grades(self, pub, project):
         completed = run_mock(pub, 'eval', project, user=False)
         assert completed.returncode == 0
         assert json.loads(completed.stdout)['grades']
+        assert not (project_dir(pub, project) / params.private_dir_name / params.auto_eval_log_name).exists()
 
     def test_no_mark_prints_letters_in_user_mode(self, pub, project):
         """MOCK_NO_MARK (the lab's no_mark_on_self_grade): letters and no mark for
@@ -602,11 +607,14 @@ class TestEval:
         assert answer['grades'] is None
         assert 0 < answer['delay_before_self_grade'] <= 60
         assert len(list((pub / 'archives').iterdir())) == 1   # the second call did not evaluate
+        log = project_dir(pub, project) / params.private_dir_name / params.auto_eval_log_name
+        assert len(log.read_text().splitlines()) == 1        # nor counted
         # an older timestamp lets the next evaluation through
         os.utime(ts_file, (time.time() - 120, time.time() - 120))
         third = run_mock(pub, 'eval', '--auto-eval', project, extra_env=env)
         result = json.loads(third.stdout)
         assert result['grades']
+        assert len(log.read_text().splitlines()) == 2
         # the archive of this evaluation (same name as the first one's when both ran in the same second)
         archives = list((pub / 'archives').iterdir())
         assert result[params.eval_date_keyword] in {read_archive(str(a))[params.eval_date_keyword] for a in archives}

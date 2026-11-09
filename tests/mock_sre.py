@@ -34,7 +34,8 @@ Environment variables (all optional but the first):
   MOCK_EVAL_DELAY     seconds (float) slept by `eval` while it holds .private/eval_in_progress
   MOCK_EVAL_ERRORS    JSON list of [category, text] pairs: the `errors` of the archives `eval` writes
                       (real archives: zstandard + msgpack, the keys of Grade0.save_tests_on_file,
-                      `tests` keyed by tuples)
+                      `tests` keyed by tuples); a `--user eval --auto-eval` also appends one line
+                      to .private/auto_eval.log like sre (the self-evaluation count of the agent)
   MOCK_EVAL_INTERVAL  seconds (int): the `eval_interval_without_exam_mode` of the info.json `start`
                       writes (default 0: no periodic evaluation by the agent)
   MOCK_COOLDOWN       seconds (int): `eval --auto-eval` answers {"grades": null,
@@ -564,6 +565,11 @@ class Mock:
                 'delay_before_self_grade': cooldown if self.user_mode else 0,
             }
             self.write_archive(running_lab_name, now, parts, elements, mark, auto_eval=auto_eval)
+            if auto_eval and self.user_mode:
+                # the student's self-evaluation, counted like sre does (SRE/command/eval.py): one
+                # line of .private/auto_eval.log, the live count of the agent's Watch rows
+                with open(params.auto_eval_log_filename(running_lab_name), 'a') as f:
+                    f.write(now.isoformat() + '\n')
             if self.is_debug_project(running_lab_name):
                 lines = [f"grade - [{e.grade_part}] {e.title} : {e.grade} / {e.max_grade}\n"
                          if e.grade_part else f"grade - {e.title} : {e.grade} / {e.max_grade}\n"

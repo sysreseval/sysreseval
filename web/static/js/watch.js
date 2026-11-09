@@ -1,7 +1,9 @@
 // The Watch page of the instructors: every running project of the pool (GET /api/watch every
 // 5 s), one row per project with its owner (login and full name, and their student group when
 // the site configures one), its lab, when it started, its last archived evaluation (age, grade,
-// mark, errors), its terminals and whether the web (or the Qt GUI) runs it.  The rows can be
+// mark, errors), the number of self-evaluations the student has run (counted live by the agent
+// from the project's auto_eval.log: the archives hold the count before their evaluation), its
+// terminals and whether the web (or the Qt GUI) runs it.  The rows can be
 // sorted by any column, filtered by text and restricted to one group (the select, by kind: the
 // departments, the directory groups and the custom groups of GET /api/groups and of the rows,
 // groups_model.js; kept in the URL as ?group=kind:name, a bare name being a department); a row
@@ -85,6 +87,7 @@ function sortValue(row, key) {
     case 'grade': return last && last.max_grade ? last.grade / last.max_grade : -Infinity;
     case 'mark': return last && last.mark !== null && last.mark !== undefined ? last.mark : -Infinity;
     case 'errors': return last ? last.errors * 1000 + last.warnings : -1;
+    case 'auto_eval_count': return typeof row.auto_eval_count === 'number' ? row.auto_eval_count : -1;
     case 'terminals': return Number(row.terminals) || 0;
     case 'managed': return row.managed ? 1 : 0;
     default: return '';
@@ -280,6 +283,8 @@ function renderRow(row) {
     el('td', {class: 'num'}, last && last.mark !== null && last.mark !== undefined
       ? `${formatNumber(last.mark)} / ${formatNumber(last.maximum_mark)}` : ''),
     el('td', {class: 'num'}, errorsText),
+    // blank for the row of an agent older than the count
+    el('td', {class: 'num'}, typeof row.auto_eval_count === 'number' ? String(row.auto_eval_count) : ''),
     el('td', {class: 'num'}, String(row.terminals || 0)),
     el('td', {}, row.managed ? _('web') : _('local')),
     el('td', {class: 'actions'},
@@ -318,7 +323,7 @@ function setupControls() {
         state.sortAsc = !state.sortAsc;
       } else {
         state.sortKey = key;
-        state.sortAsc = !['last_eval', 'grade', 'mark', 'errors', 'terminals', 'started_at'].includes(key);
+        state.sortAsc = !['last_eval', 'grade', 'mark', 'errors', 'auto_eval_count', 'terminals', 'started_at'].includes(key);
       }
       render();
     });

@@ -508,6 +508,9 @@ msgstr "Note"
 msgid "Errors"
 msgstr "Erreurs"
 
+msgid "The number of self-evaluations the student has run"
+msgstr "Le nombre d'auto-évaluations lancées par l'étudiant"
+
 msgid "Mode"
 msgstr "Mode"
 

@@ -1020,6 +1020,7 @@ class TestInstructor:
                 assert (row['running_lab_name'], row['owner'], row['fullname'], row['group'], row['managed']) == \
                     (rln, 'alice', 'Alice A', 'INFO1', True)
                 assert row['last_eval'] is None and row['terminals'] == 0 and row['eval_interval'] == 0
+                assert row['auto_eval_count'] == 0      # no self-evaluation yet (.private/auto_eval.log)
                 on_disk = json.loads((h.pub / 'projects' / rln / 'answers' / 'answers.json').read_text())
                 assert (on_disk['login'], on_disk['hostname'], on_disk['group'], on_disk['exam_mode']) == ('alice', 'pool1', 'INFO1', False)
                 assert not [k for k in on_disk if len(k) == 64]       # no question entry
@@ -1028,6 +1029,9 @@ class TestInstructor:
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 200
                 row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
                 assert row['fullname'] == ALICE.fullname and row['group'] == 'INFO1'
+                # the live count of the student's self-evaluations (the lines of auto_eval.log the
+                # mock appends like sre), next to the count the archive holds
+                assert row['auto_eval_count'] == 1
                 last = row['last_eval']
                 assert (last['grade'], last['max_grade'], last['mark'], last['maximum_mark']) == (4.5, 5, 18.0, 20)
                 assert (last['errors'], last['warnings'], last['auto_eval_count']) == (0, 0, 1)
@@ -1272,11 +1276,12 @@ class TestInstructor:
                 assert row['eval_interval'] == 1 and row['managed'] is True
                 first = row['last_eval']
                 assert first is not None and first['auto_eval_count'] == 0 and first['grade'] == 4.5
+                assert row['auto_eval_count'] == 0      # a periodic evaluation is no self-evaluation
                 assert not (h.pub / 'last_self_grades').exists()
                 # the next one: a new archive, shown at once
                 await receive_event(ws, 'evaluated', timeout=5)
                 row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
-                assert row['last_eval']['archive'] != first['archive']
+                assert row['last_eval']['archive'] != first['archive'] and row['auto_eval_count'] == 0
                 data = await (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))).json()
                 assert data['archive'] == row['last_eval']['archive']
                 await ws.close()
@@ -1286,9 +1291,13 @@ class TestInstructor:
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
                 assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).status == 200
                 await receive_event(ws, 'evaluated', timeout=5)
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert row['auto_eval_count'] == 1
                 resp = await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
                 assert (await resp.json())['result']['grades'] is None
                 assert await events_of(ws, 0.5) == []
+                row = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]
+                assert row['auto_eval_count'] == 1      # the refused self-evaluation counted nothing
                 await ws.close()
         run(go())
 

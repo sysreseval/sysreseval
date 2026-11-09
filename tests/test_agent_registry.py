@@ -199,6 +199,27 @@ class TestRegistry:
         assert p.rln == RLN and p.managed and (tmp_pub_dir / 'web-agent' / f'{RLN}.json').exists()
         assert run(reg.adopt('nope')) is None
 
+    def test_self_eval_count(self, tmp_pub_dir):
+        """The self-evaluations of the student: the lines of .private/auto_eval.log (one per
+        `sre --user eval --auto-eval`), counted again only when the file changed."""
+        path = make_project(tmp_pub_dir)
+        reg = registry()
+        run(reg.tick())
+        p = reg.get(RLN)
+        log = path / params.private_dir_name / params.auto_eval_log_name
+        assert p.auto_eval_log_path == log and p.self_eval_count() == 0
+        log.write_text('2026-11-09T10:00:00\n2026-11-09T10:05:00\n')
+        assert p.self_eval_count() == 2
+        with open(log, 'a') as f:
+            f.write('2026-11-09T10:10:00\n')
+        assert p.self_eval_count() == 3
+        p._self_eval_count = 42          # an unchanged file is not read again
+        assert p.self_eval_count() == 42
+        log.unlink()
+        assert p.self_eval_count() == 0
+        log.write_text('2026-11-09T10:20:00\n')
+        assert p.self_eval_count() == 1
+
     def test_foreign_project_is_listed_but_not_managed(self, tmp_pub_dir):
         """A project started by the Qt GUI on the same host: visible to its owner, never scheduled."""
         make_project(tmp_pub_dir, managed=False, eval_interval_without_exam_mode=1)

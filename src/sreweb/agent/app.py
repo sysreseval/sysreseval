@@ -510,8 +510,9 @@ class Agent:
 
     async def projects_list(self, request):
         """The projects of the user; with ``?all=1`` (instructors only) every project of the host,
-        with its owner's full name and student group (the answers metadata) and the summary of
-        its last archived evaluation (the Watch page)."""
+        with its owner's full name and student group (the answers metadata), the summary of its
+        last archived evaluation and the number of self-evaluations the student has run (the
+        lines of ``.private/auto_eval.log``, live: the Watch page)."""
         identity = request[IDENTITY_KEY]
         everyone = request.query.get('all', '') in ('1', 'true')
         if everyone and not identity.is_instructor:
@@ -528,6 +529,7 @@ class Agent:
                 row['fullname'] = str(answers.get(params.fullname_keyword, '') or '')
                 row['group'] = str(answers.get(params.group_keyword, '') or '')
                 row['last_eval'] = summary.to_json() if summary is not None else None
+                row[params.auto_eval_count_keyword] = p.self_eval_count()
             rows.append(row)
         return web.json_response(rows)
 

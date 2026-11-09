@@ -251,9 +251,10 @@ class TestTemplates:
         assert 'id="watch"' in html and 'id="watch-filter"' in html and 'id="watch-count"' in html
         assert '/static/js/watch.js' in html and 'href="/watch"' in html
         for key in ('host', 'owner', 'fullname', 'group', 'title', 'started_at', 'last_eval', 'grade', 'mark', 'errors',
-                    'terminals', 'managed'):
+                    'auto_eval_count', 'terminals', 'managed'):
             assert f'data-sort="{key}"' in html, key
-        assert 'data-sort="fullname">Name</th>' in html and 'colspan="13"' in html   # the full name as a column
+        assert 'data-sort="fullname">Name</th>' in html and 'colspan="14"' in html   # the full name as a column
+        assert 'data-sort="auto_eval_count" title="The number of self-evaluations the student has run">Self-evaluations</th>' in html
         assert 'click a row for its last evaluation, a lab for the summary of the lab</span>' in html   # the dialogs
         assert 'a group for that summary' not in html
         assert 'data-login="alice"' in html

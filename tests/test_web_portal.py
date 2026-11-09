@@ -953,7 +953,8 @@ class TestInstructorThroughThePortal:
                 page = await h.client.get('/watch', headers=prof)
                 assert page.status == 200 and 'prof True True' in await page.text()   # a group source is configured
                 rows = await (await h.client.get('/api/watch', headers=prof)).json()
-                assert len(rows) == 1 and (rows[0]['host'], rows[0]['owner'], rows[0]['last_eval']) == ('a01', 'alice', None)
+                assert len(rows) == 1 and (rows[0]['host'], rows[0]['owner'], rows[0]['last_eval'], rows[0]['auto_eval_count']) == \
+                    ('a01', 'alice', None, 0)
                 # the owner's name and group from the start, before any answer
                 assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')
                 # the instructor's own list stays theirs; the student's list unchanged
@@ -966,6 +967,7 @@ class TestInstructorThroughThePortal:
                 assert (await h.client.post(f'{base}/eval', headers={**alice, **CSRF})).status == 200
                 rows = await (await h.client.get('/api/watch', headers=prof)).json()
                 assert rows[0]['last_eval']['grade'] == 4.5 and rows[0]['fullname'] == 'Alice'
+                assert rows[0]['auto_eval_count'] == 1      # the student's self-evaluation, counted live
                 data = await (await h.client.get(f'{base}/evaluation', headers=prof)).json()
                 assert data['mark'] == 18.0 and data['rows'] and data['archive'].endswith('.zst')
                 # the lab summary: every project of the lab on every host with its last elements
@@ -986,6 +988,7 @@ class TestInstructorThroughThePortal:
                 assert (await (await h.client.get(base, headers=alice)).json())['answers'][TEXT_HASH] == 'x'
                 rows = await (await h.client.get('/api/watch', headers=prof)).json()
                 assert (rows[0]['owner'], rows[0]['fullname']) == ('alice', 'Alice')
+                assert rows[0]['auto_eval_count'] == 1      # the instructor's evaluation is no self-evaluation
                 # an instructor-mode project of the instructor; refused to a student
                 resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py', 'instructor_mode': True},
                                            headers={**bob, **CSRF})

@@ -16,7 +16,8 @@ The instructors get, on top of what a student sees (*Instructors* below):
 
 - a **Watch page**, the web counterpart of `sre watch`: every running project of the pool, one
   row per project with its owner, its lab, the grade and mark of its last evaluation, its age
-  and its errors, refreshed every few seconds;
+  and its errors, the number of self-evaluations the student has run, refreshed every few
+  seconds;
 - an **Archives page**: every evaluation of the pool hosts, the closed projects included, kept
   in a database (the results, never the answers), searched by student, group, lab, host and
   period, with the detail of an evaluation and the summary matrix of a lab;
@@ -1133,7 +1134,11 @@ What an instructor gets:
   the owner's student group when the site configures one (`attr_group` /
   `header_group`), lab, start time, the age
   of its last archived evaluation, its grade and mark (exo-eval scope, as `sre watch` shows
-  them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
+  them), its errors and warnings, the number of self-evaluations the student has run (the
+  agent counts the lines of the project's `.private/auto_eval.log`, one per `sre eval
+  --auto-eval` of the student: live, whereas the `auto_eval_count` of an archive, the AUTO-EVAL
+  column of `sre watch` and the Self-evaluations column of the Archives page, is the count
+  before that evaluation), its open terminals and whether the web or the Qt GUI runs it;
   sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
   by the select listing the groups by kind (the departments of the rows, the directory groups
   and the custom groups of the Groups page, *User groups* above; every group, one group, or *No
