@@ -135,7 +135,7 @@ class TestEventFor:
         assert A.LOGIN_EVENTS == {'login', 'login_failed'} and A.LOGIN_EVENTS <= set(A.ALL_EVENTS)
         assert set(A.EVENTS.values()) - A.WS_EVENTS - A.PROJECT_EVENTS == {'start', 'logout', 'admin',
                                                                             'present_audience', 'present_stop',
-                                                                            'focus_stop', 'history', 'archives',
+                                                                            'focus_stop', 'history', 'archives', 'report',
                                                                             'groups', 'group_edit',
                                                                             'exam_edit', 'exam_dismiss',
                                                                             'webconf_start', 'webconf_audience',

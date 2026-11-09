@@ -553,6 +553,12 @@ class Pool:
         rows.sort(key=lambda r: r[:4])
         return [r[4] for r in rows]
 
+    def report_hosts(self, identity: Identity) -> list:
+        """The hosts able to answer a request any host of the pool can serve for *identity* (the
+        reports of the Archives page: one agent runs ``sre report`` on the records the portal
+        gives), the most available first, as ``_labs_hosts``."""
+        return self._labs_hosts(identity)
+
     async def labs(self, identity: Identity, *, all_labs: bool = False) -> list:
         """The lab list of the pool for *identity*, ``[{name, title, kind, sort}]`` in the display
         order the host gives (``sre list --with-titles``: the tree flattened, a directory entry

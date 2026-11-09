@@ -18,7 +18,8 @@ from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
 from .accesshistory import (parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, resolve_group,
                             UNLOGGED_FILTERS, HistoryError)
 from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
-from .archives import ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS
+from .archives import (ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS, parse_report_request,
+                       record_of_row, REPORT_EXPAND_OPTION, REPORT_MAX_BODY, REPORT_MAX_ROWS)
 from .auth_ldap import LdapAuthenticator, LdapError
 from .groups import (Memberships, GroupError, KINDS, KIND_CUSTOM, MAX_BATCH, MAX_DESCRIPTION, check_group_name,
                      group_dict, group_key, parse_group_key, sort_key as group_sort_key)
@@ -33,7 +34,7 @@ from .exams import (Exams, Exam, Member, PHASE_STARTING, START_PHASES, REASON_AD
 from .examprojects import ExamProjects, exam_payload, instructor_identity
 from .pool import LAB_KIND_LAB, LAB_SORT_NAME
 from .ratelimit import RateLimiter
-from .relay import Relay
+from .relay import Relay, RELAYED_KEY
 from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREATED
 from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
@@ -101,6 +102,8 @@ class ExamRefusal(PoolError):
 HEAVY_QUERIES = 2
 HEAVY_WAIT = 10.0
 HEAVY_RETRY_AFTER = 5
+#: How many hosts a report of the Archives page is tried on when the first ones do not answer.
+REPORT_HOSTS_TRIED = 3
 
 #: The flavor answers of a start, as the agent passes them in one argv element of ``sre start``
 #: (Linux caps one at 128 KiB): refused here with a 400, before the relay, above this.
@@ -195,6 +198,7 @@ class Routes:
         r.add_get('/api/archives', self.api_archives)
         r.add_get('/api/archives/summary', self.api_archives_summary)
         r.add_get('/api/archives/options', self.api_archives_options)
+        r.add_post('/api/archives/report', self.api_archives_report)
         r.add_get('/api/archives/{id}', self.api_archive)
         # the user groups (the fixed paths before the parametrised ones)
         r.add_get('/api/groups', self.api_groups)
@@ -940,6 +944,62 @@ class Routes:
             log.warning("archives database: a query failed: %s", e)
             return json_error(503, "the database of the archives does not answer")
         return web.json_response(options)
+
+    async def api_archives_report(self, request):
+        """Instructors: the spreadsheet (``sheet``, what ``sre sheet`` gives) or the PDF reports
+        (``outline``, what ``sre outline`` gives: a zip of the PDFs and their summary) of the
+        evaluations the instructor ticked on the Archives page, built by one agent of the pool
+        (``POST /v1/reports/{kind}`` with the rows turned back into records, ``record_of_row``)
+        and streamed back as a download.  The body is ``{kind, ids: [row ids], options}``
+        (``parse_report_request``); the ticked rows stand for their projects: every evaluation
+        of the same projects is taken unless ``all_evaluations`` is false, at most
+        ``REPORT_MAX_ROWS`` (413 beyond: narrow the selection).  A ``report`` line of the log
+        with ``kind``, ``selected``, ``options``, ``count``, ``projects`` and ``host``, the status
+        being the agent's when it answered."""
+        self._require_instructor(request)
+        reader = self._archives_reader()
+        try:
+            kind, ids, options = parse_report_request(await request.json())
+        except ValueError as e:
+            return json_error(400, str(e))
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update({'kind': kind, 'selected': len(ids),
+                           'options': ','.join(key for key, value in options.items() if value)})
+        if not await self._heavy_acquire():
+            return json_error(503, "other reports are being computed, try again in a moment",
+                              retry_after=HEAVY_RETRY_AFTER)
+        try:
+            page = await reader.report_rows(ids, all_evaluations=options[REPORT_EXPAND_OPTION], limit=REPORT_MAX_ROWS)
+        except HistoryError as e:
+            log.warning("archives database: a query failed: %s", e)
+            return json_error(503, "the database of the archives does not answer")
+        finally:
+            self._heavy.release()
+        if page['truncated']:
+            return json_error(413, f"more than {REPORT_MAX_ROWS} evaluations: narrow the selection, or untick "
+                                   "\"every evaluation of the selected projects\"")
+        rows = page['rows']
+        if not rows:
+            return json_error(404, "unknown evaluations")
+        flags = {key: value for key, value in options.items() if key != REPORT_EXPAND_OPTION}
+        body = json.dumps({'records': [record_of_row(row) for row in rows], 'options': flags}).encode('utf-8')
+        if len(body) > REPORT_MAX_BODY:
+            return json_error(413, "the report is too big: narrow the selection")
+        if logged is not None:
+            logged.update({'count': len(rows), 'projects': len({row.get('rln') for row in rows})})
+        identity = request[IDENTITY_KEY]
+        for host in self.pool.report_hosts(identity)[:REPORT_HOSTS_TRIED]:
+            if logged is not None:
+                logged['host'] = host.name
+            try:
+                return await self.relay.forward(request, host, identity, 'POST', f'/reports/{kind}', data=body,
+                                                headers={'Content-Type': 'application/json'})
+            except PoolError as e:
+                if request.get(RELAYED_KEY):
+                    raise
+                log.warning("report %s: the host %s did not answer: %s", kind, host.name, e)
+        raise PoolError(503, "no host of the pool can build the report now")
 
     # -- the user groups ----------------------------------------------------------------------------
 

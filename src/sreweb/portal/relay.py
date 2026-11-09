@@ -12,7 +12,7 @@ from aiohttp import web, WSMsgType
 from .accesslog import WS_KEY
 from .pool import Pool, PoolError
 from ..config import HostConfig
-from ..identity import Identity
+from ..identity import Identity, request_key
 
 log = logging.getLogger('sreweb.portal')
 
@@ -20,6 +20,9 @@ log = logging.getLogger('sreweb.portal')
 COPIED_HEADERS = ('Content-Type', 'Content-Disposition', 'Cache-Control')
 #: Response headers never copied (hop-by-hop or set by this server).
 RELAY_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=None)
+#: Set on the request by :meth:`Relay.forward` once the status and headers of the agent's answer
+#: are sent to the browser: a caller trying another host on a ``PoolError`` must not from then on.
+RELAYED_KEY = request_key('relayed')
 
 
 class Relay:
@@ -48,13 +51,20 @@ class Relay:
             raise PoolError(502, f"the host {host.name} does not answer: {e or type(e).__name__}")
 
     async def forward(self, request: web.Request, host: HostConfig, identity: Identity, method: str, path: str,
-                      *, data=None, params=None) -> web.StreamResponse:
-        """Relay a request and stream the answer back whatever its kind (JSON, NDJSON, a file)."""
+                      *, data=None, params=None, headers=None) -> web.StreamResponse:
+        """Relay a request and stream the answer back whatever its kind (JSON, NDJSON, a file);
+        *headers* are sent with the identity headers (the content type of a body).  A connection
+        failure raises ``PoolError`` before anything reached the browser; ``RELAYED_KEY`` tells
+        when the answer began."""
+        sent = dict(self.pool.headers(host, identity))
+        if headers:
+            sent.update(headers)
         try:
-            async with self.session.request(method, self._url(host, path), headers=self.pool.headers(host, identity),
+            async with self.session.request(method, self._url(host, path), headers=sent,
                                             data=data, params=params, timeout=RELAY_TIMEOUT) as upstream:
-                headers = {k: upstream.headers[k] for k in COPIED_HEADERS if k in upstream.headers}
-                response = web.StreamResponse(status=upstream.status, headers=headers)
+                copied = {k: upstream.headers[k] for k in COPIED_HEADERS if k in upstream.headers}
+                response = web.StreamResponse(status=upstream.status, headers=copied)
+                request[RELAYED_KEY] = True
                 await response.prepare(request)
                 async for chunk in upstream.content.iter_any():
                     await response.write(chunk)

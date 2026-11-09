@@ -749,3 +749,30 @@ msgstr ""
 
 msgid "rebuild the Python virtual environment (make venv) as the last step"
 msgstr "reconstruire l'environnement virtuel Python (make venv) en dernière étape"
+
+msgid ""
+"Internal (web front-end): the spreadsheet of sheet or the PDF reports of "
+"outline, built from JSON archive records read on stdin and written on stdout"
+msgstr ""
+"Interne (site web) : le tableur de sheet ou les rapports PDF de outline, "
+"construits à partir d'enregistrements d'archives JSON lus sur stdin et "
+"écrits sur stdout"
+
+msgid ""
+"sheet: an ODS spreadsheet; outline: a zip of the PDF reports and the summary "
+"ODS"
+msgstr ""
+"sheet : un tableur ODS ; outline : un zip des rapports PDF et du "
+"récapitulatif ODS"
+
+msgid "output file (default: stdout)"
+msgstr "fichier de sortie (par défaut : stdout)"
+
+msgid "no records to process"
+msgstr "aucun enregistrement à traiter"
+
+msgid "warning: a record without running_lab_name is skipped"
+msgstr "avertissement : un enregistrement sans running_lab_name est ignoré"
+
+msgid "invalid JSON on stdin: {e}"
+msgstr "JSON invalide sur stdin : {e}"

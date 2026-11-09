@@ -243,6 +243,32 @@ def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles
         row_num += 1
 
 
+def _record_of_raw(archive: dict) -> dict:
+    """The record of one archive dict: what the sheets read of it (the student metadata of the
+    answers, the exo-eval totals and grade list, the number of errors).  Also fed by
+    ``sre report`` with the pseudo archives of ``archive_summary.raw_from_record``."""
+    answers = archive.get('answers') or {}
+    running_lab_name = archive.get(params.running_lab_name_keyword, '')
+    return {
+        'running_lab_name': running_lab_name,
+        'instance_start': params.get_start_date_string_from_running_lab_name(running_lab_name),
+        'lab_name': _lab_name_from_running(running_lab_name),
+        'login': answers.get(params.login_keyword, ''),
+        'fullname': answers.get(params.fullname_keyword, ''),
+        'email': answers.get(params.email_keyword, ''),
+        'hostname': answers.get(params.hostname_keyword, ''),
+        'eval_date': archive.get(params.eval_date_keyword, ''),
+        'errors': len(list(archive.get('errors', []))),
+        'total_grade': archive.get('total_grade_exo_eval', archive.get('total_grade', 0)) or 0,
+        'total_max': archive.get('total_max_exo_eval', archive.get('total_max', 0)) or 0,
+        'mark': archive.get('mark_exo_eval', archive.get('mark')),
+        'maximum_mark': archive.get('maximum_mark'),
+        'grade_list': [dict(e) for e in archive.get('grade_list', [])
+                       if e.get('scope', params.BOTH_EVAL_SCOPE) & params.EXO_EVAL_SCOPE],
+        'language': answers.get(params.language_keyword, 'en'),
+    }
+
+
 def _collect_archives(args, start=None, finish=None) -> list:
     """One record dict per readable archive named by args.files; *start* /
     *finish* are the -S/--start and -F/--finish bounds (see
@@ -254,41 +280,15 @@ def _collect_archives(args, start=None, finish=None) -> list:
         except Exception as e:
             print(_("warning: cannot read {path}: {e}").format(path=path, e=e), file=sys.stderr)
             continue
-
-        answers = archive.get('answers', {})
-        running_lab_name = archive.get(params.running_lab_name_keyword, '')
-        records.append({
-            'running_lab_name': running_lab_name,
-            'instance_start': params.get_start_date_string_from_running_lab_name(running_lab_name),
-            'lab_name': _lab_name_from_running(running_lab_name),
-            'login': answers.get(params.login_keyword, ''),
-            'fullname': answers.get(params.fullname_keyword, ''),
-            'email': answers.get(params.email_keyword, ''),
-            'hostname': answers.get(params.hostname_keyword, ''),
-            'eval_date': archive.get(params.eval_date_keyword, ''),
-            'errors': len(list(archive.get('errors', []))),
-            'total_grade': archive.get('total_grade_exo_eval', archive.get('total_grade', 0)) or 0,
-            'total_max': archive.get('total_max_exo_eval', archive.get('total_max', 0)) or 0,
-            'mark': archive.get('mark_exo_eval', archive.get('mark')),
-            'maximum_mark': archive.get('maximum_mark'),
-            'grade_list': [dict(e) for e in archive.get('grade_list', [])
-                           if e.get('scope', params.BOTH_EVAL_SCOPE) & params.EXO_EVAL_SCOPE],
-            'language': answers.get(params.language_keyword, 'en'),
-        })
+        records.append(_record_of_raw(archive))
     return records
 
 
-def action_sheet():
-    user_not_allowed()
-    args = SRE.args
-    start, finish = parse_time_interval_args(args.start, args.finish)
-    bonus_in_prefix = bool(args.bonus_in_prefix)
-
-    records = _collect_archives(args, start, finish)
-    if not records:
-        print(_("no archives to process"), file=sys.stderr)
-        return
-
+def build_sheet(records: list, output, *, separate_instances: bool = False, bonus_in_prefix: bool = False):
+    """The spreadsheet of *records* (``_record_of_raw`` dicts), saved to *output* (a path, or a
+    file object odfpy accepts): per lab, the table of every evaluation (one row per archive, the
+    grade of each element in its column), the ``Questions`` statistics and the ``Sessions`` best
+    grades (one row per student, or per running instance with *separate_instances*)."""
     # Group by lab_name
     groups: dict[str, list] = {}
     for rec in records:
@@ -337,8 +337,21 @@ def action_sheet():
             sheet.addElement(tr)
 
         _add_questions_sheet(doc, sname, lab_name, rows, grade_titles_list, bonus_in_prefix)
-        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, bool(args.separate_instances),
-                            bonus_in_prefix)
+        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, separate_instances, bonus_in_prefix)
 
-    doc.save(args.output)
+    doc.save(output)
+
+
+def action_sheet():
+    user_not_allowed()
+    args = SRE.args
+    start, finish = parse_time_interval_args(args.start, args.finish)
+
+    records = _collect_archives(args, start, finish)
+    if not records:
+        print(_("no archives to process"), file=sys.stderr)
+        return
+
+    build_sheet(records, args.output, separate_instances=bool(args.separate_instances),
+                bonus_in_prefix=bool(args.bonus_in_prefix))
     print(f"saved: {args.output}")

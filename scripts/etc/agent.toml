@@ -67,13 +67,15 @@ power_off_command = "systemctl poweroff"
 # `systemctl restart` of its own unit, found in /proc/self/cgroup; a command for an agent
 # run otherwise (the request is refused when neither applies).
 # restart_command = ""
-# Timeouts of the sre commands, in seconds.
+# Timeouts of the sre commands, in seconds (report: the spreadsheet / PDF reports an instructor
+# downloads from the Archives page, built by `sre report` from the records of the database).
 [timeouts]
 start = 900
 eval = 600
 state = 600
 stop = 300
 list = 30
+report = 600
 # One virtual X desktop per project whose lab has an x11_host machine (the Wireshark lab): a
 # TigerVNC Xvnc and a window manager, shown in the Display tab of the web site.  Needs the
 # packages tigervnc-standalone-server and openbox and the unprivileged user the X processes run

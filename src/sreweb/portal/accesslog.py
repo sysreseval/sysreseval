@@ -77,10 +77,13 @@ EVENTS = {
     ('GET', '/api/history/sessions'): 'history',
     ('GET', '/api/history/statistics'): 'history',
     # the Archives page: an instructor reading the evaluation results leaves a trace (the
-    # filters asked; ``view=summary`` for the lab summary, ``archive_id`` for one evaluation)
+    # filters asked; ``view=summary`` for the lab summary, ``archive_id`` for one evaluation);
+    # a report downloaded (``kind`` = sheet / outline, ``selected`` rows, ``options``, ``count``
+    # of evaluations and ``projects`` sent, the ``host`` that built it)
     ('GET', '/api/archives'): 'archives',
     ('GET', '/api/archives/summary'): 'archives',
     ('GET', '/api/archives/{id}'): 'archives',
+    ('POST', '/api/archives/report'): 'report',
     # the Groups page: the listings, and every change of a custom group (``action`` = create /
     # update / delete / add / remove, ``group``, ``member`` / ``count`` / ``source`` / ``new_name``)
     ('GET', '/api/groups'): 'groups',

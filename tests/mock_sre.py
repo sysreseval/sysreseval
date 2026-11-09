@@ -824,6 +824,47 @@ class Mock:
             zf.writestr(f"{lab_display}/lab.conf", "\n".join(lines))
         print(base64.b64encode(buf.getvalue()).decode("ascii"))
 
+    def action_report(self):
+        """``sre report <kind>`` (privileged only): the download of the Archives page, built from
+        the JSON archive records of stdin.  The mock answers a zip (an ODS is one too) holding
+        ``records.json`` (the records as received) and ``flags.txt`` (the options given, one per
+        line), plus for ``outline`` one PDF stub per student, lab and host and the summary
+        ``outline.ods``, so that the tests see what reached the command."""
+        if self.user_mode:
+            error_quit("you're not allowed to run this command")
+        try:
+            data = json.loads(sys.stdin.buffer.read())
+        except ValueError as e:
+            error_quit(f"invalid JSON on stdin: {e}")
+        records = data.get('records') if isinstance(data, dict) else None
+        if not isinstance(records, list) or not records:
+            error_quit("no records to process")
+        args = self.args
+        flags = [flag for flag, given in (('--separate-instances', args.separate_instances),
+                                          ('--bonus-in-prefix', args.bonus_in_prefix), ('--no-timeline', args.no_timeline),
+                                          ('--remaining-time', args.remaining_time), ('--no-parts', args.no_parts)) if given]
+        if args.lang:
+            flags.append(f'--lang {args.lang}')
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            if args.kind == 'sheet':
+                zf.writestr('mimetype', 'application/vnd.oasis.opendocument.spreadsheet')
+            zf.writestr('records.json', json.dumps(records))
+            zf.writestr('flags.txt', '\n'.join(flags))
+            if args.kind == 'outline':
+                groups = sorted({(str(r.get('login', '')),
+                                  params.get_abbreviated_lab_name_from_running_lab_name(str(r.get('running_lab_name', ''))),
+                                  str(r.get('hostname', ''))) for r in records if isinstance(r, dict)})
+                for login, lab, hostname in groups:
+                    zf.writestr(f'{login}__{lab}__{hostname}.pdf', '%PDF-1.4 mock')
+                zf.writestr('outline.ods', 'ods')
+        out = buf.getvalue()
+        if args.output and args.output != '-':
+            Path(args.output).write_bytes(out)
+        else:
+            sys.stdout.buffer.write(out)
+            sys.stdout.buffer.flush()
+
 
 # ---------------------------------------------------------------------------------------------
 # the parser (the subset of src/sre.py the agent uses) and the entry point
@@ -893,6 +934,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser_export.add_argument('--shapes', action='store_true')
     parser_export.add_argument('--reverse', action='store_true')
     parser_export.add_argument('--random-seed', type=int, default=None, metavar='N')
+
+    parser_report = subparsers.add_parser('report')
+    parser_report.add_argument('kind', choices=['sheet', 'outline'])
+    parser_report.add_argument('--lang', metavar='lang', default=None)
+    for flag in ('--separate-instances', '--bonus-in-prefix', '--no-timeline', '--remaining-time', '--no-parts'):
+        parser_report.add_argument(flag, action='store_true')
+    parser_report.add_argument('-o', '--output', metavar='file', default='-')
     return parser
 
 

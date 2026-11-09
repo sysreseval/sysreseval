@@ -160,6 +160,66 @@ class TestSelect:
             assert f'\n  {column} ' in R.DDL, column
 
 
+class TestReports:
+    """The downloads of the page: the rows back into records, the request body, the SQL."""
+
+    def test_record_of_row_round_trip(self):
+        rec = record()
+        names = ['id', *R.COLUMNS]
+        back = R.record_of_row(R.row_to_dict(names, (7, *R.row_of_record('a01', rec))))
+        assert back['id'] == 7 and back['host'] == 'a01' and back['archive'] == NAME
+        assert back['running_lab_name'] == RLN and back['lab'] == 'sre/dhcp.py'
+        assert back['eval_date'] == '2026-10-25T08:01:02+00:00'      # the UTC ts of the row, aware
+        for key in ('login', 'fullname', 'group', 'hostname', 'grade', 'max_grade', 'mark', 'maximum_mark', 'exam',
+                    'auto_eval_count', 'error_count', 'warning_count', 'elements', 'parts', 'errors', 'self_grade',
+                    'self_max_grade', 'self_mark', 'email', 'language', 'exam_time_remaining', 'managed'):
+            assert back[key] == rec[key], key
+        assert 'details' not in back and 'rln' not in back and 'grp' not in back and 'ts' not in back
+        # a row whose details were truncated keeps the counts and says so
+        big = record(elements=[dict(record()['elements'][0], description='x' * (R.MAX_DETAILS + 1))])
+        back = R.record_of_row(R.row_to_dict(names, (8, *R.row_of_record('a01', big))))
+        assert back['truncated'] is True and 'elements' not in back and back['error_count'] == 1
+        # the rows of the page (without details) give a record too
+        assert R.record_of_row(R.row_to_dict(['id', *R.COLUMNS[:-1]], (9, *R.row_of_record('a01', rec)[:-1])))['login'] == 'alice'
+
+    def test_parse_report_request(self):
+        kind, ids, options = R.parse_report_request({'kind': 'sheet', 'ids': [3, 1, 3], 'options': {'no_parts': True}})
+        assert (kind, ids) == ('sheet', [3, 1])
+        assert options == {'all_evaluations': True, 'separate_instances': False, 'bonus_in_prefix': False,
+                           'no_timeline': False, 'remaining_time': False, 'no_parts': True}
+        assert R.parse_report_request({'kind': 'outline', 'ids': [1]})[2]['all_evaluations'] is True
+        assert R.parse_report_request({'kind': 'outline', 'ids': [1], 'options': {'all_evaluations': False}})[2]['all_evaluations'] is False
+        for body, key in (([], 'object'), ({'kind': 'pdf', 'ids': [1]}, 'kind'), ({'kind': 'sheet'}, 'ids'),
+                          ({'kind': 'sheet', 'ids': []}, 'ids'), ({'kind': 'sheet', 'ids': ['1']}, 'ids'),
+                          ({'kind': 'sheet', 'ids': [-1]}, 'ids'), ({'kind': 'sheet', 'ids': [True]}, 'ids'),
+                          ({'kind': 'sheet', 'ids': list(range(R.REPORT_MAX_IDS + 1))}, 'at most'),
+                          ({'kind': 'sheet', 'ids': [1], 'options': []}, 'options'),
+                          ({'kind': 'sheet', 'ids': [1], 'options': {'bogus': True}}, 'bogus'),
+                          ({'kind': 'sheet', 'ids': [1], 'options': {'no_parts': 'yes'}}, 'no_parts')):
+            with pytest.raises(ValueError, match=key):
+                R.parse_report_request(body)
+
+    def test_report_select(self):
+        sql, params = R.build_report_select('archives', [5, 9], all_evaluations=True, limit=100)
+        assert sql.startswith('SELECT t.id, t.ts') and ', t.details FROM `archives` t WHERE' in sql
+        assert sql.endswith("WHERE t.rln IN (SELECT s.rln FROM `archives` s WHERE s.id IN (%s, %s)) "
+                            "ORDER BY t.rln, t.id LIMIT %s")
+        assert params == [5, 9, 101]
+        sql, params = R.build_report_select('archives', [5], all_evaluations=False, limit=10)
+        assert sql.endswith('WHERE t.id IN (%s) ORDER BY t.rln, t.id LIMIT %s') and params == [5, 11]
+        assert not any(c == '%' and sql[i + 1] != 's' for i, c in enumerate(sql[:-1]))
+
+    def test_report_rows(self):
+        server = FakeServer(table_exists=True)
+        server.select_names = ['id', *R.COLUMNS]
+        server.select_rows = [(5, *R.row_of_record('a01', record())), (6, *R.row_of_record('a01', record(login='bob')))]
+        reader = R.ArchiveDatabase('archives', connect=server.connect)
+        page = reader.report_rows_sync([5], all_evaluations=True, limit=10)
+        assert [r['login'] for r in page['rows']] == ['alice', 'bob'] and page['truncated'] is False
+        assert page['rows'][0]['details']['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
+        assert reader.report_rows_sync([5], all_evaluations=False, limit=1) == {'rows': page['rows'][:1], 'truncated': True}
+
+
 class TestSink:
     """The sink of accessdb.py on the archives table: its own statements and words."""
 

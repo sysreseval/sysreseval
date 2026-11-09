@@ -77,6 +77,34 @@ def _safe_filename(s: str) -> str:
     return s
 
 
+def _record_of_raw(archive: dict) -> dict:
+    """The record of one archive dict: what the reports read of it (the student metadata of the
+    answers, the exo-eval totals, grade list and parts).  Also fed by ``sre report`` with the
+    pseudo archives of ``archive_summary.raw_from_record``."""
+    answers = archive.get('answers') or {}
+    running_lab_name = archive.get(params.running_lab_name_keyword, '')
+    return {
+        'running_lab_name': running_lab_name,
+        'instance_start': params.get_start_date_string_from_running_lab_name(running_lab_name),
+        'lab_name': _lab_name_from_running(running_lab_name),
+        'abbreviated_lab_name': params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name),
+        'login': answers.get(params.login_keyword, ''),
+        'fullname': answers.get(params.fullname_keyword, ''),
+        'email': answers.get(params.email_keyword, ''),
+        'hostname': answers.get(params.hostname_keyword, ''),
+        'eval_date': archive.get(params.eval_date_keyword, ''),
+        'exam_time_remaining': answers.get(params.sysreseval_exam_time_remaining),
+        'total_grade': archive.get('total_grade_exo_eval', archive.get('total_grade')) or 0,
+        'total_max': archive.get('total_max_exo_eval', archive.get('total_max')) or 0,
+        'mark': archive.get('mark_exo_eval', archive.get('mark')),
+        'maximum_mark': archive.get('maximum_mark'),
+        'grade_list': [dict(e) for e in archive.get('grade_list', [])
+                       if e.get('scope', params.BOTH_EVAL_SCOPE) & params.EXO_EVAL_SCOPE],
+        'grade_parts': [dict(p) for p in archive.get('grade_parts', [])],
+        'language': answers.get(params.language_keyword, 'en'),
+    }
+
+
 def _collect_archives(args, start=None, finish=None) -> list:
     """One record dict per readable archive named by args.files; *start* /
     *finish* are the -S/--start and -F/--finish bounds (see
@@ -88,31 +116,7 @@ def _collect_archives(args, start=None, finish=None) -> list:
         except Exception as e:
             print(_("warning: cannot read {path}: {e}").format(path=path, e=e), file=sys.stderr)
             continue
-
-        answers = archive.get('answers') or {}
-        running_lab_name = archive.get(params.running_lab_name_keyword, '')
-
-        records.append({
-            'running_lab_name': running_lab_name,
-            'instance_start': params.get_start_date_string_from_running_lab_name(running_lab_name),
-            'lab_name': _lab_name_from_running(running_lab_name),
-            'abbreviated_lab_name': params.get_abbreviated_lab_name_from_running_lab_name(running_lab_name),
-            'login': answers.get(params.login_keyword, ''),
-            'fullname': answers.get(params.fullname_keyword, ''),
-            'email': answers.get(params.email_keyword, ''),
-            'hostname': answers.get(params.hostname_keyword, ''),
-            'eval_date': archive.get(params.eval_date_keyword, ''),
-            'exam_time_remaining': answers.get(params.sysreseval_exam_time_remaining),
-            'total_grade': archive.get('total_grade_exo_eval', archive.get('total_grade')) or 0,
-            'total_max': archive.get('total_max_exo_eval', archive.get('total_max')) or 0,
-            'mark': archive.get('mark_exo_eval', archive.get('mark')),
-            'maximum_mark': archive.get('maximum_mark'),
-            'grade_list': [dict(e) for e in archive.get('grade_list', [])
-                           if e.get('scope', params.BOTH_EVAL_SCOPE) & params.EXO_EVAL_SCOPE],
-            'grade_parts': [dict(p) for p in archive.get('grade_parts', [])],
-            'language': answers.get(params.language_keyword, 'en'),
-        })
-
+        records.append(_record_of_raw(archive))
     return records
 
 
@@ -536,17 +540,45 @@ def action_outline():
         print(_("no archives to process"), file=sys.stderr)
         return
 
+    try:
+        build_outline(records, pdf_dir=output_dir, summary_path=args.output_file, lang=args.lang,
+                      separate_instances=bool(args.separate_instances), bonus_in_prefix=bool(args.bonus_in_prefix),
+                      no_timeline=bool(args.no_timeline), remaining_time=bool(args.remaining_time),
+                      no_parts=bool(args.no_parts), user_info=user_info,
+                      log=print, warn=lambda text: print(text, file=sys.stderr))
+    except OSError as e:
+        print(_("error: cannot write {path}: {e}").format(path=args.output_file, e=e), file=sys.stderr)
+        sys.exit(1)
+    if args.output_file:
+        print(_("saved: {path}").format(path=args.output_file))
+
+
+def build_outline(records: list, *, pdf_dir: Path | None, summary_path=None, lang: str | None = None,
+                  separate_instances: bool = False, bonus_in_prefix: bool = False, no_timeline: bool = False,
+                  remaining_time: bool = False, no_parts: bool = False, user_info: dict | None = None,
+                  log=None, warn=None) -> list[Path]:
+    """The reports of *records* (``_record_of_raw`` dicts): one PDF per group of
+    ``_group_records`` (per student, lab and host; per running instance with
+    *separate_instances*) named ``<login>__<lab>__<host>[__<start>].pdf`` in *pdf_dir* (``None``:
+    no PDF), and the summary spreadsheet (one row per group: the best evaluation) saved to
+    *summary_path* (a path or a file object; ``None``: none).  *log* receives the ``written:``
+    line of each PDF, *warn* the warnings and the error of a PDF that could not be written (that
+    group is skipped); both silent when ``None``.  The paths of the PDFs written are returned; an
+    ``OSError`` of the summary save propagates."""
+    log = log or (lambda text: None)
+    warn = warn or (lambda text: None)
+    if pdf_dir is not None:
+        Path(pdf_dir).mkdir(parents=True, exist_ok=True)
     # One group per report: per student, or per running instance of a lab
     # with --separate-instances.
-    separate = bool(args.separate_instances)
-    sorted_groups = _group_records(records, separate)
+    sorted_groups = _group_records(records, separate_instances)
 
     has_any_name  = any(r['fullname'] for r in records) or user_info is not None
     has_any_email = any(r['email']    for r in records) or user_info is not None
 
-    # ODS setup (only if --output-file is provided)
+    # ODS setup (only with a summary)
     doc = sheet = sname = None
-    if args.output_file:
+    if summary_path is not None:
         doc = OpenDocumentSpreadsheet()
         header_style = _make_header_style(doc)
         sname = header_style.getAttribute("name")
@@ -555,7 +587,7 @@ def action_outline():
 
         hrow = TableRow()
         ods_cols = [_('login'), _('hostname'), _('project')]
-        if separate:
+        if separate_instances:
             ods_cols.append(_('project_start'))
         ods_cols += [_('best_grade'), _('best_grade_time'), _('max_points'), _('mark'), _('maximum_mark')]
         if has_any_name:
@@ -566,30 +598,32 @@ def action_outline():
             hrow.addElement(_header_cell(col, sname))
         sheet.addElement(hrow)
 
+    written = []
     for key, recs in sorted_groups:
         lab_name, login, hostname = key[:3]
         abbreviated = recs[0]['abbreviated_lab_name']
         instance_start = recs[0]['instance_start']
 
         if user_info is not None and login not in user_info:
-            print(_("warning: login '{login}' not found in aux file").format(login=login), file=sys.stderr)
+            warn(_("warning: login '{login}' not found in aux file").format(login=login))
 
-        if output_dir is not None:
+        if pdf_dir is not None:
             safe = (f"{_safe_filename(login)}"
                     f"__{_safe_filename(abbreviated)}"
                     f"__{_safe_filename(hostname)}")
-            if separate:
+            if separate_instances:
                 safe += f"__{instance_start or 'unknown'}"
-            pdf_path = output_dir / f"{safe}.pdf"
+            pdf_path = Path(pdf_dir) / f"{safe}.pdf"
             try:
-                _make_pdf(recs, pdf_path, forced_lang=args.lang, no_timeline=args.no_timeline,
-                          user_info=user_info, show_remaining=args.remaining_time,
-                          show_parts=not args.no_parts, show_instance=separate,
-                          bonus_in_prefix=bool(args.bonus_in_prefix))
+                _make_pdf(recs, pdf_path, forced_lang=lang, no_timeline=no_timeline,
+                          user_info=user_info, show_remaining=remaining_time,
+                          show_parts=not no_parts, show_instance=separate_instances,
+                          bonus_in_prefix=bonus_in_prefix)
             except OSError as e:
-                print(_("error: cannot write {path}: {e}").format(path=pdf_path, e=e), file=sys.stderr)
+                warn(_("error: cannot write {path}: {e}").format(path=pdf_path, e=e))
                 continue
-            print(_("written: {path}").format(path=pdf_path))
+            written.append(pdf_path)
+            log(_("written: {path}").format(path=pdf_path))
 
         if sheet is not None:
             best = max(recs, key=lambda r: (r['total_grade'], -(datetime.fromisoformat(r['eval_date']).timestamp() if r['eval_date'] else 0)))
@@ -599,7 +633,7 @@ def action_outline():
             tr.addElement(_str_cell(login))
             tr.addElement(_str_cell(hostname))
             tr.addElement(_str_cell(abbreviated))
-            if separate:
+            if separate_instances:
                 tr.addElement(_str_cell(format_instance_start(instance_start)))
             tr.addElement(_num_cell(best['total_grade']))
             tr.addElement(_str_cell(_format_dt(best['eval_date'])))
@@ -616,9 +650,5 @@ def action_outline():
             sheet.addElement(tr)
 
     if doc is not None:
-        try:
-            doc.save(args.output_file)
-        except OSError as e:
-            print(_("error: cannot write {path}: {e}").format(path=args.output_file, e=e), file=sys.stderr)
-            sys.exit(1)
-        print(_("saved: {path}").format(path=args.output_file))
+        doc.save(summary_path)
+    return written

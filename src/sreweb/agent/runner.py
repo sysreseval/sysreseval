@@ -42,9 +42,10 @@ RESULT_FLAVOR_FORM = 'flavor_form'
 RESULT_FLAVOR_ERROR = 'flavor_error'
 RESULT_ERROR = 'error'
 
-#: Commands sharing the "start" and the "eval" concurrency limits.
+#: Commands sharing the "start", the "eval" and the "report" concurrency limits.
 START_LIKE = frozenset({'start'})
 EVAL_LIKE = frozenset({'eval', 'state'})
+REPORT_LIKE = frozenset({'report'})
 
 STREAM_LINE_LIMIT = 1 << 22     # a flavor form (JSON on one stderr line) can be long
 
@@ -242,7 +243,7 @@ async def cancel_process(proc: asyncio.subprocess.Process, *, grace: float = 30.
 
 class SreRunner:
     def __init__(self, sre_exe: str, *, timeouts: dict | None = None, max_concurrent_starts: int = 2,
-                 max_concurrent_evals: int = 2, extra_env: dict | None = None):
+                 max_concurrent_evals: int = 2, max_concurrent_reports: int = 1, extra_env: dict | None = None):
         self.sre_exe = sre_exe
         #: Variables added to the environment of every sre process (tests point a fake sre at a
         #: temporary SRE_PUB_DIR this way); never used in production.
@@ -251,6 +252,9 @@ class SreRunner:
         self.timeouts.update(timeouts or {})
         self._start_sem = asyncio.Semaphore(max_concurrent_starts)
         self._eval_sem = asyncio.Semaphore(max_concurrent_evals)
+        #: One report (the sheet / outline of the Archives page: minutes of PDF rendering) at a
+        #: time on a host, which is a student's workstation.
+        self._report_sem = asyncio.Semaphore(max_concurrent_reports)
         self._user_start_locks: dict[str, asyncio.Lock] = {}
         #: The sre commands running (counted from their limits acquired to their release): what
         #: a stop or a restart of the agent waits for (:meth:`wait_idle`).
@@ -276,6 +280,9 @@ class SreRunner:
         elif command in EVAL_LIKE:
             await self._eval_sem.acquire()
             held.append(self._eval_sem)
+        elif command in REPORT_LIKE:
+            await self._report_sem.acquire()
+            held.append(self._report_sem)
         self.in_flight += 1
         return held
 

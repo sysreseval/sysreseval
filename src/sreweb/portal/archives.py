@@ -32,12 +32,19 @@ their raw titles, the parts, the error list, the self-eval totals, the metadata)
 runs each query on a fresh connection in a thread like ``accesshistory.AccessDatabase``; the
 "show" filter picks every row, the newest of each project or the newest of each student and
 lab among the rows matching the other filters (a ``NOT EXISTS`` on the same table).
+
+**Reports.** The downloads of the page (``POST /api/archives/report``: the spreadsheet of ``sre
+sheet``, the PDF reports of ``sre outline``) are built from the rows, not from the archive files
+of the hosts (which may sleep): the rows the instructor ticked, expanded to every evaluation of
+the same projects unless asked otherwise (``build_report_select``, one statement), become the
+records of ``archive_record`` again (``record_of_row``) and one agent of the pool turns them
+into the file through ``sre report`` (``sreweb.agent.reports``).
 """
 import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import aiohttp
 
@@ -71,6 +78,18 @@ AGENT_TIMEOUT = 30.0           # seconds: the agent reads the archives of a page
 SHOW_ALL, SHOW_PROJECT, SHOW_STUDENT = 'all', 'project', 'student'
 SHOW_MODES = (SHOW_PROJECT, SHOW_STUDENT, SHOW_ALL)
 FILTER_KEYS = ('student', 'group', 'lab', 'host', 'since', 'until', 'exam', 'show', 'before', 'limit')
+#: The reports (``POST /api/archives/report``): the kinds, how many rows an instructor may tick
+#: (the biggest page of the table), how many rows a request may expand to (every evaluation of
+#: the selected projects; 413 beyond), the body the agent accepts
+#: (``sreweb.agent.reports.MAX_REPORT_BODY``), the options (``all_evaluations`` is the portal's,
+#: the others become the flags of ``sre report``).
+REPORT_KINDS = ('sheet', 'outline')
+REPORT_MAX_IDS = 1000
+REPORT_MAX_ROWS = 5000
+REPORT_MAX_BODY = 64 << 20
+REPORT_EXPAND_OPTION = 'all_evaluations'
+REPORT_FLAG_OPTIONS = ('separate_instances', 'bonus_in_prefix', 'no_timeline', 'remaining_time', 'no_parts')
+REPORT_OPTIONS = (REPORT_EXPAND_OPTION,) + REPORT_FLAG_OPTIONS
 
 DDL = """\
 CREATE TABLE IF NOT EXISTS `{table}` (
@@ -217,6 +236,32 @@ def row_to_dict(names: list, row: tuple) -> dict:
     return data
 
 
+#: The columns given back under their record name by ``record_of_row`` (the others keep theirs).
+_ROW_TO_RECORD = {'rln': 'running_lab_name', 'errors': 'error_count', 'warnings': 'warning_count'}
+
+
+def record_of_row(row: dict) -> dict:
+    """The record of ``archive_record`` rebuilt from a row of ``row_to_dict`` read with its
+    details: the inverse of ``row_of_record``, what the agent feeds ``sre report`` with for the
+    rows an instructor selected.  ``eval_date`` is the UTC ``ts`` as an aware ISO string, the
+    columns come back under their record names, the keys of ``details`` (``DETAIL_KEYS``,
+    ``truncated``) are spread; ``id``, ``host`` and ``archive`` are kept too."""
+    record = {}
+    for key, value in row.items():
+        if key == 'details':
+            continue
+        if key == 'ts':
+            if value is not None:
+                record['eval_date'] = datetime.fromtimestamp(float(value), timezone.utc).isoformat(timespec='seconds')
+            continue
+        record[_ROW_TO_RECORD.get(key, key)] = value
+    details = row.get('details')
+    if isinstance(details, dict):
+        for key, value in details.items():
+            record.setdefault(key, value)
+    return record
+
+
 # -- the queries ------------------------------------------------------------------------------
 
 def parse_archive_filters(query, *, default_show: str = SHOW_PROJECT) -> dict:
@@ -256,6 +301,57 @@ def parse_archive_filters(query, *, default_show: str = SHOW_PROJECT) -> dict:
     else:
         filters['limit'] = DEFAULT_LIMIT
     return filters
+
+
+def parse_report_request(data) -> tuple[str, list, dict]:
+    """``(kind, ids, options)`` of the body of ``POST /api/archives/report``: ``kind`` of
+    ``REPORT_KINDS``, ``ids`` a non-empty list of row ids (at most ``REPORT_MAX_IDS``, the
+    duplicates dropped), ``options`` every boolean of ``REPORT_OPTIONS`` with its default
+    (``all_evaluations`` true, the flags false); ``ValueError`` on anything else."""
+    if not isinstance(data, dict):
+        raise ValueError("a JSON object is expected")
+    kind = data.get('kind')
+    if kind not in REPORT_KINDS:
+        raise ValueError("kind: " + ' or '.join(REPORT_KINDS) + " is expected")
+    ids = data.get('ids')
+    if not isinstance(ids, list) or not ids:
+        raise ValueError("ids: a non-empty list of row ids is expected")
+    if len(ids) > REPORT_MAX_IDS:
+        raise ValueError(f"ids: at most {REPORT_MAX_IDS} rows may be selected")
+    clean, seen = [], set()
+    for value in ids:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("ids: row ids are expected")
+        if value not in seen:
+            seen.add(value)
+            clean.append(value)
+    options = data.get('options')
+    if options is None:
+        options = {}
+    if not isinstance(options, dict):
+        raise ValueError("options: an object is expected")
+    unknown = set(options) - set(REPORT_OPTIONS)
+    if unknown:
+        raise ValueError(f"unknown option(s): {', '.join(sorted(unknown))}")
+    for key, value in options.items():
+        if not isinstance(value, bool):
+            raise ValueError(f"option {key}: true or false is expected")
+    result = {REPORT_EXPAND_OPTION: True, **{key: False for key in REPORT_FLAG_OPTIONS}}
+    result.update(options)
+    return kind, clean, result
+
+
+def build_report_select(table: str, ids: list, *, all_evaluations: bool, limit: int) -> tuple[str, list]:
+    """The rows (with their details) of a report of *ids*: every row of the same projects when
+    *all_evaluations* (the ``rln`` of the selected rows, by a subquery: one statement, the
+    ``rln_id`` index), else the selected rows alone; by project and id, ``limit + 1`` rows so
+    that the caller sees the cap exceeded."""
+    marks = ', '.join(['%s'] * len(ids))
+    if all_evaluations:
+        where = f" WHERE t.rln IN (SELECT s.rln FROM `{table}` s WHERE s.id IN ({marks}))"
+    else:
+        where = f" WHERE t.id IN ({marks})"
+    return SELECT_FULL.format(table=table) + where + " ORDER BY t.rln, t.id LIMIT %s", [*ids, limit + 1]
 
 
 def _scope_predicates(filters: dict, prefix: str) -> tuple:
@@ -360,6 +456,16 @@ class ArchiveDatabase:
         """One row with its details, or ``None``."""
         names, rows = fetch(self.connect, SELECT_FULL.format(table=self.table) + " WHERE t.id = %s", [int(row_id)])
         return row_to_dict(names, rows[0]) if rows else None
+
+    def report_rows_sync(self, ids: list, *, all_evaluations: bool, limit: int = REPORT_MAX_ROWS) -> dict:
+        """``{'rows': [...with details], 'truncated': bool}`` of a report (``build_report_select``)."""
+        sql, params = build_report_select(self.table, ids, all_evaluations=all_evaluations, limit=limit)
+        names, rows = fetch(self.connect, sql, params)
+        rows = [row_to_dict(names, row) for row in rows]
+        return {'rows': rows[:limit], 'truncated': len(rows) > limit}
+
+    async def report_rows(self, ids: list, *, all_evaluations: bool, limit: int = REPORT_MAX_ROWS) -> dict:
+        return await asyncio.to_thread(self.report_rows_sync, ids, all_evaluations=all_evaluations, limit=limit)
 
     def options_sync(self) -> dict:
         """``{'labs': [...], 'groups': [...]}``: the distinct labs and student groups of the table."""

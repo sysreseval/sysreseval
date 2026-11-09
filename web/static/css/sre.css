@@ -386,9 +386,14 @@ fieldset.start-mode { border: 0; padding: 0; }
 fieldset.start-mode legend { padding: 0; }
 fieldset.start-mode label { display: block; margin: 4px 0; }
 
-/* the Pool page of the instructors: the state cell coloured, the status line, the selection bar */
-table.grid.pool th.select, table.grid.pool td.select { width: 1px; text-align: center; }
-.pool-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 8px 8px; }
+/* a selection of rows (the Pool and Archives pages): the checkbox column, the bar of the actions on
+   the selection (the Archives page adds the options of its reports behind a disclosure) */
+table.grid th.select, table.grid td.select { width: 1px; text-align: center; }
+.selection-bar, .pool-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 8px 8px; }
+.selection-bar details.report-options { display: inline-block; }
+.selection-bar details.report-options summary { cursor: pointer; }
+.selection-bar details.report-options label { display: block; margin: 2px 0 2px 12px; white-space: nowrap; }
+/* the Pool page of the instructors: the state cell coloured, the status line */
 table.grid.pool td.state, table.grid.pool td.flags { white-space: nowrap; }
 table.grid.pool td.state.up { background: var(--ok-bg); }
 table.grid.pool td.state.waking, table.grid.pool td.state.occupied, table.grid.pool td.state.exam,

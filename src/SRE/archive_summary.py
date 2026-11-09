@@ -332,6 +332,92 @@ def archive_record(raw: dict, path: str) -> dict:
     }
 
 
+def _whole(value):
+    """A number as an archive holds it: :func:`archive_record` gives floats, a whole one goes
+    back to an ``int`` (``3`` in a spreadsheet cell, not ``3.0``); anything else as is."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+#: The metadata keys of a record and the answers keywords they come from.
+_RECORD_ANSWERS = (('login', params.login_keyword), ('fullname', params.fullname_keyword),
+                   ('email', params.email_keyword), ('hostname', params.hostname_keyword),
+                   ('language', params.language_keyword), ('group', params.group_keyword))
+
+
+def raw_from_record(record: dict) -> dict:
+    """A pseudo archive dict rebuilt from a record of :func:`archive_record` (what the portal
+    keeps of an archive in its database), the inverse for the keys the collectors of ``sre
+    sheet`` / ``sre outline`` read: ``running_lab_name``, ``eval_date`` (the aware ISO string of
+    the record back to the local naive form of the real archives, ``''`` when missing or
+    malformed), the ``answers`` metadata (an empty ``language`` left out so that the collectors
+    take their default), ``errors`` (the entries, else one placeholder per counted error and
+    warning), ``grade_list`` (``part`` back to ``grade_part``) and ``grade_parts``, the exo-eval
+    totals and mark, ``maximum_mark``, the self-eval totals; the numbers whole again
+    (:func:`_whole`).  What ``sre report`` feeds the builders of the two commands with.  Neither
+    the tests nor the answers of the student: the record never had them."""
+    eval_date = ''
+    value = record.get('eval_date')
+    if isinstance(value, str) and value:
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            dt = None
+        if dt is not None:
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+            eval_date = dt.isoformat()
+    answers = {}
+    for key, keyword in _RECORD_ANSWERS:
+        text = record.get(key)
+        if text:
+            answers[keyword] = str(text)
+    if record.get('exam_time_remaining') is not None:
+        answers[params.sysreseval_exam_time_remaining] = record['exam_time_remaining']
+    if record.get('exam'):
+        answers[params.sysreseval_exam_mode] = True
+    entries = record.get('errors')
+    if isinstance(entries, (list, tuple)):
+        errors = [(str(e.get('category', 'ERROR')), str(e.get('text', ''))) if isinstance(e, dict) else ('ERROR', str(e))
+                  for e in entries]
+    else:
+        errors = ([('ERROR', '')] * int(record.get('error_count') or 0)
+                  + [(WARNING_CATEGORY, '')] * int(record.get('warning_count') or 0))
+    grade_list = []
+    for e in record.get('elements') or []:
+        if not isinstance(e, dict):
+            continue
+        grade_list.append({
+            'title': e.get('title', ''),
+            'description': e.get('description', ''),
+            'grade': _whole(e.get('grade')),
+            'max_grade': _whole(e.get('max_grade')),
+            'grade_letter': e.get('grade_letter'),
+            'grade_part': e.get('part'),
+            'bonus': bool(e.get('bonus', False)),
+            'scope': int(e.get('scope', params.BOTH_EVAL_SCOPE) or params.BOTH_EVAL_SCOPE),
+        })
+    grade_parts = [{'title': str(p.get('title', '')), 'description': p.get('description', '')}
+                   for p in (record.get('parts') or []) if isinstance(p, dict)]
+    return {
+        params.running_lab_name_keyword: str(record.get('running_lab_name') or ''),
+        params.eval_date_keyword: eval_date,
+        params.re_eval_date_keyword: record.get('re_eval_date'),
+        'answers': answers,
+        'errors': errors,
+        'grade_list': grade_list,
+        'grade_parts': grade_parts,
+        'total_grade_exo_eval': _whole(record.get('grade')),
+        'total_max_exo_eval': _whole(record.get('max_grade')),
+        'mark_exo_eval': _whole(record.get('mark')),
+        'maximum_mark': _whole(record.get('maximum_mark')),
+        'total_grade_self_eval': _whole(record.get('self_grade')),
+        'total_max_self_eval': _whole(record.get('self_max_grade')),
+        'mark_self_eval': _whole(record.get('self_mark')),
+    }
+
+
 def lab_elements(raw: dict, *, lang_priority, debug: bool = False) -> tuple[list, list]:
     """``(elements, parts)`` of an archive for the lab summary of the Watch page, where the
     elements of several projects of one lab are matched across students: one dict per element

@@ -31,7 +31,7 @@ from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
 
-from . import access, occupancy
+from . import access, occupancy, reports
 from .access import AccessError
 from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED, WS_DISPLAY_GONE
@@ -260,6 +260,7 @@ class Agent:
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_get(f'{p}/evaluations', self.evaluations_list)
         app.router.add_get(f'{p}/archives', self.archives_list)
+        app.router.add_post(f'{p}/reports/{{kind}}', self.reports_post)
         app.router.add_post(f'{p}/projects', self.projects_create)
         app.router.add_get(f'{p}/projects/{{rln}}', self.project_get)
         app.router.add_delete(f'{p}/projects/{{rln}}', self.project_close)
@@ -740,6 +741,44 @@ class Agent:
         name = params.get_abbreviated_lab_name_from_running_lab_name(project.rln)
         return web.Response(body=pdf, content_type='application/pdf',
                             headers={'Content-Disposition': f'attachment; filename="{name}_{params.pdf_schema_file}"',
+                                     'Cache-Control': 'no-cache'})
+
+    async def reports_post(self, request):
+        """The downloads of the Archives page of the portal (instructors): the spreadsheet of
+        ``sre sheet`` (``sheet``) or the zip of the PDF reports and their summary of ``sre
+        outline`` (``outline``), built by a privileged ``sre report`` from the JSON archive
+        records of the body (``{"records": [...], "options": {...}}``: the records of
+        ``SRE.archive_summary.archive_record`` the portal rebuilt from its database, the options
+        turned into the flags of the command by ``reports.report_flags``), in the language of the
+        instructor, answered as a download named by ``reports.report_filename``.  The body is
+        read with its own cap (``reports.MAX_REPORT_BODY``, above the app's limit meant for the
+        answers).  No project is touched."""
+        identity = request[IDENTITY_KEY]
+        if not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        kind = request.match_info['kind']
+        if kind not in reports.KINDS:
+            raise AccessError(404, "unknown report")
+        if request.content_length is not None and request.content_length > reports.MAX_REPORT_BODY:
+            raise AccessError(413, "the report request is too big")
+        try:
+            body = await request.clone(client_max_size=reports.MAX_REPORT_BODY).read()
+        except web.HTTPRequestEntityTooLarge:
+            raise AccessError(413, "the report request is too big")
+        try:
+            records, options = reports.parse_report_request(json.loads(body))
+        except ValueError as e:
+            raise AccessError(400, f"bad report request: {e}")
+        lang = identity.language or None
+        flags = (['--lang', lang] if lang else []) + reports.report_flags(kind, options)
+        stdin = json.dumps({'records': records}).encode('utf-8')
+        result = await self.runner.run(identity.login, sre_args('report', kind, options=flags), privileged=True,
+                                       stdin=stdin, lang=lang)
+        if not result.stdout:
+            raise CommandError(0, "sre report gave no file", result.stderr)
+        name = reports.report_filename(kind, records)
+        return web.Response(body=result.stdout, content_type=reports.KINDS[kind],
+                            headers={'Content-Disposition': f'attachment; filename="{name}"',
                                      'Cache-Control': 'no-cache'})
 
     async def log_get(self, request):

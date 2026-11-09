@@ -28,8 +28,9 @@ Who reaches ``sre`` and how
 import os
 import re
 
-#: Read-only archive tools an admin may run without being root or the sre user.
-ADMIN_ACTIONS = frozenset({'cat', 'check-eval', 're-eval', 'sheet', 'outline', 'watch'})
+#: Read-only archive tools an admin may run without being root or the sre user (``report``: the
+#: sheet / outline of the web front-end, fed with JSON records on stdin).
+ADMIN_ACTIONS = frozenset({'cat', 'check-eval', 're-eval', 'sheet', 'outline', 'report', 'watch'})
 
 #: How many ancestors to inspect when looking for sre-wrapper.
 WRAPPER_ANCESTOR_DEPTH = 6

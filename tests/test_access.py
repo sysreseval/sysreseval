@@ -58,6 +58,10 @@ class TestIsAllowedAction:
         """Regression: watch is a read-only archive viewer like cat/sheet/outline."""
         assert 'watch' in access.ADMIN_ACTIONS
 
+    def test_admin_report(self):
+        """``report`` (the sheet / outline of the web front-end) is a read-only archive tool too."""
+        assert 'report' in access.ADMIN_ACTIONS
+
     @pytest.mark.parametrize('action', ['start', 'stop', 'exec', 'eval', 'eval-all', 'state',
                                         'wipe', 'set-exam', 'eval-exam', 'end-exam',
                                         'preload-images', 'export', 'list', 'save', 'restore',

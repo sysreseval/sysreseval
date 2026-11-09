@@ -1877,3 +1877,51 @@ msgstr "Aucune salle n'est ouverte."
 
 msgid "in a conference"
 msgstr "en visioconférence"
+
+# --- the reports of the Archives page: archives.html, archives.js ------------------------------
+
+msgid "Select the evaluations shown"
+msgstr "Sélectionner les évaluations affichées"
+
+msgid "{n} evaluation(s) selected"
+msgstr "{n} évaluation(s) sélectionnée(s)"
+
+msgid "Spreadsheet"
+msgstr "Tableur"
+
+msgid "PDF reports"
+msgstr "Rapports PDF"
+
+msgid "A spreadsheet of the selected evaluations, as sre sheet gives it"
+msgstr "Un tableur des évaluations sélectionnées, tel que le donne sre sheet"
+
+msgid ""
+"One PDF report per student and the summary spreadsheet, as sre outline gives "
+"them"
+msgstr ""
+"Un rapport PDF par étudiant et le tableur récapitulatif, tels que les donne "
+"sre outline"
+
+msgid "Options"
+msgstr "Options"
+
+msgid "Every evaluation of the selected projects"
+msgstr "Toutes les évaluations des projets sélectionnés"
+
+msgid "One report / row per project instance"
+msgstr "Un rapport / une ligne par instance de projet"
+
+msgid "\"Bonus\" before the label of a bonus element"
+msgstr "« Bonus » devant le libellé d'un élément bonus"
+
+msgid "Evaluation history (PDF)"
+msgstr "Historique des évaluations (PDF)"
+
+msgid "Remaining time column (PDF, exams)"
+msgstr "Colonne du temps restant (PDF, examens)"
+
+msgid "Group by part (PDF)"
+msgstr "Regroupement par partie (PDF)"
+
+msgid "Generating…"
+msgstr "Génération…"

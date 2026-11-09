@@ -287,12 +287,29 @@ class TestTemplates:
         assert 'id="archives-older"' in html and 'id="archives-newer"' in html and 'id="archives-reset"' in html
         assert 'data-view="evaluations" aria-pressed="true"' in html and 'data-view="summary" aria-pressed="false"' in html
         assert '<div id="archives-summary" class="archives-summary" hidden>' in html
-        assert len(re.findall(r'<th[ >]', html)) == 12 and 'colspan="12"' in html
+        assert len(re.findall(r'<th[ >]', html)) == 13 and 'colspan="13"' in html
         assert '<th hidden>Group</th>' in html and '<label hidden>Group' in html
         assert 'id="archives-notice" class="muted">' in html and 'not stored in a database' in html
+        # the selection and its reports: the checkbox column, the bar (hidden without a database)
+        # with the two downloads and the options
+        assert '<th class="select"><input type="checkbox" id="archives-select-all"' in html
+        assert '<div id="archives-selection" class="selection-bar" hidden>' in html and 'id="archives-selected"' in html
+        assert 'data-report="sheet" disabled' in html and 'data-report="outline" disabled' in html
+        assert '<details class="report-options">' in html
+        for name, checked in (('all_evaluations', True), ('separate_instances', False), ('bonus_in_prefix', False),
+                              ('timeline', True), ('remaining_time', False), ('parts', True)):
+            assert f'<input type="checkbox" name="{name}"' + (' checked>' if checked else '>') in html, name
         with_db = render('archives.html', instructor=True, archives_database=True, groups=True)
         assert 'data-database="true" data-groups="true"' in with_db and 'id="archives-notice" class="muted" hidden>' in with_db
         assert '<th>Group</th>' in with_db and '<label>Group' in with_db and 'not stored in a database' not in with_db
+        assert '<div id="archives-selection" class="selection-bar">' in with_db
+
+    def test_archives_reports_script(self):
+        """archives.js posts the selection to the report route and saves the answer as a file."""
+        source = (ROOT / 'web' / 'static' / 'js' / 'archives.js').read_text(encoding='utf-8')
+        assert "api.fetchRaw('POST', '/api/archives/report'" in source and 'URL.createObjectURL(blob)' in source
+        assert "no_timeline: !ticked('timeline')" in source and "no_parts: !ticked('parts')" in source
+        assert "event.target.closest('td.link, td.select')" in source and 'Content-Disposition' in source
 
     def test_history_page(self):
         events = ('denied', 'login', 'start')

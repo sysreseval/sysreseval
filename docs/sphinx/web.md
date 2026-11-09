@@ -165,7 +165,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
 | `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
-| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30` | seconds, per `sre` command (`export`, the timeout of the former Kathara export, is still accepted) |
+| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
@@ -487,6 +487,21 @@ them (in every language of the lab: the browser shows the viewer's), its grade, 
 part and bonus flag. **The answers of the students are not sent and not stored.** The group and
 the full name an archive lacks (the projects of the Qt GUI) are completed from the directory
 when the portal reads one (`attr_group`, `ldap_roles` / `ldap_groups`), as on the Watch page.
+
+The **reports** an instructor downloads from the page (the spreadsheet of `sre sheet`, the PDF
+reports of `sre outline`: *Instructors* below) are built from these rows, not from the archive
+files of the hosts, which may be asleep or reinstalled: a row holds everything the two commands
+read from an archive (the student, the time, the totals, the grade elements with their titles and
+parts, the number of errors; never the tests nor the answers). The portal turns the rows back
+into the records the agents had sent and hands them to **one** agent of the pool, chosen as the
+lab list is (an enabled, reachable host, up and little loaded first; the next one when it does
+not answer), which runs `sre report` (an internal command: the records on stdin, the file on
+stdout, one report at a time per host, `[timeouts] report` of `agent.toml`, `600` seconds) and
+answers the download the portal streams to the browser. The files are therefore those `sre
+sheet` / `sre outline` would give on the same archives, in the language of the instructor; the
+elements of an evaluation whose details were too big for the table (over 1 MB) are missing from
+them. Every download is a `report` line of the connection log (the kind, the rows ticked, the
+options, the evaluations and projects sent, the host that built the file).
 
 One cursor per host, the greatest archive name taken, lives in the portal's memory and is read
 from the table itself at the first round after a start (`SELECT host, MAX(archive) … GROUP BY
@@ -1177,6 +1192,26 @@ What an instructor gets:
   evaluation. The summary is computed on the 500 newest evaluations found at most (the page
   says so: narrow the filters). Searching the results of a class group is `Group` + `Lab` +
   *Summary*; the results of one student across the labs, `Student` alone.
+  **Reports.** A checkbox at the left of each row selects evaluations (the header checkbox takes
+  the rows shown; the selection is kept while paging and searching, the bar says how many are
+  selected and how many are not on the page), and the bar under the filters downloads a
+  **Spreadsheet** (what `sre sheet` gives: per lab, the table of every evaluation, the
+  *Questions* statistics and the *Sessions* best grades) or the **PDF reports** (what `sre
+  outline` gives: a zip holding one PDF per student, lab and host, and `outline.ods`, the summary)
+  of the selected evaluations. A selected evaluation stands for its whole project: every stored
+  evaluation of the same projects goes into the reports (the history table of a PDF, every row of
+  the spreadsheet), as `sre sheet archives/` would do on a host; the *Options* disclosure unticks
+  that (**Every evaluation of the selected projects**: the ticked rows alone then) and gives the
+  flags of the two commands: **One report / row per project instance** (`--separate-instances`:
+  a student who opened a lab twice gets two reports instead of one with two history tables),
+  **"Bonus" before the label** (`--bonus-in-prefix`), **Evaluation history**, **Remaining time
+  column** (exams) and **Group by part** (the PDF only). At most 1000 rows may be ticked and a
+  request may cover 5000 evaluations (the page says so: narrow the selection or untick the
+  option). The file is named after the lab when the selection is of one lab
+  (`evaluations_dhcp_20261109-1430.ods`, `reports_dhcp_20261109-1430.zip`), is built by one agent
+  of the pool from the stored rows (*The archives of the evaluations* above) in the language of
+  the page, and is saved by the browser; the buttons read *Generating…* meanwhile, a few seconds
+  for a class.
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for

@@ -24,6 +24,15 @@
 // ?open=<id> opens the evaluation of that id once the page is loaded: a link to one result).
 // Older / Newer page through the rows with a cursor (the id of the oldest row shown).  Nothing
 // is polled: the page shows what was asked, Search asks again.
+//
+// Reports (POST /api/archives/report): a checkbox per row selects evaluations (kept across the
+// pages and the searches; the header checkbox takes the rows shown), and the bar under the
+// filters downloads a spreadsheet (what `sre sheet` gives) or the PDF reports (what `sre
+// outline` gives: a zip of one PDF per student, lab and host, and the summary spreadsheet) of
+// the selected evaluations, which stand for their whole projects: every stored evaluation of the
+// same projects goes in unless the option "Every evaluation of the selected projects" is unticked
+// (the ticked rows alone then); the other options are the flags of the two commands.  The file is
+// built by one agent of the pool from the stored rows and saved by the browser.
 
 import './base.js';
 import * as api from './api.js';
@@ -54,6 +63,12 @@ const pager = document.querySelector('.history-pager');
 const databaseConfigured = table.dataset.database === 'true';
 const groupsEnabled = table.dataset.groups === 'true';   // a group source is configured: Group column shown
 const detail = createArchiveDialog();
+const selectionBar = document.getElementById('archives-selection');
+const selectAll = document.getElementById('archives-select-all');
+const selectedElement = document.getElementById('archives-selected');
+const reportButtons = Array.from(document.querySelectorAll('#archives-selection button[data-report]'));
+const selected = new Set();    // the ids of the selected evaluations, kept across loads, pages and views
+let generating = false;        // a report is being built: the buttons disabled meanwhile
 
 // view: evaluations or summary; rows: the rows of the page (or of the summary); before: the
 // cursor of the page shown (null = the newest rows); cursors: those of the previous pages, for
@@ -139,8 +154,103 @@ function applyView() {
   summaryRoot.hidden = !summary;
   form.classList.toggle('statistics', summary);
   pager.hidden = summary;
+  selectionBar.hidden = summary || !databaseConfigured;
   if (summary && form.elements.show.value === DEFAULT_SHOW) {
     form.elements.show.value = SUMMARY_SHOW;
+  }
+}
+
+// -- the selection and the reports ------------------------------------------------------------
+
+// the checkbox of a row (a selected evaluation stands for its whole project unless the option
+// "Every evaluation of the selected projects" is unticked)
+function selectBox(row) {
+  const box = el('input', {type: 'checkbox', 'aria-label': `${row.login || ''} ${row.lab || ''}`.trim()});
+  box.checked = selected.has(row.id);
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      selected.add(row.id);
+    } else {
+      selected.delete(row.id);
+    }
+    renderSelection();
+  });
+  return box;
+}
+
+// the header checkbox (the rows shown: all, some or none of them selected) and the bar: the
+// count of the selected evaluations (those of other pages counted apart) and the two buttons,
+// enabled when something is selected and no report is being built
+function renderSelection() {
+  const shown = state.view === 'summary' ? [] : state.rows;
+  const shownSelected = shown.filter((row) => selected.has(row.id)).length;
+  const count = selected.size;
+  let text = format(_('{n} evaluation(s) selected'), {n: count});
+  if (count > shownSelected) {
+    text += ' ' + format(_('({n} not shown)'), {n: count - shownSelected});
+  }
+  selectedElement.textContent = text;
+  selectAll.disabled = !shown.length;
+  selectAll.checked = shown.length > 0 && shownSelected === shown.length;
+  selectAll.indeterminate = shownSelected > 0 && shownSelected < shown.length;
+  for (const button of reportButtons) {
+    button.disabled = !count || generating;
+  }
+}
+
+// the options of the bar: the portal's (every evaluation of the selected projects) and the flags
+// of sre report; the two "keep" boxes travel negated (the flags are --no-timeline / --no-parts)
+function readOptions() {
+  const ticked = (name) => {
+    const box = selectionBar.querySelector(`input[name="${name}"]`);
+    return Boolean(box && box.checked);
+  };
+  return {all_evaluations: ticked('all_evaluations'), separate_instances: ticked('separate_instances'),
+          bonus_in_prefix: ticked('bonus_in_prefix'), no_timeline: !ticked('timeline'),
+          remaining_time: ticked('remaining_time'), no_parts: !ticked('parts')};
+}
+
+// the file name of a download, from the Content-Disposition of the answer
+function attachmentName(response, fallback) {
+  const header = response.headers.get('Content-Disposition') || '';
+  const match = /filename="?([^";]+)"?/.exec(header);
+  return match ? match[1] : fallback;
+}
+
+// a report of the selected evaluations: POST /api/archives/report, the file saved by the browser
+// (an <a download> on a blob URL); the button reads "Generating…" meanwhile, an error (the
+// portal's or the agent's, relayed with its status) is a toast
+async function download(kind) {
+  if (!selected.size || generating) {
+    return;
+  }
+  generating = true;
+  const labels = new Map(reportButtons.map((button) => [button, button.textContent]));
+  for (const button of reportButtons) {
+    button.disabled = true;
+    if (button.dataset.report === kind) {
+      button.textContent = _('Generating…');
+    }
+  }
+  try {
+    const response = await api.fetchRaw('POST', '/api/archives/report',
+                                        {json: {kind, ids: Array.from(selected), options: readOptions()}});
+    const blob = await response.blob();
+    const name = attachmentName(response, kind === 'sheet' ? 'evaluations.ods' : 'reports.zip');
+    const url = URL.createObjectURL(blob);
+    const link = el('a', {href: url, download: name});
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    toast(e.message, {error: true});
+  } finally {
+    generating = false;
+    for (const [button, label] of labels) {
+      button.textContent = label;
+    }
+    renderSelection();
   }
 }
 
@@ -179,6 +289,7 @@ function errorsText(row) {
 
 function renderRow(row) {
   const tr = el('tr', {class: row.errors ? 'row-errors' : '', dataset: {id: String(row.id)}},
+    el('td', {class: 'select'}, selectBox(row)),
     timeCell(row.ts),
     filterCell('student', row.login),
     el('td', {}, row.fullname || ''),
@@ -192,7 +303,7 @@ function renderRow(row) {
     el('td', {class: 'num'}, row.auto_eval_count === null || row.auto_eval_count === undefined ? '' : String(row.auto_eval_count)),
     el('td', {}, row.exam ? _('Yes') : ''));
   tr.addEventListener('click', (event) => {
-    if (event.target.closest('td.link')) {
+    if (event.target.closest('td.link, td.select')) {
       return;
     }
     detail.open(row);
@@ -298,6 +409,7 @@ function render() {
   olderButton.disabled = !state.more || !state.rows.length;
   newerButton.disabled = state.cursors.length === 0;
   pageElement.textContent = state.cursors.length ? format(_('page {n}'), {n: state.cursors.length + 1}) : '';
+  renderSelection();
 }
 
 function showNotice(text, {error = false} = {}) {
@@ -452,6 +564,19 @@ function setupControls() {
     state.before = state.cursors.pop();
     load();
   });
+  selectAll.addEventListener('change', () => {   // the rows shown, selected or deselected together
+    for (const row of state.rows) {
+      if (selectAll.checked) {
+        selected.add(row.id);
+      } else {
+        selected.delete(row.id);
+      }
+    }
+    render();
+  });
+  for (const button of reportButtons) {
+    button.addEventListener('click', () => download(button.dataset.report));
+  }
 }
 
 // ?open=<id>: the evaluation of that id, with the fields of its row when the page shows it

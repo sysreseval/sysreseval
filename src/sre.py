@@ -55,6 +55,7 @@ from SRE.command.eval_all import action_eval_all
 from SRE.command.watch import action_watch
 from SRE.command.end_exam import action_end_exam
 from SRE.command.outline import action_outline
+from SRE.command.report import action_report
 from SRE.command.save_records import action_save_records
 from SRE.command.preload_images import action_preload_images
 from SRE.command.instructor_mode import action_set_instructor_mode, action_remove_instructor_mode
@@ -363,6 +364,27 @@ def parse_args():
                              help=_('also list the exam-only labs (a name holding _EXAM_, _OLD_, _DRAFT_ or '
                                     '_TESTS_; privileged only)'))
 
+    parser_report = subparsers.add_parser('report',
+                                          help=_('Internal (web front-end): the spreadsheet of sheet or the PDF '
+                                                 'reports of outline, built from JSON archive records read on stdin '
+                                                 'and written on stdout'))
+    parser_report.add_argument('kind', choices=['sheet', 'outline'],
+                               help=_('sheet: an ODS spreadsheet; outline: a zip of the PDF reports and the summary ODS'))
+    parser_report.add_argument('--lang', metavar='lang', default=None,
+                               help=_('force language for PDF output (e.g. en, fr)'))
+    parser_report.add_argument('--separate-instances', action='store_true',
+                               help=_('one PDF report and one ODS row per running instance of a lab instead of one per student'))
+    parser_report.add_argument('--bonus-in-prefix', action='store_true',
+                               help=_('write "Bonus" before the label of the bonus elements instead of next to their maximum'))
+    parser_report.add_argument('--no-timeline', action='store_true',
+                               help=_('omit the evaluation history table from PDF reports'))
+    parser_report.add_argument('--remaining-time', action='store_true',
+                               help=_('include the time remaining column in the evaluation history table'))
+    parser_report.add_argument('--no-parts', action='store_true',
+                               help=_('do not group PDF grade rows by GradePart (flat list, no subtotals)'))
+    parser_report.add_argument('-o', '--output', metavar='file', default='-',
+                               help=_('output file (default: stdout)'))
+
     parser_export = subparsers.add_parser('export',
                                           help=_(
                                               'Export a running project as a Kathara zip archive (base64 on stdout)'))
@@ -502,6 +524,8 @@ match SRE.args.action:
         action_end_exam()
     case 'outline':
         action_outline()
+    case 'report':
+        action_report()
     case 'save-records':
         action_save_records()
     case 'preload-images':

@@ -1269,6 +1269,104 @@ class TestArchives:
             assert not any(l['path'].startswith('/api/archives') for l in lines if l['event'] == 'denied')
         run(go())
 
+    def test_report_download(self, tmp_path, monkeypatch):
+        """POST /api/archives/report: the ticked rows, expanded to their projects by one SELECT,
+        become the records one agent turns into the download through sre report (the fake sre
+        answers a zip of what it received), relayed with its headers; the guards, the caps, the
+        report lines of the log."""
+        import io
+        import zipfile
+        from test_web_accessdb import FakeServer, Down
+        from test_web_archives import record as fake_record
+        from sreweb.portal import routes as routes_module
+        from sreweb.portal.archives import COLUMNS, row_of_record, REPORT_MAX_ROWS
+        server = FakeServer(table_exists=True)
+        over = {**PROXY_OVER, 'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB},
+                'archives': {'poll_interval': '1h'}}
+        full = ['id', *COLUMNS]
+        bob_rln = '20261025110000@@@sre@dhcp.py@@@bob'
+        alice_row = (5, *row_of_record('a01', fake_record()))
+        bob_row = (6, *row_of_record('a01', fake_record(archive=f'20261025110500_{bob_rln}.zst', running_lab_name=bob_rln,
+                                                         login='bob', fullname='Bob B')))
+        mock_log = tmp_path / 'mock.log'
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,)),
+                               mock_env={'MOCK_SRE_LOG': str(mock_log)}) as h:
+                prof, bob = who('prof', 'Prof Essor', groups=TEACHERS), who('bob')
+
+                def post(body, headers=prof):
+                    return h.client.post('/api/archives/report', json=body, headers={**headers, **CSRF})
+
+                # the guards
+                assert (await h.client.post('/api/archives/report', json={}, headers=CSRF)).status == 401
+                assert (await post({'kind': 'sheet', 'ids': [5]}, bob)).status == 403
+                for bad in ({}, {'kind': 'pdf', 'ids': [5]}, {'kind': 'sheet', 'ids': []},
+                            {'kind': 'sheet', 'ids': [5], 'options': {'no_parts': 1}}):
+                    assert (await post(bad)).status == 400, bad
+                # the download: every row of the project comes back as a record
+                server.select_names, server.select_rows = full, [alice_row, bob_row]
+                resp = await post({'kind': 'sheet', 'ids': [5], 'options': {'separate_instances': True}})
+                assert resp.status == 200, await resp.text()
+                assert resp.headers['Content-Type'] == 'application/vnd.oasis.opendocument.spreadsheet'
+                assert resp.headers['Content-Disposition'].startswith('attachment; filename="evaluations_dhcp_')
+                with zipfile.ZipFile(io.BytesIO(await resp.read())) as archive:
+                    records = json.loads(archive.read('records.json'))
+                    assert archive.read('flags.txt').decode().splitlines() == ['--separate-instances', '--lang en']
+                assert [r['login'] for r in records] == ['alice', 'bob']
+                assert records[0]['eval_date'] == '2026-10-25T08:01:02+00:00' and 'details' not in records[0]
+                assert records[0]['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
+                assert 't.rln IN (SELECT s.rln FROM `archives` s WHERE s.id IN (%s))' in sql and args == [5, REPORT_MAX_ROWS + 1]
+                entry = json.loads(mock_log.read_text().splitlines()[-1])
+                assert entry['argv'] == ['report', '--lang', 'en', '--separate-instances', '--', 'sheet']
+                assert entry['user_mode'] is False and entry['env']['LOGNAME'] == 'prof'
+                # the ticked rows alone
+                resp = await post({'kind': 'outline', 'ids': [5, 6], 'options': {'all_evaluations': False}})
+                assert resp.status == 200 and resp.headers['Content-Type'] == 'application/zip'
+                assert resp.headers['Content-Disposition'].startswith('attachment; filename="reports_dhcp_')
+                kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
+                assert 'WHERE t.id IN (%s, %s)' in sql and args == [5, 6, REPORT_MAX_ROWS + 1]
+                # unknown rows, the cap, the database down
+                server.select_rows = []
+                assert (await post({'kind': 'sheet', 'ids': [77]})).status == 404
+                server.select_rows = [alice_row, bob_row]
+                monkeypatch.setattr(routes_module, 'REPORT_MAX_ROWS', 1)
+                resp = await post({'kind': 'sheet', 'ids': [5]})
+                assert resp.status == 413 and 'narrow the selection' in (await resp.json())['error']
+                monkeypatch.setattr(routes_module, 'REPORT_MAX_ROWS', REPORT_MAX_ROWS)
+                server.down = True
+                assert (await post({'kind': 'sheet', 'ids': [5]})).status == 503
+                server.down = False
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            reports = [l for l in lines if l['event'] == 'report']
+            ok = [l for l in reports if l['status'] == '200']
+            assert (ok[0]['kind'], ok[0]['selected'], ok[0]['count'], ok[0]['projects'], ok[0]['host']) == \
+                ('sheet', '1', '2', '2', 'a01')
+            assert ok[0]['options'] == 'all_evaluations,separate_instances' and ok[1]['options'] == ''
+            assert any(l['status'] == '413' for l in reports) and any(l['login'] == 'bob' and l['status'] == '403' for l in reports)
+        run(go())
+
+    def test_report_agent_failure_is_relayed(self, tmp_path):
+        """The agent's error (sre report failed: 502 JSON) reaches the browser with its status."""
+        from test_web_accessdb import FakeServer, Down
+        from test_web_archives import record as fake_record
+        from sreweb.portal.archives import COLUMNS, row_of_record
+        server = FakeServer(table_exists=True)
+        server.select_names, server.select_rows = ['id', *COLUMNS], [(5, *row_of_record('a01', fake_record()))]
+        over = {**PROXY_OVER, 'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB},
+                'archives': {'poll_interval': '1h'}}
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,)),
+                               mock_env={'MOCK_FAIL': 'report'}) as h:
+                prof = who('prof', groups=TEACHERS)
+                resp = await h.client.post('/api/archives/report', json={'kind': 'sheet', 'ids': [5]}, headers={**prof, **CSRF})
+                assert resp.status == 502 and 'mock failure' in (await resp.json())['error']
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            assert [l['status'] for l in lines if l['event'] == 'report'] == ['502']
+        run(go())
+
 
 class TestHistory:
     """The administrators (the instructors of [auth] administrators, of the administrator groups of the
