@@ -1219,6 +1219,34 @@ class TestInstructor:
                 assert [e['key'] for e in rows_fr[0]['elements']] == [e['key'] for e in alice['elements']]
         run(go())
 
+    def test_lab_evaluations_through_a_symbolic_link(self, tmp_path, monkeypatch):
+        """A course directory linking a lab: the projects started through the link and through
+        the lab's own path are one lab for the summary (the `canonical_lab` of the rows, `?lab=`
+        given that name), while the link's own name still lists its projects alone."""
+        labs = tmp_path / 'labs'
+        (labs / 'sre').mkdir(parents=True)
+        (labs / 'sre' / 'dhcp.py').write_text('')
+        (labs / 's3' / 'r306').mkdir(parents=True)
+        (labs / 's3' / 'r306' / 'dhcp.py').symlink_to('../../sre/dhcp.py')
+        monkeypatch.setattr(params, 'lab_dir', str(labs))
+        monkeypatch.setattr(params, 'shipped_lab_dir', str(labs))
+        mock_env = {'MOCK_LAB_LIST': json.dumps(['sre/dhcp.py', 's3/r306/dhcp.py'])}
+
+        async def go():
+            async with Harness(tmp_path, mock_env=mock_env) as h:
+                alice_rln = await h.started()
+                bob_rln = await h.started(BOB, lab='s3/r306/dhcp.py')
+                assert '@@@s3@r306@dhcp.py@@@' in bob_rln
+                rows = await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json()
+                by_owner = {r['owner']: r for r in rows}
+                assert (by_owner['alice']['lab_name'], by_owner['alice']['canonical_lab']) == ('sre@dhcp.py', 'sre@dhcp.py')
+                assert (by_owner['bob']['lab_name'], by_owner['bob']['canonical_lab']) == ('s3@r306@dhcp.py', 'sre@dhcp.py')
+                both = await (await h.client.get('/v1/evaluations?lab=sre@dhcp.py', headers=headers(PROF))).json()
+                assert [r['running_lab_name'] for r in both] == [alice_rln, bob_rln]
+                link = await (await h.client.get('/v1/evaluations?lab=s3@r306@dhcp.py', headers=headers(PROF))).json()
+                assert [r['running_lab_name'] for r in link] == [bob_rln]
+        run(go())
+
     def test_archives_for_the_collector(self, tmp_path):
         """GET /v1/archives: the archives of the host after a name, in the order of the names,
         as the records the portal stores (the student, the lab, the totals, the elements with
@@ -1240,6 +1268,7 @@ class TestInstructor:
                 alice = data['archives'][0]
                 assert (alice['login'], alice['fullname'], alice['group'], alice['hostname'], alice['lab'], alice['managed']) == \
                     ('alice', 'Alice A', 'INFO1', 'pool1', 'sre/dhcp.py', True)
+                assert alice['canonical_lab'] == 'sre/dhcp.py'            # the lab file really run, resolved through the lab tree
                 assert (alice['grade'], alice['max_grade'], alice['mark'], alice['maximum_mark']) == (4.5, 5.0, 18.0, 20.0)
                 assert alice['archive'].endswith(f'_{alice_rln}.zst') and alice['eval_date'][-6] in '+-'
                 assert [(e['title'], e['grade'], e['part'], e['bonus']) for e in alice['elements']] == [

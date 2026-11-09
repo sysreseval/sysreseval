@@ -310,6 +310,63 @@ class TestLiveArchives:
         assert 'unique key `archive`' in definition and 'mediumtext' in definition and 'login_lab_id' in definition
 
 
+    def test_upgrade_of_a_table_created_before_canonical_lab(self, cfg, archives_cfg, caplog):
+        """A table of a release before the canonical_lab column, with a row of that release: the
+        sink probes the columns, keeps its row and warns once (nothing dropped); the ALTER TABLE
+        and the UPDATE of web.md (*Upgrading*) then let the writes through, the old row keeping
+        its path as the file run, the new one its real file, and the lab list merging them."""
+        import logging
+        from sreweb.portal import archives as R
+        from sreweb.portal.archives import ArchiveDatabase, row_of_record, table_spec, parse_archive_filters
+        from test_web_archives import record, RLN, NAME
+        table = archives_cfg.table
+        old_ddl = '\n'.join(line for line in R.DDL.splitlines() if 'canonical_lab' not in line)   # the column, its two keys
+        old_columns = [c for c in R.COLUMNS if c != 'canonical_lab']
+        old_row = [v for c, v in zip(R.COLUMNS, row_of_record('a01', record(lab='s3/r306/dhcp.py'))) if c != 'canonical_lab']
+        connect, transient = connector(cfg)
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(old_ddl.format(table=table))
+                cur.execute(f"INSERT INTO `{table}` ({', '.join(old_columns)}) VALUES ({', '.join(['%s'] * len(old_columns))})",
+                            old_row)
+            conn.commit()
+        finally:
+            conn.close()
+        sink = DatabaseSink(cfg, connect=connect, transient=transient, spec=table_spec(archives_cfg),
+                            sleep=lambda seconds: time.sleep(0.2))
+        sink.start()
+        linked = '20261109104225@@@s3@r306@dhcp.py@@@wbouzga'
+        new = record(archive=f'20261109104300_{linked}.zst', running_lab_name=linked, login='wbouzga', lab='s3/r306/dhcp.py',
+                     canonical_lab='sre/dhcp.py')
+        with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+            assert sink.put_row(row_of_record('a01', new))
+            assert not sink.flush(3)
+        status = sink.status()
+        assert status['connected'] is False and status['dropped'] == 0, status
+        assert status['last_error'].startswith(f'the table {table} lacks a column') and 'canonical_lab' in status['last_error']
+        assert len([r for r in caplog.records if 'lacks a column' in r.message]) == 1
+        # the administrator runs the statements of the documentation
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"ALTER TABLE `{table}` ADD COLUMN canonical_lab VARCHAR(255) NOT NULL DEFAULT '' AFTER lab, "
+                            "ADD KEY login_canonical_id (login, canonical_lab, id), ADD KEY canonical_lab_ts (canonical_lab, ts)")
+                cur.execute(f"UPDATE `{table}` SET canonical_lab = lab WHERE canonical_lab = ''")
+            conn.commit()
+        finally:
+            conn.close()
+        assert sink.flush(20), sink.status()
+        assert sink.status()['connected'] is True and sink.status()['dropped'] == 0
+        db = ArchiveDatabase(table, connect=connect)
+        rows = db.query_sync(parse_archive_filters({'show': 'all'}))['rows']
+        assert sorted((r['archive'], r['lab'], r['canonical_lab']) for r in rows) == \
+            [(NAME, 's3/r306/dhcp.py', 's3/r306/dhcp.py'), (new['archive'], 's3/r306/dhcp.py', 'sre/dhcp.py')]
+        assert db.options_sync()['labs'] == ['s3/r306/dhcp.py', 'sre/dhcp.py']
+        assert [r['login'] for r in db.query_sync(parse_archive_filters({'lab': 'sre/dhcp'}))['rows']] == ['wbouzga']
+        sink.close()
+
+
 class TestLiveExams:
     """The exams of the Exams page on a real server: the two tables created at the first
     operation, an exam inserted then updated, its members replaced, everything read back as it

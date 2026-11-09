@@ -63,6 +63,9 @@ class FakeCursor:
         if sql.startswith('SELECT 1 FROM'):
             if not self.server.table_exists:
                 raise Broken(D.NO_SUCH_TABLE, "Table 'sre.access_log' doesn't exist")
+        elif sql.startswith('SELECT') and sql.endswith(' LIMIT 0'):       # the column probe of a TableSpec
+            if self.server.missing_columns:
+                raise Broken(D.NO_SUCH_COLUMN, "Unknown column 'canonical_lab' in 'field list'")
         elif sql.startswith('CREATE TABLE'):
             self.server.table_exists = True
             self.server.created += 1
@@ -127,6 +130,7 @@ class FakeServer:
     def __init__(self, table_exists=False):
         self.down = False
         self.table_exists = table_exists
+        self.missing_columns = False       # the column probe of a TableSpec with columns fails (errno 1054)
         self.statements = []
         self.committed = []
         self.connections = []

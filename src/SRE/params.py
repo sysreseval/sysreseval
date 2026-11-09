@@ -452,6 +452,7 @@ def parse_lab_entry(entry) -> tuple[str, str | None]:
 
 
 srelab_py_name = "srelab.py"
+shipped_lab_link_name = "sre"       # the shipped labs inside lab_dir: lab/sre (a symlink to shipped_lab_dir in the fhs layout)
 titles_file_name = "titles.json"
 # The options of titles.json: every key starting with titles_reserved_prefix is an option, never an entry
 titles_reserved_prefix = "@"

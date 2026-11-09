@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from SRE import params
+from SRE.utils import canonical_lab_name
 from sysreseval.util import load_projects, load_info
 
 from .access import AccessError
@@ -77,6 +78,10 @@ class Project:
     info_mtime: float
     debug: bool = False
     instructor: bool = False
+    #: The lab file the project really runs, symlinks resolved, in the form of ``lab_name``
+    #: (``SRE.utils.canonical_lab_name``): what the summaries of the Watch page group by, so
+    #: that a lab and a course directory's link to it are one lab.
+    canonical_lab: str = ''
     log_offset: int = 0
     log_decoder: codecs.IncrementalDecoder = field(default_factory=lambda: codecs.getincrementaldecoder('utf-8')('replace'))
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -209,6 +214,7 @@ class Project:
         return {
             'running_lab_name': self.rln,
             'lab_name': self.lab_name,
+            'canonical_lab': self.canonical_lab or self.lab_name,
             'owner': self.owner,
             'started_at': self.started,
             'title': self.info.get('title', ''),
@@ -339,10 +345,12 @@ class Registry:
             return None
         if not isinstance(info, dict):
             return None
-        # the canonical lab name (with slashes) is in info.json; the directory name carries it with @
+        # lab_name: the lab as the student picked it (info.json, else the directory name, both in
+        # the @ form); canonical_lab: the file it really is, symlinks resolved (the same whatever
+        # the path leading to one lab)
         lab_name = info.get('lab_name') or params.get_lab_name_from_running_lab_name(rln)
-        project = Project(rln=rln, path=path, owner=owner, lab_name=lab_name, started=started, info=info,
-                          info_mtime=mtime)
+        project = Project(rln=rln, path=path, owner=owner, lab_name=lab_name, canonical_lab=canonical_lab_name(lab_name),
+                          started=started, info=info, info_mtime=mtime)
         project.read_markers()
         self._load_state(project)
         return project

@@ -51,6 +51,7 @@ PURGE_PERIOD = 86400.0         # seconds between two purges
 BACKOFF = (1.0, 2.0, 5.0, 10.0, 30.0, 60.0)   # seconds before the next attempt after a failure, then 60
 POLL = 1.0                     # how long the writer waits for a row before looking at the stop flag
 NO_SUCH_TABLE = 1146           # ER_NO_SUCH_TABLE: the probe says the table is to be created
+NO_SUCH_COLUMN = 1054          # ER_BAD_FIELD_ERROR: the column probe says the table predates a column (ALTER TABLE due)
 
 DDL = """\
 CREATE TABLE IF NOT EXISTS `{table}` (
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS `{table}` (
   KEY event_ts (event, ts)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"""
 PROBE = "SELECT 1 FROM `{table}` LIMIT 0"
+COLUMNS_PROBE = "SELECT {columns} FROM `{table}` LIMIT 0"
 #: One ``VALUES (...)`` group of placeholders: PyMySQL's ``executemany`` turns it into one
 #: multi-row statement (anything else degrades to one round trip per row).
 INSERT = ("INSERT INTO `{table}` (ts, event, login, addr, host, rln, lab, status, duration, details) "
@@ -82,6 +84,11 @@ SELECT = "SELECT id, ts, event, login, addr, host, rln, lab, status, duration, d
 
 class HistoryError(Exception):
     """The database could not answer (the message is the driver's)."""
+
+
+class SchemaError(Exception):
+    """The table exists but lacks a column the rows need (created by an older release): an
+    ``ALTER TABLE`` is due; the sink keeps its rows and retries meanwhile."""
 
 
 def _describe_access_row(row: tuple) -> str:
@@ -95,7 +102,10 @@ class TableSpec:
     thread and how a dropped row is named in a warning.  The connection log's is the default
     (:func:`access_log_spec`); the archives of the evaluations have their own (``archives.py``).
     The purge (``PURGE``: the rows whose ``ts`` is older than ``keep`` days) and the probe are
-    shared: every table has a ``ts`` column."""
+    shared: every table has a ``ts`` column.  ``columns``, when given, are probed too after the
+    table is known to exist (``COLUMNS_PROBE``): a table created by an older release that lacks
+    one fails the connection with :class:`SchemaError` (the rows wait, one warning names the
+    column) instead of every row being refused and dropped."""
     name: str
     ddl: str
     insert: str
@@ -103,6 +113,7 @@ class TableSpec:
     label: str = 'access database'
     thread_name: str = 'sreweb-access-db'
     describe_row: Callable = _describe_access_row
+    columns: tuple = ()
 
 
 def access_log_spec(cfg: AccessDatabaseConfig) -> TableSpec:
@@ -215,10 +226,13 @@ def _rollback_quietly(conn):
         pass
 
 
-def ensure_table(cur, table: str, ddl: str, label: str = 'database') -> bool:
+def ensure_table(cur, table: str, ddl: str, label: str = 'database', columns: tuple = ()) -> bool:
     """Probe *table* with a ``SELECT`` and create it with *ddl* (``{table}`` inside) when the
-    probe says it does not exist (errno 1146); any other error propagates.  ``True`` when the
-    table was created.  The caller commits."""
+    probe says it does not exist (errno 1146); any other error propagates.  With *columns*, an
+    existing table is then probed for them: one missing (errno 1054, a table created by an
+    older release) raises :class:`SchemaError` naming the ``ALTER TABLE`` to run.  ``True``
+    when the table was created.  The caller commits."""
+    created = False
     try:
         cur.execute(PROBE.format(table=table))
         cur.fetchall()
@@ -227,8 +241,17 @@ def ensure_table(cur, table: str, ddl: str, label: str = 'database') -> bool:
             raise
         cur.execute(ddl.format(table=table))
         log.info("%s: table %s created", label, table)
-        return True
-    return False
+        created = True
+    if columns and not created:
+        try:
+            cur.execute(COLUMNS_PROBE.format(table=table, columns=', '.join(columns)))
+            cur.fetchall()
+        except Exception as e:
+            if _errno(e) != NO_SUCH_COLUMN:
+                raise
+            raise SchemaError(f"the table {table} lacks a column the rows need ({e}): "
+                              f"ALTER TABLE it as the documentation says (the rows wait meanwhile)") from e
+    return created
 
 
 def transaction(connect, work: Callable, *, passthrough: tuple = ()):
@@ -443,7 +466,7 @@ class DatabaseSink:
         conn = self.connect()
         try:
             with conn.cursor() as cur:
-                ensure_table(cur, self.table, self.spec.ddl, self.label)
+                ensure_table(cur, self.table, self.spec.ddl, self.label, self.spec.columns)
             conn.commit()
         except Exception:
             _close_quietly(conn)

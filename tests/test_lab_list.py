@@ -5,7 +5,7 @@ import json
 
 import pytest
 from SRE import params, utils
-from SRE.utils import get_lab_list, get_lab_list_with_titles
+from SRE.utils import get_lab_list, get_lab_list_with_titles, canonical_lab_name
 
 
 @pytest.fixture(autouse=True)
@@ -305,3 +305,65 @@ class TestActionList:
         with pytest.raises(SystemExit) as e:
             action_list()
         assert e.value.code == 0 and json.loads(capsys.readouterr().out) == ['s4/c.py']
+
+
+class TestCanonicalLabName:
+    """canonical_lab_name: the lab file a lab name really designates (symlinks resolved), in the
+    @ form, relative to the lab directory, the shipped tree as sre@... in both layouts."""
+
+    @pytest.fixture
+    def labs(self, tmp_lab_dir, monkeypatch):
+        """A lab tree: the shipped sre/ with a file lab and a directory lab, a course directory
+        s3/r306 linking both, a lab of its own; the checkout layout (shipped_lab_dir = lab_dir)."""
+        monkeypatch.setattr(params, 'shipped_lab_dir', str(tmp_lab_dir))
+        (tmp_lab_dir / 'sre' / 'tp_ssh').mkdir(parents=True)
+        (tmp_lab_dir / 'sre' / 'dns1.py').write_text('')
+        (tmp_lab_dir / 'sre' / 'tp_ssh' / 'srelab.py').write_text('')
+        (tmp_lab_dir / 's3' / 'r306').mkdir(parents=True)
+        (tmp_lab_dir / 's3' / 'r306' / 'dns1.py').symlink_to('../../sre/dns1.py')
+        (tmp_lab_dir / 's3' / 'r306' / 'tp_ssh').symlink_to('../../sre/tp_ssh')
+        (tmp_lab_dir / 's3' / 'r306' / 'own.py').write_text('')
+        return tmp_lab_dir
+
+    def test_plain_names_unchanged(self, labs):
+        assert canonical_lab_name('sre@dns1.py') == 'sre@dns1.py'
+        assert canonical_lab_name('sre@tp_ssh') == 'sre@tp_ssh'
+        assert canonical_lab_name('s3@r306@own.py') == 's3@r306@own.py'
+
+    def test_symbolic_links_resolve_to_the_lab(self, labs):
+        assert canonical_lab_name('s3@r306@dns1.py') == 'sre@dns1.py'
+        assert canonical_lab_name('s3@r306@tp_ssh') == 'sre@tp_ssh'      # a linked directory lab
+
+    def test_missing_path_unchanged(self, labs):
+        assert canonical_lab_name('s3@r306@gone.py') == 's3@r306@gone.py'
+        assert canonical_lab_name('') == ''
+        assert canonical_lab_name('bad\x00name') == 'bad\x00name'
+
+    def test_absolute_path_of_a_p_project(self, labs, tmp_path):
+        """A lab started by its path (-p) has an absolute lab name: its real path comes back."""
+        home = tmp_path / 'home' / 'etudiant'
+        home.mkdir(parents=True)
+        (home / 'x.py').write_text('')
+        (home / 'link.py').symlink_to('x.py')
+        real = str((home / 'x.py').resolve()).replace('/', '@')
+        assert canonical_lab_name(str(home / 'link.py').replace('/', '@')) == real
+        assert canonical_lab_name(str(home / 'x.py').replace('/', '@')) == real
+
+    def test_fhs_layout_shipped_tree_linked_as_sre(self, tmp_path, monkeypatch):
+        """The Debian layout: lab_dir/sre is a symlink to shipped_lab_dir elsewhere; a shipped lab
+        reached through it, or through a course directory, is sre@... like on a checkout."""
+        shipped = tmp_path / 'usr' / 'share' / 'sysreseval' / 'lab'
+        shipped.mkdir(parents=True)
+        (shipped / 'dns1.py').write_text('')
+        lab_dir = tmp_path / 'var' / 'lib' / 'sre' / 'lab'
+        lab_dir.mkdir(parents=True)
+        (lab_dir / 'sre').symlink_to(shipped)
+        (lab_dir / 'cours').mkdir()
+        (lab_dir / 'cours' / 'dns1.py').symlink_to('../sre/dns1.py')
+        (lab_dir / 'cours' / 'local.py').write_text('')
+        monkeypatch.setattr(params, 'lab_dir', str(lab_dir))
+        monkeypatch.setattr(params, 'shipped_lab_dir', str(shipped))
+        assert canonical_lab_name('sre@dns1.py') == 'sre@dns1.py'
+        assert canonical_lab_name('cours@dns1.py') == 'sre@dns1.py'
+        assert canonical_lab_name('cours@local.py') == 'cours@local.py'
+        assert params.shipped_lab_link_name == 'sre'

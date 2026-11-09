@@ -24,7 +24,10 @@ has one (``roles.complete_owners``, as on the Watch page).
 **Storage.** The writer is a second ``accessdb.DatabaseSink`` (a queue, one thread, batches,
 backoff, the daily purge of ``keep`` days when set) with the ``TableSpec`` of the table: the
 filters of the page in columns (``ts`` = the evaluation time in UTC, ``host`` = the pool host,
-``archive``, ``rln``, ``lab`` in the form of the lab list, ``login``, ``fullname``, ``grp`` (the
+``archive``, ``rln``, ``lab`` in the form of the lab list, ``canonical_lab`` (the lab file really
+run, symlinks resolved by the agent, ``lab`` when an older agent sends none: what the Summary
+view and the "newest of each student and lab" filter group by, so that a course directory's link
+to a lab and the lab itself are one lab), ``login``, ``fullname``, ``grp`` (the
 student group: ``group`` is a reserved word), ``hostname`` (the one the archive names), the
 exo-eval ``grade`` / ``max_grade`` / ``mark`` / ``maximum_mark``, the ``errors`` / ``warnings``
 counts, ``exam``, ``auto_eval_count``) and the rest as JSON in ``details`` (the elements with
@@ -57,12 +60,12 @@ from ..config import AccessDatabaseConfig, ArchivesConfig
 log = logging.getLogger('sreweb.portal')
 
 #: The columns of a row, in the order of ``row_of_record()`` and of ``INSERT``.
-COLUMNS = ('ts', 'host', 'archive', 'rln', 'lab', 'login', 'fullname', 'grp', 'hostname', 'grade', 'max_grade',
-           'mark', 'maximum_mark', 'errors', 'warnings', 'exam', 'auto_eval_count', 'details')
+COLUMNS = ('ts', 'host', 'archive', 'rln', 'lab', 'canonical_lab', 'login', 'fullname', 'grp', 'hostname', 'grade',
+           'max_grade', 'mark', 'maximum_mark', 'errors', 'warnings', 'exam', 'auto_eval_count', 'details')
 #: The widths of the text columns: a longer value is truncated (a strict ``sql_mode`` would
 #: refuse the row).  An archive name is 19 characters plus the running lab name.
-WIDTHS = {'host': 64, 'archive': 300, 'rln': 255, 'lab': 255, 'login': 64, 'fullname': 255, 'grp': 64,
-          'hostname': 64}
+WIDTHS = {'host': 64, 'archive': 300, 'rln': 255, 'lab': 255, 'canonical_lab': 255, 'login': 64, 'fullname': 255,
+          'grp': 64, 'hostname': 64}
 MAX_DETAILS = 1 << 20          # bytes of JSON (MEDIUMTEXT holds 16 MB; a lab has tens of elements)
 #: The keys of a record kept in ``details`` (the others have a column).
 DETAIL_KEYS = ('elements', 'parts', 'errors', 'self_grade', 'self_max_grade', 'self_mark', 'email', 'language',
@@ -99,6 +102,7 @@ CREATE TABLE IF NOT EXISTS `{table}` (
   archive         VARCHAR(300)    NOT NULL,
   rln             VARCHAR(255)    NOT NULL DEFAULT '',
   lab             VARCHAR(255)    NOT NULL DEFAULT '',
+  canonical_lab   VARCHAR(255)    NOT NULL DEFAULT '',
   login           VARCHAR(64)     NOT NULL DEFAULT '',
   fullname        VARCHAR(255)    NOT NULL DEFAULT '',
   grp             VARCHAR(64)     NOT NULL DEFAULT '',
@@ -116,8 +120,10 @@ CREATE TABLE IF NOT EXISTS `{table}` (
   UNIQUE KEY archive (archive),
   KEY ts (ts),
   KEY login_lab_id (login, lab, id),
+  KEY login_canonical_id (login, canonical_lab, id),
   KEY rln_id (rln, id),
   KEY lab_ts (lab, ts),
+  KEY canonical_lab_ts (canonical_lab, ts),
   KEY grp_ts (grp, ts),
   KEY host_archive (host, archive)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"""
@@ -132,17 +138,17 @@ _SUMMARY_COLUMNS = ('id',) + COLUMNS[:-1]
 SELECT_ROWS = "SELECT " + ', '.join(f"t.{c}" for c in _SUMMARY_COLUMNS) + " FROM `{table}` t"
 SELECT_FULL = "SELECT " + ', '.join(f"t.{c}" for c in _SUMMARY_COLUMNS + ('details',)) + " FROM `{table}` t"
 CURSORS = "SELECT host, MAX(archive) AS archive FROM `{table}` GROUP BY host"
-LABS = "SELECT DISTINCT lab FROM `{table}` ORDER BY lab"
+LABS = "SELECT DISTINCT canonical_lab FROM `{table}` ORDER BY canonical_lab"
 GROUPS = "SELECT DISTINCT grp FROM `{table}` WHERE grp <> '' ORDER BY grp"
 
 
 def _describe_row(row: tuple) -> str:
-    return f"archive={row[2]} login={row[5]}"
+    return f"archive={row[2]} login={row[6]}"
 
 
 def table_spec(cfg: ArchivesConfig) -> TableSpec:
     return TableSpec(name=cfg.table, ddl=DDL, insert=INSERT, keep=cfg.keep, label='archives database',
-                     thread_name='sreweb-archives-db', describe_row=_describe_row)
+                     thread_name='sreweb-archives-db', describe_row=_describe_row, columns=COLUMNS)
 
 
 # -- the rows ---------------------------------------------------------------------------------
@@ -203,6 +209,7 @@ def row_of_record(host: str, record: dict) -> tuple:
         text = clean_text(json.dumps(details, ensure_ascii=False, separators=(',', ':'), default=str))
     return (utc_datetime(record_time(record)), _text(host, WIDTHS['host']), _text(record.get('archive'), WIDTHS['archive']),
             _text(record.get('running_lab_name'), WIDTHS['rln']), _text(record.get('lab'), WIDTHS['lab']),
+            _text(record.get('canonical_lab') or record.get('lab'), WIDTHS['canonical_lab']),
             _text(record.get('login'), WIDTHS['login']), _text(record.get('fullname'), WIDTHS['fullname']),
             _text(record.get('group'), WIDTHS['grp']), _text(record.get('hostname'), WIDTHS['hostname']),
             _float(record.get('grade'), 0.0), _float(record.get('max_grade'), 0.0),
@@ -387,14 +394,14 @@ def build_archives_where(table: str, filters: dict) -> tuple:
         parts.append("t.grp = %s")
         params.append(filters['group'])
     if filters.get('lab'):
-        parts.append(f"t.lab {like}")
-        params.append('%' + escape_like(filters['lab']) + '%')
+        parts.append(f"(t.lab {like} OR t.canonical_lab {like})")
+        params.extend(['%' + escape_like(filters['lab']) + '%'] * 2)
     scope, scope_params = _scope_predicates(filters, 't.')
     parts.extend(scope)
     params.extend(scope_params)
     show = filters.get('show', SHOW_PROJECT)
     if show != SHOW_ALL:
-        same = ["t2.rln = t.rln"] if show == SHOW_PROJECT else ["t2.login = t.login", "t2.lab = t.lab"]
+        same = ["t2.rln = t.rln"] if show == SHOW_PROJECT else ["t2.login = t.login", "t2.canonical_lab = t.canonical_lab"]
         inner, inner_params = _scope_predicates(filters, 't2.')
         parts.append(f"NOT EXISTS (SELECT 1 FROM `{table}` t2 WHERE " + " AND ".join([*same, "t2.id > t.id", *inner])
                      + ")")
@@ -424,7 +431,7 @@ def build_summary_select(table: str, filters: dict, limit: int = MAX_SUMMARY_ROW
     sql = SELECT_FULL.format(table=table)
     if parts:
         sql += " WHERE " + " AND ".join(parts)
-    sql += " ORDER BY t.login, t.lab, t.id DESC LIMIT %s"
+    sql += " ORDER BY t.login, t.canonical_lab, t.id DESC LIMIT %s"
     params.append(int(limit) + 1)
     return sql, params
 

@@ -48,23 +48,31 @@ class TestRows:
         row = R.row_of_record('a01', record())
         assert len(row) == len(R.COLUMNS)
         assert row[0] == datetime(2026, 10, 25, 8, 1, 2)                  # UTC (the record says +02:00)
-        assert row[1:9] == ('a01', NAME, RLN, 'sre/dhcp.py', 'alice', 'Alice A', 'INFO1', 'pool1')
-        assert row[9:17] == (1.0, 3.0, 6.7, 20.0, 1, 1, 0, 3)
-        details = json.loads(row[17])
+        assert row[1:10] == ('a01', NAME, RLN, 'sre/dhcp.py', 'sre/dhcp.py', 'alice', 'Alice A', 'INFO1', 'pool1')
+        assert row[10:18] == (1.0, 3.0, 6.7, 20.0, 1, 1, 0, 3)
+        details = json.loads(row[18])
         assert set(details) == set(R.DETAIL_KEYS) and details['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
         assert details['self_mark'] == 13.3 and details['managed'] is True and details['errors'][1]['category'] == 'WARNING'
+        # the lab file really run next to the path started (an agent older than the key sends
+        # none: the path itself, so the column is never empty)
+        linked = R.row_of_record('a01', record(lab='s3/r306/dhcp.py', canonical_lab='sre/dhcp.py'))
+        assert linked[4:6] == ('s3/r306/dhcp.py', 'sre/dhcp.py')
+        old = record(lab='s3/r306/dhcp.py')
+        old.pop('canonical_lab', None)
+        assert R.row_of_record('a01', old)[4:6] == ('s3/r306/dhcp.py', 's3/r306/dhcp.py')
+        assert R._describe_row(linked) == f'archive={NAME} login=alice'
         # the widths, the exam flag, the missing values
         long = record(archive='x' * 400, fullname='n' * 300, exam=True, mark=None, maximum_mark=None, auto_eval_count=None)
         row = R.row_of_record('h' * 70, long)
-        assert (len(row[1]), len(row[2]), len(row[6])) == (64, 300, 255) and row[11:13] == (None, None)
-        assert row[15] == 1 and row[16] is None
-        assert R.row_of_record('a01', {'archive': NAME, 'running_lab_name': RLN})[9:17] == (0.0, 0.0, None, None, 0, 0, 0, None)
+        assert (len(row[1]), len(row[2]), len(row[7])) == (64, 300, 255) and row[12:14] == (None, None)
+        assert row[16] == 1 and row[17] is None
+        assert R.row_of_record('a01', {'archive': NAME, 'running_lab_name': RLN})[10:18] == (0.0, 0.0, None, None, 0, 0, 0, None)
         # what an agent may send: a lone surrogate in a name, NaN / Infinity grades (MySQL refuses
         # the row): the text cleaned, the numbers defaulted (security review, last Low finding)
         odd = R.row_of_record('a01', {'archive': NAME, 'running_lab_name': RLN, 'fullname': 'Al\ud800ice',
                                       'grade': float('nan'), 'max_grade': float('inf'), 'mark': '12.5',
                                       'elements': [{'label': 'x\udc00'}]})
-        assert odd[6] == 'Al?ice' and odd[9:13] == (0.0, 0.0, 12.5, None)
+        assert odd[7] == 'Al?ice' and odd[10:14] == (0.0, 0.0, 12.5, None)
         assert '\ud800' not in odd[-1] and '\udc00' not in odd[-1] and '"x?"' in odd[-1]
         for value in odd:
             if isinstance(value, str):
@@ -81,8 +89,8 @@ class TestRows:
     def test_details_capped(self):
         big = record(elements=[dict(record()['elements'][0], description='x' * 300) for _ in range(5000)])
         row = R.row_of_record('a01', big)
-        details = json.loads(row[17])
-        assert len(row[17].encode()) <= R.MAX_DETAILS and details['truncated'] is True
+        details = json.loads(row[18])
+        assert len(row[18].encode()) <= R.MAX_DETAILS and details['truncated'] is True
         assert 'elements' not in details and 'parts' not in details and details['self_mark'] == 13.3
 
     def test_row_to_dict(self):
@@ -129,27 +137,33 @@ class TestSelect:
                                      'since': '1761400000', 'until': '1761500000', 'exam': '1', 'before': '42',
                                      'limit': '2'})
         sql, params = R.build_archives_select('archives', f)
-        assert sql.startswith('SELECT t.id, t.ts, t.host, t.archive, t.rln, t.lab, t.login, t.fullname, t.grp') \
+        assert sql.startswith('SELECT t.id, t.ts, t.host, t.archive, t.rln, t.lab, t.canonical_lab, t.login, t.fullname, t.grp') \
             and 't.details' not in sql
         assert "(t.login LIKE %s ESCAPE '!' OR t.fullname LIKE %s ESCAPE '!')" in sql and 't.grp = %s' in sql
-        assert "t.lab LIKE %s ESCAPE '!'" in sql and 't.host = %s' in sql and 't.exam = %s' in sql
+        # the lab filter matches the path started and the file really run
+        assert "(t.lab LIKE %s ESCAPE '!' OR t.canonical_lab LIKE %s ESCAPE '!')" in sql
+        assert 't.host = %s' in sql and 't.exam = %s' in sql
         assert 't.ts >= %s' in sql and 't.ts < %s' in sql and 't.id < %s' in sql
         # the newest of each project among the rows of the window, the host and the exam flag
         assert ("NOT EXISTS (SELECT 1 FROM `archives` t2 WHERE t2.rln = t.rln AND t2.id > t.id AND t2.ts >= %s "
                 "AND t2.ts < %s AND t2.host = %s AND t2.exam = %s)") in sql
         assert sql.endswith(' ORDER BY t.id DESC LIMIT %s')
         since, until = utc_datetime(1761400000), utc_datetime(1761500000)
-        assert params == ['al!_i%', '%al!_i%', 'INFO1', '%dhcp!%%', since, until, 'a01', 1, since, until, 'a01', 1, 42, 3]
+        assert params == ['al!_i%', '%al!_i%', 'INFO1', '%dhcp!%%', '%dhcp!%%', since, until, 'a01', 1, since, until, 'a01',
+                          1, 42, 3]
+        # the newest of each student and lab: the lab file really run (a symlinked copy is the same lab)
         student = R.build_archives_select('archives', R.parse_archive_filters({'show': 'student'}))
         assert student[0].endswith("WHERE NOT EXISTS (SELECT 1 FROM `archives` t2 WHERE t2.login = t.login "
-                                   "AND t2.lab = t.lab AND t2.id > t.id) ORDER BY t.id DESC LIMIT %s") and student[1] == [101]
+                                   "AND t2.canonical_lab = t.canonical_lab AND t2.id > t.id) ORDER BY t.id DESC LIMIT %s") \
+            and student[1] == [101]
         every = R.build_archives_select('archives', R.parse_archive_filters({'show': 'all', 'limit': '500'}))
         assert 'WHERE' not in every[0] and every[1] == [501]
 
     def test_summary_and_fixed_statements(self):
         sql, params = R.build_summary_select('t_arch', R.parse_archive_filters({'lab': 'dhcp'}, default_show='student'), 10)
         assert sql.startswith('SELECT ') and ', t.details FROM `t_arch` t WHERE' in sql
-        assert sql.endswith(' ORDER BY t.login, t.lab, t.id DESC LIMIT %s') and params == ['%dhcp%', 11]
+        assert sql.endswith(' ORDER BY t.login, t.canonical_lab, t.id DESC LIMIT %s') and params == ['%dhcp%', '%dhcp%', 11]
+        assert R.LABS == "SELECT DISTINCT canonical_lab FROM `{table}` ORDER BY canonical_lab"
         for statement in (R.DDL, R.INSERT, R.SELECT_ROWS, R.SELECT_FULL, R.CURSORS, R.LABS, R.GROUPS, sql):
             assert '{table}' in statement or '`t_arch`' in statement
             assert not any(c == '%' and statement[i + 1] != 's' for i, c in enumerate(statement[:-1])), statement
@@ -235,8 +249,9 @@ class TestSink:
         assert server.created == 1 and server.statements_of('CREATE TABLE')[0][1].startswith('CREATE TABLE IF NOT EXISTS `archives`')
         kind, sql, rows = server.statements_of('INSERT')[-1]
         assert kind == 'many' and sql.startswith('INSERT IGNORE INTO `archives` (ts, host, archive') and len(rows) == 2
-        assert [r[5] for r in server.committed] == ['alice', 'bob']
+        assert [r[6] for r in server.committed] == ['alice', 'bob']
         assert not server.statements_of('DELETE')                      # keep = 0: no purge
+        assert not server.statements_of('SELECT ts, host')             # a table just created is not probed for its columns
         # a refused row is named by its archive and login
         server.fail_next.append((lambda sql, args: sql.startswith('INSERT') and isinstance(args, list), Broken(1406, 'too long')))
         server.fail_next.append((lambda sql, args: sql.startswith('INSERT') and isinstance(args, tuple), Broken(1406, 'too long')))
@@ -245,6 +260,31 @@ class TestSink:
             assert sink.flush(5)
         assert any('archives database: row dropped' in r.message and f'archive=y{NAME} login=carol' in r.message
                    for r in caplog.records)
+        sink.close()
+
+    def test_table_of_an_older_release_keeps_the_rows(self, caplog):
+        """An existing table is probed for the columns of the rows; one missing (the table was
+        created before canonical_lab) fails the connection: the rows wait, one warning names the
+        ALTER TABLE, and the writes resume once the column is there."""
+        server = FakeServer(table_exists=True)
+        server.missing_columns = True
+        sink = DatabaseSink(config(), connect=server.connect, transient=(Down,), spec=R.table_spec(ArchivesConfig()),
+                            sleep=lambda seconds: time.sleep(0.001))
+        sink.start()
+        with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+            assert sink.put_row(R.row_of_record('a01', record()))
+            assert not sink.flush(0.5)
+        probes = server.statements_of('SELECT ts, host, archive, rln, lab, canonical_lab')
+        assert probes and probes[0][1].endswith('FROM `archives` LIMIT 0') and not server.committed
+        status = sink.status()                                     # the row waits in the writer's batch
+        assert status['connected'] is False and status['dropped'] == 0
+        assert status['last_error'].startswith('the table archives lacks a column') and 'ALTER TABLE' in status['last_error']
+        warnings = [r.message for r in caplog.records if 'lacks a column' in r.message]
+        assert len(warnings) == 1 and warnings[0].startswith('archives database: the table archives lacks a column')
+        assert not server.statements_of('INSERT')
+        server.missing_columns = False                                 # the administrator altered the table
+        assert sink.flush(5)
+        assert [r[6] for r in server.committed] == ['alice'] and sink.status()['connected'] is True
         sink.close()
 
     def test_purge_of_keep_days(self):

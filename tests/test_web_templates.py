@@ -847,6 +847,27 @@ class TestGroupsModel:
         assert json.loads(js.run(tmp_path, runner, json.dumps(GROUPS_MODEL_ROWS))) == GROUPS_MODEL_OUT
 
 
+LAB_KEY_RUNNER = """\
+import {labKey} from './lab_key.js';
+
+process.stdout.write(JSON.stringify(JSON.parse(process.argv[2]).map(labKey)));
+"""
+
+
+class TestLabKey:
+    """lab_key.js: the key the Watch and Archives summaries group the projects of a lab by (the
+    file really run, else the lab name of the row), run by the ``js`` runtime, skipped without one."""
+
+    def test_fallbacks(self, tmp_path, js):
+        runner = js_project(tmp_path, LAB_KEY_RUNNER, 'lab_key.js')
+        rows = [{'canonical_lab': 'sre@dns1.py', 'lab_name': 's3@r306@dns1.py'},     # a Watch row
+                {'lab_name': 's3@r306@dns1.py'},                                     # an older agent
+                {'canonical_lab': 'sre/dns1.py', 'lab': 's3/r306/dns1.py'},          # an archives row
+                {'lab': 's3/r306/dns1.py'}, {'canonical_lab': ''}, {}, None]
+        assert json.loads(js.run(tmp_path, runner, json.dumps(rows))) == \
+            ['sre@dns1.py', 's3@r306@dns1.py', 'sre/dns1.py', 's3/r306/dns1.py', '', '', '']
+
+
 EXAMS_FORM_RUNNER = """\
 import {toLocalInput, fromLocalInput, labsText, labLabel} from './exams_form.js';
 

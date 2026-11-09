@@ -30,6 +30,7 @@ from SRE.archive_summary import (error_entries, exo_grade_list, lab_elements, ar
 from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
+from SRE.utils import canonical_lab_name
 
 from . import access, occupancy, reports
 from .access import AccessError
@@ -963,7 +964,9 @@ class Agent:
     async def evaluations_list(self, request):
         """Instructors: every running project of the lab ``?lab=`` on the host with the elements
         of its last archived evaluation (the lab summary of the Watch page: the browser matches
-        the elements across the projects by their ``key``).  One row per project: ``owner``,
+        the elements across the projects by their ``key``).  The lab is given by the
+        ``canonical_lab`` of the Watch rows (the file really run: the projects started through
+        a symbolic link to it belong to it) or by a plain lab name.  One row per project: ``owner``,
         ``fullname`` / ``group`` (the answers metadata), ``managed`` (the portal completes the
         name of an unmanaged project's owner from the directory, as on the Watch rows),
         ``last_eval`` (the summary, or null) and
@@ -976,7 +979,7 @@ class Agent:
         lab = request.query.get('lab', '')
         if not lab:
             raise AccessError(400, "a lab is expected")
-        projects = [p for p in self.registry.visible_to(identity, all_projects=True) if p.lab_name == lab]
+        projects = [p for p in self.registry.visible_to(identity, all_projects=True) if lab in (p.lab_name, p.canonical_lab)]
         rows = []
         for p in sorted(projects, key=lambda p: (p.owner, p.started, p.rln)):
             answers = self.answers.read(p)
@@ -999,7 +1002,9 @@ class Agent:
         14-digit prefix: chronological), ``?limit=`` of them (``ARCHIVES_PAGE`` by default,
         ``ARCHIVES_PAGE_MAX`` at most) read in a thread and given as the records of
         ``SRE.archive_summary.archive_record`` plus ``managed`` (whether the project is one the
-        agent manages, while it runs); ``more`` tells whether others follow, ``last`` is the
+        agent manages, while it runs) and ``canonical_lab`` (the lab file really run, symlinks
+        resolved through the lab tree: ``SRE.utils.canonical_lab_name``, in the form of
+        ``lab``); ``more`` tells whether others follow, ``last`` is the
         greatest name listed (the next ``after``: an unreadable archive, logged and skipped, is
         not listed again).  The idle clocks are left alone."""
         after = request.query.get('after', '')
@@ -1012,6 +1017,9 @@ class Agent:
         for record in records:
             project = self.registry.projects.get(record['running_lab_name'])
             record['managed'] = bool(project is not None and project.managed)
+            # resolved through the lab tree rather than the project: a closed project resolves too
+            lab = record.get('lab') or ''
+            record['canonical_lab'] = canonical_lab_name(lab.replace('/', '@')).replace('@', '/') if lab else ''
         return web.json_response({'archives': records, 'more': more, 'last': last})
 
     def _archive_records(self, after: str, limit: int) -> tuple:

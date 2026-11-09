@@ -1221,8 +1221,9 @@ class TestArchives:
                 rows = [r for r in server.committed if len(r) == len(COLUMNS)]
                 assert len(rows) == 1 and store.collector.cursors['a01'].endswith(f'_{rln}.zst')
                 row = row_to_dict(full, (1, *rows[0]))
-                assert (row['host'], row['rln'], row['lab'], row['login'], row['fullname'], row['group'], row['hostname']) == \
-                    ('a01', rln, 'sre/dhcp.py', 'bob', 'Bob Test', 'INFO2', 'pool1')
+                assert (row['host'], row['rln'], row['lab'], row['canonical_lab'], row['login'], row['fullname'],
+                        row['group'], row['hostname']) == \
+                    ('a01', rln, 'sre/dhcp.py', 'sre/dhcp.py', 'bob', 'Bob Test', 'INFO2', 'pool1')
                 assert (row['grade'], row['max_grade'], row['mark'], row['maximum_mark'], row['errors'], row['exam']) == \
                     (4.5, 5.0, 18.0, 20.0, 0, False)
                 assert [e['title'] for e in row['details']['elements']] == ['Default route of m1', 'Address of m2',
@@ -1240,7 +1241,7 @@ class TestArchives:
                 assert page['database']['connected'] is True and page['database']['collector']['collected'] == 1
                 kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
                 assert 't.login LIKE %s' in sql and 't.grp = %s' in sql and 'NOT EXISTS' in sql
-                assert args == ['bo%', '%bo%', 'INFO2', '%dhcp%', 3]
+                assert args == ['bo%', '%bo%', 'INFO2', '%dhcp%', '%dhcp%', 3]       # the lab: path or file run
                 assert (await h.client.get('/api/archives?show=best', headers=prof)).status == 400
                 assert (await h.client.get('/api/archives', headers=bob)).status == 403
                 # the detail, the summary, the options
@@ -1263,7 +1264,7 @@ class TestArchives:
                 assert summary['truncated'] is False and summary['limit'] == 500
                 assert summary['rows'][0]['details']['parts'][0]['title'] == 'Routing'
                 kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
-                assert 't2.login = t.login' in sql and 'ORDER BY t.login' in sql and args == ['%dhcp%', 501]
+                assert 't2.login = t.login' in sql and 'ORDER BY t.login' in sql and args == ['%dhcp%', '%dhcp%', 501]
                 assert (await h.client.get('/api/archives/summary', headers=prof)).status == 400
                 server.select_names, server.select_rows = ['lab'], [('sre/dhcp.py',), ('other.py',)]
                 options = await (await h.client.get('/api/archives/options', headers=prof)).json()

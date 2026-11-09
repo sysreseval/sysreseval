@@ -1,5 +1,7 @@
 // The lab summary dialog of the Watch page (Enter on a lab row of `sre watch`): for the rows
-// shown of one lab, or for every project of one lab whose owner belongs to one student group,
+// shown of one lab, or for every project of one lab whose owner belongs to one student group
+// (a lab = the file really run, lab_key.js: the projects started through a symbolic link to it
+// and through its own path are together),
 // GET /api/watch/evaluations?lab= gives every running project of the lab with
 // the elements of its last archived evaluation; the elements are matched across the projects by
 // their key (the title, whatever the language) in the order of first appearance, and drawn as a
@@ -13,6 +15,7 @@ import * as api from './api.js';
 import {el, clear, formatNumber} from './ui.js';
 import {_, format} from './i18n.js';
 import {parseKey, rowMatchesGroup} from './groups_model.js';
+import {labKey} from './lab_key.js';
 
 const LETTER_ORDER = ['OK', 'MEH', 'FAIL'];
 const LETTER_CLASSES = {OK: 'g-ok', MEH: 'g-meh', FAIL: 'g-fail'};
@@ -304,7 +307,7 @@ export function createSummaryDialog() {
     return rows.map((r) => `${r.host}/${r.running_lab_name}:${r.last_eval ? r.last_eval.archive : ''}`).join('\n');
   }
 
-  // labName: the lab of the rows (row.lab_name); labTitle: as the table shows it; source: a
+  // labName: the lab of the rows (labKey(row)); labTitle: as the table shows it; source: a
   // function giving the candidate rows (the rows of the table after the filters, or every row
   // of the pool), in their order, called at open and at every update; group: the key of the
   // group to keep (groups_model.js; null: every row of the lab)
@@ -340,7 +343,7 @@ export function createSummaryDialog() {
     if (!c) {
       return;
     }
-    const shown = c.source().filter((r) => r.lab_name === c.lab && rowMatchesGroup(r, c.group));
+    const shown = c.source().filter((r) => labKey(r) === c.lab && rowMatchesGroup(r, c.group));
     const signature = signatureOf(shown);
     if (signature === c.signature) {
       return;

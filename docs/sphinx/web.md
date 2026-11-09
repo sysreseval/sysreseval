@@ -525,7 +525,8 @@ CREATE TABLE sre.archives (
   host            VARCHAR(64)     NOT NULL DEFAULT '', -- the pool host (the name of [[hosts]])
   archive         VARCHAR(300)    NOT NULL,            -- the file name: unique
   rln             VARCHAR(255)    NOT NULL DEFAULT '', -- the running lab name
-  lab             VARCHAR(255)    NOT NULL DEFAULT '', -- sre/dhcp.py
+  lab             VARCHAR(255)    NOT NULL DEFAULT '', -- sre/dhcp.py: the path the student started
+  canonical_lab   VARCHAR(255)    NOT NULL DEFAULT '', -- the file really run, symlinks resolved (sre/dhcp.py for s3/r306/dhcp.py -> ../../sre/dhcp.py)
   login           VARCHAR(64)     NOT NULL DEFAULT '',
   fullname        VARCHAR(255)    NOT NULL DEFAULT '',
   grp             VARCHAR(64)     NOT NULL DEFAULT '', -- the student group
@@ -540,11 +541,29 @@ CREATE TABLE sre.archives (
   auto_eval_count INT             NULL,                -- the self-evaluations of the student so far
   details         MEDIUMTEXT      NOT NULL,            -- JSON: elements, parts, errors, self-eval totals, metadata
   PRIMARY KEY (id), UNIQUE KEY archive (archive), KEY ts (ts), KEY login_lab_id (login, lab, id),
-  KEY rln_id (rln, id), KEY lab_ts (lab, ts), KEY grp_ts (grp, ts), KEY host_archive (host, archive)
+  KEY login_canonical_id (login, canonical_lab, id), KEY rln_id (rln, id), KEY lab_ts (lab, ts),
+  KEY canonical_lab_ts (canonical_lab, ts), KEY grp_ts (grp, ts), KEY host_archive (host, archive)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-The rows go through the same kind of writer as the log's (batches, the rows waiting in memory
+**Upgrading a table created before `canonical_lab`** (releases up to 0.15.0): the portal probes
+the columns when it connects and, while one is missing, keeps the rows in memory and warns once
+(`archives database: the table archives lacks a column the rows need …`) instead of refusing them;
+add the column and its keys from the root console before the portal restarts with the new code,
+then give the old rows their own path as the file run, and run that `UPDATE` once more after the
+restart: the rows the old code inserted meanwhile have an empty value (the account of the portal
+has neither `ALTER` nor `UPDATE`):
+
+```sql
+ALTER TABLE sre.archives ADD COLUMN canonical_lab VARCHAR(255) NOT NULL DEFAULT '' AFTER lab,
+  ADD KEY login_canonical_id (login, canonical_lab, id), ADD KEY canonical_lab_ts (canonical_lab, ts);
+UPDATE sre.archives SET canonical_lab = lab WHERE canonical_lab = '';
+-- to merge the old rows of a symbolic link with their lab, by hand:
+-- UPDATE sre.archives SET canonical_lab = 'sre/dns1.py' WHERE lab = 's3/r306/dns1.py';
+```
+
+The new rows carry the file really run as soon as the agents run the new code (an older agent
+sends none and the row gets its path). The rows go through the same kind of writer as the log's (batches, the rows waiting in memory
 while the server does not answer, a refused row dropped with a warning, a last attempt at
 shutdown) and are purged daily beyond `keep` days when set; `web-purge-log.py --archives-days N`
 applies a retention from a cron job. Expect about thirty rows per project and hour of
@@ -1154,7 +1173,9 @@ What an instructor gets:
   the bonuses, the total and the mark, then the errors and the warnings of the run; *Open the
   project* goes to its page; Esc or *Close* goes back), and a **click on the lab cell** of a
   row opens the summary of that lab for the rows shown (the text filter and the group select
-  apply, so a class group alone when wanted): a matrix with one row per project and one column
+  apply, so a class group alone when wanted; the lab is the file really run, so the projects
+  started through a course directory's symbolic link to a lab and through the lab's own path
+  are one lab): a matrix with one row per project and one column
   per grade element (numbered, the element as the tooltip of the number, the parts as a header
   row; a cell is the grade, or the OK / MEH / FAIL letter, coloured like the evaluation table;
   Total and Mark last; a project never evaluated says so), the rows *Max*, *Average* and
@@ -1193,7 +1214,9 @@ What an instructor gets:
   the run). The **Summary** view (the second button of the toolbar; a lab is required: without
   one the view lists the labs of the archives, a click on one loads its summary; the search
   starts on the last evaluation of each student) is the lab summary of the Watch page
-  for the evaluations found: one block per lab matched, with the matrix of the students and
+  for the evaluations found: one block per lab matched (the lab file really run, as on the Watch
+  page: the evaluations of the projects started through a symbolic link to a lab are in the
+  lab's block, and the lab filter matches the path started as well as the file), with the matrix of the students and
   the grade elements (Total and Mark last, the rows *Max* / *Average* / *Success* below) and the
   table of the elements with their statistics; a click on a row of the matrix opens the
   evaluation. The summary is computed on the 500 newest evaluations found at most (the page

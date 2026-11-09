@@ -40,6 +40,7 @@ import * as i18n from './i18n.js';
 import {_, format, resolveText} from './i18n.js';
 import {el, clear, toast, formatNumber} from './ui.js';
 import {renderSummaryTables} from './watch_summary.js';
+import {labKey} from './lab_key.js';
 import {createArchiveDialog, startOf} from './archive_detail.js';
 import {inExoScope} from './evaluation_rows.js';
 
@@ -335,9 +336,9 @@ function renderSummary() {
     summaryRoot.append(el('p', {class: 'muted'}, _('No evaluation matches the filters.')));
     return;
   }
-  const byLab = new Map();
+  const byLab = new Map();      // by the lab file really run: a symlinked copy is the same lab
   for (const row of state.rows) {
-    const lab = row.lab || '';
+    const lab = labKey(row);
     if (!byLab.has(lab)) {
       byLab.set(lab, []);
     }

@@ -276,6 +276,41 @@ def get_lab_list(include_exam_only_labs=False):
     return sorted(result)
 
 
+def canonical_lab_name(lab_name: str) -> str:
+    """The lab a lab name really designates, in the same ``@`` form (``sre@dns1.py``): the path
+    of *lab_name* (relative to ``params.lab_dir`` unless absolute, a ``-p`` project) with its
+    symbolic links resolved, given back relative to the lab directory, a lab of the shipped
+    tree as ``sre@...`` whatever the layout (``params.shipped_lab_link_name``: the fhs layout
+    links ``lab/sre`` to ``shipped_lab_dir``), or absolute when it lies elsewhere.  Two names
+    leading to one file (a course directory linking the shipped labs, a lab moved and linked
+    from its old place) give one canonical name, which the web front-end groups the evaluations
+    of a lab by.  A name whose path does not exist, or names no lab (empty, the lab directory
+    itself), comes back unchanged."""
+    if not lab_name:
+        return lab_name
+    path = lab_name.replace('@', '/')
+    if not os.path.isabs(path):
+        path = os.path.join(params.lab_dir, path)
+    try:
+        real = os.path.realpath(path)
+        if not os.path.exists(real):
+            return lab_name
+        labs_dir = os.path.realpath(params.lab_dir)
+        shipped_dir = os.path.realpath(params.shipped_lab_dir)
+    except (OSError, ValueError):
+        return lab_name
+    real_path = Path(real)
+    if shipped_dir != labs_dir and real_path.is_relative_to(shipped_dir):
+        relative = f"{params.shipped_lab_link_name}/{real_path.relative_to(shipped_dir)}"
+    elif real_path.is_relative_to(labs_dir):
+        relative = str(real_path.relative_to(labs_dir))
+    else:
+        relative = real
+    if relative in ('', '.'):
+        return lab_name
+    return relative.replace('/', '@')
+
+
 _titles_cache: dict = {}
 
 

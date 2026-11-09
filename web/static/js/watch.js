@@ -11,7 +11,8 @@
 // errors is red.  Open goes to the project page (the instructor joins the student's terminals
 // there), Close stops the project.  A click on a row opens the dialog of its last archived
 // evaluation (watch_detail.js), a click on its lab cell the summary of that lab for the rows
-// shown, a click on its group cell the summary of that lab for the whole group (every project
+// shown (the lab file really run, lab_key.js: the paths and symbolic links leading to one file
+// are one lab), a click on its group cell the summary of that lab for the whole group (every project
 // of the pool whose owner has that group, whatever the filter; watch_summary.js); all follow
 // the polls.
 
@@ -23,6 +24,7 @@ import {el, clear, toast, formatTimestamp, formatNumber} from './ui.js';
 import {projectUrl} from './creation.js';
 import {createDetailDialog} from './watch_detail.js';
 import {createSummaryDialog} from './watch_summary.js';
+import {labKey} from './lab_key.js';
 import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, rowGroupKeys, rowMatchesGroup, sortGroups,
         kindsLabel} from './groups_model.js';
 
@@ -272,11 +274,11 @@ function renderRow(row) {
     el('td', {hidden: !groupsEnabled, class: row.group ? 'group' : null,
               title: row.group ? _('Summary of the lab for the students of the group') : null,
               onclick: row.group
-                ? () => summary.open(row.lab_name, title(row), () => state.rows, {group: groupKey(KIND_DEPARTMENT, row.group)})
+                ? () => summary.open(labKey(row), title(row), () => state.rows, {group: groupKey(KIND_DEPARTMENT, row.group)})
                 : null},
        row.group || ''),
     el('td', {class: 'lab', title: _('Summary of the lab for the projects shown'),
-              onclick: () => summary.open(row.lab_name, title(row), () => state.shown)}, title(row)),
+              onclick: () => summary.open(labKey(row), title(row), () => state.shown)}, title(row)),
     el('td', {title: rln}, formatTimestamp(row.started_at)),
     el('td', {title: last ? last.eval_date : ''}, last ? ageText(last.age_s) : _('never')),
     el('td', {class: 'num'}, last ? `${formatNumber(last.grade)} / ${formatNumber(last.max_grade)}` : ''),

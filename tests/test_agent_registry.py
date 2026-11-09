@@ -665,3 +665,28 @@ class TestDisplayView:
             await reg.stop()
             assert seen == [RLN, RLN]
         run(go())
+
+
+class TestCanonicalLab:
+    """The lab file a project really runs (symlinks resolved through the lab tree), next to the
+    lab name the student picked: the key the Watch summaries group the projects by."""
+
+    def test_symlinked_lab_resolves_to_the_file(self, tmp_pub_dir, tmp_lab_dir, monkeypatch):
+        monkeypatch.setattr(params, 'shipped_lab_dir', str(tmp_lab_dir))
+        (tmp_lab_dir / 'sre').mkdir()
+        (tmp_lab_dir / 'sre' / 'dns1.py').write_text('')
+        (tmp_lab_dir / 's3' / 'r306').mkdir(parents=True)
+        (tmp_lab_dir / 's3' / 'r306' / 'dns1.py').symlink_to('../../sre/dns1.py')
+        linked = '20261109104225@@@s3@r306@dns1.py@@@wbouzga'
+        make_project(tmp_pub_dir, rln=linked, managed=False, lab_name='s3@r306@dns1.py')
+        make_project(tmp_pub_dir, rln='20261109104230@@@sre@dns1.py@@@alice', lab_name='sre@dns1.py')
+        make_project(tmp_pub_dir, rln='20261109104240@@@gone@x.py@@@bob', lab_name='gone@x.py')
+        reg = registry()
+        run(reg.tick())
+        by_owner = {p.owner: p for p in reg.projects.values()}
+        assert (by_owner['wbouzga'].lab_name, by_owner['wbouzga'].canonical_lab) == ('s3@r306@dns1.py', 'sre@dns1.py')
+        assert (by_owner['alice'].lab_name, by_owner['alice'].canonical_lab) == ('sre@dns1.py', 'sre@dns1.py')
+        assert by_owner['bob'].canonical_lab == 'gone@x.py'                  # a lab no longer on disk: its name
+        rows = {p.owner: p.to_dict() for p in reg.projects.values()}
+        assert rows['wbouzga']['canonical_lab'] == 'sre@dns1.py' and rows['wbouzga']['lab_name'] == 's3@r306@dns1.py'
+        run(reg.stop())
