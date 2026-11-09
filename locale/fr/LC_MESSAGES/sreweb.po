@@ -1792,7 +1792,7 @@ msgstr "Le groupe n'a aucun membre connu du portail."
 # --- web conferences (BigBlueButton): base.html, webconf_left.html, webconf.js, webconf_dialog.js, tabs/webconf.js, audience_dialog.js ---
 
 msgid "Webconf"
-msgstr "Visio"
+msgstr "Webconf"
 
 msgid "You have left the conference."
 msgstr "Vous avez quitté la conférence."
@@ -1816,7 +1816,7 @@ msgid "Restore"
 msgstr "Restaurer"
 
 msgid "Dock into the Webconf tab"
-msgstr "Ancrer dans l'onglet Visio"
+msgstr "Ancrer dans l'onglet Webconf"
 
 msgid "Full screen"
 msgstr "Plein écran"
@@ -1831,19 +1831,19 @@ msgid "Back to a window"
 msgstr "Revenir en fenêtre"
 
 msgid "Show in the Webconf tab"
-msgstr "Afficher dans l'onglet Visio"
+msgstr "Afficher dans l'onglet Webconf"
 
 msgid "Webconf: {name}"
-msgstr "Visio : {name}"
+msgstr "Webconf : {name}"
 
 msgid "Webconf in a separate window"
-msgstr "Visio dans une fenêtre séparée"
+msgstr "Webconf dans une fenêtre séparée"
 
 msgid "Bring back"
 msgstr "Ramener ici"
 
 msgid "Webconf open in another tab"
-msgstr "Visio ouverte dans un autre onglet"
+msgstr "Webconf ouverte dans un autre onglet"
 
 msgid "Bring here"
 msgstr "Ramener dans cet onglet"
