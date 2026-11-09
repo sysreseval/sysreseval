@@ -997,6 +997,13 @@ class TestInstructorThroughThePortal:
                 view = (await (await h.client.get(f"/api/projects/a01/{result['running_lab_name']}?view=instructor",
                                                   headers=prof)).json())['project']
                 assert view['instructor_mode'] and view['instructor_view'] and 'Solution' in view['informations_html']
+                # the rows of the Projects page carry the mode: the Mode line of the cards (projects.js)
+                mine = {r['running_lab_name']: (r['instructor_mode'], r['debug_project'])
+                        for r in await (await h.client.get('/api/projects', headers=prof)).json()}
+                assert mine[result['running_lab_name']] == (True, False)
+                hers = [(r['instructor_mode'], r['debug_project'])
+                        for r in await (await h.client.get('/api/projects', headers=alice)).json()]
+                assert hers and set(hers) == {(False, False)}
                 # a debug project (sre start --debug-web-project, the lab by its catalog name): refused
                 # to a student too; the exam-only labs are listed to the instructor for it (another
                 # instructor: a user has one start per start_interval)
@@ -1015,6 +1022,9 @@ class TestInstructorThroughThePortal:
                 view = (await (await h.client.get(f"/api/projects/a01/{result['running_lab_name']}",
                                                   headers=prof2)).json())['project']
                 assert view['debug_project'] and 'full_schema' in view['tabs'] and 'log' in view['tabs']
+                mine = {r['running_lab_name']: (r['instructor_mode'], r['debug_project'])
+                        for r in await (await h.client.get('/api/projects', headers=prof2)).json()}
+                assert mine[result['running_lab_name']] == (False, True)
         run(go())
 
     def test_join_through_the_portal(self, tmp_path):

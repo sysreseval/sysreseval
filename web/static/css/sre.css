@@ -23,6 +23,7 @@
   --closed-color: #e08000;          /* devices closed to the students */
   --presentation-bg: #d1c4e9;       /* the top bars of a page while a presentation is on */
   --helper-bg: #b2dfdb;             /* the top bars of an instructor's page on a student's project */
+  --instructor-color: #00796b;      /* the instructor mode of a project card (the teal of the helper bars, as text) */
   --focus-bg: #80cbc4;              /* the top bars of both pages while the instructor focuses the student on it */
   --exam-bg: #ffe082;               /* the bar and the top bar of a student's page while an exam binds them */
 }
@@ -169,7 +170,11 @@ input:invalid { border-color: var(--danger); }
 .card .meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .card .meta div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .actions { display: flex; gap: 6px; }
-.card.debug h2::after { content: " (debug)"; color: var(--closed-color); font-weight: normal; }
+/* the mode of a project (projects.js modeOf): the suffix of the title and the Mode line of the
+   instructors' cards, orange for a debug project (its Connect buttons), teal for the instructor mode */
+.card h2 .mode { font-weight: normal; }
+.card .mode.debug { color: var(--closed-color); }
+.card .mode.instructor { color: var(--instructor-color); }
 
 /* the Projects page without a running project: the logo of the Qt GUI (its _LogoWidget), as
    large as the space under the toolbar allows, aspect ratio kept, centred */

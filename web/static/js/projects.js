@@ -1,6 +1,8 @@
 // The Projects page: the running projects of the user (GET /api/projects every 5 s), one card
 // per project with its Open link and Close button; without a running project, the SRE logo in
-// large (#no-project), as the Qt GUI shows it when no project is open.
+// large (#no-project), as the Qt GUI shows it when no project is open. An instructor's cards say
+// the mode of each project (Standard / Instructor mode / Debug mode: the words of the Project
+// mode radios of the Open page), the two non-standard modes also as a suffix of the title.
 //
 // During an exam (exam.js: the `sre-exam` event and currentExam()) the portal lists the exam
 // projects only, their cards have no Close button and no Open link before the exam starts, and
@@ -27,6 +29,7 @@ const logo = document.getElementById('no-project');   // shown instead of the em
 const examNote = document.getElementById('exam-note');
 const examProgress = new ProgressBox(document.getElementById('exam-progress'));
 const closing = new Set();   // running lab names whose close is in progress
+const isInstructor = document.body.dataset.instructor === 'true';
 
 let projects = [];           // the rows of the last GET /api/projects
 let exam = null;             // the exam binding the student (the `exam` of exam.js's state), or null
@@ -43,6 +46,22 @@ function projectApi(project) {
 
 function examActive() {
   return exam !== null && exam.phase === 'active';
+}
+
+// the mode a project was started in (the Project mode radios of the Open page): a debug project
+// has everything an instructor-mode one has, so it is the mode shown when both flags are set
+function modeOf(project) {
+  if (project.debug_project) {
+    return 'debug';
+  }
+  return project.instructor_mode ? 'instructor' : 'standard';
+}
+
+function modeLabel(mode) {
+  if (mode === 'debug') {
+    return _('Debug mode');
+  }
+  return mode === 'instructor' ? _('Instructor mode') : _('Standard');
 }
 
 function card(project) {
@@ -79,15 +98,22 @@ function card(project) {
     });
     actions.append(closeButton);
   }
-  const meta = el('div', {class: 'meta'},
-    el('div', {}, _('Lab: ') + project.lab_name),
-    el('div', {}, _('Host: ') + project.host),
-    el('div', {}, _('Started: ') + formatTimestamp(project.started_at)));
+  const mode = modeOf(project);
+  const heading = el('h2', {title: rln}, title);
+  if (mode !== 'standard') {
+    heading.append(el('span', {class: 'mode ' + mode}, ` (${mode === 'debug' ? _('debug') : _('instructor')})`));
+  }
+  const meta = el('div', {class: 'meta'}, el('div', {}, _('Lab: ') + project.lab_name));
+  if (isInstructor) {    // a student's projects are all standard: the line would say nothing
+    meta.append(el('div', {class: 'mode ' + mode}, _('Mode: ') + modeLabel(mode)));
+  }
+  meta.append(el('div', {}, _('Host: ') + project.host),
+              el('div', {}, _('Started: ') + formatTimestamp(project.started_at)));
   if (examProject) {
     meta.prepend(el('div', {class: 'exam'}, _('Exam: ') + (resolveText(project.exam.title) || '')));
   }
-  return el('div', {class: 'card' + (project.debug_project ? ' debug' : '') + (examProject ? ' exam' : '')},
-    el('h2', {title: rln}, title),
+  return el('div', {class: 'card' + (mode === 'standard' ? '' : ' ' + mode) + (examProject ? ' exam' : '')},
+    heading,
     meta,
     actions);
 }

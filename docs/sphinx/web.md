@@ -1047,7 +1047,9 @@ below), except `add` and `remove`, which stay with the token.
   by title in the language of the page or by hand, the sub-directories first, the same tree as
   the Qt GUI's; the Flavor form when the lab has one; the progress of the pulls and
   deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
-  when no project is open. Logout asks what to do with the running projects: close them (each
+  when no project is open. An instructor's cards say the mode of each project (Standard /
+  Instructor mode / Debug mode, the words of the Open page), the two non-standard modes also as
+  a coloured suffix after the title. Logout asks what to do with the running projects: close them (each
   as a Close does: the last evaluation when the lab asks for it, then `sre stop`; the dialog
   waits for every answer) or leave them running; with no running project the button logs out
   at once.

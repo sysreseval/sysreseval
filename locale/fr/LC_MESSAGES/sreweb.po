@@ -92,6 +92,9 @@ msgstr "Hôte : "
 msgid "Started: "
 msgstr "Démarré : "
 
+msgid "Mode: "
+msgstr "Mode : "
+
 msgid "Open"
 msgstr "Ouvrir"
 
@@ -918,6 +921,9 @@ msgstr "{n} sélectionné(s)"
 
 msgid "instructor"
 msgstr "enseignant"
+
+msgid "debug"
+msgstr "débogage"
 
 msgid "in a presentation"
 msgstr "en présentation"

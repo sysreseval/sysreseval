@@ -1461,6 +1461,29 @@ class TestJavaScript:
         img = re.search(r'\.empty-logo img\s*\{([^{}]*)\}', css)
         assert img and 'object-fit: contain' in img.group(1)
 
+    def test_projects_cards_say_the_mode(self):
+        """An instructor's cards of the Projects page say the mode of each project (Standard /
+        Instructor mode / Debug mode: the words of the Project mode radios of the Open page, from
+        the `debug_project` / `instructor_mode` flags of the rows of GET /api/projects), the two
+        non-standard modes also as a translated, coloured suffix of the title; a student's
+        projects are all standard, their cards have no Mode line. The suffix was an English-only
+        CSS ::after before (2026-11-09)."""
+        projects = (JS / 'projects.js').read_text(encoding='utf-8')
+        assert "const isInstructor = document.body.dataset.instructor === 'true';" in projects
+        assert 'function modeOf(project)' in projects and 'if (project.debug_project)' in projects
+        for text in ("_('Mode: ')", "_('Standard')", "_('Instructor mode')", "_('Debug mode')",
+                     "_('debug')", "_('instructor')"):
+            assert text in projects, text
+        assert 'if (isInstructor) {' in projects and "{class: 'mode ' + mode}" in projects
+        open_html = (TEMPLATES / 'open.html').read_text(encoding='utf-8')
+        for word in ('Standard', 'Instructor mode', 'Debug mode'):   # the same words as the radios
+            assert f'{{{{ _("{word}") }}}}' in open_html, word
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert '(debug)' not in css and '--instructor-color:' in css
+        assert '.card h2 .mode { font-weight: normal; }' in css
+        assert '.card .mode.debug { color: var(--closed-color); }' in css
+        assert '.card .mode.instructor { color: var(--instructor-color); }' in css
+
     def test_floating_terminal_windows(self):
         """A terminal floats over the page in a window (terminal_windows.js: the chrome, the drag
         by the title bar, the geometry as fractions of #panes), the Connect buttons of the
