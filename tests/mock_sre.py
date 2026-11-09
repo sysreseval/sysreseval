@@ -835,7 +835,8 @@ class Mock:
         the JSON archive records of stdin.  The mock answers a zip (an ODS is one too) holding
         ``records.json`` (the records as received) and ``flags.txt`` (the options given, one per
         line), plus for ``outline`` one PDF stub per student, lab and host and the summary
-        ``outline.ods``, so that the tests see what reached the command."""
+        ``outline.ods`` (``sheet`` and ``summary`` get the ODS ``mimetype`` member instead), so
+        that the tests see what reached the command."""
         if self.user_mode:
             error_quit("you're not allowed to run this command")
         try:
@@ -853,7 +854,7 @@ class Mock:
             flags.append(f'--lang {args.lang}')
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-            if args.kind == 'sheet':
+            if args.kind in ('sheet', 'summary'):
                 zf.writestr('mimetype', 'application/vnd.oasis.opendocument.spreadsheet')
             zf.writestr('records.json', json.dumps(records))
             zf.writestr('flags.txt', '\n'.join(flags))
@@ -942,7 +943,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser_export.add_argument('--random-seed', type=int, default=None, metavar='N')
 
     parser_report = subparsers.add_parser('report')
-    parser_report.add_argument('kind', choices=['sheet', 'outline'])
+    parser_report.add_argument('kind', choices=['sheet', 'outline', 'summary'])
     parser_report.add_argument('--lang', metavar='lang', default=None)
     for flag in ('--separate-instances', '--bonus-in-prefix', '--no-timeline', '--remaining-time', '--no-parts'):
         parser_report.add_argument(flag, action='store_true')

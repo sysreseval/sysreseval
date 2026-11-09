@@ -946,8 +946,9 @@ class Routes:
         return web.json_response(options)
 
     async def api_archives_report(self, request):
-        """Instructors: the spreadsheet (``sheet``, what ``sre sheet`` gives) or the PDF reports
-        (``outline``, what ``sre outline`` gives: a zip of the PDFs and their summary) of the
+        """Instructors: the spreadsheet (``sheet``, what ``sre sheet`` gives), the PDF reports
+        (``outline``, what ``sre outline`` gives: a zip of the PDFs and their summary) or that
+        summary spreadsheet alone (``summary``, what ``sre outline -o`` gives) of the
         evaluations the instructor ticked on the Archives page, built by one agent of the pool
         (``POST /v1/reports/{kind}`` with the rows turned back into records, ``record_of_row``)
         and streamed back as a download.  The body is ``{kind, ids: [row ids], options}``

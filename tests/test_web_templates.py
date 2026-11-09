@@ -292,10 +292,11 @@ class TestTemplates:
         assert '<th hidden>Group</th>' in html and '<label hidden>Group' in html
         assert 'id="archives-notice" class="muted">' in html and 'not stored in a database' in html
         # the selection and its reports: the checkbox column, the bar (hidden without a database)
-        # with the two downloads and the options
+        # with the three downloads and the options
         assert '<th class="select"><input type="checkbox" id="archives-select-all"' in html
         assert '<div id="archives-selection" class="selection-bar" hidden>' in html and 'id="archives-selected"' in html
         assert 'data-report="sheet" disabled' in html and 'data-report="outline" disabled' in html
+        assert 'data-report="summary" disabled' in html and '>Summary spreadsheet</button>' in html
         assert '<details class="report-options">' in html
         for name, checked in (('all_evaluations', True), ('separate_instances', False), ('bonus_in_prefix', False),
                               ('timeline', True), ('remaining_time', False), ('parts', True)):
@@ -311,6 +312,7 @@ class TestTemplates:
         assert "api.fetchRaw('POST', '/api/archives/report'" in source and 'URL.createObjectURL(blob)' in source
         assert "no_timeline: !ticked('timeline')" in source and "no_parts: !ticked('parts')" in source
         assert "event.target.closest('td.link, td.select')" in source and 'Content-Disposition' in source
+        assert "summary: 'summary.ods'" in source
 
     def test_history_page(self):
         events = ('denied', 'login', 'start')

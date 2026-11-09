@@ -748,8 +748,9 @@ class Agent:
 
     async def reports_post(self, request):
         """The downloads of the Archives page of the portal (instructors): the spreadsheet of
-        ``sre sheet`` (``sheet``) or the zip of the PDF reports and their summary of ``sre
-        outline`` (``outline``), built by a privileged ``sre report`` from the JSON archive
+        ``sre sheet`` (``sheet``), the zip of the PDF reports and their summary of ``sre
+        outline`` (``outline``) or that summary spreadsheet alone (``summary``, what ``sre
+        outline -o`` gives), built by a privileged ``sre report`` from the JSON archive
         records of the body (``{"records": [...], "options": {...}}``: the records of
         ``SRE.archive_summary.archive_record`` the portal rebuilt from its database, the options
         turned into the flags of the command by ``reports.report_flags``), in the language of the

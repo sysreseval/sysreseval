@@ -1911,6 +1911,16 @@ msgstr ""
 "Un rapport PDF par étudiant et le tableur récapitulatif, tels que les donne "
 "sre outline"
 
+msgid "Summary spreadsheet"
+msgstr "Tableur récapitulatif"
+
+msgid ""
+"The summary spreadsheet alone: one row per student with the best evaluation, "
+"as sre outline -o gives it"
+msgstr ""
+"Le tableur récapitulatif seul : une ligne par étudiant avec la meilleure "
+"évaluation, tel que le donne sre outline -o"
+
 msgid "Options"
 msgstr "Options"
 

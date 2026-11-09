@@ -27,12 +27,13 @@
 //
 // Reports (POST /api/archives/report): a checkbox per row selects evaluations (kept across the
 // pages and the searches; the header checkbox takes the rows shown), and the bar under the
-// filters downloads a spreadsheet (what `sre sheet` gives) or the PDF reports (what `sre
-// outline` gives: a zip of one PDF per student, lab and host, and the summary spreadsheet) of
-// the selected evaluations, which stand for their whole projects: every stored evaluation of the
-// same projects goes in unless the option "Every evaluation of the selected projects" is unticked
-// (the ticked rows alone then); the other options are the flags of the two commands.  The file is
-// built by one agent of the pool from the stored rows and saved by the browser.
+// filters downloads a spreadsheet (what `sre sheet` gives), the PDF reports (what `sre outline`
+// gives: a zip of one PDF per student, lab and host, and the summary spreadsheet) or that summary
+// spreadsheet alone (what `sre outline -o` gives: one row per student with the best evaluation)
+// of the selected evaluations, which stand for their whole projects: every stored evaluation of
+// the same projects goes in unless the option "Every evaluation of the selected projects" is
+// unticked (the ticked rows alone then); the other options are the flags of the two commands.
+// The file is built by one agent of the pool from the stored rows and saved by the browser.
 
 import './base.js';
 import * as api from './api.js';
@@ -180,7 +181,7 @@ function selectBox(row) {
 }
 
 // the header checkbox (the rows shown: all, some or none of them selected) and the bar: the
-// count of the selected evaluations (those of other pages counted apart) and the two buttons,
+// count of the selected evaluations (those of other pages counted apart) and the report buttons,
 // enabled when something is selected and no report is being built
 function renderSelection() {
   const shown = state.view === 'summary' ? [] : state.rows;
@@ -211,6 +212,9 @@ function readOptions() {
           remaining_time: ticked('remaining_time'), no_parts: !ticked('parts')};
 }
 
+// the file name of a download when the answer carries none, per kind
+const FALLBACK_NAMES = {sheet: 'evaluations.ods', outline: 'reports.zip', summary: 'summary.ods'};
+
 // the file name of a download, from the Content-Disposition of the answer
 function attachmentName(response, fallback) {
   const header = response.headers.get('Content-Disposition') || '';
@@ -237,7 +241,7 @@ async function download(kind) {
     const response = await api.fetchRaw('POST', '/api/archives/report',
                                         {json: {kind, ids: Array.from(selected), options: readOptions()}});
     const blob = await response.blob();
-    const name = attachmentName(response, kind === 'sheet' ? 'evaluations.ods' : 'reports.zip');
+    const name = attachmentName(response, FALLBACK_NAMES[kind] || 'report');
     const url = URL.createObjectURL(blob);
     const link = el('a', {href: url, download: name});
     document.body.append(link);

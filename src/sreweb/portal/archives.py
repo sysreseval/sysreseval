@@ -37,7 +37,8 @@ runs each query on a fresh connection in a thread like ``accesshistory.AccessDat
 lab among the rows matching the other filters (a ``NOT EXISTS`` on the same table).
 
 **Reports.** The downloads of the page (``POST /api/archives/report``: the spreadsheet of ``sre
-sheet``, the PDF reports of ``sre outline``) are built from the rows, not from the archive files
+sheet``, the PDF reports of ``sre outline`` or their summary spreadsheet alone, what ``sre outline
+-o`` gives) are built from the rows, not from the archive files
 of the hosts (which may sleep): the rows the instructor ticked, expanded to every evaluation of
 the same projects unless asked otherwise (``build_report_select``, one statement), become the
 records of ``archive_record`` again (``record_of_row``) and one agent of the pool turns them
@@ -86,7 +87,7 @@ FILTER_KEYS = ('student', 'group', 'lab', 'host', 'since', 'until', 'exam', 'sho
 #: the selected projects; 413 beyond), the body the agent accepts
 #: (``sreweb.agent.reports.MAX_REPORT_BODY``), the options (``all_evaluations`` is the portal's,
 #: the others become the flags of ``sre report``).
-REPORT_KINDS = ('sheet', 'outline')
+REPORT_KINDS = ('sheet', 'outline', 'summary')
 REPORT_MAX_IDS = 1000
 REPORT_MAX_ROWS = 5000
 REPORT_MAX_BODY = 64 << 20

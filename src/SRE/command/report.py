@@ -1,5 +1,6 @@
-"""``sre report``: the spreadsheet of ``sre sheet`` or the PDF reports of ``sre outline``, built
-out of JSON archive records read on stdin instead of ``.zst`` files, written on stdout.
+"""``sre report``: the spreadsheet of ``sre sheet``, the PDF reports of ``sre outline`` or its
+summary spreadsheet alone (``sre outline -o``), built out of JSON archive records read on stdin
+instead of ``.zst`` files, written on stdout.
 
 Internal: what the web agent runs for the Archives page of the portal.  The records are those of
 ``archive_summary.archive_record`` (what the agents send to the portal, what its database keeps
@@ -23,8 +24,9 @@ from .sheet import _setup_i18n
 
 _ = _setup_i18n()
 
-KINDS = ('sheet', 'outline')
-#: The summary spreadsheet of the PDF reports, inside the zip (what ``sre outline -o`` writes).
+KINDS = ('sheet', 'outline', 'summary')
+#: The summary spreadsheet of the PDF reports, inside the zip (what ``sre outline -o`` writes;
+#: the kind ``summary`` gives it alone).
 OUTLINE_SUMMARY_NAME = 'outline.ods'
 
 
@@ -40,9 +42,11 @@ def generate_report(kind: str, records: list, *, lang: str | None = None, separa
                     no_parts: bool = False, warn=None) -> bytes:
     """The bytes of the report of *kind* for *records* (``archive_record`` dicts): the ODS of
     ``sheet.build_sheet`` for ``sheet``; for ``outline`` a zip holding the PDFs of
-    ``outline.build_outline`` (sorted by name) then ``outline.ods``, the summary.  A record
-    without ``running_lab_name`` is skipped through *warn*; ``ValueError`` on an unknown kind or
-    when no record is usable."""
+    ``outline.build_outline`` (sorted by name) then ``outline.ods``, the summary; for ``summary``
+    that summary ODS alone (one row per student, or per instance, with the best evaluation: the
+    PDF options *no_timeline* / *remaining_time* / *no_parts* do not apply).  A record without
+    ``running_lab_name`` is skipped through *warn*; ``ValueError`` on an unknown kind or when no
+    record is usable."""
     if kind not in KINDS:
         raise ValueError(f"unknown report kind: {kind}")
     warn = warn or (lambda text: None)
@@ -58,6 +62,12 @@ def generate_report(kind: str, records: list, *, lang: str | None = None, separa
         buf = io.BytesIO()
         sheet.build_sheet([sheet._record_of_raw(raw) for raw in raws], buf,
                           separate_instances=separate_instances, bonus_in_prefix=bonus_in_prefix)
+        return buf.getvalue()
+    if kind == 'summary':
+        buf = io.BytesIO()
+        outline.build_outline([outline._record_of_raw(raw) for raw in raws], pdf_dir=None, summary_path=buf,
+                              lang=lang, separate_instances=separate_instances, bonus_in_prefix=bonus_in_prefix,
+                              warn=warn)
         return buf.getvalue()
     with tempfile.TemporaryDirectory(prefix='sre-report-') as tmp:
         pdf_dir = Path(tmp) / 'pdf'

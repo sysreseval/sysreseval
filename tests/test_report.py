@@ -217,6 +217,44 @@ class TestGenerateOutline:
         assert len(warnings) == 1 and len(_tables(data)['lab@x.py']) == 6      # the header and five archives
 
 
+class TestGenerateSummary:
+    """``summary``: the ODS of ``sre outline -o`` alone, no PDF."""
+
+    @pytest.mark.parametrize('separate', [False, True])
+    def test_same_summary_as_the_file(self, tmp_path, separate):
+        _fill(tmp_path)
+        summary = tmp_path / 'summary.ods'
+        written = outline.build_outline(outline._collect_archives(_args(tmp_path)), pdf_dir=None,
+                                        summary_path=summary, separate_instances=separate)
+        assert written == [] and not list(tmp_path.glob('**/*.pdf'))
+        data = report.generate_report('summary', _records(tmp_path), separate_instances=separate)
+        assert data.startswith(b'PK')
+        expected, got = _tables(summary.read_bytes()), _tables(data)
+        assert len(got) == 1 and got == expected
+        rows = next(iter(got.values()))
+        # the header then one row per student (alice, bob), or per running instance (bob has two),
+        # with the project_start column then
+        assert len(rows) == (4 if separate else 3) and len(rows[0]) == (11 if separate else 10)
+        assert ('project_start' in rows[0]) is separate
+
+    def test_pdf_flags_are_ignored(self, tmp_path, monkeypatch):
+        _fill(tmp_path)
+        seen = {}
+
+        def fake_build(records, **kwargs):
+            seen.update(kwargs)
+            kwargs['summary_path'].write(b'ods')      # a file object this time
+            return []
+
+        monkeypatch.setattr(outline, 'build_outline', fake_build)
+        data = report.generate_report('summary', _records(tmp_path), lang='fr', separate_instances=True,
+                                      bonus_in_prefix=True, no_timeline=True, remaining_time=True, no_parts=True)
+        assert data == b'ods'
+        assert seen['pdf_dir'] is None and seen['lang'] == 'fr'
+        assert seen['separate_instances'] is True and seen['bonus_in_prefix'] is True
+        assert not {'no_timeline', 'remaining_time', 'no_parts'} & set(seen)
+
+
 # ---------------------------------------------------------------------------
 # action_report: stdin → stdout
 # ---------------------------------------------------------------------------
@@ -258,6 +296,13 @@ class TestActionReport:
         assert out == b''
         with zipfile.ZipFile(target) as archive:
             assert report.OUTLINE_SUMMARY_NAME in archive.namelist() and len(archive.namelist()) == 3
+
+    def test_summary_on_stdout(self, tmp_path, monkeypatch):
+        _fill(tmp_path)
+        out = _run(monkeypatch, {'records': _records(tmp_path)}, kind='summary')
+        tables = _tables(out)
+        assert out.startswith(b'PK') and len(tables) == 1
+        assert sorted(row[0] for row in next(iter(tables.values()))[1:]) == ['alice', 'bob']
 
     def test_no_records(self, monkeypatch, capsys):
         for body in ({'records': []}, {}, [1, 2]):

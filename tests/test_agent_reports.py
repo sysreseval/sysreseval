@@ -55,12 +55,14 @@ class TestHelpers:
         assert R.report_flags('outline', every) == ['--separate-instances', '--bonus-in-prefix', '--no-timeline',
                                                     '--remaining-time', '--no-parts']
         assert R.report_flags('sheet', every) == ['--separate-instances', '--bonus-in-prefix']
+        assert R.report_flags('summary', every) == ['--separate-instances', '--bonus-in-prefix']
         assert R.report_flags('outline', {'no_timeline': False, 'remaining_time': True}) == ['--remaining-time']
-        assert R.report_flags('sheet', {}) == []
+        assert R.report_flags('sheet', {}) == [] and R.report_flags('summary', {'no_parts': True}) == []
 
     def test_filename(self):
         assert R.report_filename('sheet', [record(), record(running_lab_name=RLN_BOB)], NOW) == 'evaluations_dhcp_20261025-1005.ods'
         assert R.report_filename('outline', [record()], NOW) == 'reports_dhcp_20261025-1005.zip'
+        assert R.report_filename('summary', [record()], NOW) == 'summary_dhcp_20261025-1005.ods'
         # two labs: no lab part; a record without lab key falls back on the running lab name
         assert R.report_filename('sheet', [record(), record(running_lab_name=RLN_SSH, lab='')], NOW) == 'evaluations_20261025-1005.ods'
         assert R.report_filename('outline', [{'running_lab_name': RLN_SSH}], NOW) == 'reports_tp_ssh_20261025-1005.zip'
@@ -91,6 +93,15 @@ class TestMock:
         got = members(target.read_bytes())
         assert sorted(n for n in got if n.endswith('.pdf')) == ['alice__dhcp__pool1.pdf', 'bob__dhcp__pool2.pdf']
         assert got['outline.ods'] == b'ods' and got['flags.txt'] == b'--no-parts'
+
+    def test_summary(self, tmp_path):
+        body = json.dumps({'records': [record(), record(running_lab_name=RLN_BOB, login='bob')]}).encode()
+        completed = run_mock(tmp_path, 'report', 'summary', '--separate-instances', user=False, input=body)
+        assert completed.returncode == 0, completed.stderr.decode()
+        got = members(completed.stdout)
+        assert got['mimetype'] == b'application/vnd.oasis.opendocument.spreadsheet'
+        assert got['flags.txt'] == b'--separate-instances'
+        assert not any(name.endswith('.pdf') for name in got) and 'outline.ods' not in got
 
     def test_refusals(self, tmp_path):
         body = json.dumps({'records': [record()]}).encode()
@@ -158,6 +169,14 @@ class TestApi:
                 assert resp.headers['Content-Disposition'].startswith('attachment; filename="evaluations_dhcp_')
                 assert members(await resp.read())['flags.txt'].decode().splitlines() == ['--bonus-in-prefix', '--lang en']
                 assert h.entries()[-1]['argv'] == ['report', '--lang', 'en', '--bonus-in-prefix', '--', 'sheet']
+                # the summary spreadsheet alone: an ODS too, the PDF options left out
+                resp = await h.client.post('/v1/reports/summary', headers=headers(PROF),
+                                           json={'records': records, 'options': {'separate_instances': True, 'no_timeline': True}})
+                assert resp.status == 200 and resp.headers['Content-Type'] == R.KINDS['summary'] == R.KINDS['sheet']
+                assert re.fullmatch(r'attachment; filename="summary_dhcp_\d{8}-\d{4}\.ods"', resp.headers['Content-Disposition'])
+                got = members(await resp.read())
+                assert got['flags.txt'].decode().splitlines() == ['--separate-instances', '--lang en'] and 'outline.ods' not in got
+                assert h.entries()[-1]['argv'] == ['report', '--lang', 'en', '--separate-instances', '--', 'summary']
         run(go())
 
     def test_failure_of_sre(self, tmp_path):

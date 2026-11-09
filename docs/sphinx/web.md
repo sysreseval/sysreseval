@@ -490,7 +490,8 @@ the full name an archive lacks (the projects of the Qt GUI) are completed from t
 when the portal reads one (`attr_group`, `ldap_roles` / `ldap_groups`), as on the Watch page.
 
 The **reports** an instructor downloads from the page (the spreadsheet of `sre sheet`, the PDF
-reports of `sre outline`: *Instructors* below) are built from these rows, not from the archive
+reports of `sre outline` or their summary spreadsheet alone: *Instructors* below) are built from
+these rows, not from the archive
 files of the hosts, which may be asleep or reinstalled: a row holds everything the two commands
 read from an archive (the student, the time, the totals, the grade elements with their titles and
 parts, the number of errors; never the tests nor the answers). The portal turns the rows back
@@ -1235,19 +1236,22 @@ What an instructor gets:
   the rows shown; the selection is kept while paging and searching, the bar says how many are
   selected and how many are not on the page), and the bar under the filters downloads a
   **Spreadsheet** (what `sre sheet` gives: per lab, the table of every evaluation, the
-  *Questions* statistics and the *Sessions* best grades) or the **PDF reports** (what `sre
+  *Questions* statistics and the *Sessions* best grades), the **PDF reports** (what `sre
   outline` gives: a zip holding one PDF per student, lab and host, and `outline.ods`, the summary)
-  of the selected evaluations. A selected evaluation stands for its whole project: every stored
-  evaluation of the same projects goes into the reports (the history table of a PDF, every row of
-  the spreadsheet), as `sre sheet archives/` would do on a host; the *Options* disclosure unticks
-  that (**Every evaluation of the selected projects**: the ticked rows alone then) and gives the
-  flags of the two commands: **One report / row per project instance** (`--separate-instances`:
-  a student who opened a lab twice gets two reports instead of one with two history tables),
-  **"Bonus" before the label** (`--bonus-in-prefix`), **Evaluation history**, **Remaining time
-  column** (exams) and **Group by part** (the PDF only). At most 1000 rows may be ticked and a
-  request may cover 5000 evaluations (the page says so: narrow the selection or untick the
-  option). The file is named after the lab when the selection is of one lab
-  (`evaluations_dhcp_20261109-1430.ods`, `reports_dhcp_20261109-1430.zip`), is built by one agent
+  or the **Summary spreadsheet** (what `sre outline -o` gives: that `outline.ods` alone, one row
+  per student, lab and host with the best evaluation, its time and the mark) of the selected
+  evaluations. A selected evaluation stands for its whole project: every stored evaluation of the
+  same projects goes into the reports (the history table of a PDF, every row of the spreadsheet,
+  the best evaluation of the summary), as `sre sheet archives/` would do on a host; the *Options*
+  disclosure unticks that (**Every evaluation of the selected projects**: the ticked rows alone
+  then) and gives the flags of the two commands: **One report / row per project instance**
+  (`--separate-instances`: a student who opened a lab twice gets two reports, or two summary rows,
+  instead of one with two history tables), **"Bonus" before the label** (`--bonus-in-prefix`),
+  **Evaluation history**, **Remaining time column** (exams) and **Group by part** (the PDF only:
+  the two spreadsheets ignore them). At most 1000 rows may be ticked and a request may cover 5000
+  evaluations (the page says so: narrow the selection or untick the option). The file is named
+  after the lab when the selection is of one lab (`evaluations_dhcp_20261109-1430.ods`,
+  `reports_dhcp_20261109-1430.zip`, `summary_dhcp_20261109-1430.ods`), is built by one agent
   of the pool from the stored rows (*The archives of the evaluations* above) in the language of
   the page, and is saved by the browser; the buttons read *Generating…* meanwhile, a few seconds
   for a class.

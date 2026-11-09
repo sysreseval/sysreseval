@@ -202,6 +202,7 @@ class TestReports:
         assert options == {'all_evaluations': True, 'separate_instances': False, 'bonus_in_prefix': False,
                            'no_timeline': False, 'remaining_time': False, 'no_parts': True}
         assert R.parse_report_request({'kind': 'outline', 'ids': [1]})[2]['all_evaluations'] is True
+        assert R.parse_report_request({'kind': 'summary', 'ids': [1]})[0] == 'summary'
         assert R.parse_report_request({'kind': 'outline', 'ids': [1], 'options': {'all_evaluations': False}})[2]['all_evaluations'] is False
         for body, key in (([], 'object'), ({'kind': 'pdf', 'ids': [1]}, 'kind'), ({'kind': 'sheet'}, 'ids'),
                           ({'kind': 'sheet', 'ids': []}, 'ids'), ({'kind': 'sheet', 'ids': ['1']}, 'ids'),

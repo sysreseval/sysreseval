@@ -78,7 +78,7 @@ EVENTS = {
     ('GET', '/api/history/statistics'): 'history',
     # the Archives page: an instructor reading the evaluation results leaves a trace (the
     # filters asked; ``view=summary`` for the lab summary, ``archive_id`` for one evaluation);
-    # a report downloaded (``kind`` = sheet / outline, ``selected`` rows, ``options``, ``count``
+    # a report downloaded (``kind`` = sheet / outline / summary, ``selected`` rows, ``options``, ``count``
     # of evaluations and ``projects`` sent, the ``host`` that built it)
     ('GET', '/api/archives'): 'archives',
     ('GET', '/api/archives/summary'): 'archives',

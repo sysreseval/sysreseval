@@ -1,7 +1,8 @@
 """The reports of the Archives page of the portal (``POST /v1/reports/{kind}``): the pure helpers
-around ``sre report``, which builds the spreadsheet of ``sre sheet`` (``sheet``) or the zip of the
-PDF reports and the summary of ``sre outline`` (``outline``) from the JSON archive records the
-portal rebuilt from its database.  The request body is ``{"records": [...], "options": {...}}``;
+around ``sre report``, which builds the spreadsheet of ``sre sheet`` (``sheet``), the zip of the
+PDF reports and the summary of ``sre outline`` (``outline``) or that summary spreadsheet alone
+(``summary``, what ``sre outline -o`` gives) from the JSON archive records the portal rebuilt from
+its database.  The request body is ``{"records": [...], "options": {...}}``;
 the options become the flags of the command, the file name of the download is computed here from
 the records (the stderr of ``sre report`` is its message channel, not a place for a name)."""
 import re
@@ -10,9 +11,12 @@ from datetime import datetime
 from SRE.archive_summary import lab_name_of_rln
 
 #: kind -> the content type of the download.
-KINDS = {'sheet': 'application/vnd.oasis.opendocument.spreadsheet', 'outline': 'application/zip'}
-EXTENSIONS = {'sheet': 'ods', 'outline': 'zip'}
-PREFIXES = {'sheet': 'evaluations', 'outline': 'reports'}
+ODS = 'application/vnd.oasis.opendocument.spreadsheet'
+KINDS = {'sheet': ODS, 'outline': 'application/zip', 'summary': ODS}
+EXTENSIONS = {'sheet': 'ods', 'outline': 'zip', 'summary': 'ods'}
+PREFIXES = {'sheet': 'evaluations', 'outline': 'reports', 'summary': 'summary'}
+#: The kinds that are one spreadsheet (no PDF).
+SPREADSHEETS = frozenset({'sheet', 'summary'})
 #: option of the request -> the flag of ``sre report`` (every option is a boolean).
 OPTION_FLAGS = {'separate_instances': '--separate-instances', 'bonus_in_prefix': '--bonus-in-prefix',
                 'no_timeline': '--no-timeline', 'remaining_time': '--remaining-time', 'no_parts': '--no-parts'}
@@ -49,9 +53,9 @@ def parse_report_request(data) -> tuple[list, dict]:
 
 def report_flags(kind: str, options: dict) -> list:
     """The flags of ``sre report`` for *options* (in the order of ``OPTION_FLAGS``; the PDF
-    options left out of a spreadsheet)."""
+    options left out of a spreadsheet, ``sheet`` or ``summary``)."""
     return [flag for key, flag in OPTION_FLAGS.items()
-            if options.get(key) and not (kind == 'sheet' and key in PDF_ONLY)]
+            if options.get(key) and not (kind in SPREADSHEETS and key in PDF_ONLY)]
 
 
 def _lab_part(records: list) -> str:
@@ -69,8 +73,9 @@ def _lab_part(records: list) -> str:
 
 
 def report_filename(kind: str, records: list, now: datetime | None = None) -> str:
-    """``evaluations_<lab>_<YYYYmmdd-HHMM>.ods`` / ``reports_<lab>_<YYYYmmdd-HHMM>.zip`` when the
-    records are of one lab, without the lab part otherwise."""
+    """``evaluations_<lab>_<YYYYmmdd-HHMM>.ods`` / ``reports_<lab>_<YYYYmmdd-HHMM>.zip`` /
+    ``summary_<lab>_<YYYYmmdd-HHMM>.ods`` when the records are of one lab, without the lab part
+    otherwise."""
     now = now or datetime.now()
     lab = _lab_part(records)
     middle = f'_{lab}' if lab else ''

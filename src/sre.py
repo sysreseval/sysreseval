@@ -365,11 +365,12 @@ def parse_args():
                                     '_TESTS_; privileged only)'))
 
     parser_report = subparsers.add_parser('report',
-                                          help=_('Internal (web front-end): the spreadsheet of sheet or the PDF '
-                                                 'reports of outline, built from JSON archive records read on stdin '
-                                                 'and written on stdout'))
-    parser_report.add_argument('kind', choices=['sheet', 'outline'],
-                               help=_('sheet: an ODS spreadsheet; outline: a zip of the PDF reports and the summary ODS'))
+                                          help=_('Internal (web front-end): the spreadsheet of sheet, the PDF '
+                                                 'reports of outline or its summary spreadsheet alone, built from '
+                                                 'JSON archive records read on stdin and written on stdout'))
+    parser_report.add_argument('kind', choices=['sheet', 'outline', 'summary'],
+                               help=_('sheet: an ODS spreadsheet; outline: a zip of the PDF reports and the summary '
+                                      'ODS; summary: the summary ODS alone (what outline -o gives)'))
     parser_report.add_argument('--lang', metavar='lang', default=None,
                                help=_('force language for PDF output (e.g. en, fr)'))
     parser_report.add_argument('--separate-instances', action='store_true',

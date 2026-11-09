@@ -1341,6 +1341,11 @@ class TestArchives:
                 assert resp.headers['Content-Disposition'].startswith('attachment; filename="reports_dhcp_')
                 kind, sql, args = next(s for s in reversed(server.statements) if s[1].startswith('SELECT t.id'))
                 assert 'WHERE t.id IN (%s, %s)' in sql and args == [5, 6, REPORT_MAX_ROWS + 1]
+                # the summary spreadsheet alone (what sre outline -o gives)
+                resp = await post({'kind': 'summary', 'ids': [5]})
+                assert resp.status == 200 and resp.headers['Content-Type'] == 'application/vnd.oasis.opendocument.spreadsheet'
+                assert resp.headers['Content-Disposition'].startswith('attachment; filename="summary_dhcp_')
+                assert json.loads(mock_log.read_text().splitlines()[-1])['argv'] == ['report', '--lang', 'en', '--', 'summary']
                 # unknown rows, the cap, the database down
                 server.select_rows = []
                 assert (await post({'kind': 'sheet', 'ids': [77]})).status == 404
