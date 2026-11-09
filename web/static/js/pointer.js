@@ -1,5 +1,7 @@
 // The presenter's mouse pointer and selection shown on the spectators' pages of a presentation
-// (present.js publishes, project.js applies; the formats are in pointer_model.js).  The pointer
+// (present.js publishes, project.js applies; the formats are in pointer_model.js), and the
+// instructor's shown on the student's page while the instructor focuses the student on the
+// project (focus.js publishes both as frames of the focus socket and applies them).  The pointer
 // travels as text frames of the presenter's presentation socket ({t: 'pointer', pointer:
 // locator | null}, about 25 times a second while the mouse moves, null when it leaves the page),
 // the selection as the `selection` key of the view (PUT .../view, debounced like the scroll).
@@ -10,7 +12,8 @@
 // still mouse moves (a scroll, the output of the terminal under it); the selection of the page
 // (document.getSelection(), inside the pane shown) or of a terminal (xterm's onSelectionChange,
 // through the hook of tabs/terminals.js), counted again when that terminal writes (the cursor
-// goes down, the selected rows stay).
+// goes down, the selected rows stay).  The tracker serves several consumers at once (a
+// presentation and a focus: attach()), and listens to the page only while it has one.
 // createPointerView (a spectator's page): an arrow labelled with the presenter's name over the
 // resolved point, moved again when the page scrolls, resizes or changes (a MutationObserver of
 // the panes and the tab bar, the mutations inside the xterms left out: they rewrite their rows at
@@ -91,10 +94,10 @@ function sizedRect(node, root) {
 // panes, tabbar: the elements; paneOf(): the pane element of the tab shown (null: none);
 // sharedTab(): the id of the tab shown as the spectators know it (null for a tab of this page
 // alone); terminalAt(element): {remoteId, term, screen, box, window} of the terminal holding the
-// element (tabs/terminals.js); onSelection(): the selection changed (the view is published).
-export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminalAt, onSelection}) {
-  let send = null;               // the socket of the presentation while presenting
-  let lastSent = null;           // the JSON of the last locator sent
+// element (tabs/terminals.js).  A consumer (attach()): send(locator | null) -> whether it was
+// sent; onSelection(): the selection changed (getSelection() gives it).
+export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminalAt}) {
+  const consumers = new Set();   // {send, onSelection, lastSent: the JSON of the last locator it sent}
   let lastLocator = null;        // the last locator (sent again after a reconnection)
   let lastPoint = null;          // the last position of the mouse over the page ({x, y}); null: out of it
   let due = false;               // a location of lastPoint is due (the throttle)
@@ -194,14 +197,17 @@ export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminal
     }
   }
 
+  function deliver(consumer, locator) {
+    const key = JSON.stringify(locator);
+    if (key !== consumer.lastSent && consumer.send(locator)) {
+      consumer.lastSent = key;
+    }
+  }
+
   function emit(locator) {
     lastLocator = locator;
-    const key = JSON.stringify(locator);
-    if (key === lastSent) {
-      return;
-    }
-    if (send && send({t: 'pointer', pointer: locator})) {
-      lastSent = key;
+    for (const consumer of consumers) {
+      deliver(consumer, locator);
     }
   }
 
@@ -252,8 +258,10 @@ export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminal
     }
     selection = next;
     selectionKey = key;
-    if (onSelection) {
-      onSelection();
+    for (const consumer of consumers) {
+      if (consumer.onSelection) {
+        consumer.onSelection();
+      }
     }
   }
 
@@ -334,10 +342,8 @@ export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminal
     }
   }
 
-  // -- presenting
-  function start(options) {
-    stop();
-    send = options.send;
+  // -- the consumers: the page is listened to while there is one
+  function install() {
     listen(document, 'mousemove', onMove, {passive: true});
     listen(document.documentElement, 'mouseleave', gone);
     listen(document, 'mouseout', (ev) => {
@@ -356,7 +362,7 @@ export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminal
     onSelectionChange();       // a selection made before the presentation started
   }
 
-  function stop() {
+  function uninstall() {
     for (const [target, type, handler, options] of listeners.splice(0)) {
       target.removeEventListener(type, handler, options);
     }
@@ -367,21 +373,41 @@ export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminal
     lastPoint = null;
     due = false;
     follow(null);
-    if (send) {
-      emit(null);              // best effort: the socket may be gone already
-    }
-    send = null;
-    lastSent = null;
     lastLocator = null;
     watch(null);
     selection = null;
     selectionKey = 'null';
   }
 
-  // the socket was opened again: the spectators lost the pointer meanwhile
-  function resend() {
-    lastSent = null;
-    emit(lastLocator);
+  // A presentation or a focus starts: {send, onSelection} -> {detach(), resend()}.  The new
+  // consumer gets the pointer where it is now; it reads the selection with getSelection().
+  function attach({send, onSelection = null}) {
+    const consumer = {send, onSelection, lastSent: null};
+    consumers.add(consumer);
+    if (consumers.size === 1) {
+      install();
+    } else if (lastLocator) {
+      deliver(consumer, lastLocator);
+    }
+    return {
+      // over: its last frame hides the pointer (best effort: the socket may be gone already)
+      detach() {
+        if (!consumers.delete(consumer)) {
+          return;
+        }
+        consumer.send(null);
+        if (consumers.size === 0) {
+          uninstall();
+        }
+      },
+      // the socket was opened again: the other pages lost the pointer meanwhile
+      resend() {
+        if (consumers.has(consumer)) {
+          consumer.lastSent = null;
+          deliver(consumer, lastLocator);
+        }
+      },
+    };
   }
 
   // the selection as the view carries it; a terminal's is gone with its terminal (closed)
@@ -394,7 +420,7 @@ export function createPointerTracker({panes, tabbar, paneOf, sharedTab, terminal
     return selection;
   }
 
-  return {start, stop, resend, terminalSelection, getSelection};
+  return {attach, terminalSelection, getSelection};
 }
 
 // -- a spectator's page ---------------------------------------------------------------------------

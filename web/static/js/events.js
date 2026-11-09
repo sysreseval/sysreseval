@@ -12,11 +12,13 @@ const FIRST_DELAY = 1000;     // ms
 const MAX_DELAY = 30000;
 
 export class ReconnectingSocket {
-  // onMessage(obj): a decoded frame; onReconnect(): the socket is open again after a drop;
+  // onMessage(obj): a decoded frame; onOpen(): the socket is open (the first time and after
+  // every drop); onReconnect(): the socket is open again after a drop;
   // onClose(ev): the socket closed, before the reconnection is scheduled (false = stop for good)
-  constructor(path, {onMessage, onReconnect = null, onClose = null, protocols = undefined}) {
+  constructor(path, {onMessage, onOpen = null, onReconnect = null, onClose = null, protocols = undefined}) {
     this.path = path;
     this.onMessage = onMessage;
+    this.onOpen = onOpen;
     this.onReconnect = onReconnect;
     this.onClose = onClose;
     this.protocols = protocols;
@@ -36,6 +38,9 @@ export class ReconnectingSocket {
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.delay = FIRST_DELAY;
+      if (this.onOpen) {
+        this.onOpen();
+      }
       if (this.wasConnected && this.onReconnect) {
         this.onReconnect();
       }

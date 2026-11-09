@@ -1611,7 +1611,7 @@ class TestJavaScript:
         assert 'ctx.onSelectionChange = (remoteId, term) => {' in hooks
         assert "from './pointer.js'" in project and 'pointerView.destroy()' in project
         present = (JS / 'present.js').read_text(encoding='utf-8')
-        for token in ('tracker.start(', 'tracker.stop()', 'tracker.resend()'):
+        for token in ('tracker.attach({', 'tracking.detach()', 'tracking.resend()', 'onSelection: schedule'):
             assert token in present, token
         events = (JS / 'events.js').read_text(encoding='utf-8')
         assert '  send(obj) {' in events and 'readyState !== WebSocket.OPEN' in events
@@ -1640,6 +1640,48 @@ class TestJavaScript:
         assert '::highlight(presenter-selection)' in css
         routes = (ROOT / 'src' / 'sreweb' / 'portal' / 'routes.py').read_text(encoding='utf-8')
         assert routes.index('if presenter and msg.type == WSMsgType.TEXT:') < routes.index("frame.get('t') == 'pointer'")
+
+    def test_focus_shows_the_pointer_and_the_selection(self):
+        """While an instructor focuses a student on the project, the student's page shows the
+        instructor's pointer and selection as a spectator's page shows the presenter's: the
+        tracker serves a presentation and a focus at once (attach()), the instructor's page
+        sends both on its focus socket through the filter of project.js (nothing of a private
+        terminal, nothing located in a text shown with the instructor fragments, a tab named by
+        its id), the student's page draws them with a pointer view of its own, gone with the
+        focus; the portal relays the leader's frames only."""
+        pointer = (JS / 'pointer.js').read_text(encoding='utf-8')
+        tracker = pointer[pointer.index('export function createPointerTracker('):pointer.index('export function createPointerView(')]
+        assert 'function attach({send, onSelection = null})' in tracker and 'const consumers = new Set()' in tracker
+        assert 'return {attach, terminalSelection, getSelection};' in tracker
+        assert 'if (consumers.size === 1) {\n      install();' in tracker and 'if (consumers.size === 0) {\n          uninstall();' in tracker
+        focus = (JS / 'focus.js').read_text(encoding='utf-8')
+        for token in ("socket.send({t: 'pointer', pointer: outgoing(locator)})", 'outgoing(tracker.getSelection())',
+                      "socket.send({t: 'selection', selection})", 'tracker.attach({send: sendPointer, onSelection: sendSelection})',
+                      'tracking.detach()', 'tracking.resend()', 'pointerView = createPointerView(message.instructor',
+                      'pointerView.setPointer(message.pointer ? incoming(message.pointer) : null)',
+                      'pointerView.setSelection(message.selection || null)', 'pointerView.destroy()', 'MAX_SELECTION_BYTES'):
+            assert token in focus, token
+        assert "'selection'" not in focus[focus.index('const VIEW_KEYS'):focus.index('\n', focus.index('const VIEW_KEYS'))]
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        outgoing = project[project.index('function focusOutgoing('):project.index('function focusIncoming(')]
+        assert 'terminal && !terminal.private ? item : null' in outgoing
+        assert 'state.instructorView && INSTRUCTOR_VIEW_TABS.includes(item.tab)' in outgoing
+        assert '{...item, button: id}' in outgoing
+        incoming = project[project.index('function focusIncoming('):project.index('function makePointerView(')]
+        assert 'button.dataset.tab === locator.button' in incoming
+        created = project[project.index('focus = createFocus(ctx, {'):project.index('async function main()')]
+        assert 'tracker: isInstructor && !isOwner ? pointerTracker : null' in created
+        assert 'outgoing: focusOutgoing, incoming: focusIncoming, createPointerView: makePointerView' in created
+        # the tracker of any instructor's page, with or without the Present button
+        assert 'if (isInstructor && !spectator) {\n' in project and 'if (pointerTracker && presentButton && presentationBar) {' in project
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        assert terminals.count('private: isPrivate(entry)}') == 2
+        events = (JS / 'events.js').read_text(encoding='utf-8')
+        assert 'if (this.onOpen) {' in events
+        routes = (ROOT / 'src' / 'sreweb' / 'portal' / 'routes.py').read_text(encoding='utf-8')
+        ws = routes[routes.index('async def api_focus_ws('):routes.index('# -- web conferences (BigBlueButton)')]
+        assert 'if leader and msg.type == WSMsgType.TEXT:' in ws and 'max_msg_size=FOCUS_MAX_FRAME' in ws
+        assert 'self.focuses.set_pointer(' in ws and 'self.focuses.set_selection(' in ws and 'self.focuses.instructor_left(' in ws
 
     def test_focus_switch_opens_no_terminal(self):
         """The terminals tab shown for the first time opens a terminal on the first open device

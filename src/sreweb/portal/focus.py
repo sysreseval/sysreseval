@@ -6,7 +6,10 @@ instructor (``leader``), the host and running lab name of the student's project,
 (the owner of the running lab name), the ``view`` the two pages share (the active tab, the
 terminal sub-tab shown, the question selected: opaque here, published by either page with
 ``PUT /api/focus/{id}/view`` and pushed to every socket of both pages, the browsers dropping the
-echo of their own view) and the sockets of the instructor's page and of the student's pages
+echo of their own view), the instructor's mouse ``pointer`` and ``selection`` as their page
+locates them (text frames of the instructor's socket, opaque, pushed to the student's sockets
+only: the student sees where the instructor points and what they select, as the spectators of a
+presentation do) and the sockets of the instructor's page and of the student's pages
 (``GET /api/focus/{id}/ws``).  The presence sockets (``presentation.Presence``) tell the
 student's pages about the focus (``{"t": "focus", "id", "url", "host", "rln", "instructor"}``
 and ``{"t": "focus", "id", "ended": true}``): a page that does not show the project navigates
@@ -30,7 +33,7 @@ from dataclasses import dataclass, field
 from typing import Iterable
 
 from .accesslog import iso_time
-from .presentation import Presence, Watcher, MAX_VIEW_BYTES
+from .presentation import Presence, Watcher, MAX_VIEW_BYTES, take_pointer
 from ..identity import Identity, running_lab_name_owner
 
 log = logging.getLogger('sreweb.portal')
@@ -40,6 +43,8 @@ INSTRUCTOR_GRACE = 60.0
 TICK = 10.0                   # period of the grace check
 #: Close code of a focus socket when the focus is over.
 WS_FOCUS_ENDED = 4412
+MAX_SELECTION_BYTES = 8 * 1024    # the serialized selection of the instructor's page (a frame of their socket)
+FOCUS_MAX_FRAME = 16 * 1024       # a frame of a focus socket (the selection and its JSON envelope)
 
 
 def project_page_url(host: str, rln: str) -> str:
@@ -65,6 +70,10 @@ class Focus:
     student: str                    # the owner of the running lab name
     started_at: float
     view: dict = field(default_factory=dict)
+    pointer: dict | None = None     # the instructor's mouse pointer as their page locates it (opaque); None: out
+    pointer_second: int = 0         # the clock second the pointer frames are counted in, and their count
+    pointer_count: int = 0
+    selection: dict | None = None   # the instructor's selection as their page locates it (opaque); None: none
     instructor_sockets: set = field(default_factory=set)
     student_sockets: set = field(default_factory=set)
     instructor_absent_since: float | None = None    # None while the instructor's page keeps a socket
@@ -158,6 +167,35 @@ class Focuses:
                     watchers.discard(watcher)
         return f
 
+    async def _push_student(self, f: Focus, message: dict):
+        for watcher in list(f.student_sockets):
+            if not await watcher.send_quietly(message):
+                f.student_sockets.discard(watcher)
+
+    async def set_pointer(self, focus_id: str, pointer) -> bool:
+        """The instructor's mouse pointer (a text frame of their socket, ``None`` when the mouse
+        left the page or points at what the student must not see), pushed to the student's
+        sockets and kept for those attaching later; checked and rate-limited like a presenter's
+        (``presentation.take_pointer``; ``False``: dropped)."""
+        f = self._require(focus_id)
+        if not take_pointer(f, pointer, self.clock()):
+            return False
+        await self._push_student(f, {'t': 'pointer', 'pointer': pointer})
+        return True
+
+    async def set_selection(self, focus_id: str, selection) -> Focus:
+        """The instructor's selection (a text frame of their socket: a JSON object of at most
+        ``MAX_SELECTION_BYTES``, ``None`` without one), pushed to the student's sockets and kept
+        for those attaching later."""
+        f = self._require(focus_id)
+        if selection is not None and not isinstance(selection, dict):
+            raise ValueError("the selection must be a JSON object or null")
+        if len(json.dumps(selection, separators=(',', ':'), ensure_ascii=False).encode('utf-8')) > MAX_SELECTION_BYTES:
+            raise ValueError("selection too large")
+        f.selection = selection
+        await self._push_student(f, {'t': 'selection', 'selection': selection})
+        return f
+
     async def end(self, focus_id: str, reason: str = 'requested') -> Focus | None:
         """Over: every socket closed with ``WS_FOCUS_ENDED``, the student's pages told
         (``resync``); idempotent."""
@@ -243,14 +281,30 @@ class Focuses:
         if not f.instructor_sockets:
             f.instructor_absent_since = self.clock()
 
+    async def instructor_left(self, focus_id: str, watcher: Watcher):
+        """A socket of the instructor's page closed (``detach_instructor``); when it was the
+        last one, the student loses the pointer: it is not followed while the page is away (the
+        selection stays; a page connecting again sends both again)."""
+        self.detach_instructor(focus_id, watcher)
+        f = self._focuses.get(focus_id)
+        if f is None or f.instructor_sockets or f.pointer is None:
+            return
+        f.pointer = None
+        await self._push_student(f, {'t': 'pointer', 'pointer': None})
+
     async def attach_student(self, focus_id: str, identity: Identity, watcher: Watcher) -> bool:
-        """The student's page: it gets the shared view at once, the instructor's page the new
-        count.  ``False`` when the focus is over or *identity* is not its student."""
+        """The student's page: it gets the shared view at once, then the instructor's selection
+        and pointer when there are any, the instructor's page the new count.  ``False`` when the
+        focus is over or *identity* is not its student."""
         f = self._focuses.get(focus_id)
         if f is None or identity.login != f.student:
             return False
         f.student_sockets.add(watcher)
         await watcher.send_quietly({'t': 'view', 'view': f.view})
+        if f.selection is not None:
+            await watcher.send_quietly({'t': 'selection', 'selection': f.selection})
+        if f.pointer is not None:
+            await watcher.send_quietly({'t': 'pointer', 'pointer': f.pointer})
         await self._notify_instructor(f)
         return True
 

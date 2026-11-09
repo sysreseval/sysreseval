@@ -26,7 +26,7 @@ from .groups import (Memberships, GroupError, KINDS, KIND_CUSTOM, MAX_BATCH, MAX
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
                            MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
-from .focus import Focus, Focuses, WS_FOCUS_ENDED
+from .focus import Focus, Focuses, WS_FOCUS_ENDED, FOCUS_MAX_FRAME
 from .bbb import BbbError, BbbUnavailable
 from .webconf import Webconfs, Room, RoomGone, ROOM_ID_RE, ROLE_NAMES
 from .exams import (Exams, Exam, Member, PHASE_STARTING, START_PHASES, REASON_ADDRESS, lab_of_rln, normal_lab,
@@ -2112,12 +2112,15 @@ class Routes:
         return web.json_response({'ok': True})
 
     async def api_focus_ws(self, request):
-        """The socket of the instructor's page (the status of the student's page, the view) and
-        of the student's page (the view, at once and on every change); closed with
-        ``WS_FOCUS_ENDED`` when the focus is over, at once when it already is."""
+        """The socket of the instructor's page (the status of the student's page, the view; the
+        page sends the instructor's mouse pointer and selection on it, text frames ``{"t":
+        "pointer", "pointer": ...}`` / ``{"t": "selection", "selection": ...}`` relayed to the
+        student's pages, every other frame ignored) and of the student's page (the view, at once
+        and on every change, the instructor's selection and pointer; its frames are ignored);
+        closed with ``WS_FOCUS_ENDED`` when the focus is over, at once when it already is."""
         identity = self._require_identity(request)
         f = self.focuses.get(request.match_info['id'])
-        ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
+        ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=FOCUS_MAX_FRAME)
         if f is None:
             await ws.prepare(request)
             await ws.close(code=WS_FOCUS_ENDED, message=b"the focus has ended")
@@ -2138,9 +2141,22 @@ class Routes:
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
+                if leader and msg.type == WSMsgType.TEXT:
+                    # the instructor's pointer and selection, relayed to the student (anything else ignored)
+                    try:
+                        frame = msg.json()
+                    except ValueError:
+                        continue
+                    kind = frame.get('t') if isinstance(frame, dict) else None
+                    with contextlib.suppress(ValueError, KeyError):
+                        if kind == 'pointer':
+                            await self.focuses.set_pointer(f.id, frame.get('pointer'))
+                        elif kind == 'selection':
+                            await self.focuses.set_selection(f.id, frame.get('selection'))
         finally:
             if leader:
-                self.focuses.detach_instructor(f.id, watcher)
+                with contextlib.suppress(Exception):
+                    await self.focuses.instructor_left(f.id, watcher)
             else:
                 with contextlib.suppress(Exception):
                     await self.focuses.detach_student(f.id, watcher)

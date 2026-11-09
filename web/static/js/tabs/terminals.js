@@ -641,12 +641,12 @@ export function createTerminalsTab(ctx) {
       return null;
     }
     return {remoteId: entry.remoteId, term: entry.session.term, screen: entry.box.querySelector('.xterm-screen'),
-            box: entry.box, window: entry.win ? entry.win.element : null};
+            box: entry.box, window: entry.win ? entry.win.element : null, private: isPrivate(entry)};
   }
 
   function terminalByRemote(remoteId) {
     const entry = remoteId ? [...sessions.values()].find((e) => e.remoteId === remoteId) : null;
-    return entry ? {session: entry.session, box: entry.box, win: entry.win} : null;
+    return entry ? {session: entry.session, box: entry.box, win: entry.win, private: isPrivate(entry)} : null;
   }
 
   // a helping instructor: the owner's live sessions not yet on this page

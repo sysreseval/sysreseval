@@ -10,6 +10,12 @@
 // page takes the class `focusing` and the student's page the class `focused` (the focus colour
 // of the top bars, sre.css) with a "Followed by" label.  A reloaded instructor's page resumes
 // its focus (GET /api/focus); the portal ends it when that page is gone for a minute.
+// One way only, the student's page also shows the instructor's mouse pointer and selection, as
+// a spectator's page shows the presenter's (pointer.js): the instructor's page sends them as
+// text frames of its focus socket ({t: 'pointer', pointer} / {t: 'selection', selection}, each
+// passed through `outgoing` first: nothing of a private terminal nor of a text the student's
+// page does not have), the portal relays them to the student's page, which draws them with a
+// pointer view made for the time of the focus (`incoming` adapts a locator to this page).
 
 import * as api from './api.js';
 import {toast} from './ui.js';
@@ -20,6 +26,7 @@ import {currentFocus} from './base.js';
 const PUBLISH_DELAY = 150;        // ms between the last change of the view and its PUT
 const WS_FOCUS_ENDED = 4412;
 const VIEW_KEYS = ['tab', 'terminal', 'question'];
+const MAX_SELECTION_BYTES = 8 * 1024;   // the portal's limit (focus.py): a longer selection is not shown
 
 // The shared view: the three keys, null when absent (one JSON form for the comparisons).
 function normalise(view) {
@@ -33,10 +40,18 @@ function normalise(view) {
 
 // leader: an instructor on somebody else's project (the button); otherwise the owner's page,
 // which follows when an instructor focuses it.  getView() / applyView(view) are the page's
-// (project.js), isLoaded() tells whether a view can be applied yet.
-export function createFocus(ctx, {host, rln, login, leader, getView, applyView, isLoaded, elements}) {
+// (project.js), isLoaded() tells whether a view can be applied yet.  The leader's `tracker` (the
+// pointer tracker of pointer.js) and outgoing(locator or selection) -> what the student may get
+// of it (null: nothing); the follower's createPointerView(label) and incoming(locator) -> the
+// locator as this page resolves it.
+export function createFocus(ctx, {host, rln, login, leader, getView, applyView, isLoaded, elements,
+                                  tracker = null, outgoing = (x) => x, incoming = (x) => x,
+                                  createPointerView = null}) {
   let focus = null;         // {id, host, rln, instructor...}: the JSON of the portal, or the presence message
   let socket = null;
+  let tracking = null;      // the leader: the handle of the tracker while focusing
+  let lastSelection = null; // the leader: the JSON of the selection last sent on the socket as it is open now
+  let pointerView = null;   // the follower: the instructor's pointer and selection drawn while followed
   let timer = null;
   let inFlight = null;
   let dirty = false;
@@ -118,6 +133,29 @@ export function createFocus(ctx, {host, rln, login, leader, getView, applyView, 
       applying = false;
     }
     lastKey = JSON.stringify(wanted);
+    if (pointerView) {
+      pointerView.refresh();   // the pane or the terminal the pointer and the selection name may be there now
+    }
+  }
+
+  // -- the leader: the pointer and the selection --------------------------------------------
+  function sendPointer(locator) {
+    return Boolean(socket && socket.send({t: 'pointer', pointer: outgoing(locator)}));
+  }
+
+  function sendSelection() {
+    if (!focus || !socket || !tracker) {
+      return;
+    }
+    let selection = outgoing(tracker.getSelection());
+    let key = JSON.stringify(selection);
+    if (new TextEncoder().encode(key).length > MAX_SELECTION_BYTES) {
+      selection = null;
+      key = 'null';
+    }
+    if (key !== lastSelection && socket.send({t: 'selection', selection})) {
+      lastSelection = key;
+    }
   }
 
   // The project is loaded (or loaded again): the view received before can be applied.
@@ -144,6 +182,20 @@ export function createFocus(ctx, {host, rln, login, leader, getView, applyView, 
           apply(message.view);
         } else if (message.t === 'student' && leader) {
           renderStatus(message.connected);
+        } else if (message.t === 'pointer' && pointerView) {
+          pointerView.setPointer(message.pointer ? incoming(message.pointer) : null);
+        } else if (message.t === 'selection' && pointerView) {
+          pointerView.setSelection(message.selection || null);
+          pointerView.refresh();
+        }
+      },
+      onOpen: () => {
+        // the student's page lost the pointer while the socket was down, and a selection made
+        // meanwhile was not sent
+        lastSelection = null;
+        sendSelection();
+        if (tracking) {
+          tracking.resend();
         }
       },
       onClose: (ev) => {
@@ -158,6 +210,15 @@ export function createFocus(ctx, {host, rln, login, leader, getView, applyView, 
   }
 
   function leave() {
+    if (tracking) {
+      tracking.detach();       // before the socket goes: its last frame hides the pointer
+      tracking = null;
+    }
+    lastSelection = null;
+    if (pointerView) {
+      pointerView.destroy();
+      pointerView = null;
+    }
     if (socket) {
       const s = socket;
       socket = null;
@@ -202,6 +263,9 @@ export function createFocus(ctx, {host, rln, login, leader, getView, applyView, 
     document.body.classList.add('focusing');
     renderStatus(f.connected);
     open(f);
+    if (tracker) {
+      tracking = tracker.attach({send: sendPointer, onSelection: sendSelection});
+    }
   }
 
   async function start() {
@@ -245,6 +309,9 @@ export function createFocus(ctx, {host, rln, login, leader, getView, applyView, 
     if (elements.label) {
       elements.label.textContent = format(_('Followed by {name}'), {name: message.instructor || ''});
       elements.label.hidden = false;
+    }
+    if (createPointerView) {
+      pointerView = createPointerView(message.instructor || '');
     }
     open({id: message.id, host: message.host, rln: message.rln, instructor: message.instructor});
   }

@@ -53,6 +53,28 @@ WS_PRESENTATION_ENDED = 4411
 SPECTATOR_KEY = request_key('spectator')
 
 
+def take_pointer(holder, pointer, now: float) -> bool:
+    """The mouse pointer of a page as it locates it (a JSON object the other pages resolve on
+    their own layout, ``None`` when the mouse left the page) stored as ``holder.pointer`` (a
+    ``Presentation``, a ``focus.Focus``).  ``ValueError`` when it is not an object or exceeds
+    ``MAX_POINTER_BYTES``; at most ``MAX_POINTER_RATE`` locators are taken per clock second
+    (``False``: this one was dropped, nothing stored); a ``None`` always is."""
+    if pointer is not None and not isinstance(pointer, dict):
+        raise ValueError("the pointer must be a JSON object or null")
+    if len(json.dumps(pointer, separators=(',', ':')).encode('utf-8')) > MAX_POINTER_BYTES:
+        raise ValueError("pointer too large")
+    if pointer is not None:
+        second = int(now)
+        if second != holder.pointer_second:
+            holder.pointer_second = second
+            holder.pointer_count = 0
+        if holder.pointer_count >= MAX_POINTER_RATE:
+            return False
+        holder.pointer_count += 1
+    holder.pointer = pointer
+    return True
+
+
 @dataclass(eq=False)
 class Watcher:
     """One WebSocket as the registries see it: how to send a JSON message and how to close it."""
@@ -361,19 +383,8 @@ class Presentations:
         kept for the spectators attaching later.  At most ``MAX_POINTER_RATE`` locators are taken
         per second (``False``: this one was dropped); a ``None`` always is."""
         p = self._require(presentation_id)
-        if pointer is not None and not isinstance(pointer, dict):
-            raise ValueError("the pointer must be a JSON object or null")
-        if len(json.dumps(pointer, separators=(',', ':')).encode('utf-8')) > MAX_POINTER_BYTES:
-            raise ValueError("pointer too large")
-        if pointer is not None:
-            second = int(self.clock())
-            if second != p.pointer_second:
-                p.pointer_second = second
-                p.pointer_count = 0
-            if p.pointer_count >= MAX_POINTER_RATE:
-                return False
-            p.pointer_count += 1
-        p.pointer = pointer
+        if not take_pointer(p, pointer, self.clock()):
+            return False
         await self._push_spectators(p, {'t': 'pointer', 'pointer': pointer})
         return True
 

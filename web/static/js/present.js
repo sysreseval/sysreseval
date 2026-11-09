@@ -29,10 +29,11 @@ const PUBLISH_DELAY = 150;        // ms between the last change of the view and 
 const PUBLISH_MAX_DELAY = 300;    // ms at most between the first change not sent yet and its PUT (a scroll going on)
 const WS_PRESENTATION_ENDED = 4411;
 
-// tracker: the pointer tracker of pointer.js (createPointerTracker), started while presenting
+// tracker: the pointer tracker of pointer.js (createPointerTracker), attached while presenting
 export function createPresenter(ctx, {host, rln, login, groups, getView, getEvaluation, elements, tracker = null}) {
   let presentation = null;        // the JSON of the portal: {id, host, rln, presenter, audience, count, connected}
   let socket = null;
+  let tracking = null;            // the handle of the tracker while presenting
   const counters = {answers: 0};
   let timer = null;
   let since = null;               // when the first change waiting for a PUT happened (ms)
@@ -172,8 +173,8 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
         }
       },
       onReconnect: () => {
-        if (tracker) {
-          tracker.resend();     // the spectators lost the pointer while the socket was down
+        if (tracking) {
+          tracking.resend();    // the spectators lost the pointer while the socket was down
         }
       },
       onClose: (ev) => {
@@ -187,15 +188,19 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
     });
     socket.connect();
     if (tracker) {
-      tracker.start({send: (obj) => Boolean(socket && socket.send(obj))});
+      tracking = tracker.attach({
+        send: (pointer) => Boolean(socket && socket.send({t: 'pointer', pointer})),
+        onSelection: schedule,      // the view carries the selection
+      });
     }
     publish();
     publishEvaluation();      // the table shown now, if any (a resumed page publishes again once its tab has one)
   }
 
   function leave() {
-    if (tracker) {
-      tracker.stop();         // before the socket goes: its last frame hides the pointer
+    if (tracking) {
+      tracking.detach();      // before the socket goes: its last frame hides the pointer
+      tracking = null;
     }
     if (socket) {
       const s = socket;

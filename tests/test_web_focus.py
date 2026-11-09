@@ -170,6 +170,65 @@ class TestFocusRegistry:
         foc.detach_instructor(f.id, wi)                          # harmless
         run(foc.detach_student(f.id, ws))
 
+    def test_pointer_and_selection_of_the_instructor(self):
+        """The instructor's pointer and selection go to the student's sockets only, are kept for
+        a student socket attaching later, and the pointer goes with the instructor's last socket."""
+        clock, presence, foc = registries()
+        presence.add(ALICE, '/', FakeWatcher())
+        f = run(foc.start(PROF, 'a01', RLN))
+        wi, ws = FakeWatcher(), FakeWatcher()
+        run(foc.attach_instructor(f.id, wi))
+        run(foc.attach_student(f.id, ALICE, ws))
+        seen_i = len(wi.sent)
+        assert ws.sent == [view_of({})]                                   # nothing to show yet
+        locator = {'tab': 'informations', 'path': [0, 1], 'fx': 0.5, 'fy': 0.25}
+        selection = {'terminal': 's1', 'start': {'x': 0, 'fromCursor': 1, 'text': 'été'}, 'end': {'x': 3, 'fromCursor': 1, 'text': 'été'}}
+        assert run(foc.set_pointer(f.id, locator)) is True
+        assert run(foc.set_selection(f.id, selection)) is f
+        assert ws.sent[1:] == [{'t': 'pointer', 'pointer': locator}, {'t': 'selection', 'selection': selection}]
+        assert len(wi.sent) == seen_i                                     # never back to the instructor's page
+        assert 'pointer' not in f.to_dict() and 'selection' not in f.to_dict()
+        # a student socket attaching later: the view, the selection, the pointer
+        late = FakeWatcher()
+        run(foc.attach_student(f.id, ALICE, late))
+        assert late.sent == [view_of({}), {'t': 'selection', 'selection': selection}, {'t': 'pointer', 'pointer': locator}]
+        # the refusals: not an object, too large; the size of the selection counted in UTF-8 bytes
+        for bad in ([1], 'x', {'x': 'a' * PR.MAX_POINTER_BYTES}):
+            with pytest.raises(ValueError):
+                run(foc.set_pointer(f.id, bad))
+        for bad in ([1], 'x', {'x': 'a' * FO.MAX_SELECTION_BYTES}):
+            with pytest.raises(ValueError):
+                run(foc.set_selection(f.id, bad))
+        run(foc.set_selection(f.id, {'x': 'é' * (FO.MAX_SELECTION_BYTES // 2 - 10)}))
+        with pytest.raises(KeyError):
+            run(foc.set_pointer('nope', None))
+        with pytest.raises(KeyError):
+            run(foc.set_selection('nope', None))
+        assert f.pointer == locator
+        # the rate: the locators beyond the limit of a clock second are dropped, a null never
+        clock.now = 2000
+        taken = [run(foc.set_pointer(f.id, {'n': n})) for n in range(PR.MAX_POINTER_RATE + 5)]
+        assert taken == [True] * PR.MAX_POINTER_RATE + [False] * 5 and f.pointer == {'n': PR.MAX_POINTER_RATE - 1}
+        assert run(foc.set_pointer(f.id, None)) is True and f.pointer is None
+        clock.now = 2001
+        assert run(foc.set_pointer(f.id, locator)) is True
+        # no selection: told too
+        run(foc.set_selection(f.id, None))
+        assert ws.sent[-1] == {'t': 'selection', 'selection': None} and f.selection is None
+        # one of two instructor sockets goes: the pointer stays; the last one: the student loses it
+        wi2 = FakeWatcher()
+        run(foc.attach_instructor(f.id, wi2))
+        run(foc.instructor_left(f.id, wi2))
+        assert f.pointer == locator and f.instructor_absent_since is None
+        before = len(ws.sent)
+        run(foc.instructor_left(f.id, wi))
+        assert f.pointer is None and ws.sent[before:] == [{'t': 'pointer', 'pointer': None}]
+        assert f.instructor_absent_since == 2001
+        run(foc.instructor_left(f.id, wi))                               # harmless, nothing pushed twice
+        assert len(ws.sent) == before + 1
+        run(foc.end(f.id))
+        run(foc.instructor_left(f.id, wi))
+
     def test_grace_and_shutdown(self):
         clock, presence, foc = registries()
         wa = FakeWatcher()
@@ -283,6 +342,35 @@ class TestFocusThroughThePortal:
                 assert (await h.client.put(f'/api/focus/{fid}/view', json={'view': [1]}, headers={**prof, **P.CSRF})).status == 400
                 assert (await h.client.put(f'/api/focus/{fid}/view', json={'view': {'x': 'a' * 9000}},
                                            headers={**prof, **P.CSRF})).status == 413
+                # the instructor's pointer and selection: frames of their socket, relayed to the
+                # student's page alone; a bad frame, an unknown one and the student's are ignored
+                locator = {'tab': 'questions', 'path': [0], 'fx': 0.5, 'fy': 0.5}
+                selection = {'tab': 'questions', 'start': {'path': [0, 0], 'offset': 1, 'len': 9},
+                             'end': {'path': [0, 0], 'offset': 4, 'len': 9}}
+                await alice_fws.send_json({'t': 'pointer', 'pointer': {'tab': 'x', 'path': [9], 'fx': 0, 'fy': 0}})
+                await alice_fws.send_json({'t': 'selection', 'selection': {'tab': 'x'}})
+                await prof_ws.send_str('not json')
+                await prof_ws.send_json({'t': 'other'})
+                await prof_ws.send_json({'t': 'pointer', 'pointer': 'bad'})
+                await prof_ws.send_json({'t': 'selection', 'selection': [1]})
+                await prof_ws.send_json({'t': 'pointer', 'pointer': locator})
+                assert await asyncio.wait_for(alice_fws.receive_json(), 5) == {'t': 'pointer', 'pointer': locator}
+                await prof_ws.send_json({'t': 'selection', 'selection': selection})
+                assert await asyncio.wait_for(alice_fws.receive_json(), 5) == {'t': 'selection', 'selection': selection}
+                await nothing(prof_ws)
+                # a second page of the student gets them at once; the instructor's page gone, the pointer goes
+                alice_fws2 = await h.client.ws_connect(f'/api/focus/{fid}/ws', headers=alice)
+                assert await asyncio.wait_for(alice_fws2.receive_json(), 5) == view_of(view2)
+                assert await asyncio.wait_for(alice_fws2.receive_json(), 5) == {'t': 'selection', 'selection': selection}
+                assert await asyncio.wait_for(alice_fws2.receive_json(), 5) == {'t': 'pointer', 'pointer': locator}
+                assert await asyncio.wait_for(prof_ws.receive_json(), 5) == status(2)
+                await alice_fws2.close()
+                assert await asyncio.wait_for(prof_ws.receive_json(), 5) == status(1)
+                await prof_ws.close()
+                assert await asyncio.wait_for(alice_fws.receive_json(), 5) == {'t': 'pointer', 'pointer': None}
+                prof_ws = await h.client.ws_connect(f'/api/focus/{fid}/ws', headers=prof)
+                assert await asyncio.wait_for(prof_ws.receive_json(), 5) == status(1)
+                assert await asyncio.wait_for(prof_ws.receive_json(), 5) == view_of(view2)
                 # the end: the instructor (or any instructor), never the student; every socket closed
                 assert (await h.client.delete(f'/api/focus/{fid}', headers={**alice, **P.CSRF})).status == 403
                 assert (await h.client.delete(f'/api/focus/{fid}', headers={**bob, **P.CSRF})).status == 403

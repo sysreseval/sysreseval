@@ -1317,6 +1317,16 @@ What an instructor gets:
   the first time) and the **question** selected,
   in both directions: whichever page changes one of them, the other follows, the last change
   winning.
+  The student's page also shows the instructor's **mouse pointer** (an arrow with their name)
+  and what the instructor **selects**, as the pages of a presentation show the presenter's: on
+  the same paragraph, table cell or tab button, on the same row and column of a terminal both
+  pages have, whatever the sizes of the two windows (nothing is drawn while the student is on
+  another tab). A selected text is highlighted without touching the student's own selection; a
+  selection in a terminal becomes the selection of the student's terminal. One way only: the
+  instructor does not see the student's mouse. Nothing is sent of a private terminal of the
+  instructor, nor of a place in a text the instructor reads with the instructor fragments
+  shown (the *Instructor mode* button on the Informations, Questions and Apply Configuration
+  tabs: the student's page has not got the same text).
   Unlike a presentation, the student keeps every control: they type in the terminals, change
   tab, open terminals, answer questions (and the instructor may write in the answers too, both
   pages showing the same text). The button's tooltip says whether the student's page

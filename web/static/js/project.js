@@ -83,8 +83,8 @@ const focusButton = document.getElementById('focus-student');         // an inst
 const focusLabel = document.getElementById('focus-label');            // a student's page: "Followed by"
 let presenter = null;      // the presentation side of an instructor's page (present.js)
 let focus = null;          // the focus side (focus.js): the instructor's button, or the student's page following
-let pointerTracker = null; // an instructor's page: the mouse and the selection published while presenting (pointer.js)
-let pointerView = null;    // a spectator's page: the presenter's pointer and selection drawn (pointer.js)
+let pointerTracker = null; // an instructor's page: the mouse and the selection published while presenting or focusing (pointer.js)
+let pointerView = null;    // a spectator's page: the presenter's pointer and selection drawn (pointer.js; focus.js keeps its own)
 
 const state = {
   project: null,
@@ -399,6 +399,57 @@ function applyFocusView(view) {
   if (terminals && view.terminal) {
     terminals.focusSession(view.terminal);
   }
+}
+
+// The tabs whose texts differ while the instructor view is on (the student's page never has it).
+const INSTRUCTOR_VIEW_TABS = ['informations', 'questions', 'apply_config'];
+
+// What the student's page of a focus may get of this page's pointer or selection (pointer.js: a
+// locator or a selection; null: nothing).  Never anything of a private terminal (the student
+// must not learn of it, and a terminal selection carries the text of its rows), nor a place in
+// a text this page shows with the instructor fragments (not the same text on the student's
+// page); a place of the tab bar names its tab (`button`): the two pages do not list the same.
+function focusOutgoing(item) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  if (item.terminal) {
+    const terminal = tabs.terminals ? tabs.terminals.terminalByRemote(item.terminal) : null;
+    return terminal && !terminal.private ? item : null;
+  }
+  if (item.tabbar) {
+    const button = Array.isArray(item.path) ? tabBar.childNodes[item.path[0]] : null;
+    const id = button && button.dataset ? button.dataset.tab : null;
+    return id ? {...item, button: id} : null;
+  }
+  if (state.instructorView && INSTRUCTOR_VIEW_TABS.includes(item.tab)) {
+    return null;
+  }
+  return item;
+}
+
+// The instructor's pointer as this page resolves it: a place of the tab bar on the button of
+// the same tab here (null when this page does not list it).
+function focusIncoming(locator) {
+  if (!locator || locator.tabbar !== true) {
+    return locator;
+  }
+  if (!Array.isArray(locator.path) || typeof locator.button !== 'string') {
+    return null;
+  }
+  const index = [...tabBar.childNodes].findIndex((button) => button.dataset && button.dataset.tab === locator.button);
+  return index < 0 ? null : {...locator, path: [index, ...locator.path.slice(1)]};
+}
+
+// The pointer and the selection of another page drawn on this one (a spectator's page: the
+// presenter's; the student's page of a focus: the instructor's), labelled with their name.
+function makePointerView(label) {
+  return createPointerView({
+    panes, tabbar: tabBar,
+    paneOf: (id) => (id === currentTab && tabs[id] ? tabs[id].element : null),
+    terminalByRemote: (id) => (tabs.terminals ? tabs.terminals.terminalByRemote(id) : null),
+    label,
+  });
 }
 
 // The presenter's view, as present.js publishes it to the spectators: the active tab, the
@@ -725,19 +776,17 @@ function setupControls() {
 
 // -- start -------------------------------------------------------------------------------------
 
-if (isInstructor && !spectator && presentButton && presentationBar) {
-  // the mouse and the selection of the presenter, located on the pane shown, the tab bar or a
-  // terminal (pointer.js), published while presenting
+if (isInstructor && !spectator) {
+  // the mouse and the selection of the instructor, located on the pane shown, the tab bar or a
+  // terminal (pointer.js), published while presenting (present.js) or focusing (focus.js)
   pointerTracker = createPointerTracker({
     panes, tabbar: tabBar, sharedTab,
     paneOf: () => (currentTab && tabs[currentTab] ? tabs[currentTab].element : null),
     terminalAt: (element) => (tabs.terminals ? tabs.terminals.terminalAt(element) : null),
-    onSelection: () => {
-      if (presenter) {
-        presenter.schedule();
-      }
-    },
   });
+}
+
+if (pointerTracker && presentButton && presentationBar) {
   presenter = createPresenter(ctx, {
     host: body.dataset.host || '', rln: body.dataset.rln || '', login, groups: groupSourcesEnabled, getView,
     getEvaluation: () => (tabs.evaluation ? tabs.evaluation.getTable() : null),
@@ -753,21 +802,19 @@ if (isInstructor && !spectator && presentButton && presentationBar) {
 
 if (spectator) {
   // the presenter's pointer (an arrow with their name) and selection drawn on this page
-  pointerView = createPointerView({
-    panes, tabbar: tabBar,
-    paneOf: (id) => (id === currentTab && tabs[id] ? tabs[id].element : null),
-    terminalByRemote: (id) => (tabs.terminals ? tabs.terminals.terminalByRemote(id) : null),
-    label: body.dataset.presenter || '',
-  });
+  pointerView = makePointerView(body.dataset.presenter || '');
 }
 
 if (!spectator && focusLabel && (isOwner || (isInstructor && focusButton))) {
-  // an instructor on a student's project leads a focus; the owner's page follows one
+  // an instructor on a student's project leads a focus (their pointer and selection shown on the
+  // student's page); the owner's page follows one
   focus = createFocus(ctx, {
     host: body.dataset.host || '', rln: body.dataset.rln || '', login, leader: isInstructor && !isOwner,
     getView: focusView, applyView: applyFocusView,
     isLoaded: () => Boolean(state.project) && !state.closed,
     elements: {button: focusButton, label: focusLabel},
+    tracker: isInstructor && !isOwner ? pointerTracker : null,
+    outgoing: focusOutgoing, incoming: focusIncoming, createPointerView: makePointerView,
   });
 }
 
