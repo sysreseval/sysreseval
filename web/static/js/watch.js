@@ -6,7 +6,10 @@
 // terminals and whether the web (or the Qt GUI) runs it.  The rows can be
 // sorted by any column, filtered by text and restricted to one group (the select, by kind: the
 // departments, the directory groups and the custom groups of GET /api/groups and of the rows,
-// groups_model.js; kept in the URL as ?group=kind:name, a bare name being a department); a row
+// groups_model.js; kept in the URL as ?group=kind:name, a bare name being a department, and
+// remembered by the browser (localStorage sreweb.watch): the page comes back with the group
+// chosen last, through the Watch link of the header or in a new tab, until another one or All
+// groups is chosen, a link with ?group= winning and being remembered); a row
 // without a recent evaluation is amber, one whose last evaluation had
 // errors is red.  Open goes to the project page (the instructor joins the student's terminals
 // there), Close stops the project.  A click on a row opens the dialog of its last archived
@@ -30,6 +33,7 @@ import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, rowGroupKeys, 
 
 const REFRESH_INTERVAL = 5000;
 const STALE_AFTER_S = 900;     // without an evaluation younger than this (or 2 × the lab's interval): amber
+const STORAGE_KEY = 'sreweb.watch';   // the group chosen last, remembered across the pages: {group: key}
 
 const table = document.getElementById('watch');
 const body = table.querySelector('tbody');
@@ -208,6 +212,32 @@ function storeGroupInUrl() {
   window.history.replaceState(null, '', url);
 }
 
+// the group the browser remembers: null when none (every group), '' (the rows without
+// department) or the key of a group
+function storedGroup() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null');
+    if (!stored || typeof stored !== 'object' || typeof stored.group !== 'string') {
+      return null;
+    }
+    return stored.group === '' ? '' : normalizeKey(stored.group);
+  } catch (e) {
+    return null;       // private browsing, blocked storage or garbage
+  }
+}
+
+function storeGroup() {
+  try {
+    if (state.group === null) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({group: state.group}));
+    }
+  } catch (e) {
+    // private browsing: the group lasts for the page only
+  }
+}
+
 function rowClass(row) {
   const last = row.last_eval;
   if (last && last.errors > 0) {
@@ -336,12 +366,22 @@ function setupControls() {
   });
   if (groupSourcesEnabled) {
     state.group = groupFromUrl();
+    if (state.group === null) {
+      // no ?group= in the URL (the Watch link of the header): the group chosen last
+      state.group = storedGroup();
+      if (state.group !== null) {
+        storeGroupInUrl();
+      }
+    } else {
+      storeGroup();    // a link with ?group= wins and is the remembered one from now on
+    }
     selectGroup();
     groupSelect.addEventListener('change', () => {
       const option = groupSelect.selectedOptions[0];
       const kind = option ? option.dataset.kind : 'all';
       state.group = kind === 'all' ? null : (kind === 'none' ? '' : option.value);
       storeGroupInUrl();
+      storeGroup();
       render();
     });
   }

@@ -1169,7 +1169,10 @@ What an instructor gets:
   and the custom groups of the Groups page, *User groups* above; every group, one group, or *No
   group*: the projects whose owner has no department, those started on the Qt GUI carrying none
   unless the portal reads the directory, above), the chosen group kept in the URL
-  (`?group=kind:name`, a bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
+  (`?group=kind:name`, a bookmark per class group) and remembered by the browser
+  (`localStorage`): the page comes back with the group chosen last, through the *Watch* link
+  of the header or in a new tab, until another group or *All groups* is chosen, a link with
+  `?group=` winning and becoming the remembered one; refreshed every 5 s; a row whose last evaluation had errors is
   red, one without an evaluation younger than 15 minutes (or twice the lab's evaluation
   interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
   their own host (`params.archive_dirs`) on demand, nothing is scanned while nobody watches.

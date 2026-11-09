@@ -1246,6 +1246,8 @@ class TestJavaScript:
         watch = (JS / 'watch.js').read_text(encoding='utf-8')
         assert 'rowMatchesGroup(row, state.group)' in watch and "el('optgroup'" in watch
         assert "table.dataset.groupSources === 'true'" in watch and 'row.group === state.group' not in watch
+        # the group chosen last is remembered by the browser (tests/test_web_watch_browser.py drives it)
+        assert "'sreweb.watch'" in watch and 'window.localStorage' in watch and 'storedGroup()' in watch
         summary = (JS / 'watch_summary.js').read_text(encoding='utf-8')
         assert 'rowMatchesGroup(r, c.group)' in summary and 'r.group === c.group' not in summary
         audience = (JS / 'audience_dialog.js').read_text(encoding='utf-8')
