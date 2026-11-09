@@ -11,9 +11,11 @@ wrapping the WebSockets, the tests hand them fakes):
   project, the audience (explicit logins and groups, as ``groups.py`` keys them: a student of a
   listed group who connects later is included; a department by the group string of the identity,
   a directory or custom group by the memberships the portal knows, ``Presentations(memberships=)``),
-  the ``view`` the presenter's page publishes (the active tab, the
-  open terminals...: opaque here but for ``instructorView``), and the sockets of the presenter's
-  page and of the spectators' pages (``GET /api/presentations/{id}/ws``).
+  the ``view`` the presenter's page publishes (the active tab, the open terminals, the
+  selection...: opaque here but for ``instructorView``), the presenter's mouse ``pointer``
+  (the text frames of their socket, relayed to the spectators as they come, kept for a
+  spectator attaching later, dropped when the presenter's page has no socket left), and the
+  sockets of the presenter's page and of the spectators' pages (``GET /api/presentations/{id}/ws``).
 
 A login is in at most one presentation at a time: the newest one that includes them wins, and
 ``resync()`` recomputes it after every change and pushes the delta to the browsers (so a student
@@ -41,6 +43,8 @@ PRESENTER_GRACE = 60.0
 TICK = 10.0                   # period of the grace check
 MAX_VIEW_BYTES = 8 * 1024     # the serialized view dict
 MAX_EVALUATION_BYTES = 256 * 1024   # the serialized evaluation table of the presenter's page
+MAX_POINTER_BYTES = 1024      # the serialized locator of the presenter's mouse pointer (a frame of their socket)
+MAX_POINTER_RATE = 60         # pointer frames taken per clock second and presentation (the excess dropped)
 MAX_AUDIENCE = 1000           # logins + groups of one presentation
 MAX_PAGE_LENGTH = 200         # the ``?page=`` of a presence socket
 #: Close code of a presentation socket when the presentation is over.
@@ -158,6 +162,9 @@ class Presentation:
     started_at: float
     view: dict = field(default_factory=dict)
     evaluation: dict | None = None   # the table of the presenter's Evaluation tab, as their page shows it
+    pointer: dict | None = None      # the presenter's mouse pointer as their page locates it (opaque); None: out
+    pointer_second: int = 0          # the clock second the pointer frames are counted in, and their count
+    pointer_count: int = 0
     presenter_sockets: set = field(default_factory=set)
     spectator_sockets: dict = field(default_factory=dict)     # login -> set[Watcher]
     presenter_absent_since: float | None = None               # None while a presenter socket is open
@@ -347,6 +354,29 @@ class Presentations:
         await self._push_spectators(p, {'t': 'evaluation', 'evaluation': evaluation})
         return p
 
+    async def set_pointer(self, presentation_id: str, pointer) -> bool:
+        """The presenter's mouse pointer as their page locates it (a text frame of their socket:
+        a JSON object the spectators' pages resolve on their own layout, ``None`` when the mouse
+        left the page), of at most ``MAX_POINTER_BYTES``, pushed to every spectator socket and
+        kept for the spectators attaching later.  At most ``MAX_POINTER_RATE`` locators are taken
+        per second (``False``: this one was dropped); a ``None`` always is."""
+        p = self._require(presentation_id)
+        if pointer is not None and not isinstance(pointer, dict):
+            raise ValueError("the pointer must be a JSON object or null")
+        if len(json.dumps(pointer, separators=(',', ':')).encode('utf-8')) > MAX_POINTER_BYTES:
+            raise ValueError("pointer too large")
+        if pointer is not None:
+            second = int(self.clock())
+            if second != p.pointer_second:
+                p.pointer_second = second
+                p.pointer_count = 0
+            if p.pointer_count >= MAX_POINTER_RATE:
+                return False
+            p.pointer_count += 1
+        p.pointer = pointer
+        await self._push_spectators(p, {'t': 'pointer', 'pointer': pointer})
+        return True
+
     async def _push_spectators(self, p: Presentation, message: dict):
         """*message* to every spectator socket; a socket that cannot be written is forgotten."""
         for login, watchers in list(p.spectator_sockets.items()):
@@ -432,10 +462,21 @@ class Presentations:
         if not p.presenter_sockets:
             p.presenter_absent_since = self.clock()
 
+    async def presenter_left(self, presentation_id: str, watcher: Watcher):
+        """A socket of the presenter's page closed (``detach_presenter``); when it was the last
+        one, the spectators lose the pointer: it is not followed while the page is away (a page
+        connecting again sends it again)."""
+        self.detach_presenter(presentation_id, watcher)
+        p = self._presentations.get(presentation_id)
+        if p is None or p.presenter_sockets or p.pointer is None:
+            return
+        p.pointer = None
+        await self._push_spectators(p, {'t': 'pointer', 'pointer': None})
+
     async def attach_spectator(self, presentation_id: str, identity: Identity, watcher: Watcher) -> bool:
         """A spectator's page: it gets the view at once, then the presenter's evaluation table
-        when there is one.  ``False`` when the presentation is over or *identity* is not in the
-        audience."""
+        when there is one, then the presenter's pointer when it is on the page.  ``False`` when
+        the presentation is over or *identity* is not in the audience."""
         p = self._presentations.get(presentation_id)
         if p is None or not p.includes(identity):
             return False
@@ -443,6 +484,8 @@ class Presentations:
         await watcher.send_quietly({'t': 'view', 'view': p.view})
         if p.evaluation is not None:
             await watcher.send_quietly({'t': 'evaluation', 'evaluation': p.evaluation})
+        if p.pointer is not None:
+            await watcher.send_quietly({'t': 'pointer', 'pointer': p.pointer})
         await self._notify_presenter(p)
         return True
 

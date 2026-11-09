@@ -1,6 +1,7 @@
 // Reconnecting WebSockets of the pages: text frames holding one JSON object each.  A socket is
 // reopened with an exponential backoff when it drops (the page re-fetches everything then,
 // through onReconnect); onClose(ev) may stop that (return false) on a close code meaning "over".
+// send(obj) writes one JSON object while the socket is open (the pointer frames of a presenter).
 // ProjectEvents is the events socket of an open project page ({api_base}/events:
 // {"t": "info" | "answers" | "log" | "terminals" | "removed", ...}); the presence socket of
 // base.js and the presentation sockets of project.js / present.js are plain ReconnectingSockets.
@@ -75,6 +76,15 @@ export class ReconnectingSocket {
       this.connect();
     }, this.delay);
     this.delay = Math.min(this.delay * 2, MAX_DELAY);
+  }
+
+  // One JSON object to the server; false when the socket is not open (the object is lost).
+  send(obj) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    this.socket.send(JSON.stringify(obj));
+    return true;
   }
 
   // Change the path (the instructor view toggles a query string) and reconnect at once.

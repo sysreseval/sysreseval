@@ -1980,9 +1980,12 @@ class Routes:
         return web.json_response({'ok': True})
 
     async def api_presentation_ws(self, request):
-        """The socket of the presenter's page (the audience counts) and of a spectator's page
-        (the view, at once and on every change); closed with ``WS_PRESENTATION_ENDED`` when the
-        presentation is over, at once when it already is."""
+        """The socket of the presenter's page (the audience counts; the page sends the presenter's
+        mouse pointer on it, text frames ``{"t": "pointer", "pointer": ...}`` relayed to the
+        spectators, every other frame ignored) and of a spectator's page (the view, at once and
+        on every change, the presenter's evaluation table and pointer; its frames are ignored);
+        closed with ``WS_PRESENTATION_ENDED`` when the presentation is over, at once when it
+        already is."""
         identity = self._require_identity(request)
         p = self.presentations.get(request.match_info['id'])
         ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
@@ -2008,9 +2011,19 @@ class Routes:
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
+                if presenter and msg.type == WSMsgType.TEXT:
+                    # the presenter's mouse pointer, relayed to the spectators (anything else ignored)
+                    try:
+                        frame = msg.json()
+                    except ValueError:
+                        continue
+                    if isinstance(frame, dict) and frame.get('t') == 'pointer':
+                        with contextlib.suppress(ValueError, KeyError):
+                            await self.presentations.set_pointer(p.id, frame.get('pointer'))
         finally:
             if presenter:
-                self.presentations.detach_presenter(p.id, watcher)
+                with contextlib.suppress(Exception):
+                    await self.presentations.presenter_left(p.id, watcher)
             else:
                 with contextlib.suppress(Exception):
                     await self.presentations.detach_spectator(p.id, identity.login, watcher)

@@ -374,8 +374,8 @@ session and the request following a logout opens another one. The other events:
   `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
   `login`, the `presenter`); the project calls a spectator makes keep their own events, their
-  close lines carrying `spectator=1`. The presence socket every page keeps open and the view the
-  presenter publishes are not logged;
+  close lines carrying `spectator=1`. The presence socket every page keeps open, the view the
+  presenter publishes and the pointer frames of their presentation socket are not logged;
 - the focus on a student (*Instructors* below): `focus_start` (the instructor's `login`, `host`,
   `rln`, the `student`) and `focus_stop` (the `instructor` of the focus, the `student`); the
   view the two pages share and their sockets are not logged;
@@ -1109,7 +1109,13 @@ below), except `add` and `remove`, which stay with the token.
   instructor does; so does the position inside the tab: the scroll of the text, of the question
   (its description and the list of titles), of the tables and of the log (the line at the top of
   the instructor's pane is at the top of the student's, whatever the size of their window or
-  their font size), and the pan and zoom of the schema. The Evaluation tab shows the table of
+  their font size), and the pan and zoom of the schema. The instructor's mouse pointer is drawn
+  on the student's page too, an arrow carrying the instructor's name, and what the instructor
+  selects — in the texts, the question, the tables, the log, the schema, or in a terminal — is
+  highlighted there (in a terminal: selected in the student's read-only terminal, in lavender);
+  both are placed on the element, the word or the terminal cell the instructor's mouse is on,
+  never at the same pixel, so that a student with another window size, font size or word wrap
+  sees the pointer on the same word. The Evaluation tab shows the table of
   the instructor's page as it is (the letters of their own self-evaluation included), again
   after each evaluation. The title bar of the presented project is coloured (lavender) and names the
   instructor presenting it. The student's own page is untouched underneath, terminals included:
@@ -1356,7 +1362,12 @@ What an instructor gets:
   page: the tab, the terminals the instructor opens (joined read-only: the students see the same
   shell, cannot type, and do not change its size), the question, the schema options, the
   *Instructor mode* texts, the Display tab view-only, the scroll of the tab shown and the pan and
-  zoom of the schema (followed as the instructor scrolls, a few times a second), and the
+  zoom of the schema (followed as the instructor scrolls, a few times a second), the
+  instructor's mouse pointer (an arrow with their name, sent on the presentation socket about
+  25 times a second while it moves over the panes, the tab bar or a terminal; nothing is shown
+  while it is elsewhere) and the text the instructor selects (in the page, highlighted without
+  touching the student's own selection; in a terminal, selected in the student's read-only
+  terminal), and the
   Evaluation tab shows them the table of the instructor's page as it is, sent through the portal
   after each evaluation, in the instructor's language (the archive of the project holds numbers
   only, while the instructor's own self-evaluation may be letters). A reloaded page goes on
@@ -1580,7 +1591,11 @@ once.
   portal never forwards what a spectator's browser sends on a terminal socket and the agent
   attaches a read-only client that cannot type nor resize, and the display socket of a spectator
   goes through a filter dropping the RFB input and resize messages (an unexpected message closes
-  it). The presentations live in the portal's memory.
+  it). From the browsers, the presentation socket takes the pointer frames of the presenter's
+  page only (a JSON object of at most 1 KiB locating the mouse, at most 60 a second, every other
+  frame ignored; a spectator's frames are ignored); the pointer and the selection name nodes of
+  the page and cells of a terminal, never a pixel, and a spectator's page resolves them on its
+  own layout. The presentations live in the portal's memory.
 
 **The virtual desktops.** Each `Xvnc` listens on TCP port 6000+N on every interface of the pool
 host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
@@ -1615,6 +1630,16 @@ the browser reaches a desktop through the owner check of the portal and of the a
 - A presentation ends when the portal restarts (nothing is kept on disk); the agents log the
   spectators under the presenter's login (the connection log of the portal has the real ones); a
   spectator's terminal shows the presenter's grid at a smaller font when their window is smaller;
+  the presenter's pointer and selection are shown where the student's page holds the same
+  element: a student reading the lab in another language sees the pointer on the matching
+  paragraph and no selection there; in a terminal they follow the text (the rows are counted
+  from the cursor, a selection is found again by the text of its first and last rows), so a
+  selection of rows older than the student's 64 KiB replay is not shown, the student's terminal
+  does not follow the scrollback position of the presenter's (a pointer on rows the student's
+  screen does not show is hidden), and when several users type in the presented terminal its
+  pty takes the smallest window, so a wider presenter's terminal wraps the long lines elsewhere
+  and the pointer and the selection on them may miss; the pointer is not shown while the
+  presenter's page has no socket open;
   a presented project never idles out while it is watched. A focus ends when the portal restarts
   too; while one is on, the student's other browser tabs all go to the project.
 - A web conference is forgotten when the portal restarts (the meeting goes on on the

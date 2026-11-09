@@ -7,11 +7,13 @@
 // audience changes it (PUT .../audience) and Stop presenting ends it (DELETE).  The view the
 // spectators follow (the active tab, the open terminals, the question, the schema options, the
 // instructor texts, the position inside the tab shown — the scroll, the pan and zoom of the
-// schema — and the counter telling that the answers changed) is published with PUT .../view a
-// moment after each change: the tabs call ctx.onViewChange() / ctx.onScroll(), project.js
-// builds the view (getView).  A scroll in progress is followed: the PUT waits for a pause,
-// PUBLISH_MAX_DELAY at most; a change leaving the view as last sent (a terminal's scrollback
-// scrolled) sends nothing.  The table of the Evaluation tab travels apart (PUT .../evaluation,
+// schema —, the selection of the presenter (pointer.js) and the counter telling that the
+// answers changed) is published with PUT .../view a moment after each change: the tabs call
+// ctx.onViewChange() / ctx.onScroll(), project.js builds the view (getView).  A scroll in
+// progress is followed: the PUT waits for a pause, PUBLISH_MAX_DELAY at most; a change leaving
+// the view as last sent (a terminal's scrollback scrolled) sends nothing.  The presenter's mouse
+// pointer travels on the socket itself (the tracker of pointer.js sends its frames while the
+// presentation runs, and again after a reconnection).  The table of the Evaluation tab travels apart (PUT .../evaluation,
 // publishEvaluation, called through ctx.onEvaluated() after each change of the table and at the
 // start): the spectators show it as it is, the letters of the presenter's own self-evaluation
 // included, which no archive of the project holds.  A reloaded page resumes its presentation
@@ -27,7 +29,8 @@ const PUBLISH_DELAY = 150;        // ms between the last change of the view and 
 const PUBLISH_MAX_DELAY = 300;    // ms at most between the first change not sent yet and its PUT (a scroll going on)
 const WS_PRESENTATION_ENDED = 4411;
 
-export function createPresenter(ctx, {host, rln, login, groups, getView, getEvaluation, elements}) {
+// tracker: the pointer tracker of pointer.js (createPointerTracker), started while presenting
+export function createPresenter(ctx, {host, rln, login, groups, getView, getEvaluation, elements, tracker = null}) {
   let presentation = null;        // the JSON of the portal: {id, host, rln, presenter, audience, count, connected}
   let socket = null;
   const counters = {answers: 0};
@@ -168,6 +171,11 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
           renderStatus(message.count, message.connected);
         }
       },
+      onReconnect: () => {
+        if (tracker) {
+          tracker.resend();     // the spectators lost the pointer while the socket was down
+        }
+      },
       onClose: (ev) => {
         if (ev.code === WS_PRESENTATION_ENDED) {
           leave();
@@ -178,11 +186,17 @@ export function createPresenter(ctx, {host, rln, login, groups, getView, getEval
       },
     });
     socket.connect();
+    if (tracker) {
+      tracker.start({send: (obj) => Boolean(socket && socket.send(obj))});
+    }
     publish();
     publishEvaluation();      // the table shown now, if any (a resumed page publishes again once its tab has one)
   }
 
   function leave() {
+    if (tracker) {
+      tracker.stop();         // before the socket goes: its last frame hides the pointer
+    }
     if (socket) {
       const s = socket;
       socket = null;

@@ -257,6 +257,66 @@ class TestPresentationsRegistry:
         run(pres.shutdown())
         assert pres.listing() == []
 
+    def test_pointer_of_the_presenter(self):
+        """The presenter's mouse pointer (set_pointer: a text frame of their socket): validated,
+        pushed to the spectators at once, kept for those attaching later (after the view and the
+        evaluation table), null when the mouse left the page; at most MAX_POINTER_RATE locators a
+        second (a null always passes); dropped, the spectators told, when the presenter's last
+        socket closes (presenter_left)."""
+        clock, presence, pres = registries()
+        presence.add(ALICE, '/', FakeWatcher())
+        p = run(pres.start(PROF, 'a01', RLN, ({'alice'}, set())))
+        presenter = FakeWatcher()
+        run(pres.attach_presenter(p.id, presenter))
+        spectator = FakeWatcher()
+        run(pres.attach_spectator(p.id, ALICE, spectator))
+        locator = {'tab': 'informations', 'path': [0, 1], 'fx': 0.5, 'fy': 0.25}
+        assert run(pres.set_pointer(p.id, locator)) is True
+        assert spectator.sent[-1] == {'t': 'pointer', 'pointer': locator} and p.pointer == locator
+        late = FakeWatcher()
+        run(pres.attach_spectator(p.id, ALICE, late))
+        assert late.sent == [{'t': 'view', 'view': {}}, {'t': 'pointer', 'pointer': locator}]
+        table = {'header': ['Element'], 'rows': [], 'caption': '', 'title': ''}
+        run(pres.set_evaluation(p.id, table))
+        later = FakeWatcher()
+        run(pres.attach_spectator(p.id, ALICE, later))
+        assert later.sent == [{'t': 'view', 'view': {}}, {'t': 'evaluation', 'evaluation': table},
+                              {'t': 'pointer', 'pointer': locator}]
+        assert 'pointer' not in p.to_dict(presence)                  # ephemeral: not in the JSON of the API
+        for bad in ([1], 'x', {'x': 'y' * PR.MAX_POINTER_BYTES}):
+            with pytest.raises(ValueError):
+                run(pres.set_pointer(p.id, bad))
+        with pytest.raises(KeyError):
+            run(pres.set_pointer('nope', None))
+        # the rate: MAX_POINTER_RATE locators a second, the next dropped (nothing pushed), a null passes
+        clock.now = 2000.0
+        assert all(run(pres.set_pointer(p.id, {'tab': 't', 'path': [i], 'fx': 0, 'fy': 0})) for i in range(PR.MAX_POINTER_RATE))
+        sent = len(spectator.sent)
+        assert run(pres.set_pointer(p.id, locator)) is False
+        assert len(spectator.sent) == sent and p.pointer == {'tab': 't', 'path': [PR.MAX_POINTER_RATE - 1], 'fx': 0, 'fy': 0}
+        assert run(pres.set_pointer(p.id, None)) is True
+        assert spectator.sent[-1] == {'t': 'pointer', 'pointer': None} and p.pointer is None
+        clock.now = 2001.0
+        assert run(pres.set_pointer(p.id, locator)) is True
+        # a spectator attaching while the mouse is out of the page gets no pointer message
+        run(pres.set_pointer(p.id, None))
+        out = FakeWatcher()
+        run(pres.attach_spectator(p.id, ALICE, out))
+        assert out.sent == [{'t': 'view', 'view': {}}, {'t': 'evaluation', 'evaluation': table}]
+        # the presenter's last socket closed: the pointer dropped, the spectators told, once
+        run(pres.set_pointer(p.id, locator))
+        second = FakeWatcher()
+        run(pres.attach_presenter(p.id, second))
+        run(pres.presenter_left(p.id, second))
+        assert p.pointer == locator and spectator.sent[-1] == {'t': 'pointer', 'pointer': locator}   # one socket left
+        run(pres.presenter_left(p.id, presenter))
+        assert p.pointer is None and spectator.sent[-1] == {'t': 'pointer', 'pointer': None}
+        assert p.presenter_absent_since == clock.now
+        sent = len(spectator.sent)
+        run(pres.presenter_left(p.id, presenter))
+        assert len(spectator.sent) == sent
+        run(pres.presenter_left('nope', presenter))                  # gone: harmless
+
     def test_parse_audience(self):
         assert PR.parse_audience(['alice', 'prof'], 'prof') == ({'alice'}, set())
         assert PR.parse_audience({'logins': ['bob'], 'groups': [' INFO1 ']}, 'prof') == ({'bob'}, {'department:INFO1'})
@@ -416,6 +476,54 @@ class TestPresentationThroughThePortal:
                 assert (await h.client.get(f'/present/{pid}', headers=bob)).status == 404
                 assert (await h.client.delete(f'/api/presentations/{pid}', headers={**prof, **P.CSRF})).status == 404
                 for ws in (bob_ws, carol_ws, dave_ws):
+                    await ws.close()
+        P.run(go())
+
+    def test_pointer_over_the_socket(self, tmp_path):
+        """The presenter's page sends its mouse pointer as text frames of its presentation socket,
+        relayed to the spectators' sockets as they come (a frame that is not JSON, not a pointer or
+        refused changes nothing, and so does a spectator's frame); a spectator attaching later gets
+        the view then the pointer; the presenter's socket closing drops it; the `selection` of the
+        view is opaque to the portal."""
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER) as h:
+                alice, bob, carol = P.who('alice'), P.who('bob'), P.who('carol')
+                prof = P.who('prof', 'Pr. Of', groups=P.TEACHERS)
+                rln = await start_project(h, alice)
+                pid = (await present(h, prof, rln, ['bob', 'carol']))['id']
+                prof_ws = await h.client.ws_connect(f'/api/presentations/{pid}/ws', headers=prof)
+                assert (await asyncio.wait_for(prof_ws.receive_json(), 5))['t'] == 'audience'
+                bob_ws = await h.client.ws_connect(f'/api/presentations/{pid}/ws', headers=bob)
+                assert await asyncio.wait_for(bob_ws.receive_json(), 5) == {'t': 'view', 'view': {}}
+                carol_ws = await h.client.ws_connect(f'/api/presentations/{pid}/ws', headers=carol)
+                assert await asyncio.wait_for(carol_ws.receive_json(), 5) == {'t': 'view', 'view': {}}
+                locator = {'tab': 'informations', 'path': [0, 3, 0], 'offset': 12, 'len': 40, 'fy': 0.5}
+                await prof_ws.send_str('not json')
+                await prof_ws.send_json({'t': 'other', 'pointer': locator})
+                await prof_ws.send_json({'t': 'pointer', 'pointer': [1]})            # refused, ignored
+                await prof_ws.send_json({'t': 'pointer', 'pointer': locator})
+                assert await asyncio.wait_for(bob_ws.receive_json(), 5) == {'t': 'pointer', 'pointer': locator}
+                assert await asyncio.wait_for(carol_ws.receive_json(), 5) == {'t': 'pointer', 'pointer': locator}
+                # a spectator's frame changes nothing
+                await bob_ws.send_json({'t': 'pointer', 'pointer': {'tab': 'x', 'path': [], 'fx': 0, 'fy': 0}})
+                with pytest.raises(TimeoutError):
+                    await asyncio.wait_for(carol_ws.receive_json(), 0.5)
+                # a spectator attaching later: the view, then the pointer
+                late = await h.client.ws_connect(f'/api/presentations/{pid}/ws', headers=bob)
+                assert await asyncio.wait_for(late.receive_json(), 5) == {'t': 'view', 'view': {}}
+                assert await asyncio.wait_for(late.receive_json(), 5) == {'t': 'pointer', 'pointer': locator}
+                # the selection travels with the view, opaque; the pointer is not in the JSON of the API
+                view = {'tab': 'informations', 'selection': {'tab': 'informations', 'start': {'path': [0, 3, 0], 'offset': 2, 'len': 40},
+                                                             'end': {'path': [0, 3, 0], 'offset': 9, 'len': 40}}}
+                resp = await h.client.put(f'/api/presentations/{pid}/view', json={'view': view}, headers={**prof, **P.CSRF})
+                assert resp.status == 204
+                assert await asyncio.wait_for(bob_ws.receive_json(), 5) == {'t': 'view', 'view': view}
+                assert await asyncio.wait_for(carol_ws.receive_json(), 5) == {'t': 'view', 'view': view}
+                assert 'pointer' not in await (await h.client.get(f'/api/presentations/{pid}', headers=prof)).json()
+                # the presenter's socket closes: the spectators lose the pointer
+                await prof_ws.close()
+                assert await asyncio.wait_for(carol_ws.receive_json(), 5) == {'t': 'pointer', 'pointer': None}
+                for ws in (bob_ws, carol_ws, late):
                     await ws.close()
         P.run(go())
 
@@ -602,6 +710,7 @@ class TestPresentationThroughThePortal:
         assert 'spectator' not in by_event['project_open'][0]                     # not known when the socket opens
         text = (tmp_path / 'access.log').read_text()
         assert 'presence' not in text and '/view' not in text         # neither the presence socket nor the view
+        assert 'pointer' not in text                                   # nor the pointer frames of the presenter
         bob_session = [l for l in by_event['session_close'] if l['login'] == 'bob'][0]
         assert bob_session['requests'] == '2' and bob_session['projects'] == rln    # the page and the events socket
 

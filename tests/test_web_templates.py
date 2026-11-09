@@ -1043,6 +1043,140 @@ TABLE_SORT_ROWS = [{'login': 'etu10', 'name': 'b', 'time': 5}, {'login': 'etu9',
                    {'login': 'Etu2', 'name': 'b', 'time': 50}, {'login': 'prof', 'name': '', 'time': 5}]
 
 
+POINTER_MODEL_RUNNER = """\
+import {nodePath, resolvePath, parseLocator, parseSelection, selectionCells, selectionRows, terminalSelectionLength,
+        cellAt, cellFractions, fraction, rowText, MAX_PATH_DEPTH, MAX_ROW_TEXT} from './pointer_model.js';
+
+// a fake DOM: nodes with childNodes and parentNode only
+function node(...children) {
+  const n = {childNodes: children, parentNode: null};
+  for (const c of children) { c.parentNode = n; }
+  return n;
+}
+const text = node();
+const code = node(node());
+const p = node(node(), text, code);
+const h1 = node(node());
+const root = node(h1, p);
+const outside = node(node());
+const chainRoot = node();
+let deepest = chainRoot;
+for (let i = 0; i < MAX_PATH_DEPTH + 2; i++) { const child = node(); child.parentNode = deepest; deepest.childNodes = [child]; deepest = child; }
+
+const path = nodePath(root, text);
+const resolved = resolvePath(root, path);
+const short = resolvePath(root, [1, 7, 2]);
+const empty = resolvePath(root, []);
+
+// two terminals showing the same output: the presenter's wrote a blank line of its own first
+// and has 24 rows, the spectator's (its grid is the pty's) starts on the first row
+const presenter = ['', 'mock$ echo sel$((1))ect', 'sel1ect', 'mock$'];
+const spectator = ['mock$ echo sel$((1))ect', 'sel1ect', 'mock$'];
+const at = (lines) => (y) => (y < lines.length ? lines[y] : '');
+const selected = selectionCells({start: {x: 0, y: 2}, end: {x: 7, y: 2}}, 3, at(presenter));
+const repeated = ['mock$', 'x', 'mock$', 'x', 'mock$'];
+const promptMiddle = selectionCells({start: {x: 0, y: 2}, end: {x: 5, y: 2}}, 4, at(repeated));
+const span = selectionCells({start: {x: 3, y: 1}, end: {x: 2, y: 3}}, 4, at(['a', 'bb', 'ccc', 'dddd', 'e']));
+process.stdout.write(JSON.stringify({
+  path,
+  roundTrip: resolved.node === text && resolved.exact,
+  rootPath: nodePath(root, root),
+  codeText: nodePath(root, code.childNodes[0]),
+  outside: nodePath(root, outside.childNodes[0]),
+  tooDeep: nodePath(chainRoot, deepest),
+  short: {exact: short.exact, isP: short.node === p},
+  empty: {exact: empty.exact, isRoot: empty.node === root},
+  lengths: [terminalSelectionLength(3, 10, 5, 12, 80), terminalSelectionLength(3, 10, 9, 10, 80), terminalSelectionLength(0, 10, 80, 10, 80)],
+  selected,
+  onSpectator: selectionRows(selected, 2, 25, at(spectator)),
+  lagging: selectionRows(selected, 0, 25, at(spectator.slice(0, 2))),
+  notYet: selectionRows(selected, 0, 25, at(spectator.slice(0, 1))),
+  ahead: selectionRows(selected, 5, 25, at([...spectator, 'more', 'mock$', 'end'])),
+  farAway: selectionRows(selected, 300, 400, at(spectator)),
+  promptMiddle: selectionRows(promptMiddle, 4, 5, at(repeated)),
+  span,
+  spanFound: selectionRows(span, 6, 8, at(['', '', 'a', 'bb', 'ccc', 'dddd', 'e', ''])),
+  longText: rowText('x'.repeat(MAX_ROW_TEXT + 10)).length,
+  cells: [cellAt(0.5, 0.25, 80, 24), cellAt(0.51, 0.26, 80, 24), cellAt(1, 1, 80, 24), cellAt(-0.2, 0.5, 80, 24)],
+  fractions: [
+    cellFractions({col: 40, fromCursor: 2, fx: 0.5, fy: 0.5}, 10, 0, 80, 24),
+    cellFractions({col: 40, fromCursor: 2, fx: 0.5, fy: 0.5}, 110, 100, 80, 24),
+    cellFractions({col: 100, fromCursor: 0, fx: 0.5, fy: 0}, 10, 0, 80, 24),
+    cellFractions({col: 0, fromCursor: 12, fx: 0, fy: 0}, 10, 0, 80, 24),
+    cellFractions({col: 0, fromCursor: -20, fx: 0, fy: 0}, 10, 0, 80, 24),
+  ],
+  locators: [
+    parseLocator({tab: 'informations', path: [0, 1], fx: 0.5, fy: 0.25}),
+    parseLocator({tab: 'informations', path: [0, 1, 0], offset: 12, len: 40, fy: 0.5}),
+    parseLocator({tabbar: true, path: [2], fx: 0.1, fy: 0.9}),
+    parseLocator({terminal: 'abc', col: 3, fromCursor: -2, fx: 0.3, fy: 0.8}),
+    parseLocator({terminal: 'abc', part: 'window', fx: 0.3, fy: 0.8}),
+  ],
+  badLocators: [null, 'x', {tab: 1, path: [], fx: 0, fy: 0}, {tab: 'a', path: ['x'], fx: 0, fy: 0},
+                {terminal: 'id', col: 1, fromCursor: 0, fx: 2, fy: 0}, {terminal: 'id', part: 'frame', fx: 0, fy: 0},
+                {terminal: 'id', fx: 0.5, fy: 0.5}, {terminal: 'id', col: 1.5, fromCursor: 0, fx: 0, fy: 0},
+                {tab: 'a', path: [0], offset: 3, fy: 0}, {tab: 'a', path: [0], fy: 0}].map(parseLocator),
+  selections: [
+    parseSelection({tab: 'informations', start: {path: [1, 1], offset: 2, len: 40}, end: {path: [1, 2, 0], offset: 3}}),
+    parseSelection({terminal: 'abc', ...selected}),
+  ],
+  badSelections: [null, {tab: 'a'}, {tab: 'a', start: {path: [0], offset: 1}, end: {path: [0], offset: -1}},
+                  {terminal: 'abc', start: {x: 2, fromCursor: 5, text: ''}, end: {x: 'a', fromCursor: 3, text: ''}},
+                  {terminal: 'abc', start: {x: 2, fromCursor: 5}, end: {x: 4, fromCursor: 3, text: ''}},
+                  {terminal: 'abc', start: {x: 2, fromCursor: 1, text: ''}, end: {x: 4, fromCursor: 3, text: ''}},
+                  {terminal: 'abc', start: {x: 2, fromCursor: 1, text: 'y'.repeat(MAX_ROW_TEXT + 1)}, end: {x: 4, fromCursor: 0, text: ''}},
+                 ].map(parseSelection),
+  fractionsOf: [fraction(150, 100, 200), fraction(50, 100, 200), fraction(400, 100, 200), fraction(5, 0, 0), fraction(10, 0, 30)],
+}));
+"""
+
+
+class TestPointerModel:
+    """The pure helpers of pointer_model.js (the presenter's pointer and selection of a
+    presentation: the paths of child indices naming a node of a pane, the cells of a terminal
+    counted from its cursor and found again by the text of their rows, the shapes of the locators
+    and selections), run by the ``js`` runtime on a fake DOM, skipped without one."""
+
+    def test_model(self, tmp_path, js):
+        runner = js_project(tmp_path, POINTER_MODEL_RUNNER, 'pointer_model.js')
+        out = json.loads(js.run(tmp_path, runner))
+        assert out['path'] == [1, 1] and out['roundTrip'] is True and out['rootPath'] == []
+        assert out['codeText'] == [1, 2, 0] and out['outside'] is None and out['tooDeep'] is None
+        assert out['short'] == {'exact': False, 'isP': True} and out['empty'] == {'exact': True, 'isRoot': True}
+        assert out['lengths'] == [162, 6, 80]
+        # the rows counted from the cursor, with their text: the same line on the spectator's
+        # terminal whatever its height and the blank line the presenter's wrote first; found when
+        # the spectator's output lags or runs ahead, not before it holds the row nor far away
+        assert out['selected'] == {'start': {'x': 0, 'fromCursor': 1, 'text': 'sel1ect'},
+                                   'end': {'x': 7, 'fromCursor': 1, 'text': 'sel1ect'}}
+        found = {'startX': 0, 'startY': 1, 'endX': 7, 'endY': 1}
+        assert out['onSpectator'] == found and out['lagging'] == found and out['ahead'] == found
+        assert out['notYet'] is None and out['farAway'] is None
+        assert out['promptMiddle'] == {'startX': 0, 'startY': 2, 'endX': 5, 'endY': 2}    # the nearest of the same lines
+        assert out['span'] == {'start': {'x': 3, 'fromCursor': 3, 'text': 'bb'}, 'end': {'x': 2, 'fromCursor': 1, 'text': 'dddd'}}
+        assert out['spanFound'] == {'startX': 3, 'startY': 3, 'endX': 2, 'endY': 5}
+        assert out['longText'] == 256
+        assert out['cells'] == [{'col': 40, 'row': 6, 'fx': 0, 'fy': 0}, {'col': 40, 'row': 6, 'fx': 0.8, 'fy': 0.24},
+                                {'col': 79, 'row': 23, 'fx': 1, 'fy': 1}, {'col': 0, 'row': 12, 'fx': 0, 'fy': 0}]
+        assert out['fractions'] == [{'fx': 0.5062, 'fy': 0.3542}, {'fx': 0.5062, 'fy': 0.3542}, {'fx': 1, 'fy': 0.4167},
+                                    None, None]
+        assert out['locators'] == [
+            {'tab': 'informations', 'path': [0, 1], 'fx': 0.5, 'fy': 0.25},
+            {'tab': 'informations', 'path': [0, 1, 0], 'offset': 12, 'len': 40, 'fy': 0.5},
+            {'tabbar': True, 'path': [2], 'fx': 0.1, 'fy': 0.9},
+            {'terminal': 'abc', 'part': 'screen', 'col': 3, 'fromCursor': -2, 'fx': 0.3, 'fy': 0.8},
+            {'terminal': 'abc', 'part': 'window', 'fx': 0.3, 'fy': 0.8},
+        ]
+        assert out['badLocators'] == [None] * 10
+        assert out['selections'] == [
+            {'tab': 'informations', 'start': {'path': [1, 1], 'offset': 2, 'len': 40}, 'end': {'path': [1, 2, 0], 'offset': 3}},
+            {'terminal': 'abc', **out['selected']},
+        ]
+        assert out['badSelections'] == [None] * 7
+        assert out['fractionsOf'] == [0.25, 0, 1, 0, 0.3333]
+        assert not re.search(r'\b(document|window)\.', (JS / 'pointer_model.js').read_text(encoding='utf-8'))
+
+
 class TestTableSort:
     """table_sort.js (the headers sorting the tables of the History page) run by the ``js``
     runtime, skipped without one: numbers numerically, texts with the collation of the site
@@ -1447,6 +1581,57 @@ class TestJavaScript:
         assert 'setView(box) {' in panzoom
         apply = panzoom[panzoom.index('apply() {'):panzoom.index('setView(box) {')]
         assert 'this.onChange()' in apply
+
+    def test_presentation_shows_the_pointer_and_the_selection(self):
+        """The spectators see the presenter's mouse pointer and selection (pointer.js): the pointer
+        as text frames of the presenter's presentation socket ({t: 'pointer'}, parsed by the portal
+        for the presenter only, applied by setPointer), the selection as the `selection` key of the
+        view (applied after the terminals it may name are joined); the pure helpers (the paths of
+        child indices, the rows of a terminal counted from the bottom) live in pointer_model.js,
+        DOM-free; the terminals tab gives the terminal under the mouse and the one of a session and
+        tells the hook of every change of a terminal's selection; a read-only terminal draws the
+        applied selection in the presentation colour; the pointer element lets the mouse through
+        and sits over the terminal windows, under the exam overlay and the toasts."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "message.t === 'pointer'" in project and 'pointerView.setPointer(message.pointer)' in project
+        get_view = project[project.index('function getView()'):project.index('async function load()')]
+        assert 'selection: pointerTracker ? pointerTracker.getSelection() : null' in get_view
+        apply_view = project[project.index('function applyView('):project.index('function onEvent(')]
+        assert 'pointerView.setSelection(view.selection || null)' in apply_view
+        assert apply_view.index('terminals.setView(') < apply_view.index('pointerView.setSelection(')
+        hooks = project[project.index('if (!spectator) {'):project.index('// -- tabs')]
+        assert 'ctx.onSelectionChange = (remoteId, term) => {' in hooks
+        assert "from './pointer.js'" in project and 'pointerView.destroy()' in project
+        present = (JS / 'present.js').read_text(encoding='utf-8')
+        for token in ('tracker.start(', 'tracker.stop()', 'tracker.resend()'):
+            assert token in present, token
+        events = (JS / 'events.js').read_text(encoding='utf-8')
+        assert '  send(obj) {' in events and 'readyState !== WebSocket.OPEN' in events
+        terminals = (JS / 'tabs' / 'terminals.js').read_text(encoding='utf-8')
+        for token in ('function terminalAt(element)', 'function terminalByRemote(remoteId)', 'if (ctx.onSelectionChange) {',
+                      'session.term.onSelectionChange('):
+            assert token in terminals, token
+        assert 'getScroll' not in terminals
+        terminal = (JS / 'terminal.js').read_text(encoding='utf-8')
+        assert 'selectionInactiveBackground' in terminal and 'themeFor(scheme, this.readonly)' in terminal
+        # the size the box took while the socket was connecting is sent once it is open: the pty,
+        # and so a spectator's grid, has the size of the presenter's terminal
+        opened = terminal[terminal.index("socket.addEventListener('open', () => {"):terminal.index("socket.addEventListener('message'")]
+        assert 'this.size.cols !== query.cols || this.size.rows !== query.rows' in opened and "t: 'resize'" in opened
+        pointer = (JS / 'pointer.js').read_text(encoding='utf-8')
+        assert "from './pointer_model.js'" in pointer
+        for token in ('export function createPointerTracker(', 'export function createPointerView(', "closest('.xterm')",
+                      'CSS.highlights', 'caretPositionFromPoint', 'caretRangeFromPoint', 'onWriteParsed'):
+            assert token in pointer, token
+        assert not re.search(r'\b(document|window)\.', (JS / 'pointer_model.js').read_text(encoding='utf-8'))
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        rule = re.search(r'^#presenter-pointer \{([^}]*)\}', css, re.M)
+        assert rule and 'position: fixed' in rule.group(1) and 'pointer-events: none' in rule.group(1)
+        z = int(re.search(r'z-index: (\d+)', rule.group(1)).group(1))
+        assert 10 < z < 1100
+        assert '::highlight(presenter-selection)' in css
+        routes = (ROOT / 'src' / 'sreweb' / 'portal' / 'routes.py').read_text(encoding='utf-8')
+        assert routes.index('if presenter and msg.type == WSMsgType.TEXT:') < routes.index("frame.get('t') == 'pointer'")
 
     def test_focus_switch_opens_no_terminal(self):
         """The terminals tab shown for the first time opens a terminal on the first open device

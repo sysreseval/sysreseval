@@ -573,7 +573,8 @@ option.closed-device { color: var(--closed-color); }
 .terminal-box .status.error { color: var(--danger); }
 
 /* the floating terminal windows (terminal_windows.js): a layer over the panes, under the
-   presentation overlay (1000), the web conference (1050 / 1051), the exam end overlay (1100), the
+   presenter's pointer of a spectator's page (900), the presentation overlay (1000), the web
+   conference (1050 / 1051), the exam end overlay (1100), the
    toasts (1200) and the dialogs of the top layer, letting the clicks between the windows
    through; a window is dragged by its title bar and resized by its bottom-right corner (CSS
    resize, the inline max-width / max-height keeping it inside the layer); a spectator's window
@@ -750,6 +751,17 @@ dialog.present { width: 540px; }
 dialog.modal .buttons .spacer { flex: 1; }
 .terminal-box.readonly .xterm-wrap { display: flex; align-items: center; justify-content: center; overflow: hidden; background: #303030; }
 .terminal-box.readonly .xterm-wrap .xterm { height: auto; flex: none; }
+/* the presenter's pointer and selection on a spectator's page (pointer.js): an arrow labelled
+   with the presenter's name, its tip at the resolved point (fixed, over the terminal windows,
+   under the exam end overlay and the toasts, letting the mouse through), and the highlight of
+   the text the presenter selected (the CSS Custom Highlight API: the student's own selection
+   keeps its colour) */
+#presenter-pointer { position: fixed; left: 0; top: 0; z-index: 900; pointer-events: none; display: flex; align-items: flex-start; gap: 2px; transition: transform 40ms linear; }
+#presenter-pointer[hidden] { display: none; }
+#presenter-pointer svg { width: 16px; height: 22px; flex: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4)); }
+#presenter-pointer svg path { fill: var(--instructor-color); stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
+#presenter-pointer .label { margin-top: 14px; background: var(--presentation-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-size: 11px; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+::highlight(presenter-selection) { background-color: var(--presentation-bg); }
 
 /* exams: the bar under the site bar of a bound student (exam.js: the countdown to the start, the
    time left, the end, or the refused address), the top bar in the exam colour (body.exam-bound,

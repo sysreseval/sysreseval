@@ -27,6 +27,13 @@ export const THEMES = {
   white_on_black: {background: '#000000', foreground: '#ffffff', cursor: '#ffffff',
                    cursorAccent: '#000000', selectionBackground: '#4a6a8a'},
 };
+// The selection colour of a read-only terminal, never focused: the presenter's selection, which
+// pointer.js applies there, in the presentation colour (lavender).
+const PRESENTER_SELECTION = {black_on_white: '#d1c4e9', white_on_black: '#5e35b1'};
+
+function themeFor(scheme, readonly) {
+  return readonly ? {...THEMES[scheme], selectionInactiveBackground: PRESENTER_SELECTION[scheme]} : THEMES[scheme];
+}
 
 // The texts of the close codes of the agent and the portal.
 function closeMessage(code) {
@@ -101,7 +108,7 @@ export class TerminalSession {
     this.term = new window.Terminal({
       fontSize,
       fontFamily: 'ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace',
-      theme: THEMES[this.scheme],
+      theme: themeFor(this.scheme, readonly),
       cursorBlink: !readonly,
       disableStdin: readonly,
       scrollback: 5000,
@@ -234,6 +241,11 @@ export class TerminalSession {
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.refit();
+      // the size the box took while the socket was connecting, which refit() could not send
+      // then: the pty must have the size of the terminal (and a spectator's grid is the pty's)
+      if (!this.readonly && this.size.cols > 0 && (this.size.cols !== query.cols || this.size.rows !== query.rows)) {
+        socket.send(JSON.stringify({t: 'resize', cols: this.size.cols, rows: this.size.rows}));
+      }
       if (!this.readonly) {
         this.term.focus();
       }
@@ -322,7 +334,7 @@ export class TerminalSession {
     this.container.classList.remove(this.scheme);
     this.scheme = scheme;
     this.container.classList.add(scheme);
-    this.term.options.theme = THEMES[scheme];
+    this.term.options.theme = themeFor(scheme, this.readonly);
   }
 
   // The page leaves (pagehide: another page, a reload, the tab closed): the socket is closed, the

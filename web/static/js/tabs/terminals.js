@@ -30,7 +30,10 @@
 // On the page of a spectator of a presentation (ctx.spectator) nothing can be opened or closed:
 // the sub-tabs and the windows are those of the presenter's page (setView, read-only sessions
 // joined by their id, the windows at the same relative place and size), the active one follows;
-// on the presenter's page every change calls ctx.onViewChange().
+// on the presenter's page every change calls ctx.onViewChange(), and every change of the
+// selection of a terminal ctx.onSelectionChange(session id, xterm) (pointer.js publishes it);
+// terminalAt() / terminalByRemote() give pointer.js the terminal under the mouse and the one
+// joined on a session.
 
 import * as settings from '../settings.js';
 import {el, clear} from '../ui.js';
@@ -425,6 +428,10 @@ export function createTerminalsTab(ctx) {
       },
     });
     entry.session = session;
+    if (ctx.onSelectionChange) {
+      // the presenter's page publishes the selection of its terminals (pointer.js)
+      session.term.onSelectionChange(() => ctx.onSelectionChange(entry.remoteId, session.term));
+    }
     entry.tab = makeTab(entry);
     sessions.set(id, entry);
     if (floating) {
@@ -617,6 +624,31 @@ export function createTerminalsTab(ctx) {
     }
   }
 
+  // -- the presenter's pointer and selection (pointer.js): the terminal holding an element of
+  // the page (its box, docked or in a window, or the chrome of its window), by the id of its
+  // session (null before the session is known), and the terminal joined on a session
+  function terminalAt(element) {
+    if (!(element instanceof Element)) {
+      return null;
+    }
+    const box = element.closest('.terminal-box');
+    const win = box ? null : element.closest('.terminal-window');
+    if (!box && !win) {
+      return null;
+    }
+    const entry = [...sessions.values()].find((e) => (box ? e.box === box : Boolean(e.win && e.win.element === win)));
+    if (!entry || !entry.remoteId) {
+      return null;
+    }
+    return {remoteId: entry.remoteId, term: entry.session.term, screen: entry.box.querySelector('.xterm-screen'),
+            box: entry.box, window: entry.win ? entry.win.element : null};
+  }
+
+  function terminalByRemote(remoteId) {
+    const entry = remoteId ? [...sessions.values()].find((e) => e.remoteId === remoteId) : null;
+    return entry ? {session: entry.session, box: entry.box, win: entry.win} : null;
+  }
+
   // a helping instructor: the owner's live sessions not yet on this page
   function autoJoin() {
     if (!helper || !shown) {
@@ -720,5 +752,7 @@ export function createTerminalsTab(ctx) {
     setView,
     focusTarget,
     focusSession,
+    terminalAt,
+    terminalByRemote,
   };
 }

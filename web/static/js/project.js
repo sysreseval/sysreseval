@@ -6,9 +6,10 @@
 // Three more roles: an instructor may present the project (present.js: the Present button, the
 // bar, the view published after each change through the ctx.onViewChange / onEvaluated /
 // onScroll hooks of the tabs); the same page in the iframe of /present/{id} is a spectator's
-// (data-presentation on the body): read-only, no control, the tabs, the terminals and the
-// position inside the tab shown (the scroll, the pan and zoom of the schema) following the
-// presenter's view (the socket /api/presentations/{id}/ws); and an instructor on a student's project may
+// (data-presentation on the body): read-only, no control, the tabs, the terminals, the
+// position inside the tab shown (the scroll, the pan and zoom of the schema) and the selection
+// following the presenter's view, the presenter's mouse pointer drawn over the page (pointer.js;
+// the socket /api/presentations/{id}/ws); and an instructor on a student's project may
 // focus the student on it (focus.js: the Focus student on project button, the tab, the terminal
 // and the question shared both ways with the student's own page, which follows through the same
 // module).
@@ -27,6 +28,7 @@ import {el, clear, toast} from './ui.js';
 import {ProjectEvents, ReconnectingSocket} from './events.js';
 import {createPresenter} from './present.js';
 import {createFocus} from './focus.js';
+import {createPointerTracker, createPointerView} from './pointer.js';
 import {currentExam, isBound, labOfRunningLabName, refreshExam} from './exam.js';
 import {createSchemaTab} from './tabs/schema.js';
 import {createInformationsTab} from './tabs/informations.js';
@@ -81,6 +83,8 @@ const focusButton = document.getElementById('focus-student');         // an inst
 const focusLabel = document.getElementById('focus-label');            // a student's page: "Followed by"
 let presenter = null;      // the presentation side of an instructor's page (present.js)
 let focus = null;          // the focus side (focus.js): the instructor's button, or the student's page following
+let pointerTracker = null; // an instructor's page: the mouse and the selection published while presenting (pointer.js)
+let pointerView = null;    // a spectator's page: the presenter's pointer and selection drawn (pointer.js)
 
 const state = {
   project: null,
@@ -184,6 +188,12 @@ if (!spectator) {
   };
   // scroll events do not bubble: one capturing listener for every scroller of every pane
   panes.addEventListener('scroll', () => ctx.onScroll(), {capture: true, passive: true});
+  // the selection of a terminal changed (tabs/terminals.js): the presenter's view carries it
+  ctx.onSelectionChange = (remoteId, term) => {
+    if (pointerTracker) {
+      pointerTracker.terminalSelection(remoteId, term);
+    }
+  };
 }
 
 // -- tabs ----------------------------------------------------------------------------------------
@@ -392,9 +402,10 @@ function applyFocusView(view) {
 }
 
 // The presenter's view, as present.js publishes it to the spectators: the active tab, the
-// terminals, the question, the schema options, the instructor texts, and the position inside
-// the tab shown as the tab reports it (getScroll(): the scroll anchor of a pane, the viewBox of
-// a schema; null for a tab without one), applied by the same tab on a spectator's page.
+// terminals, the question, the schema options, the instructor texts, the position inside the
+// tab shown as the tab reports it (getScroll(): the scroll anchor of a pane, the viewBox of a
+// schema; null for a tab without one), applied by the same tab on a spectator's page, and the
+// presenter's selection (pointer.js: in the texts of the pane shown, or in a terminal).
 function getView() {
   const current = currentTab ? tabs[currentTab] : null;
   return {
@@ -404,6 +415,7 @@ function getView() {
     schema: state.exportQuery,
     instructorView: state.instructorView,
     scroll: current && current.getScroll ? current.getScroll() : null,
+    selection: pointerTracker ? pointerTracker.getSelection() : null,
   };
 }
 
@@ -438,6 +450,9 @@ function shutDown() {
   }
   if (tabs.display) {
     tabs.display.close();
+  }
+  if (pointerView) {
+    pointerView.destroy();
   }
   setWebconfTabHost(null);      // the conference goes on in a window over the page
   tabBar.hidden = true;
@@ -485,8 +500,9 @@ let presentationSocket = null;
 
 // The active tab, the terminals, the question, the schema options, the instructor texts, the
 // position inside the tab shown (applied once the pane is shown: a hidden pane ignores its
-// scroll), and the counter telling that the answers changed (the table of the Evaluation tab
-// comes by its own message: applyEvaluation).
+// scroll), the counter telling that the answers changed (the table of the Evaluation tab
+// comes by its own message: applyEvaluation), and the presenter's selection (pointer.js, once
+// the pane and the terminal it may name are there; the pointer comes by its own message).
 function applyView(view) {
   if (!view || typeof view !== 'object') {
     return;
@@ -526,6 +542,10 @@ function applyView(view) {
   const terminals = listed('terminals');
   if (terminals) {
     terminals.setView(view.terminals || {});
+  }
+  if (pointerView) {
+    pointerView.setSelection(view.selection || null);
+    pointerView.refresh();
   }
 }
 
@@ -706,6 +726,18 @@ function setupControls() {
 // -- start -------------------------------------------------------------------------------------
 
 if (isInstructor && !spectator && presentButton && presentationBar) {
+  // the mouse and the selection of the presenter, located on the pane shown, the tab bar or a
+  // terminal (pointer.js), published while presenting
+  pointerTracker = createPointerTracker({
+    panes, tabbar: tabBar, sharedTab,
+    paneOf: () => (currentTab && tabs[currentTab] ? tabs[currentTab].element : null),
+    terminalAt: (element) => (tabs.terminals ? tabs.terminals.terminalAt(element) : null),
+    onSelection: () => {
+      if (presenter) {
+        presenter.schedule();
+      }
+    },
+  });
   presenter = createPresenter(ctx, {
     host: body.dataset.host || '', rln: body.dataset.rln || '', login, groups: groupSourcesEnabled, getView,
     getEvaluation: () => (tabs.evaluation ? tabs.evaluation.getTable() : null),
@@ -715,6 +747,17 @@ if (isInstructor && !spectator && presentButton && presentationBar) {
       edit: document.getElementById('presentation-edit'),
       stop: document.getElementById('presentation-stop'),
     },
+    tracker: pointerTracker,
+  });
+}
+
+if (spectator) {
+  // the presenter's pointer (an arrow with their name) and selection drawn on this page
+  pointerView = createPointerView({
+    panes, tabbar: tabBar,
+    paneOf: (id) => (id === currentTab && tabs[id] ? tabs[id].element : null),
+    terminalByRemote: (id) => (tabs.terminals ? tabs.terminals.terminalByRemote(id) : null),
+    label: body.dataset.presenter || '',
   });
 }
 
@@ -743,6 +786,8 @@ async function main() {
           applyView(message.view);
         } else if (message.t === 'evaluation') {
           applyEvaluation(message.evaluation);
+        } else if (message.t === 'pointer' && pointerView) {
+          pointerView.setPointer(message.pointer);
         }
       },
       onClose: (ev) => {

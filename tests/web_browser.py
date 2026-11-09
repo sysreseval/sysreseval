@@ -135,6 +135,12 @@ class Page:
             params['buttons'] = 1
         await self.browser.send('Input.dispatchMouseEvent', params, session_id=self.session_id)
 
+    async def hover(self, x: float, y: float):
+        """Move the mouse to page coordinates with no button pressed (the mousemove of a hover,
+        not of a drag)."""
+        await self.browser.send('Input.dispatchMouseEvent', {'type': 'mouseMoved', 'x': x, 'y': y, 'button': 'none',
+                                                             'buttons': 0}, session_id=self.session_id)
+
     async def click_at(self, x: float, y: float):
         await self.mouse('mousePressed', x, y)
         await self.mouse('mouseReleased', x, y)
@@ -285,9 +291,15 @@ class Browser:
             raise BrowserError(f"{method}: {reply['error'].get('message')} ({reply['error'].get('code')})")
         return reply.get('result', {})
 
-    async def page(self, url: str | None = None) -> Page:
-        """A new tab, loaded with *url* when given."""
-        target = await self.send('Target.createTarget', {'url': 'about:blank'})
+    async def page(self, url: str | None = None, *, new_window: bool = False) -> Page:
+        """A new tab, loaded with *url* when given; *new_window*: in a window of its own.  The tabs
+        of one window take turns: only the last one opened is visible, and a hidden page gets no
+        animation frame (xterm.js draws its rows in them), so two users watching each other (a
+        presentation) each need a window."""
+        params = {'url': 'about:blank'}
+        if new_window:
+            params['newWindow'] = True
+        target = await self.send('Target.createTarget', params)
         attached = await self.send('Target.attachToTarget', {'targetId': target['targetId'], 'flatten': True})
         page = Page(self, target['targetId'], attached['sessionId'])
         self.pages[page.session_id] = page
