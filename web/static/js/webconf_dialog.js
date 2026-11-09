@@ -63,7 +63,7 @@ function openDialog() {
 
   async function chooseAudience(current) {
     return openAudienceDialog({logins: current.logins || [], groups: current.groups || [], mode: 'edit', groupSources,
-                               title: _('Audience of the conference…'), okLabel: _('Choose')});
+                               title: _('Audience of the conference…'), okLabel: _('Choose'), allowEmpty: true});
   }
 
   function row(room) {

@@ -823,6 +823,8 @@ browser shows the room, as a moderator: any instructor may join any room), *Audi
 *End* (any instructor); and a *New room* form: a name (the instructor's by default) and an
 audience chosen as for a presentation (the connected users one by one; the groups: departments,
 directory groups, custom groups; a member of a group connecting later is put in the room too).
+Unlike that of a presentation, the audience of a room may be empty (*None* then *Choose*): the
+room is then one of the instructors alone.
 A student is in at most one room at a time (the newest one including them); an instructor sees
 the room they created or joined last.
 

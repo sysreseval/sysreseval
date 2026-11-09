@@ -500,6 +500,14 @@ class TestWebconfThroughThePortal:
                     assert await receive(ws_bob) == started
                     assert (await h.client.put(f'/api/webconfs/{room_id}/audience', json={'audience': {'logins': ['bob']}},
                                                headers={**BOB_H, **P.CSRF})).status == 403
+                    # an audience of nobody is accepted (the instructors alone), then bob is put back
+                    resp = await h.client.put(f'/api/webconfs/{room_id}/audience', json={'audience': {'logins': [], 'groups': []}},
+                                              headers={**PROF2_H, **P.CSRF})
+                    assert resp.status == 200 and (await resp.json())['audience'] == {'logins': [], 'groups': []}
+                    assert await receive(ws_bob) == ended_push(room_id)
+                    resp = await h.client.put(f'/api/webconfs/{room_id}/audience', json={'audience': {'logins': ['bob']}},
+                                              headers={**PROF2_H, **P.CSRF})
+                    assert resp.status == 200 and await receive(ws_bob) == started
                     # prof2 joins the room: their browser is told, the room lists them
                     ws_prof2 = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=PROF2_H)
                     resp = await h.client.post(f'/api/webconfs/{room_id}/attend', json={}, headers={**PROF2_H, **P.CSRF})

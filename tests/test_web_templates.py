@@ -1258,7 +1258,11 @@ class TestJavaScript:
         present = (JS / 'present.js').read_text(encoding='utf-8')
         assert "from './audience_dialog.js'" in present and "'/api/presence'" not in present and 'rowGroupKeys' not in present
         assert 'groupSources: groups' in present
-        assert "from './audience_dialog.js'" in (JS / 'webconf_dialog.js').read_text(encoding='utf-8')
+        webconf_dialog = (JS / 'webconf_dialog.js').read_text(encoding='utf-8')
+        assert "from './audience_dialog.js'" in webconf_dialog
+        # an empty audience may be chosen for a conference room, never for a presentation
+        assert 'ok.disabled = !allowEmpty && ' in audience and 'allowEmpty = false' in audience
+        assert 'allowEmpty: true' in webconf_dialog and 'allowEmpty' not in present
         project = (JS / 'project.js').read_text(encoding='utf-8')
         assert "body.dataset.groupSources === 'true'" in project and 'groups: groupSourcesEnabled' in project
         assert not re.search(r'\bdocument\.', (JS / 'groups_model.js').read_text(encoding='utf-8'))   # pure: runs under node

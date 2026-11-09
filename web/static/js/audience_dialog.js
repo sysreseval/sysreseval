@@ -14,9 +14,10 @@ const PRESENCE_REFRESH = 5000;    // ms between two refreshes of the connected u
 
 // logins / groups: the audience checked at the opening; mode: 'start' or 'edit' (the OK label,
 // unless okLabel is given); groupSources: whether any source of user groups is configured (the
-// groups are offered); title: the heading (the presentations' by default).
+// groups are offered); title: the heading (the presentations' by default); allowEmpty: whether
+// an audience of nobody may be chosen (a conference room of the instructors alone).
 export function openAudienceDialog({logins: checkedLogins, groups: checkedGroups, mode, groupSources = false,
-                                    title = null, okLabel = null}) {
+                                    title = null, okLabel = null, allowEmpty = false}) {
   return new Promise((resolve) => {
     const logins = new Set(checkedLogins || []);
     const groupSet = new Set((checkedGroups || []).map(normalizeKey));   // a bare name: a department
@@ -53,7 +54,7 @@ export function openAudienceDialog({logins: checkedLogins, groups: checkedGroups
         }
       }
       count.textContent = format(_('{n} selected'), {n: selected.size});
-      ok.disabled = selected.size === 0 && groupSet.size === 0;
+      ok.disabled = !allowEmpty && selected.size === 0 && groupSet.size === 0;
     }
 
     function renderGroups() {
