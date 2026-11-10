@@ -1185,6 +1185,16 @@ that needs them, as without any preload) nor with `max_preloads = 0`; the agents
 this feature are left alone. On a host whose agent has `at_start`, leave
 `sre-preload-images.service` disabled: both would pull.
 
+Nothing asks again on a timer. A host that boots every day checks at each boot; one that stays
+up does not notice new labs or a new image version until its agent restarts
+(`sre-web-tool restart --all` after a sync makes every `at_start` agent ask again) or a preload
+is asked by hand, and a failed one stays failed. A cron job on the portal's host makes the check
+periodic, through the same queue (`max_preloads` hosts at a time):
+
+```
+0 3 * * *  sre-web-tool preload --all
+```
+
 **Restarting the agents.** After an update of the tree the agents run the old Python code until
 their unit is restarted: `sre-web-tool restart NAME`, or `restart --all` for every reachable host
 (whatever its state), tells each agent to restart itself (`POST /v1/restart`). The agent answers
@@ -1856,7 +1866,9 @@ the browser reaches a desktop through the owner check of the portal and of the a
 - The virtual X desktops die with the agent (a restart of its unit): they are started again,
   empty, at the next use of the Display tab; the applications shown must be launched again.
 - The preloads of the Docker images are counted per portal (two portals sharing hosts each give
-  `max_preloads` turns), need the portal (an agent never preloads by itself) and are not kept
+  `max_preloads` turns), need the portal (an agent never preloads by itself), are asked at the
+  start of an agent or by hand only (no periodic check: a cron job running
+  `sre-web-tool preload --all` does it) and are not kept
   across a restart of an agent: a preload asked by hand and not started yet is forgotten, one in
   progress is stopped (`[preload] at_start` asks again). A host that cannot be polled while it
   preloads stops counting, so one more host may get a turn meanwhile.
