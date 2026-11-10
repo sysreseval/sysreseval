@@ -298,6 +298,25 @@ class TestLiveArchives:
         assert (first['grade'], 'elements' in first, first['exam_time_remaining'], first['email']) == (1.0, False, None, 'a@x.org')
         assert (best['grade'], best['exam_time_remaining'], best['archive']) == (2.0, 600, names[1])
         assert best['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
+        assert db.light_report_sync([every[-1]['id']], limit=1)['truncated'] is True
+        # the cursor pages of every row
+        seen, before = [], None
+        while True:
+            page = db.query_sync(parse_archive_filters({'show': 'all', 'limit': '2', **({'before': str(before)} if before else {})}))
+            seen.extend(r['id'] for r in page['rows'])
+            if not page['more']:
+                break
+            before = page['rows'][-1]['id']
+        assert len(seen) == len(set(seen)) == 5
+        sink.close()
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SHOW CREATE TABLE `{archives_cfg.table}`")
+                definition = cur.fetchall()[0][1].lower()
+        finally:
+            conn.close()
+        assert 'unique key `archive`' in definition and 'mediumtext' in definition and 'login_lab_id' in definition
 
     def test_re_evaluation_replaces_in_place(self, cfg, archives_cfg):
         """`sre re-eval --update-web` on a real server (``REPLACE`` under the id of the row): the
@@ -356,25 +375,6 @@ class TestLiveArchives:
         assert [(r['id'], r['archive']) for r in page()] == [(r['id'], r['archive']) for r in before]
         assert (db.get_sync(ids[names[0]])['grade'], db.get_sync(ids[names[0]])['host']) == (3.0, 'a01')
         assert db.cursors_sync() == {'a01': max(names)}
-        assert db.light_report_sync([every[-1]['id']], limit=1)['truncated'] is True
-        # the cursor pages of every row
-        seen, before = [], None
-        while True:
-            page = db.query_sync(parse_archive_filters({'show': 'all', 'limit': '2', **({'before': str(before)} if before else {})}))
-            seen.extend(r['id'] for r in page['rows'])
-            if not page['more']:
-                break
-            before = page['rows'][-1]['id']
-        assert len(seen) == len(set(seen)) == 5
-        sink.close()
-        conn = connect()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(f"SHOW CREATE TABLE `{archives_cfg.table}`")
-                definition = cur.fetchall()[0][1].lower()
-        finally:
-            conn.close()
-        assert 'unique key `archive`' in definition and 'mediumtext' in definition and 'login_lab_id' in definition
 
 
     def test_upgrade_of_a_table_created_before_canonical_lab(self, cfg, archives_cfg, caplog):
