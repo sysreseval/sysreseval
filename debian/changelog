@@ -1,3 +1,10 @@
+sysreseval (0.16.0-1) unstable; urgency=medium
+
+  * BigBlueButton integration
+  * various improvements
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Tue, 10 Nov 2026 15:03:55 +0100
+
 sysreseval (0.15.0-1) unstable; urgency=medium
 
   * exam mode for sre-web and various other improvements
