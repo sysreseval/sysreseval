@@ -345,6 +345,21 @@ class TestWebConfig:
         assert web_config_from_dict({**base, 'bbb': {'url': 'https://x.org', 'secret': 's', 'welcome': {}}}) \
             .bbb.welcome_for('fr', ['fr']) == ''
 
+    def test_bbb_private_rooms(self):
+        """The private conversations (Talk privately on a student's project): on with [bbb]
+        unless ``private_rooms = false``; ``[bbb.private_userdata]`` is their own client settings."""
+        base = {'secret': SECRET, 'hosts': [HOST]}
+        off = web_config_from_dict(base)
+        assert off.bbb.private_rooms and off.bbb.private_userdata == {} and not off.webconf_private    # no [bbb]
+        cfg = web_config_from_dict({**base, 'bbb': {'url': 'https://x.org', 'secret': 's'}})
+        assert cfg.webconf_available and cfg.webconf_private
+        cfg = web_config_from_dict({**base, 'bbb': {
+            'url': 'https://x.org', 'secret': 's', 'private_rooms': False, 'userdata': {'bbb_skip_check_audio': True},
+            'private_userdata': {'bbb_auto_join_audio': False, 'bbb_client_title': 'Private'}}})
+        assert cfg.webconf_available and not cfg.webconf_private
+        assert cfg.bbb.userdata == {'bbb_skip_check_audio': True}
+        assert cfg.bbb.private_userdata == {'bbb_auto_join_audio': False, 'bbb_client_title': 'Private'}
+
     @pytest.mark.parametrize('bbb, fragment', [
         ({'url': 'https://x.org'}, 'go together'),
         ({'secret': 's'}, 'go together'),
@@ -367,6 +382,10 @@ class TestWebConfig:
         ({'url': 'https://x.org', 'secret': 's', 'userdata': {'Bad-Key': 1}}, 'Bad-Key'),
         ({'url': 'https://x.org', 'secret': 's', 'userdata': {'bbb_x': [1]}}, 'bbb_x'),
         ({'url': 'https://x.org', 'secret': 's', 'userdata': {'bbb_x': 1.5}}, 'bbb_x'),
+        ({'url': 'https://x.org', 'secret': 's', 'private_rooms': 'yes'}, 'private_rooms'),
+        ({'url': 'https://x.org', 'secret': 's', 'private_userdata': 'x'}, 'private_userdata. must be a table'),
+        ({'url': 'https://x.org', 'secret': 's', 'private_userdata': {'Bad-Key': 1}}, 'private_userdata.*Bad-Key'),
+        ({'url': 'https://x.org', 'secret': 's', 'private_userdata': {'bbb_x': [1]}}, 'private_userdata.*bbb_x'),
         ({'typo': 1}, 'typo'),
         ('x', 'table'),
     ])

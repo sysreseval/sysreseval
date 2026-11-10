@@ -475,6 +475,8 @@ class SiteConfig:
 
 #: The checksum algorithms of the BigBlueButton API (sha256 and sha512 since BBB 2.5).
 BBB_CHECKSUMS = ('sha1', 'sha256', 'sha512')
+#: The sub-tables of ``[bbb]`` holding client settings (``userdata-<key>`` of the join URLs).
+BBB_USERDATA_TABLES = ('userdata', 'private_userdata')
 _BBB_USERDATA_KEY_RE = re.compile(r'^[a-z0-9_]+$')
 _BBB_API_SUFFIX = '/bigbluebutton/api'
 
@@ -494,6 +496,8 @@ class BbbConfig:
     max_participants: int = 0         # 0 = unlimited
     poll_interval: float = 10.0       # seconds between two getMeetingInfo rounds (the participants, the ended meetings)
     userdata: dict = field(default_factory=dict)   # bbb_* -> str | bool | int, sent as userdata-<key> on every join
+    private_rooms: bool = True        # the Talk privately button of an instructor on a student's project
+    private_userdata: dict = field(default_factory=dict)   # bbb_* of the joins of a private room, over userdata
 
     @property
     def enabled(self) -> bool:
@@ -654,20 +658,26 @@ def _check_bbb(bbb: BbbConfig, path: str):
             raise ConfigError(f"{where}welcome must be a string or a table of strings by language")
     elif not isinstance(bbb.welcome, str):
         raise ConfigError(f"{where}welcome must be a string or a table of strings by language")
-    for key in ('record', 'mute_on_start'):
+    for key in ('record', 'mute_on_start', 'private_rooms'):
         if not isinstance(getattr(bbb, key), bool):
             raise ConfigError(f"{where}{key} must be true or false")
     if isinstance(bbb.max_participants, bool) or not isinstance(bbb.max_participants, int) or bbb.max_participants < 0:
         raise ConfigError(f"{where}max_participants must be a number (0 = unlimited)")
     if bbb.poll_interval <= 0:
         raise ConfigError(f"{where}poll_interval must be positive")
-    if not isinstance(bbb.userdata, dict):
-        raise ConfigError(f"{path}: [bbb.userdata] must be a table")
-    for key, value in bbb.userdata.items():
+    for table in BBB_USERDATA_TABLES:
+        _check_bbb_userdata(getattr(bbb, table), f"{path}: [bbb.{table}]")
+
+
+def _check_bbb_userdata(userdata, where: str):
+    """A table of client settings (``bbb_*`` -> str | bool | int) sent as ``userdata-<key>``."""
+    if not isinstance(userdata, dict):
+        raise ConfigError(f"{where} must be a table")
+    for key, value in userdata.items():
         if not isinstance(key, str) or not _BBB_USERDATA_KEY_RE.match(key):
-            raise ConfigError(f"{path}: [bbb.userdata] keys are the bbb_* names of the client settings, got {key!r}")
+            raise ConfigError(f"{where} keys are the bbb_* names of the client settings, got {key!r}")
         if not isinstance(value, (str, bool, int)):
-            raise ConfigError(f"{path}: [bbb.userdata] {key} must be a string, a boolean or an integer")
+            raise ConfigError(f"{where} {key} must be a string, a boolean or an integer")
 
 
 @dataclass
@@ -702,6 +712,12 @@ class WebConfig:
         """Whether the Webconf button of the instructors has a BigBlueButton server behind it
         (``[bbb]`` url and secret)."""
         return self.bbb.enabled
+
+    @property
+    def webconf_private(self) -> bool:
+        """Whether an instructor on a student's project may invite the student to a private
+        conversation (a two-person room): ``[bbb] private_rooms``, on by default."""
+        return self.bbb.enabled and self.bbb.private_rooms
 
     @property
     def group_directory_reason(self) -> str | None:
@@ -919,10 +935,12 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     site = _build(SiteConfig, _section(data, 'site', path), f"{path}: [site]")
     _check_site(site, path)
     bbb_data = _section(data, 'bbb', path)
-    userdata = bbb_data.get('userdata', {})
-    if not isinstance(userdata, dict):
-        raise ConfigError(f"{path}: [bbb.userdata] must be a table")
-    bbb = _build(BbbConfig, {k: v for k, v in bbb_data.items() if k != 'userdata'}, f"{path}: [bbb]", userdata=userdata,
+    tables = {}
+    for table in BBB_USERDATA_TABLES:
+        tables[table] = bbb_data.get(table, {})
+        if not isinstance(tables[table], dict):
+            raise ConfigError(f"{path}: [bbb.{table}] must be a table")
+    bbb = _build(BbbConfig, {k: v for k, v in bbb_data.items() if k not in BBB_USERDATA_TABLES}, f"{path}: [bbb]", **tables,
                  duration=parse_duration(bbb_data.get('duration', 0), 'bbb.duration'),
                  poll_interval=parse_duration(bbb_data.get('poll_interval', 10.0), 'bbb.poll_interval'))
     _check_bbb(bbb, path)

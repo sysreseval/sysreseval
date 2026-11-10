@@ -17,10 +17,12 @@
 // conference (BigBlueButton) an instructor put the user in ({"t": "webconf", "id", "name",
 // "owner", "role", "join_url"} / {..., "ended": true}): webconf.js shows the client in an iframe
 // over the page (a floating window, the Webconf tab of a project, full page), and
-// webconf_dialog.js is the Webconf button of the instructors.  Nothing of this runs inside the
-// presentation iframe.  The Logout button asks about the running projects before the form is
-// submitted (logout.js).  No _() here: base.js loads no catalog (exam.js and webconf.js load
-// their own).
+// webconf_dialog.js is the Webconf button of the instructors.  And the invitation of an
+// instructor to a private conversation ({"t": "webconf-invite", "id", "from", "to"} / {...,
+// "ended": true, "reason"}): webconf_invite.js shows the banner of the one invited.  Nothing of
+// this runs inside the presentation iframe.  The Logout button asks about the running projects
+// before the form is submitted (logout.js).  No _() here: base.js loads no catalog (exam.js,
+// webconf.js and webconf_invite.js load their own).
 
 import * as api from './api.js';
 import {el, toast} from './ui.js';
@@ -28,6 +30,7 @@ import {ReconnectingSocket} from './events.js';
 import {setupLogout} from './logout.js';
 import {setupExam} from './exam.js';
 import * as webconf from './webconf.js';
+import * as webconfInvite from './webconf_invite.js';
 import {setupWebconfDialog} from './webconf_dialog.js';
 
 const select = document.getElementById('language-select');
@@ -115,6 +118,10 @@ function onPresence(message) {
   }
   if (message.t === 'webconf') {
     webconf.onPush(message);
+    return;
+  }
+  if (message.t === 'webconf-invite') {
+    webconfInvite.onPush(message);
     return;
   }
   if (message.t !== 'presentation') {

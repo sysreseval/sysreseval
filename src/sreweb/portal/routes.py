@@ -29,7 +29,8 @@ from .presentation import (Presence, Presentation, Presentations, Watcher, SPECT
                            MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
 from .focus import Focus, Focuses, WS_FOCUS_ENDED, FOCUS_MAX_FRAME
 from .bbb import BbbError, BbbUnavailable
-from .webconf import Webconfs, Room, RoomGone, ROOM_ID_RE, ROLE_NAMES
+from .webconf import (Webconfs, Room, RoomGone, Refused, InvitationGone, ROOM_ID_RE, ROLE_NAMES, MAX_REQUEST_TEXT,
+                      check_tab)
 from .exams import (Exams, Exam, Member, PHASE_STARTING, START_PHASES, REASON_ADDRESS, lab_of_rln, normal_lab,
                     parse_exam, parse_labs, parse_selection, parse_extra_minutes)
 from .examprojects import ExamProjects, exam_payload, instructor_identity
@@ -268,6 +269,12 @@ class Routes:
         r.add_post('/api/webconfs/{id}/attend', self.api_webconf_attend)
         r.add_delete('/api/webconfs/{id}', self.api_webconf_delete)
         r.add_get('/api/webconfs/{id}/join', self.api_webconf_join)
+        # ... and the private conversations: an instructor invites a student, who answers
+        r.add_post('/api/webconfs/invitations', self.api_webconf_invite)
+        r.add_post('/api/webconfs/invitations/{id}/accept', self.api_webconf_accept)
+        r.add_post('/api/webconfs/invitations/{id}/decline', self.api_webconf_decline)
+        r.add_delete('/api/webconfs/invitations/{id}', self.api_webconf_cancel)
+        r.add_post('/api/webconfs/{id}/leave', self.api_webconf_leave)
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -302,6 +309,7 @@ class Routes:
             'groups': self.cfg.groups_configured,     # the Watch page shows the student groups (its Group column)
             'group_sources': self.cfg.group_sources,  # any user groups: the group select, the Present audience
             'webconf': self.cfg.webconf_available,    # the Webconf button of the instructors ([bbb])
+            'webconf_private': self.cfg.webconf_private,   # ... and Talk privately on a student's project
             'logout_url': self.cfg.auth.proxy.logout_url if self.proxy_mode else '',
             'site': self._site(language),
             **extra,
@@ -2255,18 +2263,25 @@ class Routes:
         if logged is not None:
             logged.update(webconf=room.id, audience=audience_size(audience), owner=room.owner.login)
         await self.memberships.refresh()
-        await self.webconfs.set_audience(room.id, audience)
+        try:
+            await self.webconfs.set_audience(room.id, audience)
+        except Refused as e:
+            return json_error(409, str(e))
         return web.json_response(room.to_dict(self.presence))
 
     async def api_webconf_attend(self, request):
-        """An instructor joins a room: the one their browser shows from now on."""
+        """An instructor joins a room: the one their browser shows from now on (never a private
+        conversation: 409)."""
         identity = self._require_instructor(request)
         room = self._webconf(request)
         logged = request.get(ACCESS_KEY)
         if logged is not None:
             logged.update(webconf=room.id, owner=room.owner.login)
         await self.memberships.refresh()
-        await self.webconfs.attend(room.id, identity)
+        try:
+            await self.webconfs.attend(room.id, identity)
+        except Refused as e:
+            return json_error(409, str(e))
         return web.json_response(room.to_dict(self.presence))
 
     async def api_webconf_delete(self, request):
@@ -2281,10 +2296,13 @@ class Routes:
 
     async def api_webconf_join(self, request):
         """The ``src`` of the iframe: a 302 to the signed join URL of the caller on the server (a
-        moderator for an instructor, a viewer otherwise); 410 when the room ended meanwhile."""
+        moderator for an instructor, a viewer otherwise); 410 when the room ended meanwhile.  A
+        private conversation is joined by its two only, instructors included."""
         identity = self._require_identity(request)
         room = self._webconf(request)
         await self.memberships.refresh()
+        if room.private and not room.includes(identity):
+            raise PoolError(403, "a private conversation")
         if not identity.is_instructor and not room.includes(identity):
             raise PoolError(403, "not in the audience")
         try:
@@ -2299,6 +2317,124 @@ class Routes:
         if logged is not None:
             logged.update(webconf=room.id, role=ROLE_NAMES[self.webconfs.role_of(identity)])
         return web.Response(status=302, headers={'Location': url, 'Cache-Control': 'no-store'})
+
+    # -- private conversations ------------------------------------------------------------------
+    # An instructor on a student's project (the Talk privately button of the helper view,
+    # ``talk.js``) invites the student; the student's pages show a banner (``webconf_invite.js``)
+    # and answer; a yes makes a two-person room both browsers switch to.  404 unless
+    # ``[bbb] private_rooms``.
+
+    def _invitation_id(self, request) -> str:
+        if not self.webconfs.private_enabled:
+            raise PoolError(404, "private conversations are not configured")
+        return request.match_info['id']
+
+    @staticmethod
+    async def _tab_of(request) -> str:
+        """The browser tab of the caller (``{"tab"}`` of an optional JSON body): the one that
+        will show the room."""
+        try:
+            body = await request.json()
+        except ValueError:
+            return ''
+        return check_tab(body.get('tab')) if isinstance(body, dict) else ''
+
+    async def api_webconf_invite(self, request):
+        """Instructors: ``{"login", "tab", "host"?, "rln"?}`` invites *login* to a private
+        conversation; 409 when they are not connected or busy."""
+        identity = self._require_instructor(request)
+        if not self.webconfs.private_enabled:
+            raise PoolError(404, "private conversations are not configured")
+        body = await self._group_body(request)
+        login = body.get('login')
+        if not isinstance(login, str) or not 0 < len(login) <= MAX_REQUEST_TEXT:
+            return json_error(400, "a login is expected")
+        host, rln = body.get('host'), body.get('rln')
+        if not (isinstance(host, str) and isinstance(rln, str) and len(host) <= MAX_REQUEST_TEXT
+                and len(rln) <= MAX_REQUEST_TEXT and running_lab_name_owner(rln) is not None):
+            host, rln = '', ''                  # only the log reads them
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(student=login, host=host, rln=rln)
+        try:
+            inv = await self.webconfs.invite(identity, login, tab=check_tab(body.get('tab')),
+                                             request_origin=self._origin(request), host=host, rln=rln)
+        except ValueError as e:
+            return json_error(400, str(e))
+        except Refused as e:
+            return json_error(409, str(e))
+        if logged is not None:
+            logged.update(invitation=inv.id)
+        return web.json_response(inv.to_dict(), status=201)
+
+    async def api_webconf_accept(self, request):
+        """The invited student says yes (``{"tab"}``): the room is created (502 / 503 as the
+        server answers) and both browsers are told; 410 when the invitation is over."""
+        identity = self._require_identity(request)
+        invitation_id = self._invitation_id(request)
+        inv = self.webconfs.invitation(invitation_id)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None and inv is not None:
+            logged.update(invitation=inv.id, instructor=inv.instructor.login)
+        try:
+            room = await self.webconfs.accept(invitation_id, identity, tab=await self._tab_of(request))
+        except InvitationGone:
+            return json_error(410, "the invitation is over")
+        except PermissionError as e:
+            raise PoolError(403, str(e)) from None
+        except BbbError as e:
+            return json_error(502, f"BigBlueButton refused the meeting: {e.message or e.message_key}")
+        except BbbUnavailable:
+            return json_error(503, "the BigBlueButton server does not answer")
+        if logged is not None:
+            logged.update(webconf=room.id)
+        return web.json_response(room.to_dict(self.presence))
+
+    async def api_webconf_decline(self, request):
+        identity = self._require_identity(request)
+        invitation_id = self._invitation_id(request)
+        inv = self.webconfs.invitation(invitation_id)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None and inv is not None:
+            logged.update(invitation=inv.id, instructor=inv.instructor.login)
+        try:
+            await self.webconfs.decline(invitation_id, identity)
+        except InvitationGone:
+            return json_error(410, "the invitation is over")
+        except PermissionError as e:
+            raise PoolError(403, str(e)) from None
+        return web.json_response({'ok': True})
+
+    async def api_webconf_cancel(self, request):
+        """The instructor who invited (or any instructor) takes the invitation back."""
+        identity = self._require_instructor(request)
+        invitation_id = self._invitation_id(request)
+        inv = self.webconfs.invitation(invitation_id)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None and inv is not None:
+            logged.update(invitation=inv.id, student=inv.student.login)
+        try:
+            await self.webconfs.cancel(invitation_id, identity)
+        except InvitationGone:
+            return json_error(410, "the invitation is over")
+        return web.json_response({'ok': True})
+
+    async def api_webconf_leave(self, request):
+        """One of the two of a private conversation ends it (the ✕ of its window, the client's
+        own Leave): both browsers go back to their class conference.  409 for another room: a
+        participant leaves those in their browser only."""
+        identity = self._require_identity(request)
+        room = self._webconf(request)
+        logged = request.get(ACCESS_KEY)
+        if logged is not None:
+            logged.update(webconf=room.id, owner=room.owner.login)
+        try:
+            await self.webconfs.leave(room.id, identity)
+        except Refused as e:
+            return json_error(409, str(e))
+        except PermissionError as e:
+            raise PoolError(403, str(e)) from None
+        return web.json_response({'ok': True})
 
     async def webconf_left_page(self, request):
         """What the client shows after *Leave meeting* (the ``logoutURL`` of the meetings), inside

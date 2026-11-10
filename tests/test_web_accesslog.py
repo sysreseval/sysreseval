@@ -140,11 +140,19 @@ class TestEventFor:
                                                                             'exam_edit', 'exam_dismiss',
                                                                             'webconf_start', 'webconf_audience',
                                                                             'webconf_attend', 'webconf_stop',
-                                                                            'webconf_join'}
+                                                                            'webconf_join', 'webconf_invite',
+                                                                            'webconf_accept', 'webconf_decline',
+                                                                            'webconf_cancel', 'webconf_leave'}
         # the web conferences: the listings are keepalives, the page of the iframe after Leave is ignored
         assert ('GET', '/api/webconfs') in A.KEEPALIVE and ('GET', '/api/webconfs/{id}') in A.KEEPALIVE
         assert '/webconf/left' in A.IGNORED and A.EVENTS[('GET', '/api/webconfs/{id}/join')] == 'webconf_join'
         assert {'webconf_start', 'webconf_join', 'webconf_stop'} <= set(A.ALL_EVENTS)
+        # ... and the private conversations: the invitation, its answers, the conversation left
+        assert A.EVENTS[('POST', '/api/webconfs/invitations')] == 'webconf_invite'
+        assert A.EVENTS[('POST', '/api/webconfs/invitations/{id}/accept')] == 'webconf_accept'
+        assert A.EVENTS[('POST', '/api/webconfs/invitations/{id}/decline')] == 'webconf_decline'
+        assert A.EVENTS[('DELETE', '/api/webconfs/invitations/{id}')] == 'webconf_cancel'
+        assert A.EVENTS[('POST', '/api/webconfs/{id}/leave')] == 'webconf_leave'
         # the Exams page: the polls of the student's exam and of the listings are keepalives,
         # every change of an exam is an exam_edit, the dismiss of the end banner its own event
         assert ('GET', '/api/exam') in A.KEEPALIVE and ('GET', '/api/exams') in A.KEEPALIVE

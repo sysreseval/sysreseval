@@ -20,6 +20,7 @@
     <button type="button" id="font-plus" title="{{ _("Larger text") }}">A+</button>
     <a id="schema-pdf-link" class="button" hidden href="{{ api_base }}/schema.pdf" download>{{ _("Export Schema to PDF") }}</a>
     {% if instructor and not presentation %}<button type="button" id="focus-student" class="toggle" aria-pressed="false" hidden title="{{ _("Bring the student's browser to this project and keep both pages on the same tab, terminal and question") }}">{{ _("Focus student on project") }}</button>{% endif %}
+    {% if instructor and not presentation and webconf_private %}<button type="button" id="talk-student" class="toggle" aria-pressed="false" hidden title="{{ _("Invite the student to a private voice and text conversation") }}">{{ _("Talk privately") }}</button>{% endif %}
     {% if instructor and not presentation %}<button type="button" id="present" class="primary" hidden title="{{ _("Show this project, read-only, on the browsers of chosen students") }}">{{ _("Present") }}</button>{% endif %}
     <button type="button" id="close-project" class="danger"{% if presentation %} hidden{% endif %}>{{ _("Close Project") }}</button>
   </div>

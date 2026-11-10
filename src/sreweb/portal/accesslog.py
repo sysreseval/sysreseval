@@ -114,6 +114,15 @@ EVENTS = {
     ('POST', '/api/webconfs/{id}/attend'): 'webconf_attend',
     ('DELETE', '/api/webconfs/{id}'): 'webconf_stop',
     ('GET', '/api/webconfs/{id}/join'): 'webconf_join',
+    # ... and the private conversations: an instructor invites a student (``student``, the
+    # ``host`` and ``rln`` of the project they asked from, ``invitation``), the student's answer
+    # (``invitation``, ``instructor``; ``webconf`` = the room made by a yes), the invitation taken
+    # back, the conversation left by one of the two (``webconf``, ``owner``)
+    ('POST', '/api/webconfs/invitations'): 'webconf_invite',
+    ('POST', '/api/webconfs/invitations/{id}/accept'): 'webconf_accept',
+    ('POST', '/api/webconfs/invitations/{id}/decline'): 'webconf_decline',
+    ('DELETE', '/api/webconfs/invitations/{id}'): 'webconf_cancel',
+    ('POST', '/api/webconfs/{id}/leave'): 'webconf_leave',
 }
 WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 #: Events naming a project the session used.

@@ -28,6 +28,7 @@ import {el, clear, toast} from './ui.js';
 import {ProjectEvents, ReconnectingSocket} from './events.js';
 import {createPresenter} from './present.js';
 import {createFocus} from './focus.js';
+import {createTalk} from './talk.js';
 import {createPointerTracker, createPointerView} from './pointer.js';
 import {currentExam, isBound, labOfRunningLabName, refreshExam} from './exam.js';
 import {createSchemaTab} from './tabs/schema.js';
@@ -81,8 +82,10 @@ const presentButton = document.getElementById('present');             // an inst
 const presentationBar = document.getElementById('presentation-bar');
 const focusButton = document.getElementById('focus-student');         // an instructor's page
 const focusLabel = document.getElementById('focus-label');            // a student's page: "Followed by"
+const talkButton = document.getElementById('talk-student');           // an instructor's page, with private conversations
 let presenter = null;      // the presentation side of an instructor's page (present.js)
 let focus = null;          // the focus side (focus.js): the instructor's button, or the student's page following
+let talk = null;           // an instructor on a student's project: the Talk privately button (talk.js)
 let pointerTracker = null; // an instructor's page: the mouse and the selection published while presenting or focusing (pointer.js)
 let pointerView = null;    // a spectator's page: the presenter's pointer and selection drawn (pointer.js; focus.js keeps its own)
 
@@ -342,6 +345,10 @@ function applyProject(project) {
       focusButton.hidden = false;
     }
     focus.projectLoaded();     // a view received before the load
+  }
+  if (talk) {
+    talk.render();             // the owner's name is known now
+    talkButton.hidden = false;
   }
   if (spectator && pendingView) {
     const view = pendingView;
@@ -816,6 +823,13 @@ if (!spectator && focusLabel && (isOwner || (isInstructor && focusButton))) {
     tracker: isInstructor && !isOwner ? pointerTracker : null,
     outgoing: focusOutgoing, incoming: focusIncoming, createPointerView: makePointerView,
   });
+}
+
+if (helper && talkButton) {
+  // an instructor on a student's project may ask the student to talk alone (a private room of
+  // the web conference); the button is shown once the project is loaded
+  talk = createTalk({owner, getOwnerName: () => ownerName, host: body.dataset.host || '', rln: body.dataset.rln || '',
+                     button: talkButton});
 }
 
 async function main() {

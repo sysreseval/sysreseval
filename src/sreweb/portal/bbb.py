@@ -195,15 +195,17 @@ class BbbClient:
 
     async def create(self, meeting_id: str, name: str, *, moderator_pw: str, attendee_pw: str, welcome: str = '',
                      logout_url: str = '', record: bool = False, duration: int = 0, mute_on_start: bool = False,
-                     max_participants: int = 0, meta: dict | None = None) -> dict:
+                     max_participants: int = 0, meta: dict | None = None, extra: dict | None = None) -> dict:
         """``{'create_time', 'internal_meeting_id', 'duplicate'}`` (*duplicate*: the meeting
-        existed, the answer describes it)."""
+        existed, the answer describes it).  *extra*: other parameters of the call, by their API
+        name (``endWhenNoModerator``, ``disabledFeatures``...)."""
         params = [('name', name), ('meetingID', meeting_id), ('attendeePW', attendee_pw), ('moderatorPW', moderator_pw),
                   ('welcome', welcome), ('logoutURL', logout_url), ('record', record),
                   ('duration', duration or None), ('muteOnStart', mute_on_start),
                   ('maxParticipants', max_participants or None)]
         for key, value in sorted((meta or {}).items()):
             params.append((f'meta_{key}', value))
+        params.extend(sorted((extra or {}).items()))
         result = await self._call('create', params)
         return {'create_time': _int(result.get('createTime')), 'internal_meeting_id': result.get('internalMeetingID', ''),
                 'duplicate': result.get('messageKey') == KEY_DUPLICATE}

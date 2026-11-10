@@ -284,8 +284,15 @@ session_timeout = "30m"
 # duration = 0               # "2h": the server ends a meeting after that; 0 = unlimited
 # max_participants = 0       # 0 = unlimited
 # poll_interval = "10s"      # how often the participants and the ended meetings are read from the server
+# private_rooms = true       # the Talk privately button of an instructor on a student's project: a private
+#                            # conversation of the two (a second meeting both browsers show instead of the
+#                            # class conference, the student invited first); false removes the button
 # [bbb.userdata]             # the bbb_* client settings sent with every join (userdata-bbb_* of the API reference)
 # bbb_skip_check_audio = true
+# [bbb.private_userdata]     # those of the joins of a private conversation, over [bbb.userdata] and the portal's
+#                            # own (bbb_auto_join_audio, bbb_listen_only_mode = false, bbb_skip_check_audio,
+#                            # bbb_hide_presentation_on_join: straight to the microphone)
+# bbb_listen_only_mode = true
 
 [limits]
 eval_interval = 10        # seconds between two self-evaluations of one user

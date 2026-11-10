@@ -58,7 +58,8 @@ def context(**extra) -> dict:
     """The context of every page (``routes.Routes._page_context``) with the identity callable."""
     base = {'_': lambda text: text, 'identity': IDENTITY, 'auth_mode': 'anonymous', 'languages': LANGUAGES,
             'language': 'fr', 'instructor': False, 'administrator': False, 'groups': False, 'group_sources': False,
-            'webconf': False, 'logout_url': '', 'site': {'name': '', 'url': '', 'logo_url': ''}}
+            'webconf': False, 'webconf_private': False, 'logout_url': '',
+            'site': {'name': '', 'url': '', 'logo_url': ''}}
     base.update(extra)
     return base
 
@@ -439,6 +440,15 @@ class TestTemplates:
         assert 'id="present"' not in student and 'id="presentation-bar"' not in student
         assert 'id="focus-student"' not in student and 'id="focus-label"' in student
         assert 'data-group-sources="true"' in student and 'id="close-project" class="danger">' in student
+        # the private conversations ([bbb] private_rooms): Talk privately, after the focus button, for an
+        # instructor (shown by project.js on a student's project only); never for a student or a spectator
+        assert 'id="talk-student"' not in html
+        talking = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True, webconf_private=True)
+        assert 'id="talk-student" class="toggle" aria-pressed="false" hidden' in talking and 'Talk privately' in talking
+        assert talking.index('id="focus-student"') < talking.index('id="talk-student"') < talking.index('id="present"')
+        assert 'id="talk-student"' not in render('project.html', host='a01', rln=RLN, api_base=API_BASE, webconf_private=True)
+        assert 'id="talk-student"' not in render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True,
+                                                 webconf_private=True, presentation={'id': 'p1', 'presenter': 'Pr. Of'})
 
     def test_groups_page(self):
         """The Groups page of the instructors: the toolbar (filter, kind toggles, Refresh, New
@@ -946,6 +956,55 @@ process.stdout.write(JSON.stringify({
 """
 
 
+WEBCONF_PRIVATE_RUNNER = """\
+import * as M from './webconf_model.js';
+
+const who = {login: 'prof', fullname: 'Pr. Of'};
+const classPush = {t: 'webconf', id: 'c1', name: 'Class', owner: who, role: 'viewer', join_url: '/api/webconfs/c1/join'};
+const privatePush = {t: 'webconf', id: 'p1', name: 'Pr. Of – Alice A', owner: who, role: 'viewer',
+                     join_url: '/api/webconfs/p1/join', kind: 'private', peer: who, tab: 'tab1'};
+const room = M.roomOf(privatePush);
+const classRoom = M.roomOf(classPush);
+const f = {x: 0.1, y: 0.2, w: 0.5, h: 0.4};
+const over = {};
+for (const mode of M.MODES) {
+  const s = M.nextState(null, {type: 'push', room, stored: {id: 'c1', mode, fractions: f}});
+  over[mode] = {mode: s.mode, fractions: s.fractions, back: s.back};
+}
+const s1 = M.nextState(null, {type: 'push', room, stored: {id: 'c1', mode: 'tab', fractions: f}});
+const stored1 = M.storedOf(s1, 900);
+const parsed1 = M.parseStored(JSON.stringify(stored1), 1000);
+const kept = M.backStored(parsed1);
+const keptStored = M.parseStored(JSON.stringify(M.storedOf(kept, 950)), 1000);
+const classState = M.nextState(null, {type: 'push', room: classRoom, stored: null});
+const second = M.nextState(null, {type: 'push', room: {...room, id: 'p2'}, stored: parsed1});
+const secondAlone = M.nextState(null, {type: 'push', room: {...room, id: 'p2'},
+                                       stored: {id: 'p1', mode: 'full', fractions: null, kind: 'private'}});
+const A = {held: true, visible: false, tab: 'a'};
+const B = {held: false, visible: true, tab: 'z'};
+const C = {held: false, visible: true, tab: 'b'};
+const D = {held: false, visible: false, tab: 'zz'};
+process.stdout.write(JSON.stringify({
+  room, classRoom, noTab: M.roomOf({...privatePush, tab: 3, peer: null}),
+  isPrivate: [M.isPrivate(room), M.isPrivate(classRoom), M.isPrivate(null), M.isPrivate(parsed1)],
+  over, alone: M.nextState(null, {type: 'push', room, stored: null}), s1, stored1, parsed1,
+  restored: M.nextState(null, {type: 'push', room, stored: parsed1}),
+  kept, back: M.nextState(null, {type: 'push', room: classRoom, stored: keptStored}),
+  missed: M.nextState(null, {type: 'push', room: classRoom, stored: parsed1}),
+  second, secondAlone: {mode: secondAlone.mode, hasBack: 'back' in secondAlone},
+  otherClass: M.nextState(null, {type: 'push', room: {...classRoom, id: 'c9'}, stored: parsed1}).mode,
+  neverLeft: [M.nextState(s1, {type: 'leave'}) === s1, M.nextState(s1, {type: 'left-page'}) === s1],
+  modes: [M.nextState(s1, {type: 'popout'}).mode, M.nextState(M.nextState(s1, {type: 'window'}), {type: 'minimize'}).mode,
+          M.nextState(s1, {type: 'full'}).mode],
+  parsedBad: [M.parseStored(JSON.stringify({...stored1, back: {id: 'c1', mode: 'flying'}}), 1000),
+              M.parseStored(JSON.stringify({id: 'c1', mode: 'window', t: 900, back: {id: 'x', mode: 'tab'}}), 1000)],
+  backs: [M.backStored(null), M.backStored(classState), M.backStored(s1)],
+  ranks: [M.outranks(A, B), M.outranks(B, A), M.outranks(B, C), M.outranks(C, B), M.outranks(C, D), M.outranks(D, C),
+          M.outranks(A, A), M.outranks(null, A), M.outranks(A, null), M.outranks(undefined, undefined)],
+}));
+"""
+
+
 class TestWebconfModel:
     """The pure model of the web conference shown by a page (webconf_model.js: the room of a
     push, the modes and their transitions, the stored state, the default geometry), run by the
@@ -977,6 +1036,44 @@ class TestWebconfModel:
         assert out['fractions'] == {'x': 0.59, 'y': 0.504, 'w': 0.4, 'h': 0.48} and out['noArea'] is None
         assert out['full'] == {'x': 0, 'y': 32, 'w': 1280, 'h': 688} and out['fullTiny'] == {'x': 0, 'y': 32, 'w': 100, 'h': 0}
         assert out['live'] == [True, True, True, True, False, False]
+
+    def test_private_conversation(self, tmp_path, js):
+        """A private conversation takes the mode and the place of the conference it replaces and
+        remembers them (``back``, stored too), so that the class conference comes back as it
+        was; it is never left; the rank that settles two pages claiming a room at once."""
+        runner = js_project(tmp_path, WEBCONF_PRIVATE_RUNNER, 'webconf_model.js', 'terminal_windows.js', 'i18n.js', 'ui.js')
+        out = json.loads(js.run(tmp_path, runner))
+        f = {'x': 0.1, 'y': 0.2, 'w': 0.5, 'h': 0.4}
+        who = {'login': 'prof', 'fullname': 'Pr. Of'}
+        room = {'id': 'p1', 'name': 'Pr. Of – Alice A', 'owner': who, 'role': 'viewer', 'joinUrl': '/api/webconfs/p1/join',
+                'kind': 'private', 'peer': who, 'tab': 'tab1'}
+        class_room = {'id': 'c1', 'name': 'Class', 'owner': who, 'role': 'viewer', 'joinUrl': '/api/webconfs/c1/join'}
+        assert out['room'] == room and out['classRoom'] == class_room            # a class room carries no kind
+        assert out['noTab']['peer'] == {'login': '', 'fullname': ''} and out['noTab']['tab'] == ''
+        assert out['isPrivate'] == [True, False, False, True]
+        # the mode taken from the conference replaced, and what comes back afterwards
+        taken = {mode: (v['mode'], v['back']['mode']) for mode, v in out['over'].items()}
+        assert taken == {'window': ('window', 'window'), 'minimized': ('window', 'minimized'), 'tab': ('tab', 'tab'),
+                         'full': ('full', 'full'), 'popout': ('window', 'window'), 'left': ('window', 'left')}
+        assert all(v['fractions'] == f and v['back'] == {'id': 'c1', 'mode': v['back']['mode'], 'fractions': f}
+                   for v in out['over'].values())
+        assert out['alone'] == {**room, 'mode': 'window', 'fractions': None}     # no conference before: no way back
+        back = {'id': 'c1', 'mode': 'tab', 'fractions': f}
+        assert out['s1'] == {**room, 'mode': 'tab', 'fractions': f, 'back': back}
+        assert out['stored1'] == {'id': 'p1', 'mode': 'tab', 'fractions': f, 't': 900, 'kind': 'private', 'back': back}
+        assert out['parsed1'] == {'id': 'p1', 'mode': 'tab', 'fractions': f, 'kind': 'private', 'back': back}
+        assert out['restored'] == out['s1']                                      # the next page of the tab
+        # the end: the storage is given the conference to come back to, which its push restores
+        assert out['kept'] == back and out['back'] == {**class_room, 'mode': 'tab', 'fractions': f}
+        assert out['missed'] == out['back']                                      # even when the end was missed
+        assert (out['second']['id'], out['second']['mode'], out['second']['back']) == ('p2', 'tab', back)
+        assert out['secondAlone'] == {'mode': 'full', 'hasBack': False}          # from a conversation without a way back
+        assert out['otherClass'] == 'window'                                     # an unrelated room: a window
+        assert out['neverLeft'] == [True, True] and out['modes'] == ['popout', 'minimized', 'full']
+        assert out['parsedBad'][0] == {'id': 'p1', 'mode': 'tab', 'fractions': f, 'kind': 'private'}
+        assert out['parsedBad'][1] == {'id': 'c1', 'mode': 'window', 'fractions': None}     # a class room has no way back
+        assert out['backs'] == [None, None, back]
+        assert out['ranks'] == [True, False, True, False, True, False, False, False, True, False]
 
 
 TERMINAL_GEOMETRY_RUNNER = """\
@@ -1307,6 +1404,46 @@ class TestJavaScript:
         css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
         assert re.search(r'#webconf-frame\s*\{[^{}]*position: fixed', css)
         assert re.search(r'#webconf-frame\.dragging\s*\{[^{}]*pointer-events: none', css)
+
+    def test_private_conversation_wiring(self):
+        """The private conversations: the invitation pushed to base.js and shown by
+        webconf_invite.js (its answer names the browser tab), the Talk privately button of the
+        helper view (talk.js), and what webconf.js does for a private room: nothing announced
+        on a switch, the tab the portal names, leaving is ending."""
+        base = (JS / 'base.js').read_text(encoding='utf-8')
+        assert "message.t === 'webconf-invite'" in base and 'webconfInvite.onPush(message)' in base
+        invite = (JS / 'webconf_invite.js').read_text(encoding='utf-8')
+        assert "import {TAB} from './webconf.js';" in invite and '{tab: TAB}' in invite
+        assert "`/api/webconfs/invitations/${encodeURIComponent(invitation.id)}/${what}`" in invite
+        assert "id: 'webconf-invite'" in invite and "new CustomEvent('sre-talk'" in invite
+        assert "querySelectorAll('dialog[open]')" in invite          # a modal dialog makes the page inert
+        assert not re.search(r'^(const|let) \w+ = _\(', invite, re.M)      # no translation before the catalog
+        talk = (JS / 'talk.js').read_text(encoding='utf-8')
+        assert "api.post('/api/webconfs/invitations', {login: owner, tab: TAB, host, rln})" in talk
+        assert "api.del(`/api/webconfs/invitations/${encodeURIComponent(now.invitation.id)}`)" in talk
+        assert "act('leave')" in talk and "'sre-talk'" in talk and "'sre-webconf'" in talk
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "document.getElementById('talk-student')" in project and 'if (helper && talkButton) {' in project
+        assert 'talkButton.hidden = false;' in project
+        webconf = (JS / 'webconf.js').read_text(encoding='utf-8')
+        assert 'export const TAB = tabId();' in webconf and 'window.sessionStorage' in webconf
+        assert 'over(message.switch === true);' in webconf
+        act = webconf[webconf.index('export function act('):webconf.index('async function leavePrivate(')]
+        assert "M.isPrivate(state) && (type === 'leave' || type === 'left-page')" in act and 'leavePrivate(state.id);' in act
+        assert "api.post(`/api/webconfs/${encodeURIComponent(id)}/leave`)" in webconf
+        holding = webconf[webconf.index('function holding(room)'):webconf.index('function onChannel(')]
+        assert 'M.isPrivate(room) && room.tab' in holding and 'designated(room)' in holding
+        assert "channel.postMessage({t: 'who', id, rank: claim.rank})" in holding
+        assert 'M.outranks(message.rank, claim.rank)' in webconf
+        assert "new CustomEvent('sre-webconf'" in webconf and "'webconf private-room'" in webconf
+        dialog = (JS / 'webconf_dialog.js').read_text(encoding='utf-8')
+        assert "room.kind === 'private'" in dialog
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        z_index = lambda selector: int(re.search(selector + r'\s*\{[^{}]*z-index:\s*(\d+)', css).group(1))
+        # the banner above the conference and the presentation overlay, under the exam end overlay
+        assert z_index(r'#webconf-frame') < z_index(r'\.webconf-invite') < z_index(r'#exam-ended')
+        assert re.search(r'\.webconf-invite\s*\{[^{}]*position: fixed', css)
+        assert re.search(r'\.terminal-window\.private-room > \.terminal-window-title\s*\{[^{}]*--private-bg', css)
 
     def test_group_names_are_url_encoded(self):
         """Every group name or login put in a path of the groups API goes through encodeURIComponent."""

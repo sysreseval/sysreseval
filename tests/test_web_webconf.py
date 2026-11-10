@@ -381,6 +381,336 @@ class TestWebconfsRegistry:
 
 
 # ---------------------------------------------------------------------------------------------
+# the private conversations
+# ---------------------------------------------------------------------------------------------
+
+def invite_push(inv: W.Invitation, reason: str | None = None) -> dict:
+    message = {'t': 'webconf-invite', 'id': inv.id,
+               'from': {'login': inv.instructor.login, 'fullname': inv.instructor.fullname},
+               'to': {'login': inv.student.login, 'fullname': inv.student.fullname}}
+    if reason is not None:
+        message.update(ended=True, reason=reason)
+    return message
+
+
+def private_started(room: W.Room, identity: Identity, tab: str = '') -> dict:
+    other = room.peer if identity.login == room.owner.login else room.owner
+    return {**started(room, 'moderator' if identity.is_instructor else 'viewer'), 'kind': 'private',
+            'peer': {'login': other.login, 'fullname': other.fullname}, 'tab': tab}
+
+
+def switched(room: W.Room) -> dict:
+    return {**ended(room), 'switch': True}
+
+
+def conversation(w, instructor=PROF, student=ALICE, tabs=('tp', 'ta')) -> W.Room:
+    inv = run(w.invite(instructor, student.login, tab=tabs[0]))
+    return run(w.accept(inv.id, student, tab=tabs[1]))
+
+
+class GatedBbb(FakeBbb):
+    """A server whose ``create`` waits for the test (what happens meanwhile)."""
+
+    def __init__(self):
+        super().__init__()
+        self.gate = None
+        self.entered = None
+
+    async def create(self, meeting_id, name, **kw):
+        if self.gate is not None:
+            self.entered.set()
+            await self.gate.wait()
+        return await super().create(meeting_id, name, **kw)
+
+
+class TestPrivateConversations:
+    def test_helpers(self):
+        assert W.private_name(PROF, ALICE) == 'Pr. Of – Alice A'
+        assert W.private_name(PROF2, CAROL) == 'prof2 – carol'                    # no full name: the login
+        long = Identity(login='dave', fullname='  D\x00' + 'd' * 80)
+        name = W.private_name(long, ALICE)
+        assert name == 'D' + 'd' * 29 + ' – Alice A' and W.check_name(name) == name     # a name the API takes
+        assert W.check_tab('t-1_A') == 't-1_A'
+        for bad in ('', 'a b', 'x' * 65, 3, None, 'é'):
+            assert W.check_tab(bad) == ''
+
+    def test_invite_tells_both_and_changes_nothing_else(self):
+        clock, presence, bbb, w = registries()
+        wp, wa, wc = connect(presence, PROF, ALICE, CAROL)
+        r1 = run(w.start(PROF, 'R1', ({'alice'}, set())))
+        inv = run(w.invite(PROF, 'alice', tab='tp', request_origin='http://sre.lan', host='h1', rln='x@@@y@@@alice'))
+        assert (inv.instructor, inv.student, inv.created_at) == (PROF, ALICE, 1000.0)
+        assert (inv.origin, inv.host, inv.rln, inv.tabs) == ('http://sre.lan', 'h1', 'x@@@y@@@alice', {'prof': 'tp'})
+        assert wp.sent == [started(r1, 'moderator'), invite_push(inv)] and wa.sent == [started(r1, 'viewer'), invite_push(inv)]
+        assert wc.sent == [] and len(bbb.created) == 1 and w.listing() == [r1] and w.of_participant(ALICE) is r1
+        assert w.invitation(inv.id) is inv and w.invitations_of('alice') == [inv] == w.invitations_of('prof')
+        assert w.invitations_of('carol') == [] and w.private_of('alice') is None
+        assert inv.to_dict() == {'id': inv.id, 'from': {'login': 'prof', 'fullname': 'Pr. Of'},
+                                 'to': {'login': 'alice', 'fullname': 'Alice A'}, 'created_at': inv.to_dict()['created_at']}
+        # another invitation of the same instructor takes the first one back
+        inv2 = run(w.invite(PROF, 'carol'))
+        assert wa.sent[2:] == [invite_push(inv, 'cancelled')] and wc.sent == [invite_push(inv2)]
+        assert wp.sent[2:] == [invite_push(inv, 'cancelled'), invite_push(inv2)] and w.invitation(inv.id) is None
+        assert inv2.tabs == {}
+
+    def test_invite_refusals(self):
+        clock, presence, bbb, w = registries()
+        connect(presence, PROF, PROF2, ALICE)
+        for bad in ('prof', '', None, 3):
+            with pytest.raises(ValueError):
+                run(w.invite(PROF, bad))
+        with pytest.raises(W.Refused, match='not connected'):
+            run(w.invite(PROF, 'bob'))
+        inv = run(w.invite(PROF, 'alice'))
+        with pytest.raises(W.Refused, match='somebody else'):
+            run(w.invite(PROF2, 'alice'))
+        assert run(w.invite(PROF, 'alice')).id != inv.id               # the same instructor again: a new one
+        run(w.accept(w.invitations_of('alice')[0].id, ALICE))
+        for instructor in (PROF, PROF2):
+            with pytest.raises(W.Refused, match='private conversation'):
+                run(w.invite(instructor, 'alice'))
+        with pytest.raises(W.Refused, match='private conversation'):
+            run(w.invite(PROF2, 'prof'))                               # busy in either role
+        # switched off, or no server at all
+        w.cfg.private_rooms = False
+        assert w.enabled and not w.private_enabled
+        with pytest.raises(W.WebconfDisabled):
+            run(w.invite(PROF2, 'alice'))
+        off = W.Webconfs(presence, None)
+        assert not off.private_enabled
+        with pytest.raises(W.WebconfDisabled):
+            run(off.invite(PROF, 'alice'))
+
+    def test_accept_switches_both_and_the_end_brings_them_back(self):
+        clock, presence, bbb, w = registries()
+        wp, wa = connect(presence, PROF, ALICE)
+        r1 = run(w.start(PROF, 'R1', ({'alice'}, set())))
+        clock.now += 1
+        r2 = run(w.start(PROF2, 'R2', (set(), set())))
+        run(w.attend(r2.id, PROF))
+        run(w.attend(r1.id, PROF))                    # prof is back in R1, R2 is the newest room including them
+        assert w.of_participant(PROF) is r1 and r2.includes(PROF)
+        w.cfg.record = True
+        w.cfg.mute_on_start = True
+        w.cfg.duration = 3600
+        w.cfg.max_participants = 30
+        w.cfg.welcome = 'Hello'
+        del wp.sent[:], wa.sent[:]
+        clock.now += 1
+        inv = run(w.invite(PROF, 'alice', tab='tp', request_origin='http://ignored'))
+        room = run(w.accept(inv.id, ALICE, tab='ta'))
+        assert room.private and room.kind == W.ROOM_PRIVATE and room.owner is PROF and room.peer is ALICE
+        assert room.name == 'Pr. Of – Alice A' and room.tabs == {'prof': 'tp', 'alice': 'ta'} and room.logins == {'alice'}
+        assert room.includes(PROF) and room.includes(ALICE) and not room.includes(PROF2) and not room.includes(None)
+        meeting_id, name, kw = bbb.created[-1]
+        assert (meeting_id, name) == (room.meeting_id, 'Pr. Of – Alice A')
+        assert kw['record'] is False and kw['mute_on_start'] is False and kw['extra'] == W.PRIVATE_CREATE
+        assert 'duration' not in kw and 'max_participants' not in kw and 'welcome' not in kw
+        assert kw['meta'] == {'sre-room': room.id, 'sre-owner': 'prof', 'sre-kind': 'private'}
+        assert kw['logout_url'] == f'https://sre.example.org/webconf/left?id={room.id}'
+        assert kw['extra'] is not W.PRIVATE_CREATE and kw['extra']['endWhenNoModerator'] is True
+        # both left their class room for it; the ended push says the room goes on
+        assert wa.sent == [invite_push(inv), invite_push(inv, 'accepted'), switched(r1), private_started(room, ALICE, 'ta')]
+        assert wp.sent == [invite_push(inv), invite_push(inv, 'accepted'), switched(r1), private_started(room, PROF, 'tp')]
+        assert w.of_participant(ALICE) is room and w.of_participant(PROF) is room and w.private_of('prof') is room
+        assert w.preferred['prof'] == r1.id and w.invitation(inv.id) is None and w.listing() == [r1, r2, room]
+        d = room.to_dict(presence)
+        assert d['kind'] == 'private' and d['peer'] == {'login': 'alice', 'fullname': 'Alice A'} and d['count'] == 2
+        assert r1.to_dict(presence)['kind'] == 'class' and r1.to_dict(presence)['peer'] is None
+        # the joins of a private room: straight to the microphone, the site's settings under, its own over
+        url = run(w.join_url_for(ALICE, room))
+        assert url.startswith(f"bbb://{room.meeting_id}?role=VIEWER&user=alice&")
+        assert url.endswith("&ud=[('bbb_auto_join_audio', True), ('bbb_hide_presentation_on_join', True), "
+                            "('bbb_listen_only_mode', False), ('bbb_skip_check_audio', True)]")
+        w.cfg.private_userdata = {'bbb_auto_join_audio': False, 'bbb_client_title': 'Private'}
+        url = run(w.join_url_for(PROF, room))
+        assert "role=MODERATOR" in url and "('bbb_auto_join_audio', False), ('bbb_client_title', 'Private')" in url
+        assert run(w.join_url_for(ALICE, r1)).endswith("&ud=[('bbb_skip_check_audio', True)]")     # the other rooms: unchanged
+        # nobody joins it, it has no audience, a third party cannot end it by leaving
+        with pytest.raises(W.Refused):
+            run(w.attend(room.id, PROF2))
+        with pytest.raises(W.Refused):
+            run(w.set_audience(room.id, ({'bob'}, set())))
+        with pytest.raises(PermissionError):
+            run(w.leave(room.id, PROF2))
+        with pytest.raises(W.Refused):
+            run(w.leave(r1.id, PROF))                 # a class room is left in the browser only
+        with pytest.raises(KeyError):
+            run(w.leave('nope', PROF))
+        assert room.attending == set() and w.listing() == [r1, r2, room]
+        # the student leaves: over for both, each back in the room they were in (prof: R1, not the newest)
+        del wp.sent[:], wa.sent[:]
+        assert run(w.leave(room.id, ALICE)) is room
+        assert wa.sent == [ended(room), started(r1, 'viewer')] and wp.sent == [ended(room), started(r1, 'moderator')]
+        assert bbb.ended == [(room.meeting_id, room.moderator_pw)] and w.listing() == [r1, r2] and w.private_of('alice') is None
+
+    def test_decline_cancel_and_expiry(self):
+        clock, presence, bbb, w = registries()
+        wp, wp2, wa = connect(presence, PROF, PROF2, ALICE)
+        inv = run(w.invite(PROF, 'alice'))
+        with pytest.raises(PermissionError):
+            run(w.decline(inv.id, BOB))
+        with pytest.raises(PermissionError):
+            run(w.accept(inv.id, BOB))
+        run(w.decline(inv.id, ALICE))
+        assert wa.sent == [invite_push(inv), invite_push(inv, 'declined')] == wp.sent and w.invitations_of('alice') == []
+        for call in (w.decline(inv.id, ALICE), w.accept(inv.id, ALICE), w.cancel(inv.id, PROF), w.cancel('nope', PROF)):
+            with pytest.raises(W.InvitationGone):
+                run(call)
+        # taken back by the instructor, or by another one; never by a student
+        inv = run(w.invite(PROF, 'alice'))
+        with pytest.raises(PermissionError):
+            run(w.cancel(inv.id, ALICE))
+        run(w.cancel(inv.id, PROF))
+        assert wa.sent[-1] == invite_push(inv, 'cancelled') == wp.sent[-1]
+        inv = run(w.invite(PROF, 'alice'))
+        run(w.cancel(inv.id, PROF2))
+        assert wa.sent[-1] == invite_push(inv, 'cancelled') and wp2.sent == []
+        # nobody answers: expired by the tick, even while the server does not answer
+        room = run(w.start(PROF2, 'Room', (set(), set())))
+        bbb.infos[room.meeting_id] = B.BbbUnavailable('down')
+        inv = run(w.invite(PROF, 'alice'))
+        clock.now += W.INVITE_TIMEOUT - 1
+        run(w.tick())
+        assert w.invitation(inv.id) is inv and wa.sent[-1] == invite_push(inv)
+        clock.now += 1
+        run(w.tick())
+        assert w.invitation(inv.id) is None and wa.sent[-1] == invite_push(inv, 'expired') == wp.sent[-1]
+        assert len(bbb.created) == 1 and w.listing() == [room]
+
+    def test_accept_failures(self):
+        clock, presence, bbb, w = registries()
+        wp, wa = connect(presence, PROF, ALICE)
+        # the server refuses the meeting, or does not answer: failed, no room
+        for error in (B.BbbError('x', 'no'), B.BbbUnavailable('down')):
+            inv = run(w.invite(PROF, 'alice'))
+            bbb.fail_create = error
+            with pytest.raises(type(error)):
+                run(w.accept(inv.id, ALICE))
+            assert wa.sent[-1] == invite_push(inv, 'failed') == wp.sent[-1]
+            assert w.listing() == [] and w.invitations_of('alice') == [] and w.shown == {}
+        bbb.fail_create = None
+        # the instructor left the site meanwhile
+        inv = run(w.invite(PROF, 'alice'))
+        presence.remove(presence._sockets['prof'][0])
+        with pytest.raises(W.InvitationGone):
+            run(w.accept(inv.id, ALICE))
+        assert wa.sent[-1] == invite_push(inv, 'cancelled') and w.listing() == [] and bbb.created == []
+
+    def test_cancel_or_a_second_accept_while_the_meeting_is_created(self):
+        bbb = GatedBbb()
+        clock, presence, bbb, w = registries(bbb=bbb)
+        wp, wa = connect(presence, PROF, ALICE)
+
+        async def go(action):
+            bbb.gate, bbb.entered = asyncio.Event(), asyncio.Event()
+            inv = await w.invite(PROF, 'alice')
+            accepting = asyncio.ensure_future(w.accept(inv.id, ALICE))
+            await bbb.entered.wait()
+            outcome = await action(inv)
+            bbb.gate.set()
+            return inv, outcome, await asyncio.gather(accepting, return_exceptions=True)
+
+        async def cancel(inv):
+            await w.cancel(inv.id, PROF)
+            return list(wa.sent)
+
+        inv, before, (result,) = run(go(cancel))
+        assert before[-1] == invite_push(inv)                         # nothing said before the meeting exists
+        assert isinstance(result, W.InvitationGone) and w.listing() == [] and w.invitations_of('alice') == []
+        assert wa.sent[-1] == invite_push(inv, 'cancelled') == wp.sent[-1]
+        assert bbb.ended == [(bbb.created[0][0], bbb.ended[0][1])]    # the meeting made for nothing is ended
+
+        async def again(inv):
+            results = []
+            for call in (w.accept(inv.id, ALICE), w.decline(inv.id, ALICE)):
+                try:
+                    await call
+                except W.InvitationGone:
+                    results.append('gone')
+            return results
+
+        inv, outcome, (room,) = run(go(again))
+        assert outcome == ['gone', 'gone'] and isinstance(room, W.Room) and w.listing() == [room]
+        assert wa.sent[-3:-1] == [invite_push(inv), invite_push(inv, 'accepted')] and len(bbb.created) == 2
+
+    def test_a_new_conversation_replaces_the_old_one_without_a_bounce(self):
+        clock, presence, bbb, w = registries()
+        wp, wa, wb = connect(presence, PROF, ALICE, BOB)
+        r1 = run(w.start(PROF, 'R1', ({'alice', 'bob'}, set())))
+        clock.now += 1
+        first = conversation(w, PROF, ALICE)
+        clock.now += 1
+        inv = run(w.invite(PROF, 'bob', tab='tp2'))                   # allowed while talking with alice
+        assert w.of_participant(PROF) is first and w.of_participant(ALICE) is first
+        del wp.sent[:], wa.sent[:], wb.sent[:]
+        second = run(w.accept(inv.id, BOB, tab='tb'))
+        assert w.listing() == [r1, second] and bbb.ended == [(first.meeting_id, first.moderator_pw)]
+        # prof goes from one conversation to the other; alice is back in the class room
+        assert wp.sent == [invite_push(inv, 'accepted'), ended(first), private_started(second, PROF, 'tp2')]
+        assert wa.sent == [ended(first), started(r1, 'viewer')]
+        assert wb.sent == [invite_push(inv, 'accepted'), switched(r1), private_started(second, BOB, 'tb')]
+
+    def test_a_private_room_wins_and_is_never_created_again(self, monkeypatch):
+        clock, presence, bbb, w = registries()
+        wp, wp2, wa = connect(presence, PROF, PROF2, ALICE)
+        r1 = run(w.start(PROF, 'R1', ({'alice'}, set())))
+        clock.now += 1
+        room = conversation(w)
+        del wp.sent[:], wa.sent[:]
+        # a newer room including alice does not take her out of the conversation
+        clock.now += 1
+        monkeypatch.setattr(W, 'MAX_ROOMS', 2)                        # the private rooms are not counted
+        r3 = run(w.start(PROF2, 'R3', ({'alice'}, set())))
+        with pytest.raises(ValueError, match='too many'):
+            run(w.start(PROF2, 'R4', (set(), set())))
+        assert wa.sent == [] and w.of_participant(ALICE) is room
+        # the meeting gone from the server before the portal saw anybody in it: over, never created again
+        clock.now += 20
+        bbb.infos[room.meeting_id] = None
+        assert not room.seen_joined
+        with pytest.raises(W.RoomGone):
+            run(w.join_url_for(ALICE, room))
+        assert len(bbb.created) == 3 and w.listing() == [r1, r3] and bbb.ended == []
+        assert wa.sent == [ended(room), started(r3, 'viewer')] and wp.sent == [ended(room), started(r1, 'moderator')]
+        # ... the same from a tick
+        room = conversation(w)
+        bbb.infos[room.meeting_id] = None
+        clock.now += 10
+        run(w.tick())
+        assert w.private_of('alice') is None and wa.sent[-2:] == [ended(room), started(r3, 'viewer')]
+        # an instructor joining another room ends their own conversation
+        room = conversation(w)
+        del wp.sent[:], wa.sent[:]
+        run(w.attend(r3.id, PROF))
+        assert w.private_of('prof') is None and wp.sent == [ended(room), started(r3, 'moderator')]
+        assert wa.sent == [ended(room), started(r3, 'viewer')] and w.preferred['prof'] == r3.id
+
+    def test_tell_repeats_the_invitation_and_shutdown_drops_it(self):
+        clock, presence, bbb, w = registries()
+        wp, wa = connect(presence, PROF, ALICE)
+        inv = run(w.invite(PROF, 'alice'))
+        for identity in (ALICE, PROF):
+            extra = T.FakeWatcher()
+            presence.add(identity, '/watch', extra)
+            run(w.tell(identity.login, extra))
+            run(w.resync({identity.login}))
+            assert extra.sent == [invite_push(inv)]
+        run(w.shutdown())
+        assert w.invitations_of('alice') == [] and wa.sent[-1] == invite_push(inv, 'cancelled')
+        extra = T.FakeWatcher()
+        presence.add(ALICE, '/open', extra)
+        run(w.tell('alice', extra))
+        assert extra.sent == []
+        # a conversation: the new page of each is given its room with the tab that shows it
+        room = conversation(w)
+        extra = T.FakeWatcher()
+        presence.add(ALICE, '/projects', extra)
+        run(w.tell('alice', extra))
+        assert extra.sent == [private_started(room, ALICE, 'ta')]
+
+
+# ---------------------------------------------------------------------------------------------
 # through the portal
 # ---------------------------------------------------------------------------------------------
 
@@ -677,3 +1007,262 @@ class TestWebconfThroughThePortal:
         assert 'left' not in text and 'presence' not in text
         alice_session = [l for l in by_event['session_close'] if l['login'] == 'alice'][0]
         assert alice_session['requests'] == '1'                      # the join; the GET of the room is a keepalive
+
+
+# ---------------------------------------------------------------------------------------------
+# the private conversations through the portal
+# ---------------------------------------------------------------------------------------------
+
+RLN_ALICE = '20261026100000@@@sre@dhcp.py@@@alice'
+PROF_WHO = {'login': 'prof', 'fullname': 'Pr. Of'}
+ALICE_WHO = {'login': 'alice', 'fullname': 'Alice A'}
+
+
+async def invite(h, headers, login, **body):
+    return await h.client.post('/api/webconfs/invitations', json={'login': login, **body}, headers={**headers, **P.CSRF})
+
+
+async def answer(h, headers, invitation_id, what, **body):
+    return await h.client.post(f'/api/webconfs/invitations/{invitation_id}/{what}', json=body,
+                               headers={**headers, **P.CSRF})
+
+
+async def take_back(h, headers, invitation_id):
+    return await h.client.delete(f'/api/webconfs/invitations/{invitation_id}', headers={**headers, **P.CSRF})
+
+
+async def leave(h, headers, room_id):
+    return await h.client.post(f'/api/webconfs/{room_id}/leave', json={}, headers={**headers, **P.CSRF})
+
+
+def invitation_push(invitation_id: str, reason: str | None = None) -> dict:
+    message = {'t': 'webconf-invite', 'id': invitation_id, 'from': PROF_WHO, 'to': ALICE_WHO}
+    if reason is not None:
+        message.update(ended=True, reason=reason)
+    return message
+
+
+class TestPrivateThroughThePortal:
+    def test_lifecycle(self, tmp_path):
+        async def go():
+            fake = await FakeBbbServer().start()
+            try:
+                async with harness(tmp_path, fake) as h:
+                    resp = await h.client.get('/projects', headers=ALICE_H)
+                    assert 'webconf=True private=True' in await resp.text()
+                    ws_alice = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=ALICE_H)
+                    ws_prof = await h.client.ws_connect('/api/presence/ws?page=/projects/h01/x', headers=PROF_H)
+                    room = await create_room(h, PROF_H, audience={'logins': ['alice']})
+                    class_started = await receive(ws_alice)
+                    assert class_started['id'] == room['id'] and (await receive(ws_prof))['role'] == 'moderator'
+                    # who may invite whom
+                    assert (await invite(h, ALICE_H, 'bob')).status == 403
+                    assert (await invite(h, PROF_H, 'prof')).status == 400
+                    assert (await invite(h, PROF_H, 3)).status == 400
+                    resp = await invite(h, PROF_H, 'bob')
+                    assert resp.status == 409 and 'not connected' in (await resp.json())['error']
+                    resp = await h.client.post('/api/webconfs/invitations', data='x', headers={**PROF_H, **P.CSRF})
+                    assert resp.status == 400
+                    # the invitation: both told, nothing created
+                    resp = await invite(h, PROF_H, 'alice', tab='tab-prof', host='h01', rln=RLN_ALICE)
+                    assert resp.status == 201, await resp.text()
+                    inv = await resp.json()
+                    assert inv['from'] == PROF_WHO and inv['to'] == ALICE_WHO
+                    push = invitation_push(inv['id'])
+                    assert await receive(ws_alice) == push
+                    assert await receive(ws_prof) == push
+                    assert len(fake.calls_of('create')) == 1 and len(await (await h.client.get('/api/webconfs', headers=PROF_H)).json()) == 1
+                    # another page of alice shows the class conference and the invitation
+                    ws_alice2 = await h.client.ws_connect('/api/presence/ws?page=/open', headers=ALICE_H)
+                    assert await receive(ws_alice2) == class_started
+                    assert await receive(ws_alice2) == push
+                    # answered by the invited one only
+                    assert (await answer(h, BOB_H, inv['id'], 'accept')).status == 403
+                    assert (await answer(h, BOB_H, inv['id'], 'decline')).status == 403
+                    assert (await answer(h, ALICE_H, 'nope', 'accept')).status == 410
+                    assert (await take_back(h, ALICE_H, inv['id'])).status == 403
+                    resp = await answer(h, ALICE_H, inv['id'], 'accept', tab='tab-alice')
+                    assert resp.status == 200, await resp.text()
+                    private = await resp.json()
+                    assert private['kind'] == 'private' and private['peer'] == ALICE_WHO and private['owner'] == PROF_WHO
+                    assert private['name'] == 'Pr. Of – Alice A' and private['id'] != room['id']
+                    meeting = fake.meetings[private['meeting_id']]
+                    params = meeting.params
+                    assert meeting.name == 'Pr. Of – Alice A'
+                    assert params['endWhenNoModerator'] == 'true' and params['endWhenNoModeratorDelayInMinutes'] == '1'
+                    assert params['disabledFeatures'] == 'breakoutRooms,learningDashboard' and params['meta_sre-kind'] == 'private'
+                    assert params['record'] == 'false' and params['muteOnStart'] == 'false' and 'welcome' not in params
+                    assert params['logoutURL'] == f"https://sre.example.org/webconf/left?id={private['id']}"
+                    assert (await answer(h, ALICE_H, inv['id'], 'accept')).status == 410
+                    # both browsers leave the class conference for the private room, in the tab that asked
+                    started = {'t': 'webconf', 'id': private['id'], 'name': 'Pr. Of – Alice A', 'owner': PROF_WHO,
+                               'join_url': f"/api/webconfs/{private['id']}/join", 'kind': 'private'}
+                    for ws in (ws_alice, ws_alice2):
+                        assert await receive(ws) == invitation_push(inv['id'], 'accepted')
+                        assert await receive(ws) == {**ended_push(room['id']), 'switch': True}
+                        assert await receive(ws) == {**started, 'role': 'viewer', 'peer': PROF_WHO, 'tab': 'tab-alice'}
+                    assert await receive(ws_prof) == invitation_push(inv['id'], 'accepted')
+                    assert await receive(ws_prof) == {**ended_push(room['id']), 'switch': True}
+                    assert await receive(ws_prof) == {**started, 'role': 'moderator', 'peer': ALICE_WHO, 'tab': 'tab-prof'}
+                    # the joins: straight to the microphone; the two of the conversation alone
+                    resp = await join(h, ALICE_H, private['id'])
+                    assert resp.status == 302
+                    joined = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(resp.headers['Location']).query))
+                    assert joined['role'] == 'VIEWER' and joined['meetingID'] == private['meeting_id']
+                    assert joined['userdata-bbb_auto_join_audio'] == 'true' and joined['userdata-bbb_listen_only_mode'] == 'false'
+                    assert joined['userdata-bbb_skip_check_audio'] == 'true'
+                    resp = await join(h, PROF_H, private['id'])
+                    assert resp.status == 302 and 'role=MODERATOR' in resp.headers['Location']
+                    for other in (PROF2_H, BOB_H):
+                        assert (await join(h, other, private['id'])).status == 403
+                    resp = await h.client.post(f"/api/webconfs/{private['id']}/attend", json={}, headers={**PROF2_H, **P.CSRF})
+                    assert resp.status == 409
+                    resp = await h.client.put(f"/api/webconfs/{private['id']}/audience", json={'audience': {'logins': ['bob']}},
+                                              headers={**PROF2_H, **P.CSRF})
+                    assert resp.status == 409
+                    rooms = await (await h.client.get('/api/webconfs', headers=PROF2_H)).json()
+                    assert [(r['id'], r['kind']) for r in rooms] == [(room['id'], 'class'), (private['id'], 'private')]
+                    rows = await (await h.client.get('/api/presence', headers=PROF2_H)).json()
+                    assert {r['login']: r['webconf'] for r in rows} == {'alice': private['id'], 'prof': private['id']}
+                    # busy for anybody else
+                    resp = await invite(h, PROF2_H, 'alice')
+                    assert resp.status == 409 and 'private conversation' in (await resp.json())['error']
+                    # left by one of the two: over, both back in the class conference
+                    assert (await leave(h, BOB_H, private['id'])).status == 403
+                    assert (await leave(h, ALICE_H, room['id'])).status == 409
+                    assert (await leave(h, ALICE_H, 'nope')).status == 404
+                    assert (await leave(h, ALICE_H, private['id'])).status == 200
+                    assert private['meeting_id'] not in fake.meetings and room['meeting_id'] in fake.meetings
+                    for ws in (ws_alice, ws_alice2):
+                        assert await receive(ws) == ended_push(private['id'])
+                        assert await receive(ws) == class_started
+                    assert await receive(ws_prof) == ended_push(private['id'])
+                    assert (await receive(ws_prof))['id'] == room['id']
+                    assert (await leave(h, ALICE_H, private['id'])).status == 404
+                    for ws in (ws_alice, ws_alice2, ws_prof):
+                        await ws.close()
+            finally:
+                await fake.close()
+        run(go())
+
+    def test_decline_cancel_and_refusals_of_the_server(self, tmp_path):
+        async def go():
+            fake = await FakeBbbServer().start()
+            try:
+                async with harness(tmp_path, fake) as h:
+                    ws_alice = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=ALICE_H)
+                    ws_prof = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=PROF_H)
+
+                    async def invited() -> str:
+                        resp = await invite(h, PROF_H, 'alice')
+                        assert resp.status == 201
+                        invitation_id = (await resp.json())['id']
+                        assert await receive(ws_alice) == invitation_push(invitation_id)
+                        assert await receive(ws_prof) == invitation_push(invitation_id)
+                        return invitation_id
+
+                    async def over(invitation_id: str, reason: str):
+                        assert await receive(ws_alice) == invitation_push(invitation_id, reason)
+                        assert await receive(ws_prof) == invitation_push(invitation_id, reason)
+
+                    one = await invited()
+                    assert (await answer(h, ALICE_H, one, 'decline')).status == 200
+                    await over(one, 'declined')
+                    assert (await answer(h, ALICE_H, one, 'decline')).status == 410
+                    two = await invited()
+                    assert (await take_back(h, PROF2_H, two)).status == 200          # any instructor
+                    await over(two, 'cancelled')
+                    assert (await take_back(h, PROF_H, two)).status == 410
+                    # the server refuses the meeting, or does not answer: the invitation failed
+                    three = await invited()
+                    fake.fail_next.append(('create', 502))
+                    resp = await answer(h, ALICE_H, three, 'accept')
+                    assert resp.status == 503 and 'does not answer' in (await resp.json())['error']
+                    await over(three, 'failed')
+                    four = await invited()
+                    fake.fail_next.append(('create', b'<response><returncode>FAILED</returncode><messageKey>x</messageKey>'
+                                                     b'<message>Too many meetings</message></response>'))
+                    resp = await answer(h, ALICE_H, four, 'accept')
+                    assert resp.status == 502 and 'Too many meetings' in (await resp.json())['error']
+                    await over(four, 'failed')
+                    assert await (await h.client.get('/api/webconfs', headers=PROF_H)).json() == []
+                    # nobody answers
+                    await h.portal.webconfs.stop_loop()
+                    five = await invited()
+                    await h.portal.webconfs.tick(h.portal.webconfs.clock() + W.INVITE_TIMEOUT)
+                    await over(five, 'expired')
+                    await ws_alice.close()
+                    await ws_prof.close()
+            finally:
+                await fake.close()
+        run(go())
+
+    def test_switched_off(self, tmp_path):
+        async def go():
+            fake = await FakeBbbServer().start()
+            try:
+                bbb = {'url': fake.url, 'secret': fake.secret, 'private_rooms': False}
+                async with harness(tmp_path, fake, bbb=bbb) as h:
+                    resp = await h.client.get('/projects', headers=ALICE_H)
+                    assert 'webconf=True private=False' in await resp.text()
+                    ws_alice = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=ALICE_H)
+                    resp = await invite(h, PROF_H, 'alice')
+                    assert resp.status == 404 and 'not configured' in (await resp.json())['error']
+                    assert (await answer(h, ALICE_H, 'x', 'accept')).status == 404
+                    assert (await answer(h, ALICE_H, 'x', 'decline')).status == 404
+                    assert (await take_back(h, PROF_H, 'x')).status == 404
+                    room = await create_room(h, PROF_H, audience={'logins': ['alice']})      # the rooms still work
+                    assert (await receive(ws_alice))['id'] == room['id']
+                    await ws_alice.close()
+            finally:
+                await fake.close()
+            async with P.Harness(tmp_path / 'off', auth_mode='proxy', web_over=P.PROXY_OVER) as h:
+                resp = await h.client.get('/projects', headers=ALICE_H)
+                assert 'webconf=False private=False' in await resp.text()
+                assert (await invite(h, PROF_H, 'alice')).status == 404
+                assert (await leave(h, ALICE_H, 'x')).status == 404
+        (tmp_path / 'off').mkdir()
+        run(go())
+
+    def test_access_log_lines(self, tmp_path):
+        over = {'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False}}
+
+        async def go():
+            fake = await FakeBbbServer().start()
+            try:
+                async with harness(tmp_path, fake, **over) as h:
+                    ws_alice = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=ALICE_H)
+                    ws_prof = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=PROF_H)
+                    one = (await (await invite(h, PROF_H, 'alice', host='h01', rln=RLN_ALICE)).json())['id']
+                    await answer(h, ALICE_H, one, 'decline')
+                    two = (await (await invite(h, PROF_H, 'alice', host=3, rln='bad')).json())['id']
+                    await take_back(h, PROF_H, two)
+                    three = (await (await invite(h, PROF_H, 'alice')).json())['id']
+                    room = await (await answer(h, ALICE_H, three, 'accept', tab='t1')).json()
+                    await leave(h, PROF_H, room['id'])
+                    assert (await invite(h, PROF_H, 'bob')).status == 409
+                    await ws_alice.close()
+                    await ws_prof.close()
+                    return one, two, three, room['id']
+            finally:
+                await fake.close()
+        one, two, three, room_id = run(go())
+        by_event = {}
+        for line in (parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()):
+            by_event.setdefault(line['event'], []).append(line)
+        first, second, third, refused = by_event['webconf_invite']
+        assert (first['login'], first['student'], first['host'], first['rln'], first['invitation'], first['status']) == \
+            ('prof', 'alice', 'h01', RLN_ALICE, one, '201')
+        assert (second['invitation'], second['host'], second['rln']) == (two, '', '')      # a bad project: not logged
+        assert (refused['student'], refused['status']) == ('bob', '409') and 'invitation' not in refused
+        declined = by_event['webconf_decline'][0]
+        assert (declined['login'], declined['invitation'], declined['instructor'], declined['status']) == ('alice', one, 'prof', '200')
+        cancelled = by_event['webconf_cancel'][0]
+        assert (cancelled['login'], cancelled['invitation'], cancelled['student'], cancelled['status']) == ('prof', two, 'alice', '200')
+        accepted = by_event['webconf_accept'][0]
+        assert (accepted['login'], accepted['invitation'], accepted['instructor'], accepted['webconf'], accepted['status']) == \
+            ('alice', three, 'prof', room_id, '200')
+        left = by_event['webconf_leave'][0]
+        assert (left['login'], left['webconf'], left['owner'], left['status']) == ('prof', room_id, 'prof', '200')
+        assert set(by_event) == {'webconf_invite', 'webconf_decline', 'webconf_cancel', 'webconf_accept', 'webconf_leave',
+                                 'session_open', 'session_close'}

@@ -103,13 +103,18 @@ function openDialog() {
     });
     const connected = (room.connected || []).map((c) => c.fullname || c.login);
     const inRoom = (room.participants || []).map((p) => p.fullname || p.user_id);
-    return el('tr', {},
-      el('td', {}, room.name),
+    // a private conversation (an instructor and one student): nobody joins it, it has no audience
+    const isPrivate = room.kind === 'private' && room.peer;
+    const name = isPrivate
+      ? format(_('Private conversation with {name}'), {name: room.peer.fullname || room.peer.login})
+      : room.name;
+    return el('tr', {class: isPrivate ? 'private-room' : null},
+      el('td', {}, name),
       el('td', {}, room.owner.fullname || room.owner.login),
       el('td', {class: 'center', title: audienceTitle(room)}, String(room.count)),
       el('td', {class: 'center', title: connected.join(', ')}, String(connected.length)),
       el('td', {class: 'center', title: inRoom.join(', ')}, room.running ? String(inRoom.length) : '–'),
-      el('td', {class: 'actions'}, join, edit, end));
+      isPrivate ? el('td', {class: 'actions'}, end) : el('td', {class: 'actions'}, join, edit, end));
   }
 
   async function refresh() {

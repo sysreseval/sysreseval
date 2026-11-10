@@ -14,9 +14,20 @@
 // tells this page (postMessage {t: 'webconf-left'}: webconf_left.js).  Two tabs of the same user
 // would join twice: the tabs talk over a BroadcastChannel (open while a conference exists, closed
 // on pagehide: an open channel keeps a page out of the back/forward cache) and only one holds the
-// client, the others show a pill to bring it there.  Nothing here runs in the iframe of a
+// client, the others show a pill to bring it there; two pages told of a room at the same moment
+// settle it by a rank (webconf_model.js outranks).  Nothing here runs in the iframe of a
 // presentation (base.js).
+//
+// A private conversation (webconf_invite.js, talk.js: an instructor and one student) is a room
+// of its own the portal pushes in place of the class conference: the `ended` push of the class
+// room then says `switch` (nothing is announced, its stored state is kept), the push of the
+// private room names the browser tab that shows it (TAB below, sent with the invitation and
+// with its answer: another tab or device of the user never opens a microphone by itself), and
+// when the conversation ends the class conference is pushed again and comes back as it was.
+// Leaving a private conversation is ending it (POST .../leave).  Every change is announced on
+// the document (`sre-webconf`).
 
+import * as api from './api.js';
 import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, toast} from './ui.js';
@@ -29,6 +40,45 @@ const CLAIM_DELAY = 300;                 // ms: a new page waits that long for a
 const CHANNEL = 'sreweb.webconf.tabs';
 const POPUP_FEATURES = 'popup,width=1100,height=750';
 const ALLOW = 'camera *; microphone *; display-capture *; fullscreen; autoplay';
+const HANDOVER = 5000;                   // ms: the page that held a client comes first for the room that follows
+const TAB_KEY = 'sreweb.webconf.tab';          // sessionStorage: the id of this browser tab
+const HELD_KEY = 'sreweb.webconf.held';        // sessionStorage: {id, held}: a private room brought here, or given away
+const POPOUT_KEY = 'sreweb.webconf.popout';    // sessionStorage: the room this tab popped out
+
+function sessionGet(key) {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}
+
+function sessionSet(key, value) {
+  try {
+    if (value === null) {
+      window.sessionStorage.removeItem(key);
+    } else {
+      window.sessionStorage.setItem(key, value);
+    }
+  } catch (e) {
+    // no storage: the tab is known for this page only
+  }
+}
+
+function tabId() {
+  let id = sessionGet(TAB_KEY);
+  if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+    const bytes = new Uint8Array(9);
+    window.crypto.getRandomValues(bytes);
+    id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    sessionSet(TAB_KEY, id);
+  }
+  return id;
+}
+
+// This browser tab, the same on every page it shows: sent with an invitation to a private
+// conversation and with its answer, so that the portal names the tab that shows the room.
+export const TAB = tabId();
 
 const body = document.body;
 let ready = null;          // the catalog loaded (setup)
@@ -44,7 +94,9 @@ let hostObserver = null;
 let popup = null;          // the popped-out window
 let saveTimer = null;
 let channel = null;        // the BroadcastChannel of the tabs of this browser
-let claim = null;          // {id, held: true | false | null (asked, waiting), timer}
+let claim = null;          // {id, held: true | false | null (asked, waiting), timer, rank}
+let heldUntil = 0;         // this page held a client until then (teardown)
+let mirror = null;         // what was stored last (a browser without storage)
 
 export function setup() {
   if (ready) {
@@ -75,9 +127,7 @@ export async function onPush(message) {
   }
   if (message.ended) {
     if (state && state.id === message.id) {
-      const name = state.name;
-      apply(null);
-      toast(format(_('The conference {name} has ended'), {name}));
+      over(message.switch === true);
     }
     return;
   }
@@ -85,6 +135,41 @@ export async function onPush(message) {
   if (room) {
     apply(M.nextState(state, {type: 'push', room, stored: readStored()}));
   }
+}
+
+// The conference shown is over for this page: ended, or (*switched*) left for a private
+// conversation while it goes on.  What the storage keeps for the push that follows: the state
+// of the conference left (it comes back), or the one a conversation that ended had replaced.
+function over(switched) {
+  const previous = state;
+  if (claim && claim.held === true) {
+    flushSave();               // the last place of the window; the other pages' own state is older
+  }
+  const stored = readStored();
+  let kept;
+  if (stored && stored.id !== previous.id) {
+    kept = stored;             // another page of this browser was told first
+  } else if (switched) {
+    kept = stored || previous;
+  } else {
+    kept = M.backStored(stored || previous);
+  }
+  apply(null);
+  writeEntry(kept);
+  if (switched) {
+    closePopup(previous);
+    return;
+  }
+  if (M.isPrivate(previous)) {
+    toast(format(_('The private conversation with {name} has ended'), {name: previous.peer.fullname || previous.peer.login}));
+  } else {
+    toast(format(_('The conference {name} has ended'), {name: previous.name}));
+  }
+}
+
+function announce() {
+  const detail = state ? {id: state.id, kind: state.kind || 'class', peer: state.peer || null} : null;
+  document.dispatchEvent(new CustomEvent('sre-webconf', {detail}));
 }
 
 // The Webconf tab of the project page (tabs/webconf.js): {slot, select(), onAvailable(live)},
@@ -113,6 +198,10 @@ export function act(type, detail) {
   if (!state) {
     return;
   }
+  if (M.isPrivate(state) && (type === 'leave' || type === 'left-page')) {
+    leavePrivate(state.id);      // over for both: the portal pushes what follows
+    return;
+  }
   if (type === 'popout') {
     // synchronously in the click: the popup blockers
     const opened = window.open(state.joinUrl, 'sre-webconf-' + state.id, POPUP_FEATURES);
@@ -121,6 +210,7 @@ export function act(type, detail) {
       return;
     }
     popup = opened;
+    sessionSet(POPOUT_KEY, state.id);
   }
   const next = M.nextState(state, {type, ...(detail || {})});
   if (next === state) {
@@ -132,9 +222,26 @@ export function act(type, detail) {
   }
 }
 
+// One of the two ends a private conversation.  A room the portal no longer knows (ended
+// meanwhile, or the portal restarted) is dropped here.
+async function leavePrivate(id) {
+  try {
+    await api.post(`/api/webconfs/${encodeURIComponent(id)}/leave`);
+  } catch (e) {
+    if (e.status !== 404) {
+      toast(e.message, {error: true});
+    } else if (state && state.id === id) {
+      over(false);
+    }
+  }
+}
+
 // -- the rendering -----------------------------------------------------------------------------
 
 function titleOf(room) {
+  if (M.isPrivate(room)) {
+    return format(_('Private — {name}'), {name: room.peer.fullname || room.peer.login});
+  }
   if (room.role === 'viewer') {
     return format(_('{name} ({owner})'), {name: room.name, owner: room.owner.fullname || room.owner.login});
   }
@@ -151,12 +258,13 @@ function apply(next) {
   if (!next) {
     writeStored();
     closeChannel();
+    announce();
     return;
   }
   openChannel();
   const mode = M.effectiveMode(next, {hasTabHost: Boolean(host)});
   const live = M.isLive(mode);
-  const held = live ? holding(next.id) : null;     // true, false (another tab has it), null (asked)
+  const held = live ? holding(next) : null;        // true, false (another tab has it), null (asked)
   ensureLayer();
   if (live && held === true) {
     ensureFrame(next.joinUrl);
@@ -180,6 +288,7 @@ function apply(next) {
   fullbar.element.hidden = !full;
   fullbar.title.textContent = titleOf(next);
   fullbar.tab.hidden = !host;
+  fullbar.leave.textContent = leaveLabel(next);
   body.classList.toggle('has-webconf-full', full);
   if (held === false) {
     showPill('elsewhere', next);
@@ -195,6 +304,12 @@ function apply(next) {
   }
   writeStored();
   place();
+  announce();
+}
+
+// What ends the participation: a private conversation ends for both.
+export function leaveLabel(room) {
+  return M.isPrivate(room) ? _('End the conversation') : _('Leave the conference');
 }
 
 function teardown() {
@@ -211,10 +326,38 @@ function teardown() {
   if (host) {
     host.onAvailable(false);
   }
+  if (claim && claim.held === true) {
+    heldUntil = Date.now() + HANDOVER;
+  }
   if (claim && claim.timer !== null) {
     window.clearTimeout(claim.timer);
   }
   claim = null;
+}
+
+// The separate window this tab opened for *room*, closed: the conference goes on there while
+// the user is taken to a private conversation, and nobody is in two meetings at once.  The
+// window is found by its name when the page that opened it is gone (a page change since).
+function closePopup(room) {
+  let target = popup && !popup.closed ? popup : null;
+  if (!target && room.mode === M.MODE_POPOUT && sessionGet(POPOUT_KEY) === room.id) {
+    try {
+      target = window.open('', 'sre-webconf-' + room.id);
+    } catch (e) {
+      target = null;
+    }
+  }
+  if (target) {
+    try {
+      target.close();
+    } catch (e) {
+      // not ours to close
+    }
+  }
+  popup = null;
+  if (sessionGet(POPOUT_KEY) === room.id) {
+    sessionSet(POPOUT_KEY, null);
+  }
 }
 
 function ensureLayer() {
@@ -245,7 +388,7 @@ function createFullbar() {
   leave.addEventListener('click', () => act('leave'));
   const element = el('div', {class: 'webconf-fullbar'}, title, windowButton, tab, leave);
   element.hidden = true;
-  return {element, title, tab};
+  return {element, title, tab, leave};
 }
 
 function ensureWindow(room) {
@@ -254,7 +397,8 @@ function ensureWindow(room) {
   }
   const area = {width: layer.element.clientWidth, height: layer.element.clientHeight};
   handle = layer.open(slot, {
-    title: titleOf(room), className: 'webconf', mins: M.WEBCONF_MINS, size: M.defaultWindowSize(area),
+    title: titleOf(room), className: M.isPrivate(room) ? 'webconf private-room' : 'webconf', mins: M.WEBCONF_MINS,
+    size: M.defaultWindowSize(area),
     fractions: room.fractions || M.defaultWindowFractions(area),
     buttons: [
       {name: 'minimize', label: '–', title: _('Minimize'),
@@ -262,7 +406,7 @@ function ensureWindow(room) {
       {name: 'dock', label: '⇲', title: _('Dock into the Webconf tab'), onClick: () => act('dock')},
       {name: 'full', label: '⛶', title: _('Full screen'), onClick: () => act('full')},
       {name: 'popout', label: '⧉', title: _('Open in a separate browser window'), onClick: () => act('popout')},
-      {name: 'close', label: '×', title: _('Leave the conference'), onClick: () => act('leave')},
+      {name: 'close', label: '×', title: leaveLabel(room), onClick: () => act('leave')},
     ],
     onMove: () => place(),
   });
@@ -371,20 +515,26 @@ function readStored() {
   try {
     return M.parseStored(window.localStorage.getItem(M.STORAGE_KEY), Date.now());
   } catch (e) {
-    return null;
+    return mirror ? M.parseStored(JSON.stringify(mirror), Date.now()) : null;
   }
 }
 
-function writeStored() {
+// What is stored: a state, a stored state, or nothing.
+function writeEntry(entry) {
+  mirror = M.storedOf(entry, Date.now());
   try {
-    if (state) {
-      window.localStorage.setItem(M.STORAGE_KEY, JSON.stringify(M.storedOf(state, Date.now())));
+    if (mirror) {
+      window.localStorage.setItem(M.STORAGE_KEY, JSON.stringify(mirror));
     } else {
       window.localStorage.removeItem(M.STORAGE_KEY);
     }
   } catch (e) {
     // private browsing: the state lasts for the page only
   }
+}
+
+function writeStored() {
+  writeEntry(state);
 }
 
 function scheduleSave() {
@@ -427,16 +577,57 @@ function closeChannel() {
   }
 }
 
-// Whether this page holds the client of the room: asked once per room to the other tabs; true
-// after CLAIM_DELAY unless one answers that it holds it (false then: the pill offers to bring it
-// here); null while waiting.
-function holding(id) {
+function rank() {
+  return {held: Date.now() < heldUntil, visible: document.visibilityState === 'visible', tab: TAB};
+}
+
+// A private room brought to this tab, or given to another one, since the portal named its tab:
+// {id, held}, kept for the next pages of the tab.
+function moved(id) {
+  try {
+    const value = JSON.parse(sessionGet(HELD_KEY) || 'null');
+    return value && value.id === id && typeof value.held === 'boolean' ? value : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Whether this tab is the one that shows the private room: the one the portal names (the tab
+// that invited or accepted), unless the user moved it since.
+function designated(room) {
+  const changed = moved(room.id);
+  return changed ? changed.held : room.tab === TAB;
+}
+
+function settle(held) {
+  if (claim.timer !== null) {
+    window.clearTimeout(claim.timer);
+    claim.timer = null;
+  }
+  claim.held = held;
+  if (!held) {
+    heldUntil = 0;           // another page has the client now: no precedence for the room that follows
+  }
+}
+
+// Whether this page holds the client of the room.  A private room: the tab the portal names, at
+// once (it tells the others, which give way).  Any other room: asked once per room to the other
+// tabs; true after CLAIM_DELAY unless one answers that it holds it, or asks too with a claim that
+// comes first (false then: the pill offers to bring it here); null while waiting.
+function holding(room) {
+  const id = room.id;
   if (!claim || claim.id !== id) {
-    claim = {id, held: null, timer: null};
-    if (channel) {
-      channel.postMessage({t: 'who', id});
+    claim = {id, held: null, timer: null, rank: rank()};
+    if (M.isPrivate(room) && room.tab) {
+      settle(designated(room));
+      if (claim.held && channel) {
+        channel.postMessage({t: 'take', id});
+      }
+    } else if (channel) {
+      channel.postMessage({t: 'who', id, rank: claim.rank});
       claim.timer = window.setTimeout(() => {
         if (claim && claim.id === id && claim.held === null) {
+          claim.timer = null;
           claim.held = true;
           apply(state);
         }
@@ -450,20 +641,40 @@ function holding(id) {
 
 function onChannel(ev) {
   const message = ev.data;
-  if (!message || !state || !claim || message.id !== state.id) {
+  if (!message || !state || !claim) {
     return;
   }
-  if (message.t === 'who' && claim.held === true) {
-    channel.postMessage({t: 'holder', id: state.id});
-  } else if (message.t === 'holder' && claim.held !== true) {
-    if (claim.timer !== null) {
-      window.clearTimeout(claim.timer);
-      claim.timer = null;
+  if (message.id !== state.id) {
+    // another tab loads the client of another room (this page was not told yet): one client per browser
+    if (message.t === 'take' && claim.held === true) {
+      settle(false);
+      apply(state);
     }
-    claim.held = false;
+    return;
+  }
+  if (message.t === 'who') {
+    if (claim.held === true) {
+      channel.postMessage({t: 'holder', id: state.id});
+    } else if (claim.held === null && M.outranks(message.rank, claim.rank)) {
+      settle(false);                   // both asked at once: the other page comes first
+      apply(state);
+    } else if (claim.held === null) {
+      // ... or this one, which the other page must hear (it may have asked after this one did): once per tab
+      const asker = message.rank && typeof message.rank.tab === 'string' ? message.rank.tab : '';
+      claim.told = claim.told || new Set();
+      if (!claim.told.has(asker)) {
+        claim.told.add(asker);
+        channel.postMessage({t: 'who', id: state.id, rank: claim.rank});
+      }
+    }
+  } else if (message.t === 'holder' && claim.held !== true) {
+    settle(false);
     apply(state);
-  } else if (message.t === 'take' && claim.held === true) {
-    claim.held = false;
+  } else if (message.t === 'take' && claim.held !== false) {
+    settle(false);
+    if (M.isPrivate(state)) {
+      sessionSet(HELD_KEY, JSON.stringify({id: state.id, held: false}));
+    }
     apply(state);
   }
 }
@@ -474,9 +685,12 @@ function take() {
     return;
   }
   if (!claim || claim.id !== state.id) {
-    claim = {id: state.id, held: null, timer: null};
+    claim = {id: state.id, held: null, timer: null, rank: rank()};
   }
-  claim.held = true;
+  settle(true);
+  if (M.isPrivate(state)) {
+    sessionSet(HELD_KEY, JSON.stringify({id: state.id, held: true}));
+  }
   if (channel) {
     channel.postMessage({t: 'take', id: state.id});
   }

@@ -1857,6 +1857,62 @@ msgstr "La conférence {name} est terminée"
 msgid "The browser blocked the separate window."
 msgstr "Le navigateur a bloqué la fenêtre séparée."
 
+# --- private conversations: project.html, talk.js, webconf_invite.js, webconf.js, webconf_dialog.js ---
+
+msgid "Talk privately"
+msgstr "Parler en privé"
+
+msgid "Invite the student to a private voice and text conversation"
+msgstr "Inviter l'étudiant à une conversation privée, à la voix et par écrit"
+
+msgid "Invite {name} to a private voice and text conversation (a web conference of the two of you)"
+msgstr "Inviter {name} à une conversation privée, à la voix et par écrit (une conférence web à deux)"
+
+msgid "Calling… (cancel)"
+msgstr "Appel… (annuler)"
+
+msgid "{name} is being asked: click to take the invitation back"
+msgstr "{name} est invité : cliquer pour retirer l'invitation"
+
+msgid "End conversation"
+msgstr "Terminer la conversation"
+
+msgid "End the private conversation with {name}: both go back to the class conference"
+msgstr "Terminer la conversation privée avec {name} : chacun retourne dans la conférence de la classe"
+
+msgid "End the conversation"
+msgstr "Terminer la conversation"
+
+msgid "{name} would like to talk with you"
+msgstr "{name} souhaite vous parler"
+
+msgid "Not now"
+msgstr "Pas maintenant"
+
+msgid "The invitation is over."
+msgstr "L'invitation n'est plus valable."
+
+msgid "{name} declined the conversation."
+msgstr "{name} a décliné la conversation."
+
+msgid "{name} did not answer."
+msgstr "{name} n'a pas répondu."
+
+msgid "{name} is no longer calling."
+msgstr "{name} n'appelle plus."
+
+msgid "The private conversation could not be started."
+msgstr "La conversation privée n'a pas pu être lancée."
+
+msgid "Private — {name}"
+msgstr "Privé — {name}"
+
+msgid "The private conversation with {name} has ended"
+msgstr "La conversation privée avec {name} est terminée"
+
+msgid "Private conversation with {name}"
+msgstr "Conversation privée avec {name}"
+
 msgid "New room"
 msgstr "Nouvelle salle"
 

@@ -10,6 +10,7 @@ after a reload, and removed when the instructor ends the room; a second tab of t
 a pill instead of joining twice, and takes the client over."""
 import asyncio
 import contextlib
+import functools
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -214,3 +215,174 @@ class TestWebconfInTheBrowser:
                 no_errors(first)
                 no_errors(second)
         run(scenario())
+
+
+# ---------------------------------------------------------------------------------------------
+# the private conversations
+# ---------------------------------------------------------------------------------------------
+
+BANNER = "document.getElementById('webconf-invite')"
+BANNER_TEXT = f"(() => {{ const b = {BANNER}; return b ? b.querySelector('.text').textContent : ''; }})()"
+NO_BANNER = f"{BANNER} === null"
+MARKED = "document.title.startsWith('☎ ')"
+# the Talk privately button of the helper view: its state once project.js showed it
+TALK_STATE = ("(() => { const b = document.getElementById('talk-student'); "
+              "return b && !b.hidden && !b.disabled ? b.dataset.state || '' : null; })()")
+WINDOW_TITLE = ("(() => { const t = document.querySelector('#webconf-layer .terminal-window.webconf "
+                ".terminal-window-title .title'); return t ? t.textContent : ''; })()")
+PRIVATE_WINDOW = "document.querySelector('#webconf-layer .terminal-window.webconf.private-room') !== null"
+
+
+async def invite(h, login: str, tab: str = '') -> dict:
+    resp = await h.client.post('/api/webconfs/invitations', json={'login': login, 'tab': tab}, headers={**PROF, **P.CSRF})
+    assert resp.status == 201, await resp.text()
+    return await resp.json()
+
+
+async def rooms(h) -> dict:
+    """The rooms of the portal by kind (one of each at most in these tests)."""
+    listed = await (await h.client.get('/api/webconfs', headers=PROF)).json()
+    return {room['kind']: room for room in listed}
+
+
+def shows(room: dict) -> str:
+    """The page shows the client of *room*: its iframe, visible, on the join of that room."""
+    return f"{FRAME_SHOWN} && {FRAME_SRC} === '/api/webconfs/{room['id']}/join'"
+
+
+class TestPrivateConversationInTheBrowser:
+    def test_invitation_switch_and_return(self, tmp_path):
+        """An instructor on a student's project: Talk privately, the banner of the student
+        (taken back, declined, accepted), both conferences windows switched to the private room
+        at the place of the class conference, which comes back there when the conversation ends
+        (the ✕ of the instructor, then the client's own Leave of the student)."""
+        async def scenario():
+            async with browsing(tmp_path, ALICE, PROF) as (h, fake, browser, urls):
+                rln = await T.start_project(h, ALICE)
+                student = await browser.page(f"{urls['alice']}/projects")
+                await student.wait_for(LOGGED_IN, what="the Projects page of alice")
+                teacher = await browser.page(f"{urls['prof']}/projects/a01/{quote(rln, safe='')}", new_window=True)
+                await teacher.wait_for(TABBAR_SHOWN, what="the project of alice on the instructor's page")
+                await teacher.wait_for(f"{TALK_STATE} === 'idle'", what="the Talk privately button")
+                # the class conference on both pages; the student's window moved somewhere
+                room = await create_room(h, {'logins': ['alice']})
+                await student.wait_for(shows(room), timeout=CLIENT_WAIT, what="the class conference of alice")
+                await teacher.wait_for(shows(room), timeout=CLIENT_WAIT, what="the class conference of the instructor")
+                rects = await student.evaluate(RECTS)
+                x0, y0 = rects['window']['x'] + 60, rects['window']['y'] + 10
+                await student.drag(x0, y0, x0 - 200, y0 - 120)
+                place = (await student.evaluate(RECTS))['window']
+                assert abs(place['x'] - (rects['window']['x'] - 200)) <= 2, (rects, place)
+                # asked, then taken back: the banner comes and goes, the conference untouched
+                await teacher.click('#talk-student')
+                await teacher.wait_for(f"{TALK_STATE} === 'inviting'", what="the button while calling")
+                await student.wait_for(f"{BANNER} !== null", what="the banner of the invitation")
+                assert 'Pr. Of' in await student.evaluate(BANNER_TEXT) and await student.evaluate(MARKED)
+                assert await student.evaluate(shows(room)) and len(fake.meetings) == 1
+                await teacher.click('#talk-student')
+                await student.wait_for(NO_BANNER, what="the banner gone after the cancel")
+                await teacher.wait_for(f"{TALK_STATE} === 'idle'", what="the button idle again")
+                assert not await student.evaluate(MARKED)
+                assert any('no longer calling' in t for t in await student.evaluate(TOASTS))
+                # asked again, declined
+                await teacher.click('#talk-student')
+                await student.wait_for(f"{BANNER} !== null", what="the second banner")
+                await student.click('#webconf-invite button:not(.primary)')
+                await student.wait_for(NO_BANNER, what="the banner gone after Not now")
+                await teacher.wait_for(f"{TALK_STATE} === 'idle'", what="the button idle after the refusal")
+                assert any('declined' in t for t in await teacher.evaluate(TOASTS))
+                assert await student.evaluate(shows(room)) and await teacher.evaluate(shows(room))
+                # asked again, accepted: both pages leave the class conference for the private room
+                await teacher.click('#talk-student')
+                await student.wait_for(f"{BANNER} !== null", what="the third banner")
+                await student.click('#webconf-invite button.primary')
+                private = await until(functools.partial(_private, h), CLIENT_WAIT, "the private room")
+                for page, who, other in ((student, 'alice', 'Pr. Of'), (teacher, 'the instructor', 'Alice A')):
+                    await page.wait_for(f"{PRIVATE_WINDOW} && {shows(private)}", timeout=CLIENT_WAIT,
+                                        what=f"the private room on the page of {who}")
+                    assert await page.evaluate(WINDOW_TITLE) == f'Private — {other}'
+                    assert await page.evaluate("document.querySelectorAll('iframe#webconf-frame').length") == 1
+                    assert not any('has ended' in t for t in await page.evaluate(TOASTS))
+                assert await student.evaluate(NO_BANNER)
+                await teacher.wait_for(f"{TALK_STATE} === 'active'", what="the button while talking")
+                await until(lambda: {a['user_id'] for a in fake.meetings[private['meeting_id']].attendees} == {'alice', 'prof'},
+                            CLIENT_WAIT, "both joined on the fake server")
+                assert same_rect((await student.evaluate(RECTS))['window'], place, 3)       # where the class window was
+                stored = await student.evaluate(STORED)
+                assert '"kind":"private"' in stored and f'"back":{{"id":"{room["id"]}"' in stored
+                # ended by the instructor's ✕: the class conference back on both, at its place
+                await teacher.click('.terminal-window.webconf button.close')
+                for page in (student, teacher):
+                    await page.wait_for(f"!({PRIVATE_WINDOW}) && {shows(room)}", timeout=CLIENT_WAIT,
+                                        what="the class conference back")
+                    assert any('private conversation' in t for t in await page.evaluate(TOASTS))
+                assert same_rect((await student.evaluate(RECTS))['window'], place, 3)
+                await teacher.wait_for(f"{TALK_STATE} === 'idle'", what="the button idle after the end")
+                assert private['meeting_id'] not in fake.meetings and room['meeting_id'] in fake.meetings
+                assert '"kind"' not in await student.evaluate(STORED)
+                # again, ended by the student through the client's own Leave (the link fills the frame)
+                await teacher.click('#talk-student')
+                await student.wait_for(f"{BANNER} !== null", what="the fourth banner")
+                await student.click('#webconf-invite button.primary')
+                await student.wait_for(PRIVATE_WINDOW, timeout=CLIENT_WAIT, what="the second conversation")
+                second = await until(functools.partial(_private, h), CLIENT_WAIT, "the second private room")
+                await student.wait_for(shows(second), timeout=CLIENT_WAIT, what="the client of the second conversation")
+                rects = await student.evaluate(RECTS)
+                await student.click_at(rects['frame']['x'] + rects['frame']['w'] / 2, rects['frame']['y'] + rects['frame']['h'] / 2)
+                for page in (student, teacher):
+                    await page.wait_for(f"!({PRIVATE_WINDOW}) && {shows(room)}", timeout=CLIENT_WAIT,
+                                        what="the class conference back after Leave")
+                assert await student.evaluate(f"{PILL} === null")             # ended, not "left"
+                no_errors(student)
+                no_errors(teacher)
+        run(scenario())
+
+    def test_two_tabs_of_the_student_hold_one_client(self, tmp_path):
+        """Two tabs told of a room at the same moment: one loads the client, the other shows the
+        pill.  The tab where Join was clicked shows the private room, whichever held the class
+        conference, and keeps the class conference afterwards."""
+        async def scenario():
+            async with browsing(tmp_path, ALICE) as (h, fake, browser, urls):
+                first = await browser.page(f"{urls['alice']}/projects")
+                second = await browser.page(f"{urls['alice']}/open")
+                for page in (first, second):
+                    await page.wait_for(LOGGED_IN, what="a page of alice")
+                ws_prof = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=PROF)   # the instructor is on the site
+                room = await create_room(h, {'logins': ['alice']})
+
+                async def settled(target: dict):
+                    """(the page showing the client of *target*, the other one with the pill)."""
+                    states = [(await page.evaluate(shows(target)), await page.evaluate(f"{NO_FRAME} && {ELSEWHERE}"))
+                              for page in (first, second)]
+                    if states == [(True, False), (False, True)]:
+                        return first, second
+                    if states == [(False, True), (True, False)]:
+                        return second, first
+                    return None
+                holder, other = await until(functools.partial(settled, room), CLIENT_WAIT, "one tab with the class conference")
+                await asyncio.sleep(0.6)                              # past the claim delay: still one client
+                assert await settled(room) == (holder, other)
+                # invited: the banner on both tabs; Join in the tab that does not hold the conference
+                await invite(h, 'alice')
+                for page in (first, second):
+                    await page.wait_for(f"{BANNER} !== null", what="the banner on each tab")
+                await other.click('#webconf-invite button.primary')
+                private = await until(functools.partial(_private, h), CLIENT_WAIT, "the private room")
+                assert await until(functools.partial(settled, private), CLIENT_WAIT, "the private room in the tab of the click") == (other, holder)
+                for page in (first, second):
+                    assert await page.evaluate(NO_BANNER)
+                assert [a['user_id'] for a in fake.meetings[private['meeting_id']].attendees] == ['alice']    # joined once
+                # the conversation ended by the instructor: the class conference in the tab that had the conversation
+                resp = await h.client.post(f"/api/webconfs/{private['id']}/leave", json={}, headers={**PROF, **P.CSRF})
+                assert resp.status == 200
+                assert await until(functools.partial(settled, room), CLIENT_WAIT, "the class conference back in one tab") == (other, holder)
+                await asyncio.sleep(0.6)
+                assert await settled(room) == (other, holder)
+                await ws_prof.close()
+                no_errors(first)
+                no_errors(second)
+        run(scenario())
+
+
+async def _private(h) -> dict | None:
+    return (await rooms(h)).get('private')

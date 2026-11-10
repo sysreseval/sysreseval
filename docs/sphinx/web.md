@@ -196,7 +196,7 @@ merges other files into this one, as for `web.toml` below.
 | `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept), `refresh_interval` (`10s`: the least time between two reads forced by the *Refresh* button of the page; the clicks arriving during a read share it, `0` = none) |
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
-| `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`) |
+| `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`), `private_rooms` (`true`: the **Talk privately** button of an instructor on a student's project, *Private conversations* below; `false` removes it), `[bbb.private_userdata]` (the `bbb_*` client settings of the joins of a private conversation, over `[bbb.userdata]` and the portal's own) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
 
@@ -384,7 +384,15 @@ session and the request following a logout opens another one. The other events:
   `webconf_audience` (the audience changed, the `owner` of the room), `webconf_attend` (an
   instructor joining a room), `webconf_stop`, and `webconf_join` (a join URL served to a
   participant: their `login`, `webconf`, `role`, status 302); the listing of the rooms is a
-  keepalive, the page the client comes back to after *Leave meeting* is not logged.
+  keepalive, the page the client comes back to after *Leave meeting* is not logged;
+- the private conversations (*Private conversations* below): `webconf_invite` (the instructor's
+  `login`, the `student` asked, the `host` and `rln` of the project they asked from, the
+  `invitation`; status 409 when the student is not connected or busy), `webconf_accept` (the
+  student's `login`, the `invitation`, the `instructor`, `webconf` = the room made; 410 when the
+  invitation was over, 502 / 503 as the server answered), `webconf_decline`, `webconf_cancel`
+  (the invitation taken back by an instructor, the `student`) and `webconf_leave` (one of the
+  two ending the conversation: `webconf`, `owner`); an invitation nobody answers expires
+  without a line.
 
 The client address is the last entry of `X-Forwarded-For` when the TCP peer is one of
 `trusted_proxies` (the Apache and nginx examples set that header), the peer address otherwise:
@@ -819,8 +827,11 @@ secret = "..."                        # the shared secret of its API: bbb-conf -
 # duration = 0                        # "2h": the server ends a meeting after that; 0 = unlimited
 # max_participants = 0
 # poll_interval = "10s"               # the participants and the ended meetings are read that often
+# private_rooms = true                # Talk privately on a student's project (Private conversations below)
 # [bbb.userdata]                      # the client settings of every join (userdata-bbb_*, the BBB API reference)
 # bbb_skip_check_audio = true
+# [bbb.private_userdata]              # the client settings of the joins of a private conversation, over the others
+# bbb_listen_only_mode = true
 ```
 
 **The instructors**: the *Webconf* button of the site bar opens the dialog of the rooms: those
@@ -870,10 +881,59 @@ their `Content-Security-Policy`, nothing else. BBB 2.4 at least (the `role` of t
 passwords are still passed for older servers). Safari may refuse the camera in a cross-origin
 frame: pop the client out.
 
+#### Private conversations
+
+An instructor who opened a student's project (the helper view) may talk with that student alone,
+voice and text. BigBlueButton has no private audio inside a meeting (one audio bridge per
+meeting; its breakout rooms are made by hand in the client and open in another browser tab), so
+a private conversation is a **second meeting of the two**, which both browsers show *in place
+of* the class conference for as long as it lasts: nobody is ever in two meetings at once.
+
+- **Talk privately**, in the bar of the project after *Focus student on project* (shown with
+  `[bbb]` unless `private_rooms = false`), invites the owner of the project. Nothing else
+  happens yet: both stay in the class conference, no meeting is created. The button reads
+  *Calling… (cancel)* and takes the invitation back; an invitation nobody answers expires after
+  a minute. The student must be connected to the site, and neither invited by somebody else nor
+  in a private conversation already (the instructor is told so).
+- **The student** gets a banner across the top of every page of the site they have open (above
+  a presentation, inside an open dialog), with a short chime and a mark in the title of the
+  page: the name of the instructor, *would like to talk with you*, and two buttons, *Join* and
+  *Not now*. *Not now* tells the instructor; nothing opens a microphone before *Join*.
+- **Join** creates the meeting and sends both browsers to it: the window of the conference (at
+  the place and in the mode of the class conference: window, tab or full page) now shows the
+  private room, titled *Private —* and the name of the other one, its title bar in its own
+  colour. The joins
+  go straight to the microphone, without the echo test or the choice of *Listen only*
+  (`bbb_auto_join_audio`, `bbb_listen_only_mode = false`, `bbb_skip_check_audio`,
+  `bbb_hide_presentation_on_join`; `[bbb.private_userdata]` overrides them, e.g.
+  `bbb_listen_only_mode = true` to get the choice back); the meeting is never recorded and starts
+  nobody muted, whatever `[bbb]` says for the rooms. The chat of that meeting is the text channel.
+- **Only the tab where the user clicked** — *Talk privately* for the instructor, *Join* for the
+  student — loads the client: the other tabs, and any other browser the same user is logged in
+  from, leave the class conference and show the pill (*Bring here* moves the conversation). A
+  browser left open somewhere never opens its microphone by itself.
+- **The end**: the × of the window, *End conversation* in the bar of the project, or the *Leave
+  meeting* of the client, by either of the two — leaving a conversation of two ends it; *End* in
+  the Webconf dialog, by any instructor (the dialog lists the conversation, nobody else may join
+  it or see its audience); and the server itself, a minute after the instructor is gone (a
+  closed browser: `endWhenNoModerator`). Both browsers then show the class conference again, in
+  the mode and at the place it had; an instructor comes back to the room they were in.
+- An instructor already talking with a student may invite another one: the first conversation
+  ends when the second one is accepted, and the instructor goes from one to the other. Joining
+  another room from the Webconf dialog ends the instructor's conversation.
+
+Limits: each switch reloads the client (a few seconds, twice per conversation), and both are
+out of the class conference meanwhile — the other students cannot reach the instructor there.
+A class conference popped out to a separate window is closed when the conversation starts (by
+the tab that opened it) and comes back in a window of the page; when that tab was closed since,
+the site cannot close the separate window: the user is then in both meetings until they close
+it. The invitations live in memory like the rooms.
+
 The connection log gets the `webconf_*` events (*The connection log* above). Tests:
 `tests/test_bbb_client.py`, `tests/test_web_webconf.py` (the registry on a fake client, the
 portal in front of the fake server of `tests/fake_bbb.py`), `tests/test_web_webconf_browser.py`
-(headless Chrome).
+(headless Chrome: the rooms, then the private conversations — the banner, the switch and the
+return of two pages, two tabs of one user holding one client).
 
 ### Securing the pool (mutual TLS)
 
@@ -1442,6 +1502,11 @@ What an instructor gets:
   server, *Web conference* above) opens the rooms: start one for chosen students and groups,
   join a colleague's as a moderator, change its audience, end it. The students put in a room get
   the client in a window over their page.
+
+- **Talk privately**: on a student's project, next to *Focus student on project*: the student is
+  invited to a conversation of the two alone, voice and text (a banner, *Join* / *Not now*); once
+  they join, both browsers show a private room instead of the class conference, and come back to
+  it when the conversation ends (*Private conversations* above).
 
 ### Administrators
 

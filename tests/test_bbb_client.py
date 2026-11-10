@@ -142,6 +142,27 @@ class TestClientAgainstTheFakeServer:
                 await fake.close()
         run(go())
 
+    def test_create_with_extra_parameters(self):
+        """The parameters the fixed arguments do not cover (those of a private room): sent by
+        their API name and covered by the checksum, which the fake server verifies."""
+        async def go():
+            fake = await FakeBbbServer(secret='sekret').start()
+            client = B.BbbClient(fake.url, 'sekret')
+            try:
+                await client.create('sre-x', 'Room X', moderator_pw='mod', attendee_pw='att', meta={'sre-kind': 'private'},
+                                    extra={'endWhenNoModerator': True, 'endWhenNoModeratorDelayInMinutes': 1,
+                                           'disabledFeatures': 'breakoutRooms,learningDashboard'})
+                call, params = fake.calls[0]
+                assert call == 'create' and params['endWhenNoModerator'] == 'true'
+                assert params['endWhenNoModeratorDelayInMinutes'] == '1' and params['meta_sre-kind'] == 'private'
+                assert params['disabledFeatures'] == 'breakoutRooms,learningDashboard'
+                names = list(params)
+                assert names.index('meta_sre-kind') < names.index('disabledFeatures') < names.index('endWhenNoModerator')
+            finally:
+                await client.close()
+                await fake.close()
+        run(go())
+
     def test_join_redirects_to_the_client(self):
         async def go():
             fake = await FakeBbbServer().start()
