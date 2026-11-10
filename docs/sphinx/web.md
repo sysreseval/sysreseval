@@ -508,7 +508,9 @@ lab list is (an enabled, reachable host, up and little loaded first; the next on
 not answer), which runs `sre report` (an internal command: the records on stdin, the file on
 stdout, one report at a time per host, `[timeouts] report` of `agent.toml`, `600` seconds) and
 answers the download the portal streams to the browser. The files are therefore those `sre
-sheet` / `sre outline` would give on the same archives, in the language of the instructor; the
+sheet` / `sre outline` would give on the same archives, in the language of the instructor, but
+for one thing: a student is a login whatever the host of the pool the project ran on, where the
+two commands tell a login on two hosts apart (*Reports*, under *Instructors* below); the
 elements of an evaluation whose details were too big for the table (over 1 MB) are missing from
 them. The PDF reports and their summary read the grade elements of one evaluation per student
 only, the best one (the highest total, the earliest of them): when every evaluation of the
@@ -1340,10 +1342,17 @@ What an instructor gets:
   selected and how many are not on the page), and the bar under the filters downloads a
   **Spreadsheet** (what `sre sheet` gives: per lab, the table of every evaluation, the
   *Questions* statistics and the *Sessions* best grades), the **PDF reports** (what `sre
-  outline` gives: a zip holding one PDF per student, lab and host, and `outline.ods`, the summary)
-  or the **Summary spreadsheet** (what `sre outline -o` gives: that `outline.ods` alone, one row
-  per student, lab and host with the best evaluation, its time and the mark) of the selected
-  evaluations. A selected evaluation stands for its whole project: every stored evaluation of the
+  outline` gives: a zip holding one PDF per student and lab, `<login>__<lab>.pdf`, and
+  `outline.ods`, the summary) or the **Summary spreadsheet** (what `sre outline -o` gives: that
+  `outline.ods` alone, one row per student and lab with the best evaluation, its time and the
+  mark) of the selected evaluations. **A student is a login here, whatever the host**: the portal
+  places each project on any host of the pool, so the instances of a lab a student opened several
+  times are merged into one row, one PDF and one *Sessions* row even when they ran on different
+  hosts (the two commands, run by hand on the archives of a host, keep one per login *and*
+  hostname: the hostname is the student's workstation there, and tells apart the users of a
+  shared account); the `hostname` of a merged row, and of the header of its PDF, is the host of
+  the best evaluation, and each history table of the PDF is headed by the start time and the host
+  of its instance. A selected evaluation stands for its whole project: every stored evaluation of the
   same projects goes into the reports (the history table of a PDF, every row of the spreadsheet,
   the best evaluation of the summary), as `sre sheet archives/` would do on a host; the *Options*
   disclosure unticks that (**Every evaluation of the selected projects**: the ticked rows alone

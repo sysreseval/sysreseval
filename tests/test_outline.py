@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from archive_helpers import archive_name, rln, write_archive, write_bonus_archive, write_two_instances
+from odf import teletype
+from odf.opendocument import load as load_ods
+from odf.table import TableRow
+
+from archive_helpers import TWO_HOSTS, archive_name, rln, write_archive, write_bonus_archive, write_two_instances
 from SRE import params
 from SRE.command import outline
 
@@ -109,6 +113,88 @@ class TestGroupRecords:
         groups = outline._group_records(outline._collect_archives(_args(tmp_path, recursive=True)))
         assert [key for key, _ in groups] == [('lab/x', 'alice', 'ha'), ('lab/x', 'bob', 'hb')]
 
+    def test_instances_on_two_hosts_are_two_groups(self, tmp_path):
+        """The hostname is part of the key: the workstation of the student for `sre outline`
+        (a shared account is told apart by it)."""
+        write_two_instances(tmp_path, hostnames=TWO_HOSTS)
+        groups = outline._group_records(outline._collect_archives(_args(tmp_path)))
+        assert [key for key, _ in groups] == [('lab/x', 'bob', 'hb'), ('lab/x', 'bob', 'hc')]
+
+    def test_merge_hosts_one_group_per_student(self, tmp_path):
+        """The web front-end: the host is the one of the pool the instance was placed on."""
+        write_two_instances(tmp_path, hostnames=TWO_HOSTS)
+        records = outline._collect_archives(_args(tmp_path))
+        groups = outline._group_records(records, merge_hosts=True)
+        assert [key for key, _ in groups] == [('lab/x', 'bob')]
+        assert sorted(r['total_grade'] for r in groups[0][1]) == [3.0, 4.0, 5.0, 9.0]
+        # an instance is on one host: the groups per instance are the same with or without
+        separate = outline._group_records(records, separate_instances=True, merge_hosts=True)
+        assert [key for key, _ in separate] == [('lab/x', 'bob', 'hb', _FIRST), ('lab/x', 'bob', 'hc', _SECOND)]
+        assert separate == outline._group_records(records, separate_instances=True)
+
+    def test_merge_hosts_keeps_the_students_and_the_labs_apart(self, tmp_path):
+        write_two_instances(tmp_path, hostnames=TWO_HOSTS)
+        write_two_instances(tmp_path / 'other', login='alice', hostnames=TWO_HOSTS)
+        write_two_instances(tmp_path / 'lab', lab='lab@y.py', hostnames=TWO_HOSTS)
+        groups = outline._group_records(outline._collect_archives(_args(tmp_path, recursive=True)), merge_hosts=True)
+        assert [key for key, _ in groups] == [('lab/x', 'alice'), ('lab/x', 'bob'), ('lab/y', 'bob')]
+        assert [len(recs) for _, recs in groups] == [4, 4, 4]
+
+
+# The summary spreadsheet and the PDF names of a student whose two instances
+# ran on two hosts
+# ---------------------------------------------------------------------------
+
+def _summary_rows(path) -> list[list[str]]:
+    """The rows of the summary spreadsheet, the header left out, as texts."""
+    doc = load_ods(str(path))
+    return [[teletype.extractText(c) for c in tr.childNodes] for tr in doc.spreadsheet.getElementsByType(TableRow)][1:]
+
+
+class TestBuildOutlineHosts:
+    @pytest.fixture
+    def records(self, tmp_path):
+        write_two_instances(tmp_path / 'archives', hostnames=TWO_HOSTS)
+        return outline._collect_archives(_args(tmp_path / 'archives'))
+
+    def test_one_report_per_host_by_default(self, tmp_path, records):
+        summary = tmp_path / 'summary.ods'
+        written = outline.build_outline(records, pdf_dir=tmp_path / 'pdf', summary_path=summary, lang='en')
+        assert [p.name for p in written] == ['bob__x__hb.pdf', 'bob__x__hc.pdf']
+        assert [row[:4] for row in _summary_rows(summary)] == [['bob', 'hb', 'x', '5.0'], ['bob', 'hc', 'x', '9.0']]
+
+    def test_merge_hosts_one_report_per_student(self, tmp_path, records):
+        summary = tmp_path / 'summary.ods'
+        written = outline.build_outline(records, pdf_dir=tmp_path / 'pdf', summary_path=summary, lang='en',
+                                        merge_hosts=True)
+        assert [p.name for p in written] == ['bob__x.pdf'] and written[0].stat().st_size > 0
+        # one row: the best evaluation of both instances, on the host it was run on
+        assert [row[:5] for row in _summary_rows(summary)] == [['bob', 'hc', 'x', '9.0', '2026-09-10 11:20:00']]
+
+    def test_merge_hosts_without_pdf(self, tmp_path, records):
+        summary = tmp_path / 'summary.ods'
+        assert outline.build_outline(records, pdf_dir=None, summary_path=summary, merge_hosts=True) == []
+        assert [row[:4] for row in _summary_rows(summary)] == [['bob', 'hc', 'x', '9.0']]
+
+    def test_merge_hosts_per_instance(self, tmp_path, records):
+        """--separate-instances wins: one report per instance, each on its host."""
+        summary = tmp_path / 'summary.ods'
+        written = outline.build_outline(records, pdf_dir=tmp_path / 'pdf', summary_path=summary, lang='en',
+                                        separate_instances=True, merge_hosts=True)
+        assert [p.name for p in written] == [f'bob__x__hb__{_FIRST}.pdf', f'bob__x__hc__{_SECOND}.pdf']
+        assert [row[:2] + row[4:5] for row in _summary_rows(summary)] == [['bob', 'hb', '5.0'], ['bob', 'hc', '9.0']]
+
+    @pytest.mark.parametrize('merge, names', [(True, ['bob__x.pdf', 'bob__sre-x.pdf']),
+                                              (False, ['bob__x__hb.pdf', 'bob__sre-x__hb.pdf'])])
+    def test_two_labs_of_the_same_file_name(self, tmp_path, merge, names):
+        """A course copy and the shipped lab (`s3/x.py`, `sre/x.py`) run by one student: two
+        reports, the second named after its whole lab path instead of written over the first."""
+        write_two_instances(tmp_path / 'course', lab='s3@x.py')
+        write_two_instances(tmp_path / 'shipped', lab='sre@x.py')
+        records = outline._collect_archives(_args(tmp_path, recursive=True))
+        written = outline.build_outline(records, pdf_dir=tmp_path / 'pdf', lang='en', merge_hosts=merge)
+        assert [p.name for p in written] == names and all(p.stat().st_size > 0 for p in written)
+
 
 class TestMakePdfInstances:
     @pytest.fixture
@@ -152,6 +238,17 @@ class TestMakePdfInstances:
         i = cells.index('Project started:')
         assert cells[i + 1] == '2026-09-10 11:00:00'
         assert cells.count('Evaluation Time') == 1
+
+    def test_instances_on_two_hosts_in_one_report(self, tmp_path, cells):
+        """A group merged across hosts: the header names the host of the best evaluation, each
+        history table its own."""
+        write_two_instances(tmp_path, hostnames=TWO_HOSTS)
+        (_, recs), = outline._group_records(outline._collect_archives(_args(tmp_path)), merge_hosts=True)
+        outline._make_pdf(recs, tmp_path / 'bob.pdf', forced_lang='en')
+        assert cells[cells.index('Hostname:') + 1] == 'hc'
+        assert [c for c in cells if c.startswith('Project started: ')] == [
+            'Project started: 2026-09-10 10:00:00 (hb)', 'Project started: 2026-09-10 11:00:00 (hc)']
+        assert cells.count('Evaluation Time') == 2 and '9.0 / 10.0' in cells
 
     @pytest.mark.parametrize('with_fonts', [True, False])
     def test_non_latin1_text_does_not_crash(self, tmp_path, cells, monkeypatch, with_fonts):

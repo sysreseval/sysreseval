@@ -74,10 +74,18 @@ TWO_INSTANCES = [
 ]
 
 
-def write_two_instances(root, *, lab=LAB, login='bob', hostname='hb') -> None:
-    """Write the TWO_INSTANCES archives under *root*."""
+def write_two_instances(root, *, lab=LAB, login='bob', hostname='hb', hostnames=None) -> None:
+    """Write the TWO_INSTANCES archives under *root*.  *hostnames* (one per instance, in the
+    order of their start) puts each instance on its own host, as the web portal does when it
+    places the projects of a student on the hosts of its pool; else both on *hostname*."""
+    starts = sorted({start_ts for start_ts, _, _ in TWO_INSTANCES})
+    host_of = dict(zip(starts, hostnames)) if hostnames else {}
     for start_ts, eval_iso, grade in TWO_INSTANCES:
         r = rln(start_ts=start_ts, lab=lab, user=login)
         compact = eval_iso.replace('-', '').replace(':', '').replace('T', '')
-        write_archive(Path(root) / archive_name(r, compact), hostname=hostname, login=login,
+        write_archive(Path(root) / archive_name(r, compact), hostname=host_of.get(start_ts, hostname), login=login,
                       running_lab_name=r, eval_date=eval_iso, grade=grade, max_grade=10.0)
+
+
+#: The hosts of TWO_INSTANCES for write_two_instances(hostnames=): the best evaluation is on 'hc'.
+TWO_HOSTS = ('hb', 'hc')

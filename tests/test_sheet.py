@@ -9,7 +9,7 @@ from odf import teletype
 from odf.opendocument import OpenDocumentSpreadsheet
 from odf.table import Table, TableRow
 
-from archive_helpers import archive_name, rln, write_archive, write_bonus_archive, write_two_instances
+from archive_helpers import TWO_HOSTS, archive_name, rln, write_archive, write_bonus_archive, write_two_instances
 from SRE.command import sheet
 
 
@@ -80,12 +80,12 @@ class TestCollectArchives:
 # A student who opened the same lab twice: the Sessions sheet
 # ---------------------------------------------------------------------------
 
-def _sessions(rows, separate_instances: bool) -> list[str]:
+def _sessions(rows, separate_instances: bool, merge_hosts: bool = False) -> list[str]:
     """Text of every row of the Sessions sheet built from *rows*."""
     doc = OpenDocumentSpreadsheet()
     sname = sheet._make_header_style(doc).getAttribute('name')
     sheet._add_sessions_sheet(doc, sname, 'lab@x.py', rows, sheet._grade_titles_for(rows),
-                              separate_instances)
+                              separate_instances, merge_hosts=merge_hosts)
     table = doc.spreadsheet.getElementsByType(Table)[-1]
     return [' | '.join(teletype.extractText(c) for c in tr.childNodes)
             for tr in table.getElementsByType(TableRow)]
@@ -111,6 +111,40 @@ class TestSessionsSheet:
         assert lines[0].startswith('login | hostname | project start | max score')
         assert lines[1].startswith('bob | hb | 2026-09-10 10:00:00 | 5.0')
         assert lines[2].startswith('bob | hb | 2026-09-10 11:00:00 | 9.0')
+
+    def test_instances_on_two_hosts_are_two_sessions(self, tmp_path):
+        """The hostname is part of a session: the workstation of the student for `sre sheet`."""
+        write_two_instances(tmp_path, hostnames=TWO_HOSTS)
+        lines = _sessions(sheet._collect_archives(_args(tmp_path)), separate_instances=False)
+        assert [line.split(' | ')[:3] for line in lines[1:]] == [['bob', 'hb', '5.0'], ['bob', 'hc', '9.0']]
+
+    def test_merge_hosts_one_row_per_student(self, tmp_path):
+        """The web front-end: one row per student whatever the hosts of the pool their
+        instances ran on, with the host of the best evaluation."""
+        write_two_instances(tmp_path, hostnames=TWO_HOSTS)
+        write_two_instances(tmp_path / 'other', login='alice', hostname='ha')
+        rows = sheet._collect_archives(_args(tmp_path, recursive=True))
+        lines = _sessions(rows, separate_instances=False, merge_hosts=True)
+        assert lines[0].startswith('login | hostname | max score')
+        assert [line.split(' | ')[:3] for line in lines[1:]] == [['alice', 'ha', '9.0'], ['bob', 'hc', '9.0']]
+        # per instance, the host of each instance as without the option
+        separate = _sessions(rows, separate_instances=True, merge_hosts=True)
+        assert separate == _sessions(rows, separate_instances=True)
+        assert [line.split(' | ')[:2] for line in separate[1:]] == [['alice', 'ha'], ['alice', 'ha'],
+                                                                    ['bob', 'hb'], ['bob', 'hc']]
+
+    def test_merge_hosts_tie_takes_the_earliest_evaluation(self, tmp_path):
+        """Two instances with the same best total: the host of the first to reach it, whatever
+        the order of the rows."""
+        for start, when, host in (('20260910100000', '2026-09-10T10:30:00', 'h2'),
+                                  ('20260910090000', '2026-09-10T09:30:00', 'h9')):
+            r = rln(start_ts=start, user='bob')
+            write_archive(tmp_path / archive_name(r, when.replace('-', '').replace(':', '').replace('T', '')),
+                          hostname=host, login='bob', running_lab_name=r, eval_date=when, grade=7.0)
+        rows = sheet._collect_archives(_args(tmp_path))
+        for ordered in (rows, rows[::-1]):
+            lines = _sessions(ordered, separate_instances=False, merge_hosts=True)
+            assert len(lines) == 2 and lines[1].startswith('bob | h9 | 7.0')
 
 
 # ---------------------------------------------------------------------------

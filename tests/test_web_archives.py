@@ -325,9 +325,9 @@ class TestLightReports:
     record with its details."""
 
     @staticmethod
-    def _database(tmp_path, monkeypatch):
+    def _database(tmp_path, monkeypatch, hostnames=None):
         test_report = pytest.importorskip('test_report')
-        test_report._fill(tmp_path)
+        test_report._fill(tmp_path, hostnames)
         records = test_report._records(tmp_path)
         # more evaluations around the best ones: a later tie of bob's best grade, a lower one of alice
         extra = []
@@ -348,12 +348,15 @@ class TestLightReports:
         # without the creation date and the file id made of it
         return re.sub(rb'/CreationDate \([^)]*\)|/ID \[[^\]]*\]', b'', data)
 
+    # bob's two instances on one host, then on two (what a pool gives): the report merges them
+    # whatever the host, the best candidates are taken per project and host all the same
+    @pytest.mark.parametrize('hostnames', [None, ('hb', 'hc')])
     @pytest.mark.parametrize('flags', [{}, {'separate_instances': True}, {'remaining_time': True}])
-    def test_same_files_as_the_full_records(self, tmp_path, monkeypatch, flags):
+    def test_same_files_as_the_full_records(self, tmp_path, monkeypatch, flags, hostnames):
         import io
         import zipfile
         from SRE.command import report
-        reader, rows, statements, test_report = self._database(tmp_path, monkeypatch)
+        reader, rows, statements, test_report = self._database(tmp_path, monkeypatch, hostnames)
         ids = [rows[0][0], rows[-1][0]]
         whole = [R.record_of_row(r) for r in reader.report_rows_sync(ids, all_evaluations=True)['rows']]
         del statements[:]

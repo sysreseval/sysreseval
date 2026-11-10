@@ -91,7 +91,7 @@ class TestMock:
         completed = run_mock(tmp_path, 'report', 'outline', '--no-parts', '-o', str(target), user=False, input=body)
         assert completed.returncode == 0 and completed.stdout == b''
         got = members(target.read_bytes())
-        assert sorted(n for n in got if n.endswith('.pdf')) == ['alice__dhcp__pool1.pdf', 'bob__dhcp__pool2.pdf']
+        assert sorted(n for n in got if n.endswith('.pdf')) == ['alice__dhcp.pdf', 'bob__dhcp.pdf']
         assert got['outline.ods'] == b'ods' and got['flags.txt'] == b'--no-parts'
 
     def test_summary(self, tmp_path):
@@ -157,7 +157,7 @@ class TestApi:
                 got = members(await resp.read())
                 assert json.loads(got['records.json']) == records
                 assert got['flags.txt'].decode().splitlines() == ['--separate-instances', '--no-parts', '--lang fr']
-                assert 'alice__dhcp__pool1.pdf' in got and 'outline.ods' in got
+                assert 'alice__dhcp__pool1__20261025100000.pdf' in got and 'outline.ods' in got
                 # a privileged call in the instructor's language, the kind after the options
                 entry = h.entries()[-1]
                 assert entry['argv'] == ['report', '--lang', 'fr', '--separate-instances', '--no-parts', '--', 'outline']

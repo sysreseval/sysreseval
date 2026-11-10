@@ -120,18 +120,33 @@ def _collect_archives(args, start=None, finish=None) -> list:
     return records
 
 
-def _group_records(records: list, separate_instances: bool = False) -> list[tuple[tuple, list]]:
+def _group_records(records: list, separate_instances: bool = False,
+                   merge_hosts: bool = False) -> list[tuple[tuple, list]]:
     """Group archive records, one group per report: by (lab_name, login,
     hostname), plus the instance start timestamp when *separate_instances*
     (one report per running project instance instead of one per student,
-    for a lab the student opened several times).  Sorted by key."""
+    for a lab the student opened several times).  With *merge_hosts* the
+    hostname is left out of the key, (lab_name, login): one group per
+    student and lab whatever the hosts their instances ran on (the web
+    front-end, whose portal places each instance on any host of the pool);
+    it changes nothing with *separate_instances*, an instance being on one
+    host.  Sorted by key."""
     groups: dict[tuple, list] = defaultdict(list)
     for rec in records:
-        key = (rec['lab_name'], rec['login'], rec['hostname'])
+        key = (rec['lab_name'], rec['login'])
         if separate_instances:
-            key += (rec['instance_start'],)
+            key += (rec['hostname'], rec['instance_start'])
+        elif not merge_hosts:
+            key += (rec['hostname'],)
         groups[key].append(rec)
     return sorted(groups.items(), key=lambda kv: kv[0])
+
+
+def _best_record(records: list) -> dict:
+    """The best evaluation of a group of records: the highest total, then the
+    earliest date (the first of the list among equals)."""
+    return max(records, key=lambda r: (r['total_grade'],
+                                       -(datetime.fromisoformat(r['eval_date']).timestamp() if r['eval_date'] else 0)))
 
 
 def _tt_str(v, lang='en') -> str:
@@ -198,15 +213,18 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
     gets one table per running project instance when the records span
     several.  *show_instance* adds the instance start to the header (one
     report per instance).  A bonus element shows "Bonus" next to its maximum,
-    or before its label with *bonus_in_prefix*."""
+    or before its label with *bonus_in_prefix*.  The records of a group
+    merged across hosts (``merge_hosts``) may name several: the header shows
+    the host of the best evaluation, each history table its own."""
     if not records:
         return
 
     locale.setlocale(locale.LC_TIME, '')
     records = sorted(records, key=lambda r: r['eval_date'] or '')
     first = records[0]
-    login, hostname, lab_name = first['login'], first['hostname'], first['abbreviated_lab_name']
-    best = max(records, key=lambda r: (r['total_grade'], -(datetime.fromisoformat(r['eval_date']).timestamp() if r['eval_date'] else 0)))
+    best = _best_record(records)
+    login, hostname, lab_name = first['login'], best['hostname'], first['abbreviated_lab_name']
+    several_hosts = len({r['hostname'] for r in records}) > 1
     best_index = next(i + 1 for i, r in enumerate(records) if r is best)
     has_remaining = show_remaining and any(r['exam_time_remaining'] is not None for r in records)
 
@@ -420,17 +438,22 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         # One table per running project instance (a student who opened the
         # lab several times), so the evaluations of two instances are never
         # interleaved.  A single instance gets no title: same output as before.
-        instances: dict[str, list] = {}
+        # An instance is a start time on a host: the title names the host
+        # when the records are of several (a group merged across hosts).
+        instances: dict[tuple, list] = {}
         for rec in records:
-            instances.setdefault(rec.get('instance_start', ''), []).append(rec)
+            instances.setdefault((rec.get('instance_start', ''), rec.get('hostname', '')), []).append(rec)
         titled = len(instances) > 1
 
-        for i_inst, (instance_start, inst_records) in enumerate(sorted(instances.items())):
+        for i_inst, ((instance_start, instance_host), inst_records) in enumerate(sorted(instances.items())):
             if titled:
                 if i_inst:
                     pdf.ln(2)
                 pdf.set_font(pdf.text_font, 'B', 9)
-                pdf.cell(0, 6, f"{t('Project started:')} {format_instance_start(instance_start) or '?'}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                title = f"{t('Project started:')} {format_instance_start(instance_start) or '?'}"
+                if several_hosts:
+                    title += f" ({instance_host or '?'})"
+                pdf.cell(0, 6, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.set_font(pdf.text_font, 'B', 9)
             for h_txt, w in zip(headers, widths):
@@ -556,22 +579,26 @@ def action_outline():
 def build_outline(records: list, *, pdf_dir: Path | None, summary_path=None, lang: str | None = None,
                   separate_instances: bool = False, bonus_in_prefix: bool = False, no_timeline: bool = False,
                   remaining_time: bool = False, no_parts: bool = False, user_info: dict | None = None,
-                  log=None, warn=None) -> list[Path]:
+                  merge_hosts: bool = False, log=None, warn=None) -> list[Path]:
     """The reports of *records* (``_record_of_raw`` dicts): one PDF per group of
     ``_group_records`` (per student, lab and host; per running instance with
     *separate_instances*) named ``<login>__<lab>__<host>[__<start>].pdf`` in *pdf_dir* (``None``:
     no PDF), and the summary spreadsheet (one row per group: the best evaluation) saved to
-    *summary_path* (a path or a file object; ``None``: none).  *log* receives the ``written:``
-    line of each PDF, *warn* the warnings and the error of a PDF that could not be written (that
-    group is skipped); both silent when ``None``.  The paths of the PDFs written are returned; an
-    ``OSError`` of the summary save propagates."""
+    *summary_path* (a path or a file object; ``None``: none).  With *merge_hosts* (and without
+    *separate_instances*) a group is a student and a lab whatever the hosts: the PDF is named
+    ``<login>__<lab>.pdf`` and the hostname of the row is the host of the best evaluation.
+    ``<lab>`` is the file name of the lab, or its whole path (``sre-dns1``) for the second of
+    two labs that would give the same PDF name.  *log* receives the ``written:`` line of each PDF, *warn* the warnings and the error of a PDF
+    that could not be written (that group is skipped); both silent when ``None``.  The paths of
+    the PDFs written are returned; an ``OSError`` of the summary save propagates."""
     log = log or (lambda text: None)
     warn = warn or (lambda text: None)
     if pdf_dir is not None:
         Path(pdf_dir).mkdir(parents=True, exist_ok=True)
     # One group per report: per student, or per running instance of a lab
     # with --separate-instances.
-    sorted_groups = _group_records(records, separate_instances)
+    sorted_groups = _group_records(records, separate_instances, merge_hosts)
+    per_host = separate_instances or not merge_hosts
 
     has_any_name  = any(r['fullname'] for r in records) or user_info is not None
     has_any_email = any(r['email']    for r in records) or user_info is not None
@@ -599,20 +626,33 @@ def build_outline(records: list, *, pdf_dir: Path | None, summary_path=None, lan
         sheet.addElement(hrow)
 
     written = []
+    used_names: set[str] = set()
     for key, recs in sorted_groups:
-        lab_name, login, hostname = key[:3]
+        lab_name, login = key[:2]
         abbreviated = recs[0]['abbreviated_lab_name']
         instance_start = recs[0]['instance_start']
+        # The host of the group, or of its best evaluation when it spans several.
+        best = _best_record(recs)
+        hostname = best['hostname']
 
         if user_info is not None and login not in user_info:
             warn(_("warning: login '{login}' not found in aux file").format(login=login))
 
         if pdf_dir is not None:
-            safe = (f"{_safe_filename(login)}"
-                    f"__{_safe_filename(abbreviated)}"
-                    f"__{_safe_filename(hostname)}")
-            if separate_instances:
-                safe += f"__{instance_start or 'unknown'}"
+            def pdf_name(lab: str) -> str:
+                name = f"{_safe_filename(login)}__{_safe_filename(lab)}"
+                if per_host:
+                    name += f"__{_safe_filename(hostname)}"
+                if separate_instances:
+                    name += f"__{instance_start or 'unknown'}"
+                return name
+
+            safe = pdf_name(abbreviated)
+            if safe in used_names:
+                # Two labs of the same file name by one student (a course copy and the
+                # shipped lab): the whole lab path, not a report written over the other.
+                safe = pdf_name(lab_name)
+            used_names.add(safe)
             pdf_path = Path(pdf_dir) / f"{safe}.pdf"
             try:
                 _make_pdf(recs, pdf_path, forced_lang=lang, no_timeline=no_timeline,
@@ -626,7 +666,6 @@ def build_outline(records: list, *, pdf_dir: Path | None, summary_path=None, lan
             log(_("written: {path}").format(path=pdf_path))
 
         if sheet is not None:
-            best = max(recs, key=lambda r: (r['total_grade'], -(datetime.fromisoformat(r['eval_date']).timestamp() if r['eval_date'] else 0)))
             info = user_info.get(login) if user_info else None
 
             tr = TableRow()

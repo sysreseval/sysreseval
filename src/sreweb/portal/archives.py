@@ -412,8 +412,9 @@ def best_candidates(rows: list) -> list:
     takes as the best evaluation of its group, hence the only ones whose elements are read:
     per project, login and hostname, the rows of the highest grade, and among them those of
     the earliest second (the command takes the highest total, then the earliest date; a tie
-    keeps every row of it).  The group of a report (lab, login, hostname, and the project with
-    ``separate_instances``) is a union of those, so its best row is one of them.  (The command
+    keeps every row of it).  The group of a report (lab and login whatever the host, or the
+    project with ``separate_instances``) is a union of those, so its best row is one of them:
+    the key here is finer than either on purpose.  (The command
     compares local naive dates: two rows of the best grade on either side of the hour repeated
     at the end of the summer time may be told apart the other way.)"""
     best: dict = {}

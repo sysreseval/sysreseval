@@ -1,6 +1,8 @@
 """Tests of `sre report` (the sheet / outline of the web front-end built from JSON archive
 records) and of `archive_summary.raw_from_record`: the spreadsheet and the reports built from the
-records of real archives are those `sre sheet` / `sre outline` build from the files."""
+records of real archives are those `sre sheet` / `sre outline` build from the files, with one
+difference: a student is a login whatever the host (``merge_hosts`` of the builders), since the
+portal places each instance of a student on any host of its pool."""
 import io
 import json
 import sys
@@ -15,7 +17,8 @@ from odf import teletype
 from odf.opendocument import load as load_ods
 from odf.table import Table, TableRow
 
-from archive_helpers import LAB, archive_name, rln, write_archive, write_bonus_archive, write_two_instances
+from archive_helpers import (LAB, TWO_HOSTS, archive_name, rln, write_archive, write_bonus_archive,
+                             write_two_instances)
 from SRE import params
 from SRE.archive_summary import archive_record, read_archive, raw_from_record, _whole
 from SRE.command import outline, report, sheet
@@ -68,9 +71,10 @@ def _write_full_archive(root: Path) -> str:
     return _write_raw(root / archive_name(r, '20260910093000'), raw)
 
 
-def _fill(root: Path) -> None:
-    """Two students: bob's two instances (archive_helpers.TWO_INSTANCES) and alice's archive."""
-    write_two_instances(root)
+def _fill(root: Path, hostnames=None) -> None:
+    """Two students: bob's two instances (archive_helpers.TWO_INSTANCES, both on 'hb' unless
+    *hostnames* gives one host per instance) and alice's archive."""
+    write_two_instances(root, hostnames=hostnames)
     _write_full_archive(root)
 
 
@@ -151,11 +155,13 @@ class TestRawFromRecord:
 # ---------------------------------------------------------------------------
 
 class TestGenerateSheet:
+    @pytest.mark.parametrize('hostnames', [None, TWO_HOSTS])
     @pytest.mark.parametrize('separate', [False, True])
-    def test_same_spreadsheet_as_the_files(self, tmp_path, separate):
-        _fill(tmp_path)
+    def test_same_spreadsheet_as_the_files(self, tmp_path, separate, hostnames):
+        _fill(tmp_path, hostnames)
         from_files = io.BytesIO()
-        sheet.build_sheet(sheet._collect_archives(_args(tmp_path)), from_files, separate_instances=separate)
+        sheet.build_sheet(sheet._collect_archives(_args(tmp_path)), from_files, separate_instances=separate,
+                          merge_hosts=True)
         from_records = report.generate_report('sheet', _records(tmp_path), separate_instances=separate)
         expected, got = _tables(from_files.getvalue()), _tables(from_records)
         assert list(got) == list(expected) == ['lab@x.py', 'Questions lab@x.py', 'Sessions lab@x.py']
@@ -166,6 +172,20 @@ class TestGenerateSheet:
         alice = next(row for row in main if row[0] == 'alice')
         assert alice[1:4] == ['Alice A', 'alice@example.org', 'ha'] and alice[6] == 2.0 and alice[7] == 4.5
 
+    def test_one_session_per_student_whatever_the_host(self, tmp_path):
+        """bob's two instances ran on two hosts of the pool: one Sessions row all the same, with
+        the host of his best evaluation; a row per instance only when asked."""
+        _fill(tmp_path, TWO_HOSTS)
+        sessions = _tables(report.generate_report('sheet', _records(tmp_path)))['Sessions lab@x.py']
+        assert [row[:3] for row in sessions[1:]] == [['alice', 'ha', 4.5], ['bob', 'hc', 9.0]]
+        sessions = _tables(report.generate_report('sheet', _records(tmp_path),
+                                                  separate_instances=True))['Sessions lab@x.py']
+        assert [row[:2] + row[3:4] for row in sessions[1:]] == [['alice', 'ha', 4.5], ['bob', 'hb', 5.0],
+                                                                 ['bob', 'hc', 9.0]]
+        # every evaluation keeps its own host in the main table
+        main = _tables(report.generate_report('sheet', _records(tmp_path)))['lab@x.py']
+        assert [row[3] for row in main[1:] if row[0] == 'bob'] == ['hb', 'hb', 'hc', 'hc']
+
     def test_bonus_in_prefix_reaches_the_sheet(self, tmp_path):
         write_bonus_archive(tmp_path)
         plain = _tables(report.generate_report('sheet', _records(tmp_path)))
@@ -174,12 +194,14 @@ class TestGenerateSheet:
 
 
 class TestGenerateOutline:
+    @pytest.mark.parametrize('hostnames', [None, TWO_HOSTS])
     @pytest.mark.parametrize('separate', [False, True])
-    def test_same_reports_as_the_files(self, tmp_path, separate):
-        _fill(tmp_path)
+    def test_same_reports_as_the_files(self, tmp_path, separate, hostnames):
+        _fill(tmp_path, hostnames)
         out_dir, summary = tmp_path / 'out', tmp_path / 'summary.ods'
         written = outline.build_outline(outline._collect_archives(_args(tmp_path)), pdf_dir=out_dir,
-                                        summary_path=summary, lang='en', separate_instances=separate)
+                                        summary_path=summary, lang='en', separate_instances=separate,
+                                        merge_hosts=True)
         data = report.generate_report('outline', _records(tmp_path), lang='en', separate_instances=separate)
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             names = archive.namelist()
@@ -187,8 +209,11 @@ class TestGenerateOutline:
             for name in names[:-1]:
                 assert name.endswith('.pdf') and archive.read(name).startswith(b'%PDF')
             assert _tables(archive.read(report.OUTLINE_SUMMARY_NAME)) == _tables(summary.read_bytes())
-        expected = ['alice__x__ha.pdf', 'bob__x__hb.pdf'] if not separate else \
-            ['alice__x__ha__20260910090000.pdf', 'bob__x__hb__20260910100000.pdf', 'bob__x__hb__20260910110000.pdf']
+        # one PDF per student and lab whatever the hosts of the instances, or one per instance
+        second = (hostnames or ('hb', 'hb'))[1]
+        expected = ['alice__x.pdf', 'bob__x.pdf'] if not separate else \
+            ['alice__x__ha__20260910090000.pdf', 'bob__x__hb__20260910100000.pdf',
+             f'bob__x__{second}__20260910110000.pdf']
         assert names[:-1] == expected
 
     def test_flags_reach_the_builder(self, tmp_path, monkeypatch):
@@ -205,6 +230,7 @@ class TestGenerateOutline:
                                       no_parts=True, bonus_in_prefix=True)
         assert (seen['lang'], seen['no_timeline'], seen['remaining_time'], seen['no_parts'], seen['bonus_in_prefix']) \
             == ('fr', True, True, True, True)
+        assert seen['merge_hosts'] is True and seen['separate_instances'] is False
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             assert archive.namelist() == [report.OUTLINE_SUMMARY_NAME] and archive.read(report.OUTLINE_SUMMARY_NAME) == b'ods'
 
@@ -229,12 +255,13 @@ class TestGenerateOutline:
 class TestGenerateSummary:
     """``summary``: the ODS of ``sre outline -o`` alone, no PDF."""
 
+    @pytest.mark.parametrize('hostnames', [None, TWO_HOSTS])
     @pytest.mark.parametrize('separate', [False, True])
-    def test_same_summary_as_the_file(self, tmp_path, separate):
-        _fill(tmp_path)
+    def test_same_summary_as_the_file(self, tmp_path, separate, hostnames):
+        _fill(tmp_path, hostnames)
         summary = tmp_path / 'summary.ods'
         written = outline.build_outline(outline._collect_archives(_args(tmp_path)), pdf_dir=None,
-                                        summary_path=summary, separate_instances=separate)
+                                        summary_path=summary, separate_instances=separate, merge_hosts=True)
         assert written == [] and not list(tmp_path.glob('**/*.pdf'))
         data = report.generate_report('summary', _records(tmp_path), separate_instances=separate)
         assert data.startswith(b'PK')
@@ -245,6 +272,25 @@ class TestGenerateSummary:
         # with the project_start column then
         assert len(rows) == (4 if separate else 3) and len(rows[0]) == (11 if separate else 10)
         assert ('project_start' in rows[0]) is separate
+
+    def test_one_row_per_student_whatever_the_host(self, tmp_path):
+        """The bug of 2026-11-10: the two instances of a student ran on two hosts of the pool
+        (the portal places each project on the least loaded one) and the summary had one row per
+        instance although the per-instance option was off, the hostname being part of the key of
+        `sre outline`.  One row now, with the best evaluation of both and its host."""
+        _fill(tmp_path, TWO_HOSTS)
+        rows = next(iter(_tables(report.generate_report('summary', _records(tmp_path))).values()))
+        assert [row[:4] for row in rows[1:]] == [['alice', 'ha', 'x', 4.5], ['bob', 'hc', 'x', 9.0]]
+        assert rows[2][4] == '2026-09-10 11:20:00'
+        # ticked, the option still gives a row per instance, each on its host
+        rows = next(iter(_tables(report.generate_report('summary', _records(tmp_path),
+                                                        separate_instances=True)).values()))
+        assert [row[:2] + row[4:5] for row in rows[1:]] == [['alice', 'ha', 4.5], ['bob', 'hb', 5.0], ['bob', 'hc', 9.0]]
+        # what `sre outline -o` gives on the same archives: a row per host (the student's workstation there)
+        summary = tmp_path / 'summary.ods'
+        outline.build_outline(outline._collect_archives(_args(tmp_path)), pdf_dir=None, summary_path=summary)
+        rows = next(iter(_tables(summary.read_bytes()).values()))
+        assert [row[:2] for row in rows[1:]] == [['alice', 'ha'], ['bob', 'hb'], ['bob', 'hc']]
 
     def test_pdf_flags_are_ignored(self, tmp_path, monkeypatch):
         _fill(tmp_path)

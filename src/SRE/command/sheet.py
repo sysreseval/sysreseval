@@ -182,10 +182,16 @@ def _add_questions_sheet(doc, sname: str, lab_name: str, rows: list, grade_title
 
 
 def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles_list: list,
-                        separate_instances: bool = False, bonus_in_prefix: bool = False):
+                        separate_instances: bool = False, bonus_in_prefix: bool = False,
+                        merge_hosts: bool = False):
     """One row per session: per (login, hostname), i.e. the best of every
     archive of that student, or per running project instance of the lab
-    (adding the instance start) with *separate_instances*."""
+    (adding the instance start) with *separate_instances*.  With
+    *merge_hosts* (and without *separate_instances*) a session is a login
+    whatever the hosts (the web front-end: each instance of a student may
+    run on another host of the pool); its hostname cell is the host of the
+    evaluation with the best total (the earliest among equals)."""
+    per_host = separate_instances or not merge_hosts
     bonus_titles = _bonus_titles_for(rows)
     sheet = Table(name=_safe_sheet_name(f"Sessions {lab_name}"))
     doc.spreadsheet.addElement(sheet)
@@ -204,7 +210,7 @@ def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles
 
     sessions: dict[tuple, list] = {}
     for row in rows:
-        key = (row['login'], row['hostname'])
+        key = (row['login'], row['hostname'] if per_host else '')
         if separate_instances:
             key += (row['instance_start'],)
         sessions.setdefault(key, []).append(row)
@@ -213,6 +219,9 @@ def _add_sessions_sheet(doc, sname: str, lab_name: str, rows: list, grade_titles
     for key, session_rows in sorted(sessions.items()):
         login, hostname = key[:2]
         max_score = max(r['total_grade'] for r in session_rows)
+        if not per_host:
+            hostname = min((r for r in session_rows if r['total_grade'] == max_score),
+                           key=lambda r: r['eval_date'] or '')['hostname']
 
         question_maxima: dict[str, float | None] = {}
         for title in grade_titles_list:
@@ -284,11 +293,13 @@ def _collect_archives(args, start=None, finish=None) -> list:
     return records
 
 
-def build_sheet(records: list, output, *, separate_instances: bool = False, bonus_in_prefix: bool = False):
+def build_sheet(records: list, output, *, separate_instances: bool = False, bonus_in_prefix: bool = False,
+                merge_hosts: bool = False):
     """The spreadsheet of *records* (``_record_of_raw`` dicts), saved to *output* (a path, or a
     file object odfpy accepts): per lab, the table of every evaluation (one row per archive, the
     grade of each element in its column), the ``Questions`` statistics and the ``Sessions`` best
-    grades (one row per student, or per running instance with *separate_instances*)."""
+    grades (one row per student and host, or per running instance with *separate_instances*;
+    per student whatever the hosts with *merge_hosts*)."""
     # Group by lab_name
     groups: dict[str, list] = {}
     for rec in records:
@@ -337,7 +348,8 @@ def build_sheet(records: list, output, *, separate_instances: bool = False, bonu
             sheet.addElement(tr)
 
         _add_questions_sheet(doc, sname, lab_name, rows, grade_titles_list, bonus_in_prefix)
-        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, separate_instances, bonus_in_prefix)
+        _add_sessions_sheet(doc, sname, lab_name, rows, grade_titles_list, separate_instances, bonus_in_prefix,
+                            merge_hosts)
 
     doc.save(output)
 

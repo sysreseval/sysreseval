@@ -297,6 +297,10 @@ Generates per-student PDF reports plus a summary ODS — best-graded archive per
 
 When a student opened the same lab several times, the best grade is taken across every instance and the evaluation history shows one table per instance, each headed by its start time. `--separate-instances` produces one PDF and one ODS row per running project instance instead: the PDF name gains `__<start timestamp>`, its header a "Project started" line, and the ODS a `project_start` column.
 
+The PDFs are named `<login>__<lab>__<hostname>.pdf`, `<lab>` being the file name of the lab. When two labs of one student would give the same name (a course copy and the shipped lab, `s3/dns1.py` and `sre/dns1.py`), the second one is named after its whole path (`<login>__sre-dns1__<hostname>.pdf`) instead of being written over the first.
+
+The hostname is part of what a student is here (the workstation: the users of a shared account are told apart by it). The reports of the web front-end, built by `sre report` from the same code, leave it out: a project of the web runs on any host of the pool (see [Web front-end](web.md)).
+
 | Option | Description |
 |--------|-------------|
 | `-o` / `--output-file` | Output `.ods` summary (omit to skip). |

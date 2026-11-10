@@ -43,10 +43,16 @@ def generate_report(kind: str, records: list, *, lang: str | None = None, separa
     """The bytes of the report of *kind* for *records* (``archive_record`` dicts): the ODS of
     ``sheet.build_sheet`` for ``sheet``; for ``outline`` a zip holding the PDFs of
     ``outline.build_outline`` (sorted by name) then ``outline.ods``, the summary; for ``summary``
-    that summary ODS alone (one row per student, or per instance, with the best evaluation: the
-    PDF options *no_timeline* / *remaining_time* / *no_parts* do not apply).  A record without
-    ``running_lab_name`` is skipped through *warn*; ``ValueError`` on an unknown kind or when no
-    record is usable."""
+    that summary ODS alone (one row per student and lab, or per instance, with the best
+    evaluation: the PDF options *no_timeline* / *remaining_time* / *no_parts* do not apply).  A
+    record without ``running_lab_name`` is skipped through *warn*; ``ValueError`` on an unknown
+    kind or when no record is usable.
+
+    The builders are called with ``merge_hosts``: the hostname of a record of the web front-end
+    is the host of the pool its project was placed on, another one for each instance of a
+    student, so a student is a login here, never a login on a host as for ``sre sheet`` /
+    ``sre outline`` (where the hostname is the workstation of the student).  Without it the
+    reports had one row, and one PDF, per instance whatever *separate_instances*."""
     if kind not in KINDS:
         raise ValueError(f"unknown report kind: {kind}")
     warn = warn or (lambda text: None)
@@ -61,13 +67,14 @@ def generate_report(kind: str, records: list, *, lang: str | None = None, separa
     if kind == 'sheet':
         buf = io.BytesIO()
         sheet.build_sheet([sheet._record_of_raw(raw) for raw in raws], buf,
-                          separate_instances=separate_instances, bonus_in_prefix=bonus_in_prefix)
+                          separate_instances=separate_instances, bonus_in_prefix=bonus_in_prefix,
+                          merge_hosts=True)
         return buf.getvalue()
     if kind == 'summary':
         buf = io.BytesIO()
         outline.build_outline([outline._record_of_raw(raw) for raw in raws], pdf_dir=None, summary_path=buf,
                               lang=lang, separate_instances=separate_instances, bonus_in_prefix=bonus_in_prefix,
-                              warn=warn)
+                              merge_hosts=True, warn=warn)
         return buf.getvalue()
     with tempfile.TemporaryDirectory(prefix='sre-report-') as tmp:
         pdf_dir = Path(tmp) / 'pdf'
@@ -76,7 +83,8 @@ def generate_report(kind: str, records: list, *, lang: str | None = None, separa
         written = outline.build_outline([outline._record_of_raw(raw) for raw in raws], pdf_dir=pdf_dir,
                                         summary_path=summary, lang=lang, separate_instances=separate_instances,
                                         bonus_in_prefix=bonus_in_prefix, no_timeline=no_timeline,
-                                        remaining_time=remaining_time, no_parts=no_parts, warn=warn)
+                                        remaining_time=remaining_time, no_parts=no_parts, merge_hosts=True,
+                                        warn=warn)
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(written, key=lambda p: p.name):

@@ -834,7 +834,9 @@ class Mock:
         """``sre report <kind>`` (privileged only): the download of the Archives page, built from
         the JSON archive records of stdin.  The mock answers a zip (an ODS is one too) holding
         ``records.json`` (the records as received) and ``flags.txt`` (the options given, one per
-        line), plus for ``outline`` one PDF stub per student, lab and host and the summary
+        line), plus for ``outline`` one PDF stub per student and lab whatever the host, named
+        ``<login>__<lab>.pdf`` (per running instance with ``--separate-instances``:
+        ``<login>__<lab>__<host>__<start>.pdf``), like the real command, and the summary
         ``outline.ods`` (``sheet`` and ``summary`` get the ODS ``mimetype`` member instead), so
         that the tests see what reached the command."""
         if self.user_mode:
@@ -859,11 +861,17 @@ class Mock:
             zf.writestr('records.json', json.dumps(records))
             zf.writestr('flags.txt', '\n'.join(flags))
             if args.kind == 'outline':
-                groups = sorted({(str(r.get('login', '')),
-                                  params.get_abbreviated_lab_name_from_running_lab_name(str(r.get('running_lab_name', ''))),
-                                  str(r.get('hostname', ''))) for r in records if isinstance(r, dict)})
-                for login, lab, hostname in groups:
-                    zf.writestr(f'{login}__{lab}__{hostname}.pdf', '%PDF-1.4 mock')
+                names = set()
+                for r in records:
+                    if not isinstance(r, dict):
+                        continue
+                    rln = str(r.get('running_lab_name', ''))
+                    name = f"{r.get('login', '')}__{params.get_abbreviated_lab_name_from_running_lab_name(rln)}"
+                    if args.separate_instances:
+                        name += f"__{r.get('hostname', '')}__{params.get_start_date_string_from_running_lab_name(rln)}"
+                    names.add(name)
+                for name in sorted(names):
+                    zf.writestr(f'{name}.pdf', '%PDF-1.4 mock')
                 zf.writestr('outline.ods', 'ods')
         out = buf.getvalue()
         if args.output and args.output != '-':
