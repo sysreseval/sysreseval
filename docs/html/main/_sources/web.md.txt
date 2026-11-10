@@ -16,7 +16,8 @@ The instructors get, on top of what a student sees (*Instructors* below):
 
 - a **Watch page**, the web counterpart of `sre watch`: every running project of the pool, one
   row per project with its owner, its lab, the grade and mark of its last evaluation, its age
-  and its errors, refreshed every few seconds;
+  and its errors, the number of self-evaluations the student has run, refreshed every few
+  seconds;
 - an **Archives page**: every evaluation of the pool hosts, the closed projects included, kept
   in a database (the results, never the answers), searched by student, group, lab, host and
   period, with the detail of an evaluation and the summary matrix of a lab;
@@ -30,7 +31,10 @@ The instructors get, on top of what a student sees (*Instructors* below):
   question, changing the drawing of the schema, …) is shown at once on the students' browsers;
 - the **focus** on one student: while helping a student on their project, the instructor brings
   the student's browser to that project and keeps the two pages on the same tab, the same
-  terminal and the same question, whichever of the two changes it.
+  terminal and the same question, whichever of the two changes it;
+- the **web conference**: an instructor opens a BigBlueButton room for chosen students or groups
+  (or the whole class) and talks to them, camera and screen if they wish, in a window over the
+  pages of the site while everybody goes on working (*Web conference* below).
 
 ## Architecture
 
@@ -162,7 +166,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
 | `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
-| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30` | seconds, per `sre` command (`export`, the timeout of the former Kathara export, is still accepted) |
+| `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
@@ -185,13 +189,14 @@ merges other files into this one, as for `web.toml` below.
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes`; in anonymous mode `eval_interval` and `start_interval` count per client address too, since a new pseudonym costs one `POST /login` |
-| `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
+| `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`; *Restarting the portal* below) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
 | `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`, a *Suggests* of the Debian package: optional) |
 | `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents) |
 | `[groups]` | | the user groups of the Groups page (*User groups* below): `table` (`user_groups`: the custom groups the instructors create, in the database of `[access_log.database]`, their members in `<table>_members`; both created when missing), `directory_ttl` (`10m`: how long the people and groups read from the directory are kept), `refresh_interval` (`10s`: the least time between two reads forced by the *Refresh* button of the page; the clicks arriving during a read share it, `0` = none) |
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
+| `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`), `private_rooms` (`true`: the **Talk privately** button of an instructor on a student's project, *Private conversations* below; `false` removes it), `[bbb.private_userdata]` (the `bbb_*` client settings of the joins of a private conversation, over `[bbb.userdata]` and the portal's own) |
 | `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
 
@@ -321,7 +326,7 @@ a timestamp (`2026-10-26T09:12:03+0100`):
 ```
 event=login login=alice addr=10.0.1.7 mode=ldap role=student anon=0 name="Alice Test" group=INFO1
 event=session_open login=alice addr=10.0.1.7 role=student anon=0 name="Alice Test" group=INFO1 ua="Mozilla/5.0 …"
-event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 host=a01 placement=load result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
+event=start login=alice addr=10.0.1.7 lab=sre/dhcp.py instructor=0 debug=0 host=a01 placement=load result=created rln=1761466323@@@dhcp@@@alice status=200 duration=12.4
 event=project_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice
 event=terminal_open login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0
 event=terminal_close login=alice addr=10.0.1.7 host=a01 rln=1761466323@@@dhcp@@@alice device=m1 join=- private=0 duration=612.3 code=1000
@@ -349,8 +354,8 @@ session and the request following a logout opens another one. The other events:
   `rate_limited`, `directory` when the directory does not answer, `proxy_mode`);
 - `start`: the lab, the host chosen and `placement`, why that host (`load`: the least loaded,
   `session`: the user is logged in at its keyboard, `named`: the instructor named it), whether
-  the instructor mode was asked, `result` (`created`, `flavor_form`, `flavor_error`, `error`)
-  and `rln`, the running lab name of the new project;
+  the instructor mode or the debug mode was asked (`instructor`, `debug`), `result` (`created`,
+  `flavor_form`, `flavor_error`, `error`) and `rln`, the running lab name of the new project;
 - `project_open` / `project_close`: the project page, open as long as its events WebSocket is
   (`duration` in seconds, `code`: the WebSocket close code; `view=instructor` for the instructor
   view); `terminal_open` / `terminal_close` (`device`, `join`: the session joined, `private`)
@@ -369,11 +374,25 @@ session and the request following a logout opens another one. The other events:
   `rln`, `audience`: the number of logins and groups chosen), `present_audience` (the audience
   changed), `present_stop`, and `present_open` (a student opened the presented page: their
   `login`, the `presenter`); the project calls a spectator makes keep their own events, their
-  close lines carrying `spectator=1`. The presence socket every page keeps open and the view the
-  presenter publishes are not logged;
+  close lines carrying `spectator=1`. The presence socket every page keeps open, the view the
+  presenter publishes and the pointer frames of their presentation socket are not logged;
 - the focus on a student (*Instructors* below): `focus_start` (the instructor's `login`, `host`,
   `rln`, the `student`) and `focus_stop` (the `instructor` of the focus, the `student`); the
-  view the two pages share and their sockets are not logged.
+  view the two pages share and their sockets are not logged;
+- the web conferences (*Web conference* below): `webconf_start` (the instructor's `login`,
+  `webconf` = the id of the room, its `name`, `audience` = the number of logins and groups),
+  `webconf_audience` (the audience changed, the `owner` of the room), `webconf_attend` (an
+  instructor joining a room), `webconf_stop`, and `webconf_join` (a join URL served to a
+  participant: their `login`, `webconf`, `role`, status 302); the listing of the rooms is a
+  keepalive, the page the client comes back to after *Leave meeting* is not logged;
+- the private conversations (*Private conversations* below): `webconf_invite` (the instructor's
+  `login`, the `student` asked, the `host` and `rln` of the project they asked from, the
+  `invitation`; status 409 when the student is not connected or busy), `webconf_accept` (the
+  student's `login`, the `invitation`, the `instructor`, `webconf` = the room made; 410 when the
+  invitation was over, 502 / 503 as the server answered), `webconf_decline`, `webconf_cancel`
+  (the invitation taken back by an instructor, the `student`) and `webconf_leave` (one of the
+  two ending the conversation: `webconf`, `owner`); an invitation nobody answers expires
+  without a line.
 
 The client address is the last entry of `X-Forwarded-For` when the TCP peer is one of
 `trusted_proxies` (the Apache and nginx examples set that header), the peer address otherwise:
@@ -478,6 +497,31 @@ part and bonus flag. **The answers of the students are not sent and not stored.*
 the full name an archive lacks (the projects of the Qt GUI) are completed from the directory
 when the portal reads one (`attr_group`, `ldap_roles` / `ldap_groups`), as on the Watch page.
 
+The **reports** an instructor downloads from the page (the spreadsheet of `sre sheet`, the PDF
+reports of `sre outline` or their summary spreadsheet alone: *Instructors* below) are built from
+these rows, not from the archive
+files of the hosts, which may be asleep or reinstalled: a row holds everything the two commands
+read from an archive (the student, the time, the totals, the grade elements with their titles and
+parts, the number of errors; never the tests nor the answers). The portal turns the rows back
+into the records the agents had sent and hands them to **one** agent of the pool, chosen as the
+lab list is (an enabled, reachable host, up and little loaded first; the next one when it does
+not answer), which runs `sre report` (an internal command: the records on stdin, the file on
+stdout, one report at a time per host, `[timeouts] report` of `agent.toml`, `600` seconds) and
+answers the download the portal streams to the browser. The files are therefore those `sre
+sheet` / `sre outline` would give on the same archives, in the language of the instructor, but
+for one thing: a student is a login whatever the host of the pool the project ran on, where the
+two commands tell a login on two hosts apart (*Reports*, under *Instructors* below); the
+elements of an evaluation whose details were too big for the table (over 1 MB) are missing from
+them. The PDF reports and their summary read the grade elements of one evaluation per student
+only, the best one (the highest total, the earliest of them): when every evaluation of the
+selected projects is asked, the portal sends the others as *light* records (the student, the
+time, the totals, the error counts: about 300 bytes instead of several kilobytes), read without
+their details from the database, so that such a request may cover 150 000 evaluations (hundreds
+of projects evaluated every minute for hours) where the spreadsheet of `sre sheet`, which shows
+the elements of every evaluation, stops at 5000. Every download is a `report` line of the
+connection log (the kind, the rows ticked, the options, the evaluations and projects sent, `full`
+= the evaluations sent with their details, the host that built the file).
+
 One cursor per host, the greatest archive name taken, lives in the portal's memory and is read
 from the table itself at the first round after a start (`SELECT host, MAX(archive) … GROUP BY
 host`): nothing is collected while the database does not answer, and a restart never imports a
@@ -499,7 +543,8 @@ CREATE TABLE sre.archives (
   host            VARCHAR(64)     NOT NULL DEFAULT '', -- the pool host (the name of [[hosts]])
   archive         VARCHAR(300)    NOT NULL,            -- the file name: unique
   rln             VARCHAR(255)    NOT NULL DEFAULT '', -- the running lab name
-  lab             VARCHAR(255)    NOT NULL DEFAULT '', -- sre/dhcp.py
+  lab             VARCHAR(255)    NOT NULL DEFAULT '', -- sre/dhcp.py: the path the student started
+  canonical_lab   VARCHAR(255)    NOT NULL DEFAULT '', -- the file really run, symlinks resolved (sre/dhcp.py for s3/r306/dhcp.py -> ../../sre/dhcp.py)
   login           VARCHAR(64)     NOT NULL DEFAULT '',
   fullname        VARCHAR(255)    NOT NULL DEFAULT '',
   grp             VARCHAR(64)     NOT NULL DEFAULT '', -- the student group
@@ -514,11 +559,29 @@ CREATE TABLE sre.archives (
   auto_eval_count INT             NULL,                -- the self-evaluations of the student so far
   details         MEDIUMTEXT      NOT NULL,            -- JSON: elements, parts, errors, self-eval totals, metadata
   PRIMARY KEY (id), UNIQUE KEY archive (archive), KEY ts (ts), KEY login_lab_id (login, lab, id),
-  KEY rln_id (rln, id), KEY lab_ts (lab, ts), KEY grp_ts (grp, ts), KEY host_archive (host, archive)
+  KEY login_canonical_id (login, canonical_lab, id), KEY rln_id (rln, id), KEY lab_ts (lab, ts),
+  KEY canonical_lab_ts (canonical_lab, ts), KEY grp_ts (grp, ts), KEY host_archive (host, archive)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-The rows go through the same kind of writer as the log's (batches, the rows waiting in memory
+**Upgrading a table created before `canonical_lab`** (releases up to 0.15.0): the portal probes
+the columns when it connects and, while one is missing, keeps the rows in memory and warns once
+(`archives database: the table archives lacks a column the rows need …`) instead of refusing them;
+add the column and its keys from the root console before the portal restarts with the new code,
+then give the old rows their own path as the file run, and run that `UPDATE` once more after the
+restart: the rows the old code inserted meanwhile have an empty value (the account of the portal
+has neither `ALTER` nor `UPDATE`):
+
+```sql
+ALTER TABLE sre.archives ADD COLUMN canonical_lab VARCHAR(255) NOT NULL DEFAULT '' AFTER lab,
+  ADD KEY login_canonical_id (login, canonical_lab, id), ADD KEY canonical_lab_ts (canonical_lab, ts);
+UPDATE sre.archives SET canonical_lab = lab WHERE canonical_lab = '';
+-- to merge the old rows of a symbolic link with their lab, by hand:
+-- UPDATE sre.archives SET canonical_lab = 'sre/dns1.py' WHERE lab = 's3/r306/dns1.py';
+```
+
+The new rows carry the file really run as soon as the agents run the new code (an older agent
+sends none and the row gets its path). The rows go through the same kind of writer as the log's (batches, the rows waiting in memory
 while the server does not answer, a refused row dropped with a warning, a last attempt at
 shutdown) and are purged daily beyond `keep` days when set; `web-purge-log.py --archives-days N`
 applies a retention from a cron job. Expect about thirty rows per project and hour of
@@ -747,6 +810,133 @@ hold no `exam_json` document (the `exam` flag comes from the answers); anonymous
 stable logins to schedule; a page loaded before the portal was updated has no exam script until
 it is reloaded (the server still refuses what it must).
 
+### Web conference (BigBlueButton)
+
+An instructor talks to a student, a group or the whole class without leaving the site: the
+portal opens **rooms** on a BigBlueButton (BBB) server and shows its client to the participants
+in an iframe over the pages of the site, while everybody goes on working on their projects.
+Nothing is installed on the pool hosts; the portal needs the API of the server, the browsers the
+server itself.
+
+```toml
+[bbb]
+url = "https://bbb.example.org/"     # the server (its bigbluebutton/ or bigbluebutton/api/ path works too)
+secret = "..."                        # the shared secret of its API: bbb-conf --secret
+# checksum = "sha1"                   # sha1 (default), sha256 or sha512: supportedChecksumAlgorithms of the server
+# welcome = { fr = "Bienvenue", en = "Welcome" }   # the welcome message of the client (the server's by default)
+# record = false
+# mute_on_start = false
+# duration = 0                        # "2h": the server ends a meeting after that; 0 = unlimited
+# max_participants = 0
+# poll_interval = "10s"               # the participants and the ended meetings are read that often
+# private_rooms = true                # Talk privately on a student's project (Private conversations below)
+# [bbb.userdata]                      # the client settings of every join (userdata-bbb_*, the BBB API reference)
+# bbb_skip_check_audio = true
+# [bbb.private_userdata]              # the client settings of the joins of a private conversation, over the others
+# bbb_listen_only_mode = true
+```
+
+**The instructors**: the *Webconf* button of the site bar opens the dialog of the rooms: those
+open on the portal, with their owner, the size of their audience, who is connected to the site
+and who is in the room (read from the server every `poll_interval`), each with *Join* (this
+browser shows the room, as a moderator: any instructor may join any room), *Audience…* and
+*End* (any instructor); and a *New room* form: a name (the instructor's by default) and an
+audience chosen as for a presentation (the connected users one by one; the groups: departments,
+directory groups, custom groups; a member of a group connecting later is put in the room too).
+Unlike that of a presentation, the audience of a room may be empty (*None* then *Choose*): the
+room is then one of the instructors alone.
+A student is in at most one room at a time (the newest one including them); an instructor sees
+the room they created or joined last.
+
+**The participants**: the client appears in a floating window over the page (dragged by its
+title bar, resized by its corner), with buttons to minimize it to its title bar, to dock it into
+the **Webconf** tab of the project page, to show it full page (a bar above it comes back), to
+pop it out to a separate browser window, and to leave (×). How it is shown and where the window
+is are remembered by the browser: the next page shows the conference the same way (in a window
+where there is no project tab). A participant who left, or whose client is in a separate window,
+keeps a pill in the site bar to rejoin or to bring it back; the *Leave meeting* of the client
+itself leads to that pill. Every page of the site loads the client again (a new join of the same
+room: a few seconds, the audio to join again), which a site of several pages cannot avoid: the
+separate window does. Two tabs of the same user never join twice: one holds the client, the
+others show a pill to bring it there.
+
+**The server**: the meeting is created when the room is (a server that refuses or does not
+answer leaves no room: the dialog says so); a join is a URL signed for the user (`fullName` =
+their name, `userID` = their login, the role by their instructor flag: a moderator for an
+instructor, a viewer otherwise, the `bbb.userdata` settings), served by the portal as a redirect
+(`GET /api/webconfs/{id}/join`, the `src` of the iframe): the secret never leaves the portal. A
+meeting nobody joined expires on the server after a few minutes
+(`meetingExpireIfNoUserJoinedInMinutes`): the portal creates it again at the next join. A
+meeting everybody left expires about a minute later (`meetingExpireWhenLastUserLeftInMinutes`),
+like one a moderator ended from the client: the room ends on the portal at its next poll, every
+participant told. *End* in the dialog ends the meeting on the server. The rooms live in memory:
+a portal restart forgets them (the meetings expire on their own, the clients already in them stay
+until then).
+
+**Prerequisites**: the portal reached over HTTPS, with `public_url` set (the `logoutURL` of the
+meetings, where the client comes back after *Leave meeting*, is built from it: `/webconf/left`);
+the server reachable from the portal (its API) and from the browsers (the client, over HTTPS);
+the nginx of the server must not forbid framing by the portal's origin (an `X-Frame-Options`
+header or a `frame-ancestors` directive on the client would leave the frame empty: the separate
+window is the fallback); the pages of the portal allow the server's origin in the `frame-src` of
+their `Content-Security-Policy`, nothing else. BBB 2.4 at least (the `role` of the join; the
+passwords are still passed for older servers). Safari may refuse the camera in a cross-origin
+frame: pop the client out.
+
+#### Private conversations
+
+An instructor who opened a student's project (the helper view) may talk with that student alone,
+voice and text. BigBlueButton has no private audio inside a meeting (one audio bridge per
+meeting; its breakout rooms are made by hand in the client and open in another browser tab), so
+a private conversation is a **second meeting of the two**, which both browsers show *in place
+of* the class conference for as long as it lasts: nobody is ever in two meetings at once.
+
+- **Talk privately**, in the bar of the project after *Focus student on project* (shown with
+  `[bbb]` unless `private_rooms = false`), invites the owner of the project. Nothing else
+  happens yet: both stay in the class conference, no meeting is created. The button reads
+  *Calling… (cancel)* and takes the invitation back; an invitation nobody answers expires after
+  a minute. The student must be connected to the site, and neither invited by somebody else nor
+  in a private conversation already (the instructor is told so).
+- **The student** gets a banner across the top of every page of the site they have open (above
+  a presentation, inside an open dialog), with a short chime and a mark in the title of the
+  page: the name of the instructor, *would like to talk with you*, and two buttons, *Join* and
+  *Not now*. *Not now* tells the instructor; nothing opens a microphone before *Join*.
+- **Join** creates the meeting and sends both browsers to it: the window of the conference (at
+  the place and in the mode of the class conference: window, tab or full page) now shows the
+  private room, titled *Private —* and the name of the other one, its title bar in its own
+  colour. The joins
+  go straight to the microphone, without the echo test or the choice of *Listen only*
+  (`bbb_auto_join_audio`, `bbb_listen_only_mode = false`, `bbb_skip_check_audio`,
+  `bbb_hide_presentation_on_join`; `[bbb.private_userdata]` overrides them, e.g.
+  `bbb_listen_only_mode = true` to get the choice back); the meeting is never recorded and starts
+  nobody muted, whatever `[bbb]` says for the rooms. The chat of that meeting is the text channel.
+- **Only the tab where the user clicked** — *Talk privately* for the instructor, *Join* for the
+  student — loads the client: the other tabs, and any other browser the same user is logged in
+  from, leave the class conference and show the pill (*Bring here* moves the conversation). A
+  browser left open somewhere never opens its microphone by itself.
+- **The end**: the × of the window, *End conversation* in the bar of the project, or the *Leave
+  meeting* of the client, by either of the two — leaving a conversation of two ends it; *End* in
+  the Webconf dialog, by any instructor (the dialog lists the conversation, nobody else may join
+  it or see its audience); and the server itself, a minute after the instructor is gone (a
+  closed browser: `endWhenNoModerator`). Both browsers then show the class conference again, in
+  the mode and at the place it had; an instructor comes back to the room they were in.
+- An instructor already talking with a student may invite another one: the first conversation
+  ends when the second one is accepted, and the instructor goes from one to the other. Joining
+  another room from the Webconf dialog ends the instructor's conversation.
+
+Limits: each switch reloads the client (a few seconds, twice per conversation), and both are
+out of the class conference meanwhile — the other students cannot reach the instructor there.
+A class conference popped out to a separate window is closed when the conversation starts (by
+the tab that opened it) and comes back in a window of the page; when that tab was closed since,
+the site cannot close the separate window: the user is then in both meetings until they close
+it. The invitations live in memory like the rooms.
+
+The connection log gets the `webconf_*` events (*The connection log* above). Tests:
+`tests/test_bbb_client.py`, `tests/test_web_webconf.py` (the registry on a fake client, the
+portal in front of the fake server of `tests/fake_bbb.py`), `tests/test_web_webconf_browser.py`
+(headless Chrome: the rooms, then the private conversations — the banner, the switch and the
+return of two pages, two tabs of one user holding one client).
+
 ### Securing the pool (mutual TLS)
 
 The portal and the agents can authenticate each other with certificates of one private CA, on
@@ -915,7 +1105,7 @@ drain. `--wait` makes the tool wait for the agents to be back (`--timeout`, 180 
 so a deployment script can chain it after the sync. A `DO_NOT_START_AGENT` marker written since
 the start is honoured (that agent stops); code that no longer starts leaves the unit failed
 after five attempts (`journalctl -u sre-agent`, then `systemctl reset-failed`). The portal
-itself is restarted by hand (`systemctl restart sre-web`).
+itself is restarted by hand (`systemctl restart sre-web`; *Restarting the portal* below).
 
 **By hand.** `sre-web-tool …` (`sbin/sre-web-tool` of a checkout, `/usr/sbin/sre-web-tool`
 of the `sysreseval-web` package; `python3 -m sreweb.tool` from the sources) talks to the running
@@ -924,7 +1114,7 @@ portal through its administration API (`[admin] token`, loopback only by default
 
 ```
 sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
-sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
@@ -932,11 +1122,45 @@ sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powe
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 ```
 
-The additions, removals and enable / disable flags are kept in `[admin] state_file` and merged
-with the `[[hosts]]` of `web.toml` at every start (`list` shows `config` or `added` per host); a
-config host removed by hand comes back with `enable`. `--json` gives the raw rows. The
-instructors have the same actions on the **Pool** page of the portal (`/pool`, see *Instructors*
-below), except `add` and `remove`, which stay with the token.
+`list` shows `config` or `added` per host; a config host removed by hand comes back, enabled,
+with `enable`. `--json` gives the raw rows. The instructors have the same actions on the
+**Pool** page of the portal (`/pool`, see *Instructors* below), except `add` and `remove`, which
+stay with the token.
+
+**Restarting the portal.** What is changed by hand, with the tool or on the Pool page, is kept in
+`[admin] state_file` (`pool.json`, written at every change through a temporary file renamed over
+it) and merged with the `[[hosts]]` of `web.toml` at every start, so that a restart of the
+portal leaves the pool as it was:
+
+| Kept | How |
+|---|---|
+| the hosts added and removed by hand | `added` (the whole entry, its token included: the file is `0600`), `removed` |
+| a host enabled or disabled by hand | `enabled` / `disabled`: the hosts whose flag differs from the `enabled` of their `[[hosts]]` entry, in both directions (a host of `DISABLED_ROOMS` enabled for a class stays enabled) |
+| a drain | `drain`, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped |
+| a wake in progress, the pause after failed wakes or after a power off, a power off or a restart sent | `clocks` (written within one poll and when the portal stops); each is dropped at the start when too old to mean anything |
+
+The file only holds what differs from the configuration, and **an edit of the configuration
+wins**: a flag set by hand holds for as long as the `enabled` of that host in `web.toml` is what
+it was then. Once the file says the same (the room taken out of `DISABLED_ROOMS`, for instance)
+the entry is dropped at the next start, and a later edit of `web.toml` is followed again; so is
+the entry of a host that is no longer in the pool (one line of the journal each). The start logs
+`pool state read from …: 0 removed, 0 added, 21 enabled and 1 disabled by hand, 0 draining`.
+
+A state file that cannot be written (a read-only directory, a container without its volume) would
+lose all of this at the next restart: the portal says so in its journal at the start and at every
+failed write (`pool state NOT saved in …`), `sre-web-tool status` prints `pool state: NOT SAVED
+in …` instead of the path, and the Pool page shows it in red above its table. In a container,
+`/var/lib/sre-web` must be a mounted directory the `sre-web` user may write; the systemd units
+provide it (`StateDirectory`). A file the portal cannot read (edited as another user, or no
+longer a JSON object) is not written over: it is renamed `pool.json.unreadable`, said in the
+journal, and the pool starts from the configuration; edit the file with the portal stopped and
+leave it to the `sre-web` user.
+
+Not kept: the idle clock of `idle_host_timeout` (it counts again from the start), and what is
+listed under *Limitations* (the presentations, the focuses, the open sockets: the pages reconnect
+by themselves, a terminal with its Reconnect button). The exams, the custom groups, the
+connection log and the archives are in the database; the sessions are in the browsers' cookies
+(`secret`).
 
 ## What the users see
 
@@ -949,7 +1173,9 @@ below), except `add` and `remove`, which stay with the token.
   by title in the language of the page or by hand, the sub-directories first, the same tree as
   the Qt GUI's; the Flavor form when the lab has one; the progress of the pulls and
   deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
-  when no project is open. Logout asks what to do with the running projects: close them (each
+  when no project is open. An instructor's cards say the mode of each project (Standard /
+  Instructor mode / Debug mode, the words of the Open page), the two non-standard modes also as
+  a coloured suffix after the title. Logout asks what to do with the running projects: close them (each
   as a Close does: the last evaluation when the lab asks for it, then `sre stop`; the dialog
   waits for every answer) or leave them running; with no running project the button logs out
   at once.
@@ -989,7 +1215,13 @@ below), except `add` and `remove`, which stay with the token.
   instructor does; so does the position inside the tab: the scroll of the text, of the question
   (its description and the list of titles), of the tables and of the log (the line at the top of
   the instructor's pane is at the top of the student's, whatever the size of their window or
-  their font size), and the pan and zoom of the schema. The Evaluation tab shows the table of
+  their font size), and the pan and zoom of the schema. The instructor's mouse pointer is drawn
+  on the student's page too, an arrow carrying the instructor's name, and what the instructor
+  selects — in the texts, the question, the tables, the log, the schema, or in a terminal — is
+  highlighted there (in a terminal: selected in the student's read-only terminal, in lavender);
+  both are placed on the element, the word or the terminal cell the instructor's mouse is on,
+  never at the same pixel, so that a student with another window size, font size or word wrap
+  sees the pointer on the same word. The Evaluation tab shows the table of
   the instructor's page as it is (the letters of their own self-evaluation included), again
   after each evaluation. The title bar of the presented project is coloured (lavender) and names the
   instructor presenting it. The student's own page is untouched underneath, terminals included:
@@ -1033,13 +1265,20 @@ What an instructor gets:
   the owner's student group when the site configures one (`attr_group` /
   `header_group`), lab, start time, the age
   of its last archived evaluation, its grade and mark (exo-eval scope, as `sre watch` shows
-  them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
+  them), its errors and warnings, the number of self-evaluations the student has run (the
+  agent counts the lines of the project's `.private/auto_eval.log`, one per `sre eval
+  --auto-eval` of the student: live, whereas the `auto_eval_count` of an archive, the AUTO-EVAL
+  column of `sre watch` and the Self-evaluations column of the Archives page, is the count
+  before that evaluation), its open terminals and whether the web or the Qt GUI runs it;
   sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
   by the select listing the groups by kind (the departments of the rows, the directory groups
   and the custom groups of the Groups page, *User groups* above; every group, one group, or *No
   group*: the projects whose owner has no department, those started on the Qt GUI carrying none
   unless the portal reads the directory, above), the chosen group kept in the URL
-  (`?group=kind:name`, a bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
+  (`?group=kind:name`, a bookmark per class group) and remembered by the browser
+  (`localStorage`): the page comes back with the group chosen last, through the *Watch* link
+  of the header or in a new tab, until another group or *All groups* is chosen, a link with
+  `?group=` winning and becoming the remembered one; refreshed every 5 s; a row whose last evaluation had errors is
   red, one without an evaluation younger than 15 minutes (or twice the lab's evaluation
   interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
   their own host (`params.archive_dirs`) on demand, nothing is scanned while nobody watches.
@@ -1049,7 +1288,9 @@ What an instructor gets:
   the bonuses, the total and the mark, then the errors and the warnings of the run; *Open the
   project* goes to its page; Esc or *Close* goes back), and a **click on the lab cell** of a
   row opens the summary of that lab for the rows shown (the text filter and the group select
-  apply, so a class group alone when wanted): a matrix with one row per project and one column
+  apply, so a class group alone when wanted; the lab is the file really run, so the projects
+  started through a course directory's symbolic link to a lab and through the lab's own path
+  are one lab): a matrix with one row per project and one column
   per grade element (numbered, the element as the tooltip of the number, the parts as a header
   row; a cell is the grade, or the OK / MEH / FAIL letter, coloured like the evaluation table;
   Total and Mark last; a project never evaluated says so), the rows *Max*, *Average* and
@@ -1088,17 +1329,53 @@ What an instructor gets:
   the run). The **Summary** view (the second button of the toolbar; a lab is required: without
   one the view lists the labs of the archives, a click on one loads its summary; the search
   starts on the last evaluation of each student) is the lab summary of the Watch page
-  for the evaluations found: one block per lab matched, with the matrix of the students and
+  for the evaluations found: one block per lab matched (the lab file really run, as on the Watch
+  page: the evaluations of the projects started through a symbolic link to a lab are in the
+  lab's block, and the lab filter matches the path started as well as the file), with the matrix of the students and
   the grade elements (Total and Mark last, the rows *Max* / *Average* / *Success* below) and the
   table of the elements with their statistics; a click on a row of the matrix opens the
   evaluation. The summary is computed on the 500 newest evaluations found at most (the page
   says so: narrow the filters). Searching the results of a class group is `Group` + `Lab` +
   *Summary*; the results of one student across the labs, `Student` alone.
+  **Reports.** A checkbox at the left of each row selects evaluations (the header checkbox takes
+  the rows shown; the selection is kept while paging and searching, the bar says how many are
+  selected and how many are not on the page), and the bar under the filters downloads a
+  **Spreadsheet** (what `sre sheet` gives: per lab, the table of every evaluation, the
+  *Questions* statistics and the *Sessions* best grades), the **PDF reports** (what `sre
+  outline` gives: a zip holding one PDF per student and lab, `<login>__<lab>.pdf`, and
+  `outline.ods`, the summary) or the **Summary spreadsheet** (what `sre outline -o` gives: that
+  `outline.ods` alone, one row per student and lab with the best evaluation, its time and the
+  mark) of the selected evaluations. **A student is a login here, whatever the host**: the portal
+  places each project on any host of the pool, so the instances of a lab a student opened several
+  times are merged into one row, one PDF and one *Sessions* row even when they ran on different
+  hosts (the two commands, run by hand on the archives of a host, keep one per login *and*
+  hostname: the hostname is the student's workstation there, and tells apart the users of a
+  shared account); the `hostname` of a merged row, and of the header of its PDF, is the host of
+  the best evaluation, and each history table of the PDF is headed by the start time and the host
+  of its instance. A selected evaluation stands for its whole project: every stored evaluation of the
+  same projects goes into the reports (the history table of a PDF, every row of the spreadsheet,
+  the best evaluation of the summary), as `sre sheet archives/` would do on a host; the *Options*
+  disclosure unticks that (**Every evaluation of the selected projects**: the ticked rows alone
+  then) and gives the flags of the two commands: **One report / row per project instance**
+  (`--separate-instances`: a student who opened a lab twice gets two reports, or two summary rows,
+  instead of one with two history tables), **"Bonus" before the label** (`--bonus-in-prefix`),
+  **Evaluation history**, **Remaining time column** (exams) and **Group by part** (the PDF only:
+  the two spreadsheets ignore them). At most 1000 rows may be ticked; the PDF reports and the
+  summary spreadsheet may cover 150 000 evaluations (300 projects of 300 evaluations give their
+  PDFs in about a minute), the spreadsheet 5000 (the page says so: narrow the selection or
+  untick the option). The file is named
+  after the lab when the selection is of one lab (`evaluations_dhcp_20261109-1430.ods`,
+  `reports_dhcp_20261109-1430.zip`, `summary_dhcp_20261109-1430.ods`), is built by one agent
+  of the pool from the stored rows (*The archives of the evaluations* above) in the language of
+  the page, and is saved by the browser; the buttons read *Generating…* meanwhile, a few seconds
+  for a class.
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
   instructors, power, drain, power off sent, restart sent), the agent's version and its last error, the line
-  of `sre-web-tool status` above the table; the state cell is green (up), amber (waking,
+  of `sre-web-tool status` above the table (in red, with the reason, when the state file of the
+  pool cannot be written: a restart of the portal would undo what is changed on the page);
+  the state cell is green (up), amber (waking,
   occupied, exam, draining), red (off: the agent does not answer) or grey (disabled, muted
   text); sortable by any column, filtered by host
   name (one or several words: the hosts whose name contains any of them, `a01 a02 h` for
@@ -1154,6 +1431,16 @@ What an instructor gets:
   the first time) and the **question** selected,
   in both directions: whichever page changes one of them, the other follows, the last change
   winning.
+  The student's page also shows the instructor's **mouse pointer** (an arrow with their name)
+  and what the instructor **selects**, as the pages of a presentation show the presenter's: on
+  the same paragraph, table cell or tab button, on the same row and column of a terminal both
+  pages have, whatever the sizes of the two windows (nothing is drawn while the student is on
+  another tab). A selected text is highlighted without touching the student's own selection; a
+  selection in a terminal becomes the selection of the student's terminal. One way only: the
+  instructor does not see the student's mouse. Nothing is sent of a private terminal of the
+  instructor, nor of a place in a text the instructor reads with the instructor fragments
+  shown (the *Instructor mode* button on the Informations, Questions and Apply Configuration
+  tabs: the student's page has not got the same text).
   Unlike a presentation, the student keeps every control: they type in the terminals, change
   tab, open terminals, answer questions (and the instructor may write in the answers too, both
   pages showing the same text). The button's tooltip says whether the student's page
@@ -1171,6 +1458,20 @@ What an instructor gets:
   --auto-eval`, the cooldown of the lab, the letters OK / MEH / FAIL when the lab hides the
   marks with `no_mark_on_self_grade`) and the table it gives stays; the last archived evaluation
   is shown on somebody else's project only (an archive holds the numbers).
+- **Debug mode** on the Open page: the third of the *Project mode* radios of the instructors
+  (*Standard*, *Instructor mode*, *Debug mode*). The instructor's own project is started with
+  `sre start --debug-web-project`: the debug project of `sre start --debug-project` (see *Lab
+  Authoring*) with the lab given by its name, so that it keeps the lab name of the catalog and
+  is grouped with the lab's other projects on the Watch and Archives pages. While *Debug mode*
+  is chosen the lab tree lists every lab of the host, the exam-only and draft ones included
+  (`GET /api/labs?all=1`, as the Exams page does; the selection is kept when the lab is still
+  listed). The project page then shows what the Qt GUI shows for a debug project: every machine,
+  the hidden ones in red, each with a Connect button, the *Full Schema* tab (the hidden machines
+  drawn while the *Instructor mode* button is on), every state, the Log tab with the states and
+  the evaluations, the evaluation table with both scopes, no self-evaluation cooldown.
+  `POST /api/projects` takes `instructor_mode` or `debug_project` (both together is accepted); a
+  student sending either gets 403. Presenting a debug project shows its hidden machines to the
+  spectators, who see the presenter's page.
 - **Groups** (the link in the header, `/groups`): the user groups of the site by kind (the
   departments, the groups of the directory, the custom groups), their members, and the editing
   of the custom groups (*User groups* above).
@@ -1194,12 +1495,27 @@ What an instructor gets:
   page: the tab, the terminals the instructor opens (joined read-only: the students see the same
   shell, cannot type, and do not change its size), the question, the schema options, the
   *Instructor mode* texts, the Display tab view-only, the scroll of the tab shown and the pan and
-  zoom of the schema (followed as the instructor scrolls, a few times a second), and the
+  zoom of the schema (followed as the instructor scrolls, a few times a second), the
+  instructor's mouse pointer (an arrow with their name, sent on the presentation socket about
+  25 times a second while it moves over the panes, the tab bar or a terminal; nothing is shown
+  while it is elsewhere) and the text the instructor selects (in the page, highlighted without
+  touching the student's own selection; in a terminal, selected in the student's read-only
+  terminal), and the
   Evaluation tab shows them the table of the instructor's page as it is, sent through the portal
   after each evaluation, in the instructor's language (the archive of the project holds numbers
   only, while the instructor's own self-evaluation may be letters). A reloaded page goes on
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.
+
+- **Webconf**: the button of the site bar (when `[bbb]` of `web.toml` names a BigBlueButton
+  server, *Web conference* above) opens the rooms: start one for chosen students and groups,
+  join a colleague's as a moderator, change its audience, end it. The students put in a room get
+  the client in a window over their page.
+
+- **Talk privately**: on a student's project, next to *Focus student on project*: the student is
+  invited to a conversation of the two alone, voice and text (a banner, *Join* / *Not now*); once
+  they join, both browsers show a private room instead of the class conference, and come back to
+  it when the conversation ends (*Private conversations* above).
 
 ### Administrators
 
@@ -1232,7 +1548,10 @@ configured, `attr_group` or `header_group`, like the Group column of the Watch p
 start, end (the last request: an idle session ends there, not at its expiry), duration, number
 of requests, the labs of the projects used (the running lab names as a tooltip) and what closed
 it (*Logout*, *Idle*, *Shutdown*; *Still open* with the number of pages, terminals and desktops
-connected). Only the login and address
+connected). A click on a header sorts the rows by that column, a second click reverses the
+order (the default is the end time, newest first, an open session counting as not ended yet,
+hence first); the sort applies to the rows shown, the page, not to the whole log: widen the
+page with *Rows* or narrow the filters. Only the login and address
 prefixes and the time window apply; the window bounds the time a session was **closed**
 (`session_timeout` after the last request for an idle one; an open session is listed when it
 was active in the window); the other filters are hidden. The *show* cell of a row opens the
@@ -1243,7 +1562,8 @@ closing line show an empty name and group.
 The **Events** view (`?view=events` in the URL) lists the events newest first, one row per
 event with its time (the local time of the browser), event, login, client address, host,
 project, lab, status, duration and the other fields of the line as `key=value`; a `denied` or
-`login_failed` line, a status of 400 or more and a failed start are red. The form filters by
+`login_failed` line, a status of 400 or more and a failed start are red. The headers sort the
+rows shown the same way (the time, newest first, by default). The form filters by
 login and address (prefixes: `10.0.1.` is a subnet), event (every event name; in proxy mode
 without `login` and `login_failed`, which never occur there), host (exact), project and lab
 (substrings; the lab is only on the `start` lines) and a time window.
@@ -1290,9 +1610,10 @@ of a session filters on that department. The filter is kept in the URL as `group
 bare name is a department, like the Watch page's) and logged as `group_filter`; without any
 group source the parameter is refused (400).
 
-In the two list views the filters stay in the URL, so a filtered view reloads and can be sent
-to a colleague; *Older* / *Newer* page through the rows (100, 500 or 1000 at a time, by a
-cursor on the row ids: a page is stable while new events arrive) and a click on a login,
+In the two list views the filters stay in the URL (the sort of the headers does not), so a
+filtered view reloads and can be sent to a colleague; *Older* / *Newer* page through the rows
+(100, 500 or 1000 at a time, by a cursor on the row ids: a page is stable while new events
+arrive; each page is sorted on its own) and a click on a login,
 address or, in the events view, event, host or project cell filters on that value. Nothing is
 polled: *Search* asks again. Each query is a `history` line of the log itself, with the filters
 asked (`view=sessions` for the sessions, `view=statistics` and the period resolved for the
@@ -1346,7 +1667,8 @@ once.
   date: a session never slides) and carries the role, group and administrator flag of the
   sign-in (a change in the directory applies at the next sign-in: Logout, or the expiry); the
   state-changing calls need the `X-Requested-With: sre-web` header and the WebSockets a
-  matching `Origin`; the pages carry a `Content-Security-Policy`.
+  matching `Origin`; the pages carry a `Content-Security-Policy` (the origin of the BigBlueButton
+  server added to its `frame-src` when `[bbb]` is set: the only other origin a page may frame).
 - In proxy mode nothing is stored in a cookie: every request carries the identity set by the
   reverse proxy, accepted from the peers of `trusted_proxies` only (a request reaching the
   portal from anywhere else has no identity, headers or not).
@@ -1407,7 +1729,11 @@ once.
   portal never forwards what a spectator's browser sends on a terminal socket and the agent
   attaches a read-only client that cannot type nor resize, and the display socket of a spectator
   goes through a filter dropping the RFB input and resize messages (an unexpected message closes
-  it). The presentations live in the portal's memory.
+  it). From the browsers, the presentation socket takes the pointer frames of the presenter's
+  page only (a JSON object of at most 1 KiB locating the mouse, at most 60 a second, every other
+  frame ignored; a spectator's frames are ignored); the pointer and the selection name nodes of
+  the page and cells of a terminal, never a pixel, and a spectator's page resolves them on its
+  own layout. The presentations live in the portal's memory.
 
 **The virtual desktops.** Each `Xvnc` listens on TCP port 6000+N on every interface of the pool
 host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
@@ -1442,8 +1768,22 @@ the browser reaches a desktop through the owner check of the portal and of the a
 - A presentation ends when the portal restarts (nothing is kept on disk); the agents log the
   spectators under the presenter's login (the connection log of the portal has the real ones); a
   spectator's terminal shows the presenter's grid at a smaller font when their window is smaller;
+  the presenter's pointer and selection are shown where the student's page holds the same
+  element: a student reading the lab in another language sees the pointer on the matching
+  paragraph and no selection there; in a terminal they follow the text (the rows are counted
+  from the cursor, a selection is found again by the text of its first and last rows), so a
+  selection of rows older than the student's 64 KiB replay is not shown, the student's terminal
+  does not follow the scrollback position of the presenter's (a pointer on rows the student's
+  screen does not show is hidden), and when several users type in the presented terminal its
+  pty takes the smallest window, so a wider presenter's terminal wraps the long lines elsewhere
+  and the pointer and the selection on them may miss; the pointer is not shown while the
+  presenter's page has no socket open;
   a presented project never idles out while it is watched. A focus ends when the portal restarts
   too; while one is on, the student's other browser tabs all go to the project.
+- A web conference is forgotten when the portal restarts (the meeting goes on on the
+  BigBlueButton server until it expires); every page of the site joins the meeting again (a few
+  seconds); two tabs of one user hand the client over to each other, but two pages loading at the
+  same instant may both join.
 
 ## Development
 
@@ -1513,7 +1853,11 @@ venv/bin/python3 scripts/web-fake-pool.py --hosts 4 --max-projects 25 -- \
 
 Without a command the pool stays up until Ctrl-C (`portal=... admin_token=... workdir=...` is
 printed first), for runs by hand. The work directory (configs, `portal.log`, `access.log`, one
-`agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died.
+`agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died;
+the end of the log of a daemon that died is printed with the failure. The agents listen on the
+ports after the portal's (`--listen`, 18450 by default): keep them below the ephemeral ports of
+the system (32768 on Linux), where a port may be held by a client connection, even for a minute
+after it closed.
 `--administrators prof,...` makes those logins administrators of the portal (`[auth]
 administrators`), so that an instructor among them (`X-Remote-Gid: 2000`) can exercise the
 History page; its Sessions view lists the open sessions without any database.

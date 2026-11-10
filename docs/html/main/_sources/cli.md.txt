@@ -34,6 +34,8 @@ Starts a new lab instance, named `{timestamp}@@@{lab_name}@@@{username}`. Import
 | `--set-flavor-name <name>` | Use a named preset `Flavor` (privileged only). |
 | `--xauth-file <file>` | Read `SRE_XAUTH_COOKIE` from an X authority file instead of the env var (privileged only; for `x11_host=True` machines). |
 | `--instructor-mode` | Start the project in [instructor mode](#sre-set-instructor-mode-running_lab-and-sre-remove-instructor-mode-running_lab) (privileged only). |
+| `--debug-project` | Start a debug project (see [Lab Authoring](lab-authoring.md); privileged only): `lab` is read as a path, `-p` implied. |
+| `--debug-web-project` | The same debug project, `lab` read as a lab name as for a normal start (the exam-only labs accepted), so that the project keeps the lab name of the catalog; privileged only, what the web agent runs; incompatible with `-p` and `--debug-project`. |
 
 ### `sre stop <running_lab>`
 
@@ -295,6 +297,10 @@ Generates per-student PDF reports plus a summary ODS — best-graded archive per
 
 When a student opened the same lab several times, the best grade is taken across every instance and the evaluation history shows one table per instance, each headed by its start time. `--separate-instances` produces one PDF and one ODS row per running project instance instead: the PDF name gains `__<start timestamp>`, its header a "Project started" line, and the ODS a `project_start` column.
 
+The PDFs are named `<login>__<lab>__<hostname>.pdf`, `<lab>` being the file name of the lab. When two labs of one student would give the same name (a course copy and the shipped lab, `s3/dns1.py` and `sre/dns1.py`), the second one is named after its whole path (`<login>__sre-dns1__<hostname>.pdf`) instead of being written over the first.
+
+The hostname is part of what a student is here (the workstation: the users of a shared account are told apart by it). The reports of the web front-end, built by `sre report` from the same code, leave it out: a project of the web runs on any host of the pool (see [Web front-end](web.md)).
+
 | Option | Description |
 |--------|-------------|
 | `-o` / `--output-file` | Output `.ods` summary (omit to skip). |
@@ -321,6 +327,10 @@ With `--with-titles`, output becomes the lab tree flattened in display order: `[
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 
 Exports a running project as a Kathara zip archive, base64-encoded on stdout. The project name is resolved like the other commands (exact name or unique substring, the ownership check of user mode). Flags tune the embedded schema: `--sep` 0–9 (default 3), `--curved` for curved edges, `--shapes` for geometric nodes, `--reverse` to flip insertion order, `--random-seed` for node-order permutation. The `lab.conf` of the archive carries the type of the networks that are not hubs and the VLANs of the ports (`CD_MODE[lan]="managed"`, `pc1[0]="lan/vlan=10"`, `r1[0]="lan/trunk=10,20"`): this is the syntax of the Kathara fork SRE installs, not of the upstream Kathara.
+
+### `sre report <sheet|outline|summary> [--lang <lang>] [--separate-instances] [--bonus-in-prefix] [--no-timeline] [--remaining-time] [--no-parts] [-o <file>]`
+
+What the web agent runs for the **Reports** of the Archives page of the portal: the spreadsheet of `sre sheet` (`sheet`: an ODS), the PDF reports of `sre outline` (`outline`: a zip holding one PDF per student, lab and host, and `outline.ods`, the summary) or that summary alone (`summary`: the ODS `sre outline -o` writes, one row per student, lab and host — per running instance with `--separate-instances` — with the best evaluation; the PDF flags `--no-timeline`, `--remaining-time` and `--no-parts` do not apply), built not from `.zst` files but from **JSON archive records read on stdin** (`{"records": [...]}`: the records of `GET /v1/archives` of the agent, what the portal keeps of every archive in its database and rebuilds for the evaluations an instructor selected), and **written on stdout** (`-o <file>`: a file instead). Each record becomes the pseudo archive the two commands read (`archive_summary.raw_from_record`: the student metadata, the time, the totals, the grade elements and parts, the number of errors; the tests and the answers were never in a record), so the files are those `sre sheet` / `sre outline` give on the same archives. The flags are those of the two commands (`--lang` applies to the PDFs; the headers of the spreadsheets follow the `LANGUAGE` of the environment). Privileged only (an admin may run it like `sheet` and `outline`); exit 1 with `no records to process` on an empty or unusable list, a record without `running_lab_name` is skipped with a warning on stderr.
 
 ### `sre pre-start-exam`
 

@@ -60,7 +60,7 @@ A project in instructor mode (`sre start --instructor-mode`, `sre restore --inst
 
 The button applies to every open project in instructor mode. Switching the mode of an open project with `sre set-instructor-mode` / `sre remove-instructor-mode` is picked up within a second.
 
-A **debug project** (`sre start --debug-project`) shows the same button: its `info.json` holds the `instructor()` texts too. There the button only displays or hides those texts in the Informations and Questions views; every state and the Log tab are shown whatever its position, as in any debug project.
+A **debug project** (`sre start --debug-project`, or `--debug-web-project` for a lab named from the catalog) shows the same button: its `info.json` holds the `instructor()` texts too. There the button only displays or hides those texts in the Informations and Questions views; every state and the Log tab are shown whatever its position, as in any debug project.
 
 ## Exam mode
 

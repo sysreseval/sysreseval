@@ -233,6 +233,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-archives-of-the-evaluations">The archives of the evaluations</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#user-groups">User groups</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#exams">Exams</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#web-conference-bigbluebutton">Web conference (BigBlueButton)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
@@ -473,6 +474,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cli.html#internal-commands-gui-only">Internal commands (GUI-only)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-list-with-titles-include-exam-only"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">list</span> <span class="pre">[--with-titles]</span> <span class="pre">[--include-exam-only]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-export-running-lab-sep-n-curved-shapes-reverse-random-seed-n"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">export</span> <span class="pre">&lt;running_lab&gt;</span> <span class="pre">[--sep</span> <span class="pre">&lt;N&gt;]</span> <span class="pre">[--curved]</span> <span class="pre">[--shapes]</span> <span class="pre">[--reverse]</span> <span class="pre">[--random-seed</span> <span class="pre">&lt;N&gt;]</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="cli.html#sre-report-sheet-outline-summary-lang-lang-separate-instances-bonus-in-prefix-no-timeline-remaining-time-no-parts-o-file"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">report</span> <span class="pre">&lt;sheet|outline|summary&gt;</span> <span class="pre">[--lang</span> <span class="pre">&lt;lang&gt;]</span> <span class="pre">[--separate-instances]</span> <span class="pre">[--bonus-in-prefix]</span> <span class="pre">[--no-timeline]</span> <span class="pre">[--remaining-time]</span> <span class="pre">[--no-parts]</span> <span class="pre">[-o</span> <span class="pre">&lt;file&gt;]</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-pre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">pre-start-exam</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-start-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start-exam</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="cli.html#sre-eval-exam"><code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval-exam</span></code></a></li>
@@ -564,7 +566,8 @@ The lab files, <code class="docutils literal notranslate"><span class="pre">data
 <ul class="simple">
 <li><p>a <strong>Watch page</strong>, the web counterpart of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code>: every running project of the pool, one
 row per project with its owner, its lab, the grade and mark of its last evaluation, its age
-and its errors, refreshed every few seconds;</p></li>
+and its errors, the number of self-evaluations the student has run, refreshed every few
+seconds;</p></li>
 <li><p>an <strong>Archives page</strong>: every evaluation of the pool hosts, the closed projects included, kept
 in a database (the results, never the answers), searched by student, group, lab, host and
 period, with the detail of an evaluation and the summary matrix of a lab;</p></li>
@@ -578,7 +581,10 @@ the instructor does on their own page (changing tabs, typing in a terminal, sele
 question, changing the drawing of the schema, …) is shown at once on the students’ browsers;</p></li>
 <li><p>the <strong>focus</strong> on one student: while helping a student on their project, the instructor brings
 the student’s browser to that project and keeps the two pages on the same tab, the same
-terminal and the same question, whichever of the two changes it.</p></li>
+terminal and the same question, whichever of the two changes it;</p></li>
+<li><p>the <strong>web conference</strong>: an instructor opens a BigBlueButton room for chosen students or groups
+(or the whole class) and talks to them, camera and screen if they wish, in a window over the
+pages of the site while everybody goes on working (<em>Web conference</em> below).</p></li>
 </ul>
 <section id="architecture">
 <h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h2>
@@ -766,8 +772,8 @@ user and protects <code class="docutils literal notranslate"><span class="pre">w
 <td><p>how the agent restarts itself on <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">restart</span></code> (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/restart</span></code>): by default <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span></code> of its own unit, read from <code class="docutils literal notranslate"><span class="pre">/proc/self/cgroup</span></code>; a command for an agent run otherwise (refused, 409, when neither applies)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[timeouts]</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">=</span> <span class="pre">900</span></code>, <code class="docutils literal notranslate"><span class="pre">eval</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span> <span class="pre">=</span> <span class="pre">300</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span> <span class="pre">=</span> <span class="pre">30</span></code></p></td>
-<td><p>seconds, per <code class="docutils literal notranslate"><span class="pre">sre</span></code> command (<code class="docutils literal notranslate"><span class="pre">export</span></code>, the timeout of the former Kathara export, is still accepted)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">=</span> <span class="pre">900</span></code>, <code class="docutils literal notranslate"><span class="pre">eval</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">=</span> <span class="pre">600</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span> <span class="pre">=</span> <span class="pre">300</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span> <span class="pre">=</span> <span class="pre">30</span></code>, <code class="docutils literal notranslate"><span class="pre">report</span> <span class="pre">=</span> <span class="pre">600</span></code></p></td>
+<td><p>seconds, per <code class="docutils literal notranslate"><span class="pre">sre</span></code> command (<code class="docutils literal notranslate"><span class="pre">report</span></code>: the spreadsheet / PDF reports of the Archives page, built by <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">report</span></code> on this host; <code class="docutils literal notranslate"><span class="pre">export</span></code>, the timeout of the former Kathara export, is still accepted)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[display]</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code></p></td>
@@ -841,7 +847,7 @@ merges other files into this one, as for <code class="docutils literal notransla
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[admin]</span></code></p></td>
 <td><p></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">token</span></code>: the token of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> (32+ characters; none = the command is refused), accepted from the loopback only unless <code class="docutils literal notranslate"><span class="pre">listen_any</span> <span class="pre">=</span> <span class="pre">true</span></code>; <code class="docutils literal notranslate"><span class="pre">state_file</span></code>: the hosts added, removed, enabled and disabled by hand (<code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web/pool.json</span></code> when that directory exists, else <code class="docutils literal notranslate"><span class="pre">pool.json</span></code> next to <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">token</span></code>: the token of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> (32+ characters; none = the command is refused), accepted from the loopback only unless <code class="docutils literal notranslate"><span class="pre">listen_any</span> <span class="pre">=</span> <span class="pre">true</span></code>; <code class="docutils literal notranslate"><span class="pre">state_file</span></code>: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (<code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web/pool.json</span></code> when that directory exists, else <code class="docutils literal notranslate"><span class="pre">pool.json</span></code> next to <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>; <em>Restarting the portal</em> below)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[access_log]</span></code></p></td>
 <td><p></p></td>
@@ -867,11 +873,15 @@ merges other files into this one, as for <code class="docutils literal notransla
 <td><p>none</p></td>
 <td><p>the institution shown next to the SRE logo in the header of every page, the login page included: <code class="docutils literal notranslate"><span class="pre">logo</span></code> (the absolute path of an image file, JPG / PNG / SVG…, readable by <code class="docutils literal notranslate"><span class="pre">sre-web</span></code>, served at <code class="docutils literal notranslate"><span class="pre">/site/logo</span></code>), <code class="docutils literal notranslate"><span class="pre">name</span></code> (a string, or one per language: <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">fr</span> <span class="pre">=</span> <span class="pre">&quot;IUT</span> <span class="pre">de</span> <span class="pre">Démo&quot;,</span> <span class="pre">en</span> <span class="pre">=</span> <span class="pre">&quot;Demo</span> <span class="pre">Institute&quot;</span> <span class="pre">}</span></code>, the first configured language when the page’s one is missing), <code class="docutils literal notranslate"><span class="pre">url</span></code> (the page the two link to; none: plain text)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[bbb]</span></code></p></td>
+<td><p>none</p></td>
+<td><p>the BigBlueButton server behind the <strong>Webconf</strong> button of the instructors (<em>Web conference</em> below): <code class="docutils literal notranslate"><span class="pre">url</span></code> (the server, or its <code class="docutils literal notranslate"><span class="pre">bigbluebutton/</span></code> / <code class="docutils literal notranslate"><span class="pre">bigbluebutton/api/</span></code> path) and <code class="docutils literal notranslate"><span class="pre">secret</span></code> (the shared secret of its API, <code class="docutils literal notranslate"><span class="pre">bbb-conf</span> <span class="pre">--secret</span></code>; both or none), <code class="docutils literal notranslate"><span class="pre">checksum</span></code> (<code class="docutils literal notranslate"><span class="pre">sha1</span></code>; <code class="docutils literal notranslate"><span class="pre">sha256</span></code> or <code class="docutils literal notranslate"><span class="pre">sha512</span></code> when the server is restricted to them), <code class="docutils literal notranslate"><span class="pre">welcome</span></code> (the welcome message of the client: a string, or one per language; the server’s message by default), <code class="docutils literal notranslate"><span class="pre">record</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>), <code class="docutils literal notranslate"><span class="pre">mute_on_start</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>), <code class="docutils literal notranslate"><span class="pre">duration</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> = unlimited; a duration, <code class="docutils literal notranslate"><span class="pre">&quot;2h&quot;</span></code>: the server ends the meeting after it), <code class="docutils literal notranslate"><span class="pre">max_participants</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> = unlimited), <code class="docutils literal notranslate"><span class="pre">poll_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">10s</span></code>: how often the participants and the ended meetings are read from the server), <code class="docutils literal notranslate"><span class="pre">[bbb.userdata]</span></code> (the <code class="docutils literal notranslate"><span class="pre">bbb_*</span></code> client settings sent with every join, e.g. <code class="docutils literal notranslate"><span class="pre">bbb_skip_check_audio</span> <span class="pre">=</span> <span class="pre">true</span></code>), <code class="docutils literal notranslate"><span class="pre">private_rooms</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>: the <strong>Talk privately</strong> button of an instructor on a student’s project, <em>Private conversations</em> below; <code class="docutils literal notranslate"><span class="pre">false</span></code> removes it), <code class="docutils literal notranslate"><span class="pre">[bbb.private_userdata]</span></code> (the <code class="docutils literal notranslate"><span class="pre">bbb_*</span></code> client settings of the joins of a private conversation, over <code class="docutils literal notranslate"><span class="pre">[bbb.userdata]</span></code> and the portal’s own)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code></p></td>
 <td><p>required</p></td>
 <td><p>one per pool host: <code class="docutils literal notranslate"><span class="pre">name</span></code> (what the URLs show), <code class="docutils literal notranslate"><span class="pre">url</span></code> of its agent, <code class="docutils literal notranslate"><span class="pre">token</span></code> of its <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">max_projects</span></code> (<code class="docutils literal notranslate"><span class="pre">25</span></code>); to wake it, <code class="docutils literal notranslate"><span class="pre">mac</span></code> (Wake-on-LAN) or <code class="docutils literal notranslate"><span class="pre">wake_command</span></code> (<code class="docutils literal notranslate"><span class="pre">{name}</span></code>, <code class="docutils literal notranslate"><span class="pre">{mac}</span></code> substituted); <code class="docutils literal notranslate"><span class="pre">power</span> <span class="pre">=</span> <span class="pre">true</span></code> lets the portal power it off; <code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">=</span> <span class="pre">false</span></code> keeps it polled without placing projects; <code class="docutils literal notranslate"><span class="pre">instructors_only</span> <span class="pre">=</span> <span class="pre">true</span></code> reserves it for the instructors’ projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see <em>Reserved hosts</em>)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">import</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">import</span></code></p></td>
 <td><p>none</p></td>
 <td><p>other files merged into this one before it is checked: a path or a list of paths, relative to the directory of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code>: a directory (its <code class="docutils literal notranslate"><span class="pre">*.toml</span></code> files, by name), a glob pattern (<code class="docutils literal notranslate"><span class="pre">&quot;web.d/*.toml&quot;</span></code>, possibly matching nothing) or a file. Tables merge, <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entries add up; a key given in two files is refused, naming both; an imported file cannot <code class="docutils literal notranslate"><span class="pre">import</span></code></p></td>
 </tr>
@@ -999,7 +1009,7 @@ directory for the file or writes it under <code class="docutils literal notransl
 a timestamp (<code class="docutils literal notranslate"><span class="pre">2026-10-26T09:12:03+0100</span></code>):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">event</span><span class="o">=</span><span class="n">login</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">mode</span><span class="o">=</span><span class="n">ldap</span> <span class="n">role</span><span class="o">=</span><span class="n">student</span> <span class="n">anon</span><span class="o">=</span><span class="mi">0</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice Test&quot;</span> <span class="n">group</span><span class="o">=</span><span class="n">INFO1</span>
 <span class="n">event</span><span class="o">=</span><span class="n">session_open</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">role</span><span class="o">=</span><span class="n">student</span> <span class="n">anon</span><span class="o">=</span><span class="mi">0</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Alice Test&quot;</span> <span class="n">group</span><span class="o">=</span><span class="n">INFO1</span> <span class="n">ua</span><span class="o">=</span><span class="s2">&quot;Mozilla/5.0 …&quot;</span>
-<span class="n">event</span><span class="o">=</span><span class="n">start</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">lab</span><span class="o">=</span><span class="n">sre</span><span class="o">/</span><span class="n">dhcp</span><span class="o">.</span><span class="n">py</span> <span class="n">instructor</span><span class="o">=</span><span class="mi">0</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">placement</span><span class="o">=</span><span class="n">load</span> <span class="n">result</span><span class="o">=</span><span class="n">created</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span> <span class="n">duration</span><span class="o">=</span><span class="mf">12.4</span>
+<span class="n">event</span><span class="o">=</span><span class="n">start</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">lab</span><span class="o">=</span><span class="n">sre</span><span class="o">/</span><span class="n">dhcp</span><span class="o">.</span><span class="n">py</span> <span class="n">instructor</span><span class="o">=</span><span class="mi">0</span> <span class="n">debug</span><span class="o">=</span><span class="mi">0</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">placement</span><span class="o">=</span><span class="n">load</span> <span class="n">result</span><span class="o">=</span><span class="n">created</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span> <span class="n">duration</span><span class="o">=</span><span class="mf">12.4</span>
 <span class="n">event</span><span class="o">=</span><span class="n">project_open</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span>
 <span class="n">event</span><span class="o">=</span><span class="n">terminal_open</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">device</span><span class="o">=</span><span class="n">m1</span> <span class="n">join</span><span class="o">=-</span> <span class="n">private</span><span class="o">=</span><span class="mi">0</span>
 <span class="n">event</span><span class="o">=</span><span class="n">terminal_close</span> <span class="n">login</span><span class="o">=</span><span class="n">alice</span> <span class="n">addr</span><span class="o">=</span><span class="mf">10.0.1.7</span> <span class="n">host</span><span class="o">=</span><span class="n">a01</span> <span class="n">rln</span><span class="o">=</span><span class="mi">1761466323</span><span class="o">@@</span><span class="nd">@dhcp</span><span class="o">@@</span><span class="nd">@alice</span> <span class="n">device</span><span class="o">=</span><span class="n">m1</span> <span class="n">join</span><span class="o">=-</span> <span class="n">private</span><span class="o">=</span><span class="mi">0</span> <span class="n">duration</span><span class="o">=</span><span class="mf">612.3</span> <span class="n">code</span><span class="o">=</span><span class="mi">1000</span>
@@ -1027,8 +1037,8 @@ session and the request following a logout opens another one. The other events:<
 <code class="docutils literal notranslate"><span class="pre">rate_limited</span></code>, <code class="docutils literal notranslate"><span class="pre">directory</span></code> when the directory does not answer, <code class="docutils literal notranslate"><span class="pre">proxy_mode</span></code>);</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">start</span></code>: the lab, the host chosen and <code class="docutils literal notranslate"><span class="pre">placement</span></code>, why that host (<code class="docutils literal notranslate"><span class="pre">load</span></code>: the least loaded,
 <code class="docutils literal notranslate"><span class="pre">session</span></code>: the user is logged in at its keyboard, <code class="docutils literal notranslate"><span class="pre">named</span></code>: the instructor named it), whether
-the instructor mode was asked, <code class="docutils literal notranslate"><span class="pre">result</span></code> (<code class="docutils literal notranslate"><span class="pre">created</span></code>, <code class="docutils literal notranslate"><span class="pre">flavor_form</span></code>, <code class="docutils literal notranslate"><span class="pre">flavor_error</span></code>, <code class="docutils literal notranslate"><span class="pre">error</span></code>)
-and <code class="docutils literal notranslate"><span class="pre">rln</span></code>, the running lab name of the new project;</p></li>
+the instructor mode or the debug mode was asked (<code class="docutils literal notranslate"><span class="pre">instructor</span></code>, <code class="docutils literal notranslate"><span class="pre">debug</span></code>), <code class="docutils literal notranslate"><span class="pre">result</span></code> (<code class="docutils literal notranslate"><span class="pre">created</span></code>,
+<code class="docutils literal notranslate"><span class="pre">flavor_form</span></code>, <code class="docutils literal notranslate"><span class="pre">flavor_error</span></code>, <code class="docutils literal notranslate"><span class="pre">error</span></code>) and <code class="docutils literal notranslate"><span class="pre">rln</span></code>, the running lab name of the new project;</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">project_open</span></code> / <code class="docutils literal notranslate"><span class="pre">project_close</span></code>: the project page, open as long as its events WebSocket is
 (<code class="docutils literal notranslate"><span class="pre">duration</span></code> in seconds, <code class="docutils literal notranslate"><span class="pre">code</span></code>: the WebSocket close code; <code class="docutils literal notranslate"><span class="pre">view=instructor</span></code> for the instructor
 view); <code class="docutils literal notranslate"><span class="pre">terminal_open</span></code> / <code class="docutils literal notranslate"><span class="pre">terminal_close</span></code> (<code class="docutils literal notranslate"><span class="pre">device</span></code>, <code class="docutils literal notranslate"><span class="pre">join</span></code>: the session joined, <code class="docutils literal notranslate"><span class="pre">private</span></code>)
@@ -1047,11 +1057,25 @@ the Sessions view, <code class="docutils literal notranslate"><span class="pre">
 <code class="docutils literal notranslate"><span class="pre">rln</span></code>, <code class="docutils literal notranslate"><span class="pre">audience</span></code>: the number of logins and groups chosen), <code class="docutils literal notranslate"><span class="pre">present_audience</span></code> (the audience
 changed), <code class="docutils literal notranslate"><span class="pre">present_stop</span></code>, and <code class="docutils literal notranslate"><span class="pre">present_open</span></code> (a student opened the presented page: their
 <code class="docutils literal notranslate"><span class="pre">login</span></code>, the <code class="docutils literal notranslate"><span class="pre">presenter</span></code>); the project calls a spectator makes keep their own events, their
-close lines carrying <code class="docutils literal notranslate"><span class="pre">spectator=1</span></code>. The presence socket every page keeps open and the view the
-presenter publishes are not logged;</p></li>
+close lines carrying <code class="docutils literal notranslate"><span class="pre">spectator=1</span></code>. The presence socket every page keeps open, the view the
+presenter publishes and the pointer frames of their presentation socket are not logged;</p></li>
 <li><p>the focus on a student (<em>Instructors</em> below): <code class="docutils literal notranslate"><span class="pre">focus_start</span></code> (the instructor’s <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">host</span></code>,
 <code class="docutils literal notranslate"><span class="pre">rln</span></code>, the <code class="docutils literal notranslate"><span class="pre">student</span></code>) and <code class="docutils literal notranslate"><span class="pre">focus_stop</span></code> (the <code class="docutils literal notranslate"><span class="pre">instructor</span></code> of the focus, the <code class="docutils literal notranslate"><span class="pre">student</span></code>); the
-view the two pages share and their sockets are not logged.</p></li>
+view the two pages share and their sockets are not logged;</p></li>
+<li><p>the web conferences (<em>Web conference</em> below): <code class="docutils literal notranslate"><span class="pre">webconf_start</span></code> (the instructor’s <code class="docutils literal notranslate"><span class="pre">login</span></code>,
+<code class="docutils literal notranslate"><span class="pre">webconf</span></code> = the id of the room, its <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">audience</span></code> = the number of logins and groups),
+<code class="docutils literal notranslate"><span class="pre">webconf_audience</span></code> (the audience changed, the <code class="docutils literal notranslate"><span class="pre">owner</span></code> of the room), <code class="docutils literal notranslate"><span class="pre">webconf_attend</span></code> (an
+instructor joining a room), <code class="docutils literal notranslate"><span class="pre">webconf_stop</span></code>, and <code class="docutils literal notranslate"><span class="pre">webconf_join</span></code> (a join URL served to a
+participant: their <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">webconf</span></code>, <code class="docutils literal notranslate"><span class="pre">role</span></code>, status 302); the listing of the rooms is a
+keepalive, the page the client comes back to after <em>Leave meeting</em> is not logged;</p></li>
+<li><p>the private conversations (<em>Private conversations</em> below): <code class="docutils literal notranslate"><span class="pre">webconf_invite</span></code> (the instructor’s
+<code class="docutils literal notranslate"><span class="pre">login</span></code>, the <code class="docutils literal notranslate"><span class="pre">student</span></code> asked, the <code class="docutils literal notranslate"><span class="pre">host</span></code> and <code class="docutils literal notranslate"><span class="pre">rln</span></code> of the project they asked from, the
+<code class="docutils literal notranslate"><span class="pre">invitation</span></code>; status 409 when the student is not connected or busy), <code class="docutils literal notranslate"><span class="pre">webconf_accept</span></code> (the
+student’s <code class="docutils literal notranslate"><span class="pre">login</span></code>, the <code class="docutils literal notranslate"><span class="pre">invitation</span></code>, the <code class="docutils literal notranslate"><span class="pre">instructor</span></code>, <code class="docutils literal notranslate"><span class="pre">webconf</span></code> = the room made; 410 when the
+invitation was over, 502 / 503 as the server answered), <code class="docutils literal notranslate"><span class="pre">webconf_decline</span></code>, <code class="docutils literal notranslate"><span class="pre">webconf_cancel</span></code>
+(the invitation taken back by an instructor, the <code class="docutils literal notranslate"><span class="pre">student</span></code>) and <code class="docutils literal notranslate"><span class="pre">webconf_leave</span></code> (one of the
+two ending the conversation: <code class="docutils literal notranslate"><span class="pre">webconf</span></code>, <code class="docutils literal notranslate"><span class="pre">owner</span></code>); an invitation nobody answers expires
+without a line.</p></li>
 </ul>
 <p>The client address is the last entry of <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code> when the TCP peer is one of
 <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> (the Apache and nginx examples set that header), the peer address otherwise:
@@ -1145,6 +1169,29 @@ them (in every language of the lab: the browser shows the viewer’s), its grade
 part and bonus flag. <strong>The answers of the students are not sent and not stored.</strong> The group and
 the full name an archive lacks (the projects of the Qt GUI) are completed from the directory
 when the portal reads one (<code class="docutils literal notranslate"><span class="pre">attr_group</span></code>, <code class="docutils literal notranslate"><span class="pre">ldap_roles</span></code> / <code class="docutils literal notranslate"><span class="pre">ldap_groups</span></code>), as on the Watch page.</p>
+<p>The <strong>reports</strong> an instructor downloads from the page (the spreadsheet of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code>, the PDF
+reports of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> or their summary spreadsheet alone: <em>Instructors</em> below) are built from
+these rows, not from the archive
+files of the hosts, which may be asleep or reinstalled: a row holds everything the two commands
+read from an archive (the student, the time, the totals, the grade elements with their titles and
+parts, the number of errors; never the tests nor the answers). The portal turns the rows back
+into the records the agents had sent and hands them to <strong>one</strong> agent of the pool, chosen as the
+lab list is (an enabled, reachable host, up and little loaded first; the next one when it does
+not answer), which runs <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">report</span></code> (an internal command: the records on stdin, the file on
+stdout, one report at a time per host, <code class="docutils literal notranslate"><span class="pre">[timeouts]</span> <span class="pre">report</span></code> of <code class="docutils literal notranslate"><span class="pre">agent.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">600</span></code> seconds) and
+answers the download the portal streams to the browser. The files are therefore those <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> / <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> would give on the same archives, in the language of the instructor, but
+for one thing: a student is a login whatever the host of the pool the project ran on, where the
+two commands tell a login on two hosts apart (<em>Reports</em>, under <em>Instructors</em> below); the
+elements of an evaluation whose details were too big for the table (over 1 MB) are missing from
+them. The PDF reports and their summary read the grade elements of one evaluation per student
+only, the best one (the highest total, the earliest of them): when every evaluation of the
+selected projects is asked, the portal sends the others as <em>light</em> records (the student, the
+time, the totals, the error counts: about 300 bytes instead of several kilobytes), read without
+their details from the database, so that such a request may cover 150 000 evaluations (hundreds
+of projects evaluated every minute for hours) where the spreadsheet of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code>, which shows
+the elements of every evaluation, stops at 5000. Every download is a <code class="docutils literal notranslate"><span class="pre">report</span></code> line of the
+connection log (the kind, the rows ticked, the options, the evaluations and projects sent, <code class="docutils literal notranslate"><span class="pre">full</span></code>
+= the evaluations sent with their details, the host that built the file).</p>
 <p>One cursor per host, the greatest archive name taken, lives in the portal’s memory and is read
 from the table itself at the first round after a start (<code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">host,</span> <span class="pre">MAX(archive)</span> <span class="pre">…</span> <span class="pre">GROUP</span> <span class="pre">BY</span> <span class="pre">host</span></code>): nothing is collected while the database does not answer, and a restart never imports a
 host again. The name of an archive is unique in the table (<code class="docutils literal notranslate"><span class="pre">UNIQUE</span> <span class="pre">(archive)</span></code>, <code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">IGNORE</span></code>),
@@ -1162,7 +1209,8 @@ account needs no <code class="docutils literal notranslate"><span class="pre">UP
 <span class="w">  </span><span class="k">host</span><span class="w">            </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w">     </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- the pool host (the name of [[hosts]])</span>
 <span class="w">  </span><span class="n">archive</span><span class="w">         </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">            </span><span class="c1">-- the file name: unique</span>
 <span class="w">  </span><span class="n">rln</span><span class="w">             </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- the running lab name</span>
-<span class="w">  </span><span class="n">lab</span><span class="w">             </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- sre/dhcp.py</span>
+<span class="w">  </span><span class="n">lab</span><span class="w">             </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- sre/dhcp.py: the path the student started</span>
+<span class="w">  </span><span class="n">canonical_lab</span><span class="w">   </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- the file really run, symlinks resolved (sre/dhcp.py for s3/r306/dhcp.py -&gt; ../../sre/dhcp.py)</span>
 <span class="w">  </span><span class="n">login</span><span class="w">           </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w">     </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span>
 <span class="w">  </span><span class="n">fullname</span><span class="w">        </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span>
 <span class="w">  </span><span class="n">grp</span><span class="w">             </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w">     </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">-- the student group</span>
@@ -1177,11 +1225,27 @@ account needs no <code class="docutils literal notranslate"><span class="pre">UP
 <span class="w">  </span><span class="n">auto_eval_count</span><span class="w"> </span><span class="nb">INT</span><span class="w">             </span><span class="k">NULL</span><span class="p">,</span><span class="w">                </span><span class="c1">-- the self-evaluations of the student so far</span>
 <span class="w">  </span><span class="n">details</span><span class="w">         </span><span class="n">MEDIUMTEXT</span><span class="w">      </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">            </span><span class="c1">-- JSON: elements, parts, errors, self-eval totals, metadata</span>
 <span class="w">  </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">id</span><span class="p">),</span><span class="w"> </span><span class="k">UNIQUE</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">archive</span><span class="w"> </span><span class="p">(</span><span class="n">archive</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">ts</span><span class="w"> </span><span class="p">(</span><span class="n">ts</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">login_lab_id</span><span class="w"> </span><span class="p">(</span><span class="n">login</span><span class="p">,</span><span class="w"> </span><span class="n">lab</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">),</span>
-<span class="w">  </span><span class="k">KEY</span><span class="w"> </span><span class="n">rln_id</span><span class="w"> </span><span class="p">(</span><span class="n">rln</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">lab_ts</span><span class="w"> </span><span class="p">(</span><span class="n">lab</span><span class="p">,</span><span class="w"> </span><span class="n">ts</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">grp_ts</span><span class="w"> </span><span class="p">(</span><span class="n">grp</span><span class="p">,</span><span class="w"> </span><span class="n">ts</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">host_archive</span><span class="w"> </span><span class="p">(</span><span class="k">host</span><span class="p">,</span><span class="w"> </span><span class="n">archive</span><span class="p">)</span>
+<span class="w">  </span><span class="k">KEY</span><span class="w"> </span><span class="n">login_canonical_id</span><span class="w"> </span><span class="p">(</span><span class="n">login</span><span class="p">,</span><span class="w"> </span><span class="n">canonical_lab</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">rln_id</span><span class="w"> </span><span class="p">(</span><span class="n">rln</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">lab_ts</span><span class="w"> </span><span class="p">(</span><span class="n">lab</span><span class="p">,</span><span class="w"> </span><span class="n">ts</span><span class="p">),</span>
+<span class="w">  </span><span class="k">KEY</span><span class="w"> </span><span class="n">canonical_lab_ts</span><span class="w"> </span><span class="p">(</span><span class="n">canonical_lab</span><span class="p">,</span><span class="w"> </span><span class="n">ts</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">grp_ts</span><span class="w"> </span><span class="p">(</span><span class="n">grp</span><span class="p">,</span><span class="w"> </span><span class="n">ts</span><span class="p">),</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">host_archive</span><span class="w"> </span><span class="p">(</span><span class="k">host</span><span class="p">,</span><span class="w"> </span><span class="n">archive</span><span class="p">)</span>
 <span class="p">)</span><span class="w"> </span><span class="n">ENGINE</span><span class="o">=</span><span class="n">InnoDB</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">CHARSET</span><span class="o">=</span><span class="n">utf8mb4</span><span class="w"> </span><span class="k">COLLATE</span><span class="o">=</span><span class="n">utf8mb4_unicode_ci</span><span class="p">;</span>
 </pre></div>
 </div>
-<p>The rows go through the same kind of writer as the log’s (batches, the rows waiting in memory
+<p><strong>Upgrading a table created before <code class="docutils literal notranslate"><span class="pre">canonical_lab</span></code></strong> (releases up to 0.15.0): the portal probes
+the columns when it connects and, while one is missing, keeps the rows in memory and warns once
+(<code class="docutils literal notranslate"><span class="pre">archives</span> <span class="pre">database:</span> <span class="pre">the</span> <span class="pre">table</span> <span class="pre">archives</span> <span class="pre">lacks</span> <span class="pre">a</span> <span class="pre">column</span> <span class="pre">the</span> <span class="pre">rows</span> <span class="pre">need</span> <span class="pre">…</span></code>) instead of refusing them;
+add the column and its keys from the root console before the portal restarts with the new code,
+then give the old rows their own path as the file run, and run that <code class="docutils literal notranslate"><span class="pre">UPDATE</span></code> once more after the
+restart: the rows the old code inserted meanwhile have an empty value (the account of the portal
+has neither <code class="docutils literal notranslate"><span class="pre">ALTER</span></code> nor <code class="docutils literal notranslate"><span class="pre">UPDATE</span></code>):</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">sre</span><span class="p">.</span><span class="n">archives</span><span class="w"> </span><span class="k">ADD</span><span class="w"> </span><span class="k">COLUMN</span><span class="w"> </span><span class="n">canonical_lab</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">AFTER</span><span class="w"> </span><span class="n">lab</span><span class="p">,</span>
+<span class="w">  </span><span class="k">ADD</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">login_canonical_id</span><span class="w"> </span><span class="p">(</span><span class="n">login</span><span class="p">,</span><span class="w"> </span><span class="n">canonical_lab</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">),</span><span class="w"> </span><span class="k">ADD</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">canonical_lab_ts</span><span class="w"> </span><span class="p">(</span><span class="n">canonical_lab</span><span class="p">,</span><span class="w"> </span><span class="n">ts</span><span class="p">);</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">sre</span><span class="p">.</span><span class="n">archives</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">canonical_lab</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">lab</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">canonical_lab</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">;</span>
+<span class="c1">-- to merge the old rows of a symbolic link with their lab, by hand:</span>
+<span class="c1">-- UPDATE sre.archives SET canonical_lab = &#39;sre/dns1.py&#39; WHERE lab = &#39;s3/r306/dns1.py&#39;;</span>
+</pre></div>
+</div>
+<p>The new rows carry the file really run as soon as the agents run the new code (an older agent
+sends none and the row gets its path). The rows go through the same kind of writer as the log’s (batches, the rows waiting in memory
 while the server does not answer, a refused row dropped with a warning, a last attempt at
 shutdown) and are purged daily beyond <code class="docutils literal notranslate"><span class="pre">keep</span></code> days when set; <code class="docutils literal notranslate"><span class="pre">web-purge-log.py</span> <span class="pre">--archives-days</span> <span class="pre">N</span></code>
 applies a retention from a cron job. Expect about thirty rows per project and hour of
@@ -1392,6 +1456,127 @@ hold no <code class="docutils literal notranslate"><span class="pre">exam_json</
 stable logins to schedule; a page loaded before the portal was updated has no exam script until
 it is reloaded (the server still refuses what it must).</p>
 </section>
+<section id="web-conference-bigbluebutton">
+<h3>Web conference (BigBlueButton)<a class="headerlink" href="#web-conference-bigbluebutton" title="Link to this heading">¶</a></h3>
+<p>An instructor talks to a student, a group or the whole class without leaving the site: the
+portal opens <strong>rooms</strong> on a BigBlueButton (BBB) server and shows its client to the participants
+in an iframe over the pages of the site, while everybody goes on working on their projects.
+Nothing is installed on the pool hosts; the portal needs the API of the server, the browsers the
+server itself.</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[bbb]</span>
+<span class="n">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://bbb.example.org/&quot;</span><span class="w">     </span><span class="c1"># the server (its bigbluebutton/ or bigbluebutton/api/ path works too)</span>
+<span class="n">secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w">                        </span><span class="c1"># the shared secret of its API: bbb-conf --secret</span>
+<span class="c1"># checksum = &quot;sha1&quot;                   # sha1 (default), sha256 or sha512: supportedChecksumAlgorithms of the server</span>
+<span class="c1"># welcome = { fr = &quot;Bienvenue&quot;, en = &quot;Welcome&quot; }   # the welcome message of the client (the server&#39;s by default)</span>
+<span class="c1"># record = false</span>
+<span class="c1"># mute_on_start = false</span>
+<span class="c1"># duration = 0                        # &quot;2h&quot;: the server ends a meeting after that; 0 = unlimited</span>
+<span class="c1"># max_participants = 0</span>
+<span class="c1"># poll_interval = &quot;10s&quot;               # the participants and the ended meetings are read that often</span>
+<span class="c1"># private_rooms = true                # Talk privately on a student&#39;s project (Private conversations below)</span>
+<span class="c1"># [bbb.userdata]                      # the client settings of every join (userdata-bbb_*, the BBB API reference)</span>
+<span class="c1"># bbb_skip_check_audio = true</span>
+<span class="c1"># [bbb.private_userdata]              # the client settings of the joins of a private conversation, over the others</span>
+<span class="c1"># bbb_listen_only_mode = true</span>
+</pre></div>
+</div>
+<p><strong>The instructors</strong>: the <em>Webconf</em> button of the site bar opens the dialog of the rooms: those
+open on the portal, with their owner, the size of their audience, who is connected to the site
+and who is in the room (read from the server every <code class="docutils literal notranslate"><span class="pre">poll_interval</span></code>), each with <em>Join</em> (this
+browser shows the room, as a moderator: any instructor may join any room), <em>Audience…</em> and
+<em>End</em> (any instructor); and a <em>New room</em> form: a name (the instructor’s by default) and an
+audience chosen as for a presentation (the connected users one by one; the groups: departments,
+directory groups, custom groups; a member of a group connecting later is put in the room too).
+Unlike that of a presentation, the audience of a room may be empty (<em>None</em> then <em>Choose</em>): the
+room is then one of the instructors alone.
+A student is in at most one room at a time (the newest one including them); an instructor sees
+the room they created or joined last.</p>
+<p><strong>The participants</strong>: the client appears in a floating window over the page (dragged by its
+title bar, resized by its corner), with buttons to minimize it to its title bar, to dock it into
+the <strong>Webconf</strong> tab of the project page, to show it full page (a bar above it comes back), to
+pop it out to a separate browser window, and to leave (×). How it is shown and where the window
+is are remembered by the browser: the next page shows the conference the same way (in a window
+where there is no project tab). A participant who left, or whose client is in a separate window,
+keeps a pill in the site bar to rejoin or to bring it back; the <em>Leave meeting</em> of the client
+itself leads to that pill. Every page of the site loads the client again (a new join of the same
+room: a few seconds, the audio to join again), which a site of several pages cannot avoid: the
+separate window does. Two tabs of the same user never join twice: one holds the client, the
+others show a pill to bring it there.</p>
+<p><strong>The server</strong>: the meeting is created when the room is (a server that refuses or does not
+answer leaves no room: the dialog says so); a join is a URL signed for the user (<code class="docutils literal notranslate"><span class="pre">fullName</span></code> =
+their name, <code class="docutils literal notranslate"><span class="pre">userID</span></code> = their login, the role by their instructor flag: a moderator for an
+instructor, a viewer otherwise, the <code class="docutils literal notranslate"><span class="pre">bbb.userdata</span></code> settings), served by the portal as a redirect
+(<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/webconfs/{id}/join</span></code>, the <code class="docutils literal notranslate"><span class="pre">src</span></code> of the iframe): the secret never leaves the portal. A
+meeting nobody joined expires on the server after a few minutes
+(<code class="docutils literal notranslate"><span class="pre">meetingExpireIfNoUserJoinedInMinutes</span></code>): the portal creates it again at the next join. A
+meeting everybody left expires about a minute later (<code class="docutils literal notranslate"><span class="pre">meetingExpireWhenLastUserLeftInMinutes</span></code>),
+like one a moderator ended from the client: the room ends on the portal at its next poll, every
+participant told. <em>End</em> in the dialog ends the meeting on the server. The rooms live in memory:
+a portal restart forgets them (the meetings expire on their own, the clients already in them stay
+until then).</p>
+<p><strong>Prerequisites</strong>: the portal reached over HTTPS, with <code class="docutils literal notranslate"><span class="pre">public_url</span></code> set (the <code class="docutils literal notranslate"><span class="pre">logoutURL</span></code> of the
+meetings, where the client comes back after <em>Leave meeting</em>, is built from it: <code class="docutils literal notranslate"><span class="pre">/webconf/left</span></code>);
+the server reachable from the portal (its API) and from the browsers (the client, over HTTPS);
+the nginx of the server must not forbid framing by the portal’s origin (an <code class="docutils literal notranslate"><span class="pre">X-Frame-Options</span></code>
+header or a <code class="docutils literal notranslate"><span class="pre">frame-ancestors</span></code> directive on the client would leave the frame empty: the separate
+window is the fallback); the pages of the portal allow the server’s origin in the <code class="docutils literal notranslate"><span class="pre">frame-src</span></code> of
+their <code class="docutils literal notranslate"><span class="pre">Content-Security-Policy</span></code>, nothing else. BBB 2.4 at least (the <code class="docutils literal notranslate"><span class="pre">role</span></code> of the join; the
+passwords are still passed for older servers). Safari may refuse the camera in a cross-origin
+frame: pop the client out.</p>
+<section id="private-conversations">
+<h4>Private conversations<a class="headerlink" href="#private-conversations" title="Link to this heading">¶</a></h4>
+<p>An instructor who opened a student’s project (the helper view) may talk with that student alone,
+voice and text. BigBlueButton has no private audio inside a meeting (one audio bridge per
+meeting; its breakout rooms are made by hand in the client and open in another browser tab), so
+a private conversation is a <strong>second meeting of the two</strong>, which both browsers show <em>in place
+of</em> the class conference for as long as it lasts: nobody is ever in two meetings at once.</p>
+<ul class="simple">
+<li><p><strong>Talk privately</strong>, in the bar of the project after <em>Focus student on project</em> (shown with
+<code class="docutils literal notranslate"><span class="pre">[bbb]</span></code> unless <code class="docutils literal notranslate"><span class="pre">private_rooms</span> <span class="pre">=</span> <span class="pre">false</span></code>), invites the owner of the project. Nothing else
+happens yet: both stay in the class conference, no meeting is created. The button reads
+<em>Calling… (cancel)</em> and takes the invitation back; an invitation nobody answers expires after
+a minute. The student must be connected to the site, and neither invited by somebody else nor
+in a private conversation already (the instructor is told so).</p></li>
+<li><p><strong>The student</strong> gets a banner across the top of every page of the site they have open (above
+a presentation, inside an open dialog), with a short chime and a mark in the title of the
+page: the name of the instructor, <em>would like to talk with you</em>, and two buttons, <em>Join</em> and
+<em>Not now</em>. <em>Not now</em> tells the instructor; nothing opens a microphone before <em>Join</em>.</p></li>
+<li><p><strong>Join</strong> creates the meeting and sends both browsers to it: the window of the conference (at
+the place and in the mode of the class conference: window, tab or full page) now shows the
+private room, titled <em>Private —</em> and the name of the other one, its title bar in its own
+colour. The joins
+go straight to the microphone, without the echo test or the choice of <em>Listen only</em>
+(<code class="docutils literal notranslate"><span class="pre">bbb_auto_join_audio</span></code>, <code class="docutils literal notranslate"><span class="pre">bbb_listen_only_mode</span> <span class="pre">=</span> <span class="pre">false</span></code>, <code class="docutils literal notranslate"><span class="pre">bbb_skip_check_audio</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bbb_hide_presentation_on_join</span></code>; <code class="docutils literal notranslate"><span class="pre">[bbb.private_userdata]</span></code> overrides them, e.g.
+<code class="docutils literal notranslate"><span class="pre">bbb_listen_only_mode</span> <span class="pre">=</span> <span class="pre">true</span></code> to get the choice back); the meeting is never recorded and starts
+nobody muted, whatever <code class="docutils literal notranslate"><span class="pre">[bbb]</span></code> says for the rooms. The chat of that meeting is the text channel.</p></li>
+<li><p><strong>Only the tab where the user clicked</strong> — <em>Talk privately</em> for the instructor, <em>Join</em> for the
+student — loads the client: the other tabs, and any other browser the same user is logged in
+from, leave the class conference and show the pill (<em>Bring here</em> moves the conversation). A
+browser left open somewhere never opens its microphone by itself.</p></li>
+<li><p><strong>The end</strong>: the × of the window, <em>End conversation</em> in the bar of the project, or the <em>Leave
+meeting</em> of the client, by either of the two — leaving a conversation of two ends it; <em>End</em> in
+the Webconf dialog, by any instructor (the dialog lists the conversation, nobody else may join
+it or see its audience); and the server itself, a minute after the instructor is gone (a
+closed browser: <code class="docutils literal notranslate"><span class="pre">endWhenNoModerator</span></code>). Both browsers then show the class conference again, in
+the mode and at the place it had; an instructor comes back to the room they were in.</p></li>
+<li><p>An instructor already talking with a student may invite another one: the first conversation
+ends when the second one is accepted, and the instructor goes from one to the other. Joining
+another room from the Webconf dialog ends the instructor’s conversation.</p></li>
+</ul>
+<p>Limits: each switch reloads the client (a few seconds, twice per conversation), and both are
+out of the class conference meanwhile — the other students cannot reach the instructor there.
+A class conference popped out to a separate window is closed when the conversation starts (by
+the tab that opened it) and comes back in a window of the page; when that tab was closed since,
+the site cannot close the separate window: the user is then in both meetings until they close
+it. The invitations live in memory like the rooms.</p>
+<p>The connection log gets the <code class="docutils literal notranslate"><span class="pre">webconf_*</span></code> events (<em>The connection log</em> above). Tests:
+<code class="docutils literal notranslate"><span class="pre">tests/test_bbb_client.py</span></code>, <code class="docutils literal notranslate"><span class="pre">tests/test_web_webconf.py</span></code> (the registry on a fake client, the
+portal in front of the fake server of <code class="docutils literal notranslate"><span class="pre">tests/fake_bbb.py</span></code>), <code class="docutils literal notranslate"><span class="pre">tests/test_web_webconf_browser.py</span></code>
+(headless Chrome: the rooms, then the private conversations — the banner, the switch and the
+return of two pages, two tabs of one user holding one client).</p>
+</section>
+</section>
 <section id="securing-the-pool-mutual-tls">
 <h3>Securing the pool (mutual TLS)<a class="headerlink" href="#securing-the-pool-mutual-tls" title="Link to this heading">¶</a></h3>
 <p>The portal and the agents can authenticate each other with certificates of one private CA, on
@@ -1579,13 +1764,13 @@ drain. <code class="docutils literal notranslate"><span class="pre">--wait</span
 so a deployment script can chain it after the sync. A <code class="docutils literal notranslate"><span class="pre">DO_NOT_START_AGENT</span></code> marker written since
 the start is honoured (that agent stops); code that no longer starts leaves the unit failed
 after five attempts (<code class="docutils literal notranslate"><span class="pre">journalctl</span> <span class="pre">-u</span> <span class="pre">sre-agent</span></code>, then <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">reset-failed</span></code>). The portal
-itself is restarted by hand (<code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span> <span class="pre">sre-web</span></code>).</p>
+itself is restarted by hand (<code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span> <span class="pre">sre-web</span></code>; <em>Restarting the portal</em> below).</p>
 <p><strong>By hand.</strong> <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">…</span></code> (<code class="docutils literal notranslate"><span class="pre">sbin/sre-web-tool</span></code> of a checkout, <code class="docutils literal notranslate"><span class="pre">/usr/sbin/sre-web-tool</span></code>
 of the <code class="docutils literal notranslate"><span class="pre">sysreseval-web</span></code> package; <code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">-m</span> <span class="pre">sreweb.tool</span></code> from the sources) talks to the running
 portal through its administration API (<code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">token</span></code>, loopback only by default; <code class="docutils literal notranslate"><span class="pre">--config</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--url</span></code>, <code class="docutils literal notranslate"><span class="pre">--token</span></code> override the configuration):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
-sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent&#39;s idle reaper)
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
@@ -1593,11 +1778,56 @@ sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powe
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 </pre></div>
 </div>
-<p>The additions, removals and enable / disable flags are kept in <code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">state_file</span></code> and merged
-with the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> at every start (<code class="docutils literal notranslate"><span class="pre">list</span></code> shows <code class="docutils literal notranslate"><span class="pre">config</span></code> or <code class="docutils literal notranslate"><span class="pre">added</span></code> per host); a
-config host removed by hand comes back with <code class="docutils literal notranslate"><span class="pre">enable</span></code>. <code class="docutils literal notranslate"><span class="pre">--json</span></code> gives the raw rows. The
-instructors have the same actions on the <strong>Pool</strong> page of the portal (<code class="docutils literal notranslate"><span class="pre">/pool</span></code>, see <em>Instructors</em>
-below), except <code class="docutils literal notranslate"><span class="pre">add</span></code> and <code class="docutils literal notranslate"><span class="pre">remove</span></code>, which stay with the token.</p>
+<p><code class="docutils literal notranslate"><span class="pre">list</span></code> shows <code class="docutils literal notranslate"><span class="pre">config</span></code> or <code class="docutils literal notranslate"><span class="pre">added</span></code> per host; a config host removed by hand comes back, enabled,
+with <code class="docutils literal notranslate"><span class="pre">enable</span></code>. <code class="docutils literal notranslate"><span class="pre">--json</span></code> gives the raw rows. The instructors have the same actions on the
+<strong>Pool</strong> page of the portal (<code class="docutils literal notranslate"><span class="pre">/pool</span></code>, see <em>Instructors</em> below), except <code class="docutils literal notranslate"><span class="pre">add</span></code> and <code class="docutils literal notranslate"><span class="pre">remove</span></code>, which
+stay with the token.</p>
+<p><strong>Restarting the portal.</strong> What is changed by hand, with the tool or on the Pool page, is kept in
+<code class="docutils literal notranslate"><span class="pre">[admin]</span> <span class="pre">state_file</span></code> (<code class="docutils literal notranslate"><span class="pre">pool.json</span></code>, written at every change through a temporary file renamed over
+it) and merged with the <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> at every start, so that a restart of the
+portal leaves the pool as it was:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Kept</p></th>
+<th class="head"><p>How</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>the hosts added and removed by hand</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">added</span></code> (the whole entry, its token included: the file is <code class="docutils literal notranslate"><span class="pre">0600</span></code>), <code class="docutils literal notranslate"><span class="pre">removed</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>a host enabled or disabled by hand</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">enabled</span></code> / <code class="docutils literal notranslate"><span class="pre">disabled</span></code>: the hosts whose flag differs from the <code class="docutils literal notranslate"><span class="pre">enabled</span></code> of their <code class="docutils literal notranslate"><span class="pre">[[hosts]]</span></code> entry, in both directions (a host of <code class="docutils literal notranslate"><span class="pre">DISABLED_ROOMS</span></code> enabled for a class stays enabled)</p></td>
+</tr>
+<tr class="row-even"><td><p>a drain</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">drain</span></code>, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped</p></td>
+</tr>
+<tr class="row-odd"><td><p>a wake in progress, the pause after failed wakes or after a power off, a power off or a restart sent</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">clocks</span></code> (written within one poll and when the portal stops); each is dropped at the start when too old to mean anything</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The file only holds what differs from the configuration, and <strong>an edit of the configuration
+wins</strong>: a flag set by hand holds for as long as the <code class="docutils literal notranslate"><span class="pre">enabled</span></code> of that host in <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> is what
+it was then. Once the file says the same (the room taken out of <code class="docutils literal notranslate"><span class="pre">DISABLED_ROOMS</span></code>, for instance)
+the entry is dropped at the next start, and a later edit of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> is followed again; so is
+the entry of a host that is no longer in the pool (one line of the journal each). The start logs
+<code class="docutils literal notranslate"><span class="pre">pool</span> <span class="pre">state</span> <span class="pre">read</span> <span class="pre">from</span> <span class="pre">…:</span> <span class="pre">0</span> <span class="pre">removed,</span> <span class="pre">0</span> <span class="pre">added,</span> <span class="pre">21</span> <span class="pre">enabled</span> <span class="pre">and</span> <span class="pre">1</span> <span class="pre">disabled</span> <span class="pre">by</span> <span class="pre">hand,</span> <span class="pre">0</span> <span class="pre">draining</span></code>.</p>
+<p>A state file that cannot be written (a read-only directory, a container without its volume) would
+lose all of this at the next restart: the portal says so in its journal at the start and at every
+failed write (<code class="docutils literal notranslate"><span class="pre">pool</span> <span class="pre">state</span> <span class="pre">NOT</span> <span class="pre">saved</span> <span class="pre">in</span> <span class="pre">…</span></code>), <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">status</span></code> prints <code class="docutils literal notranslate"><span class="pre">pool</span> <span class="pre">state:</span> <span class="pre">NOT</span> <span class="pre">SAVED</span> <span class="pre">in</span> <span class="pre">…</span></code> instead of the path, and the Pool page shows it in red above its table. In a container,
+<code class="docutils literal notranslate"><span class="pre">/var/lib/sre-web</span></code> must be a mounted directory the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code> user may write; the systemd units
+provide it (<code class="docutils literal notranslate"><span class="pre">StateDirectory</span></code>). A file the portal cannot read (edited as another user, or no
+longer a JSON object) is not written over: it is renamed <code class="docutils literal notranslate"><span class="pre">pool.json.unreadable</span></code>, said in the
+journal, and the pool starts from the configuration; edit the file with the portal stopped and
+leave it to the <code class="docutils literal notranslate"><span class="pre">sre-web</span></code> user.</p>
+<p>Not kept: the idle clock of <code class="docutils literal notranslate"><span class="pre">idle_host_timeout</span></code> (it counts again from the start), and what is
+listed under <em>Limitations</em> (the presentations, the focuses, the open sockets: the pages reconnect
+by themselves, a terminal with its Reconnect button). The exams, the custom groups, the
+connection log and the archives are in the database; the sessions are in the browsers’ cookies
+(<code class="docutils literal notranslate"><span class="pre">secret</span></code>).</p>
 </section>
 </section>
 <section id="what-the-users-see">
@@ -1612,7 +1842,9 @@ lab tree with its titles, in the order the <code class="docutils literal notrans
 by title in the language of the page or by hand, the sub-directories first, the same tree as
 the Qt GUI’s; the Flavor form when the lab has one; the progress of the pulls and
 deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
-when no project is open. Logout asks what to do with the running projects: close them (each
+when no project is open. An instructor’s cards say the mode of each project (Standard /
+Instructor mode / Debug mode, the words of the Open page), the two non-standard modes also as
+a coloured suffix after the title. Logout asks what to do with the running projects: close them (each
 as a Close does: the last evaluation when the lab asks for it, then <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">stop</span></code>; the dialog
 waits for every answer) or leave them running; with no running project the button logs out
 at once.</p></li>
@@ -1652,7 +1884,13 @@ of the schema, the instructor texts and the virtual desktop (view-only) follow w
 instructor does; so does the position inside the tab: the scroll of the text, of the question
 (its description and the list of titles), of the tables and of the log (the line at the top of
 the instructor’s pane is at the top of the student’s, whatever the size of their window or
-their font size), and the pan and zoom of the schema. The Evaluation tab shows the table of
+their font size), and the pan and zoom of the schema. The instructor’s mouse pointer is drawn
+on the student’s page too, an arrow carrying the instructor’s name, and what the instructor
+selects — in the texts, the question, the tables, the log, the schema, or in a terminal — is
+highlighted there (in a terminal: selected in the student’s read-only terminal, in lavender);
+both are placed on the element, the word or the terminal cell the instructor’s mouse is on,
+never at the same pixel, so that a student with another window size, font size or word wrap
+sees the pointer on the same word. The Evaluation tab shows the table of
 the instructor’s page as it is (the letters of their own self-evaluation included), again
 after each evaluation. The title bar of the presented project is coloured (lavender) and names the
 instructor presenting it. The student’s own page is untouched underneath, terminals included:
@@ -1695,13 +1933,19 @@ metadata, or the directory’s for a project of the Qt GUI when the portal reads
 the owner’s student group when the site configures one (<code class="docutils literal notranslate"><span class="pre">attr_group</span></code> /
 <code class="docutils literal notranslate"><span class="pre">header_group</span></code>), lab, start time, the age
 of its last archived evaluation, its grade and mark (exo-eval scope, as <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> shows
-them), its errors and warnings, its open terminals and whether the web or the Qt GUI runs it;
+them), its errors and warnings, the number of self-evaluations the student has run (the
+agent counts the lines of the project’s <code class="docutils literal notranslate"><span class="pre">.private/auto_eval.log</span></code>, one per <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">eval</span> <span class="pre">--auto-eval</span></code> of the student: live, whereas the <code class="docutils literal notranslate"><span class="pre">auto_eval_count</span></code> of an archive, the AUTO-EVAL
+column of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">watch</span></code> and the Self-evaluations column of the Archives page, is the count
+before that evaluation), its open terminals and whether the web or the Qt GUI runs it;
 sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
 by the select listing the groups by kind (the departments of the rows, the directory groups
 and the custom groups of the Groups page, <em>User groups</em> above; every group, one group, or <em>No
 group</em>: the projects whose owner has no department, those started on the Qt GUI carrying none
 unless the portal reads the directory, above), the chosen group kept in the URL
-(<code class="docutils literal notranslate"><span class="pre">?group=kind:name</span></code>, a bookmark per class group); refreshed every 5 s; a row whose last evaluation had errors is
+(<code class="docutils literal notranslate"><span class="pre">?group=kind:name</span></code>, a bookmark per class group) and remembered by the browser
+(<code class="docutils literal notranslate"><span class="pre">localStorage</span></code>): the page comes back with the group chosen last, through the <em>Watch</em> link
+of the header or in a new tab, until another group or <em>All groups</em> is chosen, a link with
+<code class="docutils literal notranslate"><span class="pre">?group=</span></code> winning and becoming the remembered one; refreshed every 5 s; a row whose last evaluation had errors is
 red, one without an evaluation younger than 15 minutes (or twice the lab’s evaluation
 interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
 their own host (<code class="docutils literal notranslate"><span class="pre">params.archive_dirs</span></code>) on demand, nothing is scanned while nobody watches.
@@ -1711,7 +1955,9 @@ the date of the evaluation, the table of its grade elements with the parts, the 
 the bonuses, the total and the mark, then the errors and the warnings of the run; <em>Open the
 project</em> goes to its page; Esc or <em>Close</em> goes back), and a <strong>click on the lab cell</strong> of a
 row opens the summary of that lab for the rows shown (the text filter and the group select
-apply, so a class group alone when wanted): a matrix with one row per project and one column
+apply, so a class group alone when wanted; the lab is the file really run, so the projects
+started through a course directory’s symbolic link to a lab and through the lab’s own path
+are one lab): a matrix with one row per project and one column
 per grade element (numbered, the element as the tooltip of the number, the parts as a header
 row; a cell is the grade, or the OK / MEH / FAIL letter, coloured like the evaluation table;
 Total and Mark last; a project never evaluated says so), the rows <em>Max</em>, <em>Average</em> and
@@ -1749,17 +1995,52 @@ the agent lays out the evaluation of a running project, then the errors and the 
 the run). The <strong>Summary</strong> view (the second button of the toolbar; a lab is required: without
 one the view lists the labs of the archives, a click on one loads its summary; the search
 starts on the last evaluation of each student) is the lab summary of the Watch page
-for the evaluations found: one block per lab matched, with the matrix of the students and
+for the evaluations found: one block per lab matched (the lab file really run, as on the Watch
+page: the evaluations of the projects started through a symbolic link to a lab are in the
+lab’s block, and the lab filter matches the path started as well as the file), with the matrix of the students and
 the grade elements (Total and Mark last, the rows <em>Max</em> / <em>Average</em> / <em>Success</em> below) and the
 table of the elements with their statistics; a click on a row of the matrix opens the
 evaluation. The summary is computed on the 500 newest evaluations found at most (the page
 says so: narrow the filters). Searching the results of a class group is <code class="docutils literal notranslate"><span class="pre">Group</span></code> + <code class="docutils literal notranslate"><span class="pre">Lab</span></code> +
-<em>Summary</em>; the results of one student across the labs, <code class="docutils literal notranslate"><span class="pre">Student</span></code> alone.</p></li>
+<em>Summary</em>; the results of one student across the labs, <code class="docutils literal notranslate"><span class="pre">Student</span></code> alone.
+<strong>Reports.</strong> A checkbox at the left of each row selects evaluations (the header checkbox takes
+the rows shown; the selection is kept while paging and searching, the bar says how many are
+selected and how many are not on the page), and the bar under the filters downloads a
+<strong>Spreadsheet</strong> (what <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span></code> gives: per lab, the table of every evaluation, the
+<em>Questions</em> statistics and the <em>Sessions</em> best grades), the <strong>PDF reports</strong> (what <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span></code> gives: a zip holding one PDF per student and lab, <code class="docutils literal notranslate"><span class="pre">&lt;login&gt;__&lt;lab&gt;.pdf</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">outline.ods</span></code>, the summary) or the <strong>Summary spreadsheet</strong> (what <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">outline</span> <span class="pre">-o</span></code> gives: that
+<code class="docutils literal notranslate"><span class="pre">outline.ods</span></code> alone, one row per student and lab with the best evaluation, its time and the
+mark) of the selected evaluations. <strong>A student is a login here, whatever the host</strong>: the portal
+places each project on any host of the pool, so the instances of a lab a student opened several
+times are merged into one row, one PDF and one <em>Sessions</em> row even when they ran on different
+hosts (the two commands, run by hand on the archives of a host, keep one per login <em>and</em>
+hostname: the hostname is the student’s workstation there, and tells apart the users of a
+shared account); the <code class="docutils literal notranslate"><span class="pre">hostname</span></code> of a merged row, and of the header of its PDF, is the host of
+the best evaluation, and each history table of the PDF is headed by the start time and the host
+of its instance. A selected evaluation stands for its whole project: every stored evaluation of the
+same projects goes into the reports (the history table of a PDF, every row of the spreadsheet,
+the best evaluation of the summary), as <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">sheet</span> <span class="pre">archives/</span></code> would do on a host; the <em>Options</em>
+disclosure unticks that (<strong>Every evaluation of the selected projects</strong>: the ticked rows alone
+then) and gives the flags of the two commands: <strong>One report / row per project instance</strong>
+(<code class="docutils literal notranslate"><span class="pre">--separate-instances</span></code>: a student who opened a lab twice gets two reports, or two summary rows,
+instead of one with two history tables), <strong>“Bonus” before the label</strong> (<code class="docutils literal notranslate"><span class="pre">--bonus-in-prefix</span></code>),
+<strong>Evaluation history</strong>, <strong>Remaining time column</strong> (exams) and <strong>Group by part</strong> (the PDF only:
+the two spreadsheets ignore them). At most 1000 rows may be ticked; the PDF reports and the
+summary spreadsheet may cover 150 000 evaluations (300 projects of 300 evaluations give their
+PDFs in about a minute), the spreadsheet 5000 (the page says so: narrow the selection or
+untick the option). The file is named
+after the lab when the selection is of one lab (<code class="docutils literal notranslate"><span class="pre">evaluations_dhcp_20261109-1430.ods</span></code>,
+<code class="docutils literal notranslate"><span class="pre">reports_dhcp_20261109-1430.zip</span></code>, <code class="docutils literal notranslate"><span class="pre">summary_dhcp_20261109-1430.ods</span></code>), is built by one agent
+of the pool from the stored rows (<em>The archives of the evaluations</em> above) in the language of
+the page, and is saved by the browser; the buttons read <em>Generating…</em> meanwhile, a few seconds
+for a class.</p></li>
 <li><p><strong>Pool</strong> (the link in the header, <code class="docutils literal notranslate"><span class="pre">/pool</span></code>): every host of the pool, one row per host with its
 state as <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">list</span></code> shows it (the seconds and the failed attempts of a wake), its
 projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
 instructors, power, drain, power off sent, restart sent), the agent’s version and its last error, the line
-of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">status</span></code> above the table; the state cell is green (up), amber (waking,
+of <code class="docutils literal notranslate"><span class="pre">sre-web-tool</span> <span class="pre">status</span></code> above the table (in red, with the reason, when the state file of the
+pool cannot be written: a restart of the portal would undo what is changed on the page);
+the state cell is green (up), amber (waking,
 occupied, exam, draining), red (off: the agent does not answer) or grey (disabled, muted
 text); sortable by any column, filtered by host
 name (one or several words: the hosts whose name contains any of them, <code class="docutils literal notranslate"><span class="pre">a01</span> <span class="pre">a02</span> <span class="pre">h</span></code> for
@@ -1815,6 +2096,16 @@ tab by the focus opens no terminal of its own, as it does when its user clicks t
 the first time) and the <strong>question</strong> selected,
 in both directions: whichever page changes one of them, the other follows, the last change
 winning.
+The student’s page also shows the instructor’s <strong>mouse pointer</strong> (an arrow with their name)
+and what the instructor <strong>selects</strong>, as the pages of a presentation show the presenter’s: on
+the same paragraph, table cell or tab button, on the same row and column of a terminal both
+pages have, whatever the sizes of the two windows (nothing is drawn while the student is on
+another tab). A selected text is highlighted without touching the student’s own selection; a
+selection in a terminal becomes the selection of the student’s terminal. One way only: the
+instructor does not see the student’s mouse. Nothing is sent of a private terminal of the
+instructor, nor of a place in a text the instructor reads with the instructor fragments
+shown (the <em>Instructor mode</em> button on the Informations, Questions and Apply Configuration
+tabs: the student’s page has not got the same text).
 Unlike a presentation, the student keeps every control: they type in the terminals, change
 tab, open terminals, answer questions (and the instructor may write in the answers too, both
 pages showing the same text). The button’s tooltip says whether the student’s page
@@ -1831,6 +2122,20 @@ does not appear there. The Evaluation tab of the instructor’s own project is t
 one, as in the Qt GUI: <em>Start evaluation</em> runs the self-evaluation (<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">--user</span> <span class="pre">eval</span> <span class="pre">--auto-eval</span></code>, the cooldown of the lab, the letters OK / MEH / FAIL when the lab hides the
 marks with <code class="docutils literal notranslate"><span class="pre">no_mark_on_self_grade</span></code>) and the table it gives stays; the last archived evaluation
 is shown on somebody else’s project only (an archive holds the numbers).</p></li>
+<li><p><strong>Debug mode</strong> on the Open page: the third of the <em>Project mode</em> radios of the instructors
+(<em>Standard</em>, <em>Instructor mode</em>, <em>Debug mode</em>). The instructor’s own project is started with
+<code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-web-project</span></code>: the debug project of <code class="docutils literal notranslate"><span class="pre">sre</span> <span class="pre">start</span> <span class="pre">--debug-project</span></code> (see <em>Lab
+Authoring</em>) with the lab given by its name, so that it keeps the lab name of the catalog and
+is grouped with the lab’s other projects on the Watch and Archives pages. While <em>Debug mode</em>
+is chosen the lab tree lists every lab of the host, the exam-only and draft ones included
+(<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/labs?all=1</span></code>, as the Exams page does; the selection is kept when the lab is still
+listed). The project page then shows what the Qt GUI shows for a debug project: every machine,
+the hidden ones in red, each with a Connect button, the <em>Full Schema</em> tab (the hidden machines
+drawn while the <em>Instructor mode</em> button is on), every state, the Log tab with the states and
+the evaluations, the evaluation table with both scopes, no self-evaluation cooldown.
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/projects</span></code> takes <code class="docutils literal notranslate"><span class="pre">instructor_mode</span></code> or <code class="docutils literal notranslate"><span class="pre">debug_project</span></code> (both together is accepted); a
+student sending either gets 403. Presenting a debug project shows its hidden machines to the
+spectators, who see the presenter’s page.</p></li>
 <li><p><strong>Groups</strong> (the link in the header, <code class="docutils literal notranslate"><span class="pre">/groups</span></code>): the user groups of the site by kind (the
 departments, the groups of the directory, the custom groups), their members, and the editing
 of the custom groups (<em>User groups</em> above).</p></li>
@@ -1854,12 +2159,25 @@ closing the project) and the bars are grey again. The spectators follow the inst
 page: the tab, the terminals the instructor opens (joined read-only: the students see the same
 shell, cannot type, and do not change its size), the question, the schema options, the
 <em>Instructor mode</em> texts, the Display tab view-only, the scroll of the tab shown and the pan and
-zoom of the schema (followed as the instructor scrolls, a few times a second), and the
+zoom of the schema (followed as the instructor scrolls, a few times a second), the
+instructor’s mouse pointer (an arrow with their name, sent on the presentation socket about
+25 times a second while it moves over the panes, the tab bar or a terminal; nothing is shown
+while it is elsewhere) and the text the instructor selects (in the page, highlighted without
+touching the student’s own selection; in a terminal, selected in the student’s read-only
+terminal), and the
 Evaluation tab shows them the table of the instructor’s page as it is, sent through the portal
 after each evaluation, in the instructor’s language (the archive of the project holds numbers
 only, while the instructor’s own self-evaluation may be letters). A reloaded page goes on
 presenting; a page closed for a minute ends the presentation. A student is in one presentation
 at a time (the newest that includes them), and falls back to the previous one when it ends.</p></li>
+<li><p><strong>Webconf</strong>: the button of the site bar (when <code class="docutils literal notranslate"><span class="pre">[bbb]</span></code> of <code class="docutils literal notranslate"><span class="pre">web.toml</span></code> names a BigBlueButton
+server, <em>Web conference</em> above) opens the rooms: start one for chosen students and groups,
+join a colleague’s as a moderator, change its audience, end it. The students put in a room get
+the client in a window over their page.</p></li>
+<li><p><strong>Talk privately</strong>: on a student’s project, next to <em>Focus student on project</em>: the student is
+invited to a conversation of the two alone, voice and text (a banner, <em>Join</em> / <em>Not now</em>); once
+they join, both browsers show a private room instead of the class conference, and come back to
+it when the conversation ends (<em>Private conversations</em> above).</p></li>
 </ul>
 </section>
 <section id="administrators">
@@ -1892,7 +2210,10 @@ configured, <code class="docutils literal notranslate"><span class="pre">attr_gr
 start, end (the last request: an idle session ends there, not at its expiry), duration, number
 of requests, the labs of the projects used (the running lab names as a tooltip) and what closed
 it (<em>Logout</em>, <em>Idle</em>, <em>Shutdown</em>; <em>Still open</em> with the number of pages, terminals and desktops
-connected). Only the login and address
+connected). A click on a header sorts the rows by that column, a second click reverses the
+order (the default is the end time, newest first, an open session counting as not ended yet,
+hence first); the sort applies to the rows shown, the page, not to the whole log: widen the
+page with <em>Rows</em> or narrow the filters. Only the login and address
 prefixes and the time window apply; the window bounds the time a session was <strong>closed</strong>
 (<code class="docutils literal notranslate"><span class="pre">session_timeout</span></code> after the last request for an idle one; an open session is listed when it
 was active in the window); the other filters are hidden. The <em>show</em> cell of a row opens the
@@ -1902,7 +2223,8 @@ closing line show an empty name and group.</p>
 <p>The <strong>Events</strong> view (<code class="docutils literal notranslate"><span class="pre">?view=events</span></code> in the URL) lists the events newest first, one row per
 event with its time (the local time of the browser), event, login, client address, host,
 project, lab, status, duration and the other fields of the line as <code class="docutils literal notranslate"><span class="pre">key=value</span></code>; a <code class="docutils literal notranslate"><span class="pre">denied</span></code> or
-<code class="docutils literal notranslate"><span class="pre">login_failed</span></code> line, a status of 400 or more and a failed start are red. The form filters by
+<code class="docutils literal notranslate"><span class="pre">login_failed</span></code> line, a status of 400 or more and a failed start are red. The headers sort the
+rows shown the same way (the time, newest first, by default). The form filters by
 login and address (prefixes: <code class="docutils literal notranslate"><span class="pre">10.0.1.</span></code> is a subnet), event (every event name; in proxy mode
 without <code class="docutils literal notranslate"><span class="pre">login</span></code> and <code class="docutils literal notranslate"><span class="pre">login_failed</span></code>, which never occur there), host (exact), project and lab
 (substrings; the lab is only on the <code class="docutils literal notranslate"><span class="pre">start</span></code> lines) and a time window.</p>
@@ -1946,9 +2268,10 @@ deleted since, a department of nobody) gives nothing and the page says so. The d
 of a session filters on that department. The filter is kept in the URL as <code class="docutils literal notranslate"><span class="pre">group=kind:name</span></code> (a
 bare name is a department, like the Watch page’s) and logged as <code class="docutils literal notranslate"><span class="pre">group_filter</span></code>; without any
 group source the parameter is refused (400).</p>
-<p>In the two list views the filters stay in the URL, so a filtered view reloads and can be sent
-to a colleague; <em>Older</em> / <em>Newer</em> page through the rows (100, 500 or 1000 at a time, by a
-cursor on the row ids: a page is stable while new events arrive) and a click on a login,
+<p>In the two list views the filters stay in the URL (the sort of the headers does not), so a
+filtered view reloads and can be sent to a colleague; <em>Older</em> / <em>Newer</em> page through the rows
+(100, 500 or 1000 at a time, by a cursor on the row ids: a page is stable while new events
+arrive; each page is sorted on its own) and a click on a login,
 address or, in the events view, event, host or project cell filters on that value. Nothing is
 polled: <em>Search</em> asks again. Each query is a <code class="docutils literal notranslate"><span class="pre">history</span></code> line of the log itself, with the filters
 asked (<code class="docutils literal notranslate"><span class="pre">view=sessions</span></code> for the sessions, <code class="docutils literal notranslate"><span class="pre">view=statistics</span></code> and the period resolved for the
@@ -2005,7 +2328,8 @@ HTTPS; it lives 14 days from the sign-in (a language change sets it again with i
 date: a session never slides) and carries the role, group and administrator flag of the
 sign-in (a change in the directory applies at the next sign-in: Logout, or the expiry); the
 state-changing calls need the <code class="docutils literal notranslate"><span class="pre">X-Requested-With:</span> <span class="pre">sre-web</span></code> header and the WebSockets a
-matching <code class="docutils literal notranslate"><span class="pre">Origin</span></code>; the pages carry a <code class="docutils literal notranslate"><span class="pre">Content-Security-Policy</span></code>.</p></li>
+matching <code class="docutils literal notranslate"><span class="pre">Origin</span></code>; the pages carry a <code class="docutils literal notranslate"><span class="pre">Content-Security-Policy</span></code> (the origin of the BigBlueButton
+server added to its <code class="docutils literal notranslate"><span class="pre">frame-src</span></code> when <code class="docutils literal notranslate"><span class="pre">[bbb]</span></code> is set: the only other origin a page may frame).</p></li>
 <li><p>In proxy mode nothing is stored in a cookie: every request carries the identity set by the
 reverse proxy, accepted from the peers of <code class="docutils literal notranslate"><span class="pre">trusted_proxies</span></code> only (a request reaching the
 portal from anywhere else has no identity, headers or not).</p></li>
@@ -2065,7 +2389,11 @@ never from the agent), relayed to the agent under the presenter’s identity
 portal never forwards what a spectator’s browser sends on a terminal socket and the agent
 attaches a read-only client that cannot type nor resize, and the display socket of a spectator
 goes through a filter dropping the RFB input and resize messages (an unexpected message closes
-it). The presentations live in the portal’s memory.</p></li>
+it). From the browsers, the presentation socket takes the pointer frames of the presenter’s
+page only (a JSON object of at most 1 KiB locating the mouse, at most 60 a second, every other
+frame ignored; a spectator’s frames are ignored); the pointer and the selection name nodes of
+the page and cells of a terminal, never a pixel, and a spectator’s page resolves them on its
+own layout. The presentations live in the portal’s memory.</p></li>
 </ul>
 <p><strong>The virtual desktops.</strong> Each <code class="docutils literal notranslate"><span class="pre">Xvnc</span></code> listens on TCP port 6000+N on every interface of the pool
 host, protected by the MIT cookie of its project only, exactly like the X server of a workstation
@@ -2101,8 +2429,22 @@ applies to an instructor evaluating several students’ projects in a row.</p></
 <li><p>A presentation ends when the portal restarts (nothing is kept on disk); the agents log the
 spectators under the presenter’s login (the connection log of the portal has the real ones); a
 spectator’s terminal shows the presenter’s grid at a smaller font when their window is smaller;
+the presenter’s pointer and selection are shown where the student’s page holds the same
+element: a student reading the lab in another language sees the pointer on the matching
+paragraph and no selection there; in a terminal they follow the text (the rows are counted
+from the cursor, a selection is found again by the text of its first and last rows), so a
+selection of rows older than the student’s 64 KiB replay is not shown, the student’s terminal
+does not follow the scrollback position of the presenter’s (a pointer on rows the student’s
+screen does not show is hidden), and when several users type in the presented terminal its
+pty takes the smallest window, so a wider presenter’s terminal wraps the long lines elsewhere
+and the pointer and the selection on them may miss; the pointer is not shown while the
+presenter’s page has no socket open;
 a presented project never idles out while it is watched. A focus ends when the portal restarts
 too; while one is on, the student’s other browser tabs all go to the project.</p></li>
+<li><p>A web conference is forgotten when the portal restarts (the meeting goes on on the
+BigBlueButton server until it expires); every page of the site joins the meeting again (a few
+seconds); two tabs of one user hand the client over to each other, but two pages loading at the
+same instant may both join.</p></li>
 </ul>
 </section>
 <section id="development">
@@ -2165,7 +2507,11 @@ its environment reaches the fake <code class="docutils literal notranslate"><spa
 </div>
 <p>Without a command the pool stays up until Ctrl-C (<code class="docutils literal notranslate"><span class="pre">portal=...</span> <span class="pre">admin_token=...</span> <span class="pre">workdir=...</span></code> is
 printed first), for runs by hand. The work directory (configs, <code class="docutils literal notranslate"><span class="pre">portal.log</span></code>, <code class="docutils literal notranslate"><span class="pre">access.log</span></code>, one
-<code class="docutils literal notranslate"><span class="pre">agent.log</span></code> and <code class="docutils literal notranslate"><span class="pre">sre.log</span></code> per host) is removed at the end unless <code class="docutils literal notranslate"><span class="pre">--keep-workdir</span></code> or a daemon died.
+<code class="docutils literal notranslate"><span class="pre">agent.log</span></code> and <code class="docutils literal notranslate"><span class="pre">sre.log</span></code> per host) is removed at the end unless <code class="docutils literal notranslate"><span class="pre">--keep-workdir</span></code> or a daemon died;
+the end of the log of a daemon that died is printed with the failure. The agents listen on the
+ports after the portal’s (<code class="docutils literal notranslate"><span class="pre">--listen</span></code>, 18450 by default): keep them below the ephemeral ports of
+the system (32768 on Linux), where a port may be held by a client connection, even for a minute
+after it closed.
 <code class="docutils literal notranslate"><span class="pre">--administrators</span> <span class="pre">prof,...</span></code> makes those logins administrators of the portal (<code class="docutils literal notranslate"><span class="pre">[auth]</span> <span class="pre">administrators</span></code>), so that an instructor among them (<code class="docutils literal notranslate"><span class="pre">X-Remote-Gid:</span> <span class="pre">2000</span></code>) can exercise the
 History page; its Sessions view lists the open sessions without any database.</p>
 </section>
@@ -2267,6 +2613,10 @@ students’ projects by itself), then remove the archives of the synthetic login
 <li><a class="reference internal" href="#the-archives-of-the-evaluations">The archives of the evaluations</a></li>
 <li><a class="reference internal" href="#user-groups">User groups</a></li>
 <li><a class="reference internal" href="#exams">Exams</a></li>
+<li><a class="reference internal" href="#web-conference-bigbluebutton">Web conference (BigBlueButton)</a><ul>
+<li><a class="reference internal" href="#private-conversations">Private conversations</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#securing-the-pool-mutual-tls">Securing the pool (mutual TLS)</a></li>
 <li><a class="reference internal" href="#a-whole-site-at-once-scripts-make-web-hosts-sh">A whole site at once (<code class="docutils literal notranslate"><span class="pre">scripts/make-web-hosts.sh</span></code>)</a></li>
 <li><a class="reference internal" href="#a-pool-of-workstations">A pool of workstations</a></li>
