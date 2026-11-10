@@ -90,6 +90,16 @@ FILTER_KEYS = ('student', 'group', 'lab', 'host', 'since', 'until', 'exam', 'sho
 REPORT_KINDS = ('sheet', 'outline', 'summary')
 REPORT_MAX_IDS = 1000
 REPORT_MAX_ROWS = 5000
+#: The PDF reports and their summary read the elements of the best evaluation of each student
+#: only: every other evaluation of the selected projects is sent as a *light* record (the
+#: columns, without the details), so that a request may expand to many more rows.
+REPORT_LIGHT_KINDS = ('outline', 'summary')
+REPORT_MAX_LIGHT_ROWS = 150_000    # about 300 bytes of JSON each: under REPORT_MAX_BODY
+#: What a light record keeps of its row (``row_to_dict``): what ``sre report`` reads of an
+#: evaluation that is not the best one (``SRE.archive_summary.raw_from_record``), and the id.
+LIGHT_COLUMNS = ('id', 'ts', 'rln', 'login', 'fullname', 'group', 'hostname', 'grade', 'max_grade', 'mark',
+                 'maximum_mark', 'errors', 'warnings', 'exam', 'exam_time_remaining')
+REPORT_DETAILS_CHUNK = 500     # ids per SELECT of the details of the best evaluations
 REPORT_MAX_BODY = 64 << 20
 REPORT_EXPAND_OPTION = 'all_evaluations'
 REPORT_FLAG_OPTIONS = ('separate_instances', 'bonus_in_prefix', 'no_timeline', 'remaining_time', 'no_parts')
@@ -138,6 +148,9 @@ INSERT = ("INSERT IGNORE INTO `{table}` (" + ', '.join(COLUMNS) + ") VALUES (" +
 _SUMMARY_COLUMNS = ('id',) + COLUMNS[:-1]
 SELECT_ROWS = "SELECT " + ', '.join(f"t.{c}" for c in _SUMMARY_COLUMNS) + " FROM `{table}` t"
 SELECT_FULL = "SELECT " + ', '.join(f"t.{c}" for c in _SUMMARY_COLUMNS + ('details',)) + " FROM `{table}` t"
+#: The remaining exam time of a row out of its details (the history table of a PDF report with
+#: its "Time Remaining" column): the one statement that makes the server read the details.
+REMAINING_COLUMN = "JSON_VALUE(t.details, '$.exam_time_remaining') AS exam_time_remaining"
 CURSORS = "SELECT host, MAX(archive) AS archive FROM `{table}` GROUP BY host"
 LABS = "SELECT DISTINCT canonical_lab FROM `{table}` ORDER BY canonical_lab"
 GROUPS = "SELECT DISTINCT grp FROM `{table}` WHERE grp <> '' ORDER BY grp"
@@ -362,6 +375,93 @@ def build_report_select(table: str, ids: list, *, all_evaluations: bool, limit: 
     return SELECT_FULL.format(table=table) + where + " ORDER BY t.rln, t.id LIMIT %s", [*ids, limit + 1]
 
 
+def build_light_report_select(table: str, ids: list, *, limit: int, remaining_time: bool = False) -> tuple[str, list]:
+    """Every row of the projects of *ids* without its details (the light records of a PDF
+    report or of its summary), by project and id, ``limit + 1`` rows; with *remaining_time*
+    the remaining exam time is read out of the details (``REMAINING_COLUMN``)."""
+    marks = ', '.join(['%s'] * len(ids))
+    select = SELECT_ROWS
+    if remaining_time:
+        select = select.replace(" FROM ", ", " + REMAINING_COLUMN + " FROM ", 1)
+    return (select.format(table=table) + f" WHERE t.rln IN (SELECT s.rln FROM `{table}` s WHERE s.id IN ({marks}))"
+            " ORDER BY t.rln, t.id LIMIT %s", [*ids, limit + 1])
+
+
+def build_details_select(table: str, ids: list) -> tuple[str, list]:
+    """The rows *ids* with their details."""
+    marks = ', '.join(['%s'] * len(ids))
+    return SELECT_FULL.format(table=table) + f" WHERE t.id IN ({marks}) ORDER BY t.id", list(ids)
+
+
+def _number(value):
+    """The number a ``JSON_VALUE`` text stands for (the text itself when it is none)."""
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode('utf-8', 'replace')
+    if not isinstance(value, str):
+        return value
+    for convert in (int, float):
+        try:
+            return convert(value)
+        except ValueError:
+            pass
+    return value
+
+
+def best_candidates(rows: list) -> list:
+    """The ids of the rows (``row_to_dict``) one of which ``sre report outline`` / ``summary``
+    takes as the best evaluation of its group, hence the only ones whose elements are read:
+    per project, login and hostname, the rows of the highest grade, and among them those of
+    the earliest second (the command takes the highest total, then the earliest date; a tie
+    keeps every row of it).  The group of a report (lab, login, hostname, and the project with
+    ``separate_instances``) is a union of those, so its best row is one of them.  (The command
+    compares local naive dates: two rows of the best grade on either side of the hour repeated
+    at the end of the summer time may be told apart the other way.)"""
+    best: dict = {}
+    for row in rows:
+        key = (row.get('rln'), row.get('login'), row.get('hostname'))
+        grade = row.get('grade') or 0
+        ts = row.get('ts')
+        when = float('-inf') if ts is None else int(ts)
+        entry = best.get(key)
+        if entry is None or grade > entry[0] or (grade == entry[0] and when < entry[1]):
+            best[key] = [grade, when, [row.get('id')]]
+        elif grade == entry[0] and when == entry[1]:
+            entry[2].append(row.get('id'))
+    return sorted(i for entry in best.values() for i in entry[2] if i is not None)
+
+
+def light_report_records(rows: list, full_rows: list) -> tuple[list, int]:
+    """``(records, number of full ones)`` of a PDF report: one record per row of *rows* (light
+    rows, in their order), the full record (``record_of_row`` with the details) for those of
+    *full_rows*, else a light one: the columns, plus the ``email`` and ``language`` of a full
+    row of the same project (the reports read the name and e-mail of the first record of a
+    student, not of the best)."""
+    full = {row.get('id'): row for row in full_rows}
+    shared: dict = {}
+    for row in full_rows:
+        details = row.get('details') if isinstance(row.get('details'), dict) else {}
+        shared.setdefault(row.get('rln'), {key: details[key] for key in ('email', 'language') if details.get(key)})
+    records, count = [], 0
+    for row in rows:
+        whole = full.get(row.get('id'))
+        if whole is not None:
+            record = record_of_row(whole)
+            if row.get('exam_time_remaining') is not None:
+                record.setdefault('exam_time_remaining', row['exam_time_remaining'])
+            count += 1
+        else:
+            record = record_of_row({key: row[key] for key in LIGHT_COLUMNS if key in row})
+            for key, value in shared.get(row.get('rln'), {}).items():
+                record.setdefault(key, value)
+        records.append(record)
+    return records, count
+
+
+def report_body(records: list, flags: dict) -> bytes:
+    """The body of ``POST /v1/reports/{kind}`` of the agent (compact: it may hold many records)."""
+    return json.dumps({'records': records, 'options': flags}, separators=(',', ':')).encode('utf-8')
+
+
 def _scope_predicates(filters: dict, prefix: str) -> tuple:
     """The predicates every row and its challengers share (the time window, the host, the exam
     flag), on the table aliased *prefix* (``t.`` or ``t2.``)."""
@@ -474,6 +574,33 @@ class ArchiveDatabase:
 
     async def report_rows(self, ids: list, *, all_evaluations: bool, limit: int = REPORT_MAX_ROWS) -> dict:
         return await asyncio.to_thread(self.report_rows_sync, ids, all_evaluations=all_evaluations, limit=limit)
+
+    def light_report_sync(self, ids: list, *, limit: int = REPORT_MAX_LIGHT_ROWS, remaining_time: bool = False) -> dict:
+        """``{'records', 'count', 'projects', 'full', 'truncated'}`` of a PDF report or of its
+        summary on every evaluation of the projects of *ids*: the light rows
+        (``build_light_report_select``), then the details of the best candidates alone
+        (``best_candidates``, ``REPORT_DETAILS_CHUNK`` ids per statement), turned into records
+        by ``light_report_records``; ``truncated`` (and no record) above *limit* rows."""
+        sql, params = build_light_report_select(self.table, ids, limit=limit, remaining_time=remaining_time)
+        names, rows = fetch(self.connect, sql, params)
+        if len(rows) > limit:
+            return {'records': [], 'count': 0, 'projects': 0, 'full': 0, 'truncated': True}
+        rows = [row_to_dict(names, row) for row in rows]
+        for row in rows:
+            if 'exam_time_remaining' in row:
+                row['exam_time_remaining'] = _number(row['exam_time_remaining'])
+        wanted, full_rows = best_candidates(rows), []
+        for start in range(0, len(wanted), REPORT_DETAILS_CHUNK):
+            sql, params = build_details_select(self.table, wanted[start:start + REPORT_DETAILS_CHUNK])
+            names, chunk = fetch(self.connect, sql, params)
+            full_rows.extend(row_to_dict(names, row) for row in chunk)
+        chosen = set(wanted)
+        records, full = light_report_records(rows, [row for row in full_rows if row.get('id') in chosen])
+        return {'records': records, 'count': len(rows), 'projects': len({row.get('rln') for row in rows}),
+                'full': full, 'truncated': False}
+
+    async def light_report(self, ids: list, *, limit: int = REPORT_MAX_LIGHT_ROWS, remaining_time: bool = False) -> dict:
+        return await asyncio.to_thread(self.light_report_sync, ids, limit=limit, remaining_time=remaining_time)
 
     def options_sync(self) -> dict:
         """``{'labs': [...], 'groups': [...]}``: the distinct labs and student groups of the table."""

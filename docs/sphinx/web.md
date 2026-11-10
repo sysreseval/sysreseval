@@ -502,8 +502,15 @@ stdout, one report at a time per host, `[timeouts] report` of `agent.toml`, `600
 answers the download the portal streams to the browser. The files are therefore those `sre
 sheet` / `sre outline` would give on the same archives, in the language of the instructor; the
 elements of an evaluation whose details were too big for the table (over 1 MB) are missing from
-them. Every download is a `report` line of the connection log (the kind, the rows ticked, the
-options, the evaluations and projects sent, the host that built the file).
+them. The PDF reports and their summary read the grade elements of one evaluation per student
+only, the best one (the highest total, the earliest of them): when every evaluation of the
+selected projects is asked, the portal sends the others as *light* records (the student, the
+time, the totals, the error counts: about 300 bytes instead of several kilobytes), read without
+their details from the database, so that such a request may cover 150 000 evaluations (hundreds
+of projects evaluated every minute for hours) where the spreadsheet of `sre sheet`, which shows
+the elements of every evaluation, stops at 5000. Every download is a `report` line of the
+connection log (the kind, the rows ticked, the options, the evaluations and projects sent, `full`
+= the evaluations sent with their details, the host that built the file).
 
 One cursor per host, the greatest archive name taken, lives in the portal's memory and is read
 from the table itself at the first round after a start (`SELECT host, MAX(archive) … GROUP BY
@@ -1250,8 +1257,10 @@ What an instructor gets:
   (`--separate-instances`: a student who opened a lab twice gets two reports, or two summary rows,
   instead of one with two history tables), **"Bonus" before the label** (`--bonus-in-prefix`),
   **Evaluation history**, **Remaining time column** (exams) and **Group by part** (the PDF only:
-  the two spreadsheets ignore them). At most 1000 rows may be ticked and a request may cover 5000
-  evaluations (the page says so: narrow the selection or untick the option). The file is named
+  the two spreadsheets ignore them). At most 1000 rows may be ticked; the PDF reports and the
+  summary spreadsheet may cover 150 000 evaluations (300 projects of 300 evaluations give their
+  PDFs in about a minute), the spreadsheet 5000 (the page says so: narrow the selection or
+  untick the option). The file is named
   after the lab when the selection is of one lab (`evaluations_dhcp_20261109-1430.ods`,
   `reports_dhcp_20261109-1430.zip`, `summary_dhcp_20261109-1430.ods`), is built by one agent
   of the pool from the stored rows (*The archives of the evaluations* above) in the language of

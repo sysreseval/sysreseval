@@ -234,6 +234,154 @@ class TestReports:
         assert page['rows'][0]['details']['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
         assert reader.report_rows_sync([5], all_evaluations=False, limit=1) == {'rows': page['rows'][:1], 'truncated': True}
 
+    def test_light_selects(self):
+        sql, params = R.build_light_report_select('archives', [5, 9], limit=100)
+        assert sql.startswith('SELECT t.id, t.ts') and 'details' not in sql
+        assert sql.endswith("FROM `archives` t WHERE t.rln IN (SELECT s.rln FROM `archives` s WHERE s.id IN (%s, %s)) "
+                            "ORDER BY t.rln, t.id LIMIT %s") and params == [5, 9, 101]
+        sql, params = R.build_light_report_select('archives', [5], limit=10, remaining_time=True)
+        assert ", JSON_VALUE(t.details, '$.exam_time_remaining') AS exam_time_remaining FROM `archives` t WHERE" in sql
+        assert params == [5, 11]
+        sql, params = R.build_details_select('archives', [7, 3])
+        assert ', t.details FROM `archives` t WHERE t.id IN (%s, %s) ORDER BY t.id' in sql and params == [7, 3]
+        assert (R._number('1200'), R._number(b'1.5'), R._number('soon'), R._number(None), R._number(3)) == \
+            (1200, 1.5, 'soon', None, 3)
+
+    def test_best_candidates(self):
+        def row(i, grade, ts, rln='p1', login='alice', hostname='h'):
+            return {'id': i, 'rln': rln, 'login': login, 'hostname': hostname, 'grade': grade, 'ts': ts}
+
+        rows = [row(1, 1.0, 100.0), row(2, 3.0, 200.2), row(3, 3.0, 200.9), row(4, 3.0, 300.0), row(5, 2.0, 50.0),
+                row(6, 0.0, 10.0, rln='p2'), row(7, None, 5.0, rln='p2'), row(8, 0.0, 5.5, rln='p2'),
+                row(9, 4.0, 1.0, rln='p3', login='bob'), row(10, 9.0, 2.0, rln='p3', login='bob', hostname='other')]
+        # the highest grade, its earliest second with the ties; a missing grade counts as 0; a
+        # project whose rows name two hosts gives a candidate for each
+        assert R.best_candidates(rows) == [2, 3, 7, 8, 9, 10]
+        assert R.best_candidates([]) == []
+        assert R.best_candidates([row(1, 2.0, 9.0), row(2, 2.0, None)]) == [2]      # no date: the command's first
+
+    def test_light_report_records(self):
+        names = ['id', *R.COLUMNS]
+        first = R.row_to_dict(names, (5, *R.row_of_record('a01', record(grade=1.0))))
+        best = R.row_to_dict(names, (6, *R.row_of_record('a01', record(archive='b', grade=2.0, exam_time_remaining=600))))
+        light = [{**{k: v for k, v in r.items() if k != 'details'}, 'exam_time_remaining': t}
+                 for r, t in ((first, 900), (best, 600))]
+        records, full = R.light_report_records(light, [best])
+        assert full == 1 and [r['id'] for r in records] == [5, 6]
+        assert 'elements' not in records[0] and 'errors' not in records[0] and 'details' not in records[0]
+        assert 'archive' not in records[0] and 'host' not in records[0] and 'lab' not in records[0]
+        assert records[0]['email'] == 'a@x.org' and records[0]['language'] == 'fr'        # of the project's full row
+        assert records[0]['exam_time_remaining'] == 900 and records[0]['error_count'] == 1
+        assert records[0]['running_lab_name'] == RLN and records[0]['eval_date'] == '2026-10-25T08:01:02+00:00'
+        assert records[1] == R.record_of_row(best) and records[1]['elements']
+        # a best row gone meanwhile: light records alone
+        alone, full = R.light_report_records(light, [])
+        assert full == 0 and [r['id'] for r in alone] == [5, 6] and not any('elements' in r or 'email' in r for r in alone)
+        body = json.loads(R.report_body(records, {'no_parts': True}))
+        assert body == {'records': records, 'options': {'no_parts': True}} and b', ' not in R.report_body([{'a': 1, 'b': 2}], {})
+
+
+class _Rows:
+    """A connection answering the statements of a light report from a list of full rows."""
+
+    def __init__(self, rows, statements):
+        self.rows, self.statements = rows, statements
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=()):
+        self.statements.append((sql, list(params)))
+        names = ['id', *R.COLUMNS]
+        if ', t.details FROM' in sql:
+            self.description = [(n,) for n in names]
+            self.result = [r for r in self.rows if 's.id IN' in sql or r[0] in params]
+        elif 'JSON_VALUE' in sql:
+            self.description = [(n,) for n in names[:-1] + ['exam_time_remaining']]
+            self.result = []
+            for r in self.rows:
+                value = json.loads(r[-1]).get('exam_time_remaining')
+                self.result.append(r[:-1] + (None if value is None else str(value),))
+        else:
+            self.description = [(n,) for n in names[:-1]]
+            self.result = [r[:-1] for r in self.rows]
+        self.result = self.result[:params[-1]] if sql.endswith('LIMIT %s') else self.result
+
+    def fetchall(self):
+        return self.result
+
+    def close(self):
+        pass
+
+
+class TestLightReports:
+    """The PDF reports and their summary from light records: the same files as from every
+    record with its details."""
+
+    @staticmethod
+    def _database(tmp_path, monkeypatch):
+        test_report = pytest.importorskip('test_report')
+        test_report._fill(tmp_path)
+        records = test_report._records(tmp_path)
+        # more evaluations around the best ones: a later tie of bob's best grade, a lower one of alice
+        extra = []
+        for rec in records:
+            later = dict(rec, archive=rec['archive'] + '.later', eval_date=rec['eval_date'].replace('2026-09-10', '2026-09-11'))
+            extra.append(later)
+            if rec['login'] == 'alice':
+                extra.append(dict(later, archive=rec['archive'] + '.lower', grade=1.0, exam_time_remaining=300,
+                                  eval_date=rec['eval_date'].replace('2026-09-10', '2026-09-09')))
+        rows = [(i + 1, *R.row_of_record('a01', rec)) for i, rec in enumerate(records + extra)]
+        rows.sort(key=lambda r: (r[4], r[0]))
+        statements = []
+        return R.ArchiveDatabase('archives', connect=lambda: _Rows(rows, statements)), rows, statements, test_report
+
+    @staticmethod
+    def _pdf(data: bytes) -> bytes:
+        import re
+        # without the creation date and the file id made of it
+        return re.sub(rb'/CreationDate \([^)]*\)|/ID \[[^\]]*\]', b'', data)
+
+    @pytest.mark.parametrize('flags', [{}, {'separate_instances': True}, {'remaining_time': True}])
+    def test_same_files_as_the_full_records(self, tmp_path, monkeypatch, flags):
+        import io
+        import zipfile
+        from SRE.command import report
+        reader, rows, statements, test_report = self._database(tmp_path, monkeypatch)
+        ids = [rows[0][0], rows[-1][0]]
+        whole = [R.record_of_row(r) for r in reader.report_rows_sync(ids, all_evaluations=True)['rows']]
+        del statements[:]
+        page = reader.light_report_sync(ids, remaining_time=bool(flags.get('remaining_time')))
+        assert page['truncated'] is False and page['count'] == len(rows) == len(whole)
+        assert page['projects'] == len({r[4] for r in rows}) and 0 < page['full'] < len(rows) / 2
+        assert ('JSON_VALUE' in statements[0][0]) is bool(flags.get('remaining_time'))
+        assert len(statements) == 2 and len(statements[1][1]) == page['full']
+        light = json.loads(R.report_body(page['records'], {}))['records']
+        assert sum(1 for r in light if 'elements' in r) == page['full']
+        assert len(R.report_body(light, {})) < len(R.report_body(whole, {}))
+        for kind in ('outline', 'summary'):
+            expected = report.generate_report(kind, whole, lang='en', **flags)
+            got = report.generate_report(kind, light, lang='en', **flags)
+            if kind == 'summary':
+                assert test_report._tables(got) == test_report._tables(expected)
+                continue
+            with zipfile.ZipFile(io.BytesIO(expected)) as a, zipfile.ZipFile(io.BytesIO(got)) as b:
+                assert a.namelist() == b.namelist() and len(a.namelist()) >= 3
+                for name in a.namelist()[:-1]:
+                    assert self._pdf(b.read(name)) == self._pdf(a.read(name)), name
+                assert test_report._tables(b.read(a.namelist()[-1])) == test_report._tables(a.read(a.namelist()[-1]))
+
+    def test_cap(self, tmp_path, monkeypatch):
+        reader, rows, statements, _ = self._database(tmp_path, monkeypatch)
+        page = reader.light_report_sync([1], limit=len(rows) - 1)
+        assert page == {'records': [], 'count': 0, 'projects': 0, 'full': 0, 'truncated': True} and len(statements) == 1
+
 
 class TestSink:
     """The sink of accessdb.py on the archives table: its own statements and words."""

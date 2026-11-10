@@ -1293,7 +1293,7 @@ class TestArchives:
         from test_web_accessdb import FakeServer, Down
         from test_web_archives import record as fake_record
         from sreweb.portal import routes as routes_module
-        from sreweb.portal.archives import COLUMNS, row_of_record, REPORT_MAX_ROWS
+        from sreweb.portal.archives import COLUMNS, row_of_record, REPORT_MAX_LIGHT_ROWS, REPORT_MAX_ROWS
         server = FakeServer(table_exists=True)
         over = {**PROXY_OVER, 'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB},
                 'archives': {'poll_interval': '1h'}}
@@ -1346,6 +1346,29 @@ class TestArchives:
                 assert resp.status == 200 and resp.headers['Content-Type'] == 'application/vnd.oasis.opendocument.spreadsheet'
                 assert resp.headers['Content-Disposition'].startswith('attachment; filename="summary_dhcp_')
                 assert json.loads(mock_log.read_text().splitlines()[-1])['argv'] == ['report', '--lang', 'en', '--', 'summary']
+                # every evaluation of the projects for the PDF reports and their summary: the rows
+                # without their details under a much higher cap, then the details of the best
+                # evaluation of each project alone (the fake answers both rows to both statements)
+                selects = [s for s in server.statements if s[1].startswith('SELECT t.id')][-2:]
+                assert 'details' not in selects[0][1] and selects[0][2] == [5, REPORT_MAX_LIGHT_ROWS + 1]
+                assert 't.rln IN (SELECT s.rln FROM `archives` s WHERE s.id IN (%s))' in selects[0][1]
+                assert ', t.details FROM `archives` t WHERE t.id IN (%s, %s)' in selects[1][1] and selects[1][2] == [5, 6]
+                later = (7, *row_of_record('a01', fake_record(archive='20261025100200_later.zst', grade=0.5,
+                                                              eval_date='2026-10-25T10:02:00+02:00')))
+                server.select_rows = [alice_row, later, bob_row]
+                resp = await post({'kind': 'outline', 'ids': [5], 'options': {'remaining_time': True}})
+                assert resp.status == 200
+                with zipfile.ZipFile(io.BytesIO(await resp.read())) as archive:
+                    records = json.loads(archive.read('records.json'))
+                assert [(r['id'], 'elements' in r) for r in records] == [(5, True), (7, False), (6, True)]
+                assert records[1]['email'] == 'a@x.org' and records[1]['grade'] == 0.5 and 'errors' not in records[1]
+                selects = [s for s in server.statements if s[1].startswith('SELECT t.id')][-2:]
+                assert 'JSON_VALUE' in selects[0][1] and selects[1][2] == [5, 6]
+                monkeypatch.setattr(routes_module, 'REPORT_MAX_LIGHT_ROWS', 2)
+                resp = await post({'kind': 'summary', 'ids': [5]})
+                assert resp.status == 413 and 'more than 2 evaluations' in (await resp.json())['error']
+                assert 'untick' not in (await resp.json())['error']
+                monkeypatch.setattr(routes_module, 'REPORT_MAX_LIGHT_ROWS', REPORT_MAX_LIGHT_ROWS)
                 # unknown rows, the cap, the database down
                 server.select_rows = []
                 assert (await post({'kind': 'sheet', 'ids': [77]})).status == 404
@@ -1363,6 +1386,7 @@ class TestArchives:
             assert (ok[0]['kind'], ok[0]['selected'], ok[0]['count'], ok[0]['projects'], ok[0]['host']) == \
                 ('sheet', '1', '2', '2', 'a01')
             assert ok[0]['options'] == 'all_evaluations,separate_instances' and ok[1]['options'] == ''
+            assert ok[0]['full'] == '2' and (ok[3]['kind'], ok[3]['count'], ok[3]['full']) == ('outline', '3', '2')
             assert any(l['status'] == '413' for l in reports) and any(l['login'] == 'bob' and l['status'] == '403' for l in reports)
         run(go())
 

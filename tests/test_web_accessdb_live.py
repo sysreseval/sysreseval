@@ -241,7 +241,7 @@ class TestLiveArchives:
                  f'20261025100300_{bob}.zst', f'20261025100400_{carol}.zst']
         records = [
             record(archive=names[0], eval_date='2026-10-25T10:01:02+02:00', grade=1.0),
-            record(archive=names[1], eval_date='2026-10-25T10:05:00+02:00', grade=2.0),
+            record(archive=names[1], eval_date='2026-10-25T10:05:00+02:00', grade=2.0, exam_time_remaining=600),
             record(archive=names[2], running_lab_name=other, eval_date='2026-10-25T11:05:00+02:00', grade=3.0),
             record(archive=names[3], running_lab_name=bob, login='bob', fullname='Bob B', group='INFO2',
                    eval_date='2026-10-25T10:03:00+02:00', grade=0.5, exam=True),
@@ -290,6 +290,15 @@ class TestLiveArchives:
         summary = db.summary_sync(parse_archive_filters({'lab': 'dhcp'}, default_show='student'), limit=1)
         assert summary['truncated'] is True and [r['login'] for r in summary['rows']] == ['alice']
         assert summary['rows'][0]['archive'] == names[2] and summary['rows'][0]['details']['managed'] is True
+        # a PDF report on every evaluation of alice's first project: the rows without their
+        # details (the remaining exam time read out of them by the server), the best one in full
+        page = db.light_report_sync([every[-1]['id']], remaining_time=True)
+        assert (page['count'], page['projects'], page['full'], page['truncated']) == (2, 1, 1, False)
+        first, best = page['records']
+        assert (first['grade'], 'elements' in first, first['exam_time_remaining'], first['email']) == (1.0, False, None, 'a@x.org')
+        assert (best['grade'], best['exam_time_remaining'], best['archive']) == (2.0, 600, names[1])
+        assert best['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
+        assert db.light_report_sync([every[-1]['id']], limit=1)['truncated'] is True
         # the cursor pages of every row
         seen, before = [], None
         while True:

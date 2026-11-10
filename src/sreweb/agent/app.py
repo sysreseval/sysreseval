@@ -769,13 +769,17 @@ class Agent:
             body = await request.clone(client_max_size=reports.MAX_REPORT_BODY).read()
         except web.HTTPRequestEntityTooLarge:
             raise AccessError(413, "the report request is too big")
-        try:
+        def parse():
+            # in a thread: the body may hold every evaluation of hundreds of projects
             records, options = reports.parse_report_request(json.loads(body))
+            return records, options, json.dumps({'records': records}, separators=(',', ':')).encode('utf-8')
+
+        try:
+            records, options, stdin = await asyncio.to_thread(parse)
         except ValueError as e:
             raise AccessError(400, f"bad report request: {e}")
         lang = identity.language or None
         flags = (['--lang', lang] if lang else []) + reports.report_flags(kind, options)
-        stdin = json.dumps({'records': records}).encode('utf-8')
         result = await self.runner.run(identity.login, sre_args('report', kind, options=flags), privileged=True,
                                        stdin=stdin, lang=lang)
         if not result.stdout:

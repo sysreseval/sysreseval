@@ -19,7 +19,8 @@ from .accesshistory import (parse_filters, session_filters, session_of_row, sess
                             UNLOGGED_FILTERS, HistoryError)
 from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
 from .archives import (ArchiveStore, parse_archive_filters, SHOW_STUDENT, MAX_SUMMARY_ROWS, parse_report_request,
-                       record_of_row, REPORT_EXPAND_OPTION, REPORT_MAX_BODY, REPORT_MAX_ROWS)
+                       record_of_row, report_body, REPORT_EXPAND_OPTION, REPORT_LIGHT_KINDS, REPORT_MAX_BODY,
+                       REPORT_MAX_LIGHT_ROWS, REPORT_MAX_ROWS)
 from .auth_ldap import LdapAuthenticator, LdapError
 from .groups import (Memberships, GroupError, KINDS, KIND_CUSTOM, MAX_BATCH, MAX_DESCRIPTION, check_group_name,
                      group_dict, group_key, parse_group_key, sort_key as group_sort_key)
@@ -954,9 +955,13 @@ class Routes:
         and streamed back as a download.  The body is ``{kind, ids: [row ids], options}``
         (``parse_report_request``); the ticked rows stand for their projects: every evaluation
         of the same projects is taken unless ``all_evaluations`` is false, at most
-        ``REPORT_MAX_ROWS`` (413 beyond: narrow the selection).  A ``report`` line of the log
-        with ``kind``, ``selected``, ``options``, ``count``, ``projects`` and ``host``, the status
-        being the agent's when it answered."""
+        ``REPORT_MAX_ROWS`` (413 beyond: narrow the selection).  The PDF reports and their
+        summary read the elements of the best evaluation of each student only: with
+        ``all_evaluations`` the other evaluations are sent as light records (the columns alone,
+        ``ArchiveDatabase.light_report``) and the cap is ``REPORT_MAX_LIGHT_ROWS``.  A ``report``
+        line of the log with ``kind``, ``selected``, ``options``, ``count``, ``projects``,
+        ``full`` (the records sent with their details) and ``host``, the status being the
+        agent's when it answered."""
         self._require_instructor(request)
         reader = self._archives_reader()
         try:
@@ -970,25 +975,33 @@ class Routes:
         if not await self._heavy_acquire():
             return json_error(503, "other reports are being computed, try again in a moment",
                               retry_after=HEAVY_RETRY_AFTER)
+        flags = {key: value for key, value in options.items() if key != REPORT_EXPAND_OPTION}
+        light = kind in REPORT_LIGHT_KINDS and options[REPORT_EXPAND_OPTION]
+        cap = REPORT_MAX_LIGHT_ROWS if light else REPORT_MAX_ROWS
         try:
-            page = await reader.report_rows(ids, all_evaluations=options[REPORT_EXPAND_OPTION], limit=REPORT_MAX_ROWS)
+            if light:
+                remaining = kind == 'outline' and options['remaining_time'] and not options['no_timeline']
+                page = await reader.light_report(ids, limit=cap, remaining_time=remaining)
+            else:
+                page = await reader.report_rows(ids, all_evaluations=options[REPORT_EXPAND_OPTION], limit=cap)
+                rows = page['rows']
+                page = {'records': [record_of_row(row) for row in rows], 'count': len(rows), 'full': len(rows),
+                        'projects': len({row.get('rln') for row in rows}), 'truncated': page['truncated']}
+            body = b'' if page['truncated'] else await asyncio.to_thread(report_body, page['records'], flags)
         except HistoryError as e:
             log.warning("archives database: a query failed: %s", e)
             return json_error(503, "the database of the archives does not answer")
         finally:
             self._heavy.release()
         if page['truncated']:
-            return json_error(413, f"more than {REPORT_MAX_ROWS} evaluations: narrow the selection, or untick "
-                                   "\"every evaluation of the selected projects\"")
-        rows = page['rows']
-        if not rows:
+            hint = "" if light else ", or untick \"every evaluation of the selected projects\""
+            return json_error(413, f"more than {cap} evaluations: narrow the selection{hint}")
+        if not page['records']:
             return json_error(404, "unknown evaluations")
-        flags = {key: value for key, value in options.items() if key != REPORT_EXPAND_OPTION}
-        body = json.dumps({'records': [record_of_row(row) for row in rows], 'options': flags}).encode('utf-8')
         if len(body) > REPORT_MAX_BODY:
             return json_error(413, "the report is too big: narrow the selection")
         if logged is not None:
-            logged.update({'count': len(rows), 'projects': len({row.get('rln') for row in rows})})
+            logged.update({'count': page['count'], 'projects': page['projects'], 'full': page['full']})
         identity = request[IDENTITY_KEY]
         for host in self.pool.report_hosts(identity)[:REPORT_HOSTS_TRIED]:
             if logged is not None:
