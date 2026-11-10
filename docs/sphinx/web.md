@@ -1743,7 +1743,11 @@ venv/bin/python3 scripts/web-fake-pool.py --hosts 4 --max-projects 25 -- \
 
 Without a command the pool stays up until Ctrl-C (`portal=... admin_token=... workdir=...` is
 printed first), for runs by hand. The work directory (configs, `portal.log`, `access.log`, one
-`agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died.
+`agent.log` and `sre.log` per host) is removed at the end unless `--keep-workdir` or a daemon died;
+the end of the log of a daemon that died is printed with the failure. The agents listen on the
+ports after the portal's (`--listen`, 18450 by default): keep them below the ephemeral ports of
+the system (32768 on Linux), where a port may be held by a client connection, even for a minute
+after it closed.
 `--administrators prof,...` makes those logins administrators of the portal (`[auth]
 administrators`), so that an instructor among them (`X-Remote-Gid: 2000`) can exercise the
 History page; its Sessions view lists the open sessions without any database.

@@ -10,7 +10,8 @@ prints ``portal=URL admin_token=TOKEN workdir=DIR`` and either waits for Ctrl-C 
 given after ``--`` with ``SRE_STRESS_PORTAL``, ``SRE_STRESS_ADMIN_TOKEN`` and ``SRE_STRESS_WORKDIR``
 in its environment (``scripts/web-stress.py`` reads the first two), and exits with its status.
 Everything is stopped at the end; the work directory (configs, ``portal.log``, ``access.log``,
-``<host>/agent.log`` and ``<host>/sre.log``) is removed unless ``--keep-workdir`` or a daemon died.
+``<host>/agent.log`` and ``<host>/sre.log``) is removed unless ``--keep-workdir`` or a daemon died
+(the end of its log is then printed on stderr: the reason, e.g. the port of an agent already in use).
 Every ``MOCK_*`` variable of the environment reaches the fake ``sre`` (the wrapper exports it with
 the delays: the agents build the environment of ``sre`` from scratch), e.g. ``MOCK_NO_MARK=1`` for
 the letters of a self-evaluation or ``MOCK_EVAL_ERRORS`` for errors on the Watch page.
@@ -43,6 +44,7 @@ ENV_ADMIN_TOKEN = 'SRE_STRESS_ADMIN_TOKEN'
 ENV_WORKDIR = 'SRE_STRESS_WORKDIR'
 READY_TIMEOUT = 30.0
 STOP_TIMEOUT = 15.0
+LOG_TAIL_LINES = 15                # of the log of a daemon that died, printed with the failure
 HOST_NAME = 'fake{:02d}'
 
 
@@ -186,6 +188,20 @@ def start_portal(files: PoolFiles, opts: PoolOptions) -> subprocess.Popen:
                             cwd=str(ROOT))
     log.close()
     return proc
+
+
+def log_file(files: PoolFiles, name: str) -> Path:
+    """The log of a daemon: ``portal.log``, or ``<host>/agent.log``."""
+    return files.workdir / 'portal.log' if name == 'portal' else files.workdir / name / 'agent.log'
+
+
+def log_tail(path: Path, lines: int = LOG_TAIL_LINES) -> str:
+    """The last *lines* lines of a log ('' when it is empty or cannot be read)."""
+    try:
+        text = path.read_text(errors='replace')
+    except OSError:
+        return ''
+    return '\n'.join(text.splitlines()[-lines:])
 
 
 def http_get(url: str, headers: dict, timeout: float = 5.0):
@@ -347,9 +363,16 @@ def main(argv=None) -> int:
                 if failure:
                     status = 1
     finally:
+        # the daemons that died by themselves (after stop_all() they all have): the end of their
+        # log says why, e.g. the port of an agent already in use
+        dead = [name for name, proc in procs if proc.poll() is not None] if failure else []
         stop_all(procs)
         if failure:
             print(f"web-fake-pool: {failure}; logs kept in {files.workdir}", file=sys.stderr)
+            for name in dead:
+                tail = log_tail(log_file(files, name))
+                if tail:
+                    print(f"web-fake-pool: the end of {log_file(files, name)}:\n{tail}", file=sys.stderr)
         elif not opts.keep_workdir:
             shutil.rmtree(files.workdir, ignore_errors=True)
         else:

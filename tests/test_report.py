@@ -22,6 +22,15 @@ from SRE.command import outline, report, sheet
 from SRE.params import SRE
 
 
+@pytest.fixture(autouse=True)
+def source_messages(monkeypatch):
+    """The three modules bind their gettext catalog at import, from the locale of the host: the
+    messages and the column names asserted below are the source ones wherever the tests run (a
+    French workstation gave `début_projet` and `aucun enregistrement à traiter`)."""
+    for module in (report, outline, sheet):
+        monkeypatch.setattr(module, '_', lambda text: text)
+
+
 def _args(*files, recursive=False):
     return types.SimpleNamespace(files=[str(f) for f in files], recursive=recursive)
 

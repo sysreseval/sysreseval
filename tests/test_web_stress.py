@@ -7,6 +7,7 @@ import csv
 import importlib.util
 import json
 import os
+import random
 import socket
 import subprocess
 import sys
@@ -40,10 +41,33 @@ def load_script(path: Path, name: str):
 stress = load_script(STRESS, 'web_stress')
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
+#: Where the fake pool of the tests listens: below the ephemeral ports of Linux (32768) and macOS (49152).
+PORT_RANGE = (20000, 32000)
+
+
+def free_port_run(count: int) -> int:
+    """The first of *count* consecutive loopback ports that can all be bound, drawn below the
+    ephemeral ports: the fake pool gives the ports after the portal's to its agents, and on Linux
+    an ephemeral port may be the one of a client connection, open or closed in the last minute
+    (TIME_WAIT), which no server can bind (``bind(0)`` hands out odd ports there and ``connect()``
+    even ones: the first agent of a portal on a ``bind(0)`` port was the one exposed)."""
+    for _ in range(100):
+        first = random.randrange(PORT_RANGE[0], PORT_RANGE[1] - count)
+        held = []
+        try:
+            for port in range(first, first + count):
+                s = socket.socket()
+                held.append(s)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)      # as asyncio binds its servers
+                s.bind(('127.0.0.1', port))
+        except OSError:
+            continue
+        else:
+            return first
+        finally:
+            for s in held:
+                s.close()
+    raise RuntimeError(f"no run of {count} free ports in {PORT_RANGE}")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -250,7 +274,7 @@ class TestEndToEnd:
 class TestFakePool:
     def test_two_hosts_and_the_generator(self, tmp_path):
         workdir = tmp_path / 'pool'
-        port = free_port()
+        port = free_port_run(3)            # the portal, then its two agents
         report_file = workdir / 'report.json'
         command = ['sh', '-c', f'"$0" "{STRESS}" --portal "$SRE_STRESS_PORTAL" --admin-token "$SRE_STRESS_ADMIN_TOKEN" '
                                f'--users 4 --hold 1 --browse 0.2 --type-pause 0.1 --report "$SRE_STRESS_WORKDIR/report.json"',
@@ -276,3 +300,21 @@ class TestFakePool:
             assert 'listening on' in (workdir / host / 'agent.log').read_text()
         assert not (workdir / 'fake01' / 'pub' / 'projects').is_dir() or \
             not any((workdir / 'fake01' / 'pub' / 'projects').iterdir())
+
+    def test_a_dead_agent_says_why(self, tmp_path):
+        """The port of the first agent is taken: the failure carries the end of that agent's log
+        (asserted on the words of asyncio: the errno text follows the locale of the host)."""
+        workdir = (tmp_path / 'pool').resolve()
+        port = free_port_run(3)
+        with socket.socket() as taken:
+            taken.bind(('127.0.0.1', port + 1))
+            taken.listen(1)
+            completed = subprocess.run([sys.executable, str(FAKE_POOL), '--hosts', '2', '--listen', f'127.0.0.1:{port}',
+                                        '--start-delay', '0', '--workdir', str(workdir), '--', 'true'],
+                                       capture_output=True, text=True, timeout=120, env={**os.environ, 'PYTHONPATH': ''})
+        assert completed.returncode == 1, completed.stdout + completed.stderr
+        assert 'portal=' not in completed.stdout
+        assert 'fake01 exited with status 1' in completed.stderr and f'logs kept in {workdir}' in completed.stderr
+        assert f"the end of {workdir / 'fake01' / 'agent.log'}" in completed.stderr
+        assert 'error while attempting to bind' in completed.stderr
+        assert (workdir / 'fake01' / 'agent.log').is_file()       # kept without --keep-workdir
