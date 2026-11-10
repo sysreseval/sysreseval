@@ -335,6 +335,13 @@ function renderStatus() {
   if (s.active_now === false) {
     pieces.push(_('outside the active hours'));
   }
+  // the state file of the portal cannot be written: a restart would undo what is changed here
+  const unsaved = typeof s.state_error === 'string' && s.state_error !== '';
+  if (unsaved) {
+    pieces.push(format(_('the changes are NOT saved, a restart of the portal loses them: {error}'),
+                       {error: s.state_error}));
+  }
+  statusElement.classList.toggle('unsaved', unsaved);
   statusElement.textContent = pieces.join(' — ');
 }
 

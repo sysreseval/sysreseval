@@ -13,7 +13,7 @@ Group=sre-web
 ExecStart=/usr/sbin/sre-web
 Restart=on-failure
 RestartSec=5
-# /var/lib/sre-web: the hosts added or removed with `sre-web-tool`
+# /var/lib/sre-web: the state of the pool (pool.json: what `sre-web-tool` and the Pool page changed)
 StateDirectory=sre-web
 StateDirectoryMode=0750
 # /var/log/sre-web: the connection log ([access_log] file of web.toml)

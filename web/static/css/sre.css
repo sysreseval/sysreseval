@@ -407,6 +407,7 @@ table.grid.pool td.state.off { background: var(--fail-bg); }   /* a host that do
 table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--muted); }
 .pool-status { margin: 0 8px 8px; }
 
+.pool-status.unsaved { color: var(--danger); font-weight: bold; }   /* the state file cannot be written */
 /* the History page of the administrators: the connection log read from its database */
 table.grid.history td.ts, table.grid.history td.num { white-space: nowrap; }
 table.grid.history td.details { font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; }

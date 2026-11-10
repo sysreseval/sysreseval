@@ -2,7 +2,7 @@
 through its administration API (``[admin] token`` of web.toml; stdlib ``urllib`` only).
 
   sre-web-tool list                 the hosts, their state, projects, load, terminals...
-  sre-web-tool status               the spare capacity, the floor, the active hours, who is waking
+  sre-web-tool status               the spare capacity, the floor, the active hours, who is waking, the state file
   sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only]
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
@@ -186,7 +186,8 @@ def main(argv, default_config: str) -> int:
     common.add_argument('--json', action='store_true', help="JSON output")
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('list', help="the hosts of the pool", parents=[common])
-    sub.add_parser('status', help="spare capacity, floor, active hours, hosts waking", parents=[common])
+    sub.add_parser('status', help="spare capacity, floor, active hours, hosts waking, the state file",
+                   parents=[common])
     add = sub.add_parser('add', help="add a host", parents=[common])
     add.add_argument('name')
     add.add_argument('--url', required=True, dest='host_url', help="the agent, e.g. https://10.0.0.11:8451")
@@ -249,6 +250,11 @@ def _dispatch(client: PoolClient, args) -> int:
                   f"{'active' if status['active_now'] else 'inactive'} now)")
             print(f"waking: {', '.join(status['waking']) or 'none'}")
             print(f"idle host timeout: {status['idle_host_timeout'] or 'never (the nightly cron)'}")
+            # what is changed by hand, kept across the restarts of the portal (an older portal says nothing)
+            if status.get('state_error'):
+                print(f"pool state: NOT SAVED in {status.get('state_file') or '?'}: {status['state_error']}")
+            elif 'state_file' in status:
+                print(f"pool state: {status['state_file'] or 'not kept (no state file)'}")
     elif args.command == 'add':
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
                 'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,

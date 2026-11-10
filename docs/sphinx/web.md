@@ -189,7 +189,7 @@ merges other files into this one, as for `web.toml` below.
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
 | `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes`; in anonymous mode `eval_interval` and `start_interval` count per client address too, since a new pseudonym costs one `POST /login` |
-| `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: the hosts added, removed, enabled and disabled by hand (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`) |
+| `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`; *Restarting the portal* below) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
 | `[access_log.database]` | none | the same events in a MariaDB / MySQL table (below): `host` or `unix_socket`, `port` (`3306`), `user`, `password` (in an imported secrets file), `name` (the database), `table` (`access_log`, created when missing), `keep` (`400` days of rows kept, purged daily; `0` = forever), `queue` (`10000` rows kept in memory while the server does not answer), `connect_timeout` (`5`); needs PyMySQL (`python3-pymysql`, a *Suggests* of the Debian package: optional) |
 | `[archives]` | | the archives of the evaluations of the pool hosts in a second table of that database (*The archives of the evaluations* below; on iff `[access_log.database]` is set): `table` (`archives`, created when missing), `keep` (`0` = the rows are kept forever; else days of rows kept, purged daily), `poll_interval` (`30s` between two collections from the agents) |
@@ -1043,7 +1043,7 @@ drain. `--wait` makes the tool wait for the agents to be back (`--timeout`, 180 
 so a deployment script can chain it after the sync. A `DO_NOT_START_AGENT` marker written since
 the start is honoured (that agent stops); code that no longer starts leaves the unit failed
 after five attempts (`journalctl -u sre-agent`, then `systemctl reset-failed`). The portal
-itself is restarted by hand (`systemctl restart sre-web`).
+itself is restarted by hand (`systemctl restart sre-web`; *Restarting the portal* below).
 
 **By hand.** `sre-web-tool …` (`sbin/sre-web-tool` of a checkout, `/usr/sbin/sre-web-tool`
 of the `sysreseval-web` package; `python3 -m sreweb.tool` from the sources) talks to the running
@@ -1052,7 +1052,7 @@ portal through its administration API (`[admin] token`, loopback only by default
 
 ```
 sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
-sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking
+sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
@@ -1060,11 +1060,45 @@ sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powe
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 ```
 
-The additions, removals and enable / disable flags are kept in `[admin] state_file` and merged
-with the `[[hosts]]` of `web.toml` at every start (`list` shows `config` or `added` per host); a
-config host removed by hand comes back with `enable`. `--json` gives the raw rows. The
-instructors have the same actions on the **Pool** page of the portal (`/pool`, see *Instructors*
-below), except `add` and `remove`, which stay with the token.
+`list` shows `config` or `added` per host; a config host removed by hand comes back, enabled,
+with `enable`. `--json` gives the raw rows. The instructors have the same actions on the
+**Pool** page of the portal (`/pool`, see *Instructors* below), except `add` and `remove`, which
+stay with the token.
+
+**Restarting the portal.** What is changed by hand, with the tool or on the Pool page, is kept in
+`[admin] state_file` (`pool.json`, written at every change through a temporary file renamed over
+it) and merged with the `[[hosts]]` of `web.toml` at every start, so that a restart of the
+portal leaves the pool as it was:
+
+| Kept | How |
+|---|---|
+| the hosts added and removed by hand | `added` (the whole entry, its token included: the file is `0600`), `removed` |
+| a host enabled or disabled by hand | `enabled` / `disabled`: the hosts whose flag differs from the `enabled` of their `[[hosts]]` entry, in both directions (a host of `DISABLED_ROOMS` enabled for a class stays enabled) |
+| a drain | `drain`, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped |
+| a wake in progress, the pause after failed wakes or after a power off, a power off or a restart sent | `clocks` (written within one poll and when the portal stops); each is dropped at the start when too old to mean anything |
+
+The file only holds what differs from the configuration, and **an edit of the configuration
+wins**: a flag set by hand holds for as long as the `enabled` of that host in `web.toml` is what
+it was then. Once the file says the same (the room taken out of `DISABLED_ROOMS`, for instance)
+the entry is dropped at the next start, and a later edit of `web.toml` is followed again; so is
+the entry of a host that is no longer in the pool (one line of the journal each). The start logs
+`pool state read from …: 0 removed, 0 added, 21 enabled and 1 disabled by hand, 0 draining`.
+
+A state file that cannot be written (a read-only directory, a container without its volume) would
+lose all of this at the next restart: the portal says so in its journal at the start and at every
+failed write (`pool state NOT saved in …`), `sre-web-tool status` prints `pool state: NOT SAVED
+in …` instead of the path, and the Pool page shows it in red above its table. In a container,
+`/var/lib/sre-web` must be a mounted directory the `sre-web` user may write; the systemd units
+provide it (`StateDirectory`). A file the portal cannot read (edited as another user, or no
+longer a JSON object) is not written over: it is renamed `pool.json.unreadable`, said in the
+journal, and the pool starts from the configuration; edit the file with the portal stopped and
+leave it to the `sre-web` user.
+
+Not kept: the idle clock of `idle_host_timeout` (it counts again from the start), and what is
+listed under *Limitations* (the presentations, the focuses, the open sockets: the pages reconnect
+by themselves, a terminal with its Reconnect button). The exams, the custom groups, the
+connection log and the archives are in the database; the sessions are in the browsers' cookies
+(`secret`).
 
 ## What the users see
 
@@ -1270,7 +1304,9 @@ What an instructor gets:
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
   instructors, power, drain, power off sent, restart sent), the agent's version and its last error, the line
-  of `sre-web-tool status` above the table; the state cell is green (up), amber (waking,
+  of `sre-web-tool status` above the table (in red, with the reason, when the state file of the
+  pool cannot be written: a restart of the portal would undo what is changed on the page);
+  the state cell is green (up), amber (waking,
   occupied, exam, draining), red (off: the agent does not answer) or grey (disabled, muted
   text); sortable by any column, filtered by host
   name (one or several words: the hosts whose name contains any of them, `a01 a02 h` for

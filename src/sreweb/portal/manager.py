@@ -149,7 +149,7 @@ class PoolManager:
                 'min_hosts_up': self.cfg.min_hosts_up,
                 'active_hours': self.cfg.active_hours or 'always', 'active_now': self.active(),
                 'waking': [h.name for h in views if h.state == STATE_WAKING],
-                'idle_host_timeout': self.cfg.idle_host_timeout}
+                'idle_host_timeout': self.cfg.idle_host_timeout, **self.pool.state_info()}
 
     # -- the loop -------------------------------------------------------------------------------
 
@@ -258,9 +258,11 @@ class PoolManager:
                     raise PoolError(resp.status, f"{name} refused: {body.get('error', resp.status)}")
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             raise PoolError(502, f"{name} does not answer: {e or type(e).__name__}")
-        rt.drain = True
+        if not rt.drain:
+            rt.drain, rt.drain_at = True, round(time.time(), 3)
         rt.power_off_sent = time.monotonic()
         rt.next_wake_at = max(rt.next_wake_at, rt.power_off_sent + POWER_OFF_HOLD)
+        self.pool.save_state()      # a portal restarted now still knows the host is going down
 
     async def restart(self, name: str, reason: str = "requested"):
         """``POST /v1/restart`` on the agent (``sre-web-tool restart``: the agent restarts its

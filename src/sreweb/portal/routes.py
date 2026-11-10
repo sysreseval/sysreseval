@@ -713,8 +713,7 @@ class Routes:
         elif action == 'restart':
             await self.manager.restart(name, "requested")
         elif action == 'drain':
-            self.pool.host(name)
-            self.pool.runtime[name].drain = True
+            self.pool.set_drain(name, True)
             log.info("host %s draining: no new project, power off when empty", name)
         else:
             return json_error(404, f"unknown action {action}")

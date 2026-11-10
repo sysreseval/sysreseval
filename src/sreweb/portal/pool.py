@@ -1,7 +1,8 @@
 """The pool of hosts: the status of their agents, the state of each host, the placement of a
-new project, the fan-out of the project lists, and the membership changed by hand
-(``sre-web-tool add / remove / enable / disable``, kept in a state file merged with the
-``[[hosts]]`` of the configuration)."""
+new project, the fan-out of the project lists, and what is changed by hand
+(``sre-web-tool add / remove / enable / disable / drain``, the Pool page), kept in a state file
+merged with the ``[[hosts]]`` of the configuration so that a restart of the portal changes
+nothing."""
 import asyncio
 import json
 import logging
@@ -31,6 +32,38 @@ STATE_DRAINING = 'draining'    # agent up, a power off is wanted: no new project
 STATE_DISABLED = 'disabled'    # taken out of the placement by hand
 SOURCE_CONFIG = 'config'
 SOURCE_ADDED = 'added'
+#: The state file (``[admin] state_file``), version 2.  ``enabled`` / ``disabled``: the hosts
+#: whose flag was set by hand and differs from their ``enabled`` of the configuration (of their
+#: ``added`` entry for an added host); ``drain``: host -> when it was asked; ``clocks``: per
+#: host, the wake in progress, the hold after failed wakes or a power off, the power off and
+#: the restart sent.  Every time is a wall-clock one (the runtime keeps monotonic ones).  A
+#: version 1 file had ``removed``, ``added`` and every disabled host in ``disabled``.
+STATE_VERSION = 2
+KEY_VERSION = 'version'
+KEY_SAVED_AT = 'saved_at'
+KEY_REMOVED = 'removed'
+KEY_ADDED = 'added'
+KEY_ENABLED = 'enabled'
+KEY_DISABLED = 'disabled'
+KEY_DRAIN = 'drain'
+KEY_CLOCKS = 'clocks'
+CLOCK_WOKEN_AT = 'woken_at'
+CLOCK_NEXT_WAKE_AT = 'next_wake_at'
+CLOCK_WAKE_FAILURES = 'wake_failures'
+CLOCK_POWER_OFF_SENT = 'power_off_sent'
+CLOCK_RESTART_SENT = 'restart_sent'
+#: A state file that could not be read is renamed with this suffix instead of being written over.
+UNREADABLE_SUFFIX = '.unreadable'
+#: The furthest ahead a wake hold read from the state file may lie (the longest backoff is
+#: 30 min): a wall clock set back while the portal was stopped cannot hold a host for days.
+MAX_HOLD = 3600.0
+#: The most failed wakes read from the state file (the backoff doubles with each).
+MAX_WAKE_FAILURES = 64
+#: Seconds of margin when a drain read from the state file is compared with the boot of its host.
+BOOT_MARGIN = 5.0
+#: A time of the state file may lie that far ahead of the clock and still be taken (it was
+#: rounded, the clock was stepped back a little); further ahead it means nothing.
+CLOCK_SLACK = 5.0
 #: Why a host was chosen (the ``placement`` field of the ``start`` line of the connection log).
 PLACEMENT_LOAD = 'load'          # the least loaded host
 PLACEMENT_SESSION = 'session'    # the host of a local login session of the user (follow_local_sessions)
@@ -109,6 +142,11 @@ def _text(value) -> str:
     return value[:MAX_STATUS_TEXT] if isinstance(value, str) else ''
 
 
+def _names(value) -> list:
+    """The host names of a list of the state file (whatever else a hand edit left is ignored)."""
+    return [x for x in value if isinstance(x, str)] if isinstance(value, list) else []
+
+
 def status_from_json(data, extra_projects: int = 0) -> HostStatus:
     """The ``HostStatus`` of the JSON of ``GET /v1/status``, every field coerced to its type: a
     broken or hostile agent cannot plant a string where ``pick()`` sorts by a number (every
@@ -147,6 +185,7 @@ class HostRuntime:
     next_wake_at: float = 0.0          # backoff after failed wakes
     idle_since: float | None = None    # monotonic time since the host has no project
     drain: bool = False                # power off wanted as soon as the host is empty
+    drain_at: float = 0.0              # wall-clock time the drain was asked (0: unknown), for the state file
     power_off_sent: float | None = None   # monotonic time of the last accepted power off
     restart_sent: float | None = None     # monotonic time of the last accepted restart, until it is seen
     last_wake_reason: str = ''
@@ -178,9 +217,14 @@ class Pool:
         self._reservations: dict[str, list] = {}
         self._reported: dict[str, bool] = {}
         self._task: asyncio.Task | None = None
+        #: Why the state file could not be written ('' when it is saved): what is changed by
+        #: hand would be lost at the next restart (``sre-web-tool status``, the Pool page).
+        self.state_error = ''
+        self._saved_key = None      # ``_state_key()`` at the last save: ``refresh`` saves what changed since
         for host in hosts:
             self._register(host, SOURCE_CONFIG)
         self.load_state()
+        self._saved_key = self._state_key()
 
     # -- membership -----------------------------------------------------------------------------
 
@@ -216,9 +260,7 @@ class Pool:
             raise PoolError(409, f"{name} has {projects} project(s): drain it first, or --force")
         if self.runtime[name].source == SOURCE_CONFIG:
             self._removed.add(name)
-        for table in (self.hosts, self.status, self.runtime, self._reservations):
-            table.pop(name, None)
-        self._reported.pop(name, None)
+        self._forget(name)
         self.save_state()
         log.info("host %s removed from the pool", name)
 
@@ -228,59 +270,210 @@ class Pool:
         if name in self._removed and enabled:
             self._removed.discard(name)
             self._register(self._config_hosts[name], SOURCE_CONFIG)
+            self.runtime[name].enabled = True     # whatever its ``enabled`` of the configuration
             self.save_state()
             log.info("host %s back in the pool from the configuration", name)
             return
         self.host(name)
-        self.runtime[name].enabled = enabled
+        runtime = self.runtime[name]
+        runtime.enabled = enabled
         if enabled:
-            self.runtime[name].drain = False
+            runtime.drain, runtime.drain_at = False, 0.0
         self.save_state()
         log.info("host %s %s", name, 'enabled' if enabled else 'disabled')
 
+    def set_drain(self, name: str, drain: bool = True):
+        """``drain``: no new project on the host, powered off once it is empty; cancelled by
+        ``enable``, over when the host is gone or back (``refresh_host``)."""
+        self.host(name)
+        runtime = self.runtime[name]
+        if runtime.drain != drain:
+            runtime.drain = drain
+            runtime.drain_at = round(time.time(), 3) if drain else 0.0
+            self.save_state()
+
+    # -- the state file -------------------------------------------------------------------------
+
+    def _forget(self, name: str):
+        for table in (self.hosts, self.status, self.runtime, self._reservations):
+            table.pop(name, None)
+        self._reported.pop(name, None)
+
+    def _settings(self) -> dict:
+        """What was set by hand, as the state file keeps it: the membership, the ``enabled``
+        flags differing from the configuration and the drains."""
+        return {
+            KEY_REMOVED: sorted(self._removed),
+            KEY_ADDED: [asdict(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
+            KEY_ENABLED: sorted(n for n, r in self.runtime.items() if r.enabled and not self.hosts[n].enabled),
+            KEY_DISABLED: sorted(n for n, r in self.runtime.items() if not r.enabled and self.hosts[n].enabled),
+            KEY_DRAIN: {n: r.drain_at for n, r in sorted(self.runtime.items()) if r.drain},
+        }
+
+    def _clocks(self) -> dict:
+        """The clocks worth keeping across a restart, as wall-clock times: a wake in progress,
+        the hold after failed wakes or a power off, the power off and the restart sent.  Not
+        the idle clock of ``idle_host_timeout``: a stale one would power a host off too early."""
+        now = time.monotonic()
+        offset = time.time() - now
+        clocks = {}
+        for name, rt in self.runtime.items():
+            entry = {}
+            if rt.woken_at is not None:
+                entry[CLOCK_WOKEN_AT] = round(rt.woken_at + offset, 3)
+            if rt.next_wake_at > now:
+                entry[CLOCK_NEXT_WAKE_AT] = round(rt.next_wake_at + offset, 3)
+                if rt.wake_failures:
+                    entry[CLOCK_WAKE_FAILURES] = rt.wake_failures
+            if rt.power_off_sent is not None:
+                entry[CLOCK_POWER_OFF_SENT] = round(rt.power_off_sent + offset, 3)
+            if rt.restart_sent is not None:
+                entry[CLOCK_RESTART_SENT] = round(rt.restart_sent + offset, 3)
+            if entry:
+                clocks[name] = entry
+        return clocks
+
+    def _state_key(self) -> tuple:
+        """What the state file depends on in the runtime of the hosts: ``refresh`` writes the
+        file when it changed otherwise than by the calls saving it themselves (a drain over,
+        a wake, a power off or a restart sent by the manager)."""
+        return tuple((name, rt.enabled, rt.drain, rt.woken_at, rt.next_wake_at, rt.wake_failures,
+                      rt.power_off_sent, rt.restart_sent) for name, rt in self.runtime.items())
+
+    def state_info(self) -> dict:
+        return {'state_file': self.state_file, 'state_error': self.state_error}
+
+    def _not_saved(self, reason: str):
+        self.state_error = reason
+        log.error("pool state NOT saved in %s (%s): what is changed by hand is lost at the next restart",
+                  self.state_file, reason)
+
+    def _check_writable(self):
+        """At startup: a state file that cannot be written is said now, not at the first change."""
+        directory = os.path.dirname(self.state_file) or '.'
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError as e:
+            self._not_saved(str(e))
+            return
+        if not os.access(directory, os.W_OK | os.X_OK):
+            self._not_saved(f"{directory} is not writable")
+
+    def _set_aside(self):
+        """A state file that could not be read (edited by hand into something else, or as
+        another user) is kept under another name: the next save would write over it."""
+        kept = self.state_file + UNREADABLE_SUFFIX
+        try:
+            os.replace(self.state_file, kept)
+        except OSError as e:
+            log.error("%s could not be kept as %s: %s", self.state_file, kept, e)
+        else:
+            log.error("%s is kept as %s", self.state_file, kept)
+
     def load_state(self):
-        """The hosts added, removed and disabled by hand (``state_file``), over the configuration."""
+        """What was changed by hand (``state_file``), over the configuration.  A flag of the
+        file holds while the ``enabled`` of the host in the configuration is the one it was set
+        against: once the configuration says the same, or the host is gone, the entry is
+        dropped (the file is written again at once), so that an edit of the configuration
+        wins over an older change made by hand."""
         if not self.state_file:
             return
         try:
             with open(self.state_file, encoding='utf-8') as f:
                 state = json.load(f)
         except FileNotFoundError:
+            log.info("pool state: no file %s yet, the pool is the one of the configuration", self.state_file)
+            self._check_writable()
             return
         except (OSError, ValueError) as e:
-            log.error("cannot read %s: %s", self.state_file, e)
+            log.error("cannot read %s: %s (the pool is the one of the configuration)", self.state_file, e)
+            self._set_aside()
+            self._check_writable()
             return
         if not isinstance(state, dict):
+            log.error("%s is not a JSON object (the pool is the one of the configuration)", self.state_file)
+            self._set_aside()
+            self._check_writable()
             return
-        for name in state.get('removed', []) or []:
+        current = state.get(KEY_VERSION) == STATE_VERSION    # a version 1 file listed every disabled host
+        for name in _names(state.get(KEY_REMOVED)):
             if name in self.hosts and self.runtime[name].source == SOURCE_CONFIG:
-                for table in (self.hosts, self.status, self.runtime, self._reservations):
-                    table.pop(name, None)
+                self._forget(name)
                 self._removed.add(name)
-        for entry in state.get('added', []) or []:
+        added = state.get(KEY_ADDED)
+        for entry in added if isinstance(added, list) else []:
             try:
                 host = host_config_from_dict(entry, f"{self.state_file}: added host")
             except ConfigError as e:
                 log.error("%s", e)
                 continue
-            if host.name in self.hosts and self.runtime[host.name].source == SOURCE_CONFIG:
+            if host.name in self._config_hosts:
+                log.info("pool state: %s, added by hand, is in the configuration now: its entry there is used",
+                         host.name)
                 continue
             self._register(host, SOURCE_ADDED)
-        for name in state.get('disabled', []) or []:
-            if name in self.runtime:
-                self.runtime[name].enabled = False
-        log.info("pool state read from %s: %d removed, %d added, %d disabled", self.state_file,
-                 len(self._removed), sum(1 for r in self.runtime.values() if r.source == SOURCE_ADDED),
-                 sum(1 for r in self.runtime.values() if not r.enabled))
+        for key, enabled in ((KEY_ENABLED, True), (KEY_DISABLED, False)):     # disabled wins
+            for name in _names(state.get(key)):
+                runtime = self.runtime.get(name)
+                if runtime is None:
+                    if name not in self._removed:
+                        log.info("pool state: %s (%s by hand) is not in the pool any more: forgotten", name, key)
+                    continue
+                if current and self.hosts[name].enabled == enabled:
+                    log.info("pool state: %s was %s by hand and the configuration says so now: it follows "
+                             "the configuration", name, key)
+                runtime.enabled = enabled
+        drains = state.get(KEY_DRAIN)
+        if isinstance(drains, list):      # written by hand, without the times
+            drains = {name: 0 for name in _names(drains)}
+        for name, asked_at in (drains if isinstance(drains, dict) else {}).items():
+            runtime = self.runtime.get(name)
+            if runtime is not None:
+                runtime.drain, runtime.drain_at = True, _number(asked_at) or 0.0
+        self._load_clocks(state.get(KEY_CLOCKS))
+        settings = self._settings()
+        log.info("pool state read from %s: %d removed, %d added, %d enabled and %d disabled by hand, %d draining",
+                 self.state_file, len(settings[KEY_REMOVED]), len(settings[KEY_ADDED]), len(settings[KEY_ENABLED]),
+                 len(settings[KEY_DISABLED]), len(settings[KEY_DRAIN]))
+        if not current or any(state.get(key) != value for key, value in settings.items()):
+            self.save_state()
+        else:
+            self._check_writable()
+
+    def _load_clocks(self, clocks):
+        """The clocks of the state file back as monotonic times, each one only while it still
+        means something: a wake or a power off for ``wake_timeout``, a restart for
+        ``restart_hold``, a hold until its time (the portal may have been stopped for long)."""
+        if not isinstance(clocks, dict):
+            return
+        wall = time.time()
+        offset = wall - time.monotonic()
+        for name, entry in clocks.items():
+            runtime = self.runtime.get(name)
+            if runtime is None or not isinstance(entry, dict):
+                continue
+            woken_at = _number(entry.get(CLOCK_WOKEN_AT))
+            if woken_at is not None and -CLOCK_SLACK <= wall - woken_at < self.wake_timeout:
+                runtime.woken_at = woken_at - offset
+            hold = _number(entry.get(CLOCK_NEXT_WAKE_AT))
+            if hold is not None and hold > wall:
+                runtime.next_wake_at = min(hold, wall + MAX_HOLD) - offset
+                runtime.wake_failures = min(_count(entry.get(CLOCK_WAKE_FAILURES)), MAX_WAKE_FAILURES)
+            sent = _number(entry.get(CLOCK_POWER_OFF_SENT))
+            if sent is not None and -CLOCK_SLACK <= wall - sent < self.wake_timeout:
+                runtime.power_off_sent = sent - offset
+            sent = _number(entry.get(CLOCK_RESTART_SENT))
+            if sent is not None and -CLOCK_SLACK <= wall - sent < self.restart_hold:
+                runtime.restart_sent = sent - offset
 
     def save_state(self):
+        """The state file written anew (a temporary file renamed over it): at every change made
+        by hand, by ``refresh`` when the runtime it keeps changed, and when the portal stops."""
+        self._saved_key = self._state_key()
         if not self.state_file:
             return
-        state = {
-            'removed': sorted(self._removed),
-            'added': [asdict(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
-            'disabled': sorted(n for n, r in self.runtime.items() if not r.enabled),
-        }
+        state = {KEY_VERSION: STATE_VERSION, KEY_SAVED_AT: round(time.time(), 3), **self._settings(),
+                 KEY_CLOCKS: self._clocks()}
         try:
             os.makedirs(os.path.dirname(self.state_file) or '.', exist_ok=True)
             tmp = self.state_file + '.tmp'
@@ -289,7 +482,11 @@ class Pool:
                 json.dump(state, f, indent=2)
             os.replace(tmp, self.state_file)
         except OSError as e:
-            log.error("cannot write %s: %s", self.state_file, e)
+            self._not_saved(str(e))
+            return
+        if self.state_error:
+            log.info("pool state saved again in %s", self.state_file)
+            self.state_error = ''
 
     # -- status ---------------------------------------------------------------------------------
 
@@ -333,16 +530,19 @@ class Pool:
                 log.info("host %s restarting: not answering", host.name)
             else:
                 log.warning("host %s unreachable at %s: %s", host.name, host.url, status.error)
+        if previous is None and status.reachable and runtime.drain and self._booted_since(status, runtime.drain_at):
+            # the first poll of a host whose drain comes from the state file: it went down and
+            # came back while the portal was not running, and must not be powered off again
+            log.info("host %s booted since its drain was asked: the drain is over", host.name)
+            self._drain_over(runtime)
         if restarting:
             self._track_restart(host.name, status, runtime, polled_at)
         elif status.reachable and previous is False:
             # back after a shutdown: a drain, a power off and a backoff of the previous run are over
-            runtime.drain = False
-            runtime.power_off_sent = None
+            self._drain_over(runtime)
             runtime.next_wake_at = 0.0
         elif not status.reachable and runtime.power_off_sent is not None:
-            runtime.drain = False           # gone after its power off: the drain is done
-            runtime.power_off_sent = None
+            self._drain_over(runtime)       # gone after its power off: the drain is done
         if status.reachable and runtime.woken_at is not None:
             log.info("host %s is up %.0f s after its wake", host.name, time.monotonic() - runtime.woken_at)
             runtime.woken_at = None
@@ -350,6 +550,17 @@ class Pool:
             runtime.next_wake_at = 0.0
         self.status[host.name] = status
         return status
+
+    @staticmethod
+    def _drain_over(runtime: HostRuntime):
+        runtime.drain, runtime.drain_at = False, 0.0
+        runtime.power_off_sent = None
+
+    @staticmethod
+    def _booted_since(status: HostStatus, asked_at: float) -> bool:
+        """Whether the host booted after the wall-clock time *asked_at* (unknown, or no uptime
+        in the status: no)."""
+        return asked_at > 0 and status.uptime is not None and time.time() - status.uptime > asked_at + BOOT_MARGIN
 
     def _track_restart(self, name: str, status: HostStatus, runtime: HostRuntime, polled_at: float):
         """A restart was sent to the agent (``restart_sent``): over when its uptime is younger
@@ -371,6 +582,8 @@ class Pool:
 
     async def refresh(self):
         await asyncio.gather(*(self.refresh_host(h) for h in list(self.hosts.values())))
+        if self.state_file and self._state_key() != self._saved_key:
+            self.save_state()       # a drain over, a wake, a power off or a restart sent since the last save
 
     async def _loop(self):
         while True:

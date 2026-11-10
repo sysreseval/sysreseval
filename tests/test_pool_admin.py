@@ -234,6 +234,49 @@ class TestInstructorPage:
                 assert (await h.client.delete('/api/pool/hosts/b02', headers={**prof, **CSRF})).status == 401
         run(go())
 
+    def test_actions_are_kept_across_a_restart(self, tmp_path):
+        """A host the configuration disables (the DISABLED_ROOMS of make-web-hosts.sh), enabled
+        then drained by an instructor on the Pool page: a new portal on the same configuration
+        and state file shows it as it was left (it came back disabled until 2026-11-10); once
+        the configuration enables the host itself, the entry made by hand is gone."""
+        state = tmp_path / 'state' / 'pool.json'
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL}
+        prof = {**P.who('prof', groups=P.TEACHERS), **CSRF}
+
+        async def row_of(h):
+            return (await (await h.client.get('/api/pool', headers=prof)).json())[0]
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over, host_over={'enabled': False}) as h:
+                assert (await row_of(h))['state'] == 'disabled'
+                status = await (await h.client.get('/api/pool/status', headers=prof)).json()
+                assert status['state_file'] == str(state) and status['state_error'] == ''
+                resp = await h.client.post('/api/pool/hosts/a01/enable', headers=prof)
+                assert resp.status == 200 and (await resp.json())['state'] == 'up'
+                assert json.loads(state.read_text())['enabled'] == ['a01']
+                resp = await h.client.post('/api/pool/hosts/a01/drain', headers=prof)
+                assert resp.status == 200 and (await resp.json())['state'] == 'draining'
+                assert list(json.loads(state.read_text())['drain']) == ['a01']
+            async with P.Harness(tmp_path / 'again', auth_mode='proxy', web_over=over,
+                                 host_over={'enabled': False}) as h:
+                row = await row_of(h)
+                assert row['state'] == 'draining' and row['enabled'] is True and row['drain'] is True
+                resp = await h.client.post('/api/pool/hosts/a01/enable', headers=prof)       # cancels the drain
+                assert resp.status == 200 and (await resp.json())['state'] == 'up'
+            async with P.Harness(tmp_path / 'third', auth_mode='proxy', web_over=over,
+                                 host_over={'enabled': False}) as h:
+                assert (await row_of(h))['state'] == 'up'
+                saved = json.loads(state.read_text())
+                assert saved['enabled'] == ['a01'] and saved['drain'] == {}
+            # the configuration enables the host now: nothing by hand is left in the file
+            async with P.Harness(tmp_path / 'edited', auth_mode='proxy', web_over=over) as h:
+                assert (await row_of(h))['state'] == 'up'
+                assert json.loads(state.read_text())['enabled'] == []
+            async with P.Harness(tmp_path / 'back', auth_mode='proxy', web_over=over,
+                                 host_over={'enabled': False}) as h:
+                assert (await row_of(h))['state'] == 'disabled'
+        run(go())
+
     def test_bulk_actions(self, tmp_path):
         """The bar of the Pool page sends one call per selected host, all at once: the per-host
         route serves them together, each answer being the row of its host, a failure (the wake
@@ -269,7 +312,8 @@ class TestInstructorPage:
 
 class TestCli:
     def test_sre_web_tool(self, tmp_path):
-        over = {'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
+        state = tmp_path / 'pool.json'
+        over = {'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL}
 
         async def go():
             async with P.Harness(tmp_path, web_over=over, agent_over={'restart_command': 'sh -c true'}) as h:
@@ -295,7 +339,13 @@ class TestCli:
                 assert json.loads(r.stdout)['instructors_only'] is True
                 r = await loop.run_in_executor(None, cli, 'status')
                 assert r.returncode == 0 and r.stdout.startswith('spare capacity: 3 project slot(s)')
-                assert 'waking: none' in r.stdout
+                assert 'waking: none' in r.stdout and r.stdout.splitlines()[-1] == f'pool state: {state}'
+                # the state file cannot be written: said by the status, the pool goes on
+                h.portal.pool.state_error = 'Read-only file system'
+                r = await loop.run_in_executor(None, cli, 'status')
+                assert r.returncode == 0
+                assert r.stdout.splitlines()[-1] == f'pool state: NOT SAVED in {state}: Read-only file system'
+                h.portal.pool.state_error = ''
                 r = await loop.run_in_executor(None, cli, 'list')
                 assert [l.split()[:2] for l in r.stdout.splitlines()[1:]] == [['a01', 'up'], ['b02', 'off']]
                 assert 'Cannot connect' in r.stdout.splitlines()[2]     # the last error of the unreachable host

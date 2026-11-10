@@ -170,8 +170,11 @@ labs_cache_ttl = 60
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted
 # from the loopback only unless listen_any = true.
 token = "change-me-to-another-long-random-string"
-# The hosts added, removed, enabled and disabled by hand, merged with [[hosts]] at startup
-# (default: /var/lib/sre-web/pool.json when that directory exists, else pool.json next to this file).
+# What is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), merged
+# with [[hosts]] at startup so that a restart of the portal leaves the pool as it was; an edit of
+# the `enabled` of a host below wins over an older change made by hand
+# (default: /var/lib/sre-web/pool.json when that directory exists, else pool.json next to this file;
+# the sre-web user must be able to write there: in a container, mount /var/lib/sre-web).
 # state_file = "/var/lib/sre-web/pool.json"
 
 [access_log]

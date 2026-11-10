@@ -222,6 +222,7 @@ class Portal:
             self.archives.close()           # the queued rows written, like the log's
         await self.manager.stop()
         await self.pool.stop()
+        self.pool.save_state()              # the clocks of the hosts as they are now (the wakes, the holds)
         if self.bbb is not None:
             await self.bbb.close()
         await self.session.close()

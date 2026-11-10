@@ -795,6 +795,9 @@ msgstr "en démarrage : {names}"
 msgid "outside the active hours"
 msgstr "hors des heures actives"
 
+msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
+msgstr "les changements ne sont PAS enregistrés, un redémarrage du portail les perd : {error}"
+
 msgid "{n} host(s)"
 msgstr "{n} machine(s)"
 

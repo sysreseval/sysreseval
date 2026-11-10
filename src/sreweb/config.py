@@ -355,8 +355,9 @@ class LimitsConfig:
 @dataclass
 class AdminConfig:
     """The administration API of the portal (``sre-web-tool ...``): a bearer token, loopback
-    clients only unless listen_any, and the file where the hosts added / removed / disabled by
-    hand are kept (merged with the [[hosts]] of the configuration at startup)."""
+    clients only unless listen_any, and the file where what is changed by hand in the pool is
+    kept across the restarts (the hosts added, removed, enabled, disabled, drained: merged with
+    the [[hosts]] of the configuration at startup, see ``portal.pool.Pool.load_state``)."""
     token: str = ''                   # '' : the administration API is disabled
     listen_any: bool = False
     state_file: str = ''              # '' : the default of the installation (see sre-web)
