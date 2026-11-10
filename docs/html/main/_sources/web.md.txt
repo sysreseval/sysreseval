@@ -168,6 +168,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
+| `[preload]` | `at_start = false` | the Docker images of the labs pulled by the agent (`sre preload-images`) when the portal gives the host its turn (see *Pre-loading the images* below): `at_start` (the agent asks for a preload each time it starts; `sre-web-tool preload` asks by hand in any case), `paths` (the lab files and directories scanned; default: the lab directories of the installation), `timeout` (`"2h"`: a preload still running after this long is stopped) |
 
 Durations are written as `90`, `"90s"`, `"30m"`, `"2h"` or `"1d"`. An unknown key is refused.
 `import` (a path or a list of paths relative to `agent.toml`: a directory, a glob or a file)
@@ -187,7 +188,7 @@ merges other files into this one, as for `web.toml` below.
 | `[auth] administrators` | `[]` | the logins of the administrators: instructors who may read the connection log on the History page (*Administrators* below); a login that is not an instructor gets nothing. By group: `administrator_groups` / `administrator_group_filter` of `[auth.ldap]`, `administrator_groups` of `[auth.proxy]` |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); the administrator tests (*Administrators* below): `administrator_groups` (DNs, tested like `instructor_groups`) and `administrator_group_filter` (a group search under `group_search_base`, none by default); the connection: `ldaps://` or `ldap://` + `start_tls`, the server certificate always verified against the system CA store or `tls_ca` (the absolute path of a PEM file: a CA bundle, or the self-signed certificate of the server itself) and the host of the `uri` against the names of the certificate (`subjectAltName`, else the CN: name the server as its certificate does, not by address); a plain `ldap://` without `start_tls` is refused at startup unless `allow_cleartext = true` (the passwords in LDAP mode, the roles, groups and administrators in every mode would travel unprotected); `timeout`. The login attribute: `attr_login` (none = the attribute of a `search_filter` of the form `(attribute={login})`, else the RDN attribute of `bind_dn_template`); in LDAP mode the identity carries its stored value, whatever case the user typed (the directory matches `Bob` for `bob`: one user, not two), and the Groups page (*User groups* below) lists the people by it, in every mode, with `groups_filter` (`"(objectClass=posixGroup)"`: the groups listed under `group_search_base`; `""` = none), `attr_group_name` (`cn`), `attr_group_members` (`memberUid`; a value may be the login, the `uid` or the DN of a person). Also read in proxy mode with `ldap_roles` / `ldap_groups` |
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
-| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open) |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open); `max_preloads` (`2`): the hosts pulling the Docker images of the labs at the same time (*Pre-loading the images* below; `0` = the portal lets none) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes`; in anonymous mode `eval_interval` and `start_interval` count per client address too, since a new pseudonym costs one `POST /login` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`; *Restarting the portal* below) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
@@ -529,8 +530,9 @@ host again. The name of an archive is unique in the table (`UNIQUE (archive)`, `
 so a host whose archive directory is shared with another one, or rows still queued when the
 portal stopped, only cost a harmless re-insert. An archive rewritten in
 place (`sre re-eval -p '' -d <archive dir>`) or named below the cursor (a host whose clock was
-set back) is not taken again, as `sre watch` would not see it either; an agent not yet updated
-answers 404 and is skipped with one warning until it is.
+set back) is not taken again, as `sre watch` would not see it either: the results of a
+re-evaluation reach the table through `sre re-eval --update-web` (*Re-evaluated archives* below).
+An agent not yet updated answers 404 and is skipped with one warning until it is.
 
 The table is created like `access_log` when it is missing (the `CREATE` privilege, once); or
 create it by hand and grant `SELECT, INSERT, DELETE` on it (the same grant as the log's: the
@@ -589,6 +591,67 @@ auto-evaluation (`eval_interval_without_exam_mode`), a few kilobytes each. The t
 personal data (names, groups, results): the account of the portal should be the only one reading
 it, and the page is open to the instructors only. Every consultation of the Archives page is an
 `archives` line of the connection log, with the filters asked.
+
+### Re-evaluated archives
+
+A grading bug found after the evaluations is fixed in the lab file and the archives are graded
+again with [`sre re-eval`](cli.md#post-exam-management), which replays the lab on the test
+results each archive holds. The table of the portal was filled when the evaluations ran and does
+not follow by itself; **`sre re-eval --update-web`** makes it follow:
+
+```bash
+# as root, on the pool host whose /var/lib/sre/archives holds the archives
+sudo sre re-eval -s /opt/sre/lab/s3/r306/dns1.py -p corrected -d /root/regraded \
+                 --update-web /var/lib/sre/archives/*@@@s3@r306@dns1.py@@@*
+```
+
+The command writes the re-graded archives as usual (`-p`, `-d`) and, for each of them, queues the
+new results on the host: one file per archive in `/var/lib/sre/web-updates/` (mode `0700`, the
+files `0600`, owned by `sre`: they name students and grades), holding what the agent sends for an
+archive — never the answers — under **the name of the original archive**, which is how the portal
+knows the evaluation. A later re-evaluation of the same archive replaces the one still waiting.
+Nothing else is to be configured: no address of the portal, no token, no privilege of the
+database account.
+
+The portal takes them as it takes the archives. The answer of `GET /v1/archives` says how many
+re-evaluations wait on the host (`updates`); when there are some, the collector reads them in
+pages (`GET /v1/archives/updates?after=&limit=`, the token alone), writes each row again in one
+transaction per page, and tells the agent which ones are settled (`POST /v1/archives/updates`),
+which removes them from the host. A row is written with `REPLACE` under its own `id` — the
+`INSERT` and `DELETE` privileges the account already has; no `UPDATE` — so it keeps its place on
+the Archives page and the links to it. Of the stored row it also keeps what only the first
+collection knew:
+
+| Kept from the stored row | Taken from the re-evaluation |
+|---|---|
+| `id`, `ts` (the time of the evaluation), `host` | `grade`, `max_grade`, `mark`, `maximum_mark` |
+| `canonical_lab` (the lab file as it resolved then) | `errors`, `warnings` and the error list |
+| `fullname`, `grp` (the directory's, at the time) | the elements and the parts of the grade list |
+| the `managed` detail | the self-eval totals, `re_eval_date` |
+
+The reports downloaded from the page are built from the rows, so they show the new results at
+once. The Watch page reads the archive files of the running projects, not the table.
+
+- **Only the evaluations the table holds are updated; none is added.** A re-evaluation whose
+  evaluation is not there yet (collected at the next round, or the database did not answer) stays
+  on the host and is tried again at every round; the agent gives it up, with a line of its log,
+  after a day. Give the archives under their original names: the output of an earlier `re-eval`
+  and a renamed archive are not queued.
+- **Run it where an agent runs.** The queue is read by the agent of the same host. With an
+  archive directory shared by the pool (`archive_dirs`), one run on any pool host updates the
+  evaluations of every host: a row is found by the name of its archive, whichever host it came
+  from. On a host without `agent.toml` the command warns that nothing will hand the updates over.
+- **Applied at least once.** The portal acknowledges after its transaction is committed; a round
+  interrupted in between writes the same row again at the next one, which changes nothing. A
+  database or an agent failing here is warned about once in the portal's log (`archives: <host>
+  (re-evaluations): …`) and never stops the collection of the archives.
+- The portal logs `archives: <host>: N evaluation(s) replaced by their re-evaluation`; the
+  Archives page's database status counts them (`collector.updated`). A re-evaluation of an
+  archive whose row belongs to another project is dropped with a warning.
+- An agent older than this feature never announces the queue and a portal older than it, or one
+  without `[access_log.database]`, never asks for it: the files wait on the host. Whatever waited
+  for more than a day is dropped when the queue is next read by the agent or written by `sre
+  re-eval --update-web`, which then warns that the portal never took them.
 
 ### User groups
 
@@ -1088,6 +1151,50 @@ With `power = true` on the host and `allow_power_off = true` in its `agent.toml`
 powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron does it), above
 `min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web-tool poweroff`.
 
+**Pre-loading the images.** A project whose Docker images are not on its host yet waits for
+their download at its start, and a room of workstations pulling them at the same time takes the
+whole bandwidth of the site; the boot unit `sre-preload-images.service` (see
+[Installation](installation.md)) only spreads the pulls over a random delay. On the pool, the
+agents pull and the portal lets **a few hosts at a time** do it:
+
+- a host *asks*: its agent starts with `[preload] at_start = true` in `agent.toml` (the boot of
+  the host, a restart of the agent), or `sre-web-tool preload NAME | --all | --failed` or the
+  *Preload images* button of the Pool page ask for it by hand (after new labs or a new image
+  version). The agent then says `pending` in its status and pulls nothing;
+- the portal *gives turns*: at every poll, as many waiting hosts as `[pool] max_preloads` (2)
+  leaves free get `POST /v1/preload/start`, the one that waited longest first; the agent then
+  runs `sre preload-images --progress` on its lab directories (`[preload] paths`) and reports
+  the image it pulls. A request by hand goes through the same queue: the number of hosts
+  downloading never exceeds `max_preloads`, whoever asked;
+- every host that asks takes a turn, even with every image already there: its `docker pull`s
+  only check the registry, a few seconds, and an image pushed again under the same tag is
+  fetched.
+
+`sre-web-tool list` shows `(preload queued)`, `(preload 2/5)` or `(preload failed)` after the
+state, the Pool page the same as flags (the image being pulled, or the error, as tooltip), and
+`sre-web-tool status` the count of each. A preload that fails (`failed`: an image that does not
+exist, the registry unreachable; the error names the images) is not tried again by itself:
+`sre-web-tool preload --failed` asks again. A disabled or occupied host is served like the
+others — its local users start labs too —; a host is not given a turn while projects of an exam
+of the web site run on it, while it is draining or its agent restarting, and an idle host
+waiting for its turn is not powered off by `idle_host_timeout`. A stop or a restart of the
+agent stops the preload in progress (Docker keeps the layers already there): with `at_start`
+the agent started next asks again, a request made by hand is forgotten. Nothing is preloaded
+without the portal (the hosts stay `pending`; the images are then pulled by the first start
+that needs them, as without any preload) nor with `max_preloads = 0`; the agents older than
+this feature are left alone. On a host whose agent has `at_start`, leave
+`sre-preload-images.service` disabled: both would pull.
+
+Nothing asks again on a timer. A host that boots every day checks at each boot; one that stays
+up does not notice new labs or a new image version until its agent restarts
+(`sre-web-tool restart --all` after a sync makes every `at_start` agent ask again) or a preload
+is asked by hand, and a failed one stays failed. A cron job on the portal's host makes the check
+periodic, through the same queue (`max_preloads` hosts at a time):
+
+```
+0 3 * * *  sre-web-tool preload --all
+```
+
 **Restarting the agents.** After an update of the tree the agents run the old Python code until
 their unit is restarted: `sre-web-tool restart NAME`, or `restart --all` for every reachable host
 (whatever its state), tells each agent to restart itself (`POST /v1/restart`). The agent answers
@@ -1120,6 +1227,7 @@ sre-web-tool remove a03 [--force] # refused while the host has projects (--force
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
 sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powered off once the last project is closed
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
+sre-web-tool preload a03 | --all | --failed   # the hosts pull the Docker images of the labs, max_preloads of them at a time
 ```
 
 `list` shows `config` or `added` per host; a config host removed by hand comes back, enabled,
@@ -1372,7 +1480,9 @@ What an instructor gets:
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
-  instructors, power, drain, power off sent, restart sent), the agent's version and its last error, the line
+  instructors, power, drain, power off sent, restart sent, and where the preload of the Docker
+  images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
+  the error), the agent's version and its last error, the line
   of `sre-web-tool status` above the table (in red, with the reason, when the state file of the
   pool cannot be written: a restart of the portal would undo what is changed on the page);
   the state cell is green (up), amber (waking,
@@ -1385,7 +1495,9 @@ What an instructor gets:
   refused while the host has a project or a local session), each disabled with the reason as
   its tooltip when it does not apply. A checkbox per row (the one of the header ticks the hosts
   shown by the filter) selects hosts for the bar above the table: the count of the selected
-  hosts (and how many the filter hides) and the same five buttons, each acting on every
+  hosts (and how many the filter hides), the same five buttons and *Preload images* (the bar
+  only: the selected hosts wait for their turn to pull the Docker images of the labs, see
+  *Pre-loading the images* above), each acting on every
   selected host its action applies to, one call per host run together (the tooltip says how
   many, the button is disabled when none; *Power off* asks once with the names; the failures
   come in one message, the selection stays). Adding and removing hosts, and restarting the
@@ -1753,6 +1865,13 @@ the browser reaches a desktop through the owner check of the portal and of the a
   loaded before the update keeps its scripts until it is reloaded.
 - The virtual X desktops die with the agent (a restart of its unit): they are started again,
   empty, at the next use of the Display tab; the applications shown must be launched again.
+- The preloads of the Docker images are counted per portal (two portals sharing hosts each give
+  `max_preloads` turns), need the portal (an agent never preloads by itself), are asked at the
+  start of an agent or by hand only (no periodic check: a cron job running
+  `sre-web-tool preload --all` does it) and are not kept
+  across a restart of an agent: a preload asked by hand and not started yet is forgotten, one in
+  progress is stopped (`[preload] at_start` asks again). A host that cannot be polled while it
+  preloads stops counting, so one more host may get a turn meanwhile.
 - The `ports` of the bridged machines are bound on the pool host and shown with its name.
 - The exam mode of the Qt GUI (`exam.json` on a host) still excludes that host from the pool: the
   web site has its own exams (*Exams* above), per student rather than per host. The save of the
