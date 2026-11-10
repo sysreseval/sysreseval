@@ -122,6 +122,15 @@ class TestParsing:
         assert result.code == 2 and result.events == []
         assert 'unrecognized arguments' in capsys.readouterr().err
 
+    def test_preload_images_progress_option(self, sre_cli):
+        """--progress (the JSON steps on stderr the web agent reads) is off unless asked."""
+        result = sre_cli(['preload-images', '/opt/sre/lab'])
+        assert result.code == 0 and result.events == ['permanent drop', 'action_preload_images']
+        assert result.args.progress is False and result.args.paths == ['/opt/sre/lab']
+        result = sre_cli(['preload-images', '--progress', '--random-delay', '5', 'a.py', 'b'])
+        assert result.args.progress is True and result.args.random_delay == 5
+        assert result.args.paths == ['a.py', 'b']
+
     @pytest.mark.parametrize('argv', [['stop', '--instructor-mode', 'PROJECT'],
                                       ['state', '--instructor-mode', 'PROJECT', 'final'],
                                       [SET, '--instructor-mode', 'PROJECT']])

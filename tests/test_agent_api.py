@@ -323,6 +323,194 @@ class TestRestart:
                 assert (h.pub / 'projects' / rln).exists()         # a restart keeps the projects
         run(go())
 
+    def test_a_preload_is_stopped_not_waited_for(self, tmp_path):
+        """A preload of the images would hold a restart for hours: it is stopped (and wanted
+        again), is not one of the commands the restart waits for, and no new one starts
+        meanwhile."""
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_PRELOAD_DELAY': '30'},
+                               preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                (tmp_path / 'cgroup').write_text(self.SERVICE)
+                h.agent.cgroup_file = str(tmp_path / 'cgroup')
+                spawned = []
+                h.agent.spawn = fake_spawn(spawned)
+                assert (await h.client.post('/v1/preload/start', headers=headers(identity=None))).status == 200
+                await until(lambda: h.agent.preloader._run is not None and h.calls())
+                pid = h.agent.preloader._run.pid
+                assert h.agent.runner.in_flight == 1 and alive(pid)
+                resp = await h.client.post('/v1/restart', headers=headers())
+                assert resp.status == 200 and (await resp.json()) == {'ok': True, 'in_flight': 0}
+                await until(lambda: len(spawned) == 2, timeout=8.0)
+                assert not alive(pid) and h.agent.runner.in_flight == 0
+                assert (await preload_of(h))['state'] == 'pending'
+                resp = await h.client.post('/v1/preload/start', headers=headers(identity=None))
+                assert resp.status == 503 and 'restarting' in (await resp.json())['error']
+        run(go())
+
+    def test_shutdown_stops_a_preload(self, tmp_path):
+        """The stop of the agent does not wait ``shutdown_timeout`` for a preload."""
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_PRELOAD_DELAY': '30'},
+                               preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                assert (await h.client.post('/v1/preload/start', headers=headers(identity=None))).status == 200
+                await until(lambda: h.agent.preloader._run is not None and h.calls())
+                pid = h.agent.preloader._run.pid
+                started = time.monotonic()
+                await h.client.close()
+                assert time.monotonic() - started < 10
+                assert not alive(pid) and h.agent.runner.in_flight == 0
+        run(go())
+
+
+async def preload_of(h: Harness) -> dict:
+    """The ``preload`` object of the status, asked like the portal does: the token alone."""
+    resp = await h.client.get('/v1/status', headers=headers(identity=None))
+    return (await resp.json())['preload']
+
+
+async def preload_until(h: Harness, predicate, timeout: float = 10.0) -> dict:
+    async with asyncio.timeout(timeout):
+        while True:
+            preload = await preload_of(h)
+            if predicate(preload):
+                return preload
+            await asyncio.sleep(0.05)
+
+
+class TestPreload:
+    """The Docker images of the labs pulled by the agent when the portal gives the host its
+    turn: ``pending`` in the status asks, ``POST /v1/preload/start`` grants."""
+    PORTAL = {'Authorization': f'Bearer {TOKEN}'}       # the portal itself: no user behind these calls
+
+    def test_idle_unless_asked(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                assert await preload_of(h) == {'state': 'idle', 'since': 0, 'total': 0, 'current': 0,
+                                               'image': '', 'error': ''}
+                assert (await h.client.post('/v1/preload/start')).status == 401
+                assert (await h.client.post('/v1/preload/request')).status == 401
+                resp = await h.client.post('/v1/preload/start', headers=self.PORTAL)
+                assert resp.status == 409 and 'no preload was asked' in (await resp.json())['error']
+                resp = await h.client.post('/v1/preload/request', headers=self.PORTAL)
+                data = await resp.json()
+                assert resp.status == 200 and data['ok'] is True and data['preload']['state'] == 'pending'
+                await asyncio.sleep(0.3)
+                assert (await preload_of(h))['state'] == 'pending' and h.calls() == []   # waits for its turn
+        run(go())
+
+    def test_at_start_waits_for_its_turn_then_runs(self, tmp_path):
+        images = ['debian:12', 'sysreseval/base:1.0', 'sysreseval/frr:1.0']
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_PRELOAD_IMAGES': json.dumps(images), 'MOCK_PRELOAD_DELAY': '0.4'},
+                               preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                assert (await preload_of(h))['state'] == 'pending'
+                await asyncio.sleep(0.3)
+                assert h.calls() == []                                # nothing runs before the grant
+                resp = await h.client.post('/v1/preload/start', headers=self.PORTAL)
+                assert resp.status == 200 and (await resp.json())['preload']['state'] == 'running'
+                # a second grant, a request: the preload in progress goes on, alone
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 200
+                resp = await h.client.post('/v1/preload/request', headers=self.PORTAL)
+                assert (await resp.json())['preload']['state'] == 'running'
+                seen = await preload_until(h, lambda p: p['current'] >= 2)
+                assert seen['state'] == 'running' and seen['total'] == 3 and seen['image'] == images[seen['current'] - 1]
+                done = await preload_until(h, lambda p: p['state'] != 'running')
+                assert done == {'state': 'done', 'since': done['since'], 'total': 3, 'current': 3, 'image': '', 'error': ''}
+                assert len(h.calls()) == 1
+                privileged_call(h.entries()[0], ['preload-images', '--progress', '--', str(tmp_path)], 'root')
+                assert h.agent.runner.in_flight == 0
+                # done is the end: no new run unless asked again
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 409
+                resp = await h.client.post('/v1/preload/request', headers=self.PORTAL)
+                assert (await resp.json())['preload'] == {'state': 'pending', 'since': 0, 'total': 0, 'current': 0,
+                                                          'image': '', 'error': ''}
+        run(go())
+
+    def test_a_request_keeps_the_place_in_the_queue(self, tmp_path):
+        """``since`` is how long the host has waited (the portal serves the oldest first): a
+        second request does not reset it."""
+        async def go():
+            async with Harness(tmp_path, preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                await asyncio.sleep(1.2)
+                assert (await preload_of(h))['since'] >= 1
+                resp = await h.client.post('/v1/preload/request', headers=self.PORTAL)
+                assert (await resp.json())['preload']['since'] >= 1
+        run(go())
+
+    def test_failed_images_are_named(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_PRELOAD_IMAGES': json.dumps(['a:1', '!gone:2', '!lost:3'])},
+                               preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 200
+                failed = await preload_until(h, lambda p: p['state'] != 'running')
+                assert failed['state'] == 'failed' and failed['total'] == 3 and failed['image'] == ''
+                assert failed['error'] == "2 of 3 image(s) failed to pull: gone:2, lost:3"
+                # not tried again by itself; asked again, the error is forgotten
+                await asyncio.sleep(0.2)
+                assert len(h.calls()) == 1
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 409
+                resp = await h.client.post('/v1/preload/request', headers=self.PORTAL)
+                assert (await resp.json())['preload']['error'] == ''
+        run(go())
+
+    def test_command_failure(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_FAIL': 'preload-images'},
+                               preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 200
+                failed = await preload_until(h, lambda p: p['state'] != 'running')
+                assert failed['state'] == 'failed' and failed['error'] == 'sre: mock failure'
+            async with Harness(tmp_path, preload={'at_start': True, 'paths': [str(tmp_path / 'nowhere')]}) as h:
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 200
+                failed = await preload_until(h, lambda p: p['state'] != 'running')
+                assert failed['state'] == 'failed' and 'does not exist' in failed['error']
+        run(go())
+
+    def test_timeout(self, tmp_path):
+        """``[preload] timeout``: the command is killed, the host stops holding its turn."""
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_PRELOAD_DELAY': '30'},
+                               preload={'at_start': True, 'paths': [str(tmp_path)], 'timeout': 0.6}) as h:
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 200
+                await until(lambda: h.agent.preloader._run is not None)
+                pid = h.agent.preloader._run.pid
+                failed = await preload_until(h, lambda p: p['state'] != 'running')
+                assert failed['state'] == 'failed' and 'did not finish within 0.6 s' in failed['error']
+                assert not alive(pid) and h.agent.runner.in_flight == 0
+        run(go())
+
+    def test_qt_exam_mode_does_not_hold_a_preload(self, tmp_path):
+        """``exam.json`` is written long before the exam of the Qt GUI: the images are wanted
+        for it (the boot unit preloads whatever the mode)."""
+        async def go():
+            async with Harness(tmp_path, preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                (h.pub / params.exam_json_name).write_text('{}')
+                status = await (await h.client.get('/v1/status', headers=self.PORTAL)).json()
+                assert status['exam_mode'] is True and status['preload']['state'] == 'pending'
+                assert (await h.client.post('/v1/preload/start', headers=self.PORTAL)).status == 200
+                assert (await preload_until(h, lambda p: p['state'] != 'running'))['state'] == 'done'
+        run(go())
+
+    def test_lab_directories_of_the_installation(self, tmp_path, monkeypatch):
+        """Without ``[preload] paths``: the lab directories that exist, each once."""
+        from sreweb.agent.app import _lab_directories
+        site, shipped = tmp_path / 'site', tmp_path / 'shipped'
+        site.mkdir()
+        monkeypatch.setattr(params, 'lab_dir', str(site))
+        monkeypatch.setattr(params, 'shipped_lab_dir', str(shipped))
+        assert _lab_directories() == [str(site)]            # sre preload-images refuses a missing path
+        shipped.mkdir()
+        assert _lab_directories() == [str(site), str(shipped)]
+        monkeypatch.setattr(params, 'shipped_lab_dir', str(site))
+        assert _lab_directories() == [str(site)]            # a checkout: one directory for both
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                assert h.agent.preloader.paths == [str(site)]
+            async with Harness(tmp_path, preload={'paths': ['/srv/labs']}) as h:
+                assert h.agent.preloader.paths == ['/srv/labs']
+        run(go())
+
 
 class TestLabsAndStart:
     def test_labs_cached(self, tmp_path):

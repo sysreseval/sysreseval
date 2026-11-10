@@ -94,3 +94,14 @@ user = "sreweb-x11"
 # last_display = 99
 # runtime_dir = "/run/sre-agent"
 # start_timeout = 10
+# The Docker images of the labs pulled by this agent (`sre preload-images`) when the portal gives
+# the host its turn: the portal lets a few hosts download at the same time ([pool] max_preloads
+# of web.toml), instead of every workstation at its boot.  at_start: the agent asks for a preload
+# each time it starts (the boot of the host); `sre-web-tool preload` and the Pool page ask by
+# hand, whatever at_start says.  With at_start, leave sre-preload-images.service disabled on the
+# host: both would pull.  paths: the lab files and directories scanned (default: the lab
+# directories of the installation); timeout: a preload still running after this long is stopped.
+[preload]
+at_start = false
+# paths = ["/opt/sre/lab"]
+# timeout = "2h"

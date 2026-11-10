@@ -39,6 +39,7 @@ from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED, WS_DISPLAY_GONE
 from .exam import (parse_exam, check_flavor_preset, view as exam_view, end_epoch, is_over as exam_is_over,
                    KEY_ENDED_AT, KEY_FINAL_EVAL_AT, SKEW_WARNING)
+from .preload import Preloader
 from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM
 from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
@@ -127,6 +128,13 @@ def _mem_available_mb() -> int | None:
     return None
 
 
+def _lab_directories() -> list:
+    """The lab directories of the installation that exist: what a preload scans unless ``[preload]
+    paths`` says otherwise (``sre preload-images`` refuses a path that does not exist, and does
+    not follow the link from the site's labs to the shipped ones: both are given)."""
+    return [d for d in dict.fromkeys((params.lab_dir, params.shipped_lab_dir)) if os.path.isdir(d)]
+
+
 class Agent:
     def __init__(self, cfg: AgentConfig, *, pub_dir: str | None = None, projects_dir: str | None = None,
                  localedirs=None, hostname: str | None = None, extra_env: dict | None = None,
@@ -154,6 +162,8 @@ class Agent:
         self.schedulers = Schedulers(self.registry, self.runner, exam_mode=self.exam_mode,
                                      default_idle_timeout=cfg.max_idle, on_evaluated=self._evaluated,
                                      on_exam_ended=self._exam_ended)
+        # the Docker images of the labs, pulled when the portal gives this host its turn
+        self.preloader = Preloader(self.runner, cfg.preload, default_paths=_lab_directories())
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
         self._all_labs_cache: tuple[float, list] | None = None
@@ -260,6 +270,8 @@ class Agent:
         app.router.add_get(f'{p}/status', self.status)
         app.router.add_post(f'{p}/power/off', self.power_off)
         app.router.add_post(f'{p}/restart', self.restart)
+        app.router.add_post(f'{p}/preload/request', self.preload_request)
+        app.router.add_post(f'{p}/preload/start', self.preload_start)
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_get(f'{p}/evaluations', self.evaluations_list)
@@ -299,8 +311,11 @@ class Agent:
         the sre commands in flight end first (their handlers finish normally), the managed
         projects are closed when ``close_projects_on_stop`` says so, the project pages are told
         to reconnect (close code 1001: aiohttp would otherwise wait its shutdown timeout for
-        every events socket still open), then the terminals and the desktops are stopped."""
+        every events socket still open), then the terminals and the desktops are stopped.  A
+        preload of the images is stopped first: waited for, it would take the whole
+        ``shutdown_timeout`` and leave none to close the projects."""
         started = time.monotonic()
+        await self.preloader.stop()
         left = await self.runner.wait_idle(self.cfg.shutdown_timeout)
         if left:
             log.warning("stopping with %d sre command(s) still running", left)
@@ -389,6 +404,7 @@ class Agent:
                                                                  self.cfg.token.encode('utf-8', 'surrogateescape')):
             return json_error(401, "bad agent token")
         if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart',
+                            f'{API_PREFIX}/preload/request', f'{API_PREFIX}/preload/start',
                             f'{API_PREFIX}/archives', f'{API_PREFIX}/archives/updates'):
             request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
@@ -436,13 +452,23 @@ class Agent:
             'terminals': sum(p.terminal_count() for p in self.registry.projects.values()),
             'displays': self.displays.running_count(),
             'exam_mode': self.exam_mode(),
-            'exam_projects': sum(1 for p in self.registry.projects.values() if p.managed and p.exam_running),
+            'exam_projects': self._exam_projects(),
             'load1': load1, 'mem_available_mb': _mem_available_mb(),
             'occupied': occupied, 'occupied_by': reasons,
             'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
             'power_off_allowed': self.cfg.allow_power_off,
             'restart_allowed': bool(self.restart_argvs()), 'restarting': self.restarting is not None,
+            'preload': self.preloader.to_dict(),
         })
+
+    def _exam_projects(self) -> int:
+        """The projects of a running exam of the web site on this host."""
+        return sum(1 for p in self.registry.projects.values() if p.managed and p.exam_running)
+
+    def _commands_in_flight(self) -> int:
+        """The sre commands a restart of the agent waits for: a preload of the images is not one
+        of them (it is stopped)."""
+        return max(0, self.runner.in_flight - (1 if self.preloader.running else 0))
 
     async def power_off(self, request):
         """The portal powers this idle host off: refused unless allowed, while a local session
@@ -487,11 +513,12 @@ class Agent:
         if self.restarting is None:
             self.restarting = time.monotonic()
             log.warning("restart requested by %s: %s (%d sre command(s) running)", request.remote,
-                        ' && '.join(shlex.join(argv) for argv in argvs), self.runner.in_flight)
+                        ' && '.join(shlex.join(argv) for argv in argvs), self._commands_in_flight())
             asyncio.get_running_loop().call_later(1.0, lambda: asyncio.ensure_future(self._run_restart(argvs)))
-        return web.json_response({'ok': True, 'in_flight': self.runner.in_flight})
+        return web.json_response({'ok': True, 'in_flight': self._commands_in_flight()})
 
     async def _run_restart(self, argvs: list):
+        await self.preloader.stop()     # asked again by the agent started next (at_start), else by hand
         left = await self.runner.wait_idle(max(self.cfg.timeouts.values()))   # longer than any sre command
         if left:
             log.warning("restarting with %d sre command(s) still running", left)
@@ -500,6 +527,31 @@ class Agent:
             ok = await self._run_command(argv, "restart")
         if not ok:
             self.restarting = None
+
+    # -- the preload of the Docker images ---------------------------------------------------------
+
+    async def preload_request(self, request):
+        """A preload of the images is wanted on this host (``sre-web-tool preload``, the Pool
+        page): it waits for its turn (``pending`` in the status), which the portal gives with
+        ``POST /v1/preload/start``.  Nothing changes for a host already waiting or preloading."""
+        self.preloader.request()
+        return web.json_response({'ok': True, 'preload': self.preloader.to_dict()})
+
+    async def preload_start(self, request):
+        """The turn of this host (the portal lets a few hosts preload at a time): the preload
+        that was asked starts, its progress shown in the status.  409 when none was asked (a
+        preload is never started twice by a portal with a stale view), or while projects of an
+        exam of the web site run here; 503 while the agent is restarting."""
+        if self.restarting is not None:
+            raise AccessError(503, "the agent is restarting")
+        if not self.preloader.running:
+            exams = self._exam_projects()
+            if exams:
+                raise AccessError(409, f"{exams} exam project(s) running")
+            if not self.preloader.start():
+                raise AccessError(409, "no preload was asked on this host")
+            log.info("preload of the images started by %s", request.remote)
+        return web.json_response({'ok': True, 'preload': self.preloader.to_dict()})
 
     async def labs_handler(self, request):
         """The labs a student may start; with ``?all=1`` (instructors only) every lab, the

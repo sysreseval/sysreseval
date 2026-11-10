@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, asdict
 import aiohttp
 
 from ..agent.occupancy import SESSION_PREFIX
+from ..agent.runner import PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED
 from ..config import HostConfig, host_config_from_dict, ConfigError
 from ..identity import Identity
 
@@ -108,6 +109,16 @@ class HostStatus:
     agent_uptime: int | None = None     # seconds since the agent started: a restart resets it
     restart_allowed: bool = False       # the agent can restart itself (its unit, or restart_command)
     restarting: bool = False            # a restart is pending on the agent (sre commands in flight)
+    exam_projects: int = 0              # the running projects of an exam of the web site
+    # the preload of the Docker images on the host (the ``preload`` object of the status, flat):
+    # its state (one of PRELOAD_STATES; '' = an agent that does not know the preload, or
+    # unreachable), the seconds in that state, the image being pulled and its rank, the error
+    preload: str = ''
+    preload_since: int | None = None
+    preload_current: int = 0
+    preload_total: int = 0
+    preload_image: str = ''
+    preload_error: str = ''
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -147,6 +158,18 @@ def _names(value) -> list:
     return [x for x in value if isinstance(x, str)] if isinstance(value, list) else []
 
 
+def preload_fields(value) -> dict:
+    """The ``preload*`` fields of a ``HostStatus`` from the ``preload`` object of a status (or of
+    the answer to a preload request), coerced like the rest; an agent older than the preload
+    sends none: ``''``, a host the portal never gives a turn to."""
+    data = value if isinstance(value, dict) else {}
+    state = data.get('state')
+    return {'preload': state if isinstance(state, str) and state in PRELOAD_STATES else '',
+            'preload_since': _seconds(data.get('since')),
+            'preload_current': _count(data.get('current')), 'preload_total': _count(data.get('total')),
+            'preload_image': _text(data.get('image')), 'preload_error': _text(data.get('error'))}
+
+
 def status_from_json(data, extra_projects: int = 0) -> HostStatus:
     """The ``HostStatus`` of the JSON of ``GET /v1/status``, every field coerced to its type: a
     broken or hostile agent cannot plant a string where ``pick()`` sorts by a number (every
@@ -171,8 +194,10 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       agent_uptime=_seconds(data.get('agent_uptime')),
                       restart_allowed=data.get('restart_allowed') is True,
                       restarting=data.get('restarting') is True,
+                      exam_projects=_count(data.get('exam_projects')),
                       hostname=_text(data.get('hostname')),
-                      sre_version=_text(data.get('sre_version')))
+                      sre_version=_text(data.get('sre_version')),
+                      **preload_fields(data.get('preload')))
 
 
 @dataclass
@@ -188,6 +213,12 @@ class HostRuntime:
     drain_at: float = 0.0              # wall-clock time the drain was asked (0: unknown), for the state file
     power_off_sent: float | None = None   # monotonic time of the last accepted power off
     restart_sent: float | None = None     # monotonic time of the last accepted restart, until it is seen
+    # the preload of the Docker images: monotonic time its turn was given to the host, until a
+    # status asked after it tells (the host counts as preloading meanwhile, whatever an older
+    # status says), and no new turn before next_preload_at after a refused one; neither is kept
+    # in the state file: the agents say where they are
+    preload_granted: float | None = None
+    next_preload_at: float = 0.0
     last_wake_reason: str = ''
 
 
@@ -548,8 +579,21 @@ class Pool:
             runtime.woken_at = None
             runtime.wake_failures = 0
             runtime.next_wake_at = 0.0
+        if runtime.preload_granted is not None and polled_at > runtime.preload_granted:
+            runtime.preload_granted = None      # this status was asked after the turn was given: it tells
+        self._report_preload(host.name, self.status[host.name], status)
         self.status[host.name] = status
         return status
+
+    @staticmethod
+    def _report_preload(name: str, before: HostStatus, status: HostStatus):
+        """The end of a preload of the Docker images the portal saw waiting or running."""
+        if status.preload == before.preload or before.preload not in (PRELOAD_PENDING, PRELOAD_RUNNING):
+            return
+        if status.preload == PRELOAD_DONE:
+            log.info("host %s: %d image(s) preloaded", name, status.preload_total)
+        elif status.preload == PRELOAD_FAILED:
+            log.warning("host %s: preload of the images failed: %s", name, status.preload_error)
 
     @staticmethod
     def _drain_over(runtime: HostRuntime):

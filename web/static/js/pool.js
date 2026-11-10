@@ -1,14 +1,17 @@
 // The Pool page of the instructors: every host of the pool (GET /api/pool and /api/pool/status
 // every 5 s), one row per host with its state as `sre-web-tool list` shows it (the seconds and
 // the failed attempts of a wake), its projects, terminals, load, who occupies it, its uptime,
-// its flags (reserved for instructors, power, drain, power off sent, restart sent), the agent's version and
+// its flags (reserved for instructors, power, drain, power off sent, restart sent, and where the
+// preload of the Docker images is: queued, preloading 2/5, failed), the agent's version and
 // its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
 // sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
 // Disable, Wake, Drain, Power off: POST /api/pool/hosts/{name}/{action}; add, remove and restart
 // stay with the tool), each disabled with the reason as its tooltip when it does not apply; the
 // answer of an action is the updated row, shown at once.  A checkbox per row (the header's one
 // ticks the hosts shown) selects hosts for the buttons of the bar above the table, which run the
-// same commands on every selected host the action applies to, one call per host.
+// same commands on every selected host the action applies to, one call per host; Preload images
+// is one of them, in the bar only: the selected hosts wait for their turn to pull the images
+// (`sre-web-tool preload`), the portal letting a few of them download at a time.
 
 import './base.js';
 import * as api from './api.js';
@@ -78,7 +81,35 @@ function flagsText(row) {
   if (row.restart_sent) {
     flags.push(_('restart sent'));
   }
+  const preload = preloadFlag(row);
+  if (preload) {
+    flags.push(preload);
+  }
   return flags.join(', ');
+}
+
+// the preload of the Docker images on the host: waiting for its turn, pulling (image 2 of 5), failed
+function preloadFlag(row) {
+  switch (row.preload) {
+    case 'pending':
+      return _('preload queued');
+    case 'running':
+      return row.preload_total
+        ? format(_('preloading {current}/{total}'), {current: row.preload_current || 0, total: row.preload_total})
+        : _('preloading');
+    case 'failed':
+      return _('preload failed');
+    default:
+      return '';
+  }
+}
+
+// the tooltip of the Flags cell: the image being pulled, or why the preload failed
+function flagsTitle(row) {
+  if (row.preload === 'running') {
+    return row.preload_image || '';
+  }
+  return row.preload === 'failed' ? (row.preload_error || '') : '';
 }
 
 function uptimeText(seconds) {   // 1h02, as the tool
@@ -169,6 +200,17 @@ function actionReason(row, action) {
         return _('the agent does not allow it (allow_power_off)');
       }
       return row.power_off_sent ? _('power off sent') : '';
+    case 'preload':
+      if (unreachable) {
+        return unreachable;
+      }
+      if (!row.preload) {
+        return _('the agent does not know the preload (older version)');
+      }
+      if (row.preload === 'pending') {
+        return _('already queued');
+      }
+      return row.preload === 'running' ? _('already preloading') : '';
     default:
       return '';
   }
@@ -335,6 +377,13 @@ function renderStatus() {
   if (s.active_now === false) {
     pieces.push(_('outside the active hours'));
   }
+  // the preloads of the Docker images, when there is something to say
+  const preloading = Array.isArray(s.preloading) ? s.preloading.length : 0;
+  if (isNumber(s.max_preloads) && (preloading || s.preload_queued || s.preload_failed)) {
+    pieces.push(format(_('image preloads: {running} running, {queued} queued, {failed} failed (at most {max} at a time)'),
+                       {running: preloading, queued: s.preload_queued || 0, failed: s.preload_failed || 0,
+                        max: s.max_preloads}));
+  }
   // the state file of the portal cannot be written: a restart would undo what is changed here
   const unsaved = typeof s.state_error === 'string' && s.state_error !== '';
   if (unsaved) {
@@ -378,7 +427,7 @@ function renderRow(row) {
     el('td', {class: 'num'}, isNumber(row.load1) ? row.load1.toFixed(2) : ''),
     el('td', {}, (row.occupied_by || []).join(', ')),
     el('td', {class: 'num'}, uptimeText(row.uptime)),
-    el('td', {class: 'flags'}, flagsText(row)),
+    el('td', {class: 'flags', title: flagsTitle(row)}, flagsText(row)),
     el('td', {}, row.sre_version || ''),
     el('td', {class: 'error', title: row.reachable ? '' : (row.error || '')}, errorText(row)),
     el('td', {class: 'actions'}, ...actions(row)));

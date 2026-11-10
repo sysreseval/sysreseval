@@ -997,3 +997,51 @@ class TestX11Flag:
                                                  'SRE_X11_DISPLAY': '12'})
         entry = json.loads(log.read_text().splitlines()[0])
         assert entry['env']['SRE_XAUTH_COOKIE'] == 'ab' * 16 and entry['env']['SRE_X11_DISPLAY'] == '12'
+
+
+class TestPreloadImages:
+    """``preload-images``: what the agent runs when the portal lets its host preload."""
+
+    def test_privileged_only(self, pub):
+        completed = run_mock(pub, 'preload-images', str(pub))
+        assert completed.returncode == 1
+        assert completed.stderr.decode().strip() == "sre: you're not allowed to run this command"
+
+    def test_default_output_has_no_event(self, pub):
+        completed = run_mock(pub, 'preload-images', str(pub), user=False)
+        assert completed.returncode == 0 and events(completed) == []
+        out = completed.stdout.decode()
+        assert "Found 1 image(s) across 1 file(s):" in out and f"  pulling {params.default_docker_image} …" in out
+        assert "All 1 image(s) preloaded successfully." in out
+
+    def test_progress_events(self, pub):
+        images = ['debian:12', 'sysreseval/frr:1.0', 'alpine:3']
+        completed = run_mock(pub, 'preload-images', '--progress', str(pub), user=False,
+                             extra_env={'MOCK_PRELOAD_IMAGES': json.dumps(images)})
+        assert completed.returncode == 0
+        assert events(completed) == [{'phase': 'preload', 'status': 'start', 'total': 3}] + [
+            {'phase': 'preload', 'status': 'pull', 'image': image, 'current': i, 'total': 3}
+            for i, image in enumerate(images, 1)]
+        assert "All 3 image(s) preloaded successfully." in completed.stdout.decode()
+
+    def test_a_failing_image(self, pub):
+        completed = run_mock(pub, 'preload-images', '--progress', str(pub), user=False,
+                             extra_env={'MOCK_PRELOAD_IMAGES': json.dumps(['a:1', '!gone:2', 'c:3'])})
+        assert completed.returncode == 1
+        assert phases(completed) == [('preload', 'start'), ('preload', 'pull'), ('preload', 'pull'),
+                                     ('preload', 'error'), ('preload', 'pull')]
+        assert [e['image'] for e in events(completed) if e['status'] == 'error'] == ['gone:2']
+        assert completed.stderr.decode().strip().splitlines()[-1] == "sre: 1 image(s) failed to pull"
+
+    def test_each_pull_takes_the_delay(self, pub):
+        started = time.monotonic()
+        completed = run_mock(pub, 'preload-images', str(pub), user=False,
+                             extra_env={'MOCK_PRELOAD_IMAGES': json.dumps(['a:1', 'b:2']), 'MOCK_PRELOAD_DELAY': '0.3'})
+        assert completed.returncode == 0 and time.monotonic() - started >= 0.6
+
+    def test_missing_path_and_mock_failure(self, pub):
+        completed = run_mock(pub, 'preload-images', '--progress', str(pub / 'nowhere'), user=False)
+        assert completed.returncode == 1 and events(completed) == []
+        assert completed.stderr.decode().strip() == f"sre: '{pub / 'nowhere'}' does not exist"
+        completed = run_mock(pub, 'preload-images', str(pub), user=False, extra_env={'MOCK_FAIL': 'preload-images'})
+        assert completed.returncode == 1 and completed.stderr.decode().strip() == 'sre: mock failure'

@@ -165,6 +165,11 @@ follow_local_sessions = true
 # next when it fails: every host serves the same lab tree) and kept this long per role (the
 # reserved hosts are the instructors' only); 0 = asked at every open.
 labs_cache_ttl = 60
+# The preloads of the Docker images of the labs (`sre preload-images`, run by the agent of a host
+# that asks for it: at its start with [preload] at_start of agent.toml, or `sre-web-tool preload`
+# / the Pool page): this many hosts download at the same time, the others wait for their turn,
+# the one that waited longest first; 0 = the portal gives no turn (nothing is preloaded).
+max_preloads = 2
 
 [admin]
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted

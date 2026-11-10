@@ -33,6 +33,16 @@ PHASE_MESSAGE = 'message'       # a plain stderr line
 PHASE_PROJECT = 'project'       # {"phase": "project", "status": "created", "running_lab_name": ...}
 PHASE_FLAVOR_FORM = 'flavor_form'
 PHASE_FLAVOR_ERROR = 'flavor_error'
+PHASE_PRELOAD = 'preload'       # ``sre preload-images --progress``: status start / pull / error
+
+#: The ``state`` of the ``preload`` object of ``GET /v1/status`` (``agent/preload.py``), read by the
+#: portal too: ``pending`` asks the portal for a turn, which it gives to a few hosts at a time.
+PRELOAD_IDLE = 'idle'           # nothing asked
+PRELOAD_PENDING = 'pending'     # asked (the start of the agent, sre-web-tool preload): waits for its turn
+PRELOAD_RUNNING = 'running'     # `sre preload-images` is pulling
+PRELOAD_DONE = 'done'
+PRELOAD_FAILED = 'failed'       # an image could not be pulled, or the command failed
+PRELOAD_STATES = (PRELOAD_IDLE, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED)
 
 #: The ``status`` of the final ``{"phase": "result"}`` line of the creation stream of the agent
 #: (``POST /v1/projects``), read by the portal too: after a form or a refused flavor no project
@@ -170,6 +180,12 @@ class StreamingRun:
     @property
     def pid(self) -> int:
         return self._proc.pid
+
+    async def cancel(self, grace: float = 30.0):
+        """Stop the command (:func:`cancel_process`): :meth:`events` then ends by itself at the
+        end of stderr, with a negative ``rc``.  Cancelling the task that consumes the events
+        would free the limits but leave the process running."""
+        await cancel_process(self._proc, grace=grace)
 
     async def events(self) -> AsyncIterator[dict]:
         stdout_task = asyncio.ensure_future(self._proc.stdout.read())

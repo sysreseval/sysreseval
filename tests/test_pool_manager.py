@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
 from sreweb.config import HostConfig, PoolConfig
 from sreweb.identity import Identity, ROLE_INSTRUCTOR
-from sreweb.portal.manager import (HostView, PoolManager, magic_packet, poweroff_plan, spare_capacity,
-                                   wake_plan, BACKOFF_MIN)
+from sreweb.portal.manager import (HostView, PoolManager, magic_packet, poweroff_plan, preload_plan, spare_capacity,
+                                   wake_plan, BACKOFF_MIN, PRELOAD_REFUSED_HOLD)
 from sreweb.portal.pool import (Pool, HostStatus, PoolError, STATE_OFF, STATE_UP, STATE_WAKING,
                                 STATE_OCCUPIED, STATE_DRAINING, STATE_DISABLED, STATE_EXAM,
                                 PLACEMENT_LOAD, PLACEMENT_SESSION, PLACEMENT_NAMED)
@@ -27,11 +27,13 @@ TOKEN = 't' * 32
 
 def view(name, state, projects=0, max_projects=10, can_wake=True, enabled=True, power=False,
          power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False,
-         instructors_only=False, restart_pending=False):
+         instructors_only=False, restart_pending=False, **more):
+    """*more*: the preload fields (``preload``, ``preload_since``, ``preload_granted``,
+    ``preload_hold``, ``exam_projects``)."""
     return HostView(name=name, state=state, projects=projects, max_projects=max_projects, can_wake=can_wake,
                     enabled=enabled, power=power, power_off_allowed=power_off_allowed, next_wake_at=next_wake_at,
                     idle_for=idle_for, drain=drain, power_off_pending=power_off_pending,
-                    instructors_only=instructors_only, restart_pending=restart_pending)
+                    instructors_only=instructors_only, restart_pending=restart_pending, **more)
 
 
 class TestWakePlan:
@@ -132,6 +134,62 @@ class TestPowerOffPlan:
                        instructors_only=True)
         assert poweroff_plan([drained], cfg, active=True) == ['r']
 
+    def test_a_host_waiting_for_its_preload_is_not_idle(self):
+        """Powered off for idleness while it waits for its turn to pull the Docker images (or
+        pulls them), a host would never have them; a drain does not wait."""
+        cfg = PoolConfig(idle_host_timeout=600, spare_projects=0, min_hosts_up=0)
+        a = view('a', STATE_UP, power=True, power_off_allowed=True, idle_for=700, preload='pending')
+        assert poweroff_plan([a], cfg, active=False) == []
+        a.preload = 'running'
+        assert poweroff_plan([a], cfg, active=False) == []
+        a.preload, a.preload_granted = 'idle', True        # its turn was just given
+        assert poweroff_plan([a], cfg, active=False) == []
+        a.preload_granted = False
+        for over in ('idle', 'done', 'failed', ''):
+            a.preload = over
+            assert poweroff_plan([a], cfg, active=False) == ['a'], over
+        a.preload = 'pending'                               # the portal gives no turn: nothing to wait for
+        assert poweroff_plan([a], PoolConfig(idle_host_timeout=600, spare_projects=0, min_hosts_up=0, max_preloads=0),
+                             active=False) == ['a']
+        d = view('d', STATE_DRAINING, power=True, power_off_allowed=True, drain=True, preload='running')
+        assert poweroff_plan([d], cfg, active=False) == ['d']
+
+
+class TestPreloadPlan:
+    """The preloads of the Docker images: a few hosts at a time (``max_preloads``)."""
+
+    def test_cap_and_order(self):
+        cfg = PoolConfig(max_preloads=2)
+        hosts = [view('a', STATE_UP, preload='pending', preload_since=10),
+                 view('b', STATE_UP, preload='pending', preload_since=50),
+                 view('c', STATE_UP, preload='pending', preload_since=50),
+                 view('d', STATE_UP, preload='idle'), view('e', STATE_UP, preload='done'),
+                 view('f', STATE_UP, preload='failed'), view('g', STATE_OFF), view('h', STATE_UP)]
+        assert preload_plan(hosts, cfg) == ['b', 'c']      # the longest wait first, the name breaks a tie
+        hosts[1].preload = 'running'
+        assert preload_plan(hosts, cfg) == ['c']
+        hosts[2].preload_granted = True                    # its turn was given, its status still says pending
+        assert preload_plan(hosts, cfg) == []
+        assert preload_plan(hosts, PoolConfig(max_preloads=3)) == ['a']
+        assert preload_plan(hosts, PoolConfig(max_preloads=10)) == ['a']   # nobody else asks
+        assert preload_plan(hosts, PoolConfig(max_preloads=1)) == []       # more running than the cap allows now
+        assert preload_plan(hosts, PoolConfig(max_preloads=0)) == []       # the portal gives no turn
+
+    def test_hosts_left_out(self):
+        cfg = PoolConfig(max_preloads=5)
+        for over in ({'exam_projects': 1}, {'drain': True}, {'restart_pending': True}, {'power_off_pending': True},
+                     {'preload_hold': True}, {'preload_granted': True}):
+            hosts = [view('a', STATE_UP, preload='pending', **over), view('b', STATE_UP, preload='pending')]
+            assert preload_plan(hosts, cfg) == ['b'], over
+
+    def test_disabled_occupied_and_exam_mode_hosts_are_served(self):
+        """The local users of a host start labs too: only the agent says whether it wants the
+        images (``exam.json`` of the Qt GUI is there long before its exam)."""
+        hosts = [view('a', STATE_DISABLED, enabled=False, preload='pending'), view('b', STATE_OCCUPIED, preload='pending'),
+                 view('c', STATE_EXAM, preload='pending'), view('d', STATE_UP, instructors_only=True, preload='pending'),
+                 view('e', STATE_UP, projects=9, preload='pending')]
+        assert preload_plan(hosts, PoolConfig(max_preloads=5)) == ['a', 'b', 'c', 'd', 'e']
+
 
 class TestMagicPacket:
     def test_bytes(self):
@@ -170,6 +228,7 @@ class FakeSession:
         self.gets = []
         self.posts = []
         self.post_status, self.post_data = 200, {'ok': True}
+        self.post_answers = {}  # URL -> (status, data) of a POST there, None = no answer; else the two above
 
     def get(self, url, headers=None, timeout=None, params=None):
         self.gets.append(url)
@@ -187,6 +246,10 @@ class FakeSession:
 
     def post(self, url, headers=None, timeout=None):
         self.posts.append(url)
+        if url in self.post_answers:
+            if self.post_answers[url] is None:
+                raise aiohttp.ClientConnectionError('down')
+            return FakeResponse(*self.post_answers[url])
         return FakeResponse(self.post_status, self.post_data)
 
 
@@ -194,6 +257,12 @@ def up(projects=0, **over):
     return {'projects': projects, 'managed_projects': projects, 'terminals': 0, 'load1': 0.5, 'exam_mode': False,
             'occupied': False, 'occupied_by': [], 'uptime': 100, 'power_off_allowed': True, 'hostname': 'h',
             'sre_version': '1', 'agent_uptime': 500, 'restart_allowed': True, 'restarting': False, **over}
+
+
+def preloading(state, since=0, **over):
+    """The ``preload`` object of the status of an agent that knows the preload of the images
+    (``up()`` alone is an older agent): ``up(preload=preloading('pending', 30))``."""
+    return {'state': state, 'since': since, 'total': 0, 'current': 0, 'image': '', 'error': '', **over}
 
 
 def run(coro):
@@ -225,6 +294,25 @@ class TestStatusCoercion:
         for body in ([1, 2], 'up', None, 3):
             st = status_from_json(body)
             assert not st.reachable and 'object' in st.error, body
+
+    def test_preload_object(self):
+        """The ``preload`` object of the status, flat in the ``HostStatus``; an agent older than
+        the preload sends none (``''``: never given a turn), a hostile one plants nothing."""
+        from sreweb.portal.pool import status_from_json, MAX_STATUS_TEXT
+
+        def fields(st):
+            return (st.preload, st.preload_since, st.preload_current, st.preload_total, st.preload_image,
+                    st.preload_error, st.exam_projects)
+        assert fields(status_from_json(up())) == ('', None, 0, 0, '', '', 0)
+        assert fields(HostStatus(error='down')) == ('', None, 0, 0, '', '', 0)
+        st = status_from_json(up(exam_projects=2, preload=preloading('running', 12, total=5, current=2, image='debian:12')))
+        assert fields(st) == ('running', 12, 2, 5, 'debian:12', '', 2)
+        assert status_from_json(up(preload=preloading('pending', 40))).preload_since == 40
+        for odd in ('running', ['running'], {'state': 'exploding'}, {'state': 5}, {'state': ['running']}, None, 7):
+            assert status_from_json(up(preload=odd)).preload == '', odd
+        st = status_from_json(up(exam_projects='many', preload={'state': 'failed', 'since': 'x', 'total': -3,
+                                                                'current': 2.7, 'image': 7, 'error': 'e' * 500}))
+        assert fields(st) == ('failed', None, 2, 0, '', 'e' * MAX_STATUS_TEXT, 0)
 
     def test_one_odd_agent_does_not_break_the_placement(self):
         hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10)]
@@ -576,6 +664,163 @@ class TestManager:
             with pytest.raises(PoolError) as e:
                 await mgr.restart('a')
             assert e.value.status == 409 and 'not reachable' in e.value.message
+        run(go())
+
+    @staticmethod
+    def _preload_pool(states: dict, **cfg):
+        """A pool whose agents say *states* about their preload (None: an agent older than it)."""
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in states]
+        session = FakeSession()
+        session.answers = {f'http://{n}': up() if p is None else up(preload=p) for n, p in states.items()}
+        pool = Pool(hosts, session)
+        mgr = PoolManager(pool, PoolConfig(spare_projects=0, min_hosts_up=0, active_hours='', **cfg),
+                          wol=lambda mac, broadcast: None)
+        return session, pool, mgr
+
+    def test_preloads_a_few_hosts_at_a_time(self, caplog):
+        """The hosts asking for a preload of the Docker images get their turn ``max_preloads`` at
+        a time, the one that waited longest first; a turn given counts until a status asked after
+        it tells, whatever the statuses asked before say (the polls and the policy are two loops)."""
+        session, pool, mgr = self._preload_pool({'a': preloading('pending', 30), 'b': preloading('pending', 20),
+                                                 'c': preloading('pending', 10), 'd': None}, max_preloads=2)
+        START = '/v1/preload/start'
+
+        async def go():
+            await pool.refresh()
+            await mgr.tick()
+            assert session.posts == [f'http://a{START}', f'http://b{START}']
+            status = mgr.status()
+            assert (status['max_preloads'], status['preloading'], status['preload_queued'], status['preload_failed']) \
+                == (2, ['a', 'b'], 1, 0)
+            await mgr.tick()                                    # the statuses held are older than the turns
+            assert len(session.posts) == 2
+            # a status asked before the turn was given and arriving after it does not free the turn
+            for name in 'ab':
+                pool.runtime[name].preload_granted = time.monotonic() + 60
+            await pool.refresh()
+            assert pool.status['a'].preload == 'pending' and pool.runtime['a'].preload_granted is not None
+            await mgr.tick()
+            assert len(session.posts) == 2
+            # the next one tells: both run, c still waits
+            for name in 'ab':
+                pool.runtime[name].preload_granted = time.monotonic() - 1
+                session.answers[f'http://{name}'] = up(preload=preloading('running', 2, total=4, current=1, image='debian:12'))
+            await pool.refresh()
+            assert pool.runtime['a'].preload_granted is None and pool.runtime['b'].preload_granted is None
+            await mgr.tick()
+            assert len(session.posts) == 2 and mgr.status()['preloading'] == ['a', 'b']
+            row = {r['name']: r for r in pool.summary()}['a']
+            assert (row['preload'], row['preload_current'], row['preload_total'], row['preload_image']) == \
+                ('running', 1, 4, 'debian:12')
+            # a is done: its turn goes to c
+            session.answers['http://a'] = up(preload=preloading('done', 0, total=4, current=4))
+            with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+                await pool.refresh()
+            assert 'host a: 4 image(s) preloaded' in caplog.text
+            await mgr.tick()
+            assert session.posts[2:] == [f'http://c{START}']
+            # the turn never reached c (its status, asked after it, still says pending): given again
+            pool.runtime['c'].preload_granted = time.monotonic() - 1
+            await pool.refresh()
+            await mgr.tick()
+            assert session.posts[3:] == [f'http://c{START}']
+            # b fails: told once, not tried again by the portal
+            pool.runtime['c'].preload_granted = time.monotonic() - 1
+            session.answers['http://c'] = up(preload=preloading('running', 1))
+            session.answers['http://b'] = up(preload=preloading('failed', 0, error='1 of 4 image(s) failed to pull: x:1'))
+            with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+                await pool.refresh()
+            assert 'host b: preload of the images failed: 1 of 4 image(s) failed to pull: x:1' in caplog.text
+            await mgr.tick()
+            assert len(session.posts) == 4 and mgr.status()['preload_failed'] == 1
+        run(go())
+
+    def test_preload_turn_refused_or_unanswered(self, caplog):
+        session, pool, mgr = self._preload_pool({'a': preloading('pending', 30), 'b': preloading('pending', 20),
+                                                 'c': preloading('pending', 10)}, max_preloads=1)
+        START = '/v1/preload/start'
+
+        async def go():
+            await pool.refresh()
+            # a refuses its turn (an exam started there): held back for a while, b is served
+            session.post_answers[f'http://a{START}'] = (409, {'error': '1 exam project(s) running'})
+            with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+                await mgr.tick()
+            assert session.posts == [f'http://a{START}'] and 'preload of a: a refused: 1 exam project(s) running' in caplog.text
+            rt = pool.runtime['a']
+            assert rt.preload_granted is None and rt.next_preload_at > time.monotonic() + PRELOAD_REFUSED_HOLD - 5
+            # b does not answer: it may have started, so it holds the turn until its next status
+            session.post_answers[f'http://b{START}'] = None
+            await mgr.tick()
+            assert session.posts[1:] == [f'http://b{START}'] and pool.runtime['b'].preload_granted is not None
+            await mgr.tick()
+            assert len(session.posts) == 2
+            # its status says it did not: c is next in line, b comes again after it
+            pool.runtime['b'].preload_granted = time.monotonic() - 1
+            del session.post_answers[f'http://b{START}']
+            await pool.refresh()
+            await mgr.tick()
+            assert session.posts[2:] == [f'http://b{START}']    # b waited longer than c
+            # the hold of a is over
+            pool.runtime['b'].preload_granted = time.monotonic() - 1
+            session.answers['http://b'] = up(preload=preloading('done'))
+            del session.post_answers[f'http://a{START}']
+            rt.next_preload_at = time.monotonic() - 1
+            await pool.refresh()
+            await mgr.tick()
+            assert session.posts[3:] == [f'http://a{START}']
+        run(go())
+
+    def test_no_preload_while_an_exam_runs_or_the_host_goes_down(self):
+        session, pool, mgr = self._preload_pool({'a': preloading('pending', 30), 'b': preloading('pending', 20),
+                                                 'c': preloading('pending', 10)}, max_preloads=3)
+
+        async def go():
+            session.answers['http://a']['exam_projects'] = 1
+            await pool.refresh()
+            pool.runtime['b'].drain = True
+            await mgr.tick()
+            assert session.posts == ['http://c/v1/preload/start']
+            # nothing is given with max_preloads = 0, and a request by hand is refused
+            mgr.cfg.max_preloads = 0
+            pool.runtime['b'].drain = False
+            await mgr.tick()
+            assert len(session.posts) == 1
+            with pytest.raises(PoolError) as e:
+                await mgr.request_preload('b')
+            assert e.value.status == 409 and 'max_preloads' in e.value.message
+        run(go())
+
+    def test_preload_asked_by_hand(self):
+        """``sre-web-tool preload``: the agent is asked, and waits for its turn like the others;
+        its answer shows at once in the row."""
+        session, pool, mgr = self._preload_pool({'a': preloading('idle'), 'old': None, 'down': preloading('idle')},
+                                                max_preloads=1)
+        REQUEST = 'http://a/v1/preload/request'
+
+        async def go():
+            session.answers['http://down'] = None
+            await pool.refresh()
+            session.post_answers[REQUEST] = (200, {'ok': True, 'preload': preloading('pending')})
+            await mgr.request_preload('a')
+            assert session.posts == [REQUEST]
+            assert pool.status['a'].preload == 'pending' and pool.runtime['a'].preload_granted is None
+            assert {r['name']: r['preload'] for r in pool.summary()} == {'a': 'pending', 'old': '', 'down': ''}
+            session.post_answers['http://a/v1/preload/start'] = (200, {'ok': True, 'preload': preloading('running')})
+            await mgr.tick()                                    # the policy gives the turn
+            assert session.posts[1:] == ['http://a/v1/preload/start'] and pool.status['a'].preload == 'running'
+            for name, fragment in (('old', 'older version'), ('down', 'not reachable')):
+                with pytest.raises(PoolError) as e:
+                    await mgr.request_preload(name)
+                assert e.value.status == 409 and fragment in e.value.message
+            with pytest.raises(PoolError) as e:
+                await mgr.request_preload('nope')
+            assert e.value.status == 404
+            session.post_answers[REQUEST] = (500, {'error': 'internal error'})
+            with pytest.raises(PoolError) as e:
+                await mgr.request_preload('a')
+            assert e.value.status == 500 and 'internal error' in e.value.message
+            assert len(session.posts) == 3
         run(go())
 
     def test_active_hours_clock(self):

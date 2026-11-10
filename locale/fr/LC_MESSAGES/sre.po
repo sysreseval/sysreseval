@@ -527,6 +527,10 @@ msgid "wait a random delay of 0 to N seconds before pulling"
 msgstr ""
 "attendre un délai aléatoire de 0 à N secondes avant de télécharger les images"
 
+msgid "also report the progress as JSON lines on stderr (for the web agent)"
+msgstr ""
+"écrire aussi la progression en lignes JSON sur stderr (pour l'agent web)"
+
 msgid "lab .py file(s) or director(ies) to scan recursively"
 msgstr "fichiers projets sre (.py) ou répertoires à parcourir récursivement"
 

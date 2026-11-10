@@ -48,6 +48,11 @@ Environment variables (all optional but the first):
                       (GradeElement.to_grade_letter(): OK / MEH / FAIL, grade and max_grade null)
                       and null mark / maximum_mark, as sre does; a privileged `eval` and the
                       archive stay numeric
+  MOCK_PRELOAD_IMAGES JSON list of the images `preload-images` (privileged only) "pulls", in this
+                      order (default: the default image alone); a name starting with `!` is an
+                      image whose pull fails (reported without the `!`; exit 1 at the end, the
+                      other images still pulled, like the real command)
+  MOCK_PRELOAD_DELAY  seconds (float) each of these pulls lasts
   MOCK_FAIL           the subcommand that exits 1 with `sre: mock failure` on stderr
 
 `main(argv, env)` runs one invocation and returns its exit code (the script itself runs
@@ -109,6 +114,8 @@ ENV_EVAL_ERRORS = 'MOCK_EVAL_ERRORS'
 ENV_EVAL_INTERVAL = 'MOCK_EVAL_INTERVAL'
 ENV_COOLDOWN = 'MOCK_COOLDOWN'
 ENV_NO_MARK = 'MOCK_NO_MARK'       # set: letters and no mark on a self-evaluation (no_mark_on_self_grade)
+ENV_PRELOAD_IMAGES = 'MOCK_PRELOAD_IMAGES'
+ENV_PRELOAD_DELAY = 'MOCK_PRELOAD_DELAY'
 ENV_FAIL = 'MOCK_FAIL'
 ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an x11_host
 
@@ -142,6 +149,8 @@ FORM_SIZE = [640, 480]
 SWITCH_PROMPT = 'switch> '
 SHELL_PROMPT = 'mock$ '
 STUB_IMAGE = params.default_docker_image
+#: the first character of an image of MOCK_PRELOAD_IMAGES whose pull fails
+PRELOAD_FAILING_MARK = '!'
 EVAL_PART_TITLE = 'Routing'
 
 MOCK_FAILURE_MESSAGE = "mock failure"
@@ -880,6 +889,42 @@ class Mock:
             sys.stdout.buffer.write(out)
             sys.stdout.buffer.flush()
 
+    def action_preload_images(self):
+        """``sre preload-images [--progress] <file_or_dir...>`` (privileged only): the images of
+        ``MOCK_PRELOAD_IMAGES`` are "pulled" one by one, ``MOCK_PRELOAD_DELAY`` seconds each;
+        the lines of stdout, the ``preload`` events of ``--progress`` on stderr and the exit
+        status (1 when a path does not exist or a pull failed) are those of the real command."""
+        if self.user_mode:
+            error_quit("you're not allowed to run this command")
+        args = self.args
+        for path in args.paths:
+            if not os.path.exists(path):
+                error_quit(f"'{path}' does not exist")
+        names = json.loads(self.env.get(ENV_PRELOAD_IMAGES) or 'null') or [STUB_IMAGE]
+        images = [(name.removeprefix(PRELOAD_FAILING_MARK), name.startswith(PRELOAD_FAILING_MARK)) for name in names]
+        print(f"Found {len(images)} image(s) across {len(args.paths)} file(s):")
+        for image, _ in images:
+            print(f"  {image}")
+        sys.stdout.flush()
+        if args.progress:
+            emit({"phase": "preload", "status": "start", "total": len(images)})
+        delay = self.delay(ENV_PRELOAD_DELAY)
+        errors = 0
+        for current, (image, failing) in enumerate(images, 1):
+            if args.progress:
+                emit({"phase": "preload", "status": "pull", "image": image, "current": current, "total": len(images)})
+            print(f"  pulling {image} …", flush=True)
+            if delay > 0:
+                time.sleep(delay)
+            if failing:
+                errors += 1
+                print(f"  ERROR pulling {image}:\nmanifest unknown", file=sys.stderr, flush=True)
+                if args.progress:
+                    emit({"phase": "preload", "status": "error", "image": image})
+        if errors:
+            error_quit(f"{errors} image(s) failed to pull")
+        print(f"All {len(images)} image(s) preloaded successfully.")
+
 
 # ---------------------------------------------------------------------------------------------
 # the parser (the subset of src/sre.py the agent uses) and the entry point
@@ -956,6 +1001,11 @@ def build_parser() -> argparse.ArgumentParser:
     for flag in ('--separate-instances', '--bonus-in-prefix', '--no-timeline', '--remaining-time', '--no-parts'):
         parser_report.add_argument(flag, action='store_true')
     parser_report.add_argument('-o', '--output', metavar='file', default='-')
+
+    parser_preload = subparsers.add_parser('preload-images')
+    parser_preload.add_argument('--random-delay', type=int, default=0, metavar='seconds')
+    parser_preload.add_argument('--progress', action='store_true')
+    parser_preload.add_argument('paths', nargs='+', metavar='file_or_dir')
     return parser
 
 

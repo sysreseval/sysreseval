@@ -337,6 +337,31 @@ class TestClocks:
             assert saved(state)['clocks'] == {}
         run(go())
 
+    def test_the_preloads_are_not_kept(self, tmp_path):
+        """Where the preload of the Docker images of a host is, its agent says at every poll: the
+        turn given and the hold after a refusal are neither saved nor a reason to write the file."""
+        state = tmp_path / 'pool.json'
+        config = hosts(a=True, b=True)
+        session = M.FakeSession()
+        session.answers = {'http://a': up(preload=M.preloading('pending', 5)),
+                           'http://b': up(preload=M.preloading('pending', 3))}
+        session.post_answers['http://b/v1/preload/start'] = (409, {'error': 'no preload was asked on this host'})
+        pool = Pool(config, session, state_file=str(state))
+        mgr = PoolManager(pool, PoolConfig(spare_projects=0, min_hosts_up=0, active_hours='', max_preloads=2),
+                          wol=lambda mac, broadcast: None)
+
+        async def go():
+            await pool.refresh()
+            await mgr.tick()
+            assert pool.runtime['a'].preload_granted is not None and pool.runtime['b'].next_preload_at > 0
+            await pool.refresh()
+            assert not state.exists()                               # nothing to write
+            pool.save_state()
+            assert 'preload' not in state.read_text()
+            again = Pool(config, session, state_file=str(state))
+            assert again.runtime['a'].preload_granted is None and again.runtime['b'].next_preload_at == 0.0
+        run(go())
+
 
 class TestNotSaved:
     def test_a_file_that_cannot_be_written_is_told(self, tmp_path, caplog):

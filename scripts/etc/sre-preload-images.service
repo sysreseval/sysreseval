@@ -1,6 +1,10 @@
 #
 # to preload the docker images used in sre when the machine start (and after sleeping a random time up to 120s)
 # this is to prevent network congestion if dozen of machines are trying to download the images at the same time
+#
+# on a pool host of the web front-end, the agent can do it instead, a few hosts at a time under the control
+# of the portal ([preload] at_start = true in agent.toml, [pool] max_preloads in web.toml): leave this unit
+# disabled there
 
 [Unit]
 Description=Preload sre images into local cache

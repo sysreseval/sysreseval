@@ -162,6 +162,27 @@ class TestStream:
         with pytest.raises(CommandTimeout):
             run(go())
 
+    def test_cancel_stops_the_command(self, fake_sre):
+        """``cancel()`` kills the process: the events end by themselves, the limits are freed
+        (what a stop of the agent does to a preload in progress)."""
+        async def go():
+            r = SreRunner(fake_sre)
+            s = await r.stream('root', ['sleep'], privileged=True)
+
+            async def consume():
+                async for _ in s.events():
+                    pass
+            task = asyncio.ensure_future(consume())
+            await asyncio.sleep(0.3)
+            assert r.in_flight == 1 and s.rc is None
+            await s.cancel(grace=5)
+            await asyncio.wait_for(task, 5)
+            with pytest.raises(ProcessLookupError):
+                os.kill(s.pid, 0)
+            return r.in_flight, s.rc
+        in_flight, rc = run(go())
+        assert in_flight == 0 and rc not in (None, 0)
+
     def test_start_limits_are_released(self, fake_sre):
         async def go():
             r = SreRunner(fake_sre, max_concurrent_starts=1)

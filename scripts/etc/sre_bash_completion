@@ -231,7 +231,7 @@ pre-start-exam start-exam"
             ;;
         preload-images)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--random-delay --help" -- "$cur"))
+                COMPREPLY=($(compgen -W "--random-delay --progress --help" -- "$cur"))
             else
                 _filedir
             fi

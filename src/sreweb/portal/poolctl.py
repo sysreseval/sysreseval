@@ -7,6 +7,7 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
   sre-web-tool restart NAME | --all [--wait] [--timeout S]   the agents restart themselves (new code after an update)
+  sre-web-tool preload NAME | --all | --failed   the hosts pull the Docker images of the labs, a few at a time
 """
 import argparse
 import json
@@ -16,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
+from ..agent.runner import PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_FAILED
 from ..config import load_web_config, ConfigError
 
 PROG = 'sre-web-tool'
@@ -93,6 +95,13 @@ def _cell(row: dict, key: str) -> str:
             extra.append('drain')
         if row.get('restart_sent'):
             extra.append('restart')
+        if row.get('preload') == PRELOAD_RUNNING:       # the Docker images: pulling (image 2 of 5), waiting, failed
+            total = row.get('preload_total')
+            extra.append(f"preload {row.get('preload_current', 0)}/{total}" if total else 'preload')
+        elif row.get('preload') == PRELOAD_PENDING:
+            extra.append('preload queued')
+        elif row.get('preload') == PRELOAD_FAILED:
+            extra.append('preload failed')
         if row.get('instructors_only'):
             extra.append('instructors')
         return value + (f" ({', '.join(extra)})" if extra else '')
@@ -131,20 +140,51 @@ def restart_hosts(client: PoolClient, names: list | None, *, wait: bool, timeout
         if not names:
             print(f"{PROG}: no reachable host in the pool", file=sys.stderr)
             return 1
+    rows, sent, failures = _post_each(client, names, 'restart')
+    if wait and sent:
+        failures.extend(_wait_restarted(client, sent, timeout, rows))
+    return _report(rows, failures, as_json)
+
+
+def _post_each(client: PoolClient, names: list, action: str) -> tuple:
+    """One ``POST /api/pool/hosts/<name>/<action>`` per host: the rows answered, when each
+    request was accepted (``{name: monotonic time}``) and the texts of the failures."""
     rows, sent, failures = [], {}, []
     for name in names:
         try:
-            rows.append(client.call('POST', f"/api/pool/hosts/{name}/restart"))
+            rows.append(client.call('POST', f"/api/pool/hosts/{name}/{action}"))
             sent[name] = time.monotonic()
         except CallError as e:
             failures.append(f"{name}: {e}")
-    if wait and sent:
-        failures.extend(_wait_restarted(client, sent, timeout, rows))
+    return rows, sent, failures
+
+
+def _report(rows: list, failures: list, as_json: bool) -> int:
+    """The rows on stdout, the failures on stderr; 1 when any failed."""
     if rows:
         print(json.dumps(rows, indent=2) if as_json else table(rows))
     for failure in failures:
         print(f"{PROG}: {failure}", file=sys.stderr)
     return 1 if failures else 0
+
+
+def preload_hosts(client: PoolClient, names: list | None, *, failed_only: bool, as_json: bool) -> int:
+    """``preload NAME`` / ``preload --all`` (*names* None: every reachable host whose agent
+    knows the preload) / ``preload --failed`` (those whose last preload failed): the hosts are
+    asked to pull the Docker images of the labs, each waits for its turn (``preload queued`` in
+    ``list``) and the portal lets ``[pool] max_preloads`` of them download at the same time.  The
+    rows of the hosts asked are printed, the failures on stderr; 1 when any failed."""
+    if names is None:
+        rows = [row for row in client.call('GET', '/api/pool') if row.get('reachable') and row.get('preload')]
+        names = [row['name'] for row in rows if not failed_only or row['preload'] == PRELOAD_FAILED]
+        if not names:
+            if failed_only:
+                print("no host whose preload failed")
+                return 0
+            print(f"{PROG}: no reachable host whose agent knows the preload", file=sys.stderr)
+            return 1
+    rows, _, failures = _post_each(client, names, 'preload')
+    return _report(rows, failures, as_json)
 
 
 def _wait_restarted(client: PoolClient, sent: dict, timeout: float, rows: list) -> list:
@@ -211,9 +251,16 @@ def main(argv, default_config: str) -> int:
     restart.add_argument('--wait', action='store_true', help="wait until the agents are back")
     restart.add_argument('--timeout', type=float, default=RESTART_WAIT_TIMEOUT,
                          help="seconds to wait with --wait (default: %(default)s)")
+    preload = sub.add_parser('preload', help="the host pulls the Docker images of the labs when its turn comes "
+                                             "(the portal lets a few hosts download at a time)", parents=[common])
+    preload.add_argument('name', nargs='?', help="the host (or --all, --failed)")
+    preload.add_argument('--all', action='store_true', help="every reachable host of the pool")
+    preload.add_argument('--failed', action='store_true', help="the hosts whose last preload failed")
     args = parser.parse_args(argv)
     if args.command == 'restart' and bool(args.name) == args.all:
         restart.error("give a host name or --all")
+    if args.command == 'preload' and (bool(args.name), args.all, args.failed).count(True) != 1:
+        preload.error("give a host name, --all or --failed")
 
     url, token, cafile = args.url, args.token, ''
     if url is None or token is None:
@@ -250,6 +297,11 @@ def _dispatch(client: PoolClient, args) -> int:
                   f"{'active' if status['active_now'] else 'inactive'} now)")
             print(f"waking: {', '.join(status['waking']) or 'none'}")
             print(f"idle host timeout: {status['idle_host_timeout'] or 'never (the nightly cron)'}")
+            if 'max_preloads' in status:        # the preloads of the Docker images (an older portal says nothing)
+                running = status.get('preloading') or []
+                names = f" ({', '.join(running)})" if running else ''
+                print(f"image preloads: {len(running)} running{names}, {status.get('preload_queued', 0)} queued, "
+                      f"{status.get('preload_failed', 0)} failed (at most {status['max_preloads']} at a time)")
             # what is changed by hand, kept across the restarts of the portal (an older portal says nothing)
             if status.get('state_error'):
                 print(f"pool state: NOT SAVED in {status.get('state_file') or '?'}: {status['state_error']}")
@@ -267,6 +319,8 @@ def _dispatch(client: PoolClient, args) -> int:
     elif args.command == 'restart':
         return restart_hosts(client, None if args.all else [args.name], wait=args.wait, timeout=args.timeout,
                              as_json=args.json)
+    elif args.command == 'preload':
+        return preload_hosts(client, [args.name] if args.name else None, failed_only=args.failed, as_json=args.json)
     else:
         row = client.call('POST', f"/api/pool/hosts/{args.name}/{args.command}")
         print(json.dumps(row, indent=2) if args.json else table([row]))

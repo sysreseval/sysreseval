@@ -798,6 +798,35 @@ msgstr "hors des heures actives"
 msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
 msgstr "les changements ne sont PAS enregistrés, un redémarrage du portail les perd : {error}"
 
+# the preload of the Docker images of the labs (sre preload-images run by the agents, a few hosts at a time)
+
+msgid "Preload images"
+msgstr "Précharger les images"
+
+msgid "preload queued"
+msgstr "préchargement en attente"
+
+msgid "preloading"
+msgstr "préchargement en cours"
+
+msgid "preloading {current}/{total}"
+msgstr "préchargement {current}/{total}"
+
+msgid "preload failed"
+msgstr "préchargement échoué"
+
+msgid "the agent does not know the preload (older version)"
+msgstr "l'agent ne connaît pas le préchargement (version plus ancienne)"
+
+msgid "already queued"
+msgstr "déjà en attente"
+
+msgid "already preloading"
+msgstr "préchargement déjà en cours"
+
+msgid "image preloads: {running} running, {queued} queued, {failed} failed (at most {max} at a time)"
+msgstr "préchargements des images : {running} en cours, {queued} en attente, {failed} en échec ({max} à la fois au plus)"
+
 msgid "{n} host(s)"
 msgstr "{n} machine(s)"
 

@@ -659,3 +659,22 @@ class TestExamApi:
             logger.removeHandler(handler)
         warnings = [r.getMessage() for r in records if 'clock' in r.getMessage()]
         assert len(warnings) == 1 and 'off this host' in warnings[0]
+
+    def test_no_preload_of_the_images_during_an_exam(self, tmp_path):
+        """A host with a running exam project of the web site does not take its turn to pull
+        the Docker images: the preload stays wanted, and starts once the exam is over there."""
+        async def go():
+            async with Harness(tmp_path, preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:
+                rln = await h.started(ALICE, exam=exam_body())
+                portal = headers(identity=None)
+                status = await (await h.client.get('/v1/status', headers=portal)).json()
+                assert status['exam_projects'] == 1 and status['preload']['state'] == 'pending'
+                resp = await h.client.post('/v1/preload/start', headers=portal)
+                assert resp.status == 409 and 'exam project' in (await resp.json())['error']
+                assert (await A.preload_of(h))['state'] == 'pending' and ['preload-images'] not in \
+                    [argv[:1] for argv in h.calls()]
+                resp = await h.client.delete(f'/v1/projects/{rln}/exam', headers=headers(PROF))
+                assert resp.status == 200, await resp.text()
+                assert (await h.client.post('/v1/preload/start', headers=portal)).status == 200
+                assert (await A.preload_until(h, lambda p: p['state'] != 'running'))['state'] == 'done'
+        run(go())

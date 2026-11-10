@@ -312,6 +312,8 @@ The `--random-delay` spreads the pulls over a 120-second window so workstations 
 systemctl enable --now sre-preload-images.service
 ```
 
+On the pool hosts of the web front-end the random delay is not needed: the agent of each host runs the same command when the portal gives it its turn, and the portal lets only a few hosts download at the same time (`[preload] at_start = true` in `agent.toml`, `[pool] max_preloads` in `web.toml`; see *Pre-loading the images* in the [web front-end](web.md) page). Leave the unit disabled on such a host: both would pull.
+
 ## Reference
 
 ### Build targets

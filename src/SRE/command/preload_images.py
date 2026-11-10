@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .. import params
 from ..params import SRE
+from ..progress import emit_preload
 from ..utils import user_not_allowed, error_quit
 
 # Matches 'image': 'some/image:tag' or "image": "some/image:tag" in _machine_specs dicts
@@ -74,10 +75,14 @@ def _pull_image(image: str) -> bool:
 
 
 def action_preload_images():
+    """``--progress``: the steps are also written as JSON lines on stderr (``progress.emit_preload``)
+    for the web agent, which runs the preload of its host when the portal lets it; the output
+    on stdout and the exit status are the same with or without it."""
     user_not_allowed()
 
     random_delay = SRE.args.random_delay
     paths = SRE.args.paths
+    progress = SRE.args.progress
 
     py_files = _collect_py_files(paths)
     if not py_files:
@@ -91,6 +96,8 @@ def action_preload_images():
     print(f"Found {len(images)} image(s) across {len(py_files)} file(s):")
     for img in sorted(images):
         print(f"  {img}")
+    if progress:
+        emit_preload("start", total=len(images))
 
     if random_delay:
         delay = random.uniform(0, random_delay)
@@ -98,9 +105,13 @@ def action_preload_images():
         time.sleep(delay)
 
     errors = 0
-    for image in sorted(images):
+    for current, image in enumerate(sorted(images), 1):
+        if progress:
+            emit_preload("pull", image=image, current=current, total=len(images))
         if not _pull_image(image):
             errors += 1
+            if progress:
+                emit_preload("error", image=image)
 
     if errors:
         error_quit(f"{errors} image(s) failed to pull")

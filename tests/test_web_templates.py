@@ -409,7 +409,7 @@ class TestTemplates:
         assert 'data-login="alice"' in html and 'class="grid watch pool"' in html
         # the selection: the header checkbox, the bar of bulk buttons, one more column
         assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
-        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff'):
+        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload'):
             assert f'data-action="{action}"' in html, action
         assert 'colspan="12"' in html and len(re.findall(r'<th[ >]', html)) == 12
         assert 'Host name: one or several words' in html
@@ -1653,6 +1653,20 @@ class TestJavaScript:
         html = render('pool.html', instructor=True)
         for action, cls in (('enable', 'ok'), ('wake', 'ok-light'), ('disable', 'danger'), ('poweroff', 'danger')):
             assert re.search(r'<button[^>]*data-action="%s"[^>]*class="%s"' % (action, cls), html), action
+
+    def test_pool_preload_of_the_images(self):
+        """The preload of the Docker images on the Pool page: a button of the bar only (the rows
+        keep their four buttons), the flag of each host (queued, preloading 2/5, failed, with the
+        image or the error as tooltip), the reasons the action does not apply, the status line."""
+        pool = (JS / 'pool.js').read_text(encoding='utf-8')
+        for text in ("case 'preload':", "_('preload queued')", "_('preloading {current}/{total}')", "_('preloading')",
+                     "_('preload failed')", "title: flagsTitle(row)", "_('already queued')", "_('already preloading')",
+                     "_('the agent does not know the preload (older version)')", "isNumber(s.max_preloads)"):
+            assert text in pool, text
+        assert "actionButton(row, 'preload'" not in pool
+        html = render('pool.html', instructor=True)
+        assert re.search(r'<button[^>]*data-action="preload"[^>]*>Preload images</button>', html)
+        assert html.index('data-action="poweroff"') < html.index('data-action="preload"')
 
     def test_focus_never_names_a_private_terminal(self):
         """The terminal sub-tab a focus shares is taken from focusTarget() of the terminals tab,

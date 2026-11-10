@@ -705,9 +705,11 @@ class Routes:
         return web.json_response({'ok': True, 'removed': name})
 
     async def api_pool_action(self, request):
-        """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host:
-        the commands of sre-web-tool and the buttons of the Pool page (which has no Restart
-        button: the tool alone offers it); the answer is the updated row."""
+        """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host, or
+        ask for a ``preload`` of the Docker images on it (it then waits for its turn: the portal
+        lets a few hosts preload at a time): the commands of sre-web-tool and the buttons of the
+        Pool page (which has no Restart button: the tool alone offers it); the answer is the
+        updated row."""
         identity = self._require_pool_access(request)
         name, action = request.match_info['name'], request.match_info['action']
         if action == 'enable':
@@ -720,6 +722,8 @@ class Routes:
             await self.manager.power_off(name, "requested")
         elif action == 'restart':
             await self.manager.restart(name, "requested")
+        elif action == 'preload':
+            await self.manager.request_preload(name, "requested")
         elif action == 'drain':
             self.pool.set_drain(name, True)
             log.info("host %s draining: no new project, power off when empty", name)

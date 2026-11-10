@@ -34,6 +34,17 @@ def run(coro):
     return asyncio.run(coro)
 
 
+async def pool_row(h, predicate, name='a01', timeout=10.0) -> dict:
+    """The row of host *name* in ``GET /api/pool``, read until *predicate* holds."""
+    async with asyncio.timeout(timeout):
+        while True:
+            rows = await (await h.client.get('/api/pool', headers=auth(ADMIN))).json()
+            row = next(r for r in rows if r['name'] == name)
+            if predicate(row):
+                return row
+            await asyncio.sleep(0.05)
+
+
 class TestAdminApi:
     def test_token_membership_and_persistence(self, tmp_path):
         state = tmp_path / 'state' / 'pool.json'
@@ -152,6 +163,62 @@ class TestAdminApi:
                 assert rows['a01']['restart_sent'] is True and rows['a01']['restarting'] is True
         run(go())
 
+    def test_preload(self, tmp_path):
+        """``preload``: the agent is asked and waits (the row says so at once), the policy gives it
+        its turn, it pulls the images; an unreachable host is refused."""
+        over = {'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
+        log = tmp_path / 'mock.log'
+        mock_env = {'MOCK_PRELOAD_IMAGES': json.dumps(['debian:12', 'sysreseval/base:1.0']),
+                    'MOCK_PRELOAD_DELAY': '0.6', 'MOCK_SRE_LOG': str(log)}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over=over, hosts=2, mock_env=mock_env,
+                                 agent_over={'preload': {'paths': [str(tmp_path)]}}) as h:
+                assert (await pool_row(h, lambda r: r['reachable']))['preload'] == 'idle'
+                await asyncio.sleep(0.4)
+                assert not log.exists()                             # nobody asked: nothing is pulled
+                resp = await h.client.post('/api/pool/hosts/a01/preload', headers=auth(ADMIN))
+                assert resp.status == 200, await resp.text()
+                assert (await resp.json())['preload'] == 'pending'
+                row = await pool_row(h, lambda r: r['preload'] == 'running' and r['preload_current'] == 2)
+                assert (row['preload_total'], row['preload_image'], row['state']) == (2, 'sysreseval/base:1.0', 'up')
+                status = await (await h.client.get('/api/pool/status', headers=auth(ADMIN))).json()
+                assert (status['max_preloads'], status['preloading'], status['preload_queued']) == (2, ['a01'], 0)
+                # asked again meanwhile: the preload in progress goes on, alone
+                resp = await h.client.post('/api/pool/hosts/a01/preload', headers=auth(ADMIN))
+                assert resp.status == 200 and (await resp.json())['preload'] == 'running'
+                row = await pool_row(h, lambda r: r['preload'] != 'running')
+                assert (row['preload'], row['preload_current'], row['preload_error']) == ('done', 2, '')
+                calls = [json.loads(line) for line in log.read_text().splitlines()]
+                assert [c['argv'] for c in calls] == [['preload-images', '--progress', '--', str(tmp_path)]]
+                assert calls[0]['user_mode'] is False and calls[0]['env']['LOGNAME'] == 'root'
+                resp = await h.client.post('/api/pool/hosts/down/preload', headers=auth(ADMIN))
+                assert resp.status == 409 and 'not reachable' in (await resp.json())['error']
+                assert (await h.client.post('/api/pool/hosts/nope/preload', headers=auth(ADMIN))).status == 404
+        run(go())
+
+    def test_preload_at_the_start_of_the_agents(self, tmp_path):
+        """An agent with ``[preload] at_start`` asks when it starts: the portal gives it its turn
+        without anybody asking; with ``max_preloads = 0`` it gives none, and refuses a request."""
+        agent_over = {'preload': {'at_start': True, 'paths': [str(tmp_path)]}}
+        failing = {'MOCK_PRELOAD_IMAGES': json.dumps(['debian:12', '!gone:1'])}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over={'admin': {'token': ADMIN}, 'pool': QUIET_POOL},
+                                 mock_env=failing, agent_over=agent_over) as h:
+                row = await pool_row(h, lambda r: r['preload'] in ('done', 'failed'))
+                assert row['preload'] == 'failed' and row['preload_error'] == '1 of 2 image(s) failed to pull: gone:1'
+                status = await (await h.client.get('/api/pool/status', headers=auth(ADMIN))).json()
+                assert status['preload_failed'] == 1 and status['preloading'] == []
+            async with P.Harness(tmp_path / 'none', agent_over=agent_over,
+                                 web_over={'admin': {'token': ADMIN}, 'pool': {**QUIET_POOL, 'max_preloads': 0}}) as h:
+                assert (await pool_row(h, lambda r: r['reachable']))['preload'] == 'pending'
+                await asyncio.sleep(0.5)
+                assert (await pool_row(h, lambda r: True))['preload'] == 'pending'
+                resp = await h.client.post('/api/pool/hosts/a01/preload', headers=auth(ADMIN))
+                assert resp.status == 409 and 'max_preloads' in (await resp.json())['error']
+        run(go())
+
     def test_no_token_configured(self, tmp_path):
         async def go():
             async with P.Harness(tmp_path, web_over={'pool': QUIET_POOL}) as h:
@@ -224,6 +291,12 @@ class TestInstructorPage:
                 assert sent == [('aa:bb:cc:dd:ee:ff', '255.255.255.255')]
                 assert (await h.client.post(a01 + 'wake', headers={**prof, **CSRF})).status == 409      # no mac
                 assert (await h.client.post(a01 + 'poweroff', headers={**prof, **CSRF})).status == 403  # the agent refuses
+                # the preload of the Docker images (the Preload images button of the bar)
+                assert (await h.client.post(a01 + 'preload', headers={**bob, **CSRF})).status == 403
+                resp = await h.client.post(a01 + 'preload', headers={**prof, **CSRF})
+                assert resp.status == 200 and (await resp.json())['preload'] == 'pending'
+                resp = await h.client.post('/api/pool/hosts/b02/preload', headers={**prof, **CSRF})
+                assert resp.status == 409 and 'not reachable' in (await resp.json())['error']
                 resp = await h.client.post(a01 + 'restart', headers={**prof, **CSRF})
                 assert resp.status == 200 and (await resp.json())['restart_sent'] is True
                 assert (await h.client.post(a01 + 'restart', headers={**prof, **CSRF})).status == 409   # sent already
@@ -340,6 +413,7 @@ class TestCli:
                 r = await loop.run_in_executor(None, cli, 'status')
                 assert r.returncode == 0 and r.stdout.startswith('spare capacity: 3 project slot(s)')
                 assert 'waking: none' in r.stdout and r.stdout.splitlines()[-1] == f'pool state: {state}'
+                assert 'image preloads: 0 running, 0 queued, 0 failed (at most 2 at a time)' in r.stdout
                 # the state file cannot be written: said by the status, the pool goes on
                 h.portal.pool.state_error = 'Read-only file system'
                 r = await loop.run_in_executor(None, cli, 'status')
@@ -356,6 +430,21 @@ class TestCli:
                 assert r.returncode == 0 and r.stdout.strip() == 'b02 removed'
                 r = await loop.run_in_executor(None, cli, 'wake', 'a01')
                 assert r.returncode == 1 and 'no mac' in r.stderr and '(409)' in r.stderr
+                # preload: the host waits for its turn to pull the Docker images; every host; the usage
+                r = await loop.run_in_executor(None, cli, 'preload', 'a01')
+                assert r.returncode == 0, r.stderr
+                assert r.stdout.splitlines()[1].split()[:4] == ['a01', 'up', '(preload', 'queued)']
+                await pool_row(h, lambda row: row['preload'] == 'done')
+                r = await loop.run_in_executor(None, lambda: cli('preload', '--all', '--json'))
+                assert r.returncode == 0 and [row['name'] for row in json.loads(r.stdout)] == ['a01']
+                await pool_row(h, lambda row: row['preload'] == 'done')
+                r = await loop.run_in_executor(None, cli, 'preload', '--failed')
+                assert r.returncode == 0 and r.stdout.strip() == 'no host whose preload failed'
+                r = await loop.run_in_executor(None, cli, 'preload', 'nope')
+                assert r.returncode == 1 and 'nope:' in r.stderr and '(404)' in r.stderr
+                for args in (['preload'], ['preload', '--all', 'a01'], ['preload', '--all', '--failed']):
+                    r = await loop.run_in_executor(None, lambda: cli(*args))
+                    assert r.returncode == 2 and 'give a host name, --all or --failed' in r.stderr, args
                 # restart: every reachable host, then the one already sent is refused; the usage
                 r = await loop.run_in_executor(None, cli, 'restart', '--all')
                 assert r.returncode == 0, r.stderr
@@ -394,6 +483,56 @@ class TestCli:
         assert out[1].split()[:2] == ['a01', 'waking'] and '(12s, 1 failed)' in out[1] and out[1].endswith('down')
         assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '4', 'session:bob', '1h02', 'added']
         assert out[3].split()[:4] == ['c03', 'off', '(restart,', 'instructors)']
+        # the preload of the Docker images: pulling (image 2 of 5), waiting for its turn, failed
+        from sreweb.portal.poolctl import _cell
+        for preload, cell in (({'preload': 'running', 'preload_current': 2, 'preload_total': 5}, 'up (preload 2/5)'),
+                              ({'preload': 'running', 'preload_total': 0}, 'up (preload)'),
+                              ({'preload': 'pending'}, 'up (preload queued)'),
+                              ({'preload': 'failed', 'preload_error': 'x'}, 'up (preload failed)'),
+                              ({'preload': 'done'}, 'up'), ({'preload': 'idle'}, 'up'), ({'preload': ''}, 'up'), ({}, 'up')):
+            assert _cell({'name': 'd04', 'state': 'up', 'reachable': True, **preload}, 'state') == cell, preload
+        assert _cell({'state': 'up', 'drain': True, 'preload': 'pending', 'instructors_only': True}, 'state') == \
+            'up (drain, preload queued, instructors)'
+
+    def test_preload_hosts(self, capsys):
+        """``preload --all``: every reachable host whose agent knows the preload; ``--failed``:
+        those whose last preload failed; one POST each, the failures on stderr."""
+        from sreweb.portal import poolctl
+        rows = [{'name': 'a01', 'reachable': True, 'preload': 'done', 'state': 'up'},
+                {'name': 'b02', 'reachable': True, 'preload': 'failed', 'state': 'up'},
+                {'name': 'c03', 'reachable': True, 'preload': '', 'state': 'up'},          # an older agent
+                {'name': 'd04', 'reachable': False, 'preload': '', 'state': 'off'},
+                {'name': 'e05', 'reachable': True, 'preload': 'failed', 'state': 'occupied'}]
+        client = types.SimpleNamespace(posts=[])
+
+        def call(method, path):
+            if method == 'GET':
+                assert path == '/api/pool'
+                return rows
+            client.posts.append(path)
+            name = path.split('/')[4]
+            if name == 'e05':
+                raise poolctl.CallError("e05 does not answer", 502)
+            return {'name': name, 'state': 'up', 'reachable': True, 'preload': 'pending'}
+        client.call = call
+        assert poolctl.preload_hosts(client, None, failed_only=False, as_json=False) == 1
+        assert client.posts == [f'/api/pool/hosts/{n}/preload' for n in ('a01', 'b02', 'e05')]
+        captured = capsys.readouterr()
+        assert [line.split()[0] for line in captured.out.splitlines()[1:]] == ['a01', 'b02']
+        assert 'sre-web-tool: e05: e05 does not answer (502)' in captured.err
+        client.posts.clear()
+        assert poolctl.preload_hosts(client, None, failed_only=True, as_json=True) == 1
+        assert client.posts == ['/api/pool/hosts/b02/preload', '/api/pool/hosts/e05/preload']
+        assert [row['name'] for row in json.loads(capsys.readouterr().out)] == ['b02']
+        client.posts.clear()
+        assert poolctl.preload_hosts(client, ['c03'], failed_only=False, as_json=False) == 0
+        assert client.posts == ['/api/pool/hosts/c03/preload']
+        capsys.readouterr()
+        rows[:] = [rows[2], rows[3]]                            # nobody knows the preload
+        assert poolctl.preload_hosts(client, None, failed_only=False, as_json=False) == 1
+        assert 'no reachable host whose agent knows the preload' in capsys.readouterr().err
+        assert poolctl.preload_hosts(client, None, failed_only=True, as_json=False) == 0
+        assert capsys.readouterr().out.strip() == 'no host whose preload failed'
 
     def test_wait_restarted(self, monkeypatch):
         """``--wait``: a host is back once its agent's uptime is younger than the request; the

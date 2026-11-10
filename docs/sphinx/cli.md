@@ -157,9 +157,9 @@ One row per **running project instance** on a host: hostname + lab + the start t
 
 Dismissals self-expire: inactivity alerts return on new archives, error alerts return when the count changes.
 
-### `sre preload-images [--random-delay <sec>] <file_or_dir…>`
+### `sre preload-images [--random-delay <sec>] [--progress] <file_or_dir…>`
 
-Scans lab `.py` files for `image=` / `'image':` patterns and `docker pull`s each unique image. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts).
+Scans lab `.py` files for `image=` / `'image':` patterns and `docker pull`s each unique image. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts). `--progress` also writes the steps as JSON lines on stderr (`{"phase": "preload", "status": "start", "total": N}`, then `"status": "pull"` with `image` / `current` / `total` before each pull and `"status": "error"` with `image` after a failed one); what is printed on stdout and the exit status are unchanged. It is what the agent of the web front-end runs when the portal gives its host a turn to preload (see [Pre-loading the images](web.md) in the pool section of the web front-end).
 
 ### `sre make-titles [-o <file> | -r] <directory>`
 

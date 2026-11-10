@@ -423,18 +423,24 @@ class TestWebConfig:
                                     'pool': {'spare_projects': 3, 'min_hosts_up': 2, 'active_hours': '08:30-19:00',
                                              'wake_timeout': '2m', 'wake_interval': 10, 'idle_host_timeout': '30m',
                                              'wol_broadcast': '10.0.0.255', 'follow_local_sessions': False,
-                                             'labs_cache_ttl': '2m'},
+                                             'labs_cache_ttl': '2m', 'max_preloads': 4},
                                     'admin': {'token': 'a' * 32, 'listen_any': True, 'state_file': '/x/pool.json'}})
         p = cfg.pool
         assert (p.spare_projects, p.min_hosts_up, p.active_hours) == (3, 2, '08:30-19:00')
         assert (p.wake_timeout, p.wake_interval, p.idle_host_timeout, p.wol_broadcast) == (120, 10, 1800, '10.0.0.255')
-        assert p.follow_local_sessions is False and p.labs_cache_ttl == 120
+        assert p.follow_local_sessions is False and p.labs_cache_ttl == 120 and p.max_preloads == 4
         with pytest.raises(ConfigError, match='labs_cache_ttl'):
             web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'labs_cache_ttl': -1}})
+        # the hosts preloading the Docker images at the same time: 2 by default, 0 = none
+        assert web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'max_preloads': 0}}).pool.max_preloads == 0
+        for bad in (-1, True, '2', 1.5):
+            with pytest.raises(ConfigError, match='max_preloads'):
+                web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'max_preloads': bad}})
         assert cfg.admin.token == 'a' * 32 and cfg.admin.listen_any and cfg.admin.state_file == '/x/pool.json'
         defaults = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]})
         assert defaults.pool.spare_projects == 5 and defaults.pool.min_hosts_up == 1 and defaults.pool.idle_host_timeout == 0
         assert defaults.pool.follow_local_sessions is True and defaults.pool.labs_cache_ttl == 60
+        assert defaults.pool.max_preloads == 2
         assert defaults.admin.token == '' and not defaults.admin.listen_any
         with pytest.raises(ConfigError, match='active_hours'):
             web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'active_hours': '8-20'}})
@@ -532,30 +538,6 @@ class TestAgentConfig:
         f.write_text(f'token = "{"t" * 32}"\n[timeouts]\nstart = "20m"\n')
         assert load_agent_config(f, sre_exe='/x', state_dir='/y').timeouts['start'] == 1200
 
-
-def _host(name: str) -> str:
-    return f'[[hosts]]\nname = "{name}"\nurl = "http://{name}:8451"\ntoken = "{"t" * 32}"\n'
-
-
-@pytest.fixture
-def write(tmp_path):
-    def _write(name, text, binary=False):
-        p = tmp_path / name
-        p.parent.mkdir(parents=True, exist_ok=True)
-        (p.write_bytes if binary else p.write_text)(text)
-        return p
-    return _write
-
-
-def _tree(write, main_extra='', import_line='import = ["web.d"]'):
-    """web.toml importing web.d/: one file per host, the secrets apart, a README ignored."""
-    main = write('web.toml', f'secret = "{SECRET}"\n{import_line}\n{main_extra}[pool]\npoll_interval = 3\n')
-    write('web.d/10-a01.toml', _host('a01'))
-    write('web.d/20-h01.toml', _host('h01') + '[pool]\nspare_projects = 2\n')
-    write('web.d/README', 'not toml\n')
-    write('web.d/secrets.toml', f'[admin]\ntoken = "{"a" * 32}"\n')
-    return main
-
     def test_display_defaults_and_values(self):
         d = agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y').display
         assert d.enabled is False and d.user == 'sreweb-x11' and d.xvnc_command == 'Xvnc'
@@ -593,6 +575,56 @@ def _tree(write, main_extra='', import_line='import = ["web.d"]'):
     def test_display_refused(self, display, fragment):
         with pytest.raises(ValueError, match=fragment):
             agent_config_from_dict({'token': 't' * 32, 'display': display}, sre_exe='/x', state_dir='/y')
+
+    def test_preload_defaults_and_values(self):
+        """``[preload]``: off unless asked, the lab directories of the installation by default,
+        its own timeout (not one of ``[timeouts]``, which a restart of the agent waits for)."""
+        cfg = agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y')
+        assert cfg.preload.at_start is False and cfg.preload.paths == [] and cfg.preload.timeout == 7200.0
+        assert 'preload' not in cfg.timeouts and 'preload-images' not in cfg.timeouts
+        p = agent_config_from_dict({'token': 't' * 32, 'preload': {
+            'at_start': True, 'paths': ['/opt/sre/lab', '/srv/labs/x.py'], 'timeout': '45m'}},
+            sre_exe='/x', state_dir='/y').preload
+        assert p.at_start is True and p.paths == ['/opt/sre/lab', '/srv/labs/x.py'] and p.timeout == 2700.0
+        with pytest.raises(ValueError, match=r'\[preload\] must be a table'):
+            agent_config_from_dict({'token': 't' * 32, 'preload': True}, sre_exe='/x', state_dir='/y')
+
+    @pytest.mark.parametrize('preload, fragment', [
+        ({'foo': 1}, 'unknown key'),
+        ({'at_start': 'yes'}, 'at_start'),
+        ({'paths': '/opt/sre/lab'}, 'paths'),
+        ({'paths': ['lab']}, 'paths'),
+        ({'paths': [1]}, 'paths'),
+        ({'timeout': 0}, 'timeout'),
+        ({'timeout': 'long'}, 'timeout'),
+    ])
+    def test_preload_refused(self, preload, fragment):
+        with pytest.raises(ValueError, match=fragment):
+            agent_config_from_dict({'token': 't' * 32, 'preload': preload}, sre_exe='/x', state_dir='/y')
+
+
+def _host(name: str) -> str:
+    return f'[[hosts]]\nname = "{name}"\nurl = "http://{name}:8451"\ntoken = "{"t" * 32}"\n'
+
+
+@pytest.fixture
+def write(tmp_path):
+    def _write(name, text, binary=False):
+        p = tmp_path / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        (p.write_bytes if binary else p.write_text)(text)
+        return p
+    return _write
+
+
+def _tree(write, main_extra='', import_line='import = ["web.d"]'):
+    """web.toml importing web.d/: one file per host, the secrets apart, a README ignored."""
+    main = write('web.toml', f'secret = "{SECRET}"\n{import_line}\n{main_extra}[pool]\npoll_interval = 3\n')
+    write('web.d/10-a01.toml', _host('a01'))
+    write('web.d/20-h01.toml', _host('h01') + '[pool]\nspare_projects = 2\n')
+    write('web.d/README', 'not toml\n')
+    write('web.d/secrets.toml', f'[admin]\ntoken = "{"a" * 32}"\n')
+    return main
 
 
 class TestImports:

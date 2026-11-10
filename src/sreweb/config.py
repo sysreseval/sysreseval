@@ -342,6 +342,11 @@ class PoolConfig:
     # the next when it fails: every host serves the same lab tree) and kept this many seconds per
     # role (the reserved hosts are the instructors' only); 0 = asked at every open
     labs_cache_ttl: float = 60.0
+    # the preloads of the Docker images (`sre preload-images`, run by the agent of a host that
+    # asks for it: at its start with [preload] at_start of agent.toml, or `sre-web-tool preload`):
+    # the portal lets this many hosts download at the same time, the others wait for their turn;
+    # 0 = it lets none
+    max_preloads: int = 2
 
 
 @dataclass
@@ -900,6 +905,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
         raise ConfigError(f"{path}: pool.follow_local_sessions must be true or false")
     if pool.labs_cache_ttl < 0:
         raise ConfigError(f"{path}: pool.labs_cache_ttl cannot be negative")
+    if isinstance(pool.max_preloads, bool) or not isinstance(pool.max_preloads, int) or pool.max_preloads < 0:
+        raise ConfigError(f"{path}: pool.max_preloads must be an integer, 0 or more")
     admin_data = _section(data, 'admin', path)
     admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:
@@ -1037,6 +1044,27 @@ def _check_display(d: DisplayConfig, path: str):
 
 
 @dataclass
+class PreloadConfig:
+    """``[preload]``: the Docker images of the labs pulled by the agent (``sre preload-images``)
+    when the portal gives the host its turn, a few hosts at a time (``[pool] max_preloads`` of
+    web.toml), instead of the boot unit ``sre-preload-images.service`` of every host at once."""
+    at_start: bool = False            # ask for a preload each time the agent starts (the boot of the host)
+    paths: list = field(default_factory=list)   # the lab files / directories scanned; empty = the lab
+                                                # directories of the installation
+    timeout: float = 7200.0           # a preload still running after this long is stopped (failed)
+
+
+def _check_preload(p: PreloadConfig, path: str):
+    where = f"{path}: preload."
+    if not isinstance(p.at_start, bool):
+        raise ConfigError(f"{where}at_start must be true or false")
+    if not isinstance(p.paths, list) or not all(isinstance(x, str) and x.startswith('/') for x in p.paths):
+        raise ConfigError(f"{where}paths must be a list of absolute paths")
+    if p.timeout <= 0:
+        raise ConfigError(f"{where}timeout must be positive")
+
+
+@dataclass
 class AgentConfig:
     listen: tuple = ('127.0.0.1', 8451)
     token: str = ''
@@ -1072,6 +1100,7 @@ class AgentConfig:
     shutdown_timeout: float = 240.0
     timeouts: dict = field(default_factory=lambda: dict(DEFAULT_TIMEOUTS))
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    preload: PreloadConfig = field(default_factory=PreloadConfig)
 
 
 def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str = '',
@@ -1090,10 +1119,17 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     display = _build(DisplayConfig, display_data, f"{path}: [display]",
                      **({'start_timeout': parse_duration(display_data['start_timeout'], 'display.start_timeout')}
                         if 'start_timeout' in display_data else {}))
-    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display')}
+    # the timeout of a preload is not one of [timeouts]: a restart of the agent waits for the
+    # longest of those, and a preload is stopped, never waited for
+    preload_data = _section(data, 'preload', path)
+    preload = _build(PreloadConfig, preload_data, f"{path}: [preload]",
+                     **({'timeout': parse_duration(preload_data['timeout'], 'preload.timeout')}
+                        if 'timeout' in preload_data else {}))
+    top = {k: v for k, v in data.items() if k not in ('timeouts', 'display', 'preload')}
     converted = {k: parse_duration(top[k], k) for k in ('poll_interval', 'max_idle', 'lab_list_cache_ttl',
                                                         'shutdown_timeout', 'terminals_linger') if k in top}
-    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
+    cfg = _build(AgentConfig, top, path, timeouts=timeouts, display=display, preload=preload,
+                 listen=parse_listen(top.get('listen', '127.0.0.1:8451')),
                  allowed_clients=parse_networks(top.get('allowed_clients', []), f'{path}: allowed_clients'), **converted)
     if len(cfg.token) < MIN_SECRET_LENGTH:
         raise ConfigError(f"{path}: token must have at least {MIN_SECRET_LENGTH} characters")
@@ -1115,6 +1151,7 @@ def agent_config_from_dict(data: dict, path: str = 'agent.toml', *, sre_exe: str
     if cfg.close_projects_on_stop not in ('shutdown', 'always', 'never'):
         raise ConfigError(f"{path}: close_projects_on_stop must be shutdown, always or never")
     _check_display(cfg.display, path)
+    _check_preload(cfg.preload, path)
     return cfg
 
 

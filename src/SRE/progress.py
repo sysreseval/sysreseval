@@ -11,6 +11,9 @@ Format:
   {"phase": "deploy", "status": "progress", "current": N, "total": N, "machine": "..."}
   {"phase": "deploy", "status": "end"}
   {"phase": "project", "status": "created", "running_lab_name": "..."}   (end of `sre start` / `sre restore`)
+  {"phase": "preload", "status": "start", "total": N}                    (`sre preload-images --progress`)
+  {"phase": "preload", "status": "pull",  "image": "...", "current": N, "total": N}
+  {"phase": "preload", "status": "error", "image": "..."}
 """
 
 import json
@@ -95,6 +98,13 @@ def emit_project_created(running_lab_name: str):
     ``sre start`` and ``sre restore``, so that a caller streaming stderr learns the project name
     without scanning the projects directory."""
     _emit({"phase": "project", "status": "created", "running_lab_name": running_lab_name})
+
+
+def emit_preload(status: str, **fields):
+    """One step of ``sre preload-images --progress``: ``start`` (``total`` images), ``pull``
+    (``image``, ``current``, ``total``: the pull that begins), ``error`` (``image``: its pull
+    failed); the web agent reads them to say how far the preload of its host is."""
+    _emit({"phase": "preload", "status": status, **fields})
 
 
 def register_progress_handlers():

@@ -222,6 +222,8 @@ def parse_args():
                                            help=_('Pre-pull Docker images referenced by lab files'))
     parser_preload.add_argument('--random-delay', type=int, default=0, metavar='seconds',
                                 help=_('wait a random delay of 0 to N seconds before pulling'))
+    parser_preload.add_argument('--progress', action='store_true',
+                                help=_('also report the progress as JSON lines on stderr (for the web agent)'))
     parser_preload.add_argument('paths', nargs='+', metavar='file_or_dir',
                                 help=_('lab .py file(s) or director(ies) to scan recursively'))
 

@@ -65,6 +65,8 @@ class PoolOptions:
     debug: bool = False
     administrators: list = field(default_factory=list)   # [auth] administrators of the portal (the History page)
     extra_web_config: str = ''     # a TOML file appended to the portal's web.toml ([access_log.database], [archives]...)
+    extra_agent_config: str = ''   # a TOML file appended to every agent.toml ([preload] at_start = true...)
+    max_preloads: int | None = None    # [pool] max_preloads of the portal (None: its default)
     command: list = field(default_factory=list)
 
     @property
@@ -131,7 +133,8 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
             f'max_concurrent_starts = {opts.max_concurrent_starts}\n'
             f'max_concurrent_evals = {opts.max_concurrent_evals}\n'
             'close_projects_on_stop = "never"\n'
-            'shutdown_timeout = 5\n')
+            'shutdown_timeout = 5\n'
+            + (Path(opts.extra_agent_config).read_text() + '\n' if opts.extra_agent_config else ''))
         hosts.append(host)
     admin_token = secrets.token_hex(16)
     limits = ''
@@ -152,7 +155,8 @@ def write_configs(opts: PoolOptions) -> PoolFiles:
         'instructor_header = "X-Remote-Gid"\n'
         'instructor_values = ["2000"]\n'
         f'[pool]\npoll_interval = {opts.poll_interval}\nactive_hours = ""\n'
-        f'[admin]\ntoken = {toml_str(admin_token)}\nstate_file = {toml_str(str(workdir / "pool.json"))}\n'
+        + (f'max_preloads = {opts.max_preloads}\n' if opts.max_preloads is not None else '')
+        + f'[admin]\ntoken = {toml_str(admin_token)}\nstate_file = {toml_str(str(workdir / "pool.json"))}\n'
         f'[access_log]\nfile = {toml_str(str(workdir / "access.log"))}\njournal = false\n'
         + limits
         + (Path(opts.extra_web_config).read_text() + '\n' if opts.extra_web_config else '')
@@ -313,6 +317,12 @@ def parse_args(argv=None) -> PoolOptions:
     p.add_argument('--extra-web-config', default='', metavar='FILE',
                    help="a TOML file appended to the portal's web.toml, before the [[hosts]] tables: e.g. "
                         "[access_log.database] and [archives] for the History and Archives pages")
+    p.add_argument('--extra-agent-config', default='', metavar='FILE',
+                   help="a TOML file appended to the agent.toml of every fake host (tables only, e.g. "
+                        "[preload] with at_start = true: the hosts ask for a preload of the images at their start; "
+                        "MOCK_PRELOAD_DELAY / MOCK_PRELOAD_IMAGES in the environment shape the fake pulls)")
+    p.add_argument('--max-preloads', type=int, default=None,
+                   help="[pool] max_preloads of the portal: the hosts preloading at the same time (its default: 2)")
     a = p.parse_args(argv)
     if a.hosts < 1:
         p.error("--hosts must be at least 1")
@@ -326,7 +336,8 @@ def parse_args(argv=None) -> PoolOptions:
                        eval_interval=a.eval_interval, poll_interval=a.poll_interval, workdir=a.workdir,
                        keep_workdir=a.keep_workdir, debug=a.debug,
                        administrators=[x.strip() for x in a.administrators.split(',') if x.strip()],
-                       extra_web_config=a.extra_web_config, command=command)
+                       extra_web_config=a.extra_web_config, extra_agent_config=a.extra_agent_config,
+                       max_preloads=a.max_preloads, command=command)
 
 
 def main(argv=None) -> int:
