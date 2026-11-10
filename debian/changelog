@@ -1,3 +1,10 @@
+sysreseval (0.16.1-1) unstable; urgency=medium
+
+  * image preloading via agent
+  * after a re-evaluation of arhives, the web database can be updated
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Tue, 10 Nov 2026 22:05:39 +0100
+
 sysreseval (0.16.0-1) unstable; urgency=medium
 
   * BigBlueButton integration
