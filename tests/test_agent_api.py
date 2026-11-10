@@ -15,7 +15,7 @@ import pytest
 aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the web front-end needs it: run `make venv` (or pip install aiohttp jinja2 aiohttp-jinja2 ldap3 in the venv)")
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
-from SRE import params
+from SRE import params, web_updates
 from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup
 from sreweb.agent.display import DisplayError, parse_xauthority, WS_DISPLAY_FAILED
 from sreweb.config import agent_config_from_dict
@@ -112,7 +112,13 @@ class TestAuth:
                 assert data['sre_version'] == params.sre_version and data['exam_mode'] is False
                 # the archives are collected by the portal itself too: the token alone
                 resp = await h.client.get('/v1/archives', headers=headers(identity=None))
-                assert resp.status == 200 and await resp.json() == {'archives': [], 'more': False, 'last': ''}
+                assert resp.status == 200 and await resp.json() == {'archives': [], 'more': False, 'last': '',
+                                                                    'updates': 0}
+                # ... and so are the re-evaluations queued for it
+                resp = await h.client.get('/v1/archives/updates', headers=headers(identity=None))
+                assert resp.status == 200 and await resp.json() == {'updates': [], 'more': False, 'last': ''}
+                assert (await h.client.get('/v1/archives/updates')).status == 401
+                assert (await h.client.post('/v1/archives/updates', json={'done': []})).status == 401
         run(go())
 
 
@@ -1286,6 +1292,53 @@ class TestInstructor:
                 assert page['archives'] == [] and page['more'] is False and page['last'] == '20991231235959_junk.zst'
                 assert (await h.client.get('/v1/archives?limit=x', headers=headers(identity=None))).status == 400
                 assert all(p.last_activity == 0.0 or True for p in h.agent.registry.projects.values())
+        run(go())
+
+    def test_re_evaluations_for_the_collector(self, tmp_path, caplog):
+        """What `sre re-eval --update-web` queued on the host (the spool of SRE.web_updates in
+        the public directory): counted by GET /v1/archives, listed by GET /v1/archives/updates
+        with the token alone (the records as they were queued, a token each, the paging), and
+        removed by POST once the portal settled them — only the version it took."""
+        rln = '20261025100000@@@sre@dhcp.py@@@alice'
+        names = [f'202610251001{n:02d}_{rln}.zst' for n in (2, 12, 22)]
+
+        def record(name, grade):
+            return {'archive': name, 'running_lab_name': rln, 'login': 'alice', 'grade': grade, 'max_grade': 5.0,
+                    're_eval_date': '2026-11-10T09:00:00', 'elements': [{'key': 'k', 'grade': grade}]}
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                anonymous = headers(identity=None)
+                spool = h.pub / params.web_updates_dir_name
+                assert h.agent.updates_dir == str(spool)
+                assert web_updates.prepare(spool) is None
+                for name in names:
+                    web_updates.queue_update(record(name, 3.0), spool)
+                (spool / web_updates.entry_name(f'20261025100199_{rln}.zst')).write_text('not JSON')
+                assert (await (await h.client.get('/v1/archives', headers=anonymous)).json())['updates'] == 4
+                page = await (await h.client.get('/v1/archives/updates', headers=anonymous, params={'limit': '2'})).json()
+                assert [u['record'] for u in page['updates']] == [record(names[0], 3.0), record(names[1], 3.0)]
+                assert page['more'] is True and page['last'] == names[1]
+                rest = await (await h.client.get('/v1/archives/updates', headers=anonymous,
+                                                 params={'after': page['last']})).json()
+                assert [u['record']['archive'] for u in rest['updates']] == [names[2]] and rest['more'] is False
+                assert rest['last'] == f'20261025100199_{rln}.zst'        # the refused entry is passed, and gone
+                assert any('20261025100199' in r.getMessage() and 'not JSON' in r.getMessage() for r in caplog.records)
+                tokens = {u['record']['archive']: u['token'] for u in page['updates'] + rest['updates']}
+                # the first one is re-evaluated again before the portal answers: it stays
+                web_updates.queue_update(record(names[0], 4.0), spool)
+                done = [{'archive': name, 'token': tokens[name]} for name in names[:2]]
+                done.append({'archive': names[2], 'token': 'not-the-token'})
+                resp = await h.client.post('/v1/archives/updates', headers=anonymous, json={'done': done})
+                assert resp.status == 200 and await resp.json() == {'removed': 1}
+                left = await (await h.client.get('/v1/archives/updates', headers=anonymous)).json()
+                assert [(u['record']['archive'], u['record']['grade']) for u in left['updates']] == \
+                    [(names[0], 4.0), (names[2], 3.0)]
+                assert (await (await h.client.get('/v1/archives', headers=anonymous)).json())['updates'] == 2
+                for body in ({}, {'done': 'all'}, {'done': [names[0]]}, {'done': [{'archive': names[0]}]}):
+                    assert (await h.client.post('/v1/archives/updates', headers=anonymous, json=body)).status == 400
+                assert (await h.client.get('/v1/archives/updates?limit=x', headers=anonymous)).status == 400
+                assert len(list(spool.iterdir())) == 2
         run(go())
 
     def test_periodic_evaluation_of_a_web_project(self, tmp_path):

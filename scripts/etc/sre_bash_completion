@@ -275,7 +275,7 @@ pre-start-exam start-exam"
         re-eval)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "-s --srelab -p --prefix -d --output-dir \
--r --recursive --help" -- "$cur"))
+-r --recursive --update-web --help" -- "$cur"))
             else
                 _sre_archives "$cur"
             fi

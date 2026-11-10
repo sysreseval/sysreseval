@@ -164,6 +164,10 @@ sre re-eval -s /opt/sre/lab/_EXAM_/ssh_corrected.py \
 
 Output archives appear in `/tmp/regraded/` with the `corrected` prefix. Use `sre check-eval -s ...` first to preview the diff without writing any file.
 
+On a site with the web front-end, add `--update-web` (as root, on a pool host, on the archives under their original
+names) so that the Archives page of the portal shows the corrected results too: see
+[Re-evaluated archives](web.md#re-evaluated-archives).
+
 This only works if the corrected project file does not require any **new** command to be run on the virtual machines:
 re-evaluation replays the grading logic against the test output already stored in the archive, so a command that was never
 executed during the exam (say, `ip route` on `m1`) cannot be recovered after the fact. Within that limit, fixing a grading

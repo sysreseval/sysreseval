@@ -21,6 +21,21 @@ not taken again, as ``sre watch`` would not see it either.  The ``group`` and ``
 archive lacks (the projects of the Qt GUI) are completed from the directory when the portal
 has one (``roles.complete_owners``, as on the Watch page).
 
+**Re-evaluations.** ``sre re-eval --update-web`` queues the new results of the archives it
+re-grades on its host (``SRE.web_updates``), under the names of the original archives; the
+answer of ``GET /v1/archives`` says how many wait there (``updates``; an older agent says
+nothing and is asked nothing).  The collector then reads them (``GET /v1/archives/updates``, in
+pages), writes the row of each archive again in one transaction per page
+(``ArchiveDatabase.apply_updates``: ``REPLACE`` under the id of the row, since the account has
+INSERT and DELETE but no UPDATE) and tells the agent which ones are settled (``POST``), so that
+it forgets them.  A row keeps its id — its place on the page, the links to it — and what only
+the first collection knew (``KEPT_COLUMNS``: the time, the host, the lab file, the student's
+name and group; the ``managed`` detail); the results are the re-evaluation's.  Nothing is added:
+a re-evaluation whose archive has no row waits on its host until the row is there (the agent
+gives it up after a day), and one whose row is of another project is dropped.  The updates do
+not go through the sink — the acknowledgement follows the commit — and are applied at least
+once: a failure of the database or of the agent leaves them on the host for the next round.
+
 **Storage.** The writer is a second ``accessdb.DatabaseSink`` (a queue, one thread, batches,
 backoff, the daily purge of ``keep`` days when set) with the ``TableSpec`` of the table: the
 filters of the page in columns (``ts`` = the evaluation time in UTC, ``host`` = the pool host,
@@ -52,7 +67,7 @@ from datetime import datetime, timezone
 
 import aiohttp
 
-from .accessdb import DatabaseSink, TableSpec, utc_datetime, epoch, clean_text
+from .accessdb import DatabaseSink, TableSpec, utc_datetime, epoch, clean_text, transaction
 from .accesshistory import (HistoryError, escape_like, fetch, parse_epoch, DEFAULT_LIMIT, MAX_LIMIT, MAX_TEXT,
                             LIKE_ESCAPE)
 from .roles import complete_owners
@@ -152,6 +167,22 @@ SELECT_FULL = "SELECT " + ', '.join(f"t.{c}" for c in _SUMMARY_COLUMNS + ('detai
 #: its "Time Remaining" column): the one statement that makes the server read the details.
 REMAINING_COLUMN = "JSON_VALUE(t.details, '$.exam_time_remaining') AS exam_time_remaining"
 CURSORS = "SELECT host, MAX(archive) AS archive FROM `{table}` GROUP BY host"
+#: A re-evaluation (``sre re-eval --update-web``) replaces the results of the row of its archive
+#: and leaves what the first collection alone knows: when and on which host the evaluation ran,
+#: the lab file it resolved to, the name and the group the directory gave the student — next to
+#: the ``id`` (the order of the page, the links to a row) and the ``managed`` detail.
+KEPT_COLUMNS = ('ts', 'host', 'canonical_lab', 'fullname', 'grp')
+KEPT_DETAIL = 'managed'
+_STORED_COLUMNS = ('id', 'rln') + KEPT_COLUMNS + ('details',)
+SELECT_STORED = "SELECT " + ', '.join(_STORED_COLUMNS) + " FROM `{table}` WHERE archive = %s"
+#: The whole row written again under its id: ``REPLACE`` deletes the row of that id (which is
+#: the one of that archive name) and inserts this one, so the INSERT and DELETE privileges of
+#: the account are enough where an ``UPDATE`` would need a third.
+REPLACE = ("REPLACE INTO `{table}` (id, " + ', '.join(COLUMNS) + ") VALUES ("
+           + ', '.join(['%s'] * (len(COLUMNS) + 1)) + ")")
+#: What became of an update: its row replaced, no row of that archive in the table (it waits on
+#: its host), or a row of another project under that name (dropped).
+UPDATE_REPLACED, UPDATE_ABSENT, UPDATE_REFUSED = 'replaced', 'absent', 'refused'
 LABS = "SELECT DISTINCT canonical_lab FROM `{table}` ORDER BY canonical_lab"
 GROUPS = "SELECT DISTINCT grp FROM `{table}` WHERE grp <> '' ORDER BY grp"
 
@@ -230,6 +261,27 @@ def row_of_record(host: str, record: dict) -> tuple:
             _float(record.get('mark')), _float(record.get('maximum_mark')),
             _int(record.get('error_count'), 0), _int(record.get('warning_count'), 0),
             1 if record.get('exam') else 0, _int(record.get('auto_eval_count')), text)
+
+
+def updated_row(stored: dict, record: dict) -> tuple:
+    """The row replacing *stored* (the ``_STORED_COLUMNS`` of the row of an archive) by the
+    re-evaluation *record* of the same archive, in ``('id',) + COLUMNS`` order (``REPLACE``):
+    the row of the record, with the ``KEPT_COLUMNS`` and the ``managed`` detail of the stored
+    row, under its id."""
+    details = stored.get('details')
+    if isinstance(details, (bytes, bytearray)):
+        details = details.decode('utf-8', 'replace')
+    try:
+        old = json.loads(details) if details else {}
+    except ValueError:
+        old = {}
+    record = {key: value for key, value in record.items() if key != KEPT_DETAIL}
+    if isinstance(old, dict) and KEPT_DETAIL in old:
+        record[KEPT_DETAIL] = old[KEPT_DETAIL]
+    row = list(row_of_record(stored.get('host'), record))
+    for column in KEPT_COLUMNS:
+        row[COLUMNS.index(column)] = stored[column]
+    return (stored['id'], *row)
 
 
 def row_to_dict(names: list, row: tuple) -> dict:
@@ -634,6 +686,38 @@ class ArchiveDatabase:
     async def cursors(self) -> dict:
         return await asyncio.to_thread(self.cursors_sync)
 
+    def apply_updates_sync(self, records: list) -> dict:
+        """Replace the rows of the archives of *records* (the re-evaluations of ``sre re-eval
+        --update-web``, as records of the agent) by their new results, in one transaction:
+        ``{archive name: outcome}``.  A row is looked up by the archive name and written again
+        under the id just read (``updated_row``, ``REPLACE``); an archive without a row is
+        ``UPDATE_ABSENT`` — nothing is added: the collector takes the archives, in their order
+        — and one whose row is of another project ``UPDATE_REFUSED``.  ``HistoryError`` (and
+        nothing changed) when the server cannot be used."""
+        select, replace = SELECT_STORED.format(table=self.table), REPLACE.format(table=self.table)
+
+        def work(cur) -> dict:
+            outcomes = {}
+            for record in records:
+                archive = str(record.get('archive') or '')
+                cur.execute(select, (_text(archive, WIDTHS['archive']),))
+                rows = cur.fetchall()
+                if not rows:
+                    outcomes[archive] = UPDATE_ABSENT
+                    continue
+                stored = dict(zip(_STORED_COLUMNS, rows[0]))
+                if str(stored['rln']) != _text(record.get('running_lab_name'), WIDTHS['rln']):
+                    outcomes[archive] = UPDATE_REFUSED
+                    continue
+                cur.execute(replace, updated_row(stored, record))
+                outcomes[archive] = UPDATE_REPLACED
+            return outcomes
+
+        return transaction(self.connect, work)
+
+    async def apply_updates(self, records: list) -> dict:
+        return await asyncio.to_thread(self.apply_updates_sync, records)
+
 
 # -- the collector ----------------------------------------------------------------------------
 
@@ -654,6 +738,7 @@ class ArchiveCollector:
         self.timeout = timeout
         self.cursors: dict | None = None       # host -> the greatest archive name taken; None until read
         self.collected = 0                     # records queued since the start
+        self.updated = 0                       # rows replaced by a re-evaluation since the start
         self.ticks = 0
         self._task: asyncio.Task | None = None
         self._warned: dict = {}                # host (or 'database') -> the message warned about
@@ -695,11 +780,22 @@ class ArchiveCollector:
         self.ticks += 1
 
     async def _collect(self, host):
+        """The new archives of *host*, then the re-evaluations it says wait there."""
+        if await self._collect_archives(host):
+            await self._collect_updates(host)
+        else:
+            self._warned.pop(self._updates_key(host), None)
+
+    async def _collect_archives(self, host) -> int:
+        """The pages of archives of *host* after its cursor; how many re-evaluations the agent
+        said it holds for the portal (0 from an older agent, which says nothing)."""
         after = self.cursors.get(host.name, '')
+        updates = 0
         for _ in range(self.calls_per_tick):
             data = await self._fetch(host, after)
             if data is None:
-                return
+                break
+            updates = max(0, _int(data.get('updates'), 0))
             records = [r for r in (data.get('archives') or []) if isinstance(r, dict)
                        and r.get('archive') and r.get('running_lab_name')]
             if records and self.roles is not None:
@@ -711,7 +807,86 @@ class ArchiveCollector:
             after = max([after, last, *(str(r['archive']) for r in records)])
             self.cursors[host.name] = after
             if not data.get('more'):
+                break
+        return updates
+
+    @staticmethod
+    def _updates_key(host) -> str:
+        """The key of the warnings about the re-evaluations of *host* (apart from the one of its
+        archives, which every good page clears)."""
+        return f"{host.name} (re-evaluations)"
+
+    async def _collect_updates(self, host):
+        """The re-evaluations queued on *host* by ``sre re-eval --update-web`` (``GET
+        /v1/archives/updates``, in pages from the first one at every tick): the row of each
+        archive replaced in the table (``ArchiveDatabase.apply_updates``), then the agent told
+        which ones are settled — replaced, or refused for good — so that it forgets them
+        (``POST``).  The others stay on the host for the next tick: one whose archive has no row
+        yet (not collected so far; the agent gives it up after a day), and all of them when the
+        database or the agent fails here — applying one twice changes nothing."""
+        key = self._updates_key(host)
+        after, waiting = '', 0
+        for _ in range(self.calls_per_tick):
+            data = await self._updates_call(host, key, params={'after': after, 'limit': str(self.page)})
+            if data is None:
                 return
+            entries = [e for e in (data.get('updates') or []) if isinstance(e, dict) and isinstance(e.get('token'), str)
+                       and isinstance(e.get('record'), dict) and e['record'].get('archive')
+                       and e['record'].get('running_lab_name')]
+            if entries:
+                try:
+                    outcomes = await self.reader.apply_updates([e['record'] for e in entries])
+                except HistoryError as e:
+                    self._warn(key, f"the re-evaluations cannot be stored: {e}")
+                    return
+                done, replaced = [], 0
+                for entry in entries:
+                    archive = str(entry['record']['archive'])
+                    outcome = outcomes.get(archive)
+                    if outcome == UPDATE_REPLACED:
+                        replaced += 1
+                    elif outcome == UPDATE_REFUSED:
+                        log.warning("archives: %s: the re-evaluation of %s is dropped: the evaluation stored under "
+                                    "that name is the one of another project", host.name, archive)
+                    else:
+                        waiting += 1
+                        continue
+                    done.append({'archive': archive, 'token': entry['token']})
+                if replaced:
+                    self.updated += replaced
+                    log.info("archives: %s: %d evaluation(s) replaced by their re-evaluation", host.name, replaced)
+                if done and await self._updates_call(host, key, body={'done': done}) is None:
+                    return
+            last = data.get('last') if isinstance(data.get('last'), str) else ''
+            after = max([after, last, *(str(e['record']['archive']) for e in entries)])
+            if not data.get('more'):
+                break
+        if waiting:
+            self._warn(key, f"{waiting} re-evaluation(s) of evaluations that are not in the table: they wait on the "
+                            f"host until their archive is collected, a day at most")
+        else:
+            self._warned.pop(key, None)
+
+    async def _updates_call(self, host, key: str, *, params: dict | None = None, body: dict | None = None) -> dict | None:
+        """``GET /v1/archives/updates`` of *host* (*params*), or its ``POST`` with *body*: the
+        JSON object answered, ``None`` (warned once under *key*) on any failure."""
+        method = 'GET' if body is None else 'POST'
+        call = self.pool.session.get if body is None else self.pool.session.post
+        kwargs = {'params': params} if body is None else {'json': body}
+        try:
+            async with call(f"{host.url}/v1/archives/updates", headers=self.pool.headers(host),
+                            timeout=aiohttp.ClientTimeout(total=self.timeout), **kwargs) as resp:
+                if resp.status != 200:
+                    self._warn(key, f"{method} /v1/archives/updates answered {resp.status}: {(await resp.text())[:200]}")
+                    return None
+                data = await resp.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+            self._warn(key, f"{method} /v1/archives/updates failed: {e or type(e).__name__}")
+            return None
+        if not isinstance(data, dict):
+            self._warn(key, f"{method} /v1/archives/updates: not a JSON object")
+            return None
+        return data
 
     async def _fetch(self, host, after: str) -> dict | None:
         try:
@@ -741,8 +916,8 @@ class ArchiveCollector:
             log.warning("archives: %s: %s", key, message)
 
     def status(self) -> dict:
-        return {'hosts': len(self.cursors or {}), 'collected': self.collected, 'ticks': self.ticks,
-                'cursors_known': self.cursors is not None}
+        return {'hosts': len(self.cursors or {}), 'collected': self.collected, 'updated': self.updated,
+                'ticks': self.ticks, 'cursors_known': self.cursors is not None}
 
 
 class ArchiveStore:

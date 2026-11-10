@@ -183,6 +183,47 @@ class TestParsing:
         assert sre_cli([UPDATE, '--help']).code == 0
         assert 'dernière version publiée' in ' '.join(capsys.readouterr().out.split())
 
+    def test_re_eval_update_web_option(self, sre_cli, capsys, monkeypatch):
+        """`sre re-eval --update-web`: a flag of that command alone; run by root it writes as the
+        sre user (the permanent drop comes before the action: the queue for the web portal
+        belongs to sre)."""
+        base = ['re-eval', '-s', 'lab.py', '-p', 'corrected']
+        result = sre_cli([*base, '--update-web', 'a.zst', 'b.zst'])
+        assert result.code == 0 and result.events == ['permanent drop', 'action_re_eval']
+        assert result.args.update_web is True and result.args.files == ['a.zst', 'b.zst']
+        assert sre_cli([*base, 'a.zst']).args.update_web is False
+        assert sre_cli(['check-eval', '--update-web', 'a.zst']).code == 2
+        capsys.readouterr()
+        assert sre_cli(['re-eval', '--help']).code == 0
+        text = ' '.join(capsys.readouterr().out.split())
+        assert '--update-web' in text and 'also queue the new results for the web portal' in text
+        monkeypatch.setenv('LANGUAGE', 'fr')
+        assert sre_cli(['re-eval', '--help']).code == 0
+        assert 'en attente pour le portail web' in ' '.join(capsys.readouterr().out.split())
+
+    def test_re_eval_update_web_from_the_command_line(self, sre_cli, capsys, tmp_path, tmp_pub_dir, monkeypatch):
+        """The real action behind the real parser: an archive re-graded and its new results
+        queued for the portal under its own name."""
+        import test_re_eval as T
+        from SRE import web_updates
+        monkeypatch.setattr(params, 'agent_config_file', str(tmp_path / 'no-agent.toml'))
+        # root (the euid the fixture gives) has dropped to the sre user, who owns what is written:
+        # here the user running the tests
+        monkeypatch.setattr(params, 'sre_uid', os.getuid())
+        srelab = tmp_path / 'srelab.py'
+        srelab.write_text(T._AUTO_EVAL_COUNT_SRELAB)
+        module, _ = T._load_srelab(str(srelab))
+        archive = tmp_path / f'{T._ARCHIVE_STEM}.zst'
+        T._make_archive(archive, module, archived_count=4, stored_grade=0, current_srelab_file=str(srelab))
+        out_dir = tmp_path / 'out'
+        out_dir.mkdir()
+        result = sre_cli(['re-eval', '-s', str(srelab), '-p', 'corrected', '-d', str(out_dir), '--update-web',
+                          str(archive)], real=('action_re_eval',))
+        assert result.code == 0 and (out_dir / f'corrected{T._ARCHIVE_STEM}.zst').exists()
+        [entry] = web_updates.pending(params.web_updates_dir)[0]
+        assert entry['record'][params.archive_keyword] == archive.name and entry['record']['grade'] == 4.0
+        assert "queued for the web portal: 1 evaluation(s)" in capsys.readouterr().out
+
 
 class TestDispatch:
     def test_set(self, sre_cli):

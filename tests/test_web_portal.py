@@ -1284,6 +1284,60 @@ class TestArchives:
             assert not any(l['path'].startswith('/api/archives') for l in lines if l['event'] == 'denied')
         run(go())
 
+    def test_re_evaluation_replaces_the_row(self, tmp_path):
+        """`sre re-eval --update-web` on the pool host: the re-graded results it queued there
+        (the spool of SRE.web_updates) reach the table at the next collection — the row of the
+        archive written again under its id, with the host, the name and the group of the first
+        collection — and leave the host; one whose evaluation the table does not hold waits."""
+        from test_web_accessdb import Down
+        from test_web_archives import TableServer
+        from SRE import params, web_updates
+        from SRE.archive_summary import archive_record, read_archive
+        from sreweb.portal.archives import COLUMNS, KEPT_COLUMNS
+        server = TableServer({})
+        over = {**PROXY_OVER, 'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False, 'database': self.DB},
+                'archives': {'poll_interval': '1h'}}
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over, db_connect=(server.connect, (Down,))) as h:
+                store, bob = h.portal.archives, who('bob', 'Bob Test', group='INFO2')
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**bob, **CSRF})
+                rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
+                assert (await h.client.post(f'/api/projects/a01/{rln}/eval', headers={**bob, **CSRF})).status == 200
+                server.select_names, server.select_rows = ['host', 'archive'], []
+                await store.tick()                                             # the first collection
+                assert store.sink.flush(5)
+                [collected] = [r for r in server.committed if len(r) == len(COLUMNS)]   # not the log's rows
+                first = dict(zip(COLUMNS, collected))
+                assert (first['grade'], first['fullname'], first['grp']) == (4.5, 'Bob Test', 'INFO2')
+                # the table now holds that row, under the id 5
+                [path] = (h.pub / 'archives').iterdir()
+                server.rows[path.name] = (5, rln, *(first[c] for c in KEPT_COLUMNS), first['details'])
+                # the instructor fixes the lab and re-evaluates the archive on the host, later
+                again = archive_record(read_archive(str(path)), str(path))
+                again.update(grade=5.0, mark=20.0, re_eval_date='2026-11-10T09:00:00', fullname='bob', group='')
+                again['elements'][0]['grade'] = 2.5
+                missing = dict(again, archive='20200101000000_' + rln + '.zst')    # an evaluation the table lacks
+                spool = h.pub / params.web_updates_dir_name
+                assert web_updates.prepare(spool) is None
+                web_updates.queue_update(again, spool)
+                web_updates.queue_update(missing, spool)
+                await store.tick()
+                [(kind, sql, args)] = server.statements_of('REPLACE INTO `archives`')
+                row = dict(zip(('id',) + COLUMNS, args))
+                assert kind == 'one' and tuple(args) in server.committed
+                assert (row['id'], row['archive'], row['rln'], row['grade'], row['mark']) == (5, path.name, rln, 5.0, 20.0)
+                assert all(row[c] == first[c] for c in KEPT_COLUMNS)           # ts, host, lab file, name, group
+                details = json.loads(row['details'])
+                assert details['managed'] is True and details['re_eval_date'] == '2026-11-10T09:00:00'
+                assert details['elements'][0]['grade'] == 2.5
+                assert store.collector.updated == 1 and store.status()['collector']['updated'] == 1
+                assert len(server.statements_of('INSERT IGNORE INTO `archives`')) == 1      # the first collection's
+                assert [p.name for p in spool.iterdir()] == [web_updates.entry_name(missing['archive'])]
+                await store.tick()                                             # it waits: asked again, nothing written
+                assert len(server.statements_of('REPLACE INTO')) == 1 and len(list(spool.iterdir())) == 1
+        run(go())
+
     def test_report_download(self, tmp_path, monkeypatch):
         """POST /api/archives/report: the ticked rows, expanded to their projects by one SELECT,
         become the records one agent turns into the download through sre report (the fake sre

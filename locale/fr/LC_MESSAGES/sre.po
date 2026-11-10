@@ -478,6 +478,16 @@ msgstr ""
 "parcourir récursivement les sous-répertoires lors de la recherche "
 "d'archives .zst"
 
+msgid ""
+"also queue the new results for the web portal, which replaces the "
+"evaluations it holds under the same archive names (run as root on a pool "
+"host: the web agent of the host hands them over)"
+msgstr ""
+"mettre aussi les nouveaux résultats en attente pour le portail web, qui "
+"remplace les évaluations qu'il détient sous les mêmes noms d'archive (à "
+"lancer en root sur une machine du pool : l'agent web de la machine les "
+"transmet)"
+
 msgid "omit the evaluation history table from PDF reports"
 msgstr "omettre le tableau d'historique des évaluations dans les rapports PDF"
 

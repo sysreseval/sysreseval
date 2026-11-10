@@ -1,12 +1,13 @@
 import datetime
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
 import msgpack
 import zstandard as zstd
 
-from .. import params
+from .. import archive_summary, params, web_updates
 from ..lib_sre import Data0
 from ..params import SRE
 from ..utils import user_not_allowed, error_quit
@@ -41,6 +42,24 @@ def _running_lab_name_from_filename(path: str) -> str:
     return Path(path).stem[15:]   # skip "YYYYMMDDHHMMSS_"
 
 
+def _queue_web_update(archive_path, archive: dict, running_lab_name: str, output_path: str) -> str | None:
+    """Queue the results of the re-graded archive *output_path* for the web portal
+    (``--update-web``), under the name of the archive it was made from, *archive_path*: the
+    portal knows an evaluation by that name.  The reason nothing was queued, ``None`` when
+    the update is in the spool (``web_updates``)."""
+    if not web_updates.is_archive_name(Path(archive_path).name):
+        return "its file name is not the one the archive was written under, which the portal knows it by"
+    stored = archive.get(params.running_lab_name_keyword)
+    if not stored:
+        return "the archive does not name its project"
+    if stored != running_lab_name:
+        # a renamed file: its update would replace the evaluation of another project
+        return f"the archive is the one of the project {stored!r}, not of the one its file name gives"
+    record = archive_summary.archive_record(archive_summary.read_archive(output_path), str(archive_path))
+    web_updates.queue_update(record, params.web_updates_dir)
+    return None
+
+
 def action_re_eval():
     user_not_allowed()
     args = SRE.args
@@ -48,6 +67,20 @@ def action_re_eval():
     output_dir = Path(args.output_dir) if args.output_dir else Path.cwd()
     if not output_dir.is_dir():
         error_quit(f"output directory does not exist: {output_dir}")
+
+    update_web = bool(args.update_web)
+    queued = 0
+    if update_web:
+        problem = web_updates.prepare(params.web_updates_dir)
+        if problem is not None:
+            error_quit(f"--update-web: {problem} (to be run as root on a pool host)")
+        if not os.path.exists(params.agent_config_file):
+            print(f"warning: no web agent is configured on this host ({params.agent_config_file}): "
+                  f"nothing will hand the updates to the portal", file=sys.stderr)
+        left = web_updates.expire(params.web_updates_dir)
+        if left:
+            print(f"warning: {len(left)} update(s) queued more than {params.web_updates_max_age // 3600} h ago "
+                  f"were never taken by the portal: dropped", file=sys.stderr)
 
     try:
         module_rvlab, srelab_dir = _load_srelab(args.srelab)
@@ -128,3 +161,16 @@ def action_re_eval():
             continue
 
         print(f"saved: {output_path}")
+
+        if update_web:
+            try:
+                reason = _queue_web_update(archive_path, archive, running_lab_name, output_path)
+            except Exception as e:
+                reason = str(e) or type(e).__name__
+            if reason is None:
+                queued += 1
+            else:
+                print(f"error: {archive_path} not queued for the web portal: {reason}", file=sys.stderr)
+
+    if update_web:
+        print(f"queued for the web portal: {queued} evaluation(s) in {params.web_updates_dir}")

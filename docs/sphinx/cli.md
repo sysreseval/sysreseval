@@ -268,7 +268,7 @@ Prints archive contents. Without a field option, all fields are shown.
 
 Diffs stored grades against a re-grade (same logic as `re-eval` but without writing files). Prints per-element changes plus a summary count. `-s` selects an updated `srelab.py` or directory; if omitted, uses each archive's `.private/srelab` symlink.
 
-### `sre re-eval -s <srelab> -p <prefix> [-d <outdir>] [-r] <file_or_dir…>`
+### `sre re-eval -s <srelab> -p <prefix> [-d <outdir>] [-r] [--update-web] <file_or_dir…>`
 
 Re-grades archives with an updated `srelab.py`. Useful for fixing a grading bug post-exam.
 
@@ -278,6 +278,29 @@ Re-grades archives with an updated `srelab.py`. Useful for fixing a grading bug 
 | `-p` / `--prefix` | Prepended to each output archive filename. |
 | `-d` / `--output-dir` | Output directory (default: current). |
 | `-r` / `--recursive` | Recurse into subdirectories. |
+| `--update-web` | Also replace the evaluations the web portal holds for these archives (see below). |
+
+**`--update-web`** is for a site with the [web front-end](web.md): the Archives page of the portal shows what it
+collected when each evaluation ran, and a re-graded archive does not change it by itself. With the option, the new
+results of every archive re-graded are queued on the host, in `/var/lib/sre/web-updates/`, under the name of the
+archive they come from — the name the portal knows the evaluation by, whatever the prefix and the output directory —
+and the web agent of the host hands them to the portal at its next collection (30 s by default), which replaces the
+grades, marks, errors and elements of its row. See
+[Re-evaluated archives](web.md#re-evaluated-archives) for what the row keeps.
+
+- Run it **as root on a pool host** (a host with `sre-agent`): the queue belongs to the `sre` user, and nothing reads
+  it on a host without agent (a warning says so). Any other user gets an error before anything is re-graded.
+- Give the archives **under their original names** (the files of `/var/lib/sre/archives`, or copies of them): the
+  output of an earlier `re-eval` (`corrected2026…`) and a renamed archive are re-graded but not queued, with an
+  `error:` line each.
+- The portal only updates evaluations it holds. An update whose evaluation it has not collected yet waits on the host
+  and is applied once it has; it is given up after a day.
+- The command ends with the number of evaluations queued; the portal's log says when it replaced them.
+
+```bash
+sudo sre re-eval -s /opt/sre/lab/_EXAM_/ssh_corrected.py -p corrected -d /tmp/regraded \
+                 --update-web /var/lib/sre/archives/*ssh*
+```
 
 ### `sre sheet -o <output.ods> [-r] [-S <time>] [-F <time>] [--separate-instances] <file_or_dir…>`
 

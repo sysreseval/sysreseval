@@ -25,6 +25,7 @@ from aiohttp import web, WSMsgType, WSCloseCode
 
 from SRE import params
 from SRE import common
+from SRE import web_updates
 from SRE.archive_summary import (error_entries, exo_grade_list, lab_elements, archive_record, archives_after,
                                  read_archive, scan_archive_dirs)
 from SRE.common import TranslatedText
@@ -145,6 +146,8 @@ class Agent:
         self.registry.log_allowed = lambda project, identity: bool(
             project.debug or access.instructor_view_allowed(project.info, identity))
         self.results = ArchiveIndex(archive_dirs)
+        # the re-evaluations `sre re-eval --update-web` queued on this host for the portal
+        self.updates_dir = os.path.join(self.pub_dir, params.web_updates_dir_name)
         self.displays = DisplayManager(cfg.display, registry=self.registry)
         self._display_warning = ''      # the last reason no desktop could be reserved, logged once
         self.answers = AnswersStore(self.registry, hostname=self.hostname, pub_dir=self.pub_dir)
@@ -261,6 +264,8 @@ class Agent:
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_get(f'{p}/evaluations', self.evaluations_list)
         app.router.add_get(f'{p}/archives', self.archives_list)
+        app.router.add_get(f'{p}/archives/updates', self.archive_updates_list)
+        app.router.add_post(f'{p}/archives/updates', self.archive_updates_done)
         app.router.add_post(f'{p}/reports/{{kind}}', self.reports_post)
         app.router.add_post(f'{p}/projects', self.projects_create)
         app.router.add_get(f'{p}/projects/{{rln}}', self.project_get)
@@ -384,7 +389,7 @@ class Agent:
                                                                  self.cfg.token.encode('utf-8', 'surrogateescape')):
             return json_error(401, "bad agent token")
         if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart',
-                            f'{API_PREFIX}/archives'):
+                            f'{API_PREFIX}/archives', f'{API_PREFIX}/archives/updates'):
             request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
         try:
@@ -1011,13 +1016,10 @@ class Agent:
         resolved through the lab tree: ``SRE.utils.canonical_lab_name``, in the form of
         ``lab``); ``more`` tells whether others follow, ``last`` is the
         greatest name listed (the next ``after``: an unreadable archive, logged and skipped, is
-        not listed again).  The idle clocks are left alone."""
+        not listed again); ``updates`` is how many re-evaluations wait for the portal on this
+        host (``archive_updates_list``).  The idle clocks are left alone."""
         after = request.query.get('after', '')
-        try:
-            limit = int(request.query.get('limit', ARCHIVES_PAGE))
-        except ValueError:
-            raise AccessError(400, "limit must be a number")
-        limit = max(1, min(limit, ARCHIVES_PAGE_MAX))
+        limit = self._archives_limit(request)
         records, more, last = await asyncio.to_thread(self._archive_records, after, limit)
         for record in records:
             project = self.registry.projects.get(record['running_lab_name'])
@@ -1025,7 +1027,47 @@ class Agent:
             # resolved through the lab tree rather than the project: a closed project resolves too
             lab = record.get('lab') or ''
             record['canonical_lab'] = canonical_lab_name(lab.replace('/', '@')).replace('@', '/') if lab else ''
-        return web.json_response({'archives': records, 'more': more, 'last': last})
+        updates = await asyncio.to_thread(web_updates.pending_count, self.updates_dir)
+        return web.json_response({'archives': records, 'more': more, 'last': last, 'updates': updates})
+
+    @staticmethod
+    def _archives_limit(request) -> int:
+        try:
+            limit = int(request.query.get('limit', ARCHIVES_PAGE))
+        except ValueError:
+            raise AccessError(400, "limit must be a number")
+        return max(1, min(limit, ARCHIVES_PAGE_MAX))
+
+    async def archive_updates_list(self, request):
+        """The collector of the portal (the token alone): the re-evaluations ``sre re-eval
+        --update-web`` queued on this host (``SRE.web_updates``: the spool
+        ``params.web_updates_dir_name`` of the public directory) for the archives named after
+        ``?after=``, in the order of the archive names, ``?limit=`` of them as
+        ``archives_list``.  Each is ``{'token', 'record'}``: the record of ``archive_record``
+        of the re-graded archive under the name of the original one — the portal replaces the
+        evaluation it holds under that name, and keeps what it knows of where it ran — and the
+        token to give back once it settled it (``archive_updates_done``).  ``more`` and ``last``
+        as ``archives_list``.  What the spool refused or gave up is logged."""
+        after = request.query.get('after', '')
+        limit = self._archives_limit(request)
+        entries, more, last, dropped = await asyncio.to_thread(web_updates.pending, self.updates_dir, after, limit)
+        for name, reason in dropped:
+            log.warning("re-evaluation %s dropped from %s: %s", name, self.updates_dir, reason)
+        return web.json_response({'updates': entries, 'more': more, 'last': last})
+
+    async def archive_updates_done(self, request):
+        """The re-evaluations the portal settled (its row replaced, or the update refused for
+        good): ``{'done': [{'archive', 'token'}]}``.  An entry of the spool goes when it still
+        is the version of that token; one queued again meanwhile stays for the next round.
+        ``{'removed': n}``."""
+        body = await self._read_json(request)
+        done = body.get('done')
+        if not isinstance(done, list) or not all(isinstance(d, dict) and isinstance(d.get('archive'), str)
+                                                 and isinstance(d.get('token'), str) for d in done):
+            raise AccessError(400, "done: a list of {archive, token} is expected")
+        removed = await asyncio.to_thread(web_updates.remove, self.updates_dir,
+                                          [(d['archive'], d['token']) for d in done])
+        return web.json_response({'removed': removed})
 
     def _archive_records(self, after: str, limit: int) -> tuple:
         """``(records, more, last name)`` of the archives after *after* (a thread)."""

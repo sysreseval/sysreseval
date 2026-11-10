@@ -307,6 +307,10 @@ def parse_args():
                                 help=_('output directory (default: current directory)'))
     parser_re_eval.add_argument('-r', '--recursive', action='store_true',
                                 help=_('recurse into subdirectories when searching for .zst archives'))
+    parser_re_eval.add_argument('--update-web', action='store_true',
+                                help=_('also queue the new results for the web portal, which replaces the '
+                                       'evaluations it holds under the same archive names (run as root on a '
+                                       'pool host: the web agent of the host hands them over)'))
     parser_re_eval.add_argument('files', nargs='+', metavar='file_or_dir',
                                 help=_('archive file(s) or director(ies) of .zst archives to re-evaluate'))
 

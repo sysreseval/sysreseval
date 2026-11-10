@@ -300,8 +300,8 @@ def archive_record(raw: dict, path: str) -> dict:
              for p in (raw.get('grade_parts') or []) if isinstance(p, dict)]
     re_eval = raw.get(params.re_eval_date_keyword)
     return {
-        'archive': os.path.basename(path),
-        'running_lab_name': summary.running_lab_name,
+        params.archive_keyword: os.path.basename(path),
+        params.running_lab_name_keyword: summary.running_lab_name,
         'lab': lab_name_of_rln(summary.running_lab_name),
         'eval_date': eval_date.isoformat(timespec='seconds'),
         're_eval_date': str(re_eval) if re_eval else None,

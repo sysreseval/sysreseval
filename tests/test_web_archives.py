@@ -453,6 +453,118 @@ class TestSink:
         sink.close()
 
 
+STORED_TS = datetime(2026, 10, 25, 8, 1, 2)          # the UTC DATETIME(3) of the row of NAME
+OTHER_RLN = '20261025100000@@@sre@dhcp.py@@@bob'
+
+
+def stored(row_id=7, rln=RLN, **over) -> tuple:
+    """The ``_STORED_COLUMNS`` of a row of the table: what the first collection wrote."""
+    row = {'id': row_id, 'rln': rln, 'ts': STORED_TS, 'host': 'a01', 'canonical_lab': 'sre/dhcp.py',
+           'fullname': 'Alice Directory', 'grp': 'INFO1',
+           'details': json.dumps({'managed': True, 'elements': [{'key': 'old', 'grade': 1.0}], 're_eval_date': None})}
+    row.update(over)
+    return tuple(row[c] for c in R._STORED_COLUMNS)
+
+
+def re_evaluation(**over) -> dict:
+    """The record ``sre re-eval --update-web`` queued for NAME on another host, later: new
+    results, and what that host makes of the rest (its clock, its lab tree, no project)."""
+    return record(**{'grade': 3.0, 'mark': 20.0, 'error_count': 0, 'warning_count': 0, 'errors': [],
+                     're_eval_date': '2026-11-10T09:00:00', 'eval_date': '2026-10-25T11:01:02+03:00',
+                     'fullname': 'alice a', 'group': '', 'managed': False, 'canonical_lab': 's3/r306/dhcp.py',
+                     'elements': [{'key': 'new', 'grade': 3.0}], **over})
+
+
+class TableServer(FakeServer):
+    """The archives table as far as the re-evaluations go: ``rows`` maps an archive name to the
+    stored columns of its row; ``SELECT_STORED`` reads one, a ``REPLACE`` joins the pending rows
+    of its connection (committed, or rolled back, with it)."""
+
+    def __init__(self, rows):
+        super().__init__(table_exists=True)
+        self.rows = dict(rows)
+
+    def dispatch(self, cursor, sql, args) -> bool:
+        if sql.startswith('SELECT id, rln'):
+            row = self.rows.get(args[0])
+            cursor._rows = [row] if row is not None else []
+            return True
+        if sql.startswith('REPLACE INTO'):
+            cursor.conn.pending.append(tuple(args))
+            cursor.rowcount = 2
+            return True
+        return False
+
+
+class TestUpdates:
+    """The re-evaluations of ``sre re-eval --update-web``: the row of an archive written again."""
+
+    def test_statements(self):
+        assert R.SELECT_STORED.format(table='archives') == \
+            "SELECT id, rln, ts, host, canonical_lab, fullname, grp, details FROM `archives` WHERE archive = %s"
+        replace = R.REPLACE.format(table='archives')
+        assert replace.startswith("REPLACE INTO `archives` (id, ts, host, archive, rln, lab, canonical_lab, login,")
+        assert replace.count('%s') == len(R.COLUMNS) + 1
+        assert 'UPDATE' not in replace.upper().replace('REPLACE', '')     # the account has no UPDATE privilege
+
+    def test_updated_row(self):
+        """The results are the re-evaluation's; the id, the time, the host, the lab file, the
+        student's name and group and the `managed` detail stay those of the stored row."""
+        row = dict(zip(('id',) + R.COLUMNS, R.updated_row(dict(zip(R._STORED_COLUMNS, stored())), re_evaluation())))
+        details = json.loads(row.pop('details'))
+        assert row == {'id': 7, 'ts': STORED_TS, 'host': 'a01', 'archive': NAME, 'rln': RLN, 'lab': 'sre/dhcp.py',
+                       'canonical_lab': 'sre/dhcp.py', 'login': 'alice', 'fullname': 'Alice Directory', 'grp': 'INFO1',
+                       'hostname': 'pool1', 'grade': 3.0, 'max_grade': 3.0, 'mark': 20.0, 'maximum_mark': 20.0,
+                       'errors': 0, 'warnings': 0, 'exam': 0, 'auto_eval_count': 3}
+        assert details['managed'] is True and details['re_eval_date'] == '2026-11-10T09:00:00'
+        assert details['elements'] == [{'key': 'new', 'grade': 3.0}] and details['errors'] == []
+        assert set(details) == set(R.DETAIL_KEYS)
+
+    def test_updated_row_of_a_row_without_the_detail(self):
+        """A row whose details say nothing of `managed` (or cannot be read) gets none from the
+        re-evaluating host, which never ran the project."""
+        for details in (json.dumps({'elements': []}), '', 'not JSON', b'{"elements": []}', json.dumps([1])):
+            row = R.updated_row(dict(zip(R._STORED_COLUMNS, stored(details=details))), re_evaluation())
+            assert 'managed' not in json.loads(row[-1]) and row[0] == 7
+
+    def test_replaced_absent_refused(self):
+        absent, other = '20261025100202_' + RLN + '.zst', '20261025100302_' + RLN + '.zst'
+        server = TableServer({NAME: stored(), other: stored(row_id=9, rln=OTHER_RLN)})
+        reader = R.ArchiveDatabase('archives', connect=server.connect)
+        outcomes = reader.apply_updates_sync([re_evaluation(), re_evaluation(archive=absent),
+                                              re_evaluation(archive=other)])
+        assert outcomes == {NAME: R.UPDATE_REPLACED, absent: R.UPDATE_ABSENT, other: R.UPDATE_REFUSED}
+        assert [(s[1].split(' ')[0], s[2][0]) for s in server.statements] == [
+            ('SELECT', NAME), ('REPLACE', 7), ('SELECT', absent), ('SELECT', other)]
+        assert len(server.committed) == 1 and server.committed[0][:4] == (7, STORED_TS, 'a01', NAME)
+        assert server.connects == 1 and server.closed == 1               # one transaction for the batch
+        assert not server.statements_of('INSERT')                        # nothing is ever added
+
+    def test_nothing_changed_when_a_statement_fails(self):
+        later = '20261025100202_' + RLN + '.zst'
+        server = TableServer({NAME: stored(), later: stored(row_id=8)})
+        reader = R.ArchiveDatabase('archives', connect=server.connect)
+        refused = [0]
+
+        def second_replace(sql, args):
+            refused[0] += sql.startswith('REPLACE')
+            return refused[0] == 2
+
+        server.fail_next.append((second_replace, Broken(1142, "REPLACE command denied to user 'sre_web'")))
+        with pytest.raises(HistoryError, match='REPLACE command denied'):
+            reader.apply_updates_sync([re_evaluation(), re_evaluation(archive=later)])
+        assert server.committed == [] and server.closed == 1             # the first REPLACE rolled back
+        server.down = True
+        with pytest.raises(HistoryError, match="Can't connect"):
+            reader.apply_updates_sync([re_evaluation()])
+
+    def test_async(self):
+        server = TableServer({NAME: stored()})
+        reader = R.ArchiveDatabase('archives', connect=server.connect)
+        assert run(reader.apply_updates([re_evaluation()])) == {NAME: R.UPDATE_REPLACED}
+        assert run(reader.apply_updates([])) == {}
+
+
 class FakeResponse:
     def __init__(self, status, data):
         self.status = status
@@ -472,16 +584,30 @@ class FakeResponse:
 
 
 class FakeSession:
-    """``get()`` answers ``pages(after)`` -> (status, data) and records the calls."""
+    """``get()`` answers ``pages(after)`` -> (status, data) and records the calls.  The
+    re-evaluations of the host (``/v1/archives/updates``) are apart: ``updates(after)`` answers
+    the GETs, recorded in ``update_calls``, and ``ack(done)`` the POSTs, recorded in ``acks``."""
 
-    def __init__(self, pages):
+    def __init__(self, pages, updates=None, ack=None):
         self.pages = pages
+        self.updates = updates
+        self.ack = ack or (lambda done: (200, {'removed': len(done)}))
         self.calls = []
+        self.update_calls = []
+        self.acks = []
 
     def get(self, url, headers=None, params=None, timeout=None):
+        if url.endswith('/v1/archives/updates'):
+            self.update_calls.append((url, params['after'], params['limit']))
+            return FakeResponse(*self.updates(params['after']))
         self.calls.append((url, params['after'], params['limit']))
         status, data = self.pages(params['after'])
         return FakeResponse(status, data)
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        assert url.endswith('/v1/archives/updates')
+        self.acks.append((url, json['done']))
+        return FakeResponse(*self.ack(json['done']))
 
 
 class FakePool:
@@ -505,16 +631,31 @@ class FakeSink:
 
 
 class FakeReader:
-    def __init__(self, cursors=None, fail=False):
+    """The cursors of the table, and its rows as far as the re-evaluations go: ``stored`` names
+    the archives the table holds (the others are absent), ``refused`` those of another project;
+    ``applied`` records the batches."""
+
+    def __init__(self, cursors=None, fail=False, stored=(), refused=()):
         self._cursors = cursors or {}
         self.fail = fail
         self.calls = 0
+        self.stored = set(stored)
+        self.refused = set(refused)
+        self.applied = []
+        self.fail_updates = False
 
     async def cursors(self):
         self.calls += 1
         if self.fail:
             raise HistoryError("down")
         return dict(self._cursors)
+
+    async def apply_updates(self, records):
+        if self.fail_updates:
+            raise HistoryError("Can't connect to MySQL server")
+        self.applied.append([r['archive'] for r in records])
+        return {r['archive']: R.UPDATE_REFUSED if r['archive'] in self.refused
+                else R.UPDATE_REPLACED if r['archive'] in self.stored else R.UPDATE_ABSENT for r in records}
 
 
 def run(coro):
@@ -547,7 +688,7 @@ class TestCollector:
             assert all(c[0].startswith('http://a01:') for c in session.calls)         # b02 is not reachable
             await collector.tick()                                                   # nothing new
             assert reader.calls == 1 and len(session.calls) == 3 and len(sink.rows) == 2 and collector.ticks == 2
-            assert collector.status() == {'hosts': 2, 'collected': 2, 'ticks': 2, 'cursors_known': True}
+            assert collector.status() == {'hosts': 2, 'collected': 2, 'updated': 0, 'ticks': 2, 'cursors_known': True}
         run(go())
 
     def test_calls_per_tick_cap(self):
@@ -592,6 +733,129 @@ class TestCollector:
             messages = [r.message for r in caplog.records]
             assert sum('a01: no /v1/archives' in m for m in messages) == 1
             assert sum('b02: GET /v1/archives: not a JSON object' in m for m in messages) == 1
+        run(go())
+
+    # -- the re-evaluations (`sre re-eval --update-web`) --
+
+    NAMES = [f'2026102510010{i}_{RLN}.zst' for i in range(4)]
+
+    @staticmethod
+    def _announcing(count):
+        """The archive pages of a host with nothing new, saying *count* re-evaluations wait."""
+        return lambda after: (200, {'archives': [], 'more': False, 'last': '', 'updates': count})
+
+    @classmethod
+    def _updates(cls, names=None, page=2):
+        names = cls.NAMES if names is None else names
+
+        def updates(after):
+            left = [n for n in names if n > after]
+            listed = left[:page]
+            return 200, {'updates': [{'token': f't-{n[:14]}', 'record': record(archive=n)} for n in listed],
+                         'more': len(left) > page, 'last': listed[-1] if listed else ''}
+        return updates
+
+    def test_re_evaluations_asked_only_when_announced(self):
+        """An older agent says nothing of them, and most hosts hold none: no call for those."""
+        for answer in ({'archives': [], 'more': False, 'last': ''},
+                       {'archives': [], 'more': False, 'last': '', 'updates': 0},
+                       {'archives': [], 'more': False, 'last': '', 'updates': 'many'}):
+            session = FakeSession(lambda after, answer=answer: (200, answer), updates=self._updates())
+            collector = R.ArchiveCollector(FakePool(session), FakeSink(), FakeReader())
+            run(collector.tick())
+            assert len(session.calls) == 1 and session.update_calls == [] and session.acks == []
+
+    def test_re_evaluations_applied_then_acknowledged(self, caplog):
+        """The pages of the host's updates, each applied to the table then acknowledged: the
+        replaced ones and the one refused for good; the one whose evaluation is not in the table
+        stays on the host, told once.  Nothing goes through the sink."""
+        n = self.NAMES
+        session = FakeSession(self._announcing(4), updates=self._updates())
+        sink, reader = FakeSink(), FakeReader(stored={n[0], n[3]}, refused={n[1]})
+        collector = R.ArchiveCollector(FakePool(session), sink, reader, page=2)
+        url = 'http://a01:8451/v1/archives/updates'
+
+        async def go():
+            with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+                await collector.tick()
+                assert session.update_calls == [(url, '', '2'), (url, n[1], '2')]
+                assert reader.applied == [[n[0], n[1]], [n[2], n[3]]]
+                assert session.acks == [
+                    (url, [{'archive': n[0], 'token': 't-20261025100100'}, {'archive': n[1], 'token': 't-20261025100101'}]),
+                    (url, [{'archive': n[3], 'token': 't-20261025100103'}])]
+                assert collector.updated == 2 and collector.status()['updated'] == 2
+                assert sink.rows == [] and collector.collected == 0 and collector.cursors == {'a01': ''}
+                await collector.tick()                       # the same answers: said once
+            messages = [r.message for r in caplog.records]
+            assert sum('a01: 1 evaluation(s) replaced by their re-evaluation' in m for m in messages) == 4
+            assert sum(f'the re-evaluation of {n[1]} is dropped' in m for m in messages) == 2
+            assert sum('a01 (re-evaluations): 1 re-evaluation(s) of evaluations that are not in the table' in m
+                       for m in messages) == 1
+        run(go())
+
+    def test_re_evaluations_wait_for_the_database(self, caplog):
+        """The table cannot be written: nothing is acknowledged, the host keeps its updates and
+        the next tick applies them."""
+        session = FakeSession(self._announcing(2), updates=self._updates(self.NAMES[:2]))
+        reader = FakeReader(stored=set(self.NAMES))
+        reader.fail_updates = True
+        collector = R.ArchiveCollector(FakePool(session), FakeSink(), reader)
+
+        async def go():
+            with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+                await collector.tick()
+                await collector.tick()
+                assert session.acks == [] and collector.updated == 0 and len(session.update_calls) == 2
+                assert sum('the re-evaluations cannot be stored' in r.message for r in caplog.records) == 1
+                reader.fail_updates = False
+                await collector.tick()
+            assert [len(done) for _, done in session.acks] == [2] and collector.updated == 2
+            assert collector.ticks == 3                      # a failure here never fails the collection
+        run(go())
+
+    def test_re_evaluations_applied_again_after_a_lost_acknowledgement(self, caplog):
+        """The agent did not take the acknowledgement: it serves the same updates at the next
+        tick, applied again (the same row written again) and acknowledged."""
+        answers = [(500, {'error': 'boom'}), (200, {'removed': 1})]
+        session = FakeSession(self._announcing(1), updates=self._updates(self.NAMES[:1]),
+                              ack=lambda done: answers.pop(0))
+        reader = FakeReader(stored=set(self.NAMES))
+        collector = R.ArchiveCollector(FakePool(session), FakeSink(), reader)
+
+        async def go():
+            with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+                await collector.tick()
+                assert 'POST /v1/archives/updates answered 500' in caplog.text
+                await collector.tick()
+            assert reader.applied == [[self.NAMES[0]], [self.NAMES[0]]] and len(session.acks) == 2
+        run(go())
+
+    def test_re_evaluations_of_a_failing_agent(self, caplog):
+        """A bad answer to the updates call is warned about once and costs the archives of the
+        host nothing; entries that are no update are ignored; a tick asks a bounded number of
+        pages."""
+        names = [f'2026102510010{i}_{RLN}.zst' for i in range(2)]
+        pages = lambda after: (200, {'archives': [record(archive=x) for x in names if x > after], 'more': False,
+                                     'last': names[-1], 'updates': 5})
+        session = FakeSession(pages, updates=lambda after: (200, ['not', 'a', 'dict']))
+        sink, reader = FakeSink(), FakeReader(stored=set(self.NAMES))
+        collector = R.ArchiveCollector(FakePool(session), sink, reader, page=1, calls_per_tick=2)
+
+        async def go():
+            with caplog.at_level(logging.WARNING, logger='sreweb.portal'):
+                await collector.tick()
+                await collector.tick()
+                assert sum('GET /v1/archives/updates: not a JSON object' in r.message for r in caplog.records) == 1
+                assert [r[2] for r in sink.rows] == names and collector.cursors['a01'] == names[-1]
+                session.updates = lambda after: (200, {'updates': [
+                    'x', {'token': 5, 'record': record()}, {'token': 't', 'record': 'r'},
+                    {'token': 't', 'record': {'archive': NAME}}], 'more': False, 'last': NAME})
+                await collector.tick()
+                assert reader.applied == [] and session.acks == []
+                session.updates = self._updates(page=1)
+                before = len(session.update_calls)
+                await collector.tick()
+            assert len(session.update_calls) - before == 2 and reader.applied == [[self.NAMES[0]], [self.NAMES[1]]]
         run(go())
 
     def test_start_and_stop(self):

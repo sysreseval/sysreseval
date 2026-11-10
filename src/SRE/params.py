@@ -558,6 +558,16 @@ save_cipher_chunk_size = 16 * 1024 * 1024
 
 self_grade_timestamp_dir = sre_pub_dir + "/last_self_grades"
 
+# --- re-evaluations queued for the web portal (`sre re-eval --update-web`, web_updates.py) ---
+# one <original archive name>.json per pending update (the record of archive_summary.archive_record),
+# served by the web agent of the host to the portal, which replaces the row of that archive
+web_updates_dir_name = "web-updates"
+web_updates_dir = sre_pub_dir + "/" + web_updates_dir_name
+web_updates_suffix = ".json"
+web_updates_max_age = 24 * 3600     # seconds: an update the portal never took (its evaluation is not there) is dropped
+web_updates_max_size = 8 << 20      # bytes: a bigger entry is refused
+archive_keyword = "archive"         # the file name of an archive in its record
+
 srelab_link_name = "srelab"
 
 graphviz_default_nodesep = 0.8

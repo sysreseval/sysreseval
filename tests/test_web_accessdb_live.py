@@ -298,6 +298,64 @@ class TestLiveArchives:
         assert (first['grade'], 'elements' in first, first['exam_time_remaining'], first['email']) == (1.0, False, None, 'a@x.org')
         assert (best['grade'], best['exam_time_remaining'], best['archive']) == (2.0, 600, names[1])
         assert best['elements'][0]['title'] == {'en': 'both', 'fr': 'les deux'}
+
+    def test_re_evaluation_replaces_in_place(self, cfg, archives_cfg):
+        """`sre re-eval --update-web` on a real server (``REPLACE`` under the id of the row): the
+        results change, the row keeps its id — the same rows in the same order on the page — and
+        what the first collection knew; an archive without a row is not added, one whose row is
+        of another project is left alone; applied twice it is the same row, and the sink's later
+        re-insert of that archive is still ignored."""
+        from sreweb.portal.archives import (ArchiveDatabase, row_of_record, table_spec, parse_archive_filters,
+                                            UPDATE_REPLACED, UPDATE_ABSENT, UPDATE_REFUSED)
+        from test_web_archives import record, RLN
+        bob = '20261025100000@@@sre@dhcp.py@@@bob'
+        names = [f'20261025100102_{RLN}.zst', f'20261025100500_{RLN}.zst', f'20261025100300_{bob}.zst']
+        records = [
+            record(archive=names[0], grade=1.0),
+            record(archive=names[1], eval_date='2026-10-25T10:05:00+02:00', grade=2.0),
+            record(archive=names[2], running_lab_name=bob, login='bob', fullname='Bob B', group='INFO2',
+                   eval_date='2026-10-25T10:03:00+02:00', grade=0.5),
+        ]
+        connect, transient = connector(cfg)
+        sink = DatabaseSink(cfg, connect=connect, transient=transient, spec=table_spec(archives_cfg))
+        sink.start()
+        for r in records:
+            sink.put_row(row_of_record('a01', r))
+        assert sink.flush(10), sink.status()
+        db = ArchiveDatabase(archives_cfg.table, connect=connect)
+
+        def page() -> list:
+            return db.query_sync(parse_archive_filters({'show': 'all'}))['rows']
+
+        before = page()
+        ids = {r['archive']: r['id'] for r in before}
+        old = next(r for r in before if r['archive'] == names[0])
+        # the re-evaluation, as another host queued it later: its clock, its lab tree, no project, no directory
+        again = record(archive=names[0], grade=3.0, mark=20.0, error_count=0, warning_count=0, errors=[],
+                       re_eval_date='2026-11-10T09:00:00', eval_date='2026-10-25T11:01:02+03:00',
+                       fullname='alice a', group='', managed=False, canonical_lab='s3/r306/dhcp.py')
+        absent = record(archive=f'20261025100900_{RLN}.zst', grade=3.0)
+        stolen = record(archive=names[2], grade=3.0)                # alice's project under the name of bob's archive
+        assert db.apply_updates_sync([again, absent, stolen]) == {
+            names[0]: UPDATE_REPLACED, absent['archive']: UPDATE_ABSENT, names[2]: UPDATE_REFUSED}
+        assert [(r['id'], r['archive']) for r in page()] == [(r['id'], r['archive']) for r in before]
+        row = db.get_sync(ids[names[0]])
+        assert (row['grade'], row['mark'], row['errors'], row['warnings']) == (3.0, 20.0, 0, 0)
+        assert all(row[key] == old[key] for key in ('ts', 'host', 'canonical_lab', 'fullname', 'group', 'rln', 'login'))
+        assert (row['host'], row['canonical_lab'], row['fullname'], row['group']) == ('a01', 'sre/dhcp.py', 'Alice A', 'INFO1')
+        assert row['details']['managed'] is True and row['details']['re_eval_date'] == '2026-11-10T09:00:00'
+        assert row['details']['errors'] == []
+        untouched = db.get_sync(ids[names[2]])
+        assert (untouched['grade'], untouched['login'], untouched['rln']) == (0.5, 'bob', bob)
+        assert db.get_sync(ids[names[1]])['grade'] == 2.0
+        # again: the same row; and the archive seen again by a collector changes nothing
+        assert db.apply_updates_sync([again]) == {names[0]: UPDATE_REPLACED}
+        sink.put_row(row_of_record('b02', records[0]))
+        assert sink.flush(10), sink.status()
+        sink.close()
+        assert [(r['id'], r['archive']) for r in page()] == [(r['id'], r['archive']) for r in before]
+        assert (db.get_sync(ids[names[0]])['grade'], db.get_sync(ids[names[0]])['host']) == (3.0, 'a01')
+        assert db.cursors_sync() == {'a01': max(names)}
         assert db.light_report_sync([every[-1]['id']], limit=1)['truncated'] is True
         # the cursor pages of every row
         seen, before = [], None

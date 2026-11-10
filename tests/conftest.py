@@ -37,6 +37,7 @@ def mock_sre_args():
     mock.debug = False
     mock.instructor_mode = False
     mock.debug_web_project = False     # getattr(mock, name, False) would give a truthy child mock
+    mock.update_web = False            # `sre re-eval --update-web` would write under /var/lib/sre
     params.SRE.args = mock
     yield mock
     params.SRE.args = None
@@ -72,6 +73,7 @@ def tmp_pub_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(params, 'sre_projects_dir', str(pub / 'projects'))
     monkeypatch.setattr(params, 'self_grade_timestamp_dir', str(pub / 'last_self_grades'))
     monkeypatch.setattr(params, 'save_tmp_dir', str(pub / 'tmp'))
+    monkeypatch.setattr(params, 'web_updates_dir', str(pub / params.web_updates_dir_name))
     return pub
 
 

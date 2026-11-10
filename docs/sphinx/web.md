@@ -529,8 +529,9 @@ host again. The name of an archive is unique in the table (`UNIQUE (archive)`, `
 so a host whose archive directory is shared with another one, or rows still queued when the
 portal stopped, only cost a harmless re-insert. An archive rewritten in
 place (`sre re-eval -p '' -d <archive dir>`) or named below the cursor (a host whose clock was
-set back) is not taken again, as `sre watch` would not see it either; an agent not yet updated
-answers 404 and is skipped with one warning until it is.
+set back) is not taken again, as `sre watch` would not see it either: the results of a
+re-evaluation reach the table through `sre re-eval --update-web` (*Re-evaluated archives* below).
+An agent not yet updated answers 404 and is skipped with one warning until it is.
 
 The table is created like `access_log` when it is missing (the `CREATE` privilege, once); or
 create it by hand and grant `SELECT, INSERT, DELETE` on it (the same grant as the log's: the
@@ -589,6 +590,67 @@ auto-evaluation (`eval_interval_without_exam_mode`), a few kilobytes each. The t
 personal data (names, groups, results): the account of the portal should be the only one reading
 it, and the page is open to the instructors only. Every consultation of the Archives page is an
 `archives` line of the connection log, with the filters asked.
+
+### Re-evaluated archives
+
+A grading bug found after the evaluations is fixed in the lab file and the archives are graded
+again with [`sre re-eval`](cli.md#post-exam-management), which replays the lab on the test
+results each archive holds. The table of the portal was filled when the evaluations ran and does
+not follow by itself; **`sre re-eval --update-web`** makes it follow:
+
+```bash
+# as root, on the pool host whose /var/lib/sre/archives holds the archives
+sudo sre re-eval -s /opt/sre/lab/s3/r306/dns1.py -p corrected -d /root/regraded \
+                 --update-web /var/lib/sre/archives/*@@@s3@r306@dns1.py@@@*
+```
+
+The command writes the re-graded archives as usual (`-p`, `-d`) and, for each of them, queues the
+new results on the host: one file per archive in `/var/lib/sre/web-updates/` (mode `0700`, the
+files `0600`, owned by `sre`: they name students and grades), holding what the agent sends for an
+archive — never the answers — under **the name of the original archive**, which is how the portal
+knows the evaluation. A later re-evaluation of the same archive replaces the one still waiting.
+Nothing else is to be configured: no address of the portal, no token, no privilege of the
+database account.
+
+The portal takes them as it takes the archives. The answer of `GET /v1/archives` says how many
+re-evaluations wait on the host (`updates`); when there are some, the collector reads them in
+pages (`GET /v1/archives/updates?after=&limit=`, the token alone), writes each row again in one
+transaction per page, and tells the agent which ones are settled (`POST /v1/archives/updates`),
+which removes them from the host. A row is written with `REPLACE` under its own `id` — the
+`INSERT` and `DELETE` privileges the account already has; no `UPDATE` — so it keeps its place on
+the Archives page and the links to it. Of the stored row it also keeps what only the first
+collection knew:
+
+| Kept from the stored row | Taken from the re-evaluation |
+|---|---|
+| `id`, `ts` (the time of the evaluation), `host` | `grade`, `max_grade`, `mark`, `maximum_mark` |
+| `canonical_lab` (the lab file as it resolved then) | `errors`, `warnings` and the error list |
+| `fullname`, `grp` (the directory's, at the time) | the elements and the parts of the grade list |
+| the `managed` detail | the self-eval totals, `re_eval_date` |
+
+The reports downloaded from the page are built from the rows, so they show the new results at
+once. The Watch page reads the archive files of the running projects, not the table.
+
+- **Only the evaluations the table holds are updated; none is added.** A re-evaluation whose
+  evaluation is not there yet (collected at the next round, or the database did not answer) stays
+  on the host and is tried again at every round; the agent gives it up, with a line of its log,
+  after a day. Give the archives under their original names: the output of an earlier `re-eval`
+  and a renamed archive are not queued.
+- **Run it where an agent runs.** The queue is read by the agent of the same host. With an
+  archive directory shared by the pool (`archive_dirs`), one run on any pool host updates the
+  evaluations of every host: a row is found by the name of its archive, whichever host it came
+  from. On a host without `agent.toml` the command warns that nothing will hand the updates over.
+- **Applied at least once.** The portal acknowledges after its transaction is committed; a round
+  interrupted in between writes the same row again at the next one, which changes nothing. A
+  database or an agent failing here is warned about once in the portal's log (`archives: <host>
+  (re-evaluations): …`) and never stops the collection of the archives.
+- The portal logs `archives: <host>: N evaluation(s) replaced by their re-evaluation`; the
+  Archives page's database status counts them (`collector.updated`). A re-evaluation of an
+  archive whose row belongs to another project is dropped with a warning.
+- An agent older than this feature never announces the queue and a portal older than it, or one
+  without `[access_log.database]`, never asks for it: the files wait on the host. Whatever waited
+  for more than a day is dropped when the queue is next read by the agent or written by `sre
+  re-eval --update-web`, which then warns that the portal never took them.
 
 ### User groups
 

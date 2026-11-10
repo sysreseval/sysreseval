@@ -5,13 +5,15 @@ Focused on the auto_eval_count round-trip:
   grade.auto_eval_count inside grade() during re-eval
 - the re-saved archive must preserve the value in its answers section
 """
+import os
+import stat
 from pathlib import Path
 
 import msgpack
 import pytest
 import zstandard as zstd
 
-from SRE import params
+from SRE import params, web_updates
 from SRE.command.re_eval import _load_srelab, action_re_eval
 
 
@@ -253,3 +255,124 @@ class TestReEvalExamJson:
         new_path = self._run_re_eval(mock_sre_args, tmp_path, srelab, in_archive)
         archive = _read_archive(new_path)
         assert json.loads(json.dumps(archive[params.exam_json_keyword])) == self._EXAM_JSON
+
+
+class TestReEvalUpdateWeb:
+    """``--update-web``: the results of each re-graded archive are queued for the web portal in
+    the spool of the host (``web_updates``), under the name of the archive they come from —
+    the name the portal knows the evaluation by — whatever the prefix and the output directory."""
+
+    @pytest.fixture(autouse=True)
+    def no_agent(self, tmp_path, monkeypatch):
+        """Whether the test host runs a web agent must not change the output."""
+        monkeypatch.setattr(params, 'agent_config_file', str(tmp_path / 'no-agent.toml'))
+
+    def _run(self, mock_sre_args, tmp_path, srelab, in_archive, *, update_web=True):
+        out_dir = tmp_path / 'out'
+        out_dir.mkdir(exist_ok=True)
+        mock_sre_args.srelab = str(srelab)
+        mock_sre_args.files = [str(in_archive)]
+        mock_sre_args.output_dir = str(out_dir)
+        mock_sre_args.prefix = 'reeval_'
+        mock_sre_args.recursive = False
+        mock_sre_args.update_web = update_web
+        action_re_eval()
+        return out_dir
+
+    def _archive(self, tmp_path, module, srelab, name=f'{_ARCHIVE_STEM}.zst'):
+        in_archive = tmp_path / name
+        _make_archive(in_archive, module, archived_count=4, stored_grade=0, current_srelab_file=str(srelab))
+        return in_archive
+
+    def test_queued_under_the_original_name(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab, capsys):
+        in_archive = self._archive(tmp_path, module, srelab)
+        out_dir = self._run(mock_sre_args, tmp_path, srelab, in_archive)
+
+        assert (out_dir / f'reeval_{_ARCHIVE_STEM}.zst').exists()
+        entries, more, last, dropped = web_updates.pending(params.web_updates_dir)
+        assert (more, last, dropped) == (False, f'{_ARCHIVE_STEM}.zst', [])
+        record = entries[0]['record']
+        assert record[params.archive_keyword] == f'{_ARCHIVE_STEM}.zst'       # not 'reeval_…'
+        assert record[params.running_lab_name_keyword] == _RUNNING_LAB_NAME
+        assert (record['grade'], record['max_grade']) == (4.0, 100.0)          # the new grade
+        assert [(e['grade'], e['max_grade']) for e in record['elements']] == [(4.0, 100.0)]
+        assert record['eval_date'].startswith('2026-01-01T00:00:00')           # the original evaluation
+        assert record[params.re_eval_date_keyword]
+        out = capsys.readouterr()
+        assert f"queued for the web portal: 1 evaluation(s) in {params.web_updates_dir}" in out.out
+        assert "no web agent is configured on this host" in out.err
+
+    def test_private_spool(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab):
+        self._run(mock_sre_args, tmp_path, srelab, self._archive(tmp_path, module, srelab))
+        spool = Path(params.web_updates_dir)
+        assert stat.S_IMODE(spool.stat().st_mode) == 0o700
+        assert [stat.S_IMODE(p.stat().st_mode) for p in spool.iterdir()] == [0o600]
+
+    def test_no_warning_next_to_an_agent(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab, capsys,
+                                         monkeypatch):
+        agent_toml = tmp_path / 'agent.toml'
+        agent_toml.write_text('')
+        monkeypatch.setattr(params, 'agent_config_file', str(agent_toml))
+        self._run(mock_sre_args, tmp_path, srelab, self._archive(tmp_path, module, srelab))
+        assert capsys.readouterr().err == ''
+
+    def test_nothing_queued_without_the_flag(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab, capsys):
+        out_dir = self._run(mock_sre_args, tmp_path, srelab, self._archive(tmp_path, module, srelab),
+                            update_web=False)
+        assert (out_dir / f'reeval_{_ARCHIVE_STEM}.zst').exists()
+        assert not Path(params.web_updates_dir).exists()
+        assert 'web portal' not in capsys.readouterr().out
+
+    def test_second_run_replaces_the_pending_update(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab):
+        in_archive = self._archive(tmp_path, module, srelab)
+        self._run(mock_sre_args, tmp_path, srelab, in_archive)
+        first = web_updates.pending(params.web_updates_dir)[0]
+        self._run(mock_sre_args, tmp_path, srelab, in_archive)
+        second = web_updates.pending(params.web_updates_dir)[0]
+        assert len(first) == len(second) == 1
+        assert second[0]['token'] != first[0]['token']
+
+    def test_updates_nobody_took_are_dropped(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab, capsys):
+        """A queue nothing reads (no portal collecting from this host) does not grow for ever:
+        the next run drops what the earlier ones left for more than a day, and says so."""
+        in_archive = self._archive(tmp_path, module, srelab)
+        assert web_updates.prepare(params.web_updates_dir) is None
+        stale = Path(params.web_updates_dir) / web_updates.entry_name('20250101000000_' + _RUNNING_LAB_NAME + '.zst')
+        stale.write_text('{}')
+        old = stale.stat().st_mtime - params.web_updates_max_age - 60
+        os.utime(stale, (old, old))
+        self._run(mock_sre_args, tmp_path, srelab, in_archive)
+        assert [p.name for p in Path(params.web_updates_dir).iterdir()] == [web_updates.entry_name(in_archive.name)]
+        assert "warning: 1 update(s) queued more than 24 h ago were never taken by the portal: dropped" \
+            in capsys.readouterr().err
+
+    def test_a_file_not_named_as_an_archive_is_not_queued(self, mock_sre_args, tmp_path, tmp_pub_dir, module,
+                                                         srelab, capsys):
+        """The output of an earlier re-eval (``corrected…``) names no evaluation of the portal."""
+        in_archive = self._archive(tmp_path, module, srelab, name=f'corrected{_ARCHIVE_STEM}.zst')
+        out_dir = self._run(mock_sre_args, tmp_path, srelab, in_archive)
+        assert (out_dir / f'reeval_corrected{_ARCHIVE_STEM}.zst').exists()      # re-graded all the same
+        assert web_updates.pending_count(params.web_updates_dir) == 0
+        out = capsys.readouterr()
+        assert f"error: {in_archive} not queued for the web portal: its file name is not the one" in out.err
+        assert "queued for the web portal: 0 evaluation(s)" in out.out
+
+    def test_a_renamed_archive_is_not_queued(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab, capsys):
+        """An archive under the name of another project would replace that project's evaluation."""
+        other = '20260101000000_20260101000000@@@auto_eval_count_lab@@@somebody.zst'
+        in_archive = self._archive(tmp_path, module, srelab, name=other)
+        self._run(mock_sre_args, tmp_path, srelab, in_archive)
+        assert web_updates.pending_count(params.web_updates_dir) == 0
+        assert f"the archive is the one of the project {_RUNNING_LAB_NAME!r}" in capsys.readouterr().err
+
+    def test_unusable_spool_quits_before_grading(self, mock_sre_args, tmp_path, tmp_pub_dir, module, srelab,
+                                                 capsys):
+        Path(params.web_updates_dir).write_text('')         # not a directory
+        in_archive = self._archive(tmp_path, module, srelab)
+        with pytest.raises(SystemExit) as exit_info:
+            self._run(mock_sre_args, tmp_path, srelab, in_archive)
+        assert exit_info.value.code == 1
+        assert list((tmp_path / 'out').iterdir()) == []
+        err = capsys.readouterr().err
+        assert f"sre: --update-web: {params.web_updates_dir}: not a directory" in err
+        assert "as root on a pool host" in err
