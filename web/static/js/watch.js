@@ -1,6 +1,8 @@
 // The Watch page of the instructors: every running project of the pool (GET /api/watch every
 // 5 s), one row per project with its owner (login and full name, and their student group when
-// the site configures one), its lab, when it started, its last archived evaluation (age, grade,
+// the site configures one), its lab, when it started, the last action of its owner (the age of
+// the last key, click or scroll on its page, terminal input, answer, evaluation or state, as the
+// agent keeps it; blank when it saw none), its last archived evaluation (age, grade,
 // mark, errors), the number of self-evaluations the student has run (counted live by the agent
 // from the project's auto_eval.log: the archives hold the count before their evaluation), its
 // terminals and whether the web (or the Qt GUI) runs it.  The rows can be
@@ -76,6 +78,20 @@ function ageText(seconds) {
   return format(_('{n} h ago'), {n: Math.floor(seconds / 3600)});
 }
 
+// The age in seconds of the last action of the owner on the project (a key, a click or a scroll
+// on its page, terminal input, an answer, an evaluation, a state: the agent's `last_action`);
+// null when the agent saw none (a project used from the Qt GUI only) or is older than the key.
+function actionAge(row) {
+  const action = row.last_action;
+  return action && typeof action.age_s === 'number' ? action.age_s : null;
+}
+
+// the time of that action, in the words of the browser, for the tooltip of the cell
+function actionTime(row) {
+  const at = row.last_action ? new Date(row.last_action.at) : null;
+  return at && !Number.isNaN(at.getTime()) ? at.toLocaleString() : '';
+}
+
 const detail = createDetailDialog({projectUrl: (row) => projectUrl(row.host, row.running_lab_name), projectApi, title});
 const summary = createSummaryDialog();
 
@@ -89,6 +105,7 @@ function sortValue(row, key) {
     case 'group': return row.group || '';
     case 'title': return title(row).toLowerCase();
     case 'started_at': return row.started_at || '';
+    case 'last_action': return actionAge(row) === null ? -Infinity : -actionAge(row);
     case 'last_eval': return last ? -last.age_s : -Infinity;
     case 'grade': return last && last.max_grade ? last.grade / last.max_grade : -Infinity;
     case 'mark': return last && last.mark !== null && last.mark !== undefined ? last.mark : -Infinity;
@@ -310,6 +327,8 @@ function renderRow(row) {
     el('td', {class: 'lab', title: _('Summary of the lab for the projects shown'),
               onclick: () => summary.open(labKey(row), title(row), () => state.shown)}, title(row)),
     el('td', {title: rln}, formatTimestamp(row.started_at)),
+    // blank when the agent saw no action of the owner
+    el('td', {title: actionTime(row)}, actionAge(row) === null ? '' : ageText(actionAge(row))),
     el('td', {title: last ? last.eval_date : ''}, last ? ageText(last.age_s) : _('never')),
     el('td', {class: 'num'}, last ? `${formatNumber(last.grade)} / ${formatNumber(last.max_grade)}` : ''),
     el('td', {class: 'num'}, last && last.mark !== null && last.mark !== undefined
@@ -355,7 +374,8 @@ function setupControls() {
         state.sortAsc = !state.sortAsc;
       } else {
         state.sortKey = key;
-        state.sortAsc = !['last_eval', 'grade', 'mark', 'errors', 'auto_eval_count', 'terminals', 'started_at'].includes(key);
+        state.sortAsc = !['last_action', 'last_eval', 'grade', 'mark', 'errors', 'auto_eval_count', 'terminals',
+                          'started_at'].includes(key);
       }
       render();
     });

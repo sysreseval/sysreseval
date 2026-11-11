@@ -3,7 +3,8 @@
 // through onReconnect); onClose(ev) may stop that (return false) on a close code meaning "over".
 // send(obj) writes one JSON object while the socket is open (the pointer frames of a presenter).
 // ProjectEvents is the events socket of an open project page ({api_base}/events:
-// {"t": "info" | "answers" | "log" | "terminals" | "removed", ...}); the presence socket of
+// {"t": "info" | "answers" | "log" | "terminals" | "removed", ...}; the page of the owner sends
+// its {"t": "activity"} frames there, activity.js); the presence socket of
 // base.js and the presentation sockets of project.js / present.js are plain ReconnectingSockets.
 
 import {wsUrl} from './api.js';
@@ -124,8 +125,9 @@ export class ReconnectingSocket {
 }
 
 export class ProjectEvents extends ReconnectingSocket {
-  // onEvent(obj): a decoded frame; onReconnect(): the socket is open again after a drop
-  constructor(path, {onEvent, onReconnect}) {
-    super(path, {onMessage: onEvent, onReconnect});
+  // onEvent(obj): a decoded frame; onReconnect(): the socket is open again after a drop;
+  // onOpen(): the socket is open, the first time too (the activity frame it could not take)
+  constructor(path, {onEvent, onReconnect, onOpen = null}) {
+    super(path, {onMessage: onEvent, onReconnect, onOpen});
   }
 }

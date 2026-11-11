@@ -496,6 +496,12 @@ msgstr "TP"
 msgid "Started"
 msgstr "Démarré"
 
+msgid "Last action"
+msgstr "Dernière action"
+
+msgid "The last time the student did something on the project: a key, a click or a scroll on its page, an answer, an evaluation"
+msgstr "La dernière fois que l'étudiant a agi sur le projet : une touche, un clic ou un défilement sur sa page, une réponse, une évaluation"
+
 msgid "Last evaluation"
 msgstr "Dernière évaluation"
 

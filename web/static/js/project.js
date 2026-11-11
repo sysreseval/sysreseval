@@ -2,6 +2,8 @@
 // sanitised view of the project and the answers), the events WebSocket ({api_base}/events)
 // refreshing them, the corner controls (instructor view, word wrap, content font size,
 // Export Schema to PDF, Close project) and the touch keeping the project alive every minute.
+// The page of the owner also reports the keys, the clicks and the scrolls of its user on the
+// events socket (activity.js): the Last action column of the instructors' Watch page.
 //
 // Three more roles: an instructor may present the project (present.js: the Present button, the
 // bar, the view published after each change through the ctx.onViewChange / onEvaluated /
@@ -26,6 +28,7 @@ import * as settings from './settings.js';
 import {_} from './i18n.js';
 import {el, clear, toast} from './ui.js';
 import {ProjectEvents, ReconnectingSocket} from './events.js';
+import {createActivityTracker} from './activity.js';
 import {createPresenter} from './present.js';
 import {createFocus} from './focus.js';
 import {createTalk} from './talk.js';
@@ -503,6 +506,9 @@ function shutDown() {
   if (touchTimer) {
     window.clearInterval(touchTimer);
   }
+  if (activity) {
+    activity.stop();
+  }
   if (tabs.terminals) {
     tabs.terminals.closeAll();
   }
@@ -715,7 +721,16 @@ const events = new ProjectEvents(ctx.url('/events'), {
       }
     });
   },
+  onOpen: () => {
+    if (activity) {
+      activity.resend();        // the gesture made while the socket was down
+    }
+  },
 });
+
+// the owner's own gestures on the page (a spectator's page is in the owner's name when the owner
+// presents: never that one; an instructor helping is not the student)
+const activity = isOwner && !spectator ? createActivityTracker({send: (frame) => events.send(frame)}) : null;
 
 let touchTimer = null;
 

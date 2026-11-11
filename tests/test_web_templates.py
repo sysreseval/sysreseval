@@ -251,10 +251,13 @@ class TestTemplates:
         html = render('watch.html', instructor=True)
         assert 'id="watch"' in html and 'id="watch-filter"' in html and 'id="watch-count"' in html
         assert '/static/js/watch.js' in html and 'href="/watch"' in html
-        for key in ('host', 'owner', 'fullname', 'group', 'title', 'started_at', 'last_eval', 'grade', 'mark', 'errors',
-                    'auto_eval_count', 'terminals', 'managed'):
+        for key in ('host', 'owner', 'fullname', 'group', 'title', 'started_at', 'last_action', 'last_eval', 'grade', 'mark',
+                    'errors', 'auto_eval_count', 'terminals', 'managed'):
             assert f'data-sort="{key}"' in html, key
-        assert 'data-sort="fullname">Name</th>' in html and 'colspan="14"' in html   # the full name as a column
+        assert 'data-sort="fullname">Name</th>' in html and 'colspan="15"' in html   # the full name as a column
+        # the last action of the owner, between the start and the last evaluation
+        assert html.index('data-sort="started_at"') < html.index('data-sort="last_action"') < html.index('data-sort="last_eval"')
+        assert 'a key, a click or a scroll on its page, an answer, an evaluation">Last action</th>' in html
         assert 'data-sort="auto_eval_count" title="The number of self-evaluations the student has run">Self-evaluations</th>' in html
         assert 'click a row for its last evaluation, a lab for the summary of the lab</span>' in html   # the dialogs
         assert 'a group for that summary' not in html
@@ -1141,6 +1144,107 @@ process.stdout.write(JSON.stringify({
 TABLE_SORT_ROWS = [{'login': 'etu10', 'name': 'b', 'time': 5}, {'login': 'etu9', 'name': 'A', 'time': None},
                    {'login': 'Etu2', 'name': 'b', 'time': 50}, {'login': 'prof', 'name': '', 'time': 5}]
 
+# activity.js on a fake page: the listeners recorded, a clock and timers moved by hand, a socket
+# that takes the frames or not; a frame is noted [ago, the time it left]
+ACTIVITY_RUNNER = """\
+import {createActivityTracker, ACTIVITY_EVENTS, ACTIVITY_INTERVAL} from './activity.js';
+
+function page({open = true} = {}) {
+  let clock = 0;
+  let nextId = 1;
+  const listeners = {};
+  const options = {};
+  const timers = [];
+  const sent = [];
+  const socket = {open};
+  const tracker = createActivityTracker({
+    target: {
+      addEventListener(type, fn, opts) { listeners[type] = fn; options[type] = opts; },
+      removeEventListener(type) { delete listeners[type]; },
+    },
+    send: (frame) => {
+      if (!socket.open) {
+        return false;
+      }
+      sent.push([frame.t === 'activity' ? frame.ago : frame, clock]);
+      return true;
+    },
+    now: () => clock,
+    setTimer: (fn, ms) => { timers.push({id: nextId, fn, at: clock + ms}); return nextId++; },
+    clearTimer: (id) => { timers.splice(timers.findIndex((t) => t.id === id), 1); },
+  });
+  return {
+    tracker, sent, socket, listeners, options, timers,
+    gesture(type = 'keydown') {
+      if (listeners[type]) {
+        listeners[type]({type});
+      }
+    },
+    advance(ms) {             // the clock moved, the timers due run on their time
+      const end = clock + ms;
+      for (;;) {
+        timers.sort((a, b) => a.at - b.at);
+        if (!timers.length || timers[0].at > end) {
+          break;
+        }
+        const timer = timers.shift();
+        clock = timer.at;
+        timer.fn();
+      }
+      clock = end;
+    },
+  };
+}
+
+const a = page();
+const out = {interval: ACTIVITY_INTERVAL, events: Object.keys(a.listeners).sort(), declared: [...ACTIVITY_EVENTS].sort(),
+             capture: Object.values(a.options).every((o) => o && o.capture === true)};
+a.gesture('pointerdown');                 // the first gesture: at once
+for (const step of [1000, 1000, 7000]) {  // then a burst: one frame at the end of the interval
+  a.advance(step);
+  a.gesture();
+}
+out.pending = a.timers.length;
+a.advance(1000);
+a.advance(60000);                         // nothing more while the user does nothing
+a.gesture('wheel');                       // after a quiet minute: at once again
+a.advance(3000);
+a.gesture();
+a.advance(7000);
+out.timeline = a.sent;
+
+const b = page({open: false});            // the socket down: the gesture kept
+b.gesture();
+b.advance(30000);
+b.tracker.resend();
+out.down = b.sent.length;
+b.socket.open = true;
+b.tracker.resend();
+b.tracker.resend();                       // nothing kept any more
+b.advance(1000);
+b.gesture();                              // inside the interval, and the socket drops before its end
+b.socket.open = false;
+b.advance(9000);
+out.refused = [b.sent.length, b.timers.length];
+b.advance(5000);
+b.gesture();                              // tried again at the next gesture
+b.socket.open = true;
+b.tracker.resend();
+out.closed = b.sent;
+
+const c = page();
+c.gesture();
+c.advance(1000);
+c.gesture();
+const before = c.timers.length;
+c.tracker.stop();
+c.gesture();
+c.advance(20000);
+c.tracker.resend();
+out.stopped = {before, timers: c.timers.length, listeners: Object.keys(c.listeners).length, frames: c.sent.length};
+process.stdout.write(JSON.stringify(out));
+"""
+
 
 POINTER_MODEL_RUNNER = """\
 import {nodePath, resolvePath, parseLocator, parseSelection, selectionCells, selectionRows, terminalSelectionLength,
@@ -1292,6 +1396,42 @@ class TestTableSort:
         assert out['byNameTies'] == ['prof', 'etu9', 'etu10', 'Etu2']
         assert out['byNameTieKey'] == ['prof', 'etu9', 'Etu2', 'etu10']
         assert out['untouched'] == ['etu10', 'etu9', 'Etu2', 'prof']        # a sorted copy
+
+
+class TestActivityTracker:
+    """activity.js (the gestures of the owner on a project page reported on its events socket:
+    the Last action column of the Watch page) run by the ``js`` runtime on a fake page, skipped
+    without one."""
+
+    def test_frames(self, tmp_path, js):
+        runner = js_project(tmp_path, ACTIVITY_RUNNER, 'activity.js')
+        out = json.loads(js.run(tmp_path, runner))
+        # keys, clicks and touches, the wheel: never a mouse that only moves, nor `scroll` (the
+        # output of a terminal scrolls by itself); capturing, xterm and noVNC stop the propagation
+        assert out['events'] == out['declared'] == ['keydown', 'pointerdown', 'wheel'] and out['capture'] is True
+        assert out['interval'] == 10000 and out['pending'] == 1
+        # [seconds since the gesture, time of the frame]: the first gesture at once, a burst as
+        # one frame at the end of the interval with the age of its last gesture, silence while
+        # the user does nothing
+        assert out['timeline'] == [[0, 0], [1, 10000], [0, 70000], [7, 80000]]
+        # a socket that is down: the gesture kept with its age until resend(), once
+        assert out['down'] == 0 and out['refused'] == [1, 0]
+        assert out['closed'] == [[30, 30000], [0, 45000]]
+        assert out['stopped'] == {'before': 1, 'timers': 0, 'listeners': 0, 'frames': 1}
+
+    def test_wiring(self):
+        """The page of the owner alone reports (never a spectator's, in the owner's name when
+        the owner presents, nor a helping instructor's), on the events socket, and again when
+        the socket opens; the Watch page shows the age the agent computed."""
+        project = (JS / 'project.js').read_text(encoding='utf-8')
+        assert "import {createActivityTracker} from './activity.js';" in project
+        assert 'isOwner && !spectator ? createActivityTracker({send: (frame) => events.send(frame)}) : null' in project
+        assert 'activity.resend()' in project and 'activity.stop()' in project
+        events = (JS / 'events.js').read_text(encoding='utf-8')
+        assert 'super(path, {onMessage: onEvent, onReconnect, onOpen});' in events
+        watch = (JS / 'watch.js').read_text(encoding='utf-8')
+        assert "case 'last_action': return actionAge(row) === null ? -Infinity : -actionAge(row);" in watch
+        assert "actionAge(row) === null ? '' : ageText(actionAge(row))" in watch
 
 
 class TestJavaScript:

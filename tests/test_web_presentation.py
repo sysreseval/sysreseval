@@ -631,6 +631,35 @@ class TestPresentationThroughThePortal:
                 assert (await h.client.get(base, headers=bob)).status == 403
         P.run(go())
 
+    def test_spectator_gestures_are_not_the_owners(self, tmp_path):
+        """An instructor presents their own project: the requests of the spectators carry the
+        identity of the presenter, here the owner, but nothing a spectator's page sends on the
+        events socket reaches the agent, and its keep-alive is no action: the last action of
+        the project (the Last action column of the Watch page) stays the owner's."""
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER) as h:
+                bob, prof = P.who('bob', 'Bob'), P.who('prof', 'Pr. Of', groups=P.TEACHERS)
+                rln = await start_project(h, prof)
+                base = f'/api/projects/a01/{rln}'
+                await present(h, prof, rln, ['bob'])
+
+                async def last_action():
+                    return (await (await h.client.get('/api/watch', headers=prof)).json())[0]['last_action']
+
+                spectator = await h.client.ws_connect(f'{base}/events', headers=bob)
+                await spectator.send_str(json.dumps({'t': 'activity', 'ago': 0}))
+                assert (await h.client.post(f'{base}/touch', headers={**bob, **P.CSRF})).status == 204
+                await asyncio.sleep(0.3)
+                assert await last_action() is None
+                own = await h.client.ws_connect(f'{base}/events', headers=prof)
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 0}))
+                async with asyncio.timeout(5):
+                    while await last_action() is None:
+                        await asyncio.sleep(0.02)
+                await own.close()
+                await spectator.close()
+        P.run(go())
+
     def test_instructor_view_follows_the_presenter(self, tmp_path):
         async def go():
             async with P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER) as h:

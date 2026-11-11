@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
 
 import pytest
 from pathlib import Path
@@ -190,6 +191,45 @@ class TestRegistry:
         run(reg2.tick())
         p2 = reg2.get(RLN)
         assert p2.idle_timeout == 120.0 and 49 < p2.idle_seconds() < 55
+
+    def test_last_action_of_the_owner(self, tmp_pub_dir):
+        """The last action of the owner (the Last action column of the Watch page): the newest
+        one is kept, an older report never replaces it, the state file carries it across a
+        restart of the agent; the idle clock is another clock."""
+        make_project(tmp_pub_dir)
+        reg = registry()
+        run(reg.tick())
+        p = reg.get(RLN)
+        assert p.last_action_at is None and p.last_action() is None
+        p.touch()                                   # the idle clock of any open page: no action
+        assert p.last_action() is None
+        p.acted(40)
+        action = p.last_action()
+        assert 40 <= action['age_s'] <= 42
+        at = datetime.fromisoformat(action['at'])
+        assert at.tzinfo is not None and abs(time.time() - 40 - at.timestamp()) < 2
+        p.acted(100)                                # a late report of an older gesture
+        assert 40 <= p.last_action()['age_s'] <= 42
+        p.acted(-5)                                 # never in the future
+        assert p.last_action()['age_s'] == 0
+        p.last_action_at = time.time() - 300
+        reg.write_state(p, force=True)
+        reg2 = registry()
+        run(reg2.tick())
+        assert 300 <= reg2.get(RLN).last_action()['age_s'] <= 302
+        # a state file without the key (an older agent's), or with a time that cannot be
+        state_file = tmp_pub_dir / 'web-agent' / f'{RLN}.json'
+        state = json.loads(state_file.read_text())
+        for value in (None, 'yesterday', True, -1, time.time() + 3600):
+            state_file.write_text(json.dumps(dict(state, last_action_at=value)))
+            reg3 = registry()
+            run(reg3.tick())
+            assert reg3.get(RLN).managed and reg3.get(RLN).last_action() is None, value
+        del state['last_action_at']
+        state_file.write_text(json.dumps(state))
+        reg4 = registry()
+        run(reg4.tick())
+        assert reg4.get(RLN).last_action() is None
 
     def test_adopt(self, tmp_pub_dir):
         reg = registry()

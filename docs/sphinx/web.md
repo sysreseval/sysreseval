@@ -15,9 +15,9 @@ The lab files, `data.json`, the hidden machines and the archives stay on the poo
 The instructors get, on top of what a student sees (*Instructors* below):
 
 - a **Watch page**, the web counterpart of `sre watch`: every running project of the pool, one
-  row per project with its owner, its lab, the grade and mark of its last evaluation, its age
-  and its errors, the number of self-evaluations the student has run, refreshed every few
-  seconds;
+  row per project with its owner, its lab, the last time the student did something on it, the
+  grade and mark of its last evaluation, its age and its errors, the number of self-evaluations
+  the student has run, refreshed every few seconds;
 - an **Archives page**: every evaluation of the pool hosts, the closed projects included, kept
   in a database (the results, never the answers), searched by student, group, lab, host and
   period, with the detail of an evaluation and the summary matrix of a lab;
@@ -1371,7 +1371,16 @@ What an instructor gets:
   one row per project with its host, owner (the login), name (the full name of the answers
   metadata, or the directory's for a project of the Qt GUI when the portal reads it, above),
   the owner's student group when the site configures one (`attr_group` /
-  `header_group`), lab, start time, the age
+  `header_group`), lab, start time, the **last action** of its owner (how long ago the student
+  last did something on the project: a key pressed, a click or a turn of the wheel anywhere on
+  their project page, which reports them on its events socket at most every 10 s — a tab
+  change, a question picked, the course read, the virtual desktop —, and what the agent sees
+  by itself, to the second: the input of a terminal, an answer, an evaluation, a state; a
+  mouse that only moves is no action. The owner's actions only: what an instructor helping on
+  the project types and what the spectators of a presentation do never count, so the column
+  tells whether the student is at work. The agent keeps the time across its restarts; the
+  cell is blank for a project the student uses from the Qt GUI only, and for a host whose
+  agent is older than the column), the age
   of its last archived evaluation, its grade and mark (exo-eval scope, as `sre watch` shows
   them), its errors and warnings, the number of self-evaluations the student has run (the
   agent counts the lines of the project's `.private/auto_eval.log`, one per `sre eval

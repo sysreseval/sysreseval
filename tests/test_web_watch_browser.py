@@ -6,7 +6,9 @@ shown): the group chosen in the select is kept in the URL and remembered by the 
 (localStorage ``sreweb.watch``), so that the page comes back with it through the Watch link of
 the header, which carries no query string, until another group or All groups is chosen; a link
 with ``?group=`` wins and is remembered; No group (the rows without department) is remembered
-too."""
+too.  And the Last action column: the gestures of the student on their project page (a real mouse
+press on a tab, a key) reach the row, those of an instructor on that page do not."""
+import asyncio
 import contextlib
 import json
 from pathlib import Path
@@ -60,20 +62,24 @@ def choose(kind: str, value: str = '') -> str:
 
 
 @contextlib.asynccontextmanager
-async def browser_of(tmp_path):
+async def browser_of(tmp_path, *others):
     """The harness (proxy mode, the real web directory, the fake database of the custom groups as
     the group source), the identity proxy making the browser the instructor, and the browser:
-    ``(h, browser, url)``."""
+    ``(h, browser, url)``, followed by the address of one more proxy per identity of *others*
+    (the pages of a student in the same browser).  The proxies are closed after the browser: a
+    proxy closed under an open page waits a minute for its WebSockets."""
     h = harness(tmp_path, server=FakeGroupsServer())
     h.web_dir = WEB
     async with h:
-        proxy = IdentityProxy(f'http://127.0.0.1:{h.client.port}', PROF)
-        await proxy.start()
+        proxies = [IdentityProxy(f'http://127.0.0.1:{h.client.port}', identity) for identity in (PROF, *others)]
         try:
+            for proxy in proxies:
+                await proxy.start()
             async with Browser(CHROME) as browser:
-                yield h, browser, proxy.url
+                yield (h, browser, *(proxy.url for proxy in proxies))
         finally:
-            await proxy.close()
+            for proxy in proxies:
+                await proxy.close()
 
 
 async def start(h, identity):
@@ -138,4 +144,87 @@ class TestWatchGroupFilter:
                 assert await page.evaluate(SELECTED) == 'all'
                 assert sorted(await page.evaluate(OWNERS)) == ['alice', 'bob']
                 assert await page.evaluate(URL_GROUP) is None and await page.evaluate(STORED) is None
+        P.run(go())
+
+
+# -- the Last action column ---------------------------------------------------------------------
+
+# the cell of the first row (the 7th column, after Started): its text and its tooltip
+LAST_ACTION = """(() => {
+  const td = document.querySelector('#watch tbody tr td:nth-child(7)');
+  return td ? {text: td.textContent, title: td.title} : null;
+})()"""
+TABS = "[...document.querySelectorAll('#tabbar [role=tab]')].map((b) => b.dataset.tab)"
+SELECTED_TAB = "(document.querySelector('#tabbar [role=tab][aria-selected=true]') || {dataset: {}}).dataset.tab"
+
+
+def tab_point(tab: str) -> str:
+    """The centre of the button of *tab* in the tab bar, for a real mouse press."""
+    return (f"(() => {{ const b = document.querySelector('#tabbar [data-tab={json.dumps(tab)}]'); if (!b) {{ return null; }} "
+            f"const r = b.getBoundingClientRect(); return {{x: r.left + r.width / 2, y: r.top + r.height / 2}}; }})()")
+
+
+async def press_tab(page, tab: str):
+    """A real mouse press on the button of *tab* (``Page.click`` calls ``element.click()``, which
+    fires no pointer event), and the tab shown."""
+    at = await page.wait_for(tab_point(tab), what=f"the {tab} tab button")
+    await page.click_at(at['x'], at['y'])
+    await page.wait_for(f"{SELECTED_TAB} === {json.dumps(tab)}", what=f"the {tab} tab shown")
+
+
+class TestLastAction:
+    def test_gestures_of_the_owner(self, tmp_path):
+        """The Last action column: blank while the student has done nothing (the project
+        started, its page open), then the age of their last gesture on the page (a click on a
+        tab, a key: nothing of that reaches the server by itself); the same gestures of an
+        instructor on the student's project page change nothing."""
+        async def go():
+            async with browser_of(tmp_path, ALICE) as (h, browser, url, student_url):
+                await start(h, ALICE)
+                rln = (await (await h.client.get('/api/watch', headers=PROF)).json())[0]['running_lab_name']
+                project = h.agent.registry.get(rln)
+
+                async def last_action():
+                    return (await (await h.client.get('/api/watch', headers=PROF)).json())[0]['last_action']
+
+                async def acted(timeout):
+                    async with asyncio.timeout(timeout):
+                        while await last_action() is None:
+                            await asyncio.sleep(0.05)
+                    return await last_action()
+
+                async def subscribed(login):          # the events socket of the page of *login* is open
+                    async with asyncio.timeout(10):
+                        while not [s for s in project.subscribers if s.identity.login == login]:
+                            await asyncio.sleep(0.05)
+
+                watch = await browser.page(f'{url}/watch')
+                await watch.wait_for(f"{OWNERS}.length === 1", what="the project of alice")
+                assert await watch.evaluate(LAST_ACTION) == {'text': '', 'title': ''}
+                # the student's page open, its events socket connected: still no action
+                page = await browser.page(f'{student_url}/projects/a01/{rln}', new_window=True)
+                await page.wait_for(f"{TABS}.includes('informations')", what="the tabs of the project")
+                await subscribed('alice')
+                assert await last_action() is None
+                # a click on a tab: reported at once
+                await press_tab(page, 'informations')
+                assert (await acted(10))['age_s'] <= 10
+                # the Watch page at its next poll: the age, the time as a tooltip
+                cell = await watch.wait_for(f"/ s ago$/.test(({LAST_ACTION} || {{text: ''}}).text) && {LAST_ACTION}",
+                                            timeout=15.0, what="the last action of alice on the Watch page")
+                assert cell['title']
+                # a key pressed right after: reported too, at the end of the interval between two
+                # reports (ACTIVITY_INTERVAL of activity.js, 10 s)
+                project.last_action_at = None
+                await page.press_enter()
+                await acted(20)
+                # the instructor on the student's project: their gestures are not the student's
+                project.last_action_at = None
+                helper = await browser.page(f'{url}/projects/a01/{rln}', new_window=True)
+                await helper.wait_for(f"{TABS}.includes('informations')", what="the tabs on the instructor's page")
+                await subscribed('prof')
+                await press_tab(helper, 'informations')
+                await helper.press_enter()
+                await asyncio.sleep(1.0)
+                assert await last_action() is None
         P.run(go())

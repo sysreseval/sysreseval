@@ -76,6 +76,31 @@ WS_HEARTBEAT = 30.0
 #: ``GET /v1/archives``: archives read per call by default, and at most (``?limit=``).
 ARCHIVES_PAGE = 50
 ARCHIVES_PAGE_MAX = 200
+#: The text frame of the events WebSocket by which the page of the owner reports a key, a click
+#: or a scroll (``{"t": "activity", "ago": <seconds since it>}``, ``activity.js``): its size cap
+#: (a longer frame is not parsed) and the oldest gesture it may report, in seconds (a frame kept
+#: while the socket was down; an old gesture never replaces a newer action).
+ACTIVITY_FRAME = 'activity'
+ACTIVITY_FRAME_MAX = 256
+ACTIVITY_MAX_AGO = 3600.0
+
+
+def activity_ago(text: str) -> float | None:
+    """The age in seconds, between 0 and ``ACTIVITY_MAX_AGO``, of the gesture an ``activity``
+    frame of the events WebSocket reports; ``None`` for any other frame.  An age that is not a
+    number counts as now: the frame itself says the user did something."""
+    if len(text) > ACTIVITY_FRAME_MAX:
+        return None
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(obj, dict) or obj.get('t') != ACTIVITY_FRAME:
+        return None
+    ago = obj.get('ago', 0)
+    if isinstance(ago, bool) or not isinstance(ago, (int, float)) or ago != ago:
+        return 0.0
+    return min(max(float(ago), 0.0), ACTIVITY_MAX_AGO)
 
 
 def json_error(status: int, message: str) -> web.Response:
@@ -217,6 +242,15 @@ class Agent:
         if touch and not (project.exam_over and identity.login == project.owner):
             project.touch()
         return project
+
+    @staticmethod
+    def _acted(project: Project, identity: Identity, ago: float = 0.0):
+        """An action of the owner on their project, *ago* seconds ago (the Last action column of
+        the Watch page): typing in a terminal, answering, evaluating, applying a state, or a
+        gesture their page reports.  Not the idle clock of ``_project``, which any open page
+        resets; what an instructor does on a student's project is not the student's action."""
+        if identity.login == project.owner:
+            project.acted(ago)
 
     async def _run_list(self, login: str, args: list, *, privileged: bool = False) -> list:
         result = await self.runner.run(login, args, privileged=privileged)
@@ -569,8 +603,9 @@ class Agent:
     async def projects_list(self, request):
         """The projects of the user; with ``?all=1`` (instructors only) every project of the host,
         with its owner's full name and student group (the answers metadata), the summary of its
-        last archived evaluation and the number of self-evaluations the student has run (the
-        lines of ``.private/auto_eval.log``, live: the Watch page)."""
+        last archived evaluation, the number of self-evaluations the student has run (the
+        lines of ``.private/auto_eval.log``, live) and the last action of its owner
+        (``Project.last_action()``, null when none was seen): the Watch page."""
         identity = request[IDENTITY_KEY]
         everyone = request.query.get('all', '') in ('1', 'true')
         if everyone and not identity.is_instructor:
@@ -588,6 +623,7 @@ class Agent:
                 row['group'] = str(answers.get(params.group_keyword, '') or '')
                 row['last_eval'] = summary.to_json() if summary is not None else None
                 row[params.auto_eval_count_keyword] = p.self_eval_count()
+                row['last_action'] = p.last_action()
             rows.append(row)
         return web.json_response(rows)
 
@@ -876,6 +912,7 @@ class Agent:
         patch = body.get('answers', body)
         if not isinstance(patch, dict):
             raise AccessError(400, "answers must be an object")
+        self._acted(project, request[IDENTITY_KEY])
         data = await self.answers.put(project, patch, request[IDENTITY_KEY])
         return web.json_response({'answers': AnswersStore.public(data, project),
                                   'answers_updated_at': data.get(params.sysreseval_answers_updated_at, '')})
@@ -891,6 +928,7 @@ class Agent:
             access.check_self_grade(project.info)
         access.check_not_exam(self.pub_dir)
         access.check_exam_action(project.exam, privileged=privileged, during=True)
+        self._acted(project, identity)
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
         async with project.lock:
@@ -926,6 +964,7 @@ class Agent:
         access.check_not_exam(self.pub_dir)
         privileged = access.is_privileged_caller(project.rln, identity)
         access.check_exam_action(project.exam, privileged=privileged, during=True)
+        self._acted(project, identity)
         if project.lock.locked():
             raise AccessError(409, "the project is busy")
         async with project.lock:
@@ -1136,6 +1175,9 @@ class Agent:
     # -- WebSockets -----------------------------------------------------------------------------
 
     async def events_ws(self, request):
+        """The events of a project pushed to an open page.  The page sends one kind of frame:
+        ``{"t": "activity", "ago": <seconds>}`` when its user pressed a key, clicked or scrolled
+        (``activity_ago``), which is an action of the owner when the page is the owner's."""
         project = self._project(request)
         identity = request[IDENTITY_KEY]
         ws = web.WebSocketResponse(heartbeat=WS_HEARTBEAT)
@@ -1147,6 +1189,10 @@ class Agent:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
                 project.touch()
+                if msg.type == WSMsgType.TEXT:
+                    ago = activity_ago(msg.data)
+                    if ago is not None:
+                        self._acted(project, identity, ago)
         finally:
             self._event_sockets.discard(ws)
             self.registry.unsubscribe(project, sub)
@@ -1263,6 +1309,7 @@ class Agent:
                 if msg.type == WSMsgType.BINARY:
                     session.type_in(msg.data)
                     project.touch()
+                    self._acted(project, identity)
                 elif msg.type == WSMsgType.TEXT:
                     try:
                         obj = json.loads(msg.data)
@@ -1274,6 +1321,7 @@ class Agent:
                     elif isinstance(obj, dict) and obj.get('t') == 'input' and isinstance(obj.get('data'), str):
                         session.type_in(obj['data'].encode('utf-8'))
                         project.touch()
+                        self._acted(project, identity)
                     elif isinstance(obj, dict) and obj.get('t') == 'close':
                         ended = True
                         break

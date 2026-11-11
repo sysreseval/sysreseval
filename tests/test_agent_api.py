@@ -8,6 +8,7 @@ import stat
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,8 @@ aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the w
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from SRE import params, web_updates
-from sreweb.agent.app import Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup
+from sreweb.agent.app import (Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup,
+                              activity_ago, ACTIVITY_FRAME_MAX, ACTIVITY_MAX_AGO)
 from sreweb.agent.display import DisplayError, parse_xauthority, WS_DISPLAY_FAILED
 from sreweb.config import agent_config_from_dict
 from sreweb.identity import Identity
@@ -1264,6 +1266,126 @@ class TestInstructor:
                 await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())
                 last = (await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json())[0]['last_eval']
                 assert (last['errors'], last['warnings']) == (1, 1)
+        run(go())
+
+    def test_activity_frame(self):
+        """The frame by which the page of the owner reports a key, a click or a scroll on the
+        events socket: the age of the gesture, bounded; any other frame is not one."""
+        assert activity_ago('{"t": "activity", "ago": 3}') == 3.0
+        assert activity_ago('{"t": "activity", "ago": 2.5}') == 2.5
+        assert activity_ago('{"t": "activity"}') == 0.0
+        assert activity_ago('{"t": "activity", "ago": -4}') == 0.0
+        assert activity_ago('{"t": "activity", "ago": 1e9}') == ACTIVITY_MAX_AGO
+        assert activity_ago('{"t": "activity", "ago": Infinity}') == ACTIVITY_MAX_AGO
+        # an age that is no number: the gesture is now
+        for ago in ('true', '"3"', 'NaN', 'null', '[1]', '-Infinity'):
+            assert activity_ago('{"t": "activity", "ago": %s}' % ago) == 0.0, ago
+        for other in ('', 'x', '[]', '"activity"', '{"t": "resize"}', '{"ago": 3}',
+                      '{"t": "activity", "pad": "%s"}' % ('x' * ACTIVITY_FRAME_MAX), '[' * 100000):
+            assert activity_ago(other) is None, other[:40]
+
+    def test_last_action_of_the_owner(self, tmp_path):
+        """The Last action column of the Watch page: what the owner does on the project (a
+        gesture their page reports on its events socket, terminal input, an answer, an
+        evaluation, a state), never the page loads and the keep-alive, never what an instructor
+        helping on the project or a read-only viewer does."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                rln = await h.started()
+                project = h.agent.registry.get(rln)
+
+                async def last_action():
+                    rows = await (await h.client.get('/v1/projects?all=1', headers=headers(PROF))).json()
+                    return rows[0]['last_action']
+
+                async def acted():
+                    async with asyncio.timeout(5):
+                        while project.last_action_at is None:
+                            await asyncio.sleep(0.01)
+                    return await last_action()
+
+                # the start, a page load, the keep-alive of an open page: no action
+                assert (await h.client.get(f'/v1/projects/{rln}', headers=headers())).status == 200
+                assert (await h.client.post(f'/v1/projects/{rln}/touch', headers=headers())).status == 204
+                assert await last_action() is None
+                own = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
+                helper = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
+                # the page of an instructor helping reports nothing of the student
+                await helper.send_str(json.dumps({'t': 'activity', 'ago': 0}))
+                await asyncio.sleep(0.2)
+                assert await last_action() is None
+                # the page of the owner: a gesture 30 s ago (a frame kept while the socket was down)
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 30}))
+                action = await acted()
+                assert 30 <= action['age_s'] <= 35
+                assert abs(time.time() - 30 - datetime.fromisoformat(action['at']).timestamp()) < 5
+                # frames that are no activity frame change nothing: had one counted (as now), the
+                # older gesture sent after them would not show
+                project.last_action_at = None
+                for junk in ('not json', '[]', json.dumps({'t': 'other', 'ago': 0}), json.dumps({'ago': 0}),
+                             json.dumps({'t': 'activity', 'pad': 'x' * ACTIVITY_FRAME_MAX})):
+                    await own.send_str(junk)
+                await own.send_bytes(b'{"t": "activity"}')
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 50}))
+                assert 50 <= (await acted())['age_s'] <= 55
+                # the newest wins: a gesture now, then the late report of an older one
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 0}))
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 40}))
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 1e9}))
+                async with asyncio.timeout(5):
+                    while (await last_action())['age_s'] > 5:
+                        await asyncio.sleep(0.01)
+                await asyncio.sleep(0.2)
+                assert (await last_action())['age_s'] <= 5
+                await own.close()
+                await helper.close()
+
+                # what the agent sees by itself; the instructor's same requests are not the student's
+                project.last_action_at = None
+                answers = {'answers': {TEXT_HASH: 'x'}}
+                assert (await h.client.put(f'/v1/projects/{rln}/answers', json=answers, headers=headers(PROF))).status == 200
+                assert (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers(PROF))).status == 200
+                assert (await h.client.post(f'/v1/projects/{rln}/states/final', headers=headers(PROF))).status == 200
+                assert (await h.client.get(f'/v1/projects/{rln}/evaluation', headers=headers(PROF))).status == 200
+                assert await last_action() is None
+                for request in (lambda: h.client.put(f'/v1/projects/{rln}/answers', json=answers, headers=headers()),
+                                lambda: h.client.post(f'/v1/projects/{rln}/eval', headers=headers()),
+                                lambda: h.client.post(f'/v1/projects/{rln}/states/final', headers=headers())):
+                    project.last_action_at = None
+                    assert (await request()).status == 200
+                    assert (await last_action())['age_s'] <= 5
+
+                # a terminal: opening it is no action, typing in it is; an instructor who joined
+                # and a read-only viewer (a spectator, in the name of the owner who presents) type
+                # nothing of the student's
+                project.last_action_at = None
+                alice = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1', headers=headers(),
+                                                  protocols=(TERMINAL_SUBPROTOCOL,))
+                sid = (await asyncio.wait_for(alice.receive_json(), 5))['session']
+                await read_until(alice, b'mock$')
+                prof = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}', headers=headers(PROF),
+                                                 protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(prof.receive_json(), 5))['t'] == 'ready'
+                await prof.send_bytes(b'echo MARK\n')
+                await read_until(alice, b'MARK', after=b'echo MARK')       # output reaching the owner: no action
+                viewer = await h.client.ws_connect(f'/v1/projects/{rln}/terminals/m1?join={sid}&readonly=1',
+                                                   headers=headers(), protocols=(TERMINAL_SUBPROTOCOL,))
+                assert (await asyncio.wait_for(viewer.receive_json(), 5))['readonly'] is True
+                await viewer.send_bytes(b'echo NOPE\n')
+                await viewer.send_str(json.dumps({'t': 'input', 'data': 'echo NOPE\n'}))
+                await alice.send_str(json.dumps({'t': 'resize', 'cols': 90, 'rows': 25}))
+                await asyncio.sleep(0.2)
+                assert await last_action() is None
+                await alice.send_bytes(b'echo MINE\n')
+                await read_until(alice, b'MINE', after=b'echo MINE')
+                assert (await last_action())['age_s'] <= 5
+                project.last_action_at = None
+                await alice.send_str(json.dumps({'t': 'input', 'data': 'echo TEXT\n'}))
+                await read_until(alice, b'TEXT', after=b'echo TEXT')
+                assert (await last_action())['age_s'] <= 5
+                await viewer.close()
+                await prof.close()
+                await end_terminal(alice)
         run(go())
 
     def test_non_owner_actions_run_privileged(self, tmp_path):

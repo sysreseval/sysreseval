@@ -20,6 +20,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -87,6 +88,10 @@ class Project:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     answers_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_activity: float = field(default_factory=time.monotonic)
+    #: The wall-clock time of the last action of the owner on the project (:meth:`acted`), kept
+    #: in the state file; ``None``: none seen.  Not the idle clock above, which every open page
+    #: resets, an instructor's and a spectator's included: the Last action column of the Watch page.
+    last_action_at: float | None = None
     idle_timeout: float | None = None       # seconds, None: the default of the agent, 0: never
     next_eval_at: float | None = None
     closing: bool = False
@@ -210,6 +215,23 @@ class Project:
     def idle_seconds(self) -> float:
         return time.monotonic() - self.last_activity
 
+    def acted(self, ago: float = 0.0):
+        """The owner did something on the project *ago* seconds ago (typed in a terminal,
+        answered a question, ran an evaluation or a state, or a key, a click or a scroll their
+        page reports): the newest action is kept."""
+        at = time.time() - max(0.0, ago)
+        if self.last_action_at is None or at > self.last_action_at:
+            self.last_action_at = at
+
+    def last_action(self) -> dict | None:
+        """The last action of the owner for the Watch page: its age in whole seconds, computed
+        here like the age of the last evaluation (the clock of the browser is not trusted), and
+        its time; ``None`` when none was seen (a project used from the Qt GUI only)."""
+        if self.last_action_at is None:
+            return None
+        at = datetime.fromtimestamp(self.last_action_at, timezone.utc).astimezone()
+        return {'age_s': max(0, int(time.time() - self.last_action_at)), 'at': at.isoformat(timespec='seconds')}
+
     def to_dict(self) -> dict:
         return {
             'running_lab_name': self.rln,
@@ -292,6 +314,10 @@ class Registry:
             last = state.get('last_activity_at')
             if isinstance(last, (int, float)):
                 project.last_activity = time.monotonic() - max(0.0, time.time() - last)
+            # the last action of the owner (a time of this host's clock, never in the future)
+            acted = state.get('last_action_at')
+            if isinstance(acted, (int, float)) and not isinstance(acted, bool) and 0 < acted <= time.time():
+                project.last_action_at = float(acted)
             created = state.get('created_at')
             if isinstance(created, (int, float)):
                 project.created_at = created
@@ -306,8 +332,8 @@ class Registry:
                     log.warning("the state file of %s holds an unusable exam, ignored", project.rln)
 
     def write_state(self, project: Project, force: bool = False):
-        """The state file of a managed project (idle clock, idle timeout, the exam), at most
-        once a minute."""
+        """The state file of a managed project (idle clock, last action of the owner, idle
+        timeout, the exam), at most once a minute."""
         if self.state_dir is None or not project.managed:
             return
         now = time.monotonic()
@@ -316,6 +342,8 @@ class Registry:
         project._state_written = now
         state = {'idle_timeout': project.idle_timeout, 'created_at': project.created_at,
                  'last_activity_at': time.time() - project.idle_seconds(), 'owner': project.owner}
+        if project.last_action_at is not None:
+            state['last_action_at'] = project.last_action_at
         if project.display:
             state['display'] = dict(project.display)
         if project.exam is not None:

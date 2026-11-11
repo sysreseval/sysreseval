@@ -25,6 +25,7 @@
       <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
       <th class="sortable" data-sort="title">{{ _("Lab") }}</th>
       <th class="sortable" data-sort="started_at">{{ _("Started") }}</th>
+      <th class="sortable" data-sort="last_action" title="{{ _("The last time the student did something on the project: a key, a click or a scroll on its page, an answer, an evaluation") }}">{{ _("Last action") }}</th>
       <th class="sortable" data-sort="last_eval">{{ _("Last evaluation") }}</th>
       <th class="sortable" data-sort="grade">{{ _("Grade") }}</th>
       <th class="sortable" data-sort="mark">{{ _("Mark") }}</th>
@@ -35,7 +36,7 @@
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="14" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="15" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/watch.js"></script>{% endblock %}

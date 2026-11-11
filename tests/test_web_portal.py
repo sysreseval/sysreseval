@@ -958,10 +958,30 @@ class TestInstructorThroughThePortal:
                     ('a01', 'alice', None, 0)
                 # the owner's name and group from the start, before any answer
                 assert (rows[0]['fullname'], rows[0]['group']) == ('Alice', 'INFO1')
+                # the last action of the owner (the Last action column): none yet; the page of an
+                # instructor on her project reports nothing of hers, her own page does, on its
+                # events socket, through the relay
+                assert rows[0]['last_action'] is None
+                base = f'/api/projects/a01/{rln}'
+
+                async def last_action():
+                    return (await (await h.client.get('/api/watch', headers=prof)).json())[0]['last_action']
+
+                helping = await h.client.ws_connect(f'{base}/events', headers=prof)
+                await helping.send_str(json.dumps({'t': 'activity', 'ago': 0}))
+                await asyncio.sleep(0.3)
+                assert await last_action() is None
+                own = await h.client.ws_connect(f'{base}/events', headers=alice)
+                await own.send_str(json.dumps({'t': 'activity', 'ago': 20}))
+                async with asyncio.timeout(5):
+                    while (action := await last_action()) is None:
+                        await asyncio.sleep(0.02)
+                assert 20 <= action['age_s'] <= 25 and action['at']
+                await own.close()
+                await helping.close()
                 # the instructor's own list stays theirs; the student's list unchanged
                 assert await (await h.client.get('/api/projects', headers=prof)).json() == []
                 assert [p['running_lab_name'] for p in await (await h.client.get('/api/projects', headers=alice)).json()] == [rln]
-                base = f'/api/projects/a01/{rln}'
                 assert (await h.client.get(f'{base}/evaluation', headers=alice)).status == 403
                 assert (await h.client.get(f'{base}/evaluation', headers=prof)).status == 404
                 await h.client.put(f'{base}/answers', json={'answers': {TEXT_HASH: 'gw'}}, headers={**alice, **CSRF})
@@ -969,6 +989,7 @@ class TestInstructorThroughThePortal:
                 rows = await (await h.client.get('/api/watch', headers=prof)).json()
                 assert rows[0]['last_eval']['grade'] == 4.5 and rows[0]['fullname'] == 'Alice'
                 assert rows[0]['auto_eval_count'] == 1      # the student's self-evaluation, counted live
+                assert rows[0]['last_action']['age_s'] <= 5    # her answer and her evaluation: seen by the agent itself
                 data = await (await h.client.get(f'{base}/evaluation', headers=prof)).json()
                 assert data['mark'] == 18.0 and data['rows'] and data['archive'].endswith('.zst')
                 # the lab summary: every project of the lab on every host with its last elements
