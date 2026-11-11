@@ -1,0 +1,103 @@
+{
+ "captured": "z03, sysreseval/proxy:1.32 (nginx 1.22.1, Varnish 7.1.1, HAProxy 2.6.12, keepalived 2.2.7, curl 7.88.1)",
+ "probe": "192.168.227.100",
+ "client": "192.168.227.77",
+ "proxy_wan": "192.168.227.192",
+ "proxy_lan": "172.31.33.90",
+ "lb1_wan": "192.168.227.178",
+ "lb1_lan": "172.31.33.91",
+ "lb2_wan": "192.168.227.94",
+ "vip": "192.168.227.57",
+ "web": {
+  "web1": "172.31.33.127",
+  "web2": "172.31.33.67",
+  "web3": "172.31.33.78",
+  "web4": "172.31.33.222"
+ },
+ "vrrp_id": 202,
+ "vrrp_password": "mnAfu6Yl",
+ "static_token": "6a058b9e6843",
+ "spoofed": "203.0.113.99",
+ "commands": {
+  "curl_www_https.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.192:443 --cacert /usr/local/share/ca-certificates/shop-ca.crt --http2 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' https://www.shop.tp/ 2>&1",
+   "exit_code": 0
+  },
+  "curl_www_http_redirect.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.192:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' 'http://www.shop.tp/account/x?y=1' 2>&1",
+   "exit_code": 0
+  },
+  "curl_unknown_host.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.192:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' http://nothing.shop.tp/ 2>&1",
+   "exit_code": 52
+  },
+  "curl_admin_401.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.192:443 -k -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' https://www.shop.tp/admin/panel 2>&1",
+   "exit_code": 0
+  },
+  "curl_gzip_headers.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.192:443 -k -H 'Accept-Encoding: gzip' -D - -o /dev/null -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' https://www.shop.tp/big 2>&1",
+   "exit_code": 0
+  },
+  "curl_haproxy_home.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.178:80 -H 'X-Forwarded-For: 203.0.113.99' -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' http://app.shop.tp/ 2>&1",
+   "exit_code": 0
+  },
+  "curl_haproxy_stats_csv.txt": {
+   "command": "curl -s -S --max-time 6 --connect-to ::192.168.227.178:8404 -u stats:y5jhzsl8cY -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' 'http://app.shop.tp:8404/stats;csv' 2>&1",
+   "exit_code": 0
+  },
+  "sequence_varnish_catalog.txt": {
+   "command": "u=/catalog/sre-$(date +%s%N); curl -s -S --max-time 6 --connect-to ::192.168.227.192:6081 -H 'Cookie: tracking=probe' -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' \"http://www.shop.tp$u\" 2>&1; echo; echo '===SRE_REQ'; curl -s -S --max-time 6 --connect-to ::192.168.227.192:6081 -H 'Cookie: tracking=probe' -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' \"http://www.shop.tp$u\" 2>&1; echo; echo '===SRE_REQ'",
+   "exit_code": 0
+  },
+  "sequence_haproxy_sticky.txt": {
+   "command": "rm -f /tmp/.sre_probe_jar; curl -s -S --max-time 6 -b /tmp/.sre_probe_jar -c /tmp/.sre_probe_jar --connect-to ::192.168.227.178:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' 'http://app.shop.tp/login?user=sre' 2>&1; echo; echo '===SRE_REQ'; curl -s -S --max-time 6 -b /tmp/.sre_probe_jar -c /tmp/.sre_probe_jar --connect-to ::192.168.227.178:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' http://app.shop.tp/account 2>&1; echo; echo '===SRE_REQ'; curl -s -S --max-time 6 -b /tmp/.sre_probe_jar -c /tmp/.sre_probe_jar --connect-to ::192.168.227.178:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' http://app.shop.tp/account 2>&1; echo; echo '===SRE_REQ'; curl -s -S --max-time 6 -b /tmp/.sre_probe_jar -c /tmp/.sre_probe_jar --connect-to ::192.168.227.178:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' http://app.shop.tp/account 2>&1; echo; echo '===SRE_REQ'; curl -s -S --max-time 6 -b /tmp/.sre_probe_jar -c /tmp/.sre_probe_jar --connect-to ::192.168.227.178:80 -D - -o - -w '\\n===SRE_META %{http_version} %{time_total}\\n===SRE_CODE %{http_code}' http://app.shop.tp/account 2>&1; echo; echo '===SRE_REQ'",
+   "exit_code": 0
+  },
+  "burst_nginx_https.txt": {
+   "command": "for i in $(seq 1 24); do curl -s --max-time 4 --connect-to ::192.168.227.192:443 -k \"https://www.shop.tp/?burst=$i\"; echo; echo '===SRE_REQ'; done 2>&1",
+   "exit_code": 0
+  },
+  "burst_haproxy.txt": {
+   "command": "for i in $(seq 1 12); do curl -s --max-time 4 --connect-to ::192.168.227.178:80 \"http://app.shop.tp/?burst=$i\"; echo; echo '===SRE_REQ'; done 2>&1",
+   "exit_code": 0
+  },
+  "status_burst_api.txt": {
+   "command": "sleep 1.5; curl -s -o /dev/null -w '%{http_code} ' --max-time 5 --connect-to ::192.168.227.192:80 'http://api.shop.tp/api/ping?burst=[1-30]'; echo; sleep 2; curl -s -o /dev/null -w 'after=%{http_code}' --max-time 5 --connect-to ::192.168.227.192:80 'http://api.shop.tp/api/ping'; echo 2>&1",
+   "exit_code": 0
+  },
+  "banner_twice.txt": {
+   "command": "nc -w 3 -s 192.168.227.100 192.168.227.178 2000 </dev/null 2>&1; echo; nc -w 3 -s 192.168.227.100 192.168.227.178 2000 </dev/null 2>&1",
+   "exit_code": 0
+  },
+  "tcpdump_vrrp.txt": {
+   "command": "timeout 5 tcpdump -l -n -c 2 -i eth0 vrrp 2>/dev/null; true",
+   "exit_code": 0
+  },
+  "haproxy_show_stat.txt": {
+   "command": "echo 'show stat' | socat stdio UNIX-CONNECT:/run/haproxy/admin.sock 2>&1",
+   "exit_code": 0
+  },
+  "ip_addr_lb1.json": {
+   "command": "ip -j -4 addr show",
+   "exit_code": 0
+  },
+  "keepalived_lb1.conf": {
+   "command": "cat /etc/keepalived/keepalived.conf 2>/dev/null",
+   "exit_code": 0
+  },
+  "varnish_backend_list.txt": {
+   "command": "varnishadm backend.list 2>&1",
+   "exit_code": 0
+  },
+  "nginx_T.txt": {
+   "command": "nginx -T 2>/dev/null",
+   "exit_code": 0
+  },
+  "backend_log_web1.txt": {
+   "command": "echo NOW=$(date +%s); tail -n 400 /var/log/sre_http_backend/access.log 2>/dev/null; true",
+   "exit_code": 0
+  }
+ }
+}

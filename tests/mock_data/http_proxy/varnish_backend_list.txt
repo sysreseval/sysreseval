@@ -1,0 +1,5 @@
+Backend name   Admin    Probe    Health     Last change
+boot.web1      probe    3/3      healthy    Wed, 11 Nov 2026 20:22:39 GMT
+boot.web2      probe    3/3      healthy    Wed, 11 Nov 2026 20:22:39 GMT
+boot.shop      probe    2/2      healthy    Wed, 11 Nov 2026 20:22:39 GMT
+

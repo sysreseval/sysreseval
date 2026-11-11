@@ -1131,6 +1131,26 @@ wrappers; fixtures in `tests/mock_data/dns/`.
   `render_root_hints`, `render_rpz_zone`, `render_stubby_yml`, `reverse_zone_name` / `reverse_label`,
   `spki_pin`, `random_tsig_secret`; `tls.generate_ca_pem(cn)` for a lab-provided CA.
 
+### HTTP proxy helpers (from `/opt/sre/lib/http_proxy.py`)
+
+```python
+from http_proxy import install_backend, backend_config, http_request, http_burst, distribution, forwarded_for
+```
+
+Helpers of the reverse proxy / load balancer lab (`lab/sre/_DRAFT_misc2/reverse-proxy.py`: nginx, Varnish, HAProxy, keepalived; image `sysreseval/proxy`). The grading is behavioural: requests are sent from a hidden client and the page of the application server tells what the proxy did to them.
+
+**The application server** (`lib/http_backend.py`, standard library only): `install_backend(net_scheme, machine, backend_config(name, {8080: 'shop', 8081: 'api'}, ...), sick=False, step=1)` copies it into a machine and starts it. Every page answers `KEY=value` lines: `SERVER=` (who answered), `APP=`, `CLIENT_IP=` (the proxy), `PATH=`, `HOST=`, `HTTP_VERSION=`, `CONN_REQUESTS=` (keep-alive reuse), `REQUEST_ID=` (the same id twice: the answer came from a cache) and every request header as `HEADER_<NAME>=`. Special pages: `/health` (200 / 503), `/catalog/…` (cacheable, sent with a `Set-Cookie`), `/cart` (private), `/login` + `/account` (a session kept in the memory of one backend), `/slow?ms=`, `/big`, `/_log`, `/_admin/health?state=up|down`, `/_admin/down?seconds=`.
+
+**Requests** (grade side; an empty reply, `code is None`, until the tests have run):
+
+`http_request(grade, src, url, connect_ip=None, connect_port=None, step=1, max_time=6, **options) → HttpReply` — one `curl` whose connection is forced to an address (`--connect-to`: no name resolution, the `Host` header and the SNI stay those of the URL). Options: `method`, `headers`, `cookies`, `data`, `user=(login, password)`, `cacert`, `insecure`, `http2`, `source` (local address), `compressed`, `jar`, `no_body`. `HttpReply` has `code`, `headers` (lower-case), `header_values(name)`, `set_cookies()`, `body`, `field(key)`, `server`, `http_version`, `time_total`, `ok`, `redirect`.
+
+`http_burst(grade, src, url, count, connect_ip=None, connect_port=None, step=1, **options) → list[str]` — *count* requests in one shell loop, the list of the bodies; `servers(bodies)` and `distribution(bodies)` tell which backends answered. `sequence_cmd([request_cmd(..., shell_url=True), ...], prelude='u=/page-$(date +%s%N)')` + `parse_sequence()` run several requests on a URL that is new at each run (cache tests); `status_burst_cmd()` + `parse_status_burst()` send requests as fast as possible and keep the status codes (rate limiting).
+
+**What behaviour cannot show** (pure parsers): `parse_haproxy_stat()` + `haproxy_servers()` + `haproxy_pool()` (`show stat` on the admin socket, `haproxy_show_cmd()`: state and last check of each server), `parse_varnish_backends()` (`varnishadm backend.list`), `parse_keepalived_conf()` + `keepalived_tracks(conf, 'haproxy')`, `parse_tcpdump_vrrp()` (`vrrp_capture_cmd()`), `parse_nginx_upstreams()` (`nginx -T`: weights, `backup`), `parse_backend_log()` + `health_checks(entries, now, client)` (the health checks a backend received from a proxy).
+
+Facts worth knowing (verified in the running lab): each nginx worker process has its own round-robin state, so a 2:1 weight is not observed exactly over a burst; a read timeout marks the server as failed for `fail_timeout` (10 s), so one slow page can take every server of an `upstream` out (never grade a timeout on a shared upstream); HAProxy's `option forwardfor` adds a second `X-Forwarded-For` line instead of extending the client's; a plain `option httpchk` sends `OPTIONS /`.
+
 ### VRRP / keepalived helpers (from `/opt/sre/lib/vrrp.py`)
 
 ```python

@@ -1,0 +1,31 @@
+HTTP/1.1 200 OK
+server: ShopApp
+date: Wed, 11 Nov 2026 20:22:49 GMT
+content-type: text/plain; charset=utf-8
+content-length: 376
+x-powered-by: ShopApp/5.3.25
+x-backend-server: web1
+cache-control: no-store
+set-cookie: SRV=web1; path=/
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.91
+CLIENT_PORT=58152
+METHOD=GET
+PATH=/
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000010
+HOST=app.shop.tp
+HEADER_HOST=app.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_X_FORWARDED_FOR=203.0.113.99
+HEADER_X_FORWARDED_PROTO=http
+HEADER_X_FORWARDED_FOR=192.168.227.100
+
+===SRE_META 1.1 0.005996
+===SRE_CODE 200

@@ -1,0 +1,30 @@
+HTTP/2 200 
+server: nginx
+date: Wed, 11 Nov 2026 20:22:48 GMT
+content-type: text/plain; charset=utf-8
+content-length: 374
+x-backend-server: web1
+cache-control: no-store
+strict-transport-security: max-age=31536000
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.90
+CLIENT_PORT=41144
+METHOD=GET
+PATH=/
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000003
+HOST=www.shop.tp
+HEADER_HOST=www.shop.tp
+HEADER_X_REAL_IP=192.168.227.100
+HEADER_X_FORWARDED_FOR=192.168.227.100
+HEADER_X_FORWARDED_PROTO=https
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+
+===SRE_META 2 0.004408
+===SRE_CODE 200

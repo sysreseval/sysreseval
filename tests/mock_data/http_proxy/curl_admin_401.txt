@@ -1,0 +1,18 @@
+HTTP/2 401 
+server: nginx
+date: Wed, 11 Nov 2026 20:22:48 GMT
+content-type: text/html
+content-length: 172
+www-authenticate: Basic realm="Shop administration"
+strict-transport-security: max-age=31536000
+
+<html>
+<head><title>401 Authorization Required</title></head>
+<body>
+<center><h1>401 Authorization Required</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+
+===SRE_META 2 0.008960
+===SRE_CODE 401

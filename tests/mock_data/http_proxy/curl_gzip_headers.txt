@@ -1,0 +1,12 @@
+HTTP/2 200 
+server: nginx
+date: Wed, 11 Nov 2026 20:22:48 GMT
+content-type: text/plain; charset=utf-8
+x-backend-server: web1
+cache-control: public, max-age=60
+strict-transport-security: max-age=31536000
+content-encoding: gzip
+
+
+===SRE_META 2 0.005899
+===SRE_CODE 200

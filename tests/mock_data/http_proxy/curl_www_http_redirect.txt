@@ -1,0 +1,18 @@
+HTTP/1.1 301 Moved Permanently
+Server: nginx
+Date: Wed, 11 Nov 2026 20:22:48 GMT
+Content-Type: text/html
+Content-Length: 162
+Connection: keep-alive
+Location: https://www.shop.tp/account/x?y=1
+
+<html>
+<head><title>301 Moved Permanently</title></head>
+<body>
+<center><h1>301 Moved Permanently</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+
+===SRE_META 1.1 0.000661
+===SRE_CODE 301

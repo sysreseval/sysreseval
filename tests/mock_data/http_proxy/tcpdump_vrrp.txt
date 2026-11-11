@@ -1,0 +1,2 @@
+20:22:49.472972 IP 192.168.227.178 > 224.0.0.18: VRRPv2, Advertisement, vrid 202, prio 150, authtype simple, intvl 1s, length 20
+20:22:50.473201 IP 192.168.227.178 > 224.0.0.18: VRRPv2, Advertisement, vrid 202, prio 150, authtype simple, intvl 1s, length 20

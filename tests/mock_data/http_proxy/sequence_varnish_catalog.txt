@@ -1,0 +1,76 @@
+HTTP/1.1 200 OK
+Server: ShopApp
+Date: Wed, 11 Nov 2026 20:22:48 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 429
+X-Powered-By: ShopApp/5.3.25
+X-Backend-Server: web2
+X-Varnish: 65538
+Age: 0
+Via: 1.1 varnish (Varnish/7.1)
+Accept-Ranges: bytes
+X-Cache: MISS
+Connection: keep-alive
+
+SERVER=web2
+APP=shop
+SERVER_IP=172.31.33.67
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.90
+CLIENT_PORT=51106
+METHOD=GET
+PATH=/catalog/sre-1794428568427135287
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web2-000004
+HOST=www.shop.tp
+ITEM=sre-1794428568427135287
+PRICE=40
+HEADER_HOST=www.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_X_FORWARDED_FOR=192.168.227.100
+HEADER_ACCEPT_ENCODING=gzip
+HEADER_X_VARNISH=65539
+
+===SRE_META 1.1 0.206808
+===SRE_CODE 200
+===SRE_REQ
+HTTP/1.1 200 OK
+Server: ShopApp
+Date: Wed, 11 Nov 2026 20:22:48 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 429
+X-Powered-By: ShopApp/5.3.25
+X-Backend-Server: web2
+X-Varnish: 10 65539
+Age: 0
+Via: 1.1 varnish (Varnish/7.1)
+Accept-Ranges: bytes
+X-Cache: HIT
+Connection: keep-alive
+
+SERVER=web2
+APP=shop
+SERVER_IP=172.31.33.67
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.90
+CLIENT_PORT=51106
+METHOD=GET
+PATH=/catalog/sre-1794428568427135287
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web2-000004
+HOST=www.shop.tp
+ITEM=sre-1794428568427135287
+PRICE=40
+HEADER_HOST=www.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_X_FORWARDED_FOR=192.168.227.100
+HEADER_ACCEPT_ENCODING=gzip
+HEADER_X_VARNISH=65539
+
+===SRE_META 1.1 0.001325
+===SRE_CODE 200
+===SRE_REQ

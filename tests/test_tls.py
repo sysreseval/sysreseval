@@ -690,6 +690,16 @@ class TestParseCurlOutput:
     def test_empty(self):
         r = parse_curl_output('', 0)
         assert r == HttpResult(code=None, headers={}, body='', exit_code=0)
+        assert r.all_headers == []
+
+    def test_repeated_headers_are_all_kept(self):
+        out = ("HTTP/1.1 200 OK\r\nSet-Cookie: SRV=web1; path=/\r\nServer: nginx\r\n"
+               "Set-Cookie: SESSIONID=ab12; Path=/; HttpOnly\r\n\r\nbody\n===SRE_CODE 200")
+        r = parse_curl_output(out, 0)
+        assert r.headers['set-cookie'] == 'SESSIONID=ab12; Path=/; HttpOnly'      # the last one
+        assert r.all_headers == [('Set-Cookie', 'SRV=web1; path=/'), ('Server', 'nginx'),
+                                 ('Set-Cookie', 'SESSIONID=ab12; Path=/; HttpOnly')]
+        assert parse_curl_output(CURL_200, 0).all_headers[0] == ('Server', 'nginx')
 
 
 class TestHttpsGet:

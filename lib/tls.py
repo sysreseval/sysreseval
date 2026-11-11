@@ -608,9 +608,11 @@ _CURL_CODE_MARK = '===SRE_CODE '
 @dataclass
 class HttpResult:
     """Result of :func:`https_get`: *code* is the HTTP status (``None`` when the request
-    failed before an answer, e.g. a certificate error), *headers* are lower-cased."""
+    failed before an answer, e.g. a certificate error), *headers* are lower-cased (the last value of a
+    repeated header), *all_headers* keeps every ``(name, value)`` in order (several ``Set-Cookie``)."""
     code: int | None = None
     headers: dict = field(default_factory=dict)
+    all_headers: list = field(default_factory=list)
     body: str = ''
     exit_code: int = 0
 
@@ -632,6 +634,7 @@ def parse_curl_output(out: str, exit_code: int = 0) -> HttpResult:
         if code == 0:
             code = None
     headers: dict = {}
+    all_headers: list = []
     body = text
     if text.startswith('HTTP/'):
         m = re.search(r'\r?\n\r?\n', text)
@@ -640,7 +643,8 @@ def parse_curl_output(out: str, exit_code: int = 0) -> HttpResult:
             if ':' in line:
                 name, value = line.split(':', 1)
                 headers[name.strip().lower()] = value.strip()
-    return HttpResult(code=code, headers=headers, body=body, exit_code=exit_code)
+                all_headers.append((name.strip(), value.strip()))
+    return HttpResult(code=code, headers=headers, all_headers=all_headers, body=body, exit_code=exit_code)
 
 
 def https_get(grade: Grade0, machine_name: str, url: str, server_ip: str,

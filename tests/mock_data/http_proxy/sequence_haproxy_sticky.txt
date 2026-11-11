@@ -1,0 +1,162 @@
+HTTP/1.1 200 OK
+server: ShopApp
+date: Wed, 11 Nov 2026 20:22:56 GMT
+content-type: text/plain; charset=utf-8
+content-length: 372
+x-powered-by: ShopApp/5.3.25
+x-backend-server: web1
+set-cookie: SESSIONID=3819b9d5ce00a312; Path=/; HttpOnly
+cache-control: no-store
+set-cookie: SRV=web1; path=/
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.91
+CLIENT_PORT=35234
+METHOD=GET
+PATH=/login?user=sre
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000044
+HOST=app.shop.tp
+LOGIN=ok
+USER=sre
+HEADER_HOST=app.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_X_FORWARDED_PROTO=http
+HEADER_X_FORWARDED_FOR=192.168.227.100
+
+===SRE_META 1.1 0.003162
+===SRE_CODE 200
+===SRE_REQ
+HTTP/1.1 200 OK
+server: ShopApp
+date: Wed, 11 Nov 2026 20:22:56 GMT
+content-type: text/plain; charset=utf-8
+content-length: 397
+x-powered-by: ShopApp/5.3.25
+x-backend-server: web1
+cache-control: no-store
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.91
+CLIENT_PORT=35244
+METHOD=GET
+PATH=/account
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000045
+HOST=app.shop.tp
+USER=sre
+HEADER_HOST=app.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_COOKIE=SESSIONID=3819b9d5ce00a312
+HEADER_X_FORWARDED_PROTO=http
+HEADER_X_FORWARDED_FOR=192.168.227.100
+
+===SRE_META 1.1 0.003321
+===SRE_CODE 200
+===SRE_REQ
+HTTP/1.1 200 OK
+server: ShopApp
+date: Wed, 11 Nov 2026 20:22:56 GMT
+content-type: text/plain; charset=utf-8
+content-length: 397
+x-powered-by: ShopApp/5.3.25
+x-backend-server: web1
+cache-control: no-store
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.91
+CLIENT_PORT=35256
+METHOD=GET
+PATH=/account
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000046
+HOST=app.shop.tp
+USER=sre
+HEADER_HOST=app.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_COOKIE=SESSIONID=3819b9d5ce00a312
+HEADER_X_FORWARDED_PROTO=http
+HEADER_X_FORWARDED_FOR=192.168.227.100
+
+===SRE_META 1.1 0.002924
+===SRE_CODE 200
+===SRE_REQ
+HTTP/1.1 200 OK
+server: ShopApp
+date: Wed, 11 Nov 2026 20:22:56 GMT
+content-type: text/plain; charset=utf-8
+content-length: 397
+x-powered-by: ShopApp/5.3.25
+x-backend-server: web1
+cache-control: no-store
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.91
+CLIENT_PORT=35258
+METHOD=GET
+PATH=/account
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000047
+HOST=app.shop.tp
+USER=sre
+HEADER_HOST=app.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_COOKIE=SESSIONID=3819b9d5ce00a312
+HEADER_X_FORWARDED_PROTO=http
+HEADER_X_FORWARDED_FOR=192.168.227.100
+
+===SRE_META 1.1 0.003194
+===SRE_CODE 200
+===SRE_REQ
+HTTP/1.1 200 OK
+server: ShopApp
+date: Wed, 11 Nov 2026 20:22:56 GMT
+content-type: text/plain; charset=utf-8
+content-length: 397
+x-powered-by: ShopApp/5.3.25
+x-backend-server: web1
+cache-control: no-store
+
+SERVER=web1
+APP=shop
+SERVER_IP=172.31.33.127
+SERVER_PORT=8080
+CLIENT_IP=172.31.33.91
+CLIENT_PORT=35264
+METHOD=GET
+PATH=/account
+HTTP_VERSION=HTTP/1.1
+CONN_REQUESTS=1
+REQUEST_ID=web1-000048
+HOST=app.shop.tp
+USER=sre
+HEADER_HOST=app.shop.tp
+HEADER_USER_AGENT=curl/7.88.1
+HEADER_ACCEPT=*/*
+HEADER_COOKIE=SESSIONID=3819b9d5ce00a312
+HEADER_X_FORWARDED_PROTO=http
+HEADER_X_FORWARDED_FOR=192.168.227.100
+
+===SRE_META 1.1 0.002248
+===SRE_CODE 200
+===SRE_REQ
