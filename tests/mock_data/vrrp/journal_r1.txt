@@ -1,0 +1,116 @@
+r1 systemd[1]: Starting keepalived.service - Keepalive Daemon (LVS and VRRP)...
+r1 Keepalived[606]: Starting Keepalived v2.2.7 (01/16,2022)
+r1 Keepalived[606]: Running on Linux 6.12.116+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.116-1 (2026-11-07) (built for Linux 5.19.11)
+r1 Keepalived[606]: Command line: '/usr/sbin/keepalived' '--dont-fork'
+r1 Keepalived[606]: Configuration file /etc/keepalived/keepalived.conf
+r1 Keepalived[606]: NOTICE: setting config option max_auto_priority should result in better keepalived performance
+r1 Keepalived[606]: Starting VRRP child process, pid=608
+r1 systemd[1]: keepalived.service: Got notification message from PID 608, but reception only permitted for main PID 606
+r1 Keepalived_vrrp[608]: use_vmac or no_accept/strict specified, but no firewall configured - using nftables
+r1 Keepalived[606]: Startup complete
+r1 Keepalived_vrrp[608]: (VI_LAN2) Entering BACKUP STATE (init)
+r1 systemd[1]: Started keepalived.service - Keepalive Daemon (LVS and VRRP).
+r1 Keepalived_vrrp[608]: VRRP_Script(chk_upstream) succeeded
+r1 Keepalived_vrrp[608]: (VI_LAN6) Entering BACKUP STATE
+r1 Keepalived_vrrp[608]: VRRP_Group(G_EDGE) Syncing instances to BACKUP state
+r1 Keepalived_vrrp[608]: (VI_LAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[608]: (VI_WAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[608]: (VI_WAN) Entering MASTER STATE
+r1 Keepalived_vrrp[608]: VRRP_Group(G_EDGE) Syncing instances to MASTER state
+r1 Keepalived_vrrp[608]: (VI_LAN) Entering MASTER STATE
+r1 Keepalived_vrrp[608]: (VI_LAN6) Entering MASTER STATE
+r1 Keepalived[606]: Printing parent data for process(606) on signal
+r1 Keepalived_vrrp[608]: Printing VRRP data for process(608) on signal
+r1 Keepalived[606]: Stopping
+r1 systemd[1]: Stopping keepalived.service - Keepalive Daemon (LVS and VRRP)...
+r1 Keepalived_vrrp[608]: Stopped
+r1 Keepalived[606]: Stopped Keepalived v2.2.7 (01/16,2022)
+r1 systemd[1]: keepalived.service: Deactivated successfully.
+r1 systemd[1]: Stopped keepalived.service - Keepalive Daemon (LVS and VRRP).
+r1 systemd[1]: Starting keepalived.service - Keepalive Daemon (LVS and VRRP)...
+r1 Keepalived[844]: Starting Keepalived v2.2.7 (01/16,2022)
+r1 Keepalived[844]: Running on Linux 6.12.116+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.116-1 (2026-11-07) (built for Linux 5.19.11)
+r1 Keepalived[844]: Command line: '/usr/sbin/keepalived' '--dont-fork'
+r1 Keepalived[844]: Configuration file /etc/keepalived/keepalived.conf
+r1 Keepalived[844]: NOTICE: setting config option max_auto_priority should result in better keepalived performance
+r1 Keepalived[844]: Starting VRRP child process, pid=845
+r1 systemd[1]: keepalived.service: Got notification message from PID 845, but reception only permitted for main PID 844
+r1 Keepalived_vrrp[845]: use_vmac or no_accept/strict specified, but no firewall configured - using nftables
+r1 Keepalived[844]: Startup complete
+r1 Keepalived_vrrp[845]: (VI_LAN2) Entering BACKUP STATE (init)
+r1 systemd[1]: Started keepalived.service - Keepalive Daemon (LVS and VRRP).
+r1 Keepalived_vrrp[845]: VRRP_Script(chk_upstream) succeeded
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to BACKUP state
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to MASTER state
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: Netlink reports eth0 down
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to FAULT state
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6): send advert error 22 (Invalid argument)
+r1 Keepalived_vrrp[845]: (VI_LAN2) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: Netlink reports eth0 up
+r1 Keepalived_vrrp[845]: (VI_LAN2) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to BACKUP state
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to MASTER state
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: (VI_LAN2) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: (VI_LAN2) Master received advert from 172.26.162.252 with higher priority 150, ours 100
+r1 Keepalived_vrrp[845]: (VI_LAN2) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: Script `chk_upstream` now returning 1
+r1 Keepalived_vrrp[845]: VRRP_Script(chk_upstream) failed (exited with status 1)
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to FAULT state
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering FAULT STATE
+r1 Keepalived_vrrp[845]: Script `chk_upstream` now returning 0
+r1 Keepalived_vrrp[845]: VRRP_Script(chk_upstream) succeeded
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to BACKUP state
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering BACKUP STATE
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN) received lower priority (100) advert from 172.26.162.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) received lower priority (100) advert from 198.51.100.252 - discarding
+r1 Keepalived_vrrp[845]: (VI_LAN6) received lower priority (100) advert from fe80::53:52ff:fec8:5d - discarding
+r1 Keepalived_vrrp[845]: (VI_WAN) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: VRRP_Group(G_EDGE) Syncing instances to MASTER state
+r1 Keepalived_vrrp[845]: (VI_LAN) Entering MASTER STATE
+r1 Keepalived_vrrp[845]: (VI_LAN6) Entering MASTER STATE

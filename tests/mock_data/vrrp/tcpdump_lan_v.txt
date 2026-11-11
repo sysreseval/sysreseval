@@ -1,0 +1,26 @@
+20:30:00.356099 IP (tos 0xc0, ttl 255, id 277, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20, addrs: 192.168.56.254 auth "JEi8ETl3"
+20:30:00.356529 IP6 (class 0xc0, flowlabel 0xd345d, hlim 255, next-header VRRP (112) payload length: 24) fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24, addrs: fe80::1
+20:30:00.492495 IP (tos 0xc0, ttl 255, id 21, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20, addrs: 192.168.56.253
+20:30:01.356309 IP (tos 0xc0, ttl 255, id 278, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20, addrs: 192.168.56.254 auth "JEi8ETl3"
+20:30:01.356760 IP6 (class 0xc0, flowlabel 0xd345d, hlim 255, next-header VRRP (112) payload length: 24) fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24, addrs: fe80::1
+20:30:01.492507 IP (tos 0xc0, ttl 255, id 22, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20, addrs: 192.168.56.253
+20:30:02.356639 IP (tos 0xc0, ttl 255, id 279, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20, addrs: 192.168.56.254 auth "JEi8ETl3"
+20:30:02.357079 IP6 (class 0xc0, flowlabel 0xd345d, hlim 255, next-header VRRP (112) payload length: 24) fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24, addrs: fe80::1
+20:30:02.492906 IP (tos 0xc0, ttl 255, id 23, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20, addrs: 192.168.56.253
+20:30:03.356989 IP (tos 0xc0, ttl 255, id 280, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20, addrs: 192.168.56.254 auth "JEi8ETl3"
+20:30:03.357441 IP6 (class 0xc0, flowlabel 0xd345d, hlim 255, next-header VRRP (112) payload length: 24) fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24, addrs: fe80::1
+20:30:03.493221 IP (tos 0xc0, ttl 255, id 24, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20, addrs: 192.168.56.253
+20:30:04.357137 IP (tos 0xc0, ttl 255, id 281, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20, addrs: 192.168.56.254 auth "JEi8ETl3"
+20:30:04.357638 IP6 (class 0xc0, flowlabel 0xd345d, hlim 255, next-header VRRP (112) payload length: 24) fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24, addrs: fe80::1
+20:30:04.493447 IP (tos 0xc0, ttl 255, id 25, offset 0, flags [none], proto VRRP (112), length 40)
+    192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20, addrs: 192.168.56.253
+

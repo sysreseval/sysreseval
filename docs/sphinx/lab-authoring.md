@@ -1131,6 +1131,35 @@ wrappers; fixtures in `tests/mock_data/dns/`.
   `render_root_hints`, `render_rpz_zone`, `render_stubby_yml`, `reverse_zone_name` / `reverse_label`,
   `spki_pin`, `random_tsig_secret`; `tls.generate_ca_pem(cn)` for a lab-provided CA.
 
+### VRRP / keepalived helpers (from `/opt/sre/lib/vrrp.py`)
+
+```python
+from vrrp import (parse_keepalived_conf, find_instance, instance_group, tracked_scripts, parse_tcpdump_vrrp,
+                  adverts, virtual_mac, master_down_interval, read_archive, apply_archive_cmd, wait_cmd)
+```
+
+Helpers of the VRRP lab (`lab/sre/_DRAFT_misc/vrrp.py`: two keepalived routers, a LAN and a WAN virtual address in a sync group, a health check, authentication and unicast peers, load sharing, a virtual MAC, VRRPv3 / IPv6). The images ship keepalived from version 1.33 on.
+
+**Configuration** (pure): `parse_keepalived_conf(text)` → `{'global_defs', 'scripts', 'groups', 'instances', 'errors'}` with typed fields per instance (`vrid`, `priority`, `interface`, `state`, `advert_int`, `version`, `auth_type` / `auth_pass`, `vips` / `excluded_vips` as `{'address', 'prefixlen', 'dev', 'family'}`, `unicast_src_ip` / `unicast_peers`, `track_scripts` / `track_interfaces` as `{'name', 'weight'}`, `use_vmac`, `nopreempt`, `notify`). Queries: `find_instance(conf, vrid=, interface=, vip=)`, `instance_group(conf, instance)`, `tracked_scripts(conf, instance)` and `tracked_interfaces(conf, instance)` (the instance's own entries and those of its sync group), `notify_paths(conf, instance)`, `instance_addresses(instance, excluded=False)`.
+
+**Advertisements**: `vrrp_capture_cmd(interface, seconds)` is a `tcpdump -e -n -v` of a few seconds; `parse_tcpdump_vrrp(output)` reads VRRPv2 and VRRPv3 lines, IPv4 and IPv6, with or without `-e` / `-v`: `src`, `dst`, `family`, `version`, `vrid`, `priority`, `auth_type`, `password` (a capture shows the `auth_type PASS` password in clear), `interval` in seconds, `addresses`, `ttl`, `src_mac`, `dst_mac`. `adverts(frames, vrid=, src=, version=)`, `advert_interval(frames)`, `is_multicast_advert(frame)` (false for unicast peers).
+
+**Arithmetic**: `virtual_mac(vrid, ipv6=False)` (`00:00:5e:00:01:<vrid>`), `skew_time(priority)`, `master_down_interval(advert_int, priority)` (3.61 s for priority 100 and one advertisement per second). `parse_notify_log(text)` + `notify_states(entries, name)` read the lines a `notify` script writes from its four arguments.
+
+**Hidden mirror** (the technique of `lib/hidden_mirror.py`): a failover cannot be graded on the students' routers without breaking them, so their files are replayed on hidden clones. `config_archive_cmd()` prints `/etc/keepalived` and `/etc/radvd.conf` as one base64 tar; `read_archive(encoded)` checks it **before anything is unpacked** (plain files under the two paths only, 64 KiB at most; `None` otherwise) and returns `{path: {'content', 'mode'}}` (`archive_text()`, `archive_mode()`); `apply_archive_cmd(encoded)` unpacks it on a clone and restarts keepalived and radvd; `stop_cmd()` stops them and removes what a killed keepalived leaves. Register the steps of the scenario only when the archive read at step 1 is valid (decide on its content, never on the pass number: `sre re-eval` calls `grade()` once).
+
+Failures are plain commands on the clones (`ip link set eth0 down`, `drop_echo_from_cmd(address)` / `fault_clear_cmd()` to make a machine ignore the pings of a router). Measurements come after `wait_cmd(condition, seconds)`, a bounded wait on `holds_address(address)` or `echo_server_is(host, name)`, registered as a command of its own so that retuning it never changes the key of a measurement.
+
+**Forged advertisements**: `install_vrrp_probe(net_scheme, machine)` copies `lib/vrrp_probe.py` (standard library, raw socket) into a hidden machine; `forged_adverts(grade, machine, vrid, vips, step=, seconds=8, priority=255, password=None)` makes it announce the virtual router for a few seconds and returns `{'sent', 'error', 'heard'}`. A master protected by a password keeps its address; an unprotected one releases it for the duration.
+
+Facts worth knowing (verified in the running lab on 2026-11-11, keepalived 2.2.7):
+
+- with `state MASTER` and a priority below 255 an instance still starts as a backup (3.4 to 3.7 s before it takes over); a stopped master is replaced within 0.1 s (priority 0 advertisement), a link put down after the master-down interval;
+- in a sync group the weights of tracked scripts are ignored: track them unweighted, a failure puts the whole group in the FAULT state (4 to 6 s with `interval 2` / `fall 2`);
+- `use_vmac` needs a **switch**: the backup keeps its `vrrp.<vrid>` macvlan up, so on a hub it receives the frames sent to the virtual MAC too and forwards them a second time. Set `arp_announce=2` on the routers, or the clients learn the real MAC address back;
+- `vde_switch` keeps a MAC address 3 s on its old port (`Min persistence`): a virtual MAC is unreachable 3 to 4 s after a clean handover unless `hash/setminper 0` was run on a managed switch. `switch_cmd()` cannot do it in `initial` for a lab with privileged machines (the console is out of reach once the privileges are dropped at the start): run it with `test_switch()` at the first step of the evaluation;
+- radvd with `AdvRASrcAddress { fe80::1; };` advertises from the virtual link-local address on the master and stays silent on the backup.
+
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python

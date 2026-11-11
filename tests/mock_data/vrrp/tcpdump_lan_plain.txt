@@ -1,0 +1,16 @@
+20:30:00.356099 IP 192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20
+20:30:00.356529 IP6 fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24
+20:30:00.492495 IP 192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20
+20:30:01.356309 IP 192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20
+20:30:01.356760 IP6 fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24
+20:30:01.492507 IP 192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20
+20:30:02.356639 IP 192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20
+20:30:02.357079 IP6 fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24
+20:30:02.492906 IP 192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20
+20:30:03.356989 IP 192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20
+20:30:03.357441 IP6 fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24
+20:30:03.493221 IP 192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20
+20:30:04.357137 IP 192.168.56.251 > 224.0.0.18: VRRPv2, Advertisement, vrid 140, prio 150, authtype simple, intvl 1s, length 20
+20:30:04.357638 IP6 fe80::53:52ff:fed6:3ae3 > ff02::12: VRRPv3, Advertisement, vrid 115, prio 150, intvl 100cs, length 24
+20:30:04.493447 IP 192.168.56.252 > 224.0.0.18: VRRPv2, Advertisement, vrid 59, prio 150, authtype none, intvl 1s, length 20
+

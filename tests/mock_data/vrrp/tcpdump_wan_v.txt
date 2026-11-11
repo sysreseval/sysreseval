@@ -1,0 +1,11 @@
+20:30:00.356121 IP (tos 0xc0, ttl 255, id 277, offset 0, flags [none], proto VRRP (112), length 40)
+    198.51.100.251 > 198.51.100.252: VRRPv2, Advertisement, vrid 100, prio 150, authtype none, intvl 1s, length 20, addrs: 198.51.100.254
+20:30:01.356306 IP (tos 0xc0, ttl 255, id 278, offset 0, flags [none], proto VRRP (112), length 40)
+    198.51.100.251 > 198.51.100.252: VRRPv2, Advertisement, vrid 100, prio 150, authtype none, intvl 1s, length 20, addrs: 198.51.100.254
+20:30:02.356639 IP (tos 0xc0, ttl 255, id 279, offset 0, flags [none], proto VRRP (112), length 40)
+    198.51.100.251 > 198.51.100.252: VRRPv2, Advertisement, vrid 100, prio 150, authtype none, intvl 1s, length 20, addrs: 198.51.100.254
+20:30:03.356957 IP (tos 0xc0, ttl 255, id 280, offset 0, flags [none], proto VRRP (112), length 40)
+    198.51.100.251 > 198.51.100.252: VRRPv2, Advertisement, vrid 100, prio 150, authtype none, intvl 1s, length 20, addrs: 198.51.100.254
+20:30:04.357137 IP (tos 0xc0, ttl 255, id 281, offset 0, flags [none], proto VRRP (112), length 40)
+    198.51.100.251 > 198.51.100.252: VRRPv2, Advertisement, vrid 100, prio 150, authtype none, intvl 1s, length 20, addrs: 198.51.100.254
+

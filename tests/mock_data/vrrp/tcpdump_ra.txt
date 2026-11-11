@@ -1,0 +1,9 @@
+20:30:09.056721 IP6 (flowlabel 0x6c316, hlim 255, next-header ICMPv6 (58) payload length: 56) fe80::1 > ff02::1: [icmp6 sum ok] ICMP6, router advertisement, length 56
+	hop limit 64, Flags [none], pref medium, router lifetime 30s, reachable time 0ms, retrans timer 0ms
+	  prefix info option (3), length 32 (4): fd39:51dd:2f7f:8700::/64, Flags [onlink, auto], valid time 86400s, pref. time 14400s
+	  source link-address option (1), length 8 (1): 02:53:52:d6:3a:e3
+20:30:13.724929 IP6 (flowlabel 0x6c316, hlim 255, next-header ICMPv6 (58) payload length: 56) fe80::1 > ff02::1: [icmp6 sum ok] ICMP6, router advertisement, length 56
+	hop limit 64, Flags [none], pref medium, router lifetime 30s, reachable time 0ms, retrans timer 0ms
+	  prefix info option (3), length 32 (4): fd39:51dd:2f7f:8700::/64, Flags [onlink, auto], valid time 86400s, pref. time 14400s
+	  source link-address option (1), length 8 (1): 02:53:52:d6:3a:e3
+
