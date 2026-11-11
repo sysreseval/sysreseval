@@ -1429,11 +1429,15 @@ def get_stubby_conf(grade: Grade0, machine: str, step: int = 1, path: str = "/et
 
 def get_firefox_doh(grade: Grade0, machine: str, step: int = 1, home: str = '/root') -> dict:
     """DoH configuration of Firefox on *machine* (:func:`firefox_doh`): the policies files of
-    Firefox ESR and the ``user.js`` / ``prefs.js`` of the profiles under *home*."""
+    Firefox ESR and the ``user.js`` / ``prefs.js`` of the profiles under *home*
+    (``~/.mozilla/firefox``, or ``~/.config/mozilla/firefox`` where Firefox 153 ESR creates
+    them when ``~/.mozilla`` does not exist)."""
     pol, _ = grade.test(machine, "cat /etc/firefox-esr/policies/policies.json "
                                  "/usr/lib/firefox-esr/distribution/policies.json 2>/dev/null", step=step,
                         allow_error=True)
     prefs, _ = grade.test(machine, f"cat {home}/.mozilla/firefox/*/user.js {home}/.mozilla/firefox/*/prefs.js "
+                                   f"{home}/.config/mozilla/firefox/*/user.js "
+                                   f"{home}/.config/mozilla/firefox/*/prefs.js "
                                    "2>/dev/null | grep network.trr", step=step, allow_error=True)
     # two policies files may be concatenated: keep the first JSON document that parses
     policies = {}

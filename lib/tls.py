@@ -682,12 +682,17 @@ def nss_hashes_command(home: str = '/root') -> str:
     CKA_VALUE). The databases are opened read-only and immutable so a running Firefox is
     not disturbed. One hash per line; nothing when no profile exists.
 
+    The profiles are looked for in ``~/.mozilla/firefox`` and in ``~/.config/mozilla/firefox``:
+    Firefox 153 ESR (images 1.31) creates its profile in the second one when ``~/.mozilla`` does
+    not exist (seen live 2026-11-11: the first directory alone found nothing).
+
     The script is base64-encoded into a ``python3 -c`` one-liner: the exetests runner only
     supports single-line commands."""
     script = (
         "import glob, hashlib, sqlite3\n"
         "seen = set()\n"
-        f"for db in glob.glob({home!r} + '/.mozilla/firefox*/*/cert9.db'):\n"
+        f"for db in glob.glob({home!r} + '/.mozilla/firefox*/*/cert9.db') "
+        f"+ glob.glob({home!r} + '/.config/mozilla/firefox*/*/cert9.db'):\n"
         "    try:\n"
         "        con = sqlite3.connect('file:' + db + '?mode=ro&immutable=1', uri=True)\n"
         "        for (blob,) in con.execute('SELECT a11 FROM nssPublic WHERE a11 IS NOT NULL'):\n"

@@ -726,6 +726,8 @@ class TestFirefoxCertificate:
         import base64 as _b64
         script = _b64.b64decode(cmd.split("b64decode('", 1)[1].split("')", 1)[0]).decode()
         assert "'/home/etudiant'" in script and "mode=ro&immutable=1" in script
+        # both places a Firefox profile may live in (the XDG one since Firefox 153 ESR)
+        assert "'/.mozilla/firefox*/*/cert9.db'" in script and "'/.config/mozilla/firefox*/*/cert9.db'" in script
         assert "nssPublic" in script and "b'\\x30'" in script
         compile(script, 'nss', 'exec')
 
