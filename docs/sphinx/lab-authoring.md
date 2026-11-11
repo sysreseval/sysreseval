@@ -1202,6 +1202,41 @@ These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, ea
 
 Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
 
+### RIP helpers (from `/opt/sre/lib/frr.py` and `/opt/sre/lib/rip.py`)
+
+```python
+from frr import (get_rip_routes, get_rip_status, rip_route_metric, rip_route_sources,
+                 is_rip_protocol, is_ripng_protocol, RIP_ROUTE_PROTOCOLS)
+from rip import (install_rip_probe, rip_listen_cmd, rip_announce_cmd, get_rip_probe, rip_window,
+                 probe_ready, heard, announced, announced_metric, md5_authenticated)
+```
+
+**The tables of a router** (`lib/frr.py`). `ripd` has no `json` output: these helpers parse the text of `vtysh`, with the two-pass contract and the `allow_error` flag of the OSPF ones.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_rip_routes(grade, machine, step=1, allow_error=False)` | `dict[str, list[dict]]` | `show ip rip`: `{prefix: [path, ...]}`, one path per row (an ECMP route has several). Each path has `code` (`R`, `C`, `S`, `K`), `sub_code` (`n` learned from a neighbour, `i` interface, `r` redistributed, `d` default, `s` static RIP route), `nexthop` (`None` for a local route), `metric`, `source` (the neighbour, `None` for the router's own routes), `external`, `tag`, `time`. `{}` when RIP is not configured |
+| `rip_route_metric(routes, prefix, learned=None)` | `int \| None` | Smallest metric of `prefix`; `learned=True` only looks at the paths learned from a neighbour, `learned=False` at the router's own ones |
+| `rip_route_sources(routes, prefix)` | `list[str]` | Neighbours `prefix` was learned from (a route in garbage collection, metric 16, is left out) |
+| `get_rip_status(grade, machine, step=1, allow_error=False)` | `dict` | `show ip rip status`: `update` / `timeout` / `garbage` (seconds), `default_metric`, `redistribute`, `send_version` / `receive_version`, `interfaces` (`{name: {send, receive, key_chain}}`), `networks`, `passive_interfaces`, `sources` (`{gateway: {bad_packets, bad_routes, distance, last_update}}`), `distance`. `{}` when RIP is not configured |
+| `is_rip_protocol(protocol)` / `is_ripng_protocol(protocol)` | `bool` | Kernel route `protocol` of a route installed by ripd / ripngd; `kernel_route_gateways(routes, prefix, protocols=RIP_ROUTE_PROTOCOLS)` lists the gateways of a RIP kernel route (its default only accepts OSPF routes). The kernel `metric` of an FRR route is always 20: read the hop count in `get_rip_routes()` |
+
+**What a router announces** (`lib/rip.py`, `lib/rip_probe.py`). A hidden machine with an interface, **without any address**, on every network to watch runs a listener that never sends a frame: it is neither a RIP peer nor an ARP or ping target, and it still reads authenticated updates. Grading what is really announced on a link does not depend on the way the router was configured.
+
+| Function | Description |
+|----------|-------------|
+| `install_rip_probe(net_scheme, machine, step=1)` | Copy `lib/rip_probe.py` into the machine |
+| `rip_listen_cmd(interfaces, keys=None)` | Command (re)starting the listener daemon on the interface names; `keys` = `{key id: secret}` of the MD5 keys of the lab. Start it before FRR (one step earlier) so that the first update is heard |
+| `rip_announce_cmd(source, routes, interval=2)` | Command (re)starting a rogue RIP speaker (a second hidden machine, with an address): a RIPv2 response from port 520 of `source` to 224.0.0.9 every `interval` seconds. ripd believes any host of a connected subnet of an interface RIP runs on, a passive one included |
+| `get_rip_probe(grade, machine, step=1)` | Run the static `dump` command and return a `RipProbe` (`ran`, `uptime`, `heartbeat_age`, `sources`: `{(interface, address): RipSource}` with `age`, `version`, `auth_type`, `key_id`, `auth_valid`, `routes`) |
+| `rip_window(update=None)` | Seconds within which a router must have been heard: its own update timer (`get_rip_status()['update']`, clamped to 5–30, 30 when RIP is not running) plus a quarter (the jitter of ripd) and a margin |
+| `probe_ready(probe, window)` | The listener is alive and has listened for a whole window: required by every check of something that must **not** be heard |
+| `heard(probe, interface, address, window)` | The router sent an update on that interface during the window (false for a passive interface) |
+| `announced(probe, interface, address, window)` / `announced_metric(..., prefix, window)` | `{prefix: metric}` announced during the window; a metric of 16 is a withdrawal (route poisoning, poisoned reverse), an `offset-list out` shows as a larger metric |
+| `md5_authenticated(probe, interface, address, window, key_id=None)` | The last update carries an MD5 trailer whose digest matches a key of the lab (and the given key id) |
+
+Only the responses sent to a group address are recorded: the request a passive interface still emits and the unicast answers to a request are counted apart. An evaluation sees a configuration change once the router has sent an update with it, at most one update period later; the student texts must say so. A silence alone does not prove a passive interface: an interface RIP has just been enabled on sends a request, then its first update up to a period later, so pair `not heard()` with `get_rip_status()` (the interface is in `passive_interfaces`, or absent from `interfaces`). A reference state that must remove a route learned under long timers runs `clear ip rip` on every router at the same step: a router cleared alone learns the route again from its neighbours. Since the export of a project replays `initial` for the hidden machines too, a lab with a rogue speaker sets `export_kathara_project = False`.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

@@ -1046,3 +1046,212 @@ class TestBgpRealCaptures:
         assert r2['interfaces']['lo']['passive'] is True   # `passive-interface lo` rewritten by FRR
         policy = parse_frr_config(load('config_bgp_r3_policy.txt'))['router_bgp']
         assert policy['ebgp_requires_policy'] is True and policy['neighbors']['172.18.192.126']['remote_as'] == 65200
+
+
+# ===========================================================================
+# RIP — `show ip rip` and `show ip rip status`
+#
+# The rip_*.txt, iproute_rip_* and ip6route_rip_* fixtures were captured on FRR 9.1.3 in one
+# running instance of lab/sre/_DRAFT_misc/rip.py (2026-11-11): `initial` (r1 and r2 only),
+# `part2` (RIP typed by hand on the four routers with `network ethN`: the rogue speaker of
+# lan3, 10.62.3.54, is believed) and `final` (the reference solution applied on top).
+# ===========================================================================
+
+from frr import (  # noqa: E402
+    RIP_ROUTE_PROTOCOLS, RIPNG_ROUTE_PROTOCOLS, RIP_INFINITY, is_rip_protocol, is_ripng_protocol,
+    parse_rip_routes, get_rip_routes, rip_route_metric, rip_route_sources, parse_rip_status, get_rip_status,
+)
+
+
+class TestRipProtocols:
+    def test_names_and_numbers(self):
+        assert RIP_ROUTE_PROTOCOLS == ('rip', '189') and RIPNG_ROUTE_PROTOCOLS == ('ripng', '190')
+        assert is_rip_protocol('rip') and is_rip_protocol(189) and not is_rip_protocol('ospf')
+        assert is_ripng_protocol('ripng') and is_ripng_protocol('190') and not is_ripng_protocol('rip')
+
+    def test_kernel_route_gateways_needs_the_protocols(self):
+        routes = parse_kernel_routes(load('iproute_rip_r1_final.json'))
+        assert routes['10.62.3.0/24']['protocol'] == 'rip' and routes['10.62.3.0/24']['metric'] == 20
+        assert kernel_route_gateways(routes, '10.62.3.0/24') == []           # OSPF only by default
+        # `allow-ecmp`: both next hops of the ring are in the kernel
+        assert kernel_route_gateways(routes, '10.62.3.0/24', protocols=RIP_ROUTE_PROTOCOLS) == [
+            '10.62.12.2', '10.62.14.1']
+        assert kernel_route_gateways(routes, '10.62.2.0/24', protocols=RIP_ROUTE_PROTOCOLS) == ['10.62.12.2']
+        assert kernel_route_gateways(routes, '0.0.0.0/0', protocols=RIP_ROUTE_PROTOCOLS) == ['10.62.14.1']
+        assert kernel_route_gateways(routes, '10.62.12.0/30', protocols=RIP_ROUTE_PROTOCOLS) == []   # connected
+
+    def test_kernel_ripng_routes(self):
+        routes = json.loads(load('ip6route_rip_r1_final.json'))
+        protocols = {r['dst']: r['protocol'] for r in routes}
+        assert is_ripng_protocol(protocols['fde4:1c40:8968:2::/64']) and is_ripng_protocol(protocols['fde4:1c40:8968:3::/64'])
+        assert protocols['fde4:1c40:8968:1::/64'] == 'kernel'
+        gateways = [r['gateway'] for r in routes if is_ripng_protocol(r['protocol'])]
+        assert gateways and all(g.startswith('fe80::') for g in gateways)   # link-local next hops
+
+
+class TestRipRoutes:
+    def test_r1_final(self):
+        r = parse_rip_routes(load('rip_routes_r1_final.txt'))
+        assert set(r) == {'0.0.0.0/0', '10.62.1.0/24', '10.62.2.0/24', '10.62.3.0/24', '10.62.12.0/30',
+                          '10.62.13.0/30', '10.62.14.0/30', '10.62.23.0/30', '10.62.34.0/30', '10.62.83.0/24'}
+        assert r['10.62.1.0/24'] == [{'code': 'C', 'sub_code': 'i', 'nexthop': None, 'metric': 1, 'source': None,
+                                      'external': None, 'tag': 0, 'time': None}]
+        assert r['10.62.2.0/24'] == [{'code': 'R', 'sub_code': 'n', 'nexthop': '10.62.12.2', 'metric': 2,
+                                      'source': '10.62.12.2', 'external': None, 'tag': 0, 'time': '00:11'}]
+        # ECMP (`allow-ecmp`): one row per path
+        assert [(p['nexthop'], p['metric']) for p in r['10.62.3.0/24']] == [('10.62.14.1', 3), ('10.62.12.2', 3)]
+        assert rip_route_sources(r, '10.62.3.0/24') == ['10.62.14.1', '10.62.12.2']
+        assert rip_route_metric(r, '10.62.3.0/24') == 3 and rip_route_metric(r, '0.0.0.0/0') == 2
+        assert rip_route_metric(r, '10.62.83.0/24', learned=True) == 4
+        assert rip_route_metric(r, '10.62.1.0/24', learned=True) is None
+        assert rip_route_metric(r, '10.62.1.0/24', learned=False) == 1
+        assert rip_route_metric(r, '10.99.0.0/24') is None and rip_route_sources(r, '10.99.0.0/24') == []
+
+    def test_r1_initial(self):
+        r = parse_rip_routes(load('rip_routes_r1_initial.txt'))
+        assert set(r) == {'10.62.2.0/24', '10.62.12.0/30'}
+        assert r['10.62.2.0/24'][0]['time'] == '02:55'                       # the 180 s timeout counting down
+
+    def test_r3_final(self):
+        r = parse_rip_routes(load('rip_routes_r3_final.txt'))
+        static = r['10.62.83.0/24'][0]
+        # a redistributed route has metric 1 in the router's own table: `metric M` is for its updates
+        assert (static['code'], static['sub_code'], static['nexthop'], static['metric']) == ('S', 'r', '10.62.3.111', 1)
+        assert static['source'] is None and static['time'] is None
+        assert rip_route_sources(r, '10.62.1.0/24') == ['10.62.23.2', '10.62.34.2']
+        assert '172.30.55.0/24' not in r                                     # the rogue speaker is ignored
+
+    def test_r3_part2_believes_the_rogue_speaker(self):
+        r = parse_rip_routes(load('rip_routes_r3_part2.txt'))
+        ghost = r['172.30.55.0/24'][0]
+        assert (ghost['code'], ghost['sub_code'], ghost['metric']) == ('R', 'n', 2)
+        assert ghost['nexthop'] == ghost['source'] == '10.62.3.54'
+        assert rip_route_sources(r, '172.30.55.0/24') == ['10.62.3.54']
+
+    def test_r4_originates_the_default_route(self):
+        r = parse_rip_routes(load('rip_routes_r4_final.txt'))
+        assert r['0.0.0.0/0'] == [{'code': 'R', 'sub_code': 'd', 'nexthop': None, 'metric': 1, 'source': None,
+                                   'external': None, 'tag': 0, 'time': None}]
+        assert rip_route_metric(r, '10.62.83.0/24', learned=True) == 3       # announced with `metric 2`
+
+    def test_garbage_collection(self):
+        """A route in garbage collection is still listed, with metric 16 and no reachable source."""
+        r = parse_rip_routes(
+            "R(n) 192.168.77.0/24    10.57.3.66           16 10.57.3.66        0 00:07\n")
+        assert r['192.168.77.0/24'][0]['metric'] == RIP_INFINITY
+        assert rip_route_sources(r, '192.168.77.0/24') == [] and rip_route_metric(r, '192.168.77.0/24') == 16
+
+    def test_other_rows(self):
+        text = (
+            "     Network            Next Hop         Metric From            Tag Time\n"
+            "R(d) 0.0.0.0/0          0.0.0.0               1 self              0\n"
+            "K(r) 172.20.0.0/16      10.57.14.2            1 self (kernel:20)  0\n"
+            "R(s) 10.80.0.0/24       0.0.0.0               1 self              0\n"
+            "C(r) 10.57.3.0/24       0.0.0.0               1 self              0\n"
+            "R(n) 10.57.9.0/24       10.57.12.2           16 10.57.12.2       12 01:58\n"
+            "R(n) 10.57.8.0/24       10.57.12.2            4 10.57.12.2        0 02:51:07\n"
+        )
+        r = parse_rip_routes(text)
+        assert r['0.0.0.0/0'][0]['sub_code'] == 'd' and r['0.0.0.0/0'][0]['source'] is None
+        kernel = r['172.20.0.0/16'][0]
+        assert (kernel['code'], kernel['sub_code'], kernel['external'], kernel['source']) == ('K', 'r', 'kernel:20', None)
+        assert r['10.80.0.0/24'][0]['sub_code'] == 's' and r['10.57.3.0/24'][0]['code'] == 'C'
+        assert r['10.57.9.0/24'][0]['metric'] == 16 and r['10.57.9.0/24'][0]['tag'] == 12
+        assert r['10.57.8.0/24'][0]['time'] == '02:51:07'
+
+    def test_not_running_and_placeholder(self):
+        assert parse_rip_routes(load('rip_routes_r3_none.txt')) == {}
+        assert parse_rip_routes('') == {} and parse_rip_routes(None) == {}
+
+    def test_get(self):
+        grade = make_grade(load('rip_routes_r1_final.txt'))
+        assert '10.62.2.0/24' in get_rip_routes(grade, 'r1', allow_error=True)
+        grade.test.assert_called_once_with('r1', 'vtysh -c "show ip rip"', step=1, allow_error=True)
+        assert get_rip_routes(make_grade('', 0), 'r1') == {}
+        assert get_rip_routes(make_grade(load('rip_routes_r1_final.txt'), 1), 'r1') == {}
+
+
+class TestRipStatus:
+    def test_r1_final(self):
+        s = parse_rip_status(load('rip_status_r1_final.txt'))
+        assert (s['update'], s['timeout'], s['garbage']) == (5, 15, 10)
+        assert s['default_metric'] == 1 and s['redistribute'] == [] and s['distance'] == 120
+        assert s['send_version'] == '2' and s['receive_version'] == '2'
+        assert s['interfaces'] == {
+            'eth0': {'send': '2', 'receive': '2', 'key_chain': None},
+            'eth1': {'send': '2', 'receive': '2', 'key_chain': 'RIPKEYS'},
+            'eth2': {'send': '2', 'receive': '2', 'key_chain': 'RIPKEYS'},
+            'eth3': {'send': '2', 'receive': '2', 'key_chain': 'RIPKEYS'},
+        }
+        # the prefixes of the reference solution, then the interface names typed by hand before
+        assert s['networks'] == ['10.62.1.0/24', '10.62.12.0/30', '10.62.13.0/30', '10.62.14.0/30',
+                                 'eth0', 'eth2', 'eth3']
+        assert s['passive_interfaces'] == ['eth0']
+        assert set(s['sources']) == {'10.62.12.2', '10.62.13.1', '10.62.14.1'}
+        # one packet of each neighbour was refused while authentication was being set up
+        assert s['sources']['10.62.12.2'] == {'bad_packets': 1, 'bad_routes': 0, 'distance': 120,
+                                              'last_update': '00:00:03'}
+
+    def test_r3_final(self):
+        s = parse_rip_status(load('rip_status_r3_final.txt'))
+        assert s['redistribute'] == ['static'] and s['passive_interfaces'] == ['eth0']
+        assert s['interfaces']['eth0'] == {'send': '2', 'receive': 'none', 'key_chain': None}
+        assert s['interfaces']['eth1'] == {'send': '2', 'receive': '2', 'key_chain': 'RIPKEYS'}
+        assert s['sources']['10.62.3.54']['bad_packets'] == 34          # the rogue speaker, refused
+
+    def test_r3_part2(self):
+        s = parse_rip_status(load('rip_status_r3_part2.txt'))
+        assert s['networks'] == ['eth0', 'eth1', 'eth2', 'eth3'] and s['passive_interfaces'] == []
+        assert s['sources']['10.62.3.54'] == {'bad_packets': 0, 'bad_routes': 0, 'distance': 120,
+                                              'last_update': '00:00:02'}     # believed
+        assert all(i['key_chain'] is None for i in s['interfaces'].values())
+
+    def test_r2_initial(self):
+        s = parse_rip_status(load('rip_status_r2_initial.txt'))
+        assert (s['update'], s['timeout'], s['garbage']) == (30, 180, 120)
+        assert s['passive_interfaces'] == [] and set(s['interfaces']) == {'eth0', 'eth1'}
+        assert s['networks'] == ['10.62.2.0/24', '10.62.12.0/30']
+        # r1 has nothing to tell r2 (split horizon): it never shows as a source
+        assert s['sources'] == {}
+
+    def test_versions_and_filters(self):
+        text = (
+            'Routing Protocol is "rip"\n'
+            '  Sending updates every 30 seconds with +/-50%, next due in 4 seconds\n'
+            '  Timeout after 180 seconds, garbage collect after 120 seconds\n'
+            '  Outgoing update filter list for all interface is not set\n'
+            '    eth2 filtered by (prefix-list) NO-GHOST\n'
+            '  Incoming update filter list for all interface is not set\n'
+            '  Default redistribution metric is 3\n'
+            '  Redistributing: connected static\n'
+            '  Default version control: send version 2, receive any version \n'
+            '    Interface        Send  Recv   Key-chain\n'
+            '    eth0             1 2   1 2    \n'
+            '    eth1             none  2      K1\n'
+            '  Routing for Networks:\n'
+            '    eth0\n'
+            '    10.0.0.0/8\n'
+            '    10.57.12.9\n'
+            '  Routing Information Sources:\n'
+            '    Gateway          BadPackets BadRoutes  Distance Last Update\n'
+            '  Distance: (default is 100)\n'
+            '    Address           Distance  List\n'
+            '    10.57.2.0/24           90  \n'
+        )
+        s = parse_rip_status(text)
+        assert s['receive_version'] == '1 2' and s['default_metric'] == 3
+        assert s['redistribute'] == ['connected', 'static'] and s['distance'] == 100
+        assert s['interfaces'] == {'eth0': {'send': '1 2', 'receive': '1 2', 'key_chain': None},
+                                   'eth1': {'send': 'none', 'receive': '2', 'key_chain': 'K1'}}
+        assert s['networks'] == ['eth0', '10.0.0.0/8', '10.57.12.9'] and s['sources'] == {}
+
+    def test_not_running_and_placeholder(self):
+        assert load('rip_status_r3_none.txt') == "% RIP instance not found\n"
+        assert parse_rip_status(load('rip_status_r3_none.txt')) == {}
+        assert parse_rip_status('') == {} and parse_rip_status(None) == {}
+
+    def test_get(self):
+        grade = make_grade(load('rip_status_r1_final.txt'))
+        assert get_rip_status(grade, 'r1', allow_error=True)['update'] == 5
+        grade.test.assert_called_once_with('r1', 'vtysh -c "show ip rip status"', step=1, allow_error=True)
+        assert get_rip_status(make_grade('', 0), 'r1') == {}

@@ -1,16 +1,17 @@
-"""FRR / OSPF / BGP grading helpers.
+"""FRR / OSPF / BGP / RIP grading helpers.
 
 Every ``get_*`` function registers one command through ``grade.test()`` -- so it
 follows the two-pass contract of ``Grade.grade()`` (placeholder result on the
 registration pass, real output afterwards) -- and hands the text to a pure
 ``parse_*`` function.  The parsers are unit-tested on captured FRR 9 output in
-``tests/test_frr.py``.  The OSPF helpers parse the text output of ``vtysh``, the
-BGP helpers its ``json`` output (``show bgp ipv4 unicast ... json``).  On the
-placeholder output every parser returns its empty shape (``{}``/``[]``), never an
-exception.
+``tests/test_frr.py``.  The OSPF and RIP helpers parse the text output of ``vtysh``
+(``show ip rip`` and ``show ip rip status`` have no json form), the BGP helpers its
+``json`` output (``show bgp ipv4 unicast ... json``).  On the placeholder output
+every parser returns its empty shape (``{}``/``[]``), never an exception.  What a
+RIP router really announces on a link is read by the passive probe of ``lib/rip.py``.
 
-Pass ``allow_error=True`` when the router may not run OSPF/BGP yet (``vtysh`` then
-exits non-zero and the error would otherwise be recorded in the archive).
+Pass ``allow_error=True`` when the router may not run OSPF/BGP/RIP yet (``vtysh``
+then exits non-zero and the error would otherwise be recorded in the archive).
 """
 import json
 import re
@@ -26,6 +27,9 @@ _IPV4_RE = re.compile(r'^\d{1,3}(?:\.\d{1,3}){3}$')
 OSPF_ROUTE_PROTOCOLS = ('ospf', '188')
 #: kernel route protocol values that mean "installed by bgpd"
 BGP_ROUTE_PROTOCOLS = ('bgp', '186')
+#: kernel route protocol values that mean "installed by ripd" / "by ripngd"
+RIP_ROUTE_PROTOCOLS = ('rip', '189')
+RIPNG_ROUTE_PROTOCOLS = ('ripng', '190')
 
 
 def _test(grade: Grade0, machine_name: str, command: str, step: int, allow_error: bool):
@@ -50,6 +54,16 @@ def is_ospf_protocol(protocol) -> bool:
 def is_bgp_protocol(protocol) -> bool:
     """True when a kernel route ``protocol`` field (``ip -j route``) denotes a BGP route."""
     return str(protocol) in BGP_ROUTE_PROTOCOLS
+
+
+def is_rip_protocol(protocol) -> bool:
+    """True when a kernel route ``protocol`` field (``ip -j route``) denotes a RIP route."""
+    return str(protocol) in RIP_ROUTE_PROTOCOLS
+
+
+def is_ripng_protocol(protocol) -> bool:
+    """True when a kernel route ``protocol`` field (``ip -j -6 route``) denotes a RIPng route."""
+    return str(protocol) in RIPNG_ROUTE_PROTOCOLS
 
 
 # ---------------------------------------------------------------------------
@@ -1242,3 +1256,172 @@ def get_bgp_advertised_routes(grade: Grade0, machine_name: str, peer, step: int 
     (see :func:`parse_bgp_advertised_routes`)."""
     return parse_bgp_advertised_routes(
         _vtysh_json(grade, machine_name, f'show bgp ipv4 unicast neighbors {peer} advertised-routes', step, allow_error))
+
+
+# ---------------------------------------------------------------------------
+# RIP (text output of vtysh: ripd has no json form)
+# ---------------------------------------------------------------------------
+
+#: metric of an unreachable route
+RIP_INFINITY = 16
+#: sub-codes of `show ip rip`: where the route of the RIP table comes from
+RIP_SUB_CODES = {'n': 'normal', 's': 'static', 'd': 'default', 'r': 'redistribute', 'i': 'interface'}
+
+_RIP_ROUTE_RE = re.compile(
+    r'^(?P<code>[A-Z])\((?P<sub>[a-z])\)\s+(?P<prefix>\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\s+'
+    r'(?P<nexthop>\d{1,3}(?:\.\d{1,3}){3}|blackhole|V6 Address Hidden)\s+(?P<metric>\d+)\s+'
+    r'(?P<source>self(?:\s+\((?P<external>[^)]*)\))?|\d{1,3}(?:\.\d{1,3}){3})\s+(?P<tag>\d+)'
+    r'(?:\s+(?P<time>\d\d:\d\d(?::\d\d)?))?\s*$')
+_RIP_VERSION = r'(?:1 2|1|2|none)'
+_RIP_INTERFACE_RE = re.compile(
+    rf'^\s+(?P<name>\S+)\s+(?P<send>{_RIP_VERSION})\s+(?P<receive>{_RIP_VERSION})(?:\s+(?P<key_chain>\S+))?\s*$')
+_RIP_SOURCE_RE = re.compile(
+    r'^\s+(?P<gateway>\d{1,3}(?:\.\d{1,3}){3})\s+(?P<bad_packets>\d+)\s+(?P<bad_routes>\d+)\s+'
+    r'(?P<distance>\d+)\s+(?P<last_update>\S+)\s*$')
+
+
+def parse_rip_routes(output: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Parse ``show ip rip`` (the RIP table of ripd, not the kernel one).
+
+    Returns ``{prefix: [path, ...]}`` — one path per row, an ECMP route has several — with
+    ``code`` (``'R'`` RIP, ``'C'`` connected, ``'S'`` static, ``'K'`` kernel...), ``sub_code``
+    (:data:`RIP_SUB_CODES`: ``'n'`` learned from a neighbour, ``'i'`` interface, ``'r'``
+    redistributed, ``'d'`` default, ``'s'`` static RIP route), ``nexthop`` (``None`` for a local
+    route), ``metric``, ``source`` (the neighbour the route was learned from, ``None`` for the
+    router's own routes), ``external`` (``'static:20'`` of ``self (static:20)``), ``tag`` and
+    ``time`` (the timeout or garbage-collection timer, ``None`` when the route has none).
+    ``{}`` when ripd has no instance (``% RIP instance not found``) or on the placeholder.
+    """
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for line in (output or '').splitlines():
+        m = _RIP_ROUTE_RE.match(line)
+        if not m:
+            continue
+        nexthop = m.group('nexthop')
+        source = m.group('source')
+        result.setdefault(m.group('prefix'), []).append({
+            'code': m.group('code'),
+            'sub_code': m.group('sub'),
+            'nexthop': None if nexthop == '0.0.0.0' else nexthop,
+            'metric': int(m.group('metric')),
+            'source': None if source.startswith('self') else source,
+            'external': m.group('external'),
+            'tag': int(m.group('tag')),
+            'time': m.group('time'),
+        })
+    return result
+
+
+def get_rip_routes(grade: Grade0, machine_name: str, step: int = 1,
+                   allow_error: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+    """Run 'vtysh -c "show ip rip"' and parse it (see :func:`parse_rip_routes`). ``{}`` on error."""
+    output, code = _test(grade, machine_name, 'vtysh -c "show ip rip"', step, allow_error)
+    if code != 0 or not output:
+        return {}
+    return parse_rip_routes(output)
+
+
+def rip_route_metric(routes: Dict[str, List[Dict[str, Any]]], prefix, learned: bool = None) -> Optional[int]:
+    """Smallest metric of *prefix* in a :func:`parse_rip_routes` result, ``None`` when the prefix
+    is absent.  ``learned=True`` only looks at the paths learned from a neighbour (code ``R``,
+    sub-code ``n``), ``learned=False`` at the router's own ones (interface, redistributed...)."""
+    metrics = [p['metric'] for p in routes.get(str(prefix), [])
+               if learned is None or learned == (p['source'] is not None)]
+    return min(metrics) if metrics else None
+
+
+def rip_route_sources(routes: Dict[str, List[Dict[str, Any]]], prefix) -> List[str]:
+    """Neighbours *prefix* was learned from in a :func:`parse_rip_routes` result (reachable
+    paths only: a route in garbage collection, metric 16, is left out)."""
+    return [p['source'] for p in routes.get(str(prefix), [])
+            if p['source'] is not None and p['metric'] < RIP_INFINITY]
+
+
+def parse_rip_status(output: str) -> Dict[str, Any]:
+    """Parse ``show ip rip status``.
+
+    Returns ``{'update', 'timeout', 'garbage'}`` (the three timers of ``timers basic``, seconds),
+    ``default_metric``, ``redistribute`` (``['connected', 'static']``), ``send_version`` /
+    ``receive_version`` (``'1'``, ``'2'``, ``'1 2'``), ``interfaces`` (``{name: {'send',
+    'receive', 'key_chain'}}``: the interfaces RIP runs on, passive ones included), ``networks``
+    (the ``network`` statements: prefixes and interface names, then the ``neighbor`` addresses),
+    ``passive_interfaces``, ``sources`` (``{gateway: {'bad_packets', 'bad_routes', 'distance',
+    'last_update'}}``: every neighbour a packet was received from) and ``distance``.
+    ``{}`` when ripd has no instance or on the placeholder.
+    """
+    text = output or ''
+    if 'Routing Protocol is "rip"' not in text:
+        return {}
+    status: Dict[str, Any] = {
+        'update': None, 'timeout': None, 'garbage': None, 'default_metric': None, 'redistribute': [],
+        'send_version': None, 'receive_version': None, 'interfaces': {}, 'networks': [],
+        'passive_interfaces': [], 'sources': {}, 'distance': None,
+    }
+    section = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        m = re.match(r'Sending updates every (\d+) seconds', stripped)
+        if m:
+            status['update'] = int(m.group(1))
+            continue
+        m = re.match(r'Timeout after (\d+) seconds, garbage collect after (\d+) seconds', stripped)
+        if m:
+            status['timeout'], status['garbage'] = int(m.group(1)), int(m.group(2))
+            continue
+        m = re.match(r'Default redistribution metric is (\d+)', stripped)
+        if m:
+            status['default_metric'] = int(m.group(1))
+            continue
+        if stripped.startswith('Redistributing:'):
+            status['redistribute'] = stripped[len('Redistributing:'):].split()
+            continue
+        m = re.match(r'Default version control: send version (.+?), receive (any version|version (.+?))\s*$',
+                     stripped)
+        if m:
+            status['send_version'] = m.group(1).strip()
+            status['receive_version'] = '1 2' if m.group(2) == 'any version' else m.group(3).strip()
+            continue
+        m = re.match(r'Distance: \(default is (\d+)\)', stripped)
+        if m:
+            status['distance'] = int(m.group(1))
+            section = None
+            continue
+        if re.match(r'Interface\s+Send\s+Recv', stripped):
+            section = 'interfaces'
+            continue
+        if stripped == 'Routing for Networks:':
+            section = 'networks'
+            continue
+        if stripped == 'Passive Interface(s):':
+            section = 'passive'
+            continue
+        if stripped == 'Routing Information Sources:':
+            section = 'sources'
+            continue
+        if section == 'interfaces':
+            m = _RIP_INTERFACE_RE.match(line)
+            if m:
+                status['interfaces'][m.group('name')] = {
+                    'send': m.group('send'), 'receive': m.group('receive'), 'key_chain': m.group('key_chain')}
+        elif section == 'networks':
+            status['networks'].append(stripped)
+        elif section == 'passive':
+            status['passive_interfaces'].append(stripped)
+        elif section == 'sources':
+            m = _RIP_SOURCE_RE.match(line)
+            if m:
+                status['sources'][m.group('gateway')] = {
+                    'bad_packets': int(m.group('bad_packets')), 'bad_routes': int(m.group('bad_routes')),
+                    'distance': int(m.group('distance')), 'last_update': m.group('last_update')}
+    return status
+
+
+def get_rip_status(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Any]:
+    """Run 'vtysh -c "show ip rip status"' and parse it (see :func:`parse_rip_status`).
+    ``{}`` on error or when RIP is not configured."""
+    output, code = _test(grade, machine_name, 'vtysh -c "show ip rip status"', step, allow_error)
+    if code != 0 or not output:
+        return {}
+    return parse_rip_status(output)
