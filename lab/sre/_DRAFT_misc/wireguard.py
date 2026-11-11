@@ -489,22 +489,6 @@ toujours une affaire de clés, d'adresses ou d'`AllowedIPs`.
   `wstunnel`…), cacher qu'un tunnel existe (métadonnées visibles : adresses, volumes, rythme
   des keepalives).
 """)
-            + info_subtitle(tr("Plan du TP"), tag="plan")
-            + tr("""
-
-1. **Clés et premier tunnel** entre `srv` et `gwb`, à la main (`wg genkey`, `ip link`, `wg set`) ;
-2. **Configuration persistante** avec `wg-quick` (`/etc/wireguard/wg0.conf`) et systemd ;
-3. **Poste nomade** (`laptop`) derrière le NAT de l'hôtel : `srv` concentrateur, `PersistentKeepalive`,
-   deux autres postes connus par leur clé publique (`colleague`, `oldpc`) ;
-4. **Accès au LAN** du site A depuis le nomade (`AllowedIPs`, forwarding) ;
-5. **Site à site** : `lanb` ↔ `lana`, le nomade vers `lanb` en passant par `srv` ;
-6. **Tunnel complet** pour le nomade (`0.0.0.0/0`, routage par politique) et NAT sur `srv` ;
-7. **Clé pré-partagée** et **retrait** du pair `oldpc`.
-
-Les parties sont à faire **dans l'ordre** et la configuration d'une partie terminée reste en
-place. Les fichiers sont attendus aux emplacements indiqués ; les adresses, clés et valeurs
-demandées sont propres à votre instance du TP (onglet *Questions*, première question).
-""")
         )
 
     # -- configuration files of the reference solution ------------------------------------
@@ -835,8 +819,20 @@ Déjà en place (ne pas modifier) : adresses, routes par défaut, le NAT de la `
 `/shared` est un répertoire commun à toutes les machines pour échanger des fichiers (les clés
 publiques !).
 
+**Plan du TP.**
+
+1. **Clés et premier tunnel** entre `srv` et `gwb`, à la main (`wg genkey`, `ip link`, `wg set`) ;
+2. **Configuration persistante** avec `wg-quick` (`/etc/wireguard/wg0.conf`) et systemd ;
+3. **Poste nomade** (`laptop`) derrière le NAT de l'hôtel : `srv` concentrateur, `PersistentKeepalive`,
+   deux autres postes connus par leur clé publique (`colleague`, `oldpc`) ;
+4. **Accès au LAN** du site A depuis le nomade (`AllowedIPs`, forwarding) ;
+5. **Site à site** : `lanb` ↔ `lana`, le nomade vers `lanb` en passant par `srv` ;
+6. **Tunnel complet** pour le nomade (`0.0.0.0/0`, routage par politique) et NAT sur `srv` ;
+7. **Clé pré-partagée** et **retrait** du pair `oldpc`.
+
 Règles valables pour tout le TP :
 
+- les parties sont à faire **dans l'ordre** ;
 - l'interface s'appelle **`wg0`** partout, les clés sont dans `/etc/wireguard/private.key` et
   `/etc/wireguard/public.key`, la configuration persistante dans `/etc/wireguard/wg0.conf`
   (unité `wg-quick@wg0`) ;

@@ -12,7 +12,7 @@ from typing import Dict
 
 import utils
 from SRE import params
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks, random_ipv4s
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward
@@ -228,109 +228,193 @@ class NetScheme(NetScheme0):
         self.hosts_content = "\n".join(lines) + "\n"
 
         self.informations = (
-                no_tr("## ") + title + no_tr("\n")
-                + tr("""
-Ce TP met en œuvre le protocole de routage dynamique **OSPF** (*Open Shortest Path First*,
-RFC 2328) avec la suite logicielle **FRRouting** (FRR) installée sur les routeurs `r1` à `r7`.
-Les machines `m1`, `m4`, `m5`, `m6` et `m7` sont de simples hôtes dont la route par défaut
-pointe vers leur routeur.
-
-Les fichiers `/etc/hosts` contiennent les noms de toutes les interfaces : `r4-eth2` désigne
-l'adresse de l'interface `eth2` de `r4`, `r4` (tout court) celle de `eth0`. L'adresse
-`203.0.113.1` (nom `internet`) est un serveur situé « à l'extérieur », derrière `r1`.
-
-## 1. Principe d'OSPF
-
-OSPF est un protocole à **état de liens** (*link state*) :
+            no_tr("## ") + title + no_tr("\n")
+            + tr("\n**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Principe d'OSPF"), tag="principle")
+            + tr("""
+**OSPF** (*Open Shortest Path First* ; RFC 2328 pour la version 2, celle d'IPv4) est un protocole
+de routage **dynamique** : les routeurs s'échangent la description du réseau, calculent eux-mêmes
+leurs tables de routage et les recalculent quand un lien apparaît ou disparaît. C'est un protocole
+**intérieur** (IGP), utilisé au sein d'un même domaine administratif, et un protocole à **état de
+liens** (*link state*) :
 
 - chaque routeur découvre ses **voisins** grâce à des paquets **Hello** envoyés périodiquement
-  en multicast (`224.0.0.5`, protocole IP numéro 89) ;
+  en multicast (`224.0.0.5`) ; OSPF est transporté directement dans IP (protocole numéro 89),
+  sans TCP ni UDP ;
 - chaque routeur décrit ses liens dans des **LSA** (*Link State Advertisements*) qui sont
   **inondés** (*flooding*) à tous les routeurs de l'aire ;
 - tous les routeurs d'une aire possèdent donc la même **base de données** (LSDB) et calculent
   chacun, avec l'algorithme de **Dijkstra** (SPF), l'arbre des plus courts chemins vers toutes
   les destinations ;
 - les meilleures routes sont installées dans la table de routage du noyau (`ip route`, où
-  elles apparaissent avec `proto ospf` et une distance administrative de 110).
+  elles apparaissent avec `proto ospf` ; leur distance administrative est 110).
 
-Le **coût** d'un chemin est la somme des coûts des interfaces *de sortie* traversées.
-Par défaut FRR calcule le coût d'une interface par
-`coût = bande_passante_de_référence / bande_passante_de_l'interface`
-(arrondi, minimum 1). La référence vaut 100 000 Mbit/s et une interface virtuelle des
-conteneurs annonce 10 000 Mbit/s : le coût par défaut est donc **10**. On peut :
+### @@sec:cost@@ Le coût des chemins
 
-- fixer le coût d'une interface : `ip ospf cost N` (mode `interface ethX`) ;
-- changer la référence sur *tous* les routeurs : `auto-cost reference-bandwidth N`
-  (mode `router ospf`, N en Mbit/s) ;
+Le **coût** d'un chemin est la somme des coûts des interfaces *de sortie* traversées : il se
+règle donc séparément dans chaque sens. Par défaut FRR calcule le coût d'une interface par
+`coût = bande_passante_de_référence / bande_passante_de_l'interface` (arrondi, minimum 1). La
+référence vaut 100 000 Mbit/s et une interface virtuelle d'un conteneur annonce 10 000 Mbit/s : le
+coût par défaut y est donc **10**. On peut :
+
+- fixer le coût d'une interface : `ip ospf cost N` (mode `interface ethX`) ; il l'emporte sur
+  le coût calculé ;
+- changer la référence : `auto-cost reference-bandwidth N` (mode `router ospf`, N en Mbit/s),
+  à faire sur **tous** les routeurs du domaine pour que les coûts restent comparables ;
 - déclarer la bande passante d'une interface : `bandwidth N` (mode `interface`, N en Mbit/s).
 
 Lorsque plusieurs chemins ont le même coût, OSPF installe **tous** les prochains sauts
 (*ECMP*, *Equal-Cost Multi-Path*) : la route apparaît avec plusieurs `nexthop` dans `ip route`.
-
-## 2. Voisinage, adjacences, DR et BDR
-
+""")
+            + info_subtitle(tr("Voisinage et adjacences"), tag="neighbors")
+            + tr("""
 Deux routeurs deviennent voisins si leurs Hello sont compatibles : même **aire**, même
-**intervalle Hello** (10 s par défaut), même **intervalle Dead** (40 s par défaut : durée
-sans Hello après laquelle le voisin est déclaré mort), même type de réseau, même
-authentification. La relation passe par les états `Down`, `Init`, `2-Way`, `ExStart`,
-`Exchange`, `Loading` et enfin **`Full`** (bases synchronisées).
+**intervalle Hello**, même **intervalle Dead**, même type de réseau, même type d'aire (stub ou
+non), même authentification, même préfixe sur le lien. La relation passe par les états `Down`,
+`Init` (j'entends le voisin), `2-Way` (il m'entend aussi), `ExStart`, `Exchange`, `Loading`
+(échange des bases) et enfin **`Full`** (bases synchronisées).
+
+### @@sec:dr@@ DR et BDR
 
 Sur un réseau à diffusion (Ethernet) les routeurs élisent un **DR** (*Designated Router*)
 et un **BDR** (*Backup DR*) ; les autres routeurs (`DROther`) ne forment une adjacence
-complète qu'avec le DR et le BDR, ce qui limite le nombre d'adjacences et le trafic
-d'inondation. L'élection se fait sur la **priorité** (`ip ospf priority N`, 1 par défaut,
-0 = jamais DR) puis, à priorité égale, sur le **router-id** le plus grand. Elle **n'est pas
-préemptive** : un routeur qui arrive avec une meilleure priorité ne détrône pas le DR en
-place ; il faut relancer le processus (`clear ip ospf process`) sur les routeurs concernés
-pour provoquer une nouvelle élection.
+complète qu'avec le DR et le BDR (ils restent en `2-Way` entre eux), ce qui limite le nombre
+d'adjacences et le trafic d'inondation. Le DR décrit le réseau dans un LSA de type 2 ; les
+`DROther` lui écrivent à l'adresse `224.0.0.6`. L'élection se fait sur la **priorité**
+(`ip ospf priority N` en mode interface, 1 par défaut, 0 = jamais DR ni BDR) puis, à priorité
+égale, sur le **router-id** le plus grand. Elle **n'est pas préemptive** : un routeur qui arrive
+avec une meilleure priorité ne détrône pas le DR en place ; il faut relancer le processus
+(`clear ip ospf process`) sur les routeurs qui tiennent les rôles pour provoquer une nouvelle
+élection. Un routeur qui démarre attend la durée de l'intervalle Dead (*Wait timer*) avant de
+se déclarer DR ou BDR.
 
-Le **router-id** identifie le routeur dans la base de données. S'il n'est pas configuré
-(`ospf router-id A.B.C.D`), FRR prend la plus grande adresse IP de ses interfaces au
-démarrage. Si des adjacences sont déjà établies, un changement de router-id n'est
-appliqué qu'après `clear ip ospf process`.
+### @@sec:router-id@@ Le router-id
 
-## 3. Aires, routeurs de bordure et types de routes
+Le **router-id** identifie le routeur dans la base de données ; il s'écrit comme une adresse
+IPv4 mais n'en est pas une. S'il n'est pas configuré (`ospf router-id A.B.C.D`, mode
+`router ospf`), FRR prend la plus grande adresse IP des interfaces du routeur au démarrage. Si
+des adjacences sont déjà établies, un changement de router-id n'est appliqué qu'après
+`clear ip ospf process` : mieux vaut le fixer avant les commandes `network`.
 
-Pour limiter la taille des bases de données et le nombre de calculs SPF, un domaine OSPF
-est découpé en **aires**. L'aire **0** (`0.0.0.0`) est le **backbone** ; toute autre aire
-doit lui être directement rattachée par au moins un **ABR** (*Area Border Router*) qui
-possède des interfaces dans les deux aires et qui **résume** les réseaux d'une aire vers
-l'autre (LSA de type 3). Un **ASBR** (*AS Boundary Router*) injecte dans OSPF des routes
-venues d'ailleurs (routes statiques, autre protocole, …) sous forme de LSA de type 5.
+### @@sec:timers@@ Temporisateurs et convergence
 
-Dans `show ip route` (vtysh) les routes OSPF sont marquées :
+Un routeur envoie un Hello sur chaque interface toutes les **10 s** (*intervalle Hello*) et
+déclare un voisin mort s'il n'en a rien reçu pendant **40 s** (*intervalle Dead*, quatre Hello
+par défaut). Ils se règlent par interface (`ip ospf hello-interval N`, `ip ospf dead-interval N`)
+et doivent être **identiques aux deux extrémités** : sinon les Hello du voisin sont ignorés et
+l'adjacence tombe à l'expiration de l'intervalle Dead.
 
-| code | signification |
-|------|---------------|
-| `O` | route **intra-aire** |
-| `O IA` | route **inter-aire** (résumée par un ABR) |
-| `O E1` | route **externe** de type 1 (métrique = coût externe + coût interne) |
-| `O E2` | route **externe** de type 2 (métrique = coût externe seul, valeur par défaut, 20) |
+Le temps de **convergence** après une panne dépend de la façon dont elle est détectée :
 
-Un ABR peut **agréger** les préfixes d'une aire (`area N range PREFIXE`) : le backbone ne
-voit alors qu'un seul préfixe résumé.
+- **coupure franche** (l'interface passe à l'état *down*) : le routeur le sait immédiatement,
+  inonde un nouveau LSA et tous recalculent leurs routes — une à deux secondes ;
+- **panne silencieuse** (l'interface reste *up* mais le voisin ne répond plus : switch
+  intermédiaire, filtre, processus bloqué) : seule l'absence de Hello la révèle, au bout de
+  l'intervalle Dead.
 
-Une aire **stub** (`area N stub` sur *tous* ses routeurs) ne reçoit pas les routes externes :
-l'ABR y injecte à la place une route par défaut inter-aire. Une aire ***totally stubby***
-(`area N stub no-summary` sur l'ABR) ne reçoit même plus les routes inter-aires, seulement
-la route par défaut.
+Réduire les temporisateurs accélère la détection au prix de plus de trafic et de fausses
+alertes sur un lien chargé ; les réseaux qui visent une détection en moins d'une seconde
+utilisent BFD (*Bidirectional Forwarding Detection*).
 
-## 4. FRR et vtysh
+### @@sec:auth@@ Authentification
 
-Sur chaque routeur, les démons `zebra` (interface avec le noyau), `staticd` et `ospfd`
-sont lancés (`systemctl status frr`). On les configure avec le shell **`vtysh`**, dont la
-syntaxe est proche de celle des équipements Cisco :
+Sans authentification, n'importe quelle machine branchée sur un lien peut se faire passer pour
+un routeur et injecter des LSA. OSPFv2 prévoit trois modes : aucun (par défaut), mot de passe
+en clair, et **MD5** : chaque paquet porte un condensat calculé avec une clé partagée (les
+paquets sont signés, pas chiffrés). En mode interface :
 
 ```
-vtysh                              # ouvre le shell (prompt : r3#)
+ip ospf authentication message-digest          # mode MD5 sur cette interface
+ip ospf message-digest-key 1 md5 SECRET        # clé numéro 1 (16 caractères au plus)
+```
+
+Le numéro de clé et la clé doivent être les mêmes aux deux extrémités ; `area N authentication
+message-digest` (mode `router ospf`) active le mode MD5 sur toutes les interfaces d'une aire,
+les clés restant à définir par interface. Un paquet mal authentifié est ignoré : l'adjacence
+tombe à l'expiration de l'intervalle Dead et le journal de FRR signale l'erreur. MD5 est
+aujourd'hui considéré comme faible ; la RFC 5709 le remplace par HMAC-SHA.
+""")
+            + info_subtitle(tr("Aires et types de routes"), tag="areas")
+            + tr("""
+Pour limiter la taille des bases de données et le nombre de calculs SPF, un domaine OSPF
+est découpé en **aires**. L'aire **0** (`0.0.0.0`) est le **backbone** ; toute autre aire
+doit lui être directement rattachée par au moins un **ABR** (*Area Border Router*), qui
+possède des interfaces dans les deux aires et **résume** les réseaux d'une aire vers l'autre.
+Une interface appartient à une seule aire (`network PREFIXE area N` en mode `router ospf`, ou
+`ip ospf area N` en mode interface) ; les deux extrémités d'un lien sont dans la même aire.
+
+| LSA | nom | émis par | portée |
+|-----|-----|----------|--------|
+| type 1 | *Router* | chaque routeur : ses liens et leurs coûts | son aire |
+| type 2 | *Network* | le DR d'un réseau à diffusion : les routeurs du réseau | son aire |
+| type 3 | *Summary* | un ABR : un préfixe d'une autre aire | une aire |
+| type 4 | *ASBR Summary* | un ABR : où se trouve un ASBR d'une autre aire | une aire |
+| type 5 | *AS External* | un ASBR : un préfixe extérieur au domaine | tout le domaine, hors aires stub |
+
+Les routes calculées se classent en quatre types, par ordre de préférence :
+
+| type | `show ip ospf route` (FRR) | notation usuelle | signification |
+|------|----------------------------|------------------|---------------|
+| intra-aire | `N` | `O` | réseau de l'une des aires du routeur |
+| inter-aire | `N IA` | `O IA` | réseau d'une autre aire, résumé par un ABR |
+| externe de type 1 | `N E1` | `O E1` | métrique = coût externe + coût interne jusqu'à l'ASBR |
+| externe de type 2 | `N E2` | `O E2` | métrique = coût externe seul, quel que soit l'éloignement de l'ASBR |
+
+`show ip route` (la table de zebra) marque toutes ces routes d'un simple `O`, suivi de
+`[110/métrique]`.
+
+### @@sec:range@@ Agrégation
+
+Un ABR peut **agréger** les préfixes d'une aire : `area N range PREFIXE` (mode `router ospf`)
+remplace, dans ce qu'il annonce aux autres aires, tous les réseaux de l'aire N contenus dans
+PREFIXE par ce seul préfixe. Les tables des autres aires sont plus courtes et une instabilité
+à l'intérieur de l'aire N ne s'y propage plus. Le plan d'adressage doit s'y prêter : des
+réseaux contigus, contenus dans un préfixe qui ne couvre rien d'autre.
+
+### @@sec:external@@ Routes externes
+
+Un **ASBR** (*AS Boundary Router*) injecte dans OSPF des routes venues d'ailleurs (routes
+statiques, réseaux connectés hors OSPF, autre protocole) sous forme de LSA de type 5 :
+
+```
+router ospf
+ redistribute static                 # les routes statiques de FRR (« ip route … » dans vtysh)
+ redistribute connected              # les réseaux connectés qui ne sont pas dans OSPF
+ default-information originate       # annonce la route par défaut que possède le routeur
+```
+
+Les routes redistribuées sont de type **E2** avec une métrique de 20 par défaut
+(`redistribute static metric N metric-type 1` pour les changer). `redistribute static` ne
+concerne que les routes statiques déclarées dans FRR : une route ajoutée par `ip route add`
+est une route du noyau (`redistribute kernel`).
+
+### @@sec:stub@@ Aires stub
+
+Une aire **stub** (`area N stub` sur **tous** ses routeurs : c'est un champ des Hello, deux
+voisins en désaccord ne forment pas d'adjacence) ne reçoit pas les routes externes : l'ABR y
+injecte à la place une route par défaut inter-aire. Une aire ***totally stubby***
+(`area N stub no-summary`, sur l'ABR seulement) ne reçoit même plus les routes inter-aires :
+ses routeurs ne connaissent que leur aire et la route par défaut. Une aire stub ne peut pas
+contenir d'ASBR ni être le backbone.
+""")
+            + info_subtitle(tr("FRR et vtysh"), tag="frr")
+            + tr("""
+**FRRouting** (FRR) est une suite de démons de routage pour Linux : `zebra` (l'interface avec
+le noyau : il y installe les routes choisies), `staticd` (les routes statiques) et un démon par
+protocole, ici `ospfd` (`systemctl status frr` ; les démons lancés sont choisis dans
+`/etc/frr/daemons`). On les configure avec le shell **`vtysh`**, dont la syntaxe est proche de
+celle des équipements Cisco :
+
+```
+vtysh                              # ouvre le shell (prompt : routeur#)
 show running-config                # configuration courante
-configure terminal                 # passe en mode configuration (prompt : r3(config)#)
- router ospf                       #   processus OSPF (prompt : r3(config-router)#)
-  ospf router-id 3.3.3.3
-  network 10.20.30.0/24 area 0     #   active OSPF sur les interfaces de ce réseau, dans l'aire 0
-  passive-interface eth0           #   n'envoie pas de Hello sur eth0 (mais annonce le réseau)
+configure terminal                 # passe en mode configuration (prompt : routeur(config)#)
+ router ospf                       #   processus OSPF (prompt : routeur(config-router)#)
+  ospf router-id 192.0.2.1
+  network 198.51.100.0/24 area 0   #   active OSPF sur les interfaces de ce réseau, dans l'aire 0
+  passive-interface eth0           #   n'envoie pas de Hello sur eth0 (mais annonce son réseau)
   exit
- interface eth1                    #   paramètres d'une interface (prompt : r3(config-if)#)
+ interface eth1                    #   paramètres d'une interface (prompt : routeur(config-if)#)
   ip ospf cost 50
   exit
  end                               # retour au mode privilégié
@@ -339,37 +423,40 @@ write                              # sauvegarde dans /etc/frr/frr.conf
 
 On supprime une ligne de configuration en la préfixant par `no` (`no network … area 0`).
 Une commande peut aussi être passée directement depuis le shell Linux :
-`vtysh -c "show ip ospf neighbor"`.
+`vtysh -c "show ip ospf neighbor"`. Une interface **passive** est annoncée dans OSPF mais
+n'émet aucun Hello : c'est le réglage d'un réseau d'hôtes, où aucun routeur n'est attendu
+(`show running-config` l'écrit `ip ospf passive` sous l'interface).
 
 Commandes d'observation utiles :
 
 ```
 show ip ospf                       # router-id, aires, rôle ABR/ASBR
-show ip ospf interface [ethX]      # coût, état DR/BDR/DROther, timers, voisins
+show ip ospf interface [ethX]      # aire, coût, état DR/BDR/DROther, temporisateurs, voisins
 show ip ospf neighbor              # voisins et état de la relation
 show ip ospf database              # base de données des LSA
-show ip ospf route                 # table de routage calculée par OSPF (O, IA, E1, E2)
+show ip ospf route                 # table de routage calculée par OSPF (N, N IA, N E1, N E2)
 show ip route                      # table de routage complète (vue de zebra)
 clear ip ospf process              # redémarre le processus OSPF (mode privilégié)
 ```
 
 Documentation : [FRR — OSPFv2](https://docs.frrouting.org/en/latest/ospfd.html) et
 [vtysh](https://docs.frrouting.org/en/latest/vtysh.html).
-
-## 5. Diagnostic
-
+""")
+            + info_subtitle(tr("Diagnostic"), tag="diagnostic")
+            + tr("""
 - `ip route` sur un routeur ou un hôte : les routes apprises par OSPF portent `proto ospf` ;
-- `traceroute -n IP` depuis un hôte : chemin réellement suivi (les noms des interfaces
-  traversées sont dans `/etc/hosts`, `traceroute IP` sans `-n` les affiche) ;
-- `tcpdump -ni ethX ip proto 89` : observation des paquets OSPF (Hello toutes les 10 s) ;
+- `traceroute -n IP` depuis un hôte : chemin réellement suivi ;
+- `tcpdump -ni ethX ip proto 89` : observation des paquets OSPF (un Hello par intervalle) ;
 - `/var/log/frr/frr.log` : journal des démons FRR.
 
-## 6. Plan du TP
-
-Les parties sont à faire **dans l'ordre** : chaque partie s'appuie sur la configuration
-réalisée dans les précédentes. Les réponses aux questions et l'état des routeurs sont
-évalués automatiquement (bouton d'évaluation) ; les valeurs numériques demandées
-(coûts, clé, temporisateurs) sont propres à votre instance du TP.
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| aucun voisin sur un lien | OSPF pas activé sur l'interface (`network`), interface passive, aires différentes, temporisateurs ou authentification différents, aire stub d'un seul côté |
+| voisin bloqué en `Init` | il ne reçoit pas nos Hello (filtre, authentification) |
+| voisin en `2-Way` | normal entre deux `DROther` d'un réseau à diffusion |
+| voisin bloqué en `ExStart` / `Exchange` | MTU différentes aux deux extrémités |
+| voisins `Full` mais route absente | réseau non annoncé (`network`), agrégation, aire stub, route non redistribuée |
+| le DR n'est pas celui attendu | élection non préemptive : `clear ip ospf process` sur le DR et le BDR en place |
 """)
         )
 
@@ -604,18 +691,87 @@ class Grade(Grade0):
             entry = kroutes[r].get(str(prefix))
             return entry is not None and is_ospf_protocol(entry['protocol'])
 
+        # ---------------- texts shared by the questions ---------------------------
+        # addressing plan: one row per network, with the interfaces (and hosts) on it
+        members = {net: [] for net in list(NET_AREAS) + ['ext']}
+        for r, r_ifaces in ROUTER_IFACES.items():
+            for n, (net, attr) in enumerate(r_ifaces):
+                members[net].append(f"`{r}` eth{n} (`{getattr(d.ips, attr).ip}`)")
+        for h, (_r, r_attr) in HOST_ROUTER.items():
+            members[r_attr.split('_', 1)[1]].append(f"`{h}` (`{getattr(d.ips, h).ip}`)")
+        addressing = "\n".join(
+            f"| `{net}` | `{getattr(d.nets, net)}` | {NET_AREAS.get(net, '—')} | {', '.join(members[net])} |"
+            for net in members)
+
+        # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
-Les routeurs `r1` et `r2` sont déjà configurés (aire 0). Les routeurs `r3` à `r7` ont FRR
-démarré mais **aucune configuration OSPF**. Les parties sont à réaliser dans l'ordre.
+Lisez l'onglet **Informations** : il présente OSPF (état de liens, coûts, voisinage, DR et BDR,
+aires, routes externes, authentification, temporisateurs), la configuration de FRR avec `vtysh`
+et les commandes de diagnostic.
 
-Sauvegardez régulièrement la configuration des routeurs (`write` dans vtysh) : elle est
-conservée dans `/etc/frr/frr.conf`.
+**Le réseau.** Ce TP met en œuvre OSPF avec la suite logicielle **FRRouting** (FRR), installée
+et démarrée sur les sept routeurs `r1` à `r7`. Les machines `m1`, `m4`, `m5`, `m6` et `m7` sont
+de simples hôtes dont la route par défaut pointe vers leur routeur. Le domaine sera découpé en
+trois aires, repérées par les couleurs du schéma : l'aire 0 en bleu (`r1` à `r4`), l'aire 1 en
+vert (`r5`) et l'aire 2 en jaune (`r6` et `r7`) ; `r3` et `r4` seront à cheval sur deux aires.
 
-Rappel : pour chaque routeur que vous configurez, utilisez le router-id **`X.X.X.X`** pour
-`rX` (par exemple `3.3.3.3` pour `r3`), à définir **avant** les commandes `network`.
-"""),
+- **Au départ**, `r1` et `r2` sont déjà configurés (aire 0). Les routeurs `r3` à `r7` ont FRR
+  démarré mais **aucune configuration OSPF** : c'est vous qui les configurez.
+- Les fichiers `/etc/hosts` contiennent les noms de toutes les interfaces : `r4-eth2` désigne
+  l'adresse de l'interface `eth2` de `r4`, `r4` (tout court) celle de `eth0` ; `traceroute`
+  (sans `-n`) affiche ces noms.
+- L'adresse `{ext_host}` (nom `internet`) est un serveur situé « à l'extérieur », derrière `r1`
+  (réseau `ext`, qui ne fait pas partie du domaine OSPF).
+
+**Plan d'adressage.**
+
+| réseau | préfixe | aire | interfaces |
+|--------|---------|------|------------|
+{addressing}
+
+**Consignes.**
+
+- Les parties sont à faire **dans l'ordre** : chaque partie s'appuie sur la configuration
+  réalisée dans les précédentes, qui reste en place.
+- Pour chaque routeur que vous configurez, utilisez le router-id **`X.X.X.X`** pour `rX` (par
+  exemple `3.3.3.3` pour `r3`), à définir **avant** les commandes `network`.
+- Sauvegardez régulièrement la configuration des routeurs (`write` dans vtysh) : elle est
+  conservée dans `/etc/frr/frr.conf`.
+
+**Plan du TP.**
+
+1. **Découverte** d'OSPF sur `r1` et `r2`, déjà configurés ;
+2. **Aire 0** : configuration de `r3` et `r4`, chemins de coût égal ;
+3. **Coûts** : coût d'une interface, bande passante de référence, choix des chemins ;
+4. **DR et BDR** : élection sur le réseau `core` ;
+5. **Aire 2** (`r6`, `r7`) et **agrégation** de ses préfixes ;
+6. **Routes externes** : `r1` devient ASBR ;
+7. **Aire stub** : l'aire 1 (`r5`) ;
+8. **Authentification** MD5 d'un lien ;
+9. **Temporisateurs** et temps de convergence.
+
+**Évaluation.** Chaque évaluation lit vos réponses et l'état des routeurs (voisinages, tables
+de routage, configuration) et lance des `ping` entre les hôtes. Les valeurs numériques demandées
+(coûts, clé, temporisateurs) sont propres à votre instance du TP. Une adjacence met jusqu'à une
+minute à s'établir, l'élection d'un DR une minute et demie : attendez que les voisins soient
+`Full` avant de lancer une évaluation.
+""").format(ext_host=EXT_PUBLIC_HOST.ip, addressing=addressing)
+            + instructor(tr("""
+**Pour l'enseignant.** Valeurs de cette instance : coût imposé sur `l14` **{cost}** ; bande
+passante de référence **{ref} Mbit/s** (coût d'une interface à 10 Gbit/s : {auto_cost}) ; clé MD5
+`{key}` ; Hello / Dead sur `l24` : **{hello} s / {dead} s** ; préfixe agrégé de l'aire 2 :
+`{range}` ; router-id automatique de `r2` : `{rid_r2}`. Chaque question se termine par sa solution
+pour ces valeurs.
+
+L'état `final` (onglet *Appliquer une configuration*) applique toute la solution — configuration
+de `r3` à `r7`, modifications de `r1` et `r2`, puis `clear ip ospf process` sur `r1` et `r2` pour
+l'élection du DR — et remplit les formulaires. Attendez environ 90 s après l'avoir appliqué avant
+de lancer une évaluation : le temps que les adjacences soient de nouveau `Full`.
+""").format(cost=d.cost_l14, ref=d.ref_bandwidth, auto_cost=expected_auto_cost(d.ref_bandwidth, 10000),
+            key=d.md5_key, hello=d.hello_l24, dead=4 * d.hello_l24, range=d.nets.area2_range,
+            rid_r2=max(d.ips.r2_core.ip, d.ips.r2_l24.ip))),
         )
 
         # =====================================================================
@@ -638,7 +794,27 @@ pour l'instant.
 - adresse multicast de destination des paquets Hello (à observer avec `tcpdump`) :
   @@{mcast:>224.0.0.5|224.0.0.6|224.0.0.9|255.255.255.255}@@
   et numéro de protocole IP utilisé par OSPF : @@{proto:[0-9]+}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Rien à configurer : `vtysh -c "show ip ospf neighbor"` et
+`vtysh -c "show ip ospf interface eth1"` sur `r1`, `tcpdump -ni eth1 ip proto 89` pour les Hello.
+
+- router-id de `r2` : **`{rid_r2}`**, la plus grande adresse IP de ses interfaces au démarrage
+  de FRR (aucun `ospf router-id` dans sa configuration ; `r1` a `1.1.1.1`, configuré) ;
+- coût de `eth1` de `r1` : **10** (référence 100 000 Mbit/s ÷ 10 000 Mbit/s annoncés par
+  l'interface) ;
+- Hello **10** s, Dead **40** s ;
+- état **Full** : sur `core`, `r2` est DR (plus grand router-id) et `r1` BDR ;
+- Hello envoyés à **224.0.0.5** (tous les routeurs OSPF ; `224.0.0.6` est l'adresse du DR et du
+  BDR), protocole IP **89**.
+
+`m1` ne joint aucune autre machine `mX` : leurs routeurs n'annoncent encore rien, `r1` ne connaît
+que `net1`, `core`, `l14` et `l24`.
+
+Évaluation : `decouverte_router_id_r2` (1 point : la réponse est comparée au router-id lu sur
+`r2`), `decouverte_cout_defaut` (1), `decouverte_timers` (1), et, pour l'évaluation de
+l'enseignant seulement, `decouverte_etat_voisin` (1) et `decouverte_multicast_proto` (1).
+""").format(rid_r2=max(d.ips.r2_core.ip, d.ips.r2_l24.ip))),
             cheat_answers={"final": {
                 "rid_r2": str(max(d.ips.r2_core.ip, d.ips.r2_l24.ip)),
                 "cost": "10", "hello": "10", "dead": "40", "state": "Full",
@@ -690,7 +866,37 @@ Configurez OSPF dans l'aire 0 sur les routeurs `r3` et `r4` :
 
 Vérifiez que `r3` et `r4` ont bien des voisins en état `Full`, que `m1` et `m4` se joignent
 (`ping`, `traceroute`) et observez la table de routage de `r3` (`ip route`, `show ip ospf route`).
-""").format(core=d.nets.core, net4=d.nets.net4, l14=d.nets.l14, l24=d.nets.l24),
+""").format(core=d.nets.core, net4=d.nets.net4, l14=d.nets.l14, l24=d.nets.l24)
+            + instructor(tr("""
+**Solution.** Dans `vtysh`, après `configure terminal` (puis `end` et `write`) :
+
+```
+! r3
+router ospf
+ ospf router-id {rid_r3}
+ network {core} area 0
+!
+! r4
+router ospf
+ ospf router-id {rid_r4}
+ passive-interface eth0
+ network {net4} area 0
+ network {l14} area 0
+ network {l24} area 0
+```
+
+- `show ip ospf neighbor` sur `r3` : `r1` et `r2` en `Full` (le DR et le BDR de `core` ; `r3`,
+  arrivé après l'élection, est `DROther`) ; sur `r4` : `r1` par `eth1` et `r2` par `eth2`.
+- `show running-config` réécrit `passive-interface eth0` en `ip ospf passive` sous
+  `interface eth0` ; `show ip ospf interface eth0` affiche *No Hellos (Passive interface)*.
+- Le router-id est donné avant les `network` : défini après, il ne serait pris en compte
+  qu'après `clear ip ospf process`.
+
+Évaluation : `aire0_r3_voisins` (2 points : `r3` voit `r1` et `r2` en `Full`), `aire0_r4_voisins`
+(2 : `r4` voit `r1` par `eth1` et `r2` par `eth2`), `aire0_router_ids` (1), `aire0_r4_eth0_passive`
+(1 : `eth0` de `r4` est dans OSPF et passive), `aire0_pings_m1_m4` (2 : `ping` dans les deux sens).
+""").format(core=d.nets.core, net4=d.nets.net4, l14=d.nets.l14, l24=d.nets.l24,
+            rid_r3=ROUTER_IDS['r3'], rid_r4=ROUTER_IDS['r4'])),
         )
         q2 = self.question_form(
             section=self.section(1),
@@ -698,7 +904,15 @@ Vérifiez que `r3` et `r4` ont bien des voisins en état `Full`, que `m1` et `m4
             description=tr("""
 Sur `r3`, combien la route vers le réseau `net4` (`{net4}`) possède-t-elle de prochains sauts
 (*nexthop*) ? Expliquez-le à partir des coûts des chemins possibles : @@{{nexthops:[0-9]+}}@@
-""").format(net4=d.nets.net4),
+""").format(net4=d.nets.net4)
+            + instructor(tr("""
+**Solution.** **2** prochains sauts : `ip route show {net4}` sur `r3` affiche deux `nexthop`,
+`{r1_core}` (`r1`) et `{r2_core}` (`r2`). Les deux chemins ont le même coût, 30 : sortie de `r3`
+par `core` (10), puis `r1` → `l14` (10) ou `r2` → `l24` (10), puis `r4` → `net4` (10). À coût
+égal, OSPF installe tous les prochains sauts (ECMP).
+
+Évaluation : `aire0_ecmp_r3` (1 point, évaluation de l'enseignant seulement).
+""").format(net4=d.nets.net4, r1_core=ip['r1_core'], r2_core=ip['r2_core'])),
             cheat_answers={"final": {"nexthops": "2"}},
         )
         r3_full = full_with('r3', 'r1') and full_with('r3', 'r2')
@@ -752,14 +966,58 @@ Depuis `m4`, faites un `traceroute` vers `m1` : le trafic passe par le lien dire
    (`show ip ospf interface`) et vérifiez que le trafic `m1`–`m4` passe toujours par `r2`.
 3. Sur `r3`, déclarez que l'interface `eth0` est un lien à **1000 Mbit/s** (commande
    `bandwidth`, mode interface) et observez le coût calculé.
-""").format(cost=d.cost_l14, ref=d.ref_bandwidth),
+""").format(cost=d.cost_l14, ref=d.ref_bandwidth)
+            + instructor(tr("""
+**Solution.** Au départ `r4` joint `net1` par le lien direct `l14` : coût 20 (10 + 10), contre 30
+par `r2`.
+
+```
+! étape 1 — r1
+interface eth2
+ ip ospf cost {cost}
+! étape 1 — r4
+interface eth1
+ ip ospf cost {cost}
+!
+! étape 2 — r1, r2, r3 et r4
+router ospf
+ auto-cost reference-bandwidth {ref}
+!
+! étape 3 — r3
+interface eth0
+ bandwidth 1000
+```
+
+1. Le coût est celui de l'interface de **sortie** : celui de `eth1` de `r4` détourne le sens
+   `m4` → `m1`, celui de `eth2` de `r1` le sens retour. Le chemin direct coûte alors {cost} + 10,
+   contre 30 par `r2` : `ip route` montre `net1` par `{r2_l24}` sur `r4` et `net4` par
+   `{r2_core}` sur `r1`.
+2. Une interface à 10 Gbit/s passe du coût 10 au coût **{auto_cost}** ({ref} ÷ 10 000) ; `l14`
+   garde {cost} (un coût fixé l'emporte). Le trafic passe toujours par `r2` : 3 × {auto_cost}
+   contre {cost} + {auto_cost}. FRR rappelle que la référence doit être la même partout.
+3. `eth0` de `r3` prend le coût **{bw_cost}** ({ref} ÷ 1000) : `show ip ospf interface eth0`.
+
+Évaluation : `couts_l14_valeur` (1 point : coût {cost} lu aux deux extrémités),
+`couts_chemin_r4_vers_net1` et `couts_chemin_r1_vers_net4` (1 chacun : la route du noyau n'a que
+`r2` pour prochain saut), `couts_auto_cost_config` (2 : la référence dans la configuration des
+quatre routeurs ; 1 point si deux ou trois l'ont), `couts_auto_cost_effet` (1 : le coût de `eth0`
+de `r2` suit la nouvelle référence), `couts_bandwidth_r3` (1 : `bandwidth 1000` dans la
+configuration de `r3` et coût correspondant).
+""").format(cost=d.cost_l14, ref=d.ref_bandwidth, r2_l24=ip['r2_l24'], r2_core=ip['r2_core'],
+            auto_cost=expected_auto_cost(d.ref_bandwidth, 10000), bw_cost=expected_auto_cost(d.ref_bandwidth, 1000))),
         )
         q3 = self.question_form(
             section=self.section(1),
             title=tr("Vérification du chemin"),
             description=tr("""
 Après l'étape 1, par quel routeur passe le trafic de `m4` vers `m1` ? @@{via:>r1|r2|r3|r4}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Par **`r2`** : `traceroute m1` depuis `m4` affiche `r4`, `r2-eth1`, `r1-eth1` puis
+`m1` (chaque routeur répond avec l'adresse de l'interface par laquelle sa réponse repart vers `m4`).
+
+Évaluation : `couts_via_r2` (1 point, évaluation de l'enseignant seulement).
+""")),
             cheat_answers={"final": {"via": "r2"}},
         )
         cost_ok = (iface('r1', 2).get('cost') == d.cost_l14 and iface('r4', 1).get('cost') == d.cost_l14)
@@ -820,7 +1078,34 @@ Faites en sorte que **`r3` soit le DR** et **`r1` le BDR**, et que `r2` ne puiss
 être élu (priorités 100, 50 et 0). L'élection n'étant pas préemptive, il faudra relancer
 le processus OSPF (`clear ip ospf process`) sur les routeurs qui détiennent actuellement
 les rôles DR et BDR, puis patienter jusqu'à une minute et demie.
-""").format(core=d.nets.core),
+""").format(core=d.nets.core)
+            + instructor(tr("""
+**Solution.** Au départ `r2` est DR et `r1` BDR : à priorité égale (1), le plus grand router-id
+l'emporte, et celui de `r2` (`{rid_r2}`, sa plus grande adresse) dépasse `1.1.1.1`. `r3`
+(`3.3.3.3`), arrivé après l'élection, reste `DROther` : l'élection n'est pas préemptive.
+
+```
+! r3
+interface eth0
+ ip ospf priority 100
+! r1
+interface eth1
+ ip ospf priority 50
+! r2
+interface eth0
+ ip ospf priority 0
+```
+
+puis, sur `r1` et sur `r2` (mode privilégié de `vtysh`) : `clear ip ospf process`. Leurs
+adjacences tombent, `r3` se retrouve seul et devient DR ; `r1` revient avec la priorité 50 et
+devient BDR ; `r2` (priorité 0) ne peut plus être élu. Vérification sur `r2` :
+`show ip ospf neighbor` affiche `r3` en `Full/DR` et `r1` en `Full/Backup`, et
+`show ip ospf interface eth0` l'état `DROther`.
+
+Évaluation : `dr_r3` (2 points : le DR de `core`, vu de `r2`, est le router-id de `r3`), `bdr_r1`
+(1 : le BDR est `r1`, compté seulement si `r3` est DR — `r1` est déjà BDR au départ), `dr_priorites`
+(1 : priorités 100 / 50 / 0 et `r2` en `DROther`).
+""").format(rid_r2=max(d.ips.r2_core.ip, d.ips.r2_l24.ip))),
         )
         core_view = iface('r2', 0)  # r2 stays up during the re-election of r1/r3
         dr_ok = bool(rid['r3']) and core_view.get('dr_id') == rid['r3']
@@ -866,12 +1151,59 @@ et sur `r7` (routes `IA`).
 préfixe qui les contient tous et configurez sur l'ABR (`area 2 range PREFIXE`) l'agrégation
 de l'aire 2 vers le backbone. Vérifiez sur `r1` que les quatre routes ont été remplacées par
 une seule.
-""").format(net6=d.nets.net6, net7=d.nets.net7, l46=d.nets.l46, l67=d.nets.l67, ref=d.ref_bandwidth),
+""").format(net6=d.nets.net6, net7=d.nets.net7, l46=d.nets.l46, l67=d.nets.l67, ref=d.ref_bandwidth)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r6
+router ospf
+ ospf router-id {rid_r6}
+ auto-cost reference-bandwidth {ref}
+ passive-interface eth0
+ network {net6} area 2
+ network {l46} area 2
+ network {l67} area 2
+!
+! r7
+router ospf
+ ospf router-id {rid_r7}
+ auto-cost reference-bandwidth {ref}
+ passive-interface eth0
+ network {net7} area 2
+ network {l67} area 2
+!
+! r4
+router ospf
+ network {l46} area 2
+ area 2 range {range}
+```
+
+- `show ip ospf` sur `r4` : *This router is an ABR* ; `show ip ospf route` montre sur `r1` les
+  réseaux de l'aire 2 en `N IA` et sur `r7` ceux de l'aire 0 en `N IA`.
+- Agrégation : `{net6}`, `{net7}`, `{l46}` et `{l67}` tiennent tous dans **`{range}`**, le plus
+  petit préfixe qui les contient (voir la question suivante). Après `area 2 range`, `r1` n'a plus
+  qu'une route `{range}` au lieu de quatre (`ip route`, `show ip ospf route`).
+
+Évaluation : `aire2_abr_r4` (1 point : `eth3` de `r4` dans l'aire 2 et `r4` ABR), `aire2_voisins`
+(1 : `r6` voit `r4` par `eth1` et `r7` par `eth2` en `Full`), `aire2_router_ids` (1), `aire2_pings`
+(1 : `m1` → `m6`, `m4` → `m7`, `m7` → `m1`), `aire2_range_r1` (1 : `r1` a une route OSPF vers
+`{range}`), `aire2_range_pas_de_detail` (1 : et plus aucune des quatre routes détaillées).
+""").format(net6=d.nets.net6, net7=d.nets.net7, l46=d.nets.l46, l67=d.nets.l67, ref=d.ref_bandwidth,
+            range=d.nets.area2_range, rid_r6=ROUTER_IDS['r6'], rid_r7=ROUTER_IDS['r7'])),
         )
         q5 = self.question_form(
             section=self.section(1),
             title=tr("Préfixe agrégé de l'aire 2"),
-            description=tr("Préfixe utilisé dans `area 2 range` : @@{range:[0-9./]+}@@"),
+            description=tr("Préfixe utilisé dans `area 2 range` : @@{range:[0-9./]+}@@")
+            + instructor(tr("""
+
+**Solution.** **`{range}`**. Les deux réseaux d'hôtes `{net6}` et `{net7}` sont deux /24
+consécutifs et les deux liens `{l46}` et `{l67}` sont des /30 du /24 suivant : il faut un /22
+pour les couvrir tous (un /23 ne contient que les deux premiers /24).
+
+Évaluation : `aire2_prefixe_agrege` (1 point : la réponse désigne le réseau `{range}`).
+""").format(range=d.nets.area2_range, net6=d.nets.net6, net7=d.nets.net7, l46=d.nets.l46, l67=d.nets.l67)),
             cheat_answers={"final": {"range": str(d.nets.area2_range)}},
         )
         abr_r4 = bool(info['r4'].get('abr')) and iface('r4', 3).get('area') == '0.0.0.2'
@@ -931,15 +1263,47 @@ Sur `r1` (mode `router ospf`) :
 
 Observez sur `r7` la table `show ip ospf route` et `show ip route`, puis vérifiez que
 `m7` joint `internet`.
-""").format(ext=EXT_PUBLIC, ext_host=EXT_PUBLIC_HOST.ip),
+""").format(ext=EXT_PUBLIC, ext_host=EXT_PUBLIC_HOST.ip)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r1
+router ospf
+ redistribute static
+ default-information originate
+```
+
+- `show ip ospf` sur `r1` : *This router is an ASBR*. Les deux routes statiques de `r1`
+  (`ip route {ext} {isp}` et `ip route 0.0.0.0/0 {isp}` dans sa configuration) deviennent des
+  LSA de type 5, inondés dans tout le domaine.
+- Sur `r7`, `show ip ospf route` les range dans la table *external* : `N E2 {ext}` et
+  `N E2 0.0.0.0/0` ; `show ip route` les marque `O` et `ip route` `proto ospf`.
+- `ping internet` depuis `m7` passe : `r1` route `{ext}` vers l'extérieur, qui a une route
+  retour par `r1`.
+
+Évaluation : `externe_asbr_r1` (1 point), `externe_routes_r7` (2 : `r7` a `{ext}` et la route par
+défaut en E2, installées dans le noyau par OSPF), `externe_ping_internet` (1 : `m7` joint
+`{ext_host}`).
+""").format(ext=EXT_PUBLIC, ext_host=EXT_PUBLIC_HOST.ip, isp=d.ips.isp_ext.ip)),
         )
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Type des routes externes"),
             description=tr("""
-Sur `r7`, avec quel code la route vers `{ext}` apparaît-elle dans `show ip route` ?
+Sur `r7`, de quel type est la route vers `{ext}` (`show ip ospf route` ; le tableau des types de
+routes est dans l'onglet **Informations**, section @@ref:areas@@) ?
 @@{{type:>O|O IA|O E1|O E2}}@@  et quelle est sa métrique ? @@{{metric:[0-9]+}}@@
-""").format(ext=EXT_PUBLIC),
+""").format(ext=EXT_PUBLIC)
+            + instructor(tr("""
+**Solution.** **O E2**, métrique **20** : `show ip ospf route` sur `r7` affiche
+`N E2 {ext} [coût/20]` (le coût jusqu'à l'ASBR, puis la métrique externe) et `show ip route`
+`O>* {ext} [110/20]`. Une route redistribuée est de type 2 avec la métrique 20 par défaut : seule
+la métrique externe compte, elle est donc la même sur tous les routeurs du domaine, quel que soit
+leur éloignement de `r1`.
+
+Évaluation : `externe_type_route` (1 point, évaluation de l'enseignant seulement).
+""").format(ext=EXT_PUBLIC)),
             cheat_answers={"final": {"type": "O E2", "metric": "20"}},
         )
         self.add_grade_element(
@@ -986,7 +1350,46 @@ avec celle de `r7`.
    type 5 dans `show ip ospf database`. `m5` doit toujours joindre `internet`.
 2. *(bonus)* Transformez l'aire 1 en aire ***totally stubby*** (`area 1 stub no-summary` sur
    l'ABR uniquement) et observez la table de routage de `r5`.
-""").format(net5=d.nets.net5, l35=d.nets.l35, ref=d.ref_bandwidth),
+""").format(net5=d.nets.net5, l35=d.nets.l35, ref=d.ref_bandwidth)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r5
+router ospf
+ ospf router-id {rid_r5}
+ auto-cost reference-bandwidth {ref}
+ passive-interface eth0
+ network {net5} area 1
+ network {l35} area 1
+ area 1 stub
+!
+! r3
+router ospf
+ network {l35} area 1
+ area 1 stub no-summary
+```
+
+(`area 1 stub` sur `r3` pour l'étape 1, `area 1 stub no-summary` pour le bonus.)
+
+- Avant `stub`, `r5` voit comme `r7` les réseaux des autres aires en `N IA` et les deux routes
+  externes en `N E2`.
+- `area 1 stub` d'un seul côté : le drapeau *stub* des Hello diffère, chaque routeur ignore les
+  Hello de l'autre et l'adjacence tombe (au plus tard à l'expiration de l'intervalle Dead,
+  40 s) ; elle revient quand les deux sont configurés.
+- Aire stub : les `N E2` disparaissent de `r5`, remplacées par une route par défaut inter-aire
+  (`N IA 0.0.0.0/0`, par `{r3_l35}`) ; `show ip ospf database` n'a plus de section *AS External
+  Link States*. `m5` joint toujours `internet`, par cette route par défaut.
+- *Totally stubby* : il ne reste sur `r5` que ses deux réseaux et la route par défaut.
+
+Évaluation : `stub_r5_voisin` (1 point : `r5`, router-id `{rid_r5}`, voit `r3` en `Full` et `r3`
+est ABR), `stub_ping_m5` (1 : `m5` joint `m1`), `stub_configuration` (1 : aire 1 stub sur `r3` et
+`r5`), `stub_route_par_defaut` (1 : route par défaut inter-aire de `r5` par `r3`),
+`stub_pas_de_route_externe` (1 : `{ext}` connu de `r3` mais absent de `r5`, aucun LSA de type 5
+sur `r5` ; suppose la partie 6), `stub_no_summary` (1, le bonus : `no-summary` sur `r3`, plus de
+route vers `net1` sur `r5`, `m5` joint `internet`).
+""").format(net5=d.nets.net5, l35=d.nets.l35, ref=d.ref_bandwidth, rid_r5=ROUTER_IDS['r5'],
+            r3_l35=ip['r3_l35'], ext=EXT_PUBLIC)),
         )
         stub_r5_ok = full_with('r5', 'r3', interface='eth1') and rid['r5'] == ROUTER_IDS['r5'] \
                      and bool(info['r3'].get('abr'))
@@ -1048,7 +1451,33 @@ ip ospf message-digest-key 1 md5 {key}
 Configurez d'abord une seule extrémité et observez `show ip ospf neighbor` (et le journal
 `/var/log/frr/frr.log`) pendant une minute, puis configurez l'autre extrémité et vérifiez
 que l'adjacence est de nouveau `Full`.
-""").format(key=d.md5_key),
+""").format(key=d.md5_key)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r1
+interface eth2
+ ip ospf authentication message-digest
+ ip ospf message-digest-key 1 md5 {key}
+! r4
+interface eth1
+ ip ospf authentication message-digest
+ ip ospf message-digest-key 1 md5 {key}
+```
+
+- Une seule extrémité configurée : chaque routeur rejette les paquets de l'autre (type
+  d'authentification différent, signalé dans `/var/log/frr/frr.log`) ; le voisin disparaît de
+  `show ip ospf neighbor` à l'expiration de l'intervalle Dead (40 s). Le trafic `m1`–`m4` n'est
+  pas touché : il passe par `r2` depuis la partie 3.
+- Les deux extrémités configurées : l'adjacence remonte jusqu'à `Full` ;
+  `show ip ospf interface eth1` sur `r4` affiche *Cryptographic authentication enabled* et
+  *Algorithm:MD5*.
+
+Évaluation : `auth_configuration` (2 points, 1 par extrémité : mode `message-digest` sur
+l'interface, ou sur toute l'aire 0, et clé numéro 1 égale à `{key}`), `auth_adjacence` (1 :
+l'adjacence `r1`–`r4` est `Full` et l'une des extrémités au moins est configurée).
+""").format(key=d.md5_key)),
         )
 
         def md5_ok(r: str, n: int) -> bool:
@@ -1085,10 +1514,43 @@ Mesurez ensuite le temps de convergence en lançant `ping m1` depuis `m4` (le tr
 par `r2`) et en provoquant deux pannes différentes du lien `l24` sur `r4` :
 
 - coupure franche : `ip link set eth2 down` (puis `ip link set eth2 up` pour rétablir) ;
-- panne silencieuse : blocage des paquets OSPF entrants sur `eth2` avec
-  `nft add table inet f; nft add chain inet f i '{{ type filter hook input priority 0; }}'; nft add rule inet f i iifname eth2 ip protocol 89 drop`
-  (puis `nft delete table inet f` pour rétablir).
-""").format(hello=d.hello_l24, dead=4 * d.hello_l24),
+- panne silencieuse : l'interface reste active mais plus rien ne sort de `r4` par `eth2` :
+  `tc qdisc add dev eth2 root netem loss 100%` (puis `tc qdisc del dev eth2 root` pour
+  rétablir). Observez `show ip ospf neighbor` sur `r2` et sur `r4` pendant la panne.
+""").format(hello=d.hello_l24, dead=4 * d.hello_l24)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r2
+interface eth1
+ ip ospf hello-interval {hello}
+ ip ospf dead-interval {dead}
+! r4
+interface eth2
+ ip ospf hello-interval {hello}
+ ip ospf dead-interval {dead}
+```
+
+- Une seule extrémité configurée : les intervalles annoncés dans les Hello diffèrent, chaque
+  routeur ignore ceux de l'autre et l'adjacence tombe à l'expiration de l'intervalle Dead ; le
+  trafic `m1`–`m4` repasse alors par `l14` malgré son coût. Les deux extrémités configurées :
+  adjacence `Full`, `show ip ospf interface eth2` sur `r4` affiche `Hello {hello}s, Dead {dead}s`.
+- Coupure franche (`ip link set eth2 down` sur `r4`) : `r4` le sait aussitôt, inonde un nouveau
+  LSA par `l14` et tous les routeurs recalculent : le `ping` ne perd rien, ou un écho tout au
+  plus, et passe désormais par `l14`.
+- Panne silencieuse (`netem loss 100%` sur `eth2` de `r4`) : l'interface reste active et `r4`
+  continue d'envoyer par `eth2` le trafic de `m4`, qui est perdu. Rien ne signale la panne : `r2`,
+  qui ne reçoit plus les Hello de `r4`, ne le déclare mort qu'à l'expiration de l'intervalle Dead
+  (`show ip ospf neighbor` sur `r2` : le *Dead Time* de `r4` descend jusqu'à zéro). Ses propres
+  Hello, qui arrivent toujours à `r4`, ne citent alors plus `r4`, qui abandonne l'adjacence à son
+  tour et recalcule ses routes : le `ping` reprend par `l14` au bout d'environ {dead} s. Une fois
+  le `netem` retiré, l'adjacence se reforme en quelques secondes.
+
+Évaluation : `timers_valeurs` (1 point : Hello {hello} s et Dead {dead} s lus aux deux
+extrémités de `l24`), `timers_adjacence` (1 : l'adjacence `r2`–`r4` est `Full` et l'une des
+extrémités au moins a les nouveaux temporisateurs).
+""").format(hello=d.hello_l24, dead=4 * d.hello_l24)),
         )
         q9 = self.question_form(
             section=self.section(1),
@@ -1099,7 +1561,15 @@ Temps avant que `m4` ne joigne de nouveau `m1` après la coupure franche :
 
 et après la panne silencieuse :
 @@{filtre:>moins de 5 s|environ l'intervalle Hello|environ l'intervalle Dead|jamais}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Coupure franche : **moins de 5 s** (la panne est connue immédiatement). Panne
+silencieuse : **environ l'intervalle Dead** ({dead} s ici) : rien ne signale la panne, il faut que
+`r2` reste {dead} s sans Hello de `r4` pour que l'adjacence tombe et que les routes changent.
+
+Évaluation : `convergence_coupure` et `convergence_panne_silencieuse` (1 point chacune,
+évaluation de l'enseignant seulement).
+""").format(dead=4 * d.hello_l24)),
             cheat_answers={"final": {"link_down": "moins de 5 s", "filtre": "environ l'intervalle Dead"}},
         )
         h, dd = d.hello_l24, 4 * d.hello_l24
@@ -1124,3 +1594,6 @@ et après la panne silencieuse :
             grade=int(_norm(q9.get("filtre")) == "environ l'intervalle dead"), scope=params.EXO_EVAL_SCOPE,
             description=tr("convergence après une panne silencieuse"),
         )
+
+
+_TRANSLATIONS = {}

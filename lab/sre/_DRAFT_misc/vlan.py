@@ -343,7 +343,7 @@ nft list ruleset
 Dans ce TP, chaque machine sert une page web (`curl http://ext1/`, `curl http://ext1:8080/`)
 qui affiche l'adresse du client **telle que le serveur la voit** (`CLIENT_IP=`) : derrière un
 NAT, c'est l'adresse du routeur qui apparaît, ce qui permet de savoir par quel routeur une
-requête est sortie. La page donne aussi le `TTL=` du paquet reçu (partie 9).
+requête est sortie. La page donne aussi le `TTL=` du paquet reçu (section @@ref:ttl@@).
 """)
             + info_subtitle(tr("Le switch administrable et sa console"), tag="switch")
             + tr("""
@@ -455,24 +455,6 @@ d'Internet. (nftables sait seulement fixer une valeur : `ip ttl set 64`.)
 | brouter | `nft add table bridge brouter`, `nft add rule bridge brouter prerouting ...`, `nft list ruleset` |
 | TTL | `iptables -t mangle -A PREROUTING -s X -j TTL --ttl-inc 1`, `sysctl -w net.ipv4.ip_default_ttl=90` |
 | console du switch | onglet *Réseaux* → *Connecter* : `port/print`, `port/setvlan <port> <vlan>`, `vlan/print` |
-""")
-            + info_subtitle(tr("Plan du TP"), tag="plan")
-            + tr("""
-
-1. **Vérification** du réseau `trunk` (b1, b2, router) ;
-2. **VLAN 111 et 222** sur `eth0` de b1 et b2, capture sur `eth0` et `eth0.111` ;
-3. **Pont `breven`** (eth2 + eth0.222) : m2 joint m4 et m6 ;
-4. **Pont `brodd`** (eth1 + eth0.111) : m1 joint m3 et m5 ;
-5. **Routeur « on a stick »** : `router` relie les deux VLAN ;
-6. **NAT source** sur `router` : tout le monde joint ext1 et ext2 ;
-7. **Nouvelle machine `m7`** sur un port libre du switch `trunk` ;
-8. **Brouter** sur b2 : le trafic de m3 (puis certains flux) sort par `router2` ;
-9. **TTL** : effet du brouter, correction, TTL par défaut.
-
-Les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
-en place. Les adresses sont celles de votre instance (onglet *Questions*, première question).
-Toute la configuration de ce TP est volatile (`ip`, `nft`, `sysctl -w`) : elle ne survit pas à
-un redémarrage d'une machine.
 """)
         )
 
@@ -739,10 +721,24 @@ paquet reçu). Les captures se font avec `tcpdump` (`-e` pour voir les étiquett
 `tshark` ou `wireshark`. La console du switch `trunk` est dans l'onglet **Réseaux** (bouton
 *Connecter*).
 
+**Plan du TP.**
+
+1. **Vérification** du réseau `trunk` (b1, b2, router) ;
+2. **VLAN {vlan_odd} et {vlan_even}** sur `eth0` de b1 et b2, capture sur `eth0` et `eth0.{vlan_odd}` ;
+3. **Pont `breven`** (eth2 + eth0.{vlan_even}) : m2 joint m4 et m6 ;
+4. **Pont `brodd`** (eth1 + eth0.{vlan_odd}) : m1 joint m3 et m5 ;
+5. **Routeur « on a stick »** : `router` relie les deux VLAN ;
+6. **NAT source** sur `router` : tout le monde joint ext1 et ext2 ;
+7. **Nouvelle machine `m7`** sur un port libre du switch `trunk` ;
+8. **Brouter** sur b2 : le trafic de m3 (puis certains flux) sort par `router2` ;
+9. **TTL** : effet du brouter, correction, TTL par défaut.
+
 Règles valables pour tout le TP :
 
 - les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
   en place (l'évaluation vérifie l'état final de tout) ;
+- toute la configuration de ce TP est volatile (`ip`, `nft`, `sysctl -w`) : elle ne survit pas au
+  redémarrage d'une machine ;
 - les noms des ponts sont imposés : **`brodd`** (VLAN {vlan_odd}, machines impaires) et
   **`breven`** (VLAN {vlan_even}, machines paires) ; les sous-interfaces s'appellent
   `eth0.{vlan_odd}`, `eth0.{vlan_even}` (sur `b1`, `b2`) et `eth1.{vlan_odd}`, `eth1.{vlan_even}` (sur les routeurs) ;

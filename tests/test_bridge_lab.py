@@ -574,15 +574,16 @@ def test_rule_by_ip_is_accepted(lab, data, tmp_pub_dir):
 def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     grade, ns = _simulate(lab, data, tmp_pub_dir, _synthetic, instructor_mode=True)
     info = _text(ns.informations)
-    assert info.count('\n## ') == 8 and 'ageing_time 3000' in info and '01:80:c2:00:00:00' in info
+    assert info.count('\n## ') == 7 and 'ageing_time 3000' in info and '01:80:c2:00:00:00' in info
     assert str(data.nets.lan) not in info     # instance data belongs to the first question
+    assert 'Plan du TP' not in info           # and so does the summary of the questions
     # the course is numbered by the lib/informations.py markers, resolved by save_lab_info()
     from SRE.informations import resolve_informations, resolve_text
     resolved, numbering = resolve_informations(ns.informations)
     course = _text(resolved)
-    assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 9)]
+    assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 8)]
     assert [s.tag for s in numbering.sections('fr')] == ['recap', 'transparent-bridge', 'linux-bridges', 'observing',
-                                                         'filtering', 'stp', 'cheatsheet', 'plan']
+                                                         'filtering', 'stp', 'cheatsheet']
     assert '## <a id="linux-bridges"></a>3. Les ponts sous Linux' in course and '- [6. Boucles, redondance et STP](#stp)' in course
     assert '@@' not in course
     questions = list(grade.get_questions_ordered())

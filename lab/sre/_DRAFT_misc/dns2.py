@@ -26,7 +26,7 @@ from datetime import datetime
 from ipaddress import IPv4Network
 from typing import Dict
 
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from dns import (
     dig_cmd, dig_query, dnskey_rdata_from_public, ds_covers_keys, ds_rdata, ecdsa_p256_keypair, fqdn,
@@ -236,68 +236,12 @@ class NetScheme(NetScheme0):
         self.net_config: Dict[str, NetConfigEntry] = get_net_config_from_topology(net_scheme=self)
         self.reverse_zone = reverse_zone_name(d.nets.net1)
         self.reverse_file = f"{ZONE_DIR}/db.{self.reverse_zone}"
-        ip = {m: _ip(getattr(d.ips, m)) for m in ('m1', 'resolver', 'ns1', 'root', 'tld', 'ns2', 'm2')}
-        ip['r1_net1'], ip['r1_net2'] = _ip(d.ips.r1_net1), _ip(d.ips.r1_net2)
 
-        machines = no_tr(f"""
-| machine | réseau | adresse | rôle |
-|---------|--------|---------|------|
-| `m1` | net1 | `{ip['m1']}` | poste de travail : `dig`, `kdig`, `delv`, `nsupdate`, `stubby`, **`firefox`** (affiché sur votre écran) |
-| `resolver` | net1 | `{ip['resolver']}` | résolveur récursif du site (**unbound**), DoT/DoH `{RESOLVER_NAME}` |
-| `ns1` | net1 | `{ip['ns1']}` | serveur autoritatif primaire de `{DOMAIN}` (**bind9**) |
-| `r1` | net1 / net2 | `{ip['r1_net1']}` / `{ip['r1_net2']}` | routeur du site vers « l'Internet » |
-| `root` | net2 | `{ip['root']}` | serveur racine privé `{ROOT_NS}.` : zones `.`, `arpa.`, `in-addr.arpa.` (pas de terminal) |
-| `tld` | net2 | `{ip['tld']}` | le registre `{TLD_NS}.` : zone `{TLD}.` (dynamique, signée), `{PARTNER}` (signée), `{BOGUS}` (pas de terminal) |
-| `ns2` | net2 | `{ip['ns2']}` | serveur secondaire de `{DOMAIN}`, « hébergé chez un prestataire » |
-| `m2` | net2 | `{ip['m2']}` | client extérieur au site |
-""")
-        values = no_tr(f"""
-| paramètre | valeur pour **votre** instance |
-|-----------|--------------------------------|
-| réseau du site `net1` / zone inverse | `{d.nets.net1}` / `{self.reverse_zone}` |
-| `www.{DOMAIN}` (adresse publique) | `{d.www_ext}` |
-| `mail.{DOMAIN}` | `{d.mail_ip}` |
-| `TXT` de `{DOMAIN}` | `"{d.txt_secret}"` |
-| `dns.{DOMAIN}` (le résolveur) | `{ip['resolver']}` |
-| hôte à ajouter par `nsupdate` (partie 5) | `{d.host_name}.{DOMAIN}` → `{_ip(d.ips.host)}` |
-| `www.{DOMAIN}` vue interne (partie 8) | `{_ip(d.ips.www_int)}` |
-| clé TSIG du registre (`nsupdate` vers `tld`) | `{KEY_REGISTRY}` : `{d.registry_secret}` |
-| clé TSIG des transferts `ns1` → `ns2` | `{KEY_TRANSFER}` : `{d.transfer_secret}` |
-| clé TSIG des mises à jour dynamiques | `{KEY_DDNS}` : `{d.ddns_secret}` |
-| CA du TP (certificat DoT/DoH) | `{CA_CERT}` et `{CA_KEY}` sur `resolver` ; `/root/ca.tp.pem` et le magasin système sur `m1` |
-| ancre de confiance de la racine | `{ANCHOR_HOME}` (format unbound) et `{ANCHOR_BIND}` (format `delv -a`) sur `resolver` et `m1`, et dans le dossier partagé |
-| nom servi par l'autre organisation | `www.{PARTNER}` → `{d.partner_www}`, `pub.{PARTNER}` → `{d.partner_pub}` |
-""")
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("\n**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Rappels : résolveur, serveur autoritatif, dig et fichier de zone"), tag="basics")
             + tr("""
-Ce TP prolonge **DNS 1** (`dig`, un `unbound` qui transfère, une première zone `bind9`) et le TP
-TLS (certificats signés par une autorité). Il se déroule dans un **Internet miniature fermé** : une
-**racine privée** `.` et le TLD `tp.` remplacent le vrai DNS, ce qui permet de tout voir — la
-délégation, les transferts, les signatures DNSSEC — sans dépendre de l'extérieur.
-
-### 0. La maquette
-
-Le site `example.tp` (réseau `net1`) est relié par le routeur `r1` à « l'Internet » (`net2`) où se
-trouvent la racine, le registre du TLD `tp`, le secondaire hébergé `ns2` et un client extérieur.
-""")
-            + machines
-            + tr("""
-Rien n'est dans `/etc/hosts` à part les noms des machines : **toute résolution passe par le DNS**
-que vous construisez. Au départ, `resolver`, `ns1` et `ns2` n'ont aucun service DNS actif ;
-`/etc/resolv.conf` de `m1`, `ns1`, `ns2` et `m2` désigne déjà `resolver`. Les valeurs ci-dessous
-sont propres à votre instance et doivent être utilisées telles quelles.
-""")
-            + values
-            + tr("""
-**Évaluation.** Deux sondes cachées, `h1` dans `net1` et `h2` dans `net2`, interrogent vos serveurs
-(`dig`, `kdig`, `delv`, `nsupdate` avec les clés TSIG du tableau) et lisent la configuration de
-`resolver`, `ns1`, `ns2` et `m1` aux emplacements imposés : zones dans `{zone_dir}/`, clés et zones
-dans `{named_local}`, configuration du résolveur dans `{unbound_conf}`, certificat
-`{dns_cert}`, `{stubby_conf}`. La configuration d'une partie terminée **reste en place**.
-
-### 1. Rappels de DNS 1
-
 - Un **résolveur récursif** (unbound) répond à ses clients en interrogeant lui-même, de manière
   **itérative**, la racine, puis le TLD, puis le serveur autoritatif ; il garde les réponses en
   **cache** pendant leur **TTL**. Un **serveur autoritatif** (bind9, `named`) détient une **zone**
@@ -309,134 +253,186 @@ dans `{named_local}`, configuration du résolveur dans `{unbound_conf}`, certifi
   (résolution inverse), `-y hmac-sha256:nom:secret` (requête signée TSIG, pour un transfert).
 - Fichier de zone : `$TTL`, le `SOA` (serveur primaire, adresse de l'administrateur, **serial**,
   refresh, retry, expire, TTL négatif), les `NS`, puis les enregistrements ; un nom sans point
-  final est **relatif à la zone** (`www` = `www.example.tp.`, mais `mail.example.tp` sans point =
-  `mail.example.tp.example.tp.` — l'erreur classique).
-
-### 2. La racine privée du TP
-
+  final est **relatif à la zone** (`www` = `www.example.org.`, mais `mail.example.org` sans point =
+  `mail.example.org.example.org.` — l'erreur classique).
+""")
+            + info_subtitle(tr("Racine, root hints et racine privée"), tag="root")
+            + tr("""
 Un résolveur commence toujours par les **serveurs racine**, dont les adresses sont dans son fichier
-de **root hints** (chez unbound : `root-hints:`). Ici le seul serveur racine est `{root_ns}.`
-(`root`), qui délègue `tp.` au registre `{tld_ns}.` (`tld`) avec son enregistrement de colle
-(*glue*), et `in-addr.arpa.` pour la résolution inverse. Conséquences :
+de **root hints** (chez unbound : `root-hints:`) : les `NS` de la zone `.` et leurs adresses. La
+racine délègue chaque TLD aux serveurs de son registre, avec leurs enregistrements de colle
+(*glue*), et `in-addr.arpa.` pour la résolution inverse.
 
-- il faut **remplacer** les root hints par défaut (ceux de la vraie racine, injoignable ici) par
-  un fichier de deux lignes désignant `{root_ns}.` ;
+Un réseau fermé (une maquette, un réseau isolé d'Internet) peut avoir sa **propre racine** : un
+serveur autoritatif pour la zone `.`, qui délègue les TLD dont ce réseau a besoin. Conséquences
+pour un résolveur de ce réseau :
+
+- il faut **remplacer** les root hints par défaut (ceux de la vraie racine, injoignable) par un
+  fichier de deux lignes désignant le serveur racine privé : le `NS` de `.` et le `A` de ce
+  serveur, avec un grand TTL ;
 - l'**ancre de confiance DNSSEC** de la vraie racine (clé IANA, fichier
   `root-auto-trust-anchor-file.conf` de Debian, mis à jour par `unbound-anchor` au démarrage du
-  service) **ne vaut rien ici** : elle a été retirée de `resolver` par le TP. La clé publique de
-  notre racine est fournie « hors bande », dans `{anchor_home}` (partie 6) ;
+  service) **ne vaut rien** pour une racine privée : on la retire, et la clé publique de la racine
+  privée, transmise « hors bande », la remplace (section @@ref:validation@@) ;
 - `dig +trace` fonctionne : il demande au résolveur les `NS` de `.`, puis interroge lui-même la
   racine, le TLD et le serveur de la zone (trois sauts).
 
-### 3. Le résolveur unbound
+Root hints d'une racine privée dont le seul serveur s'appelle `a.root.` :
 
-Debian lit `/etc/unbound/unbound.conf`, qui inclut `/etc/unbound/unbound.conf.d/*.conf` : mettez
-votre configuration dans `{unbound_conf}`. Options de la clause `server:` :
+```
+.           3600000  IN  NS  a.root.
+a.root.     3600000  IN  A   198.51.100.1
+```
+""")
+            + info_subtitle(tr("Le résolveur unbound"), tag="unbound")
+            + tr("""
+### @@sec@@ Configuration
+
+Debian lit `/etc/unbound/unbound.conf`, qui inclut `/etc/unbound/unbound.conf.d/*.conf` : on met
+sa configuration dans un fichier de ce répertoire. Options de la clause `server:` :
 
 ```
 server:
-    interface: 0.0.0.0              # écouter sur toutes les adresses (port 53)
-    access-control: {net1} allow    # qui a le droit de poser des questions récursives
-    root-hints: "{root_hints}"
-    # puis, partie 6 :
-    trust-anchor-file: "{anchor_file}"
+    interface: 0.0.0.0                    # écouter sur toutes les adresses (port 53)
+    access-control: 192.0.2.0/24 allow    # qui a le droit de poser des questions récursives
+    root-hints: "/etc/unbound/root.hints"
+    trust-anchor-file: "/etc/unbound/root-anchor.key"    # validation DNSSEC, à ajouter le moment venu
 ```
 
 Vérification : `unbound-checkconf`, `systemctl restart unbound`, `journalctl -u unbound`,
 `ss -ulnp | grep :53`. Les requêtes venant d'une adresse hors des `access-control ... allow` sont
-**refusées** (`REFUSED`). Le cache : `unbound-control dump_cache`, `unbound-control flush_zone
-nom` (oublier tout ce qui concerne une zone), `unbound-control stats_noreset` (compteurs
-`total.num.cachehits`…), `unbound-control list_forwards` / `list_stubs` (ce qui est renvoyé
-ailleurs). Chaque réponse servie depuis le cache porte un **TTL décrémenté** ; un `NXDOMAIN` est
-aussi mis en cache (cache **négatif**, borné par le TTL minimum du `SOA`). Par défaut unbound
-pratique la **minimisation du nom** (`qname-minimisation`) : il ne révèle à la racine que le label
-de TLD, et au TLD que le domaine de second niveau.
+**refusées** (`REFUSED`). L'ancre de confiance (`trust-anchor-file`) est décrite à la section
+@@ref:validation@@.
+
+### @@sec:cache@@ Cache et minimisation du nom
+
+Le cache : `unbound-control dump_cache`, `unbound-control flush_zone nom` (oublier tout ce qui
+concerne une zone), `unbound-control stats_noreset` (compteurs `total.num.cachehits`…),
+`unbound-control list_forwards` / `list_stubs` (ce qui est renvoyé ailleurs). Chaque réponse servie
+depuis le cache porte un **TTL décrémenté** ; un `NXDOMAIN` est aussi mis en cache (cache
+**négatif**, borné par le TTL minimum du `SOA`). Par défaut unbound pratique la **minimisation du
+nom** (`qname-minimisation`) : il ne révèle à la racine que le label de TLD, et au TLD que le
+domaine de second niveau.
+
+### @@sec:localzones@@ Zones locales par défaut
 
 ⚠️ unbound répond lui-même **`NXDOMAIN`** pour les zones inverses des adresses privées (RFC 1918 :
 `10.in-addr.arpa`, `168.192.in-addr.arpa`, `16.172.in-addr.arpa`…) et quelques autres noms
 spéciaux (`localhost`, `test`, `invalid`…) : ce sont ses *default local zones*. Pour qu'il résolve
-la zone inverse du TP par la délégation normale (partie 4), il faut désactiver celle qui la
-recouvre : `local-zone: "{default_rev}." nodefault`.
-
-### 4. Délégation, colle et registre
-
+la zone inverse d'un réseau privé par la délégation normale (section @@ref:reverse@@), il faut
+désactiver celle qui la recouvre : `local-zone: "10.in-addr.arpa." nodefault` pour un réseau pris
+dans `10.0.0.0/8`, `"168.192.in-addr.arpa."` pour `192.168.0.0/16`, `"16.172.in-addr.arpa."` à
+`"31.172.in-addr.arpa."` pour `172.16.0.0/12`.
+""")
+            + info_subtitle(tr("Délégation, colle et registre"), tag="delegation")
+            + tr("""
 La zone parente ne contient, pour un domaine délégué, que ses **`NS`** (et la **colle** : les
 `A` des serveurs de noms situés *dans* la zone déléguée, sans quoi la résolution tourne en rond)
-— plus tard son **`DS`** (partie 6). Ces enregistrements appartiennent au **registre** du TLD ;
-dans la vraie vie on les lui transmet via un bureau d'enregistrement (protocole EPP, interface
-web). Ici le registre `tld` accepte les **mises à jour dynamiques signées** (`nsupdate`, RFC 2136)
-avec votre clé TSIG `{key_registry}` et n'autorise que les `NS`, `DS` et `A` sous `{domain}.` :
+— et, une fois la zone signée, son **`DS`** (section @@ref:ds@@). Ces enregistrements
+appartiennent au **registre** du TLD ; dans la vraie vie on les lui transmet via un bureau
+d'enregistrement (protocole EPP, interface web). Dans une maquette, le registre peut plus
+simplement accepter des **mises à jour dynamiques signées** (`nsupdate`, RFC 2136, section
+@@ref:ddns@@) : le titulaire d'un domaine reçoit une clé TSIG, à laquelle la zone du TLD n'accorde
+que les `NS`, `DS` et `A` sous ce domaine (`update-policy { grant NOM subdomain example.org. NS DS A; };`).
 
 ```
-nsupdate -y hmac-sha256:{key_registry}:SECRET
-> server {tld_ip}
-> zone tp.
-> update add {domain}. 300 NS ns1.{domain}.
-> update add ns1.{domain}. 300 A ADRESSE
+nsupdate -y hmac-sha256:NOM:SECRET
+> server 198.51.100.10
+> zone org.
+> update add example.org. 300 NS ns1.example.org.
+> update add ns1.example.org. 300 A 192.0.2.53
 > send
 > quit
 ```
 
-(`update delete nom [type]` retire ; un script `printf 'server …\\nzone tp.\\n…\\nsend\\n' | nsupdate -y …`
-fait la même chose sans dialogue.) Vérifiez ensuite la délégation telle que la voit un résolveur :
-`dig +norecurse @{tld_ip} {domain} NS` (renvoi : `NS` en `AUTHORITY`, colle en `ADDITIONAL`, pas de
-drapeau `aa`), puis `dig +trace www.{domain}` depuis `m1`. Un serveur de noms déclaré mais qui ne
-répond pas pour la zone est une **délégation boiteuse** (*lame delegation*).
-
-### 5. Zones bind9 (BIND 9.18)
-
-Fichiers de configuration : `/etc/bind/named.conf` inclut `named.conf.options` (bloc `options`),
-`named.conf.local` (vos clés et zones) et `named.conf.default-zones`. Le TP a déjà rendu
-`{named_options}` strictement autoritatif (`recursion no`, `dnssec-validation no`, écoute sur toutes
-les adresses). Déclaration d'une zone primaire :
+(`198.51.100.10` : le serveur du registre ; `update delete nom [type]` retire ; un script
+`printf 'server …\\nzone org.\\n…\\nsend\\n' | nsupdate -y …` fait la même chose sans dialogue.)
+On vérifie ensuite la délégation telle que la voit un résolveur :
+`dig +norecurse @198.51.100.10 example.org NS` (renvoi : `NS` en `AUTHORITY`, colle en `ADDITIONAL`,
+pas de drapeau `aa`), puis `dig +trace www.example.org` depuis un poste. Un serveur de noms déclaré
+mais qui ne répond pas pour la zone est une **délégation boiteuse** (*lame delegation*).
+""")
+            + info_subtitle(tr("Zones bind9 (BIND 9.18)"), tag="bind")
+            + tr("""
+Fichiers de configuration (Debian) : `/etc/bind/named.conf` inclut `named.conf.options` (bloc
+`options`), `named.conf.local` (vos clés et zones) et `named.conf.default-zones`. Un serveur
+strictement **autoritatif** a dans son bloc `options` : `recursion no;`, `dnssec-validation no;`
+et l'écoute sur toutes les adresses (`listen-on { any; };`). Déclaration d'une zone primaire :
 
 ```
-zone "{domain}" {{
+zone "example.org" {
     type primary;
-    file "{zone_file}";
-}};
+    file "/var/lib/bind/db.example.org";
+};
 ```
 
-Mettez les fichiers de zone dans **`{zone_dir}/`** : `named` tourne sous l'utilisateur `bind`, qui
-peut écrire dans ce répertoire (journaux des mises à jour dynamiques, signatures), pas dans
-`/etc/bind/`. Après chaque modification : `named-checkconf`, `named-checkzone {domain} FICHIER`,
+et son fichier :
+
+```
+$TTL 3600
+@      IN  SOA  ns1.example.org. hostmaster.example.org. ( 2026010101 3600 900 604800 300 )
+@      IN  NS   ns1.example.org.
+@      IN  NS   ns2.example.org.
+ns1    IN  A    192.0.2.53
+ns2    IN  A    203.0.113.53
+www    IN  A    203.0.113.80
+mail   IN  A    203.0.113.25
+@      IN  MX   10 mail.example.org.
+@      IN  TXT  "un texte"
+```
+
+Mettez les fichiers de zone dans **`/var/lib/bind/`** : `named` tourne sous l'utilisateur `bind`,
+qui peut écrire dans ce répertoire (journaux des mises à jour dynamiques, signatures), pas dans
+`/etc/bind/`. Après chaque modification : `named-checkconf`, `named-checkzone example.org FICHIER`,
 `rndc reload` (ou `systemctl restart named`), `journalctl -u named -n 30`. Et **incrémentez le
 serial** à chaque changement du fichier de zone : c'est lui qui déclenche les transferts.
-
-### 6. Secondaires, transferts et NOTIFY
-
-Un **secondaire** (`type secondary; primaries {{ ADRESSE key NOM; }};`) récupère la zone par
+""")
+            + info_subtitle(tr("Secondaires, transferts et NOTIFY"), tag="transfer")
+            + tr("""
+Un **secondaire** (`type secondary; primaries { ADRESSE key NOM; };`) récupère la zone par
 **transfert** : `AXFR` (zone complète, en TCP) ou `IXFR` (différentiel, si le primaire tient un
 journal). Il la rafraîchit selon les temporisateurs du `SOA` (*refresh*, *retry*, *expire*) et
 surtout dès réception d'un **NOTIFY** envoyé par le primaire à chaque changement de serial
 (automatique vers les `NS` de la zone, `also-notify` pour d'autres). Le primaire **limite** qui peut
-transférer (`allow-transfer {{ … }};`) : une zone transférable par n'importe qui livre tout
-l'annuaire d'un coup (`dig @ns1 {domain} AXFR`) ; la bonne pratique est d'exiger une **clé TSIG**
-(`allow-transfer {{ key {key_transfer}; }};`), partagée avec le secondaire. `tsig-keygen NOM`
-génère un bloc `key` ; ici les clés sont imposées (tableau). Le secondaire signe sa demande avec
-`primaries {{ {ns1_ip} key {key_transfer}; }};`. Côté client : `dig -y hmac-sha256:NOM:SECRET
-@{ns1_ip} {domain} AXFR`.
+transférer (`allow-transfer { … };`) : une zone transférable par n'importe qui livre tout
+l'annuaire d'un coup (`dig @ns1 example.org AXFR`) ; la bonne pratique est d'exiger une **clé TSIG**
+(`allow-transfer { key NOM; };`), partagée avec le secondaire. `tsig-keygen NOM` génère le bloc
+`key` à déclarer sur les deux serveurs :
 
-### 7. Zone inverse
+```
+key "NOM" {
+    algorithm hmac-sha256;
+    secret "SECRET";
+};
+```
 
-La zone inverse du réseau du site est `{reverse_zone}` ; elle contient un `PTR` par adresse
-(`{rev_label_example}  IN  PTR  ns1.{domain}.`). Le registre de `in-addr.arpa.` (ici `root`) l'a
-déjà **déléguée** à `ns1.{domain}` et `ns2.{domain}` : il vous reste à la servir sur `ns1` (et sur
-`ns2`), puis à lever la *default local zone* d'unbound (§3). Test : `dig -x ADRESSE` depuis `m1`.
-
-### 8. Mises à jour dynamiques
-
+Le secondaire signe sa demande avec `primaries { 192.0.2.53 key NOM; };`. Côté client :
+`dig -y hmac-sha256:NOM:SECRET @192.0.2.53 example.org AXFR`.
+""")
+            + info_subtitle(tr("Zone inverse"), tag="reverse")
+            + tr("""
+La résolution inverse (d'une adresse vers un nom) interroge l'arbre `in-addr.arpa.` : le nom de
+`192.0.2.53` y est `53.2.0.192.in-addr.arpa.` (les octets à l'envers), de type `PTR`. La zone
+inverse d'un réseau `/24` comme `192.0.2.0/24` est donc `2.0.192.in-addr.arpa` (deux octets
+pour un `/16`, un seul pour un `/8`) ; elle contient, outre son `SOA` et ses `NS`, un `PTR` par
+adresse (`53  IN  PTR  ns1.example.org.`, le nom complet avec son point final). Comme toute zone,
+elle doit être **déléguée** par son parent (le gestionnaire de `in-addr.arpa.` ou du bloc
+d'adresses) aux serveurs qui la servent, primaire et secondaires. Pour un réseau privé, il reste
+à lever la *default local zone* d'unbound (section @@ref:localzones@@). Test : `dig -x ADRESSE`.
+""")
+            + info_subtitle(tr("Mises à jour dynamiques"), tag="ddns")
+            + tr("""
 `nsupdate` modifie une zone **sans éditer le fichier** : le primaire écrit les changements dans un
 **journal** (`FICHIER.jnl`) et les reporte dans le fichier plus tard (`rndc sync`). Il faut
-l'autoriser : `allow-update {{ key NOM; }};` ou, plus fin, `update-policy {{ grant NOM zonesub
-ANY; }};` (la clé peut tout modifier dans la zone). Une mise à jour non signée ou signée avec une
+l'autoriser : `allow-update { key NOM; };` ou, plus fin, `update-policy { grant NOM zonesub
+ANY; };` (la clé peut tout modifier dans la zone). Une mise à jour non signée ou signée avec une
 autre clé est **`REFUSED`**. Pour éditer le fichier à la main d'une zone dynamique : `rndc freeze
 ZONE` (les mises à jour sont alors refusées), éditer, incrémenter le serial, `rndc thaw ZONE`. Un
 serveur DHCP (`ddns-update-style`) utilise exactement ce mécanisme pour enregistrer les noms des
 clients.
-
-### 9. DNSSEC
-
+""")
+            + info_subtitle(tr("DNSSEC"), tag="dnssec")
+            + tr("""
 DNSSEC signe les enregistrements : chaque **RRset** est accompagné d'un **`RRSIG`** produit avec la
 clé privée de la zone ; la clé publique est publiée dans un **`DNSKEY`** ; la zone parente publie
 l'**empreinte** de cette clé dans un **`DS`**, lui-même signé par la clé du parent, et ainsi de
@@ -445,32 +441,44 @@ non-existence d'un nom est prouvée par des **`NSEC`** (ou `NSEC3`) signés. Voc
 (signe les `DNSKEY`, référencée par le `DS`), **ZSK** (signe le reste) ou une seule **CSK** qui fait
 les deux — c'est ce que fait la politique `default` de BIND 9.18.
 
-- Signer avec BIND 9.18 : `dnssec-policy default;` dans la déclaration de la zone (dynamique, ou
-  statique avec `inline-signing yes;`), puis `rndc reload`. BIND crée les clés dans son
-  `key-directory` (`{key_dir}/K{domain}.+013+NNNNN.*`), signe et **ressigne tout seul**.
-  `rndc dnssec -status {domain}` montre la clé et ses états.
-- Publier le `DS` chez le parent : `dnssec-dsfromkey -2 {key_dir}/K{domain}.+013+NNNNN.key`
-  (ou `dig @ns1 {domain} DNSKEY | dnssec-dsfromkey -f - {domain}`), puis `nsupdate` vers le
-  registre comme en §4 (`update add {domain}. 300 DS …`). `rndc dnssec -checkds published {domain}`
-  prévient BIND que c'est fait.
-- Valider côté résolveur : `trust-anchor-file: "{anchor_file}"` (la clé `DNSKEY` de notre racine,
-  à installer avec `install -m 644`). Une réponse validée porte le drapeau **`ad`** ; une réponse
-  dont la chaîne est cassée (signature invalide, `DS` ne correspondant à aucune clé, zone non
-  signée alors que le parent publie un `DS`) donne **`SERVFAIL`** — sauf avec `+cd` (*checking
-  disabled*), qui permet de voir les données litigieuses. `delv @{resolver_ip} -a {anchor_bind}
-  +root=. NOM` refait la validation pas à pas (`; fully validated`, `; resolution failed: …`) et
-  `unbound-control` + `val-log-level: 2` journalisent les échecs.
-- Pour observer un échec : la zone `{bogus}` du TP n'est pas signée mais le registre publie un `DS`
-  pour elle.
+### @@sec:signing@@ Signer une zone avec BIND 9.18
 
-### 10. DoT, DoH, DoQ : chiffrer entre le client et son résolveur
+`dnssec-policy default;` dans la déclaration de la zone (dynamique, ou statique avec
+`inline-signing yes;`), puis `rndc reload`. BIND crée les clés dans son `key-directory`
+(`/var/cache/bind/Kexample.org.+013+NNNNN.*` sous Debian), signe et **ressigne tout seul**.
+`rndc dnssec -status example.org` montre la clé et ses états.
 
+### @@sec:ds@@ Publier le DS chez le parent
+
+`dnssec-dsfromkey -2 /var/cache/bind/Kexample.org.+013+NNNNN.key` (ou
+`dig @ns1 example.org DNSKEY | dnssec-dsfromkey -f - example.org`) calcule le `DS`, qu'on transmet
+au registre comme les `NS` (section @@ref:delegation@@ : `update add example.org. 300 DS …`).
+`rndc dnssec -checkds published example.org` prévient BIND que c'est fait.
+
+### @@sec:validation@@ Valider sur le résolveur
+
+`trust-anchor-file: "/etc/unbound/root-anchor.key"` dans la clause `server:` d'unbound : le fichier
+contient la `DNSKEY` de la racine et doit être lisible par l'utilisateur `unbound` (on l'installe
+avec `install -m 644`). Une réponse validée porte le drapeau **`ad`** ; une réponse dont la chaîne
+est cassée (signature invalide, `DS` ne correspondant à aucune clé, zone non signée alors que le
+parent publie un `DS`) donne **`SERVFAIL`** — sauf avec `+cd` (*checking disabled*), qui permet de
+voir les données litigieuses. Une zone dont le parent ne publie aucun `DS` n'est simplement pas
+validée : réponse normale, sans `ad`. `delv @192.0.2.1 -a FICHIER +root=. NOM` (`192.0.2.1` : le
+résolveur ; `FICHIER` : l'ancre au format `trust-anchors { … };` de BIND) refait la validation pas
+à pas (`; fully validated`, `; resolution failed: …`) et `val-log-level: 2` fait journaliser les
+échecs par unbound.
+""")
+            + info_subtitle(tr("DoT, DoH, DoQ : chiffrer entre le client et son résolveur"), tag="encrypted")
+            + tr("""
 Le DNS classique circule en clair (UDP/TCP 53). **DoT** (*DNS over TLS*, RFC 7858, TCP 853) et
 **DoH** (*DNS over HTTPS*, RFC 8484, TCP 443, requêtes `POST`/`GET` sur `/dns-query`) l'enferment
-dans TLS ; **DoQ** (RFC 9250, UDP 853) fait de même sur QUIC. Le serveur présente un
-**certificat** dont le nom (SAN) est celui que le client attend : ici `{resolver_name}`, signé par la
-CA du TP (la clé et le certificat de la CA sont dans `{ca_dir}/` sur `resolver`) — révision du TP
-TLS : clé privée, CSR, fichier d'extensions avec `subjectAltName`, signature. Le certificat et sa
+dans TLS ; **DoQ** (RFC 9250, UDP 853) fait de même sur QUIC.
+
+### @@sec@@ Le résolveur : certificat, DoT et DoH dans unbound
+
+Le serveur présente un **certificat** dont le nom (SAN) est celui que le client attend (par
+exemple `dns.example.org`), signé par une autorité de certification que le client connaît : clé
+privée, CSR, fichier d'extensions avec `subjectAltName`, signature par la CA. Le certificat et sa
 clé doivent être lisibles par l'utilisateur `unbound` (`chown unbound:unbound`, `chmod 640`).
 
 ```
@@ -479,38 +487,59 @@ server:
     interface: 0.0.0.0@443          # DoH (unbound sait servir HTTP/2 nativement)
     tls-port: 853
     https-port: 443
-    tls-service-key: "{dns_key}"
-    tls-service-pem: "{dns_cert}"
+    tls-service-key: "/etc/unbound/dns.example.org.key"
+    tls-service-pem: "/etc/unbound/dns.example.org.crt"
 ```
 
-Clients : `kdig @{resolver_ip} +tls-ca=/root/ca.tp.pem +tls-hostname={resolver_name} NOM` (DoT),
-`kdig @{resolver_ip} +https +tls-ca=/root/ca.tp.pem +tls-hostname={resolver_name} NOM` (DoH) ;
+### @@sec@@ Les clients : kdig, stubby, Firefox
+
+**kdig** interroge un résolveur en DoT ou en DoH (ici `192.0.2.1`, en vérifiant son certificat avec
+celui de l'autorité, `CA.pem`) :
+`kdig @192.0.2.1 +tls-ca=CA.pem +tls-hostname=dns.example.org NOM` (DoT),
+`kdig @192.0.2.1 +https +tls-ca=CA.pem +tls-hostname=dns.example.org NOM` (DoH) ;
 `+tls` seul = mode **opportuniste** (chiffré mais sans vérifier le certificat), `+tls-pin=…` =
 épinglage de la clé publique. **stubby** est un *stub resolver* local qui envoie en DoT tout ce
-que les programmes de la machine demandent sur `127.0.0.1:53` (`{stubby_conf}` :
+que les programmes de la machine demandent sur `127.0.0.1:53` (`/etc/stubby/stubby.yml` :
 `upstream_recursive_servers`, `tls_auth_name`, `tls_ca_file` ou `tls_pubkey_pinset`, `listen_addresses`) ;
 `/etc/resolv.conf` désigne alors `127.0.0.1`. **Firefox** sait faire du DoH lui-même (*TRR*,
 `network.trr.mode` 2 = DoH d'abord, 3 = DoH seulement, `network.trr.uri`) ; en entreprise on le
-configure par une **politique** (`policies.json`, clé `DNSOverHTTPS`), comme la CA du TP l'a été
-sur `m1` ({firefox_policy}).
+configure par une **politique** (`policies.json`, clé `DNSOverHTTPS`), le fichier qui sert aussi à
+installer une autorité de certification dans le navigateur (clé `Certificates`).
+""")
+            + info_subtitle(tr("Vues (split horizon)"), tag="views")
+            + tr("""
+Un serveur BIND peut servir **des contenus différents selon le client** :
 
-### 11. Vues (split horizon)
+```
+view "internal" {
+    match-clients { 192.0.2.0/24; localhost; };
+    zone "example.org" { type primary; file "/var/lib/bind/db.example.org"; };
+};
+view "external" {
+    match-clients { any; };
+    zone "example.org" { type primary; file "/var/lib/bind/db.example.org.external"; };
+};
+```
 
-Un serveur BIND peut servir **des contenus différents selon le client** : `view "internal" {{
-match-clients {{ {net1}; localhost; }}; zone … }};` puis `view "external" {{ match-clients {{ any; }};
-zone … }};` — les vues sont examinées **dans l'ordre**, et dès qu'une vue existe **toutes** les zones
-(et les clés) doivent être dans une vue. Chaque vue a sa propre instance de la zone, donc son
-propre fichier (et son propre journal) : `www.{domain}` peut valoir une adresse privée pour le
-site et une adresse publique pour le reste du monde. Pièges : le secondaire reçoit la vue que son
-**adresse** sélectionne (ici `ns2`, dans `net2`, transfère la vue externe) ; une clé TSIG peut aussi
-servir de critère (`match-clients {{ key NOM; }}`) ; les deux instances doivent être **signées**
-avec les mêmes clés (même `key-directory`) pour qu'un seul `DS` suffise ; et le résolveur interne
-doit interroger `ns1` **directement** pour `{domain}` (`stub-zone:` dans unbound), sinon il peut
-tomber sur `ns2` et servir la vue externe aux postes du site. Les commandes `rndc` prennent la
-vue : `rndc freeze {domain} IN internal`.
+Les vues sont examinées **dans l'ordre**, et dès qu'une vue existe **toutes** les zones doivent
+être dans une vue (les blocs `key` peuvent rester au niveau global) — y compris les zones par
+défaut de Debian (`named.conf.default-zones`), sans quoi `named-checkconf` refuse la configuration
+(*all zones must be in views*). Chaque vue a sa propre instance de la zone, donc son propre fichier
+(et son propre journal) : `www.example.org` peut valoir une adresse privée pour le site et une
+adresse publique pour le reste du monde. Pièges :
 
-### 12. RPZ : filtrer au résolveur
-
+- un secondaire reçoit la vue que son **adresse** sélectionne (un secondaire hébergé hors du site
+  transfère la vue externe) ; une clé TSIG peut aussi servir de critère
+  (`match-clients { key NOM; }`) ;
+- les deux instances doivent être **signées** avec les mêmes clés (même `key-directory`) pour
+  qu'un seul `DS` suffise ;
+- le résolveur interne doit interroger le primaire **directement** pour la zone (clause
+  `stub-zone:` d'unbound, avec `name: "example.org"` et `stub-addr: 192.0.2.53`), sinon il peut
+  tomber sur le secondaire et servir la vue externe aux postes du site ;
+- les commandes `rndc` prennent la vue : `rndc freeze example.org IN internal`.
+""")
+            + info_subtitle(tr("RPZ : filtrer au résolveur"), tag="rpz")
+            + tr("""
 Une **Response Policy Zone** (RPZ) est une zone ordinaire dont les enregistrements sont des
 **règles** appliquées par le résolveur : `nom CNAME .` → répondre `NXDOMAIN`, `nom CNAME *.` →
 `NODATA`, `nom A 10.0.0.1` → rediriger, `nom CNAME rpz-passthru.` → laisser passer. unbound la
@@ -518,9 +547,9 @@ charge avec une clause `rpz:` (`name:`, `zonefile:` ou transfert depuis un serve
 `rpz-log-name:`) et exige le module `respip` : `module-config: "respip validator iterator"`. Les
 hits sont journalisés (`journalctl -u unbound`). C'est le principe des filtres anti-malware et des
 listes de blocage d'entreprise.
-
-### 13. Diagnostiquer une panne DNS
-
+""")
+            + info_subtitle(tr("Diagnostiquer une panne DNS"), tag="diagnosis")
+            + tr("""
 Méthode : (1) la question vient-elle du **résolveur** ou du **serveur autoritatif** ? Interroger
 chacun directement (`dig @…`), avec `+norecurse` et `+cd` ; (2) suivre la **délégation** (`dig +trace`,
 colle, serveurs qui répondent `aa`) ; (3) comparer les **serials** du primaire et des secondaires ;
@@ -531,24 +560,7 @@ classiques : serial non incrémenté (le secondaire garde l'ancienne zone), poin
 délégation boiteuse ou colle fausse, `DS` ne correspondant plus à la clé (`SERVFAIL` pour tout le
 domaine), zone gelée par `rndc freeze` (mises à jour `REFUSED`), restes de configuration
 (`forward-zone` ou `stub-zone` vers un serveur disparu), certificat expiré ou mauvais nom en DoT.
-Les états `fault_*` de l'onglet **Appliquer une configuration** injectent quatre pannes à
-diagnostiquer (partie 10).
-
-### 14. Plan du TP et barème
-
-1. Résolveur récursif et racine privée (11 points) · 2. Zone `{domain}` et enregistrement de la
-délégation (15) · 3. Secondaire, transferts TSIG et NOTIFY (12) · 4. Zone inverse (6) · 5. Mises à
-jour dynamiques (10) · 6. DNSSEC (18) · 7. DoT, DoH, stubby et Firefox (13) · 8. Vues (6) · 9. RPZ
-(4) · 10. Diagnostic de pannes (5). Les parties se font dans l'ordre et la configuration d'une
-partie terminée reste en place.
-""").format(zone_dir=ZONE_DIR, named_local=NAMED_LOCAL, unbound_conf=UNBOUND_CONF, dns_cert=DNS_CERT,
-            stubby_conf=STUBBY_CONF, root_ns=ROOT_NS, tld_ns=TLD_NS, anchor_home=ANCHOR_HOME, net1=d.nets.net1,
-            root_hints=ROOT_HINTS, anchor_file=ANCHOR_FILE, default_rev=unbound_default_local_zone(d.nets.net1) or
-            self.reverse_zone, key_registry=KEY_REGISTRY, domain=DOMAIN, tld_ip=ip['tld'],
-            named_options=NAMED_OPTIONS, zone_file=ZONE_FILE, key_transfer=KEY_TRANSFER, ns1_ip=ip['ns1'],
-            reverse_zone=self.reverse_zone, rev_label_example=reverse_label(d.ips.ns1, d.nets.net1), key_dir=KEY_DIR,
-            resolver_ip=ip['resolver'], anchor_bind=ANCHOR_BIND, bogus=BOGUS, resolver_name=RESOLVER_NAME,
-            ca_dir=CA_DIR, dns_key=DNS_KEY, firefox_policy=FIREFOX_POLICIES[0])
+""")
         )
 
     # -- texts of the lab's own servers ----------------------------------------------------
@@ -1093,10 +1105,94 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
-Lisez l'onglet **Informations** : il présente la maquette (racine privée, registre, site
-`example.tp`), le cours (résolveur, délégation, transferts, zone inverse, mises à jour dynamiques,
-DNSSEC, DoT/DoH, vues, RPZ, diagnostic) et les **valeurs propres à votre instance** (adresses,
-enregistrements, clés TSIG).
+Lisez l'onglet **Informations** : c'est le cours (résolveur et racine, délégation, transferts, zone
+inverse, mises à jour dynamiques, DNSSEC, DoT/DoH, vues, RPZ, diagnostic). Cette page décrit la
+maquette, ce qui est déjà en place au départ, les **valeurs propres à votre instance** (adresses,
+enregistrements, clés TSIG) et le déroulement du TP.
+
+Ce TP prolonge **DNS 1** (`dig`, un `unbound` qui transfère, une première zone `bind9`) et le TP
+TLS (certificats signés par une autorité). Il se déroule dans un **Internet miniature fermé** : une
+**racine privée** `.` et le TLD `{tld}.` remplacent le vrai DNS, ce qui permet de tout voir — la
+délégation, les transferts, les signatures DNSSEC — sans dépendre de l'extérieur.
+
+**La maquette.** Le site `{domain}` (réseau `net1`) est relié par le routeur `r1` à « l'Internet »
+(`net2`) où se trouvent la racine, le registre du TLD `{tld}`, le secondaire hébergé `ns2` et un
+client extérieur.
+
+| machine | réseau | adresse | rôle |
+|---------|--------|---------|------|
+| `m1` | net1 | `{m1}` | poste de travail : `dig`, `kdig`, `delv`, `nsupdate`, `stubby`, **`firefox`** (affiché sur votre écran) |
+| `resolver` | net1 | `{resolver}` | résolveur récursif du site (**unbound**), DoT/DoH `{resolver_name}` |
+| `ns1` | net1 | `{ns1}` | serveur autoritatif primaire de `{domain}` (**bind9**) |
+| `r1` | net1 / net2 | `{r1_net1}` / `{r1_net2}` | routeur du site vers « l'Internet » |
+| `root` | net2 | `{root}` | serveur racine privé `{root_ns}.` : zones `.`, `arpa.`, `in-addr.arpa.` (pas de terminal) |
+| `tld` | net2 | `{tld_ip}` | le registre `{tld_ns}.` : zone `{tld}.` (dynamique, signée), `{partner}` (signée), `{bogus}` (pas de terminal) |
+| `ns2` | net2 | `{ns2}` | serveur secondaire de `{domain}`, « hébergé chez un prestataire » |
+| `m2` | net2 | `{m2}` | client extérieur au site |
+
+- **La racine.** Le seul serveur racine est `{root_ns}.` (`root`). Il délègue `{tld}.` au registre
+  `{tld_ns}.` (`tld`) avec son enregistrement de colle, et sert `in-addr.arpa.` pour la résolution
+  inverse : il a déjà **délégué** la zone inverse du site, `{reverse_zone}`, à `ns1.{domain}` et
+  `ns2.{domain}` ; il vous reste à la servir.
+- **Le registre.** `tld` accepte les **mises à jour dynamiques signées** (`nsupdate`) avec votre
+  clé TSIG `{key_registry}` et n'autorise que les `NS`, `DS` et `A` sous `{domain}.` : c'est ainsi
+  que vous lui transmettrez votre délégation, puis votre `DS`. Il sert aussi `{partner}` (signée)
+  et `{bogus}`, qui n'est **pas signée** alors que le registre publie un `DS` pour elle : de quoi
+  observer un échec de validation DNSSEC.
+- **Au départ.** Rien n'est dans `/etc/hosts` à part les noms des machines : **toute résolution
+  passe par le DNS** que vous construisez. `resolver`, `ns1` et `ns2` n'ont aucun service DNS
+  actif ; `/etc/resolv.conf` de `m1`, `ns1`, `ns2` et `m2` désigne déjà `resolver`. Sur `ns1` et
+  `ns2`, bind9 est installé et `{named_options}` est déjà strictement autoritatif (`recursion no`,
+  `dnssec-validation no`, écoute sur toutes les adresses). Sur `resolver`, l'ancre de confiance
+  DNSSEC de la vraie racine (clé IANA) a été retirée ; la clé publique de la racine privée vous est
+  fournie « hors bande » dans `{anchor_home}`. La CA du TP est déjà installée sur `m1`, dans le
+  magasin système et dans Firefox (politique `{firefox_policy}`).
+""").format(tld=TLD, domain=DOMAIN, m1=ip['m1'], resolver=ip['resolver'], resolver_name=RESOLVER_NAME, ns1=ip['ns1'],
+            r1_net1=_ip(d.ips.r1_net1), r1_net2=_ip(d.ips.r1_net2), root=ip['root'], root_ns=ROOT_NS, tld_ip=ip['tld'],
+            tld_ns=TLD_NS, partner=PARTNER, bogus=BOGUS, ns2=ip['ns2'], m2=ip['m2'], reverse_zone=rev_zone,
+            key_registry=KEY_REGISTRY, named_options=NAMED_OPTIONS, anchor_home=ANCHOR_HOME,
+            firefox_policy=FIREFOX_POLICIES[0])
+            + tr("""
+**Valeurs de votre instance.** Elles sont propres à votre instance et doivent être utilisées telles
+quelles ; les clés TSIG sont imposées (ne les générez pas avec `tsig-keygen`).
+
+| paramètre | valeur pour **votre** instance |
+|-----------|--------------------------------|
+| réseau du site `net1` / zone inverse | `{net1}` / `{reverse_zone}` |
+| `www.{domain}` (adresse publique) | `{www_ext}` |
+| `mail.{domain}` | `{mail_ip}` |
+| `TXT` de `{domain}` | `"{txt}"` |
+| `dns.{domain}` (le résolveur) | `{resolver}` |
+| hôte à ajouter par `nsupdate` (partie 5) | `{host}.{domain}` → `{host_ip}` |
+| `www.{domain}` vue interne (partie 8) | `{www_int}` |
+| clé TSIG du registre (`nsupdate` vers `tld`) | `{key_registry}` : `{registry_secret}` |
+| clé TSIG des transferts `ns1` → `ns2` | `{key_transfer}` : `{transfer_secret}` |
+| clé TSIG des mises à jour dynamiques | `{key_ddns}` : `{ddns_secret}` |
+| CA du TP (certificat DoT/DoH) | `{ca_cert}` et `{ca_key}` sur `resolver` ; `/root/ca.tp.pem` et le magasin système sur `m1` |
+| ancre de confiance de la racine | `{anchor_home}` (format unbound) et `{anchor_bind}` (format `delv -a`) sur `resolver` et `m1`, et dans le dossier partagé |
+| nom servi par l'autre organisation | `www.{partner}` → `{partner_www}`, `pub.{partner}` → `{partner_pub}` |
+""").format(net1=d.nets.net1, reverse_zone=rev_zone, domain=DOMAIN, www_ext=d.www_ext, mail_ip=d.mail_ip,
+            txt=d.txt_secret, resolver=ip['resolver'], host=d.host_name, host_ip=host_ip, www_int=www_int,
+            key_registry=KEY_REGISTRY, registry_secret=d.registry_secret, key_transfer=KEY_TRANSFER,
+            transfer_secret=d.transfer_secret, key_ddns=KEY_DDNS, ddns_secret=d.ddns_secret, ca_cert=CA_CERT,
+            ca_key=CA_KEY, anchor_home=ANCHOR_HOME, anchor_bind=ANCHOR_BIND, partner=PARTNER,
+            partner_www=d.partner_www, partner_pub=d.partner_pub)
+            + tr("""
+**Plan du TP et barème.** Les parties se font dans l'ordre ; la dernière colonne donne les sections
+du cours (onglet **Informations**) utiles à chacune.
+
+| partie | points | sections du cours |
+|--------|--------|-------------------|
+| 1. Résolveur récursif et racine privée | 11 | @@ref:basics@@, @@ref:root@@ et @@ref:unbound@@ |
+| 2. Zone `{domain}` et enregistrement de la délégation | 15 | @@ref:delegation@@ et @@ref:bind@@ |
+| 3. Secondaire, transferts TSIG et NOTIFY | 12 | @@ref:transfer@@ |
+| 4. Zone inverse | 6 | @@ref:reverse@@ et @@ref:localzones@@ |
+| 5. Mises à jour dynamiques | 10 | @@ref:ddns@@ |
+| 6. DNSSEC | 18 | @@ref:dnssec@@ |
+| 7. DoT, DoH, stubby et Firefox | 13 | @@ref:encrypted@@ |
+| 8. Vues | 6 | @@ref:views@@ |
+| 9. RPZ | 4 | @@ref:rpz@@ |
+| 10. Diagnostic de pannes | 5 | @@ref:diagnosis@@ |
 
 Règles valables pour tout le TP :
 
@@ -1106,13 +1202,15 @@ Règles valables pour tout le TP :
 - la configuration d'une partie terminée **reste en place** : à la fin, le résolveur valide
   DNSSEC, sert DoT et DoH, filtre `{rpz_target}`, et `ns1` sert deux vues ;
 - l'évaluation (bouton d'évaluation, ≈ 20 s) interroge les serveurs tels qu'ils tournent au
-  moment où elle est lancée, depuis deux postes cachés : `h1` dans `net1` et `h2` dans `net2` ;
-  elle ajoute puis retire un enregistrement `TXT` nommé `{probe_record}` avec la clé `{key_ddns}`
-  (partie 5) ; après une modification, videz le cache du résolveur (`unbound-control flush_zone`)
-  avant de relancer l'évaluation ;
-- les états `fault_*` de l'onglet **Appliquer une configuration** servent à la partie 10 : ne
-  les appliquez qu'une fois les parties 1 à 9 terminées.
-""").format(zone_dir=ZONE_DIR, named_local=NAMED_LOCAL, unbound_conf=UNBOUND_CONF, dns_cert=DNS_CERT,
+  moment où elle est lancée, depuis deux sondes cachées, `h1` dans `net1` et `h2` dans `net2`
+  (`dig`, `kdig`, `delv`, `nsupdate` avec les clés TSIG du tableau), et lit la configuration de
+  `resolver`, `ns1`, `ns2` et `m1` aux emplacements ci-dessus ; elle ajoute puis retire un
+  enregistrement `TXT` nommé `{probe_record}` avec la clé `{key_ddns}` (partie 5) ; après une
+  modification, videz le cache du résolveur (`unbound-control flush_zone`) avant de relancer
+  l'évaluation ;
+- les états `fault_*` de l'onglet **Appliquer une configuration** injectent les quatre pannes de
+  la partie 10 : ne les appliquez qu'une fois les parties 1 à 9 terminées.
+""").format(domain=DOMAIN, zone_dir=ZONE_DIR, named_local=NAMED_LOCAL, unbound_conf=UNBOUND_CONF, dns_cert=DNS_CERT,
             stubby_conf=STUBBY_CONF, rpz_target=RPZ_TARGET, probe_record=PROBE_RECORD, key_ddns=KEY_DDNS)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour ce projet.
@@ -1256,7 +1354,7 @@ Sur **`ns1`** (`{ns1_ip}`, bind9 installé, `{named_options}` déjà strictement
 3. `named-checkconf`, `named-checkzone {domain} {zone_file}`, `systemctl restart named`, puis
    `dig @{ns1_ip} {domain} SOA` depuis `m1` (drapeau `aa`).
 4. **Enregistrez la délégation** chez le registre (`tld`, `{tld_ip}`) avec `nsupdate` et la clé
-   `{key_registry}` (tableau des valeurs) : les deux `NS` de `{domain}.` et la colle `A` de
+   `{key_registry}` (tableau des valeurs de l'*Organisation du TP*) : les deux `NS` de `{domain}.` et la colle `A` de
    `ns1.{domain}.` et `ns2.{domain}.` (TTL 300). Vérifiez avec `dig +norecurse @{tld_ip} {domain} NS`,
    puis `dig www.{domain}` et `dig +trace www.{domain}` depuis `m1`. Essayez aussi d'ajouter un `TXT`
    dans `tp.` avec cette clé.

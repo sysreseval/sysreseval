@@ -16,7 +16,7 @@ from typing import Dict
 
 import utils
 from SRE import params
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from SRE.params import sre_docker_image
 from ips import random_ipv4networks, random_ipv4s
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward
@@ -241,47 +241,26 @@ class NetScheme(NetScheme0):
         lines.append(f"{WEB_HOST.ip}\tinternet")
         self.hosts_content = "\n".join(lines) + "\n"
 
-        addressing = no_tr(f"""
-| AS | routeur | interfaces | loopback |
-|----|---------|------------|----------|
-| 65001 | `r1` | eth0 `{d.nets.net1}` (`net1`, hôte `m1`), eth1 `{d.nets.l12}` (`l12`, vers `r2`), eth2 `{d.nets.la}` (`la`, vers `ispa`) | `{d.ips.lo1.ip}` |
-| 65001 | `r2` | eth0 `{d.nets.l12}` (`l12`), eth1 `{d.nets.l23}` (`l23`, vers `r3`) | `{d.ips.lo2.ip}` |
-| 65001 | `r3` | eth0 `{d.nets.net3}` (`net3`, hôte `m3`), eth1 `{d.nets.l23}` (`l23`), eth2 `{d.nets.lb}` (`lb`, vers `ispb`), eth3 `{d.nets.l34}` (`l34`, vers `r4`) | `{d.ips.lo3.ip}` |
-| 65300 | `r4` | eth0 `{d.nets.net4}` (`net4`, hôte `m4`), eth1 `{d.nets.l34}` (`l34`, vers `r3`) | – |
-| 65100 | `ispa` | eth0 `{d.nets.neta}` (`neta`, clients de l'ISP A), eth1 `{d.nets.la}`, eth2 `{d.nets.lab}` (`lab`, vers `ispb`), eth3 `{d.nets.lai}` (`lai`, vers `inet`) | – |
-| 65200 | `ispb` | eth0 `{d.nets.netb}` (`netb`, clients de l'ISP B), eth1 `{d.nets.lb}`, eth2 `{d.nets.lab}`, eth3 `{d.nets.lbi}` (`lbi`, vers `inet`) | – |
-| 65000 | `inet` | eth0 `{EXT_PUBLIC}` (`netweb`, serveur `web` = `{WEB_HOST.ip}`), eth1 `{d.nets.lai}`, eth2 `{d.nets.lbi}` | – |
-
-L'AS 65001 possède le bloc **`{d.nets.as1_block}`** (`net1`, `net3`, les liens internes et les
-loopbacks `{d.nets.loops}`).
-""")
-
         self.informations = (
-                no_tr("## ") + title + no_tr("\n")
-                + tr("""
-Ce TP met en œuvre le protocole de routage inter-domaine **BGP** (*Border Gateway Protocol*,
-version 4, RFC 4271) avec la suite logicielle **FRRouting** (FRR). Vous administrez l'**AS 65001**
-(routeurs `r1`, `r2`, `r3`, hôtes `m1` et `m3`), raccordé à deux fournisseurs d'accès :
-**ISP A** (`ispa`, AS 65100) et **ISP B** (`ispb`, AS 65200), eux-mêmes reliés entre eux et au
-« reste de l'Internet » (`inet`, AS 65000) où se trouve le serveur `web` (`203.0.113.1`, nom
-`internet`). L'AS 65001 héberge en outre un **client** (`r4`, AS 65300, hôte `m4`).
-
-Les routeurs des fournisseurs et `inet` sont déjà entièrement configurés : vous pouvez vous y
-connecter pour observer ce qu'ils reçoivent (`vtysh`), mais leur configuration ne doit pas être
-modifiée (sauf indication contraire). Les fichiers `/etc/hosts` contiennent les noms de toutes
-les interfaces : `r3-eth2` désigne l'adresse de `eth2` de `r3`, `r3` (tout court) celle de `eth0`,
-`r3-lo` sa loopback, `ispa` l'adresse de `ispa` sur son réseau de clients `neta`.
-""")
-                + addressing
-                + tr("""
-## 1. Principe de BGP
-
+            no_tr("## ") + title + no_tr("\n")
+            + tr("\n**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Principe de BGP"), tag="principle")
+            + tr("""
 L'Internet est un ensemble de **systèmes autonomes** (AS, *Autonomous System*), chacun identifié
-par un numéro (ASN, ici des numéros privés 64512–65534) et administré par une organisation. À
-l'intérieur d'un AS, un **IGP** (OSPF dans ce TP, déjà configuré dans l'AS 65001) calcule les
-plus courts chemins ; **entre** les AS, BGP échange des **préfixes** accompagnés d'**attributs** et
-chaque AS choisit ses routes selon sa **politique** (coûts, contrats, sécurité), pas seulement
-selon la distance.
+par un numéro (ASN ; les numéros 64512 à 65534 sont **privés**, comme les adresses de la
+RFC 1918) et administré par une organisation. À l'intérieur d'un AS, un **IGP** (OSPF, IS-IS)
+calcule les plus courts chemins ; **entre** les AS, **BGP** (*Border Gateway Protocol*, version 4,
+RFC 4271) échange des **préfixes** accompagnés d'**attributs** et chaque AS choisit ses routes
+selon sa **politique** (coûts, contrats, sécurité), pas seulement selon la distance.
+
+BGP est un protocole à **vecteur de chemins** : chaque route porte la liste des AS traversés
+(**AS_PATH**). Un routeur **rejette** toute route dont l'AS_PATH contient son propre numéro
+d'AS : c'est la protection contre les boucles.
+
+Dans la table de routage (`show ip route`, `ip route`), les routes BGP sont marquées `B` (`proto
+bgp` pour le noyau) avec une **distance administrative** de **20** (eBGP) ou **200** (iBGP).
+
+### @@sec:sessions@@ Sessions et messages
 
 - Deux routeurs BGP (**pairs**, *peers* ou *neighbors*) établissent une **session** sur une
   connexion **TCP** (port **179**) configurée explicitement des deux côtés (`neighbor A.B.C.D
@@ -290,21 +269,34 @@ selon la distance.
   deux routeurs du même AS. Par défaut les paquets eBGP sont émis avec un **TTL de 1** : les pairs
   eBGP sont directement connectés (sinon `neighbor X ebgp-multihop`).
 - Messages : `OPEN` (numéro d'AS, router-id, *hold time*, capacités), `UPDATE` (préfixes annoncés
-  avec leurs attributs, préfixes retirés), `KEEPALIVE` (toutes les 60 s par défaut) et
-  `NOTIFICATION` (erreur, fermeture de la session). Si aucun message n'est reçu pendant le
-  **hold time** (180 s par défaut, valeur négociée : la plus petite des deux), la session est
-  fermée et toutes les routes apprises du pair sont retirées.
+  avec leurs attributs, préfixes retirés), `KEEPALIVE` et `NOTIFICATION` (erreur, fermeture de la
+  session).
 - Automate d'une session : `Idle` → `Connect` / `Active` (tentatives TCP) → `OpenSent` →
-  `OpenConfirm` → **`Established`** (routes échangées).
-- BGP est un protocole à **vecteur de chemins** : chaque route porte la liste des AS traversés
-  (**AS_PATH**). Un routeur **rejette** toute route dont l'AS_PATH contient son propre numéro
-  d'AS : c'est la protection contre les boucles.
+  `OpenConfirm` → **`Established`** (routes échangées). Un pair déclaré d'un seul côté reste en
+  `Active` ou `Connect` : il tente périodiquement d'ouvrir la connexion.
+- `neighbor X password MOT` authentifie la session (option TCP MD5, RFC 2385) ; le mot de passe
+  doit être le même des deux côtés.
 
-Dans la table de routage (`show ip route`, `ip route`), les routes BGP sont marquées `B` (`proto
-bgp` pour le noyau) avec une **distance administrative** de **20** (eBGP) ou **200** (iBGP).
+### @@sec:timers@@ Temporisateurs et convergence
 
-## 2. Attributs et choix du meilleur chemin
+Chaque pair envoie un `KEEPALIVE` toutes les **60 s** par défaut. Si aucun message n'est reçu
+pendant le **hold time** (**180 s** par défaut), la session est fermée et toutes les routes
+apprises du pair sont retirées. Le hold time est **négocié** à l'ouverture de la session (la plus
+petite des deux valeurs) : `neighbor X timers KEEPALIVE HOLD` ne prend donc effet qu'après
+`clear bgp X`. Le temps de convergence après une panne dépend de la façon dont elle est détectée :
 
+- fermeture **administrative** (`neighbor X shutdown`) : le pair est prévenu par un
+  `NOTIFICATION`, les routes sont retirées aussitôt des deux côtés ;
+- **coupure franche** (l'interface passe *down*) : le routeur ferme aussitôt ses sessions eBGP
+  sur ce lien ; le pair, si sa propre interface reste active, n'apprend la panne qu'à
+  l'expiration du hold time ;
+- **panne silencieuse** (le lien reste *up* mais ne transmet plus rien) : rien ne la signale,
+  chaque côté attend l'expiration du hold time.
+
+Les réseaux qui visent une détection plus rapide réduisent ces temporisateurs ou utilisent BFD.
+""")
+            + info_subtitle(tr("Attributs et choix du meilleur chemin"), tag="attributes")
+            + tr("""
 | attribut | type | rôle |
 |----------|------|------|
 | `AS_PATH` | obligatoire | liste des AS traversés (chaque AS ajoute son numéro en tête à la sortie) |
@@ -313,10 +305,12 @@ bgp` pour le noyau) avec une **distance administrative** de **20** (eBGP) ou **2
 | `LOCAL_PREF` | discrétionnaire | préférence **locale à l'AS** (100 par défaut), transmise en iBGP, **jamais** en eBGP |
 | `MED` | optionnel non transitif | *Multi-Exit Discriminator* : suggère au voisin le point d'entrée à préférer ; comparé uniquement entre routes venant du **même AS voisin** |
 | `COMMUNITY` | optionnel transitif | étiquettes `AS:valeur` pour marquer des routes et leur appliquer des politiques ; communautés connues : `no-export`, `no-advertise` |
-| `ORIGINATOR_ID`, `CLUSTER_LIST` | optionnels | ajoutés par un réflecteur de routes (partie 8) |
+| `ORIGINATOR_ID`, `CLUSTER_LIST` | optionnels | ajoutés par un réflecteur de routes (section @@ref:rr@@) |
+
+### @@sec:decision@@ Le processus de décision
 
 Pour chaque préfixe, si plusieurs chemins sont connus, BGP n'en installe et n'en annonce qu'**un
-seul**, choisi dans l'ordre suivant (**processus de décision**) :
+seul**, choisi dans l'ordre suivant :
 
 1. `weight` le plus grand (FRR/Cisco, local au routeur ; 32768 pour les routes locales) ;
 2. **`LOCAL_PREF`** le plus grand ;
@@ -330,85 +324,121 @@ seul**, choisi dans l'ordre suivant (**processus de décision**) :
 
 `show ip bgp` (ou `show bgp ipv4 unicast`) affiche tous les chemins connus : `*` = chemin valide
 (prochain saut joignable), `>` = meilleur chemin, `i` en tête = appris en iBGP. `show ip bgp
-PREFIXE` détaille un préfixe et indique la raison du choix (`json` : `selectionReason`).
-
-## 3. iBGP
-
+PREFIXE` détaille un préfixe et indique entre parenthèses, après `best`, la raison du choix
+(`AS Path`, `Local Pref`, `Router ID`, `Peer Type`…).
+""")
+            + info_subtitle(tr("iBGP"), tag="ibgp")
+            + tr("""
 Une route apprise d'un pair **iBGP** n'est **jamais réannoncée à un autre pair iBGP** (règle de
 *split horizon* : les routeurs d'un AS ne portent pas leur AS dans l'AS_PATH, une boucle interne
 serait indétectable). Conséquences :
 
-- tous les routeurs BGP d'un AS doivent être **maillés** (*full mesh* : n(n−1)/2 sessions) — ou
-  utiliser un **réflecteur de routes** (*route reflector*, RR, RFC 4456) qui réannonce les routes
-  de ses **clients** en ajoutant `ORIGINATOR_ID` et `CLUSTER_LIST` ;
+- tous les routeurs BGP d'un AS doivent être **maillés** (*full mesh* : n(n−1)/2 sessions), ou
+  utiliser un réflecteur de routes (section @@ref:rr@@) ;
 - les sessions iBGP sont établies entre **loopbacks** (`neighbor X update-source lo`) : elles
   survivent à la panne d'un lien tant que l'IGP trouve un autre chemin ;
 - le `NEXT_HOP` reçu en eBGP (adresse du routeur du fournisseur) est transmis tel quel en iBGP :
   s'il n'est pas dans l'IGP, la route est **invalide** sur les autres routeurs. Solution :
   `neighbor X next-hop-self` sur le routeur de bordure ;
-- un routeur de transit qui ne parle pas BGP (ici `r2`) ne connaît pas les destinations externes
-  et forme un **trou noir** : dans un AS de transit, tous les routeurs du chemin doivent
+- un routeur de l'AS qui relaie le trafic sans parler BGP ne connaît pas les destinations
+  externes et forme un **trou noir** : dans un AS de transit, tous les routeurs du chemin doivent
   connaître les routes BGP.
 
-## 4. Politiques de routage
+### @@sec:rr@@ Réflecteur de routes
 
-- Sortie de l'AS (trafic **sortant**) : `LOCAL_PREF` (préférer un fournisseur), `weight`.
+Le maillage complet ne passe pas à l'échelle. Un **réflecteur de routes** (*route reflector*, RR,
+RFC 4456) est un routeur autorisé à réannoncer en iBGP les routes de ses **clients**
+(`neighbor X route-reflector-client`, sur le réflecteur seulement) : chaque client n'a plus
+besoin que d'une session, vers le réflecteur. Pour remplacer la protection perdue, le réflecteur
+ajoute à la route `ORIGINATOR_ID` (le router-id du routeur qui l'a introduite dans l'AS) et
+`CLUSTER_LIST` (les réflecteurs traversés) ; un routeur rejette une route qui porte son propre
+identifiant dans l'un des deux. Le réflecteur ne modifie ni le `NEXT_HOP` ni les autres attributs.
+""")
+            + info_subtitle(tr("Politiques de routage"), tag="policies")
+            + tr("""
+### @@sec:traffic@@ Trafic sortant, trafic entrant
+
+- Sortie de l'AS (trafic **sortant**) : on décide soi-même, avec `LOCAL_PREF` (préférer un
+  fournisseur pour tout l'AS) ou `weight` (pour un seul routeur).
 - Entrée dans l'AS (trafic **entrant**) : on ne décide pas pour les autres, on les **influence** :
   **`AS_PATH prepend`** (allonger artificiellement le chemin annoncé à un fournisseur), `MED`
   (entre plusieurs liens vers le même voisin), communautés interprétées par le fournisseur.
-- **Filtrage** : `ip prefix-list` (préfixes), `bgp as-path access-list` (expressions régulières
-  sur l'AS_PATH), `bgp community-list`, combinés dans une **`route-map`** (séquences `permit` /
-  `deny` avec des clauses `match` et `set`) appliquée par `neighbor X route-map NOM in|out`.
-  Un AS **non-transit** (client de deux fournisseurs) doit n'annoncer que **ses propres
-  préfixes** (et ceux de ses clients), jamais ceux appris d'un fournisseur à l'autre.
-- **RFC 8212** : FRR refuse d'accepter et d'annoncer des routes sur une session **eBGP** tant
-  qu'aucune politique (`route-map` ou `prefix-list`, en entrée et en sortie) n'est définie ; le
-  pair apparaît avec la mention `(Policy)` dans `show ip bgp summary`. On peut désactiver cette
-  protection (`no bgp ebgp-requires-policy`, mode `router bgp`), ce qui est fait sur `r1` et
-  sur les routeurs des fournisseurs, ou définir des politiques explicites.
-- Un préfixe n'est annoncé par `network PREFIXE` que si une route **exactement identique**
-  existe dans la table de routage (`bgp network import-check`) : pour annoncer un agrégat, on
-  ajoute une route statique vers `blackhole` (`ip route PREFIXE blackhole`, l'équivalent de
-  `Null0`), les routes plus précises de l'IGP restant prioritaires. `aggregate-address PREFIXE
-  [summary-only]` construit un agrégat à partir des routes plus spécifiques présentes dans BGP.
-- `neighbor X default-originate` annonce une route par défaut à un pair (typiquement un client).
-- `neighbor X maximum-prefix N` protège contre une fuite massive de routes ; `neighbor X
-  password MOT` authentifie la session (option TCP MD5, RFC 2385).
 
-## 5. FRR et vtysh
+### @@sec:filtering@@ Filtres et route-maps
 
-Sur chaque routeur, les démons `zebra`, `staticd` et `bgpd` (plus `ospfd` dans l'AS 65001) sont
-lancés. On les configure avec le shell **`vtysh`** :
+- `ip prefix-list NOM seq N permit|deny PREFIXE` : une liste de préfixes ;
+  `bgp as-path access-list` : expressions régulières sur l'AS_PATH ; `bgp community-list`.
+- Une **`route-map`** est une suite de séquences numérotées `permit` / `deny`, chacune avec des
+  clauses `match` (les routes concernées) et `set` (les attributs modifiés). Une route est
+  traitée par la première séquence qui lui correspond ; une séquence sans `match` correspond à
+  tout ; une route qui ne correspond à aucune séquence est **refusée**.
+- `neighbor X route-map NOM in|out` (address-family) applique la route-map aux routes reçues du
+  pair ou annoncées au pair. Après une modification de politique, `clear bgp X soft in|out`
+  la réapplique sans couper la session.
+- Un AS **non-transit** (client de deux fournisseurs) ne doit annoncer que **ses propres
+  préfixes** (et ceux de ses clients), jamais ceux appris d'un fournisseur à l'autre : sinon il
+  se propose comme chemin entre ses fournisseurs.
+- `neighbor X maximum-prefix N` protège contre une fuite massive de routes.
+
+### @@sec:rfc8212@@ RFC 8212 : pas de session eBGP sans politique
+
+FRR refuse d'accepter et d'annoncer des routes sur une session **eBGP** tant qu'aucune politique
+(`route-map` ou `prefix-list`, en entrée et en sortie) n'est définie : la session s'établit mais
+le pair apparaît avec la mention `(Policy)` dans `show ip bgp summary`. Cette règle évite les
+fuites de routes involontaires d'un routeur mal configuré. On définit des politiques explicites,
+ou on désactive la protection : `no bgp ebgp-requires-policy` (mode `router bgp`).
+
+### @@sec:announce@@ Annoncer un préfixe
+
+- `network PREFIXE` (address-family) n'annonce un préfixe que si une route **exactement
+  identique** existe dans la table de routage (`bgp network import-check`). Pour annoncer un bloc
+  qui regroupe plusieurs réseaux, on ajoute une route statique vers `blackhole`
+  (`ip route PREFIXE blackhole`, l'équivalent de `Null0`) : les routes plus précises de l'IGP
+  restent prioritaires.
+- `aggregate-address PREFIXE` construit un agrégat à partir des routes plus spécifiques présentes
+  dans BGP ; avec `summary-only`, seul l'agrégat est annoncé, les préfixes plus spécifiques sont
+  supprimés des annonces.
+- `neighbor X default-originate` annonce une route par défaut à un pair (typiquement un client,
+  qui n'a pas besoin de la table complète).
+- `set community AS:VALEUR` dans une route-map marque des routes ; les communautés sont
+  transmises aux pairs et visibles dans `show ip bgp PREFIXE`.
+""")
+            + info_subtitle(tr("FRR et vtysh"), tag="frr")
+            + tr("""
+**FRRouting** (FRR) est une suite de démons de routage pour Linux : `zebra` (l'interface avec le
+noyau), `staticd` (les routes statiques), `bgpd`, `ospfd`… (les démons lancés sont choisis dans
+`/etc/frr/daemons`). On les configure avec le shell **`vtysh`**, dont la syntaxe est proche de
+celle des équipements Cisco :
 
 ```
-vtysh                                    # ouvre le shell (prompt : r3#)
+vtysh                                    # ouvre le shell (prompt : routeur#)
 show running-config                      # configuration courante
 configure terminal
- router bgp 65001                        # processus BGP de l'AS 65001 (prompt : r3(config-router)#)
-  bgp router-id 10.1.2.3
-  neighbor 192.0.2.1 remote-as 65200     # pair eBGP
+ router bgp 64512                        # processus BGP de l'AS 64512 (prompt : routeur(config-router)#)
+  bgp router-id 198.51.100.253
+  neighbor 192.0.2.1 remote-as 64513     # pair eBGP
   neighbor 192.0.2.1 description ISP-B
-  neighbor 10.1.2.1 remote-as 65001      # pair iBGP
-  neighbor 10.1.2.1 update-source lo
+  neighbor 198.51.100.254 remote-as 64512     # pair iBGP
+  neighbor 198.51.100.254 update-source lo
   address-family ipv4 unicast
-   network 10.20.0.0/22                  # préfixe annoncé
-   neighbor 10.1.2.1 next-hop-self
+   network 198.51.100.0/24               # préfixe annoncé
+   neighbor 198.51.100.254 next-hop-self
    neighbor 192.0.2.1 route-map TO-B out
   exit-address-family
  exit
- ip prefix-list MINE seq 5 permit 10.20.0.0/22
+ ip prefix-list MINE seq 5 permit 198.51.100.0/24
  route-map TO-B permit 10
   match ip address prefix-list MINE
-  set as-path prepend 65001 65001
+  set as-path prepend 64512 64512
  exit
  end
 write                                    # sauvegarde dans /etc/frr/frr.conf
 ```
 
 On supprime une ligne en la préfixant par `no`. Une commande peut être passée depuis le shell
-Linux : `vtysh -c "show ip bgp summary"`. Après une modification de politique, `clear bgp *
-soft` (ou `clear bgp A.B.C.D soft in|out`) réapplique les politiques sans couper les sessions ;
-`clear bgp A.B.C.D` coupe et rétablit une session (nécessaire pour changer ses temporisateurs).
+Linux : `vtysh -c "show ip bgp summary"`. `clear bgp * soft` (ou `clear bgp A.B.C.D soft in|out`)
+réapplique les politiques sans couper les sessions ; `clear bgp A.B.C.D` coupe et rétablit une
+session (nécessaire pour changer ses temporisateurs).
 
 Commandes d'observation utiles :
 
@@ -425,22 +455,23 @@ show ip route                              # table de routage (B = BGP, O = OSPF
 Documentation : [FRR — BGP](https://docs.frrouting.org/en/latest/bgp.html),
 [route-maps](https://docs.frrouting.org/en/latest/routemap.html) et
 [filtrage](https://docs.frrouting.org/en/latest/filter.html).
-
-## 6. Diagnostic
-
+""")
+            + info_subtitle(tr("Diagnostic"), tag="diagnostic")
+            + tr("""
 - `ip route` sur un routeur : les routes apprises par BGP portent `proto bgp` ;
 - `traceroute -n IP` (ou `traceroute IP` pour les noms) depuis un hôte : chemin réellement suivi,
-  y compris à travers les fournisseurs ;
+  d'un AS à l'autre ;
 - `tcpdump -ni ethX tcp port 179` : observation des messages BGP (`-v` montre le TTL des paquets) ;
 - `/var/log/frr/frr.log` : journal des démons FRR (établissement et fermeture des sessions).
 
-## 7. Plan du TP
-
-Les parties sont à faire **dans l'ordre** : chaque partie s'appuie sur la configuration réalisée
-dans les précédentes (les politiques des parties 4 à 7 se cumulent). Les réponses aux questions
-et l'état des routeurs sont évalués automatiquement (bouton d'évaluation) ; les valeurs
-demandées (local-preference, nombre de *prepend*, temporisateurs, communauté, mot de passe)
-sont propres à votre instance du TP. Sauvegardez régulièrement (`write`).
+| symptôme | causes à vérifier |
+|----------|-------------------|
+| session en `Active` / `Connect` | pair non déclaré de l'autre côté, mauvaise adresse ou mauvais numéro d'AS, pas de route vers le pair, `update-source` oublié entre loopbacks, mots de passe différents |
+| session `Established`, mention `(Policy)` | RFC 8212 : aucune politique sur la session eBGP |
+| préfixe déclaré par `network` mais pas annoncé | pas de route exactement identique dans la table de routage |
+| route reçue en iBGP mais non valide (pas de `*`) | `NEXT_HOP` injoignable : `next-hop-self` sur le routeur de bordure |
+| route BGP installée mais trafic perdu en chemin | un routeur du chemin ne connaît pas la destination (trou noir), ou pas de route retour |
+| politique modifiée sans effet | `clear bgp X soft in` / `soft out` ; `clear bgp X` pour les temporisateurs |
 """)
         )
 
@@ -723,17 +754,87 @@ class Grade(Grade0):
         def ping(src: str, dest) -> bool:
             return eval_ping(self, src=src, dest=dest, count=3, deadline=5, allow_error=True)
 
+        # ---------------- organisation ---------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
-`r1` est déjà en session eBGP avec `ispa` et annonce le bloc `{block}` de l'AS 65001. `r2`, `r3`
-et `r4` ont FRR démarré (`bgpd` actif) mais **aucune configuration BGP** ; l'IGP OSPF de l'AS
-65001 (`r1`, `r2`, `r3`, loopbacks comprises) est en place. Les parties sont à réaliser dans
-l'ordre. Sauvegardez régulièrement la configuration des routeurs (`write` dans vtysh).
+Lisez l'onglet **Informations** : il présente BGP (sessions, attributs, choix du meilleur chemin,
+iBGP et réflecteur de routes, politiques de routage), la configuration de FRR avec `vtysh` et les
+commandes de diagnostic.
 
-Rappel : dans l'AS 65001, le router-id BGP de chaque routeur est l'adresse de sa **loopback**
-(`bgp router-id`, à définir en premier dans `router bgp 65001`).
-""").format(block=block),
+**Le réseau.** Ce TP met en œuvre BGP avec la suite logicielle **FRRouting** (FRR). Vous
+administrez l'**AS 65001** (routeurs `r1`, `r2`, `r3`, hôtes `m1` et `m3`), raccordé à deux
+fournisseurs d'accès : **ISP A** (`ispa`, AS 65100) et **ISP B** (`ispb`, AS 65200), eux-mêmes
+reliés entre eux et au « reste de l'Internet » (`inet`, AS 65000) où se trouve le serveur `web`
+(`{web_host}`, nom `internet`). L'AS 65001 héberge en outre un **client** (`r4`, AS 65300, hôte
+`m4`). Chaque AS a sa couleur dans le schéma.
+
+- **Au départ**, `r1` est déjà en session eBGP avec `ispa` et annonce le bloc `{block}` de
+  l'AS 65001. `r2`, `r3` et `r4` ont FRR démarré (`bgpd` actif) mais **aucune configuration
+  BGP** ; l'IGP de l'AS 65001 (OSPF sur `r1`, `r2` et `r3`, loopbacks comprises) est en place.
+- Les routeurs des fournisseurs et `inet` sont déjà entièrement configurés : vous pouvez vous y
+  connecter pour observer ce qu'ils reçoivent (`vtysh`), mais leur configuration ne doit pas être
+  modifiée (sauf indication contraire). Comme `r1`, ils ont désactivé la protection de la
+  RFC 8212 (`no bgp ebgp-requires-policy`).
+- Les fichiers `/etc/hosts` contiennent les noms de toutes les interfaces : `r3-eth2` désigne
+  l'adresse de `eth2` de `r3`, `r3` (tout court) celle de `eth0`, `r3-lo` sa loopback, `ispa`
+  l'adresse de `ispa` sur son réseau de clients `neta`.
+
+**Plan d'adressage.**
+
+| AS | routeur | interfaces | loopback |
+|----|---------|------------|----------|
+| 65001 | `r1` | eth0 `{net1}` (`net1`, hôte `m1`), eth1 `{l12}` (`l12`, vers `r2`), eth2 `{la}` (`la`, vers `ispa`) | `{lo1}` |
+| 65001 | `r2` | eth0 `{l12}` (`l12`), eth1 `{l23}` (`l23`, vers `r3`) | `{lo2}` |
+| 65001 | `r3` | eth0 `{net3}` (`net3`, hôte `m3`), eth1 `{l23}` (`l23`), eth2 `{lb}` (`lb`, vers `ispb`), eth3 `{l34}` (`l34`, vers `r4`) | `{lo3}` |
+| 65300 | `r4` | eth0 `{net4}` (`net4`, hôte `m4`), eth1 `{l34}` (`l34`, vers `r3`) | – |
+| 65100 | `ispa` | eth0 `{neta}` (`neta`, clients de l'ISP A), eth1 `{la}`, eth2 `{lab}` (`lab`, vers `ispb`), eth3 `{lai}` (`lai`, vers `inet`) | – |
+| 65200 | `ispb` | eth0 `{netb}` (`netb`, clients de l'ISP B), eth1 `{lb}`, eth2 `{lab}`, eth3 `{lbi}` (`lbi`, vers `inet`) | – |
+| 65000 | `inet` | eth0 `{web}` (`netweb`, serveur `web` = `{web_host}`), eth1 `{lai}`, eth2 `{lbi}` | – |
+
+L'AS 65001 possède le bloc **`{block}`** (`net1`, `net3`, les liens internes et les loopbacks
+`{loops}`).
+
+**Consignes.**
+
+- Les parties sont à faire **dans l'ordre** : chaque partie s'appuie sur la configuration
+  réalisée dans les précédentes (les politiques des parties 4 à 7 se cumulent).
+- Dans l'AS 65001, le router-id BGP de chaque routeur est l'adresse de sa **loopback**
+  (`bgp router-id`, à définir en premier dans `router bgp 65001`).
+- Sauvegardez régulièrement la configuration des routeurs (`write` dans vtysh).
+
+**Plan du TP.**
+
+1. **Découverte** de BGP sur `r1` et `ispa`, déjà configurés ;
+2. **eBGP** : session entre `r3` et ISP B, annonce du bloc de l'AS ;
+3. **iBGP** dans l'AS 65001 : sessions entre loopbacks, `next-hop-self`, trou noir ;
+4. **Trafic sortant** : `local-preference`, temporisateurs et convergence ;
+5. **Trafic entrant** : *AS-path prepend* ;
+6. **Filtrage** : ne pas devenir un AS de transit ;
+7. **Un client** : l'AS 65300 (`r4`), route par défaut, communauté ;
+8. **Réflecteur de routes** à la place du maillage iBGP.
+
+**Évaluation.** Chaque évaluation lit vos réponses et l'état des routeurs, les vôtres et ceux des
+fournisseurs (sessions, tables BGP, routes annoncées, configuration), et lance des `ping` et un
+`traceroute` entre les hôtes. Les valeurs demandées (local-preference, nombre de *prepend*,
+temporisateurs, communauté, mot de passe) sont propres à votre instance du TP. Attendez que les
+sessions soient `Established` et les routes propagées avant de lancer une évaluation.
+""").format(block=block, web=web, web_host=WEB_HOST.ip, net1=d.nets.net1, net3=d.nets.net3, net4=net4,
+            neta=neta, netb=netb, l12=d.nets.l12, l23=d.nets.l23, l34=d.nets.l34, la=d.nets.la, lb=d.nets.lb,
+            lab=d.nets.lab, lai=d.nets.lai, lbi=d.nets.lbi, lo1=lo['r1'], lo2=lo['r2'], lo3=lo['r3'],
+            loops=d.nets.loops)
+            + instructor(tr("""
+**Pour l'enseignant.** Valeurs de cette instance : local-preference **{lp}** ; *prepend*
+**{prepend} fois** 65001 vers ISP A ; keepalive / hold time de la session `r3`–`ispb` :
+**{k} s / {hold} s** ; communauté du client **`{community}`** ; mot de passe MD5 `{key}`. Chaque
+question se termine par sa solution pour ces valeurs.
+
+L'état `final` (onglet *Appliquer une configuration*) applique toute la solution et remplit les
+formulaires. Il suppose l'état initial (il ne retire pas les sessions ajoutées à la main) et
+construit l'iBGP directement dans sa forme finale, celle de la partie 8 : `r2` réflecteur de
+routes, pas de session directe `r1`–`r3`. Attendez environ 60 s après l'avoir appliqué avant de
+lancer une évaluation.
+""").format(lp=d.local_pref, prepend=d.prepend, k=k, hold=hold, community=community, key=d.md5_key)),
         )
 
         # =====================================================================
@@ -759,7 +860,23 @@ KEEPALIVE). Vérifiez depuis `m1` que vous joignez `internet` (`ping`, `tracerou
   (`show ip bgp neighbors`)
 - pourquoi `m3` ne joint-il pas `internet` ?
   @@{why_m3:>r3 n'a aucune route vers ce réseau|ispa filtre le trafic de m3|r1 refuse de router le trafic de net3|le serveur web est en panne}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Rien à configurer : `vtysh -c "show ip bgp summary"`, `vtysh -c "show ip bgp"` et
+`vtysh -c "show ip bgp neighbors {ispa_la}"` sur `r1`.
+
+- AS du pair : **65100** ; port TCP **179** ;
+- session **Established** ; **3** préfixes reçus : `{neta}` (ISP A), `{netb}` (ISP B, à travers
+  ISP A) et `{web}` ;
+- `AS_PATH` vers `{web}` : **65100 65000** ;
+- distance administrative d'une route eBGP : **20** (`[20/0]` dans `show ip route`) ;
+- hold time **180** s, keepalive **60** s : les valeurs par défaut ;
+- `m3` : **`r3` n'a aucune route vers ce réseau**. `r3` ne parle pas encore BGP et OSPF ne
+  transporte que les réseaux internes de l'AS 65001.
+
+Évaluation (enseignant seulement, 1 point chacun) : `decouverte_as_port`,
+`decouverte_etat_prefixes`, `decouverte_aspath`, `decouverte_ad_timers`, `decouverte_m3`.
+""").format(ispa_la=ip['ispa_la'], neta=neta, netb=netb, web=web)),
             cheat_answers={"final": {
                 "as_ispa": str(AS_ISPA), "port": "179", "state": "Established", "nb_prefixes": "3",
                 "aspath_web": f"{AS_ISPA} {AS_INET}", "ad": "20", "hold": "180", "keepalive": "60",
@@ -805,8 +922,9 @@ côté fournisseur mais n'est pas établie. Configurez BGP sur `r3` :
 
 1. `router bgp 65001`, router-id `{lo3}` (sa loopback), pair `{ispb_lb}` dans l'AS 65200 ;
 2. observez `show ip bgp summary` : la session s'établit, mais aucun préfixe n'est échangé
-   (mention `(Policy)`, voir la RFC 8212 dans les informations). Levez cette protection comme
-   sur `r1` (ou définissez des politiques explicites) ;
+   (mention `(Policy)`, voir la RFC 8212 dans l'onglet **Informations**, section
+   @@ref:rfc8212@@). Levez cette protection comme sur `r1` (ou définissez des politiques
+   explicites) ;
 3. annoncez le bloc **`{block}`** de l'AS 65001 (`network`, address-family `ipv4 unicast`).
    Vérifiez sur `ispb` (`show ip bgp {block}`) : tant que `r3` n'a pas de route vers ce
    préfixe exact, il ne l'annonce pas (`bgp network import-check`). Ajoutez la route statique
@@ -820,7 +938,47 @@ l'ISP B) et observez `show ip bgp` et `ip route` sur `r3`.
 {key}`, à configurer sur `r3` **et** sur `ispb`, la seule modification autorisée sur un
 fournisseur) et vérifiez qu'elle est de nouveau `Established`.
 """).format(r3_lb=ip['r3_lb'], lo3=lo['r3'], ispb_lb=ip['ispb_lb'], block=block, ispb_netb=ip['ispb_netb'],
-            key=d.md5_key),
+            key=d.md5_key)
+            + instructor(tr("""
+**Solution.** Dans `vtysh`, après `configure terminal` (puis `end` et `write`) :
+
+```
+! r3
+ip route {block} blackhole
+router bgp 65001
+ bgp router-id {lo3}
+ no bgp ebgp-requires-policy
+ neighbor {ispb_lb} remote-as 65200
+ neighbor {ispb_lb} description ISP-B
+ address-family ipv4 unicast
+  network {block}
+ exit-address-family
+```
+
+1. Dès que le pair est déclaré, `r3` ouvre la connexion et la session passe `Established`.
+2. Sans politique, les colonnes `State/PfxRcd` et `PfxSnt` de `show ip bgp summary` affichent
+   `(Policy)` : rien n'est accepté ni annoncé. `no bgp ebgp-requires-policy` lève la protection,
+   comme dans la configuration de `r1`.
+3. Sans la route `blackhole`, `show ip bgp` sur `r3` liste le bloc sans `*>` et `ispb` ne le
+   connaît que par ISP A (AS_PATH `65100 65001`). Avec elle, `show ip bgp {block}` sur `ispb`
+   montre le chemin direct, AS_PATH `65001`, meilleur chemin. OSPF garde les routes plus précises
+   vers `net1`, `net3` et les liens.
+
+`r3` installe alors `neta`, `netb` et `203.0.113.0/24` (`ip route` : `proto bgp`) et `m3` joint
+`internet` et `{ispb_netb}`.
+
+Bonus : `neighbor {ispb_lb} password {key}` sur `r3` (mode `router bgp 65001`) et
+`neighbor {r3_lb} password {key}` sur `ispb` (mode `router bgp 65200`). Tant qu'un seul côté
+est configuré, la session retombe et ne se rétablit pas.
+
+Évaluation : `ebgp_session_r3` (2 points : session `Established` avec l'AS 65200),
+`ebgp_router_id_r3` (1), `ebgp_politique_rfc8212` (1 : pas de mention `(Policy)` et au moins trois
+préfixes reçus), `ebgp_annonce_bloc` (2 : le meilleur chemin de `ispb` vers `{block}` vient de
+`r3`, AS_PATH `65001`), `ebgp_routes_noyau_r3` (1 : routes `proto bgp` vers `neta`, `netb` et
+`203.0.113.0/24`), `ebgp_pings_m3` (1), `ebgp_md5_bonus` (1 : le mot de passe dans la configuration
+des deux routeurs et la session `Established`).
+""").format(r3_lb=ip['r3_lb'], lo3=lo['r3'], ispb_lb=ip['ispb_lb'], block=block, ispb_netb=ip['ispb_netb'],
+            key=d.md5_key)),
         )
         q2 = self.question_form(
             section=self.section(1),
@@ -830,7 +988,20 @@ fournisseur) et vérifiez qu'elle est de nouveau `Established`.
 - `AS_PATH` de la route vers `203.0.113.0/24` sur `r3` : @@{aspath_web:[0-9 ]+}@@ ;
   `NEXT_HOP` des routes reçues de `ispb` : @@{nexthop:[0-9.]+}@@
 - TTL des paquets BGP émis par `r3` vers `ispb` (`tcpdump -v`) : @@{ttl:[0-9]+}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.**
+
+- avant : **Active** (`ispb` tente périodiquement d'ouvrir la connexion TCP, que `r3` refuse ;
+  `Connect` est accepté aussi) ;
+- AS_PATH vers `203.0.113.0/24` sur `r3` : **65200 65000** ; NEXT_HOP : **`{ispb_lb}`**,
+  l'adresse de `ispb` sur le lien `lb` ;
+- TTL : **1** (`tcpdump -ni eth2 -v tcp port 179` sur `r3` : `ttl 1`) : deux pairs eBGP sont
+  directement connectés.
+
+Évaluation (enseignant seulement, 1 point chacun) : `ebgp_q_etat_avant`,
+`ebgp_q_aspath_nexthop`, `ebgp_q_ttl`.
+""").format(ispb_lb=ip['ispb_lb'])),
             cheat_answers={"final": {"state_before": "Active", "aspath_web": f"{AS_ISPB} {AS_INET}",
                                      "nexthop": ip['ispb_lb'], "ttl": "1"}},
         )
@@ -914,7 +1085,64 @@ disponible. Les routeurs de l'AS doivent partager leurs routes externes en **iBG
 
 Vérifiez pour finir que `m3` joint `ispa` (`{ispa_neta}`) et `m1` joint `ispb` (`{ispb_netb}`).
 """).format(lo3=lo['r3'], lo2=lo['r2'], netb=netb, ispa_la=ip['ispa_la'], ispa_neta=ip['ispa_neta'],
-            ispb_netb=ip['ispb_netb']),
+            ispb_netb=ip['ispb_netb'])
+            + instructor(tr("""
+**Solution.**
+
+```
+! étapes 1 et 2 — r1
+router bgp 65001
+ neighbor {lo3} remote-as 65001
+ neighbor {lo3} update-source lo
+ address-family ipv4 unicast
+  neighbor {lo3} next-hop-self
+ exit-address-family
+! étapes 1 et 2 — r3
+router bgp 65001
+ neighbor {lo1} remote-as 65001
+ neighbor {lo1} update-source lo
+ address-family ipv4 unicast
+  neighbor {lo1} next-hop-self
+ exit-address-family
+!
+! étape 4 — r2
+router bgp 65001
+ bgp router-id {lo2}
+ neighbor {lo1} remote-as 65001
+ neighbor {lo1} update-source lo
+ neighbor {lo3} remote-as 65001
+ neighbor {lo3} update-source lo
+! étape 4 — r1 (et r3 de même)
+router bgp 65001
+ neighbor {lo2} remote-as 65001
+ neighbor {lo2} update-source lo
+ address-family ipv4 unicast
+  neighbor {lo2} next-hop-self
+ exit-address-family
+```
+
+1. Sur `r1`, le chemin iBGP vers `{netb}` a pour `NEXT_HOP` `{ispb_lb}`, l'adresse de `ispb` sur
+   le lien `lb` : en iBGP le `NEXT_HOP` n'est pas modifié. Ce lien n'est pas dans OSPF, `r1` n'a
+   aucune route vers cette adresse : le chemin est inaccessible, sans `*`, et `r1` garde son
+   chemin par ISP A.
+2. Avec `next-hop-self`, `r3` annonce ses routes externes avec sa loopback `{lo3}`, connue par
+   OSPF : le chemin devient valide et, plus court (`65200` contre `65100 65200`), il est choisi
+   et installé (`[200/0]` dans `show ip route`).
+3. Session ISP A coupée : `r1` envoie le trafic vers `{lo3}`, donc à `r2`, qui n'a aucune route
+   vers `203.0.113.0/24` et le jette (`traceroute` s'arrête à `r2`).
+4. Avec BGP sur `r2`, toute la chaîne connaît les routes externes et `m1` joint `internet` par
+   ISP B. Ne pas oublier `no neighbor {ispa_la} shutdown` sur `r1`.
+
+L'état `final` ne crée pas la session directe `r1`–`r3` : il construit directement la forme de
+la partie 8.
+
+Évaluation : `ibgp_sessions_r2` (2 points : `r2` en session `Established` avec `{lo1}` et
+`{lo3}`), `ibgp_next_hop_self` (2 : sur `r2`, `neta` a pour prochain saut `{lo1}` et `netb`
+`{lo3}`, routes iBGP installées dans le noyau), `ibgp_routes_bordure` (1 : `r1` connaît `netb`
+par `r3` et `r3` connaît `neta` par `r1`), `ibgp_pings` (2 : `m3` joint `{ispa_neta}` et `m1`
+joint `{ispb_netb}`).
+""").format(lo1=lo['r1'], lo2=lo['r2'], lo3=lo['r3'], netb=netb, ispa_la=ip['ispa_la'], ispb_lb=ip['ispb_lb'],
+            ispa_neta=ip['ispa_neta'], ispb_netb=ip['ispb_netb'])),
         )
         q3 = self.question_form(
             section=self.section(1),
@@ -926,7 +1154,20 @@ Vérifiez pour finir que `m3` joint `ispa` (`{ispa_neta}`) et `m1` joint `ispb` 
   @@{nh_before:>l'adresse de ispb sur le lien lb|la loopback de r3|l'adresse de r3 sur l23|l'adresse de r2}@@
 - pourquoi `r2` doit-il parler BGP ?
   @@{why_r2:>r2 relaie le trafic entre r1 et r3 et doit connaître les destinations externes|r2 doit élire un DR|OSPF ne fonctionne pas sans BGP|pour que r1 et r3 puissent établir leur session}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.**
+
+- distance administrative iBGP : **200** ; maillage de 10 routeurs : 10 × 9 ÷ 2 = **45** sessions ;
+- `NEXT_HOP` avant `next-hop-self` : **l'adresse de ispb sur le lien lb** (`{ispb_lb}`),
+  transmise telle quelle en iBGP ;
+- **`r2` relaie le trafic entre `r1` et `r3` et doit connaître les destinations externes** :
+  la session `r1`–`r3` s'établit très bien sans lui (OSPF suffit à joindre les loopbacks), mais
+  les paquets, eux, traversent `r2`.
+
+Évaluation (enseignant seulement, 1 point chacun) : `ibgp_q_ad_sessions`, `ibgp_q_nexthop`,
+`ibgp_q_r2`.
+""").format(ispb_lb=ip['ispb_lb'])),
             cheat_answers={"final": {"ad_ibgp": "200", "sessions10": "45",
                                      "nh_before": "l'adresse de ispb sur le lien lb",
                                      "why_r2": "r2 relaie le trafic entre r1 et r3 et doit connaître les destinations externes"}},
@@ -1005,7 +1246,51 @@ trois pannes différentes sur `r3` :
   `tc qdisc add dev eth2 root netem loss 100%` (puis `tc qdisc del dev eth2 root` pour
   rétablir). Observez `show ip bgp summary` sur `r3` et sur `ispb` pendant la panne : les
   KEEPALIVE de `r3` n'arrivent plus, `ispb` ferme la session à l'expiration de son hold time.
-""").format(lp=d.local_pref, ispb_lb=ip['ispb_lb'], k=k, hold=hold),
+""").format(lp=d.local_pref, ispb_lb=ip['ispb_lb'], k=k, hold=hold)
+            + instructor(tr("""
+**Solution.** Avant : les deux chemins vers `203.0.113.0/24` ont un AS_PATH de deux AS. `r1` et
+`r3` gardent chacun leur chemin eBGP (préféré à l'iBGP) ; `r2`, qui n'a que deux chemins iBGP
+équivalents, retient celui du pair au plus petit router-id, `r1` : `m1` sort par ISP A, `m3` par
+ISP B.
+
+```
+! r3
+ip prefix-list WEB seq 5 permit {web}
+route-map LP-IN permit 10
+ match ip address prefix-list WEB
+ set local-preference {lp}
+route-map LP-IN permit 20
+router bgp 65001
+ neighbor {ispb_lb} timers {k} {hold}
+ address-family ipv4 unicast
+  neighbor {ispb_lb} route-map LP-IN in
+ exit-address-family
+```
+
+puis `clear bgp {ispb_lb} soft in` (la politique) et `clear bgp {ispb_lb}` (les temporisateurs).
+
+- `show ip bgp {web}` sur `r1` : le chemin iBGP par `{lo3}` porte `localpref {lp}` et devient le
+  meilleur (`Local Pref`), devant le chemin eBGP de `r1` (100) ; `ip route` sur `r1` : `{web}`
+  par `{r2_l12}`. `traceroute internet` depuis `m1` : `r1`, `r2`, `r3`, `ispb`, `inet`. Sans la
+  séquence `permit 20`, les autres routes reçues de `ispb` seraient refusées.
+- `neta` n'est pas dans la liste `WEB` : `r1` le joint toujours directement par `ispa`.
+- `show ip bgp neighbors {ispb_lb}` sur `r3` : hold time {hold} s, keepalive {k} s. `ispb` garde
+  180 s dans sa configuration : la plus petite des deux valeurs est retenue.
+- Convergence, à ce stade du TP : `shutdown` et `ip link set eth2 down` ne font perdre aucun
+  `ping` (`r3` ferme la session aussitôt et sort par `r1` ; les réponses reviennent par ISP A,
+  que `inet` préfère tant que la partie 5 n'est pas faite). Avec `netem loss 100%`, la session
+  reste `Established` environ {hold} s, jusqu'à ce que `ispb` la ferme : autant de `ping`
+  perdus, puis le trafic repart par `r1`. Une fois la partie 5 faite, le trafic entrant arrive
+  par ISP B et la coupure franche coûte elle aussi un hold time : `ispb`, dont l'interface reste
+  active, continue d'envoyer vers `r3`.
+
+Évaluation : `lp_valeur_r3` (1 point : sur `r3`, le chemin reçu de `ispb` a la local-preference
+{lp}), `lp_effet_r1` (2 : le meilleur chemin de `r1` vers `{web}` est le chemin iBGP par `r3`),
+`lp_route_noyau_r1` (1 : route du noyau de `r1` par `{r2_l12}`), `lp_effet_r2` (1 : prochain saut
+`{lo3}` sur `r2`), `lp_neta_inchange` (1 : `r1` garde son chemin eBGP vers `neta`), `lp_timers`
+(1 : keepalive {k} s et hold time {hold} s négociés).
+""").format(lp=d.local_pref, ispb_lb=ip['ispb_lb'], k=k, hold=hold, web=web, lo3=lo['r3'],
+            r2_l12=ip['r2_l12'])),
         )
         q4 = self.question_form(
             section=self.section(1),
@@ -1021,7 +1306,21 @@ trois pannes différentes sur `r3` :
   @@{shutdown:>immédiatement (moins de 5 s)|environ le keepalive|environ le hold time|jamais}@@,
   après la coupure franche : @@{linkdown:>immédiatement (moins de 5 s)|environ le keepalive|environ le hold time|jamais}@@,
   après la panne silencieuse : @@{silent:>immédiatement (moins de 5 s)|environ le keepalive|environ le hold time|jamais}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.**
+
+- avant, sur `r2` : **router-id du pair le plus petit** (deux chemins iBGP de même
+  local-preference, même longueur d'AS_PATH, même origine, même métrique IGP : `{lo1}` <
+  `{lo3}`) ; sur `r1` : **route eBGP préférée à la route iBGP** ;
+- après : **r1, r2, r3, ispb, inet** ;
+- jamais transmis en eBGP : **LOCAL_PREF** (il n'a de sens qu'à l'intérieur de l'AS) ;
+- coupure administrative : **immédiatement** ; coupure franche : **immédiatement** ; panne
+  silencieuse : **environ le hold time** ({hold} s).
+
+Évaluation (enseignant seulement, 1 point chacun) : `lp_q_criteres`, `lp_q_chemin`,
+`lp_q_attribut`, `lp_q_convergence`.
+""").format(lo1=lo['r1'], lo3=lo['r3'], hold=hold)),
             cheat_answers={"final": {"crit_r2": "router-id du pair le plus petit",
                                      "crit_r1": "route eBGP préférée à la route iBGP",
                                      "via": "r1, r2, r3, ispb, inet", "not_sent": "LOCAL_PREF",
@@ -1107,7 +1406,35 @@ avec `traceroute` depuis `web`.
 
 Le **MED** ne peut pas servir ici : il n'est comparé qu'entre chemins reçus du *même* AS voisin
 (il servirait si l'AS 65001 avait deux liens vers ISP B).
-""").format(block=block, prepend=d.prepend, ispa_la=ip['ispa_la']),
+""").format(block=block, prepend=d.prepend, ispa_la=ip['ispa_la'])
+            + instructor(tr("""
+**Solution.** Avant : `show ip bgp {block}` sur `inet` montre deux chemins de même longueur,
+`65100 65001` et `65200 65001` ; le meilleur est celui d'ISP A, départagé par le router-id du
+pair (`100.100.100.100` < `200.200.200.200`). `traceroute m1` depuis `web` passe par `ispa`.
+
+```
+! r1
+route-map TO-ISPA permit 10
+ set as-path prepend {prepend_list}
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor {ispa_la} route-map TO-ISPA out
+ exit-address-family
+```
+
+puis `clear bgp {ispa_la} soft out`.
+
+- Sur `ispa`, le chemin direct a maintenant l'AS_PATH `{aspath}` ({n} fois 65001) : `ispa`
+  lui-même préfère passer par ISP B (`65200 65001`).
+- Sur `inet`, le chemin par ISP A devient `65100 65200 65001` (`ispa` annonce son nouveau
+  meilleur chemin) : `65200 65001`, plus court, l'emporte.
+- `traceroute -n m1` depuis `web` : `inet`, `ispb`, `r3` (`{r3_lb}`), `r2`, `r1`, `m1`.
+
+Évaluation : `prepend_annonce` (1 point : `ispa` reçoit `{block}` de `r1` avec {n} fois 65001),
+`prepend_effet_inet` (2 : le meilleur chemin de `inet` est `65200 65001`), `prepend_traceroute`
+(1 : le `traceroute` de `web` vers `m1` lancé par l'évaluation contient `{r3_lb}`).
+""").format(block=block, ispa_la=ip['ispa_la'], r3_lb=ip['r3_lb'], n=d.prepend + 1,
+            prepend_list=" ".join([str(AS1)] * d.prepend), aspath=" ".join([str(AS1)] * (d.prepend + 1)))),
         )
         q5 = self.question_form(
             section=self.section(1),
@@ -1120,7 +1447,19 @@ Le **MED** ne peut pas servir ici : il n'est comparé qu'entre chemins reçus du
 - le MED n'est comparé qu'entre chemins issus du même AS voisin : @@{{med:>vrai|faux}}@@
 - leviers sur le trafic **entrant** : @@{{inbound:>AS-path prepend, MED|local-preference, weight}}@@ ;
   sur le trafic **sortant** : @@{{outbound:>AS-path prepend, MED|local-preference, weight}}@@
-""").format(block=block),
+""").format(block=block)
+            + instructor(tr("""
+**Solution.**
+
+- avant : **ISP A (65100)**, critère **router-id du pair le plus petit** (`inet` utilise
+  `bgp bestpath compare-routerid`) ;
+- après, `ispa` préfère passer **par ISP B (65200)** ;
+- MED comparé seulement entre chemins du même AS voisin : **vrai** ;
+- trafic entrant : **AS-path prepend, MED** ; trafic sortant : **local-preference, weight**.
+
+Évaluation (enseignant seulement, 1 point chacun) : `prepend_q_avant`, `prepend_q_ispa`,
+`prepend_q_med_leviers`.
+""")),
             cheat_answers={"final": {"before_via": "ISP A (65100)", "before_crit": "router-id du pair le plus petit",
                                      "ispa_now": "par ISP B (65200)", "med": "vrai",
                                      "inbound": "AS-path prepend, MED", "outbound": "local-preference, weight"}},
@@ -1170,25 +1509,74 @@ Par défaut, un routeur annonce à ses pairs eBGP **tous** ses meilleurs chemins
 `ispa` les routes apprises d'ISP B (`show ip bgp neighbors {ispa_la} advertised-routes` sur
 `r1`, `show ip bgp {netb}` sur `ispa`) et `r3` annonce à `ispb` celles apprises d'ISP A. L'AS
 65001 se propose ainsi comme **transit** entre ses deux fournisseurs : si le lien `lab` tombait,
-le trafic entre les clients d'ISP A et d'ISP B passerait par vos routeurs.
+du trafic entre les clients d'ISP A et ceux d'ISP B passerait par vos routeurs.
 
 Sur `r1` (vers `ispa`) et sur `r3` (vers `ispb`), n'annoncez que le bloc **`{block}`** : une
 `ip prefix-list` et une `route-map … out` (sur `r1`, complétez la route-map de la partie 5),
 puis `clear bgp … soft out`. Vérifiez avec `advertised-routes` et sur les fournisseurs.
-""").format(ispa_la=ip['ispa_la'], netb=netb, block=block),
+""").format(ispa_la=ip['ispa_la'], netb=netb, block=block)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r1 : la route-map de la partie 5 reçoit une clause match
+ip prefix-list TO-ISPA seq 5 permit {block}
+route-map TO-ISPA permit 10
+ match ip address prefix-list TO-ISPA
+!
+! r3
+ip prefix-list TO-ISPB seq 5 permit {block}
+route-map TO-ISPB permit 10
+ match ip address prefix-list TO-ISPB
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor {ispb_lb} route-map TO-ISPB out
+ exit-address-family
+```
+
+puis `clear bgp {ispa_la} soft out` sur `r1` et `clear bgp {ispb_lb} soft out` sur `r3`.
+
+- Une route qui ne correspond à aucune séquence d'une route-map est refusée : seul `{block}`
+  sort. `show ip bgp neighbors {ispa_la} advertised-routes` sur `r1` ne liste plus que lui (avec
+  son AS_PATH allongé).
+- Sur `ispa`, `show ip bgp {netb}` n'a plus de chemin commençant par 65001 ; de même sur `ispb`
+  pour `{neta}` et `203.0.113.0/24`.
+
+Évaluation : `filtre_annonces_r1` et `filtre_annonces_r3` (1 point chacun : les routes annoncées
+au fournisseur contiennent `{block}` et rien d'autre que lui et le préfixe du client),
+`filtre_pas_de_fuite_ispa` et `filtre_pas_de_fuite_ispb` (1 chacun : le fournisseur reçoit le bloc
+et n'a plus aucun chemin par l'AS 65001 vers le réseau de l'autre fournisseur ni vers
+`203.0.113.0/24`), `filtre_bloc_toujours_annonce` (1). Les quatre premiers ne comptent que si
+l'iBGP de la partie 3 est en place : sans lui il n'y a rien à filtrer.
+""").format(block=block, ispa_la=ip['ispa_la'], ispb_lb=ip['ispb_lb'], neta=neta, netb=netb)),
         )
         q6 = self.question_form(
             section=self.section(1),
             title=tr("Observations sur le filtrage"),
             description=tr("""
-- sans filtre, si le lien `lab` tombe, par où passe le trafic de `neta` vers `netb` ?
-  @@{lab_down:>par l'AS 65001 (transit involontaire)|par inet (AS 65000) uniquement|nulle part, netb devient injoignable}@@
-  (indice : sur `ispa`, comparez les AS_PATH des chemins restants et le critère de départage)
+- sans filtre, si le lien `lab` tombe, par où passe le trafic de `netb` vers `neta` ?
+  @@{lab_down:>par l'AS 65001 (transit involontaire)|par inet (AS 65000) uniquement|nulle part, neta devient injoignable}@@
+  (indice : sur `ispb`, comparez les AS_PATH des chemins restants vers `neta` et le critère de
+  départage)
 - que fait `ispa` d'une route reçue de `r1` dont l'AS_PATH contient déjà 65100 ?
   @@{loop:>il la rejette (détection de boucle)|il l'accepte avec une préférence plus faible|il la préfère}@@
 - ce que protège la RFC 8212 (politique obligatoire en eBGP) :
   @@{rfc8212:>les fuites de routes involontaires|la confidentialité des sessions|le temps de convergence}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.**
+
+- lien `lab` coupé, sans filtre : **par l'AS 65001 (transit involontaire)**. Il reste à `ispb`
+  deux chemins de même longueur vers `neta`, `65000 65100` par `inet` et `65001 65100` par `r3`,
+  départagés par le router-id du pair : celui de `r3` (sa loopback, une adresse privée) est plus
+  petit que `250.250.250.250`. Dans l'autre sens, de `neta` vers `netb`, `ispa` choisit `inet` :
+  le *prepend* de la partie 5 allonge tout ce que `r1` lui annonce.
+- route dont l'AS_PATH contient déjà 65100 : **il la rejette (détection de boucle)** ;
+- RFC 8212 : **les fuites de routes involontaires**.
+
+Évaluation (enseignant seulement, 1 point chacun) : `filtre_q_transit`,
+`filtre_q_boucle_rfc8212`.
+""")),
             cheat_answers={"final": {"lab_down": "par l'AS 65001 (transit involontaire)",
                                      "loop": "il la rejette (détection de boucle)",
                                      "rfc8212": "les fuites de routes involontaires"}},
@@ -1261,7 +1649,56 @@ raccordé à `r3` par le lien `l34` (`{l34}`).
 *Bonus* : sur `r3`, marquez les routes reçues de `r4` avec la communauté **`65001:{tag}`**
 (`route-map … in` avec `set community`) et vérifiez qu'elle est visible sur `ispa` ou `inet`
 (`show ip bgp {net4}`).
-""").format(net4=net4, l34=str(d.nets.l34), r3_l34=ip['r3_l34'], r4_l34=ip['r4_l34'], tag=d.cust_tag),
+""").format(net4=net4, l34=str(d.nets.l34), r3_l34=ip['r3_l34'], r4_l34=ip['r4_l34'], tag=d.cust_tag)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r4
+router bgp 65300
+ bgp router-id 4.4.4.4
+ no bgp ebgp-requires-policy
+ neighbor {r3_l34} remote-as 65001
+ neighbor {r3_l34} description FAI-AS65001
+ address-family ipv4 unicast
+  network {net4}
+ exit-address-family
+!
+! r3
+ip prefix-list DEFAULT-ONLY seq 5 permit 0.0.0.0/0
+ip prefix-list TO-ISPB seq 10 permit {net4}
+route-map TO-R4 permit 10
+ match ip address prefix-list DEFAULT-ONLY
+route-map FROM-R4 permit 10
+ set community {community}
+router bgp 65001
+ neighbor {r4_l34} remote-as 65300
+ neighbor {r4_l34} description CLIENT-AS65300
+ address-family ipv4 unicast
+  neighbor {r4_l34} default-originate
+  neighbor {r4_l34} route-map TO-R4 out
+  neighbor {r4_l34} route-map FROM-R4 in
+ exit-address-family
+!
+! r1
+ip prefix-list TO-ISPA seq 10 permit {net4}
+```
+
+puis `clear bgp * soft` sur `r1` et `r3`. La route-map `FROM-R4` est le bonus.
+
+- `{net4}` est un réseau connecté de `r4` : `network` l'annonce sans route `blackhole`.
+- Sur `r4`, `show ip bgp` ne contient que `0.0.0.0/0` (prochain saut `{r3_l34}`) et son propre
+  réseau ; `ip route` : `default … proto bgp`.
+- `show ip bgp {net4}` sur `ispa`, `ispb` et `inet` : AS_PATH terminé par `65001 65300`, et la
+  communauté `{community}` (`Community:`) avec le bonus.
+
+Évaluation : `client_session` (2 points : session `Established` vue des deux côtés, `r4` dans
+l'AS 65300 avec le router-id `4.4.4.4`), `client_defaut_seul` (2 : la table BGP de `r4` ne
+contient, hors son réseau, que la route par défaut reçue de `{r3_l34}`, installée),
+`client_prefixe_propage` (2 : `ispa`, `ispb` et `inet` ont un chemin vers `{net4}` terminé par
+`65001 65300`), `client_pings` (1 : `m4` joint `internet` et `m1`, `web` joint `m4`),
+`client_communaute_bonus` (1 : la communauté `{community}` vue sur `ispa` ou sur `inet`).
+""").format(net4=net4, r3_l34=ip['r3_l34'], r4_l34=ip['r4_l34'], community=community)),
         )
         q7 = self.question_form(
             section=self.section(1),
@@ -1271,7 +1708,17 @@ raccordé à `r3` par le lien `l34` (`{l34}`).
   `NEXT_HOP` de cette route sur `r1` : @@{{nexthop:[0-9.]+}}@@
 - effet de `aggregate-address PREFIXE summary-only` :
   @@{{summary_only:>seul l'agrégat est annoncé, les préfixes plus spécifiques sont supprimés|l'agrégat et les préfixes plus spécifiques sont annoncés|seuls les préfixes plus spécifiques sont annoncés}}@@
-""").format(net4=net4),
+""").format(net4=net4)
+            + instructor(tr("""
+**Solution.**
+
+- `r1` apprend `{net4}` **par iBGP depuis r3** (à travers `r2`) ; `NEXT_HOP` : **`{lo3}`**, la
+  loopback de `r3` (`next-hop-self`) ;
+- `summary-only` : **seul l'agrégat est annoncé, les préfixes plus spécifiques sont supprimés**.
+
+Évaluation (enseignant seulement, 1 point chacun) : `client_q_apprentissage`,
+`client_q_agregat`.
+""").format(net4=net4, lo3=lo['r3'])),
             cheat_answers={"final": {"learn": "par iBGP depuis r3", "nexthop": lo['r3'],
                                      "summary_only": "seul l'agrégat est annoncé, les préfixes plus spécifiques sont supprimés"}},
         )
@@ -1333,7 +1780,36 @@ Le maillage complet ne passe pas à l'échelle. Faites de `r2` un **réflecteur 
 Vérifiez que `r1` connaît toujours `netb` et `r3` toujours `neta` (`show ip bgp {neta}` sur `r3` :
 observez les attributs `Originator` et `Cluster list`), que le `NEXT_HOP` n'a pas été modifié
 par le réflecteur et que `m1` joint `ispb`, `m3` joint `ispa`.
-""").format(lo1=lo['r1'], lo3=lo['r3'], neta=neta),
+""").format(lo1=lo['r1'], lo3=lo['r3'], neta=neta)
+            + instructor(tr("""
+**Solution.**
+
+```
+! r2
+router bgp 65001
+ address-family ipv4 unicast
+  neighbor {lo1} route-reflector-client
+  neighbor {lo3} route-reflector-client
+ exit-address-family
+! r1
+router bgp 65001
+ no neighbor {lo3} remote-as 65001
+! r3
+router bgp 65001
+ no neighbor {lo1} remote-as 65001
+```
+
+`show ip bgp {neta}` sur `r3` : le chemin iBGP est reçu de `{lo2}` avec
+`Originator: {lo1}, Cluster list: {lo2}` et son `NEXT_HOP` reste `{lo1}` : le réflecteur ne
+modifie pas les attributs. Sans `route-reflector-client`, `r2` ne réannoncerait pas à `r3` les
+routes apprises de `r1` et les deux routeurs de bordure perdraient les routes de l'autre.
+
+Évaluation : `rr_clients_r2` (2 points : `r1` et `r3` clients du réflecteur dans la
+configuration ou l'état de `r2`), `rr_plus_de_maillage` (1 : plus de session `r1`–`r3`, `r2`
+toujours en session avec les deux), `rr_attributs` (2 : sur `r3`, un chemin vers `neta` porte
+`ORIGINATOR_ID` = `{lo1}` et `{lo2}` dans sa `CLUSTER_LIST`), `rr_pings` (1 : les `ping` de la
+partie 3).
+""").format(lo1=lo['r1'], lo2=lo['r2'], lo3=lo['r3'], neta=neta)),
         )
         q8 = self.question_form(
             section=self.section(1),
@@ -1343,7 +1819,13 @@ par le réflecteur et que `m1` joint `ispb`, `m3` joint `ispa`.
   avec un seul réflecteur de routes : @@{rr8:[0-9]+}@@
 - attributs ajoutés par le réflecteur pour éviter les boucles :
   @@{attrs:>ORIGINATOR_ID et CLUSTER_LIST|AS_PATH et NEXT_HOP|LOCAL_PREF et MED}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Maillage complet de 8 routeurs : 8 × 7 ÷ 2 = **28** sessions ; avec un réflecteur :
+**7** (une par client). Attributs ajoutés : **ORIGINATOR_ID et CLUSTER_LIST**.
+
+Évaluation (enseignant seulement, 1 point chacun) : `rr_q_sessions`, `rr_q_attributs`.
+""")),
             cheat_answers={"final": {"mesh8": "28", "rr8": "7", "attrs": "ORIGINATOR_ID et CLUSTER_LIST"}},
         )
         rr_conf = (neighbor_conf('r2', lo['r1']).get('route_reflector_client') or nb_r2_lo1.get('route_reflector_client')) \
@@ -1377,3 +1859,6 @@ par le réflecteur et que `m1` joint `ispb`, `m3` joint `ispa`.
             grade=int(_norm(q8.get("attrs")).startswith("originator_id")), scope=params.EXO_EVAL_SCOPE,
             description=tr("attributs ajoutés par un réflecteur"),
         )
+
+
+_TRANSLATIONS = {}

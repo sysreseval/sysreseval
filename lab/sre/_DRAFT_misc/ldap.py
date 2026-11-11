@@ -647,38 +647,37 @@ client ordinaire, lit tout l'arbre puis, en mode `refreshAndPersist`, garde la c
 et reçoit chaque changement au fil de l'eau. Trois choses à faire :
 
 1. Sur le fournisseur, charger le module et l'*overlay* **syncprov** sur la base :
-   ```
-   dn: cn=module{0},cn=config
-   changetype: modify
-   add: olcModuleLoad
-   olcModuleLoad: syncprov
+        dn: cn=module{0},cn=config
+        changetype: modify
+        add: olcModuleLoad
+        olcModuleLoad: syncprov
 
-   dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
-   changetype: add
-   objectClass: olcOverlayConfig
-   objectClass: olcSyncProvConfig
-   olcOverlay: syncprov
-   olcSpCheckpoint: 100 10
-   olcSpSessionLog: 100
-   ```
+        dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+        changetype: add
+        objectClass: olcOverlayConfig
+        objectClass: olcSyncProvConfig
+        olcOverlay: syncprov
+        olcSpCheckpoint: 100 10
+        olcSpSessionLog: 100
+
 2. Sur le fournisseur, un compte pour le consommateur (`cn=replicator,dc=corp,dc=lan`) qui peut
    **lire tout l'arbre, mots de passe compris** (ACL : `by dn.exact="cn=replicator,…" read` dans
    la règle sur `userPassword`, et `read` sur le reste).
 3. Sur le consommateur, une base de même suffixe (vide) et l'attribut `olcSyncrepl` :
-   ```
-   dn: olcDatabase={1}mdb,cn=config
-   changetype: modify
-   add: olcSyncrepl
-   olcSyncrepl: rid=001 provider=ldap://ldap1.corp.lan bindmethod=simple
-     binddn="cn=replicator,dc=corp,dc=lan" credentials=secret
-     searchbase="dc=corp,dc=lan" type=refreshAndPersist retry="5 +"
-     starttls=critical tls_cacert=/etc/ldap/tls/ca.crt
-   -
-   add: olcUpdateRef
-   olcUpdateRef: ldap://ldap1.corp.lan
-   ```
-   (`starttls=critical` : obligatoire si le fournisseur exige TLS pour les binds ;
-   `olcUpdateRef` renvoie vers le fournisseur un client qui voudrait écrire sur la copie.)
+
+        dn: olcDatabase={1}mdb,cn=config
+        changetype: modify
+        add: olcSyncrepl
+        olcSyncrepl: rid=001 provider=ldap://ldap1.corp.lan bindmethod=simple
+          binddn="cn=replicator,dc=corp,dc=lan" credentials=secret
+          searchbase="dc=corp,dc=lan" type=refreshAndPersist retry="5 +"
+          starttls=critical tls_cacert=/etc/ldap/tls/ca.crt
+        -
+        add: olcUpdateRef
+        olcUpdateRef: ldap://ldap1.corp.lan
+
+    (`starttls=critical` : obligatoire si le fournisseur exige TLS pour les binds ;
+    `olcUpdateRef` renvoie vers le fournisseur un client qui voudrait écrire sur la copie.)
 
 Vérification : les entrées apparaissent sur le consommateur (`ldapsearch` ou `slapcat`) ; une
 modification sur le fournisseur y est visible dans la seconde ; l'attribut **`contextCSN`** de
@@ -3072,38 +3071,37 @@ client ordinaire, lit tout l'arbre puis, en mode `refreshAndPersist`, garde la c
 et reçoit chaque changement au fil de l'eau. Trois choses à faire :
 
 1. Sur le fournisseur, charger le module et l'*overlay* **syncprov** sur la base :
-   ```
-   dn: cn=module{0},cn=config
-   changetype: modify
-   add: olcModuleLoad
-   olcModuleLoad: syncprov
+        dn: cn=module{0},cn=config
+        changetype: modify
+        add: olcModuleLoad
+        olcModuleLoad: syncprov
 
-   dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
-   changetype: add
-   objectClass: olcOverlayConfig
-   objectClass: olcSyncProvConfig
-   olcOverlay: syncprov
-   olcSpCheckpoint: 100 10
-   olcSpSessionLog: 100
-   ```
+        dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+        changetype: add
+        objectClass: olcOverlayConfig
+        objectClass: olcSyncProvConfig
+        olcOverlay: syncprov
+        olcSpCheckpoint: 100 10
+        olcSpSessionLog: 100
+
 2. Sur le fournisseur, un compte pour le consommateur (`cn=replicator,dc=corp,dc=lan`) qui peut
    **lire tout l'arbre, mots de passe compris** (ACL : `by dn.exact="cn=replicator,…" read` dans
    la règle sur `userPassword`, et `read` sur le reste).
 3. Sur le consommateur, une base de même suffixe (vide) et l'attribut `olcSyncrepl` :
-   ```
-   dn: olcDatabase={1}mdb,cn=config
-   changetype: modify
-   add: olcSyncrepl
-   olcSyncrepl: rid=001 provider=ldap://ldap1.corp.lan bindmethod=simple
-     binddn="cn=replicator,dc=corp,dc=lan" credentials=secret
-     searchbase="dc=corp,dc=lan" type=refreshAndPersist retry="5 +"
-     starttls=critical tls_cacert=/etc/ldap/tls/ca.crt
-   -
-   add: olcUpdateRef
-   olcUpdateRef: ldap://ldap1.corp.lan
-   ```
-   (`starttls=critical` : obligatoire si le fournisseur exige TLS pour les binds ;
-   `olcUpdateRef` renvoie vers le fournisseur un client qui voudrait écrire sur la copie.)
+
+        dn: olcDatabase={1}mdb,cn=config
+        changetype: modify
+        add: olcSyncrepl
+        olcSyncrepl: rid=001 provider=ldap://ldap1.corp.lan bindmethod=simple
+          binddn="cn=replicator,dc=corp,dc=lan" credentials=secret
+          searchbase="dc=corp,dc=lan" type=refreshAndPersist retry="5 +"
+          starttls=critical tls_cacert=/etc/ldap/tls/ca.crt
+        -
+        add: olcUpdateRef
+        olcUpdateRef: ldap://ldap1.corp.lan
+
+    (`starttls=critical` : obligatoire si le fournisseur exige TLS pour les binds ;
+    `olcUpdateRef` renvoie vers le fournisseur un client qui voudrait écrire sur la copie.)
 
 Vérification : les entrées apparaissent sur le consommateur (`ldapsearch` ou `slapcat`) ; une
 modification sur le fournisseur y est visible dans la seconde ; l'attribut **`contextCSN`** de
@@ -3118,38 +3116,37 @@ tree then, in `refreshAndPersist` mode, keeps the connection open and receives e
 it happens. Three things to do:
 
 1. On the provider, load the module and the **syncprov** *overlay* on the database:
-   ```
-   dn: cn=module{0},cn=config
-   changetype: modify
-   add: olcModuleLoad
-   olcModuleLoad: syncprov
+        dn: cn=module{0},cn=config
+        changetype: modify
+        add: olcModuleLoad
+        olcModuleLoad: syncprov
 
-   dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
-   changetype: add
-   objectClass: olcOverlayConfig
-   objectClass: olcSyncProvConfig
-   olcOverlay: syncprov
-   olcSpCheckpoint: 100 10
-   olcSpSessionLog: 100
-   ```
+        dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+        changetype: add
+        objectClass: olcOverlayConfig
+        objectClass: olcSyncProvConfig
+        olcOverlay: syncprov
+        olcSpCheckpoint: 100 10
+        olcSpSessionLog: 100
+
 2. On the provider, an account for the consumer (`cn=replicator,dc=corp,dc=lan`) that can
    **read the whole tree, passwords included** (ACL: `by dn.exact="cn=replicator,…" read` in
    the rule on `userPassword`, and `read` on the rest).
 3. On the consumer, a database with the same suffix (empty) and the `olcSyncrepl` attribute:
-   ```
-   dn: olcDatabase={1}mdb,cn=config
-   changetype: modify
-   add: olcSyncrepl
-   olcSyncrepl: rid=001 provider=ldap://ldap1.corp.lan bindmethod=simple
-     binddn="cn=replicator,dc=corp,dc=lan" credentials=secret
-     searchbase="dc=corp,dc=lan" type=refreshAndPersist retry="5 +"
-     starttls=critical tls_cacert=/etc/ldap/tls/ca.crt
-   -
-   add: olcUpdateRef
-   olcUpdateRef: ldap://ldap1.corp.lan
-   ```
-   (`starttls=critical`: mandatory if the provider requires TLS for the binds;
-   `olcUpdateRef` sends back to the provider a client that would write on the copy.)
+
+        dn: olcDatabase={1}mdb,cn=config
+        changetype: modify
+        add: olcSyncrepl
+        olcSyncrepl: rid=001 provider=ldap://ldap1.corp.lan bindmethod=simple
+          binddn="cn=replicator,dc=corp,dc=lan" credentials=secret
+          searchbase="dc=corp,dc=lan" type=refreshAndPersist retry="5 +"
+          starttls=critical tls_cacert=/etc/ldap/tls/ca.crt
+        -
+        add: olcUpdateRef
+        olcUpdateRef: ldap://ldap1.corp.lan
+
+    (`starttls=critical`: mandatory if the provider requires TLS for the binds;
+    `olcUpdateRef` sends back to the provider a client that would write on the copy.)
 
 Check: the entries show up on the consumer (`ldapsearch` or `slapcat`); a modification on the
 provider is visible there within the second; the **`contextCSN`** attribute of the root entry

@@ -42,7 +42,7 @@ from typing import Dict
 
 import utils
 from SRE import params
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from ips import random_ipv4networks, random_ips_from_topology
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward
 
@@ -77,6 +77,12 @@ SPARE_ID = 1999   # UID/GID suggested for charlie on pc2 (never drawn by Data.ge
 ETUDIANT_ID = 1000
 
 FSTAB_HEADER = "# UNCONFIGURED FSTAB FOR BASE SYSTEM\n"   # /etc/fstab of the image
+# NFS lines of the reference /etc/fstab of pc1 (final state, solution of part 6)
+FSTAB_SOLUTION = (
+    f"srv:{EXPORT_ROOT}/commun  /mnt/commun  nfs   vers=3,rw,hard                       0 0\n"
+    f"srv:{EXPORT_ROOT}/home    /mnt/home    nfs   vers=3,rw                            0 0\n"
+    "srv:/depot            /mnt/depot   nfs4  noauto,user,soft,timeo=30,retrans=2  0 0\n"
+)
 RESOLV_CONF = "# Pas de serveur DNS dans ce TP : les noms sont dans /etc/hosts\n"
 
 # Run by Kathara (through /hostlab/shared.shutdown) just before a container is removed.
@@ -338,43 +344,19 @@ class NetScheme(NetScheme0):
             **{m: [([getattr(d.ips, m)], [])] for m in (*CLIENTS, *PROBE_NAMES)},
         }
 
-        addressing = tr("""
-| machine | réseau | adresse | rôle |
-|---------|--------|---------|------|
-| `srv` | `lan` (eth0) | `{srv_lan}` | serveur NFS |
-| `srv` | `invites` (eth1) | `{srv_invites}` | |
-| `pc1` | `lan` | `{pc1}` | poste de l'administrateur |
-| `pc2` | `lan` | `{pc2}` | poste d'un utilisateur |
-| `pc3` | `invites` | `{pc3}` | poste d'un visiteur |
-
-Le réseau `lan` (`{lan}`) est le réseau interne, de confiance ; `invites` (`{invites}`) est
-celui des visiteurs. Ils ne sont pas routés entre eux : `srv` possède une interface dans
-chacun. Il n'y a pas de DNS : les noms `srv`, `pc1`, `pc2` et `pc3` sont dans les fichiers
-`/etc/hosts` (sur `pc3`, `srv` désigne l'adresse du serveur dans `invites`).
-
-Comptes : `root` (mot de passe `root`) et `etudiant` (`etudiant`, UID 1000) sur toutes les
-machines ; `alice`, `bob`, `charlie` (mot de passe = nom du compte) sur certaines machines
-seulement ; `depot` est un compte de service du serveur.
-""").format(srv_lan=d.ips.srv_lan.ip, srv_invites=d.ips.srv_invites.ip, pc1=d.ips.pc1.ip, pc2=d.ips.pc2.ip,
-            pc3=d.ips.pc3.ip, lan=d.nets.lan, invites=d.nets.invites)
-
+        # The course: one tr() text per section (the lab itself is presented by the first question).
         self.informations = (
-                no_tr("## ") + title + no_tr("\n")
-                + tr("""
-Ce TP porte sur **NFS** (*Network File System*) : le serveur `srv` **exporte** des
-répertoires que les clients `pc1`, `pc2` et `pc3` **montent** dans leur arborescence et
-utilisent comme des répertoires locaux.
-""")
-                + addressing
-                + tr("""
-## 1. Principe de NFS
+            no_tr("## ") + title + no_tr("\n")
+            + tr("\n**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("Principe de NFS"), tag="principle")
+            + tr("""
+**NFS** (*Network File System*) est le protocole de partage de fichiers natif du monde Unix (Sun
+Microsystems, 1984) : un serveur **exporte** des répertoires, que des clients **montent** dans leur
+arborescence et utilisent comme des répertoires locaux. Deux versions sont utilisées aujourd'hui :
+**NFSv3** (RFC 1813) et **NFSv4** (RFC 7530 ; NFSv4.1 et 4.2 : RFC 8881 et 7862).
 
-NFS est le protocole de partage de fichiers natif du monde Unix (Sun Microsystems, 1984).
-Deux versions sont utilisées aujourd'hui : **NFSv3** (RFC 1813) et **NFSv4** (RFC 7530 ;
-NFSv4.1 et 4.2 : RFC 8881 et 7862).
-
-- Le serveur déclare les répertoires qu'il **exporte**, à quels clients et avec quelles options.
-- Le client **monte** un export sur un répertoire local (`mount -t nfs srv:/chemin /mnt/point`) :
+- Le serveur déclare les répertoires qu'il exporte, à quels clients et avec quelles options.
+- Le client monte un export sur un répertoire local (`mount -t nfs serveur:/chemin /mnt/point`) :
   les applications utilisent alors les appels système habituels (`open`, `read`, `write`, etc.) et
   le noyau les traduit en requêtes vers le serveur. Les fichiers ne sont **jamais copiés** :
   ils restent sur le serveur.
@@ -384,10 +366,10 @@ NFSv4.1 et 4.2 : RFC 8881 et 7862).
 - Un fichier est désigné par un ***file handle*** : un identifiant opaque fourni par le serveur.
 - NFSv3 est **sans état** : le serveur ne retient rien des clients, qui se contentent de
   réémettre une requête restée sans réponse. NFSv4 est **avec état** (fichiers ouverts,
-  verrous, baux).
-
-## 2. Les services d'un serveur NFS
-
+  verrous, baux ; section @@ref:nfs4@@).
+""")
+            + info_subtitle(tr("Les services d'un serveur NFS"), tag="services")
+            + tr("""
 | service | programme RPC | port | rôle |
 |---------|---------------|------|------|
 | `rpcbind` (*portmapper*) | 100000 | 111 (TCP et UDP) | annuaire : indique sur quel port écoute chaque programme RPC |
@@ -405,22 +387,43 @@ ni `statd` n'interviennent dans le protocole (le serveur Linux continue d'utilis
 rpcinfo -p [machine]        # programmes RPC enregistrés auprès de rpcbind
 ss -lntup                   # ports en écoute
 showmount -e machine        # exports d'un serveur (protocole mountd, NFSv3)
+cat /proc/fs/nfsd/threads   # nombre de threads nfsd du serveur
 ```
 
-## 3. Côté serveur : `/etc/exports`
+### @@sec:start@@ Démarrer les services
 
+Sous Debian, les démons viennent des paquets `rpcbind`, `nfs-common` (`rpc.statd`, `rpc.idmapd` et
+les outils du client) et `nfs-kernel-server` (le serveur). Sur une machine sans `systemd` (un
+conteneur, par exemple), ils se lancent avec la commande `service`, **dans cet ordre** :
+
+```
+service rpcbind start             # l'annuaire RPC, toujours en premier
+service nfs-common start          # rpc.statd et rpc.idmapd
+service nfs-kernel-server start   # sur le serveur seulement
+```
+
+Le dernier script monte `/proc/fs/nfsd`, exécute `exportfs -r`, lance les threads `nfsd`
+(`rpc.nfsd 8`) et `rpc.mountd` ; il ne démarre rien si `/etc/exports` est vide ou si `rpcbind`
+est absent. Avec `systemd`, les mêmes services sont des unités
+(`systemctl start nfs-kernel-server`). `rpc.mountd` inscrit chaque demande de montage NFSv3,
+acceptée ou refusée, dans le journal du système (`/var/log/syslog`).
+""")
+            + info_subtitle(tr("Côté serveur : `/etc/exports`"), tag="exports")
+            + tr("""
 Une ligne par répertoire exporté :
 
 ```
 répertoire   client1(options)   client2(options) ...
-/srv/donnees  192.168.10.0/24(rw,sync,no_subtree_check)  pc7(ro,sync,no_subtree_check)
+/srv/donnees  192.0.2.0/24(rw,sync,no_subtree_check)  pc7(ro,sync,no_subtree_check)
 ```
 
 **Attention :** pas d'espace entre le client et la parenthèse : `pc7 (rw)` signifie « `pc7`
 avec les options par défaut, **et tout le monde** en `rw` ».
 
-Un **client** est un nom ou une adresse de machine (`pc1`, `192.168.10.7`), un réseau
-(`192.168.10.0/24`), un motif (`*.exemple.fr`) ou `*` (tout le monde).
+Un **client** est un nom ou une adresse de machine (`pc7`, `192.0.2.7`), un réseau
+(`192.0.2.0/24`), un motif (`*.example.org`) ou `*` (tout le monde).
+
+### @@sec:export-options@@ Les options d'export
 
 | option | effet |
 |--------|-------|
@@ -432,7 +435,12 @@ Un **client** est un nom ou une adresse de machine (`pc1`, `192.168.10.7`), un r
 | `anonuid=N`, `anongid=N` | UID et GID de l'utilisateur anonyme (défaut : 65534, `nobody` / `nogroup`) |
 | `no_subtree_check` | comportement par défaut ; à écrire pour éviter un avertissement |
 | `secure` (défaut) | le client doit émettre depuis un port inférieur à 1024 (réservé à `root`) |
-| `fsid=0` | cet export est la **racine** de l'arborescence NFSv4 (voir 6.) |
+| `fsid=0` | cet export est la **racine** de l'arborescence NFSv4 (section @@ref:nfs4@@) |
+
+Un export `rw` ne dispense pas des **droits Unix** : le serveur applique les permissions du
+répertoire et des fichiers à l'UID et au GID annoncés par le client.
+
+### @@sec:exportfs@@ Appliquer et vérifier
 
 ```
 exportfs -ra                # relit /etc/exports et applique les changements (sans couper les clients)
@@ -440,18 +448,24 @@ exportfs -v                 # exports en vigueur, avec toutes leurs options
 cat /var/lib/nfs/etab       # la même table, options par défaut comprises
 exportfs -u client:/chemin  # retire un export
 ```
-
-Un export `rw` ne dispense pas des **droits Unix** : le serveur applique les permissions du
-répertoire et des fichiers à l'UID et au GID annoncés par le client.
-
-## 4. Côté client : monter un export
-
+""")
+            + info_subtitle(tr("Côté client : monter un export"), tag="mount")
+            + tr("""
 ```
-showmount -e srv                                        # que propose le serveur ?
-mount -t nfs  -o vers=3 srv:/srv/nfs/commun /mnt/commun  # NFSv3 : chemin complet sur le serveur
-mount -t nfs4 srv:/commun /mnt/commun                   # NFSv4 : chemin relatif à la racine fsid=0
-umount /mnt/commun
+showmount -e serveur                                       # que propose le serveur ?
+mkdir /mnt/donnees                                         # le point de montage doit exister
+mount -t nfs  -o vers=3 serveur:/srv/donnees /mnt/donnees  # NFSv3 : chemin complet sur le serveur
+mount -t nfs4 serveur:/donnees /mnt/donnees                # NFSv4 : chemin relatif à la racine fsid=0 (ici /srv)
+umount /mnt/donnees
 ```
+
+Observer les montages : `mount | grep nfs`, `grep nfs /proc/mounts`, `nfsstat -m` (options
+réellement négociées), `df -hT`.
+
+En NFSv3, le client a besoin de `rpcbind` et de `rpc.statd` pour les verrous : sans eux,
+`mount` refuse le montage, sauf avec `-o nolock`.
+
+### @@sec:mount-options@@ Les options de montage
 
 | option de montage | effet |
 |-------------------|-------|
@@ -462,16 +476,22 @@ umount /mnt/commun
 | `timeo=N` | délai avant réémission, en **dixièmes de seconde** (défaut : 600 en TCP) |
 | `retrans=N` | nombre de réémissions avant l'erreur (`soft`) ou le message « not responding » (`hard`) |
 | `nolock` | NFSv3 : pas de verrous distants (évite d'avoir besoin de `rpc.statd`) |
-| `noauto`, `user`, `_netdev` | options de `/etc/fstab` (voir 7.) |
+| `noauto`, `user`, `_netdev` | options de `/etc/fstab` (section @@ref:fstab@@) |
 
-Observer les montages : `mount | grep nfs`, `grep nfs /proc/mounts`, `nfsstat -m` (options
-réellement négociées), `df -hT`.
+### @@sec:outage@@ Quand le serveur ne répond plus
 
-En NFSv3, le client a besoin de `rpcbind` et de `rpc.statd` pour les verrous : sans eux,
-`mount` refuse le montage, sauf avec `-o nolock`.
-
-## 5. Identités et sécurité
-
+- Montage **`hard`** : les programmes qui accèdent au montage **attendent**, le temps qu'il
+  faudra, puis **reprennent d'eux-mêmes** au retour du serveur, sans erreur : aucune donnée n'est
+  perdue. C'est le choix à faire pour des données importantes.
+- Montage **`soft`** : après `retrans` réémissions, l'appel système échoue (`Input/output error`,
+  parfois `Stale file handle`). Rien ne reste bloqué, mais un programme qui ne contrôle pas ses
+  erreurs perd des données sans le dire.
+- Une commande bloquée s'interrompt par `Ctrl-C` ; `umount -f` (forcer) ou `umount -l` (détacher)
+  démontent un montage dont le serveur ne répond plus. `grep nfs /proc/mounts` ne bloque jamais,
+  contrairement à `df` ou à `ls` sur le montage.
+""")
+            + info_subtitle(tr("Identités et sécurité"), tag="identities")
+            + tr("""
 Par défaut (`sec=sys`, authentification **AUTH_SYS**, aussi appelée AUTH_UNIX), chaque requête
 contient simplement l'**UID** et les **GID** numériques de l'utilisateur sur le client, et le
 serveur **leur fait confiance**. Conséquences :
@@ -488,14 +508,16 @@ serveur **leur fait confiance**. Conséquences :
 
 Pour authentifier réellement les utilisateurs et protéger les échanges, NFS s'utilise avec
 **Kerberos** : `sec=krb5` (authentification), `krb5i` (+ intégrité), `krb5p` (+ chiffrement).
-
-## 6. NFSv4
-
+""")
+            + info_subtitle(tr("NFSv4"), tag="nfs4")
+            + tr("""
 - Un **seul port** (TCP 2049) : simple à filtrer par un pare-feu.
 - Les exports d'un serveur forment **une seule arborescence** (*pseudo-système de fichiers*)
-  dont la racine est l'export marqué `fsid=0`. Le client monte `srv:/` (tout) ou `srv:/commun`
-  (chemin **relatif à cette racine**), et franchit automatiquement les exports qu'il rencontre
-  (des sous-montages apparaissent dans `/proc/mounts`).
+  dont la racine est l'export marqué `fsid=0`. Le client monte `serveur:/` (tout) ou
+  `serveur:/donnees` (chemin **relatif à cette racine**), et franchit automatiquement les exports
+  qu'il rencontre (des sous-montages apparaissent dans `/proc/mounts`).
+- Sans export `fsid=0`, un serveur Linux construit lui-même cette racine à partir de `/` (les
+  chemins NFSv4 sont alors les chemins complets) : cela suppose que `/` soit exportable.
 - Protocole **avec état** : ouvertures de fichiers, verrous et délégations sont connus du
   serveur ; le client renouvelle un **bail** (*lease*, 90 s). Après un redémarrage, le serveur
   observe un **délai de grâce** pendant lequel les clients récupèrent leur état.
@@ -503,17 +525,22 @@ Pour authentifier réellement les utilisateurs et protéger les échanges, NFS s
   avec `sec=sys`, Linux transmet en pratique les numéros, comme en NFSv3.
 - **Attention aux exports imbriqués** : en NFSv4, un sous-répertoire ordinaire d'un export
   est atteint avec les options de l'export **parent**. Des options différentes supposent des
-  systèmes de fichiers distincts (c'est le cas des quatre répertoires de ce TP).
-
-## 7. Montages permanents : `/etc/fstab`
+  systèmes de fichiers distincts.
 
 ```
-# serveur:chemin        point de montage    type    options            dump   pass
-srv:/srv/nfs/commun     /mnt/commun         nfs     vers=3,rw,hard     0      0
-srv:/depot              /mnt/depot          nfs4    noauto,user,soft   0      0
+/srv           192.0.2.0/24(ro,sync,no_subtree_check,fsid=0)   # la racine : serveur:/
+/srv/donnees   192.0.2.0/24(rw,sync,no_subtree_check)          # serveur:/donnees (un système de fichiers à part)
+```
+""")
+            + info_subtitle(tr("Montages permanents : `/etc/fstab`"), tag="fstab")
+            + tr("""
+```
+# serveur:chemin         point de montage   type   options            dump  pass
+serveur:/srv/donnees     /mnt/donnees       nfs    vers=3,rw,hard     0     0
+serveur:/projets         /mnt/projets       nfs4   noauto,user,soft   0     0
 ```
 
-- `mount -a` monte toutes les lignes (sauf `noauto`) ; `mount /mnt/depot` monte une ligne ;
+- `mount -a` monte toutes les lignes (sauf `noauto`) ; `mount /mnt/projets` monte une ligne ;
   `findmnt --verify` contrôle la syntaxe du fichier ;
 - `noauto` : pas de montage automatique ; `user` : un utilisateur ordinaire peut monter ;
   `_netdev` : attendre le réseau au démarrage ; `nofail` : ne pas bloquer le démarrage si le
@@ -521,50 +548,22 @@ srv:/depot              /mnt/depot          nfs4    noauto,user,soft   0      0
 
 Sur un système réel on préfère souvent le **montage à la demande** (`autofs`, ou l'option
 `x-systemd.automount`) : le répertoire n'est monté qu'au premier accès.
-
-## 8. Particularités de ce TP
-
-Les machines sont des conteneurs, sans `systemd` :
-
-- les services se lancent avec `service` : **`service rpcbind start`**,
-  **`service nfs-common start`** (`rpc.statd`, `rpc.idmapd`) puis, sur le serveur,
-  **`service nfs-kernel-server start`**, dans cet ordre. Ce dernier monte `/proc/fs/nfsd`,
-  exécute `exportfs -r`, lance les threads `nfsd` (`rpc.nfsd 8`) et `rpc.mountd` ; il ne
-  démarre rien si `/etc/exports` est vide ou si `rpcbind` est absent. `service ... status`
-  n'est pas fiable ici : vérifiez avec `rpcinfo -p` ;
-- la racine `/` d'un conteneur n'est pas exportable par NFS
-  (`exportfs: ... does not support NFS export`). `/srv/nfs` et chacun de ses quatre
-  sous-répertoires sont des systèmes de fichiers distincts, en mémoire, de 16 Mo (`df -hT`) :
-  ce sont eux que l'on exporte. Pour la même raison, la racine NFSv4 doit être déclarée
-  explicitement (`fsid=0` sur `/srv/nfs`) ;
-- `rpc.mountd` note les demandes de montage NFSv3 dans `/var/log/syslog` sur `srv` ;
-- à chaque évaluation, deux machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans
-  `invites`), montent brièvement vos exports (et `pc1` l'export `admin`) : leurs adresses, que
-  vous verrez dans les journaux et les captures, sont dans `/etc/hosts` sur `srv` ;
-- une commande bloquée sur un montage dont le serveur ne répond plus s'interrompt par
-  `Ctrl-C` ; `umount -f` (forcer) ou `umount -l` (détacher) démontent un tel montage.
-
-## 9. Diagnostic
-
+""")
+            + info_subtitle(tr("Diagnostic"), tag="diagnostic")
+            + tr("""
 | symptôme | cause probable |
 |----------|----------------|
 | `mount.nfs: access denied by server` | le client n'est pas dans la liste de l'export, ou `exportfs -ra` a été oublié |
-| `mount.nfs: Connection refused`, `RPC: Program not registered` | services non démarrés sur le serveur (`rpcinfo -p srv`) |
+| `mount.nfs: Connection refused`, `RPC: Program not registered` | services non démarrés sur le serveur (`rpcinfo -p serveur`) |
 | `rpc.statd is not running but is required for remote locking` | démarrer `rpcbind` et `nfs-common` sur le client, ou monter avec `-o nolock` |
 | `No such file or directory` en NFSv4 | chemin non relatif à la racine `fsid=0`, ou pas de racine NFSv4 pour ce client |
 | `Read-only file system` | export `ro` pour ce client (ou montage `ro`) |
 | `Permission denied` | droits Unix : regardez avec quel UID vous arrivez sur le serveur (`root` devient `nobody`). Un répertoire exporté en `1777` refuse aussi les créations de `root` : utilisez `777` |
 | `Stale file handle` | le *file handle* n'est plus valide (répertoire supprimé ou serveur indisponible) : démonter et remonter |
+| `exportfs: ... does not support NFS export` | ce système de fichiers n'est pas exportable (la racine d'un conteneur, par exemple) : exporter un répertoire d'un autre système de fichiers |
 | commande bloquée | montage `hard` et serveur injoignable |
 
 Documentation : `man exports`, `man nfs` (options de montage), `man exportfs`, `man nfs.conf`.
-
-## 10. Plan du TP
-
-Six parties, à réaliser **dans l'ordre** : mise en service du serveur, premier client NFSv3,
-contrôle d'accès et options d'export, identités des utilisateurs, NFSv4, montages permanents
-et comportement en cas de panne. L'état des machines et vos réponses aux questions sont
-évalués automatiquement (bouton d'évaluation).
 """)
         )
 
@@ -593,17 +592,21 @@ et comportement en cas de panne. L'état des machines et vos réponses aux quest
                  f"useradd {home_opt} -s /bin/bash -u {uid} -g {uid} {name} && echo '{name}:{name}' | chpasswd; }}",
                  step=step)
 
-    def exports_solution(self) -> str:
-        """Reference /etc/exports."""
+    def export_lines(self) -> Dict[str, str]:
+        """Lines of the reference /etc/exports, by exported directory ('root': the NFSv4 root)."""
         d = self.data
         common = "sync,no_subtree_check"
-        return (
-            f"{EXPORT_ROOT}         {d.nets.lan}(ro,{common},fsid=0)\n"
-            f"{EXPORT_ROOT}/commun  {d.nets.lan}(rw,{common}) {d.nets.invites}(ro,{common})\n"
-            f"{EXPORT_ROOT}/admin   pc1(rw,{common},no_root_squash)\n"
-            f"{EXPORT_ROOT}/depot   *(rw,{common},all_squash,anonuid={d.uid_depot},anongid={d.uid_depot})\n"
-            f"{EXPORT_ROOT}/home    {d.nets.lan}(rw,{common})\n"
-        )
+        return {
+            'root': f"{EXPORT_ROOT}         {d.nets.lan}(ro,{common},fsid=0)",
+            'commun': f"{EXPORT_ROOT}/commun  {d.nets.lan}(rw,{common}) {d.nets.invites}(ro,{common})",
+            'admin': f"{EXPORT_ROOT}/admin   pc1(rw,{common},no_root_squash)",
+            'depot': f"{EXPORT_ROOT}/depot   *(rw,{common},all_squash,anonuid={d.uid_depot},anongid={d.uid_depot})",
+            'home': f"{EXPORT_ROOT}/home    {d.nets.lan}(rw,{common})",
+        }
+
+    def exports_solution(self) -> str:
+        """Reference /etc/exports."""
+        return "".join(line + "\n" for line in self.export_lines().values())
 
     # -- states ------------------------------------------------------------------
 
@@ -673,11 +676,7 @@ et comportement en cas de panne. L'état des machines et vos réponses aux quest
         # ---- pc1: rpcbind + statd, bob, fstab ---------------------------------------
         self.cmd('pc1', start_client)
         self.cmd('pc1', f"getent passwd bob >/dev/null || useradd -m -s /bin/bash -u {d.uid_bob} bob")
-        self.file('pc1', "/etc/fstab", FSTAB_HEADER + (
-            f"srv:{EXPORT_ROOT}/commun  /mnt/commun  nfs   vers=3,rw,hard                       0 0\n"
-            f"srv:{EXPORT_ROOT}/home    /mnt/home    nfs   vers=3,rw                            0 0\n"
-            "srv:/depot            /mnt/depot   nfs4  noauto,user,soft,timeo=30,retrans=2  0 0\n"
-        ))
+        self.file('pc1', "/etc/fstab", FSTAB_HEADER + FSTAB_SOLUTION)
         self.cmd('pc1', "mkdir -p /mnt/commun /mnt/home /mnt/depot /mnt/admin")
 
         # ---- pc2: alice gets the UID/GID she has on the server, charlie moves away ----
@@ -775,11 +774,41 @@ class Grade(Grade0):
                 return None
             return entry
 
+        addressing = tr("""
+| machine | réseau | adresse | rôle |
+|---------|--------|---------|------|
+| `srv` | `lan` (eth0) | `{srv_lan}` | serveur NFS |
+| `srv` | `invites` (eth1) | `{srv_invites}` | |
+| `pc1` | `lan` | `{pc1}` | poste de l'administrateur |
+| `pc2` | `lan` | `{pc2}` | poste d'un utilisateur |
+| `pc3` | `invites` | `{pc3}` | poste d'un visiteur |
+
+Le réseau `lan` (`{lan}`) est le réseau interne, de confiance ; `invites` (`{invites}`) est
+celui des visiteurs. Ils ne sont pas routés entre eux : `srv` possède une interface dans
+chacun. Il n'y a pas de DNS : les noms `srv`, `pc1`, `pc2` et `pc3` sont dans les fichiers
+`/etc/hosts` (sur `pc3`, `srv` désigne l'adresse du serveur dans `invites`).
+
+Comptes : `root` (mot de passe `root`) et `etudiant` (`etudiant`, UID 1000) sur toutes les
+machines ; `alice`, `bob`, `charlie` (mot de passe = nom du compte) sur certaines machines
+seulement ; `depot` est un compte de service du serveur.
+""").format(srv_lan=srv_lan, srv_invites=srv_invites, pc1=d.ips.pc1.ip, pc2=d.ips.pc2.ip, pc3=d.ips.pc3.ip,
+            lan=lan, invites=invites)
+
+        # ---------------- organisation ----------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
-Le serveur `srv` n'exporte encore rien et aucun service NFS n'y est démarré. Les quatre
-répertoires à partager existent déjà sous `/srv/nfs` :
+Ce TP met en œuvre **NFS** (*Network File System*) : le serveur `srv` **exporte** des répertoires
+que les clients `pc1`, `pc2` et `pc3` **montent** dans leur arborescence et utilisent comme des
+répertoires locaux. Lisez d'abord l'onglet **Informations** : il contient le cours et les
+commandes utiles.
+
+**Le réseau.**
+""")
+            + addressing
+            + tr("""
+**Au départ.** Le serveur `srv` n'exporte encore rien et aucun service NFS n'y est démarré. Les
+quatre répertoires à partager existent déjà sous `/srv/nfs` :
 
 | répertoire | usage prévu |
 |------------|-------------|
@@ -788,10 +817,66 @@ répertoires à partager existent déjà sous `/srv/nfs` :
 | `/srv/nfs/depot` | boîte de dépôt : tout fichier déposé appartient au compte de service `depot` |
 | `/srv/nfs/home` | répertoires personnels de `alice` et `bob` |
 
-Les parties sont à réaliser **dans l'ordre**. Lisez l'onglet *Informations* : il contient le
-cours, les commandes utiles et les particularités de ce TP (en particulier la façon de démarrer
-les services). Réseaux : `lan` = `{lan}`, `invites` = `{invites}`.
-""").format(lan=lan, invites=invites),
+**Particularités du TP.** Les machines sont des conteneurs, sans `systemd` :
+
+- les services se lancent avec `service` : **`service rpcbind start`**,
+  **`service nfs-common start`** (`rpc.statd`, `rpc.idmapd`) puis, sur le serveur,
+  **`service nfs-kernel-server start`**, dans cet ordre (section @@ref:start@@ des Informations).
+  `service ... status` n'est pas fiable ici : vérifiez avec `rpcinfo -p` ;
+- la racine `/` d'un conteneur n'est pas exportable par NFS
+  (`exportfs: ... does not support NFS export`). `/srv/nfs` et chacun de ses quatre
+  sous-répertoires sont des systèmes de fichiers distincts, en mémoire, de 16 Mo (`df -hT`) :
+  ce sont eux que l'on exporte, et chacun peut ainsi recevoir ses propres options, même en NFSv4
+  (section @@ref:nfs4@@). Pour la même raison, la racine NFSv4 doit être déclarée explicitement
+  (`fsid=0` sur `/srv/nfs`) ;
+- `rpc.mountd` note les demandes de montage NFSv3 dans `/var/log/syslog` sur `srv` ;
+- une commande bloquée sur un montage dont le serveur ne répond plus s'interrompt par
+  `Ctrl-C` ; `umount -f` (forcer) ou `umount -l` (détacher) démontent un tel montage.
+
+**Plan du TP.** Six parties, à réaliser **dans l'ordre** : mise en service du serveur, premier
+client NFSv3, contrôle d'accès et options d'export, identités des utilisateurs, NFSv4, montages
+permanents et comportement en cas de panne.
+
+**Évaluation.** L'état des machines et vos réponses aux questions sont évalués automatiquement.
+Le bouton d'évaluation (auto-évaluation) ne montre, par des lettres, que les éléments qui portent
+sur l'état des machines ; vos réponses aux formulaires sont notées par l'évaluation de
+l'enseignant. Une évaluation est aussi lancée toutes les {interval} secondes et à la fermeture du
+projet. À chaque évaluation, deux machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans
+`invites`), montent brièvement vos exports (et `pc1` l'export `admin`) : leurs adresses, que vous
+verrez dans les journaux et les captures, sont dans `/etc/hosts` sur `srv`. Vos exports, vos
+services et vos montages doivent donc être en place au moment de l'évaluation.
+""").format(interval=eval_interval_without_exam_mode)
+            + instructor(tr("""
+**Pour l'enseignant.** Valeurs de cette instance :
+
+- `alice` : UID = GID **{uid_alice}** sur `srv` et `pc1` ; sur `pc2`, elle porte par erreur
+  **{uid_alice_pc2}** et c'est `charlie` qui a {uid_alice} ;
+- `bob` : UID = GID **{uid_bob}** sur `srv` et `pc2` (pas de compte sur `pc1`) ; compte de service
+  `depot` de `srv` : **{uid_depot}** ;
+- contenu de `/srv/nfs/home/alice/secret.txt` : `{secret}` ;
+- machines cachées de l'évaluation : `h1` = `sonde1` (`{h1}`, réseau `lan`) et `h2` = `sonde2`
+  (`{h2}`, réseau `invites`).
+
+Fichier `/etc/exports` de référence, une fois les six parties faites :
+
+```
+{exports}
+```
+
+Chaque question se termine par sa solution pour ces valeurs ; l'état `final` (onglet *Appliquer
+une configuration*) applique toute la solution et remplit les formulaires. Il ne rejoue pas les
+observations (captures, montages refusés, panne du serveur) et ne monte ni `/mnt/depot` sur `pc1`
+(ligne `noauto` de `/etc/fstab`) ni `/mnt/essai`.
+
+L'évaluation porte sur le comportement : `sonde1` et `sonde2` montent réellement chaque export
+(en NFSv3, et en NFSv4 depuis `sonde1`), `pc1` l'export `admin` ; chacune y crée un fichier en
+tant que `root` puis en tant qu'`etudiant`, et l'on note le propriétaire obtenu ou l'erreur : la
+forme de `/etc/exports` est donc libre. Les montages des clients sont lus dans `/proc/mounts`, qui
+ne bloque jamais, même serveur en panne. Les éléments dont le nom contient `_q_` (réponses aux
+formulaires) ne comptent que dans l'évaluation de l'enseignant.
+""").format(uid_alice=d.uid_alice, uid_alice_pc2=d.uid_alice_pc2, uid_bob=d.uid_bob, uid_depot=d.uid_depot,
+            secret=d.secret, h1=d.ips.h1.ip, h2=d.ips.h2.ip,
+            exports=self.net_scheme.exports_solution().rstrip())),
         )
 
         # =====================================================================
@@ -812,7 +897,38 @@ Sur `srv` :
    `service nfs-kernel-server start` ;
 4. vérifiez : `rpcinfo -p`, `ss -lntup`, `showmount -e localhost`, `exportfs -v`,
    `cat /var/lib/nfs/etab`, `cat /proc/fs/nfsd/threads`.
-""").format(lan=lan),
+""").format(lan=lan)
+            + instructor(tr("""
+**Solution.** Sur `srv` : `chmod 777 /srv/nfs/commun`, puis dans `/etc/exports` :
+
+```
+/srv/nfs/commun  {lan}(rw,sync,no_subtree_check)
+```
+
+et enfin :
+
+```
+service rpcbind start
+service nfs-common start
+service nfs-kernel-server start
+```
+
+`rpcinfo -p` doit alors lister `portmapper` (port 111), `status`, `nfs` (port 2049), `mountd` et
+`nlockmgr` ; `showmount -e localhost` : `/srv/nfs/commun {lan}`. Après une modification
+ultérieure de `/etc/exports` : `exportfs -ra`.
+
+Pièges : `service nfs-kernel-server start` ne lance rien tant que `/etc/exports` est vide ou que
+`rpcbind` ne tourne pas (corriger, puis relancer la commande) ; un espace entre le réseau et la
+parenthèse ouvre l'export à tout le monde ; sans le `chmod 777`, personne n'écrit depuis un client
+(répertoire `755` à `root`, et `root` d'un client devient `nobody`). Ne pas choisir `1777` : `root`
+d'un client, devenu `nobody`, y reçoit `Permission denied` en créant un fichier par redirection
+(réglage `fs.protected_regular` de l'hôte).
+
+Évaluation : `serveur_services` (2 points : `portmapper`, `nfs` en version 3 et `mountd` figurent
+dans `rpcinfo -p` sur `srv`), `serveur_export_commun` (2 : `sonde1` monte `/srv/nfs/commun` en
+NFSv3) et `serveur_commun_ecriture` (1 : `etudiant` de `sonde1` y crée un fichier, qui lui
+appartient).
+""").format(lan=lan)),
         )
         q1 = self.question_form(
             section=self.section(1),
@@ -828,7 +944,19 @@ Sur `srv` :
 - UID de l'utilisateur anonyme par défaut (`anonuid` dans `/var/lib/nfs/etab`) : @@{anonuid:[0-9]+}@@
 - le port de `mountd` est :
   @@{mountd_port:>toujours 2049>>>2049|toujours 111>>>111|attribué dynamiquement, et publié par rpcbind>>>dynamic}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** `rpcinfo -p` donne, pour `nfs`, le programme **100003** sur le port TCP **2049** ;
+pour `portmapper`, le port **111** ; pour `mountd`, le programme **100005**, sur un port
+**attribué dynamiquement** au démarrage de `rpc.mountd` et publié par `rpcbind`.
+`cat /proc/fs/nfsd/threads` : **8** threads (`rpc.nfsd 8`). `exportfs -v` affiche
+**`root_squash`** parmi les options de l'export, bien qu'elle ne soit pas écrite dans
+`/etc/exports`, et `/var/lib/nfs/etab` donne `anonuid={anon}` (`nobody`).
+
+Évaluation (éléments comptés par l'évaluation de l'enseignant seulement) : `serveur_q_ports`
+(1 point : 2049 et 111), `serveur_q_programmes` (1 : 100003 et 100005),
+`serveur_q_threads_anonuid` (1 : 8 et {anon}), `serveur_q_squash` (1), `serveur_q_mountd` (1).
+""").format(anon=ANON_ID)),
             cheat_answers={"final": {
                 "port_nfs": "2049", "port_rpcbind": "111", "prog_nfs": "100003", "prog_mountd": "100005",
                 "threads": "8", "squash": "root_squash", "anonuid": str(ANON_ID), "mountd_port": "dynamic",
@@ -899,7 +1027,39 @@ Sur `pc1` :
    Recommencez avec
    `tshark -i eth0 -f "host pc1 and tcp port 2049" -V | grep -E "Procedure|Credentials|Flavor|UID|GID|Machine Name"` ;
 6. consultez `/var/log/syslog` sur `srv` : `rpc.mountd` y note chaque demande de montage.
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Sur `pc1` :
+
+```
+showmount -e srv
+mkdir /mnt/commun
+mount -t nfs -o vers=3 srv:/srv/nfs/commun /mnt/commun   # refusé : rpc.statd is not running...
+service rpcbind start
+service nfs-common start
+mount -t nfs -o vers=3 srv:/srv/nfs/commun /mnt/commun
+echo 'fichier cree par root sur pc1' > /mnt/commun/de_root.txt
+su etudiant -c "echo 'fichier cree par etudiant sur pc1' > /mnt/commun/de_etudiant.txt"
+```
+
+- `ls -l /srv/nfs/commun` sur `srv` : `de_root.txt` appartient à `nobody` / `nogroup` (UID {anon} :
+  `root_squash` a transformé `root` de `pc1` en utilisateur anonyme) et `de_etudiant.txt` à
+  `etudiant` (UID {etudiant}, le même sur toutes les machines). `pc1` affiche la même chose.
+- `nfsstat -m` : `vers=3`, `proto=tcp`, `hard`, `sec=sys`.
+- La capture `tcpdump -A` laisse lire la phrase écrite. `tshark` montre, pour chaque appel NFS
+  d'`etudiant`, le champ `Credentials` : `Flavor: AUTH_UNIX (1)`, `Machine Name: pc1`,
+  `UID: {etudiant}`, `GID: {etudiant}`.
+- `/var/log/syslog` de `srv` contient une ligne de `rpc.mountd` par montage :
+  `authenticated mount request from {pc1}:PORT for /srv/nfs/commun (/srv/nfs/commun)`.
+
+Piège : monter avec `-o nolock` sans démarrer les services fait réussir le montage, mais
+`client_statd` n'est pas acquis.
+
+Évaluation : `client_statd` (1 point : `status`, donc `rpc.statd`, figure dans `rpcinfo -p` sur
+`pc1`), `client_montage_commun` (2 : `srv:/srv/nfs/commun` est monté sur `/mnt/commun` en NFSv3,
+d'après `/proc/mounts`) et `client_fichiers` (2 : sur `srv`, `de_root.txt` appartient à l'UID
+{anon} et `de_etudiant.txt` à l'UID {etudiant}).
+""").format(anon=ANON_ID, etudiant=ETUDIANT_ID, pc1=d.ips.pc1.ip)),
         )
         q2 = self.question_form(
             section=self.section(1),
@@ -914,7 +1074,18 @@ Sur `pc1` :
   qui est suivi de l'UID) :
   @@{flavor:>AUTH_NULL>>>null|AUTH_UNIX (AUTH_SYS)>>>unix|RPCSEC_GSS (Kerberos)>>>gss}@@
 - le texte écrit dans le fichier est-il lisible dans la capture ? @@{clear:>oui>>>yes|non>>>no}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Il manquait **`rpc.statd`** (verrous NFSv3) : `mount` l'écrit en toutes lettres.
+Vu du serveur, `de_root.txt` appartient à **`nobody`**, UID **{anon}** (`root_squash`, appliquée
+par défaut). Transport : **`tcp`** (`proto=tcp` dans `nfsstat -m` ou dans `/proc/mounts`).
+Identification : **AUTH_UNIX (AUTH_SYS)** : chaque appel annonce le nom de la machine, l'UID et
+les GID, sans la moindre preuve. Texte lisible dans la capture : **oui**, rien n'est chiffré avec
+`sec=sys`.
+
+Évaluation (enseignant seulement) : `client_q_statd` (1 point), `client_q_proprietaire` (1 :
+`nobody` et {anon}), `client_q_proto_flavor` (1 : `tcp` et AUTH_UNIX), `client_q_clair` (1).
+""").format(anon=ANON_ID)),
             cheat_answers={"final": {"missing": "statd", "owner_name": "nobody", "owner_uid": str(ANON_ID),
                                      "proto": "tcp", "flavor": "unix", "clear": "yes"}},
         )
@@ -983,7 +1154,55 @@ Testez ensuite, en NFSv3 (créez les points de montage avec `mkdir` ; sur les ma
   puis essayez en tant qu'`etudiant` ;
 - sur `pc1` et sur `pc3` : montez `/srv/nfs/depot` sur `/mnt/depot`, créez-y un fichier en tant
   que `root` et un autre en tant qu'`etudiant`, puis regardez `ls -ln /mnt/depot`.
-""").format(invites=invites),
+""").format(invites=invites)
+            + instructor(tr("""
+**Solution.** Sur `srv` : `chown depot:depot /srv/nfs/depot` (`id depot` : UID = GID =
+{uid_depot}), puis `/etc/exports` devient :
+
+```
+{commun}
+{admin}
+{depot}
+```
+
+et `exportfs -ra`. Essais :
+
+```
+# pc3
+mkdir -p /mnt/commun /mnt/depot
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/commun /mnt/commun
+touch /mnt/commun/essai                   # Read-only file system
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/depot /mnt/depot
+# pc2
+mkdir -p /mnt/admin
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/admin /mnt/admin   # mount.nfs: access denied by server
+# pc1 (nolock y est facultatif : rpc.statd tourne)
+mkdir -p /mnt/admin /mnt/depot
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/admin /mnt/admin
+touch /mnt/admin/de_root                  # appartient à root (UID 0) : no_root_squash
+su etudiant -c 'touch /mnt/admin/essai'   # Permission denied
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/depot /mnt/depot
+touch /mnt/depot/a ; su etudiant -c 'touch /mnt/depot/b' ; ls -ln /mnt/depot
+```
+
+Dans `/mnt/depot`, `ls -ln` donne l'UID et le GID {uid_depot} à tous les fichiers, créés par
+`root` ou par `etudiant`, depuis `pc1` comme depuis `pc3`. Le refus opposé à `pc2` est inscrit
+par `rpc.mountd` dans `/var/log/syslog` de `srv` :
+`refused mount request from {pc2} for /srv/nfs/admin (/srv/nfs/admin): unmatched host`.
+
+Pièges : oublier `exportfs -ra` ; un espace avant une parenthèse ; `pc1` est résolu par
+`/etc/hosts` de `srv` ; sans le `chown`, personne n'écrit dans `depot` (répertoire `755` à `root`,
+où tout le monde arrive sous l'UID {uid_depot}) ; `all_squash` sans `anonuid` / `anongid` ramène
+tout le monde à `nobody`, qui n'écrit pas non plus dans un répertoire appartenant à `depot`.
+
+Évaluation : `options_commun_invites_ro` (2 points : `sonde2` monte `commun` et ses créations
+échouent par `Read-only file system`), `options_commun_lan_rw` (1 : `sonde2` monte `commun` et,
+depuis `sonde1`, `etudiant` y crée un fichier à son nom et `root` un fichier à `nobody`),
+`options_admin_pc1` (2 : `pc1` monte `admin`, le fichier créé par `root` appartient à l'UID 0),
+`options_admin_reserve` (2 : `pc1` monte `admin`, `sonde1` et `sonde2` sont refusées),
+`options_depot_all_squash` (3 : depuis `sonde1` et `sonde2`, les fichiers de `root` et
+d'`etudiant` appartiennent à l'UID {uid_depot} ; 1 point si un seul des deux réseaux y parvient).
+""").format(uid_depot=d.uid_depot, pc2=d.ips.pc2.ip, **self.net_scheme.export_lines())),
         )
         q3 = self.question_form(
             section=self.section(1),
@@ -999,7 +1218,20 @@ Testez ensuite, en NFSv3 (créez les points de montage avec `mkdir` ; sur les ma
   @@{why_admin:>les droits Unix du répertoire (755, root) s'appliquent à son UID>>>perms|no_root_squash réserve l'export à root>>>nrs|l'export est en lecture seule pour etudiant>>>ro}@@
 - commande qui applique une modification de `/etc/exports` sans redémarrer le serveur :
   @@{reload:>exportfs -ra>>>exportfs|showmount -e localhost>>>showmount|rpcinfo -p>>>rpcinfo|mount -a>>>mount}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Sur `pc3` : **Read-only file system** (l'export est `ro` pour `invites`, même si le
+montage se dit `rw`). Sur `pc2` : **access denied by server** (`pc2` n'est pas dans la liste de
+l'export `admin`). Le fichier créé par `root` de `pc1` dans `/mnt/admin` appartient à l'UID **0**
+(`no_root_squash`) ; ceux de `/mnt/depot` à l'UID **{uid_depot}** (compte `depot` : `all_squash`
+et `anonuid`). `etudiant` n'écrit pas dans `/mnt/admin` à cause des **droits Unix** : le
+répertoire est `755` et appartient à `root`, et le serveur applique ces droits à l'UID {etudiant}
+annoncé par le client ; `no_root_squash` ne concerne que l'UID 0, et l'export est bien `rw`.
+Prise en compte de `/etc/exports` : **`exportfs -ra`**.
+
+Évaluation (enseignant seulement) : `options_q_messages` (1 point), `options_q_uid` (1 : 0 et
+{uid_depot}), `options_q_droits_unix` (1), `options_q_exportfs` (1).
+""").format(uid_depot=d.uid_depot, etudiant=ETUDIANT_ID)),
             cheat_answers={"final": {"msg_ro": "erofs", "msg_denied": "denied", "uid_admin": "0",
                                      "uid_depot": str(d.uid_depot), "why_admin": "perms", "reload": "exportfs"}},
         )
@@ -1079,7 +1311,54 @@ Testez ensuite, en NFSv3 (créez les points de montage avec `mkdir` ; sur les ma
    (`usermod -u`, `groupmod -g`). Il faut d'abord libérer ces numéros en donnant un autre UID et
    un autre GID à `charlie` (par exemple {spare}). Vérifiez qu'`alice` lit maintenant son fichier
    et que `charlie` ne le peut plus.
-""").format(spare=SPARE_ID),
+""").format(spare=SPARE_ID)
+            + instructor(tr("""
+**Solution.** Sur `srv`, ajouter à `/etc/exports` la ligne suivante, puis `exportfs -ra` :
+
+```
+{home}
+```
+
+Sur `pc1` :
+
+```
+mkdir /mnt/home
+mount -t nfs -o vers=3 srv:/srv/nfs/home /mnt/home
+ls -l /mnt/home                                  # alice ; le répertoire bob porte le numéro {uid_bob}
+cat /mnt/home/alice/secret.txt                   # Permission denied : root est devenu nobody
+su alice -c 'cat /mnt/home/alice/secret.txt'     # {secret}
+useradd -m -s /bin/bash -u {uid_bob} bob
+su bob -c 'touch /mnt/home/bob/essai'
+```
+
+Sur `pc2`, `mkdir /mnt/home` puis `mount -t nfs -o vers=3,nolock srv:/srv/nfs/home /mnt/home`.
+`ls -l /mnt/home` attribue le répertoire `alice` à **`charlie`** et `ls -ln` montre l'UID
+{uid_alice} : sur `pc2`, ce numéro est celui de `charlie`, alors qu'`alice` y a l'UID
+{uid_alice_pc2}. `charlie` lit donc `secret.txt`, et `alice` non. Correction (celle de l'état
+`final`) :
+
+```
+usermod -u {spare} charlie && groupmod -g {spare} charlie
+usermod -u {uid_alice} alice && groupmod -g {uid_alice} alice
+chown -R alice:alice /home/alice
+chown -R charlie:charlie /home/charlie
+su alice -c 'cat /mnt/home/alice/secret.txt'     # {secret}
+su charlie -c 'cat /mnt/home/alice/secret.txt'   # Permission denied
+```
+
+Pièges : l'ordre (libérer {uid_alice} avant de le donner à `alice`) ; oublier le GID ; `usermod`
+refuse de modifier un compte qui a un processus en cours (fermer les `su alice` et `su charlie`
+restés ouverts) ; `groupmod -g` ne change pas le groupe des fichiers existants, d'où les
+`chown -R`.
+
+Évaluation : `identites_export_home` (2 points : `sonde1` monte `/srv/nfs/home`, `sonde2` est
+refusée), `identites_montages_home` (1 : `home` est monté sur `/mnt/home` sur `pc1` et sur `pc2`),
+`identites_bob_pc1` (1 : `bob` a l'UID {uid_bob} sur `pc1`), `identites_alice_uid_pc2` (2 : sur
+`pc2`, `alice` est le seul compte d'UID {uid_alice}), `identites_alice_gid_pc2` (1 : le GID
+{uid_alice} est celui d'`alice` et plus celui de `charlie`), `identites_lecture_alice_pc2` (1 :
+sur `pc2`, `su alice -c 'cat /mnt/home/alice/secret.txt'` rend le secret).
+""").format(home=self.net_scheme.export_lines()['home'], uid_alice=d.uid_alice, uid_bob=d.uid_bob,
+            uid_alice_pc2=d.uid_alice_pc2, spare=SPARE_ID, secret=d.secret)),
         )
         q4 = self.question_form(
             section=self.section(1),
@@ -1096,7 +1375,22 @@ Testez ensuite, en NFSv3 (créez les points de montage avec `mkdir` ; sur les ma
   @@{trust:>oui : il lui suffit de prendre l'UID de cet utilisateur, le serveur fait confiance aux UID annoncés>>>yes|non : root_squash l'en empêche>>>squash|non : il lui faudrait le mot de passe de l'utilisateur sur le serveur>>>password}@@
 - ce qui permet d'authentifier réellement les utilisateurs en NFS :
   @@{auth:>Kerberos (sec=krb5)>>>krb5|l'option all_squash>>>all_squash|l'option secure (port source inférieur à 1024)>>>secure}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Contenu de `secret.txt` : `{secret}`. UID d'`alice` sur le serveur : **{uid_alice}** ;
+sur `pc2` au début du TP : **{uid_alice_pc2}**. Avant correction, `ls -l /mnt/home` sur `pc2`
+attribue le répertoire `alice` à **`charlie`** : seuls les numéros circulent, et chaque machine
+affiche le nom que sa propre table des comptes associe à l'UID {uid_alice}. `root` de `pc1` ne lit
+pas directement `secret.txt` : il est transformé en `nobody` (**`root_squash`**). Mais il lui
+suffit d'un `su alice`, ou de créer un compte portant l'UID voulu, pour le lire : **oui**,
+l'administrateur d'un client autorisé lit les fichiers de n'importe quel utilisateur, puisque le
+serveur fait confiance aux UID annoncés (AUTH_SYS). Seul **Kerberos** (`sec=krb5`) authentifie
+réellement les utilisateurs : `all_squash` et `secure` ne prouvent l'identité de personne.
+
+Évaluation (enseignant seulement) : `identites_q_secret` (1 point), `identites_q_uid` (1 :
+{uid_alice} et {uid_alice_pc2}), `identites_q_noms` (1 : `charlie` et `root_squash`),
+`identites_q_confiance` (1 : oui et Kerberos).
+""").format(secret=d.secret, uid_alice=d.uid_alice, uid_alice_pc2=d.uid_alice_pc2)),
             cheat_answers={"final": {"secret": d.secret, "uid_srv": str(d.uid_alice), "uid_pc2": str(d.uid_alice_pc2),
                                      "shown": "charlie", "root_read": "squash", "trust": "yes", "auth": "krb5"}},
         )
@@ -1177,7 +1471,42 @@ Testez ensuite, en NFSv3 (créez les points de montage avec `mkdir` ; sur les ma
    version la plus élevée : relevez-la dans `/proc/mounts`, puis démontez `/mnt/test`.
 5. Sur `pc3` (réseau `invites`), essayez `mkdir /mnt/test` puis
    `mount -t nfs4 srv:/depot /mnt/test` : l'export `depot` est pourtant ouvert à tous les clients...
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Sur `srv`, ajouter à `/etc/exports` la ligne suivante, puis `exportfs -ra` :
+
+```
+{root}
+```
+
+Sur `pc2` :
+
+```
+mkdir /mnt/nfs4
+mount -t nfs4 srv:/ /mnt/nfs4
+ls -l /mnt/nfs4                                  # admin  commun  depot  home
+su etudiant -c 'touch /mnt/nfs4/commun/essai4'
+grep nfs4 /proc/mounts                           # srv:/ sur /mnt/nfs4 et srv:/commun sur /mnt/nfs4/commun, vers=4.2
+ls -la /mnt/nfs4/admin                           # vide : l'export admin est réservé à pc1
+touch /mnt/nfs4/essai                            # Read-only file system : la racine est exportée en ro
+mkdir /mnt/test && mount srv:/commun /mnt/test   # sans option de version : vers=4.2 dans /proc/mounts
+umount /mnt/test
+```
+
+Sur `pc3`, `mount -t nfs4 srv:/depot /mnt/test` échoue (`No such file or directory`) : la racine
+`fsid=0` n'est exportée qu'au réseau `lan`, il n'y a donc pas d'arborescence NFSv4 pour `pc3`,
+bien que l'export `depot` lui soit ouvert en NFSv3.
+
+Pièges : sans `fsid=0`, tout montage NFSv4 échoue de la même façon, la racine `/` du conteneur
+n'étant pas exportable ; en NFSv4 le chemin est relatif à la racine (`srv:/commun`, et non
+`srv:/srv/nfs/commun`) ; la racine doit rester en lecture seule (`nfs4_racine`).
+
+Évaluation : `nfs4_racine` (2 points : `sonde1` monte `srv:/` en NFSv4 et ses créations à la
+racine échouent par `Read-only file system`), `nfs4_commun` (2 : `srv:/commun` en NFSv4,
+`etudiant` y crée un fichier à son nom et `root` un fichier à `nobody`), `nfs4_depot` (1 :
+`srv:/depot` en NFSv4, les fichiers créés appartiennent à `depot`), `nfs4_montage_pc2` (1 :
+`srv:/` est monté sur `/mnt/nfs4` en NFSv4 sur `pc2`).
+""").format(root=self.net_scheme.export_lines()['root'])),
         )
         q5 = self.question_form(
             section=self.section(1),
@@ -1191,7 +1520,18 @@ Testez ensuite, en NFSv3 (créez les points de montage avec `mkdir` ; sur les ma
   @@{admin:>un répertoire vide : l'export admin n'est pas ouvert à pc2>>>empty|les fichiers de l'administrateur>>>files|une erreur Permission denied>>>denied}@@
 - pourquoi le montage NFSv4 échoue-t-il sur `pc3` ?
   @@{pc3:>la racine NFSv4 (fsid=0) n'est exportée qu'au lan>>>noroot|depot est exporté avec all_squash>>>squash|rpc.statd n'est pas démarré sur pc3>>>statd}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Version négociée : **4.2** (`vers=4.2` dans `nfsstat -m` ou dans `/proc/mounts`).
+Chemin de `/srv/nfs/home` pour un client NFSv4 : **`srv:/home`**, relatif à la racine `fsid=0`
+(`/home` est accepté aussi). Ports du serveur : **2049 seulement** : ni `rpcbind`, ni `mountd`,
+ni `statd`. `/mnt/nfs4/admin` vu de `pc2` : **un répertoire vide**, l'export `admin` n'étant
+ouvert qu'à `pc1`. Échec sur `pc3` : **la racine NFSv4 (`fsid=0`) n'est exportée qu'au `lan`** ;
+`all_squash` n'empêche aucun montage et NFSv4 n'a pas besoin de `rpc.statd`.
+
+Évaluation (enseignant seulement) : `nfs4_q_version_chemin` (1 point : 4.2 et `/home`),
+`nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
+""")),
             cheat_answers={"final": {"vers": "4.2", "path": "/home", "ports": "2049", "admin": "empty",
                                      "pc3": "noroot"}},
         )
@@ -1265,7 +1605,47 @@ Sur `pc1` :
    `hard`) et patientez une trentaine de secondes. Rebranchez le câble (`ip link set eth0 up`
    sur `srv`) et observez les deux commandes. Une commande bloquée s'interrompt par `Ctrl-C`.
    Terminez en démontant `/mnt/essai`.
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Sur `pc1`, `umount -a -t nfs,nfs4`, puis ajouter à `/etc/fstab` (`timeo=30,retrans=2`
+est facultatif) :
+
+```
+{fstab}
+```
+
+puis :
+
+```
+findmnt --verify
+mount -a                            # monte /mnt/commun et /mnt/home, pas /mnt/depot
+grep nfs /proc/mounts
+su etudiant -c 'mount /mnt/depot'   # permis par l'option user
+```
+
+Panne :
+
+```
+mkdir /mnt/essai
+mount -t nfs -o vers=3,soft,timeo=30,retrans=2 srv:/srv/nfs/commun /mnt/essai
+```
+
+puis `ip link set eth0 down` sur `srv`. `ls /mnt/essai` (`soft`) rend une erreur
+(`Stale file handle` ou `Input/output error`) au bout d'une vingtaine de secondes au plus ;
+`ls /mnt/commun` (`hard`) reste bloquée, puis se termine normalement une dizaine de secondes après
+`ip link set eth0 up`. Finir par `umount /mnt/essai`.
+
+Pièges : `soft` ou `noauto` sur la ligne de `commun` ; `nfs` sans `vers=4` au lieu de `nfs4` pour
+`/depot`, ou le chemin NFSv3 `srv:/srv/nfs/depot` ; un point de montage qui n'existe pas ; laisser
+`eth0` coupée sur `srv` (toute l'évaluation échoue alors).
+
+Évaluation : `fstab_commun` (1 point : ligne `srv:/srv/nfs/commun` sur `/mnt/commun`, NFSv3, sans
+`noauto` ni `soft`), `fstab_home` (1 : `srv:/srv/nfs/home` sur `/mnt/home`, NFSv3, sans
+`noauto`), `fstab_depot` (2 : `srv:/depot` sur `/mnt/depot`, NFSv4, avec `noauto`, `soft` et
+`user`), `fstab_montes` (1 : ces deux premières lignes sont correctes, et `commun` et `home` sont
+montés en NFSv3 sur `pc1`, `commun` en `hard`). Le serveur peut y être nommé `srv` ou `{srv_lan}` ;
+le montage de `/mnt/depot` et l'essai de panne ne sont pas notés.
+""").format(fstab=FSTAB_SOLUTION.rstrip(), srv_lan=srv_lan)),
         )
         q6 = self.question_form(
             section=self.section(1),
@@ -1281,7 +1661,18 @@ Sur `pc1` :
 - pour une application qui écrit des données importantes (pas d'erreur silencieuse), on choisit :
   @@{choice:>hard|soft}@@
 - option de `/etc/fstab` qui exclut une ligne de `mount -a` : @@{noauto:[a-z_-]+}@@
-"""),
+""")
+            + instructor(tr("""
+**Solution.** Pendant la panne, `ls` sur le montage `soft` **échoue avec une erreur après quelques
+secondes** ; sur le montage `hard`, elle **reste bloquée jusqu'au retour du serveur**, puis
+**reprend et se termine normalement**. `timeo=30` vaut **3 secondes** : l'unité est le dixième de
+seconde. Pour des données importantes on choisit **`hard`** : un montage `soft` rend une erreur
+d'entrée-sortie que beaucoup de programmes ignorent, et les données sont perdues sans bruit.
+L'option qui exclut une ligne de `mount -a` est **`noauto`**.
+
+Évaluation (enseignant seulement) : `pannes_q_soft_hard` (1 point), `pannes_q_reprise` (1),
+`pannes_q_timeo` (1), `pannes_q_choix_noauto` (1 : `hard` et `noauto`).
+""")),
             cheat_answers={"final": {"soft": "error", "hard": "blocked", "resume": "resume", "timeo": "3s",
                                      "choice": "hard", "noauto": "noauto"}},
         )
@@ -1338,14 +1729,26 @@ Sur `pc1` :
 _TRANSLATIONS = {
     'en': {
         """
-## 1. Principe de NFS
+**Sommaire**
+""": """
+**Contents**
+""",
+        'Principe de NFS': 'How NFS works',
+        "Les services d'un serveur NFS": 'The services of an NFS server',
+        'Côté serveur : `/etc/exports`': 'Server side: `/etc/exports`',
+        'Côté client : monter un export': 'Client side: mounting an export',
+        'Identités et sécurité': 'Identities and security',
+        'NFSv4': 'NFSv4',
+        'Montages permanents : `/etc/fstab`': 'Permanent mounts: `/etc/fstab`',
+        'Diagnostic': 'Troubleshooting',
+        """
+**NFS** (*Network File System*) est le protocole de partage de fichiers natif du monde Unix (Sun
+Microsystems, 1984) : un serveur **exporte** des répertoires, que des clients **montent** dans leur
+arborescence et utilisent comme des répertoires locaux. Deux versions sont utilisées aujourd'hui :
+**NFSv3** (RFC 1813) et **NFSv4** (RFC 7530 ; NFSv4.1 et 4.2 : RFC 8881 et 7862).
 
-NFS est le protocole de partage de fichiers natif du monde Unix (Sun Microsystems, 1984).
-Deux versions sont utilisées aujourd'hui : **NFSv3** (RFC 1813) et **NFSv4** (RFC 7530 ;
-NFSv4.1 et 4.2 : RFC 8881 et 7862).
-
-- Le serveur déclare les répertoires qu'il **exporte**, à quels clients et avec quelles options.
-- Le client **monte** un export sur un répertoire local (`mount -t nfs srv:/chemin /mnt/point`) :
+- Le serveur déclare les répertoires qu'il exporte, à quels clients et avec quelles options.
+- Le client monte un export sur un répertoire local (`mount -t nfs serveur:/chemin /mnt/point`) :
   les applications utilisent alors les appels système habituels (`open`, `read`, `write`, etc.) et
   le noyau les traduit en requêtes vers le serveur. Les fichiers ne sont **jamais copiés** :
   ils restent sur le serveur.
@@ -1355,10 +1758,27 @@ NFSv4.1 et 4.2 : RFC 8881 et 7862).
 - Un fichier est désigné par un ***file handle*** : un identifiant opaque fourni par le serveur.
 - NFSv3 est **sans état** : le serveur ne retient rien des clients, qui se contentent de
   réémettre une requête restée sans réponse. NFSv4 est **avec état** (fichiers ouverts,
-  verrous, baux).
+  verrous, baux ; section @@ref:nfs4@@).
+""": """
+**NFS** (*Network File System*) is the native file sharing protocol of the Unix world (Sun
+Microsystems, 1984): a server **exports** directories, which clients **mount** in their own file
+tree and use like local directories. Two versions are in use today: **NFSv3** (RFC 1813) and
+**NFSv4** (RFC 7530; NFSv4.1 and 4.2: RFC 8881 and 7862).
 
-## 2. Les services d'un serveur NFS
-
+- The server declares the directories it exports, to which clients and with which options.
+- The client mounts an export on a local directory (`mount -t nfs server:/path /mnt/point`):
+  applications then use the usual system calls (`open`, `read`, `write`, etc.) and the kernel
+  turns them into requests to the server. Files are **never copied**: they stay on the
+  server.
+- NFS relies on **RPC** (*Remote Procedure Call*, ONC RPC): each service is a *program*
+  identified by a number and a version, which offers *procedures* (for NFS: `LOOKUP`,
+  `GETATTR`, `ACCESS`, `READ`, `WRITE`, `CREATE`, `READDIR`, etc.).
+- A file is designated by a ***file handle***: an opaque identifier provided by the server.
+- NFSv3 is **stateless**: the server remembers nothing about its clients, which simply send
+  again a request that got no reply. NFSv4 is **stateful** (open files, locks, leases;
+  section @@ref:nfs4@@).
+""",
+        """
 | service | programme RPC | port | rôle |
 |---------|---------------|------|------|
 | `rpcbind` (*portmapper*) | 100000 | 111 (TCP et UDP) | annuaire : indique sur quel port écoute chaque programme RPC |
@@ -1376,187 +1796,27 @@ ni `statd` n'interviennent dans le protocole (le serveur Linux continue d'utilis
 rpcinfo -p [machine]        # programmes RPC enregistrés auprès de rpcbind
 ss -lntup                   # ports en écoute
 showmount -e machine        # exports d'un serveur (protocole mountd, NFSv3)
+cat /proc/fs/nfsd/threads   # nombre de threads nfsd du serveur
 ```
 
-## 3. Côté serveur : `/etc/exports`
+### @@sec:start@@ Démarrer les services
 
-Une ligne par répertoire exporté :
-
-```
-répertoire   client1(options)   client2(options) ...
-/srv/donnees  192.168.10.0/24(rw,sync,no_subtree_check)  pc7(ro,sync,no_subtree_check)
-```
-
-**Attention :** pas d'espace entre le client et la parenthèse : `pc7 (rw)` signifie « `pc7`
-avec les options par défaut, **et tout le monde** en `rw` ».
-
-Un **client** est un nom ou une adresse de machine (`pc1`, `192.168.10.7`), un réseau
-(`192.168.10.0/24`), un motif (`*.exemple.fr`) ou `*` (tout le monde).
-
-| option | effet |
-|--------|-------|
-| `ro` / `rw` | lecture seule (défaut) / lecture et écriture |
-| `sync` / `async` | le serveur répond après (défaut) / avant l'écriture sur disque : `async` est plus rapide mais perd des données en cas de panne |
-| `root_squash` (défaut) | `root` du client (UID 0) est transformé en utilisateur **anonyme** |
-| `no_root_squash` | `root` du client reste `root` sur l'export (à réserver à des machines d'administration) |
-| `all_squash` | **tous** les utilisateurs sont transformés en utilisateur anonyme |
-| `anonuid=N`, `anongid=N` | UID et GID de l'utilisateur anonyme (défaut : 65534, `nobody` / `nogroup`) |
-| `no_subtree_check` | comportement par défaut ; à écrire pour éviter un avertissement |
-| `secure` (défaut) | le client doit émettre depuis un port inférieur à 1024 (réservé à `root`) |
-| `fsid=0` | cet export est la **racine** de l'arborescence NFSv4 (voir 6.) |
+Sous Debian, les démons viennent des paquets `rpcbind`, `nfs-common` (`rpc.statd`, `rpc.idmapd` et
+les outils du client) et `nfs-kernel-server` (le serveur). Sur une machine sans `systemd` (un
+conteneur, par exemple), ils se lancent avec la commande `service`, **dans cet ordre** :
 
 ```
-exportfs -ra                # relit /etc/exports et applique les changements (sans couper les clients)
-exportfs -v                 # exports en vigueur, avec toutes leurs options
-cat /var/lib/nfs/etab       # la même table, options par défaut comprises
-exportfs -u client:/chemin  # retire un export
+service rpcbind start             # l'annuaire RPC, toujours en premier
+service nfs-common start          # rpc.statd et rpc.idmapd
+service nfs-kernel-server start   # sur le serveur seulement
 ```
 
-Un export `rw` ne dispense pas des **droits Unix** : le serveur applique les permissions du
-répertoire et des fichiers à l'UID et au GID annoncés par le client.
-
-## 4. Côté client : monter un export
-
-```
-showmount -e srv                                        # que propose le serveur ?
-mount -t nfs  -o vers=3 srv:/srv/nfs/commun /mnt/commun  # NFSv3 : chemin complet sur le serveur
-mount -t nfs4 srv:/commun /mnt/commun                   # NFSv4 : chemin relatif à la racine fsid=0
-umount /mnt/commun
-```
-
-| option de montage | effet |
-|-------------------|-------|
-| `vers=3`, `vers=4.2` | version du protocole (sans option : la plus élevée acceptée par le serveur) |
-| `ro` / `rw` | lecture seule / lecture et écriture (si le serveur l'autorise) |
-| `hard` (défaut) | si le serveur ne répond plus, le client réessaie **indéfiniment** : les programmes attendent |
-| `soft` | après `retrans` réémissions, l'opération échoue avec une erreur d'entrée-sortie |
-| `timeo=N` | délai avant réémission, en **dixièmes de seconde** (défaut : 600 en TCP) |
-| `retrans=N` | nombre de réémissions avant l'erreur (`soft`) ou le message « not responding » (`hard`) |
-| `nolock` | NFSv3 : pas de verrous distants (évite d'avoir besoin de `rpc.statd`) |
-| `noauto`, `user`, `_netdev` | options de `/etc/fstab` (voir 7.) |
-
-Observer les montages : `mount | grep nfs`, `grep nfs /proc/mounts`, `nfsstat -m` (options
-réellement négociées), `df -hT`.
-
-En NFSv3, le client a besoin de `rpcbind` et de `rpc.statd` pour les verrous : sans eux,
-`mount` refuse le montage, sauf avec `-o nolock`.
-
-## 5. Identités et sécurité
-
-Par défaut (`sec=sys`, authentification **AUTH_SYS**, aussi appelée AUTH_UNIX), chaque requête
-contient simplement l'**UID** et les **GID** numériques de l'utilisateur sur le client, et le
-serveur **leur fait confiance**. Conséquences :
-
-- les **noms** de comptes sont locaux à chaque machine : seuls les numéros circulent. `ls -l`
-  affiche le nom que la machine *locale* associe à un UID ; `ls -ln` affiche les numéros.
-  Un même utilisateur doit donc avoir le **même UID sur toutes les machines** (en production,
-  on centralise les comptes dans un annuaire LDAP) ;
-- `root` d'un client n'est pas `root` sur l'export (`root_squash`)... mais l'administrateur d'un
-  client autorisé peut prendre l'identité de n'importe quel autre utilisateur : la sécurité
-  repose sur la **liste des clients** de chaque export et sur la confiance accordée à leurs
-  administrateurs ;
-- rien n'est chiffré : les données et les identités circulent **en clair** (`tcpdump`).
-
-Pour authentifier réellement les utilisateurs et protéger les échanges, NFS s'utilise avec
-**Kerberos** : `sec=krb5` (authentification), `krb5i` (+ intégrité), `krb5p` (+ chiffrement).
-
-## 6. NFSv4
-
-- Un **seul port** (TCP 2049) : simple à filtrer par un pare-feu.
-- Les exports d'un serveur forment **une seule arborescence** (*pseudo-système de fichiers*)
-  dont la racine est l'export marqué `fsid=0`. Le client monte `srv:/` (tout) ou `srv:/commun`
-  (chemin **relatif à cette racine**), et franchit automatiquement les exports qu'il rencontre
-  (des sous-montages apparaissent dans `/proc/mounts`).
-- Protocole **avec état** : ouvertures de fichiers, verrous et délégations sont connus du
-  serveur ; le client renouvelle un **bail** (*lease*, 90 s). Après un redémarrage, le serveur
-  observe un **délai de grâce** pendant lequel les clients récupèrent leur état.
-- Les propriétaires sont transmis sous forme de chaînes (`alice@domaine`, démon `rpc.idmapd`) ;
-  avec `sec=sys`, Linux transmet en pratique les numéros, comme en NFSv3.
-- **Attention aux exports imbriqués** : en NFSv4, un sous-répertoire ordinaire d'un export
-  est atteint avec les options de l'export **parent**. Des options différentes supposent des
-  systèmes de fichiers distincts (c'est le cas des quatre répertoires de ce TP).
-
-## 7. Montages permanents : `/etc/fstab`
-
-```
-# serveur:chemin        point de montage    type    options            dump   pass
-srv:/srv/nfs/commun     /mnt/commun         nfs     vers=3,rw,hard     0      0
-srv:/depot              /mnt/depot          nfs4    noauto,user,soft   0      0
-```
-
-- `mount -a` monte toutes les lignes (sauf `noauto`) ; `mount /mnt/depot` monte une ligne ;
-  `findmnt --verify` contrôle la syntaxe du fichier ;
-- `noauto` : pas de montage automatique ; `user` : un utilisateur ordinaire peut monter ;
-  `_netdev` : attendre le réseau au démarrage ; `nofail` : ne pas bloquer le démarrage si le
-  serveur est absent.
-
-Sur un système réel on préfère souvent le **montage à la demande** (`autofs`, ou l'option
-`x-systemd.automount`) : le répertoire n'est monté qu'au premier accès.
-
-## 8. Particularités de ce TP
-
-Les machines sont des conteneurs, sans `systemd` :
-
-- les services se lancent avec `service` : **`service rpcbind start`**,
-  **`service nfs-common start`** (`rpc.statd`, `rpc.idmapd`) puis, sur le serveur,
-  **`service nfs-kernel-server start`**, dans cet ordre. Ce dernier monte `/proc/fs/nfsd`,
-  exécute `exportfs -r`, lance les threads `nfsd` (`rpc.nfsd 8`) et `rpc.mountd` ; il ne
-  démarre rien si `/etc/exports` est vide ou si `rpcbind` est absent. `service ... status`
-  n'est pas fiable ici : vérifiez avec `rpcinfo -p` ;
-- la racine `/` d'un conteneur n'est pas exportable par NFS
-  (`exportfs: ... does not support NFS export`). `/srv/nfs` et chacun de ses quatre
-  sous-répertoires sont des systèmes de fichiers distincts, en mémoire, de 16 Mo (`df -hT`) :
-  ce sont eux que l'on exporte. Pour la même raison, la racine NFSv4 doit être déclarée
-  explicitement (`fsid=0` sur `/srv/nfs`) ;
-- `rpc.mountd` note les demandes de montage NFSv3 dans `/var/log/syslog` sur `srv` ;
-- à chaque évaluation, deux machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans
-  `invites`), montent brièvement vos exports (et `pc1` l'export `admin`) : leurs adresses, que
-  vous verrez dans les journaux et les captures, sont dans `/etc/hosts` sur `srv` ;
-- une commande bloquée sur un montage dont le serveur ne répond plus s'interrompt par
-  `Ctrl-C` ; `umount -f` (forcer) ou `umount -l` (détacher) démontent un tel montage.
-
-## 9. Diagnostic
-
-| symptôme | cause probable |
-|----------|----------------|
-| `mount.nfs: access denied by server` | le client n'est pas dans la liste de l'export, ou `exportfs -ra` a été oublié |
-| `mount.nfs: Connection refused`, `RPC: Program not registered` | services non démarrés sur le serveur (`rpcinfo -p srv`) |
-| `rpc.statd is not running but is required for remote locking` | démarrer `rpcbind` et `nfs-common` sur le client, ou monter avec `-o nolock` |
-| `No such file or directory` en NFSv4 | chemin non relatif à la racine `fsid=0`, ou pas de racine NFSv4 pour ce client |
-| `Read-only file system` | export `ro` pour ce client (ou montage `ro`) |
-| `Permission denied` | droits Unix : regardez avec quel UID vous arrivez sur le serveur (`root` devient `nobody`). Un répertoire exporté en `1777` refuse aussi les créations de `root` : utilisez `777` |
-| `Stale file handle` | le *file handle* n'est plus valide (répertoire supprimé ou serveur indisponible) : démonter et remonter |
-| commande bloquée | montage `hard` et serveur injoignable |
-
-Documentation : `man exports`, `man nfs` (options de montage), `man exportfs`, `man nfs.conf`.
-
-## 10. Plan du TP
-
-Six parties, à réaliser **dans l'ordre** : mise en service du serveur, premier client NFSv3,
-contrôle d'accès et options d'export, identités des utilisateurs, NFSv4, montages permanents
-et comportement en cas de panne. L'état des machines et vos réponses aux questions sont
-évalués automatiquement (bouton d'évaluation).
+Le dernier script monte `/proc/fs/nfsd`, exécute `exportfs -r`, lance les threads `nfsd`
+(`rpc.nfsd 8`) et `rpc.mountd` ; il ne démarre rien si `/etc/exports` est vide ou si `rpcbind`
+est absent. Avec `systemd`, les mêmes services sont des unités
+(`systemctl start nfs-kernel-server`). `rpc.mountd` inscrit chaque demande de montage NFSv3,
+acceptée ou refusée, dans le journal du système (`/var/log/syslog`).
 """: """
-## 1. How NFS works
-
-NFS is the native file sharing protocol of the Unix world (Sun Microsystems, 1984).
-Two versions are in use today: **NFSv3** (RFC 1813) and **NFSv4** (RFC 7530;
-NFSv4.1 and 4.2: RFC 8881 and 7862).
-
-- The server declares the directories it **exports**, to which clients and with which options.
-- The client **mounts** an export on a local directory (`mount -t nfs srv:/path /mnt/point`):
-  applications then use the usual system calls (`open`, `read`, `write`, etc.) and the kernel
-  turns them into requests to the server. Files are **never copied**: they stay on the
-  server.
-- NFS relies on **RPC** (*Remote Procedure Call*, ONC RPC): each service is a *program*
-  identified by a number and a version, which offers *procedures* (for NFS: `LOOKUP`,
-  `GETATTR`, `ACCESS`, `READ`, `WRITE`, `CREATE`, `READDIR`, etc.).
-- A file is designated by a ***file handle***: an opaque identifier provided by the server.
-- NFSv3 is **stateless**: the server remembers nothing about its clients, which simply send
-  again a request that got no reply. NFSv4 is **stateful** (open files, locks, leases).
-
-## 2. The services of an NFS server
-
 | service | RPC program | port | role |
 |---------|-------------|------|------|
 | `rpcbind` (*portmapper*) | 100000 | 111 (TCP and UDP) | directory: tells on which port each RPC program listens |
@@ -1574,22 +1834,81 @@ internally to learn the exports).
 rpcinfo -p [machine]        # RPC programs registered with rpcbind
 ss -lntup                   # listening ports
 showmount -e machine        # exports of a server (mountd protocol, NFSv3)
+cat /proc/fs/nfsd/threads   # number of nfsd threads of the server
 ```
 
-## 3. Server side: `/etc/exports`
+### @@sec:start@@ Starting the services
 
+On Debian the daemons come from the packages `rpcbind`, `nfs-common` (`rpc.statd`, `rpc.idmapd`
+and the client tools) and `nfs-kernel-server` (the server). On a machine without `systemd` (a
+container, for instance), they are started with the `service` command, **in this order**:
+
+```
+service rpcbind start             # the RPC directory, always first
+service nfs-common start          # rpc.statd and rpc.idmapd
+service nfs-kernel-server start   # on the server only
+```
+
+The last script mounts `/proc/fs/nfsd`, runs `exportfs -r`, starts the `nfsd` threads
+(`rpc.nfsd 8`) and `rpc.mountd`; it starts nothing if `/etc/exports` is empty or if `rpcbind` is
+absent. With `systemd`, the same services are units (`systemctl start nfs-kernel-server`).
+`rpc.mountd` writes every NFSv3 mount request, accepted or refused, to the system log
+(`/var/log/syslog`).
+""",
+        """
+Une ligne par répertoire exporté :
+
+```
+répertoire   client1(options)   client2(options) ...
+/srv/donnees  192.0.2.0/24(rw,sync,no_subtree_check)  pc7(ro,sync,no_subtree_check)
+```
+
+**Attention :** pas d'espace entre le client et la parenthèse : `pc7 (rw)` signifie « `pc7`
+avec les options par défaut, **et tout le monde** en `rw` ».
+
+Un **client** est un nom ou une adresse de machine (`pc7`, `192.0.2.7`), un réseau
+(`192.0.2.0/24`), un motif (`*.example.org`) ou `*` (tout le monde).
+
+### @@sec:export-options@@ Les options d'export
+
+| option | effet |
+|--------|-------|
+| `ro` / `rw` | lecture seule (défaut) / lecture et écriture |
+| `sync` / `async` | le serveur répond après (défaut) / avant l'écriture sur disque : `async` est plus rapide mais perd des données en cas de panne |
+| `root_squash` (défaut) | `root` du client (UID 0) est transformé en utilisateur **anonyme** |
+| `no_root_squash` | `root` du client reste `root` sur l'export (à réserver à des machines d'administration) |
+| `all_squash` | **tous** les utilisateurs sont transformés en utilisateur anonyme |
+| `anonuid=N`, `anongid=N` | UID et GID de l'utilisateur anonyme (défaut : 65534, `nobody` / `nogroup`) |
+| `no_subtree_check` | comportement par défaut ; à écrire pour éviter un avertissement |
+| `secure` (défaut) | le client doit émettre depuis un port inférieur à 1024 (réservé à `root`) |
+| `fsid=0` | cet export est la **racine** de l'arborescence NFSv4 (section @@ref:nfs4@@) |
+
+Un export `rw` ne dispense pas des **droits Unix** : le serveur applique les permissions du
+répertoire et des fichiers à l'UID et au GID annoncés par le client.
+
+### @@sec:exportfs@@ Appliquer et vérifier
+
+```
+exportfs -ra                # relit /etc/exports et applique les changements (sans couper les clients)
+exportfs -v                 # exports en vigueur, avec toutes leurs options
+cat /var/lib/nfs/etab       # la même table, options par défaut comprises
+exportfs -u client:/chemin  # retire un export
+```
+""": """
 One line per exported directory:
 
 ```
 directory   client1(options)   client2(options) ...
-/srv/donnees  192.168.10.0/24(rw,sync,no_subtree_check)  pc7(ro,sync,no_subtree_check)
+/srv/data  192.0.2.0/24(rw,sync,no_subtree_check)  pc7(ro,sync,no_subtree_check)
 ```
 
 **Warning:** no space between the client and the parenthesis: `pc7 (rw)` means "`pc7`
 with the default options, **and everybody** in `rw`".
 
-A **client** is a machine name or address (`pc1`, `192.168.10.7`), a network
-(`192.168.10.0/24`), a pattern (`*.example.org`) or `*` (everybody).
+A **client** is a machine name or address (`pc7`, `192.0.2.7`), a network
+(`192.0.2.0/24`), a pattern (`*.example.org`) or `*` (everybody).
+
+### @@sec:export-options@@ The export options
 
 | option | effect |
 |--------|--------|
@@ -1601,7 +1920,12 @@ A **client** is a machine name or address (`pc1`, `192.168.10.7`), a network
 | `anonuid=N`, `anongid=N` | UID and GID of the anonymous user (default: 65534, `nobody` / `nogroup`) |
 | `no_subtree_check` | default behaviour; write it to avoid a warning |
 | `secure` (default) | the client must send from a port below 1024 (reserved to `root`) |
-| `fsid=0` | this export is the **root** of the NFSv4 tree (see 6.) |
+| `fsid=0` | this export is the **root** of the NFSv4 tree (section @@ref:nfs4@@) |
+
+An `rw` export does not bypass **Unix permissions**: the server applies the permissions of
+the directory and of the files to the UID and GID announced by the client.
+
+### @@sec:exportfs@@ Applying and checking
 
 ```
 exportfs -ra                # reads /etc/exports again and applies the changes (clients are not disconnected)
@@ -1609,18 +1933,62 @@ exportfs -v                 # exports in force, with all their options
 cat /var/lib/nfs/etab       # the same table, default options included
 exportfs -u client:/path    # removes an export
 ```
-
-An `rw` export does not bypass **Unix permissions**: the server applies the permissions of
-the directory and of the files to the UID and GID announced by the client.
-
-## 4. Client side: mounting an export
-
+""",
+        """
 ```
-showmount -e srv                                        # what does the server offer?
-mount -t nfs  -o vers=3 srv:/srv/nfs/commun /mnt/commun  # NFSv3: full path on the server
-mount -t nfs4 srv:/commun /mnt/commun                   # NFSv4: path relative to the fsid=0 root
-umount /mnt/commun
+showmount -e serveur                                       # que propose le serveur ?
+mkdir /mnt/donnees                                         # le point de montage doit exister
+mount -t nfs  -o vers=3 serveur:/srv/donnees /mnt/donnees  # NFSv3 : chemin complet sur le serveur
+mount -t nfs4 serveur:/donnees /mnt/donnees                # NFSv4 : chemin relatif à la racine fsid=0 (ici /srv)
+umount /mnt/donnees
 ```
+
+Observer les montages : `mount | grep nfs`, `grep nfs /proc/mounts`, `nfsstat -m` (options
+réellement négociées), `df -hT`.
+
+En NFSv3, le client a besoin de `rpcbind` et de `rpc.statd` pour les verrous : sans eux,
+`mount` refuse le montage, sauf avec `-o nolock`.
+
+### @@sec:mount-options@@ Les options de montage
+
+| option de montage | effet |
+|-------------------|-------|
+| `vers=3`, `vers=4.2` | version du protocole (sans option : la plus élevée acceptée par le serveur) |
+| `ro` / `rw` | lecture seule / lecture et écriture (si le serveur l'autorise) |
+| `hard` (défaut) | si le serveur ne répond plus, le client réessaie **indéfiniment** : les programmes attendent |
+| `soft` | après `retrans` réémissions, l'opération échoue avec une erreur d'entrée-sortie |
+| `timeo=N` | délai avant réémission, en **dixièmes de seconde** (défaut : 600 en TCP) |
+| `retrans=N` | nombre de réémissions avant l'erreur (`soft`) ou le message « not responding » (`hard`) |
+| `nolock` | NFSv3 : pas de verrous distants (évite d'avoir besoin de `rpc.statd`) |
+| `noauto`, `user`, `_netdev` | options de `/etc/fstab` (section @@ref:fstab@@) |
+
+### @@sec:outage@@ Quand le serveur ne répond plus
+
+- Montage **`hard`** : les programmes qui accèdent au montage **attendent**, le temps qu'il
+  faudra, puis **reprennent d'eux-mêmes** au retour du serveur, sans erreur : aucune donnée n'est
+  perdue. C'est le choix à faire pour des données importantes.
+- Montage **`soft`** : après `retrans` réémissions, l'appel système échoue (`Input/output error`,
+  parfois `Stale file handle`). Rien ne reste bloqué, mais un programme qui ne contrôle pas ses
+  erreurs perd des données sans le dire.
+- Une commande bloquée s'interrompt par `Ctrl-C` ; `umount -f` (forcer) ou `umount -l` (détacher)
+  démontent un montage dont le serveur ne répond plus. `grep nfs /proc/mounts` ne bloque jamais,
+  contrairement à `df` ou à `ls` sur le montage.
+""": """
+```
+showmount -e server                                  # what does the server offer?
+mkdir /mnt/data                                      # the mount point must exist
+mount -t nfs  -o vers=3 server:/srv/data /mnt/data   # NFSv3: full path on the server
+mount -t nfs4 server:/data /mnt/data                 # NFSv4: path relative to the fsid=0 root (here /srv)
+umount /mnt/data
+```
+
+Looking at the mounts: `mount | grep nfs`, `grep nfs /proc/mounts`, `nfsstat -m` (options
+actually negotiated), `df -hT`.
+
+In NFSv3 the client needs `rpcbind` and `rpc.statd` for the locks: without them `mount`
+refuses the mount, unless `-o nolock` is given.
+
+### @@sec:mount-options@@ The mount options
 
 | mount option | effect |
 |--------------|--------|
@@ -1631,16 +1999,38 @@ umount /mnt/commun
 | `timeo=N` | delay before a retransmission, in **tenths of a second** (default: 600 over TCP) |
 | `retrans=N` | number of retransmissions before the error (`soft`) or the "not responding" message (`hard`) |
 | `nolock` | NFSv3: no remote locks (avoids the need for `rpc.statd`) |
-| `noauto`, `user`, `_netdev` | `/etc/fstab` options (see 7.) |
+| `noauto`, `user`, `_netdev` | `/etc/fstab` options (section @@ref:fstab@@) |
 
-Looking at the mounts: `mount | grep nfs`, `grep nfs /proc/mounts`, `nfsstat -m` (options
-actually negotiated), `df -hT`.
+### @@sec:outage@@ When the server stops answering
 
-In NFSv3 the client needs `rpcbind` and `rpc.statd` for the locks: without them `mount`
-refuses the mount, unless `-o nolock` is given.
+- **`hard`** mount: the programs that use the mount **wait**, as long as it takes, then **resume
+  by themselves** when the server comes back, without any error: no data is lost. This is the
+  choice to make for important data.
+- **`soft`** mount: after `retrans` retransmissions, the system call fails (`Input/output error`,
+  sometimes `Stale file handle`). Nothing stays blocked, but a program that does not check its
+  errors loses data silently.
+- A blocked command is interrupted with `Ctrl-C`; `umount -f` (force) or `umount -l` (detach)
+  unmount a mount whose server no longer answers. `grep nfs /proc/mounts` never blocks, unlike
+  `df` or `ls` on the mount.
+""",
+        """
+Par défaut (`sec=sys`, authentification **AUTH_SYS**, aussi appelée AUTH_UNIX), chaque requête
+contient simplement l'**UID** et les **GID** numériques de l'utilisateur sur le client, et le
+serveur **leur fait confiance**. Conséquences :
 
-## 5. Identities and security
+- les **noms** de comptes sont locaux à chaque machine : seuls les numéros circulent. `ls -l`
+  affiche le nom que la machine *locale* associe à un UID ; `ls -ln` affiche les numéros.
+  Un même utilisateur doit donc avoir le **même UID sur toutes les machines** (en production,
+  on centralise les comptes dans un annuaire LDAP) ;
+- `root` d'un client n'est pas `root` sur l'export (`root_squash`)... mais l'administrateur d'un
+  client autorisé peut prendre l'identité de n'importe quel autre utilisateur : la sécurité
+  repose sur la **liste des clients** de chaque export et sur la confiance accordée à leurs
+  administrateurs ;
+- rien n'est chiffré : les données et les identités circulent **en clair** (`tcpdump`).
 
+Pour authentifier réellement les utilisateurs et protéger les échanges, NFS s'utilise avec
+**Kerberos** : `sec=krb5` (authentification), `krb5i` (+ intégrité), `krb5p` (+ chiffrement).
+""": """
 By default (`sec=sys`, **AUTH_SYS** authentication, also called AUTH_UNIX), each request
 simply carries the numeric **UID** and **GIDs** of the user on the client, and the server
 **trusts them**. Consequences:
@@ -1656,82 +2046,107 @@ simply carries the numeric **UID** and **GIDs** of the user on the client, and t
 
 To really authenticate the users and protect the exchanges, NFS is used with **Kerberos**:
 `sec=krb5` (authentication), `krb5i` (+ integrity), `krb5p` (+ encryption).
+""",
+        """
+- Un **seul port** (TCP 2049) : simple à filtrer par un pare-feu.
+- Les exports d'un serveur forment **une seule arborescence** (*pseudo-système de fichiers*)
+  dont la racine est l'export marqué `fsid=0`. Le client monte `serveur:/` (tout) ou
+  `serveur:/donnees` (chemin **relatif à cette racine**), et franchit automatiquement les exports
+  qu'il rencontre (des sous-montages apparaissent dans `/proc/mounts`).
+- Sans export `fsid=0`, un serveur Linux construit lui-même cette racine à partir de `/` (les
+  chemins NFSv4 sont alors les chemins complets) : cela suppose que `/` soit exportable.
+- Protocole **avec état** : ouvertures de fichiers, verrous et délégations sont connus du
+  serveur ; le client renouvelle un **bail** (*lease*, 90 s). Après un redémarrage, le serveur
+  observe un **délai de grâce** pendant lequel les clients récupèrent leur état.
+- Les propriétaires sont transmis sous forme de chaînes (`alice@domaine`, démon `rpc.idmapd`) ;
+  avec `sec=sys`, Linux transmet en pratique les numéros, comme en NFSv3.
+- **Attention aux exports imbriqués** : en NFSv4, un sous-répertoire ordinaire d'un export
+  est atteint avec les options de l'export **parent**. Des options différentes supposent des
+  systèmes de fichiers distincts.
 
-## 6. NFSv4
-
+```
+/srv           192.0.2.0/24(ro,sync,no_subtree_check,fsid=0)   # la racine : serveur:/
+/srv/donnees   192.0.2.0/24(rw,sync,no_subtree_check)          # serveur:/donnees (un système de fichiers à part)
+```
+""": """
 - A **single port** (TCP 2049): easy to filter with a firewall.
 - The exports of a server form **a single tree** (*pseudo file system*) whose root is the
-  export marked `fsid=0`. The client mounts `srv:/` (everything) or `srv:/commun` (path
+  export marked `fsid=0`. The client mounts `server:/` (everything) or `server:/data` (path
   **relative to that root**), and automatically crosses the exports it meets (submounts
   appear in `/proc/mounts`).
+- Without an `fsid=0` export, a Linux server builds that root by itself from `/` (the NFSv4
+  paths are then the full paths): this requires `/` to be exportable.
 - **Stateful** protocol: file opens, locks and delegations are known to the server; the
   client renews a **lease** (90 s). After a restart the server observes a **grace period**
   during which the clients reclaim their state.
 - Owners are transmitted as strings (`alice@domain`, `rpc.idmapd` daemon); with `sec=sys`,
   Linux in practice transmits the numbers, as in NFSv3.
 - **Beware of nested exports**: in NFSv4, an ordinary subdirectory of an export is reached
-  with the options of the **parent** export. Different options require distinct file systems
-  (which is the case of the four directories of this lab).
-
-## 7. Permanent mounts: `/etc/fstab`
+  with the options of the **parent** export. Different options require distinct file systems.
 
 ```
-# server:path           mount point         type    options            dump   pass
-srv:/srv/nfs/commun     /mnt/commun         nfs     vers=3,rw,hard     0      0
-srv:/depot              /mnt/depot          nfs4    noauto,user,soft   0      0
+/srv        192.0.2.0/24(ro,sync,no_subtree_check,fsid=0)   # the root: server:/
+/srv/data   192.0.2.0/24(rw,sync,no_subtree_check)          # server:/data (a file system of its own)
+```
+""",
+        """
+```
+# serveur:chemin         point de montage   type   options            dump  pass
+serveur:/srv/donnees     /mnt/donnees       nfs    vers=3,rw,hard     0     0
+serveur:/projets         /mnt/projets       nfs4   noauto,user,soft   0     0
 ```
 
-- `mount -a` mounts every line (except `noauto` ones); `mount /mnt/depot` mounts one line;
+- `mount -a` monte toutes les lignes (sauf `noauto`) ; `mount /mnt/projets` monte une ligne ;
+  `findmnt --verify` contrôle la syntaxe du fichier ;
+- `noauto` : pas de montage automatique ; `user` : un utilisateur ordinaire peut monter ;
+  `_netdev` : attendre le réseau au démarrage ; `nofail` : ne pas bloquer le démarrage si le
+  serveur est absent.
+
+Sur un système réel on préfère souvent le **montage à la demande** (`autofs`, ou l'option
+`x-systemd.automount`) : le répertoire n'est monté qu'au premier accès.
+""": """
+```
+# server:path          mount point      type   options            dump  pass
+server:/srv/data       /mnt/data        nfs    vers=3,rw,hard     0     0
+server:/projects       /mnt/projects    nfs4   noauto,user,soft   0     0
+```
+
+- `mount -a` mounts every line (except `noauto` ones); `mount /mnt/projects` mounts one line;
   `findmnt --verify` checks the syntax of the file;
 - `noauto`: no automatic mount; `user`: an ordinary user may mount; `_netdev`: wait for the
   network at boot; `nofail`: do not block the boot if the server is absent.
 
 On a real system **on-demand mounting** is often preferred (`autofs`, or the
 `x-systemd.automount` option): the directory is only mounted at the first access.
+""",
+        """
+| symptôme | cause probable |
+|----------|----------------|
+| `mount.nfs: access denied by server` | le client n'est pas dans la liste de l'export, ou `exportfs -ra` a été oublié |
+| `mount.nfs: Connection refused`, `RPC: Program not registered` | services non démarrés sur le serveur (`rpcinfo -p serveur`) |
+| `rpc.statd is not running but is required for remote locking` | démarrer `rpcbind` et `nfs-common` sur le client, ou monter avec `-o nolock` |
+| `No such file or directory` en NFSv4 | chemin non relatif à la racine `fsid=0`, ou pas de racine NFSv4 pour ce client |
+| `Read-only file system` | export `ro` pour ce client (ou montage `ro`) |
+| `Permission denied` | droits Unix : regardez avec quel UID vous arrivez sur le serveur (`root` devient `nobody`). Un répertoire exporté en `1777` refuse aussi les créations de `root` : utilisez `777` |
+| `Stale file handle` | le *file handle* n'est plus valide (répertoire supprimé ou serveur indisponible) : démonter et remonter |
+| `exportfs: ... does not support NFS export` | ce système de fichiers n'est pas exportable (la racine d'un conteneur, par exemple) : exporter un répertoire d'un autre système de fichiers |
+| commande bloquée | montage `hard` et serveur injoignable |
 
-## 8. Specifics of this lab
-
-The machines are containers, without `systemd`:
-
-- services are started with `service`: **`service rpcbind start`**,
-  **`service nfs-common start`** (`rpc.statd`, `rpc.idmapd`) then, on the server,
-  **`service nfs-kernel-server start`**, in that order. The latter mounts `/proc/fs/nfsd`,
-  runs `exportfs -r`, starts the `nfsd` threads (`rpc.nfsd 8`) and `rpc.mountd`; it starts
-  nothing if `/etc/exports` is empty or if `rpcbind` is absent. `service ... status` is not
-  reliable here: check with `rpcinfo -p`;
-- the root `/` of a container cannot be exported by NFS
-  (`exportfs: ... does not support NFS export`). `/srv/nfs` and each of its four
-  subdirectories are distinct in-memory file systems of 16 MB (`df -hT`): those are what
-  you export. For the same reason, the NFSv4 root must be declared explicitly (`fsid=0` on
-  `/srv/nfs`);
-- `rpc.mountd` logs the NFSv3 mount requests in `/var/log/syslog` on `srv`;
-- at each evaluation, two supervision machines, `sonde1` (in `lan`) and `sonde2` (in
-  `invites`), briefly mount your exports (and `pc1` the `admin` export): their addresses,
-  which you will see in the logs and in the captures, are in `/etc/hosts` on `srv`;
-- a command blocked on a mount whose server no longer answers is interrupted with `Ctrl-C`;
-  `umount -f` (force) or `umount -l` (detach) unmount such a mount.
-
-## 9. Troubleshooting
-
+Documentation : `man exports`, `man nfs` (options de montage), `man exportfs`, `man nfs.conf`.
+""": """
 | symptom | likely cause |
 |---------|--------------|
 | `mount.nfs: access denied by server` | the client is not in the list of the export, or `exportfs -ra` was forgotten |
-| `mount.nfs: Connection refused`, `RPC: Program not registered` | services not started on the server (`rpcinfo -p srv`) |
+| `mount.nfs: Connection refused`, `RPC: Program not registered` | services not started on the server (`rpcinfo -p server`) |
 | `rpc.statd is not running but is required for remote locking` | start `rpcbind` and `nfs-common` on the client, or mount with `-o nolock` |
 | `No such file or directory` in NFSv4 | path not relative to the `fsid=0` root, or no NFSv4 root for this client |
 | `Read-only file system` | `ro` export for this client (or `ro` mount) |
 | `Permission denied` | Unix permissions: check with which UID you reach the server (`root` becomes `nobody`). A directory exported with mode `1777` also refuses file creations by `root`: use `777` |
 | `Stale file handle` | the *file handle* is no longer valid (directory removed or server unavailable): unmount and mount again |
+| `exportfs: ... does not support NFS export` | this file system cannot be exported (the root of a container, for instance): export a directory of another file system |
 | blocked command | `hard` mount and unreachable server |
 
 Documentation: `man exports`, `man nfs` (mount options), `man exportfs`, `man nfs.conf`.
-
-## 10. Outline of the lab
-
-Six parts, to be done **in order**: bringing the server into service, first NFSv3 client,
-access control and export options, user identities, NFSv4, permanent mounts and behaviour
-during an outage. The state of the machines and your answers to the questions are evaluated
-automatically (evaluation button).
 """,
         """
 - ce qui manquait sur `pc1` pour le premier montage :
@@ -1932,15 +2347,6 @@ automatically (evaluation button).
    file and that `charlie` no longer can.
 """,
         """
-Ce TP porte sur **NFS** (*Network File System*) : le serveur `srv` **exporte** des
-répertoires que les clients `pc1`, `pc2` et `pc3` **montent** dans leur arborescence et
-utilisent comme des répertoires locaux.
-""": """
-This lab is about **NFS** (*Network File System*): the server `srv` **exports**
-directories that the clients `pc1`, `pc2` and `pc3` **mount** in their own file tree and
-use like local directories.
-""",
-        """
 Complétez `/etc/exports` sur `srv` (une ligne par répertoire), appliquez avec `exportfs -ra`
 et vérifiez avec `exportfs -v` :
 
@@ -1984,8 +2390,23 @@ Then test, in NFSv3 (create the mount points with `mkdir`; on the machines where
   `root` and another one as `etudiant`, then look at `ls -ln /mnt/depot`.
 """,
         """
-Le serveur `srv` n'exporte encore rien et aucun service NFS n'y est démarré. Les quatre
-répertoires à partager existent déjà sous `/srv/nfs` :
+Ce TP met en œuvre **NFS** (*Network File System*) : le serveur `srv` **exporte** des répertoires
+que les clients `pc1`, `pc2` et `pc3` **montent** dans leur arborescence et utilisent comme des
+répertoires locaux. Lisez d'abord l'onglet **Informations** : il contient le cours et les
+commandes utiles.
+
+**Le réseau.**
+""": """
+This lab puts **NFS** (*Network File System*) into practice: the server `srv` **exports**
+directories that the clients `pc1`, `pc2` and `pc3` **mount** in their own file tree and use like
+local directories. Read the **Informations** tab first: it contains the course and the useful
+commands.
+
+**The network.**
+""",
+        """
+**Au départ.** Le serveur `srv` n'exporte encore rien et aucun service NFS n'y est démarré. Les
+quatre répertoires à partager existent déjà sous `/srv/nfs` :
 
 | répertoire | usage prévu |
 |------------|-------------|
@@ -1994,12 +2415,37 @@ répertoires à partager existent déjà sous `/srv/nfs` :
 | `/srv/nfs/depot` | boîte de dépôt : tout fichier déposé appartient au compte de service `depot` |
 | `/srv/nfs/home` | répertoires personnels de `alice` et `bob` |
 
-Les parties sont à réaliser **dans l'ordre**. Lisez l'onglet *Informations* : il contient le
-cours, les commandes utiles et les particularités de ce TP (en particulier la façon de démarrer
-les services). Réseaux : `lan` = `{lan}`, `invites` = `{invites}`.
+**Particularités du TP.** Les machines sont des conteneurs, sans `systemd` :
+
+- les services se lancent avec `service` : **`service rpcbind start`**,
+  **`service nfs-common start`** (`rpc.statd`, `rpc.idmapd`) puis, sur le serveur,
+  **`service nfs-kernel-server start`**, dans cet ordre (section @@ref:start@@ des Informations).
+  `service ... status` n'est pas fiable ici : vérifiez avec `rpcinfo -p` ;
+- la racine `/` d'un conteneur n'est pas exportable par NFS
+  (`exportfs: ... does not support NFS export`). `/srv/nfs` et chacun de ses quatre
+  sous-répertoires sont des systèmes de fichiers distincts, en mémoire, de 16 Mo (`df -hT`) :
+  ce sont eux que l'on exporte, et chacun peut ainsi recevoir ses propres options, même en NFSv4
+  (section @@ref:nfs4@@). Pour la même raison, la racine NFSv4 doit être déclarée explicitement
+  (`fsid=0` sur `/srv/nfs`) ;
+- `rpc.mountd` note les demandes de montage NFSv3 dans `/var/log/syslog` sur `srv` ;
+- une commande bloquée sur un montage dont le serveur ne répond plus s'interrompt par
+  `Ctrl-C` ; `umount -f` (forcer) ou `umount -l` (détacher) démontent un tel montage.
+
+**Plan du TP.** Six parties, à réaliser **dans l'ordre** : mise en service du serveur, premier
+client NFSv3, contrôle d'accès et options d'export, identités des utilisateurs, NFSv4, montages
+permanents et comportement en cas de panne.
+
+**Évaluation.** L'état des machines et vos réponses aux questions sont évalués automatiquement.
+Le bouton d'évaluation (auto-évaluation) ne montre, par des lettres, que les éléments qui portent
+sur l'état des machines ; vos réponses aux formulaires sont notées par l'évaluation de
+l'enseignant. Une évaluation est aussi lancée toutes les {interval} secondes et à la fermeture du
+projet. À chaque évaluation, deux machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans
+`invites`), montent brièvement vos exports (et `pc1` l'export `admin`) : leurs adresses, que vous
+verrez dans les journaux et les captures, sont dans `/etc/hosts` sur `srv`. Vos exports, vos
+services et vos montages doivent donc être en place au moment de l'évaluation.
 """: """
-The server `srv` does not export anything yet and no NFS service is started on it. The four
-directories to share already exist under `/srv/nfs`:
+**At the start.** The server `srv` does not export anything yet and no NFS service is started on
+it. The four directories to share already exist under `/srv/nfs`:
 
 | directory | intended use |
 |-----------|--------------|
@@ -2008,9 +2454,686 @@ directories to share already exist under `/srv/nfs`:
 | `/srv/nfs/depot` | drop box: every file dropped there belongs to the service account `depot` |
 | `/srv/nfs/home` | home directories of `alice` and `bob` |
 
-The parts are to be done **in order**. Read the *Informations* tab: it contains the course,
-the useful commands and the specifics of this lab (in particular how to start the
-services). Networks: `lan` = `{lan}`, `invites` = `{invites}`.
+**Specifics of the lab.** The machines are containers, without `systemd`:
+
+- services are started with `service`: **`service rpcbind start`**,
+  **`service nfs-common start`** (`rpc.statd`, `rpc.idmapd`) then, on the server,
+  **`service nfs-kernel-server start`**, in that order (section @@ref:start@@ of the
+  Informations). `service ... status` is not reliable here: check with `rpcinfo -p`;
+- the root `/` of a container cannot be exported by NFS
+  (`exportfs: ... does not support NFS export`). `/srv/nfs` and each of its four
+  subdirectories are distinct in-memory file systems of 16 MB (`df -hT`): those are what
+  you export, and each one can thus get its own options, even in NFSv4 (section
+  @@ref:nfs4@@). For the same reason, the NFSv4 root must be declared explicitly (`fsid=0` on
+  `/srv/nfs`);
+- `rpc.mountd` logs the NFSv3 mount requests in `/var/log/syslog` on `srv`;
+- a command blocked on a mount whose server no longer answers is interrupted with `Ctrl-C`;
+  `umount -f` (force) or `umount -l` (detach) unmount such a mount.
+
+**Outline of the lab.** Six parts, to be done **in order**: bringing the server into service,
+first NFSv3 client, access control and export options, user identities, NFSv4, permanent mounts
+and behaviour during an outage.
+
+**Evaluation.** The state of the machines and your answers to the questions are evaluated
+automatically. The evaluation button (self-evaluation) only shows, as letters, the elements about
+the state of the machines; your answers to the forms are graded by the instructor's evaluation.
+An evaluation is also run every {interval} seconds and when the project is closed. At each
+evaluation, two supervision machines, `sonde1` (in `lan`) and `sonde2` (in `invites`), briefly
+mount your exports (and `pc1` the `admin` export): their addresses, which you will see in the
+logs and in the captures, are in `/etc/hosts` on `srv`. Your exports, your services and your
+mounts must therefore be in place at the time of the evaluation.
+""",
+        """
+**Pour l'enseignant.** Valeurs de cette instance :
+
+- `alice` : UID = GID **{uid_alice}** sur `srv` et `pc1` ; sur `pc2`, elle porte par erreur
+  **{uid_alice_pc2}** et c'est `charlie` qui a {uid_alice} ;
+- `bob` : UID = GID **{uid_bob}** sur `srv` et `pc2` (pas de compte sur `pc1`) ; compte de service
+  `depot` de `srv` : **{uid_depot}** ;
+- contenu de `/srv/nfs/home/alice/secret.txt` : `{secret}` ;
+- machines cachées de l'évaluation : `h1` = `sonde1` (`{h1}`, réseau `lan`) et `h2` = `sonde2`
+  (`{h2}`, réseau `invites`).
+
+Fichier `/etc/exports` de référence, une fois les six parties faites :
+
+```
+{exports}
+```
+
+Chaque question se termine par sa solution pour ces valeurs ; l'état `final` (onglet *Appliquer
+une configuration*) applique toute la solution et remplit les formulaires. Il ne rejoue pas les
+observations (captures, montages refusés, panne du serveur) et ne monte ni `/mnt/depot` sur `pc1`
+(ligne `noauto` de `/etc/fstab`) ni `/mnt/essai`.
+
+L'évaluation porte sur le comportement : `sonde1` et `sonde2` montent réellement chaque export
+(en NFSv3, et en NFSv4 depuis `sonde1`), `pc1` l'export `admin` ; chacune y crée un fichier en
+tant que `root` puis en tant qu'`etudiant`, et l'on note le propriétaire obtenu ou l'erreur : la
+forme de `/etc/exports` est donc libre. Les montages des clients sont lus dans `/proc/mounts`, qui
+ne bloque jamais, même serveur en panne. Les éléments dont le nom contient `_q_` (réponses aux
+formulaires) ne comptent que dans l'évaluation de l'enseignant.
+""": """
+**For the instructor.** Values of this instance:
+
+- `alice`: UID = GID **{uid_alice}** on `srv` and `pc1`; on `pc2` she wrongly has
+  **{uid_alice_pc2}** and it is `charlie` who holds {uid_alice};
+- `bob`: UID = GID **{uid_bob}** on `srv` and `pc2` (no account on `pc1`); service account
+  `depot` of `srv`: **{uid_depot}**;
+- content of `/srv/nfs/home/alice/secret.txt`: `{secret}`;
+- hidden machines of the evaluation: `h1` = `sonde1` (`{h1}`, `lan` network) and `h2` = `sonde2`
+  (`{h2}`, `invites` network).
+
+Reference `/etc/exports` file, once the six parts are done:
+
+```
+{exports}
+```
+
+Every question ends with its solution for these values; the `final` state (*Apply
+Configuration* tab) applies the whole solution and fills in the forms. It does not replay the
+observations (captures, refused mounts, server outage) and mounts neither `/mnt/depot` on `pc1`
+(`noauto` line of `/etc/fstab`) nor `/mnt/essai`.
+
+The evaluation is behavioural: `sonde1` and `sonde2` really mount every export (in NFSv3, and in
+NFSv4 from `sonde1`), `pc1` the `admin` export; each of them creates a file there as `root` then
+as `etudiant`, and the owner obtained or the error is what gets graded: the form of
+`/etc/exports` is therefore free. The mounts of the clients are read in `/proc/mounts`, which
+never blocks, even with the server down. The elements whose name contains `_q_` (answers to the
+forms) only count in the instructor's evaluation.
+""",
+        """
+**Solution.** Sur `srv` : `chmod 777 /srv/nfs/commun`, puis dans `/etc/exports` :
+
+```
+/srv/nfs/commun  {lan}(rw,sync,no_subtree_check)
+```
+
+et enfin :
+
+```
+service rpcbind start
+service nfs-common start
+service nfs-kernel-server start
+```
+
+`rpcinfo -p` doit alors lister `portmapper` (port 111), `status`, `nfs` (port 2049), `mountd` et
+`nlockmgr` ; `showmount -e localhost` : `/srv/nfs/commun {lan}`. Après une modification
+ultérieure de `/etc/exports` : `exportfs -ra`.
+
+Pièges : `service nfs-kernel-server start` ne lance rien tant que `/etc/exports` est vide ou que
+`rpcbind` ne tourne pas (corriger, puis relancer la commande) ; un espace entre le réseau et la
+parenthèse ouvre l'export à tout le monde ; sans le `chmod 777`, personne n'écrit depuis un client
+(répertoire `755` à `root`, et `root` d'un client devient `nobody`). Ne pas choisir `1777` : `root`
+d'un client, devenu `nobody`, y reçoit `Permission denied` en créant un fichier par redirection
+(réglage `fs.protected_regular` de l'hôte).
+
+Évaluation : `serveur_services` (2 points : `portmapper`, `nfs` en version 3 et `mountd` figurent
+dans `rpcinfo -p` sur `srv`), `serveur_export_commun` (2 : `sonde1` monte `/srv/nfs/commun` en
+NFSv3) et `serveur_commun_ecriture` (1 : `etudiant` de `sonde1` y crée un fichier, qui lui
+appartient).
+""": """
+**Solution.** On `srv`: `chmod 777 /srv/nfs/commun`, then in `/etc/exports`:
+
+```
+/srv/nfs/commun  {lan}(rw,sync,no_subtree_check)
+```
+
+and finally:
+
+```
+service rpcbind start
+service nfs-common start
+service nfs-kernel-server start
+```
+
+`rpcinfo -p` must then list `portmapper` (port 111), `status`, `nfs` (port 2049), `mountd` and
+`nlockmgr`; `showmount -e localhost`: `/srv/nfs/commun {lan}`. After a later change of
+`/etc/exports`: `exportfs -ra`.
+
+Pitfalls: `service nfs-kernel-server start` starts nothing as long as `/etc/exports` is empty or
+`rpcbind` is not running (fix it, then run the command again); a space between the network and
+the parenthesis opens the export to everybody; without the `chmod 777`, nobody can write from a
+client (directory `755` owned by `root`, and `root` of a client becomes `nobody`). Do not pick
+`1777`: `root` of a client, turned into `nobody`, gets `Permission denied` there when creating a
+file with a redirection (`fs.protected_regular` setting of the host).
+
+Grading: `serveur_services` (2 points: `portmapper`, `nfs` in version 3 and `mountd` appear in
+`rpcinfo -p` on `srv`), `serveur_export_commun` (2: `sonde1` mounts `/srv/nfs/commun` in NFSv3)
+and `serveur_commun_ecriture` (1: `etudiant` of `sonde1` creates a file there, which belongs to
+that user).
+""",
+        """
+**Solution.** `rpcinfo -p` donne, pour `nfs`, le programme **100003** sur le port TCP **2049** ;
+pour `portmapper`, le port **111** ; pour `mountd`, le programme **100005**, sur un port
+**attribué dynamiquement** au démarrage de `rpc.mountd` et publié par `rpcbind`.
+`cat /proc/fs/nfsd/threads` : **8** threads (`rpc.nfsd 8`). `exportfs -v` affiche
+**`root_squash`** parmi les options de l'export, bien qu'elle ne soit pas écrite dans
+`/etc/exports`, et `/var/lib/nfs/etab` donne `anonuid={anon}` (`nobody`).
+
+Évaluation (éléments comptés par l'évaluation de l'enseignant seulement) : `serveur_q_ports`
+(1 point : 2049 et 111), `serveur_q_programmes` (1 : 100003 et 100005),
+`serveur_q_threads_anonuid` (1 : 8 et {anon}), `serveur_q_squash` (1), `serveur_q_mountd` (1).
+""": """
+**Solution.** `rpcinfo -p` gives, for `nfs`, program **100003** on TCP port **2049**; for
+`portmapper`, port **111**; for `mountd`, program **100005**, on a port **assigned dynamically**
+when `rpc.mountd` starts and published by `rpcbind`. `cat /proc/fs/nfsd/threads`: **8** threads
+(`rpc.nfsd 8`). `exportfs -v` shows **`root_squash`** among the options of the export, although
+it is not written in `/etc/exports`, and `/var/lib/nfs/etab` gives `anonuid={anon}` (`nobody`).
+
+Grading (elements counted by the instructor's evaluation only): `serveur_q_ports` (1 point: 2049
+and 111), `serveur_q_programmes` (1: 100003 and 100005), `serveur_q_threads_anonuid` (1: 8 and
+{anon}), `serveur_q_squash` (1), `serveur_q_mountd` (1).
+""",
+        """
+**Solution.** Sur `pc1` :
+
+```
+showmount -e srv
+mkdir /mnt/commun
+mount -t nfs -o vers=3 srv:/srv/nfs/commun /mnt/commun   # refusé : rpc.statd is not running...
+service rpcbind start
+service nfs-common start
+mount -t nfs -o vers=3 srv:/srv/nfs/commun /mnt/commun
+echo 'fichier cree par root sur pc1' > /mnt/commun/de_root.txt
+su etudiant -c "echo 'fichier cree par etudiant sur pc1' > /mnt/commun/de_etudiant.txt"
+```
+
+- `ls -l /srv/nfs/commun` sur `srv` : `de_root.txt` appartient à `nobody` / `nogroup` (UID {anon} :
+  `root_squash` a transformé `root` de `pc1` en utilisateur anonyme) et `de_etudiant.txt` à
+  `etudiant` (UID {etudiant}, le même sur toutes les machines). `pc1` affiche la même chose.
+- `nfsstat -m` : `vers=3`, `proto=tcp`, `hard`, `sec=sys`.
+- La capture `tcpdump -A` laisse lire la phrase écrite. `tshark` montre, pour chaque appel NFS
+  d'`etudiant`, le champ `Credentials` : `Flavor: AUTH_UNIX (1)`, `Machine Name: pc1`,
+  `UID: {etudiant}`, `GID: {etudiant}`.
+- `/var/log/syslog` de `srv` contient une ligne de `rpc.mountd` par montage :
+  `authenticated mount request from {pc1}:PORT for /srv/nfs/commun (/srv/nfs/commun)`.
+
+Piège : monter avec `-o nolock` sans démarrer les services fait réussir le montage, mais
+`client_statd` n'est pas acquis.
+
+Évaluation : `client_statd` (1 point : `status`, donc `rpc.statd`, figure dans `rpcinfo -p` sur
+`pc1`), `client_montage_commun` (2 : `srv:/srv/nfs/commun` est monté sur `/mnt/commun` en NFSv3,
+d'après `/proc/mounts`) et `client_fichiers` (2 : sur `srv`, `de_root.txt` appartient à l'UID
+{anon} et `de_etudiant.txt` à l'UID {etudiant}).
+""": """
+**Solution.** On `pc1`:
+
+```
+showmount -e srv
+mkdir /mnt/commun
+mount -t nfs -o vers=3 srv:/srv/nfs/commun /mnt/commun   # refused: rpc.statd is not running...
+service rpcbind start
+service nfs-common start
+mount -t nfs -o vers=3 srv:/srv/nfs/commun /mnt/commun
+echo 'fichier cree par root sur pc1' > /mnt/commun/de_root.txt
+su etudiant -c "echo 'fichier cree par etudiant sur pc1' > /mnt/commun/de_etudiant.txt"
+```
+
+- `ls -l /srv/nfs/commun` on `srv`: `de_root.txt` belongs to `nobody` / `nogroup` (UID {anon}:
+  `root_squash` turned `root` of `pc1` into the anonymous user) and `de_etudiant.txt` to
+  `etudiant` (UID {etudiant}, the same on every machine). `pc1` shows the same thing.
+- `nfsstat -m`: `vers=3`, `proto=tcp`, `hard`, `sec=sys`.
+- The `tcpdump -A` capture lets one read the sentence written. `tshark` shows, for every NFS call
+  of `etudiant`, the `Credentials` field: `Flavor: AUTH_UNIX (1)`, `Machine Name: pc1`,
+  `UID: {etudiant}`, `GID: {etudiant}`.
+- `/var/log/syslog` of `srv` holds one line of `rpc.mountd` per mount:
+  `authenticated mount request from {pc1}:PORT for /srv/nfs/commun (/srv/nfs/commun)`.
+
+Pitfall: mounting with `-o nolock` without starting the services makes the mount succeed, but
+`client_statd` is not earned.
+
+Grading: `client_statd` (1 point: `status`, hence `rpc.statd`, appears in `rpcinfo -p` on `pc1`),
+`client_montage_commun` (2: `srv:/srv/nfs/commun` is mounted on `/mnt/commun` in NFSv3, according
+to `/proc/mounts`) and `client_fichiers` (2: on `srv`, `de_root.txt` belongs to UID {anon} and
+`de_etudiant.txt` to UID {etudiant}).
+""",
+        """
+**Solution.** Il manquait **`rpc.statd`** (verrous NFSv3) : `mount` l'écrit en toutes lettres.
+Vu du serveur, `de_root.txt` appartient à **`nobody`**, UID **{anon}** (`root_squash`, appliquée
+par défaut). Transport : **`tcp`** (`proto=tcp` dans `nfsstat -m` ou dans `/proc/mounts`).
+Identification : **AUTH_UNIX (AUTH_SYS)** : chaque appel annonce le nom de la machine, l'UID et
+les GID, sans la moindre preuve. Texte lisible dans la capture : **oui**, rien n'est chiffré avec
+`sec=sys`.
+
+Évaluation (enseignant seulement) : `client_q_statd` (1 point), `client_q_proprietaire` (1 :
+`nobody` et {anon}), `client_q_proto_flavor` (1 : `tcp` et AUTH_UNIX), `client_q_clair` (1).
+""": """
+**Solution.** **`rpc.statd`** was missing (NFSv3 locks): `mount` says so in plain words. Seen
+from the server, `de_root.txt` belongs to **`nobody`**, UID **{anon}** (`root_squash`, applied by
+default). Transport: **`tcp`** (`proto=tcp` in `nfsstat -m` or in `/proc/mounts`).
+Identification: **AUTH_UNIX (AUTH_SYS)**: every call announces the machine name, the UID and the
+GIDs, without any proof. Text readable in the capture: **yes**, nothing is encrypted with
+`sec=sys`.
+
+Grading (instructor only): `client_q_statd` (1 point), `client_q_proprietaire` (1: `nobody` and
+{anon}), `client_q_proto_flavor` (1: `tcp` and AUTH_UNIX), `client_q_clair` (1).
+""",
+        """
+**Solution.** Sur `srv` : `chown depot:depot /srv/nfs/depot` (`id depot` : UID = GID =
+{uid_depot}), puis `/etc/exports` devient :
+
+```
+{commun}
+{admin}
+{depot}
+```
+
+et `exportfs -ra`. Essais :
+
+```
+# pc3
+mkdir -p /mnt/commun /mnt/depot
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/commun /mnt/commun
+touch /mnt/commun/essai                   # Read-only file system
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/depot /mnt/depot
+# pc2
+mkdir -p /mnt/admin
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/admin /mnt/admin   # mount.nfs: access denied by server
+# pc1 (nolock y est facultatif : rpc.statd tourne)
+mkdir -p /mnt/admin /mnt/depot
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/admin /mnt/admin
+touch /mnt/admin/de_root                  # appartient à root (UID 0) : no_root_squash
+su etudiant -c 'touch /mnt/admin/essai'   # Permission denied
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/depot /mnt/depot
+touch /mnt/depot/a ; su etudiant -c 'touch /mnt/depot/b' ; ls -ln /mnt/depot
+```
+
+Dans `/mnt/depot`, `ls -ln` donne l'UID et le GID {uid_depot} à tous les fichiers, créés par
+`root` ou par `etudiant`, depuis `pc1` comme depuis `pc3`. Le refus opposé à `pc2` est inscrit
+par `rpc.mountd` dans `/var/log/syslog` de `srv` :
+`refused mount request from {pc2} for /srv/nfs/admin (/srv/nfs/admin): unmatched host`.
+
+Pièges : oublier `exportfs -ra` ; un espace avant une parenthèse ; `pc1` est résolu par
+`/etc/hosts` de `srv` ; sans le `chown`, personne n'écrit dans `depot` (répertoire `755` à `root`,
+où tout le monde arrive sous l'UID {uid_depot}) ; `all_squash` sans `anonuid` / `anongid` ramène
+tout le monde à `nobody`, qui n'écrit pas non plus dans un répertoire appartenant à `depot`.
+
+Évaluation : `options_commun_invites_ro` (2 points : `sonde2` monte `commun` et ses créations
+échouent par `Read-only file system`), `options_commun_lan_rw` (1 : `sonde2` monte `commun` et,
+depuis `sonde1`, `etudiant` y crée un fichier à son nom et `root` un fichier à `nobody`),
+`options_admin_pc1` (2 : `pc1` monte `admin`, le fichier créé par `root` appartient à l'UID 0),
+`options_admin_reserve` (2 : `pc1` monte `admin`, `sonde1` et `sonde2` sont refusées),
+`options_depot_all_squash` (3 : depuis `sonde1` et `sonde2`, les fichiers de `root` et
+d'`etudiant` appartiennent à l'UID {uid_depot} ; 1 point si un seul des deux réseaux y parvient).
+""": """
+**Solution.** On `srv`: `chown depot:depot /srv/nfs/depot` (`id depot`: UID = GID = {uid_depot}),
+then `/etc/exports` becomes:
+
+```
+{commun}
+{admin}
+{depot}
+```
+
+and `exportfs -ra`. Tests:
+
+```
+# pc3
+mkdir -p /mnt/commun /mnt/depot
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/commun /mnt/commun
+touch /mnt/commun/essai                   # Read-only file system
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/depot /mnt/depot
+# pc2
+mkdir -p /mnt/admin
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/admin /mnt/admin   # mount.nfs: access denied by server
+# pc1 (nolock is optional there: rpc.statd is running)
+mkdir -p /mnt/admin /mnt/depot
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/admin /mnt/admin
+touch /mnt/admin/de_root                  # belongs to root (UID 0): no_root_squash
+su etudiant -c 'touch /mnt/admin/essai'   # Permission denied
+mount -t nfs -o vers=3,nolock srv:/srv/nfs/depot /mnt/depot
+touch /mnt/depot/a ; su etudiant -c 'touch /mnt/depot/b' ; ls -ln /mnt/depot
+```
+
+In `/mnt/depot`, `ls -ln` gives UID and GID {uid_depot} to all the files, created by `root` or by
+`etudiant`, from `pc1` as from `pc3`. The refusal met by `pc2` is logged by `rpc.mountd` in
+`/var/log/syslog` of `srv`:
+`refused mount request from {pc2} for /srv/nfs/admin (/srv/nfs/admin): unmatched host`.
+
+Pitfalls: forgetting `exportfs -ra`; a space before a parenthesis; `pc1` is resolved by
+`/etc/hosts` of `srv`; without the `chown`, nobody can write in `depot` (directory `755` owned by
+`root`, where everybody arrives as UID {uid_depot}); `all_squash` without `anonuid` / `anongid`
+maps everybody to `nobody`, who cannot write either in a directory owned by `depot`.
+
+Grading: `options_commun_invites_ro` (2 points: `sonde2` mounts `commun` and its file creations
+fail with `Read-only file system`), `options_commun_lan_rw` (1: `sonde2` mounts `commun` and,
+from `sonde1`, `etudiant` creates a file there under that name and `root` a file owned by
+`nobody`), `options_admin_pc1` (2: `pc1` mounts `admin`, the file created by `root` belongs to
+UID 0), `options_admin_reserve` (2: `pc1` mounts `admin`, `sonde1` and `sonde2` are refused),
+`options_depot_all_squash` (3: from `sonde1` and `sonde2`, the files of `root` and of `etudiant`
+belong to UID {uid_depot}; 1 point if only one of the two networks manages it).
+""",
+        """
+**Solution.** Sur `pc3` : **Read-only file system** (l'export est `ro` pour `invites`, même si le
+montage se dit `rw`). Sur `pc2` : **access denied by server** (`pc2` n'est pas dans la liste de
+l'export `admin`). Le fichier créé par `root` de `pc1` dans `/mnt/admin` appartient à l'UID **0**
+(`no_root_squash`) ; ceux de `/mnt/depot` à l'UID **{uid_depot}** (compte `depot` : `all_squash`
+et `anonuid`). `etudiant` n'écrit pas dans `/mnt/admin` à cause des **droits Unix** : le
+répertoire est `755` et appartient à `root`, et le serveur applique ces droits à l'UID {etudiant}
+annoncé par le client ; `no_root_squash` ne concerne que l'UID 0, et l'export est bien `rw`.
+Prise en compte de `/etc/exports` : **`exportfs -ra`**.
+
+Évaluation (enseignant seulement) : `options_q_messages` (1 point), `options_q_uid` (1 : 0 et
+{uid_depot}), `options_q_droits_unix` (1), `options_q_exportfs` (1).
+""": """
+**Solution.** On `pc3`: **Read-only file system** (the export is `ro` for `invites`, even though
+the mount claims `rw`). On `pc2`: **access denied by server** (`pc2` is not in the list of the
+`admin` export). The file created by `root` of `pc1` in `/mnt/admin` belongs to UID **0**
+(`no_root_squash`); those of `/mnt/depot` to UID **{uid_depot}** (`depot` account: `all_squash`
+and `anonuid`). `etudiant` cannot write in `/mnt/admin` because of the **Unix permissions**: the
+directory is `755` and belongs to `root`, and the server applies these permissions to the UID
+{etudiant} announced by the client; `no_root_squash` only concerns UID 0, and the export is indeed
+`rw`. Applying `/etc/exports`: **`exportfs -ra`**.
+
+Grading (instructor only): `options_q_messages` (1 point), `options_q_uid` (1: 0 and
+{uid_depot}), `options_q_droits_unix` (1), `options_q_exportfs` (1).
+""",
+        """
+**Solution.** Sur `srv`, ajouter à `/etc/exports` la ligne suivante, puis `exportfs -ra` :
+
+```
+{home}
+```
+
+Sur `pc1` :
+
+```
+mkdir /mnt/home
+mount -t nfs -o vers=3 srv:/srv/nfs/home /mnt/home
+ls -l /mnt/home                                  # alice ; le répertoire bob porte le numéro {uid_bob}
+cat /mnt/home/alice/secret.txt                   # Permission denied : root est devenu nobody
+su alice -c 'cat /mnt/home/alice/secret.txt'     # {secret}
+useradd -m -s /bin/bash -u {uid_bob} bob
+su bob -c 'touch /mnt/home/bob/essai'
+```
+
+Sur `pc2`, `mkdir /mnt/home` puis `mount -t nfs -o vers=3,nolock srv:/srv/nfs/home /mnt/home`.
+`ls -l /mnt/home` attribue le répertoire `alice` à **`charlie`** et `ls -ln` montre l'UID
+{uid_alice} : sur `pc2`, ce numéro est celui de `charlie`, alors qu'`alice` y a l'UID
+{uid_alice_pc2}. `charlie` lit donc `secret.txt`, et `alice` non. Correction (celle de l'état
+`final`) :
+
+```
+usermod -u {spare} charlie && groupmod -g {spare} charlie
+usermod -u {uid_alice} alice && groupmod -g {uid_alice} alice
+chown -R alice:alice /home/alice
+chown -R charlie:charlie /home/charlie
+su alice -c 'cat /mnt/home/alice/secret.txt'     # {secret}
+su charlie -c 'cat /mnt/home/alice/secret.txt'   # Permission denied
+```
+
+Pièges : l'ordre (libérer {uid_alice} avant de le donner à `alice`) ; oublier le GID ; `usermod`
+refuse de modifier un compte qui a un processus en cours (fermer les `su alice` et `su charlie`
+restés ouverts) ; `groupmod -g` ne change pas le groupe des fichiers existants, d'où les
+`chown -R`.
+
+Évaluation : `identites_export_home` (2 points : `sonde1` monte `/srv/nfs/home`, `sonde2` est
+refusée), `identites_montages_home` (1 : `home` est monté sur `/mnt/home` sur `pc1` et sur `pc2`),
+`identites_bob_pc1` (1 : `bob` a l'UID {uid_bob} sur `pc1`), `identites_alice_uid_pc2` (2 : sur
+`pc2`, `alice` est le seul compte d'UID {uid_alice}), `identites_alice_gid_pc2` (1 : le GID
+{uid_alice} est celui d'`alice` et plus celui de `charlie`), `identites_lecture_alice_pc2` (1 :
+sur `pc2`, `su alice -c 'cat /mnt/home/alice/secret.txt'` rend le secret).
+""": """
+**Solution.** On `srv`, add the following line to `/etc/exports`, then `exportfs -ra`:
+
+```
+{home}
+```
+
+On `pc1`:
+
+```
+mkdir /mnt/home
+mount -t nfs -o vers=3 srv:/srv/nfs/home /mnt/home
+ls -l /mnt/home                                  # alice; the bob directory shows the number {uid_bob}
+cat /mnt/home/alice/secret.txt                   # Permission denied: root has become nobody
+su alice -c 'cat /mnt/home/alice/secret.txt'     # {secret}
+useradd -m -s /bin/bash -u {uid_bob} bob
+su bob -c 'touch /mnt/home/bob/essai'
+```
+
+On `pc2`, `mkdir /mnt/home` then `mount -t nfs -o vers=3,nolock srv:/srv/nfs/home /mnt/home`.
+`ls -l /mnt/home` gives the `alice` directory to **`charlie`** and `ls -ln` shows UID
+{uid_alice}: on `pc2` that number is the one of `charlie`, whereas `alice` has UID
+{uid_alice_pc2} there. So `charlie` reads `secret.txt`, and `alice` does not. Fix (the one of the
+`final` state):
+
+```
+usermod -u {spare} charlie && groupmod -g {spare} charlie
+usermod -u {uid_alice} alice && groupmod -g {uid_alice} alice
+chown -R alice:alice /home/alice
+chown -R charlie:charlie /home/charlie
+su alice -c 'cat /mnt/home/alice/secret.txt'     # {secret}
+su charlie -c 'cat /mnt/home/alice/secret.txt'   # Permission denied
+```
+
+Pitfalls: the order (free {uid_alice} before giving it to `alice`); forgetting the GID; `usermod`
+refuses to change an account that has a running process (close the `su alice` and `su charlie`
+left open); `groupmod -g` does not change the group of the existing files, hence the `chown -R`.
+
+Grading: `identites_export_home` (2 points: `sonde1` mounts `/srv/nfs/home`, `sonde2` is
+refused), `identites_montages_home` (1: `home` is mounted on `/mnt/home` on `pc1` and on `pc2`),
+`identites_bob_pc1` (1: `bob` has UID {uid_bob} on `pc1`), `identites_alice_uid_pc2` (2: on
+`pc2`, `alice` is the only account with UID {uid_alice}), `identites_alice_gid_pc2` (1: GID
+{uid_alice} is that of `alice` and no longer that of `charlie`), `identites_lecture_alice_pc2`
+(1: on `pc2`, `su alice -c 'cat /mnt/home/alice/secret.txt'` returns the secret).
+""",
+        """
+**Solution.** Contenu de `secret.txt` : `{secret}`. UID d'`alice` sur le serveur : **{uid_alice}** ;
+sur `pc2` au début du TP : **{uid_alice_pc2}**. Avant correction, `ls -l /mnt/home` sur `pc2`
+attribue le répertoire `alice` à **`charlie`** : seuls les numéros circulent, et chaque machine
+affiche le nom que sa propre table des comptes associe à l'UID {uid_alice}. `root` de `pc1` ne lit
+pas directement `secret.txt` : il est transformé en `nobody` (**`root_squash`**). Mais il lui
+suffit d'un `su alice`, ou de créer un compte portant l'UID voulu, pour le lire : **oui**,
+l'administrateur d'un client autorisé lit les fichiers de n'importe quel utilisateur, puisque le
+serveur fait confiance aux UID annoncés (AUTH_SYS). Seul **Kerberos** (`sec=krb5`) authentifie
+réellement les utilisateurs : `all_squash` et `secure` ne prouvent l'identité de personne.
+
+Évaluation (enseignant seulement) : `identites_q_secret` (1 point), `identites_q_uid` (1 :
+{uid_alice} et {uid_alice_pc2}), `identites_q_noms` (1 : `charlie` et `root_squash`),
+`identites_q_confiance` (1 : oui et Kerberos).
+""": """
+**Solution.** Content of `secret.txt`: `{secret}`. UID of `alice` on the server: **{uid_alice}**;
+on `pc2` at the beginning of the lab: **{uid_alice_pc2}**. Before the fix, `ls -l /mnt/home` on
+`pc2` gives the `alice` directory to **`charlie`**: only the numbers travel, and each machine
+shows the name that its own account table associates with UID {uid_alice}. `root` of `pc1` cannot
+read `secret.txt` directly: it is turned into `nobody` (**`root_squash`**). But a `su alice`, or
+creating an account with the wanted UID, is enough to read it: **yes**, the administrator of an
+allowed client reads the files of any user, since the server trusts the announced UIDs
+(AUTH_SYS). Only **Kerberos** (`sec=krb5`) really authenticates the users: `all_squash` and
+`secure` prove nobody's identity.
+
+Grading (instructor only): `identites_q_secret` (1 point), `identites_q_uid` (1: {uid_alice} and
+{uid_alice_pc2}), `identites_q_noms` (1: `charlie` and `root_squash`), `identites_q_confiance`
+(1: yes and Kerberos).
+""",
+        """
+**Solution.** Sur `srv`, ajouter à `/etc/exports` la ligne suivante, puis `exportfs -ra` :
+
+```
+{root}
+```
+
+Sur `pc2` :
+
+```
+mkdir /mnt/nfs4
+mount -t nfs4 srv:/ /mnt/nfs4
+ls -l /mnt/nfs4                                  # admin  commun  depot  home
+su etudiant -c 'touch /mnt/nfs4/commun/essai4'
+grep nfs4 /proc/mounts                           # srv:/ sur /mnt/nfs4 et srv:/commun sur /mnt/nfs4/commun, vers=4.2
+ls -la /mnt/nfs4/admin                           # vide : l'export admin est réservé à pc1
+touch /mnt/nfs4/essai                            # Read-only file system : la racine est exportée en ro
+mkdir /mnt/test && mount srv:/commun /mnt/test   # sans option de version : vers=4.2 dans /proc/mounts
+umount /mnt/test
+```
+
+Sur `pc3`, `mount -t nfs4 srv:/depot /mnt/test` échoue (`No such file or directory`) : la racine
+`fsid=0` n'est exportée qu'au réseau `lan`, il n'y a donc pas d'arborescence NFSv4 pour `pc3`,
+bien que l'export `depot` lui soit ouvert en NFSv3.
+
+Pièges : sans `fsid=0`, tout montage NFSv4 échoue de la même façon, la racine `/` du conteneur
+n'étant pas exportable ; en NFSv4 le chemin est relatif à la racine (`srv:/commun`, et non
+`srv:/srv/nfs/commun`) ; la racine doit rester en lecture seule (`nfs4_racine`).
+
+Évaluation : `nfs4_racine` (2 points : `sonde1` monte `srv:/` en NFSv4 et ses créations à la
+racine échouent par `Read-only file system`), `nfs4_commun` (2 : `srv:/commun` en NFSv4,
+`etudiant` y crée un fichier à son nom et `root` un fichier à `nobody`), `nfs4_depot` (1 :
+`srv:/depot` en NFSv4, les fichiers créés appartiennent à `depot`), `nfs4_montage_pc2` (1 :
+`srv:/` est monté sur `/mnt/nfs4` en NFSv4 sur `pc2`).
+""": """
+**Solution.** On `srv`, add the following line to `/etc/exports`, then `exportfs -ra`:
+
+```
+{root}
+```
+
+On `pc2`:
+
+```
+mkdir /mnt/nfs4
+mount -t nfs4 srv:/ /mnt/nfs4
+ls -l /mnt/nfs4                                  # admin  commun  depot  home
+su etudiant -c 'touch /mnt/nfs4/commun/essai4'
+grep nfs4 /proc/mounts                           # srv:/ on /mnt/nfs4 and srv:/commun on /mnt/nfs4/commun, vers=4.2
+ls -la /mnt/nfs4/admin                           # empty: the admin export is reserved to pc1
+touch /mnt/nfs4/essai                            # Read-only file system: the root is exported ro
+mkdir /mnt/test && mount srv:/commun /mnt/test   # no version option: vers=4.2 in /proc/mounts
+umount /mnt/test
+```
+
+On `pc3`, `mount -t nfs4 srv:/depot /mnt/test` fails (`No such file or directory`): the `fsid=0`
+root is exported to the `lan` network only, so there is no NFSv4 tree for `pc3`, although the
+`depot` export is open to it in NFSv3.
+
+Pitfalls: without `fsid=0`, every NFSv4 mount fails the same way, the root `/` of the container
+not being exportable; in NFSv4 the path is relative to the root (`srv:/commun`, not
+`srv:/srv/nfs/commun`); the root must stay read-only (`nfs4_racine`).
+
+Grading: `nfs4_racine` (2 points: `sonde1` mounts `srv:/` in NFSv4 and its file creations at the
+root fail with `Read-only file system`), `nfs4_commun` (2: `srv:/commun` in NFSv4, `etudiant`
+creates a file there under that name and `root` a file owned by `nobody`), `nfs4_depot` (1:
+`srv:/depot` in NFSv4, the files created belong to `depot`), `nfs4_montage_pc2` (1: `srv:/` is
+mounted on `/mnt/nfs4` in NFSv4 on `pc2`).
+""",
+        """
+**Solution.** Version négociée : **4.2** (`vers=4.2` dans `nfsstat -m` ou dans `/proc/mounts`).
+Chemin de `/srv/nfs/home` pour un client NFSv4 : **`srv:/home`**, relatif à la racine `fsid=0`
+(`/home` est accepté aussi). Ports du serveur : **2049 seulement** : ni `rpcbind`, ni `mountd`,
+ni `statd`. `/mnt/nfs4/admin` vu de `pc2` : **un répertoire vide**, l'export `admin` n'étant
+ouvert qu'à `pc1`. Échec sur `pc3` : **la racine NFSv4 (`fsid=0`) n'est exportée qu'au `lan`** ;
+`all_squash` n'empêche aucun montage et NFSv4 n'a pas besoin de `rpc.statd`.
+
+Évaluation (enseignant seulement) : `nfs4_q_version_chemin` (1 point : 4.2 et `/home`),
+`nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
+""": """
+**Solution.** Negotiated version: **4.2** (`vers=4.2` in `nfsstat -m` or in `/proc/mounts`). Path
+of `/srv/nfs/home` for an NFSv4 client: **`srv:/home`**, relative to the `fsid=0` root (`/home`
+is accepted too). Ports of the server: **2049 only**: neither `rpcbind`, nor `mountd`, nor
+`statd`. `/mnt/nfs4/admin` seen from `pc2`: **an empty directory**, the `admin` export being open
+to `pc1` only. Failure on `pc3`: **the NFSv4 root (`fsid=0`) is exported to the `lan` only**;
+`all_squash` prevents no mount and NFSv4 does not need `rpc.statd`.
+
+Grading (instructor only): `nfs4_q_version_chemin` (1 point: 4.2 and `/home`), `nfs4_q_ports`
+(1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
+""",
+        """
+**Solution.** Sur `pc1`, `umount -a -t nfs,nfs4`, puis ajouter à `/etc/fstab` (`timeo=30,retrans=2`
+est facultatif) :
+
+```
+{fstab}
+```
+
+puis :
+
+```
+findmnt --verify
+mount -a                            # monte /mnt/commun et /mnt/home, pas /mnt/depot
+grep nfs /proc/mounts
+su etudiant -c 'mount /mnt/depot'   # permis par l'option user
+```
+
+Panne :
+
+```
+mkdir /mnt/essai
+mount -t nfs -o vers=3,soft,timeo=30,retrans=2 srv:/srv/nfs/commun /mnt/essai
+```
+
+puis `ip link set eth0 down` sur `srv`. `ls /mnt/essai` (`soft`) rend une erreur
+(`Stale file handle` ou `Input/output error`) au bout d'une vingtaine de secondes au plus ;
+`ls /mnt/commun` (`hard`) reste bloquée, puis se termine normalement une dizaine de secondes après
+`ip link set eth0 up`. Finir par `umount /mnt/essai`.
+
+Pièges : `soft` ou `noauto` sur la ligne de `commun` ; `nfs` sans `vers=4` au lieu de `nfs4` pour
+`/depot`, ou le chemin NFSv3 `srv:/srv/nfs/depot` ; un point de montage qui n'existe pas ; laisser
+`eth0` coupée sur `srv` (toute l'évaluation échoue alors).
+
+Évaluation : `fstab_commun` (1 point : ligne `srv:/srv/nfs/commun` sur `/mnt/commun`, NFSv3, sans
+`noauto` ni `soft`), `fstab_home` (1 : `srv:/srv/nfs/home` sur `/mnt/home`, NFSv3, sans
+`noauto`), `fstab_depot` (2 : `srv:/depot` sur `/mnt/depot`, NFSv4, avec `noauto`, `soft` et
+`user`), `fstab_montes` (1 : ces deux premières lignes sont correctes, et `commun` et `home` sont
+montés en NFSv3 sur `pc1`, `commun` en `hard`). Le serveur peut y être nommé `srv` ou `{srv_lan}` ;
+le montage de `/mnt/depot` et l'essai de panne ne sont pas notés.
+""": """
+**Solution.** On `pc1`, `umount -a -t nfs,nfs4`, then add to `/etc/fstab` (`timeo=30,retrans=2`
+is optional):
+
+```
+{fstab}
+```
+
+then:
+
+```
+findmnt --verify
+mount -a                            # mounts /mnt/commun and /mnt/home, not /mnt/depot
+grep nfs /proc/mounts
+su etudiant -c 'mount /mnt/depot'   # allowed by the user option
+```
+
+Outage:
+
+```
+mkdir /mnt/essai
+mount -t nfs -o vers=3,soft,timeo=30,retrans=2 srv:/srv/nfs/commun /mnt/essai
+```
+
+then `ip link set eth0 down` on `srv`. `ls /mnt/essai` (`soft`) returns an error
+(`Stale file handle` or `Input/output error`) after about twenty seconds at most;
+`ls /mnt/commun` (`hard`) stays blocked, then ends normally about ten seconds after
+`ip link set eth0 up`. Finish with `umount /mnt/essai`.
+
+Pitfalls: `soft` or `noauto` on the line of `commun`; `nfs` without `vers=4` instead of `nfs4`
+for `/depot`, or the NFSv3 path `srv:/srv/nfs/depot`; a mount point that does not exist; leaving
+`eth0` down on `srv` (the whole evaluation then fails).
+
+Grading: `fstab_commun` (1 point: line `srv:/srv/nfs/commun` on `/mnt/commun`, NFSv3, without
+`noauto` nor `soft`), `fstab_home` (1: `srv:/srv/nfs/home` on `/mnt/home`, NFSv3, without
+`noauto`), `fstab_depot` (2: `srv:/depot` on `/mnt/depot`, NFSv4, with `noauto`, `soft` and
+`user`), `fstab_montes` (1: these first two lines are correct, and `commun` and `home` are
+mounted in NFSv3 on `pc1`, `commun` as a `hard` mount). The server may be named `srv` or
+`{srv_lan}` there; the mount of `/mnt/depot` and the outage test are not graded.
+""",
+        """
+**Solution.** Pendant la panne, `ls` sur le montage `soft` **échoue avec une erreur après quelques
+secondes** ; sur le montage `hard`, elle **reste bloquée jusqu'au retour du serveur**, puis
+**reprend et se termine normalement**. `timeo=30` vaut **3 secondes** : l'unité est le dixième de
+seconde. Pour des données importantes on choisit **`hard`** : un montage `soft` rend une erreur
+d'entrée-sortie que beaucoup de programmes ignorent, et les données sont perdues sans bruit.
+L'option qui exclut une ligne de `mount -a` est **`noauto`**.
+
+Évaluation (enseignant seulement) : `pannes_q_soft_hard` (1 point), `pannes_q_reprise` (1),
+`pannes_q_timeo` (1), `pannes_q_choix_noauto` (1 : `hard` et `noauto`).
+""": """
+**Solution.** During the outage, `ls` on the `soft` mount **fails with an error after a few
+seconds**; on the `hard` mount, it **stays blocked until the server comes back**, then **resumes
+and ends normally**. `timeo=30` is **3 seconds**: the unit is the tenth of a second. For important
+data, choose **`hard`**: a `soft` mount returns an input/output error that many programs ignore,
+and the data is lost silently. The option that excludes a line from `mount -a` is **`noauto`**.
+
+Grading (instructor only): `pannes_q_soft_hard` (1 point), `pannes_q_reprise` (1),
+`pannes_q_timeo` (1), `pannes_q_choix_noauto` (1: `hard` and `noauto`).
 """,
         """
 Sur `pc1` :

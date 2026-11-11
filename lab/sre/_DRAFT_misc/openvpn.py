@@ -205,10 +205,10 @@ Un VPN apporte trois garanties :
 
 Deux usages dominent :
 
-| usage | exemple | dans ce TP |
-|-------|---------|------------|
-| **accès distant** (*road warrior*) | un portable en déplacement rejoint le réseau de l'entreprise | `nomade` → `srv` |
-| **site à site** | deux agences relient leurs réseaux locaux par leurs passerelles | `gwb` → `srv` : `lanb` ↔ `lana` |
+| usage | exemple |
+|-------|---------|
+| **accès distant** (*road warrior*) | un portable en déplacement rejoint le réseau de l'entreprise |
+| **site à site** | deux agences relient leurs réseaux locaux par leurs passerelles |
 
 On distingue aussi les VPN de **niveau 2** (le tunnel transporte des trames Ethernet : les deux
 côtés sont dans le même domaine de diffusion) et de **niveau 3** (le tunnel transporte des paquets
@@ -515,23 +515,6 @@ UDP 1194, routage asymétrique (chemin du retour oublié), MTU (grands paquets p
 - **Comparaison** : WireGuard est plus simple et plus rapide (noyau) mais sans PKI ni TCP ni
   authentification par mot de passe ; IPsec est le standard des équipements réseau ; OpenVPN reste
   le plus souple (TCP 443, proxy HTTP, authentifications variées, un seul port).
-""")
-            + info_subtitle(tr("Plan du TP"), tag="plan")
-            + tr("""
-
-1. **Premier tunnel** point à point entre `srv` et `gwb`, authentifié par empreintes
-   (`peer-fingerprint`), sans CA ;
-2. **PKI** avec easy-rsa sur `ca` : autorité, certificat de serveur, certificats de clients,
-   clé `tls-crypt` ;
-3. **Serveur d'accès distant** sur `srv` et client `nomade` ;
-4. **Accès au LAN** du site A depuis le nomade (`push route`, forwarding) ;
-5. **Site à site** : `gwb` client du serveur, `iroute`, `lanb` ↔ `lana` ;
-6. **Tunnel complet** pour le nomade (`redirect-gateway def1`) et NAT sur `srv` ;
-7. **Révocation** d'un certificat (CRL).
-
-Les parties sont à faire **dans l'ordre** et la configuration d'une partie terminée reste en
-place. Les fichiers sont attendus aux emplacements indiqués ; les adresses et valeurs demandées
-sont propres à votre instance du TP (onglet *Questions*, première question).
 """)
         )
 
@@ -899,8 +882,21 @@ les serveurs web de `m1`, `m2` et `web` (la page `/` affiche l'adresse du client
 serveur la voit, `/secret.txt` une phrase). Il n'y a **pas de DNS**. `srv`, `gwb` et `nomade` tournent avec systemd (`systemctl`,
 `journalctl`) ; `/shared` est un répertoire commun à toutes les machines pour échanger des fichiers.
 
+**Plan du TP.**
+
+1. **Premier tunnel** point à point entre `srv` et `gwb`, authentifié par empreintes
+   (`peer-fingerprint`), sans CA ;
+2. **PKI** avec easy-rsa sur `ca` : autorité, certificat de serveur, certificats de clients,
+   clé `tls-crypt` ;
+3. **Serveur d'accès distant** sur `srv` et client `nomade` ;
+4. **Accès au LAN** du site A depuis le nomade (`push route`, forwarding) ;
+5. **Site à site** : `gwb` client du serveur, `iroute`, `lanb` ↔ `lana` ;
+6. **Tunnel complet** pour le nomade (`redirect-gateway def1`) et NAT sur `srv` ;
+7. **Révocation** d'un certificat (CRL).
+
 Règles valables pour tout le TP :
 
+- les parties sont à faire **dans l'ordre** ;
 - les fichiers sont attendus aux emplacements indiqués (`/root/easy-rsa` sur `ca`,
   `/etc/openvpn/server/` sur `srv`, `/etc/openvpn/client/` sur `gwb` et `nomade`) et les tunnels
   sont lancés par les unités systemd `openvpn-server@NOM` / `openvpn-client@NOM` ;

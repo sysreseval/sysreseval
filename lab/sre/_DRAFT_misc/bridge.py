@@ -463,24 +463,6 @@ jusqu'à ce qu'une trame de diffusion (ARP) venant d'elle lui fasse réapprendre
 | adresse sur le pont | `ip address add A.B.C.D/24 dev br0`, `ip route add default via ...` |
 | STP | `ip link set br0 type bridge stp_state 1`, `ip link set br0 type bridge priority N`, `bridge link`, `ip -d link show br0` |
 """)
-            + info_subtitle(tr("Plan du TP"), tag="plan")
-            + tr("""
-
-1. **Sans pont** : m1 et m2 ne se joignent pas ;
-2. **Le pont `br0`** sur b1 : m2 joint m1 et l'extérieur ; transparence (captures, ARP, adresse
-   MAC du pont) ; latence avec ou sans pont ;
-3. **Table MAC** du pont et durée de vie des entrées ;
-4. **Filtrage** : m2 ne doit plus joindre l'extérieur (famille `bridge` de nftables) ;
-5. **Adresse IP** sur le pont : b1 joignable et joint l'extérieur ;
-6. **Redondance et STP** : un troisième switch `s3` (avec `m4`) relié à `s1` par deux ponts
-   `b2` et `b3` en parallèle ; élection de la racine, port bloqué, BPDU, puis changement de
-   racine par la priorité.
-
-Les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
-en place. Les adresses sont celles de votre instance (onglet *Questions*, première question).
-Toute la configuration de ce TP est volatile (`ip`, `nft`) : elle ne survit pas à un
-redémarrage d'une machine.
-""")
         )
 
     # -- the commands of the reference solution (used by `final` and the instructor texts) ----
@@ -714,10 +696,24 @@ show`) : une tempête de diffusion dans la boucle de la partie 6 inonderait tout
 puis `s2` à travers `b1`) et perturberait les autres parties tant qu'elle dure, mais sans saturer
 votre machine.
 
+**Plan du TP.**
+
+1. **Sans pont** : m1 et m2 ne se joignent pas ;
+2. **Le pont `br0`** sur b1 : m2 joint m1 et l'extérieur ; transparence (captures, ARP, adresse
+   MAC du pont) ; latence avec ou sans pont ;
+3. **Table MAC** du pont et durée de vie des entrées ;
+4. **Filtrage** : m2 ne doit plus joindre l'extérieur (famille `bridge` de nftables) ;
+5. **Adresse IP** sur le pont : b1 joignable et joint l'extérieur ;
+6. **Redondance et STP** : un troisième switch `s3` (avec `m4`) relié à `s1` par deux ponts
+   `b2` et `b3` en parallèle ; élection de la racine, port bloqué, BPDU, puis changement de
+   racine par la priorité.
+
 Règles valables pour tout le TP :
 
 - les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
   en place (l'évaluation vérifie l'état final de tout) ;
+- toute la configuration de ce TP est volatile (`ip`, `nft`) : elle ne survit pas au redémarrage
+  d'une machine ;
 - le nom des ponts est imposé : **`{bridge}`** sur `b1`, `b2` et `b3` ;
 - avec STP actif, un pont met **30 secondes** à commuter : patientez avant de conclure ;
 - l'évaluation observe la maquette telle qu'elle tourne (`ip -d link`, `bridge fdb`, `nft list

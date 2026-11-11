@@ -459,8 +459,9 @@ def test_tampering_is_not_rewarded(lab, data, tmp_pub_dir):
 def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     grade, ns = _simulate(lab, data, tmp_pub_dir, _synthetic, instructor_mode=True)
     info = _text(ns.informations)
-    assert info.count('\n## ') == 11 and 'meta pkttype set host' in info and '0x8100' in info
+    assert info.count('\n## ') == 10 and 'meta pkttype set host' in info and '0x8100' in info
     assert str(data.nets.odd) not in info     # instance data belongs to the first question
+    assert 'Plan du TP' not in info           # and so does the summary of the questions
     questions = list(grade.get_questions_ordered())
     assert len(questions) == 10
     with_instructor = [q for q in questions if has_instructor(_text(q.description))]

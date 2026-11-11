@@ -512,10 +512,15 @@ def test_tampering_is_not_rewarded(lab, data, tmp_pub_dir):
 def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     grade, ns = _simulate(lab, data, tmp_pub_dir, _synthetic, instructor_mode=True)
     info = _text(ns.informations)
-    assert info.count('\n### ') == 15 and str(data.nets.net1) in info and data.registry_secret in info
-    assert dns.unbound_default_local_zone(data.nets.net1) in info
     questions = list(grade.get_questions_ordered())
     assert len(questions) == 20
+    # the Informations tab is the course alone, numbered by the SRE.informations markers: the
+    # values of the instance and the description of the lab are in the first question
+    assert info.count('\n## ') == 13 and '@@toc@@' in info
+    assert str(data.nets.net1) not in info and data.registry_secret not in info and 'Plan du TP' not in info
+    first = _text(questions[0].description)
+    assert str(data.nets.net1) in first and data.registry_secret in first
+    assert dns.unbound_default_local_zone(data.nets.net1) in first
     with_instructor = [q for q in questions if has_instructor(_text(q.description))]
     assert len(with_instructor) == 20
     all_text = info + "".join(_text(q.description) for q in questions)

@@ -403,27 +403,6 @@ chemins. `ss -tiM` montre les sockets MPTCP (`subflows:2`), `ss -ti` les sous-fl
   peu fiable en sortie de l'interface ; `tc qdisc show`, `tc qdisc del dev eth0 root`),
   `sysctl -w net.ipv4.XXX=…` (`/proc/sys` est monté en écriture sur `m1` et `serveur1`).
 """)
-            + info_subtitle(tr("Plan du TP"), tag="plan")
-            + tr("""
-
-1. **Établissement et fin de connexion** : capture d'une connexion vers un service de
-   `serveur1`, options du `SYN`, fin, états (`ss -tan`), port fermé, port filtré ;
-2. **Fenêtre de réception** : fenêtre nulle et sondes, autotuning et fenêtre fixe ;
-3. **Algorithme de Nagle** : le script de l'énoncé avec et sans `TCP_NODELAY` ;
-4. **Contrôle de congestion** : `cwnd` / `ssthresh` avec `ss -ti`, un lien lent et perdant
-   (`netem` sur `r1`), Reno contre CUBIC, retransmissions et SACK dans une capture ;
-5. **Multipath TCP** : activation, *endpoints* et limites, agrégation sur les deux chemins,
-   résilience ;
-6. **Compléments** : keepalive, ports éphémères, file d'attente, offload.
-
-Les parties sont à faire dans l'ordre ; la configuration d'une partie terminée **reste en place**
-(l'évaluation regarde l'état des machines et les fichiers de `/shared` au moment où elle est
-lancée). Les captures demandées sont à enregistrer dans **`/shared`** (répertoire commun aux
-machines et à votre poste), au format **pcap** (`tcpdump -w`) ou **pcapng** (Wireshark,
-`dumpcap`), et doivent rester lisibles (`chmod a+r /shared/*.pcap*`) et petites (capturez avec
-`-s 128` et un filtre `tcp port …`). Les numéros de trame demandés sont ceux que Wireshark ou
-`tcpdump -nr` affichent pour le fichier tel qu'il est enregistré.
-""")
         )
 
     # -- helpers -----------------------------------------------------------------------------
@@ -740,12 +719,26 @@ avec `m1`, nécessaire pour observer Nagle et les fenêtres) et la MTU des inter
 `serveur1` (`ip link` sur `serveur1`). `/proc/sys` est monté en écriture sur `m1` et `serveur1`
 (`sysctl -w`). MPTCP est **désactivé** au départ sur `m1` et `serveur1` (partie 5).
 
+**Plan du TP.**
+
+1. **Établissement et fin de connexion** : capture d'une connexion vers un service de
+   `serveur1`, options du `SYN`, fin, états (`ss -tan`), port fermé, port filtré ;
+2. **Fenêtre de réception** : fenêtre nulle et sondes, autotuning et fenêtre fixe ;
+3. **Algorithme de Nagle** : le script de l'énoncé avec et sans `TCP_NODELAY` ;
+4. **Contrôle de congestion** : `cwnd` / `ssthresh` avec `ss -ti`, un lien lent et perdant
+   (`netem` sur `r1`), Reno contre CUBIC, retransmissions et SACK dans une capture ;
+5. **Multipath TCP** : activation, *endpoints* et limites, agrégation sur les deux chemins,
+   résilience ;
+6. **Compléments** : keepalive, ports éphémères, file d'attente, offload.
+
 Règles valables pour tout le TP :
 
-- les captures demandées sont enregistrées dans **`/shared`** sous le nom indiqué (format pcap
-  avec `tcpdump -w`, ou pcapng avec Wireshark / `dumpcap`), capturées avec **`-s 128`** (les
-  en-têtes suffisent) et un filtre `tcp port …` ; elles doivent rester lisibles par tous
-  (`chmod a+r /shared/*.pcap*`) ; les numéros de trame sont ceux du fichier enregistré ;
+- les parties sont à faire **dans l'ordre** ;
+- les captures demandées sont enregistrées dans **`/shared`** (répertoire commun aux machines et
+  à votre poste) sous le nom indiqué (format pcap avec `tcpdump -w`, ou pcapng avec Wireshark /
+  `dumpcap`), capturées avec **`-s 128`** (les en-têtes suffisent) et un filtre `tcp port …` ;
+  elles doivent rester lisibles par tous (`chmod a+r /shared/*.pcap*`) ; les numéros de trame
+  sont ceux que Wireshark ou `tcpdump -nr` affichent pour le fichier enregistré ;
 - la configuration d'une partie terminée **reste en place** (algorithme de congestion, `netem`
   sur `r1`, MPTCP, keepalive…) : l'évaluation observe les machines et les fichiers de `/shared`
   au moment où elle est lancée ; après le test de résilience de la partie 5, remontez

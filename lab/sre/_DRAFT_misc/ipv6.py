@@ -823,22 +823,20 @@ PMTUD** qu'en IPv4 : connexion établie, petits échanges normaux, transferts vo
 intact. Remèdes côté routeurs, identiques dans les deux familles :
 
 - **MSS clamping** nftables, table `inet`, hook `forward`, priorité `mangle`. Une règle sans
-  `meta nfproto` s'applique **aux deux familles** avec la même valeur ; pour des valeurs
-  différentes :
-
-  ```
-  nft add table inet clamp
-  nft add chain inet clamp forward '{ type filter hook forward priority mangle; }'
-  nft add rule inet clamp forward meta nfproto ipv4 tcp flags syn tcp option maxseg size set 1400
-  nft add rule inet clamp forward meta nfproto ipv6 tcp flags syn tcp option maxseg size set 1380
-  ```
-
-  (`… size set rt mtu` prend le MTU de la route de sortie du routeur : inutile tant que son
-  interface de sortie est à 1500.)
+  `meta nfproto` s'applique **aux deux familles** avec la même valeur ; l'exemple ci-dessous donne
+  une valeur à chaque famille (`… size set rt mtu` prend le MTU de la route de sortie du routeur :
+  inutile tant que son interface de sortie est à 1500).
 - **MTU des interfaces WAN** des routeurs abaissé au MTU de l'opérateur : le routeur émet lui-même
   *fragmentation needed* / *Packet Too Big* vers ses hôtes.
 - Côté hôtes seulement : `net.ipv4.tcp_mtu_probing=1` (vaut aussi pour TCP sur IPv6), routes avec
   `mtu` : ne corrigent que la machine réglée.
+
+```
+nft add table inet clamp
+nft add chain inet clamp forward '{ type filter hook forward priority mangle; }'
+nft add rule inet clamp forward meta nfproto ipv4 tcp flags syn tcp option maxseg size set 1400
+nft add rule inet clamp forward meta nfproto ipv6 tcp flags syn tcp option maxseg size set 1380
+```
 """)
             + info_subtitle(tr("Tunnels et transition"), tag="tunnels")
             + tr("""
@@ -929,28 +927,10 @@ l'inspection : un pare-feu peut rejeter les fragments autres que le premier (`ex
 | le routeur IPv6 ne relaie pas | `net.ipv6.conf.all.forwarding=0` | `sysctl` |
 | `local error: message too long, mtu: N` dès le premier `ping -6 -M do` | un PMTU est déjà mémorisé (`ip -6 route get`, `ip -6 route flush cache`) | |
 | `ping -6 -M do -s 1452` n'obtient ni réponse ni erreur | ICMPv6 filtré (`trou_noir`) : le paquet est jeté en silence | |
-| `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD : voir partie 5 | |
+| `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD (section @@ref:mtu@@) | |
 | `iperf3 -4` passe mais `iperf3 -6` gèle | correction limitée à IPv4 (règle `meta nfproto ipv4`, ou table `ip` au lieu de `inet`) | |
 | `ip link set … mtu 1200` : plus d'adresse IPv6 | MTU sous 1280 : IPv6 désactivé sur l'interface | |
 | `ping -6` à travers `sit1` muet | `local`/`remote` inversés, ou MTU du tunnel trop grand sous `trou_noir` | |
-""")
-            + info_subtitle(tr("Plan du TP"), tag="plan")
-            + tr("""
-
-Six parties, à faire dans l'ordre (énoncés détaillés dans l'onglet **Questions**, plan d'adressage
-dans la première question) :
-
-1. **Adressage et voisinage** sur `lan1` : adresses de lien local, `ff02::1`, adresses statiques de
-   `m1` et `r1`, découverte de voisins (12 points).
-2. **Routage statique** : adresses et routes de `r1`, `r2`, `m2`, `srv`, routage activé,
-   configuration persistante de `m1` et `r1` (23 points).
-3. **SLAAC** : annonces de routeur de `r2` sur `lan3` (radvd), autoconfiguration de `pc1`
-   (16 points).
-4. **DHCPv6** sur `srv` : sans état (DNS pour `pc1`), avec état (adresse de `pc2`), réservation par
-   DUID (24 points).
-5. **MTU et trou noir PMTUD en double pile** : *Packet Too Big*, fragmentation par la source,
-   correction sur `r1` / `r2` (15 points).
-6. **Tunnel 6in4** entre `r1` et `r2` à travers l'IPv4 de l'opérateur (10 points).
 """)
         )
 
@@ -1350,6 +1330,20 @@ en suivant le plan d'adressage ci-dessous ; `wan` est déjà configuré dans les
 """)
             + addressing
             + tr("""
+**Plan du TP.** Six parties, à faire dans l'ordre :
+
+1. **Adressage et voisinage** sur `lan1` : adresses de lien local, `ff02::1`, adresses statiques de
+   `m1` et `r1`, découverte de voisins (12 points).
+2. **Routage statique** : adresses et routes de `r1`, `r2`, `m2`, `srv`, routage activé,
+   configuration persistante de `m1` et `r1` (23 points).
+3. **SLAAC** : annonces de routeur de `r2` sur `lan3` (radvd), autoconfiguration de `pc1`
+   (16 points).
+4. **DHCPv6** sur `srv` : sans état (DNS pour `pc1`), avec état (adresse de `pc2`), réservation par
+   DUID (24 points).
+5. **MTU et trou noir PMTUD en double pile** : *Packet Too Big*, fragmentation par la source,
+   correction sur `r1` / `r2` (15 points).
+6. **Tunnel 6in4** entre `r1` et `r2` à travers l'IPv4 de l'opérateur (10 points).
+
 Règles valables pour tout le TP :
 
 - les parties sont à faire **dans l'ordre** : chaque partie suppose la précédente en place, et la

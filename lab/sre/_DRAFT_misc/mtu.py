@@ -28,7 +28,7 @@ from typing import Dict
 import pmtu
 import tc
 from SRE import params
-from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor
+from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr, instructor, info_subtitle, info_toc
 from ips import random_ipv4networks, random_ips_from_topology
 from net_config import NetConfigEntry, set_net_config_entry, set_ip_forward
 from ping import eval_ping
@@ -143,20 +143,18 @@ class NetScheme(NetScheme0):
 
         self.informations = (
             no_tr("## ") + title + no_tr("\n")
+            + tr("\n**Sommaire**\n") + info_toc()
+            + info_subtitle(tr("MTU, fragmentation IPv4 et découverte du PMTU"), tag="mtu")
             + tr("""
-Ce TP étudie le **MTU** (*maximum transmission unit*) des liens, la **fragmentation** IPv4, la
-**découverte du MTU du chemin** (*path MTU discovery*, PMTUD), le **trou noir PMTUD** que
-provoque le filtrage des erreurs ICMP, ses remèdes (**MSS clamping**, MTU des interfaces), et le
-**surcoût d'encapsulation** d'un tunnel **GRE**.
+Le **MTU** (*maximum transmission unit*) d'un lien est la taille maximale (en octets) du paquet IP
+qu'une trame peut y transporter : **1500** sur Ethernet. Un paquet IPv4 contient un en-tête de
+**20 octets** (sans option) ; un écho ICMP ajoute un en-tête de **8 octets** : `ping -s 1472` émet
+donc des paquets de 1500 octets, le maximum sans fragmentation sur Ethernet (`ping` affiche
+`1472(1500) bytes`).
 
-### 1. MTU, fragmentation IPv4 et découverte du PMTU
+### @@sec:fragmentation@@ Fragmentation
 
-Le **MTU** d'un lien est la taille maximale (en octets) du paquet IP qu'une trame peut y
-transporter : **1500** sur Ethernet. Un paquet IPv4 contient un en-tête de **20 octets** (sans
-option) ; un écho ICMP ajoute un en-tête de **8 octets** : `ping -s 1472` émet donc des paquets
-de 1500 octets, le maximum sans fragmentation sur Ethernet (`ping` affiche `1472(1500) bytes`).
-
-**Fragmentation.** En IPv4 un routeur qui doit émettre un paquet plus grand que le MTU du lien de
+En IPv4 un routeur qui doit émettre un paquet plus grand que le MTU du lien de
 sortie le **fragmente** : chaque fragment porte le même identifiant, le bit **MF** (*more
 fragments*, sauf le dernier) et un **décalage** (*offset*, en mots de 8 octets). Seul le
 destinataire réassemble. La fragmentation coûte cher (un fragment perdu = tout le paquet perdu,
@@ -165,78 +163,90 @@ l'évitent en positionnant le bit **DF** (*don't fragment*) : le routeur jette a
 renvoie à l'émetteur un message **ICMP type 3 (*destination unreachable*), code 4 (*fragmentation
 needed and DF set*)** qui indique le **MTU du lien suivant** (RFC 1191).
 
-**PMTUD.** L'émetteur mémorise ce MTU pour la destination (cache des *routes*, 10 min par défaut,
-`net.ipv4.route.mtu_expires`) et adapte la taille de ses paquets : c'est la découverte du MTU du
-chemin. Linux positionne DF sur tout le trafic TCP. Pour voir le PMTU appris :
+### @@sec:pmtud@@ Découverte du MTU du chemin (PMTUD)
+
+L'émetteur mémorise ce MTU pour la destination (cache des *routes*, 10 min par défaut,
+`net.ipv4.route.mtu_expires`) et adapte la taille de ses paquets : c'est la **découverte du MTU du
+chemin** (*path MTU discovery*, PMTUD). Linux positionne DF sur tout le trafic TCP. Pour voir le
+PMTU appris :
 
 ```
 ip route get ADRESSE          # affiche "mtu N expires Ns" quand un PMTU est mémorisé
 ip route flush cache          # oublie les PMTU appris
 ```
 
-**ping et le bit DF** (`man ping`, option `-M`) :
+### @@sec:ping@@ ping et le bit DF
+
+L'option `-M` de `ping` (`man ping`) choisit le bit DF des échos émis :
 
 ```
-ping -c 1 -s 1472 m2                 # défaut (-M want) : DF si le paquet tient dans le PMTU connu
-ping -c 1 -M do -s 1472 m2           # DF toujours : "Frag needed and DF set (mtu = N)" venant du
+ping -c 1 -s 1472 DEST               # défaut (-M want) : DF si le paquet tient dans le PMTU connu
+ping -c 1 -M do -s 1472 DEST         # DF toujours : "Frag needed and DF set (mtu = N)" venant du
                                      #   routeur, puis "local error: message too long, mtu=N"
                                      #   quand le PMTU est connu (le paquet n'est plus émis)
-ping -c 1 -M dont -s 1472 m2         # jamais DF : les routeurs fragmentent, la réponse arrive
-tracepath -n m2                      # MTU du chemin saut par saut ("pmtu N")
+ping -c 1 -M dont -s 1472 DEST       # jamais DF : les routeurs fragmentent, la réponse arrive
+tracepath -n DEST                    # MTU du chemin saut par saut ("pmtu N")
 ```
 
-Avec `tcpdump -n -v -i eth0 icmp` sur `m1`, l'erreur apparaît sous la forme
-`ADRESSE_DU_ROUTEUR > m1: ICMP m2 unreachable - need to frag (mtu N), length 556` : l'adresse
+### @@sec:capture@@ Ce que montre une capture
+
+Avec `tcpdump -n -v -i eth0 icmp` sur l'émetteur, l'erreur apparaît sous la forme
+`ROUTEUR > ÉMETTEUR: ICMP DEST unreachable - need to frag (mtu N), length 556` : l'adresse
 source est celle du routeur fautif et le message cite l'en-tête du paquet refusé. Un paquet
 fragmenté donne un premier fragment `flags [+]` (MF) puis des fragments `offset 1440 …
-ip-proto-1` : seul le premier contient l'en-tête ICMP. `tcpdump -n -v -i eth1 icmp` sur `r1`
-montre ce qui part vers l'opérateur et ce qui en revient.
-
-### 2. TCP, MSS et trou noir PMTUD
-
+ip-proto-1` : seul le premier contient l'en-tête ICMP. La même capture sur l'interface de sortie
+d'un routeur montre ce qui part vers le lien au MTU réduit et ce qui en revient.
+""")
+            + info_subtitle(tr("TCP, MSS et trou noir PMTUD"), tag="tcp")
+            + tr("""
 Le **MSS** (*maximum segment size*) est la plus grande charge utile TCP qu'un hôte accepte de
 recevoir : chacun l'annonce dans l'option `mss` de son SYN. Sans option, **MSS = MTU − 40** (20
 d'IPv4 + 20 de TCP) : 1460 pour un hôte Ethernet, visible dans l'option `mss` des SYN capturés.
 `ss -ti` affiche pour chaque connexion `mss:` (valeur effective, 12 octets de moins quand l'option
 *timestamps* est utilisée : 1448), `pmtu:`, `advmss:` et les retransmissions (`retrans`, `lost`).
 
-**Le trou noir.** TCP envoie des segments de 1500 octets avec DF ; le routeur de l'opérateur les
-jette et répond par l'ICMP *fragmentation needed*… que beaucoup de pare-feu **filtrent**.
+### @@sec:blackhole@@ Le trou noir
+
+TCP envoie des segments de 1500 octets avec DF ; le routeur placé devant un lien au MTU plus petit
+les jette et répond par l'ICMP *fragmentation needed*… que beaucoup de pare-feu **filtrent**.
 L'émetteur ne reçoit alors ni acquittement ni erreur : il retransmet le même segment, en vain.
 Symptômes typiques : `ping` passe, la connexion TCP s'établit (SYN/ACK petits), les petits
 échanges fonctionnent, mais tout transfert volumineux **gèle** (`iperf3` affiche 0 bit/s et des
 retransmissions, une page web ne finit jamais de charger).
 
-**Remèdes**, du côté de l'administrateur des routeurs :
+### @@sec:remedies@@ Les remèdes
 
-- **MSS clamping** : réécrire l'option MSS des SYN qui traversent le routeur pour que les deux
-  hôtes n'émettent que des segments qui passent. Avec nftables (table `inet`, hook `forward`,
-  priorité `mangle`, `tcp flags syn` couvre SYN et SYN/ACK) :
+Du côté de l'administrateur des routeurs, deux corrections.
 
-  ```
-  nft add table inet clamp
-  nft add chain inet clamp forward '{ type filter hook forward priority mangle; }'
-  nft add rule inet clamp forward tcp flags syn tcp option maxseg size set 1400
-  nft list ruleset
-  ```
+**MSS clamping** : réécrire l'option MSS des SYN qui traversent le routeur pour que les deux
+hôtes n'émettent que des segments qui passent. Avec nftables (table `inet`, hook `forward`,
+priorité `mangle`, `tcp flags syn` couvre SYN et SYN/ACK) :
 
-  `tcp option maxseg size set rt mtu` utilise le MTU de la **route de sortie du routeur** (donc
-  de son interface de sortie) : ce n'est utile que si cette interface a elle-même le MTU réduit.
-- **MTU des interfaces WAN** : `ip link set dev eth1 mtu N` sur l'interface de `r1` (et `eth0`
-  de `r2`) tournée vers l'opérateur. Le routeur émet alors lui-même l'erreur ICMP vers ses hôtes
-  (elle n'est pas filtrée) et la PMTUD fonctionne de nouveau dans chaque site.
-- Du côté des **hôtes** seulement : `sysctl -w net.ipv4.tcp_mtu_probing=1` (RFC 4821, TCP sonde
-  lui-même le MTU après un trou noir) ou une route avec `mtu N`. Ces réglages ne corrigent que la
-  machine sur laquelle on les fait : ils ne comptent pas ici, puisque les sondes `h1` / `h2` ne
-  sont pas administrables.
+```
+nft add table inet clamp
+nft add chain inet clamp forward '{ type filter hook forward priority mangle; }'
+nft add rule inet clamp forward tcp flags syn tcp option maxseg size set 1400
+nft list ruleset
+```
 
-### 3. Tunnel GRE et surcoût d'encapsulation
+`tcp option maxseg size set rt mtu` utilise le MTU de la **route de sortie du routeur** (donc
+de son interface de sortie) : ce n'est utile que si cette interface a elle-même le MTU réduit.
 
+**MTU des interfaces** : `ip link set dev IFACE mtu N` sur l'interface de chaque routeur de site
+tournée vers le lien au MTU réduit. Le routeur émet alors lui-même l'erreur ICMP vers ses hôtes
+(elle n'est pas filtrée) et la PMTUD fonctionne de nouveau dans chaque site.
+
+Du côté des **hôtes** seulement : `sysctl -w net.ipv4.tcp_mtu_probing=1` (RFC 4821, TCP sonde
+lui-même le MTU après un trou noir) ou une route avec `mtu N`. Ces réglages ne corrigent que la
+machine sur laquelle on les fait, pas les autres postes du site.
+""")
+            + info_subtitle(tr("Tunnel GRE et surcoût d'encapsulation"), tag="gre")
+            + tr("""
 Un tunnel **GRE** (*generic routing encapsulation*, RFC 2784) transporte un paquet IP dans un
 autre paquet IP : l'en-tête IPv4 extérieur (**20** octets) et l'en-tête GRE (**4** octets sans
 clé ni somme de contrôle) ajoutent **24 octets**. Le MTU du tunnel doit donc valoir **MTU du
-chemin − 24** : le MTU par défaut d'un tunnel GRE (1476) suppose un chemin à 1500 ; ici le
-chemin passe par l'opérateur.
+chemin − 24** : le MTU par défaut d'un tunnel GRE (1476) suppose un chemin à 1500 et devient trop
+grand dès que le chemin passe par un lien au MTU plus petit.
 
 ```
 ip link add gre1 type gre local ADRESSE_WAN_LOCALE remote ADRESSE_WAN_DISTANTE ttl 64
@@ -245,14 +255,15 @@ ip addr add ADRESSE_TUN/30 dev gre1
 ip -d link show gre1                 # "gre remote … local … pmtudisc" : DF sur le paquet extérieur
 ```
 
-Le chargement du module crée aussi une interface `gre0@NONE`, à ignorer. On teste le MTU du
-tunnel comme celui d'un lien : `ping -M do -s` vers l'adresse `tun` du routeur distant. Si le
-MTU du tunnel est trop grand, le paquet extérieur dépasse le MTU de l'opérateur : erreur ICMP
-reçue par le routeur (pas par l'hôte qui a émis le paquet intérieur) ou, avec `trou_noir`,
-disparition silencieuse.
-
-### 4. Outils
-
+`local` et `remote` sont les adresses des deux routeurs sur le réseau qui les relie, `ADRESSE_TUN`
+l'adresse intérieure de cette extrémité du tunnel. Le chargement du module crée aussi une
+interface `gre0@NONE`, à ignorer. On teste le MTU du tunnel comme celui d'un lien :
+`ping -M do -s` vers l'adresse intérieure du routeur distant. Si le MTU du tunnel est trop grand,
+le paquet extérieur dépasse le MTU du chemin : erreur ICMP reçue par le routeur (pas par l'hôte
+qui a émis le paquet intérieur) ou, si ces erreurs sont filtrées, disparition silencieuse.
+""")
+            + info_subtitle(tr("Outils"), tag="tools")
+            + tr("""
 | outil | usage |
 |-------|-------|
 | `ip -d link show [IFACE]` | MTU et paramètres des interfaces et des tunnels |
@@ -265,30 +276,18 @@ disparition silencieuse.
 | `ss -ti` | `mss`, `pmtu`, `advmss`, retransmissions des connexions TCP |
 | `iperf3 -s` / `iperf3 -c SERVEUR -t 5` | transfert TCP de test (`-R` : sens inverse) |
 | `nft list ruleset` | règles nftables du routeur |
-
-### 5. Dépannage
-
+""")
+            + info_subtitle(tr("Dépannage"), tag="troubleshooting")
+            + tr("""
 | symptôme | cause probable |
 |----------|----------------|
 | `local error: message too long, mtu=N` dès le premier `ping -M do` | un PMTU est déjà mémorisé (`ip route get`, `ip route flush cache`) |
-| `ping -M do -s 1472` n'obtient ni réponse ni erreur | ICMP filtré (`trou_noir`) : le paquet est jeté en silence |
-| `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD : voir partie 2 |
-| `iperf3` passe toujours malgré `trou_noir` | PMTU encore en cache sur la machine (10 min) ou MSS déjà réduit |
+| `ping -M do -s 1472` n'obtient ni réponse ni erreur | erreurs ICMP filtrées sur le chemin : le paquet est jeté en silence |
+| `ping` passe mais `iperf3` reste à 0 bit/s | trou noir PMTUD : section @@ref:blackhole@@ |
+| `iperf3` passe toujours alors que les erreurs ICMP sont filtrées | PMTU encore en cache sur la machine (10 min) ou MSS déjà réduit |
 | `nft add rule … maxseg size set rt mtu` ne change rien | l'interface de sortie du routeur est à 1500 : `rt mtu` donne 1500 |
-| `ping` à travers `gre1` muet, `ip -d link show gre1` correct | `local`/`remote` inversés, ou MTU du tunnel trop grand sous `trou_noir` |
-| `RTNETLINK answers: Operation not supported` | module `ip_gre` absent du noyau (ne devrait pas arriver ici) |
-
-### 6. Plan du TP
-
-Trois parties, à faire dans l'ordre (énoncés détaillés dans l'onglet **Questions**) :
-
-1. **Découverte du MTU** de l'opérateur avec `ping -M do`, `tracepath`, `tcpdump` et le cache
-   des routes ; fragmentation sans DF (10 points, formulaire).
-2. **Trou noir PMTUD** : appliquer l'état `trou_noir`, constater le gel des transferts TCP,
-   diagnostiquer, puis corriger sur `r1` / `r2` (16 points : transferts entre les sondes,
-   configuration, formulaire).
-3. **Tunnel GRE** entre `r1` et `r2` à travers l'opérateur, au bon MTU (14 points :
-   configuration et tests depuis `r1`, formulaire).
+| `ping` à travers `gre1` muet, `ip -d link show gre1` correct | `local`/`remote` inversés, ou MTU du tunnel trop grand derrière un trou noir |
+| `RTNETLINK answers: Operation not supported` | module `ip_gre` absent du noyau |
 """)
         )
 
@@ -446,22 +445,27 @@ class Grade(Grade0):
 
         charge = pmtu.max_ping_payload(n)   # largest ping payload that crosses the operator
 
-        addressing = no_tr(f"""
+        addressing = tr("""
 | réseau | préfixe | machines |
 |--------|---------|----------|
-| `lan1` | `{d.nets.lan1}` | `m1` (`{d.ips.m1.ip}`), `r1` eth0 (`{d.ips.r1_lan1.ip}`) |
-| `wan1` | `{d.nets.wan1}` | `r1` eth1 (`{d.ips.r1_wan1.ip}`), `wan` eth0 (`{d.ips.wan_wan1.ip}`) |
-| `wan2` | `{d.nets.wan2}` | `wan` eth1 (`{d.ips.wan_wan2.ip}`), `r2` eth0 (`{d.ips.r2_wan2.ip}`) |
-| `lan2` | `{d.nets.lan2}` | `r2` eth1 (`{d.ips.r2_lan2.ip}`), `m2` (`{d.ips.m2.ip}`) |
-| `tun` (partie 3) | `{d.nets.tun}` | extrémités du tunnel GRE : `r1` (`{d.ips.r1_tun.ip}`), `r2` (`{d.ips.r2_tun.ip}`) |
-""")
+| `lan1` | `{lan1}` | `m1` (`{m1}`), `r1` eth0 (`{r1_lan1}`) |
+| `wan1` | `{wan1}` | `r1` eth1 (`{r1_wan1}`), `wan` eth0 (`{wan_wan1}`) |
+| `wan2` | `{wan2}` | `wan` eth1 (`{wan_wan2}`), `r2` eth0 (`{r2_wan2}`) |
+| `lan2` | `{lan2}` | `r2` eth1 (`{r2_lan2}`), `m2` (`{m2}`) |
+| `tun` (partie 3) | `{tun}` | extrémités du tunnel GRE : `r1` (`{r1_tun}`), `r2` (`{r2_tun}`) |
+""").format(lan1=d.nets.lan1, wan1=d.nets.wan1, wan2=d.nets.wan2, lan2=d.nets.lan2, tun=d.nets.tun,
+            m1=d.ips.m1.ip, r1_lan1=d.ips.r1_lan1.ip, r1_wan1=d.ips.r1_wan1.ip, wan_wan1=d.ips.wan_wan1.ip,
+            wan_wan2=d.ips.wan_wan2.ip, r2_wan2=d.ips.r2_wan2.ip, r2_lan2=d.ips.r2_lan2.ip, m2=d.ips.m2.ip,
+            r1_tun=d.ips.r1_tun.ip, r2_tun=d.ips.r2_tun.ip)
 
         # ---------------- organisation ----------------------------------------------------
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
-Lisez l'onglet **Informations** : il présente le MTU, la fragmentation, la découverte du PMTU,
-le trou noir et le tunnel GRE, avec les commandes utiles.
+Ce TP étudie le **MTU** des liens, la **fragmentation** IPv4, la **découverte du MTU du chemin**
+(PMTUD), le **trou noir PMTUD** que provoque le filtrage des erreurs ICMP, ses remèdes (**MSS
+clamping**, MTU des interfaces) et le **surcoût d'encapsulation** d'un tunnel **GRE**. Lisez
+l'onglet **Informations** : c'est le cours sur ces notions, avec les commandes utiles.
 
 **La maquette.** Deux sites, `lan1` (`m1`) et `lan2` (`m2`), sont reliés par leurs routeurs `r1`
 et `r2` à travers le réseau d'un **opérateur**, représenté par le routeur `wan`. Vous administrez
@@ -482,9 +486,10 @@ mesures : ce sont des **postes ordinaires** (MTU 1500, PMTUD classique, aucun r�
 votre part) et l'opérateur **filtre en permanence** les erreurs ICMP qui leur sont destinées. Ils
 représentent les utilisateurs des deux sites : seule une correction faite sur **vos routeurs**
 `r1` et `r2` rend leurs transferts possibles (partie 2), pas une correction faite sur `m1` et
-`m2`. Les réseaux de la maquette sont des commutateurs : vos captures ne montrent pas les
-transferts des sondes, seulement leurs requêtes ARP ; leurs adresses apparaissent aussi dans
-`ip neigh` sur `r1` et `r2`.
+`m2` (`tcp_mtu_probing`, route avec `mtu` : ces réglages d'hôte ne comptent pas, les sondes
+n'étant pas administrables). Les réseaux de la maquette sont des commutateurs : vos captures ne
+montrent pas les transferts des sondes, seulement leurs requêtes ARP ; leurs adresses apparaissent
+aussi dans `ip neigh` sur `r1` et `r2`.
 
 **États.** L'onglet **Appliquer une configuration** propose deux états que vous appliquez
 vous-même au moment indiqué dans les questions ; l'évaluation ne dépend pas de l'état choisi :
@@ -492,6 +497,20 @@ vous-même au moment indiqué dans les questions ; l'évaluation ne dépend pas 
 - `trou_noir` : l'opérateur cesse d'émettre les erreurs ICMP « fragmentation needed » vers tout
   le monde (et les PMTU déjà appris par `m1`, `m2`, `r1`, `r2` sont oubliés) ;
 - `icmp_retabli` : l'opérateur émet de nouveau ces erreurs.
+
+**Plan du TP.** Trois parties, à faire dans l'ordre (entre parenthèses : les points, puis la
+section du cours de l'onglet **Informations** à lire) :
+
+1. **Découverte du MTU** de l'opérateur avec `ping -M do`, `tracepath`, `tcpdump` et le cache
+   des routes ; fragmentation sans DF (10 points, formulaire ; section @@ref:mtu@@).
+2. **Trou noir PMTUD** : appliquer l'état `trou_noir`, constater le gel des transferts TCP,
+   diagnostiquer, puis corriger sur `r1` / `r2` (16 points : transferts entre les sondes,
+   configuration, formulaire ; section @@ref:tcp@@).
+3. **Tunnel GRE** entre `r1` et `r2` à travers l'opérateur, au bon MTU (14 points :
+   configuration et tests depuis `r1`, formulaire ; section @@ref:gre@@).
+
+Les sections @@ref:tools@@ (outils) et @@ref:troubleshooting@@ (dépannage) servent aux trois
+parties.
 
 **Évaluation.** Chaque évaluation (≈ 20 s) lance des transferts `iperf3` entre `h1` et `h2`,
 vérifie la configuration de `r1` et `r2`, teste le tunnel GRE depuis `r1` et lit vos réponses aux
@@ -653,7 +672,7 @@ ping -c 1 -M dont -s 1472 m2  # passe : wan fragmente
    toujours, puis relancez `timeout 20 iperf3 -c m2 -t 5` : que se passe-t-il ? Observez avec
    `ss -ti dst m2` (retransmissions, `mss`) et `tcpdump -n -i eth1 'tcp or icmp'` sur `r1`
    (segments de 1500 octets qui partent, rien ne revient).
-3. Corrigez le problème **sur `r1` et/ou `r2`** (onglet *Informations*, partie 2) : MSS clamping
+3. Corrigez le problème **sur `r1` et/ou `r2`** (onglet *Informations*, section @@ref:remedies@@) : MSS clamping
    avec nftables, ou MTU réduit sur les interfaces tournées vers l'opérateur. Vérifiez que le
    transfert `iperf3` passe de nouveau et, dans une capture des SYN sur `r1`, la nouvelle valeur
    de l'option `mss`.
@@ -667,7 +686,8 @@ passe encore mais `iperf3` affiche `0.00 Bytes` côté *receiver* : `ss -ti dst 
 `mss:1448 pmtu:1500` et des retransmissions, et sur `r1` les segments de 1500 octets partent vers `wan`
 sans qu'aucune erreur ICMP ne revienne.
 
-Correction A, MSS clamping, sur `r1`, sur `r2` ou sur les deux (c'est ce qu'applique l'état `final`) :
+Correction A, MSS clamping, sur `r1`, sur `r2` ou sur les deux (c'est ce qu'applique l'état `final`, sur
+les deux routeurs, avec une table équivalente nommée `{clamp_table}` chargée depuis `{clamp_rules}`) :
 
 ```
 nft add table inet clamp
@@ -692,7 +712,7 @@ ip link set dev eth0 mtu {n}  # sur r2
 - Évaluation : `tn_aller` et `tn_retour` (transferts entre les sondes, 5 points chacun), `tn_connectivite`,
   `tn_config` (règle de clamping ≤ {mss} dans un hook routé de `r1` ou de `r2`, ou MTU ≤ {n} sur `eth1` de
   `r1` **et** `eth0` de `r2`).
-""").format(n=n, mss=mss, m2=d.ips.m2.ip))
+""").format(n=n, mss=mss, m2=d.ips.m2.ip, clamp_table=CLAMP_TABLE, clamp_rules=CLAMP_RULES))
             + tr("""
 **Questions.**
 
