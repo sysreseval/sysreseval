@@ -21,7 +21,11 @@ This module holds the firewall side of it:
    :func:`rule_log`, :func:`rule_limit`, :func:`rule_has_counter`, with :func:`rule_index` /
    :func:`find_rules` to check the order of the rules.  They grade what a ruleset *says*
    (a ``reject`` naming m2, a ``limit rate 5/minute`` on the ``log``…) where the probes grade
-   what it *does*.
+   what it *does*.  :func:`hook_policy` gives the policy of any hook (``forward``, ``output``);
+   the named sets are read by :func:`get_nft_sets` / :func:`parse_nft_sets`, the rules using
+   them by :func:`rule_set_lookups` (``ip saddr @banned``) and :func:`rule_set_updates`
+   (``add @banned { ip saddr }``), with :func:`updated_sets` for the sets fed from the packet
+   path.
 
 Because the clone is byte-for-byte identical in addressing and interface names,
 a ruleset written with ``iifname``, ``ip saddr``, ``ct state`` … behaves exactly
@@ -33,8 +37,10 @@ files with ``from firewall import ...``.
 """
 
 import base64
+import json
+import re
 from ipaddress import IPv4Address, IPv4Interface, ip_network
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from SRE.lib_sre import Grade0, NetScheme0
 from state_helpers import setup_simple_tcp_server
@@ -44,6 +50,9 @@ from tc import addresses_cover, nft_addresses, parse_nft_json  # noqa: F401  (re
 NFT_JSON_CMD = "nft -j list ruleset"
 #: the families whose base chains filter IPv4: an ``inet`` table (recommended) or an ``ip`` one
 IPV4_FAMILIES = ('inet', 'ip')
+#: a table / set name that may be written in a shell command (nft itself also takes ``/``)
+NFT_NAME_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]*')
+NFT_FAMILIES = ('ip', 'ip6', 'inet', 'arp', 'bridge', 'netdev')
 
 
 # ---------------------------------------------------------------------------
@@ -335,14 +344,20 @@ def base_chains(parsed: Dict[str, Any], hook: Optional[str] = None, families=IPV
     return chains
 
 
-def input_policy(parsed: Dict[str, Any], families=IPV4_FAMILIES) -> Optional[str]:
-    """``'drop'`` when a filter base chain hooked on ``input`` has the policy ``drop`` (a packet
-    accepted by one base chain still crosses the others of the same hook, so one dropping chain
-    drops), ``'accept'`` when every input chain accepts, ``None`` without an input chain."""
-    chains = base_chains(parsed, hook='input', families=families)
+def hook_policy(parsed: Dict[str, Any], hook: str, families=IPV4_FAMILIES) -> Optional[str]:
+    """``'drop'`` when a filter base chain hooked on *hook* (``input``, ``forward``, ``output``)
+    has the policy ``drop`` (a packet accepted by one base chain still crosses the others of the
+    same hook, so one dropping chain drops), ``'accept'`` when every such chain accepts, ``None``
+    without a chain on that hook."""
+    chains = base_chains(parsed, hook=hook, families=families)
     if not chains:
         return None
     return 'drop' if any(chain.get('policy', 'accept') == 'drop' for chain in chains) else 'accept'
+
+
+def input_policy(parsed: Dict[str, Any], families=IPV4_FAMILIES) -> Optional[str]:
+    """:func:`hook_policy` of the ``input`` hook."""
+    return hook_policy(parsed, 'input', families=families)
 
 
 def chain_rules(parsed: Dict[str, Any], family: str, table: str, chain: str) -> List[Dict[str, Any]]:
@@ -578,4 +593,110 @@ def find_rules(rules: List[Dict[str, Any]], verdict=None, **criteria) -> List[Di
                 break
         if ok:
             out.append(rule)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# named sets (grade side): `nft add set …`, `ip saddr @name`, `add @name { ip saddr }`
+# ---------------------------------------------------------------------------
+
+def parse_nft_sets(text: str) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
+    """The named sets of an ``nft -j list ruleset``: ``{(family, table, name): {'type': str,
+    'flags': set of 'constant' / 'interval' / 'timeout', 'timeout': seconds or None, 'size':
+    int or None, 'elements': count}}`` (``{}`` on empty / invalid input).  nftables 1.0.6 does
+    not list the ``dynamic`` flag in JSON: a set declared ``flags dynamic,timeout; timeout 60s``
+    gives ``'flags': {'timeout'}, 'timeout': 60``.  ``parse_nft_json`` keeps the chains and
+    the rules only."""
+    sets: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    try:
+        data = json.loads(text or '')
+    except (TypeError, ValueError):
+        return sets
+    objects = data.get('nftables', []) if isinstance(data, dict) else []
+    for obj in objects:
+        value = obj.get('set') if isinstance(obj, dict) else None
+        if not isinstance(value, dict) or 'name' not in value:
+            continue
+        flags = value.get('flags', [])
+        timeout, size, elements = value.get('timeout'), value.get('size'), value.get('elem', [])
+        sets[(value.get('family'), value.get('table'), value.get('name'))] = {
+            'type': value.get('type'),
+            'flags': {flags} if isinstance(flags, str) else {f for f in flags if isinstance(f, str)},
+            'timeout': timeout if isinstance(timeout, int) else None,
+            'size': size if isinstance(size, int) else None,
+            'elements': len(elements) if isinstance(elements, list) else 0,
+        }
+    return sets
+
+
+def get_nft_sets(grade: Grade0, machine: str, step: int = 1) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
+    """:func:`parse_nft_sets` of the ruleset of *machine* (the command of :func:`get_nft_json`:
+    one test for both)."""
+    out, _ = grade.test(machine, NFT_JSON_CMD, step=step, allow_error=True)
+    return parse_nft_sets(out or '')
+
+
+def _set_name(reference) -> Optional[str]:
+    """``'@banned'`` → ``'banned'``; ``None`` for anything that is not a set reference."""
+    if isinstance(reference, str) and reference.startswith('@') and len(reference) > 1:
+        return reference[1:]
+    return None
+
+
+def rule_set_lookups(rule: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The matches of a rule against a named set (``ip saddr @banned``, ``tcp dport @services``):
+    ``[{'key': 'saddr' | 'daddr' | 'dport' | 'iifname'…, 'set': name, 'negated': bool}]``."""
+    out = []
+    for expr in rule.get('expr', []):
+        if not isinstance(expr, dict) or not isinstance(expr.get('match'), dict):
+            continue
+        match = expr['match']
+        name = _set_name(match.get('right'))
+        left = match.get('left')
+        if name is None or not isinstance(left, dict):
+            continue
+        payload, meta = left.get('payload'), left.get('meta')
+        key = (payload.get('field') if isinstance(payload, dict) else
+               meta.get('key') if isinstance(meta, dict) else None)
+        out.append({'key': key, 'set': name, 'negated': match.get('op') == '!='})
+    return out
+
+
+def rule_set_updates(rule: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The set statements of a rule (``add @banned { ip saddr }``, ``update @banned { ip saddr
+    timeout 60s }``): ``[{'op': 'add' | 'update', 'set': name, 'key': 'saddr'… or None,
+    'timeout': seconds or None}]``."""
+    out = []
+    for expr in rule.get('expr', []):
+        if not isinstance(expr, dict) or not isinstance(expr.get('set'), dict):
+            continue
+        value = expr['set']
+        name = _set_name(value.get('set'))
+        if name is None:
+            continue
+        elem, timeout = value.get('elem'), None
+        if isinstance(elem, dict) and isinstance(elem.get('elem'), dict):      # { ip saddr timeout 60s }
+            timeout = elem['elem'].get('timeout')
+            elem = elem['elem'].get('val')
+        payload = elem.get('payload') if isinstance(elem, dict) else None
+        out.append({'op': value.get('op'), 'set': name,
+                    'key': payload.get('field') if isinstance(payload, dict) else None,
+                    'timeout': timeout if isinstance(timeout, int) else None})
+    return out
+
+
+def updated_sets(parsed: Dict[str, Any]) -> List[Tuple[str, str, str]]:
+    """``(family, table, name)`` of the sets some rule feeds from the packet path, in rule order
+    and without duplicates.  Only names made of the characters of ``NFT_NAME_RE`` are returned:
+    they come from the listing of a machine the student controls and end up in the
+    ``nft flush set`` commands a grader runs on the hidden clone."""
+    out: List[Tuple[str, str, str]] = []
+    for rule in parsed.get('rules', []):
+        family, table = rule.get('family'), rule.get('table')
+        if family not in NFT_FAMILIES or not isinstance(table, str) or not NFT_NAME_RE.fullmatch(table):
+            continue
+        for update in rule_set_updates(rule):
+            key = (family, table, update['set'])
+            if NFT_NAME_RE.fullmatch(update['set']) and key not in out:
+                out.append(key)
     return out

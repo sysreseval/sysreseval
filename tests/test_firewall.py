@@ -169,3 +169,117 @@ def test_live_capture_of_the_reference_ruleset():
     assert firewall.rule_log(logdrop[0]) == {'prefix': 'input drop: ', 'group': 0}
     assert firewall.rule_limit(logdrop[0]) == {'rate': 5, 'per': 'minute', 'burst': 5, 'over': False}
     assert firewall.rule_verdict(logdrop[1]) == 'drop' and firewall.rule_has_counter(logdrop[1])
+
+
+# ---------------------------------------------------------------------------
+# the policy of any hook, named sets
+# ---------------------------------------------------------------------------
+# nft_json_router_sets.json is written by hand: a router with input / forward / output chains, a
+# dynamic set with a timeout fed by a rule (`add @banned { ip saddr }`), a static set, a set updated
+# with a per-element timeout, and a set whose name is not a plain identifier.  The shapes of the
+# dynamic set, of its elements, of the match on it and of the `add` statement are those of the live
+# captures below (nftables 1.0.6); the static set and the `update … timeout` statement follow
+# libnftables-json(5) only.
+
+
+@pytest.fixture(scope='module')
+def router_text():
+    return load('nft_json_router_sets.json')
+
+
+def test_hook_policy(final, router_text):
+    router = firewall.parse_nft_json(router_text)
+    assert [firewall.hook_policy(router, hook) for hook in ('input', 'forward', 'output')] == ['drop', 'drop', 'accept']
+    assert firewall.hook_policy(router, 'postrouting') is None
+    assert firewall.input_policy(router) == firewall.hook_policy(router, 'input')
+    assert firewall.hook_policy(final, 'forward') is None and firewall.hook_policy(final, 'input') == 'drop'
+    assert firewall.hook_policy(router, 'forward', families=('ip',)) is None
+    assert firewall.hook_policy(firewall.parse_nft_json(''), 'forward') is None
+
+
+def test_named_sets(router_text):
+    sets = firewall.parse_nft_sets(router_text)
+    assert sorted(sets) == [('inet', 'filter', 'admins'), ('inet', 'filter', 'banned'), ('inet', 'filter', 'knock')]
+    assert sets[('inet', 'filter', 'banned')] == {'type': 'ipv4_addr', 'flags': {'timeout'}, 'timeout': 60,
+                                                  'size': 65535, 'elements': 1}
+    assert sets[('inet', 'filter', 'admins')] == {'type': 'ipv4_addr', 'flags': set(), 'timeout': None, 'size': None,
+                                                  'elements': 2}
+    assert sets[('inet', 'filter', 'knock')]['flags'] == {'timeout'} and sets[('inet', 'filter', 'knock')]['timeout'] is None
+    assert firewall.parse_nft_sets('') == {} and firewall.parse_nft_sets('garbage') == {} and firewall.parse_nft_sets('[]') == {}
+    assert firewall.parse_nft_sets(load('nft_json_final.json')) == {}
+
+    class FakeGrade:
+        def test(self, machine, command, step=1, allow_error=False):
+            assert (machine, command, step, allow_error) == ('router', firewall.NFT_JSON_CMD, 1, True)
+            return router_text, 0
+
+    assert firewall.get_nft_sets(FakeGrade(), 'router') == sets
+
+
+def test_rules_using_sets(final, router_text):
+    router = firewall.parse_nft_json(router_text)
+    forward = firewall.hook_rules(router, 'forward')
+    lookups = [firewall.rule_set_lookups(r) for r in forward]
+    assert lookups == [[{'key': 'saddr', 'set': 'banned', 'negated': False}], [], [], [],
+                       [{'key': 'saddr', 'set': 'knock', 'negated': True}], []]
+    updates = [firewall.rule_set_updates(r) for r in forward]
+    assert updates == [[], [{'op': 'add', 'set': 'banned', 'key': 'saddr', 'timeout': None}], [],
+                       [{'op': 'update', 'set': 'knock', 'key': 'saddr', 'timeout': 10}], [],
+                       [{'op': 'add', 'set': 'seen;reboot', 'key': 'daddr', 'timeout': None}]]
+    assert firewall.rule_set_lookups(firewall.hook_rules(router, 'input')[1]) == [{'key': 'saddr', 'set': 'admins', 'negated': False}]
+    # a set reference is not an address: the selectors stay empty, the verdicts and the order are read as usual
+    assert firewall.rule_matches(forward[0])['saddr'] == [] and firewall.rule_verdict(forward[0]) == 'drop'
+    assert firewall.rule_verdict(forward[1]) is None and firewall.find_rules([forward[1]], dport=22) == [forward[1]]
+    assert firewall.rule_index(forward, lambda r: bool(firewall.rule_set_lookups(r))) == 0
+    assert firewall.rule_index(forward, lambda r: bool(firewall.find_rules([r], 'accept', ct_state='established'))) == 2
+    # the sets fed from the packet path, in rule order; a name that is not a plain identifier is left out
+    assert firewall.updated_sets(router) == [('inet', 'filter', 'banned'), ('inet', 'filter', 'knock')]
+    assert firewall.updated_sets(final) == [] and firewall.updated_sets(firewall.parse_nft_json('')) == []
+    assert all(firewall.rule_set_lookups(r) == [] and firewall.rule_set_updates(r) == [] for r in final['rules'])
+    for name in ('banned', 'ban_list.v4', 'a-b', '_x'):
+        assert firewall.NFT_NAME_RE.fullmatch(name)
+    for name in ('x;reboot', 'a b', '$(id)', '1set', 'a/b', '', 'x\n'):
+        assert not firewall.NFT_NAME_RE.fullmatch(name)
+    rule = {'family': 'inet', 'table': 'filter; id', 'expr': [{'set': {'op': 'add', 'elem': {}, 'set': '@ok'}}]}
+    assert firewall.updated_sets({'rules': [rule]}) == []
+    assert firewall.updated_sets({'rules': [dict(rule, table='filter', family='inet;x')]}) == []
+    assert firewall.updated_sets({'rules': [dict(rule, table='filter')]}) == [('inet', 'filter', 'ok')]
+
+
+def test_live_captures_of_the_filter2_rulesets():
+    """`nft -j list ruleset` captured on 2026-11-11 (nftables 1.0.6, Linux 6.12) in the ext1 and router
+    containers of the nftables-filter2 lab after its `final` state, the router while the address of ext1
+    was banned: the set declared `flags dynamic,timeout; timeout 60s` lists `"flags": ["timeout"]` only
+    (no `dynamic`), `"timeout": 60`, and its element as `{"elem": {"val": address, "expires": seconds}}`."""
+    host = firewall.parse_nft_json(load('nft_json_filter2_host_live.json'))
+    assert [firewall.hook_policy(host, hook) for hook in ('input', 'output', 'forward')] == ['drop', 'accept', None]
+    host_in, host_out = firewall.hook_rules(host, 'input'), firewall.hook_rules(host, 'output')
+    assert len(host_in) == 6 and len(host_out) == 2
+    assert len(firewall.find_rules(host_in, 'accept', saddr='172.31.243.52', l4proto='udp', ct_state='established')) == 1
+    assert firewall.find_rules(host_in, 'accept', saddr='172.31.243.52', l4proto='udp', ct_state={'established', 'related'}) == []
+    assert len(firewall.find_rules(host_in, 'accept', l4proto='tcp', ct_state={'established', 'related'})) == 1
+    assert len(firewall.find_rules(host_in, 'accept', icmp_type='echo-request')) == 1       # a set of two types
+    assert len(firewall.find_rules(host_in, 'accept', saddr='192.168.147.20', dport=22)) == 1   # ip saddr 192.168.147.0/24
+    assert firewall.find_rules(host_in, 'accept', saddr='172.31.243.52', dport=22) == []
+    assert len(firewall.find_rules(host_out, 'accept', daddr='172.31.243.52', dport=25)) == 1
+    assert len(firewall.find_rules(host_out, 'reject', dport=25)) == 1 and firewall.find_rules(host_out, 'drop') == []
+    assert firewall.parse_nft_sets(load('nft_json_filter2_host_live.json')) == {} and firewall.updated_sets(host) == []
+
+    text = load('nft_json_filter2_router_live.json')
+    router = firewall.parse_nft_json(text)
+    assert [firewall.hook_policy(router, hook) for hook in ('input', 'forward', 'output')] == ['drop', 'drop', None]
+    assert firewall.parse_nft_sets(text) == {('inet', 'filter', 'banned'): {'type': 'ipv4_addr', 'flags': {'timeout'},
+                                                                            'timeout': 60, 'size': 65535, 'elements': 1}}
+    router_in, forward = firewall.hook_rules(router, 'input'), firewall.hook_rules(router, 'forward')
+    assert len(router_in) == 6 and len(forward) == 9
+    assert len(firewall.find_rules(router_in, 'accept', iif='eth2', saddr='192.168.147.10', dport=22)) == 1
+    assert len(firewall.find_rules(router_in, 'accept', iif='eth1', icmp_type='echo-request')) == 1   # iifname { "eth1", "eth2" }
+    assert firewall.find_rules(router_in, 'accept', iif='eth0', icmp_type='echo-request') == []
+    assert [firewall.rule_set_lookups(r) for r in forward[:2]] == [[{'key': 'saddr', 'set': 'banned', 'negated': False}], []]
+    assert [firewall.rule_set_updates(r) for r in forward[:2]] == [[], [{'op': 'add', 'set': 'banned', 'key': 'saddr',
+                                                                        'timeout': None}]]
+    assert firewall.rule_verdict(forward[0]) == 'drop' and firewall.rule_verdict(forward[1]) is None
+    assert firewall.find_rules([forward[1]], dport=22, iif='eth0', oif='eth2') == [forward[1]]
+    assert firewall.rule_index(forward, lambda r: bool(firewall.find_rules([r], 'accept', ct_state={'established', 'related'}))) == 2
+    assert len(firewall.find_rules(forward, 'accept', iif='eth0', oif='eth1', daddr='10.230.6.101', dport=80)) == 1
+    assert firewall.updated_sets(router) == [('inet', 'filter', 'banned')]
