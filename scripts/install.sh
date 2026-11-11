@@ -515,6 +515,15 @@ if [[ -f $ETC_DIR/sre-preload-images.service ]] && command -v systemctl >/dev/nu
     fi
 fi
 
+if [[ -f $ETC_DIR/sre-wipe-at-shutdown.service ]] && command -v systemctl >/dev/null 2>&1; then
+    if confirm "Install systemd unit sre-wipe-at-shutdown.service (runs 'sre wipe' when the machine halts)?" "N"; then
+        install_templated "$ETC_DIR/sre-wipe-at-shutdown.service" /etc/systemd/system/sre-wipe-at-shutdown.service 0644
+        systemctl daemon-reload
+        echo "Installed sre-wipe-at-shutdown.service (not enabled)."
+        echo "  → enable with: systemctl enable --now sre-wipe-at-shutdown.service"
+    fi
+fi
+
 if [[ -f $ETC_DIR/sre-agent.service ]] && command -v systemctl >/dev/null 2>&1; then
     echo "The web site (docs: web.md) is made of sre-agent on every pool host and sre-web on one host."
     if confirm "Install the systemd units sre-agent.service and sre-web.service (not enabled)?" "N"; then

@@ -1147,6 +1147,17 @@ host is still placed elsewhere: `follow_local_sessions` never overrides the rese
 **Going down.** When the agent's unit stops because the system halts (the nightly cron, a
 `poweroff`), the agent closes the projects it manages as a Close would (the last evaluation,
 then `sre stop`), concurrently, within `TimeoutStopSec`; the browsers see "project closed".
+The unit is ordered after `remote-fs.target` and, on a checkout, requires the mount of
+`/opt/sre` (`RequiresMountsFor`): it is stopped while `sre` and the archive directories are
+still mounted. Unordered, systemd tries to unmount `/opt/sre` while the agent is still closing
+a project: the unmount fails (`device is busy`) and is not tried again, the network goes down
+with the NFS mount still there, and the machine never powers off (it then answers neither
+ping nor Wake-on-LAN until somebody presses its power button). What is
+left on the host afterwards (the projects of the Qt GUI, a project not closed in time) is
+removed by the unit `sre-wipe-at-shutdown.service` when it is enabled (`sre wipe` after the
+agent has stopped and before Docker does; see *Stopping the projects when the machine halts* in
+the [installation](installation.md) page), so that no container is running when the system
+powers off.
 With `power = true` on the host and `allow_power_off = true` in its `agent.toml`, the portal
 powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron does it), above
 `min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web-tool poweroff`.

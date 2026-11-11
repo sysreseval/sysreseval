@@ -102,6 +102,35 @@ class TestFiles:
             assert f'dh_installsystemd -p {package} --name={unit} --no-enable --no-start' in (DEBIAN / 'rules').read_text()
         assert 'Depends: ${misc:Depends},\n         sysreseval (>= ${source:Version}),' in _stanza('sysreseval-agent')
 
+    def test_agent_units_stop_before_the_network_file_systems(self):
+        """When the machine halts the agent closes the web projects by running sre: in both
+        layouts its unit is ordered after remote-fs.target (stopped before the unmounts), and the
+        checkout one, which runs from /opt/sre, keeps that mount until it has stopped.  Without
+        the ordering systemd tried to unmount /opt/sre while the agent was closing a project:
+        the unmount failed (busy), the network went down with the NFS mount still there and the
+        machine never powered off (seen on the pool hosts, reproduced on z07 on 2026-11-11)."""
+        checkout = (ROOT / 'scripts' / 'etc' / 'sre-agent.service').read_text()
+        packaged = (DEBIAN / 'sysreseval-agent.sysreseval-agent.service').read_text()
+        for text in (checkout, packaged):
+            after = re.search(r'^After=(.*)$', text, re.M).group(1).split()
+            assert {'network-online.target', 'docker.service', 'remote-fs.target'} <= set(after)
+        assert re.search(r'^RequiresMountsFor=/opt/sre$', checkout, re.M)
+
+    def test_wipe_at_shutdown_unit(self):
+        """`sre wipe` when the machine halts: an ExecStop of a unit that stays active, stopped
+        after the agents and before Docker and the unmounts; ordering only, since a Requires
+        would wipe the projects at every restart of Docker."""
+        text = (ROOT / 'scripts' / 'etc' / 'sre-wipe-at-shutdown.service').read_text()
+        directives = dict(line.split('=', 1) for line in text.splitlines() if '=' in line and not line.startswith('#'))
+        assert directives['Type'] == 'oneshot' and directives['RemainAfterExit'] == 'yes'
+        assert directives['ExecStop'] == '/opt/sre/sbin/sre wipe'
+        assert {'docker.service', 'remote-fs.target'} <= set(directives['After'].split())
+        assert set(directives['Before'].split()) == {'sre-agent.service', 'sysreseval-agent.service'}
+        assert directives['RequiresMountsFor'] == '/opt/sre'
+        assert not {'Requires', 'BindsTo', 'PartOf'} & set(directives)
+        install = (ROOT / 'scripts' / 'install.sh').read_text()
+        assert 'install_templated "$ETC_DIR/sre-wipe-at-shutdown.service"' in install
+
     def test_sudoers_rule_names_the_fhs_paths(self):
         text = (DEBIAN / 'sysreseval.sudoers').read_text()
         assert 'Defaults!/usr/sbin/sre env_keep' in text and 'NOPASSWD: /usr/sbin/sre --user *' in text

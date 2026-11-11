@@ -8,7 +8,13 @@
 Description=SysResEval web agent of this pool host
 Documentation=file:///usr/share/doc/sysreseval-agent/README.Debian
 Requires=docker.service
-After=network-online.target docker.service
+# Units are stopped in the reverse order of their start.  When the machine halts the agent
+# closes the web projects by running sre (close_projects_on_stop), and sre archives their last
+# evaluation: after remote-fs.target, the unit is stopped before the network file systems (the
+# labs, the archive directories) are unmounted.  Unordered, an unmount tried while the agent
+# still uses the file system fails (busy) and is not tried again: the network then goes down
+# with the NFS mount still there, and the machine never powers off.
+After=network-online.target docker.service remote-fs.target
 # Without the configuration file, or with the marker, the start is skipped: the unit stays
 # inactive, nothing fails, nothing is restarted.  Checked at boot and on `systemctl start` /
 # `restart`, not on the automatic restarts below (a marker written while the agent loops needs

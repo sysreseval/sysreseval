@@ -1,0 +1,36 @@
+# No SysResEval project survives a halt or a reboot of the machine: its containers die with
+# Docker, and its directory would stay behind as a project that nothing runs.  This unit does
+# nothing at boot; when the machine goes down it runs `sre wipe` (every project stopped, every
+# project directory removed) while Docker and the network file systems are still there, so that
+# no container is left running when the system powers off.
+# On a pool host of the web site the agent goes first: it closes the web projects itself, with
+# their last evaluation (close_projects_on_stop in agent.toml); this unit then removes what is
+# left: the projects of the Qt GUI, those the agent could not close in time, those of an agent
+# that was not running.
+# Stopping the unit by hand wipes too: `systemctl stop sre-wipe-at-shutdown` is `sre wipe`.
+# Disabled by default:
+# systemctl enable --now sre-wipe-at-shutdown.service
+[Unit]
+Description=Stop every SysResEval project when the machine halts
+Documentation=https://github.com/sysreseval/sysreseval
+# Units are stopped in the reverse order of their start.  After Docker and the network file
+# systems: stopped before them.  Before the agent (either name): stopped after it.  Ordering
+# only: a restart of Docker or of the agent must not stop this unit, that is, wipe.
+After=docker.service remote-fs.target
+Before=sre-agent.service sysreseval-agent.service
+# sre lives in /opt/sre, often a network mount of its own: kept until the wipe is done
+RequiresMountsFor=/opt/sre
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# root, as for the agent: sre drops to the sre user itself and needs root to remove the files
+# the containers leave
+User=root
+ExecStart=/bin/true
+ExecStop=/opt/sre/sbin/sre wipe
+# Kathara gets 30 s, then the containers are removed by force; the directories follow
+TimeoutStopSec=180
+
+[Install]
+WantedBy=multi-user.target
