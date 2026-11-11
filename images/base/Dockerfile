@@ -85,7 +85,14 @@ RUN apt install -y \
     strongswan-pki \
     libcharon-extra-plugins \
     libstrongswan-extra-plugins \
-    libstrongswan-standard-plugins
+    libstrongswan-standard-plugins \
+    keepalived \
+    fail2ban
+
+# suricata is not in bookworm itself (only suricata-update is): it comes from bookworm-backports,
+# whose packages are never picked unless asked for (priority 100).
+RUN echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/bookworm-backports.list \
+    && apt-get update && apt-get -y install -t bookworm-backports suricata
 
 WORKDIR /tmp
 # web

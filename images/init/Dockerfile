@@ -57,6 +57,9 @@ RUN rm -f /etc/systemd/system/bind9.service /etc/systemd/system/sshd.service \
     /etc/systemd/system/multi-user.target.wants/openvpn.service \
     /etc/systemd/system/multi-user.target.wants/strongswan.service \
     /etc/systemd/system/multi-user.target.wants/strongswan-starter.service \
+    /etc/systemd/system/multi-user.target.wants/keepalived.service \
+    /etc/systemd/system/multi-user.target.wants/fail2ban.service \
+    /etc/systemd/system/multi-user.target.wants/suricata.service \
     /etc/systemd/system/sysinit.target.wants/systemd-resolved.service \
     /etc/systemd/system/sockets.target.wants/rpcbind.socket
 
