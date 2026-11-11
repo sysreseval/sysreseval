@@ -100,7 +100,10 @@ def parse_arp(frame):
 
 def _open(iface, proto):
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(proto))
-    sock.bind((iface, socket.htons(proto)))
+    # Python converts the protocol of a packet address to network order itself: passing
+    # htons(proto) here bound the socket to the byte-swapped protocol and nothing was ever
+    # received (the queries and the sniffer saw no frame; found live on 2026-11-11)
+    sock.bind((iface, proto))
     return sock
 
 
