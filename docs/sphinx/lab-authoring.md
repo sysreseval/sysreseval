@@ -1706,6 +1706,19 @@ A lab whose name, or the name of any directory above it, contains `_EXAM_`, `_OL
 
 The pickers show a lab by its `title` attribute (a string or a `tr()` text) instead of its file name once the titles are materialised: each directory of the tree may hold a `titles.json` mapping the local names of its entries (`"dhcp.py"`, `"tp_ssh"`) to a title, a plain string or a `{lang: text}` dict resolved in the language of the user. `sre make-titles -r /opt/sre/lab` (as root) imports every lab, exam-only ones included, and writes one file per directory; run it again after adding or renaming labs: a rerun keeps the options and the order of an existing file, replaces the titles of the labs found, drops the entries that name nothing on disk any more and appends the new labs by name. A lab without `title` is shown by its file name without `.py`. The title of a running project (the tab, the reports) comes from the lab itself through `info.json`, not from `titles.json`.
 
+### The title of a directory
+
+A directory of the tree is shown by its name unless the `titles.json` of its **parent** gives it a title, under the name of the directory: a plain string, or a `{lang: text}` dict resolved in the language of the user like the title of a lab. The title of `/opt/sre/lab/s4` is thus the `"s4"` entry of `/opt/sre/lab/titles.json`:
+
+```json
+{
+  "s4":  {"en": "Semester 4",   "fr": "Semestre 4"},
+  "sre": {"en": "Shipped labs", "fr": "TP fournis"}
+}
+```
+
+A directory has no title of its own to read, so these titles are written by hand. `sre make-titles` never touches them (a rerun keeps the entry of a sub-directory as it is), and its option `-d` (`--directories`) prepares the files: every sub-directory of the tree is listed in the `titles.json` of its parent with `null` (shown by its name), and with `-r` the levels holding directories only, such as the lab root, get their file too. `sre make-titles -r -d /opt/sre/lab` then reports the sub-directories still without a title, file by file; replace a `null` by a title and the pickers show it. Without `-d` the command writes the labs only.
+
 ### The order of a directory: `"@sort"`
 
 Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` chooses the order of the entries of that directory, the same in the GUI and on the web (every key starting with `@` is an option, never an entry):
@@ -1716,7 +1729,7 @@ Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` 
 | `"title"` | By title in the language of the user (the language priority of the GUI, the language of the page on the web): case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; an entry without title sorts by its name. |
 | `"manual"` | The entries of the file in their order, then the unlisted ones by name. |
 
-In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
+In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name, see above) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
 
 ```json
 {

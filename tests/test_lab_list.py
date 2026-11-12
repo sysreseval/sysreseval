@@ -2,6 +2,7 @@
 get_lab_list_with_titles (`sre list --with-titles`): the directory entries, the titles and the
 sort modes of titles.json."""
 import json
+import os
 
 import pytest
 from SRE import params, utils
@@ -258,6 +259,22 @@ class TestLabTree:
         assert self._names(get_lab_list_with_titles()) == ['s4', 's4/c.py']
         assert self._names(get_lab_list_with_titles(include_exam_only_labs=True)) == [
             '_DRAFT_x', '_DRAFT_x/a.py', 's4', 's4/b_EXAM_.py', 's4/c.py']
+
+    def test_lab_tree_keeps_the_directories_a_lab_lies_below(self, tmp_lab_dir):
+        """`_lab_tree`: the directories `sre list --with-titles` lists and `sre make-titles -d`
+        names, each with its sub-directories of the tree and its labs."""
+        _touch(tmp_lab_dir, 'root.py', 's4/tp_ssh/srelab.py', 's4/tp_ssh/initial/all/motd',
+               'a/b/c/deep.py', '_DRAFT_x/d.py', 'notes/README.md')
+        (tmp_lab_dir / 'empty' / 'deeper').mkdir(parents=True)
+        root = str(tmp_lab_dir)
+        tree = utils._lab_tree(root, include_exam_only_labs=False)
+        relative = {os.path.relpath(dirpath, root): (sorted(subdirs), sorted(labs))
+                    for dirpath, (subdirs, labs) in tree.items()}
+        assert relative == {'.': (['a', 's4'], ['root.py']), 's4': ([], ['tp_ssh']),
+                            'a': (['b'], []), 'a/b': (['c'], []), 'a/b/c': ([], ['deep.py'])}
+        tree = utils._lab_tree(root, include_exam_only_labs=True)
+        assert sorted(tree[root][0]) == ['_DRAFT_x', 'a', 's4']
+        assert utils._lab_tree(str(tmp_lab_dir / 'empty'), include_exam_only_labs=True) == {}
 
 
 class TestSymbolicLinks:

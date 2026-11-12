@@ -236,6 +236,9 @@ def parse_args():
                            help=_('write all titles to FILE instead of <directory>/titles.json'))
     _mt_group.add_argument('-r', '--recursive', action='store_true',
                            help=_('recursively scan subdirectories, writing one titles.json per directory'))
+    parser_make_titles.add_argument('-d', '--directories', action='store_true',
+                                    help=_('also list the sub-directories of each directory, with a null title '
+                                           'to be written by hand'))
 
     parser_update = subparsers.add_parser(
         'update', help=_('Update the installation from GitHub (privileged only; stops every running project first)'))
@@ -482,7 +485,8 @@ match SRE.args.action:
     case 'list':
         action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only)
     case 'make-titles':
-        action_make_titles(SRE.args.directory, SRE.args.output_file, SRE.args.recursive)
+        action_make_titles(SRE.args.directory, SRE.args.output_file, SRE.args.recursive,
+                           SRE.args.directories)
     case 'start':
         action_start()
     case 'check':

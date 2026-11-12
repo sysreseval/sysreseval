@@ -233,6 +233,38 @@ class TestParsing:
         assert entry['record'][params.archive_keyword] == archive.name and entry['record']['grade'] == 4.0
         assert "queued for the web portal: 1 evaluation(s)" in capsys.readouterr().out
 
+    def test_make_titles_directories_option(self, sre_cli, capsys, monkeypatch):
+        """`sre make-titles -d` / `--directories`: off unless asked, with -r, -o or neither."""
+        result = sre_cli(['make-titles', '-r', '/opt/sre/lab'])
+        assert result.code == 0 and result.events[-1] == 'action_make_titles'
+        assert result.args.directories is False and result.args.recursive is True
+        result = sre_cli(['make-titles', '-r', '-d', '/opt/sre/lab'])
+        assert result.args.directories is True and result.args.recursive is True
+        result = sre_cli(['make-titles', '--directories', '-o', 'out.json', 'lab'])
+        assert result.args.directories is True and result.args.output_file == 'out.json'
+        assert sre_cli(['make-titles', '-d', 'lab']).args.directories is True
+        assert sre_cli(['make-titles', '-d', '-r', '-o', 'out.json', 'lab']).code == 2
+        capsys.readouterr()
+        assert sre_cli(['make-titles', '--help']).code == 0
+        text = ' '.join(capsys.readouterr().out.split())
+        assert '--directories' in text and 'also list the sub-directories of each directory' in text
+        monkeypatch.setenv('LANGUAGE', 'fr')
+        assert sre_cli(['make-titles', '--help']).code == 0
+        assert 'lister aussi les sous-répertoires de chaque répertoire' in ' '.join(capsys.readouterr().out.split())
+
+    def test_make_titles_directories_from_the_command_line(self, sre_cli, tmp_path):
+        """The real action behind the real parser: the sub-directories are listed with -d only."""
+        import json
+        for name in ('s4/x.py', 'sre/y.py'):
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / name).write_text('title = "A lab"\n')
+        result = sre_cli(['make-titles', '-r', str(tmp_path)], real=('action_make_titles',))
+        assert result.code == 0 and not (tmp_path / 'titles.json').exists()
+        assert json.loads((tmp_path / 's4' / 'titles.json').read_text()) == {"x.py": "A lab"}
+        result = sre_cli(['make-titles', '-r', '-d', str(tmp_path)], real=('action_make_titles',))
+        assert result.code == 0
+        assert json.loads((tmp_path / 'titles.json').read_text()) == {"s4": None, "sre": None}
+
 
 class TestDispatch:
     def test_set(self, sre_cli):

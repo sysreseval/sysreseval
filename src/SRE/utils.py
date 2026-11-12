@@ -233,6 +233,28 @@ def _walk_lab_dirs(lab_dir_abs, *, include_exam_only_labs):
         yield dirpath, list(kept), labs
 
 
+def _lab_tree(lab_dir_abs, *, include_exam_only_labs):
+    """The directories of the lab tree under *lab_dir_abs*: ``{dirpath: (subdirs, labs)}`` for
+    those of ``_walk_lab_dirs`` a lab lies below (*lab_dir_abs* itself when it has one), *subdirs*
+    the names of the sub-directories among them, *labs* the local names of the labs.  They are
+    the directories ``sre list --with-titles`` lists and ``sre make-titles --directories`` names
+    in the ``titles.json`` of their parent; a directory without any lab below is in neither."""
+    walked = {dirpath: (subdirs, labs) for dirpath, subdirs, labs in
+              _walk_lab_dirs(lab_dir_abs, include_exam_only_labs=include_exam_only_labs)}
+    tree = {}
+
+    def keep(dirpath):
+        subdirs, labs = walked.get(dirpath, ([], []))
+        kept = [d for d in subdirs if keep(os.path.join(dirpath, d))]
+        if not kept and not labs:
+            return False
+        tree[dirpath] = (kept, labs)
+        return True
+
+    keep(lab_dir_abs)
+    return tree
+
+
 def _iter_labs(lab_dir, *, include_exam_only_labs, recursive=True):
     """Yield ``(parent_dir_abs, lab_local_name)`` pairs for every lab under *lab_dir*.
 
@@ -377,8 +399,7 @@ def get_lab_list_with_titles(include_exam_only_labs=False):
     disk are silently ignored.
     """
     lab_dir_abs = os.path.abspath(params.lab_dir)
-    tree = {dirpath: (subdirs, labs) for dirpath, subdirs, labs in
-            _walk_lab_dirs(lab_dir_abs, include_exam_only_labs=include_exam_only_labs)}
+    tree = _lab_tree(lab_dir_abs, include_exam_only_labs=include_exam_only_labs)
 
     def entries_of(dirpath, rel, inherited):
         subdirs, labs = tree.get(dirpath, ([], []))
@@ -386,11 +407,9 @@ def get_lab_list_with_titles(include_exam_only_labs=False):
         mode = _sort_mode(titles, inherited)
         result = []
         for d in _ordered_names(subdirs, mode, titles):
-            below = entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode)
-            if below:
-                result.append(_lab_list_entry(os.path.join(rel, d), _title_of(titles, d),
-                                              params.lab_list_kind_dir, mode))
-                result.extend(below)
+            result.append(_lab_list_entry(os.path.join(rel, d), _title_of(titles, d),
+                                          params.lab_list_kind_dir, mode))
+            result.extend(entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode))
         for name in _ordered_names(labs, mode, titles):
             result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
                                           params.lab_list_kind_lab, mode))

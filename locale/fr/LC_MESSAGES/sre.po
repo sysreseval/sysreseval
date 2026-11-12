@@ -638,6 +638,13 @@ msgstr ""
 "analyser récursivement les sous-répertoires, en écrivant un titles.json par "
 "répertoire"
 
+msgid ""
+"also list the sub-directories of each directory, with a null title to be "
+"written by hand"
+msgstr ""
+"lister aussi les sous-répertoires de chaque répertoire, avec un titre null à "
+"écrire à la main"
+
 msgid "output .ods summary file (omit to skip ODS generation)"
 msgstr ""
 "fichier .ods récapitulatif de sortie (omettre pour ignorer la génération de "

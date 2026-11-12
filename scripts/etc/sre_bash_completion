@@ -238,7 +238,7 @@ pre-start-exam start-exam"
             ;;
         make-titles)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "-o --output-file -r --recursive --help" -- "$cur"))
+                COMPREPLY=($(compgen -W "-o --output-file -r --recursive -d --directories --help" -- "$cur"))
             else
                 _filedir -d
             fi

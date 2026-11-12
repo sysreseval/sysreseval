@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .. import params
 from ..common import TranslatedText
-from ..utils import _iter_labs, error_quit, user_not_allowed
+from ..utils import _iter_labs, _lab_tree, error_quit, user_not_allowed
 
 
 def _import_lab_module(srelab_file: str):
@@ -71,15 +71,27 @@ def _read_existing(path: str) -> dict:
     return data
 
 
-def _merge_titles(existing: dict, found: dict, parent_dir_abs: str) -> dict:
+def _merge_titles(existing: dict, found: dict, parent_dir_abs: str, subdirs=()) -> dict:
     """The new content of the ``titles.json`` of *parent_dir_abs*: the options (the keys starting
     with ``params.titles_reserved_prefix``) first, as they were (an unknown ``@sort`` value is
     warned about); then the entries already there, in their order (a manual order survives a
     rerun), when they still name a lab or a sub-directory of the directory, with the title
     *found* now when the lab has one, else as they were (a title written by hand, a lab that
-    lost its ``title``, a sub-directory); then the labs *found* that were not listed, by name."""
+    lost its ``title``, a sub-directory); then the labs *found* that were not listed, by name.
+
+    *subdirs* (``--directories``: the sub-directories of the lab tree) not listed yet are added
+    without title (``null``: shown by their name until a title is written by hand), by name,
+    right after the last sub-directory entry of the file, else before its first entry: a fresh
+    file lists the sub-directories then the labs, as the lab tree shows them, and the order of
+    the entries already there, the labs among themselves and the sub-directories among
+    themselves, is never changed."""
     labs_on_disk = {name for _, name in _iter_labs(parent_dir_abs, include_exam_only_labs=True,
                                                    recursive=False)}
+
+    def is_subdirectory(key):
+        return (not key.startswith(params.titles_reserved_prefix) and key not in labs_on_disk
+                and os.path.isdir(os.path.join(parent_dir_abs, key)))
+
     merged: dict = {}
     for key, value in existing.items():
         if key.startswith(params.titles_reserved_prefix):
@@ -96,7 +108,17 @@ def _merge_titles(existing: dict, found: dict, parent_dir_abs: str) -> dict:
     for key in sorted(found):
         if key not in merged:
             merged[key] = found[key]
-    return merged
+    # a name starting with the reserved prefix would be read as an option: never written
+    missing = sorted(d for d in subdirs
+                     if d not in merged and not d.startswith(params.titles_reserved_prefix))
+    if not missing:
+        return merged
+    keys = list(merged)
+    position = sum(1 for key in keys if key.startswith(params.titles_reserved_prefix))
+    for index, key in enumerate(keys):
+        if is_subdirectory(key):
+            position = index + 1
+    return {key: merged.get(key) for key in keys[:position] + missing + keys[position:]}
 
 
 def _write_json_atomic(path: str, data: dict):
@@ -110,19 +132,26 @@ def _write_json_atomic(path: str, data: dict):
     os.replace(tmp, path)
 
 
-def _update_titles_file(target: str, found: dict, parent_dir_abs: str, *, always: bool) -> bool:
-    """Merge the titles *found* into *target* and write it: always, or only when the result has
-    something or the file already exists (the recursive scan creates no empty file)."""
-    merged = _merge_titles(_read_existing(target), found, parent_dir_abs)
+def _update_titles_file(target: str, found: dict, parent_dir_abs: str, *, always: bool,
+                        subdirs=()) -> bool:
+    """Merge the titles *found* (and, with ``--directories``, the sub-directories *subdirs*)
+    into *target* and write it: always, or only when the result has something or the file
+    already exists (the recursive scan creates no empty file).  The sub-directories of *subdirs*
+    left without a title are named on the report line: the titles to write by hand."""
+    merged = _merge_titles(_read_existing(target), found, parent_dir_abs, subdirs)
     if not always and not merged and not os.path.exists(target):
         return False
     _write_json_atomic(target, merged)
     count = sum(1 for key in merged if not key.startswith(params.titles_reserved_prefix))
-    print(f"wrote {count} title(s) to {target}", file=sys.stderr)
+    untitled = [d for d in sorted(subdirs)
+                if d in merged and not (isinstance(merged[d], (dict, str)) and merged[d])]
+    note = f" (sub-directories without a title: {', '.join(untitled)})" if untitled else ''
+    print(f"wrote {count} title(s) to {target}{note}", file=sys.stderr)
     return True
 
 
-def action_make_titles(directory: str, output_file: str | None, recursive: bool):
+def action_make_titles(directory: str, output_file: str | None, recursive: bool,
+                       directories: bool = False):
     user_not_allowed()
 
     directory_abs = os.path.abspath(directory)
@@ -140,22 +169,38 @@ def action_make_titles(directory: str, output_file: str | None, recursive: bool)
         if title is not None:
             found[lab_local_name] = title
 
+    # -d: the sub-directories each titles.json names, those of the lab tree (a lab lies below
+    # them: what `sre list --with-titles` lists); with -r the directories holding
+    # sub-directories only (the lab root) get their file too.
+    subdirs_of: dict[str, list] = {}
+    if directories:
+        tree = _lab_tree(directory_abs, include_exam_only_labs=True)
+        if recursive:
+            subdirs_of = {dirpath: subdirs for dirpath, (subdirs, _labs) in tree.items()}
+            for dirpath in subdirs_of:
+                grouped.setdefault(dirpath, {})
+        else:
+            subdirs_of = {directory_abs: tree.get(directory_abs, ([], []))[0]}
+
     if output_file is not None:
         # -o: every title into a single file (-o is never recursive: one directory)
         found = {}
         for entries in grouped.values():
             found.update(entries)
-        _update_titles_file(output_file, found, directory_abs, always=True)
+        _update_titles_file(output_file, found, directory_abs, always=True,
+                            subdirs=subdirs_of.get(directory_abs, ()))
         return
 
     if not recursive:
         target = os.path.join(directory_abs, params.titles_file_name)
-        _update_titles_file(target, grouped.get(directory_abs, {}), directory_abs, always=True)
+        _update_titles_file(target, grouped.get(directory_abs, {}), directory_abs, always=True,
+                            subdirs=subdirs_of.get(directory_abs, ()))
         return
 
     written = 0
     for parent_dir_abs, found in sorted(grouped.items()):
         target = os.path.join(parent_dir_abs, params.titles_file_name)
-        written += _update_titles_file(target, found, parent_dir_abs, always=False)
+        written += _update_titles_file(target, found, parent_dir_abs, always=False,
+                                       subdirs=subdirs_of.get(parent_dir_abs, ()))
     if not written:
         print(f"no title found under {directory_abs}", file=sys.stderr)
