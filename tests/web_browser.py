@@ -312,11 +312,15 @@ class Browser:
 
 class IdentityProxy:
     """A reverse proxy on a loopback port adding *headers* (the identity of proxy mode) to
-    every request, HTTP and WebSocket, forwarded to *target*; ``url`` once started."""
+    every request, HTTP and WebSocket, forwarded to *target*; ``url`` once started.  *ws_delays*
+    (``{path fragment: seconds}``) holds what the server sends on the WebSockets whose path
+    contains a fragment: the browser's socket opens at once, its first frame (and those behind
+    it) comes that much later, so a test can fix the order of two sockets of a page."""
 
-    def __init__(self, target: str, headers: dict):
+    def __init__(self, target: str, headers: dict, *, ws_delays: dict | None = None):
         self.target = target.rstrip('/')
         self.headers = dict(headers)
+        self.ws_delays = dict(ws_delays or {})
         self.runner = None
         self.session = None
         self.url = None
@@ -349,7 +353,11 @@ class IdentityProxy:
             ws = web.WebSocketResponse(protocols=protocols)
             await ws.prepare(request)
 
-            async def pump(src, dst):
+            held = max((delay for part, delay in self.ws_delays.items() if part in request.path), default=0.0)
+
+            async def pump(src, dst, delay=0.0):
+                if delay:
+                    await asyncio.sleep(delay)
                 async for msg in src:
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         await dst.send_str(msg.data)
@@ -359,7 +367,7 @@ class IdentityProxy:
                         break
                 await dst.close()
 
-            await asyncio.gather(pump(upstream, ws), pump(ws, upstream), return_exceptions=True)
+            await asyncio.gather(pump(upstream, ws, held), pump(ws, upstream), return_exceptions=True)
             return ws
         body = await request.read()
         async with self.session.request(request.method, url, headers=headers, data=body,

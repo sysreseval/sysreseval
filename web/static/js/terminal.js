@@ -77,17 +77,19 @@ export class TerminalSession {
 
   // container: a .terminal-box element; path: {api_base}/terminals/{device} (+ query);
   // join: the id of a live session to attach to; private: a new session hidden from the student;
-  // onReady(info): the ready frame (the session id, the number of viewers); readonly: a
-  // spectator (join required): nothing sent, the grid of the pty rendered; links: the OSC 8
-  // hyperlinks of the output open on a click (the owner's page), see linkHandler()
+  // onReady(info): the ready frame (the session id, the number of viewers); onConnect(): a
+  // connection starts (the first one, a Reconnect); readonly: a spectator (join required):
+  // nothing sent, the grid of the pty rendered; links: the OSC 8 hyperlinks of the output open
+  // on a click (the owner's page), see linkHandler()
   constructor(container, path, {fontSize, scheme, join = null, private: priv = false, onReady = null,
-                                readonly = false, links = false}) {
+                                onConnect = null, readonly = false, links = false}) {
     this.path = path;
     this.join = join;
     this.private = priv;
     this.readonly = readonly;
     this.maxFontSize = fontSize;
     this.onReady = onReady;
+    this.onConnect = onConnect;
     this.sessionId = null;
     this.clients = 0;
     this.container = container;
@@ -224,8 +226,17 @@ export class TerminalSession {
     this.status.classList.toggle('error', error);
   }
 
+  // A new session is being opened: the socket is there, the ready frame, which names the
+  // session, has not come (never a join: its session is known).
+  opening() {
+    return Boolean(this.socket) && !this.sessionId && !this.join;
+  }
+
   connect() {
     this.reconnectButton.hidden = true;
+    if (this.onConnect) {
+      this.onConnect();
+    }
     this.refit();
     if (this.size.cols && this.term.buffer.active.length > 1) {
       this.term.write('\r\n');

@@ -366,15 +366,39 @@ export function createTerminalsTab(ctx) {
     }
   }
 
-  // the live sessions of the project not on this page: a Join button each
+  // The sessions this page is opening, as the list of the project names them before their own
+  // socket does.  The agent announces a new session on the events socket of the project and
+  // answers the ready frame, which gives its id, on the terminal's socket: the list may come
+  // first, with a session of this login no terminal of the page has yet.  Each terminal still
+  // waiting for its ready frame takes one: a session of this login on its device that was not
+  // listed when it started connecting (entry.known).
+  function openingIds(attached) {
+    const ids = new Set();
+    for (const entry of sessions.values()) {
+      if (entry.remoteId || !entry.known || !entry.session.opening()) {
+        continue;
+      }
+      const mine = remote.find((r) => r.created_by === ctx.login && r.device === entry.device
+        && !entry.known.has(r.id) && !attached.has(r.id) && !ids.has(r.id));
+      if (mine) {
+        ids.add(mine.id);
+      }
+    }
+    return ids;
+  }
+
+  // the live sessions of the project not on this page: a Join button each (never the session a
+  // terminal of this page is opening: the bar would show for a moment, and push the docked
+  // terminals down under the mouse, each time a terminal is opened)
   function renderLive() {
     clear(live);
     if (spectator) {
       return;
     }
     const attached = attachedIds();
+    const opening = openingIds(attached);
     // a private session is an instructor's (the agent lists them to instructors only)
-    const others = remote.filter((r) => !attached.has(r.id) && (!r.private || ctx.isInstructor));
+    const others = remote.filter((r) => !attached.has(r.id) && !opening.has(r.id) && (!r.private || ctx.isInstructor));
     if (!others.length) {
       return;
     }
@@ -404,7 +428,7 @@ export function createTerminalsTab(ctx) {
     const box = el('div', {class: 'terminal-box'});
     host.append(box);
     const entry = {id, device: name, title: title || titleFor(name), box, session: null, tab: null, badge: null,
-                   remoteId: joinId, private: priv, mode: 'tab', win: null};
+                   remoteId: joinId, private: priv, mode: 'tab', win: null, known: null};
     if (priv) {
       entry.title = format(_('{title} (private)'), {title: entry.title});
     }
@@ -415,6 +439,10 @@ export function createTerminalsTab(ctx) {
       private: priv,
       readonly: spectator,
       links: Boolean(ctx.isOwner) && !spectator,     // the hyperlinks of the output open on the owner's page only
+      onConnect: () => {
+        // a new session: the sessions listed now are not it (see openingIds)
+        entry.known = entry.remoteId ? null : new Set(remote.map((r) => r.id));
+      },
       onReady: (info) => {
         entry.remoteId = info.session || entry.remoteId;
         if (info.private && !entry.private) {

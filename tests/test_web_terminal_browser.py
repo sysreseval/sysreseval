@@ -30,6 +30,7 @@ ALICE = P.who('alice', 'Alice A', group='INFO1')
 PROF = P.who('prof', 'Pr. Of', groups=P.TEACHERS)
 run = T.run
 SHELL_WAIT = 15.0     # the mock `sre connect`, the pty, the first prompt
+HOLD = 2.0            # what the proxy holds a terminal's socket, in the test of the session being opened
 
 # -- what the page shows, as JavaScript expressions ---------------------------------------------
 
@@ -42,6 +43,27 @@ WINDOW_STATUS = "(document.querySelector('.terminal-window .terminal-box .status
 WINDOW_TEXT = "(document.querySelector('.terminal-window .xterm-rows') || {textContent: ''}).textContent"
 HOST_TEXT = ("[...document.querySelectorAll('.terminal-host .terminal-box:not([hidden]) .xterm-rows')]"
              ".map((e) => e.textContent).join('\\n')")
+HOST_STATUS = ("(document.querySelector('.terminal-host .terminal-box:not([hidden]) .status span') "
+               "|| {textContent: ''}).textContent")
+HOST_TOP = "document.querySelector('.terminal-host').getBoundingClientRect().top"
+# the Join buttons of the live terminals bar: the largest number the page ever showed since the
+# watch was set (the panes are watched: the Terminals tab is created when first shown), and the
+# bar's text now
+WATCH_JOIN_BUTTONS = """(() => { window.__joinButtons = 0;
+  new MutationObserver(() => { window.__joinButtons = Math.max(window.__joinButtons,
+      document.querySelectorAll('.live-sessions button').length); })
+    .observe(document.getElementById('panes'), {childList: true, subtree: true});
+  return true; })()"""
+JOIN_BUTTONS_SEEN = "window.__joinButtons"
+LIVE_TEXT = "(document.querySelector('.live-sessions') || {textContent: ''}).textContent"
+# what the mouse presses of the page landed on (recorded from the first call on, once per
+# document): the message of a click that did not give the focus names what it hit
+RECORD_MOUSEDOWNS = """(() => { if (!window.__mousedowns) { window.__mousedowns = [];
+    document.addEventListener('mousedown', (ev) => { const t = ev.target;
+      window.__mousedowns.push((t.tagName || '?') + '.' + (typeof t.className === 'string' ? t.className : '')
+                               + ' ' + JSON.stringify((t.textContent || '').trim().slice(0, 40))); }, true); }
+  return true; })()"""
+LAST_MOUSEDOWN = "(window.__mousedowns || []).slice(-1)[0] || null"
 # the rect of the (first) window relative to the panes, with the panes' size and the page coordinates
 RECT = """(() => { const w = document.querySelector('.terminal-window'); const p = document.getElementById('panes');
   if (!w || !p) { return null; } const r = w.getBoundingClientRect(), a = p.getBoundingClientRect();
@@ -76,17 +98,20 @@ SPECTATOR_WINDOW = """(() => { const f = document.querySelector('#presentation-o
 
 
 @contextlib.asynccontextmanager
-async def browsing(tmp_path, *identities):
+async def browsing(tmp_path, *identities, hold_terminals: float = 0.0):
     """The harness (proxy mode, the real web directory), one identity proxy per identity and the
-    browser: ``(h, browser, {login: url})``."""
+    browser: ``(h, browser, {login: url})``.  *hold_terminals*: the seconds the proxies hold what
+    the agent sends on a terminal's socket (its ``ready`` frame first), so that the ``terminals``
+    event of the project's events socket reaches the page before it."""
     h = P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER, host_over={'max_projects': 6})
     h.web_dir = WEB
     async with h:
         proxies = []
         try:
             urls = {}
+            delays = {'/terminals/': hold_terminals} if hold_terminals else None
             for headers in identities:
-                proxy = IdentityProxy(f'http://127.0.0.1:{h.client.port}', headers)
+                proxy = IdentityProxy(f'http://127.0.0.1:{h.client.port}', headers, ws_delays=delays)
                 await proxy.start()
                 proxies.append(proxy)
                 urls[headers['X-Remote-User']] = proxy.url
@@ -125,11 +150,19 @@ async def type_command(page, screen_selector: str, text_expression: str, command
     text of the terminal (an output the command line itself does not contain).  The keystrokes go
     to the focused element and a terminal drops them while its socket is not open, so the click
     is checked to have given the focus to that terminal, again once the prompt of its shell has
-    come (another terminal connecting meanwhile takes the focus), before anything is typed."""
-    at = await page.wait_for(point_in(screen_selector), what=f"a visible point of the terminal {screen_selector}")
+    come (another terminal connecting meanwhile takes the focus), before anything is typed.  A
+    click that did not give the focus fails, naming what the mouse press landed on (something
+    that came under the mouse between the choice of the point and the press) and every terminal."""
+    await page.evaluate(RECORD_MOUSEDOWNS)
     for _ in range(2):
+        at = await page.wait_for(point_in(screen_selector), what=f"a visible point of the terminal {screen_selector}")
         await page.click_at(at['x'], at['y'])
-        await page.wait_for(focused_in(screen_selector), what=f"the keyboard focus in the terminal {screen_selector}")
+        try:
+            await page.wait_for(focused_in(screen_selector), what=f"the keyboard focus in the terminal {screen_selector}")
+        except AssertionError as e:
+            raise AssertionError(f"{e}; the press at {at} landed on {await page.evaluate(LAST_MOUSEDOWN)}; the live "
+                                 f"terminals bar: {await page.evaluate(LIVE_TEXT)!r}; the terminals: "
+                                 f"{await page.evaluate(TERMINALS)}") from None
         await page.wait_for(f"({text_expression}).includes('$')", timeout=SHELL_WAIT, what="the prompt of the shell")
         if await page.evaluate(focused_in(screen_selector)):
             break
@@ -255,6 +288,35 @@ class TestFloatingTerminals:
                 await type_command(page, '.terminal-window .xterm-screen', WINDOW_TEXT, 'echo ba$((2))ck', 'ba2ck')
                 # the × of each: the sessions end on the agent
                 await page.click('.terminal-window button.close')
+                await page.click('.terminal-tabs .close')
+                await until(lambda: terminals_gone(h, rln), 10.0, "no session left on the agent")
+                no_errors(page)
+        run(scenario())
+
+    def test_a_terminal_being_opened_is_not_offered_to_join(self, tmp_path):
+        """The agent announces a new session on the events socket of the project and answers
+        ``ready`` on the terminal's own socket: when the announcement comes first (the proxy holds
+        the terminal's socket here), the page does not list the terminal it is opening among the
+        live terminals to join.  That bar pushed the docked terminal down for a moment: a click
+        made then landed on the bar and took the keyboard focus out of the terminal."""
+        async def scenario():
+            async with browsing(tmp_path, ALICE, hold_terminals=HOLD) as (h, browser, urls):
+                rln = await T.start_project(h, ALICE)
+                page = await project_page(browser, urls['alice'], rln)
+                await page.evaluate(WATCH_JOIN_BUTTONS)
+                await page.click('#tabbar [data-tab="terminals"]')       # the first terminal opens by itself
+                await page.wait_for(f'{SUBTABS} === 1', what="one sub-tab")
+                top = await page.evaluate(HOST_TOP)
+                # the agent has the session, the page has been told of it, its ready frame is held
+                await until(lambda: attached(h, rln, 1), 10.0, "the session on the agent")
+                await asyncio.sleep(0.3)
+                assert await page.evaluate(HOST_STATUS) == 'Connecting…'      # the hold was long enough
+                assert await page.evaluate(LIVE_TEXT) == ''
+                assert await page.evaluate(HOST_TOP) == top                   # the terminal did not move
+                await page.wait_for(f"{HOST_STATUS} === 'Connected.'", timeout=SHELL_WAIT, what="the sub-tab's terminal")
+                assert await page.evaluate(JOIN_BUTTONS_SEEN) == 0
+                assert await page.evaluate(SUBTABS) == 1
+                await type_command(page, '.terminal-host .xterm-screen', HOST_TEXT, 'echo ope$((1))ned', 'ope1ned')
                 await page.click('.terminal-tabs .close')
                 await until(lambda: terminals_gone(h, rln), 10.0, "no session left on the agent")
                 no_errors(page)
