@@ -710,34 +710,13 @@ class Grade(Grade0):
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
-Lisez l'onglet **Informations** : il présente le TTL, le message ICMP *time exceeded*, le principe
+L'onglet **Informations** présente le TTL, le message ICMP *time exceeded*, le principe
 et les variantes de traceroute, son émulation avec `ping`, les boucles de routage et les chemins
-asymétriques, avec les commandes utiles.
+asymétriques.
 
-**La maquette** contient trois réseaux indépendants.
+Ce TP contient trois réseaux indépendants, décrits au début des parties 1, 2 et 3 (le troisième
+sert aussi à la partie 4).
 
-*Réseau 1* (partie 1) : votre poste `m1`, son routeur `gw` (visible, **sans terminal**) et, au-delà,
-un réseau **que vous ne voyez pas** : plusieurs routeurs puis la machine `target`. Sur `m1`, les
-outils de traçage (`traceroute`, `tracepath`, `mtr`, `nmap`, `hping3`…) ont été **retirés** : vous
-reconstituerez le chemin avec `ping` et une capture (`tcpdump` ou `tshark`). Adresses et routes sont
-en place, `/etc/hosts` de `m1` connaît `gw` et `target`.
-""")
-            + addressing_a
-            + tr("""
-*Réseau 2* (partie 2) : votre poste `m2`, le **pare-feu** `fw` (visible, sans terminal) et, au-delà,
-un autre réseau caché : des routeurs puis `target2`. Mêmes outils retirés sur `m2` ; `/etc/hosts`
-connaît `fw` et `target2`. `fw` jette les échos ICMP de TTL faible et ceux qui portent une option
-IP : vous sonderez avec des datagrammes UDP (`nc`) et une capture (`tcpdump` ou `tshark`).
-""")
-            + addressing_c
-            + tr("""
-*Réseau 3* (parties 3 et 4) : le poste `inj`, trois routeurs `r1`, `r2`, `r3` reliés en triangle, et
-le serveur web `srv` (visible, sans terminal) derrière `r3`. Adresses en place, routage des paquets
-activé sur `r1`, `r2`, `r3`, noms dans `/etc/hosts` (`r1_lan3`, `r2_l23`, `srv`…), mais **aucune
-route indirecte** : vous les ajouterez. `inj` dispose de `traceroute`.
-""")
-            + addressing_b
-            + tr("""
 **Conseils.** Utilisez toujours `-n` (pas de résolution inverse) et une attente courte :
 `ping -n -c 1 -W 1`, `traceroute -n -q 1 -w 1 -m 8`. L'adresse de destination de la partie 3
 n'appartient à aucun réseau de la maquette : c'est voulu.
@@ -800,8 +779,16 @@ pare-feu `fw`, les routes de `inj`, `r1`, `r2`, `r3` et deux paramètres du noya
             section=self.section(0),
             title=tr("Tracer le chemin de m1 à target avec ping"),
             description=tr("""
-Depuis `m1`, découvrez le chemin jusqu'à `target` ({target}) **sans traceroute** : les outils de
-traçage ont été retirés de `m1`. Il reste `ping`, `tcpdump`, `tshark` et les commandes habituelles.
+**Réseau 1 :** votre poste `m1`, son routeur `gw` (visible, **sans terminal**) et, au-delà,
+un réseau **que vous ne voyez pas** : plusieurs routeurs puis la machine `target`. Sur `m1`, les
+outils de traçage (`traceroute`, `tracepath`, `mtr`, `nmap`, `hping3`…) ont été **retirés** : vous
+reconstituerez le chemin avec `ping` et une capture (`tcpdump` ou `tshark`). Adresses et routes sont
+en place, `/etc/hosts` de `m1` connaît `gw` et `target`.
+""")
+            + addressing_a
+            + tr("""
+Depuis `m1`, découvrez le chemin jusqu'à `target` ({target}) **sans traceroute** : il reste `ping`,
+`tcpdump`, `tshark` et les commandes habituelles.
 
 1. Vérifiez que `ping -n -c 1 target` répond et notez le `ttl=` de la réponse.
 2. Envoyez des échos de TTL croissant : `ping -n -c 1 -W 1 -t 1 target`, puis `-t 2`, `-t 3`…. 
@@ -904,11 +891,15 @@ ICMP type `{icmp_type}` code `{icmp_code}` ; saut muet `{silent_hop}`.
             section=self.section(0),
             title=tr("Tracer le chemin de m2 à target2 avec des datagrammes UDP"),
             description=tr("""
-Depuis `m2`, découvrez le chemin jusqu'à `target2` ({target2}). Les outils de traçage ont été
-retirés comme sur `m1`, mais cette fois le routeur `fw` est un **pare-feu** : il jette les échos
-ICMP de TTL faible, et ceux qui portent une option IP (*record route*). La méthode de la partie 1
-ne fonctionne donc plus : vous sonderez avec des **datagrammes UDP** et lirez les réponses dans une
-**capture**.
+**Réseau 2 :** votre poste `m2`, le **pare-feu** `fw` (visible, sans terminal) et, au-delà,
+un autre réseau caché : des routeurs puis `target2`. Mêmes outils retirés sur `m2` ; `/etc/hosts`
+connaît `fw` et `target2`. `fw` jette les échos ICMP de TTL faible et ceux qui portent une option
+IP (*record route*) : la méthode de la partie 1 ne fonctionne donc plus, vous sonderez avec des
+**datagrammes UDP** (`nc`) et lirez les réponses dans une **capture** (`tcpdump` ou `tshark`).
+""")
+            + addressing_c
+            + tr("""
+Depuis `m2`, découvrez le chemin jusqu'à `target2` ({target2}).
 
 1. Vérifiez que `ping -n -c 1 target2` répond et notez le `ttl=`. Essayez
    `ping -n -c 1 -W 1 -t 1 target2`, `-t 2`… : plus aucune réponse. Trouvez par essais successifs
@@ -1020,9 +1011,14 @@ echo x | nc -u -w 1 -M {n1} target2 33434    # capture : {target2} > {m2}: ICMP 
             section=self.section(0),
             title=tr("Construire et observer une boucle de routage"),
             description=tr("""
-Le second réseau : `inj` et les routeurs `r1`, `r2`, `r3` en triangle. Le routage des paquets est
-activé sur les trois routeurs, mais **aucune route indirecte** n'existe. L'adresse `{far}`
-n'appartient à aucun réseau de la maquette.
+**Réseau 3 (parties 3 et 4) :** le poste `inj`, trois routeurs `r1`, `r2`, `r3` reliés en triangle, et
+le serveur web `srv` (visible, sans terminal) derrière `r3`. Adresses en place, routage des paquets
+activé sur `r1`, `r2`, `r3`, noms dans `/etc/hosts` (`r1_lan3`, `r2_l23`, `srv`…), mais **aucune
+route indirecte** : vous les ajouterez. `inj` dispose de `traceroute`.
+""")
+            + addressing_b
+            + tr("""
+L'adresse `{far}` n'appartient à aucun réseau de la maquette.
 
 1. Sur `inj` : `ping -n -c 1 {far}`. Expliquez le message. Ajoutez la route par défaut
    (`ip route add default via r1_lan3`) et recommencez : qui répond, et par quel message ICMP ?
