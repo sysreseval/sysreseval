@@ -1,0 +1,19 @@
+[Unit]
+Description=Asterisk PBX
+After=network.target
+
+[Service]
+# Asterisk is linked to libsystemd: `systemctl start` returns once it is fully booted.
+Type=notify
+Environment=HOME=/var/lib/asterisk
+WorkingDirectory=/var/lib/asterisk
+RuntimeDirectory=asterisk
+ExecStart=/usr/sbin/asterisk -mqf -C /etc/asterisk/asterisk.conf
+ExecReload=/usr/sbin/asterisk -rx 'core reload'
+Restart=on-failure
+RestartSec=2
+# The messages go to /var/log/asterisk (logger.conf), not twice to the journal.
+StandardOutput=null
+
+[Install]
+WantedBy=multi-user.target

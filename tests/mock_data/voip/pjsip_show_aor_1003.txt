@@ -1,0 +1,28 @@
+
+      Aor:  <Aor..............................................>  <MaxContact>
+    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>
+==========================================================================================
+
+      Aor:  1003                                                 1
+    Contact:  1003/sip:1003@10.250.77.20:5071              25be402e49 NonQual         nan
+
+
+ ParameterName        : ParameterValue
+ =================================================
+ authenticate_qualify : false
+ contact              : sip:1003@10.250.77.20:5071
+ default_expiration   : 3600
+ mailboxes            : 
+ max_contacts         : 1
+ maximum_expiration   : 7200
+ minimum_expiration   : 60
+ outbound_proxy       : 
+ qualify_2xx_only     : false
+ qualify_frequency    : 0
+ qualify_timeout      : 3.000000
+ remove_existing      : true
+ remove_unavailable   : false
+ support_path         : false
+ voicemail_extension  : 
+
+===RC 0

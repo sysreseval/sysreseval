@@ -1180,6 +1180,30 @@ Facts worth knowing (verified in the running lab on 2026-11-11, keepalived 2.2.7
 - `vde_switch` keeps a MAC address 3 s on its old port (`Min persistence`): a virtual MAC is unreachable 3 to 4 s after a clean handover unless `hash/setminper 0` was run on a managed switch. `switch_cmd()` cannot do it in `initial` for a lab with privileged machines (the console is out of reach once the privileges are dropped at the start): run it with `test_switch()` at the first step of the evaluation;
 - radvd with `AdvRASrcAddress { fe80::1; };` advertises from the virtual link-local address on the master and stays silent on the backup.
 
+### VoIP helpers (from `/opt/sre/lib/voip.py`)
+
+```python
+from voip import (daemon_spec, daemon_account, daemon_calls, install_sip_probe, sip_daemon_cmd, sip_kick,
+                  run_spec, register_scenario, call_scenario, sip_probe, get_phone_calls, find_calls,
+                  get_contacts, get_aor, get_dialplan, get_voicemail_messages, render_baresip_config)
+```
+
+Helpers of the VoIP lab (`lab/sre/_DRAFT_misc2/voip.py`: Asterisk 22 with chan_pjsip, baresip softphones, a trunk to a second PBX, phones behind a NAT, SIP over TLS and SRTP; image `sysreseval/voip`, which compiles Asterisk from its sources since Debian 12 and 13 do not package it). The grading is behavioural: SIP phones of the probe call through the PBX and report what they heard.
+
+**The phones of the probe** (`lib/sip_probe.py`, standard library only: SIP over UDP and TLS with digest authentication, SDP, RTP in G.711 A-law / µ-law, RFC 4733 digits). State side, `install_sip_probe(net_scheme, machine)` then `net_scheme.cmd(machine, sip_daemon_cmd(spec))` starts persistent phones described by `daemon_spec(local_ip, [daemon_account(user, password, server, sip_port, mode='answer'|'busy'|'none', tone=Hz, refresh=, calls=daemon_calls(number, every=25))])`: each keeps its account registered, answers its calls with its own tone or with `486 Busy Here`, can call a number periodically, and logs every call it receives. Grade side: `sip_kick(grade, machine, spec)` makes them register at once (an evaluation never waits for the retry period of a phone whose account was just created) and returns their status (`registered(user)`); `sip_probe(grade, machine, run_spec(local_ip, [[scenario, ...], ...], deadline=40))` runs scenarios — the tracks in parallel, the scenarios of a track in turn — `register_scenario(id, server, user, password, contact=False)` (without a contact the REGISTER only queries: it never evicts a phone) and `call_scenario(id, server, user, password, to, tone=, duration=, display=, codecs=, dtmf=[{'at': 1.0, 'digits': '1'}], voicemail=, srtp=, transport='tls', ca_file=, server_name=)`, and returns `{id: ScenarioResult}` with `status`, `answered`, `refused`, `payloads`, `media_port`, `heard` / `hears(Hz)`, `source_hosts(tail=True)`, `tos_values`, `reinvites`, `tls_verified`. `get_phone_calls(grade, machine, step=)` + `find_calls(calls, user=, action='answered', heard=, from_user=, since=)` read what the phones received.
+
+**Tones**: every phone and every test call sends its own frequency among `TONES` (80 Hz apart) and reports those recognised in what it receives: a call tells who answered and that the sound flows in both directions, without any sound device.
+
+**The Asterisk console** (pure parsers and thin wrappers around `asterisk -rx`): `get_endpoint()` / `get_aor()` (`pjsip show endpoint|aor`: the parameter table, `flag()`, `codec_list()`), `get_contacts()` (`pjsip show contacts`), `get_transports()`, `get_identifies()`, `get_rtp_settings()`, `get_dialplan(grade, machine, context)` (`dialplan show`, `dialplan_applications()`), `get_voicemail_messages(grade, machine, mailbox)` (the information files of the messages); `asterisk_start_cmd()` starts a PBX that has no systemd. **baresip**: `render_baresip_config(tone=, recordings=)` (no sound card: a sine as microphone, what is received recorded as wav files), `render_baresip_account()`, `baresip_start_cmd()`.
+
+Facts worth knowing (verified in the running lab on 2026-11-11 and 12, Asterisk 22.12.0, baresip 1.0.0):
+
+- a REGISTER for an unknown account or with a wrong password gets `401` again; an AOR left at `max_contacts = 0` (the default) refuses every REGISTER with `403`; an endpoint without `allow` refuses every call with `488`;
+- with `direct_media = yes` (the default) both parties get a re-INVITE right after the answer and the RTP flows phone to phone; with a phone behind a NAT this sends the other party to its private address (and the later BYE is lost);
+- a new TLS transport is only opened when Asterisk restarts, not by `pjsip reload`;
+- `media_encryption = sdes` refuses a plain `RTP/AVP` offer with `488`, and an endpoint without it refuses `RTP/SAVP`;
+- baresip finds `~/.baresip` through `$LOGNAME` or `$USER`, which a `docker exec` shell does not set: the image puts a wrapper in `/usr/local/bin`.
+
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python

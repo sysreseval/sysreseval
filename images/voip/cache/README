@@ -1,0 +1,3 @@
+Source tarballs dropped here are used by the build instead of being downloaded (see the
+header of ../Dockerfile): for a build host that cannot reach downloads.asterisk.org or GitHub.
+The directory is otherwise empty; the tarballs are not committed (.gitignore).

@@ -1,0 +1,11 @@
+
+  Contact:  <Aor/ContactUri..............................> <Hash....> <Status> <RTT(ms)..>
+==========================================================================================
+
+  Contact:  1003/sip:1003@10.250.77.20:5071                25be402e49 NonQual         nan
+  Contact:  1004/sip:1004@10.250.77.20:5072                4ca9840960 NonQual         nan
+  Contact:  site-b/sip:10.250.77.30:5060                   e974d2e91e NonQual         nan
+
+Objects found: 3
+
+===RC 0

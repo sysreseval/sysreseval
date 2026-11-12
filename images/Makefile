@@ -3,7 +3,7 @@ SHELL := /bin/bash
 VERSION   ?= 1.32
 NAMESPACE ?= sysreseval
 
-IMAGES := base init frr ldap-mail proxy
+IMAGES := base init frr ldap-mail proxy voip
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -34,6 +34,13 @@ proxy: init
 		-t $(NAMESPACE)/proxy:$(VERSION) \
 		proxy
 
+# Asterisk is compiled from its sources (see voip/Dockerfile: a few minutes, and what to put in
+# voip/cache/ on a build host without access to downloads.asterisk.org and GitHub).
+voip: init
+	docker build --build-arg VERSION=$(VERSION) \
+		-t $(NAMESPACE)/voip:$(VERSION) \
+		voip
+
 PUSH_TARGETS := $(addprefix push-,$(IMAGES))
 
 push: $(PUSH_TARGETS)
@@ -43,8 +50,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base + init + frr + ldap-mail + proxy"
-	@echo "  base | init | frr | ldap-mail | proxy  build one image (deps included)"
+	@echo "  all (default)     build base + init + frr + ldap-mail + proxy + voip"
+	@echo "  base | init | frr | ldap-mail | proxy | voip  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

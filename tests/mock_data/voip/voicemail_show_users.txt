@@ -1,0 +1,5 @@
+Context    Mbox  User                      Zone       NewMsg
+default    1003  Camille Durand                            0
+default    1004  Dominique Petit                           1
+2 voicemail users configured.
+===RC 0

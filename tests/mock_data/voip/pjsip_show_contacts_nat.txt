@@ -1,0 +1,16 @@
+
+  Contact:  <Aor/ContactUri..............................> <Hash....> <Status> <RTT(ms)..>
+==========================================================================================
+
+  Contact:  1001/sip:1001-0x555f2a14d500@10.158.92.155:447 49da5478da NonQual         nan
+  Contact:  1002/sip:1002-0x5626796bd500@10.158.92.154:393 1b38f2e4ab NonQual         nan
+  Contact:  1003/sip:1003@10.158.92.239:5071               5c2594c18d NonQual         nan
+  Contact:  1004/sip:1004@10.158.92.239:5072               17c65feccf NonQual         nan
+  Contact:  1005/sip:1005-0x55a434330500@10.130.247.36:545 219e639689 Avail         3.079
+  Contact:  1006/sip:1006@10.130.247.36:5071;x-ast-orig-ho f6f5dbd3af Avail         2.984
+  Contact:  1257/sip:1257@10.158.92.239:5070               33e31d52a8 NonQual         nan
+  Contact:  site-b/sip:10.130.247.158:5060                 eb97860356 NonQual         nan
+
+Objects found: 8
+
+===RC 0

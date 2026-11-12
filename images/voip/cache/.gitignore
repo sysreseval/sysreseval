@@ -1,0 +1,5 @@
+*.tar.gz
+*.tar.bz2
+*.sha1
+*.sha256
+*.md5

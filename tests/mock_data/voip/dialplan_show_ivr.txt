@@ -1,0 +1,14 @@
+[ Context 'ivr' created by 'pbx_config' ]
+  '1' =>            1. Dial(PJSIP/1003,15)                        [extensions.conf:20]
+                    2. Hangup()                                   [extensions.conf:21]
+  '2' =>            1. Dial(PJSIP/1004,15)                        [extensions.conf:22]
+                    2. Hangup()                                   [extensions.conf:23]
+  'i' =>            1. Playback(invalid)                          [extensions.conf:24]
+                    2. Goto(s,menu)                               [extensions.conf:25]
+  's' =>            1. Answer()                                   [extensions.conf:17]
+     [menu]         2. Background(vm-enter-num-to-call)           [extensions.conf:18]
+                    3. WaitExten(5)                               [extensions.conf:19]
+  't' =>            1. Hangup()                                   [extensions.conf:26]
+
+-= 5 extensions (10 priorities) in 1 context. =-
+===RC 0

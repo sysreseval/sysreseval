@@ -1,0 +1,13 @@
+[ Context 'internal' created by 'pbx_config' ]
+  '500' =>          1. Goto(ivr,s,1)                              [extensions.conf:10]
+  '600' =>          1. Answer()                                   [extensions.conf:12]
+                    2. Echo()                                     [extensions.conf:13]
+                    3. Hangup()                                   [extensions.conf:14]
+  '_1XXX' =>        1. Dial(PJSIP/${EXTEN},15)                    [extensions.conf:6]
+                    2. VoiceMail(${EXTEN}@default,${IF($["${DIALSTATUS}" = "BUSY"]?b:u)}) [extensions.conf:7]
+                    3. Hangup()                                   [extensions.conf:8]
+  '_2XXX' =>        1. Dial(PJSIP/${EXTEN}@site-b,20)             [extensions.conf:29]
+                    2. Hangup()                                   [extensions.conf:30]
+
+-= 4 extensions (9 priorities) in 1 context. =-
+===RC 0

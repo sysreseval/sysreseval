@@ -1,0 +1,15 @@
+
+
+General Settings:
+----------------
+  Port start:      16000
+  Port end:        16198
+  Checksums:       Yes
+  DTMF Timeout:    1200
+  Strict RTP:      Yes
+  Probation:       4 frames
+  Replay Protect:  Yes
+  ICE support:     Yes
+  STUN:            disabled
+   Address:        0.0.0.0:0
+===RC 0

@@ -1,0 +1,22 @@
+
+  I/OAuth:  <AuthId/UserName.............................................................>
+==========================================================================================
+
+     Auth:  1003/1003
+
+ ParameterName            : ParameterValue
+ =========================================
+ auth_type                : userpass
+ md5_cred                 : 
+ nonce_lifetime           : 32
+ oauth_clientid           : 
+ oauth_secret             : 
+ password                 : pw1003
+ password_digest          : 
+ realm                    : 
+ refresh_token            : 
+ supported_algorithms_uac : MD5
+ supported_algorithms_uas : MD5
+ username                 : 1003
+
+===RC 0

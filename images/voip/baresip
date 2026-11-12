@@ -1,0 +1,7 @@
+#!/bin/sh
+# baresip finds ~/.baresip through $LOGNAME or $USER (libre's fs_gethome), which neither a
+# `docker exec` shell (the terminals of the labs) nor a state command sets: without them it stops
+# with "could not get config path".
+: "${LOGNAME:=$(id -un)}"
+export LOGNAME
+exec /usr/bin/baresip "$@"

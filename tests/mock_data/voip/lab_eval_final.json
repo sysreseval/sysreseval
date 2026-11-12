@@ -1,0 +1,482 @@
+{
+ "data": {
+  "__current_srelab_file": "/var/tmp/sre-stage-voip/lab/sre/_DRAFT_misc2/voip.py",
+  "accounts": [
+   {
+    "name": "Elodie Laurent",
+    "number": "1001",
+    "password": "dVP19FgYC4",
+    "pin": "8254"
+   },
+   {
+    "name": "Bruno Roux",
+    "number": "1002",
+    "password": "RggrrTUe9A",
+    "pin": "6606"
+   },
+   {
+    "name": "Hugo Durand",
+    "number": "1003",
+    "password": "lgmv3Zsx7D",
+    "pin": "7861"
+   },
+   {
+    "name": "Nadia Simon",
+    "number": "1004",
+    "password": "WA9auc52hF",
+    "pin": "8205"
+   },
+   {
+    "name": "Gaelle Martin",
+    "number": "1005",
+    "password": "rrkI1xASGH",
+    "pin": "4068"
+   },
+   {
+    "name": "Alice Fournier",
+    "number": "1006",
+    "password": "v7NuHZSBvu",
+    "pin": "3313"
+   },
+   {
+    "name": "Lucas Garcia",
+    "number": "1007",
+    "password": "BPvHtBSmuA",
+    "pin": "1371"
+   }
+  ],
+  "ca_cert": "",
+  "ca_key": "",
+  "demo_codec": "PCMU",
+  "demo_expires": 90,
+  "demo_number": "1531",
+  "demo_password": "hhm9gjF6sO",
+  "demo_ptime": 40,
+  "demo_service": "330",
+  "demo_user_agent": "Fanvil X6U 2.4.10",
+  "ips": {
+   "box_home": "192.168.158.60/24",
+   "box_wan": "10.173.58.221/24",
+   "gw_office": "10.187.166.133/24",
+   "gw_wan": "10.173.58.144/24",
+   "laptop": "192.168.158.16/24",
+   "monitor": "10.187.166.138/24",
+   "pbx": "10.187.166.6/24",
+   "pbx2": "10.173.58.205/24",
+   "phone1": "10.187.166.50/24",
+   "phone2": "10.187.166.186/24",
+   "probe_home": "192.168.158.136/24",
+   "probe_office": "10.187.166.117/24"
+  },
+  "ips6": {},
+  "ivr_digit_answering": "2",
+  "ivr_digit_busy": "1",
+  "macs": {},
+  "nets": {
+   "home": "192.168.158.0/24",
+   "office": "10.187.166.0/24",
+   "wan": "10.173.58.0/24"
+  },
+  "nets6": {},
+  "pbx_cert": "",
+  "pbx_key": "",
+  "remote_passwords": {
+   "2001": "xTuojBugAV",
+   "2002": "uJXxiUYq2C"
+  },
+  "rtp_size": 200,
+  "rtp_start": 35000,
+  "trunk_password_in": "bH2FUxZFBoOd",
+  "trunk_password_out": "bKzTKIdMbYZj"
+ },
+ "errors": [],
+ "grades": [
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "demo_identity"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "demo_registration"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "demo_call"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "accounts_password"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "colleagues_registered"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "phone1_registered"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "phone2_registered"
+  },
+  {
+   "bonus": false,
+   "grade": 1,
+   "max_grade": 1,
+   "title": "one_contact"
+  },
+  {
+   "bonus": false,
+   "grade": 5,
+   "max_grade": 5,
+   "title": "internal_call"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "caller_id"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "echo_test"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "context_isolation"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "codec_alaw"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "rtp_port_range"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "media_through_pbx"
+  },
+  {
+   "bonus": false,
+   "grade": 2,
+   "max_grade": 2,
+   "title": "dscp_ef"
+  },
+  {
+   "bonus": false,
+   "grade": 2,
+   "max_grade": 2,
+   "title": "media_questions"
+  },
+  {
+   "bonus": false,
+   "grade": 6,
+   "max_grade": 6,
+   "title": "voicemail_message"
+  },
+  {
+   "bonus": false,
+   "grade": 1,
+   "max_grade": 1,
+   "title": "voicemail_access"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "ivr_key_answering"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "ivr_key_busy"
+  },
+  {
+   "bonus": false,
+   "grade": 5,
+   "max_grade": 5,
+   "title": "trunk_outbound"
+  },
+  {
+   "bonus": false,
+   "grade": 5,
+   "max_grade": 5,
+   "title": "trunk_inbound"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "trunk_authentication"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "trunk_context"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "laptop_registered"
+  },
+  {
+   "bonus": false,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "nat_contact"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "nat_incoming_call"
+  },
+  {
+   "bonus": false,
+   "grade": 4,
+   "max_grade": 4,
+   "title": "nat_media"
+  },
+  {
+   "bonus": false,
+   "grade": 2,
+   "max_grade": 2,
+   "title": "nat_outgoing_call"
+  },
+  {
+   "bonus": true,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "tls_transport"
+  },
+  {
+   "bonus": true,
+   "grade": 2,
+   "max_grade": 2,
+   "title": "tls_register"
+  },
+  {
+   "bonus": true,
+   "grade": 3,
+   "max_grade": 3,
+   "title": "srtp_negotiated"
+  },
+  {
+   "bonus": true,
+   "grade": 2,
+   "max_grade": 2,
+   "title": "srtp_mandatory"
+  }
+ ],
+ "mark": null,
+ "tests": [
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "asterisk -rx 'pjsip show endpoints' 2>&1 | tail -n 80",
+     "output": "\n Endpoint:  <Endpoint/CID.....................................>  <State.....>  <Channels.>\n    I/OAuth:  <AuthId/UserName...........................................................>\n        Aor:  <Aor............................................>  <MaxContact>\n      Contact:  <Aor/ContactUri..........................> <Hash....> <Status> <RTT(ms)..>\n  Transport:  <TransportId........>  <Type>  <cos>  <tos>  <BindAddress..................>\n   Identify:  <Identify/Endpoint.........................................................>\n        Match:  <criteria.........................>\n    Channel:  <ChannelId......................................>  <State.....>  <Time.....>\n        Exten: <DialedExten...........>  CLCID: <ConnectedLineCID.......>\n==========================================================================================\n\n Endpoint:  1001/1001                                            Not in use    0 of inf\n     InAuth:  1001/1001\n        Aor:  1001                                               1\n      Contact:  1001/sip:1001-0x55830ee63500@10.187.166.50 bf9414200b NonQual         nan\n\n Endpoint:  1002/1002                                            Not in use    0 of inf\n     InAuth:  1002/1002\n        Aor:  1002                                               1\n      Contact:  1002/sip:1002-0x55933ab17500@10.187.166.18 226692ceb1 NonQual         nan\n\n Endpoint:  1003/1003                                            Not in use    0 of inf\n     InAuth:  1003/1003\n        Aor:  1003                                               1\n      Contact:  1003/sip:1003@10.187.166.117:5071          bd814feddb NonQual         nan\n\n Endpoint:  1004/1004                                            Not in use    0 of inf\n     InAuth:  1004/1004\n        Aor:  1004                                               1\n      Contact:  1004/sip:1004@10.187.166.117:5072          2c9610052e NonQual         nan\n\n Endpoint:  1005/1005                                            Not in use    0 of inf\n     InAuth:  1005/1005\n        Aor:  1005                                               1\n      Contact:  1005/sip:1005-0x557fea115500@10.173.58.221 a657887b24 Avail         2.487\n\n Endpoint:  1006/1006                                            Not in use    0 of inf\n     InAuth:  1006/1006\n        Aor:  1006                                               1\n      Contact:  1006/sip:1006@10.173.58.221:5071;x-ast-ori 83ef4a55d6 Avail         2.919\n\n Endpoint:  1007/1007                                            Unavailable   0 of inf\n     InAuth:  1007/1007\n        Aor:  1007                                               1\n\n Endpoint:  1531                                                 Not in use    0 of inf\n     InAuth:  1531/1531\n        Aor:  1531                                               1\n      Contact:  1531/sip:1531@10.187.166.117:5070          46b7e88937 NonQual         nan\n\n Endpoint:  site-b                                               Not in use    0 of inf\n    OutAuth:  site-b-out/site-a\n     InAuth:  site-b-in/site-b\n        Aor:  site-b                                             0\n      Contact:  site-b/sip:10.173.58.205:5060              0e4cb521f4 NonQual         nan\n   Identify:  site-b/site-b\n        Match: 10.173.58.205/32\n\n\nObjects found: 9\n\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "asterisk -rx 'pjsip show aor 1001' 2>&1; echo \"===RC $?\"",
+     "output": "\n      Aor:  <Aor..............................................>  <MaxContact>\n    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>\n==========================================================================================\n\n      Aor:  1001                                                 1\n    Contact:  1001/sip:1001-0x55830ee63500@10.187.166.50:4 bf9414200b NonQual         nan\n\n\n ParameterName        : ParameterValue\n ==================================================================\n authenticate_qualify : false\n contact              : sip:1001-0x55830ee63500@10.187.166.50:40973\n default_expiration   : 3600\n mailboxes            : \n max_contacts         : 1\n maximum_expiration   : 7200\n minimum_expiration   : 60\n outbound_proxy       : \n qualify_2xx_only     : false\n qualify_frequency    : 0\n qualify_timeout      : 3.000000\n remove_existing      : true\n remove_unavailable   : false\n support_path         : false\n voicemail_extension  : \n\n===RC 0\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "asterisk -rx 'pjsip show aor 1002' 2>&1; echo \"===RC $?\"",
+     "output": "\n      Aor:  <Aor..............................................>  <MaxContact>\n    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>\n==========================================================================================\n\n      Aor:  1002                                                 1\n    Contact:  1002/sip:1002-0x55933ab17500@10.187.166.186: 226692ceb1 NonQual         nan\n\n\n ParameterName        : ParameterValue\n ===================================================================\n authenticate_qualify : false\n contact              : sip:1002-0x55933ab17500@10.187.166.186:33805\n default_expiration   : 3600\n mailboxes            : \n max_contacts         : 1\n maximum_expiration   : 7200\n minimum_expiration   : 60\n outbound_proxy       : \n qualify_2xx_only     : false\n qualify_frequency    : 0\n qualify_timeout      : 3.000000\n remove_existing      : true\n remove_unavailable   : false\n support_path         : false\n voicemail_extension  : \n\n===RC 0\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "asterisk -rx 'pjsip show aor 1003' 2>&1; echo \"===RC $?\"",
+     "output": "\n      Aor:  <Aor..............................................>  <MaxContact>\n    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>\n==========================================================================================\n\n      Aor:  1003                                                 1\n    Contact:  1003/sip:1003@10.187.166.117:5071            bd814feddb NonQual         nan\n\n\n ParameterName        : ParameterValue\n ===================================================\n authenticate_qualify : false\n contact              : sip:1003@10.187.166.117:5071\n default_expiration   : 3600\n mailboxes            : \n max_contacts         : 1\n maximum_expiration   : 7200\n minimum_expiration   : 60\n outbound_proxy       : \n qualify_2xx_only     : false\n qualify_frequency    : 0\n qualify_timeout      : 3.000000\n remove_existing      : true\n remove_unavailable   : false\n support_path         : false\n voicemail_extension  : \n\n===RC 0\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "asterisk -rx 'pjsip show aor 1004' 2>&1; echo \"===RC $?\"",
+     "output": "\n      Aor:  <Aor..............................................>  <MaxContact>\n    Contact:  <Aor/ContactUri............................> <Hash....> <Status> <RTT(ms)..>\n==========================================================================================\n\n      Aor:  1004                                                 1\n    Contact:  1004/sip:1004@10.187.166.117:5072            2c9610052e NonQual         nan\n\n\n ParameterName        : ParameterValue\n ===================================================\n authenticate_qualify : false\n contact              : sip:1004@10.187.166.117:5072\n default_expiration   : 3600\n mailboxes            : \n max_contacts         : 1\n maximum_expiration   : 7200\n minimum_expiration   : 60\n outbound_proxy       : \n qualify_2xx_only     : false\n qualify_frequency    : 0\n qualify_timeout      : 3.000000\n remove_existing      : true\n remove_unavailable   : false\n support_path         : false\n voicemail_extension  : \n\n===RC 0\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "asterisk -rx 'dialplan show internal' 2>&1; echo \"===RC $?\"",
+     "output": "[ Context 'internal' created by 'pbx_config' ]\n  '500' =>          1. Goto(ivr,s,1)                              [extensions.conf:25]\n  '600' =>          1. Answer()                                   [extensions.conf:18]\n                    2. Echo()                                     [extensions.conf:19]\n                    3. Hangup()                                   [extensions.conf:20]\n  '700' =>          1. VoiceMailMain(${CALLERID(num)}@default)    [extensions.conf:22]\n                    2. Hangup()                                   [extensions.conf:23]\n  '_1XXX' =>        1. Dial(PJSIP/${EXTEN},15)                    [extensions.conf:14]\n                    2. VoiceMail(${EXTEN}@default,${IF($[\"${DIALSTATUS}\" = \"BUSY\"]?b:u)}) [extensions.conf:15]\n                    3. Hangup()                                   [extensions.conf:16]\n  '_2XXX' =>        1. Dial(PJSIP/${EXTEN}@site-b,20)             [extensions.conf:27]\n                    2. Hangup()                                   [extensions.conf:28]\n\n-= 5 extensions (11 priorities) in 1 context. =-\n===RC 0\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "sh -c 'for f in /var/spool/asterisk/voicemail/*/1004/INBOX/msg*.txt; do [ -f \"$f\" ] && grep -Eq \"^callerid=(.*<)?1003>?\\$\" \"$f\" && rm -f \"${f%.txt}\".*; done; true'",
+     "output": "",
+     "timeout": 20
+    }
+   ],
+   "machine": "pbx",
+   "step": 1
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "asterisk -rx 'pjsip show contacts' 2>&1; echo \"===RC $?\"",
+     "output": "\n  Contact:  <Aor/ContactUri..............................> <Hash....> <Status> <RTT(ms)..>\n==========================================================================================\n\n  Contact:  1001/sip:1001-0x55830ee63500@10.187.166.50:409 bf9414200b NonQual         nan\n  Contact:  1002/sip:1002-0x55933ab17500@10.187.166.186:33 226692ceb1 NonQual         nan\n  Contact:  1003/sip:1003@10.187.166.117:5071              bd814feddb NonQual         nan\n  Contact:  1004/sip:1004@10.187.166.117:5072              2c9610052e NonQual         nan\n  Contact:  1005/sip:1005-0x557fea115500@10.173.58.221:360 a657887b24 Avail         2.832\n  Contact:  1006/sip:1006@10.173.58.221:5071;x-ast-orig-ho 83ef4a55d6 Avail         2.819\n  Contact:  1531/sip:1531@10.187.166.117:5070              46b7e88937 NonQual         nan\n  Contact:  site-b/sip:10.173.58.205:5060                  0e4cb521f4 NonQual         nan\n\nObjects found: 8\n\n===RC 0\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "sh -c 'for f in /var/spool/asterisk/voicemail/*/1004/INBOX/msg*.txt; do [ -f \"$f\" ] && echo \"===MSG $f\" && cat \"$f\"; done; echo \"===END\"'",
+     "output": "===MSG /var/spool/asterisk/voicemail/default/1004/INBOX/msg0000.txt\n;\n; Message Information file\n;\n[message]\norigmailbox=1004\ncontext=internal\nexten=1004\nrdnis=unknown\npriority=2\ncallerchan=PJSIP/1003-00000000\ncallerid=\"Hugo Durand\" <1003>\norigdate=Thu Nov 12 01:43:38 AM UTC 2026\norigtime=1794447818\ncategory=\nmsg_id=1794447818-00000000\nflag=\nduration=3\n===END\n",
+     "timeout": 20
+    },
+    {
+     "code": 0,
+     "command": "tail -n 40 /var/log/asterisk/messages.log 2>&1",
+     "output": "[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1003@10.187.166.6>' failed for '10.187.166.117:50192' (callid: 2941eaac840a225a@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[357] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Probe\" <sip:1004@10.187.166.6>' failed for '10.187.166.117:58778' (callid: 2ef8fadc59ab7cf6@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: 29e18a59-697d-4ed6-8d2b-6d4632de31f7) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Probe\" <sip:1004@10.187.166.6>' failed for '10.187.166.117:58778' (callid: 2ef8fadc59ab7cf6@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Probe\" <sip:1004@10.187.166.6>' failed for '10.187.166.117:58778' (callid: 2ef8fadc59ab7cf6@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1003@10.187.166.6>' failed for '10.187.166.117:60408' (callid: d9a45653a0c19e9d@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1003@10.187.166.6>' failed for '10.187.166.117:60408' (callid: d9a45653a0c19e9d@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1003@10.187.166.6>' failed for '10.187.166.117:60408' (callid: d9a45653a0c19e9d@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:36363' (callid: bc668d5e631fe116@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:36363' (callid: bc668d5e631fe116@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:36363' (callid: bc668d5e631fe116@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:54534' (callid: 86c4f80dd1d6e42b@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: 8b52ec1c-2d69-47cd-8b1b-825ba7243d8e) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: 8b52ec1c-2d69-47cd-8b1b-825ba7243d8e) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: 8b52ec1c-2d69-47cd-8b1b-825ba7243d8e) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[357] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:54534' (callid: 86c4f80dd1d6e42b@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[357] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:54534' (callid: 86c4f80dd1d6e42b@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip_session.c:  1531: Call (UDP:10.187.166.117:59809) to extension '1003' rejected because extension not found in context 'demo'.\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:52844' (callid: 82d459d548aa2b5b@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:52844' (callid: 82d459d548aa2b5b@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:52844' (callid: 82d459d548aa2b5b@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: e91fe907-6149-40e3-a3f0-51fefa1fc25f) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: e91fe907-6149-40e3-a3f0-51fefa1fc25f) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: e91fe907-6149-40e3-a3f0-51fefa1fc25f) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:35178' (callid: cf4e803aa39ae97d@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:35178' (callid: cf4e803aa39ae97d@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:35178' (callid: cf4e803aa39ae97d@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:52377' (callid: c88353e0bca7d76b@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:52377' (callid: c88353e0bca7d76b@10.187.166.117) - No matching endpoint found\n[2026-11-12 01:43:23] NOTICE[356] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '<sip:1004@10.187.166.6>' failed for '10.187.166.117:52377' (callid: c88353e0bca7d76b@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:30] Asterisk 22.12.0 built by root @ buildkitsandbox on a x86_64 running Linux on 2026-11-11 20:59:17 UTC\n[2026-11-12 01:43:30] NOTICE[449] loader.c: 122 modules will be loaded.\n[2026-11-12 01:43:30] NOTICE[449] cdr.c: CDR logging disabled.\n[2026-11-12 01:43:30] NOTICE[449] indications.c: Default country for indication tones: fr\n[2026-11-12 01:43:30] NOTICE[449] indications.c: Setting default indication country to 'fr'\n[2026-11-12 01:43:36] NOTICE[474] res_pjsip/pjsip_distributor.c: Request 'REGISTER' from '<sip:1003@10.187.166.6>' failed for '10.187.166.117:54384' (callid: 2d2604c649e63399@10.187.166.117) - Failed to authenticate\n[2026-11-12 01:43:38] ERROR[471] res_pjsip_session.c:  1007: Couldn't negotiate stream 0:audio-0:audio:sendrecv (nothing)\n[2026-11-12 01:43:40] NOTICE[471] res_pjsip/pjsip_distributor.c: Request 'INVITE' from '\"Site B reception\" <sip:2001@10.173.58.205>' failed for '10.173.58.205:5060' (callid: a788f490-46ec-4ba3-928f-218af6606ab5) - Failed to authenticate\n[2026-11-12 01:43:40] NOTICE[471] res_pjsip_session.c:  site-b: Call (UDP:10.173.58.205:5060) to extension '600' rejected because extension not found in context 'from-site-b'.\n[2026-11-12 01:43:44] NOTICE[471] res_pjsip_session.c:  1531: Call (UDP:10.187.166.117:49220) to extension '1003' rejected because extension not found in context 'demo'.\n",
+     "timeout": 20
+    }
+   ],
+   "machine": "pbx",
+   "step": 3
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "python3 /usr/local/sbin/sre_sip_probe.py ensure eyJhY2NvdW50cyI6W3siY2FsbHMiOnsiY29kZWMiOiJQQ01BIiwiZHVyYXRpb24iOjYsImV2ZXJ5Ijo2MCwibnVtYmVyIjoiMTAwMiIsInB0aW1lIjoyMH0sImV4cGlyZXMiOjEyMCwibWF4X2NhbGwiOjEyMCwibW9kZSI6ImFuc3dlciIsInBhc3N3b3JkIjoieFR1b2pCdWdBViIsInBvcnQiOjUwNjAsInJldHJ5IjoxMCwicnRwX3BvcnQiOjQwMDAwLCJzZXJ2ZXIiOiIxMC4xNzMuNTguMjA1Iiwic2lwX3BvcnQiOjUwNzEsInRvbmUiOjcyMCwidXNlciI6IjIwMDEifSx7ImV4cGlyZXMiOjEyMCwibWF4X2NhbGwiOjEyMCwibW9kZSI6ImJ1c3kiLCJwYXNzd29yZCI6InVKWHhpVVlxMkMiLCJwb3J0Ijo1MDYwLCJyZXRyeSI6MTAsInNlcnZlciI6IjEwLjE3My41OC4yMDUiLCJzaXBfcG9ydCI6NTA3MiwidXNlciI6IjIwMDIifV0sImxpc3RlbiI6WzQwMCw0ODAsNTYwLDY0MCw3MjAsODAwLDg4MCw5NjAsMTA0MCwxMTIwLDEyMDAsMTI4MCwxMzYwLDE0NDAsMTUyMCwxNjAwLDE2ODAsMTc2MCwxODQwLDE5MjAsMjAwMCwyMDgwLDIxNjAsMjI0MF0sImxvY2FsX2lwIjoiMTAuMTczLjU4LjIwNSJ9 2>&1; python3 /usr/local/sbin/sre_sip_probe.py kick 2>&1",
+     "output": "{\"alive\": true, \"kicked\": 1794447816.1485853, \"phones\": {\"2001\": {\"error\": null, \"expires\": 119, \"registered\": true, \"status\": 200, \"t\": 1794447816.1495655}, \"2002\": {\"error\": null, \"expires\": 119, \"registered\": true, \"status\": 200, \"t\": 1794447816.1717563}}}\n",
+     "timeout": 30
+    }
+   ],
+   "machine": "pbx2",
+   "step": 1
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "python3 /usr/local/sbin/sre_sip_probe.py run eyJkZWFkbGluZSI6NTAsImxpc3RlbiI6WzQwMCw0ODAsNTYwLDY0MCw3MjAsODAwLDg4MCw5NjAsMTA0MCwxMTIwLDEyMDAsMTI4MCwxMzYwLDE0NDAsMTUyMCwxNjAwLDE2ODAsMTc2MCwxODQwLDE5MjAsMjAwMCwyMDgwLDIxNjAsMjI0MF0sImxvY2FsX2lwIjoiMTAuMTczLjU4LjIwNSIsInRyYWNrcyI6W1t7ImR1cmF0aW9uIjo0LCJpZCI6InRydW5rX2luIiwia2luZCI6ImNhbGwiLCJwYXNzd29yZCI6InhUdW9qQnVnQVYiLCJwb3J0Ijo1MDYwLCJwdGltZSI6MjAsInJpbmdfdGltZW91dCI6OC4wLCJzZXJ2ZXIiOiIxMC4xNzMuNTguMjA1IiwidG8iOiIxMDAzIiwidG9uZSI6MTQ0MCwidXNlciI6IjIwMDEifSx7ImR1cmF0aW9uIjoyLCJpZCI6InRydW5rX25vX2F1dGgiLCJraW5kIjoiY2FsbCIsInBhc3N3b3JkIjoieFR1b2pCdWdBViIsInBvcnQiOjUwNjAsInB0aW1lIjoyMCwicmluZ190aW1lb3V0Ijo4LjAsInNlcnZlciI6IjEwLjE3My41OC4yMDUiLCJ0byI6IjgxMTAwMyIsInRvbmUiOjE2ODAsInVzZXIiOiIyMDAxIn0seyJkdXJhdGlvbiI6MiwiaWQiOiJ0cnVua19iYWRfYXV0aCIsImtpbmQiOiJjYWxsIiwicGFzc3dvcmQiOiJ4VHVvakJ1Z0FWIiwicG9ydCI6NTA2MCwicHRpbWUiOjIwLCJyaW5nX3RpbWVvdXQiOjguMCwic2VydmVyIjoiMTAuMTczLjU4LjIwNSIsInRvIjoiODIxMDAzIiwidG9uZSI6MTY4MCwidXNlciI6IjIwMDEifSx7ImR1cmF0aW9uIjoyLCJpZCI6InRydW5rX3NlcnZpY2UiLCJraW5kIjoiY2FsbCIsInBhc3N3b3JkIjoieFR1b2pCdWdBViIsInBvcnQiOjUwNjAsInB0aW1lIjoyMCwicmluZ190aW1lb3V0Ijo4LjAsInNlcnZlciI6IjEwLjE3My41OC4yMDUiLCJ0byI6IjgzNjAwIiwidG9uZSI6MTY4MCwidXNlciI6IjIwMDEifV1dfQ== 2>&1",
+     "output": "{\"errors\": [], \"results\": {\"trunk_bad_auth\": {\"answered\": false, \"bye\": null, \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {}, \"status\": 403, \"t_answer\": null, \"t_end\": 1794447820.938564, \"t_start\": 1794447820.9368174, \"tls\": null, \"updates\": 0}, \"trunk_in\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100, 180], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [640], \"payload_types\": {\"8\": 201}, \"received\": 201, \"sent\": 201, \"sizes\": {\"160\": 201}, \"sources\": {\"10.173.58.205:19826\": 201}, \"tail_sources\": {\"10.173.58.205:19826\": 101}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"640\": 16}, \"windows\": 16}, \"tos\": {\"0\": 201}}, \"sdp\": {\"address\": \"10.173.58.205\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 19826, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447816.722851, \"t_end\": 1794447820.9302664, \"t_start\": 1794447816.4126704, \"tls\": null, \"updates\": 0}, \"trunk_no_auth\": {\"answered\": false, \"bye\": null, \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {}, \"status\": 403, \"t_answer\": null, \"t_end\": 1794447820.9367225, \"t_start\": 1794447820.9309335, \"tls\": null, \"updates\": 0}, \"trunk_service\": {\"answered\": false, \"bye\": null, \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {}, \"status\": 404, \"t_answer\": null, \"t_end\": 1794447820.9429922, \"t_start\": 1794447820.9386654, \"tls\": null, \"updates\": 0}}}\n",
+     "timeout": 75
+    }
+   ],
+   "machine": "pbx2",
+   "step": 2
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "sleep 2; tail -n 400 /var/log/sre_sip_probe.jsonl 2>/dev/null; echo \"===END\"",
+     "output": "{\"event\": \"start\", \"phones\": [\"2001\", \"2002\"], \"t\": 1794447790.613}\n{\"error\": null, \"event\": \"register\", \"registered\": true, \"status\": 200, \"t\": 1794447790.615, \"user\": \"2001\"}\n{\"error\": null, \"event\": \"register\", \"registered\": true, \"status\": 200, \"t\": 1794447790.615, \"user\": \"2002\"}\n{\"direction\": \"out\", \"error\": null, \"event\": \"call\", \"received\": 0, \"status\": 403, \"t\": 1794447794.626, \"to\": \"1002\", \"user\": \"2001\"}\n{\"action\": \"answered\", \"direction\": \"in\", \"duration\": 4.51, \"end\": \"received\", \"error\": null, \"event\": \"call\", \"from_display\": \"Nadia Simon\", \"from_user\": \"1004\", \"offer\": {\"address\": \"10.173.58.205\", \"payloads\": [8, 101], \"port\": 12432, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [1360], \"payload_types\": {\"8\": 201}, \"received\": 201, \"sent\": 201, \"sizes\": {\"160\": 201}, \"sources\": {\"10.173.58.205:12432\": 201}, \"tail_sources\": {\"10.173.58.205:12432\": 100}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"1360\": 16}, \"windows\": 16}, \"tos\": {\"0\": 201}}, \"ruri_user\": \"2001\", \"source\": \"10.173.58.205:5060\", \"t\": 1794447834.895, \"to_user\": \"2001\", \"user\": \"2001\"}\n===END\n",
+     "timeout": 20
+    }
+   ],
+   "machine": "pbx2",
+   "step": 3
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "python3 /usr/local/sbin/sre_sip_probe.py ensure eyJhY2NvdW50cyI6W3siZXhwaXJlcyI6MTIwLCJtYXhfY2FsbCI6MTIwLCJtb2RlIjoiYW5zd2VyIiwicGFzc3dvcmQiOiJ2N051SFpTQnZ1IiwicG9ydCI6NTA2MCwicmVmcmVzaCI6MTUsInJldHJ5IjoxMCwicnRwX3BvcnQiOjQwMDAwLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJzaXBfcG9ydCI6NTA3MSwidG9uZSI6ODAwLCJ1c2VyIjoiMTAwNiJ9XSwibGlzdGVuIjpbNDAwLDQ4MCw1NjAsNjQwLDcyMCw4MDAsODgwLDk2MCwxMDQwLDExMjAsMTIwMCwxMjgwLDEzNjAsMTQ0MCwxNTIwLDE2MDAsMTY4MCwxNzYwLDE4NDAsMTkyMCwyMDAwLDIwODAsMjE2MCwyMjQwXSwibG9jYWxfaXAiOiIxOTIuMTY4LjE1OC4xMzYifQ== 2>&1; python3 /usr/local/sbin/sre_sip_probe.py kick 2>&1",
+     "output": "{\"alive\": true, \"kicked\": 1794447816.149295, \"phones\": {\"1006\": {\"error\": null, \"expires\": 119, \"registered\": true, \"status\": 200, \"t\": 1794447816.175138}}}\n",
+     "timeout": 30
+    }
+   ],
+   "machine": "probe_home",
+   "step": 1
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "python3 /usr/local/sbin/sre_sip_probe.py run eyJkZWFkbGluZSI6NTAsImxpc3RlbiI6WzQwMCw0ODAsNTYwLDY0MCw3MjAsODAwLDg4MCw5NjAsMTA0MCwxMTIwLDEyMDAsMTI4MCwxMzYwLDE0NDAsMTUyMCwxNjAwLDE2ODAsMTc2MCwxODQwLDE5MjAsMjAwMCwyMDgwLDIxNjAsMjI0MF0sImxvY2FsX2lwIjoiMTkyLjE2OC4xNTguMTM2IiwidHJhY2tzIjpbW3siZHVyYXRpb24iOjQsImlkIjoibmF0X291dCIsImtpbmQiOiJjYWxsIiwicGFzc3dvcmQiOiJ2N051SFpTQnZ1IiwicG9ydCI6NTA2MCwicHRpbWUiOjIwLCJyaW5nX3RpbWVvdXQiOjguMCwic2VydmVyIjoiMTAuMTg3LjE2Ni42IiwidG8iOiIxMDAzIiwidG9uZSI6MTYwMCwidXNlciI6IjEwMDYifV1dfQ== 2>&1",
+     "output": "{\"errors\": [], \"results\": {\"nat_out\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100, 180], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [640], \"payload_types\": {\"8\": 197}, \"received\": 197, \"sent\": 201, \"sizes\": {\"160\": 197}, \"sources\": {\"10.187.166.6:35044\": 197}, \"tail_sources\": {\"10.187.166.6:35044\": 101}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"640\": 15}, \"windows\": 15}, \"tos\": {\"184\": 197}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35044, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447816.721015, \"t_end\": 1794447820.9298723, \"t_start\": 1794447816.4133313, \"tls\": null, \"updates\": 0}}}\n",
+     "timeout": 75
+    }
+   ],
+   "machine": "probe_home",
+   "step": 2
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "sleep 2; tail -n 400 /var/log/sre_sip_probe.jsonl 2>/dev/null; echo \"===END\"",
+     "output": "{\"event\": \"start\", \"phones\": [\"1006\"], \"t\": 1794447790.613}\n{\"error\": null, \"event\": \"register\", \"registered\": false, \"status\": 401, \"t\": 1794447790.615, \"user\": \"1006\"}\n{\"error\": null, \"event\": \"register\", \"registered\": true, \"status\": 200, \"t\": 1794447813.374, \"user\": \"1006\"}\n{\"action\": \"answered\", \"direction\": \"in\", \"duration\": 4.53, \"end\": \"received\", \"error\": null, \"event\": \"call\", \"from_display\": \"Nadia Simon\", \"from_user\": \"1004\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35140, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [1520], \"payload_types\": {\"8\": 197}, \"received\": 197, \"sent\": 202, \"sizes\": {\"160\": 197}, \"sources\": {\"10.187.166.6:35140\": 197}, \"tail_sources\": {\"10.187.166.6:35140\": 100}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"1520\": 15}, \"windows\": 15}, \"tos\": {\"184\": 197}}, \"ruri_user\": \"1006\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447839.434, \"to_user\": \"1006\", \"user\": \"1006\"}\n===END\n",
+     "timeout": 20
+    }
+   ],
+   "machine": "probe_home",
+   "step": 3
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "python3 /usr/local/sbin/sre_sip_probe.py ensure eyJhY2NvdW50cyI6W3siY2FsbHMiOnsiY29kZWMiOiJQQ01VIiwiZHVyYXRpb24iOjYsImV2ZXJ5IjoyNSwibnVtYmVyIjoiMzMwIiwicHRpbWUiOjQwfSwiZXhwaXJlcyI6OTAsIm1heF9jYWxsIjoxMjAsIm1vZGUiOiJhbnN3ZXIiLCJwYXNzd29yZCI6ImhobTlnakY2c08iLCJwb3J0Ijo1MDYwLCJyZXRyeSI6MTAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInNpcF9wb3J0Ijo1MDcwLCJ0b25lIjo4ODAsInVzZXIiOiIxNTMxIiwidXNlcl9hZ2VudCI6IkZhbnZpbCBYNlUgMi40LjEwIn0seyJleHBpcmVzIjoxMjAsIm1heF9jYWxsIjoxMjAsIm1vZGUiOiJhbnN3ZXIiLCJwYXNzd29yZCI6ImxnbXYzWnN4N0QiLCJwb3J0Ijo1MDYwLCJyZXRyeSI6MTAsInJ0cF9wb3J0Ijo0MDAwMCwic2VydmVyIjoiMTAuMTg3LjE2Ni42Iiwic2lwX3BvcnQiOjUwNzEsInRvbmUiOjY0MCwidXNlciI6IjEwMDMifSx7ImV4cGlyZXMiOjEyMCwibWF4X2NhbGwiOjEyMCwibW9kZSI6ImJ1c3kiLCJwYXNzd29yZCI6IldBOWF1YzUyaEYiLCJwb3J0Ijo1MDYwLCJyZXRyeSI6MTAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInNpcF9wb3J0Ijo1MDcyLCJ1c2VyIjoiMTAwNCJ9XSwibGlzdGVuIjpbNDAwLDQ4MCw1NjAsNjQwLDcyMCw4MDAsODgwLDk2MCwxMDQwLDExMjAsMTIwMCwxMjgwLDEzNjAsMTQ0MCwxNTIwLDE2MDAsMTY4MCwxNzYwLDE4NDAsMTkyMCwyMDAwLDIwODAsMjE2MCwyMjQwXSwibG9jYWxfaXAiOiIxMC4xODcuMTY2LjExNyJ9 2>&1; python3 /usr/local/sbin/sre_sip_probe.py kick 2>&1",
+     "output": "{\"alive\": true, \"kicked\": 1794447816.149095, \"phones\": {\"1003\": {\"error\": null, \"expires\": 119, \"registered\": true, \"status\": 200, \"t\": 1794447816.1749039}, \"1004\": {\"error\": null, \"expires\": 119, \"registered\": true, \"status\": 200, \"t\": 1794447816.1502986}, \"1531\": {\"error\": null, \"expires\": 89, \"registered\": true, \"status\": 200, \"t\": 1794447816.1750858}}}\n",
+     "timeout": 30
+    }
+   ],
+   "machine": "probe_office",
+   "step": 1
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "python3 /usr/local/sbin/sre_sip_probe.py run eyJkZWFkbGluZSI6NTAsImxpc3RlbiI6WzQwMCw0ODAsNTYwLDY0MCw3MjAsODAwLDg4MCw5NjAsMTA0MCwxMTIwLDEyMDAsMTI4MCwxMzYwLDE0NDAsMTUyMCwxNjAwLDE2ODAsMTc2MCwxODQwLDE5MjAsMjAwMCwyMDgwLDIxNjAsMjI0MF0sImxvY2FsX2lwIjoiMTAuMTg3LjE2Ni4xMTciLCJ0cmFja3MiOltbeyJleHBpcmVzIjo2MCwiaWQiOiJyZWdpc3Rlcl9vayIsImtpbmQiOiJyZWdpc3RlciIsInBhc3N3b3JkIjoibGdtdjNac3g3RCIsInBvcnQiOjUwNjAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInVucmVnaXN0ZXIiOnRydWUsInVzZXIiOiIxMDAzIn0seyJleHBpcmVzIjo2MCwiaWQiOiJyZWdpc3Rlcl9iYWQiLCJraW5kIjoicmVnaXN0ZXIiLCJwYXNzd29yZCI6Im5vdC1sZ212M1pzeDdEIiwicG9ydCI6NTA2MCwic2VydmVyIjoiMTAuMTg3LjE2Ni42IiwidW5yZWdpc3RlciI6dHJ1ZSwidXNlciI6IjEwMDMifSx7ImNvZGVjcyI6WyJQQ01VIiwiR1NNIiwiRzcyMiIsIlBDTUEiXSwiZGlzcGxheSI6IlByb2JlIiwiZHVyYXRpb24iOjQsImlkIjoiaW50ZXJuYWwiLCJraW5kIjoiY2FsbCIsInBhc3N3b3JkIjoiV0E5YXVjNTJoRiIsInBvcnQiOjUwNjAsInB0aW1lIjoyMCwicmluZ190aW1lb3V0Ijo4LjAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInRvIjoiMTAwMyIsInRvbmUiOjk2MCwidXNlciI6IjEwMDQifSx7ImR1cmF0aW9uIjozLCJpZCI6ImVjaG8iLCJraW5kIjoiY2FsbCIsInBhc3N3b3JkIjoiV0E5YXVjNTJoRiIsInBvcnQiOjUwNjAsInB0aW1lIjoyMCwicmluZ190aW1lb3V0Ijo4LjAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInRvIjoiNjAwIiwidG9uZSI6MTA0MCwidXNlciI6IjEwMDQifSx7ImNvZGVjcyI6WyJHU00iLCJHNzIyIl0sImR1cmF0aW9uIjoxLCJpZCI6ImZvcmVpZ25fY29kZWNzIiwia2luZCI6ImNhbGwiLCJwYXNzd29yZCI6IldBOWF1YzUyaEYiLCJwb3J0Ijo1MDYwLCJwdGltZSI6MjAsInJpbmdfdGltZW91dCI6OC4wLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJ0byI6IjEwMDMiLCJ0b25lIjoxNjgwLCJ1c2VyIjoiMTAwNCJ9LHsiZHVyYXRpb24iOjEsImlkIjoiaXNvbGF0aW9uIiwia2luZCI6ImNhbGwiLCJwYXNzd29yZCI6ImhobTlnakY2c08iLCJwb3J0Ijo1MDYwLCJwdGltZSI6MjAsInJpbmdfdGltZW91dCI6OC4wLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJ0byI6IjEwMDMiLCJ0b25lIjoxNjgwLCJ1c2VyIjoiMTUzMSJ9LHsiZHRtZiI6W3siYXQiOjEuMCwiZGlnaXRzIjoiMiJ9XSwiZHVyYXRpb24iOjYsImlkIjoiaXZyX2Fuc3dlcmluZyIsImtpbmQiOiJjYWxsIiwicGFzc3dvcmQiOiJXQTlhdWM1MmhGIiwicG9ydCI6NTA2MCwicHRpbWUiOjIwLCJyaW5nX3RpbWVvdXQiOjguMCwic2VydmVyIjoiMTAuMTg3LjE2Ni42IiwidG8iOiI1MDAiLCJ0b25lIjoxMjAwLCJ1c2VyIjoiMTAwNCJ9LHsiZHVyYXRpb24iOjQsImlkIjoidHJ1bmtfb3V0Iiwia2luZCI6ImNhbGwiLCJwYXNzd29yZCI6IldBOWF1YzUyaEYiLCJwb3J0Ijo1MDYwLCJwdGltZSI6MjAsInJpbmdfdGltZW91dCI6OC4wLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJ0byI6IjIwMDEiLCJ0b25lIjoxMzYwLCJ1c2VyIjoiMTAwNCJ9LHsiZHVyYXRpb24iOjQsImlkIjoibmF0X2luIiwia2luZCI6ImNhbGwiLCJwYXNzd29yZCI6IldBOWF1YzUyaEYiLCJwb3J0Ijo1MDYwLCJwdGltZSI6MjAsInJpbmdfdGltZW91dCI6OC4wLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJ0byI6IjEwMDYiLCJ0b25lIjoxNTIwLCJ1c2VyIjoiMTAwNCJ9XSxbeyJkdXJhdGlvbiI6MywiaWQiOiJ2b2ljZW1haWwiLCJraW5kIjoiY2FsbCIsInBhc3N3b3JkIjoibGdtdjNac3g3RCIsInBvcnQiOjUwNjAsInB0aW1lIjoyMCwicmluZ190aW1lb3V0Ijo4LjAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInRvIjoiMTAwNCIsInRvbmUiOjExMjAsInVzZXIiOiIxMDAzIiwidm9pY2VtYWlsIjp0cnVlfSx7ImR0bWYiOlt7ImF0IjoxLjAsImRpZ2l0cyI6IjEifV0sImR1cmF0aW9uIjo2LCJpZCI6Iml2cl9idXN5Iiwia2luZCI6ImNhbGwiLCJwYXNzd29yZCI6ImxnbXYzWnN4N0QiLCJwb3J0Ijo1MDYwLCJwdGltZSI6MjAsInJpbmdfdGltZW91dCI6OC4wLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJ0byI6IjUwMCIsInRvbmUiOjEyODAsInVzZXIiOiIxMDAzIn0seyJkdXJhdGlvbiI6MywiaWQiOiJpdnJfaWRsZSIsImtpbmQiOiJjYWxsIiwicGFzc3dvcmQiOiJsZ212M1pzeDdEIiwicG9ydCI6NTA2MCwicHRpbWUiOjIwLCJyaW5nX3RpbWVvdXQiOjguMCwic2VydmVyIjoiMTAuMTg3LjE2Ni42IiwidG8iOiI1MDAiLCJ0b25lIjoxNjgwLCJ1c2VyIjoiMTAwMyJ9XSxbeyJjYV9maWxlIjoiL2V0Yy9zc2wvY2VydHMvY29ycC1jYS5wZW0iLCJjb250YWN0Ijp0cnVlLCJleHBpcmVzIjo2MCwiaWQiOiJ0bHNfcmVnaXN0ZXIiLCJraW5kIjoicmVnaXN0ZXIiLCJwYXNzd29yZCI6IkJQdkh0QlNtdUEiLCJwb3J0Ijo1MDYxLCJzZXJ2ZXIiOiIxMC4xODcuMTY2LjYiLCJzZXJ2ZXJfbmFtZSI6InBieC5jb3JwLnRwIiwidHJhbnNwb3J0IjoidGxzIiwidW5yZWdpc3RlciI6dHJ1ZSwidXNlciI6IjEwMDcifSx7ImNhX2ZpbGUiOiIvZXRjL3NzbC9jZXJ0cy9jb3JwLWNhLnBlbSIsImR1cmF0aW9uIjoyLCJpZCI6InNydHBfY2FsbCIsImtpbmQiOiJjYWxsIiwicGFzc3dvcmQiOiJCUHZIdEJTbXVBIiwicG9ydCI6NTA2MSwicHRpbWUiOjIwLCJyaW5nX3RpbWVvdXQiOjguMCwic2VydmVyIjoiMTAuMTg3LjE2Ni42Iiwic2VydmVyX25hbWUiOiJwYnguY29ycC50cCIsInNydHAiOnRydWUsInRvIjoiNjAwIiwidG9uZSI6MTY4MCwidHJhbnNwb3J0IjoidGxzIiwidXNlciI6IjEwMDcifSx7ImNhX2ZpbGUiOiIvZXRjL3NzbC9jZXJ0cy9jb3JwLWNhLnBlbSIsImR1cmF0aW9uIjoyLCJpZCI6InBsYWluX2NhbGwiLCJraW5kIjoiY2FsbCIsInBhc3N3b3JkIjoiQlB2SHRCU211QSIsInBvcnQiOjUwNjEsInB0aW1lIjoyMCwicmluZ190aW1lb3V0Ijo4LjAsInNlcnZlciI6IjEwLjE4Ny4xNjYuNiIsInNlcnZlcl9uYW1lIjoicGJ4LmNvcnAudHAiLCJ0byI6IjYwMCIsInRvbmUiOjE2ODAsInRyYW5zcG9ydCI6InRscyIsInVzZXIiOiIxMDA3In1dXX0= 2>&1",
+     "output": "{\"errors\": [], \"results\": {\"echo\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [1040], \"payload_types\": {\"8\": 151}, \"received\": 151, \"sent\": 151, \"sizes\": {\"160\": 151}, \"sources\": {\"10.187.166.6:35024\": 151}, \"tail_sources\": {\"10.187.166.6:35024\": 100}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"1040\": 12}, \"windows\": 12}, \"tos\": {\"184\": 151}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35024, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447820.9380438, \"t_end\": 1794447824.141313, \"t_start\": 1794447820.9369125, \"tls\": null, \"updates\": 0}, \"foreign_codecs\": {\"answered\": false, \"bye\": null, \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {}, \"status\": 488, \"t_answer\": null, \"t_end\": 1794447824.1472123, \"t_start\": 1794447824.1419444, \"tls\": null, \"updates\": 0}, \"internal\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100, 180], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [640], \"payload_types\": {\"8\": 201}, \"received\": 201, \"sent\": 201, \"sizes\": {\"160\": 201}, \"sources\": {\"10.187.166.6:35056\": 201}, \"tail_sources\": {\"10.187.166.6:35056\": 100}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"640\": 16}, \"windows\": 16}, \"tos\": {\"184\": 201}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35056, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447816.7321298, \"t_end\": 1794447820.9367762, \"t_start\": 1794447816.4159565, \"tls\": null, \"updates\": 0}, \"isolation\": {\"answered\": false, \"bye\": null, \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {}, \"status\": 404, \"t_answer\": null, \"t_end\": 1794447824.150801, \"t_start\": 1794447824.1476297, \"tls\": null, \"updates\": 0}, \"ivr_answering\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [640], \"payload_types\": {\"8\": 302}, \"received\": 302, \"sent\": 305, \"sizes\": {\"160\": 302}, \"sources\": {\"10.187.166.6:35168\": 302}, \"tail_sources\": {\"10.187.166.6:35168\": 100}, \"tones\": {\"other\": 6, \"silent\": 0, \"tones\": {\"640\": 18}, \"windows\": 24}, \"tos\": {\"184\": 302}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35168, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447824.1551824, \"t_end\": 1794447830.3713374, \"t_start\": 1794447824.1511438, \"tls\": null, \"updates\": 0}, \"ivr_busy\": {\"answered\": true, \"bye\": \"received\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {\"8\": 59}, \"received\": 59, \"sent\": 63, \"sizes\": {\"160\": 59}, \"sources\": {\"10.187.166.6:35122\": 59}, \"tail_sources\": {\"10.187.166.6:35122\": 59}, \"tones\": {\"other\": 4, \"silent\": 0, \"tones\": {}, \"windows\": 4}, \"tos\": {\"184\": 59}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35122, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447822.1362076, \"t_end\": 1794447823.5027344, \"t_start\": 1794447822.1299512, \"tls\": null, \"updates\": 0}, \"ivr_idle\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {\"8\": 102}, \"received\": 102, \"sent\": 151, \"sizes\": {\"160\": 101, \"24\": 1}, \"sources\": {\"10.187.166.6:35040\": 102}, \"tail_sources\": {\"10.187.166.6:35040\": 101}, \"tones\": {\"other\": 8, \"silent\": 0, \"tones\": {}, \"windows\": 8}, \"tos\": {\"184\": 102}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35040, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447823.5098202, \"t_end\": 1794447826.5372555, \"t_start\": 1794447823.5033915, \"tls\": null, \"updates\": 0}, \"nat_in\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100, 180], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [800], \"payload_types\": {\"8\": 198}, \"received\": 198, \"sent\": 202, \"sizes\": {\"160\": 198}, \"sources\": {\"10.187.166.6:35062\": 198}, \"tail_sources\": {\"10.187.166.6:35062\": 100}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"800\": 15}, \"windows\": 15}, \"tos\": {\"184\": 198}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35062, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447835.2076008, \"t_end\": 1794447839.4337506, \"t_start\": 1794447834.894217, \"tls\": null, \"updates\": 0}, \"plain_call\": {\"answered\": false, \"bye\": null, \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {}, \"status\": 488, \"t_answer\": null, \"t_end\": 1794447818.7757223, \"t_start\": 1794447818.7309482, \"tls\": {\"error\": null, \"verified\": true, \"version\": \"TLSv1.2\"}, \"updates\": 0}, \"register_bad\": {\"algorithm\": \"MD5\", \"challenged\": true, \"contacts\": [], \"error\": null, \"expires\": null, \"qop\": \"auth\", \"realm\": \"asterisk\", \"server\": \"Corp-PBX\", \"status\": 401, \"t_end\": 1794447816.415817, \"t_start\": 1794447816.4139702, \"tls\": null}, \"register_ok\": {\"algorithm\": \"MD5\", \"challenged\": true, \"contacts\": [\"<sip:1003@10.187.166.117:5071>;expires=119\"], \"error\": null, \"expires\": null, \"qop\": \"auth\", \"realm\": \"asterisk\", \"server\": \"Corp-PBX\", \"status\": 200, \"t_end\": 1794447816.413969, \"t_start\": 1794447816.4125824, \"tls\": null}, \"srtp_call\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {}, \"received\": 0, \"sent\": 0, \"sizes\": {}, \"sources\": {}, \"tail_sources\": {}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {}, \"windows\": 0}, \"tos\": {}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": true, \"payloads\": [8, 101], \"port\": 35108, \"profile\": \"RTP/SAVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447816.5193675, \"t_end\": 1794447818.7254598, \"t_start\": 1794447816.4721744, \"tls\": {\"error\": null, \"verified\": true, \"version\": \"TLSv1.2\"}, \"updates\": 0}, \"tls_register\": {\"algorithm\": \"MD5\", \"challenged\": true, \"contacts\": [\"<sip:1007@10.187.166.117:59545;transport=tls>;expires=59\"], \"error\": null, \"expires\": 59, \"qop\": \"auth\", \"realm\": \"asterisk\", \"server\": \"Corp-PBX\", \"status\": 200, \"t_end\": 1794447816.4644487, \"t_start\": 1794447816.4129028, \"tls\": {\"error\": null, \"verified\": true, \"version\": \"TLSv1.2\"}, \"unregistered\": 200}, \"trunk_out\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": false, \"provisional\": [100, 180], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [720], \"payload_types\": {\"8\": 201}, \"received\": 201, \"sent\": 201, \"sizes\": {\"160\": 201}, \"sources\": {\"10.187.166.6:35164\": 201}, \"tail_sources\": {\"10.187.166.6:35164\": 101}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"720\": 16}, \"windows\": 16}, \"tos\": {\"184\": 201}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35164, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447830.69042, \"t_end\": 1794447834.8935964, \"t_start\": 1794447830.3719766, \"tls\": null, \"updates\": 0}, \"voicemail\": {\"answered\": true, \"bye\": \"sent\", \"cancelled\": false, \"challenged\": true, \"error\": null, \"pound\": true, \"provisional\": [100], \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [], \"payload_types\": {\"8\": 106}, \"received\": 106, \"sent\": 279, \"sizes\": {\"160\": 105, \"44\": 1}, \"sources\": {\"10.187.166.6:35136\": 106}, \"tail_sources\": {\"10.187.166.6:35136\": 101}, \"tones\": {\"other\": 8, \"silent\": 0, \"tones\": {}, \"windows\": 8}, \"tos\": {\"184\": 106}}, \"sdp\": {\"address\": \"10.187.166.6\", \"crypto\": false, \"payloads\": [8, 101], \"port\": 35136, \"profile\": \"RTP/AVP\", \"ptime\": 20}, \"status\": 200, \"t_answer\": 1794447816.4185297, \"t_end\": 1794447822.1293557, \"t_start\": 1794447816.413111, \"tls\": null, \"updates\": 0}}}\n",
+     "timeout": 75
+    }
+   ],
+   "machine": "probe_office",
+   "step": 2
+  },
+  {
+   "commands": [
+    {
+     "code": 0,
+     "command": "sleep 2; tail -n 400 /var/log/sre_sip_probe.jsonl 2>/dev/null; echo \"===END\"",
+     "output": "{\"event\": \"start\", \"phones\": [\"1531\", \"1003\", \"1004\"], \"t\": 1794447790.613}\n{\"error\": null, \"event\": \"register\", \"registered\": false, \"status\": 401, \"t\": 1794447790.615, \"user\": \"1003\"}\n{\"error\": null, \"event\": \"register\", \"registered\": false, \"status\": 401, \"t\": 1794447790.615, \"user\": \"1004\"}\n{\"error\": null, \"event\": \"register\", \"registered\": true, \"status\": 200, \"t\": 1794447790.616, \"user\": \"1531\"}\n{\"direction\": \"out\", \"error\": null, \"event\": \"call\", \"received\": 302, \"status\": 200, \"t\": 1794447800.85, \"to\": \"330\", \"user\": \"1531\"}\n{\"error\": null, \"event\": \"register\", \"registered\": true, \"status\": 200, \"t\": 1794447813.286, \"user\": \"1004\"}\n{\"error\": null, \"event\": \"register\", \"registered\": true, \"status\": 200, \"t\": 1794447813.373, \"user\": \"1003\"}\n{\"action\": \"busy\", \"direction\": \"in\", \"duration\": 0.0, \"end\": null, \"error\": null, \"event\": \"call\", \"from_display\": \"Hugo Durand\", \"from_user\": \"1003\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35120, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {}, \"ruri_user\": \"1004\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447816.416, \"to_user\": \"1004\", \"user\": \"1004\"}\n{\"action\": \"answered\", \"direction\": \"in\", \"duration\": 4.51, \"end\": \"received\", \"error\": null, \"event\": \"call\", \"from_display\": \"Alice Fournier\", \"from_user\": \"1006\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35082, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [1600], \"payload_types\": {\"8\": 197}, \"received\": 197, \"sent\": 201, \"sizes\": {\"160\": 197}, \"sources\": {\"10.187.166.6:35082\": 197}, \"tail_sources\": {\"10.187.166.6:35082\": 100}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"1600\": 15}, \"windows\": 15}, \"tos\": {\"184\": 197}}, \"ruri_user\": \"1003\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447820.929, \"to_user\": \"1003\", \"user\": \"1003\"}\n{\"action\": \"answered\", \"direction\": \"in\", \"duration\": 4.51, \"end\": \"received\", \"error\": null, \"event\": \"call\", \"from_display\": \"Site B reception\", \"from_user\": \"2001\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35118, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [1440], \"payload_types\": {\"8\": 201}, \"received\": 201, \"sent\": 201, \"sizes\": {\"160\": 201}, \"sources\": {\"10.187.166.6:35118\": 201}, \"tail_sources\": {\"10.187.166.6:35118\": 101}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"1440\": 16}, \"windows\": 16}, \"tos\": {\"184\": 201}}, \"ruri_user\": \"1003\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447820.93, \"to_user\": \"1003\", \"user\": \"1003\"}\n{\"action\": \"answered\", \"direction\": \"in\", \"duration\": 4.52, \"end\": \"received\", \"error\": null, \"event\": \"call\", \"from_display\": \"Nadia Simon\", \"from_user\": \"1004\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35062, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [960], \"payload_types\": {\"8\": 201}, \"received\": 201, \"sent\": 201, \"sizes\": {\"160\": 201}, \"sources\": {\"10.187.166.6:35062\": 201}, \"tail_sources\": {\"10.187.166.6:35062\": 101}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"960\": 16}, \"windows\": 16}, \"tos\": {\"184\": 201}}, \"ruri_user\": \"1003\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447820.937, \"to_user\": \"1003\", \"user\": \"1003\"}\n{\"action\": \"busy\", \"direction\": \"in\", \"duration\": 0.0, \"end\": null, \"error\": null, \"event\": \"call\", \"from_display\": \"Hugo Durand\", \"from_user\": \"1003\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35162, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {}, \"ruri_user\": \"1004\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447823.325, \"to_user\": \"1004\", \"user\": \"1004\"}\n{\"action\": \"answered\", \"direction\": \"in\", \"duration\": 5.04, \"end\": \"received\", \"error\": null, \"event\": \"call\", \"from_display\": \"Nadia Simon\", \"from_user\": \"1004\", \"offer\": {\"address\": \"10.187.166.6\", \"payloads\": [8, 101], \"port\": 35178, \"profile\": \"RTP/AVP\"}, \"reinvites\": [], \"rtp\": {\"digits\": \"\", \"heard\": [1200], \"payload_types\": {\"8\": 227}, \"received\": 227, \"sent\": 227, \"sizes\": {\"160\": 227}, \"sources\": {\"10.187.166.6:35178\": 227}, \"tail_sources\": {\"10.187.166.6:35178\": 101}, \"tones\": {\"other\": 0, \"silent\": 0, \"tones\": {\"1200\": 18}, \"windows\": 18}, \"tos\": {\"184\": 227}}, \"ruri_user\": \"1003\", \"source\": \"10.187.166.6:5060\", \"t\": 1794447830.38, \"to_user\": \"1003\", \"user\": \"1003\"}\n===END\n",
+     "timeout": 20
+    }
+   ],
+   "machine": "probe_office",
+   "step": 3
+  }
+ ]
+}

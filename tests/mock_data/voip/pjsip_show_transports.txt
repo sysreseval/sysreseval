@@ -1,0 +1,10 @@
+
+Transport:  <TransportId........>  <Type>  <cos>  <tos>  <BindAddress....................>
+==========================================================================================
+
+Transport:  transport-tls             tls      0      0  0.0.0.0:5061
+Transport:  transport-udp             udp      0      0  0.0.0.0:5060
+
+Objects found: 2
+
+===RC 0

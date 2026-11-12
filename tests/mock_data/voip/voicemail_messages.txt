@@ -1,0 +1,18 @@
+===MSG /var/spool/asterisk/voicemail/default/1004/INBOX/msg0000.txt
+;
+; Message Information file
+;
+[message]
+origmailbox=1004
+context=internal
+exten=1004
+rdnis=unknown
+priority=2
+callerchan=PJSIP/1003-00000004
+callerid="Camille Durand" <1003>
+origdate=Wed Nov 11 09:24:40 PM UTC 2026
+origtime=1794432280
+category=
+msg_id=1794432280-00000000
+flag=
+duration=3
