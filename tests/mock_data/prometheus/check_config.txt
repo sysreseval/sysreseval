@@ -1,0 +1,22 @@
+Checking /etc/prometheus/prometheus.yml
+  SUCCESS: 1 rule files found
+ SUCCESS: /etc/prometheus/prometheus.yml is valid prometheus config file syntax
+
+Checking /etc/prometheus/rules/shop.yml
+  SUCCESS: 4 rules found
+
+promtool rc=0
+Checking /etc/prometheus/rules/shop.yml
+  SUCCESS: 4 rules found
+
+rules rc=0
+Checking '/etc/prometheus/alertmanager.yml'  SUCCESS
+Found:
+ - global config
+ - route
+ - 1 inhibit rules
+ - 3 receivers
+ - 0 templates
+
+amtool rc=0
+===RC 0

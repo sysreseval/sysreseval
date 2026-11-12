@@ -1,0 +1,3 @@
+Error in packet
+Reason: authorizationError (access denied to that object)
+===RC 2

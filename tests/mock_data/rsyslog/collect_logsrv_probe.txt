@@ -1,0 +1,7 @@
+/var/log/remote/sw-3fa1/sre-probe.log:2026-11-12T02:03:28+00:00 sw-3fa1 sre-probe: sreprobe.tok1.udp.1794449008
+/var/log/remote/sw-3fa1/sre-other.log:2026-11-12T02:03:28+00:00 sw-3fa1 sre-other: sreprobe.tok1.udp_other.1794449008
+/var/log/remote/fw-9c20/sre-probe.log:2026-11-12T02:03:28+00:00 fw-9c20 sre-probe: sreprobe.tok1.tcp.1794449008
+/var/log/remote/ap-71be/sre-probe.log:2026-11-12T02:03:28+00:00 ap-71be sre-probe: sreprobe.tok1.tls_web1.1794449008
+/var/log/remote/ap-71be/sre-probe.log:2026-11-12T02:03:28+00:00 ap-71be sre-probe: sreprobe.tok1.tls_app1.1794449008
+/var/log/remote/ap-71be/sre-probe.log:2026-11-12T02:03:28+00:00 ap-71be sre-probe: sreprobe.tok1.tls_badname.1794449008
+===RC 0

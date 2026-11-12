@@ -1,0 +1,14 @@
+NET-SNMP version 5.9.3
+2026-11-11 20:07:36 sremon-probe.sremon [UDP: [172.18.0.5]:36553->[172.18.0.4]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (13100402) 1 day, 12:23:24.02	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-MIB::netSnmpPlaypen.0.1	NET-SNMP-MIB::netSnmpPlaypen.1.1 = STRING: "sre-TOKEN-ok-1794427656796087213"
+2026-11-11 20:07:36 sremon-srv1.sremon [UDP: [172.18.0.2]:59258->[172.18.0.4]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (1164) 0:00:11.64	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::authenticationFailure	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2026-11-11 20:07:38 sremon-srv1.sremon [UDP: [172.18.0.2]:59258->[172.18.0.4]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (1374) 0:00:13.74	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-AGENT-MIB::nsNotifyShutdown	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpNotificationPrefix
+2026-11-11 20:07:39 sremon-srv1.sremon [UDP: [172.18.0.2]:33226->[172.18.0.4]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (6) 0:00:00.06	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::coldStart	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2026-11-11 20:07:41 sremon-probe.sremon [UDP: [172.18.0.5]:53733->[172.18.0.4]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (13100837) 1 day, 12:23:28.37	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatNotification	NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatRate = INTEGER: 123456
+2026-11-11 20:07:41 sremon-probe.sremon [UDP: [172.18.0.5]:47295->[172.18.0.4]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (13100847) 1 day, 12:23:28.47	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-MIB::netSnmpPlaypen.0.2	NET-SNMP-MIB::netSnmpPlaypen.1.1 = STRING: "sre-inform-test"
+===RC 0

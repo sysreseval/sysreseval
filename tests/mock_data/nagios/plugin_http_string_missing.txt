@@ -1,0 +1,2 @@
+HTTP CRITICAL: HTTP/1.1 200 OK - string 'absent-string' not found on 'http://172.18.0.3:80/health' - 271 bytes in 0.000 second response time |time=0.000321s;;;0.000000;10.000000 size=271B;;;0;
+===RC 2

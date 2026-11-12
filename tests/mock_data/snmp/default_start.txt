@@ -1,0 +1,10 @@
+Job for snmpd.service failed because the control process exited with error code.
+See "systemctl status snmpd.service" and "journalctl -xeu snmpd.service" for details.
+failed
+Starting snmpd.service - Simple Network Management Protocol (SNMP) Daemon....
+Error opening specified endpoint "[::1]"
+Server Exiting with code 1
+snmpd.service: Main process exited, code=exited, status=1/FAILURE
+snmpd.service: Failed with result 'exit-code'.
+Failed to start snmpd.service - Simple Network Management Protocol (SNMP) Daemon..
+===RC 0

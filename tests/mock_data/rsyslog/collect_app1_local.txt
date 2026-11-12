@@ -1,0 +1,5 @@
+/var/log/syslog:2026-11-12T02:03:55.163646+00:00 app1 sre-probe: sreprobe.tok1.p1_control.1794449035
+/var/log/shop/shop.log:2026-11-12T02:03:55.162033+00:00 app1 sre-probe: sreprobe.tok1.p1_info.1794449035
+/var/log/shop/shop.log:2026-11-12T02:03:55.162935+00:00 app1 sre-probe: sreprobe.tok1.p1_err.1794449035
+/var/log/shop/alert.log:2026-11-12T02:03:55.162935+00:00 app1 sre-probe: sreprobe.tok1.p1_err.1794449035
+===RC 0

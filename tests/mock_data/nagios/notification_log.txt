@@ -1,0 +1,3 @@
+[1794431055] SERVICE NOTIFICATION: oncall;db1;DB;CUSTOM (OK);notify-service-by-sms;TCP OK - 0.000 second response time on 172.18.0.4 port 5432;sre-eval;tok123
+[1794431055] HOST NOTIFICATION: oncall;db1;CUSTOM (UP);notify-host-by-sms;PING OK - Packet loss = 0%, RTA = 0.02 ms;sre-eval;tok123
+===RC 0

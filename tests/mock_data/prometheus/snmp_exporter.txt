@@ -1,0 +1,31 @@
+# HELP ifHCInOctets Octets received on the interface - 1.3.6.1.2.1.31.1.1.1.6
+# TYPE ifHCInOctets counter
+ifHCInOctets{ifDescr="eth0",ifIndex="2"} 5295
+ifHCInOctets{ifDescr="lo",ifIndex="1"} 616
+# HELP ifHCOutOctets Octets sent on the interface - 1.3.6.1.2.1.31.1.1.1.10
+# TYPE ifHCOutOctets counter
+ifHCOutOctets{ifDescr="eth0",ifIndex="2"} 126
+ifHCOutOctets{ifDescr="lo",ifIndex="1"} 616
+# HELP ifOperStatus Operational state of the interface (1 up, 2 down) - 1.3.6.1.2.1.2.2.1.8
+# TYPE ifOperStatus gauge
+ifOperStatus{ifDescr="eth0",ifIndex="2"} 1
+ifOperStatus{ifDescr="lo",ifIndex="1"} 1
+# HELP snmp_scrape_duration_seconds Total SNMP time scrape took (walk and processing).
+# TYPE snmp_scrape_duration_seconds gauge
+snmp_scrape_duration_seconds 0.001262601
+# HELP snmp_scrape_packets_retried Packets retried for get, bulkget, and walk.
+# TYPE snmp_scrape_packets_retried gauge
+snmp_scrape_packets_retried 0
+# HELP snmp_scrape_packets_sent Packets sent for get, bulkget, and walk; including retries.
+# TYPE snmp_scrape_packets_sent gauge
+snmp_scrape_packets_sent 5
+# HELP snmp_scrape_pdus_returned PDUs returned from get, bulkget, and walk.
+# TYPE snmp_scrape_pdus_returned gauge
+snmp_scrape_pdus_returned 9
+# HELP snmp_scrape_walk_duration_seconds Time SNMP walk/bulkwalk took.
+# TYPE snmp_scrape_walk_duration_seconds gauge
+snmp_scrape_walk_duration_seconds 0.00120163
+# HELP sysUpTime Time since the SNMP agent started, in hundredths of a second - 1.3.6.1.2.1.1.3
+# TYPE sysUpTime gauge
+sysUpTime 915
+===RC 0

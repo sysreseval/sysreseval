@@ -1,0 +1,2 @@
+QUEUE WARNING - 10 travaux en attente | queue=10;10;20;0
+===RC 1

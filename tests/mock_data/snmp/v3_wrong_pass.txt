@@ -1,0 +1,2 @@
+snmpget: Authentication failure (incorrect password, community or key)
+===RC 1

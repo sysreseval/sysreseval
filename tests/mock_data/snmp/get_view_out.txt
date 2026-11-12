@@ -1,0 +1,4 @@
+.1.3.6.1.2.1.4.1.0 = No Such Object available on this agent at this OID
+.1.3.6.1.2.1.25.1.1.0 = No Such Object available on this agent at this OID
+.1.3.6.1.4.1.2021.4.5.0 = No Such Object available on this agent at this OID
+===RC 0

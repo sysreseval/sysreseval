@@ -1,0 +1,3 @@
+/usr/bin/nfcapd -D -P /run/nfcapd.default.pid -w /var/cache/nfdump -p 2055 -t 60 -I site1 -e 
+/usr/bin/nfcapd -D -P /run/nfcapd.default.pid -w /var/cache/nfdump -p 2055 -t 60 -I site1 -e 
+===END

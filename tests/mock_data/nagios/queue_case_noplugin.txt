@@ -1,0 +1,2 @@
+runuser: failed to execute /usr/local/lib/nagios/plugins/check_nothing: No such file or directory
+===RC 1

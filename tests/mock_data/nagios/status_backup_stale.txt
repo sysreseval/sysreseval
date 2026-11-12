@@ -1,0 +1,13 @@
+	check_command=backup-stale!60
+	check_type=0
+	current_state=2
+	plugin_output=CRITICAL: Aucune sauvegarde signalee depuis 60 secondes
+	long_plugin_output=
+	last_check=1794431204
+[1794431055] EXTERNAL COMMAND: PROCESS_SERVICE_CHECK_RESULT;db1;BACKUP;0;BACKUP OK - sre-eval tok123
+[1794431055] PASSIVE SERVICE CHECK: db1;BACKUP;0;(null)
+[1794431129] Warning: The results of service 'BACKUP' on host 'db1' are stale by 0d 0h 0m 14s (threshold=0d 0h 1m 0s).  I'm forcing an immediate check of the service.
+[1794431129] SERVICE NOTIFICATION: oncall;db1;BACKUP;CRITICAL;notify-service-by-sms;CRITICAL: Aucune sauvegarde signalee depuis 60 secondes
+[1794431129] SERVICE ALERT: db1;BACKUP;CRITICAL;HARD;1;CRITICAL: Aucune sauvegarde signalee depuis 60 secondes
+[1794431203] Warning: The results of service 'BACKUP' on host 'db1' are stale by 0d 0h 0m 14s (threshold=0d 0h 1m 0s).  I'm forcing an immediate check of the service.
+===RC 0

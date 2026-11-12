@@ -1,0 +1,11 @@
+Include nfcapd bookeeping record in /var/cache/nfdump
+First:     2026-11-12 02:33:00
+Last:      2026-11-12 02:40:00
+Lifetime:  420 = 7.0 min
+Numfiles:  8
+Filesize:  110592 = 108.0 KB
+Max Size:  <none>
+Max Life:  43200 = 12.0 hours
+Watermark: 95%
+Status:    OK
+===RC 0

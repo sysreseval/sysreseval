@@ -1,0 +1,22 @@
+{
+  "nagios.py": {
+    "en": "Nagios: supervising hosts and services",
+    "fr": "Nagios : superviser des hôtes et des services"
+  },
+  "netflow.py": {
+    "en": "Flow metrology: NetFlow with softflowd and nfdump",
+    "fr": "Métrologie des flux : NetFlow avec softflowd et nfdump"
+  },
+  "prometheus.py": {
+    "en": "Prometheus: metrics, queries and alerts",
+    "fr": "Prometheus : métriques, requêtes et alertes"
+  },
+  "rsyslog.py": {
+    "en": "Central logs: syslog, rsyslog and logrotate",
+    "fr": "Journaux centralisés : syslog, rsyslog et logrotate"
+  },
+  "snmp.py": {
+    "en": "SNMP: querying, configuring and securing agents",
+    "fr": "SNMP : interroger, configurer et sécuriser des agents"
+  }
+}

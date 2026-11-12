@@ -1,0 +1,28 @@
+softflowd[393]: Accumulated statistics since 2026-11-12T02:33:53 UTC:
+Number of active flows: 30
+Packets processed: 21796
+Fragments: 0
+Ignored packets: 40 (40 non-IP, 0 too short)
+Flows expired: 450 (0 forced)
+Flows exported: 450 (897 records) in 42 packets (0 failures)
+Packets received by libpcap: 22238
+Packets dropped by libpcap: 0
+Packets dropped by interface: 0
+
+Expired flow statistics:  minimum       average       maximum
+  Flow bytes:                  56         22939       3484224
+  Flow packets:                 1            44          6312
+  Duration:                  0.00s         0.53s        63.10s
+
+Expired flow reasons:
+       tcp =         1   tcp.rst =       385   tcp.fin =        32
+       udp =        27      icmp =         3   general =         0
+   maxlife =         2
+over 2 GiB =         0
+  maxflows =         0
+   flushed =         0
+
+Per-protocol statistics:     Octets      Packets   Avg Life    Max Life
+softflowd[393]: Template will be sent at next flow export
+rc=0
+===RC 0

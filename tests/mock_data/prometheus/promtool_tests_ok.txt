@@ -1,0 +1,21 @@
+===T rec
+Unit Testing:  /tmp/sre_pt_rec.yml
+  SUCCESS
+
+===RC 0
+===T down
+Unit Testing:  /tmp/sre_pt_down.yml
+  SUCCESS
+
+===RC 0
+===T queue
+Unit Testing:  /tmp/sre_pt_queue.yml
+  SUCCESS
+
+===RC 0
+===T watchdog
+Unit Testing:  /tmp/sre_pt_watchdog.yml
+  SUCCESS
+
+===RC 0
+===RC 0

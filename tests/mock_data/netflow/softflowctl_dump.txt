@@ -1,0 +1,39 @@
+softflowd[393]: Printing timeouts:
+           TCP timeout: 15s
+  TCP post-RST timeout: 15s
+  TCP post-FIN timeout: 15s
+           UDP timeout: 15s
+          ICMP timeout: 15s
+       General timeout: 15s
+      Maximum lifetime: 60s
+       Expiry interval: 10s
+===STATS
+softflowd[393]: Accumulated statistics since 2026-11-12T02:33:53 UTC:
+Number of active flows: 34
+Packets processed: 1700
+Fragments: 0
+Ignored packets: 12 (12 non-IP, 0 too short)
+Flows expired: 9 (0 forced)
+Flows exported: 9 (16 records) in 3 packets (0 failures)
+Packets received by libpcap: 1978
+Packets dropped by libpcap: 0
+Packets dropped by interface: 0
+
+Expired flow statistics:  minimum       average       maximum
+  Flow bytes:                  56           377          2480
+  Flow packets:                 1             3             8
+  Duration:                  0.00s         5.65s        50.69s
+
+Expired flow reasons:
+       tcp =         0   tcp.rst =         5   tcp.fin =         0
+       udp =         2      icmp =         2   general =         0
+   maxlife =         0
+over 2 GiB =         0
+  maxflows =         0
+   flushed =         0
+
+Per-protocol statistics:     Octets      Packets   Avg Life    Max Life
+            tcp (6):            500           10       0.00s       0.00s
+           udp (17):           2665           10       0.08s       0.15s
+     ipv6-icmp (58):            224            4      25.34s      50.69s
+===RC 0

@@ -1,0 +1,41 @@
+warning: logrotate in debug mode does nothing except printing debug messages!  Consider using verbose mode (-v) instead if this is not what you want.
+
+reading config file /etc/logrotate.d/remote
+Reading state from file: /var/lib/logrotate/status
+state file /var/lib/logrotate/status does not exist
+Allocating hash table for state file, size 64 entries
+
+Handling 1 logs
+
+rotating pattern: /var/log/remote/*/*.log  after 1 days (14 rotations)
+empty log files are not rotated, old logs are removed
+considering log /var/log/remote/ap-71be/sre-probe.log
+Creating new state
+  Now: 2026-11-12 02:03
+  Last rotated at 2026-11-12 02:00
+  log does not need rotating (log has already been rotated)
+considering log /var/log/remote/app1/kernel.log
+Creating new state
+  Now: 2026-11-12 02:03
+  Last rotated at 2026-11-12 02:00
+  log does not need rotating (log has already been rotated)
+considering log /var/log/remote/app1/rsyslogd.log
+Creating new state
+  Now: 2026-11-12 02:03
+  Last rotated at 2026-11-12 02:00
+  log does not need rotating (log has already been rotated)
+considering log /var/log/remote/app1/sre-probe.log
+Creating new state
+  Now: 2026-11-12 02:03
+  Last rotated at 2026-11-12 02:00
+  log does not need rotating (log has already been rotated)
+considering log /var/log/remote/app1/systemd.log
+Creating new state
+  Now: 2026-11-12 02:03
+  Last rotated at 2026-11-12 02:00
+  log does not need rotating (log has already been rotated)
+considering log /var/log/remote/fw-9c20/sre-probe.log
+Creating new state
+  Now: 2026-11-12 02:03
+  Last rotated at 2026-11-12 02:00
+===RC 0

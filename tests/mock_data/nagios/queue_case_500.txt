@@ -1,0 +1,2 @@
+QUEUE CRITICAL - 500 travaux en attente | queue=500;10;20;0
+===RC 2

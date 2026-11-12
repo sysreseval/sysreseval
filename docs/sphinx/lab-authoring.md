@@ -1204,6 +1204,62 @@ Facts worth knowing (verified in the running lab on 2026-11-11 and 12, Asterisk 
 - `media_encryption = sdes` refuses a plain `RTP/AVP` offer with `488`, and an endpoint without it refuses `RTP/SAVP`;
 - baresip finds `~/.baresip` through `$LOGNAME` or `$USER`, which a `docker exec` shell does not set: the image puts a wrapper in `/usr/local/bin`.
 
+### SNMP helpers (from `/opt/sre/lib/snmp.py`)
+
+```python
+from snmp import (set_snmp_agent, set_snmptrapd_service, snmp_get, snmp_walk, snmp_set, get_snmpd_conf,
+                  get_interface_rate, parse_snmp_output, parse_trap_log, OID)
+```
+
+Helpers of the SNMP lab (`lab/sre/_DRAFT_misc/snmp.py`) and of every lab that supervises a router over SNMP (Nagios, Prometheus); image `sysreseval/monitoring`. **State side**: `set_snmp_agent(net_scheme, machine, community, location, contact, sources=, extends=, systemd=False)` writes a `snmpd.conf` (`agentaddress udp:161`: Debian's default `127.0.0.1,[::1]` makes snmpd exit when IPv6 is off) and starts the agent, directly or through systemd; `set_snmptrapd_service(net_scheme, machine)` adds the drop-in that makes Debian's snmptrapd log the traps it receives (its unit's `-LOw` logs none) to `/var/log/snmptrapd.log`. **Grade side**: `snmp_get/snmp_walk/snmp_set(grade, machine, host, oids, community= | user=, auth=, priv=, ...)` → `SnmpResult` (`ran`, `ok`, `timed_out`, `refused`, `value(oid)`, `int(oid)`); the grader's own commands load no MIB (`-m '' -On`) and ignore the students' client files (`SNMPCONFPATH=/nonexistent`). `get_interface_rate()` measures a bit rate from two readings of a 64-bit counter, `parse_trap_log()` + `is_authentication_failure()` read the traps. Facts: a source refused by the community gives a timeout, a view gives `No Such Object`; `sysLocation` written in the file is `notWritable`; a v3 user created with `createUser` in `/var/lib/snmp/snmpd.conf` is replaced by a `usmUser` line at the first start.
+
+### Nagios helpers (from `/opt/sre/lib/nagios.py`)
+
+```python
+from nagios import (submit_external_commands, get_objects, get_status, checked_state, check_nrpe, plugin_case,
+                    get_notifications, get_sms, render_lab_templates, render_check_queue, render_nrpe_conf)
+```
+
+Helpers of the Nagios lab (`lab/sre/_DRAFT_misc/nagios.py`: Nagios 4.4, monitoring plugins 2.3, NRPE 4.1). The evaluation **gives orders to the students' Nagios** through its command pipe — `submit_external_commands(grade, machine, [external_command('SCHEDULE_FORCED_SVC_CHECK', host, service, '$n'), ...])` → `(t0, written)`, the epoch of the write printed by the container and whether Nagios was there to read — then reads `objects.cache` (`get_objects()` → `NagiosObjects`: templates resolved, group members, `effective_command()`) and, a dozen seconds later, `status.dat` (`get_status()`; `checked_state(block, since=t0)` grants a state only when it was checked after the orders: a status file left by a stopped Nagios gives nothing). `check_nrpe(grade, src, host, command=None)` and `plugin_case(...)` (a student's plugin run on temporary files, as `nagios`) return `PluginResult` (`state` read from the first word, `rc`, `perfdata`). `get_notifications()` / `get_sms()` read the log and the outbox of the lab's SMS gateway. `render_lab_templates()` writes two fast templates (30 s checks): Debian's checks every 5 minutes. Facts: Apache needs `a2enmod cgi` for the web interface; a forced check reaches `status.dat` within 10 s with `status_update_interval=5`; a passive result is `check_type=1`.
+
+### Prometheus helpers (from `/opt/sre/lib/prometheus.py`)
+
+```python
+from prometheus import (get_targets, get_rules, get_flags, compare_queries, matches_reference, mentions,
+                        promtool_tests, promtool_test_doc, blackbox_probe, snmp_exporter_probe, get_am_config,
+                        amtool_routes_test, get_am_alerts, webhook_probe, install_metrics_app,
+                        install_webhook_sink, install_prom_probe, render_prometheus_yml, to_yaml)
+```
+
+Helpers of the Prometheus lab (`lab/sre/_DRAFT_misc/prometheus.py`: Prometheus 2.42, Alertmanager 0.25, node / blackbox / SNMP exporters). **Typed PromQL**: `compare_queries(grade, machine, [(id, typed, reference)])` evaluates both expressions **at one instant** inside the container (`lib/prom_probe.py`), and `matches_reference(expr, ref)` wants the same series (the labels of one included in the other's) and values within 5 %, with a non-empty reference; `mentions(typed, 'metric', 'function')` refuses a typed constant. **Rules**: `promtool_tests(grade, machine, {tag: promtool_test_doc(rule_file, series, tests)})` runs the students' rule file on invented series (`for:` and thresholds checked without waiting; `ALERTS` is queryable). **Alerting end to end**: `webhook_probe(grade, 'chat', spec, am_url)` runs `lib/webhook_sink.py probe` on the receiver's machine: four alerts posted with a nonce in their names (a new group each time), their notifications awaited, their inhibition read back. Demo application: `install_metrics_app()` (`lib/metrics_app.py`, counters growing at constant rates, so the expected values are known: `expected_rates()`, `expected_quantile()`). Facts: the classic interface is under `/classic/`; **Debian's `blackbox.yml` has no final newline** (`cat >>` breaks it); a reload with a broken file exits 0 and keeps the old configuration; Alertmanager alone needs `--cluster.listen-address=`.
+
+### Central logs helpers (from `/opt/sre/lib/rsyslog.py`)
+
+```python
+from rsyslog import (logger_cmd, append_marker_cmd, http_marker_cmd, syslog_message, syslog_probe, collect_lines,
+                     fresh, where, get_established, parse_logrotate_conf, run_logrotate_sandbox, get_rotated,
+                     render_collector_conf, render_forward_conf, render_imfile_conf)
+```
+
+Helpers of the central logs lab (`lab/sre/_DRAFT_misc/rsyslog.py`: rsyslog 8.2302, logrotate). Every message the evaluation sends carries the marker `sreprobe.<token>.<id>.<epoch>` (the sender's clock): `collect_lines()` + `fresh(lines, t0)` + `where(lines, id)` tell in which files each message of this evaluation landed. Senders: `logger_cmd()`, `append_marker_cmd()` (a line in an application file read by `imfile`), `http_marker_cmd()` (a request into an access log) and raw RFC 3164 messages over UDP, TCP or TLS from a hidden machine (`lib/syslog_probe.py`: `syslog_probe(grade, machine, [syslog_message(id, host, token, proto=, hostname=, tls={'ca', 'cert', 'key', 'server_name'})])`). `run_logrotate_sandbox()` forces the rotation of the students' first logrotate block rewritten for one directory of the probe (never the real files), `get_rotated()` reads where the next message went. Facts: one `imtcp` serves plain 514 and gtls 6514 with per-input parameters; `x509/name` accepts a client certificate whose extended key usage is serverAuth only; `imfile` reads a file from its beginning at its first start; without a HUP rsyslog keeps writing into the renamed file.
+
+### NetFlow helpers (from `/opt/sre/lib/netflow.py`)
+
+```python
+from netflow import (get_softflowd, get_softflowctl, get_nfcapd, get_udp_listeners, get_nfexpire, get_flow_files,
+                     get_flows, get_export_header, render_softflowd_conf, render_nfcapd_conf, wait_for_flow_cmd)
+```
+
+Helpers of the flow metrology lab (`lab/sre/_DRAFT_misc/netflow.py`: softflowd 1.1, nfdump 1.7.1). The running configuration comes from the command lines of the daemons (`get_softflowd()`, `get_nfcapd()`) and from `softflowctl` (`get_softflowctl()` → timeouts, statistics); `get_flows(grade, machine, filter)` reads flows with a fixed `nfdump` output format (`FlowRow`: times, protocol, endpoints, packets, bytes, exporter) next to the collector's own clock (`===NOW`); `get_export_header()` decodes one export datagram captured with `tcpdump -x` (version, count, FlowSet ids). Facts: a UDP burst of N datagrams of P bytes is one flow of N × (P + 28) bytes; softflowd's IPv4 data FlowSet is id 1024; nfcapd writes a file every interval even without flows; a freshly restarted exporter sends nothing before its first flows expire (inactive timeout + expiry interval).
+
+### Traffic generator (from `/opt/sre/lib/traffic.py`)
+
+```python
+from traffic import install_traffic_gen, start_traffic, traffic_spec, listener, tcp_stream_job, scan_job, beacon_job
+```
+
+`lib/traffic_gen.py` (standard library only) runs listeners (`listener(port, 'tcp'|'udp', ip, mode='discard'|'reply'|'http')`) and jobs on chosen source addresses: a constant UDP rate (`cbr_job`), one long TCP stream (`tcp_stream_job`), a TCP port scan (`scan_job`), a periodic UDP beacon with a new source port per burst (`beacon_job`), background web and DNS requests (`web_job`, `dns_job`). `install_traffic_gen(net_scheme, machine)` then `start_traffic(net_scheme, machine, traffic_spec(listen=, jobs=, seed=))` (restarting replaces the previous generator). Used by the SNMP lab (a known bit rate through a router) and the NetFlow lab (traffic with recognisable shapes).
+
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python

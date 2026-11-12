@@ -1,0 +1,2 @@
+snmpget: Unknown user name
+===RC 1

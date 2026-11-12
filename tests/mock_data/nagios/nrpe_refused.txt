@@ -1,0 +1,2 @@
+CHECK_NRPE: Error - Could not connect to 172.18.0.3: Connection reset by peer
+===RC 2

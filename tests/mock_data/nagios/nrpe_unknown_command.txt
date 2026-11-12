@@ -1,0 +1,2 @@
+NRPE: Command 'check_nothing' not defined
+===RC 3

@@ -1,0 +1,5 @@
+Error in packet.
+Reason: notWritable (That object does not support modification)
+Failed object: .1.3.6.1.2.1.1.6.0
+
+===RC 2

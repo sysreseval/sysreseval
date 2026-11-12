@@ -1,0 +1,2 @@
+CRITICAL: Aucune sauvegarde signalee depuis 120 secondes
+===RC 2

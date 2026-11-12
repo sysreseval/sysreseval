@@ -1,0 +1,2 @@
+snmpget: No securityName specified
+===RC 1

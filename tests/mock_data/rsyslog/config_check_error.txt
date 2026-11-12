@@ -1,0 +1,4 @@
+rsyslogd: version 8.2302.0, config validation run (level 1), master config /etc/rsyslog.conf
+rsyslogd: error during parsing file /etc/rsyslog.d/99-bad.conf, on or before line 1: omfile: either the "file" or "dynafile" parameter must be given [v8.2302.0 try https://www.rsyslog.com/e/2207 ]
+rsyslogd: error during parsing file /etc/rsyslog.d/99-bad.conf, on or before line 1: errors occurred in file '/etc/rsyslog.d/99-bad.conf' around line 1 [v8.2302.0 try https://www.rsyslog.com/e/2207 ]
+===RC 1

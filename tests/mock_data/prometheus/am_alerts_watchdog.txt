@@ -1,0 +1,2 @@
+[{"annotations":{"summary":"Alerte permanente : la chaine d'alerte fonctionne"},"endsAt":"2026-11-11T22:05:54.638Z","fingerprint":"448881ef475b9b26","receivers":[{"name":"blackhole"}],"startsAt":"2026-11-11T22:00:39.638Z","status":{"inhibitedBy":[],"silencedBy":[],"state":"active"},"updatedAt":"2026-11-11T22:01:54.641Z","generatorURL":"http://prom:9090/graph?g0.expr=vector%281%29\u0026g0.tab=1","labels":{"alertname":"Watchdog","severity":"none"}}]
+===RC 0

@@ -1,0 +1,16 @@
+===LINES 13
+===TAIL
+NET-SNMP version 5.9.3
+2026-11-11 20:53:41 srv1 [UDP: [192.168.189.220]:36231->[192.168.95.36]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (5) 0:00:00.05	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::coldStart	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2026-11-11 20:53:52 srv1 [UDP: [192.168.189.220]:36231->[192.168.95.36]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (1109) 0:00:11.09	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::authenticationFailure	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2026-11-11 20:53:52 srv1 [UDP: [192.168.189.220]:36231->[192.168.95.36]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (1110) 0:00:11.10	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::authenticationFailure	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2026-11-11 20:53:53 srv1 [UDP: [192.168.189.220]:36231->[192.168.95.36]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (1215) 0:00:12.15	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::authenticationFailure	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+2026-11-11 20:53:57 <UNKNOWN> [UDP: [192.168.95.6]:34136->[192.168.95.36]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (13378510) 1 day, 13:09:45.10	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-MIB::netSnmpPlaypen.0.1	NET-SNMP-MIB::netSnmpPlaypen.1.1 = STRING: "sre-41f0584da82c-ok-1794430437883828439"
+2026-11-11 20:53:57 srv1 [UDP: [192.168.189.220]:36231->[192.168.95.36]:162]:
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (1629) 0:00:16.29	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::authenticationFailure	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+===RC 0

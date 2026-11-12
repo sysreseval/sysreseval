@@ -1,0 +1,9 @@
+total 4
+drwxr-xr-x 1 root       root        22 Nov 11 22:00 .
+drwxr-xr-x 1 prometheus prometheus  26 Nov 11 20:00 ..
+-rw-r--r-- 1 root       root       135 Nov 11 22:00 backup.prom
+# TYPE backup_last_size_bytes gauge
+backup_last_size_bytes{db="shop"} 7.340032e+08
+node_exporter_build_info{branch="debian/sid",goarch="amd64",goos="linux",goversion="go1.19.8",revision="1.5.0-1+b6",version="1.5.0"} 1
+node_textfile_scrape_error 0
+===RC 0

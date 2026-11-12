@@ -1,0 +1,2 @@
+SSH OK - OpenSSH_9.2p1 Debian-2+deb12u10 (protocol 2.0) | time=0.006242s;;;0.000000;10.000000
+===RC 0

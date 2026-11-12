@@ -1,0 +1,2 @@
+PROCS OK: 13 processes with command name 'nginx' | procs=13;;1:;0;
+===RC 0

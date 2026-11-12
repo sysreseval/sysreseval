@@ -1,0 +1,8 @@
+SNMPv2-MIB::sysName.0 = STRING: srv1
+SNMPv2-MIB::sysLocation.0 = STRING: Batiment B, salle 204, baie 3
+IF-MIB::ifNumber.0 = INTEGER: 2
+IP-MIB::ipForwarding.0 = INTEGER: forwarding(1)
+HOST-RESOURCES-MIB::hrSystemUptime.0 = Timeticks: (13098941) 1 day, 12:23:09.41
+SNMPv2-MIB::snmpEnableAuthenTraps.0 = INTEGER: enabled(1)
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (142) 0:00:01.42
+===RC 0

@@ -1,0 +1,7 @@
+[1794431171] SERVICE NOTIFICATION: oncall;db1;DB;OK;notify-service-by-sms;TCP OK - 0.000 second response time on 172.18.0.4 port 5432
+[1794431171] SERVICE ALERT: db1;DB;OK;HARD;3;TCP OK - 0.000 second response time on 172.18.0.4 port 5432
+[1794431179] SERVICE ALERT: localhost;SSH;CRITICAL;SOFT;1;connect to address 127.0.0.1 and port 22: Connection refused
+[1794431183] SERVICE NOTIFICATION: oncall;db1;PROCS;OK;notify-service-by-sms;PROCS OK: 1 process with command name 'labdb'
+[1794431183] SERVICE ALERT: db1;PROCS;OK;HARD;3;PROCS OK: 1 process with command name 'labdb'
+[1794431203] Warning: The results of service 'BACKUP' on host 'db1' are stale by 0d 0h 0m 14s (threshold=0d 0h 1m 0s).  I'm forcing an immediate check of the service.
+===RC 0

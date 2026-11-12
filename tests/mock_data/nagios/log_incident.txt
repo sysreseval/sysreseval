@@ -1,0 +1,12 @@
+[1794431093] SERVICE ALERT: db1;PROCS;CRITICAL;SOFT;1;PROCS CRITICAL: 0 processes with command name 'labdb'
+[1794431108] SERVICE ALERT: db1;PROCS;CRITICAL;SOFT;2;PROCS CRITICAL: 0 processes with command name 'labdb'
+[1794431111] SERVICE ALERT: db1;DB;CRITICAL;SOFT;1;connect to address 172.18.0.4 and port 5432: Connection refused
+[1794431123] SERVICE NOTIFICATION: oncall;db1;PROCS;CRITICAL;notify-service-by-sms;PROCS CRITICAL: 0 processes with command name 'labdb'
+[1794431123] SERVICE ALERT: db1;PROCS;CRITICAL;HARD;3;PROCS CRITICAL: 0 processes with command name 'labdb'
+[1794431126] SERVICE ALERT: db1;DB;CRITICAL;SOFT;2;connect to address 172.18.0.4 and port 5432: Connection refused
+[1794431129] Warning: The results of service 'BACKUP' on host 'db1' are stale by 0d 0h 0m 14s (threshold=0d 0h 1m 0s).  I'm forcing an immediate check of the service.
+[1794431129] SERVICE NOTIFICATION: oncall;db1;BACKUP;CRITICAL;notify-service-by-sms;CRITICAL: Aucune sauvegarde signalee depuis 60 secondes
+[1794431129] SERVICE ALERT: db1;BACKUP;CRITICAL;HARD;1;CRITICAL: Aucune sauvegarde signalee depuis 60 secondes
+[1794431141] SERVICE NOTIFICATION: oncall;db1;DB;CRITICAL;notify-service-by-sms;connect to address 172.18.0.4 and port 5432: Connection refused
+[1794431141] SERVICE ALERT: db1;DB;CRITICAL;HARD;3;connect to address 172.18.0.4 and port 5432: Connection refused
+===RC 0

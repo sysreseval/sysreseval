@@ -1,0 +1,9 @@
+warning: logrotate in debug mode does nothing except printing debug messages!  Consider using verbose mode (-v) instead if this is not what you want.
+
+reading config file /tmp/bad.conf
+error: /tmp/bad.conf:3 argument expected after rotate count
+error: found error in /var/log/remote/*/*.log , skipping
+Reading state from file: /var/lib/logrotate/status
+state file /var/lib/logrotate/status does not exist
+Allocating hash table for state file, size 64 entries
+===RC 1

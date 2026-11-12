@@ -1,0 +1,2 @@
+SNMP CRITICAL - ifOperStatus *1* | ifOperStatus=1;;2:2 
+===RC 2

@@ -1,0 +1,46 @@
+# HELP shop_http_requests_total Total number of HTTP requests served.
+# TYPE shop_http_requests_total counter
+shop_http_requests_total{method="GET",path="/",status="200"} 397
+shop_http_requests_total{method="GET",path="/products",status="200"} 242
+shop_http_requests_total{method="GET",path="/products",status="404"} 44
+shop_http_requests_total{method="GET",path="/cart",status="200"} 110
+shop_http_requests_total{method="POST",path="/cart",status="200"} 66
+shop_http_requests_total{method="POST",path="/checkout",status="200"} 66
+shop_http_requests_total{method="POST",path="/checkout",status="500"} 22
+shop_http_requests_total{method="GET",path="/search",status="200"} 132
+shop_http_requests_total{method="GET",path="/search",status="503"} 22
+# HELP shop_http_request_duration_seconds Duration of the HTTP requests.
+# TYPE shop_http_request_duration_seconds histogram
+shop_http_request_duration_seconds_bucket{method="GET",le="0.05"} 379
+shop_http_request_duration_seconds_bucket{method="GET",le="0.1"} 617
+shop_http_request_duration_seconds_bucket{method="GET",le="0.25"} 807
+shop_http_request_duration_seconds_bucket{method="GET",le="0.5"} 902
+shop_http_request_duration_seconds_bucket{method="GET",le="1"} 930
+shop_http_request_duration_seconds_bucket{method="GET",le="2.5"} 944
+shop_http_request_duration_seconds_bucket{method="GET",le="+Inf"} 949
+shop_http_request_duration_seconds_sum{method="GET"} 161.427
+shop_http_request_duration_seconds_count{method="GET"} 949
+shop_http_request_duration_seconds_bucket{method="POST",le="0.05"} 15
+shop_http_request_duration_seconds_bucket{method="POST",le="0.1"} 46
+shop_http_request_duration_seconds_bucket{method="POST",le="0.25"} 92
+shop_http_request_duration_seconds_bucket{method="POST",le="0.5"} 123
+shop_http_request_duration_seconds_bucket{method="POST",le="1"} 142
+shop_http_request_duration_seconds_bucket{method="POST",le="2.5"} 151
+shop_http_request_duration_seconds_bucket{method="POST",le="+Inf"} 154
+shop_http_request_duration_seconds_sum{method="POST"} 64.924
+shop_http_request_duration_seconds_count{method="POST"} 154
+# HELP shop_queue_length Number of jobs waiting in the queue.
+# TYPE shop_queue_length gauge
+shop_queue_length{queue="orders"} 25
+shop_queue_length{queue="emails"} 5
+# HELP shop_queue_capacity Maximum number of jobs the queue can hold.
+# TYPE shop_queue_capacity gauge
+shop_queue_capacity{queue="orders"} 100
+shop_queue_capacity{queue="emails"} 500
+# HELP shop_build_info Version of the application (the value is always 1).
+# TYPE shop_build_info gauge
+shop_build_info{version="2.7.1",commit="4f2a9c1"} 1
+# HELP process_start_time_seconds Start time of the process since the Unix epoch, in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1794434410.431
+===RC 0

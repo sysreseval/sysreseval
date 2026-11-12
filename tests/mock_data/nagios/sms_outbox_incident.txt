@@ -1,0 +1,8 @@
+1794431055	0612345678	CUSTOM db1/DB OK - TCP OK - 0.000 second response time on 172.18.0.4 port 5432
+1794431055	0612345678	CUSTOM db1 UP - PING OK - Packet loss = 0%, RTA = 0.02 ms
+1794431123	0612345678	PROBLEM db1/PROCS CRITICAL - PROCS CRITICAL: 0 processes with command name labdb
+1794431129	0612345678	PROBLEM db1/BACKUP CRITICAL - CRITICAL: Aucune sauvegarde signalee depuis 60 secondes
+1794431141	0612345678	PROBLEM db1/DB CRITICAL - connect to address 172.18.0.4 and port 5432: Connection refused
+1794431171	0612345678	RECOVERY db1/DB OK - TCP OK - 0.000 second response time on 172.18.0.4 port 5432
+1794431183	0612345678	RECOVERY db1/PROCS OK - PROCS OK: 1 process with command name labdb
+===RC 0

@@ -1,0 +1,7 @@
+2026-11-11 20:07:43 NET-SNMP version 5.9.3 Stopped.
+Stopping snmptrapd
+
+NET-SNMP version 5.9.3
+2026-11-11 20:07:44 UDP: [172.18.0.5]:44487->[172.18.0.4]:162 DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (13101194) 1 day, 12:23:31.94	SNMPv2-MIB::snmpTrapOID.0 = OID: NET-SNMP-MIB::netSnmpPlaypen.0.1	NET-SNMP-MIB::netSnmpPlaypen.1.1 = STRING: "sre-format2-test"
+2026-11-11 20:07:44 UDP: [172.18.0.2]:33226->[172.18.0.4]:162 DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (571) 0:00:05.71	SNMPv2-MIB::snmpTrapOID.0 = OID: SNMPv2-MIB::authenticationFailure	SNMPv2-MIB::snmpTrapEnterprise.0 = OID: NET-SNMP-MIB::netSnmpAgentOIDs.10
+===RC 0

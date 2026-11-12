@@ -1,0 +1,2 @@
+PING CRITICAL - Packet loss = 100%| rta=U;100.000000;500.000000;; pl=100%;20;60;0;
+===RC 2

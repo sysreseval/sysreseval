@@ -1,0 +1,19 @@
+===T down
+Unit Testing:  /tmp/sre_ptnone.yml
+  WARNING: no file match pattern /etc/prometheus/rules/nosuch.yml
+  FAILED:
+    expr: "count(ALERTS{alertname=\"InstanceDown\",alertstate=\"pending\",instance=\"db1:9100\"})", time: 1m45s,
+        exp: {} 1E+00
+        got: nil
+
+    expr: "count(ALERTS{alertname=\"InstanceDown\",alertstate=\"firing\",instance=\"db1:9100\",severity=\"critical\"})", time: 2m15s,
+        exp: {} 1E+00
+        got: nil
+
+    expr: "count(ALERTS{alertname=\"InstanceDown\",alertstate=\"firing\"})", time: 2m15s,
+        exp: {} 1E+00
+        got: nil
+
+
+===RC 1
+===RC 0

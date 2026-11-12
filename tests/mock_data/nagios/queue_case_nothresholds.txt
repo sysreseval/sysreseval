@@ -1,0 +1,2 @@
+QUEUE UNKNOWN - seuil -w absent ou invalide
+===RC 3

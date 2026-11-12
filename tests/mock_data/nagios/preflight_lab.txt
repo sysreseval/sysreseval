@@ -1,0 +1,26 @@
+
+Checking objects...
+	Checked 24 services.
+	Checked 4 hosts.
+	Checked 2 host groups.
+	Checked 1 service groups.
+	Checked 2 contacts.
+	Checked 2 contact groups.
+	Checked 185 commands.
+	Checked 5 time periods.
+	Checked 0 host escalations.
+	Checked 0 service escalations.
+Checking for circular paths...
+	Checked 4 hosts
+	Checked 0 service dependencies
+	Checked 0 host dependencies
+	Checked 5 timeperiods
+Checking global event handlers...
+Checking obsessive compulsive processor commands...
+Checking misc settings...
+
+Total Warnings: 0
+Total Errors:   0
+
+Things look okay - No serious problems were detected during the pre-flight check
+===RC 0

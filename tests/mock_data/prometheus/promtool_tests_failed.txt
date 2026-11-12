@@ -1,0 +1,23 @@
+===T down
+Unit Testing:  /tmp/sre_ptbad_down.yml
+  FAILED:
+    expr: "count(ALERTS{alertname=\"InstanceDown\",alertstate=\"firing\",instance=\"db1:9100\",severity=\"critical\"})", time: 2m15s,
+        exp: {} 1E+00
+        got: nil
+
+    expr: "count(ALERTS{alertname=\"InstanceDown\",alertstate=\"firing\"})", time: 2m15s,
+        exp: {} 1E+00
+        got: nil
+
+
+===RC 1
+===T queue
+Unit Testing:  /tmp/sre_ptbad_queue.yml
+  FAILED:
+    expr: "count(ALERTS{alertname=\"QueueTooLong\",alertstate=\"firing\"})", time: 1m15s,
+        exp: nil
+        got: {} 1E+00
+
+
+===RC 1
+===RC 0
