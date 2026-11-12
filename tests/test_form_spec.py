@@ -9,8 +9,9 @@ import pytest
 from SRE import params
 from SRE.common import QuestionForm, TranslatedText
 from SRE.form_spec import (
-    FIELD_RE, FieldChunk, TextChunk, chunks_to_json, coerce_answers, default_answers, field_chunks,
-    field_to_json, form_fields, parse_field_spec, parse_form_description, validate_answers,
+    FIELD_RE, FieldChunk, FormRow, TextChunk, chunks_to_json, coerce_answers, default_answers, field_chunks,
+    field_to_json, form_fields, layout_rows, parse_field_spec, parse_form_description, split_inline_name,
+    validate_answers,
 )
 from SRE.instructor_text import instructor, set_instructor_context
 from SRE.lib_sre import Grade0, make_tr
@@ -328,3 +329,172 @@ class TestChunksToJson:
         shown = chunks_to_json(parse_form_description(text), show_instructor=True)
         assert "secret" in shown[0]["html"] and params.instructor_text_color in shown[0]["html"]
         assert "secret" not in student[0]["html"]
+
+
+# ---------------------------------------------------------------------------
+# inline fields: @@{name~N:spec}@@
+# ---------------------------------------------------------------------------
+
+# the line of lab/sre/_DRAFT_misc/traceroute.py the inline fields were made for, between two
+# other items of its list
+ICMP_FORM = ("**Mesures.**\n\n- Hops: @@{routers:[0-9]+}@@\n"
+             "- ICMP message: type @@{icmp_type~4:[0-9]+}@@, code @@{icmp_code~4:[0-9]+}@@\n"
+             "- Silent hop: @@{silent_hop:[0-9]+}@@\n")
+
+
+def shape(rows) -> list:
+    """The rows as ``(inline, [text or <name>, ...])``: what a renderer draws, in order."""
+    return [(row.inline, [chunk.text if isinstance(chunk, TextChunk) else f"<{chunk.name}>"
+                          for chunk in row.items]) for row in rows]
+
+
+class TestInlineName:
+    def test_suffix(self):
+        assert split_inline_name('mask~4') == ('mask', True, 4)
+        assert split_inline_name('mask~') == ('mask', True, params.default_inline_field_width)
+        assert split_inline_name('mask~0') == ('mask', True, params.default_inline_field_width)
+        assert split_inline_name('mask') == ('mask', False, None)
+
+    def test_only_a_suffix_counts(self):
+        assert split_inline_name('a~b') == ('a~b', False, None)
+        assert split_inline_name('a~b~12') == ('a~b', True, 12)
+        assert split_inline_name('~') == ('~', False, None)       # no name before the mark
+        assert split_inline_name('~4') == ('~4', False, None)
+
+    def test_line(self):
+        assert parse_field_spec('n~4', '[0-9]+') == FieldChunk('n', 'line', regex='[0-9]+', inline=True, width=4)
+        chunk = parse_field_spec('n~', '')
+        assert (chunk.name, chunk.inline, chunk.width) == ('n', True, params.default_inline_field_width)
+
+    def test_select_takes_no_width(self):
+        chunk = parse_field_spec('s~8', '>a|b')
+        assert chunk == FieldChunk('s', 'select', options=[('a', 'a'), ('b', 'b')], inline=True)
+        assert chunk.width is None
+
+    @pytest.mark.parametrize('spec, kind', [('?true', 'checkbox'), ('+3', 'multiline'), (':Go', 'submit')])
+    def test_other_kinds_lose_the_suffix_and_stay_block(self, spec, kind):
+        chunk = parse_field_spec('x~4', spec, allow_submit=True)
+        assert (chunk.name, chunk.kind, chunk.inline, chunk.width) == ('x', kind, False, None)
+
+    def test_names_are_clean_everywhere(self):
+        chunks = parse_form_description(ICMP_FORM)
+        assert [chunk.name for chunk in field_chunks(chunks)] == ['routers', 'icmp_type', 'icmp_code', 'silent_hop']
+        assert form_fields(ICMP_FORM) == [
+            {"name": "routers", "regex": "[0-9]+"}, {"name": "icmp_type", "regex": "[0-9]+"},
+            {"name": "icmp_code", "regex": "[0-9]+"}, {"name": "silent_hop", "regex": "[0-9]+"}]
+        assert default_answers(chunks) == {'routers': '', 'icmp_type': '', 'icmp_code': '', 'silent_hop': ''}
+        assert coerce_answers(chunks, {'icmp_type': 11, 'icmp_code~4': '0'})['icmp_type'] == '11'
+        assert list(validate_answers(chunks, {'routers': '1', 'icmp_type': 'x', 'icmp_code': '0',
+                                              'silent_hop': '2'})) == ['icmp_type']
+
+    def test_stored_question(self):
+        question = stored_question("ICMP", ICMP_FORM)
+        assert [f["name"] for f in question.fields] == ['routers', 'icmp_type', 'icmp_code', 'silent_hop']
+
+
+class TestLayoutRows:
+    def test_without_inline_field_the_rows_are_the_pairs(self):
+        chunks = parse_form_description(EVERY_SPEC, allow_submit=True)
+        rows = layout_rows(chunks)
+        assert all(not row.inline for row in rows)
+        # the very chunks, in order: a text and its field, then the last text alone
+        assert [chunk for row in rows for chunk in row.items] == chunks
+        assert all(isinstance(row.items[0], TextChunk) for row in rows)
+        assert [len(row.items) for row in rows] == [2] * len(field_chunks(chunks)) + [1]
+        assert layout_rows(parse_form_description("Just text")) == [FormRow([TextChunk("Just text")])]
+
+    def test_two_fields_of_one_source_line_share_a_row(self):
+        assert shape(layout_rows(parse_form_description(ICMP_FORM))) == [
+            (False, ["**Mesures.**\n\n- Hops: ", "<routers>"]),
+            (True, ["- ICMP message: type ", "<icmp_type>", ", code ", "<icmp_code>"]),
+            (False, ["- Silent hop: ", "<silent_hop>"]),
+            (False, ["\n"]),     # the text after the last field, as the chunks always end
+        ]
+
+    def test_the_end_of_the_line_stays_on_the_row(self):
+        form = "- hold: @@{hold~4:[0-9]+}@@ s, keepalive: @@{keepalive~4:[0-9]+}@@ s\n- next: @@{n:}@@"
+        assert shape(layout_rows(parse_form_description(form))) == [
+            (True, ["- hold: ", "<hold>", " s, keepalive: ", "<keepalive>", " s"]),
+            (False, ["- next: ", "<n>"]),
+            (False, [""]),
+        ]
+        # the last text of the form, without newline
+        assert shape(layout_rows(parse_form_description("T: @@{t~:}@@ seconds"))) == [
+            (True, ["T: ", "<t>", " seconds"])]
+
+    def test_the_lines_above_the_label_are_a_block(self):
+        form = "Intro.\n\nMore.\nLabel: @@{a~3:}@@\nAfter."
+        assert shape(layout_rows(parse_form_description(form))) == [
+            (False, ["Intro.\n\nMore."]),
+            (True, ["Label: ", "<a>"]),
+            (False, ["After."]),
+        ]
+
+    def test_a_newline_between_two_inline_fields_starts_a_row(self):
+        form = "A: @@{a~3:}@@\nB: @@{b~3:}@@"
+        assert shape(layout_rows(parse_form_description(form))) == [
+            (True, ["A: ", "<a>"]), (True, ["B: ", "<b>"])]
+
+    def test_blank_texts_are_left_out_of_an_inline_row(self):
+        assert shape(layout_rows(parse_form_description("@@{p~:>UDP|TCP}@@ @@{port~5:[0-9]+}@@\n"))) == [
+            (True, ["<p>", "<port>"]), (False, [""])]
+
+    def test_a_block_field_after_an_inline_one(self):
+        # the text between them, without newline, is the label of the block field
+        form = "A: @@{a~3:}@@ notes: @@{notes:+2}@@ B: @@{b~3:}@@"
+        assert shape(layout_rows(parse_form_description(form))) == [
+            (True, ["A: ", "<a>"]), (False, [" notes: ", "<notes>"]), (True, [" B: ", "<b>"])]
+
+    def test_an_ignored_suffix_is_a_block_row(self):
+        assert shape(layout_rows(parse_form_description("Done: @@{ok~:?}@@ N: @@{n~2:}@@"))) == [
+            (False, ["Done: ", "<ok>"]), (True, [" N: ", "<n>"])]
+
+    def test_instructor_fragment_across_the_splits(self, instructor_mode):
+        form = instructor("Hint above.\nHint: @@{a~3:}@@ end of hint\nhint below") + " public"
+        rows = layout_rows(parse_form_description(form))
+        assert [row.inline for row in rows] == [False, True, False]
+        texts = [chunk for row in rows for chunk in row.items if isinstance(chunk, TextChunk)]
+        assert [t.visible_text(True) for t in texts] == [
+            "Hint above.", "Hint: ", " end of hint", "hint below public"]
+        assert [t.visible_text(False) for t in texts] == ["", "", "", " public"]
+        for text in texts:
+            assert text.text.count(params.instructor_begin_mark) == text.text.count(params.instructor_end_mark)
+
+
+class TestInlineChunksToJson:
+    fake_markdown = staticmethod(TestChunksToJson.fake_markdown)
+
+    def test_rows_and_widths(self):
+        items = chunks_to_json(parse_form_description(ICMP_FORM), show_instructor=False,
+                               markdown=self.fake_markdown)
+        assert [(item["type"], item.get("name") or item["html"], item.get("row"), item.get("width"))
+                for item in items] == [
+            ("text", "<**Mesures.**\n\n- Hops:>", None, None),
+            ("field", "routers", None, None),
+            ("text", "<- ICMP message: type>", 1, None),
+            ("field", "icmp_type", 1, 4),
+            ("text", "<, code>", 1, None),
+            ("field", "icmp_code", 1, 4),
+            ("text", "<- Silent hop:>", None, None),
+            ("field", "silent_hop", None, None),
+        ]
+        # the keys exist on the items of an inline row only
+        assert "row" not in items[1] and "width" not in items[1]
+
+    def test_two_rows_have_two_numbers(self):
+        items = chunks_to_json(parse_form_description("A: @@{a~3:}@@\nB: @@{b~:>x|y}@@"),
+                               show_instructor=False, markdown=self.fake_markdown)
+        assert [item["row"] for item in items] == [0, 0, 1, 1]
+        assert items[1]["width"] == 3 and "width" not in items[3]      # a select has no width
+
+    def test_a_form_without_inline_field_is_unchanged(self):
+        items = chunks_to_json(parse_form_description(EVERY_SPEC, allow_submit=True), show_instructor=False,
+                               markdown=self.fake_markdown)
+        assert all("row" not in item and "width" not in item for item in items)
+        assert all(set(item) == {"type", "name", "kind", "options", "lines", "regex", "default", "label"}
+                   for item in items if item["type"] == "field")
+
+    def test_default_markdown_of_a_row(self):
+        items = chunks_to_json(parse_form_description(ICMP_FORM), show_instructor=False)
+        assert items[2] == {"type": "text", "html": "<ul>\n<li>ICMP message: type</li>\n</ul>", "row": 1}
+        assert items[4] == {"type": "text", "html": "<p>, code</p>", "row": 1}

@@ -26,18 +26,33 @@ The specs, tried in this order:
 The text chunks go through ``instructor_text.rebalance_fragments()``: an instructor fragment
 running across a field is closed before it and reopened after it, so that every chunk renders on
 its own.
+
+**Inline fields.**  A field takes a row of its own, below the text that precedes it, unless its
+name carries the suffix ``~N``: ``@@{mask~4:[0-9]+}@@`` is the field ``mask`` drawn *inline*, N
+characters wide (``~`` alone: ``params.default_inline_field_width``), on the row of its label and
+of the other inline fields of its source line.  The suffix is never part of the name and only
+counts for the ``line`` and ``select`` kinds.  :func:`layout_rows` gives the rows every renderer
+draws: an inline row is one source line, from the last newline before the label of its first
+field to the first newline after its last field.
 """
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Literal
 
+from . import params
 from .common import TranslatedText, form_field_lines
 from .instructor_text import markdown_to_html, rebalance_fragments, strip_instructor, unwrap_instructor
 
 # the one regex of the grammar: group 1 = field name, group 2 = spec
 FIELD_RE = re.compile(r'@@\{([^:}]+):([^}]*)\}@@')
 
+# the suffix of the name of an inline field: ``name~N`` (N characters wide) or ``name~``
+INLINE_MARK = '~'
+_INLINE_NAME_RE = re.compile(r'(.+?)' + re.escape(INLINE_MARK) + r'(\d*)', re.DOTALL)
+
 FieldKind = Literal['checkbox', 'select', 'multiline', 'line', 'submit']
+
+INLINE_KINDS = ('line', 'select')  # the kinds a renderer can draw on the row of their label
 
 
 @dataclass
@@ -65,6 +80,8 @@ class FieldChunk:
     regex: str = ''                             # line: the pattern the value must fully match
     default: bool = False                       # checkbox: checked at first
     label: str = ''                             # submit: the text of the button
+    inline: bool = False                        # line, select: on the row of its label (name~N)
+    width: int | None = None                    # inline line: width in characters
 
     @property
     def labels(self) -> list:
@@ -89,8 +106,30 @@ def _checkbox_default(word: str) -> bool:
     return word.strip().lower() not in ('', 'false')
 
 
+def split_inline_name(name: str) -> tuple:
+    """``(name, inline, width)`` of the name part of a marker: ``mask~4`` → ``('mask', True, 4)``,
+    ``mask~`` (or ``mask~0``) → ``('mask', True, params.default_inline_field_width)``, a name
+    without the suffix → ``(name, False, None)``."""
+    m = _INLINE_NAME_RE.fullmatch(name)
+    if m is None:
+        return name, False, None
+    return m.group(1), True, int(m.group(2) or 0) or params.default_inline_field_width
+
+
 def parse_field_spec(name: str, spec: str, *, allow_submit: bool = False) -> FieldChunk:
-    """The :class:`FieldChunk` of one marker ``@@{name:spec}@@``."""
+    """The :class:`FieldChunk` of one marker ``@@{name:spec}@@``.  The inline suffix of the name
+    (``name~N``) is taken off whatever the kind; it makes the field inline when the kind is one
+    of :data:`INLINE_KINDS`."""
+    name, inline, width = split_inline_name(name)
+    chunk = _parse_kind(name, spec, allow_submit=allow_submit)
+    if inline and chunk.kind in INLINE_KINDS:
+        chunk.inline = True
+        chunk.width = width if chunk.kind == 'line' else None
+    return chunk
+
+
+def _parse_kind(name: str, spec: str, *, allow_submit: bool = False) -> FieldChunk:
+    """The chunk of the field *name* (its inline suffix already taken off) for *spec*."""
     if spec.startswith('?'):
         return FieldChunk(name, 'checkbox', default=_checkbox_default(spec[1:]))
     if allow_submit and spec.startswith(':'):
@@ -140,6 +179,72 @@ def parse_form_description(description, *, allow_submit: bool = False) -> list:
 def field_chunks(chunks) -> list:
     """The :class:`FieldChunk` items of *chunks*, in order."""
     return [chunk for chunk in chunks if isinstance(chunk, FieldChunk)]
+
+
+@dataclass
+class FormRow:
+    """One row of a rendered form, ``items`` being its chunks in order.
+
+    A block row (*inline* false) is ``[TextChunk, FieldChunk]``, or ``[TextChunk]`` for a text
+    without field: the text above its field, a checkbox at the end of its text, as the forms were
+    always drawn.  An inline row holds texts and inline fields drawn side by side."""
+    items: list
+    inline: bool = False
+
+
+def _split_line(text: str, *, first: bool) -> tuple:
+    """*text* cut at its first newline (*first*) or at its last one, the newline left out, each
+    part keeping whole instructor fragments.  Without newline everything is the second part."""
+    head, _, tail = text.partition('\n') if first else text.rpartition('\n')
+    return tuple(rebalance_fragments([head, tail]))
+
+
+def layout_rows(chunks) -> list:
+    """The rows of a form, as a list of :class:`FormRow`: what every renderer draws.
+
+    A field that is not inline gives a block row with the text before it; without any inline
+    field the rows are the pairs the chunks make.  An inline field (``name~N``) goes on a row
+    with its label, which is the last source line of the text before it (the lines above make a
+    block row of their own); the next inline field joins that row when no newline separates
+    them, and what follows the last field up to the end of its source line stays on the row.
+    Blank texts are left out of an inline row."""
+    rows = []
+    row = None       # the inline row still open: an inline field of the same source line joins it
+    pending = None   # the text waiting for the field that follows it
+    for chunk in chunks:
+        if isinstance(chunk, TextChunk):
+            pending = chunk
+            if row is not None and '\n' in chunk.text:
+                # the source line of the row ends here: what is left of it stays on the row
+                head, tail = _split_line(chunk.text, first=True)
+                if head.strip():
+                    row.items.append(TextChunk(head))
+                row = None
+                pending = TextChunk(tail)
+            continue
+        if pending is None:
+            pending = TextChunk('')
+        if chunk.inline:
+            if row is None:
+                above, label = _split_line(pending.text, first=False)
+                if above.strip():
+                    rows.append(FormRow([TextChunk(above)]))
+                row = FormRow([], inline=True)
+                rows.append(row)
+                pending = TextChunk(label)
+            if pending.text.strip():
+                row.items.append(pending)
+            row.items.append(chunk)
+        else:
+            row = None
+            rows.append(FormRow([pending, chunk]))
+        pending = None
+    if pending is not None:
+        if row is None:
+            rows.append(FormRow([pending]))
+        elif pending.text.strip():
+            row.items.append(pending)   # no newline in it: the end of the line of the row
+    return rows
 
 
 def _info_field(chunk: FieldChunk) -> dict:
@@ -228,27 +333,39 @@ def validate_answers(chunks, answers: dict, *, allow_empty: bool = False) -> dic
 
 
 def field_to_json(chunk: FieldChunk) -> dict:
-    """The JSON object of a field: ``type`` ``field`` plus every attribute of the chunk."""
-    return {"type": "field", "name": chunk.name, "kind": chunk.kind,
+    """The JSON object of a field: ``type`` ``field`` plus the attributes of the chunk (``width``
+    for an inline line field only: a form without inline field gives what it always gave)."""
+    item = {"type": "field", "name": chunk.name, "kind": chunk.kind,
             "options": [[label, value] for label, value in chunk.options],
             "lines": chunk.lines, "regex": chunk.regex, "default": chunk.default,
             "label": chunk.label}
+    if chunk.inline and chunk.width:
+        item["width"] = chunk.width
+    return item
 
 
 def chunks_to_json(chunks, *, show_instructor: bool, markdown: Callable | None = None) -> list:
-    """The chunks as JSON objects, in order: ``{"type": "text", "html": ...}`` for a text chunk
-    with something to draw (the instructor fragments shown with *show_instructor*, left out
-    otherwise, like the GUI), rendered by *markdown* (``instructor_text.markdown_to_html`` with
-    *show_instructor* by default), and :func:`field_to_json` for a field.  A checkbox whose
-    previous item is a text goes on its row, as in the GUI."""
+    """The chunks as JSON objects, in the order of :func:`layout_rows`: ``{"type": "text",
+    "html": ...}`` for a text with something to draw (the instructor fragments shown with
+    *show_instructor*, left out otherwise, like the GUI), rendered by *markdown*
+    (``instructor_text.markdown_to_html`` with *show_instructor* by default), and
+    :func:`field_to_json` for a field.  A checkbox whose previous item is a text goes on its
+    row, as in the GUI.  The items of an inline row all carry the same ``"row"`` number, which
+    no other item has: the list stays flat, a reader that ignores the key draws the form with
+    one field per row."""
     if markdown is None:
         def markdown(text):
             return markdown_to_html(text, show_instructor=show_instructor)
     result = []
-    for chunk in chunks:
-        if isinstance(chunk, TextChunk):
-            if chunk.has_text(show_instructor):
-                result.append({"type": "text", "html": markdown(chunk.text)})
-        else:
-            result.append(field_to_json(chunk))
+    for index, row in enumerate(layout_rows(chunks)):
+        for chunk in row.items:
+            if isinstance(chunk, TextChunk):
+                if not chunk.has_text(show_instructor):
+                    continue
+                item = {"type": "text", "html": markdown(chunk.text)}
+            else:
+                item = field_to_json(chunk)
+            if row.inline:
+                item["row"] = index
+            result.append(item)
     return result

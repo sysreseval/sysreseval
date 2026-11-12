@@ -391,6 +391,7 @@ content_font_size = 12  # font size in points for information/questions views
 # questions): Qt draws the tables without cell padding, the columns touch each other otherwise
 content_style_sheet = "th, td { padding: 2px 8px; }"
 default_form_field_lines = 4  # visible lines of a @@{name:+}@@ multi-line form field
+default_inline_field_width = 10  # width in characters of a @@{name~:regex}@@ inline form field
 system_font_size = 10  # font size in points for menus, titles, labels
 
 # Instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`): default colours of the

@@ -846,7 +846,7 @@ ping -n -c 1 -R target              # RR: adresses de sortie, 9 au plus
 - Nombre de routeurs traversés (`gw` compris) : @@{routers:[0-9]+}@@
 - `ttl=` affiché par `ping -n -c 1 target` : @@{reply_ttl:[0-9]+}@@
 - TTL initial des paquets émis par `target` : @@{initial_ttl:>32|64|128|255}@@
-- Message ICMP qui révèle chaque routeur : type @@{icmp_type:[0-9]+}@@, code @@{icmp_code:[0-9]+}@@
+- Message ICMP qui révèle chaque routeur : type @@{icmp_type~4:[0-9]+}@@, code @@{icmp_code~4:[0-9]+}@@
 - Numéro du saut qui ne répond pas (1 = `gw`) : @@{silent_hop:[0-9]+}@@
 """)
             + instructor(tr("""

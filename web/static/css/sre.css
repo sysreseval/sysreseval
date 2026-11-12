@@ -529,6 +529,13 @@ dialog.group-edit input[type="text"], dialog.group-edit textarea { display: bloc
 .form .form-field select { font-size: var(--content-font-size); }
 .form input[type="checkbox"] { width: 16px; height: 16px; }
 .form .form-field input.invalid { border-color: var(--danger); }
+/* an inline row (the fields a lab names name~N): the texts and the fields of one source line side
+   by side on the line of the text, a text keeping the margins it has on a row of its own */
+.form .form-row.inline { flex-wrap: wrap; align-items: baseline; gap: 0 6px; padding: 4px 0; }
+.form .form-row.inline .form-text { flex: 0 1 auto; padding: 0; }
+.form .form-row.inline .form-text.nowrap { flex-shrink: 0; overflow-x: visible; }
+.form .form-row.inline input[type="text"], .form .form-row.inline select { font-size: var(--content-font-size); }
+.form .form-row.inline input.invalid { border-color: var(--danger); }
 
 /* evaluation */
 .evaluation-bar { display: flex; align-items: center; gap: 10px; padding: 8px; flex: none; }

@@ -2080,6 +2080,9 @@ class Grade0:
         spec: a regex (single-line text input), '>a|b' or 'Label>>>value|...' (dropdown),
         '?' / '?true' (checkbox), '+' / '+N' (multi-line free text of N visible lines,
         params.default_form_field_lines by default); the grammar is that of SRE.form_spec.
+        A text input or a dropdown named @@{field_name~N:spec}@@ is drawn inline, N characters
+        wide, on the row of its label and of the other inline fields of its source line
+        (the field is still field_name).
         Returns the student's answers as a dict {field_name: value}, or {} if none yet.
         cheat_answers format: {state_name: {field_name: value, ...}}
         """

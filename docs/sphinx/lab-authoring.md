@@ -890,7 +890,7 @@ Three kinds of questions, registered from `grade()` like the tests and shown in 
 
 The three take `section=` (a prefix of the title, usually `self.section(level)`, see [Grade methods](#grade-methods)), `order=` (an integer sorting the questions in the tab; without it the questions get 100, 200, 300… in registration order, so `order=150` slips one between the first two) and `hash=` (the identity of the question in the answers file and in the archives: by default the SHA-256 of the title for a `question_text`, of the title and the description for the two others, so that a change of a form's description, a field spec included, detaches the stored answers unless `hash=` pins it; the instructor fragments and the numbering markers never count).
 
-**The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, a checkbox taking the row of the text before it. `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form); `spec` gives the kind of input:
+**The fields of a form.** A form is a markdown description holding `@@{name:spec}@@` markers; the text between the markers is rendered like the description of a `question_text`, each input on a row of its own below the text before it (a checkbox at the end of the row of that text; see *Inline fields* below for an input on the row of its label). `name` is the key of the field in the returned dict (any characters but `:` and `}`, unique within the form; a final `~N` is the inline suffix, never part of the name); `spec` gives the kind of input:
 
 | Marker | Input | Value returned |
 |--------|-------|----------------|
@@ -904,6 +904,23 @@ The three take `section=` (a prefix of the title, usually `self.section(level)`,
 - The regex is a Python one, matched with `re.fullmatch()`. The GUI installs it as the validator of the input (a keystroke that can lead to no match is refused), the web front-end marks the input invalid (the `pattern` attribute, so the regex must be a valid JavaScript one too); in both cases the answer is saved as typed, a field left halfway or empty included, so the lab checks the value itself, as it does for a `question_text` answer.
 - The options of a dropdown may hold spaces and accents; `|` separates them and `>>>` a label from its value, so neither can appear inside an option. The labelled form lets the student read a sentence while the lab compares a code.
 - The markers must be the same in every language of a `tr()` description: the field list is read from one of its values.
+
+**Inline fields.** A single-line text or a dropdown takes a row of its own, as wide as the form, below the text before it. With `~N` after its name it is drawn on the row of its label instead, N characters wide (`~` alone: `params.default_inline_field_width` = 10 characters; a dropdown keeps the width of its options whatever N):
+
+```python
+description=tr("""
+- ICMP message revealing each router: type @@{icmp_type~4:[0-9]+}@@, code @@{icmp_code~4:[0-9]+}@@
+- Negotiated hold time: @@{hold~4:[0-9]+}@@ s
+- Number of routers crossed: @@{routers:[0-9]+}@@
+""")
+```
+
+shows `• ICMP message revealing each router: type [____] , code [____]` on one row and `• Negotiated hold time: [____] s` on the next, while `routers` keeps its full-width input below its text. The answers are read as `q.get('icmp_type')`, `q.get('icmp_code')`, `q.get('hold')`: the suffix is not part of the name, in the cheat answers and the archives either.
+
+- An inline row is **one source line** of the description: the text of that line before its first inline field (the lines above are drawn above the row), the inline fields that follow each other without a newline with the text between them, and what follows the last one up to the end of the line. So write the label and its fields on one line; a label too long for the window wraps, the fields staying on its last line.
+- A field without the suffix keeps a row of its own, also when it is written on the line of an inline field. On a checkbox, a multi-line text and a button the suffix is taken off the name and ignored.
+- The GUI, the web front-end and the Flavor forms draw the rows the same way. A form without the suffix is drawn exactly as before.
+- Adding the suffix changes the description, hence the hash of the question (see `hash=` above). A lab using it needs an SRE that knows it: an older one takes `icmp_type~4` for the name of the field.
 
 ```python
 q = self.question_form(
@@ -985,7 +1002,7 @@ Override `mark_exo_eval()` (and/or `mark_self_eval()`) on the `Grade` subclass w
 | `self.test_host(command, step=1, timeout=20, allow_error=False, default_value='', default_code=0)` | Same as `self.test` but the command runs on the host. Refused if `params.execute_commands_on_host is False`. |
 | `self.test_switch(network, command, step=1, default_value='', default_code=0, allow_error=False)` | Same as `self.test` for one command of the management console of the managed switch `network` (`vlan/print`, `port/print @pc1`: `@machine` is the port number of the machine). The exit code is `0`, the error number given by the switch or `-2`. The result is archived with the tests of the machines, under the name of the network. See [Switches and VLANs](#switches-and-vlans). |
 | `self.question_text(title, section='', description='', hash=None, order=None, default_answer='', cheat_answers=None)` | Register a free-text question; returns the student's answer (or `default_answer`). See [Questions](#questions). |
-| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question: one input per `@@{field:spec}@@` marker of the description — single-line text with a regex, multi-line text, dropdown, checkbox; the grammar is in [Questions](#questions). Returns the student's answers as `{field: value}`, `{}` before the first answer. |
+| `self.question_form(title, section='', description='', hash=None, order=None, cheat_answers=None)` | Register a form question: one input per `@@{field:spec}@@` marker of the description — single-line text with a regex, multi-line text, dropdown, checkbox, a field named `name~N` being drawn on the row of its label; the grammar is in [Questions](#questions). Returns the student's answers as `{field: value}`, `{}` before the first answer. |
 | `self.question_dummy(title, section='', description='', hash=None, order=None)` | Display-only block (no input shown to the student). See [Questions](#questions). |
 | `self.add_grade_part(title, description='')` | Register a named group of grade elements and return the resulting `GradePart`. Pass it to `add_grade_element(..., grade_part=...)` to associate elements with this group; parts render in registration order with a subtotal row per part in the GUI Evaluations view and in `sre outline` PDFs. |
 | `self.add_grade_element(title, max_grade, description='', grade=0, scope=params.BOTH_EVAL_SCOPE, grade_part=None, bonus=False)` | Add a graded rubric item. `scope` is a bitmask: `SELF_EVAL_SCOPE` (1) restricts the element to student self-eval, `EXO_EVAL_SCOPE` (2) restricts it to instructor/auto eval / `sre outline` / `sre sheet`, `BOTH_EVAL_SCOPE` (3, default) shows it everywhere. `grade_part` is a `GradePart` returned by `add_grade_part()`. `bonus=True` makes a bonus element: its grade counts, its `max_grade` is shown (with "Bonus") but not counted, and the mark is capped at the maximum (see [Bonus elements](#bonus-elements)). |

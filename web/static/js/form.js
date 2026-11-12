@@ -5,9 +5,32 @@
 // with kind "checkbox" (on the row of the preceding text, as in the Qt widget), "select"
 // (options = [[label, value], ...]), "multiline" (lines), "line" (regex, a hint: the server
 // stores what is typed) or "submit" (Flavor forms only: a button).
+// The chunks of an inline row (the fields a lab names name~N, with the texts of their source
+// line) all carry the same `row` number and are drawn side by side; such a "line" field has a
+// `width` in characters.  The other chunks have no `row`: one field per row, below its text.
 
 import {el} from './ui.js';
 import {_} from './i18n.js';
+
+// The chunks in the groups the form draws: {inline: false, items: [chunk]} for a chunk without
+// `row`, {inline: true, row, items} for the consecutive chunks of one inline row.
+export function groupRows(chunks) {
+  const groups = [];
+  let open = null;   // the inline group being filled
+  for (const chunk of chunks || []) {
+    const row = chunk.row;
+    if (row === undefined || row === null) {
+      open = null;
+      groups.push({inline: false, items: [chunk]});
+    } else if (open && open.row === row) {
+      open.items.push(chunk);
+    } else {
+      open = {inline: true, row, items: [chunk]};
+      groups.push(open);
+    }
+  }
+  return groups;
+}
 
 export class Form {
   // container: the element the form is rendered into (emptied first)
@@ -47,7 +70,48 @@ export class Form {
         pendingText = null;
       }
     };
-    for (const chunk of chunks) {
+    const selectInput = (chunk) => {
+      const select = el('select', {name: chunk.name});
+      for (const [label, value] of chunk.options || []) {
+        select.append(el('option', {value}, label));
+      }
+      select.addEventListener('change', notify);
+      this.inputs[chunk.name] = select;
+      return select;
+    };
+    const lineInput = (chunk) => {
+      // size: the width in characters of an inline field
+      const input = el('input', {type: 'text', name: chunk.name, size: chunk.width || null});
+      if (chunk.regex) {
+        // a hint for the browser (:invalid); the pattern must be a valid JavaScript regex
+        try {
+          new RegExp(chunk.regex);
+          input.setAttribute('pattern', chunk.regex);
+        } catch (e) {
+          // a Python-only pattern: no hint
+        }
+      }
+      input.addEventListener('input', notify);
+      this.inputs[chunk.name] = input;
+      return input;
+    };
+    for (const group of groupRows(chunks)) {
+      if (group.inline) {
+        // the texts and the fields of one source line, side by side
+        flush();
+        const row = el('div', {class: 'form-row inline'});
+        for (const item of group.items) {
+          if (item.type === 'text') {
+            row.append(textElement(item));
+          } else {
+            this.kinds[item.name] = item.kind;
+            row.append(item.kind === 'select' ? selectInput(item) : lineInput(item));
+          }
+        }
+        container.append(row);
+        continue;
+      }
+      const chunk = group.items[0];
       if (chunk.type === 'text') {
         flush();
         pendingText = chunk;
@@ -76,13 +140,7 @@ export class Form {
         this.submitButtons[name] = button;
         container.append(el('div', {class: 'form-field'}, button));
       } else if (chunk.kind === 'select') {
-        const select = el('select', {name});
-        for (const [label, value] of chunk.options || []) {
-          select.append(el('option', {value}, label));
-        }
-        select.addEventListener('change', notify);
-        this.inputs[name] = select;
-        container.append(el('div', {class: 'form-field'}, select));
+        container.append(el('div', {class: 'form-field'}, selectInput(chunk)));
       } else if (chunk.kind === 'multiline') {
         const area = el('textarea', {name, rows: chunk.lines || 4});
         if (!this.wordWrap) {
@@ -92,19 +150,7 @@ export class Form {
         this.inputs[name] = area;
         container.append(el('div', {class: 'form-field'}, area));
       } else {
-        const input = el('input', {type: 'text', name});
-        if (chunk.regex) {
-          // a hint for the browser (:invalid); the pattern must be a valid JavaScript regex
-          try {
-            new RegExp(chunk.regex);
-            input.setAttribute('pattern', chunk.regex);
-          } catch (e) {
-            // a Python-only pattern: no hint
-          }
-        }
-        input.addEventListener('input', notify);
-        this.inputs[name] = input;
-        container.append(el('div', {class: 'form-field'}, input));
+        container.append(el('div', {class: 'form-field'}, lineInput(chunk)));
       }
     }
     flush();

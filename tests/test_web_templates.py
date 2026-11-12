@@ -821,6 +821,52 @@ class TestLabTreeOrder:
         assert json.loads(js.run(tmp_path, runner, json.dumps(LAB_TREE_IN), 'fr')) == LAB_TREE_OUT
 
 
+# a form with two inline fields (name~N) on one source line, between two fields with a row of
+# their own, and a second inline row right after the first
+FORM_ROWS_TEXT = ("Intro.\n\n- Hops: @@{routers:[0-9]+}@@\n"
+                  "- ICMP message: type @@{icmp_type~4:[0-9]+}@@, code @@{icmp_code~4:[0-9]+}@@\n"
+                  "- Protocol: @@{proto~:>UDP|TCP}@@ @@{port~6:[0-9]+}@@ on the wan\n"
+                  "- Done: @@{done:?}@@")
+FORM_ROWS_RUNNER = """\
+import {groupRows} from './form.js';
+
+const label = (chunk) => chunk.type === 'text' ? chunk.html : `<${chunk.name}:${chunk.width || ''}>`;
+process.stdout.write(JSON.stringify({
+  groups: groupRows(JSON.parse(process.argv[2])).map((group) => [group.inline, group.items.map(label)]),
+  empty: [groupRows([]), groupRows(null), groupRows(undefined)],
+}));
+"""
+
+
+class TestFormRows:
+    """``groupRows()`` of form.js run by the ``js`` runtime on the chunks ``SRE.form_spec`` sends:
+    the texts and the inline fields of one source line make one group, drawn as one row; every
+    other chunk is alone in its group, drawn as it always was."""
+
+    def test_groups(self, tmp_path, js):
+        from SRE.form_spec import chunks_to_json, parse_form_description
+        chunks = chunks_to_json(parse_form_description(FORM_ROWS_TEXT), show_instructor=False,
+                                markdown=lambda text: text.strip())
+        runner = js_project(tmp_path, FORM_ROWS_RUNNER, 'form.js', 'i18n.js', 'ui.js')
+        assert json.loads(js.run(tmp_path, runner, json.dumps(chunks))) == {
+            'groups': [
+                [False, ["Intro.\n\n- Hops:"]], [False, ["<routers:>"]],
+                [True, ["- ICMP message: type", "<icmp_type:4>", ", code", "<icmp_code:4>"]],
+                [True, ["- Protocol:", "<proto:>", "<port:6>", "on the wan"]],
+                [False, ["- Done:"]], [False, ["<done:>"]],
+            ],
+            'empty': [[], [], []],
+        }
+
+    def test_the_form_draws_the_groups(self):
+        source = (JS / 'form.js').read_text(encoding='utf-8')
+        assert "for (const group of groupRows(chunks))" in source
+        assert "el('div', {class: 'form-row inline'})" in source
+        assert "size: chunk.width || null" in source
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert ".form .form-row.inline {" in css and "flex-wrap: wrap" in css
+
+
 GROUPS_MODEL_RUNNER = """\
 import {parseKey, normalizeKey, rowGroupKeys, rowMatchesGroup, sortGroups} from './groups_model.js';
 

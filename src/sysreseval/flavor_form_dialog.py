@@ -7,9 +7,11 @@ from PySide6.QtWidgets import (
     QScrollArea, QWidget, QFrame, QPlainTextEdit, QSizePolicy,
 )
 
-from SRE.form_spec import TextChunk, parse_form_description
+from SRE.form_spec import TextChunk, layout_rows, parse_form_description
 from sysreseval import settings
-from sysreseval.view.form_question_widget import _AutoBrowser, FormQuestionWidget
+from sysreseval.view.form_question_widget import (
+    _AutoBrowser, FormQuestionWidget, inline_row_widget, set_inline_width,
+)
 
 
 class FlavorFormDialog(QDialog):
@@ -21,6 +23,9 @@ class FlavorFormDialog(QDialog):
       @@{name:>A|B|C}@@     — QComboBox with choices (a choice 'Label>>>value' shows the label)
       @@{name:?}@@          — QCheckBox ('?true': checked by default)
       @@{name::Label}@@     — QPushButton that submits the form (spec starts with ':')
+
+    A QLineEdit or a QComboBox whose name ends with ~N (@@{name~N:regex}@@) is drawn inline, N
+    characters wide, on the row of its label and of the other inline fields of its source line.
 
     If no submit button is present in the form text, a default "Submit" button is
     added automatically. A "Cancel" button is always shown.
@@ -58,79 +63,40 @@ class FlavorFormDialog(QDialog):
         layout.setSpacing(6)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        def new_browser(text_chunk: TextChunk) -> _AutoBrowser:
-            browser = _AutoBrowser()
+        def new_browser(text_chunk: TextChunk, fit_width: bool = False) -> _AutoBrowser:
+            browser = _AutoBrowser(fit_width=fit_width)
             browser.setOpenExternalLinks(True)
             browser.set_markdown(text_chunk.text, font_size)
             return browser
 
-        # the chunks alternate: a text (possibly empty) before every field, one after the last
-        has_submit = False
-        text_chunk = None
-        for chunk in parse_form_description(form_text, allow_submit=True):
-            if isinstance(chunk, TextChunk):
-                text_chunk = chunk
+        # the rows of SRE.form_spec.layout_rows(): a text (possibly empty) and the field that
+        # follows it, the last text alone, or the texts and the inline fields (name~N) of one
+        # source line
+        for row in layout_rows(parse_form_description(form_text, allow_submit=True)):
+            if row.inline:
+                layout.addWidget(inline_row_widget(row, new_browser, lambda chunk: self._new_field(chunk, font)))
                 continue
-            name = chunk.name
-
-            if chunk.kind == 'checkbox':
-                # Checkbox: render inline with the preceding text in an HBox
-                cb = QCheckBox()
-                cb.setFont(font)
-                cb.setChecked(chunk.default)
-                self._checkbox_fields[name] = cb
+            text_chunk = row.items[0]
+            if len(row.items) == 1:
+                # A text with no following field
                 if text_chunk.has_text():
-                    row = QHBoxLayout()
-                    row.setContentsMargins(0, 0, 0, 0)
-                    row.addWidget(new_browser(text_chunk), 1)
-                    row.addWidget(cb)
-                    layout.addLayout(row)
-                else:
-                    layout.addWidget(cb)
+                    layout.addWidget(new_browser(text_chunk))
+                continue
+            chunk = row.items[1]
+            widget = self._new_field(chunk, font)
+            if chunk.kind == 'checkbox' and text_chunk.has_text():
+                # Checkbox: render inline with the preceding text in an HBox
+                box_row = QHBoxLayout()
+                box_row.setContentsMargins(0, 0, 0, 0)
+                box_row.addWidget(new_browser(text_chunk), 1)
+                box_row.addWidget(widget)
+                layout.addLayout(box_row)
             else:
                 # Non-checkbox: text above, widget below
                 if text_chunk.has_text():
                     layout.addWidget(new_browser(text_chunk))
-
-                if chunk.kind == 'submit':
-                    # Submit button
-                    btn = QPushButton(chunk.label)
-                    btn.setFont(font)
-                    btn.clicked.connect(lambda checked, n=name: self._on_submit(n))
-                    layout.addWidget(btn)
-                    self._submit_fields[name] = btn
-                    has_submit = True
-                elif chunk.kind == 'select':
-                    combo = QComboBox()
-                    combo.setFont(font)
-                    combo.addItems(chunk.labels)
-                    layout.addWidget(combo)
-                    self._combo_fields[name] = combo
-                    self._combo_values[name] = chunk.values
-                elif chunk.kind == 'multiline':
-                    # Multi-line free text, never validated
-                    edit = QPlainTextEdit()
-                    edit.setFont(font)
-                    edit.setTabChangesFocus(True)
-                    edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                    FormQuestionWidget._set_multiline_height(edit, chunk.lines)
-                    layout.addWidget(edit)
-                    self._multiline_fields[name] = edit
-                else:
-                    edit = QLineEdit()
-                    edit.setFont(font)
-                    if chunk.regex:
-                        edit.setValidator(
-                            QRegularExpressionValidator(QRegularExpression(chunk.regex))
-                        )
-                        edit.textChanged.connect(lambda _, e=edit: self._clear_error(e))
-                    layout.addWidget(edit)
-                    self._text_fields[name] = edit
-            text_chunk = None
-
-        # Last text chunk with no following field
-        if text_chunk is not None and text_chunk.has_text():
-            layout.addWidget(new_browser(text_chunk))
+                layout.addWidget(widget)
+        has_submit = bool(self._submit_fields)
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -169,6 +135,52 @@ class FlavorFormDialog(QDialog):
             self._set_answers(previous_answers)
 
     # ------------------------------------------------------------------
+
+    def _new_field(self, chunk, font: QFont) -> QWidget:
+        """The input of the field *chunk*, kept under its name."""
+        name = chunk.name
+        if chunk.kind == 'checkbox':
+            cb = QCheckBox()
+            cb.setFont(font)
+            cb.setChecked(chunk.default)
+            self._checkbox_fields[name] = cb
+            return cb
+        if chunk.kind == 'submit':
+            # Submit button
+            btn = QPushButton(chunk.label)
+            btn.setFont(font)
+            btn.clicked.connect(lambda checked, n=name: self._on_submit(n))
+            self._submit_fields[name] = btn
+            return btn
+        if chunk.kind == 'select':
+            combo = QComboBox()
+            combo.setFont(font)
+            combo.addItems(chunk.labels)
+            if chunk.inline:
+                combo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            self._combo_fields[name] = combo
+            self._combo_values[name] = chunk.values
+            return combo
+        if chunk.kind == 'multiline':
+            # Multi-line free text, never validated
+            edit = QPlainTextEdit()
+            edit.setFont(font)
+            edit.setTabChangesFocus(True)
+            edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            FormQuestionWidget._set_multiline_height(edit, chunk.lines)
+            self._multiline_fields[name] = edit
+            return edit
+        edit = QLineEdit()
+        edit.setFont(font)
+        if chunk.regex:
+            edit.setValidator(
+                QRegularExpressionValidator(QRegularExpression(chunk.regex))
+            )
+            edit.textChanged.connect(lambda _, e=edit: self._clear_error(e))
+        if chunk.inline:
+            set_inline_width(edit, chunk.width)
+        self._text_fields[name] = edit
+        return edit
 
     def _set_answers(self, answers: dict):
         for name, edit in self._text_fields.items():
