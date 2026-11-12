@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION   ?= 1.32
+VERSION   ?= 1.33
 NAMESPACE ?= sysreseval
 
 IMAGES := base init frr ldap-mail proxy monitoring voip
