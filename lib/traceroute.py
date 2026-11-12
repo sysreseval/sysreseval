@@ -1,4 +1,4 @@
-"""Traceroute / TTL helpers of the traceroute lab (``lab/sre/_DRAFT_misc/traceroute.py``), IPv4 only.
+"""Traceroute / TTL helpers of the traceroute lab (``lab/sre/traceroute.py``), IPv4 only.
 
 Pure functions: the network names of the hidden lines, the arithmetic of a routing loop (which router
 answers a probe of a given TTL, how many times a packet crosses a router), ``ping`` / ``traceroute``

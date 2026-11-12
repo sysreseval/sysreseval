@@ -1,8 +1,9 @@
-"""Offline tests of the traceroute lab (lab/sre/_DRAFT_misc/traceroute.py): data generation, the
+"""Offline tests of the traceroute lab (lab/sre/traceroute.py): data generation, the
 hidden lines of islands A and C, their destinations and routes, the state ops (tool removal, hosts files without
 any hidden address, firewalls and silent router, the UDP probe of the final state), the two-pass
 grading contract with synthetic outputs (nothing done: 0, everything done: 100), the instructor
-texts, the stripped lab file and the English identifiers.
+texts, the stripped lab file, the English identifiers and the English translation of every text (the
+French texts in tr(), the English ones in _TRANSLATIONS).
 
 No Docker: the outputs of the containers are rendered from the generated data in the format of the
 real tools (ping, ip route, sysctl).
@@ -24,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'tools'))
 
 import traceroute as trc  # noqa: E402
 
-_LAB_PATH = Path(__file__).parent.parent / 'lab' / 'sre' / '_DRAFT_misc' / 'traceroute.py'
+_LAB_PATH = Path(__file__).parent.parent / 'lab' / 'sre' / 'traceroute.py'
 
 
 @pytest.fixture(scope='module')
@@ -526,43 +527,85 @@ class TestGrading:
 # texts
 # ---------------------------------------------------------------------------
 
-def _all_texts(grade, ns):
-    texts = [('informations', _text(ns.informations))]
+LANGUAGES = ('fr', 'en')
+# whole French words that an English text never holds (code blocks included: the commands are the same)
+FRENCH_WORDS = re.compile(r"\b(le|les|des|une|du|routeurs?|réseaux?|chemin|saut|sondes?|cible|muet|réponses?|"
+                          r"vers|depuis|avec|sans|aller|retour|côté)\b|[éèêàùç]", re.I)
+
+
+def _all_texts(grade, ns, lang='fr'):
+    texts = [('informations', _text(ns.informations, lang))]
     for q in grade.get_questions_ordered():
-        texts.append((_text(q.title), _text(q.description)))
+        texts.append((_text(q.title, lang), _text(q.description, lang)))
     for e in grade.get_grade_list():
-        texts.append((str(e.title), _text(e.description) if e.description else ''))
+        texts.append((str(e.title), _text(e.description, lang) if e.description else ''))
     return texts
 
 
 class TestTexts:
-    def test_hashes_and_fragments(self, lab, data, tmp_pub_dir):
+    @pytest.mark.parametrize('lang', LANGUAGES)
+    def test_hashes_and_fragments(self, lab, data, tmp_pub_dir, lang):
         g0, ns0 = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
         g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
         assert [q.question_hash for q in g0.get_questions_ordered()] == [q.question_hash for q in g1.get_questions_ordered()]
         assert len(g1.get_questions_ordered()) == 5
-        assert not any(has_instructor(t) for _, t in _all_texts(g0, ns0))
-        with_fragment = [w for w, t in _all_texts(g1, ns1) if has_instructor(t)]
+        assert not any(has_instructor(t) for _, t in _all_texts(g0, ns0, lang))
+        with_fragment = [w for w, t in _all_texts(g1, ns1, lang) if has_instructor(t)]
         assert len(with_fragment) == 5 and 'informations' not in with_fragment
 
-    def test_texts_are_formatted_and_numbered(self, lab, data, tmp_pub_dir):
+    @pytest.mark.parametrize('lang', LANGUAGES)
+    def test_texts_are_formatted(self, lab, data, tmp_pub_dir, lang):
         g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
-        for where, text in _all_texts(g1, ns1):
+        for where, text in _all_texts(g1, ns1, lang):
             assert "{'" not in text, where
             assert not re.search(r"(?<!\{)\{[a-z_0-9]+\}(?!\})", text), where
             assert '@@{' not in text or where != 'informations'
             markdown_to_html(text, show_instructor=True)
             markdown_to_html(text, show_instructor=False)
+
+    def test_course_is_numbered(self, lab, data, tmp_pub_dir):
+        _, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
         from SRE.informations import resolve_informations
         resolved, numbering = resolve_informations(ns1.informations)
+        for lang in LANGUAGES:
+            assert [s.number for s in numbering.sections(lang) if s.level == 1] == [str(i) for i in range(1, 10)]
         informations = _text(resolved)
-        assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 10)]
         assert '## <a id="ttl"></a>1. Le champ TTL' in informations
         assert '## <a id="loops"></a>7. Les boucles de routage' in informations
         assert '- [7. Les boucles de routage](#loops)' in informations and '(section [7](#loops))' in informations
-        assert 'IPv6' not in informations and 'traceroute6' not in informations
+        english = _text(resolved, 'en')
+        assert '## <a id="ttl"></a>1. The TTL field' in english
+        assert '## <a id="loops"></a>7. Routing loops' in english
+        assert '- [7. Routing loops](#loops)' in english and '(see section [7](#loops))' in english
+        for text in (informations, english):
+            assert 'IPv6' not in text and 'traceroute6' not in text
 
-    def test_student_texts_never_show_the_hidden_path(self, lab, data, tmp_pub_dir):
+    def test_english_texts_are_english(self, lab, data, tmp_pub_dir):
+        """No French word in any English text, the instructor texts and the rows of the hidden paths included."""
+        g1, ns1 = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
+        for where, text in _all_texts(g1, ns1, 'en'):
+            words = sorted({m.group(0) for m in FRENCH_WORDS.finditer(text)})
+            assert not words, (where, words)
+        solution = next(_text(q.description, 'en') for q in g1.get_questions_ordered()
+                        if '**For the instructor.**' in _text(q.description, 'en'))
+        assert f"`{data.target}` (`target`)" in solution and f"`{data.target2}` (`target2`)" in solution
+        assert f"`{data.silent}` (`*`)" in solution
+
+    def test_translations(self, lab):
+        """Every tr() text of the file has its English translation, the nine instructor texts included."""
+        import ast
+        import check_sre_translations as cst
+        tree = ast.parse(_LAB_PATH.read_text(encoding='utf-8'))
+        assert set(lab._TRANSLATIONS) == {'en'}
+        assert set(lab._TRANSLATIONS['en']) == cst.get_tr_strings(tree)
+        assert None not in lab._TRANSLATIONS['en'].values()
+        heads = ('**Solution.**', '**Answers.**', '**For the instructor.**')
+        assert sum(any(v.lstrip().startswith(h) for h in heads) for v in lab._TRANSLATIONS['en'].values()) == 9
+        # evaluated at import time, before _TRANSLATIONS: the inline English is the same
+        assert lab.title.resolve('en') == lab._TRANSLATIONS['en'][lab.title.resolve('fr')]
+
+    @pytest.mark.parametrize('lang', LANGUAGES)
+    def test_student_texts_never_show_the_hidden_path(self, lab, data, tmp_pub_dir, lang):
         """The same project rendered with two different hidden paths gives the same student texts
         (the path is what the students discover); the instructor texts do change."""
         targets, targets2 = lab.ISLAND_A.targets(), lab.ISLAND_C.targets()
@@ -577,7 +620,8 @@ class TestTexts:
                 # the destinations are routers of the hidden lines: their ingress addresses are the only
                 # hidden ones a student is given (/etc/hosts and the texts), masked for the comparison
                 masks = {str(ns.target_address(isl).ip): f"<{isl.target_name}>" for isl in (lab.ISLAND_A, lab.ISLAND_C)}
-                rendered = [_text(q.description) for q in grade.get_questions_ordered()] + [_text(ns.informations)]
+                rendered = ([_text(q.description, lang) for q in grade.get_questions_ordered()]
+                            + [_text(ns.informations, lang)])
                 for ip, mask in masks.items():
                     rendered = [t.replace(ip, mask) for t in rendered]
                 texts[(i, mode)] = rendered
@@ -606,18 +650,34 @@ class TestTexts:
             if name not in ('path', 'path2'):
                 assert 'lines' not in f and ({'regex', 'choices', 'checkbox'} & f.keys()), f
 
+    def test_form_fields_are_the_same_in_both_languages(self, lab, data, tmp_pub_dir):
+        """Names, kinds and the values behind the dropdown labels: the answers and the grading
+        do not depend on the language of the form."""
+        from SRE.form_spec import form_fields
+        g1, _ = _simulate(lab, data, tmp_pub_dir, instructor_mode=False)
+        for q in g1.get_questions_ordered():
+            fr, en = (form_fields(_text(q.description, lang)) for lang in LANGUAGES)
+            assert fr == en, _text(q.title)
+
     def test_strip_instructor(self, lab, data, tmp_pub_dir, tmp_path):
         from strip_instructor import strip_source
         result = strip_source(_LAB_PATH.read_bytes())
         assert result.calls == 9 and result.warnings == []
+        assert result.translations == 9 and b'_TRANSLATIONS = {' in result.data
         stripped = tmp_path / 'traceroute_stripped.py'
         stripped.write_bytes(result.data)
         spec = importlib.util.spec_from_file_location('traceroute_lab_stripped', stripped)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        # the public translations are kept, the nine of the instructor texts dropped
+        kept = module._TRANSLATIONS['en']
+        assert set(module._TRANSLATIONS) == {'en'} and len(kept) == len(lab._TRANSLATIONS['en']) - 9
+        assert set(kept) <= set(lab._TRANSLATIONS['en'])
+        assert not any(has_instructor(v) or '**Solution.**' in v or '**Answers.**' in v for v in kept.values())
         grade, _ = _simulate(module, data, tmp_pub_dir, instructor_mode=True)
         assert _totals(grade) == (100, 100)
-        assert not any(has_instructor(_text(q.description)) for q in grade.get_questions_ordered())
+        for lang in LANGUAGES:
+            assert not any(has_instructor(_text(q.description, lang)) for q in grade.get_questions_ordered())
 
     def test_english_identifiers(self, lab, data):
         """Machines, networks, states, data fields, grade elements and part keys are English."""

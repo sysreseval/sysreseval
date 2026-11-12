@@ -335,7 +335,7 @@ class TestChunksToJson:
 # inline fields: @@{name~N:spec}@@
 # ---------------------------------------------------------------------------
 
-# the line of lab/sre/_DRAFT_misc/traceroute.py the inline fields were made for, between two
+# the line of lab/sre/traceroute.py the inline fields were made for, between two
 # other items of its list
 ICMP_FORM = ("**Mesures.**\n\n- Hops: @@{routers:[0-9]+}@@\n"
              "- ICMP message: type @@{icmp_type~4:[0-9]+}@@, code @@{icmp_code~4:[0-9]+}@@\n"

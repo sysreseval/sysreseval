@@ -1,4 +1,4 @@
-"""Path MTU discovery helpers for the MTU labs (``lab/sre/_DRAFT_misc/mtu.py`` and ``lab/em/_DRAFT_/mtu6.py``).
+"""Path MTU discovery helpers for the MTU labs (``lab/sre/mtu.py`` and ``lab/em/_DRAFT_/mtu6.py``).
 
 Pure functions only: header-size arithmetic, ``ping -M do`` command builder and parser of
 the iputils error strings, ``ip -j -d link`` parsers (tunnel devices), nftables rule texts

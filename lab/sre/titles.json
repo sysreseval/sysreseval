@@ -8,10 +8,18 @@
     "en": "Latency: measuring the delay of an opaque network in each direction",
     "fr": "Latence : mesurer le délai d'un réseau opaque dans chaque sens"
   },
+  "mtu.py": {
+    "en": "MTU and path MTU discovery in IPv4 (fragmentation, black hole, GRE tunnel)",
+    "fr": "MTU et découverte du PMTU en IPv4 (fragmentation, trou noir, tunnel GRE)"
+  },
   "ssh.py": "SSH",
   "static_routing.py": {
     "en": "Static routing",
     "fr": "Routage statique"
+  },
+  "traceroute.py": {
+    "en": "Traceroute and TTL: tracing a path, routing loops, asymmetric paths",
+    "fr": "Traceroute et TTL : tracer un chemin, boucles de routage, chemins asymétriques"
   },
   "wireshark.py": "Wireshark"
 }
