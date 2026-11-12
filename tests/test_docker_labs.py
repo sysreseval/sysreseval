@@ -17,7 +17,8 @@ no expected total is written here (the maxima are those of the evaluation itself
 Requirements — skipped otherwise: run as root, a reachable Docker daemon (python `docker`
 package), the SRE images (a missing one is pulled by `sre start`), no exam configured on the
 host.  Excluded from `make tests`; run with `make docker-tests`, or one lab alone with
-`pytest tests/test_docker_labs.py -k dhcp`.  A few minutes per lab.
+`pytest tests/test_docker_labs.py -k dhcp`.  About two minutes for the six labs on a 12-core
+workstation that has the images.
 """
 import json
 import os

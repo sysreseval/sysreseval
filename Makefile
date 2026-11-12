@@ -299,8 +299,8 @@ exam-tests:
 # `make all-tests` (as root on a host with Docker and the SRE images, skipped otherwise): sre
 # start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker
 # API; every lab file of lab/sre/ started, evaluated (0), brought to its `final` state and
-# evaluated again (every point, bonus included; a few minutes per lab, one lab alone:
-# `pytest tests/test_docker_labs.py -k dhcp`); the database of the connection log against a
+# evaluated again (every point, bonus included; about two minutes for the six labs, one lab
+# alone: `pytest tests/test_docker_labs.py -k dhcp`); the database of the connection log against a
 # MariaDB container (SRE_TEST_MYSQL=mysql://user:password@host:3306/db for a server of yours,
 # empty to skip it).
 SRE_TEST_MYSQL ?= docker
