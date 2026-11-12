@@ -1,3 +1,9 @@
+sysreseval (0.16.2-1) unstable; urgency=medium
+
+  * Release 0.16.2.
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Thu, 12 Nov 2026 19:30:42 +0100
+
 sysreseval (0.16.1-1) unstable; urgency=medium
 
   * image preloading via agent
