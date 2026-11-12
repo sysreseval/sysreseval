@@ -1137,7 +1137,7 @@ wrappers; fixtures in `tests/mock_data/dns/`.
 from http_proxy import install_backend, backend_config, http_request, http_burst, distribution, forwarded_for
 ```
 
-Helpers of the reverse proxy / load balancer lab (`lab/sre/_DRAFT_misc2/reverse-proxy.py`: nginx, Varnish, HAProxy, keepalived; image `sysreseval/proxy`). The grading is behavioural: requests are sent from a hidden client and the page of the application server tells what the proxy did to them.
+Helpers of the reverse proxy / load balancer lab (`lab/sre/_DRAFT_misc/reverse-proxy.py`: nginx, Varnish, HAProxy, keepalived; image `sysreseval/proxy`). The grading is behavioural: requests are sent from a hidden client and the page of the application server tells what the proxy did to them.
 
 **The application server** (`lib/http_backend.py`, standard library only): `install_backend(net_scheme, machine, backend_config(name, {8080: 'shop', 8081: 'api'}, ...), sick=False, step=1)` copies it into a machine and starts it. Every page answers `KEY=value` lines: `SERVER=` (who answered), `APP=`, `CLIENT_IP=` (the proxy), `PATH=`, `HOST=`, `HTTP_VERSION=`, `CONN_REQUESTS=` (keep-alive reuse), `REQUEST_ID=` (the same id twice: the answer came from a cache) and every request header as `HEADER_<NAME>=`. Special pages: `/health` (200 / 503), `/catalog/…` (cacheable, sent with a `Set-Cookie`), `/cart` (private), `/login` + `/account` (a session kept in the memory of one backend), `/slow?ms=`, `/big`, `/_log`, `/_admin/health?state=up|down`, `/_admin/down?seconds=`.
 

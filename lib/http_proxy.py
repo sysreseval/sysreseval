@@ -1,5 +1,5 @@
 """State and grade helpers of the HTTP reverse proxy / load balancer lab
-(``lab/sre/_DRAFT_misc2/reverse-proxy.py``: nginx 1.22, Varnish 7.1, HAProxy 2.6, keepalived 2.2
+(``lab/sre/_DRAFT_misc/reverse-proxy.py``: nginx 1.22, Varnish 7.1, HAProxy 2.6, keepalived 2.2
 on the ``proxy`` image, Debian 12).
 
 State side: :func:`install_backend` copies ``lib/http_backend.py`` (the application the proxies

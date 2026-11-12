@@ -1,4 +1,4 @@
-"""Offline tests of the HTTP reverse proxy lab (lab/sre/_DRAFT_misc2/reverse-proxy.py): the data
+"""Offline tests of the HTTP reverse proxy lab (lab/sre/_DRAFT_misc/reverse-proxy.py): the data
 (addresses, the CA and the certificate of the site), the topology (three init machines of the
 proxy image, closed backends, the hidden probe), the state ops (the backends of `initial`, the
 whole solution of `final`, every command on one line, the staged reference configurations), the
@@ -36,7 +36,7 @@ sys.path.insert(0, str(_REPO / 'src' / 'tools'))
 
 import http_proxy as hp  # noqa: E402
 
-_LAB_PATH = _REPO / 'lab' / 'sre' / '_DRAFT_misc2' / 'reverse-proxy.py'
+_LAB_PATH = _REPO / 'lab' / 'sre' / '_DRAFT_misc' / 'reverse-proxy.py'
 _ARCHIVES = _REPO / 'tests' / 'mock_data' / 'http_proxy' / 'lab'
 PARTS = {'part1': 8, 'part2': 10, 'part3': 10, 'part4': 8, 'part5': 10, 'part6': 10, 'part7': 12, 'part8': 12,
          'part9': 10, 'part10': 10}
