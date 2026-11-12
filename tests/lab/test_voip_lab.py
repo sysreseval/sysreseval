@@ -1,4 +1,4 @@
-"""Offline tests of lab/sre/_DRAFT_misc2/voip.py (VoIP: SIP / RTP with Asterisk), without Docker.
+"""Offline tests of lab/sre/_DRAFT_misc/voip.py (VoIP: SIP / RTP with Asterisk), without Docker.
 
 lab_eval_initial.json and lab_eval_final.json (tests/mock_data/voip/) are two real evaluations of
 the lab (z04, 2026-11-12, sysreseval/voip:1.32): the data of the instance and every grader command
@@ -32,7 +32,7 @@ import check_sre_translations  # noqa: E402
 import strip_instructor as strip_tool  # noqa: E402
 import voip  # noqa: E402
 
-_LAB_PATH = _REPO / 'lab' / 'sre' / '_DRAFT_misc2' / 'voip.py'
+_LAB_PATH = _REPO / 'lab' / 'sre' / '_DRAFT_misc' / 'voip.py'
 _MOCK = _REPO / 'tests' / 'mock_data' / 'voip'
 
 

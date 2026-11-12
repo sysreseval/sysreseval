@@ -2,7 +2,7 @@
 
 The fixtures of tests/mock_data/voip/ were captured live on 2026-11-11 (z04, sysreseval/voip:1.32 =
 Asterisk 22.12.0 compiled in images/voip/Dockerfile): the Asterisk console outputs of a PBX holding
-the reference configuration of lab/sre/_DRAFT_misc2/voip.py (``pjsip_show_*``, ``dialplan_show_*``,
+the reference configuration of lab/sre/_DRAFT_misc/voip.py (``pjsip_show_*``, ``dialplan_show_*``,
 ``rtp_show_settings``, ``voicemail_*``, each followed by the ``===RC`` marker of
 ``voip.asterisk_rx_cmd``), the contacts of the running lab once solved (``pjsip_show_contacts_nat``:
 the NAT phones registered with the box's public address), and the outputs of the probe against
