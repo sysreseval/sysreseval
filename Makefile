@@ -247,7 +247,8 @@ PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) SRE_TEST_JS=$(SRE_TEST_JS) ${ROOT_DIR}
 # the Docker tests of `make docker-tests` (real containers, root), which `make all-tests` runs
 # after these.  The same ignore list serves `make test`: pytest's --ignore spares the paths given
 # on the command line, so `make test FILE=test_docker_lifecycle.py` still runs that file.
-DOCKER_TESTS = ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_web_accessdb_live.py
+DOCKER_TESTS = ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_docker_labs.py \
+	${ROOT_DIR}/tests/test_web_accessdb_live.py
 TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py $(addprefix --ignore=,$(DOCKER_TESTS))
 tests:
 	$(PYTEST) ${ROOT_DIR}/tests/ $(TESTS_IGNORE)
@@ -297,8 +298,11 @@ exam-tests:
 # Docker integration tests with real containers, left out of `make tests` and run by
 # `make all-tests` (as root on a host with Docker and the SRE images, skipped otherwise): sre
 # start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker
-# API; the database of the connection log against a MariaDB container
-# (SRE_TEST_MYSQL=mysql://user:password@host:3306/db for a server of yours, empty to skip it).
+# API; every lab file of lab/sre/ started, evaluated (0), brought to its `final` state and
+# evaluated again (every point, bonus included; a few minutes per lab, one lab alone:
+# `pytest tests/test_docker_labs.py -k dhcp`); the database of the connection log against a
+# MariaDB container (SRE_TEST_MYSQL=mysql://user:password@host:3306/db for a server of yours,
+# empty to skip it).
 SRE_TEST_MYSQL ?= docker
 docker-tests:
 	$(PYTEST) $(DOCKER_TESTS)
