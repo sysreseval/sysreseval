@@ -1131,6 +1131,135 @@ wrappers; fixtures in `tests/mock_data/dns/`.
   `render_root_hints`, `render_rpz_zone`, `render_stubby_yml`, `reverse_zone_name` / `reverse_label`,
   `spki_pin`, `random_tsig_secret`; `tls.generate_ca_pem(cn)` for a lab-provided CA.
 
+### HTTP proxy helpers (from `/opt/sre/lib/http_proxy.py`)
+
+```python
+from http_proxy import install_backend, backend_config, http_request, http_burst, distribution, forwarded_for
+```
+
+Helpers of the reverse proxy / load balancer lab (`lab/sre/_DRAFT_misc/reverse-proxy.py`: nginx, Varnish, HAProxy, keepalived; image `sysreseval/proxy`). The grading is behavioural: requests are sent from a hidden client and the page of the application server tells what the proxy did to them.
+
+**The application server** (`lib/http_backend.py`, standard library only): `install_backend(net_scheme, machine, backend_config(name, {8080: 'shop', 8081: 'api'}, ...), sick=False, step=1)` copies it into a machine and starts it. Every page answers `KEY=value` lines: `SERVER=` (who answered), `APP=`, `CLIENT_IP=` (the proxy), `PATH=`, `HOST=`, `HTTP_VERSION=`, `CONN_REQUESTS=` (keep-alive reuse), `REQUEST_ID=` (the same id twice: the answer came from a cache) and every request header as `HEADER_<NAME>=`. Special pages: `/health` (200 / 503), `/catalog/…` (cacheable, sent with a `Set-Cookie`), `/cart` (private), `/login` + `/account` (a session kept in the memory of one backend), `/slow?ms=`, `/big`, `/_log`, `/_admin/health?state=up|down`, `/_admin/down?seconds=`.
+
+**Requests** (grade side; an empty reply, `code is None`, until the tests have run):
+
+`http_request(grade, src, url, connect_ip=None, connect_port=None, step=1, max_time=6, **options) → HttpReply` — one `curl` whose connection is forced to an address (`--connect-to`: no name resolution, the `Host` header and the SNI stay those of the URL). Options: `method`, `headers`, `cookies`, `data`, `user=(login, password)`, `cacert`, `insecure`, `http2`, `source` (local address), `compressed`, `jar`, `no_body`. `HttpReply` has `code`, `headers` (lower-case), `header_values(name)`, `set_cookies()`, `body`, `field(key)`, `server`, `http_version`, `time_total`, `ok`, `redirect`.
+
+`http_burst(grade, src, url, count, connect_ip=None, connect_port=None, step=1, **options) → list[str]` — *count* requests in one shell loop, the list of the bodies; `servers(bodies)` and `distribution(bodies)` tell which backends answered. `sequence_cmd([request_cmd(..., shell_url=True), ...], prelude='u=/page-$(date +%s%N)')` + `parse_sequence()` run several requests on a URL that is new at each run (cache tests); `status_burst_cmd()` + `parse_status_burst()` send requests as fast as possible and keep the status codes (rate limiting).
+
+**What behaviour cannot show** (pure parsers): `parse_haproxy_stat()` + `haproxy_servers()` + `haproxy_pool()` (`show stat` on the admin socket, `haproxy_show_cmd()`: state and last check of each server), `parse_varnish_backends()` (`varnishadm backend.list`), `parse_keepalived_conf()` + `keepalived_tracks(conf, 'haproxy')`, `parse_tcpdump_vrrp()` (`vrrp_capture_cmd()`), `parse_nginx_upstreams()` (`nginx -T`: weights, `backup`), `parse_backend_log()` + `health_checks(entries, now, client)` (the health checks a backend received from a proxy).
+
+Facts worth knowing (verified in the running lab): each nginx worker process has its own round-robin state, so a 2:1 weight is not observed exactly over a burst; a read timeout marks the server as failed for `fail_timeout` (10 s), so one slow page can take every server of an `upstream` out (never grade a timeout on a shared upstream); HAProxy's `option forwardfor` adds a second `X-Forwarded-For` line instead of extending the client's; a plain `option httpchk` sends `OPTIONS /`.
+
+### VRRP / keepalived helpers (from `/opt/sre/lib/vrrp.py`)
+
+```python
+from vrrp import (parse_keepalived_conf, find_instance, instance_group, tracked_scripts, parse_tcpdump_vrrp,
+                  adverts, virtual_mac, master_down_interval, read_archive, apply_archive_cmd, wait_cmd)
+```
+
+Helpers of the VRRP lab (`lab/sre/_DRAFT_misc/vrrp.py`: two keepalived routers, a LAN and a WAN virtual address in a sync group, a health check, authentication and unicast peers, load sharing, a virtual MAC, VRRPv3 / IPv6). The images ship keepalived from version 1.33 on.
+
+**Configuration** (pure): `parse_keepalived_conf(text)` → `{'global_defs', 'scripts', 'groups', 'instances', 'errors'}` with typed fields per instance (`vrid`, `priority`, `interface`, `state`, `advert_int`, `version`, `auth_type` / `auth_pass`, `vips` / `excluded_vips` as `{'address', 'prefixlen', 'dev', 'family'}`, `unicast_src_ip` / `unicast_peers`, `track_scripts` / `track_interfaces` as `{'name', 'weight'}`, `use_vmac`, `nopreempt`, `notify`). Queries: `find_instance(conf, vrid=, interface=, vip=)`, `instance_group(conf, instance)`, `tracked_scripts(conf, instance)` and `tracked_interfaces(conf, instance)` (the instance's own entries and those of its sync group), `notify_paths(conf, instance)`, `instance_addresses(instance, excluded=False)`.
+
+**Advertisements**: `vrrp_capture_cmd(interface, seconds)` is a `tcpdump -e -n -v` of a few seconds; `parse_tcpdump_vrrp(output)` reads VRRPv2 and VRRPv3 lines, IPv4 and IPv6, with or without `-e` / `-v`: `src`, `dst`, `family`, `version`, `vrid`, `priority`, `auth_type`, `password` (a capture shows the `auth_type PASS` password in clear), `interval` in seconds, `addresses`, `ttl`, `src_mac`, `dst_mac`. `adverts(frames, vrid=, src=, version=)`, `advert_interval(frames)`, `is_multicast_advert(frame)` (false for unicast peers).
+
+**Arithmetic**: `virtual_mac(vrid, ipv6=False)` (`00:00:5e:00:01:<vrid>`), `skew_time(priority)`, `master_down_interval(advert_int, priority)` (3.61 s for priority 100 and one advertisement per second). `parse_notify_log(text)` + `notify_states(entries, name)` read the lines a `notify` script writes from its four arguments.
+
+**Hidden mirror** (the technique of `lib/hidden_mirror.py`): a failover cannot be graded on the students' routers without breaking them, so their files are replayed on hidden clones. `config_archive_cmd()` prints `/etc/keepalived` and `/etc/radvd.conf` as one base64 tar; `read_archive(encoded)` checks it **before anything is unpacked** (plain files under the two paths only, 64 KiB at most; `None` otherwise) and returns `{path: {'content', 'mode'}}` (`archive_text()`, `archive_mode()`); `apply_archive_cmd(encoded)` unpacks it on a clone and restarts keepalived and radvd; `stop_cmd()` stops them and removes what a killed keepalived leaves. Register the steps of the scenario only when the archive read at step 1 is valid (decide on its content, never on the pass number: `sre re-eval` calls `grade()` once).
+
+Failures are plain commands on the clones (`ip link set eth0 down`, `drop_echo_from_cmd(address)` / `fault_clear_cmd()` to make a machine ignore the pings of a router). Measurements come after `wait_cmd(condition, seconds)`, a bounded wait on `holds_address(address)` or `echo_server_is(host, name)`, registered as a command of its own so that retuning it never changes the key of a measurement.
+
+**Forged advertisements**: `install_vrrp_probe(net_scheme, machine)` copies `lib/vrrp_probe.py` (standard library, raw socket) into a hidden machine; `forged_adverts(grade, machine, vrid, vips, step=, seconds=8, priority=255, password=None)` makes it announce the virtual router for a few seconds and returns `{'sent', 'error', 'heard'}`. A master protected by a password keeps its address; an unprotected one releases it for the duration.
+
+Facts worth knowing (verified in the running lab on 2026-11-11, keepalived 2.2.7):
+
+- with `state MASTER` and a priority below 255 an instance still starts as a backup (3.4 to 3.7 s before it takes over); a stopped master is replaced within 0.1 s (priority 0 advertisement), a link put down after the master-down interval;
+- in a sync group the weights of tracked scripts are ignored: track them unweighted, a failure puts the whole group in the FAULT state (4 to 6 s with `interval 2` / `fall 2`);
+- `use_vmac` needs a **switch**: the backup keeps its `vrrp.<vrid>` macvlan up, so on a hub it receives the frames sent to the virtual MAC too and forwards them a second time. Set `arp_announce=2` on the routers, or the clients learn the real MAC address back;
+- `vde_switch` keeps a MAC address 3 s on its old port (`Min persistence`): a virtual MAC is unreachable 3 to 4 s after a clean handover unless `hash/setminper 0` was run on a managed switch. `switch_cmd()` cannot do it in `initial` for a lab with privileged machines (the console is out of reach once the privileges are dropped at the start): run it with `test_switch()` at the first step of the evaluation;
+- radvd with `AdvRASrcAddress { fe80::1; };` advertises from the virtual link-local address on the master and stays silent on the backup.
+
+### VoIP helpers (from `/opt/sre/lib/voip.py`)
+
+```python
+from voip import (daemon_spec, daemon_account, daemon_calls, install_sip_probe, sip_daemon_cmd, sip_kick,
+                  run_spec, register_scenario, call_scenario, sip_probe, get_phone_calls, find_calls,
+                  get_contacts, get_aor, get_dialplan, get_voicemail_messages, render_baresip_config)
+```
+
+Helpers of the VoIP lab (`lab/sre/_DRAFT_misc/voip.py`: Asterisk 22 with chan_pjsip, baresip softphones, a trunk to a second PBX, phones behind a NAT, SIP over TLS and SRTP; image `sysreseval/voip`, which compiles Asterisk from its sources since Debian 12 and 13 do not package it). The grading is behavioural: SIP phones of the probe call through the PBX and report what they heard.
+
+**The phones of the probe** (`lib/sip_probe.py`, standard library only: SIP over UDP and TLS with digest authentication, SDP, RTP in G.711 A-law / µ-law, RFC 4733 digits). State side, `install_sip_probe(net_scheme, machine)` then `net_scheme.cmd(machine, sip_daemon_cmd(spec))` starts persistent phones described by `daemon_spec(local_ip, [daemon_account(user, password, server, sip_port, mode='answer'|'busy'|'none', tone=Hz, refresh=, calls=daemon_calls(number, every=25))])`: each keeps its account registered, answers its calls with its own tone or with `486 Busy Here`, can call a number periodically, and logs every call it receives. Grade side: `sip_kick(grade, machine, spec)` makes them register at once (an evaluation never waits for the retry period of a phone whose account was just created) and returns their status (`registered(user)`); `sip_probe(grade, machine, run_spec(local_ip, [[scenario, ...], ...], deadline=40))` runs scenarios — the tracks in parallel, the scenarios of a track in turn — `register_scenario(id, server, user, password, contact=False)` (without a contact the REGISTER only queries: it never evicts a phone) and `call_scenario(id, server, user, password, to, tone=, duration=, display=, codecs=, dtmf=[{'at': 1.0, 'digits': '1'}], voicemail=, srtp=, transport='tls', ca_file=, server_name=)`, and returns `{id: ScenarioResult}` with `status`, `answered`, `refused`, `payloads`, `media_port`, `heard` / `hears(Hz)`, `source_hosts(tail=True)`, `tos_values`, `reinvites`, `tls_verified`. `get_phone_calls(grade, machine, step=)` + `find_calls(calls, user=, action='answered', heard=, from_user=, since=)` read what the phones received.
+
+**Tones**: every phone and every test call sends its own frequency among `TONES` (80 Hz apart) and reports those recognised in what it receives: a call tells who answered and that the sound flows in both directions, without any sound device.
+
+**The Asterisk console** (pure parsers and thin wrappers around `asterisk -rx`): `get_endpoint()` / `get_aor()` (`pjsip show endpoint|aor`: the parameter table, `flag()`, `codec_list()`), `get_contacts()` (`pjsip show contacts`), `get_transports()`, `get_identifies()`, `get_rtp_settings()`, `get_dialplan(grade, machine, context)` (`dialplan show`, `dialplan_applications()`), `get_voicemail_messages(grade, machine, mailbox)` (the information files of the messages); `asterisk_start_cmd()` starts a PBX that has no systemd. **baresip**: `render_baresip_config(tone=, recordings=)` (no sound card: a sine as microphone, what is received recorded as wav files), `render_baresip_account()`, `baresip_start_cmd()`.
+
+Facts worth knowing (verified in the running lab on 2026-11-11 and 12, Asterisk 22.12.0, baresip 1.0.0):
+
+- a REGISTER for an unknown account or with a wrong password gets `401` again; an AOR left at `max_contacts = 0` (the default) refuses every REGISTER with `403`; an endpoint without `allow` refuses every call with `488`;
+- with `direct_media = yes` (the default) both parties get a re-INVITE right after the answer and the RTP flows phone to phone; with a phone behind a NAT this sends the other party to its private address (and the later BYE is lost);
+- a new TLS transport is only opened when Asterisk restarts, not by `pjsip reload`;
+- `media_encryption = sdes` refuses a plain `RTP/AVP` offer with `488`, and an endpoint without it refuses `RTP/SAVP`;
+- baresip finds `~/.baresip` through `$LOGNAME` or `$USER`, which a `docker exec` shell does not set: the image puts a wrapper in `/usr/local/bin`.
+
+### SNMP helpers (from `/opt/sre/lib/snmp.py`)
+
+```python
+from snmp import (set_snmp_agent, set_snmptrapd_service, snmp_get, snmp_walk, snmp_set, get_snmpd_conf,
+                  get_interface_rate, parse_snmp_output, parse_trap_log, OID)
+```
+
+Helpers of the SNMP lab (`lab/sre/_DRAFT_misc/snmp.py`) and of every lab that supervises a router over SNMP (Nagios, Prometheus); image `sysreseval/monitoring`. **State side**: `set_snmp_agent(net_scheme, machine, community, location, contact, sources=, extends=, systemd=False)` writes a `snmpd.conf` (`agentaddress udp:161`: Debian's default `127.0.0.1,[::1]` makes snmpd exit when IPv6 is off) and starts the agent, directly or through systemd; `set_snmptrapd_service(net_scheme, machine)` adds the drop-in that makes Debian's snmptrapd log the traps it receives (its unit's `-LOw` logs none) to `/var/log/snmptrapd.log`. **Grade side**: `snmp_get/snmp_walk/snmp_set(grade, machine, host, oids, community= | user=, auth=, priv=, ...)` → `SnmpResult` (`ran`, `ok`, `timed_out`, `refused`, `value(oid)`, `int(oid)`); the grader's own commands load no MIB (`-m '' -On`) and ignore the students' client files (`SNMPCONFPATH=/nonexistent`). `get_interface_rate()` measures a bit rate from two readings of a 64-bit counter, `parse_trap_log()` + `is_authentication_failure()` read the traps. Facts: a source refused by the community gives a timeout, a view gives `No Such Object`; `sysLocation` written in the file is `notWritable`; a v3 user created with `createUser` in `/var/lib/snmp/snmpd.conf` is replaced by a `usmUser` line at the first start.
+
+### Nagios helpers (from `/opt/sre/lib/nagios.py`)
+
+```python
+from nagios import (submit_external_commands, get_objects, get_status, checked_state, check_nrpe, plugin_case,
+                    get_notifications, get_sms, render_lab_templates, render_check_queue, render_nrpe_conf)
+```
+
+Helpers of the Nagios lab (`lab/sre/_DRAFT_misc/nagios.py`: Nagios 4.4, monitoring plugins 2.3, NRPE 4.1). The evaluation **gives orders to the students' Nagios** through its command pipe — `submit_external_commands(grade, machine, [external_command('SCHEDULE_FORCED_SVC_CHECK', host, service, '$n'), ...])` → `(t0, written)`, the epoch of the write printed by the container and whether Nagios was there to read — then reads `objects.cache` (`get_objects()` → `NagiosObjects`: templates resolved, group members, `effective_command()`) and, a dozen seconds later, `status.dat` (`get_status()`; `checked_state(block, since=t0)` grants a state only when it was checked after the orders: a status file left by a stopped Nagios gives nothing). `check_nrpe(grade, src, host, command=None)` and `plugin_case(...)` (a student's plugin run on temporary files, as `nagios`) return `PluginResult` (`state` read from the first word, `rc`, `perfdata`). `get_notifications()` / `get_sms()` read the log and the outbox of the lab's SMS gateway. `render_lab_templates()` writes two fast templates (30 s checks): Debian's checks every 5 minutes. Facts: Apache needs `a2enmod cgi` for the web interface; a forced check reaches `status.dat` within 10 s with `status_update_interval=5`; a passive result is `check_type=1`.
+
+### Prometheus helpers (from `/opt/sre/lib/prometheus.py`)
+
+```python
+from prometheus import (get_targets, get_rules, get_flags, compare_queries, matches_reference, mentions,
+                        promtool_tests, promtool_test_doc, blackbox_probe, snmp_exporter_probe, get_am_config,
+                        amtool_routes_test, get_am_alerts, webhook_probe, install_metrics_app,
+                        install_webhook_sink, install_prom_probe, render_prometheus_yml, to_yaml)
+```
+
+Helpers of the Prometheus lab (`lab/sre/_DRAFT_misc/prometheus.py`: Prometheus 2.42, Alertmanager 0.25, node / blackbox / SNMP exporters). **Typed PromQL**: `compare_queries(grade, machine, [(id, typed, reference)])` evaluates both expressions **at one instant** inside the container (`lib/prom_probe.py`), and `matches_reference(expr, ref)` wants the same series (the labels of one included in the other's) and values within 5 %, with a non-empty reference; `mentions(typed, 'metric', 'function')` refuses a typed constant. **Rules**: `promtool_tests(grade, machine, {tag: promtool_test_doc(rule_file, series, tests)})` runs the students' rule file on invented series (`for:` and thresholds checked without waiting; `ALERTS` is queryable). **Alerting end to end**: `webhook_probe(grade, 'chat', spec, am_url)` runs `lib/webhook_sink.py probe` on the receiver's machine: four alerts posted with a nonce in their names (a new group each time), their notifications awaited, their inhibition read back. Demo application: `install_metrics_app()` (`lib/metrics_app.py`, counters growing at constant rates, so the expected values are known: `expected_rates()`, `expected_quantile()`). Facts: the classic interface is under `/classic/`; **Debian's `blackbox.yml` has no final newline** (`cat >>` breaks it); a reload with a broken file exits 0 and keeps the old configuration; Alertmanager alone needs `--cluster.listen-address=`.
+
+### Central logs helpers (from `/opt/sre/lib/rsyslog.py`)
+
+```python
+from rsyslog import (logger_cmd, append_marker_cmd, http_marker_cmd, syslog_message, syslog_probe, collect_lines,
+                     fresh, where, get_established, parse_logrotate_conf, run_logrotate_sandbox, get_rotated,
+                     render_collector_conf, render_forward_conf, render_imfile_conf)
+```
+
+Helpers of the central logs lab (`lab/sre/_DRAFT_misc/rsyslog.py`: rsyslog 8.2302, logrotate). Every message the evaluation sends carries the marker `sreprobe.<token>.<id>.<epoch>` (the sender's clock): `collect_lines()` + `fresh(lines, t0)` + `where(lines, id)` tell in which files each message of this evaluation landed. Senders: `logger_cmd()`, `append_marker_cmd()` (a line in an application file read by `imfile`), `http_marker_cmd()` (a request into an access log) and raw RFC 3164 messages over UDP, TCP or TLS from a hidden machine (`lib/syslog_probe.py`: `syslog_probe(grade, machine, [syslog_message(id, host, token, proto=, hostname=, tls={'ca', 'cert', 'key', 'server_name'})])`). `run_logrotate_sandbox()` forces the rotation of the students' first logrotate block rewritten for one directory of the probe (never the real files), `get_rotated()` reads where the next message went. Facts: one `imtcp` serves plain 514 and gtls 6514 with per-input parameters; `x509/name` accepts a client certificate whose extended key usage is serverAuth only; `imfile` reads a file from its beginning at its first start; without a HUP rsyslog keeps writing into the renamed file.
+
+### NetFlow helpers (from `/opt/sre/lib/netflow.py`)
+
+```python
+from netflow import (get_softflowd, get_softflowctl, get_nfcapd, get_udp_listeners, get_nfexpire, get_flow_files,
+                     get_flows, get_export_header, render_softflowd_conf, render_nfcapd_conf, wait_for_flow_cmd)
+```
+
+Helpers of the flow metrology lab (`lab/sre/_DRAFT_misc/netflow.py`: softflowd 1.1, nfdump 1.7.1). The running configuration comes from the command lines of the daemons (`get_softflowd()`, `get_nfcapd()`) and from `softflowctl` (`get_softflowctl()` → timeouts, statistics); `get_flows(grade, machine, filter)` reads flows with a fixed `nfdump` output format (`FlowRow`: times, protocol, endpoints, packets, bytes, exporter) next to the collector's own clock (`===NOW`); `get_export_header()` decodes one export datagram captured with `tcpdump -x` (version, count, FlowSet ids). Facts: a UDP burst of N datagrams of P bytes is one flow of N × (P + 28) bytes; softflowd's IPv4 data FlowSet is id 1024; nfcapd writes a file every interval even without flows; a freshly restarted exporter sends nothing before its first flows expire (inactive timeout + expiry interval).
+
+### Traffic generator (from `/opt/sre/lib/traffic.py`)
+
+```python
+from traffic import install_traffic_gen, start_traffic, traffic_spec, listener, tcp_stream_job, scan_job, beacon_job
+```
+
+`lib/traffic_gen.py` (standard library only) runs listeners (`listener(port, 'tcp'|'udp', ip, mode='discard'|'reply'|'http')`) and jobs on chosen source addresses: a constant UDP rate (`cbr_job`), one long TCP stream (`tcp_stream_job`), a TCP port scan (`scan_job`), a periodic UDP beacon with a new source port per burst (`beacon_job`), background web and DNS requests (`web_job`, `dns_job`). `install_traffic_gen(net_scheme, machine)` then `start_traffic(net_scheme, machine, traffic_spec(listen=, jobs=, seed=))` (restarting replaces the previous generator). Used by the SNMP lab (a known bit rate through a router) and the NetFlow lab (traffic with recognisable shapes).
+
 ### TCP port helpers (from `/opt/sre/lib/grade_helpers.py`)
 
 ```python
@@ -1172,6 +1301,41 @@ These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, ea
 `parse_frr_config` / `get_frr_running_config` also return the BGP configuration: `router_bgp` (`as`, `router_id`, `ebgp_requires_policy`, `network_import_check`, `bestpath`, `neighbors: {peer: {remote_as, description, update_source, timers, shutdown, password, next_hop_self, route_reflector_client, default_originate, route_map_in/out, prefix_list_in/out, ...}}`, `networks`, `aggregate_addresses`, `redistribute`), `prefix_lists`, `route_maps` (`{name: [{seq, action, match: [...], set: [...]}]}`), `as_path_lists`, `community_lists`; interface blocks expose their `ip address` lines in `addresses`.
 
 Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
+
+### RIP helpers (from `/opt/sre/lib/frr.py` and `/opt/sre/lib/rip.py`)
+
+```python
+from frr import (get_rip_routes, get_rip_status, rip_route_metric, rip_route_sources,
+                 is_rip_protocol, is_ripng_protocol, RIP_ROUTE_PROTOCOLS)
+from rip import (install_rip_probe, rip_listen_cmd, rip_announce_cmd, get_rip_probe, rip_window,
+                 probe_ready, heard, announced, announced_metric, md5_authenticated)
+```
+
+**The tables of a router** (`lib/frr.py`). `ripd` has no `json` output: these helpers parse the text of `vtysh`, with the two-pass contract and the `allow_error` flag of the OSPF ones.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_rip_routes(grade, machine, step=1, allow_error=False)` | `dict[str, list[dict]]` | `show ip rip`: `{prefix: [path, ...]}`, one path per row (an ECMP route has several). Each path has `code` (`R`, `C`, `S`, `K`), `sub_code` (`n` learned from a neighbour, `i` interface, `r` redistributed, `d` default, `s` static RIP route), `nexthop` (`None` for a local route), `metric`, `source` (the neighbour, `None` for the router's own routes), `external`, `tag`, `time`. `{}` when RIP is not configured |
+| `rip_route_metric(routes, prefix, learned=None)` | `int \| None` | Smallest metric of `prefix`; `learned=True` only looks at the paths learned from a neighbour, `learned=False` at the router's own ones |
+| `rip_route_sources(routes, prefix)` | `list[str]` | Neighbours `prefix` was learned from (a route in garbage collection, metric 16, is left out) |
+| `get_rip_status(grade, machine, step=1, allow_error=False)` | `dict` | `show ip rip status`: `update` / `timeout` / `garbage` (seconds), `default_metric`, `redistribute`, `send_version` / `receive_version`, `interfaces` (`{name: {send, receive, key_chain}}`), `networks`, `passive_interfaces`, `sources` (`{gateway: {bad_packets, bad_routes, distance, last_update}}`), `distance`. `{}` when RIP is not configured |
+| `is_rip_protocol(protocol)` / `is_ripng_protocol(protocol)` | `bool` | Kernel route `protocol` of a route installed by ripd / ripngd; `kernel_route_gateways(routes, prefix, protocols=RIP_ROUTE_PROTOCOLS)` lists the gateways of a RIP kernel route (its default only accepts OSPF routes). The kernel `metric` of an FRR route is always 20: read the hop count in `get_rip_routes()` |
+
+**What a router announces** (`lib/rip.py`, `lib/rip_probe.py`). A hidden machine with an interface, **without any address**, on every network to watch runs a listener that never sends a frame: it is neither a RIP peer nor an ARP or ping target, and it still reads authenticated updates. Grading what is really announced on a link does not depend on the way the router was configured.
+
+| Function | Description |
+|----------|-------------|
+| `install_rip_probe(net_scheme, machine, step=1)` | Copy `lib/rip_probe.py` into the machine |
+| `rip_listen_cmd(interfaces, keys=None)` | Command (re)starting the listener daemon on the interface names; `keys` = `{key id: secret}` of the MD5 keys of the lab. Start it before FRR (one step earlier) so that the first update is heard |
+| `rip_announce_cmd(source, routes, interval=2)` | Command (re)starting a rogue RIP speaker (a second hidden machine, with an address): a RIPv2 response from port 520 of `source` to 224.0.0.9 every `interval` seconds. ripd believes any host of a connected subnet of an interface RIP runs on, a passive one included |
+| `get_rip_probe(grade, machine, step=1)` | Run the static `dump` command and return a `RipProbe` (`ran`, `uptime`, `heartbeat_age`, `sources`: `{(interface, address): RipSource}` with `age`, `version`, `auth_type`, `key_id`, `auth_valid`, `routes`) |
+| `rip_window(update=None)` | Seconds within which a router must have been heard: its own update timer (`get_rip_status()['update']`, clamped to 5–30, 30 when RIP is not running) plus a quarter (the jitter of ripd) and a margin |
+| `probe_ready(probe, window)` | The listener is alive and has listened for a whole window: required by every check of something that must **not** be heard |
+| `heard(probe, interface, address, window)` | The router sent an update on that interface during the window (false for a passive interface) |
+| `announced(probe, interface, address, window)` / `announced_metric(..., prefix, window)` | `{prefix: metric}` announced during the window; a metric of 16 is a withdrawal (route poisoning, poisoned reverse), an `offset-list out` shows as a larger metric |
+| `md5_authenticated(probe, interface, address, window, key_id=None)` | The last update carries an MD5 trailer whose digest matches a key of the lab (and the given key id) |
+
+Only the responses sent to a group address are recorded: the request a passive interface still emits and the unicast answers to a request are counted apart. An evaluation sees a configuration change once the router has sent an update with it, at most one update period later; the student texts must say so. A silence alone does not prove a passive interface: an interface RIP has just been enabled on sends a request, then its first update up to a period later, so pair `not heard()` with `get_rip_status()` (the interface is in `passive_interfaces`, or absent from `interfaces`). A reference state that must remove a route learned under long timers runs `clear ip rip` on every router at the same step: a router cleared alone learns the route again from its neighbours. Since the export of a project replays `initial` for the hidden machines too, a lab with a rogue speaker sets `export_kathara_project = False`.
 
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
@@ -1542,6 +1706,19 @@ A lab whose name, or the name of any directory above it, contains `_EXAM_`, `_OL
 
 The pickers show a lab by its `title` attribute (a string or a `tr()` text) instead of its file name once the titles are materialised: each directory of the tree may hold a `titles.json` mapping the local names of its entries (`"dhcp.py"`, `"tp_ssh"`) to a title, a plain string or a `{lang: text}` dict resolved in the language of the user. `sre make-titles -r /opt/sre/lab` (as root) imports every lab, exam-only ones included, and writes one file per directory; run it again after adding or renaming labs: a rerun keeps the options and the order of an existing file, replaces the titles of the labs found, drops the entries that name nothing on disk any more and appends the new labs by name. A lab without `title` is shown by its file name without `.py`. The title of a running project (the tab, the reports) comes from the lab itself through `info.json`, not from `titles.json`.
 
+### The title of a directory
+
+A directory of the tree is shown by its name unless the `titles.json` of its **parent** gives it a title, under the name of the directory: a plain string, or a `{lang: text}` dict resolved in the language of the user like the title of a lab. The title of `/opt/sre/lab/s4` is thus the `"s4"` entry of `/opt/sre/lab/titles.json`:
+
+```json
+{
+  "s4":  {"en": "Semester 4",   "fr": "Semestre 4"},
+  "sre": {"en": "Shipped labs", "fr": "TP fournis"}
+}
+```
+
+A directory has no title of its own to read, so these titles are written by hand. `sre make-titles` never touches them (a rerun keeps the entry of a sub-directory as it is), and its option `-d` (`--directories`) prepares the files: every sub-directory of the tree is listed in the `titles.json` of its parent with `null` (shown by its name), and with `-r` the levels holding directories only, such as the lab root, get their file too. `sre make-titles -r -d /opt/sre/lab` then reports the sub-directories still without a title, file by file; replace a `null` by a title and the pickers show it. Without `-d` the command writes the labs only.
+
 ### The order of a directory: `"@sort"`
 
 Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` chooses the order of the entries of that directory, the same in the GUI and on the web (every key starting with `@` is an option, never an entry):
@@ -1552,7 +1729,7 @@ Written by hand in the `titles.json` of a directory, the reserved key `"@sort"` 
 | `"title"` | By title in the language of the user (the language priority of the GUI, the language of the page on the web): case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; an entry without title sorts by its name. |
 | `"manual"` | The entries of the file in their order, then the unlisted ones by name. |
 
-In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
+In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor: `/opt/sre/lab/titles.json` sets the whole tree, a sub-directory may override it. A key may also name a sub-directory, with a title (shown instead of the directory name, see above) or `null` (listed for its place in the manual order only); this is the way to order a level that holds directories only, such as the root. An unknown value is ignored; `sre make-titles` warns about it and keeps the file as it is.
 
 ```json
 {

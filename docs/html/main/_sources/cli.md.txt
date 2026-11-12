@@ -161,7 +161,7 @@ Dismissals self-expire: inactivity alerts return on new archives, error alerts r
 
 Scans lab `.py` files for `image=` / `'image':` patterns and `docker pull`s each unique image. `--random-delay <sec>` waits 0–N seconds before pulling (smooths thundering-herd when invoked across many hosts). `--progress` also writes the steps as JSON lines on stderr (`{"phase": "preload", "status": "start", "total": N}`, then `"status": "pull"` with `image` / `current` / `total` before each pull and `"status": "error"` with `image` after a failed one); what is printed on stdout and the exit status are unchanged. It is what the agent of the web front-end runs when the portal gives its host a turn to preload (see [Pre-loading the images](web.md) in the pool section of the web front-end).
 
-### `sre make-titles [-o <file> | -r] <directory>`
+### `sre make-titles [-o <file> | -r] [-d] <directory>`
 
 Generates `titles.json` sidecars so the Open project dialog of the GUI and the Open page of the web front-end show friendly labels (e.g. `static_routing.py` → "Static routing"). Labs without a `title` attribute are skipped.
 
@@ -169,10 +169,11 @@ Generates `titles.json` sidecars so the Open project dialog of the GUI and the O
 |--------|-------------|
 | `-o, --output-file <file>` | Write all titles to `<file>` (incompatible with `-r`). |
 | `-r, --recursive` | One `titles.json` per directory containing labs (incompatible with `-o`). |
+| `-d, --directories` | Also list the sub-directories of each directory, with a `null` title to be written by hand (see below); with `-r`, the directories holding sub-directories only get their `titles.json` too. |
 
 Output keys match `sre list`: `"<name>.py"` for file labs, `"<dirname>"` for directory labs. A rerun merges into the existing file: its options and the order of its entries are kept (a manual order survives), the labs found now are updated, the entries naming nothing on disk any more are dropped, the new labs are appended by name; a fresh file lists the labs by name. The languages of a title are written sorted, the file atomically. Stale entries are also dropped at read time by `sre list --with-titles`.
 
-**Options and sub-directories** (written by hand): every key starting with `@` is an option, never an entry. `"@sort"` sets the order of the entries of the directory in the lab tree, the same in the GUI and on the web: `"name"` (the default: the file names, byte-wise), `"title"` (the labels in the language of the user, case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; a lab without title sorts by its file name) or `"manual"` (the order of the entries in the file, then the unlisted ones by name). In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor (so `/opt/sre/lab/titles.json` sets the whole tree); an unknown value is ignored and `sre make-titles` warns about it. A key may also name a sub-directory, with a title (shown instead of its name) or `null` (listed for its position in the manual order only); `sre make-titles` keeps such entries as they are.
+**Options and sub-directories** (written by hand): every key starting with `@` is an option, never an entry. `"@sort"` sets the order of the entries of the directory in the lab tree, the same in the GUI and on the web: `"name"` (the default: the file names, byte-wise), `"title"` (the labels in the language of the user, case and accents ignored, numbers compared as numbers so that "TP 2" comes before "TP 10"; a lab without title sorts by its file name) or `"manual"` (the order of the entries in the file, then the unlisted ones by name). In every mode the sub-directories come first, then the labs. A directory without the option takes the one of the nearest ancestor (so `/opt/sre/lab/titles.json` sets the whole tree); an unknown value is ignored and `sre make-titles` warns about it. A key may also name a sub-directory, with a title (shown instead of its name, in the language of the user) or `null` (shown by its name; listed for its position in the manual order only); `sre make-titles` keeps such entries as they are.
 
 ```json
 {
@@ -183,7 +184,13 @@ Output keys match `sre list`: `"<name>.py"` for file labs, `"<dirname>"` for dir
 }
 ```
 
-Typical usage: `sudo /opt/sre/sbin/sre make-titles -r /opt/sre/lab`.
+**Sub-directory entries written by the command** (`-d`): without the option the command never writes a sub-directory key, it only keeps those already there. With `-d`, the `titles.json` of a directory also lists its sub-directories, those of the lab tree (a lab lies somewhere below them; exam-only ones included, like the labs), each with `null` until a title is written by hand: the keys are there, only the titles are left to type. A sub-directory already listed keeps its entry and its place; the missing ones are added by name after the last sub-directory entry of the file, else before its first entry, so a fresh file lists the sub-directories then the labs, as the tree shows them, and the tree shown is the same before and after in every `"@sort"` mode. With `-r -d` every directory of the tree gets its file, including a level holding sub-directories only such as the lab root (`/opt/sre/lab/titles.json`), which `-r` alone never visits. The line reporting a written file names the sub-directories still without a title:
+
+```
+wrote 2 title(s) to /opt/sre/lab/titles.json (sub-directories without a title: s4, sre)
+```
+
+Typical usage: `sudo /opt/sre/sbin/sre make-titles -r /opt/sre/lab`, or with `-d` to also get the sub-directory entries to title.
 
 ### `sre update [--main | --ref <tag|branch|commit>] [--check | --force] [-y] [--venv]`
 
