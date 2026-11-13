@@ -372,6 +372,9 @@ def parse_args():
     parser_list.add_argument('--include-exam-only', dest='include_exam_only', action='store_true',
                              help=_('also list the exam-only labs (a name holding _EXAM_, _OLD_, _DRAFT_ or '
                                     '_TESTS_; privileged only)'))
+    parser_list.add_argument('--with-readmes', dest='with_readmes', action='store_true',
+                             help=_('with --with-titles: also give the README.md / README.<lang>.md texts of '
+                                    'the directories listed'))
 
     parser_report = subparsers.add_parser('report',
                                           help=_('Internal (web front-end): the spreadsheet of sheet, the PDF '
@@ -483,7 +486,8 @@ match SRE.args.action:
     case 'wipe':
         action_wipe()
     case 'list':
-        action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only)
+        action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only,
+                    with_readmes=SRE.args.with_readmes)
     case 'make-titles':
         action_make_titles(SRE.args.directory, SRE.args.output_file, SRE.args.recursive,
                            SRE.args.directories)

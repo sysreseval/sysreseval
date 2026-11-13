@@ -3,6 +3,8 @@
 // lab (POST /api/projects, an NDJSON stream of progress events), the Flavor form a lab may ask
 // before starting and, for the instructors, the project mode (standard, instructor mode, debug
 // mode) and the Host select (a host reserved for them, or the automatic placement).
+// Under the tree, the README of the directory being browsed (README.md / README.<lang>.md of
+// the lab directory, rendered by the agent: tree.js), hidden when that directory has none.
 
 import './base.js';
 import * as api from './api.js';
@@ -13,6 +15,7 @@ import {buildTree} from './tree.js';
 import {ProgressBox, runCreation, projectUrl, flavorDialog} from './creation.js';
 
 const treeElement = document.getElementById('labs');
+const readmeElement = document.getElementById('lab-readme');
 const selectedElement = document.getElementById('selected-lab');
 const startButton = document.getElementById('start-button');
 const progress = new ProgressBox(document.getElementById('progress'));
@@ -38,6 +41,26 @@ function setBusy(busy) {
   for (const radio of document.querySelectorAll('input[name="mode"]')) {
     radio.disabled = busy;
   }
+}
+
+// Show the README of a directory of the tree (node.readme: html rendered by the agent from the
+// lab markdown, like the Informations text of a project) under the tree, or hide the pane when
+// the directory has none (node null: no tree).  The same text stays as it is, its scroll
+// position too; a link opens in another tab, the page keeps its selection.
+let shownReadme = '';
+function showReadme(node) {
+  const html = (node && node.readme) || '';
+  if (!readmeElement || html === shownReadme) {
+    return;
+  }
+  shownReadme = html;
+  readmeElement.innerHTML = html;
+  for (const link of readmeElement.querySelectorAll('a[href]')) {
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
+  readmeElement.hidden = !html;
+  readmeElement.scrollTop = 0;
 }
 
 // Show the Flavor form of a lab: the chunks of the result (first time), or the same form again
@@ -128,6 +151,7 @@ async function loadLabs() {
     if (request === labsRequest) {
       clear(treeElement);
       treeElement.append(el('p', {class: 'error'}, e.message));
+      showReadme(null);
     }
     return;
   }
@@ -139,13 +163,15 @@ async function loadLabs() {
     selectedElement.textContent = '';
     startButton.disabled = true;
   }
-  if (!labs.length) {
+  if (!labs.some((lab) => lab.name)) {   // nothing, or the README of the top directory alone
     clear(treeElement);
     treeElement.append(el('p', {class: 'muted'}, _('No lab is available.')));
+    showReadme(null);
     return;
   }
   buildTree(treeElement, labs, {
     selected: selectedLab,
+    onDirectory: showReadme,
     onSelect: (name) => {
       selectedLab = name;
       selectedElement.textContent = name;

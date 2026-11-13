@@ -580,6 +580,26 @@ def order_tree_entries(children: list, mode: str) -> list:
     return sorted(children, key=key)
 
 
+def resolve_readme(readme, lang_priority: list) -> str:
+    """The README of a directory of the lab tree a user reads: *readme* is the ``readme`` dict
+    of a ``dir`` entry of ``sre list --with-titles --with-readmes`` (``{"": <README.md>,
+    "fr": <README.fr.md>, ...}``), the result one of its texts, ``''`` when it has none.
+
+    The variant of the user's first language, else ``README.md``, else the variants of their
+    other languages in order, else any variant.  Not ``TranslatedText.resolve_priority``:
+    ``README.md`` is the text of everybody without a variant of their own, so with a French
+    ``README.md`` next to ``README.en.md`` a user whose languages are ``fr, en`` reads the
+    French one."""
+    if not isinstance(readme, dict):
+        return ''
+    texts = {key: text for key, text in readme.items() if isinstance(key, str) and isinstance(text, str) and text}
+    languages = [lang for lang in lang_priority or [] if lang]
+    for key in languages[:1] + [params.lab_readme_default_key] + languages[1:] + sorted(texts):
+        if key in texts:
+            return texts[key]
+    return ''
+
+
 def listed_states(user_allowed_states: dict, admin_only_states, *, show_admin_only: bool) -> dict:
     """The states of the Apply Configuration tab: every state of ``user_allowed_states``, or only
     those a student could apply when *show_admin_only* is false (project in instructor mode while

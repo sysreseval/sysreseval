@@ -217,3 +217,171 @@ class TestOpenPage:
                 finally:
                     await proxy.close()
         P.run(go())
+
+
+# -- the README of the directory being browsed ---------------------------------------------------
+
+#: the lab tree of the README tests: sre (README.md alone: a table, a link), s4 (no README), long
+#: (a README higher than its pane), and the top directory with a variant per language
+README_LABS = [DHCP, 's4/tp_ssh', 'long/a.py']
+READMES = {
+    '': {'': '# Welcome\n\nPick your course.', 'fr': '# Bienvenue\n\nChoisissez votre cours.',
+         'en': '# Hello\n\nPick your course.'},
+    'sre': {'': '# Shipped labs\n\n| Lab | Week |\n|---|---|\n| dhcp | 12 |\n\nSee [the docs](https://example.org/docs).'},
+    'long': {'': '# Long\n\n' + '\n\n'.join(f'Paragraph {i}.' for i in range(120))},
+}
+README_ENV = {'MOCK_LAB_LIST': json.dumps(README_LABS), 'MOCK_LAB_READMES': json.dumps(READMES)}
+#: the heading of the README shown, None when the pane is hidden
+README = """(() => {
+  const pane = document.getElementById('lab-readme');
+  return pane.hidden ? null : (pane.querySelector('h1') || {textContent: ''}).textContent;
+})()"""
+LANGUAGE = "document.documentElement.lang"
+TOP_HEADINGS = {'fr': 'Bienvenue', 'en': 'Hello'}
+#: the boxes of the tree, of the README pane and of the Start row, and what the pane scrolls
+README_LAYOUT = """(() => {
+  const box = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return [r.top, r.bottom]; };
+  const pane = document.getElementById('lab-readme');
+  return {tree: box('labs'), pane: box('lab-readme'), start: box('start-button'), window: window.innerHeight,
+          scroll: pane.scrollHeight, client: pane.clientHeight, top: pane.scrollTop,
+          overflow: document.querySelector('main').scrollHeight - document.querySelector('main').clientHeight};
+})()"""
+
+
+def directory(name: str) -> str:
+    """The <summary> of the directory of the tree labelled *name*, as a JavaScript expression."""
+    return f"[...document.querySelectorAll('#labs summary')].find((s) => s.textContent.trim() === {json.dumps(name)})"
+
+
+def is_open(name: str) -> str:
+    return f"{directory(name)}.parentElement.open"
+
+
+async def toggle(page, name: str):
+    await page.evaluate(f"({directory(name)}.click(), true)")
+
+
+class TestReadmes:
+    """Under the lab tree, the README of the directory being browsed: the top of the lab
+    directory at first, a directory when it is opened, the directory holding it when it is
+    closed, the directory of a lab when the lab is clicked; nothing for a directory without
+    README; in the language of the page."""
+
+    def test_readme_follows_the_directory(self, tmp_path):
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=README_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                language = await page.evaluate(LANGUAGE)
+                # the top directory at first: the variant of the page language; no directory is open
+                assert await page.evaluate(README) == TOP_HEADINGS[language]
+                assert not await page.evaluate(is_open('sre'))
+                # a directory opened: its README (README.md, whatever the language), rendered
+                await toggle(page, 'sre')
+                assert await page.evaluate(is_open('sre')) and await page.evaluate(README) == 'Shipped labs'
+                assert await page.evaluate("document.querySelector('#lab-readme table td').textContent") == 'dhcp'
+                assert await page.evaluate("""(() => {
+                  const link = document.querySelector('#lab-readme a');
+                  return [link.href, link.target, link.rel]; })()""") == [
+                    'https://example.org/docs', '_blank', 'noopener noreferrer']
+                # a lab of the directory selected: the README stays; the selection works as before
+                await page.click(lab_button(DHCP))
+                assert await page.evaluate(README) == 'Shipped labs'
+                assert await page.evaluate(SELECTED) == DHCP and not await page.evaluate(START_DISABLED)
+                # a directory without README opened: the pane is hidden; closed: back to the top
+                await toggle(page, 's4')
+                assert await page.evaluate(is_open('s4')) and await page.evaluate(README) is None
+                assert await page.evaluate("document.getElementById('lab-readme').innerHTML") == ''
+                await toggle(page, 's4')
+                assert not await page.evaluate(is_open('s4'))
+                assert await page.evaluate(README) == TOP_HEADINGS[language]
+                # the lab still selected, clicked again: its directory; that directory closed: the top
+                await page.click(lab_button(DHCP))
+                assert await page.evaluate(README) == 'Shipped labs'
+                await toggle(page, 'sre')
+                assert not await page.evaluate(is_open('sre'))
+                assert await page.evaluate(README) == TOP_HEADINGS[language]
+                assert await page.evaluate(SELECTED) == DHCP        # closing a directory selects nothing else
+        P.run(go())
+
+    def test_pane_under_the_tree_scrolls_by_itself(self, tmp_path):
+        """The pane lies between the tree and the Start row; a long README scrolls inside it and
+        leaves the tree its room, the page itself does not scroll; another README starts at
+        its top."""
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=README_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                short = await page.evaluate(README_LAYOUT)
+                assert short['tree'][1] <= short['pane'][0] and short['pane'][1] <= short['start'][0]
+                assert short['scroll'] <= short['client']            # a short text takes its height only
+                await toggle(page, 'long')
+                assert await page.evaluate(README) == 'Long'
+                layout = await page.evaluate(README_LAYOUT)
+                assert layout['tree'][1] <= layout['pane'][0] and layout['pane'][1] <= layout['start'][0]
+                assert layout['scroll'] > layout['client']           # it scrolls inside its pane
+                assert layout['pane'][1] - layout['pane'][0] <= 0.46 * layout['window']
+                assert layout['tree'][1] - layout['tree'][0] >= 120  # the tree keeps its room
+                assert layout['start'][1] <= layout['window'] and layout['overflow'] <= 0
+                await page.evaluate("(document.getElementById('lab-readme').scrollTop = 400, true)")
+                await toggle(page, 'sre')
+                assert await page.evaluate(README) == 'Shipped labs'
+                assert (await page.evaluate(README_LAYOUT))['top'] == 0
+        P.run(go())
+
+    def test_language_of_the_page(self, tmp_path):
+        """The variant of the language of the page (README.<lang>.md), README.md for a
+        directory without one."""
+        async def go():
+            async with browser_of(tmp_path, ALICE, mock_env=README_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                language = await page.evaluate(LANGUAGE)
+                other = 'en' if language == 'fr' else 'fr'
+                assert await page.evaluate(README) == TOP_HEADINGS[language]
+                status = await page.evaluate(f"""fetch('/api/language', {{method: 'POST',
+                    headers: {{'Content-Type': 'application/json', {json.dumps(P.S.CSRF_HEADER)}: {json.dumps(P.S.CSRF_VALUE)}}},
+                    body: JSON.stringify({{language: {json.dumps(other)}}})}}).then((r) => r.status)""")
+                assert status == 200
+                await page.goto(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree in the other language")
+                assert await page.evaluate(LANGUAGE) == other
+                assert await page.evaluate(README) == TOP_HEADINGS[other]
+                await toggle(page, 'sre')
+                assert await page.evaluate(README) == 'Shipped labs'
+        P.run(go())
+
+    def test_readme_kept_across_the_reload_of_the_tree(self, tmp_path):
+        """The tree is built again when an instructor enters or leaves the debug mode: the
+        README shown is the one of the directory of the lab still selected, the top one when
+        nothing is selected."""
+        async def go():
+            async with browser_of(tmp_path, PROF, mock_env=README_ENV) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                language = await page.evaluate(LANGUAGE)
+                await page.click('#mode-debug')
+                await page.wait_for(MODE + " === 'debug'", what="the debug mode")
+                await page.wait_for(has_lab(DHCP), what="the lab tree of the debug mode")
+                assert await page.evaluate(README) == TOP_HEADINGS[language]
+                await page.evaluate(f"({directory('sre')}.parentElement.open = true, true)")   # opened without a click
+                await page.click(lab_button(DHCP))
+                assert await page.evaluate(README) == 'Shipped labs'
+                await page.click('#mode-standard')
+                await page.wait_for(MODE + " === 'standard'", what="the standard mode")
+                await page.wait_for(f"{has_lab(DHCP)} && {is_open('sre')}", what="the tree built again, sre open")
+                assert await page.evaluate(HIGHLIGHTED) == [DHCP] and await page.evaluate(README) == 'Shipped labs'
+        P.run(go())
+
+    def test_no_readme_no_pane(self, tmp_path):
+        """A lab tree without README (and an agent that sends none): the page of before."""
+        async def go():
+            async with browser_of(tmp_path, ALICE) as (h, browser, url):
+                page = await browser.page(f'{url}/open')
+                await page.wait_for(has_lab(DHCP), what="the lab tree")
+                assert await page.evaluate(README) is None
+                await toggle(page, 'sre')
+                await page.click(lab_button(DHCP))
+                assert await page.evaluate(README) is None and await page.evaluate(SELECTED) == DHCP
+                assert await page.evaluate("getComputedStyle(document.getElementById('lab-readme')).display") == 'none'
+        P.run(go())

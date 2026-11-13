@@ -31,6 +31,7 @@ from SRE.archive_summary import (error_entries, exo_grade_list, lab_elements, ar
 from SRE.common import TranslatedText
 from SRE.evaluation_table import build_evaluation_rows, header_labels, rows_to_json
 from SRE.form_spec import parse_form_description, chunks_to_json
+from SRE.instructor_text import markdown_to_html
 from SRE.utils import canonical_lab_name
 
 from . import access, occupancy, reports
@@ -45,7 +46,7 @@ from .results import ArchiveIndex
 from .rfb_filter import RfbInputFilter, RfbProtocolError
 from .runner import (SreRunner, CommandError, CommandTimeout, FlavorFormNeeded, FlavorError, build_argv, sre_args,
                      RESULT_CREATED, RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_ERROR,
-                     build_env, PHASE_PROJECT)
+                     build_env, PHASE_PROJECT, LAB_README_KEY)
 from .schedulers import Schedulers
 from .terminals import (TerminalSession, MAX_CLIENTS_PER_SESSION, MAX_READONLY_CLIENTS_PER_SESSION,
                         PROBE_DELAY)  # noqa: F401  (PROBE_DELAY: the tests)
@@ -160,6 +161,28 @@ def _lab_directories() -> list:
     return [d for d in dict.fromkeys((params.lab_dir, params.shipped_lab_dir)) if os.path.isdir(d)]
 
 
+def render_readmes(labs: list) -> list:
+    """The entries of ``sre list --with-titles --with-readmes`` as ``GET /v1/labs`` gives them:
+    the ``readme`` of a directory entry (``{language: markdown}``, ``""`` for ``README.md``)
+    replaced by ``LAB_README_KEY`` = ``{language: html}``, rendered like the Informations text
+    of a project (the portal has neither the labs nor a markdown library, and the browser picks
+    the language).  The entry of the top directory (no name) is dropped when it has no text
+    left: it is no entry of the tree."""
+    rendered = []
+    for entry in labs:
+        if isinstance(entry, dict):
+            readme = entry.pop(params.lab_list_readme_key, None)
+            texts = readme.items() if isinstance(readme, dict) else ()
+            html = {lang: markdown_to_html(text) for lang, text in texts
+                    if isinstance(lang, str) and isinstance(text, str) and text.strip()}
+            if html:
+                entry[LAB_README_KEY] = html
+            elif not entry.get(params.lab_list_name_key):
+                continue
+        rendered.append(entry)
+    return rendered
+
+
 class Agent:
     def __init__(self, cfg: AgentConfig, *, pub_dir: str | None = None, projects_dir: str | None = None,
                  localedirs=None, hostname: str | None = None, extra_env: dict | None = None,
@@ -260,35 +283,40 @@ class Agent:
             raise CommandError(0, "sre list gave no JSON", result.stderr)
         if not isinstance(labs, list):
             raise CommandError(0, "sre list gave no list", result.stderr)
-        return labs
+        return await asyncio.to_thread(render_readmes, labs)
 
     async def labs(self, login: str) -> list:
-        """The labs a student may start (``sre --user list --with-titles``), cached for
+        """The labs a student may start (``sre --user list --with-titles --with-readmes``: the
+        README of the directories with them, rendered by ``render_readmes``), cached for
         ``lab_list_cache_ttl``."""
         async with self._labs_lock:
             now = time.monotonic()
             if self._labs_cache is not None and now - self._labs_cache[0] < self.cfg.lab_list_cache_ttl:
                 return self._labs_cache[1]
-            labs = await self._run_list(login, sre_args('list', options=['--with-titles']))
+            labs = await self._run_list(login, sre_args('list', options=['--with-titles', '--with-readmes']))
             self._labs_cache = (now, labs)
             return labs
 
     async def all_labs(self, login: str) -> list:
         """Every lab, the exam-only ones included (a privileged ``sre list --with-titles
-        --include-exam-only``): what an instructor chooses the labs of an exam from, and what an
-        exam start is checked against; its own cache."""
+        --with-readmes --include-exam-only``): what an instructor chooses the labs of an exam
+        from, and what an exam start is checked against; its own cache."""
         async with self._all_labs_lock:
             now = time.monotonic()
             if self._all_labs_cache is not None and now - self._all_labs_cache[0] < self.cfg.lab_list_cache_ttl:
                 return self._all_labs_cache[1]
-            labs = await self._run_list(login, sre_args('list', options=['--with-titles', '--include-exam-only']),
+            labs = await self._run_list(login, sre_args('list', options=['--with-titles', '--with-readmes',
+                                                                         '--include-exam-only']),
                                         privileged=True)
             self._all_labs_cache = (now, labs)
             return labs
 
     @staticmethod
     def _lab_names(labs: list) -> set:
-        return {entry.get('name') if isinstance(entry, dict) else entry for entry in labs}
+        """The names a start is checked against: never the entry of the top directory (no name)."""
+        names = {entry.get('name') if isinstance(entry, dict) else entry for entry in labs}
+        names.discard('')
+        return names
 
     def _log_skew(self, project: str, exam: dict, skew: float | None):
         if skew is not None and abs(skew) > SKEW_WARNING:

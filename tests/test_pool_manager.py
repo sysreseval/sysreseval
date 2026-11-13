@@ -859,6 +859,38 @@ class TestLabs:
         assert labs == LABS_OUT
         assert [lab['name'] for lab in labs] != sorted(lab['name'] for lab in labs)
 
+    def test_readmes_of_the_directories(self):
+        """The README an agent renders for a directory (`readme_html`: html by language) is kept
+        on its entry, its texts that are non-empty strings only; the entry without name, the top
+        of the lab directory, is kept for its README alone; never a README on a lab."""
+        pool, session = self._pool()
+        session.labs['http://a'] = [
+            {'name': '', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme_html': {'': '<h1>Welcome</h1>'}},
+            {'name': 's4', 'kind': 'dir', 'sort': 'name', 'readme_html': {'fr': '<p>S4</p>', 'en': '', 'de': 3, 5: 'x'}},
+            {'name': 's4/x.py', 'kind': 'lab', 'sort': 'name', 'readme_html': {'': '<p>on a lab</p>'}},
+            {'name': 's5', 'kind': 'dir', 'sort': 'name', 'readme_html': 'not a dict'},
+            {'name': 's6', 'kind': 'dir', 'sort': 'name', 'readme_html': {'': ''}},
+            {'name': 's7', 'kind': 'dir', 'sort': 'name', 'readme': {'': 'raw markdown'}},
+            {'name': 8, 'kind': 'lab'}]
+        pool.status['a'] = HostStatus(reachable=True, load1=0.0)
+        assert run(pool.labs(Identity(login='bob'))) == [
+            {'name': '', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme_html': {'': '<h1>Welcome</h1>'}},
+            {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme_html': {'fr': '<p>S4</p>'}},
+            {'name': 's4/x.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+            {'name': 's5', 'title': None, 'kind': 'dir', 'sort': 'name'},
+            {'name': 's6', 'title': None, 'kind': 'dir', 'sort': 'name'},
+            {'name': 's7', 'title': None, 'kind': 'dir', 'sort': 'name'}]
+        # the titles of the labs the exams read are those of the labs only
+        assert pool.lab_titles() == {}
+
+    def test_top_entry_without_readme_dropped(self):
+        """An entry without name is nothing but the README of the top directory."""
+        pool, session = self._pool()
+        session.labs['http://a'] = [{'name': '', 'kind': 'dir'}, {'name': '', 'kind': 'lab', 'readme_html': {'': 'x'}},
+                                    {'name': 'a.py', 'kind': 'lab'}]
+        pool.status['a'] = HostStatus(reachable=True, load1=0.0)
+        assert run(pool.labs(Identity(login='bob'))) == [{'name': 'a.py', 'title': None, 'kind': 'lab', 'sort': 'name'}]
+
     @staticmethod
     def _pool(ttl=60.0):
         hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc']

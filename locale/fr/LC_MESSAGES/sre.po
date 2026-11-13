@@ -669,6 +669,13 @@ msgstr ""
 "lister aussi les TP réservés aux examens (un nom contenant _EXAM_, _OLD_, "
 "_DRAFT_ ou _TESTS_ ; utilisateurs privilégiés seulement)"
 
+msgid ""
+"with --with-titles: also give the README.md / README.<lang>.md texts of the "
+"directories listed"
+msgstr ""
+"avec --with-titles : donner aussi les textes README.md / README.<lang>.md "
+"des répertoires listés"
+
 msgid "display version and exit"
 msgstr "afficher la version et quitter"
 

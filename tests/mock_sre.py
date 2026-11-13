@@ -23,6 +23,11 @@ Environment variables (all optional but the first):
                       (privileged only, like the real CLI; `start` accepts them in user mode too);
                       `list --with-titles` prints their tree in display order like the real CLI
                       (the directory entries included, every entry in the "name" mode)
+  MOCK_LAB_READMES    JSON {directory: {language: markdown}} of the README texts
+                      `list --with-titles --with-readmes` gives like the real CLI: the "readme"
+                      key of the entry of a directory of the tree, "" being the top directory
+                      (an entry of its own, first) and "" the language of README.md; none by
+                      default, and a directory the list does not hold is ignored
   MOCK_FLAVOR_FORM    when set, `start` without --flavor-json (user mode) exits 3 with the
                       flavor_form event, `form` being its value
   MOCK_FLAVOR_REFUSE  when set, `start --flavor-json` exits 4 with the flavor_error event carrying
@@ -105,6 +110,7 @@ from SRE.common import (GradeElement, GradePart, InfoInterface, InfoLab, InfoMac
 ENV_PUB_DIR = 'SRE_PUB_DIR'
 ENV_LOG = 'MOCK_SRE_LOG'
 ENV_LAB_LIST = 'MOCK_LAB_LIST'
+ENV_LAB_READMES = 'MOCK_LAB_READMES'
 ENV_FLAVOR_FORM = 'MOCK_FLAVOR_FORM'
 ENV_FLAVOR_REFUSE = 'MOCK_FLAVOR_REFUSE'
 ENV_FLAVOR_PRESETS = 'MOCK_FLAVOR_PRESETS'
@@ -343,6 +349,19 @@ class Mock:
             return result
         return flatten(tree, '')
 
+    def with_readmes(self, entries: list) -> list:
+        """The entries of `list --with-titles --with-readmes`: the "readme" texts of
+        MOCK_LAB_READMES on the directory entries, and an entry of the top directory first when
+        it has some, as the real CLI prints them."""
+        value = self.env.get(ENV_LAB_READMES)
+        readmes = json.loads(value) if value else {}
+        for entry in entries:
+            if entry["kind"] == "dir" and readmes.get(entry["name"]):
+                entry["readme"] = readmes[entry["name"]]
+        if entries and readmes.get(''):
+            entries.insert(0, {"name": "", "title": None, "kind": "dir", "sort": "name", "readme": readmes['']})
+        return entries
+
     def delay(self, name: str) -> float:
         value = self.env.get(name)
         return float(value) if value else 0.0
@@ -465,9 +484,13 @@ class Mock:
         self.not_allowed_in_exam_mode()
         if self.args.include_exam_only and self.user_mode:
             error_quit("you're not allowed to run this command")
+        if self.args.with_readmes and not self.args.with_titles:
+            error_quit("--with-readmes needs --with-titles")
         labs = self.lab_list(include_exam_only=bool(self.args.include_exam_only))
         if self.args.with_titles:
             data = self.lab_tree(labs)
+            if self.args.with_readmes:
+                data = self.with_readmes(data)
         else:
             data = labs
         print(json.dumps(data, ensure_ascii=False))
@@ -986,6 +1009,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser_list = subparsers.add_parser('list')
     parser_list.add_argument('--with-titles', action='store_true')
     parser_list.add_argument('--include-exam-only', dest='include_exam_only', action='store_true')
+    parser_list.add_argument('--with-readmes', dest='with_readmes', action='store_true')
 
     parser_export = subparsers.add_parser('export')
     parser_export.add_argument('running_lab', metavar='running_lab')

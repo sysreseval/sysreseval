@@ -13,7 +13,8 @@ from dataclasses import dataclass, field, asdict
 import aiohttp
 
 from ..agent.occupancy import SESSION_PREFIX
-from ..agent.runner import PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED
+from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
+                            LAB_README_KEY)
 from ..config import HostConfig, host_config_from_dict, ConfigError
 from ..identity import Identity
 
@@ -76,6 +77,16 @@ LAB_KIND_LAB = 'lab'
 LAB_KINDS = (LAB_KIND_DIR, LAB_KIND_LAB)
 LAB_SORT_NAME = 'name'
 LAB_SORT_MODES = (LAB_SORT_NAME, 'title', 'manual')
+
+
+def readme_of(entry: dict) -> dict:
+    """The README of a directory entry of ``GET /v1/labs`` (``LAB_README_KEY``:
+    ``{language: html}`` rendered by the agent, ``""`` being ``README.md``), its texts that are
+    non-empty strings only; ``{}`` when the entry has none (an older agent, no README)."""
+    readme = entry.get(LAB_README_KEY)
+    if not isinstance(readme, dict):
+        return {}
+    return {lang: html for lang, html in readme.items() if isinstance(lang, str) and isinstance(html, str) and html}
 
 
 class PoolError(Exception):
@@ -852,7 +863,10 @@ class Pool:
     async def _labs_of(self, host: HostConfig, identity: Identity, params=None) -> list | None:
         """``GET /v1/labs`` of one host, normalised (``[{name, title, kind, sort}]``, a bare name
         accepted as a lab, an unknown kind or sort mode replaced by the default, duplicates
-        dropped, the order kept); ``None`` when the host does not answer a list."""
+        dropped, the order kept); ``None`` when the host does not answer a list.  A directory
+        entry keeps its README (``readme_of``: ``LAB_README_KEY``, shown under the tree of the
+        Open page when the directory is opened), and the entry without name, the top of the lab
+        directory, is kept for its README only: it is no entry of the tree."""
         try:
             async with self.session.get(f"{host.url}/v1/labs", headers=self.headers(host, identity), params=params,
                                         timeout=aiohttp.ClientTimeout(total=30)) as resp:
@@ -871,9 +885,15 @@ class Pool:
         for entry in labs:
             if isinstance(entry, str):
                 entry = {'name': entry}
-            if isinstance(entry, dict) and entry.get('name') and entry['name'] not in seen:
-                kind, mode = entry.get('kind'), entry.get('sort')
-                seen[entry['name']] = {'name': entry['name'], 'title': entry.get('title'),
-                                       'kind': kind if kind in LAB_KINDS else LAB_KIND_LAB,
-                                       'sort': mode if mode in LAB_SORT_MODES else LAB_SORT_NAME}
+            if not isinstance(entry, dict) or not isinstance(entry.get('name'), str) or entry['name'] in seen:
+                continue
+            kind, mode = entry.get('kind'), entry.get('sort')
+            readme = readme_of(entry) if kind == LAB_KIND_DIR else {}
+            if not entry['name'] and not readme:
+                continue
+            seen[entry['name']] = {'name': entry['name'], 'title': entry.get('title'),
+                                   'kind': kind if kind in LAB_KINDS else LAB_KIND_LAB,
+                                   'sort': mode if mode in LAB_SORT_MODES else LAB_SORT_NAME}
+            if readme:
+                seen[entry['name']][LAB_README_KEY] = readme
         return list(seen.values())

@@ -385,7 +385,47 @@ def _lab_list_entry(name: str, title, kind: str, mode: str) -> dict:
             params.lab_list_kind_key: kind, params.lab_list_sort_key: mode}
 
 
-def get_lab_list_with_titles(include_exam_only_labs=False):
+_readme_re = re.compile(params.lab_readme_pattern)
+
+
+def _read_readme(path: str):
+    """The text of one README file, or ``None``: not a regular file, unreadable, empty, or
+    bigger than ``params.lab_readme_max_size`` (such a file is not shown at all rather than cut
+    in the middle of its markdown)."""
+    try:
+        if not os.path.isfile(path):
+            return None
+        with open(path, 'rb') as f:
+            raw = f.read(params.lab_readme_max_size + 1)
+    except OSError:
+        return None
+    if len(raw) > params.lab_readme_max_size:
+        return None
+    text = raw.decode('utf-8', 'replace')
+    return text if text.strip() else None
+
+
+def load_readmes(dirpath: str) -> dict:
+    """The README texts of one directory of the lab tree, raw markdown by language:
+    ``{"": <README.md>, "fr": <README.fr.md>, ...}`` (``params.lab_readme_default_key`` for the
+    file without language), ``{}`` when the directory has none.  The names are matched exactly
+    (``params.lab_readme_pattern``); a file that cannot be shown is left out (``_read_readme``)."""
+    try:
+        names = sorted(os.listdir(dirpath))
+    except OSError:
+        return {}
+    readmes = {}
+    for name in names:
+        match = _readme_re.fullmatch(name)
+        if match is None:
+            continue
+        text = _read_readme(os.path.join(dirpath, name))
+        if text is not None:
+            readmes[match.group(1) or params.lab_readme_default_key] = text
+    return readmes
+
+
+def get_lab_list_with_titles(include_exam_only_labs=False, with_readmes=False):
     """Walk the lab directory and return its tree flattened in display order: one
     ``{"name": rel_path, "title": dict|str|None, "kind": "dir"|"lab", "sort": mode}`` per entry.
 
@@ -397,9 +437,25 @@ def get_lab_list_with_titles(include_exam_only_labs=False):
     sort the ``title`` mode themselves). The titles come from the ``titles.json`` of the parent
     directory; the file system is the source of truth, so its entries that match nothing on
     disk are silently ignored.
+
+    With *with_readmes* (``sre list --with-titles --with-readmes``; the output is the one above
+    without it), a ``dir`` entry whose directory holds a README also has
+    ``"readme": {"": <README.md>, "fr": <README.fr.md>, ...}`` (``load_readmes``: raw markdown),
+    and when the lab directory itself holds one the list starts with an entry for it, which is
+    no node of the tree: ``{"name": "", "title": None, "kind": "dir", "sort": "name",
+    "readme": {...}}``.  Only the directories listed have their README read: never an exam-only
+    directory for a student, a directory without any lab below, nor the inside of a directory
+    lab.
     """
     lab_dir_abs = os.path.abspath(params.lab_dir)
     tree = _lab_tree(lab_dir_abs, include_exam_only_labs=include_exam_only_labs)
+
+    def dir_entry(dirpath, name, title, mode):
+        entry = _lab_list_entry(name, title, params.lab_list_kind_dir, mode)
+        readmes = load_readmes(dirpath) if with_readmes else {}
+        if readmes:
+            entry[params.lab_list_readme_key] = readmes
+        return entry
 
     def entries_of(dirpath, rel, inherited):
         subdirs, labs = tree.get(dirpath, ([], []))
@@ -407,15 +463,19 @@ def get_lab_list_with_titles(include_exam_only_labs=False):
         mode = _sort_mode(titles, inherited)
         result = []
         for d in _ordered_names(subdirs, mode, titles):
-            result.append(_lab_list_entry(os.path.join(rel, d), _title_of(titles, d),
-                                          params.lab_list_kind_dir, mode))
+            result.append(dir_entry(os.path.join(dirpath, d), os.path.join(rel, d), _title_of(titles, d), mode))
             result.extend(entries_of(os.path.join(dirpath, d), os.path.join(rel, d), mode))
         for name in _ordered_names(labs, mode, titles):
             result.append(_lab_list_entry(os.path.join(rel, name), _title_of(titles, name),
                                           params.lab_list_kind_lab, mode))
         return result
 
-    return entries_of(lab_dir_abs, '', params.titles_sort_name)
+    entries = entries_of(lab_dir_abs, '', params.titles_sort_name)
+    if with_readmes and lab_dir_abs in tree:
+        top = dir_entry(lab_dir_abs, '', None, params.titles_sort_name)
+        if params.lab_list_readme_key in top:
+            entries.insert(0, top)
+    return entries
 
 
 def resolve_running_lab_name(partial: str) -> str:

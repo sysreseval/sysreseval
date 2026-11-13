@@ -1759,3 +1759,40 @@ In every mode the sub-directories come first, then the labs. A directory without
 ```
 
 What the pickers receive is `sre list --with-titles`: the tree flattened in display order, a directory entry before its content, each entry with its `title`, its `kind` (`dir` / `lab`) and the `sort` mode it is placed by; the front-ends keep that order and only sort the `"title"` mode themselves (see `sre list` and `sre make-titles` in the [CLI reference](cli.md)).
+
+### A text for a directory: `README.md`
+
+A directory of the tree may hold a `README.md`: a few lines of markdown telling the students what its labs are for (which lab for which session, the prerequisites, where the handout is). Both pickers show it **under the lab tree** while the user browses that directory:
+
+- when the picker opens: the `README.md` at the top of the tree (`/opt/sre/lab/README.md`);
+- when a directory is opened (in the GUI, also when it is selected): its own `README.md`;
+- when a directory is closed: the one of the directory holding it;
+- when a lab is selected: the one of the directory of the lab.
+
+A directory without `README.md` shows nothing: the pane disappears, the text of a directory above it is never shown in its place.
+
+```
+/opt/sre/lab/
+├── README.md            ← shown first: "Pick the directory of your course…"
+├── README.fr.md         ← … to the users whose language is French
+├── titles.json
+├── s4/
+│   ├── README.md        ← shown when s4 is opened, and while one of its labs is selected
+│   ├── tp_ssh/srelab.py
+│   └── arp.py
+└── sre/                 ← no README.md: nothing under the tree
+    └── dhcp.py
+```
+
+**Languages.** `README.md` is the text of everybody; a `README.<lang>.md` next to it (`README.fr.md`, `README.en.md`: a two or three letter language code) is the text of the users of that language. A user reads the variant of their language (the first language of the priority of the GUI, the language of the page on the web), else `README.md`, else the variant of another language they know, else any variant. A directory may have variants only.
+
+**Rules.**
+
+- The names are exact, capitals included: `readme.md`, `README.txt` and `README.FR.md` are ignored.
+- The text is markdown rendered like the Informations text of a lab: headings, lists, tables, fenced code. It is plain text for everybody, the `instructor()` fragments and the `@@…@@` markers of a lab file mean nothing here.
+- Links must be absolute (`https://…`); they open in the browser of the user. No file of the lab tree is served: an image can only be a `data:` URI.
+- A file bigger than 64 KiB (`params.lab_readme_max_size`), empty or unreadable by the `sre` user is not shown.
+- Only the directories listed have a text: an exam-only directory (`_DRAFT_`, `_EXAM_`…) shows its `README.md` to those who are listed it (an instructor in the debug mode of the web Open page), a directory without any lab below is not listed at all, and the inside of a directory lab is never read (a `README.md` next to a `srelab.py` stays private).
+- Like the labs, the files must be readable by the `sre` user; nothing else has to be done (`sre make-titles` ignores them, no service is restarted). The web front-end keeps the lab list a minute or two (`lab_list_cache_ttl` of the agents, `labs_cache_ttl` of the portal), so a new text appears there after that delay.
+
+The texts travel with the lab list: `sre list --with-titles --with-readmes` adds them to the directory entries (see the [CLI reference](cli.md)).

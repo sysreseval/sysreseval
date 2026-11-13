@@ -525,7 +525,48 @@ class TestLabsAndStart:
                                    'kind': 'lab', 'sort': 'name'}
                 await h.client.get('/v1/labs', headers=headers(BOB))
                 assert sum(1 for c in h.calls() if 'list' in c) == 1
+                # no README in the lab tree: the entries of before, although they are asked for
+                assert h.calls()[0] == ['--user', 'list', '--with-titles', '--with-readmes']
+                assert all(set(lab) == {'name', 'title', 'kind', 'sort'} for lab in labs)
         run(go())
+
+    def test_labs_carry_the_readmes_rendered(self, tmp_path):
+        """The README of the directories (`sre list --with-readmes`: markdown by language) comes
+        as html by language on their entries, the top directory as a first entry without name,
+        which is no lab: a start cannot name it."""
+        readmes = {'': {'': '# Welcome\n\nPick *your* course.', 'fr': '# Bienvenue'},
+                   'sre': {'': '| Lab | Week |\n|---|---|\n| dhcp | 12 |\n\n```\nsre start\n```\n'},
+                   's4': {'fr': '   \n'}}
+        mock_env = {'MOCK_LAB_READMES': json.dumps(readmes)}
+
+        async def go():
+            async with Harness(tmp_path, mock_env=mock_env) as h:
+                labs = await (await h.client.get('/v1/labs', headers=headers())).json()
+                assert [lab['name'] for lab in labs] == ['', 's4', 's4/tp_ssh', 'sre', 'sre/dhcp.py']
+                assert labs[0] == {'name': '', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme_html': {
+                    '': '<h1>Welcome</h1>\n<p>Pick <em>your</em> course.</p>', 'fr': '<h1>Bienvenue</h1>'}}
+                sre = labs[3]['readme_html']['']
+                assert '<table>' in sre and '<td>dhcp</td>' in sre and '<pre><code>sre start' in sre
+                # the markdown is never sent, a text of blanks is no README
+                assert all('readme' not in lab for lab in labs) and 'readme_html' not in labs[1]
+                assert 'readme_html' not in labs[2] and 'readme_html' not in labs[4]
+                # the instructors' list (the exam-only labs too) has them as well
+                everything = await (await h.client.get('/v1/labs?all=1', headers=headers(PROF))).json()
+                assert everything[0] == labs[0] and 'sre/_EXAM_/exam1.py' in [lab['name'] for lab in everything]
+                assert h.calls()[-1] == ['list', '--with-titles', '--with-readmes', '--include-exam-only']
+                resp = await h.client.post('/v1/projects', json={'lab': ''}, headers=headers())
+                assert resp.status == 400
+                assert h.agent._lab_names(labs) == {'s4', 's4/tp_ssh', 'sre', 'sre/dhcp.py'}
+        run(go())
+
+    def test_render_readmes(self):
+        from sreweb.agent.app import render_readmes
+        labs = [{'name': '', 'kind': 'dir', 'readme': {'': '   '}},                 # nothing left: dropped
+                {'name': 'a', 'kind': 'dir', 'readme': {'': 'text', 'fr': 3, 4: 'x'}},
+                {'name': 'b', 'kind': 'dir', 'readme': 'not a dict'},
+                {'name': 'c', 'kind': 'dir'}, 'bare.py']
+        assert render_readmes(labs) == [{'name': 'a', 'kind': 'dir', 'readme_html': {'': '<p>text</p>'}},
+                                        {'name': 'b', 'kind': 'dir'}, {'name': 'c', 'kind': 'dir'}, 'bare.py']
 
     def test_start_streams_events_and_creates_the_project(self, tmp_path):
         async def go():

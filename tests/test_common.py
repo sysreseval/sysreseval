@@ -534,3 +534,37 @@ class TestOrderTreeEntries:
     def test_missing_keys_tolerated(self):
         assert order_tree_entries([{"name": "x"}, {"kind": "dir"}], "title") == [
             {"kind": "dir"}, {"name": "x"}]
+
+
+from SRE.common import resolve_readme  # noqa: E402
+
+
+class TestResolveReadme:
+    """The README of a directory of the lab tree a user reads, among `{"": README.md,
+    lang: README.<lang>.md}`."""
+
+    ALL = {"": "default", "fr": "français", "en": "english"}
+
+    def test_variant_of_the_first_language(self):
+        assert resolve_readme(self.ALL, ["fr", "en"]) == "français"
+        assert resolve_readme(self.ALL, ["en", "fr"]) == "english"
+
+    def test_default_before_the_other_languages(self):
+        """README.md is the text of everybody without a variant of their own: a French README.md
+        next to README.en.md is what a user of `fr, en` reads."""
+        assert resolve_readme({"": "défaut", "en": "english"}, ["fr", "en"]) == "défaut"
+        assert resolve_readme(self.ALL, ["de", "fr"]) == "default"
+        assert resolve_readme({"": "only"}, ["fr"]) == "only"
+
+    def test_other_languages_without_a_default(self):
+        assert resolve_readme({"fr": "français", "en": "english"}, ["de", "en", "fr"]) == "english"
+        assert resolve_readme({"fr": "français", "en": "english"}, ["de"]) == "english"    # any, by name
+        assert resolve_readme({"fr": "français"}, []) == "français"
+        assert resolve_readme({"fr": "français"}, None) == "français"
+
+    def test_nothing_to_show(self):
+        for readme in (None, {}, "text", ["text"], {"": ""}, {"fr": None, "": 3}):
+            assert resolve_readme(readme, ["fr"]) == ''
+
+    def test_empty_variant_skipped(self):
+        assert resolve_readme({"fr": "", "": "default"}, ["fr"]) == "default"

@@ -44,6 +44,11 @@ PRELOAD_DONE = 'done'
 PRELOAD_FAILED = 'failed'       # an image could not be pulled, or the command failed
 PRELOAD_STATES = (PRELOAD_IDLE, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED)
 
+#: The key of the README of a directory entry of ``GET /v1/labs`` (and of the top directory, an
+#: entry without name), read by the portal too: ``{language: html}``, ``""`` being the language of
+#: ``README.md``, rendered by the agent from the markdown ``sre list --with-readmes`` gives.
+LAB_README_KEY = 'readme_html'
+
 #: The ``status`` of the final ``{"phase": "result"}`` line of the creation stream of the agent
 #: (``POST /v1/projects``), read by the portal too: after a form or a refused flavor no project
 #: exists, and the start slot of the user is given back.

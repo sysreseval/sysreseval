@@ -298,7 +298,7 @@ pre-start-exam start-exam"
             fi
             ;;
         list)
-            COMPREPLY=($(compgen -W "--with-titles --help" -- "$cur"))
+            COMPREPLY=($(compgen -W "--with-titles --with-readmes --help" -- "$cur"))
             ;;
         export)
             if [[ "$cur" == -* ]]; then

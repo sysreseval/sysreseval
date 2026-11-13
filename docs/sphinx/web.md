@@ -77,7 +77,16 @@ browser ──HTTPS──► sre-web (the portal) ──HTTP + token──► sr
   go to (every host of a pool serves the same lab tree; the next candidate is asked when it
   fails), and is kept `labs_cache_ttl` seconds (`60`) per role, since the reserved hosts are
   the instructors' only: opening the page costs one `sre list` per minute whatever the size of
-  the pool.
+  the pool. The list carries the README texts of the directories of the lab tree (`sre list
+  --with-titles --with-readmes` on the host): the agent renders their markdown, as it does for
+  the Informations text of a project (the portal has neither the labs nor a markdown library),
+  and gives `readme_html`, the html by language, on each directory entry of `GET /v1/labs`,
+  the top of the lab directory being an entry without name; the portal passes them on and the
+  browser picks the language. A portal older than its agents drops them and a newer one shows
+  none: the two may be upgraded in any order. The texts are written by whoever may write in
+  the lab directory and are not sanitised, like every text of a lab; the policy of the pages
+  runs no script of theirs. A student bound by an exam is listed the labs of the exam alone,
+  without any directory nor text.
 
 The agent enforces what the `sre` CLI does not check: the exact running lab name (the CLI
 resolves substrings) and its owner (a user only reaches their own projects, an instructor every
@@ -860,7 +869,7 @@ lab is no longer the student's. The answers metadata of an exam project carry th
 the Qt GUI's exam mode (`exam_mode`, `exam_started_at`, `exam_duration`,
 `exam_time_remaining`), so the archives carry the exam flag and the Archives page filters on it.
 The exam-only labs of the pool are listed by `GET /v1/labs?all=1` (instructors), a privileged
-`sre list --with-titles --include-exam-only`.
+`sre list --with-titles --with-readmes --include-exam-only`.
 
 Connection log: every change of an exam is an `exam_edit` line (`action` = `create` / `update` /
 `delete` / `end` / `adjust` / `labs` / `close`, `exam`, `count` of students, `minutes`), a student
@@ -1290,8 +1299,12 @@ connection log and the archives are in the database; the sessions are in the bro
 - **Projects**: the user's running projects on the whole pool (Open, Close), "Open a lab" (the
   lab tree with its titles, in the order the `titles.json` of each directory sets, by file name,
   by title in the language of the page or by hand, the sub-directories first, the same tree as
-  the Qt GUI's; the Flavor form when the lab has one; the progress of the pulls and
-  deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
+  the Qt GUI's; under the tree, the `README.md` of the directory being browsed, in the language
+  of the page when the directory has a `README.<lang>.md`: the top of the lab directory at
+  first, a directory once it is opened, the directory holding it once it is closed, the
+  directory of a lab once the lab is clicked, nothing for a directory without one, see *A text
+  for a directory* in [Lab Authoring](lab-authoring.md); the Flavor form when the lab has one;
+  the progress of the pulls and deploys); with no running project the page shows the SRE logo in large, as the Qt GUI does
   when no project is open. An instructor's cards say the mode of each project (Standard /
   Instructor mode / Debug mode, the words of the Open page), the two non-standard modes also as
   a coloured suffix after the title. Logout asks what to do with the running projects: close them (each

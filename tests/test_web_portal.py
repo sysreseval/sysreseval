@@ -332,6 +332,25 @@ class TestCsrf:
 
 
 class TestProjectsThroughThePortal:
+    def test_labs_carry_the_readmes_of_the_directories(self, tmp_path):
+        """The README of a directory of the lab tree (README.md / README.<lang>.md, read by `sre
+        list` on the host and rendered by its agent) reaches the Open page on the entry of the
+        directory, the top directory as an entry without name; the labs are the same list."""
+        readmes = {'': {'': '# Welcome', 'fr': '# Bienvenue'}, 'sre': {'': 'The *shipped* labs.'}}
+
+        async def go():
+            async with Harness(tmp_path, mock_env={'MOCK_LAB_READMES': json.dumps(readmes)}) as h:
+                await h.login()
+                labs = await (await h.client.get('/api/labs')).json()
+                assert [l['name'] for l in labs] == ['', 's4', 's4/tp_ssh', 'sre', 'sre/dhcp.py']
+                assert labs[0] == {'name': '', 'title': None, 'kind': 'dir', 'sort': 'name',
+                                   'readme_html': {'': '<h1>Welcome</h1>', 'fr': '<h1>Bienvenue</h1>'}}
+                assert labs[3]['readme_html'] == {'': '<p>The <em>shipped</em> labs.</p>'}
+                assert all('readme_html' not in labs[i] for i in (1, 2, 4))
+                result = await h.start()
+                assert result['status'] == 'created'
+        run(go())
+
     def test_start_open_use_and_close(self, tmp_path):
         async def go():
             async with Harness(tmp_path) as h:

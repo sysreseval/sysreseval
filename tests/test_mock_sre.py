@@ -229,6 +229,24 @@ class TestList:
         assert titles == {'a': None, 'a/b.py': {'en': 'DHCP lab', 'fr': 'TP DHCP'}, 'd': None,
                           'd/e': None, 'c': None}
 
+    def test_readmes(self, pub):
+        """`--with-readmes`: the texts of MOCK_LAB_READMES on the directory entries, the top
+        directory as a first entry of its own, like the real CLI; nothing without the flag, nor
+        by default, and the flag needs `--with-titles`."""
+        readmes = {'': {'': '# Welcome'}, 'sre': {'': '# Shipped labs', 'fr': '# TP fournis'},
+                   'gone': {'': 'not in the list'}, 'sre/dhcp.py': {'': 'a lab, not a directory'}}
+        env = {'MOCK_LAB_READMES': json.dumps(readmes)}
+        plain = json.loads(run_mock(pub, 'list', '--with-titles').stdout)
+        assert json.loads(run_mock(pub, 'list', '--with-titles', extra_env=env).stdout) == plain
+        assert json.loads(run_mock(pub, 'list', '--with-titles', '--with-readmes').stdout) == plain
+        data = json.loads(run_mock(pub, 'list', '--with-titles', '--with-readmes', extra_env=env).stdout)
+        assert data[0] == {'name': '', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme': {'': '# Welcome'}}
+        assert [entry['name'] for entry in data[1:]] == [entry['name'] for entry in plain]
+        assert {entry['name']: entry['readme'] for entry in data[1:] if 'readme' in entry} == {
+            'sre': {'': '# Shipped labs', 'fr': '# TP fournis'}}
+        completed = run_mock(pub, 'list', '--with-readmes', extra_env=env)
+        assert completed.returncode == 1 and b'--with-titles' in completed.stderr
+
     def test_exam_only_labs_need_the_flag(self, pub):
         """The exam-only labs (a component holding one of params.exam_only_affix) are listed with
         --include-exam-only only, which user mode refuses, like the real CLI."""

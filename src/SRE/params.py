@@ -469,6 +469,13 @@ lab_list_kind_key = "kind"
 lab_list_sort_key = "sort"          # the titles_sort_* mode the entry is placed among its siblings by
 lab_list_kind_dir = "dir"
 lab_list_kind_lab = "lab"
+# The README of a directory of the lab tree, shown under the tree when the directory is opened in
+# the Open project dialog / the Open page: README.md, and README.<lang>.md for the users of a language
+lab_readme_file_name = "README.md"
+lab_readme_pattern = r"README(?:\.([a-z]{2,3}))?\.md"   # group 1: the language of a variant
+lab_readme_default_key = ""         # the key of README.md among the texts of a directory ({"": ..., "fr": ...})
+lab_readme_max_size = 65536         # bytes: a bigger README is not shown
+lab_list_readme_key = "readme"      # `sre list --with-titles --with-readmes`: the texts of a "dir" entry
 data_json_name = "data.json"
 # Keys/markers used inside data.json by Data0.to_dict()/from_dict()
 data_json_ips6_key = "ips6"          # Data0.ips6 container (IPv6Interface values)

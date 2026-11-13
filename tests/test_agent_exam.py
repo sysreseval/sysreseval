@@ -469,7 +469,8 @@ class TestExamApi:
                 resp = await h.client.get('/v1/labs?all=1', headers=headers(PROF))
                 names = [lab['name'] for lab in await resp.json()]
                 assert resp.status == 200 and 'sre/_EXAM_' in names and EXAM_LAB in names and 'sre/dhcp.py' in names
-                A.privileged_call(h.entries()[-1], ['list', '--with-titles', '--include-exam-only'], 'prof')
+                A.privileged_call(h.entries()[-1], ['list', '--with-titles', '--with-readmes', '--include-exam-only'],
+                                  'prof')
                 assert (await h.client.get('/v1/labs?all=1', headers=headers())).status == 403
                 names = [lab['name'] for lab in await (await h.client.get('/v1/labs', headers=headers())).json()]
                 assert EXAM_LAB not in names and 'sre/dhcp.py' in names

@@ -207,6 +207,9 @@ class TestTemplates:
     def test_open_page(self):
         html = render('open.html')
         assert 'id="labs"' in html and 'id="start-button"' in html and '/static/js/open.js' in html
+        # the README of the directory being browsed: under the tree, above the Start row, hidden at first
+        assert '<div id="lab-readme" class="lab-readme content" hidden></div>' in html
+        assert html.index('id="labs"') < html.index('id="lab-readme"') < html.index('id="start-button"')
         assert 'name="mode"' not in html and 'href="/watch"' not in html and 'id="host"' not in html
         assert 'href="/pool"' not in html
         # the instructor's extras: the project mode radios (standard, instructor mode, debug mode) and
@@ -819,6 +822,89 @@ class TestLabTreeOrder:
     def test_order(self, tmp_path, js):
         runner = js_project(tmp_path, LAB_TREE_RUNNER, 'tree.js', 'i18n.js', 'ui.js')
         assert json.loads(js.run(tmp_path, runner, json.dumps(LAB_TREE_IN), 'fr')) == LAB_TREE_OUT
+
+
+#: what GET /api/labs gives with READMEs (readme_html: html by language, "" being README.md): the
+#: top directory (the entry without name), s4 with README.md alone, s5 with two variants and no
+#: README.md, s6 with a German variant alone, s7 without any; a README on a lab is ignored
+README_TREE_IN = [
+    {'name': '', 'title': None, 'kind': 'dir', 'sort': 'name',
+     'readme_html': {'': '<h1>Welcome</h1>', 'fr': '<h1>Bienvenue</h1>', 'en': '<h1>Hello</h1>'}},
+    {'name': 's4', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme_html': {'': '<p>S4</p>'}},
+    {'name': 's4/x.py', 'title': None, 'kind': 'lab', 'sort': 'name', 'readme_html': {'': '<p>lab</p>'}},
+    {'name': 's5', 'title': None, 'kind': 'dir', 'sort': 'name',
+     'readme_html': {'fr': '<p>S5 fr</p>', 'en': '<p>S5 en</p>'}},
+    {'name': 's5/y.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+    {'name': 's6', 'title': None, 'kind': 'dir', 'sort': 'name', 'readme_html': {'de': '<p>S6 de</p>', 'fr': ''}},
+    {'name': 's6/z.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+    {'name': 's7', 'title': None, 'kind': 'dir', 'sort': 'name'},
+    {'name': 's7/w.py', 'title': None, 'kind': 'lab', 'sort': 'name'},
+]
+README_TREE_RUNNER = """\
+import {labTree, pickReadme} from './tree.js';
+
+const root = labTree(JSON.parse(process.argv[2]), process.argv[3]);
+const readmes = {'': root.readme};
+for (const dir of root.dirs) {
+  readmes[dir.name] = dir.readme;
+}
+process.stdout.write(JSON.stringify({
+  readmes,
+  names: [...root.dirs.map((dir) => dir.name), ...root.leaves.map((leaf) => leaf.name)],
+  leaves: root.dirs.map((dir) => dir.leaves.map((leaf) => leaf.readme)),
+  picks: JSON.parse(process.argv[4]).map(([readme, lang]) => pickReadme(readme, lang)),
+}));
+"""
+#: [readme, language] → the text picked: the variant of the language, else README.md, else the
+#: English variant, else any variant by language code; '' without any text
+README_PICKS = [
+    [{'': 'default', 'fr': 'français', 'en': 'english'}, 'fr', 'français'],
+    [{'': 'default', 'en': 'english'}, 'fr', 'default'],        # README.md before the other languages
+    [{'fr': 'français', 'en': 'english'}, 'de', 'english'],
+    [{'fr': 'français', 'de': 'deutsch'}, 'en', 'deutsch'],     # any, by language code
+    [{'fr': '', '': 'default'}, 'fr', 'default'],               # an empty variant is none
+    [{'': '', 'fr': 3}, 'fr', ''], [None, 'fr', ''], ['text', 'fr', ''], [{}, 'fr', ''],
+]
+
+
+class TestLabTreeReadmes:
+    """``labTree()`` / ``pickReadme()`` of tree.js under the ``js`` runtime: the README of each
+    directory in the language of the page, the entry without name being the top directory (the
+    README of the root, no node), the rule of ``SRE.common.resolve_readme``."""
+
+    def _run(self, tmp_path, js, lang):
+        runner = js_project(tmp_path, README_TREE_RUNNER, 'tree.js', 'i18n.js', 'ui.js')
+        picks = [[readme, language] for readme, language, _ in README_PICKS]
+        return json.loads(js.run(tmp_path, runner, json.dumps(README_TREE_IN), lang, json.dumps(picks)))
+
+    def test_readme_of_each_directory(self, tmp_path, js):
+        out = self._run(tmp_path, js, 'fr')
+        assert out['names'] == ['s4', 's5', 's6', 's7']                 # the top entry is no node
+        assert out['readmes'] == {'': '<h1>Bienvenue</h1>', 's4': '<p>S4</p>', 's5': '<p>S5 fr</p>',
+                                  's6': '<p>S6 de</p>', 's7': ''}
+        assert out['leaves'] == [[''], [''], [''], ['']]                 # never a README on a lab
+        assert [pick for pick in out['picks']] == [expected for _, _, expected in README_PICKS]
+
+    def test_other_language(self, tmp_path, js):
+        out = self._run(tmp_path, js, 'de')
+        assert out['readmes'] == {'': '<h1>Welcome</h1>', 's4': '<p>S4</p>', 's5': '<p>S5 en</p>',
+                                  's6': '<p>S6 de</p>', 's7': ''}
+
+    def test_same_rule_as_the_gui(self):
+        """``SRE.common.resolve_readme`` with the languages [page language, "en"] picks the
+        same text as ``pickReadme``: the two front-ends show the same README."""
+        from SRE.common import resolve_readme
+        for readme, language, expected in README_PICKS:
+            assert resolve_readme(readme, [language, 'en']) == expected
+
+    def test_open_script_shows_the_readme(self):
+        source = (WEB / 'static' / 'js' / 'open.js').read_text()
+        assert "getElementById('lab-readme')" in source and 'onDirectory: showReadme' in source
+        assert "link.rel = 'noopener noreferrer'" in source
+        tree = (WEB / 'static' / 'js' / 'tree.js').read_text()
+        assert "const README_KEY = 'readme_html';" in tree
+        from sreweb.agent.runner import LAB_README_KEY
+        assert LAB_README_KEY == 'readme_html'
 
 
 # a form with two inline fields (name~N) on one source line, between two fields with a row of

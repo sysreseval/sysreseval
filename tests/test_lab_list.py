@@ -324,6 +324,136 @@ class TestActionList:
         assert e.value.code == 0 and json.loads(capsys.readouterr().out) == ['s4/c.py']
 
 
+    def test_with_readmes_needs_with_titles(self, tmp_lab_dir, capsys):
+        from SRE.command.list import action_list
+        _touch(tmp_lab_dir, 's4/c.py')
+        (tmp_lab_dir / 's4' / 'README.md').write_text("# Semester 4\n")
+        with pytest.raises(SystemExit) as e:
+            action_list(with_readmes=True)
+        assert e.value.code == 1 and "--with-titles" in capsys.readouterr().err
+        with pytest.raises(SystemExit) as e:
+            action_list(with_titles=True, with_readmes=True)
+        assert e.value.code == 0
+        assert json.loads(capsys.readouterr().out) == [
+            {"name": "s4", "title": None, "kind": "dir", "sort": "name", "readme": {"": "# Semester 4\n"}},
+            {"name": "s4/c.py", "title": None, "kind": "lab", "sort": "name"}]
+
+    def test_readmes_in_user_mode(self, tmp_lab_dir, mock_sre_args, capsys):
+        """A student reads the README of the directories they are listed, no other."""
+        from SRE.command.list import action_list
+        _touch(tmp_lab_dir, 's4/c.py', '_DRAFT_x/a.py')
+        (tmp_lab_dir / 's4' / 'README.md').write_text("for everybody")
+        (tmp_lab_dir / '_DRAFT_x' / 'README.md').write_text("for the instructors")
+        mock_sre_args.user = True
+        with pytest.raises(SystemExit) as e:
+            action_list(with_titles=True, with_readmes=True)
+        out = capsys.readouterr().out
+        assert e.value.code == 0 and "for everybody" in out and "for the instructors" not in out
+
+
+class TestReadmes:
+    """`sre list --with-titles --with-readmes`: the README.md / README.<lang>.md of the
+    directories of the lab tree, as raw markdown by language on their `dir` entry, the top
+    directory as an entry of its own; nothing without the flag."""
+
+    def _readmes(self, **kwargs):
+        return {e["name"]: e["readme"] for e in get_lab_list_with_titles(with_readmes=True, **kwargs)
+                if "readme" in e}
+
+    def test_nothing_without_the_flag(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/c.py', 'root.py')
+        (tmp_lab_dir / 'README.md').write_text("top")
+        (tmp_lab_dir / 's4' / 'README.md').write_text("s4")
+        assert get_lab_list_with_titles() == [
+            {"name": "s4", "title": None, "kind": "dir", "sort": "name"},
+            {"name": "s4/c.py", "title": None, "kind": "lab", "sort": "name"},
+            {"name": "root.py", "title": None, "kind": "lab", "sort": "name"}]
+        assert get_lab_list() == ['root.py', 's4/c.py']
+
+    def test_the_flag_only_adds(self, tmp_lab_dir):
+        """A tree without any README is listed the same with the flag."""
+        _touch(tmp_lab_dir, 's4/tp_ssh/srelab.py', 's4/arp.py', 'root.py')
+        _titles(tmp_lab_dir, 's4', {"@sort": "title", "arp.py": {"en": "ARP"}})
+        assert get_lab_list_with_titles(with_readmes=True) == get_lab_list_with_titles()
+
+    def test_readme_of_a_directory(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/r401/c.py', 's4/d.py', 's5/e.py')
+        (tmp_lab_dir / 's4' / 'README.md').write_text("# Semester 4\n\nÉté: *labs*\n")
+        (tmp_lab_dir / 's4' / 'r401' / 'README.md').write_text("R4.01")
+        result = get_lab_list_with_titles(with_readmes=True)
+        assert [e["name"] for e in result] == ['s4', 's4/r401', 's4/r401/c.py', 's4/d.py', 's5', 's5/e.py']
+        assert result[0] == {"name": "s4", "title": None, "kind": "dir", "sort": "name",
+                             "readme": {"": "# Semester 4\n\nÉté: *labs*\n"}}
+        assert result[1]["readme"] == {"": "R4.01"}
+        assert all("readme" not in e for e in result[2:])      # the labs, and a directory without README
+
+    def test_language_variants(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/c.py', 's5/c.py')
+        (tmp_lab_dir / 's4' / 'README.md').write_text("default")
+        (tmp_lab_dir / 's4' / 'README.fr.md').write_text("français")
+        (tmp_lab_dir / 's4' / 'README.en.md').write_text("english")
+        (tmp_lab_dir / 's5' / 'README.fr.md').write_text("sans défaut")
+        assert self._readmes() == {'s4': {"": "default", "en": "english", "fr": "français"},
+                                   's5': {"fr": "sans défaut"}}
+
+    def test_top_directory_first(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/c.py', 'root.py')
+        _titles(tmp_lab_dir, '.', {"@sort": "manual"})
+        (tmp_lab_dir / 'README.md').write_text("welcome")
+        (tmp_lab_dir / 'README.fr.md').write_text("bienvenue")
+        result = get_lab_list_with_titles(with_readmes=True)
+        assert result[0] == {"name": "", "title": None, "kind": "dir", "sort": "name",
+                             "readme": {"": "welcome", "fr": "bienvenue"}}
+        assert [e["name"] for e in result[1:]] == ['s4', 's4/c.py', 'root.py']
+        assert [e["sort"] for e in result[1:]] == ['manual', 'manual', 'manual']
+
+    def test_no_top_entry_without_readme_nor_without_lab(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/c.py')
+        assert [e["name"] for e in get_lab_list_with_titles(with_readmes=True)] == ['s4', 's4/c.py']
+        (tmp_lab_dir / 's4' / 'c.py').unlink()
+        (tmp_lab_dir / 'README.md').write_text("welcome")
+        assert get_lab_list_with_titles(with_readmes=True) == []
+
+    def test_only_the_directories_listed(self, tmp_lab_dir):
+        """Never the README of an exam-only directory (unless they are listed), of a directory
+        without any lab below, nor of the inside of a directory lab."""
+        _touch(tmp_lab_dir, 's4/c.py', '_DRAFT_x/a.py', 's4/_EXAM_y/b.py', 's4/tp_ssh/srelab.py')
+        (tmp_lab_dir / 'notes').mkdir()
+        for rel in ('s4', '_DRAFT_x', 's4/_EXAM_y', 's4/tp_ssh', 'notes'):
+            (tmp_lab_dir / rel / 'README.md').write_text(rel)
+        assert self._readmes() == {'s4': {"": "s4"}}
+        assert self._readmes(include_exam_only_labs=True) == {
+            's4': {"": "s4"}, '_DRAFT_x': {"": "_DRAFT_x"}, 's4/_EXAM_y': {"": "s4/_EXAM_y"}}
+
+    def test_files_not_shown(self, tmp_lab_dir, monkeypatch):
+        """Other names (the pattern is exact), an empty file, a directory, a file over the size
+        cap; a file of the cap exactly is shown, bytes that are not UTF-8 are replaced."""
+        monkeypatch.setattr(params, 'lab_readme_max_size', 20)
+        for d in ('names', 'empty', 'isdir', 'big', 'fits', 'latin1'):
+            _touch(tmp_lab_dir, f'{d}/c.py')
+        for name in ('README', 'README.txt', 'README.FR.md', 'README.francais.md', 'NOTES.md', 'XREADME.md',
+                     'README.md.bak'):
+            (tmp_lab_dir / 'names' / name).write_text("not a README")
+        (tmp_lab_dir / 'empty' / 'README.md').write_text("  \n\n")
+        (tmp_lab_dir / 'isdir' / 'README.md').mkdir()
+        (tmp_lab_dir / 'big' / 'README.md').write_text("x" * 21)
+        (tmp_lab_dir / 'big' / 'README.fr.md').write_text("court")
+        (tmp_lab_dir / 'fits' / 'README.md').write_text("x" * 20)
+        (tmp_lab_dir / 'latin1' / 'README.md').write_bytes("été".encode('latin-1'))
+        assert self._readmes() == {'big': {"fr": "court"}, 'fits': {"": "x" * 20},
+                                   'latin1': {"": "�t�"}}
+
+    @pytest.mark.skipif(os.path.exists(os.path.join(os.path.dirname(__file__), 'TEST_LAB_LIST.PY')),
+                        reason="a case-insensitive file system: readme.md is README.md")
+    def test_case_matters(self, tmp_lab_dir):
+        _touch(tmp_lab_dir, 's4/c.py')
+        (tmp_lab_dir / 's4' / 'readme.md').write_text("lower case")
+        assert self._readmes() == {}
+
+    def test_load_readmes_of_a_missing_directory(self, tmp_lab_dir):
+        assert utils.load_readmes(str(tmp_lab_dir / 'gone')) == {}
+
+
 class TestCanonicalLabName:
     """canonical_lab_name: the lab file a lab name really designates (symlinks resolved), in the
     @ form, relative to the lab directory, the shipped tree as sre@... in both layouts."""

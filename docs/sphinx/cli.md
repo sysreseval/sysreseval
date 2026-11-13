@@ -348,11 +348,13 @@ Name / email resolution: `--users-file` (if provided) → `fullname` / `email` f
 
 ## Internal commands (GUI-only)
 
-### `sre list [--with-titles] [--include-exam-only]`
+### `sre list [--with-titles [--with-readmes]] [--include-exam-only]`
 
 Prints a JSON array of lab names relative to `/opt/sre/lab/` (`s4/tp_ssh`, `s2/lab.py`, …). Labs whose components match `params.exam_only_affix` (`_EXAM_`, `_OLD_`, `_DRAFT_`, `_TESTS_`) are hidden, unless `--include-exam-only` is given (privileged only: the web agent lists them to an instructor programming an exam; a student can still start such a lab by its exact name, which is how an exam project is created).
 
 With `--with-titles`, output becomes the lab tree flattened in display order: `[{"name": <path>, "title": <dict|string|null>, "kind": "dir"|"lab", "sort": <mode>}, …]`, a directory entry (`"dir"`, listed when a lab lies below it) right before its content, the sub-directories of a directory before its labs (a directory lab is a `"lab"`), each group in the order of the effective `"@sort"` of the directory's `titles.json` (see `sre make-titles`; `sort` is that mode, `"name"`, `"title"` or `"manual"`: the GUI and the browser keep this order and only sort the `"title"` mode themselves, since it depends on the language of the user). Titles come from per-directory `titles.json`; stale entries are dropped, and entries without a title get `"title": null` (the front-ends then fall back to the file name).
+
+With `--with-readmes` (needs `--with-titles`; the output is the one above without it), a directory entry whose directory holds a `README.md` or `README.<lang>.md` also has `"readme": {"": <README.md>, "fr": <README.fr.md>, …}`, the raw markdown by language, `""` being the file without language. When the top of the lab directory holds one, the list starts with an entry of its own, which is no entry of the tree: `{"name": "", "title": null, "kind": "dir", "sort": "name", "readme": {…}}`. Only the directories listed are read (never an exam-only directory in user mode, nor the inside of a directory lab), and a file that is empty, unreadable or bigger than `params.lab_readme_max_size` (64 KiB) is left out. The Open project dialog and the web agent ask for them: both front-ends show the text of the directory being browsed under the lab tree (see *A text for a directory* in [Lab Authoring](lab-authoring.md)).
 
 ### `sre export <running_lab> [--sep <N>] [--curved] [--shapes] [--reverse] [--random-seed <N>]`
 
