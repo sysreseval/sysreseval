@@ -686,6 +686,27 @@ def test_questions_html(lab, data, tmp_pub_dir, instructor_mode):
     assert blocks == (3 if not instructor_mode else 3 + 6 + 10)
 
 
+def test_course_and_questions_pdf(lab, data, tmp_pub_dir):
+    """`sre export` writes the course and the questions of a student into informations.pdf. fpdf2 refused the
+    course: an inline tag next to other text in a table cell (the cheat sheet, the tables of the sections)."""
+    from SRE.pdf import SrePDF, markdown_to_html as pdf_html
+    grade, ns = _simulate(lab, data, tmp_pub_dir, DONE)
+    resolved, numbering = resolve_informations(ns.informations)
+    texts = [_text(resolved)]
+    for q in grade.get_questions_ordered():
+        texts.append(re.sub(r'@@\{[^:}]+:[^}]*\}@@', '', _text(resolve_text(q.description, numbering))))
+    assert len(texts) == 21
+    pdf = SrePDF()
+    pdf.add_page()
+    pdf.set_font(pdf.text_font, size=11)
+    for text in texts:
+        html = pdf_html(text)
+        for cell in re.findall(r'<t[dh]\b[^>]*>(.*?)</t[dh]>', html, flags=re.S):
+            assert re.fullmatch(r'[^<]*|<(b|i|code)>[^<]*</\1>', cell), cell
+        pdf.write_html(html, tag_styles=pdf.html_tag_styles())
+    assert bytes(pdf.output()).startswith(b'%PDF') and pdf.page_no() >= 20
+
+
 def test_stripped_lab_file(lab):
     source = _LAB_PATH.read_bytes()
     result = strip_instructor.strip_source(source)

@@ -50,13 +50,48 @@ def _latin1(text: str) -> str:
 _ANCHOR_RE = re.compile(r'<a id="[^"]*"></a>')
 _FRAGMENT_LINK_RE = re.compile(r'<a href="#[^"]*">(.*?)</a>', re.DOTALL)
 
+# Table cells. fpdf2 builds a cell from one piece of text and raises NotImplementedError on a
+# second one, that is on any inline tag standing next to other text ("a *b* c", "`x` then y");
+# and of the emphasis tags only <b> / <i> reach a cell (a whole-cell <strong> is drawn plain).
+# Its cell API takes one text and one style, so a cell is reduced to that.
+_CELL_RE = re.compile(r'<(td|th)\b([^>]*)>(.*?)</\1>', re.DOTALL)
+_CELL_STYLED_RE = re.compile(r'<(strong|b|em|i|code)>([^<]*)</\1>')
+_CELL_STYLE_TAGS = {'strong': 'b', 'b': 'b', 'em': 'i', 'i': 'i', 'code': 'code'}
+_CELL_LINK_RE = re.compile(r'<a\b[^>]*\bhref="([^"]*)"[^>]*>(.*?)</a>', re.DOTALL)
+_CELL_BREAK_RE = re.compile(r'\s*<br\s*/?>\s*')
+_CELL_INLINE_RE = re.compile(r'</?(?:a|b|code|del|em|font|i|kbd|mark|s|small|span|strong|sub|sup|tt|u)\b[^>]*>')
+
+
+def _cell_link(match: re.Match) -> str:
+    """A link of a cell as text: a cell cannot carry it, the address is written after the text."""
+    url, text = match.groups()
+    return text if not url or url in text else f'{text} ({url})'
+
+
+def _flatten_cell(match: re.Match) -> str:
+    """One <td> / <th> as fpdf2 can draw it: a cell that is a single bold, italic or code element
+    keeps its style, any other cell holding inline tags becomes its plain text."""
+    tag, attrs, content = match.groups()
+    content = content.strip()
+    if '<' not in content:
+        return match.group(0)
+    styled = _CELL_STYLED_RE.fullmatch(content)
+    if styled:
+        style = _CELL_STYLE_TAGS[styled.group(1)]
+        return f'<{tag}{attrs}><{style}>{styled.group(2)}</{style}></{tag}>'
+    text = _CELL_INLINE_RE.sub('', _CELL_BREAK_RE.sub('\n', _CELL_LINK_RE.sub(_cell_link, content)))
+    if '<' in text:
+        return match.group(0)   # an image, a block element: left to fpdf2
+    return f'<{tag}{attrs}>{text}</{tag}>'
+
 
 def markdown_to_html(text: str) -> str:
     """Convert lab markdown to HTML the way the GUI views do; a PDF never shows the instructor
-    fragments, and the anchors / in-document links of the numbered sections become plain text
-    (the numbers stay)."""
+    fragments, the anchors / in-document links of the numbered sections become plain text
+    (the numbers stay) and the table cells are reduced to what fpdf2 draws (`_flatten_cell`)."""
     html = instructor_text.markdown_to_html(text)
-    return _FRAGMENT_LINK_RE.sub(r'\1', _ANCHOR_RE.sub('', html))
+    html = _FRAGMENT_LINK_RE.sub(r'\1', _ANCHOR_RE.sub('', html))
+    return _CELL_RE.sub(_flatten_cell, html)
 
 
 class SrePDF(FPDF):

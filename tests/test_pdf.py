@@ -1,10 +1,11 @@
 """Tests for SRE.pdf: Unicode fonts in generated PDFs and the core-font fallback."""
 import os
+import re
 
 import pytest
 
 from SRE import params
-from SRE.pdf import SrePDF, markdown_to_html
+from SRE.pdf import SrePDF, _CELL_RE, _flatten_cell, markdown_to_html
 
 needs_fonts = pytest.mark.skipif(
     not os.path.isfile(params.pdf_font_files['']) or not os.path.isfile(params.pdf_mono_font_files['']),
@@ -68,6 +69,95 @@ class TestMarkdownToHtml:
         pdf.set_font(pdf.text_font, size=11)
         pdf.write_html(html, tag_styles=pdf.html_tag_styles())
         assert bytes(pdf.output()).startswith(b'%PDF')
+
+
+TABLE = """
+Outside: *italic*, **bold**, `code`, [link](https://example.org/doc).
+
+| Whole | Mixed | Centre |
+|-------|-------|:------:|
+| **bold** | text with *italic*, **bold** and `code` | x |
+| *italic* | `code` then text | **`both`** |
+| `code` | a [link](https://example.org/doc), <https://example.org/> | one<br>two |
+| plain | a &lt; b &amp; c | |
+"""
+
+
+class TestTableCells:
+    """fpdf2 builds a table cell from one piece of text and raises NotImplementedError on a second
+    one (`Unsupported nested HTML tags inside <td> element`): `sre export` failed on every course
+    with an inline tag next to other text in a cell."""
+
+    def test_a_cell_is_one_piece_of_text(self):
+        html = markdown_to_html(TABLE)
+        cells = re.findall(r'<t[dh]\b[^>]*>(.*?)</t[dh]>', html, flags=re.S)
+        assert len(cells) == 15
+        for cell in cells:
+            assert re.fullmatch(r'[^<]*|<(b|i|code)>[^<]*</\1>', cell), cell
+
+    def test_a_cell_that_is_one_element_keeps_its_style(self):
+        html = markdown_to_html(TABLE)
+        assert '<td><b>bold</b></td>' in html
+        assert '<td><i>italic</i></td>' in html
+        assert '<td><code>code</code></td>' in html
+
+    def test_a_mixed_cell_becomes_its_text(self):
+        html = markdown_to_html(TABLE)
+        assert '<td>text with italic, bold and code</td>' in html
+        assert '<td>code then text</td>' in html
+        assert '<td style="text-align: center;">both</td>' in html
+        assert '<td>a &lt; b &amp; c</td>' in html
+
+    def test_links_and_line_breaks(self):
+        html = markdown_to_html(TABLE)
+        # the address follows the text, unless the text already shows it
+        assert '<td>a link (https://example.org/doc), https://example.org/</td>' in html
+        assert '<td style="text-align: center;">one\ntwo</td>' in html
+
+    def test_the_rest_of_the_text_is_untouched(self):
+        from SRE.instructor_text import markdown_to_html as gui_html
+        paragraph = ('<p>Outside: <em>italic</em>, <strong>bold</strong>, <code>code</code>, '
+                     '<a href="https://example.org/doc">link</a>.</p>')
+        html = markdown_to_html(TABLE)
+        assert paragraph in html and paragraph in gui_html(TABLE)
+        assert '<th style="text-align: center;">Centre</th>' in html
+        assert html.count('<tr>') == gui_html(TABLE).count('<tr>') == 5
+        plain = "| a | b |\n|---|---|\n| 1 | 2 |"
+        assert markdown_to_html(plain) == gui_html(plain)
+
+    def test_an_image_in_a_cell_is_left_to_fpdf(self):
+        html = '<table><tr><td>see <img src="x.png"> here</td></tr></table>'
+        assert _CELL_RE.sub(_flatten_cell, html) == html
+
+    @pytest.mark.parametrize('with_fonts', [True, False])
+    def test_render(self, tmp_path, monkeypatch, with_fonts):
+        """The texts and the whole-cell styles reach the cells fpdf2 draws."""
+        import fpdf.table
+        from fpdf.enums import TextEmphasis
+        if not with_fonts:
+            monkeypatch.setattr(params, 'pdf_font_files', {'': str(tmp_path / 'missing.ttf')})
+            monkeypatch.setattr(params, 'pdf_mono_font_files', {'': str(tmp_path / 'missing-mono.ttf')})
+        cells = {}
+        original = fpdf.table.Row.cell
+
+        def spy(self, *args, **kwargs):
+            cells[kwargs['text']] = kwargs.get('style')
+            return original(self, *args, **kwargs)
+        monkeypatch.setattr(fpdf.table.Row, 'cell', spy)
+        pdf = SrePDF()
+        pdf.add_page()
+        pdf.set_font(pdf.text_font, size=11)
+        pdf.write_html(markdown_to_html(TABLE), tag_styles=pdf.html_tag_styles())
+        assert bytes(pdf.output()).startswith(b'%PDF')
+        assert list(cells) == ['Whole', 'Mixed', 'Centre',
+                               'bold', 'text with italic, bold and code', 'x',
+                               'italic', 'code then text', 'both',
+                               'code', 'a link (https://example.org/doc), https://example.org/', 'one\ntwo',
+                               'plain', 'a < b & c', '']
+        assert cells['bold'].emphasis == TextEmphasis.B
+        assert cells['italic'].emphasis == TextEmphasis.I
+        assert cells['code'].family == pdf.mono_font
+        assert cells['text with italic, bold and code'] is None and cells['code then text'] is None
 
 
 @needs_fonts

@@ -323,6 +323,38 @@ class TestBuildInfoPdf:
     def test_missing_info_file(self, tmp_pub_dir):
         assert _build_info_pdf(RUNNING_LAB) == b''
 
+    def test_inline_formatting_inside_table_cells(self, tmp_pub_dir, monkeypatch):
+        """fpdf2 raises on an inline tag next to other text in a table cell: `sre export` failed on
+        the course of most labs (`Unsupported nested HTML tags inside <td> element: <em>`)."""
+        from SRE.command import export as export_cmd
+        table = ("| Command | Effect |\n|---|---|\n"
+                 "| `nft list ruleset` | the *loaded* rules, **not** the file |\n"
+                 "| **masquerade** | `snat` to the address of the interface |\n")
+        info = InfoLab(
+            lab_name='test/mylab', lab_hash='abc123',
+            title=TranslatedText.from_value('Lab'),
+            informations=TranslatedText.from_value("## Cheat sheet\n\n" + table),
+            export_kathara_project=True, allow_self_grade=True, machines=[],
+            questions=[QuestionText(title="Question", description="Fill in:\n\n" + table, order=1)],
+            delay_between_self_grade=60, eval_interval_without_exam_mode=0, eval_before_exit=False,
+            user_allowed_states={},
+        )
+        path = Path(params.info_filename(RUNNING_LAB))
+        path.parent.mkdir(parents=True)
+        path.write_text(info.to_json())
+        written = []
+        original = export_cmd.SrePDF.write_html
+
+        def spy(self, html, *args, **kwargs):
+            written.append(html)
+            return original(self, html, *args, **kwargs)
+        monkeypatch.setattr(export_cmd.SrePDF, 'write_html', spy)
+        assert _build_info_pdf(RUNNING_LAB).startswith(b'%PDF')
+        assert len(written) == 2                                   # the course and the question
+        for html in written:
+            assert '<td>the loaded rules, not the file</td>' in html
+            assert '<td><b>masquerade</b></td>' in html and '<td><code>nft list ruleset</code></td>' in html
+
     def test_instructor_fragments_are_left_out(self, tmp_pub_dir, monkeypatch):
         """`sre export` of a project in instructor mode: informations.pdf is the student's document."""
         from SRE.command import export as export_cmd
