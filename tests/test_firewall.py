@@ -201,9 +201,10 @@ def test_named_sets(router_text):
     sets = firewall.parse_nft_sets(router_text)
     assert sorted(sets) == [('inet', 'filter', 'admins'), ('inet', 'filter', 'banned'), ('inet', 'filter', 'knock')]
     assert sets[('inet', 'filter', 'banned')] == {'type': 'ipv4_addr', 'flags': {'timeout'}, 'timeout': 60,
-                                                  'size': 65535, 'elements': 1}
+                                                  'size': 65535, 'elements': 1, 'items': ['172.20.1.51']}
     assert sets[('inet', 'filter', 'admins')] == {'type': 'ipv4_addr', 'flags': set(), 'timeout': None, 'size': None,
-                                                  'elements': 2}
+                                                  'elements': 2, 'items': ['192.168.20.10', '192.168.20.20']}
+    assert sets[('inet', 'filter', 'knock')]['items'] == [] and sets[('inet', 'filter', 'knock')]['elements'] == 0
     assert sets[('inet', 'filter', 'knock')]['flags'] == {'timeout'} and sets[('inet', 'filter', 'knock')]['timeout'] is None
     assert firewall.parse_nft_sets('') == {} and firewall.parse_nft_sets('garbage') == {} and firewall.parse_nft_sets('[]') == {}
     assert firewall.parse_nft_sets(load('nft_json_final.json')) == {}
@@ -220,13 +221,14 @@ def test_rules_using_sets(final, router_text):
     router = firewall.parse_nft_json(router_text)
     forward = firewall.hook_rules(router, 'forward')
     lookups = [firewall.rule_set_lookups(r) for r in forward]
-    assert lookups == [[{'key': 'saddr', 'set': 'banned', 'negated': False}], [], [], [],
-                       [{'key': 'saddr', 'set': 'knock', 'negated': True}], []]
+    assert lookups == [[{'key': 'saddr', 'keys': ['saddr'], 'set': 'banned', 'negated': False}], [], [], [],
+                       [{'key': 'saddr', 'keys': ['saddr'], 'set': 'knock', 'negated': True}], []]
     updates = [firewall.rule_set_updates(r) for r in forward]
     assert updates == [[], [{'op': 'add', 'set': 'banned', 'key': 'saddr', 'timeout': None}], [],
                        [{'op': 'update', 'set': 'knock', 'key': 'saddr', 'timeout': 10}], [],
                        [{'op': 'add', 'set': 'seen;reboot', 'key': 'daddr', 'timeout': None}]]
-    assert firewall.rule_set_lookups(firewall.hook_rules(router, 'input')[1]) == [{'key': 'saddr', 'set': 'admins', 'negated': False}]
+    assert firewall.rule_set_lookups(firewall.hook_rules(router, 'input')[1]) == [
+        {'key': 'saddr', 'keys': ['saddr'], 'set': 'admins', 'negated': False}]
     # a set reference is not an address: the selectors stay empty, the verdicts and the order are read as usual
     assert firewall.rule_matches(forward[0])['saddr'] == [] and firewall.rule_verdict(forward[0]) == 'drop'
     assert firewall.rule_verdict(forward[1]) is None and firewall.find_rules([forward[1]], dport=22) == [forward[1]]
@@ -269,13 +271,15 @@ def test_live_captures_of_the_filter2_rulesets():
     router = firewall.parse_nft_json(text)
     assert [firewall.hook_policy(router, hook) for hook in ('input', 'forward', 'output')] == ['drop', 'drop', None]
     assert firewall.parse_nft_sets(text) == {('inet', 'filter', 'banned'): {'type': 'ipv4_addr', 'flags': {'timeout'},
-                                                                            'timeout': 60, 'size': 65535, 'elements': 1}}
+                                                                            'timeout': 60, 'size': 65535, 'elements': 1,
+                                                                            'items': ['172.31.243.51']}}
     router_in, forward = firewall.hook_rules(router, 'input'), firewall.hook_rules(router, 'forward')
     assert len(router_in) == 6 and len(forward) == 9
     assert len(firewall.find_rules(router_in, 'accept', iif='eth2', saddr='192.168.147.10', dport=22)) == 1
     assert len(firewall.find_rules(router_in, 'accept', iif='eth1', icmp_type='echo-request')) == 1   # iifname { "eth1", "eth2" }
     assert firewall.find_rules(router_in, 'accept', iif='eth0', icmp_type='echo-request') == []
-    assert [firewall.rule_set_lookups(r) for r in forward[:2]] == [[{'key': 'saddr', 'set': 'banned', 'negated': False}], []]
+    assert [firewall.rule_set_lookups(r) for r in forward[:2]] == [
+        [{'key': 'saddr', 'keys': ['saddr'], 'set': 'banned', 'negated': False}], []]
     assert [firewall.rule_set_updates(r) for r in forward[:2]] == [[], [{'op': 'add', 'set': 'banned', 'key': 'saddr',
                                                                         'timeout': None}]]
     assert firewall.rule_verdict(forward[0]) == 'drop' and firewall.rule_verdict(forward[1]) is None
@@ -283,3 +287,121 @@ def test_live_captures_of_the_filter2_rulesets():
     assert firewall.rule_index(forward, lambda r: bool(firewall.find_rules([r], 'accept', ct_state={'established', 'related'}))) == 2
     assert len(firewall.find_rules(forward, 'accept', iif='eth0', oif='eth1', daddr='10.230.6.101', dport=80)) == 1
     assert firewall.updated_sets(router) == [('inet', 'filter', 'banned')]
+
+
+def test_live_capture_of_the_four_kinds_of_sets():
+    """`nft -j list ruleset` captured on 2026-11-13 (nftables 1.0.6, Linux 6.12, a `sysreseval/base:1.33`
+    container) with the sets of questions 11 to 14 of the nftables-filter1 lab, while an address was
+    banned: a set of ports (`"elem": [80, 8888]`, no `flags` key), a set with `flags interval` (an
+    address as a string, a network as `{"prefix": {"addr", "len"}}`), a concatenated set (`"type":
+    ["ipv4_addr", "inet_service"]`, elements `{"concat": [address, port]}`; its lookup has
+    `{"concat": [payload, payload]}` on the left) and a dynamic set (`{"elem": {"val", "expires"}}`)."""
+    text = load('nft_json_sets_live.json')
+    parsed, sets = firewall.parse_nft_json(text), firewall.parse_nft_sets(text)
+    assert sorted(name for _, _, name in sets) == ['allowed', 'banned', 'blocklist', 'web_ports']
+    ports, blocklist = sets[('inet', 'filter', 'web_ports')], sets[('inet', 'filter', 'blocklist')]
+    allowed, banned = sets[('inet', 'filter', 'allowed')], sets[('inet', 'filter', 'banned')]
+
+    # a set of ports
+    assert ports == {'type': 'inet_service', 'flags': set(), 'timeout': None, 'size': None, 'elements': 2, 'items': [80, 8888]}
+    assert firewall.set_ports(ports) == [80, 8888]
+    assert firewall.ports_cover(firewall.set_ports(ports), 8888) and not firewall.ports_cover(firewall.set_ports(ports), 8080)
+    assert firewall.set_addresses(ports) == [] and firewall.set_tuples(ports) == []
+
+    # an interval set: one address and one network
+    assert blocklist['type'] == 'ipv4_addr' and blocklist['flags'] == {'interval'} and blocklist['elements'] == 2
+    addresses = firewall.set_addresses(blocklist)
+    assert [str(a) for a in addresses] == ['198.51.100.53', '203.0.113.0/24']
+    assert firewall.addresses_cover(addresses, '198.51.100.53') and firewall.addresses_cover(addresses, '203.0.113.0/24')
+    assert firewall.addresses_cover(addresses, '203.0.113.77') and not firewall.addresses_cover(addresses, '198.51.100.52')
+    assert not firewall.addresses_cover(addresses, '203.0.112.0/23')        # only half of it is in the set
+
+    # a concatenation: the type is a list, the elements are tuples in the order of the type
+    assert allowed['type'] == ['ipv4_addr', 'inet_service'] and allowed['elements'] == 2
+    assert firewall.set_tuples(allowed) == [('198.51.100.52', 80), ('198.18.77.20', 8888)]
+    assert firewall.set_addresses(allowed) == [] and firewall.set_ports(allowed) == []
+
+    # a dynamic set with one element being counted down: the wrapper of the element is removed
+    assert banned['flags'] == {'timeout'} and banned['timeout'] == 60 and banned['items'] == ['198.18.77.20']
+    assert [str(a) for a in firewall.set_addresses(banned)] == ['198.18.77.20']
+    assert firewall.expiring_sets(sets) == [('inet', 'filter', 'banned')]
+    assert firewall.updated_sets(parsed) == [('inet', 'filter', 'banned')]
+    assert firewall.set_addresses(None) == [] and firewall.set_ports(None) == [] and firewall.set_tuples(None) == []
+
+    # the rules: input looks three sets up, output one
+    rules, out = firewall.hook_rules(parsed, 'input'), firewall.hook_rules(parsed, 'output')
+    assert firewall.hook_policy(parsed, 'input') == 'drop' and firewall.hook_policy(parsed, 'output') == 'drop'
+    lookups = [firewall.rule_set_lookups(r) for r in rules[:4]]
+    assert lookups == [[{'key': 'saddr', 'keys': ['saddr'], 'set': 'banned', 'negated': False}],
+                       [],
+                       [{'key': None, 'keys': ['saddr', 'dport'], 'set': 'allowed', 'negated': False}],
+                       [{'key': 'saddr', 'keys': ['saddr'], 'set': 'blocklist', 'negated': False}]]
+    assert firewall.rule_set_updates(rules[1]) == [{'op': 'add', 'set': 'banned', 'key': 'saddr', 'timeout': None}]
+    assert firewall.find_rules([rules[1]], 'drop', dport=23) == [rules[1]]
+    assert firewall.rule_set(sets, rules[3], 'blocklist') is blocklist
+    assert firewall.rule_set(sets, dict(rules[3], table='other'), 'blocklist') is None
+    # a concatenated lookup gives no selector: it cannot be taken for the rule opening a port
+    assert firewall.find_rules(rules, 'accept', dport=8888) == [] and firewall.find_rules(rules, 'accept', dport=80) == []
+    assert firewall.rule_index(rules, lambda r: bool(firewall.find_rules([r], 'accept', dport=8080, l4proto='tcp'))) == 5
+    # output: the stateful rule, the lookup of the ports (TCP is still known), a final reject without criterion
+    assert firewall.rule_index(out, lambda r: bool(firewall.find_rules([r], 'accept', ct_state={'established', 'related'}))) == 0
+    assert len(firewall.find_rules(out, 'accept', oif='lo')) == 1
+    port_rules = [r for r in firewall.find_rules(out, 'accept', l4proto='tcp') if firewall.rule_set_lookups(r)]
+    assert [firewall.rule_set_lookups(r)[0]['set'] for r in port_rules] == ['web_ports']
+    assert firewall.find_rules(out, 'accept', dport=80) == []                 # the port is in the set, not in the rule
+    assert len(firewall.find_rules(out, 'accept', l4proto='udp', dport=630)) == 1
+    assert firewall.rule_verdict(out[-1]) == 'reject' and firewall.rule_matches(out[-1])['dport'] == []
+
+
+def test_live_capture_of_the_full_filter1_ruleset():
+    """`nft -j list ruleset` of m1 captured on 2026-11-13 in a running instance of the nftables-filter1
+    lab after its `final` state (questions 2 to 14: input and output chains, four sets): an interval
+    set lists its elements in address order whatever the order they were added in, the rule replaced
+    with `nft replace rule` keeps its handle and its place, the bare `reject` of an inet table is
+    `icmpx`, the one of a rule naming an address `icmp`."""
+    text = load('nft_json_filter1_full_live.json')
+    parsed, sets = firewall.parse_nft_json(text), firewall.parse_nft_sets(text)
+    rules, out = firewall.hook_rules(parsed, 'input'), firewall.hook_rules(parsed, 'output')
+    assert [r['handle'] for r in rules] == [28, 27, 25, 22, 7, 6, 2, 3, 4, 5, 11]
+    assert [r['handle'] for r in out] == [14, 13, 15, 16, 17, 19, 20]
+    assert firewall.hook_policy(parsed, 'input') == 'drop' and firewall.hook_policy(parsed, 'output') == 'drop'
+    assert [c['name'] for c in firewall.user_chains(parsed)] == ['logdrop']
+    assert sorted(name for _, _, name in sets) == ['allowed', 'banned', 'blocklist', 'web_ports']
+    blocklist = firewall.set_addresses(sets[('inet', 'filter', 'blocklist')])
+    assert [str(a) for a in blocklist] == ['10.144.56.0/24', '172.28.28.53']
+    assert firewall.addresses_cover(blocklist, '172.28.28.53') and firewall.addresses_cover(blocklist, '10.144.56.0/24')
+    assert not firewall.addresses_cover(blocklist, '172.28.28.52')
+    assert firewall.set_ports(sets[('inet', 'filter', 'web_ports')]) == [80, 8888]
+    assert firewall.set_tuples(sets[('inet', 'filter', 'allowed')]) == [('172.28.28.52', 80), ('192.168.74.3', 8888)]
+    banned = sets[('inet', 'filter', 'banned')]
+    assert banned['timeout'] == 60 and banned['elements'] == 0 and banned['items'] == []
+    assert firewall.updated_sets(parsed) == firewall.expiring_sets(sets) == [('inet', 'filter', 'banned')]
+    # the order of the input chain: ban, trap, allowlist, blocklist, then the rules of the first questions
+    assert [lookup['set'] for r in rules[:4] for lookup in firewall.rule_set_lookups(r)] == ['banned', 'allowed', 'blocklist']
+    assert firewall.rule_set_updates(rules[1]) == [{'op': 'add', 'set': 'banned', 'key': 'saddr', 'timeout': None}]
+    assert firewall.rule_index(rules, lambda r: bool(firewall.find_rules([r], 'accept', dport=8080, l4proto='tcp'))) == 4
+    assert firewall.rule_index(rules, lambda r: bool(firewall.find_rules([r], 'reject', saddr='192.168.74.2'))) == 9
+    assert firewall.rule_verdict(rules[-1]) == ('jump', 'logdrop')
+    # the output chain: stateful rule first (inserted), the forbidden destination, lo, ping, the port set, UDP, reject
+    assert firewall.find_rules(out, 'accept', ct_state={'established', 'related'}) == [out[0]]
+    assert firewall.find_rules(out, 'reject', daddr='172.28.28.52') == [out[1]]
+    assert firewall.find_rules(out, 'accept', oif='lo') == [out[2]]
+    assert firewall.find_rules(out, 'accept', icmp_type='echo-request') == [out[3]]
+    assert firewall.rule_set_lookups(out[4]) == [{'key': 'dport', 'keys': ['dport'], 'set': 'web_ports', 'negated': False}]
+    assert firewall.rule_matches(out[4])['l4proto'] == {'tcp'}
+    assert firewall.find_rules(out, 'accept', l4proto='udp', dport=530) == [out[5]]
+    assert firewall.rule_verdict(out[6]) == 'reject' and out[6]['expr'] == [{'reject': {'type': 'icmpx', 'expr': 'port-unreachable'}}]
+    assert out[1]['expr'][-1] == {'reject': {'type': 'icmp', 'expr': 'port-unreachable'}}
+
+
+def test_expiring_sets_names():
+    """The names of `expiring_sets()` end up in shell commands, like those of `updated_sets()`."""
+    sets = {('inet', 'filter', 'banned'): {'flags': {'timeout'}, 'timeout': 60},
+            ('inet', 'filter', 'timed'): {'flags': set(), 'timeout': 30},
+            ('inet', 'filter', 'plain'): {'flags': {'interval'}, 'timeout': None},
+            ('inet', 'filter', 'x;reboot'): {'flags': {'timeout'}, 'timeout': 60},
+            ('inet', 'filter; id', 'banned'): {'flags': {'timeout'}, 'timeout': 60},
+            ('weird', 'filter', 'banned'): {'flags': {'timeout'}, 'timeout': 60},
+            ('inet', None, 'banned'): {'flags': {'timeout'}, 'timeout': 60}}
+    assert firewall.expiring_sets(sets) == [('inet', 'filter', 'banned'), ('inet', 'filter', 'timed')]
+    assert firewall.expiring_sets({}) == []

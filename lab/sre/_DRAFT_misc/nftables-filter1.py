@@ -3,28 +3,46 @@ handout to nftables): the students write, on ``m1``, the ``input`` chain of an n
 question after question: default policy ``drop``, the loopback interface, ICMP echo replies, UDP
 from one server, ``drop`` versus ``reject``, the stateful rule (``ct state established,related``),
 one open TCP port placed before an earlier ``reject`` (rule order, handles), then a named chain
-logging (``limit rate``) and dropping what is left.
+logging (``limit rate``) and dropping what is left (questions 1 to 9, 100 points).  Questions 10
+to 14 (40 points and a bonus of 6) go on with the same ruleset: the ``output`` chain as a
+whitelist (policy ``drop``, the stateful rule, one forbidden destination), then the sets: a
+blocklist with ``flags interval``, a set of ports looked up by the output chain, a set of
+address . port pairs, and a dynamic set banning whoever touches a trap port.
 
 Topology::
 
-    m1 (firewall) ---+
-    m2 --------------+-- [switch lan] -- eth0 gw eth1 -- [switch ext] -- ext1
-    m3 --------------+
+    m1 (firewall) ---+                                    +-- ext1
+    m2 --------------+-- [switch lan] -- eth0 gw eth1 -- [switch ext] --+-- ext2
+    m3 --------------+                    eth2                          +-- ext3
+                                           |
+                                     [switch guest] -- guest1
 
-``gw`` routes between ``lan`` and ``ext`` (the default route of every host); ``ext1`` plays the
-"server of the exterior" whose UDP is accepted in question 5 and the client "from outside" of the
-other probes.  Every machine runs the echo server of ``lib/server_echo.py`` (HTTP on TCP 80 and
-8080, UDP on 530 and 630: the answer gives the addresses and ports of both ends and the TTL of the
-packet), the services the students open or close.
+``gw`` routes between ``lan``, ``ext`` and ``guest`` (the default route of every host); ``ext1``
+plays the "server of the exterior" whose UDP is accepted in question 5 and the client "from
+outside" of the probes of questions 1 to 9.  The other machines belong to the later questions,
+so that no question undoes what an earlier one grades: ``ext2`` is the destination ``m1`` must not
+contact (question 10) and a member of the allowlist (question 13), ``ext3`` and the whole
+``guest`` network are blocklisted (question 11).  Every machine runs the echo server of
+``lib/server_echo.py`` (HTTP on TCP 80, 8080 and 8888, UDP on 530 and 630: the answer gives the
+addresses and ports of both ends and the TTL of the packet), the services the students open or
+close.
+
+**No question costs the points of another**: the output whitelist allows what the probes of
+questions 1 to 9 emit from ``m1`` (``lo``, ping, TCP 80, UDP 530 / 630, and every reply through
+``ct state established,related``, the ICMP error of the ``reject`` of question 6 included: it is
+``related``), every later restriction is observed on a machine or a port no earlier question
+probes, and every later rule of ``input`` is inserted.  What is graded is the final ruleset: a
+*wrong* output chain does cost the earlier probes it breaks.
 
 Grading uses the "hidden mirror" of ``lib/hidden_mirror.py`` / ``lib/firewall.py``: a hidden clone
-of the whole topology (``m1_h`` … ``ext1_h`` on ``lan_h`` / ``ext_h``, same addresses, same echo
-servers), onto which the live ruleset of ``m1`` (``nft list ruleset``) is transplanted at each
-evaluation; the probes then run from and to the clones, where the expected result is known and the
-students cannot interfere.  What the ruleset *says* is read from ``nft -j list ruleset`` of ``m1``
-(policy, selectors, verdicts, rule order, ``log`` / ``limit``), what it *does* from the probes.
-The ``final`` state applies the reference solution (100/100).  Texts are French (``tr()``),
-identifiers English.
+of the whole topology (``m1_h`` … ``guest1_h`` on ``lan_h`` / ``ext_h`` / ``guest_h``, same
+addresses, same echo servers), onto which the live ruleset of ``m1`` (``nft list ruleset``) is
+transplanted at each evaluation; the probes then run from and to the clones, where the expected
+result is known and the students cannot interfere.  What the ruleset *says* is read from ``nft -j
+list ruleset`` of ``m1`` (policy, selectors, verdicts, rule order, ``log`` / ``limit``, sets),
+what it *does* from the probes (step 3; steps 4 and 5 for the ban of the bonus question).  The
+``final`` state applies the reference solution (140/140 and the bonus).  Texts are French
+(``tr()``), identifiers English.
 """
 from dataclasses import dataclass
 from ipaddress import IPv4Interface, IPv4Network, ip_address
@@ -52,40 +70,63 @@ eval_interval_without_exam_mode = 120
 eval_before_exit = True
 record_sessions = False
 
-FIREWALL = 'm1'                 # the machine whose input chain the students write
+FIREWALL = 'm1'                 # the machine whose input and output chains the students write
 MIRROR = '_h'                   # suffix of the hidden clones (hidden_mirror.expand_topology)
 FAMILY, TABLE, CHAIN = 'inet', 'filter', 'input'   # the table and base chain of the reference solution
+OUT_CHAIN = 'output'            # question 10: the base chain of the output hook
 LOG_CHAIN = 'logdrop'           # question 9: the named chain logging then dropping
 LOG_RATE = 5                    # question 9 (d): at most LOG_RATE log messages per minute
 LOG_PREFIX = 'input drop: '
 NFLOG_GROUP = 0                 # `log group 0`, read with `tcpdump -i nflog:0` (the kernel log is not readable in a container)
-HTTP_PORTS = (80, 8080)         # the echo server of every machine: HTTP ports...
-UDP_PORTS = (530, 630)          # ... and UDP ports
 OPEN_PORT = 8080                # question 8: the TCP port opened to everybody
 CLOSED_PORT = 80                # ... while this one stays closed
+SET_PORT = 8888                 # questions 12 and 13: a third HTTP port, opened through sets only
+HTTP_PORTS = (CLOSED_PORT, OPEN_PORT, SET_PORT)   # the echo server of every machine: HTTP ports...
+UDP_PORTS = (530, 630)          # ... and UDP ports
 UDP_PORT = UDP_PORTS[0]         # the UDP port of the probes
 UDP_SERVER = 'ext1'             # question 5: the machine whose UDP is accepted
 REJECTED = 'm2'                 # question 6: the machine whose packets are rejected (the others are dropped)
+# Questions 10 to 14 only use machines and ports that questions 1 to 9 never probe.
+FORBIDDEN = 'ext2'              # question 10: the machine m1 must not open anything to
+BLOCKED_HOST = 'ext3'           # question 11: the blocklisted address...
+BLOCKED_NET = 'guest'           # ... and the blocklisted network,
+BLOCKED_NET_HOST = 'guest1'     # ... probed from this machine of it
+BLOCK_SET = 'blocklist'         # question 11: the set of the blocklisted addresses (flags interval)
+PORT_SET = 'web_ports'          # question 12: the set of the TCP ports m1 may contact
+ALLOW_SET = 'allowed'           # question 13: the set of the (address . port) pairs let in
+ALLOWED = (('ext2', CLOSED_PORT), ('m3', SET_PORT))   # ... and its pairs (machine, port of m1)
+BAN_SET = 'banned'              # question 14 (bonus): the set fed by the trap rule
+TRAP_PORT = 23                  # ... whoever opens a connection to this port of m1 is banned
+BAN_SECONDS = 60                # ... for that long
+BAN_SOURCE, BAN_SPARED = 'ext1', 'm3'   # the clone walking into the trap, and one that does not
 DOMAIN = 'lab'
-PROBE_STEP = 3                  # the probes run after the transplant (download at 1, load at 2)
+LOAD_STEP = 2                   # the ruleset of m1 is read at step 1 and loaded on its clone at step 2
+PROBE_STEP = 3                  # the probes run after the transplant
+TRAP_STEP, BAN_STEP = 4, 5      # question 14: the connection to the trap port, then the probes of the ban
 PROBE_TIMEOUT = 4               # bash /dev/tcp connection timeout: a dropped SYN is declared after that
-VISIBLE_MACHINES = ('m1', 'm2', 'm3', 'gw', 'ext1')
-HOSTS = ('m1', 'm2', 'm3', 'ext1')   # single-homed machines (gw has gw_lan / gw_ext)
+OUT_TIMEOUT = 3                 # ... for what m1 itself opens (a local reject is seen with the SYN retransmission, after 1 s)
+VISIBLE_MACHINES = ('m1', 'm2', 'm3', 'gw', 'ext1', 'ext2', 'ext3', 'guest1')
+HOSTS = ('m1', 'm2', 'm3', 'ext1', 'ext2', 'ext3', 'guest1')   # single-homed machines (gw has gw_lan / gw_ext / gw_guest)
 
-#: ips.<key> -> network, host part (m1 = .1 ... gw = .254 on both sides, ext1 = .51)
-HOST_PARTS = {'m1': 1, 'm2': 2, 'm3': 3, 'gw_lan': 254, 'gw_ext': 254, 'ext1': 51}
-ADDRESSED = {'m1': 'lan', 'm2': 'lan', 'm3': 'lan', 'gw_lan': 'lan', 'gw_ext': 'ext', 'ext1': 'ext'}
+#: ips.<key> -> network, host part (m1 = .1 ... gw = .254 on every side, ext1 = .51 ...)
+HOST_PARTS = {'m1': 1, 'm2': 2, 'm3': 3, 'gw_lan': 254, 'gw_ext': 254, 'ext1': 51, 'ext2': 52, 'ext3': 53,
+              'gw_guest': 254, 'guest1': 1}
+ADDRESSED = {'m1': 'lan', 'm2': 'lan', 'm3': 'lan', 'gw_lan': 'lan', 'gw_ext': 'ext', 'ext1': 'ext', 'ext2': 'ext',
+             'ext3': 'ext', 'gw_guest': 'guest', 'guest1': 'guest'}
+NETWORKS = ('lan', 'ext', 'guest')
 
-# The visible topology and its hidden mirror (clones m1_h ... ext1_h on lan_h / ext_h).
+# The visible topology and its hidden mirror (clones m1_h ... guest1_h on lan_h / ext_h / guest_h).
 _TOPOLOGY = {
     'lan': {'m1': 0, 'm2': 0, 'm3': 0, 'gw': 0},
-    'ext': {'gw': 1, 'ext1': 0},
+    'ext': {'gw': 1, 'ext1': 0, 'ext2': 0, 'ext3': 0},
+    'guest': {'gw': 2, 'guest1': 0},
 }
 _SPECS = {
     'm1': {'color': 'lightblue'},
     'm2': {}, 'm3': {},
     'gw': {'color': 'lightgreen'},
-    'ext1': {'color': 'lightgrey'},
+    'ext1': {'color': 'lightgrey'}, 'ext2': {'color': 'lightgrey'}, 'ext3': {'color': 'lightgrey'},
+    'guest1': {'color': 'lightyellow'},
 }
 _FULL_TOPOLOGY, _FULL_SPECS = hidden_mirror.expand_topology(_TOPOLOGY, _SPECS, suffix=MIRROR)
 
@@ -110,9 +151,10 @@ class Data(Data0):
     @classmethod
     def generate(cls):
         data = cls()
-        lan, ext = random_ipv4networks(masks=[24, 24], from_private_network=True,
+        networks = random_ipv4networks(masks=[24] * len(NETWORKS), from_private_network=True,
                                        exclude=[IPv4Network("172.17.0.0/16"), IPv4Network("10.0.0.0/16")])
-        data.nets.lan, data.nets.ext = lan, ext
+        for name, network in zip(NETWORKS, networks):
+            setattr(data.nets, name, network)
         for key, net in ADDRESSED.items():
             network = getattr(data.nets, net)
             setattr(data.ips, key, IPv4Interface(f"{network.network_address + HOST_PARTS[key]}/{network.prefixlen}"))
@@ -122,8 +164,14 @@ class Data(Data0):
 
 
 def ip_of(data, machine: str) -> IPv4Interface:
-    """The address of a single-homed machine or of its clone (``gw``: ``data.ips.gw_lan`` / ``gw_ext``)."""
+    """The address of a single-homed machine or of its clone (``gw``: ``data.ips.gw_lan`` / ``gw_ext`` /
+    ``gw_guest``)."""
     return getattr(data.ips, visible(machine))
+
+
+def allowed_pairs(data) -> List[tuple]:
+    """Question 13: the ``(address, port)`` pairs of the allowlist."""
+    return [(str(ip_of(data, machine).ip), port) for machine, port in ALLOWED]
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +185,10 @@ class NetScheme(NetScheme0):
     _network_specs = {
         'lan': {'mode': 'switch', 'color': 'lightcyan'},
         'ext': {'mode': 'switch', 'color': 'lightgrey'},
+        'guest': {'mode': 'switch', 'color': 'lightyellow'},
         'lan' + MIRROR: {'mode': 'switch'},
         'ext' + MIRROR: {'mode': 'switch'},
+        'guest' + MIRROR: {'mode': 'switch'},
     }
 
     def __init__(self, data, running_lab_name):
@@ -156,8 +206,8 @@ ou la **traversent**, et applique à chacun une **politique** : le laisser passe
 détruire en silence (*drop*) ou le refuser en prévenant l'émetteur (*reject*), selon des critères
 comme l'interface, les adresses, le protocole, les ports ou l'état de la connexion. Un pare-feu
 *de machine* (*host firewall*) protège la machine sur laquelle il tourne : c'est le sujet de ce
-TP, qui ne filtre que ce qui **entre** dans `m1`. Un pare-feu *de réseau* tourne sur un routeur et
-filtre ce qui le traverse (prochain TP).
+TP, qui filtre ce qui **entre** dans `m1`, puis ce qui en **sort**. Un pare-feu *de réseau* tourne
+sur un routeur et filtre ce qui le traverse (prochain TP).
 
 Sous Linux, tout se passe **dans le noyau**. **Netfilter** y fournit des points d'accrochage
 (*hooks*) sur le trajet des paquets, le suivi de connexion (*conntrack*) et la traduction
@@ -183,13 +233,14 @@ Le vocabulaire, détaillé dans les sections suivantes :
 Les machines du TP ont nftables 1.0.6 (`nft --version`), la version de Debian 12 : c'est elle que
 ce cours décrit.
 
-**Comment lire ce cours.** Le TP n'en utilise qu'une partie : le hook `input`
+**Comment lire ce cours.** Le TP en utilise l'essentiel : les hooks `input` et `output`
 (section @@ref:hooks-ip@@), les tables, les chaînes et les règles (section @@ref:structure@@), les
 critères (@@ref:selectors@@), les verdicts (@@ref:verdicts@@), le suivi de connexion
-(@@ref:conntrack@@), la commande `nft` (@@ref:nft-cli@@), la journalisation (@@ref:logging@@) et
-les tests (@@ref:testing@@). Le reste (les hooks `ingress` et `egress`, les ensembles, la
-limitation de débit, la traduction d'adresses, les bonnes pratiques) complète le tableau : vous
-en aurez besoin dans les TP suivants et sur de vraies machines.
+(@@ref:conntrack@@), le filtrage de ce qui sort (@@ref:output@@), la commande `nft`
+(@@ref:nft-cli@@), la journalisation (@@ref:logging@@), les ensembles (@@ref:sets@@) et les tests
+(@@ref:testing@@). Le reste (les hooks `ingress` et `egress`, les dictionnaires, la limitation de
+débit, la traduction d'adresses, les bonnes pratiques) complète le tableau : vous en aurez besoin
+dans les TP suivants et sur de vraies machines.
 """)
             + info_subtitle(tr("Le trajet d'un paquet : les hooks"), tag="hooks")
             + tr("""
@@ -233,7 +284,8 @@ Un paquet émis par `m1` vers `m2` passe par `output` puis `postrouting` ; la r�
 arrive par `prerouting` puis `input`. Un paquet de `m1` vers elle-même (`127.0.0.1`, ou sa propre
 adresse) fait les deux trajets à la suite, à travers l'interface `lo` : `output`, `postrouting`,
 puis `prerouting` et `input`. Un pare-feu qui détruit tout en `input` casse donc aussi les
-communications locales. Dans ce TP, on travaille uniquement dans le hook **`input`** de `m1`.
+communications locales. Dans ce TP, on travaille dans le hook **`input`** de `m1`, puis dans son
+hook **`output`**.
 
 ### @@sec:ingress@@ Les hooks ingress et egress
 
@@ -606,6 +658,113 @@ détruites. On soustrait au suivi un trafic très abondant qui n'en a pas besoin
 dans une chaîne de priorité `raw` aux hooks `prerouting` et `output` ; ses paquets sont alors
 `untracked`, et la règle à états ne les accepte pas.
 """)
+            + info_subtitle(tr("Filtrer ce qui sort : la chaîne output"), tag="output")
+            + tr("""
+
+Une chaîne de base accrochée au hook **`output`** voit tous les paquets que **la machine
+elle-même** émet : ceux des connexions que ses programmes ouvrent, mais aussi ses **réponses** aux
+connexions qu'elle sert et les messages d'erreur que son noyau fabrique. Elle ne voit pas les
+paquets qui traversent un routeur (hook `forward`).
+
+```
+nft 'add chain inet filter output { type filter hook output priority 0; policy accept; }'
+```
+
+### @@sec:why-output@@ Pourquoi filtrer la sortie
+
+Filtrer `input` protège la machine des autres ; filtrer `output` protège les autres de la
+machine, et limite les dégâts si elle est compromise : un programme malveillant qui ne peut ni
+appeler son serveur de commande, ni envoyer de courrier, ni explorer le réseau est bien moins
+dangereux. C'est aussi le moyen d'imposer une règle d'usage (« ce serveur ne parle qu'à sa base de
+données et aux dépôts de mise à jour »). Les critères utiles sont l'adresse et le port de
+**destination** (`ip daddr`, `tcp dport`), l'interface de **sortie** (`oif`, `oifname`) et, propre
+à ce hook, l'utilisateur du programme qui émet (section @@ref:skuid@@).
+
+### @@sec:output-view@@ Ce que voit le programme
+
+Dans la chaîne `output`, le paquet est arrêté sur la machine même qui l'émet, et la différence
+entre `drop` et `reject` se voit dans le programme :
+
+| programme | avec `drop` | avec `reject` |
+|-----------|-------------|---------------|
+| `curl` | attend son délai : `curl: (28) Connection timed out` | échec immédiat : `curl: (7) Failed to connect … Couldn't connect to server` |
+| `nc -v` | attend son délai : `timed out: Operation now in progress` | échec immédiat : `Connection refused` |
+| `ping` | `100% packet loss`, sans autre message | `Destination Port Unreachable` venant de la machine elle-même, et `ping: sendmsg: Operation not permitted` |
+
+Avec `drop`, rien ne signale le blocage : vu du programme, il ressemble à une panne du réseau ou
+du serveur distant. En `output`, on préfère donc **`reject`** : celui qui est bloqué est un
+utilisateur de la machine, autant qu'il le sache aussitôt. Dans les deux cas `tcpdump` ne montre
+aucun paquet : il capture après le hook `output` (section @@ref:capture@@).
+
+Le message d'erreur d'un `reject` est fabriqué par le noyau et **revient au programme par
+l'interface `lo`** : la chaîne `input` de la machine doit le laisser entrer, par `iif lo accept`
+ou par la règle à états (ce message est `related`). Sinon le programme attend, comme avec `drop`.
+
+### @@sec:output-state@@ Les réponses : la règle à états en sortie
+
+Une règle de `output` ne distingue pas, à elle seule, ce que la machine **initie** de ce qu'elle
+**répond**. `ip daddr 192.0.2.7 reject` interdit d'ouvrir une connexion vers `192.0.2.7`, mais
+rejette aussi les réponses de la machine aux connexions que `192.0.2.7` ouvre vers elle : ses SYN
+entrent, les SYN-ACK ne sortent pas, et le service paraît en panne. Comme en `input`, la règle à
+états placée **en tête** règle la question :
+
+```
+nft insert rule inet filter output ct state established,related accept
+```
+
+- `established` : les paquets des connexions déjà acceptées, dans un sens ou dans l'autre, donc
+  toutes les réponses de la machine à ce que sa chaîne `input` a laissé entrer ;
+- `related` : les messages d'erreur ICMP que la machine émet elle-même à propos d'une connexion,
+  par exemple le *port unreachable* d'une règle `reject` de sa chaîne `input`. Sans `related`,
+  ces messages ne sortent plus : l'émetteur n'est plus prévenu et attend, comme avec `drop`.
+
+Les règles suivantes ne voient alors que des paquets `new` : ce que la machine initie.
+
+### @@sec:output-policies@@ Interdire quelques destinations, ou tout interdire sauf…
+
+Deux façons d'écrire la chaîne `output` :
+
+- **tout autoriser, sauf…** : politique `accept` et une règle `reject` par destination ou par
+  service interdit. C'est la forme d'un poste de travail ;
+- **tout interdire, sauf…** : une règle par flux sortant autorisé, et tout le reste est refusé.
+  C'est la forme d'un serveur que l'on veut cloisonner. Il faut alors penser à tout ce que la
+  machine émet sans qu'on le voie : ses réponses et ses messages d'erreur (la règle à états), ses
+  échanges avec elle-même (`oif lo accept` : beaucoup de programmes se parlent par `127.0.0.1`),
+  ses requêtes DNS, ses mises à jour.
+
+```
+table inet filter {
+        chain output {
+                type filter hook output priority filter; policy drop;
+                ct state established,related accept
+                oif "lo" accept
+                icmp type echo-request accept
+                udp dport 53 accept
+                tcp dport { 80, 443 } accept
+                reject
+        }
+}
+```
+
+La règle **`reject` finale**, sans critère, prévient les programmes de la machine ; la politique
+`drop` n'est plus qu'un filet de sécurité. Pour passer une chaîne existante de `accept` à `drop`
+sans rien couper, on ajoute **d'abord** les règles qui autorisent et l'on change la politique
+**en dernier** (section @@ref:nft-edit@@).
+
+### @@sec:skuid@@ Filtrer par utilisateur
+
+Au hook `output`, le noyau connaît le programme qui émet le paquet : `meta skuid` compare
+l'utilisateur propriétaire de sa prise réseau (*socket*), `meta skgid` son groupe.
+
+```
+nft add rule inet filter output meta skuid "www-data" tcp dport 5432 accept
+nft add rule inet filter output tcp dport 5432 reject
+```
+
+Seul le serveur web (l'utilisateur `www-data`) joint ici la base de données ; les autres
+utilisateurs de la machine sont refusés. Ce critère ne concerne que les paquets émis par la
+machine elle-même.
+""")
             + info_subtitle(tr("La commande nft"), tag="nft-cli")
             + tr("""
 
@@ -789,16 +948,22 @@ Un ensemble **nommé** est un objet de la table : on en modifie le contenu **san
 règles** qui le consultent (`@nom`).
 
 ```
-nft 'add set inet filter blocklist { type ipv4_addr; }'
-nft 'add element inet filter blocklist { 192.0.2.7, 192.0.2.99 }'
-nft add rule inet filter input ip saddr @blocklist drop
+nft 'add set inet filter blocklist { type ipv4_addr; flags interval; }'
+nft 'add element inet filter blocklist { 192.0.2.7, 198.51.100.0/24 }'
+nft insert rule inet filter input ip saddr @blocklist drop
 nft list set inet filter blocklist
 nft 'delete element inet filter blocklist { 192.0.2.7 }'
+nft flush set inet filter blocklist                  # vide l'ensemble
 ```
 
+La règle d'une liste noire se place **avant** les règles qui acceptent : `nft insert rule` la met
+en tête de chaîne. Ajoutée en fin de chaîne, elle ne verrait jamais les paquets qu'une règle
+précédente a déjà acceptés.
+
 Le `type` fixe la nature des éléments : `ipv4_addr`, `ipv6_addr`, `ether_addr` (adresse MAC),
-`inet_proto` (protocole), `inet_service` (port), `mark`. Les drapeaux (`flags`) en fixent le
-comportement :
+`inet_proto` (protocole), `inet_service` (port), `mark`. Un ensemble de ports s'emploie comme un
+ensemble d'adresses : `nft 'add set inet filter web_ports { type inet_service; }'`, puis une règle
+`tcp dport @web_ports accept`. Les drapeaux (`flags`) fixent le comportement de l'ensemble :
 
 | déclaration | effet |
 |-------------|-------|
@@ -807,13 +972,22 @@ comportement :
 | `flags dynamic;` | les règles peuvent ajouter elles-mêmes des éléments, au passage des paquets |
 | `flags constant;` | le contenu ne peut plus changer |
 
+Sans `flags interval`, `nft` refuse d'ajouter un réseau (`Error: You must add 'flags interval' to
+your set declaration if you want to add prefix elements`). Les drapeaux d'un ensemble ne se
+changent pas après coup : il faut le supprimer et le recréer (`nft delete set inet filter
+blocklist`, après avoir supprimé les règles qui le consultent, sinon `Device or resource busy`).
+
 Un élément peut réunir plusieurs champs, séparés par un point (une **concaténation**) :
 
 ```
 nft 'add set inet filter allowed { type ipv4_addr . inet_service; }'
 nft 'add element inet filter allowed { 192.0.2.2 . 22, 192.0.2.3 . 443 }'
-nft add rule inet filter input ip saddr . tcp dport @allowed accept
+nft insert rule inet filter input ip saddr . tcp dport @allowed accept
 ```
+
+La règle vaut pour un paquet dont **le couple entier** est dans l'ensemble : ici `192.0.2.2` vers
+le port 22 et `192.0.2.3` vers le port 443, mais pas `192.0.2.2` vers le port 443. Une seule
+règle et un seul ensemble décrivent ainsi « qui a droit à quoi ».
 
 ### @@sec:dynamic-sets@@ Les ensembles alimentés par les règles
 
@@ -827,6 +1001,10 @@ nft 'add set inet filter banned { type ipv4_addr; flags dynamic,timeout; timeout
 nft add rule inet filter input ip saddr @banned drop
 nft 'add rule inet filter input tcp dport 23 add @banned { ip saddr } drop'
 ```
+
+Dans une chaîne qui accepte déjà des services, ces deux règles se placent **en tête** (`nft insert
+rule`), sinon une adresse bannie atteint encore les services acceptés avant elles. `nft list set
+inet filter banned` montre chaque élément avec le délai qui lui reste (`expires 9m42s`).
 
 ### @@sec:maps@@ Les dictionnaires
 
@@ -941,9 +1119,9 @@ encore) et ce qu'il **arrête** (ce qui doit être bloqué l'est vraiment).
 
 ### @@sec:test-servers@@ Les serveurs de test du TP
 
-Les machines du TP (`m1`, `m2`, `m3`, `gw`, `ext1`) servent toutes un petit **serveur de test**,
-en HTTP sur les ports TCP **80 et 8080** et en UDP sur les ports **530 et 630** (`ss -tulnp` les
-liste). Il répond par son nom et par les adresses et ports des deux bouts de l'échange, tels qu'il
+Les machines du TP servent toutes un petit **serveur de test**, en HTTP sur les ports TCP **80,
+8080 et 8888** et en UDP sur les ports **530 et 630** (`ss -tulnp` les liste). Il répond par son
+nom et par les adresses et ports des deux bouts de l'échange, tels qu'il
 les voit, et par le TTL du paquet reçu (64 depuis le même réseau, un de moins par routeur
 traversé) :
 
@@ -968,6 +1146,7 @@ Le message d'erreur du client dit ce que le pare-feu a fait du paquet :
 | `curl: (28) Connection timed out`, **après le délai** (`-m 3`) | un `drop` (ou une machine éteinte) |
 | `nc -u -w 1` se termine sans rien afficher | le datagramme, ou sa réponse, a été détruit |
 | `ping -c 2 -W 1 m1` : `100% packet loss` | les requêtes, ou les réponses, sont détruites |
+| `ping` : `Destination Port Unreachable` venant de la machine elle-même, et `ping: sendmsg: Operation not permitted` | un `reject` dans sa propre chaîne `output` (section @@ref:output-view@@) |
 
 ### @@sec:capture@@ Capturer : où se place tcpdump
 
@@ -1059,7 +1238,8 @@ table inet filter {
 
 - **tout interdire, puis autoriser** : politique `drop` en `input` (et en `forward`), et une
   règle par service réellement offert, restreinte à ceux qui en ont besoin (`ip saddr`). Le hook
-  `output` reste en général ouvert : on fait confiance à la machine elle-même ;
+  `output` reste souvent ouvert (on fait confiance à la machine elle-même) ; on le filtre sur les
+  machines que l'on veut cloisonner (section @@ref:output@@) ;
 - **la règle à états en premier** : elle traite presque tous les paquets et dispense d'ouvrir
   quoi que ce soit pour les réponses ;
 - **ne jamais oublier `lo`** : beaucoup de services locaux se parlent par `127.0.0.1` ;
@@ -1082,7 +1262,10 @@ table inet filter {
 - **l'ordre des règles** : une règle placée après un `drop` ou un `reject` qui couvre les mêmes
   paquets n'est jamais consultée (`nft insert rule`, ou `handle`) ;
 - **le sens** : filtrer `input` ne limite pas ce que la machine émet, mais détruit les réponses à
-  ce qu'elle émet tant qu'il n'y a pas de règle à états ;
+  ce qu'elle émet tant qu'il n'y a pas de règle à états ; filtrer `output` arrête aussi les
+  réponses de la machine à ce qu'elle sert, tant que sa chaîne `output` n'a pas la sienne ;
+- **oublier `lo` en sortie** : avec une politique `drop` en `output`, sans `oif lo accept` les
+  programmes de la machine ne se joignent plus par `127.0.0.1` ;
 - **le shell** : guillemets, accolades et points-virgules se protègent par des apostrophes
   (section @@ref:nft-build@@) ;
 - **`flush ruleset`** efface aussi les tables des autres logiciels (Docker, par exemple). Sur une
@@ -1103,7 +1286,11 @@ table inet filter {
 | verdicts et actions | `accept`, `drop`, `reject`, `jump logdrop`, `counter`, `log prefix "…" group 0`, `limit rate 5/minute` |
 | chaîne régulière | `nft add chain inet filter logdrop`, `nft 'add rule inet filter logdrop limit rate 5/minute log prefix "input drop: " group 0'`, `nft add rule inet filter logdrop counter drop`, `nft add rule inet filter input jump logdrop` |
 | journal | `tcpdump -n -i nflog:0` (règles `log … group 0`) |
-| ensemble nommé | `nft 'add set inet filter blocklist { type ipv4_addr; }'`, `nft 'add element inet filter blocklist { 192.0.2.7 }'`, `nft add rule inet filter input ip saddr @blocklist drop` |
+| chaîne output | `nft 'add chain inet filter output { type filter hook output priority 0; policy accept; }'`, `nft insert rule inet filter output ct state established,related accept`, `oif lo accept`, `ip daddr A.B.C.D reject`, `tcp dport 80 accept`, une règle `reject` finale, puis la même déclaration de chaîne avec `policy drop` |
+| ensemble nommé | `nft 'add set inet filter blocklist { type ipv4_addr; flags interval; }'`, `nft 'add element inet filter blocklist { 192.0.2.7, 198.51.100.0/24 }'`, `nft insert rule inet filter input ip saddr @blocklist drop`, `nft list set inet filter blocklist`, `nft 'delete element inet filter blocklist { 192.0.2.7 }'` |
+| ensemble de ports, de couples | `nft 'add set inet filter web_ports { type inet_service; }'` et `tcp dport @web_ports accept` ; `nft 'add set inet filter allowed { type ipv4_addr . inet_service; }'`, `nft 'add element inet filter allowed { 192.0.2.2 . 22 }'` et `ip saddr . tcp dport @allowed accept` |
+| ensemble alimenté par les règles | `nft 'add set inet filter banned { type ipv4_addr; flags dynamic,timeout; timeout 60s; }'`, `tcp dport 23 add @banned { ip saddr } drop`, `ip saddr @banned drop` |
+| remplacer une règle | `nft -a list chain inet filter output` (son handle), puis `nft replace rule inet filter output handle N …` |
 | fichier de règles | `nft -c -f fichier` (vérifier), `nft -f fichier` (charger), `nft -s list ruleset > fichier` (sauvegarder) |
 | tout effacer | `nft flush chain inet filter input`, `nft delete table inet filter`, `nft flush ruleset` |
 | tests | `curl -m 3 http://m2/`, `curl -m 3 http://m2:8080/`, `echo bonjour | nc -u -w 1 m2 530`, `ping -c 2 -W 1 m2`, `ss -tulnp`, `tcpdump -n -i eth0 icmp or tcp port 80` |
@@ -1149,17 +1336,71 @@ table inet filter {
                 f"nft add rule {FAMILY} {TABLE} {LOG_CHAIN} counter drop",
                 f"nft add rule {FAMILY} {TABLE} {CHAIN} jump {LOG_CHAIN}"]
 
+    def cmds_output(self) -> List[str]:
+        """Question 10: the output chain, in the order of the question: (a) / (b) the chain and the
+        destination m1 must not contact, (c) the stateful rule inserted first, (d) what m1 may emit,
+        a final reject, and the policy drop last (every intermediate ruleset keeps what questions 1
+        to 9 grade)."""
+        chain = f"{FAMILY} {TABLE} {OUT_CHAIN}"
+        declaration = f"nft 'add chain {chain} {{{{ type filter hook output priority 0; policy {{policy}}; }}}}'"
+        return [declaration.format(policy='accept'),
+                f"nft add rule {chain} ip daddr {ip_of(self.data, FORBIDDEN).ip} reject",
+                f"nft insert rule {chain} ct state established,related accept",
+                f"nft add rule {chain} oif lo accept",
+                f"nft add rule {chain} icmp type echo-request accept",
+                f"nft add rule {chain} tcp dport {CLOSED_PORT} accept",
+                f"nft 'add rule {chain} udp dport {{ {UDP_PORTS[0]}, {UDP_PORTS[1]} }} accept'",
+                f"nft add rule {chain} reject",
+                declaration.format(policy='drop')]
+
+    def cmds_blocklist(self) -> List[str]:
+        """Question 11: the named set of the blocklisted addresses (one host, then a whole network)
+        and its rule, inserted before the rule opening a port to everybody."""
+        d = self.data
+        return [f"nft 'add set {FAMILY} {TABLE} {BLOCK_SET} {{ type ipv4_addr; flags interval; }}'",
+                f"nft 'add element {FAMILY} {TABLE} {BLOCK_SET} {{ {ip_of(d, BLOCKED_HOST).ip} }}'",
+                f"nft insert rule {FAMILY} {TABLE} {CHAIN} ip saddr @{BLOCK_SET} drop",
+                f"nft 'add element {FAMILY} {TABLE} {BLOCK_SET} {{ {getattr(d.nets, BLOCKED_NET)} }}'"]
+
+    def cmds_port_set(self) -> List[str]:
+        """Question 12: the TCP ports m1 may contact move to a named set (the rule of question 10 is
+        replaced: its handle is read from the listing), then one more port is added to the set."""
+        chain = f"{FAMILY} {TABLE} {OUT_CHAIN}"
+        handle = f"$(nft -a list chain {chain} | awk '/tcp dport {CLOSED_PORT} accept/ {{print $NF}}')"
+        return [f"nft 'add set {FAMILY} {TABLE} {PORT_SET} {{ type inet_service; }}'",
+                f"nft 'add element {FAMILY} {TABLE} {PORT_SET} {{ {CLOSED_PORT} }}'",
+                f"nft replace rule {chain} handle {handle} tcp dport @{PORT_SET} accept",
+                f"nft 'add element {FAMILY} {TABLE} {PORT_SET} {{ {SET_PORT} }}'"]
+
+    def cmds_allowed(self) -> List[str]:
+        """Question 13: the set of (address . port) pairs and its single rule, inserted (appended, it
+        would come after the jump to the logging chain)."""
+        pairs = ", ".join(f"{address} . {port}" for address, port in allowed_pairs(self.data))
+        return [f"nft 'add set {FAMILY} {TABLE} {ALLOW_SET} {{ type ipv4_addr . inet_service; }}'",
+                f"nft 'add element {FAMILY} {TABLE} {ALLOW_SET} {{ {pairs} }}'",
+                f"nft insert rule {FAMILY} {TABLE} {CHAIN} ip saddr . tcp dport @{ALLOW_SET} accept"]
+
+    def cmds_ban(self) -> List[str]:
+        """Question 14 (bonus): the dynamic set and its two rules, inserted at the head of input (the
+        second insert puts the drop rule first)."""
+        return [f"nft 'add set {FAMILY} {TABLE} {BAN_SET} {{ type ipv4_addr; flags dynamic,timeout; timeout {BAN_SECONDS}s; }}'",
+                f"nft 'insert rule {FAMILY} {TABLE} {CHAIN} tcp dport {TRAP_PORT} add @{BAN_SET} {{ ip saddr }} drop'",
+                f"nft insert rule {FAMILY} {TABLE} {CHAIN} ip saddr @{BAN_SET} drop"]
+
     def cmds_all(self) -> List[str]:
         """The whole reference solution, in question order."""
         return (self.cmds_policy() + self.cmds_lo() + self.cmds_icmp() + self.cmds_udp_server() + self.cmds_reject()
-                + self.cmds_established() + self.cmds_open_port() + self.cmds_log())
+                + self.cmds_established() + self.cmds_open_port() + self.cmds_log()
+                + self.cmds_output() + self.cmds_blocklist() + self.cmds_port_set() + self.cmds_allowed()
+                + self.cmds_ban())
 
     # -- states -----------------------------------------------------------------------------
 
     def hosts_content(self, machine: str) -> str:
         d = self.data
         entries = [('m1', d.ips.m1), ('m2', d.ips.m2), ('m3', d.ips.m3), ('gw', d.ips.gw_lan), ('gw_ext', d.ips.gw_ext),
-                   ('ext1', d.ips.ext1)]
+                   ('gw_guest', d.ips.gw_guest), ('ext1', d.ips.ext1), ('ext2', d.ips.ext2), ('ext3', d.ips.ext3),
+                   ('guest1', d.ips.guest1)]
         lines = ["127.0.0.1\tlocalhost", f"127.0.1.1\t{visible(machine)}", ""]
         lines += [f"{ip.ip}\t\t{name}.{DOMAIN}\t{name}" for name, ip in entries]
         return "\n".join(lines) + "\n"
@@ -1173,8 +1414,12 @@ table inet filter {
                 self.cmd(m + suffix, f"ip route add default via {d.ips.gw_lan.ip}")
             self.cmd('gw' + suffix, f"ip address add {d.ips.gw_lan} dev eth0")
             self.cmd('gw' + suffix, f"ip link set eth1 up; ip address add {d.ips.gw_ext} dev eth1")
-            self.cmd('ext1' + suffix, f"ip address add {d.ips.ext1} dev eth0")
-            self.cmd('ext1' + suffix, f"ip route add default via {d.ips.gw_ext.ip}")
+            self.cmd('gw' + suffix, f"ip link set eth2 up; ip address add {d.ips.gw_guest} dev eth2")
+            for m in ('ext1', 'ext2', 'ext3'):
+                self.cmd(m + suffix, f"ip address add {getattr(d.ips, m)} dev eth0")
+                self.cmd(m + suffix, f"ip route add default via {d.ips.gw_ext.ip}")
+            self.cmd('guest1' + suffix, f"ip address add {d.ips.guest1} dev eth0")
+            self.cmd('guest1' + suffix, f"ip route add default via {d.ips.gw_guest.ip}")
         for m in self.get_machine_names():
             # Kathara starts every container with ip_forward=1; set_ip_forward() also remounts
             # /proc/sys read-write, which the students need for their own `sysctl -w`.
@@ -1190,12 +1435,12 @@ table inet filter {
             # the students start from an empty ruleset (Docker's embedded DNS leaves a nat table
             # in every container otherwise); the clone of the firewall is loaded at each evaluation
             firewall.flush_ruleset(self, m)
-            # the echo server (HTTP 80 / 8080, UDP 530 / 630); a clone answers with the visible name
+            # the echo server (HTTP 80 / 8080 / 8888, UDP 530 / 630); a clone answers with the visible name
             install_echo_server(net_scheme=self, machine=m, name=visible(m), ports=HTTP_PORTS, udp_ports=UDP_PORTS)
 
     @sre_state(user_allowed=False)
     def final(self):
-        """Reference solution of the nine questions on m1, applicable more than once."""
+        """Reference solution of the fourteen questions on m1, applicable more than once."""
         self.cmd(FIREWALL, "nft flush ruleset")
         for c in self.cmds_all():
             self.cmd(FIREWALL, c)
@@ -1230,6 +1475,23 @@ def _lines(commands: List[str]) -> str:
     return "\n".join(commands) + "\n"
 
 
+def _blocked(verdict: str) -> bool:
+    """A TCP probe that ran and did not get through (dropped or refused)."""
+    return verdict in ('dropped', 'refused')
+
+
+def _set_pairs(nft_set) -> set:
+    """The elements of an (address . port) set as ``(address, port)`` pairs, whatever the order of
+    the two fields in the type of the set."""
+    pairs = set()
+    for item in firewall.set_tuples(nft_set):
+        ports = [value for value in item if isinstance(value, int)]
+        addresses = [value for value in item if isinstance(value, str)]
+        if len(item) == 2 and len(ports) == 1 and len(addresses) == 1:
+            pairs.add((addresses[0], ports[0]))
+    return pairs
+
+
 class Grade(Grade0):
     def __init__(self, net_scheme):
         super().__init__(net_scheme)
@@ -1241,15 +1503,31 @@ class Grade(Grade0):
         m1, m2, m3, ext1 = d.ips.m1, d.ips.m2, d.ips.m3, d.ips.ext1
         fw, fw_h = FIREWALL, clone(FIREWALL)
         m2_h, m3_h, ext1_h = clone('m2'), clone('m3'), clone('ext1')
+        # the machines of questions 10 to 14
+        forbidden, forbidden_h = ip_of(d, FORBIDDEN), clone(FORBIDDEN)
+        blocked_host, blocked_host_h = ip_of(d, BLOCKED_HOST), clone(BLOCKED_HOST)
+        blocked_net, blocked_net_h = getattr(d.nets, BLOCKED_NET), clone(BLOCKED_NET_HOST)
 
         # ---------------- diagnostics kept in the archive ---------------------------------
         for c in ("nft -a list ruleset", "ss -tulnp", "ip -br address"):
             self.test(fw, c, allow_error=True)
-        self.test(fw_h, "nft list ruleset", step=PROBE_STEP, allow_error=True)   # the transplanted ruleset
+        clone_listing, _ = self.test(fw_h, "nft list ruleset", step=PROBE_STEP, allow_error=True)   # the transplanted ruleset
+        self.test(fw_h, "nft list ruleset", step=BAN_STEP, allow_error=True)                        # ... and its sets after the trap
 
         # ---------------- the ruleset of m1: transplanted on its clone, and read as JSON ----
-        firewall.transplant_ruleset(self, src=fw, dst=fw_h)
+        ruleset = firewall.transplant_ruleset(self, src=fw, dst=fw_h, apply_step=LOAD_STEP)
         parsed = firewall.get_nft_json(self, fw)
+        sets = firewall.get_nft_sets(self, fw)
+        # The sets the rules feed, and those whose elements expire, start empty on the clone: an
+        # address banned on m1 while the student was testing would otherwise fail the probes.
+        volatile = firewall.updated_sets(parsed)
+        volatile += [key for key in firewall.expiring_sets(sets) if key not in volatile]
+        for family, table, name in volatile:
+            self.test(fw_h, f"nft flush set {family} {table} {name}", step=LOAD_STEP, allow_error=True)
+        if ruleset.strip() and not (clone_listing or '').strip():
+            # without this the clone would silently stay open and every "blocked" probe would fail
+            self.add_warning(f"the ruleset of {fw} was not loaded on its hidden copy {fw_h}: the probes ran without it",
+                             step=PROBE_STEP)
         input_chains = firewall.base_chains(parsed, hook='input')
         rules = firewall.hook_rules(parsed, 'input')
         policy = firewall.input_policy(parsed)
@@ -1261,24 +1539,88 @@ class Grade(Grade0):
         ct_rules_partial = firewall.find_rules(rules, 'accept', ct_state='established')
         open_index = firewall.rule_index(rules, lambda r: bool(firewall.find_rules([r], 'accept', dport=OPEN_PORT, l4proto='tcp')))
         reject_index = firewall.rule_index(rules, lambda r: r in reject_rules)
-        # question 9: the named chain (of a table holding an input chain) that logs; the jump to it
+        # question 9: the named chain (of a table holding an input chain) that logs, the one input
+        # jumps to when there are several (a later question may add chains); the jump to it
         log_chain, log_rule, log_chain_drops, jump_rule, jump_last = None, None, False, None, False
+        candidates = []
         for base in input_chains:
+            base_rules = firewall.chain_rules(parsed, base['family'], base['table'], base['name'])
+            targets = {verdict[1] for verdict in map(firewall.rule_verdict, base_rules) if isinstance(verdict, tuple)}
             for user_chain in firewall.user_chains(parsed, family=base['family'], table=base['table']):
-                chain_rules = firewall.chain_rules(parsed, base['family'], base['table'], user_chain['name'])
-                logs = [r for r in chain_rules if firewall.rule_log(r) is not None]
-                if logs and log_chain is None:
-                    log_chain, log_rule = user_chain, logs[0]
-                    log_chain_drops = any(firewall.rule_verdict(r) == 'drop' for r in chain_rules)
-        if log_chain is not None:
-            for base in input_chains:
-                base_rules = firewall.chain_rules(parsed, base['family'], base['table'], base['name'])
-                for r in base_rules:
-                    verdict = firewall.rule_verdict(r)
-                    if isinstance(verdict, tuple) and verdict[1] == log_chain['name'] and base['table'] == log_chain['table']:
-                        jump_rule = r
-                        jump_last = base_rules[-1] is r
+                user_rules = firewall.chain_rules(parsed, base['family'], base['table'], user_chain['name'])
+                logs = [r for r in user_rules if firewall.rule_log(r) is not None]
+                if logs:
+                    candidates.append((user_chain['name'] not in targets, base_rules, user_chain, user_rules, logs[0]))
+        if candidates:
+            _, base_rules, log_chain, log_chain_rules, log_rule = min(candidates, key=lambda c: c[0])
+            log_chain_drops = any(firewall.rule_verdict(r) == 'drop' for r in log_chain_rules)
+            for position, r in enumerate(base_rules):
+                verdict = firewall.rule_verdict(r)
+                if isinstance(verdict, tuple) and verdict[1] == log_chain['name']:
+                    jump_rule = r
+                    # The last rule of input.  A rule of the set questions appended after it by mistake
+                    # (it is dead there, and the student then inserts the right one) does not undo
+                    # question 9; a rule of questions 2 to 9 placed after the jump still does.
+                    jump_last = all(firewall.rule_set_lookups(later) or firewall.rule_set_updates(later)
+                                    for later in base_rules[position + 1:])
         log_limit = firewall.rule_limit(log_rule) if log_rule is not None else None
+
+        # questions 10 to 14: the output chain, and the rules looking a named set up
+        out_rules = firewall.hook_rules(parsed, 'output')
+        out_policy = firewall.hook_policy(parsed, 'output')
+        out_ct_rules = firewall.find_rules(out_rules, 'accept', ct_state={'established', 'related'})
+        out_ct_rules_partial = firewall.find_rules(out_rules, 'accept', ct_state='established')
+
+        def looked_up(rule, *fields):
+            """The named sets *rule* looks up with exactly *fields* (``'saddr'``; ``'saddr', 'dport'``
+            in either order), the sets the rules feed left out: entries of ``sets``."""
+            found = []
+            for lookup in firewall.rule_set_lookups(rule):
+                if lookup['negated'] or sorted(key or '' for key in lookup['keys']) != sorted(fields):
+                    continue
+                if (rule.get('family'), rule.get('table'), lookup['set']) in volatile:
+                    continue
+                nft_set = firewall.rule_set(sets, rule, lookup['set'])
+                if nft_set is not None:
+                    found.append(nft_set)
+            return found
+
+        # question 11: a rule of input dropping (or sending to a chain) what comes from a set of addresses
+        block_index, block_covers = None, False
+        for index, rule in enumerate(rules):
+            verdict = firewall.rule_verdict(rule)
+            if not (verdict in ('drop', 'reject') or isinstance(verdict, tuple)):
+                continue
+            for nft_set in looked_up(rule, 'saddr'):
+                addresses = firewall.set_addresses(nft_set)
+                covers = (firewall.addresses_cover(addresses, blocked_host.ip)
+                          and firewall.addresses_cover(addresses, blocked_net))
+                if block_index is None or (covers and not block_covers):
+                    block_index, block_covers = index, covers
+        # question 12: a rule of output accepting the TCP destination ports of a set
+        port_rule, port_set_full = False, False
+        for rule in firewall.find_rules(out_rules, 'accept', l4proto='tcp'):
+            for nft_set in looked_up(rule, 'dport'):
+                ports = firewall.set_ports(nft_set)
+                port_rule = True
+                port_set_full = port_set_full or (firewall.ports_cover(ports, CLOSED_PORT)
+                                                  and firewall.ports_cover(ports, SET_PORT))
+        # question 13: a rule of input accepting the (source address . destination port) pairs of a set
+        allow_rule, allow_full = False, False
+        for rule in firewall.find_rules(rules, 'accept'):
+            for nft_set in looked_up(rule, 'saddr', 'dport'):
+                allow_rule = True
+                allow_full = allow_full or set(allowed_pairs(d)) <= _set_pairs(nft_set)
+        # question 14: the rules of input feeding a set with the sources of the trap port, and the drop on that set
+        ban_updates = [update for r in rules for update in firewall.rule_set_updates(r)
+                       if update['key'] == 'saddr' and firewall.find_rules([r], dport=TRAP_PORT)]
+        ban_names = {update['set'] for update in ban_updates}
+        ban_timed = (any(update['timeout'] == BAN_SECONDS for update in ban_updates)
+                     or any(s['timeout'] == BAN_SECONDS for key, s in sets.items() if key[2] in ban_names))
+        ban_index = firewall.rule_index(
+            rules, lambda r: firewall.rule_verdict(r) == 'drop' and any(
+                lookup['key'] == 'saddr' and not lookup['negated'] and lookup['set'] in ban_names
+                for lookup in firewall.rule_set_lookups(r)))
 
         # ---------------- the probes, from and to the hidden clones (step 3) ----------------
         lo_echo = get_http_echo(self, fw_h, '127.0.0.1', CLOSED_PORT, step=PROBE_STEP)
@@ -1296,8 +1638,37 @@ class Grade(Grade0):
         verdict_ext1 = firewall.probe_tcp_verdict(self, ext1_h, m1, CLOSED_PORT, step=PROBE_STEP, connect_timeout=PROBE_TIMEOUT)
         open_from = {src: firewall.probe_tcp(self, src, m1, OPEN_PORT, step=PROBE_STEP, connect_timeout=PROBE_TIMEOUT)
                      for src in (m2_h, m3_h, ext1_h)}
+        # questions 10 and 12: what m1 itself opens (a local reject is seen after the first SYN
+        # retransmission, one second: the timeout stays above it)
+        lo_other_port = get_http_echo(self, fw_h, '127.0.0.1', OPEN_PORT, step=PROBE_STEP, timeout=OUT_TIMEOUT)
+        http_to_m3 = get_http_echo(self, fw_h, m3, CLOSED_PORT, step=PROBE_STEP, timeout=OUT_TIMEOUT)
+        http_set_port = get_http_echo(self, fw_h, m3, SET_PORT, step=PROBE_STEP, timeout=OUT_TIMEOUT)
+        out_forbidden = firewall.probe_tcp_verdict(self, fw_h, forbidden, CLOSED_PORT, step=PROBE_STEP,
+                                                   connect_timeout=OUT_TIMEOUT)
+        out_other_port = firewall.probe_tcp_verdict(self, fw_h, m3, OPEN_PORT, step=PROBE_STEP, connect_timeout=OUT_TIMEOUT)
+        from_forbidden = firewall.probe_tcp(self, forbidden_h, m1, OPEN_PORT, step=PROBE_STEP, connect_timeout=PROBE_TIMEOUT)
+        # question 11: the blocklisted machines, on the port open to everybody
+        verdict_blocked_host = firewall.probe_tcp_verdict(self, blocked_host_h, m1, OPEN_PORT, step=PROBE_STEP,
+                                                          connect_timeout=PROBE_TIMEOUT)
+        verdict_blocked_net = firewall.probe_tcp_verdict(self, blocked_net_h, m1, OPEN_PORT, step=PROBE_STEP,
+                                                         connect_timeout=PROBE_TIMEOUT)
+        # question 13: the pairs of the allowlist, and two pairs that are not in it
+        allowed_in = {(machine, port): firewall.probe_tcp(self, clone(machine), m1, port, step=PROBE_STEP,
+                                                          connect_timeout=PROBE_TIMEOUT)
+                      for machine, port in ALLOWED}
+        (first_machine, first_port), (second_machine, second_port) = ALLOWED
+        other_port_in = firewall.probe_tcp(self, clone(first_machine), m1, second_port, step=PROBE_STEP,
+                                           connect_timeout=PROBE_TIMEOUT)
+        other_machine_in = firewall.probe_tcp(self, ext1_h, m1, second_port, step=PROBE_STEP, connect_timeout=PROBE_TIMEOUT)
+        # question 14: one clone walks into the trap (step 4), then asks for the open port again (step 5)
+        ban_source_h, ban_spared_h = clone(BAN_SOURCE), clone(BAN_SPARED)
+        firewall.probe_tcp_verdict(self, ban_source_h, m1, TRAP_PORT, step=TRAP_STEP, connect_timeout=2)
+        ban_before = open_from[ban_source_h]
+        ban_after = firewall.probe_tcp(self, ban_source_h, m1, OPEN_PORT, step=BAN_STEP, connect_timeout=PROBE_TIMEOUT)
+        ban_spared = firewall.probe_tcp(self, ban_spared_h, m1, OPEN_PORT, step=BAN_STEP, connect_timeout=PROBE_TIMEOUT)
         # what the firewall lets through only counts once it filters: an empty ruleset passes everything
         filtering = int(policy == 'drop')
+        out_filtering = int(out_policy == 'drop')
 
         # The texts of a question are not indented: the first one starts at the margin, so an
         # indented one would be drawn as a code block.
@@ -1305,43 +1676,50 @@ class Grade(Grade0):
 | réseau | préfixe | machines |
 |--------|---------|----------|
 | `lan` (switch `lan`) | `{lan}` | **`m1`** (`{m1}`, **le pare-feu à configurer**), `m2` (`{m2}`), `m3` (`{m3}`), `gw` eth0 (`{gw_lan}`, la passerelle) |
-| `ext` (« l'extérieur ») | `{ext}` | `ext1` (`{ext1}`), `gw` eth1 (`{gw_ext}`) |
+| `ext` (« l'extérieur ») | `{ext}` | `ext1` (`{ext1}`), `ext2` (`{ext2}`), `ext3` (`{ext3}`), `gw` eth1 (`{gw_ext}`) |
+| `guest` (le réseau des invités) | `{guest}` | `guest1` (`{guest1}`), `gw` eth2 (`{gw_guest}`) |
 """).format(lan=d.nets.lan, m1=m1.ip, m2=m2.ip, m3=m3.ip, gw_lan=d.ips.gw_lan.ip, ext=d.nets.ext, ext1=ext1.ip,
-            gw_ext=d.ips.gw_ext.ip)
+            ext2=d.ips.ext2.ip, ext3=d.ips.ext3.ip, gw_ext=d.ips.gw_ext.ip, guest=d.nets.guest, guest1=d.ips.guest1.ip,
+            gw_guest=d.ips.gw_guest.ip)
 
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
 Lisez l'onglet **Informations** : il présente les pare-feux, Netfilter et nftables (hooks, tables,
-chaînes, règles, critères, verdicts, suivi de connexion), la commande `nft`, la journalisation et
-la façon de tester un pare-feu.
+chaînes, règles, critères, verdicts, suivi de connexion), le filtrage de ce qui sort, la commande
+`nft`, la journalisation, les ensembles et la façon de tester un pare-feu.
 
 **La maquette** (onglet *Schéma*) : un réseau local `lan` avec trois machines `m1`, `m2`, `m3` et
-une passerelle `gw`, qui route vers un réseau `ext`, « l'extérieur », où se trouve `ext1`. Vous
-configurez le pare-feu de **`m1`** et de `m1` seulement : `m2`, `m3` et `ext1` servent de clients
-(et de serveurs) pour vos tests.
+une passerelle `gw`, qui route vers un réseau `ext`, « l'extérieur », où se trouvent `ext1`, `ext2`
+et `ext3`, et vers un réseau `guest`, celui des invités, où se trouve `guest1`. Vous configurez le
+pare-feu de **`m1`** et de `m1` seulement : les autres machines servent de clients (et de serveurs)
+pour vos tests. Les questions 1 à 9 n'utilisent que `m2`, `m3` et `ext1`.
 """)
             + addressing
             + tr("""
-Déjà en place (ne pas modifier) : les adresses, la route par défaut de `m1`, `m2`, `m3` et `ext1`
-vers `gw`, le routage sur `gw`, les noms dans `/etc/hosts` (`m1`, `m2`, `m3`, `gw`, `gw_ext`,
-`ext1`). Il n'y a pas de DNS. Sur **chaque** machine tourne un **serveur de test** HTTP (ports TCP
-**80** et **8080**) et UDP (ports **530** et **630**) qui répond par son nom, les adresses et
-ports des deux bouts et le TTL du paquet reçu (`curl http://m2/`, `curl http://ext1:8080/`,
-`echo bonjour | nc -u -w 1 m2 530` ; section @@ref:testing@@ des Informations). Le jeu de règles
-nftables de toutes les machines est vide au départ.
+Déjà en place (ne pas modifier) : les adresses, la route par défaut de toutes les machines vers
+`gw`, le routage sur `gw`, les noms dans `/etc/hosts` (`m1`, `m2`, `m3`, `gw`, `gw_ext`,
+`gw_guest`, `ext1`, `ext2`, `ext3`, `guest1`). Il n'y a pas de DNS. Sur **chaque** machine tourne
+un **serveur de test** HTTP (ports TCP **80**, **8080** et **8888**) et UDP (ports **530** et
+**630**) qui répond par son nom, les adresses et ports des deux bouts et le TTL du paquet reçu
+(`curl http://m2/`, `curl http://ext1:8080/`, `echo bonjour | nc -u -w 1 m2 530` ;
+section @@ref:testing@@ des Informations). Le jeu de règles nftables de toutes les machines est
+vide au départ.
 
 Règles valables pour tout le TP :
 
 - les questions sont à faire **dans l'ordre** et la configuration d'une question terminée reste
-  en place : l'évaluation vérifie le jeu de règles **final** (une seule table, `inet filter`, avec
-  une chaîne de base `input` ; ne filtrez ni `output` ni `forward`) ;
+  en place : l'évaluation vérifie le jeu de règles **final** (une seule table, `inet filter` : sa
+  chaîne de base `input`, puis, à partir de la question 10 seulement, sa chaîne `output` ; ne
+  filtrez jamais `forward`) ;
+- les questions 10 à 14 **complètent** le pare-feu des questions 2 à 9 sans rien en défaire : à la
+  fin du TP, tout ce que les questions précédentes demandent doit encore fonctionner ;
 - travaillez dans **votre** table (`nft add table inet filter`) ; les règles sont volatiles
   (`nft`) : elles ne survivent pas à un redémarrage de la machine ;
 - l'évaluation lit le jeu de règles de `m1` (`nft list ruleset`) et le **recopie sur une machine
   cachée identique** à `m1` (mêmes adresses, mêmes serveurs de test), qu'elle sonde depuis des
-  copies cachées de `m2`, `m3` et `ext1` : seul ce que dit **le jeu de règles chargé sur `m1`**
-  compte, pas l'état de ses serveurs ni ce que vous faites sur `m2`, `m3` ou `ext1` ;
+  copies cachées des autres machines : seul ce que dit **le jeu de règles chargé sur `m1`**
+  compte, pas l'état de ses serveurs ni ce que vous faites sur les autres machines ;
 - pour tester sans attendre, utilisez des délais courts : `curl -m 3 …`, `ping -c 2 -W 1 …`,
   `nc -u -w 1 …`.
 """)
@@ -1349,23 +1727,38 @@ Règles valables pour tout le TP :
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet. L'état `final` (onglet *Appliquer une configuration*) vide le jeu de règles de `m1` puis
 applique toute la solution et remplit les formulaires ; il est ré-applicable et une évaluation
-lancée juste après donne 100/100.
+lancée juste après donne 140/140 et les 6 points de bonus (questions 1 à 9 : 100 points ; questions
+10 à 13 : 40 points ; question 14 : bonus).
+
+**Aucune question n'en pénalise une autre.** La chaîne `output` de la question 10 autorise tout ce
+que les sondes des questions 1 à 9 font émettre à `m1` (`lo`, `ping`, TCP {closed}, UDP {udp_port} et
+{udp_other}, et toutes ses réponses par la règle à états, message d'erreur du `reject` de la
+question 6 compris) ; les restrictions des questions 10 à 14 ne s'observent que sur des machines et
+des ports que les questions 1 à 9 ne sondent pas (`ext2`, `ext3`, `guest1`, les ports {set_port} et
+{trap}, le port {open} en sortie) ; leurs règles de `input` sont insérées, aucune règle déjà évaluée
+n'est réécrite. En revanche c'est le jeu de règles **final** qui est évalué : une chaîne `output`
+**fausse** fait perdre les points de ce qu'elle casse réellement (sans `related`, `m2` n'est plus
+prévenue du refus de la question 6 ; sans règle à états, le port {open} ne répond plus à personne).
 
 L'évaluation (miroir caché, `lib/hidden_mirror.py` / `lib/firewall.py`) : `nft list ruleset` sur `m1`
 (étape 1), chargé tel quel sur `{fw_h}` après un `nft flush ruleset` (étape 2 ; un jeu de règles
-vide laisse la copie sans filtre), puis les sondes (étape 3) depuis `{m2_h}`, `{m3_h}`, `{ext1_h}` et
-`{fw_h}` elle-même : `curl` des serveurs de test (HTTP 80 / 8080), `nc -u` (UDP {udp_port}), `ping`,
-connexions TCP par `bash` (`/dev/tcp`, délai {timeout} s : `RC=0` ouvert, `RC=124` détruit, autre code
-refusé). Les copies cachées répondent sous les noms visibles (`SERVER=m2`…). La structure du jeu de
-règles (politique, critères, verdicts, ordre, `log` / `limit`) est lue dans `nft -j list ruleset` de
-`m1` : une chaîne de base `filter` du hook `input`, famille `inet` ou `ip`. Ce que le pare-feu
-**laisse passer** (sondes positives) ne compte qu'une fois la politique `drop` en place : un jeu de
-règles vide laisse tout passer et vaut 0. Une évaluation dure une
-dizaine de secondes (les sondes que le pare-feu doit détruire attendent {timeout} s). Les machines ne
-peuvent pas lire le journal du noyau (pas de `CAP_SYSLOG`) : la question 9 journalise vers nflog
-(`log … group {group}`, `tcpdump -n -i nflog:0`), mais toute règle `log` est acceptée.
-""").format(fw_h=fw_h, m2_h=m2_h, m3_h=m3_h, ext1_h=ext1_h, udp_port=UDP_PORT, timeout=PROBE_TIMEOUT,
-            group=NFLOG_GROUP)),
+vide laisse la copie sans filtre ; les ensembles alimentés par les règles ou à délai d'expiration y
+sont vidés : une adresse bannie sur `m1` pendant vos essais ne fausse rien), puis les sondes
+(étape 3) depuis les copies cachées de `m2`, `m3`, `ext1`, `ext2`, `ext3`, `guest1` et depuis
+`{fw_h}` elle-même : `curl` des serveurs de test (HTTP {closed} / {open} / {set_port}), `nc -u`
+(UDP {udp_port}), `ping`, connexions TCP par `bash` (`/dev/tcp`, délai {timeout} s : `RC=0` ouvert,
+`RC=124` détruit, autre code refusé). La question 14 ajoute une connexion au port {trap} (étape 4)
+puis deux sondes (étape 5). Les copies cachées répondent sous les noms visibles (`SERVER=m2`…). La
+structure du jeu de règles (politique, critères, verdicts, ordre, `log` / `limit`, ensembles) est
+lue dans `nft -j list ruleset` de `m1` : les chaînes de base des hooks `input` et `output`, famille
+`inet` ou `ip`. Ce que le pare-feu **laisse passer** (sondes positives) ne compte qu'une fois la
+politique `drop` en place : un jeu de règles vide laisse tout passer et vaut 0 ; ce qu'il **arrête**
+ne compte que si une sonde témoin passe. Une évaluation dure une vingtaine de secondes (les sondes
+que le pare-feu doit détruire attendent {timeout} s). Les machines ne peuvent pas lire le journal du
+noyau (pas de `CAP_SYSLOG`) : la question 9 journalise vers nflog (`log … group {group}`,
+`tcpdump -n -i nflog:0`), mais toute règle `log` est acceptée.
+""").format(fw_h=fw_h, udp_port=UDP_PORT, udp_other=UDP_PORTS[1], timeout=PROBE_TIMEOUT, group=NFLOG_GROUP,
+            closed=CLOSED_PORT, open=OPEN_PORT, set_port=SET_PORT, trap=TRAP_PORT)),
         )
 
         # =====================================================================
@@ -1644,8 +2037,9 @@ que reçoit `m2` de `m1` ?
 ```
 {cmds}```
 
-Depuis `m2`, `curl` échoue **aussitôt** : `curl: (7) Failed to connect to m1 port 80 … Connection
-refused` ; `tcpdump` sur `m2` montre son SYN puis `IP {m1} > {m2}: ICMP {m1} tcp port 80 unreachable`
+Depuis `m2`, `curl` échoue **aussitôt** : `curl: (7) Failed to connect to m1 port 80 … Couldn't
+connect to server` (`nc -v m1 80` : `Connection refused`) ; `tcpdump` sur `m2` montre son SYN puis
+`IP {m1} > {m2}: ICMP {m1} tcp port 80 unreachable`
 (`reject with tcp reset` donnerait un RST ; `nft list ruleset` affiche la règle sous sa forme complète,
 `reject with icmp port-unreachable`). Depuis `m3`, `curl` attend
 les 5 s puis `Connection timed out` : le SYN est détruit, `m3` le retransmet, rien ne revient. Depuis
@@ -1870,6 +2264,474 @@ n'affiche que les premiers (une seule ligne si des paquets détruits juste avant
             title=no_tr("q_log"), max_grade=2, grade_part=part9, scope=params.EXO_EVAL_SCOPE,
             grade=2 * int(_norm(q9.get("where_logs")) == "nflog"),
             description=tr("où lire les paquets journalisés (nflog / journal du noyau)"),
+        )
+
+        # =====================================================================
+        # Part 10 — the output chain (question 10)
+        # =====================================================================
+        part10 = self.add_grade_part(no_tr("part10"), tr("Partie 10 — Filtrer ce qui sort (question 10)"))
+
+        q10_answers ={"with_drop": "timeout", "with_reject": "refused", "from_forbidden": "synack_rejected"}
+        q10 = self.question_form(
+            section=self.section(0),
+            title=tr("Filtrer ce qui sort : la chaîne output"),
+            description=tr("""
+Jusqu'ici `m1` émet ce qu'elle veut : seule sa chaîne `input` filtre. On contrôle maintenant ce
+qu'elle **émet**, dans une chaîne de base accrochée au hook **`output`** (section @@ref:output@@
+des Informations). `ext2` (`{forbidden}`) est une machine de l'extérieur vers laquelle `m1` ne doit
+rien **initier**.
+
+**(a)** Ajoutez à la table `inet filter` une chaîne de base **`output`** (type `filter`, hook
+`output`, priorité 0, politique **`accept`** pour l'instant) et, dedans, une règle qui **détruit**
+tout ce que `m1` envoie à `ext2` (critère `ip daddr`). Depuis `m1`, essayez `curl -m 5
+http://ext2/` et `ping -c 2 -W 1 ext2` ; avec `tcpdump -n -i eth0 host ext2`, voit-on partir un
+paquet ?
+
+**(b)** Remplacez `drop` par **`reject`** dans cette règle (`nft -a list ruleset` puis `nft replace
+rule …`, ou `nft flush chain inet filter output` puis ajoutez-la de nouveau), et refaites les deux
+essais.
+
+**(c)** Depuis `ext2`, essayez `curl -m 5 http://m1:{open}/` : le port {open}, ouvert à tous depuis
+la question 8, ne répond plus à `ext2`. Insérez **en tête** de la chaîne `output` la règle à états
+`ct state established,related accept`, et refaites l'essai : `ext2` est de nouveau servie, alors
+que `m1` ne peut toujours rien initier vers elle.
+
+**(d)** `m1` ne doit plus émettre que ce qui est prévu. Ajoutez à la fin de la chaîne `output` les
+règles qui acceptent :
+
+- tout ce qui sort par l'interface `lo` (`oif lo`) ;
+- les `ping` (`icmp type echo-request`) ;
+- les connexions TCP vers le port **{closed}** ;
+- les datagrammes UDP vers les ports **{udp0}** et **{udp1}** (un ensemble anonyme, `udp dport
+  {{ {udp0}, {udp1} }}` : dans le shell, toute la règle entre apostrophes) ;
+
+puis une dernière règle **`reject`** sans critère, pour que les programmes de `m1` soient prévenus
+aussitôt de ce qui leur est interdit. **Ensuite seulement**, passez la politique de la chaîne à
+**`drop`** : on déclare la chaîne de nouveau, à l'identique, avec `policy drop`.
+
+Vérifiez que **tout ce qui marchait marche encore** : depuis `m1`, `curl http://127.0.0.1:{open}/`,
+`ping -c 2 -W 1` vers `m2` et `ext1`, `curl -m 3 http://m2/`, `curl -m 3 http://ext1/`, `echo
+bonjour | nc -u -w 1 ext1 {udp0}`, `echo bonjour | nc -u -w 1 m3 {udp0}` ; depuis `m3` et `ext1`,
+`curl -m 5 http://m1:{open}/` ; depuis `m2`, `curl -m 5 http://m1/`, toujours refusé aussitôt. Et
+que le reste est refusé : depuis `m1`, `curl -m 5 http://m3:{open}/` et `curl -m 5 http://ext2/`.
+C'est le jeu de règles final qui est évalué : une chaîne `output` incomplète défait ce que
+vérifient les questions précédentes.
+""").format(forbidden=forbidden.ip, open=OPEN_PORT, closed=CLOSED_PORT, udp0=UDP_PORTS[0], udp1=UDP_PORTS[1])
+            + tr("""
+- (a) avec `drop`, depuis `m1`, `curl -m 5 http://ext2/` : @@{with_drop:>attend puis abandonne au bout du délai : le SYN est détruit avant de quitter m1, rien ne signale le blocage>>>timeout|échoue immédiatement : le noyau prévient le programme>>>refused|la page s'affiche>>>works}@@
+- (b) avec `reject`, la même commande : @@{with_reject:>échoue immédiatement : le noyau fabrique un message d'erreur pour le programme>>>refused|attend puis abandonne au bout du délai>>>timeout|la page s'affiche>>>works}@@
+- (c) avant la règle à états, pourquoi `ext2` n'obtient-elle plus le port 8080 de `m1` ? @@{from_forbidden:>son SYN entre (input accepte le port), mais la réponse de m1, un SYN-ACK adressé à ext2, sort par output où la règle la rejette>>>synack_rejected|la chaîne input rejette maintenant ext2>>>input_rejects|ext2 ne sait plus joindre le réseau de m1>>>no_route}@@
+""")
+            + instructor(tr("""
+**Solution.** (a) puis (b), sur `m1` :
+
+```
+{chain}
+nft add rule inet filter output ip daddr {forbidden} drop
+nft flush chain inet filter output
+{reject}
+```
+
+Avec `drop`, rien ne sort (`tcpdump` ne montre aucun paquet vers `ext2` : il capture après le hook
+`output`) : `curl` attend ses 5 secondes (`curl: (28) Connection timed out`) et `ping` n'affiche que
+`100% packet loss`. Avec `reject`, le noyau fabrique un message ICMP *port unreachable* pour le
+programme : `curl` échoue aussitôt (`curl: (7) Failed to connect to ext2 port 80 … Couldn't connect
+to server` ; `nc -v ext2 80` : `Connection refused`), `ping` affiche `Destination Port Unreachable`
+venant de `m1` elle-même et `ping: sendmsg: Operation not permitted`. Ce message revient au
+programme par l'interface `lo` : les règles `ct state established,related accept` (il est `related`)
+et `iif lo accept` de `input` le laissent entrer.
+
+(c) Le SYN de `ext2` est accepté par `input` (port {open}), mais la réponse de `m1`, un SYN-ACK
+adressé à `ext2`, sort par `output` où la règle la rejette : `ext2` attend, puis abandonne. Avec
+
+```
+{stateful}
+```
+
+les paquets des connexions déjà acceptées sortent avant d'atteindre la règle `ip daddr` : il ne
+reste d'interdit que ce que `m1` **initie** vers `ext2`.
+
+(d)
+
+```
+{whitelist}```
+
+La règle `reject` finale prévient les programmes de `m1` ; la politique `drop` n'est plus qu'un
+filet de sécurité. Dans cet ordre, aucun état intermédiaire ne coupe quoi que ce soit. `related`
+laisse aussi sortir les messages d'erreur que `m1` fabrique elle-même, comme le *port unreachable*
+du `reject` de la question 6 : avec `ct state established accept` seul, `m2` ne serait plus
+prévenue (un délai au lieu du refus immédiat : la question 6 y perd des points). Sans `oif lo
+accept`, `curl http://127.0.0.1:{open}/` serait refusé. Sans la règle à états, le port {open} ne
+répondrait plus à personne.
+
+- Réponses : délai avec `drop` ; refus immédiat avec `reject` ; le SYN-ACK de `m1` est rejeté dans
+  `output`.
+- L'évaluation, sur la copie de `m1` : une chaîne de base du hook `output` de politique `drop` et
+  sa règle `ct state established,related accept` ; `curl http://127.0.0.1:{open}/` (la règle
+  `oif lo`) ; une connexion TCP vers le port {closed} de `ext2` (refusée ; un simple délai,
+  c'est-à-dire un `drop`, ne donne qu'une partie des points) alors que `ext1` répond ; depuis la
+  copie de `ext2`, le port {open} de `m1` (ouvert) ; une connexion vers le port {open} de `m3`
+  (refusée) alors que son port {closed} répond. Une sonde lancée par `bash` ne voit le refus d'un
+  `reject` local qu'à la première retransmission du SYN, une seconde plus tard (`curl` et `nc` le
+  voient aussitôt) : le délai de ces sondes est de {out_timeout} s.
+""").format(chain=self.net_scheme.cmds_output()[0], reject=self.net_scheme.cmds_output()[1],
+            stateful=self.net_scheme.cmds_output()[2], whitelist=_lines(self.net_scheme.cmds_output()[3:]),
+            forbidden=forbidden.ip, open=OPEN_PORT, closed=CLOSED_PORT, out_timeout=OUT_TIMEOUT)),
+            cheat_answers={"final": q10_answers},
+        )
+
+        # what m1 must no longer open only counts when the same kind of connection still works elsewhere
+        forbidden_blocked = _blocked(out_forbidden) and http_to_ext1['server'] == 'ext1'
+        other_port_blocked = _blocked(out_other_port) and http_to_m3['server'] == 'm3'
+        self.add_grade_element(
+            title=no_tr("out_policy"), max_grade=2, grade_part=part10,
+            grade=2 * out_filtering,
+            description=tr("une chaîne de base du hook output avec la politique drop"),
+        )
+        self.add_grade_element(
+            title=no_tr("out_ct_rule"), max_grade=2, grade_part=part10,
+            grade=2 if out_ct_rules else int(bool(out_ct_rules_partial)),
+            description=tr("output : une règle accept avec ct state established,related"),
+        )
+        self.add_grade_element(
+            title=no_tr("out_lo"), max_grade=1, grade_part=part10,
+            grade=out_filtering * int(lo_other_port['server'] == FIREWALL),
+            description=tr("sur m1, curl http://127.0.0.1:{open}/ répond encore (oif lo accept)").format(open=OPEN_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("out_forbidden"), max_grade=3, grade_part=part10,
+            grade=int(forbidden_blocked) * (2 + int(out_forbidden == 'refused')),
+            description=tr("m1 n'ouvre pas de connexion vers ext2 (refus immédiat : reject), alors qu'elle joint ext1"),
+        )
+        self.add_grade_element(
+            title=no_tr("out_replies"), max_grade=3, grade_part=part10,
+            grade=3 * int(forbidden_blocked and from_forbidden),
+            description=tr("ext2 obtient toujours le port {open} de m1 (règle à états avant la règle ip daddr)").format(
+                open=OPEN_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("out_whitelist"), max_grade=3, grade_part=part10,
+            grade=int(other_port_blocked) * (2 + int(out_other_port == 'refused')),
+            description=tr("m1 n'ouvre pas de connexion vers le port {open} de m3 (refus immédiat : reject final), alors "
+                           "qu'elle joint son port {closed}").format(open=OPEN_PORT, closed=CLOSED_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("q_output"), max_grade=2, grade_part=part10, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q10.get("with_drop")) == "timeout" and _norm(q10.get("with_reject")) == "refused")
+                  + int(_norm(q10.get("from_forbidden")) == "synack_rejected"),
+            description=tr("drop ou reject dans output : ce que voit le programme ; pourquoi ext2 perdait le port {open}").format(
+                open=OPEN_PORT),
+        )
+
+        # =====================================================================
+        # Part 11 — a named set with intervals: the blocklist (question 11)
+        # =====================================================================
+        part11 = self.add_grade_part(no_tr("part11"), tr("Partie 11 — Ensemble nommé : une liste noire (question 11)"))
+
+        q11_answers = {"no_interval": "refused", "rule_place": "before_accept"}
+        q11 = self.question_form(
+            section=self.section(0),
+            title=tr("Ensembles nommés : une liste noire"),
+            description=tr("""
+`ext3` (`{host}`) et toutes les machines du réseau `guest` (`{net}`, où se trouve `guest1`) ne
+doivent plus rien obtenir de `m1`, pas même son port {open}. Plutôt qu'une règle par adresse, on
+utilise un **ensemble nommé** (section @@ref:sets@@ des Informations) : une seule règle le
+consulte, et l'on en modifie le contenu sans toucher à cette règle.
+
+**(a)** Créez dans la table `inet filter` un ensemble **`{name}`** d'adresses IPv4 (`type
+ipv4_addr`) portant le drapeau **`interval`**, qui lui permet de contenir aussi des réseaux, et
+ajoutez-y l'adresse de `ext3` (`nft add element`).
+
+**(b)** Ajoutez à la chaîne `input` une règle qui **détruit** ce qui vient d'une adresse de
+l'ensemble (`ip saddr @{name} drop`). Où faut-il la placer pour que `ext3` n'atteigne plus le port
+{open} ? Vérifiez depuis `ext3` (`curl -m 5 http://m1:{open}/`), puis depuis `ext1` que le port
+répond toujours.
+
+**(c)** Sans toucher à la règle, ajoutez à l'ensemble le réseau `guest` **entier** (`{net}`) et
+vérifiez depuis `guest1`. Affichez l'ensemble (`nft list set inet filter {name}`) ; retirez puis
+remettez un élément (`nft delete element`, `nft add element`).
+""").format(host=blocked_host.ip, net=blocked_net, open=OPEN_PORT, name=BLOCK_SET)
+            + tr("""
+- sans le drapeau `interval`, l'ajout d'un réseau à l'ensemble : @@{no_interval:>est refusé par nft (« You must add 'flags interval' to your set declaration ») : sans ce drapeau, un ensemble ne contient que des valeurs isolées>>>refused|ajoute une à une toutes les adresses du réseau>>>expanded|n'ajoute que l'adresse du réseau>>>network_address}@@
+- la règle `ip saddr @blocklist drop` doit être placée : @@{rule_place:>avant la règle qui accepte le port 8080 (nft insert rule) : la première règle satisfaite décide>>>before_accept|en fin de chaîne (nft add rule)>>>at_end|n'importe où : un drop l'emporte toujours sur un accept>>>anywhere}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `m1` :
+
+```
+{cmds}```
+
+`nft insert rule` place la règle en tête de chaîne, donc avant `tcp dport {open} accept` ; ajoutée
+en fin de chaîne (`nft add rule`), elle viendrait après `jump logdrop` et ne verrait jamais un
+paquet. Le contenu de l'ensemble se modifie ensuite sans toucher à la règle (`nft list set inet
+filter {name}` affiche `elements = {{ {host}, {net} }}`). Sans `flags interval`, l'ajout du réseau
+est refusé : `Error: You must add 'flags interval' to your set declaration if you want to add
+prefix elements` ; et les drapeaux ne se changent pas après coup (`nft add set` : *File exists*) :
+il faut supprimer la règle, puis l'ensemble (*Device or resource busy* tant qu'une règle le
+consulte), et les recréer. Placée en tête, avant la règle à états, la règle détruit aussi les
+**réponses** de `ext3` et de `guest1` : `m1` ne peut plus les joindre non plus.
+
+- Réponses : refusé sans `flags interval` ; avant la règle qui accepte le port {open}.
+- L'évaluation : dans `input`, une règle `drop` sur `ip saddr @ensemble` placée avant la règle
+  `tcp dport {open} accept`, l'ensemble contenant `{host}` et tout `{net}` ; depuis les copies de
+  `ext3` et de `guest1`, le port {open} de `m1` ne répond pas, alors qu'il répond à `ext1`.
+""").format(cmds=_lines(self.net_scheme.cmds_blocklist()), open=OPEN_PORT, name=BLOCK_SET, host=blocked_host.ip,
+            net=blocked_net)),
+            cheat_answers={"final": q11_answers},
+        )
+
+        # the witness of the blocked probes: the port still answers a machine that is not in the set
+        witness_open = open_from[ext1_h]
+        self.add_grade_element(
+            title=no_tr("blocklist_rule"), max_grade=2, grade_part=part11,
+            grade=int(block_index is not None)
+                  + int(block_index is not None and open_index is not None and block_index < open_index),
+            description=tr("input : une règle drop sur ip saddr @ensemble, avant la règle qui accepte le port {open}").format(
+                open=OPEN_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("blocklist_elements"), max_grade=1, grade_part=part11,
+            grade=int(block_covers),
+            description=tr("l'ensemble contient l'adresse de ext3 et tout le réseau guest (flags interval)"),
+        )
+        self.add_grade_element(
+            title=no_tr("blocklist_host"), max_grade=2, grade_part=part11,
+            grade=2 * int(witness_open and _blocked(verdict_blocked_host)),
+            description=tr("ext3 n'obtient plus le port {open} de m1, alors que ext1 l'obtient").format(open=OPEN_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("blocklist_net"), max_grade=2, grade_part=part11,
+            grade=2 * int(witness_open and _blocked(verdict_blocked_net)),
+            description=tr("guest1 n'obtient plus le port {open} de m1, alors que ext1 l'obtient").format(open=OPEN_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("q_blocklist"), max_grade=2, grade_part=part11, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q11.get("no_interval")) == "refused") + int(_norm(q11.get("rule_place")) == "before_accept"),
+            description=tr("un réseau dans un ensemble (flags interval) ; la place de la règle qui le consulte"),
+        )
+
+        # =====================================================================
+        # Part 12 — a set of ports looked up by the output chain (question 12)
+        # =====================================================================
+        part12 = self.add_grade_part(no_tr("part12"), tr("Partie 12 — Ensemble de ports (question 12)"))
+
+        q12_answers = {"rules_changed": "element_only"}
+        q12 = self.question_form(
+            section=self.section(0),
+            title=tr("Un ensemble de ports pour la sortie"),
+            description=tr("""
+Un ensemble ne contient pas forcément des adresses. Toutes les machines servent aussi leur page de
+test sur le port TCP **{set_port}**, que la chaîne `output` de `m1` refuse pour l'instant (depuis
+`m1` : `curl -m 5 http://m3:{set_port}/`).
+
+**(a)** Créez un ensemble **`{name}`** de ports (`type inet_service`) contenant le port {closed},
+puis **remplacez**, dans la chaîne `output`, la règle `tcp dport {closed} accept` par `tcp dport
+@{name} accept` : `nft -a list chain inet filter output` donne le handle de la règle, `nft replace
+rule inet filter output handle N …` la remplace sur place (section @@ref:nft-edit@@ des
+Informations). Rien ne doit avoir changé : `curl -m 3 http://m3/` répond, `curl -m 5
+http://m3:{set_port}/` et `curl -m 5 http://m3:{open}/` sont refusés.
+
+**(b)** Autorisez maintenant le port {set_port} **sans toucher aux règles**, en ajoutant un élément
+à l'ensemble. Vérifiez : `curl -m 3 http://m3:{set_port}/` répond, `curl -m 5 http://m3:{open}/`
+est toujours refusé.
+""").format(set_port=SET_PORT, closed=CLOSED_PORT, open=OPEN_PORT, name=PORT_SET)
+            + tr("""
+- pour autoriser le port 8888, il a fallu modifier : @@{rules_changed:>seulement le contenu de l'ensemble (nft add element) : la règle qui le consulte n'a pas changé>>>element_only|la règle de la chaîne output, remplacée une seconde fois>>>rule|toute la chaîne output, vidée puis réécrite>>>whole_chain}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `m1` :
+
+```
+{cmds}```
+
+La troisième commande lit elle-même le handle de la règle à remplacer ; à la main : `nft -a list
+chain inet filter output` (`tcp dport {closed} accept # handle N`), puis `nft replace rule inet
+filter output handle N tcp dport @{name} accept`. La règle garde sa place et son handle. Le port
+{set_port} s'ouvre ensuite par `nft add element` seul : `nft list set inet filter {name}` affiche
+`elements = {{ {closed}, {set_port} }}`.
+
+- Réponse : seulement le contenu de l'ensemble.
+- L'évaluation : dans `output`, une règle `accept` sur `tcp dport @ensemble`, l'ensemble contenant
+  les ports {closed} et {set_port} ; depuis la copie de `m1`, `curl http://m3:{set_port}/` répond
+  (sous la politique `drop` de `output`). Une règle `tcp dport {closed} accept` restée en place ne
+  coûte rien.
+""").format(cmds=_lines(self.net_scheme.cmds_port_set()), closed=CLOSED_PORT, set_port=SET_PORT, name=PORT_SET)),
+            cheat_answers={"final": q12_answers},
+        )
+
+        self.add_grade_element(
+            title=no_tr("port_set"), max_grade=2, grade_part=part12,
+            grade=int(port_rule) + int(port_rule and port_set_full),
+            description=tr("output : une règle accept sur tcp dport @ensemble, l'ensemble contenant les ports {closed} et "
+                           "{set_port}").format(closed=CLOSED_PORT, set_port=SET_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("port_set_works"), max_grade=3, grade_part=part12,
+            grade=3 * out_filtering * int(http_set_port['server'] == 'm3'),
+            description=tr("m1 joint le port {set_port} de m3 (sous la politique drop de output)").format(set_port=SET_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("q_port_set"), max_grade=1, grade_part=part12, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q12.get("rules_changed")) == "element_only"),
+            description=tr("un port de plus : seul le contenu de l'ensemble change"),
+        )
+
+        # =====================================================================
+        # Part 13 — a set of (address . port) pairs: the allowlist (question 13)
+        # =====================================================================
+        part13 = self.add_grade_part(no_tr("part13"), tr("Partie 13 — Ensemble de couples adresse . port (question 13)"))
+
+        first_address, second_address = (address for address, _ in allowed_pairs(d))
+        q13_answers = {"pair_missing": "timeout"}
+        q13 = self.question_form(
+            section=self.section(0),
+            title=tr("Associations adresse . port : une liste blanche"),
+            description=tr("""
+Le port {first_port} de `m1` n'est ouvert à personne, son port {second_port} non plus. On veut
+ouvrir le port {first_port} à `{first}` (`{first_address}`) et le port {second_port} à `{second}`
+(`{second_address}`), et rien d'autre, avec **un seul ensemble et une seule règle** : chaque
+élément de l'ensemble est un couple *adresse . port* (une concaténation,
+section @@ref:named-sets@@ des Informations).
+
+**(a)** Créez l'ensemble **`{name}`** (`type ipv4_addr . inet_service`) et ajoutez-y les deux
+couples : `{first_address} . {first_port}` et `{second_address} . {second_port}`.
+
+**(b)** Ajoutez à la chaîne `input` la règle `ip saddr . tcp dport @{name} accept`. Attention à sa
+place : ajoutée en fin de chaîne, elle viendrait après `jump logdrop` et ne verrait jamais un
+paquet. Vérifiez : depuis `{first}`, `curl -m 3 http://m1/` répond et `curl -m 5
+http://m1:{second_port}/` échoue ; depuis `{second}`, `curl -m 3 http://m1:{second_port}/` répond
+et `curl -m 5 http://m1/` échoue toujours ; depuis `ext1`, les deux échouent.
+""").format(first=first_machine, first_address=first_address, first_port=first_port, second=second_machine,
+            second_address=second_address, second_port=second_port, name=ALLOW_SET)
+            + tr("""
+- depuis `ext2`, `curl -m 5 http://m1:8888/` : @@{pair_missing:>attend puis abandonne : le couple (ext2, 8888) n'est pas dans l'ensemble, seul (ext2, 80) y est ; le paquet finit dans logdrop>>>timeout|la page s'affiche : l'adresse de ext2 est dans l'ensemble>>>works|échoue immédiatement : la règle reject de la question 6 s'applique>>>refused}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `m1` :
+
+```
+{cmds}```
+
+`nft insert rule` place la règle en tête ; toute place avant `jump logdrop` convient (`nft insert
+rule inet filter input handle N …`, N étant le handle du saut). La règle ne vaut que pour TCP (le
+critère `tcp dport`) et pour un couple **entier** : `{first}` obtient le port {first_port} mais pas
+le port {second_port}, `{second}` l'inverse, `ext1` aucun des deux. La réponse de `m1` à `{first}`
+sort grâce à la règle à états de la chaîne `output` (question 10) : sans elle, la règle `ip daddr`
+la rejetterait.
+
+- Réponse : délai, le couple n'est pas dans l'ensemble.
+- L'évaluation : dans `input`, une règle `accept` sur `ip saddr . tcp dport @ensemble`, l'ensemble
+  contenant les deux couples ; depuis la copie de `{first}`, le port {first_port} de `m1` est
+  ouvert et son port {second_port} ne l'est pas ; depuis celle de `{second}`, le port
+  {second_port} est ouvert ; depuis celle de `ext1`, il ne l'est pas.
+""").format(cmds=_lines(self.net_scheme.cmds_allowed()), first=first_machine, first_port=first_port,
+            second=second_machine, second_port=second_port)),
+            cheat_answers={"final": q13_answers},
+        )
+
+        first_in, second_in = allowed_in[ALLOWED[0]], allowed_in[ALLOWED[1]]
+        self.add_grade_element(
+            title=no_tr("allowed_set"), max_grade=2, grade_part=part13,
+            grade=int(allow_rule) + int(allow_rule and allow_full),
+            description=tr("input : une règle accept sur ip saddr . tcp dport @ensemble, l'ensemble contenant les deux couples"),
+        )
+        self.add_grade_element(
+            title=no_tr("allowed_pairs"), max_grade=4, grade_part=part13,
+            grade=filtering * (2 * int(first_in) + 2 * int(second_in)),
+            description=tr("{first} obtient le port {first_port} de m1, {second} son port {second_port}").format(
+                first=first_machine, first_port=first_port, second=second_machine, second_port=second_port),
+        )
+        self.add_grade_element(
+            title=no_tr("allowed_only"), max_grade=2, grade_part=part13,
+            grade=filtering * (int(first_in and not other_port_in) + int(second_in and not other_machine_in)),
+            description=tr("le port {second_port} de m1 reste fermé à {first} et à ext1 (couples absents de l'ensemble)").format(
+                first=first_machine, second_port=second_port),
+        )
+        self.add_grade_element(
+            title=no_tr("q_allowed"), max_grade=1, grade_part=part13, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q13.get("pair_missing")) == "timeout"),
+            description=tr("un couple absent de l'ensemble n'est pas accepté"),
+        )
+
+        # =====================================================================
+        # Part 14 — bonus: a set fed by the rules, the ban (question 14)
+        # =====================================================================
+        part14 = self.add_grade_part(no_tr("part14"), tr("Partie 14 — Bonus : ensemble dynamique (question 14)"))
+
+        q14_answers = {"ban_effect": "banned_then_back"}
+        q14 = self.question_form(
+            section=self.section(0),
+            title=tr("Bonus — ensemble dynamique : bannir les curieux"),
+            description=tr("""
+Personne n'a de raison de se connecter au port TCP {trap} (telnet) de `m1` : celui qui essaie
+explore la machine. On veut le **bannir pendant {seconds} secondes** : pendant ce temps, tout ce
+qui vient de son adresse est détruit, même vers le port {open}. Ce sont les règles elles-mêmes qui
+alimentent l'ensemble (section @@ref:dynamic-sets@@ des Informations).
+
+**(a)** Créez l'ensemble **`{name}`** : `type ipv4_addr`, drapeaux `dynamic,timeout`, délai
+`timeout {seconds}s`.
+
+**(b)** Insérez en tête de la chaîne `input` la règle qui, pour un paquet TCP destiné au port
+{trap}, **ajoute son adresse source à l'ensemble** puis le détruit (`tcp dport {trap} add @{name}
+{{ ip saddr }} drop` : dans le shell, toute la règle entre apostrophes) ; puis, en tête elle aussi,
+la règle qui détruit tout ce qui vient d'une adresse de l'ensemble (`ip saddr @{name} drop`).
+
+**(c)** Depuis `m3` : `curl -m 3 http://m1:{open}/` (répond), `nc -v -w 2 m1 {trap}`, puis de
+nouveau `curl -m 5 http://m1:{open}/`. Sur `m1`, `nft list set inet filter {name}` montre l'adresse
+de `m3` et le délai qui lui reste (`expires`). Attendez une minute et recommencez.
+""").format(trap=TRAP_PORT, seconds=BAN_SECONDS, open=OPEN_PORT, name=BAN_SET)
+            + tr("""
+- après `nc -v -w 2 m1 23` depuis `m3`, `curl -m 5 http://m1:8080/` depuis `m3` : @@{ban_effect:>échoue pendant 60 secondes, puis répond de nouveau : l'adresse de m3 est dans l'ensemble, d'où elle disparaît toute seule à la fin du délai>>>banned_then_back|répond : seul le port 23 est concerné>>>only_trap|ne répond plus jamais : il faut retirer l'adresse à la main>>>forever}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `m1` :
+
+```
+{cmds}```
+
+Le second `insert` place la règle `ip saddr @{name} drop` devant la première. La tentative de `m3`
+sur le port {trap} range son adresse dans l'ensemble (`elements = {{ {m3} expires 57s }}`) ; pendant
+{seconds} secondes tout ce qui vient d'elle est détruit, y compris ses réponses aux requêtes de
+`m1` (la règle précède la règle à états). `update @{name} {{ ip saddr }}` au lieu de `add`
+relancerait le délai à chaque nouvelle tentative ; `nft flush set inet filter {name}` lève tous les
+bannissements.
+
+- Réponse : échoue pendant {seconds} secondes, puis répond de nouveau.
+- L'évaluation (bonus) : une règle de `input` qui ajoute `ip saddr` à un ensemble pour `tcp dport
+  {trap}`, avec un délai de {seconds} s ; une règle `drop` sur `ip saddr @ensemble` placée avant la
+  règle qui accepte le port {open} ; puis, sur les copies cachées, `{source}` obtient le port {open}
+  (étape {probe_step}), tente le port {trap} (étape {trap_step}), n'obtient plus le port {open}
+  alors que `{spared}` l'obtient toujours (étape {ban_step}). L'ensemble est vidé sur la copie
+  avant les sondes : un bannissement en cours sur `m1` ne fausse pas l'évaluation.
+""").format(cmds=_lines(self.net_scheme.cmds_ban()), name=BAN_SET, trap=TRAP_PORT, seconds=BAN_SECONDS, open=OPEN_PORT,
+            m3=m3.ip, source=BAN_SOURCE, spared=BAN_SPARED, probe_step=PROBE_STEP, trap_step=TRAP_STEP,
+            ban_step=BAN_STEP)),
+            cheat_answers={"final": q14_answers},
+        )
+
+        self.add_grade_element(
+            title=no_tr("ban_set"), max_grade=1, grade_part=part14, bonus=True,
+            grade=int(bool(ban_updates) and ban_timed),
+            description=tr("un ensemble alimenté par une règle de input (ip saddr, tcp dport {trap}), éléments expirant "
+                           "après {seconds} s").format(trap=TRAP_PORT, seconds=BAN_SECONDS),
+        )
+        self.add_grade_element(
+            title=no_tr("ban_rules"), max_grade=2, grade_part=part14, bonus=True,
+            grade=int(ban_index is not None)
+                  + int(ban_index is not None and (open_index is None or ban_index < open_index)),
+            description=tr("une règle drop sur ip saddr @ensemble, placée avant la règle qui accepte le port {open}").format(
+                open=OPEN_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("ban_works"), max_grade=2, grade_part=part14, bonus=True,
+            grade=2 * int(ban_before and not ban_after and ban_spared),
+            description=tr("après une tentative sur le port {trap}, {source} n'obtient plus le port {open} de m1 (mais "
+                           "{spared} toujours)").format(trap=TRAP_PORT, source=BAN_SOURCE, open=OPEN_PORT, spared=BAN_SPARED),
+        )
+        self.add_grade_element(
+            title=no_tr("q_ban"), max_grade=1, grade_part=part14, scope=params.EXO_EVAL_SCOPE, bonus=True,
+            grade=int(_norm(q14.get("ban_effect")) == "banned_then_back"),
+            description=tr("un bannissement temporaire : l'élément expire de lui-même"),
         )
 
 
