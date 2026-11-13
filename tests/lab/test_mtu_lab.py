@@ -320,6 +320,19 @@ class TestGrade:
             _set_answer(grade, 'fragmenter', value)
             assert _regrade(grade)['fragmenting_machine'].grade == points, value
 
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'fragmenting_machine', 'pmtu_command', 'bh_q_fix'}
+        grade, _ = _simulate(lab, data, tmp_pub_dir)
+        for title, e in _by_title(grade).items():
+            expected = params.EXO_EVAL_SCOPE if title in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, title
+        # one element per dropdown field: a new dropdown needs its element in the set above
+        dropdowns = [f['name'] for q in grade.get_questions_ordered() for f in (getattr(q, 'fields', None) or [])
+                     if 'choices' in f]
+        assert len(dropdowns) == len(choices), dropdowns
+
     def test_cheat_answers_are_dropdown_values(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir)
         answers = grade.get_cheat_answers('final')

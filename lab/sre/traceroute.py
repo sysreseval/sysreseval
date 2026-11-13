@@ -91,6 +91,9 @@ TARGET_RANGE = (5, 9)              # `target` is one of h5..h9: 5 to 9 routers (
 N_ROUTERS2 = 5                     # the hidden line of island C: k1 - d12 - ... - d45 - k5
 TARGET_RANGE2 = (3, 5)             # `target2` is one of k3..k5: 3 to 5 routers (fw included), hop 4 to 6 < PROBE_TTL_LIMIT
 RP_FILTER_OFF = ('net.ipv4.conf.all.rp_filter=0', 'net.ipv4.conf.default.rp_filter=0')
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 class _Island:
@@ -854,32 +857,32 @@ ICMP type `{icmp_type}` code `{icmp_code}` ; saut muet `{silent_hop}`.
         path_tokens = [t for t in trc.parse_path_answer(q1.get("path")) if owner(t) not in ('m1', d.target)]
         matched, extra = trc.score_path(path_tokens, expected, d.ips, silent_index=ns.silent_index)
         self.add_grade_element(
-            title=no_tr("path"), max_grade=10, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("path"), max_grade=10, grade_part=part1,
             grade=max(0.0, round(10 * (matched - extra) / n_routers, 2)),
             description=tr("chemin de m1 à target : routeurs dans l'ordre (gw compris)"),
         )
         self.add_grade_element(
-            title=no_tr("routers_count"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("routers_count"), max_grade=2, grade_part=part1,
             grade=2 * int(_is(q1.get("routers"), n_routers)),
             description=tr("nombre de routeurs entre m1 et target"),
         )
         self.add_grade_element(
-            title=no_tr("reply_ttl_target"), max_grade=3, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("reply_ttl_target"), max_grade=3, grade_part=part1,
             grade=3 * int(_is(q1.get("reply_ttl"), trc.reply_ttl(n_routers))),
             description=tr("TTL de la réponse de target"),
         )
         self.add_grade_element(
-            title=no_tr("initial_ttl"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("initial_ttl"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_is(q1.get("initial_ttl"), 64)),
             description=tr("TTL initial de target"),
         )
         self.add_grade_element(
-            title=no_tr("icmp_time_exceeded"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("icmp_time_exceeded"), max_grade=2, grade_part=part1,
             grade=2 * int(_is(q1.get("icmp_type"), 11) and _is(q1.get("icmp_code"), 0)),
             description=tr("type et code du message ICMP time exceeded"),
         )
         self.add_grade_element(
-            title=no_tr("silent_hop"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("silent_hop"), max_grade=2, grade_part=part1,
             grade=2 * int(_is(q1.get("silent_hop"), silent_hop)),
             description=tr("numéro du saut muet"),
         )
@@ -975,32 +978,32 @@ echo x | nc -u -w 1 -M {n1} target2 33434    # capture : {target2} > {m2}: ICMP 
             description=tr("sondes UDP de TTL faible reçues par fw"),
         )
         self.add_grade_element(
-            title=no_tr("path2"), max_grade=10, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("path2"), max_grade=10, grade_part=part2,
             grade=max(0.0, round(10 * (matched2 - extra2) / n_routers2, 2)),
             description=tr("chemin de m2 à target2 : routeurs dans l'ordre (fw compris)"),
         )
         self.add_grade_element(
-            title=no_tr("routers2_count"), max_grade=2, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("routers2_count"), max_grade=2, grade_part=part2,
             grade=2 * int(_is(q2.get("routers2"), n_routers2)),
             description=tr("nombre de routeurs entre m2 et target2"),
         )
         self.add_grade_element(
-            title=no_tr("q_ttl_min"), max_grade=2, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_ttl_min"), max_grade=2, grade_part=part2,
             grade=2 * int(_is(q2.get("ttl_min"), d.ttl_min)),
             description=tr("plus petit TTL accepté par le pare-feu"),
         )
         self.add_grade_element(
-            title=no_tr("reply_ttl_target2"), max_grade=1, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("reply_ttl_target2"), max_grade=1, grade_part=part2,
             grade=int(_is(q2.get("reply_ttl2"), trc.reply_ttl(n_routers2))),
             description=tr("TTL de la réponse de target2"),
         )
         self.add_grade_element(
-            title=no_tr("q_last_message"), max_grade=2, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_last_message"), max_grade=2, grade_part=part2, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q2.get("last_message")) == "port_unreachable"),
             description=tr("message qui termine la trace UDP"),
         )
         self.add_grade_element(
-            title=no_tr("q_nc_output"), max_grade=1, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_nc_output"), max_grade=1, grade_part=part2, scope=CHOICE_SCOPE,
             grade=int(_norm(q2.get("nc_output")) == "nothing"),
             description=tr("nc n'affiche pas les time exceeded"),
         )
@@ -1117,22 +1120,22 @@ ping -n -c 1 -t {ttl_b} {far}             # From {r3_l31} ... (r3)
                 ("router_a", 2, tr("routeur qui répond au TTL {t}").format(t=d.ttl_a)),
                 ("router_b", 2, tr("routeur qui répond au TTL {t}").format(t=d.ttl_b))):
             self.add_grade_element(
-                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part3, scope=CHOICE_SCOPE,
                 grade=points * int(_norm(q3.get(key)) == q3_answers[key]),
                 description=description,
             )
         self.add_grade_element(
-            title=no_tr("q_visits_r2"), max_grade=3, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_visits_r2"), max_grade=3, grade_part=part3,
             grade=3 * int(_is(q3.get("visits_r2"), len(passages))),
             description=tr("nombre de passages du paquet sur r2"),
         )
         self.add_grade_element(
-            title=no_tr("q_ttl_last_r2"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_ttl_last_r2"), max_grade=2, grade_part=part3,
             grade=2 * int(_is(q3.get("ttl_last_r2"), passages[-1])),
             description=tr("TTL du dernier passage sur r2"),
         )
         self.add_grade_element(
-            title=no_tr("q_trace_pattern"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_trace_pattern"), max_grade=2, grade_part=part3, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q3.get("trace_pattern")) == "cycle"),
             description=tr("ce que traceroute affiche dans une boucle"),
         )
@@ -1228,6 +1231,7 @@ TTL minimal `{min_ttl}` ; avec 3 : `{router_ttl3}` ; TTL vu sur `r2` : `{ttl_see
             grade=3 * int(inj_ttl == d.inj_ttl),
             description=tr("TTL par défaut de inj réglé à {t}").format(t=d.inj_ttl),
         )
+        choices = {"asym_path", "rr_r3", "r2_iface", "r2_iface_after", "router_ttl3"}
         for key, points, description, check in (
                 ("reply_ttl_srv", 3, tr("TTL de la réponse de srv"), lambda v: _is(v, trc.reply_ttl(2))),
                 ("return_routers", 2, tr("routeurs du chemin retour"), lambda v: _is(v, 2)),
@@ -1240,7 +1244,8 @@ TTL minimal `{min_ttl}` ; avec 3 : `{router_ttl3}` ; TTL vu sur `r2` : `{ttl_see
                 ("router_ttl3", 2, tr("routeur qui répond à un TTL initial de 3"), lambda v: v == "r3"),
                 ("ttl_seen_r2", 1, tr("TTL des échos de inj sur r2"), lambda v: _is(v, d.inj_ttl - 1))):
             self.add_grade_element(
-                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+                title=no_tr(f"q_{key}"), max_grade=points, grade_part=part4,
+                scope=CHOICE_SCOPE if key in choices else params.BOTH_EVAL_SCOPE,
                 grade=points * int(check(_norm(q4.get(key)))),
                 description=description,
             )

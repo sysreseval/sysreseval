@@ -64,6 +64,9 @@ MIN_BYTES = 100_000               # a transfer "works" above this (≈ 0 under t
 ROUTERS = ('r1', 'r2', 'wan')
 STUDENT_MACHINES = ('m1', 'r1', 'r2', 'm2')
 WAN_IFACE = {'r1': 'eth1', 'r2': 'eth0'}   # interfaces of the students' routers toward the operator
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     'lan1': {'m1': 0, 'r1': 0, 'h1': 0},
@@ -660,32 +663,32 @@ ping -c 1 -M dont -s 1472 m2  # passe : wan fragmente
             cheat_answers={"final": q1_answers},
         )
         self.add_grade_element(
-            title=no_tr("mtu_wan"), max_grade=3, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("mtu_wan"), max_grade=3, grade_part=part1,
             grade=3 * int(_is(q1.get("mtu"), n)),
             description=tr("MTU du lien de l'opérateur"),
         )
         self.add_grade_element(
-            title=no_tr("max_payload"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("max_payload"), max_grade=2, grade_part=part1,
             grade=2 * int(_is(q1.get("payload"), payload)),
             description=tr("plus grande charge utile de ping -M do qui traverse"),
         )
         self.add_grade_element(
-            title=no_tr("icmp_frag_needed"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("icmp_frag_needed"), max_grade=1, grade_part=part1,
             grade=int(_is(q1.get("icmp_type"), 3) and _is(q1.get("icmp_code"), 4)),
             description=tr("type et code du message ICMP fragmentation needed"),
         )
         self.add_grade_element(
-            title=no_tr("fragmenting_machine"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("fragmenting_machine"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q1.get("fragmenter")) == "wan"),
             description=tr("machine qui fragmente un paquet sans DF"),
         )
         self.add_grade_element(
-            title=no_tr("mss_v4"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("mss_v4"), max_grade=2, grade_part=part1,
             grade=2 * int(_is(q1.get("mss"), mss)),
             description=tr("MSS TCP adapté au lien de l'opérateur"),
         )
         self.add_grade_element(
-            title=no_tr("pmtu_command"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("pmtu_command"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q1.get("command")) == "ip route get"),
             description=tr("commande qui affiche le PMTU mémorisé"),
         )
@@ -790,7 +793,7 @@ source du paquet, pas à `r1`, et elle est filtrée. Il faut `ip link set dev et
             description=tr("MSS clamping sur r1 ou r2, ou MTU réduit sur les interfaces WAN de r1 et r2"),
         )
         self.add_grade_element(
-            title=no_tr("bh_q_fix"), max_grade=2, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("bh_q_fix"), max_grade=2, grade_part=part2, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q2.get("fix")) in ("mss_clamping", "wan_mtu")),
             description=tr("correction faite sur les routeurs"),
         )
@@ -878,12 +881,12 @@ ip addr add {r2_tun} dev gre1
             description=tr("le plus grand paquet passe dans le tunnel, un octet de plus est refusé localement"),
         )
         self.add_grade_element(
-            title=no_tr("gre_q_overhead"), max_grade=1, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("gre_q_overhead"), max_grade=1, grade_part=part3,
             grade=int(_is(q3.get("overhead"), pmtu.GRE_OVERHEAD)),
             description=tr("surcoût d'encapsulation GRE"),
         )
         self.add_grade_element(
-            title=no_tr("gre_q_mtu"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("gre_q_mtu"), max_grade=2, grade_part=part3,
             grade=2 * int(_is(q3.get("mtu_tunnel"), tun_mtu)),
             description=tr("MTU du tunnel"),
         )

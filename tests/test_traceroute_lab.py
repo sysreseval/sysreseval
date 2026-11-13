@@ -494,15 +494,19 @@ class TestGrading:
         by = _by_title(grade)
         assert by['loop_ttl_64'].grade == 3 and by['loop_ttl_b'].grade == 0
 
-    def test_form_elements_are_exo_only(self, lab, data, tmp_pub_dir):
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'initial_ttl', 'q_last_message', 'q_nc_output', 'q_router_64', 'q_router_a', 'q_router_b',
+                   'q_trace_pattern', 'q_asym_path', 'q_rr_r3', 'q_r2_iface', 'q_r2_iface_after', 'q_router_ttl3'}
         grade, _ = _simulate(lab, data, tmp_pub_dir, everything=True)
         for e in grade.get_grade_list():
-            if str(e.title).startswith('q_') or str(e.title) in ('path', 'routers_count', 'reply_ttl_target',
-                                                                 'initial_ttl', 'icmp_time_exceeded', 'silent_hop',
-                                                                 'path2', 'routers2_count', 'reply_ttl_target2'):
-                assert e.scope == params.EXO_EVAL_SCOPE, e.title
-            else:
-                assert e.scope == params.BOTH_EVAL_SCOPE, e.title
+            expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, e.title
+        # one element per dropdown field: a new dropdown needs its element in the set above
+        dropdowns = [f['name'] for q in grade.get_questions_ordered() for f in (getattr(q, 'fields', None) or [])
+                     if 'choices' in f]
+        assert len(dropdowns) == len(choices), dropdowns
 
     def test_cheat_answers_match_the_choices(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir, everything=True)
