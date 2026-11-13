@@ -1,4 +1,5 @@
 """Tests for export.py: lab.conf generation, file collection logic and informations.pdf."""
+import base64
 import io
 import json
 import zipfile
@@ -469,6 +470,81 @@ class TestBuildLabConfSwitches:
         conf = self._conf(monkeypatch, make_scheme())
         assert 'CD_MODE' not in conf and '/vlan=' not in conf and '/trunk=' not in conf
         assert conf.endswith('\n')
+
+
+# ---------------------------------------------------------------------------
+# Hidden machines are not exported
+# ---------------------------------------------------------------------------
+
+class HiddenScheme(NetScheme0):
+    """A client and a router the students see; a probe on their LAN and a mirror behind it they do not."""
+    _machine_specs = {'pc1': {}, 'r1': {}, 'probe': {'hidden': True}, 'mirror': {'hidden': True}}
+    _network_specs = {'lan': {'mode': 'switch'}, 'back': {'mode': 'switch'}}
+    _topology = {'lan': ['pc1', 'r1', 'probe'], 'back': ['probe', 'mirror']}
+
+    def __init__(self):
+        super().__init__(data=MockData(), running_lab_name=RUNNING_LAB)
+
+    def initial(self):
+        self.cmd('pc1', 'echo visible')
+        self.cmd('probe', 'echo secret-probe')
+        self.file('r1', '/etc/router.conf', content=b'router')
+        self.file('probe', '/usr/local/sbin/probe.py', content=b'secret')
+        self.append_to_file('pc1', '/etc/hosts', content=b'10.0.0.1 r1\n')
+        self.append_to_file('mirror', '/etc/hosts', content=b'secret\n')
+
+
+def _exported(monkeypatch, capsys, scheme, srelab_dir=None):
+    """The zip `sre export` prints for *scheme*: {name: content} without the leading lab directory."""
+    monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+    monkeypatch.setattr(export_cmd, 'user_not_allowed_in_exam_mode', lambda: None)
+    monkeypatch.setattr(export_cmd, 'resolve_running_lab_name', lambda name: RUNNING_LAB)
+    monkeypatch.setattr(export_cmd, 'set_all_variables_for_action',
+                        lambda **kwargs: (types.SimpleNamespace(), scheme))
+    monkeypatch.setattr(export_cmd, '_build_schema_pdf', lambda net_scheme, **options: b'%PDF-schema')
+    monkeypatch.setattr(params, 'get_srelab_dir', lambda name: srelab_dir)
+    export_cmd.action_export()
+    with zipfile.ZipFile(io.BytesIO(base64.b64decode(capsys.readouterr().out))) as archive:
+        return {name.removeprefix('mylab/'): archive.read(name) for name in archive.namelist()}
+
+
+class TestHiddenMachines:
+    """A hidden machine (a probe, the clone of a mirror) is what the students never see: `sre export`
+    used to write its lab.conf lines, its commands and its files into the zip they download."""
+
+    def test_lab_conf(self, monkeypatch):
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        s = HiddenScheme()
+        conf = _build_lab_conf(s, _flatten_ops(s, 'initial'), {})
+        assert 'pc1[0]="lan"' in conf and 'r1[0]="lan"' in conf and 'pc1[exec]="echo visible"' in conf
+        assert 'probe' not in conf and 'mirror' not in conf and 'secret' not in conf
+        # the switch of a network a student sees is kept, a network of hidden machines only is not named
+        assert 'CD_MODE[lan]="switch"' in conf and 'back' not in conf
+
+    def test_zip(self, tmp_pub_dir, monkeypatch, capsys, tmp_path):
+        initial = tmp_path / 'initial'
+        for machine, name in (('all', 'motd'), ('r1', 'issue'), ('probe', 'probe.conf'), ('mirror', 'mirror.conf')):
+            (initial / machine / 'etc').mkdir(parents=True)
+            (initial / machine / 'etc' / name).write_bytes(b'from the state directory')
+        files = _exported(monkeypatch, capsys, HiddenScheme(), srelab_dir=str(tmp_path))
+        assert {name.split('/')[0] for name in files} == {'lab.conf', 'pc1', 'r1', params.pdf_schema_file}
+        assert files['r1/etc/router.conf'] == b'router'
+        assert files['r1/etc/issue'] == files['r1/etc/motd'] == files['pc1/etc/motd'] == b'from the state directory'
+        appended = [name for name in files if name.startswith('pc1/etc/-hosts_')]
+        assert len(appended) == 1 and files[appended[0]] == b'10.0.0.1 r1\n'
+        conf = files['lab.conf'].decode()
+        assert 'pc1[exec]="echo visible"' in conf and f'cat /{appended[0].removeprefix("pc1/")} >> /etc/hosts' in conf
+        assert 'probe' not in conf and 'mirror' not in conf and 'secret' not in conf
+        assert b'secret' not in b''.join(files.values())
+
+    def test_a_lab_without_hidden_machine_is_exported_whole(self, tmp_pub_dir, monkeypatch, capsys):
+        files = _exported(monkeypatch, capsys, make_scheme())
+        assert {name.split('/')[0] for name in files} == {'lab.conf', 'm1', 'm2', params.pdf_schema_file}
+        assert files['m1/etc/config'] == b'hello'
+        assert len([name for name in files if name.startswith('m2/etc/-hosts_')]) == 2
+        conf = files['lab.conf'].decode()
+        assert 'm1[0]="net1"' in conf and 'm1[1]="net2"' in conf and 'm2[0]="net1"' in conf
+        assert 'm1[exec]="echo hi"' in conf and conf.count('>> /etc/hosts') == 2
 
 
 # ---------------------------------------------------------------------------

@@ -147,9 +147,15 @@ def _build_info_pdf(running_lab_name: str) -> bytes:
     return bytes(pdf.output())
 
 
+def _hidden_machine_names(net_scheme) -> set:
+    """The machines an exported project leaves out: the hidden ones (probes, mirrors, whatever
+    the students never see), as schema.pdf does."""
+    return {m.name for m in net_scheme.get_machines() if m.hidden}
+
+
 def _build_lab_conf(net_scheme, ops, extra_cmds) -> str:
     lines = []
-    for machine in sorted(net_scheme.get_machines(), key=lambda m: m.name):
+    for machine in sorted(net_scheme.get_visibles_machines(), key=lambda m: m.name):
         # Network interfaces, sorted by interface index
         for net, adapter in sorted(machine.net_adapters.items(), key=lambda x: x[1].interface):
             # port of a managed switch: /vlan=ID (untagged) and /trunk=ID,ID (tagged)
@@ -187,9 +193,10 @@ def _build_lab_conf(net_scheme, ops, extra_cmds) -> str:
 
         lines.append("")  # blank line between machines
 
-    # type of switch of the networks that are not hubs (Kathara's default)
-    switched = sorted((net for net in net_scheme.get_networks()
-                       if net.net_adapters and net.mode != params.network_mode_hub), key=lambda n: n.name)
+    # type of switch of the networks that are not hubs (Kathara's default); a network of hidden
+    # machines only is not exported
+    switched = sorted((net for net in net_scheme.get_visible_networks()
+                       if net.mode != params.network_mode_hub), key=lambda n: n.name)
     for net in switched:
         lines.append(f'CD_MODE[{net.name}]="{net.mode}"')
     if switched:
@@ -209,11 +216,14 @@ def action_export():
 
     lab_display = _lab_display_name(net_scheme.running_lab_name)
     ops_by_step, _host_ops = net_scheme.compute_state_ops(params.initial_state_name)
-    # Flatten {step: {machine: [ops]}} → {machine: [ops]} in step order.
+    # Flatten {step: {machine: [ops]}} → {machine: [ops]} in step order. The hidden machines are
+    # not exported: neither their lab.conf lines nor their files.
+    hidden = _hidden_machine_names(net_scheme)
     ops: dict[str, list] = {}
     for step in sorted(ops_by_step):
         for machine, op_list in ops_by_step[step].items():
-            ops.setdefault(machine, []).extend(op_list)
+            if machine not in hidden:
+                ops.setdefault(machine, []).extend(op_list)
 
     # Pre-process _AppendOp: write content to a temp file in the same directory,
     # then add exec commands that append it to the target and remove it.
@@ -272,7 +282,7 @@ def action_export():
     if srelab_dir is not None:
         initial_dir = Path(srelab_dir) / params.initial_state_name
         if initial_dir.is_dir():
-            machine_names = [m.name for m in net_scheme.get_machines()]
+            machine_names = net_scheme.get_visible_machine_names()
             for path in sorted(initial_dir.rglob("*")):
                 if not path.is_file():
                     continue
@@ -283,7 +293,7 @@ def action_export():
                 if first == 'all':
                     for mname in machine_names:
                         machine_files.setdefault(mname, {})[rel] = path.read_bytes()
-                else:
+                elif first not in hidden:
                     machine_files.setdefault(first, {})[rel] = path.read_bytes()
 
     # From _FileOp

@@ -25,7 +25,7 @@ The project tabs are the projects of the logged-in user, plus those started on t
 
 ## Exporting a project
 
-**File → Export Kathara Project** (enabled unless the lab sets `export_kathara_project = False`) runs `sre-wrapper export <project>` with the display settings of the Schema tab and writes `~/<lab>.zip`: the Kathara project (`lab.conf`, the files of every machine) with `schema.pdf` and `informations.pdf`.
+**File → Export Kathara Project** (enabled unless the lab sets `export_kathara_project = False`) runs `sre-wrapper export <project>` with the display settings of the Schema tab and writes `~/<lab>.zip`: the Kathara project (`lab.conf`, the files of every machine but the hidden ones) with `schema.pdf` and `informations.pdf`.
 
 **File → Export Schema to PDF** (right below; enabled unless the lab sets `export_schema_pdf = False`) writes the drawing of the *Schema* tab to a PDF chosen in a file dialog (default `~/<lab>_schema.pdf`): the visible machines only, never the hidden ones, even for a debug project or while the *Instructor mode* button is on, with the tab's current Lines / Compact-Spread / Order / Icons settings and the machine order of `info.json`. The GUI draws it itself with graphviz from `info.json`; no `sre` command is run.
 
