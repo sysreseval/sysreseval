@@ -1,25 +1,41 @@
-"""nftables-nat — Traduction d'adresses : SNAT, DNAT, répartition de charge, proxy.
+"""nftables-nat — Traduction d'adresses : six thèmes, un routeur par thème.
 
-Projet NAT : l'étudiant configure sur le routeur `fw` une table `nat` réalisant
-- **SNAT / masquerade** : le LAN privé sort vers le « WAN » sous l'adresse de `fw` ;
-- **DNAT / redirection de port** : WAN:8080 → serveur interne `web1`:80 ;
-- **répartition de charge L4** (nft `numgen`) : WAN:80 → { `web1`, `web2` } ;
-- **proxy transparent** (`redirect`) : le HTTP sortant du LAN est intercepté par le
-  proxy local de `fw` (port 3128).
+Six small sites share one "Internet" (the network ``wan``); the part N of the lab is done on the
+router ``rN`` of site N and on that router only, so that every part is independent of the others:
 
-Évaluation par « miroir caché » : le ruleset de `fw` est transplanté sur `fw_h`,
-et des serveurs HTTP contrôlés (qui renvoient SERVER_IP / CLIENT_IP) permettent
-d'*observer* directement l'effet des traductions.
+1. ``r1`` — source NAT: ``masquerade`` for a private LAN (nothing answers without it: the Internet
+   hosts have no route to the private networks);
+2. ``r2`` — static 1:1 NAT: a second public address dedicated to a server (``dnat`` in, ``snat to``
+   out, placed before the masquerade that is given);
+3. ``r3`` — publishing a server: port forwarding for the Internet, for the router itself (``nat``
+   chain of the ``output`` hook) and for the LAN (hairpin NAT);
+4. ``r4`` — layer-4 load balancing (``numgen``);
+5. ``r5`` — transparent proxy (``redirect``) and an exception placed before it;
+6. ``r6`` — NAT is not a firewall: a ``forward`` filter chain next to a NAT that is given.
+
+Every router has ``eth0`` on its LAN and ``eth1`` on the WAN.  ``r2``, ``r5`` and ``r6`` start with
+rules already loaded (``/etc/nftables.conf``): what their part must not depend on.
+
+Grading uses the "hidden mirror" of ``lib/hidden_mirror.py`` / ``lib/firewall.py``: the ruleset
+loaded on each ``rN`` is transplanted on its hidden clone ``rN_h`` at each evaluation, and the test
+HTTP servers (which answer SERVER / SERVER_IP / SERVER_PORT / CLIENT_IP / CLIENT_PORT) are
+questioned from the clones of the hosts, so that the effect of each translation is *observed*.  No
+NAT statement is parsed: any correct way of writing a rule is accepted.  The clones of the Internet
+hosts have a route to every LAN (the visible ones have none), so that no probe needs a translation
+for its return path.  The forms (typed observations) are graded from the generated data.  The
+``final`` state applies the reference solution (100/100).  Texts are French (``tr()``), identifiers
+English.
 """
 
 from dataclasses import dataclass
-from ipaddress import IPv4Network
+from ipaddress import IPv4Network, ip_address
 from typing import Dict, List
 
+from SRE import params
 from SRE.lib_sre import Data0, NetScheme0, Grade0, sre_state, make_tr, no_tr
 from SRE.lib_sre import info_subtitle, info_toc, instructor
-from ips import random_ipv4networks, random_ips_from_topology
-from net_config import set_net_config_entry, set_ip_forward, get_net_config_from_topology
+from ips import random_ipv4networks, random_ipv4s, random_ips_from_topology
+from net_config import set_net_config_entry, set_ip_forward, set_sysctl, get_net_config_from_topology
 import firewall
 import hidden_mirror
 
@@ -32,46 +48,111 @@ allow_self_grade = True
 no_mark_on_self_grade = True
 delay_between_self_grade = 30
 export_kathara_project = True
-eval_interval_without_exam_mode = 60
+# An evaluation loads six rulesets and runs about thirty probes on 36 containers.
+eval_interval_without_exam_mode = 120
 eval_before_exit = True
 
-PROXY_PORT = 3128     # proxy transparent local sur fw
-FWD_PORT = 8080       # WAN:8080 -> web1:80 (redirection de port)
-VIP_PORT = 80         # WAN:80  -> web1/web2 (répartition de charge)
-NET_SVC_PORT = 9000   # service « Internet » sur ext (pour observer le SNAT)
+SVC_PORT = 9000        # the "Internet" service of ext1 (to observe a source NAT)
+FWD_PORT = 8080        # WAN port of r3 (and r6) forwarded to port 80 of the published server
+VIP_PORT = 80          # WAN port of r4 shared between web4a and web4b
+PROXY_PORT = 3128      # the local proxy of r5
+INTRANET_PORT = 8081   # the service of srv6 that is NOT published
+LB_REQUESTS = 8        # requests of the load-balancing probe
 
-# The table of the reference solution and its two base chains (name -> declaration): the text
-# loaded by `final` and quoted in the instructor's solutions.
-NAT_TABLE = "ip nat"
-NAT_CHAINS = {
-    "prerouting": "type nat hook prerouting priority dstnat; policy accept;",
-    "postrouting": "type nat hook postrouting priority srcnat; policy accept;",
-}
+# The evaluation: the rulesets are read at step 1, loaded on the clones at LOAD_STEP, probed at PROBE_STEP.
+LOAD_STEP, PROBE_STEP = 2, 3
 
-_TOPOLOGY = {
-    "net1": {"fw": 0, "cli": 0, "web1": 0, "web2": 0},   # LAN privé
-    "net2": {"fw": 1, "ext": 0},                         # WAN / « Internet »
+# The addresses of the "Internet": never routed (RFC 2544), visibly not private, and not the
+# documentation addresses of the examples of the course.
+WAN_RANGE = IPv4Network("198.18.0.0/15")
+
+SITES = (1, 2, 3, 4, 5, 6)
+ROUTERS = tuple(f"r{n}" for n in SITES)
+WAN_HOSTS = ("ext1", "ext2")
+# The hosts of each site (site N = part N = router rN); every router: eth0 = its LAN, eth1 = the WAN.
+SITE_HOSTS = {
+    1: ("pc1",),
+    2: ("srv2", "pc2"),
+    3: ("web3", "pc3"),
+    4: ("web4a", "web4b"),
+    5: ("pc5", "admin"),
+    6: ("srv6",),
 }
+HOST_SITE = {host: n for n, hosts in SITE_HOSTS.items() for host in hosts}
+
+_TOPOLOGY = {f"lan{n}": {f"r{n}": 0, **{host: 0 for host in SITE_HOSTS[n]}} for n in SITES}
+_TOPOLOGY["wan"] = {**{router: 1 for router in ROUTERS}, **{host: 0 for host in WAN_HOSTS}}
+
 _SPECS = {
-    "fw": {"color": "salmon"},
-    "cli": {},
-    "web1": {"color": "lightgreen"},
-    "web2": {"color": "lightgreen"},
-    "ext": {"color": "lightgrey"},
+    **{router: {"color": "salmon"} for router in ROUTERS},
+    **{host: {} for host in HOST_SITE},
+    **{host: {"color": "lightgreen"} for host in ("srv2", "web3", "web4a", "web4b", "srv6")},
+    **{host: {"color": "lightgrey"} for host in WAN_HOSTS},
 }
 _FULL_TOPOLOGY, _FULL_SPECS = hidden_mirror.expand_topology(_TOPOLOGY, _SPECS)
 
+# The test HTTP servers (machine, port, name answered in SERVER=), on the visible machines and on
+# their clones.
+SERVERS = (
+    ("ext1", 80, "ext1"), ("ext1", SVC_PORT, "ext1"),
+    ("pc1", 80, "pc1"),
+    ("srv2", 80, "srv2"),
+    ("web3", 80, "web3"),
+    ("web4a", 80, "web4a"), ("web4b", 80, "web4b"),
+    ("r5", PROXY_PORT, "proxy"),
+    ("srv6", 80, "srv6"), ("srv6", INTRANET_PORT, "intranet"),
+)
 
-def render_table(chains: Dict[str, List[str]]) -> str:
-    """The ``table ip nat { ... }`` block of an nftables file holding the given rules
-    (``{chain name: [rule, ...]}``, the chains being those of ``NAT_CHAINS``)."""
-    lines = [f"table {NAT_TABLE} {{"]
-    for name, rules in chains.items():
-        lines += [f"    chain {name} {{", f"        {NAT_CHAINS[name]}"]
-        lines += [f"        {rule}" for rule in rules]
-        lines.append("    }")
-    lines.append("}")
+# A Linux router that sends a packet back through the interface it came in by (hairpin) also sends
+# an ICMP redirect to the sender: turned off, the captures of part 3 only show the connection.
+NO_REDIRECTS = {f"net.ipv4.conf.{scope}.send_redirects": 0 for scope in ("all", "default", "eth0", "eth1")}
+
+# The tables of the reference solution and their base chains ({table: {chain: declaration}}): the
+# text loaded by `initial` (the rules given on r2 / r5 / r6) and by `final`, and quoted in the
+# instructor's solutions.
+NAT_TABLE = "ip nat"
+FILTER_TABLE = "ip filter"
+CHAINS = {
+    NAT_TABLE: {
+        "prerouting": "type nat hook prerouting priority dstnat; policy accept;",
+        "output": "type nat hook output priority -100; policy accept;",
+        "postrouting": "type nat hook postrouting priority srcnat; policy accept;",
+    },
+    FILTER_TABLE: {
+        "forward": "type filter hook forward priority filter; policy drop;",
+    },
+}
+CONF_FILE = "/etc/nftables.conf"
+CONF_HEADER = "#!/usr/sbin/nft -f\nflush ruleset\n\n"
+
+
+def render_tables(tables: Dict[str, Dict[str, List[str]]]) -> str:
+    """The ``table … { … }`` blocks of an nftables file holding the given rules
+    (``{table: {chain: [rule, ...]}}``, the tables and chains being those of ``CHAINS``)."""
+    lines = []
+    for table, chains in tables.items():
+        lines.append(f"table {table} {{")
+        for name, rules in chains.items():
+            lines += [f"    chain {name} {{", f"        {CHAINS[table][name]}"]
+            lines += [f"        {rule}" for rule in rules]
+            lines.append("    }")
+        lines.append("}")
     return "\n".join(lines) + "\n"
+
+
+def nft_chain(table: str, chain: str) -> str:
+    """The command line that creates a base chain of ``CHAINS``."""
+    return f"nft 'add chain {table} {chain} {{ {CHAINS[table][chain]} }}'"
+
+
+def nft_rule(table: str, chain: str, rule: str, verb: str = "add") -> str:
+    """The command line that adds (``add``: at the end, ``insert``: first) a rule to a chain."""
+    return f"nft '{verb} rule {table} {chain} {rule}'"
+
+
+def visible(machine: str) -> str:
+    """The name of the visible machine a clone copies (the name itself for a visible machine)."""
+    return machine[:-2] if machine.endswith("_h") else machine
 
 
 # ---------------------------------------------------------------------------
@@ -84,12 +165,18 @@ class Data(Data0):
     @classmethod
     def generate(cls):
         data = cls()
-        data.nets.net1, data.nets.net2 = random_ipv4networks(
-            masks=[24, 24],
+        data.nets.wan = random_ipv4networks(24, from_network=WAN_RANGE)[0]
+        lans = random_ipv4networks(
+            masks=[24] * len(SITES),
             from_private_network=True,
             exclude=[IPv4Network("172.17.0.0/16"), IPv4Network("10.0.0.0/16")],
         )
+        for n, lan in zip(SITES, lans):
+            setattr(data.nets, f"lan{n}", lan)
         random_ips_from_topology(data, _TOPOLOGY)
+        # the second public address of r2 (part 2), in the WAN like the first one
+        used = [ip for ip in vars(data.ips).values() if ip.network == data.nets.wan]
+        data.ips.r2_public = random_ipv4s(data.nets.wan, 1, exclude_ips=used)[0]
         hidden_mirror.copy_addressing(data, _TOPOLOGY)
         return data
 
@@ -105,8 +192,8 @@ class NetScheme(NetScheme0):
 
     def __init__(self, data, running_lab_name):
         super().__init__(data=data, running_lab_name=running_lab_name)
-        self.net_config = get_net_config_from_topology(net_scheme=self, gateway=None)
-        self.routers = hidden_mirror.router_machines(self._topology)  # fw, fw_h
+        self.routers = sorted(hidden_mirror.router_machines(self._topology))  # r1 … r6 and their clones
+        self.net_config = self.build_net_config()
 
         # The course: one tr() text per section (the lab itself is presented by the first question).
         self.informations = (
@@ -144,19 +231,22 @@ address translation*). C'est ce que fait une box d'accès à Internet.
 ### @@sec:not-a-firewall@@ Ce que le NAT n'est pas
 
 Le NAT n'est **pas un pare-feu** : il traduit, il ne filtre pas. Un réseau privé n'est
-injoignable de l'extérieur que parce que ses adresses n'y sont pas routées ; la vraie protection
-est le filtrage (chaîne `forward`, section @@ref:nat-filter@@). Le NAT a aussi un coût : le
+injoignable de l'extérieur que parce que ses adresses n'y sont pas routées : une machine placée du
+côté extérieur du routeur (chez le fournisseur d'accès, sur le même réseau d'immeuble) qui se
+donne une route vers le réseau privé **à travers le routeur** l'atteint sans obstacle, puisque le
+routeur fait suivre ce qu'aucune règle n'arrête. La vraie protection est le filtrage (chaîne
+`forward`, section @@ref:nat-filter@@). Le NAT a aussi un coût : le
 serveur ne voit plus la véritable adresse du client, et les protocoles qui transportent des
 adresses dans leurs données (FTP, SIP) ne fonctionnent qu'avec des modules d'assistance du noyau
 (*helpers*).
 
 **Comment lire ce cours.** La section @@ref:basics@@ résume nftables (hooks, tables, chaînes,
 règles, commande `nft`) : parcourez-la si le filtrage avec nftables vous est familier, lisez-la
-sinon. Les questions du TP s'appuient sur les sections @@ref:conntrack@@ et @@ref:chains@@
-(toutes), @@ref:snat@@ (question 1), @@ref:dnat@@ (question 2), @@ref:load-balancing@@
-(question 3), @@ref:redirect@@ (question 4) et @@ref:observe@@ (pour vérifier chaque
-traduction). Le reste (traduction et filtrage, sortie du routeur lui-même, *hairpin*, bonnes
-pratiques) complète le tableau pour de vrais routeurs.
+sinon. Les sections @@ref:conntrack@@ et @@ref:chains@@ valent pour toutes les traductions ; les
+sections @@ref:snat@@ à @@ref:redirect@@ traitent chacune d'un usage (sortir d'un réseau privé,
+publier un serveur, filtrer ce qui est traduit, répartir la charge, détourner vers un proxy) ; la
+section @@ref:observe@@ dit comment vérifier une traduction, et les deux dernières rassemblent les
+bonnes pratiques et les commandes.
 """)
             + info_subtitle(tr("nftables en bref"), tag="basics")
             + tr("""
@@ -571,6 +661,10 @@ nft 'add chain ip nat output { type nat hook output priority -100; policy accept
 nft 'add rule ip nat output ip daddr 203.0.113.1 tcp dport 8080 dnat to 192.168.1.10:80'
 ```
 
+La priorité s'écrit ici `-100` : nftables 1.0.6 n'accepte le nom `dstnat` qu'au hook
+`prerouting`. Le critère est l'adresse visée (`ip daddr`) : un paquet émis par la machine n'a pas
+d'interface d'entrée.
+
 ### @@sec:hairpin@@ Le client et le serveur sur le même réseau (hairpin)
 
 Une machine du réseau interne qui s'adresse à l'**adresse publique** du routeur pour joindre le
@@ -598,12 +692,44 @@ chain postrouting {
 
 Le serveur ne voit plus alors que l'adresse du routeur pour ces clients internes ; l'autre
 solution est de leur faire résoudre le nom du service en l'adresse interne du serveur.
+
+### @@sec:static-nat@@ NAT statique : une adresse publique pour une machine
+
+Quand le routeur dispose de **plusieurs adresses publiques**, il peut en consacrer une à une
+machine interne : c'est le NAT statique, ou « un pour un » (1:1). L'adresse publique `203.0.113.2`,
+seconde adresse de l'interface `eth1` du routeur, est ici celle du serveur `192.168.1.10` :
+
+```
+chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        ip daddr 203.0.113.2 dnat to 192.168.1.10
+}
+chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        ip saddr 192.168.1.10 oifname "eth1" snat to 203.0.113.2
+        ip saddr 192.168.1.0/24 oifname "eth1" masquerade
+}
+```
+
+- **ce qui entre** : tout ce qui est destiné à `203.0.113.2` est envoyé au serveur. La règle n'a
+  ni protocole ni port : tous les ports sont concernés, et conservés ;
+- **ce qui sort** : les connexions que le serveur ouvre partent sous cette même adresse. `snat
+  to` est ici nécessaire : `masquerade` prendrait l'adresse **principale** de l'interface (la
+  première, `203.0.113.1`) ;
+- **l'ordre** : la règle du serveur précède la règle générale du réseau. Placée après, elle ne
+  serait jamais atteinte, la règle `masquerade` convenant déjà aux connexions du serveur
+  (section @@ref:nat-rules@@) ;
+- le routeur doit **porter** l'adresse (`ip addr add 203.0.113.2/24 dev eth1`) : c'est lui qui
+  répond aux requêtes ARP qui la cherchent.
+
+Vu d'Internet, le serveur a alors sa propre adresse publique, dans les deux sens ; le filtrage de
+ce qui lui parvient reste l'affaire de la chaîne `forward` (section @@ref:nat-filter@@).
 """)
             + info_subtitle(tr("Traduction et filtrage"), tag="nat-filter")
             + tr("""
 Sur un vrai routeur, la traduction (chaînes `nat`) et le filtrage (chaînes `filter`)
-cohabitent. Dans ce TP, le routeur n'a aucune chaîne de filtrage : tout ce qui est traduit
-passe.
+cohabitent. Un routeur qui traduit sans filtrer fait suivre tout ce qu'il sait router, traduit ou
+non : c'est le filtre, et lui seul, qui décide de ce qui passe.
 
 ### @@sec:what-forward-sees@@ Ce que voit la chaîne forward
 
@@ -861,6 +987,9 @@ table ip filter {
 | ajouter une règle | `nft 'add rule ip nat postrouting …'` (en fin de chaîne), `nft 'insert rule ip nat prerouting …'` (en tête) |
 | SNAT | `ip saddr 192.168.1.0/24 oifname "eth1" masquerade`, `… snat to 203.0.113.1` |
 | redirection de port | `iifname "eth1" tcp dport 8080 dnat to 192.168.1.10:80` |
+| le routeur lui-même | chaîne `nat` du hook `output` (priorité `-100`) : `ip daddr 203.0.113.1 tcp dport 8080 dnat to 192.168.1.10:80` |
+| *hairpin* | `ip daddr 203.0.113.1 tcp dport 8080 dnat to 192.168.1.10:80` et, en `postrouting`, `ip saddr 192.168.1.0/24 ip daddr 192.168.1.10 tcp dport 80 masquerade` |
+| NAT statique | `ip daddr 203.0.113.2 dnat to 192.168.1.10` et, en `postrouting` avant le `masquerade`, `ip saddr 192.168.1.10 oifname "eth1" snat to 203.0.113.2` |
 | plusieurs services | `dnat to tcp dport map { 8080 : 192.168.1.10, 8081 : 192.168.1.11 }` |
 | répartition de charge | `iifname "eth1" tcp dport 80 dnat to numgen inc mod 2 map { 0 : 192.168.1.10, 1 : 192.168.1.11 }` |
 | proxy transparent | `iifname "eth0" tcp dport 80 redirect to :3128` |
@@ -871,33 +1000,133 @@ table ip filter {
 """)
         )
 
-    # -- the rules of the reference solution (used by `final` and the instructor texts) ------
-    # fw: eth0 = LAN (net1), eth1 = WAN (net2)
+    # -- addresses and routes -------------------------------------------------------------------
 
-    def rule_masquerade(self) -> str:
-        """Question 1: what comes from the LAN and leaves by the WAN interface is masqueraded."""
-        return f'ip saddr {self.data.nets.net1} oifname "eth1" masquerade'
+    def build_net_config(self):
+        """The addresses of the topology with the routes of a real access network: a default route
+        through the router of the site on the LAN hosts, nothing but the connected networks on the
+        routers and on the Internet hosts.  Only the hidden clones of the Internet hosts know the
+        LANs (through each router): a probe never needs a translation for its return path, and the
+        clone of ext2 is the neighbour who added a route.  r2 and its clone carry the second public
+        address on eth1, after the first one (which stays the primary address: the one
+        ``masquerade`` uses)."""
+        d = self.data
+        config = get_net_config_from_topology(net_scheme=self, gateway=None)
+        default = IPv4Network("0.0.0.0/0")
+        lan_routes = [(self.lan(n), self.wan_ip(n)) for n in SITES]
+        for machine, entry in config.items():
+            name = visible(machine)
+            if name in HOST_SITE:
+                routes = [(default, self.lan_ip(HOST_SITE[name]))]
+            elif name in WAN_HOSTS and machine != name:
+                routes = lan_routes
+            else:
+                routes = []
+            for i, interface in enumerate(entry):
+                if isinstance(interface, tuple):
+                    entry[i] = (list(interface[0]), routes if i == 0 else [])
+        for router in ("r2", "r2_h"):
+            addresses, routes = config[router][1]
+            config[router][1] = (addresses + [d.ips.r2_public], routes)
+        return config
 
-    def rule_port_forward(self) -> str:
-        """Question 2: WAN:FWD_PORT -> web1:80."""
-        return f'iifname "eth1" tcp dport {FWD_PORT} dnat to {self.data.ips.web1.ip}:80'
+    def lan(self, n: int):
+        """The private network of site *n*."""
+        return getattr(self.data.nets, f"lan{n}")
+
+    def wan_ip(self, n: int):
+        """The (first) public address of the router of site *n*."""
+        return getattr(self.data.ips, f"r{n}_wan").ip
+
+    def lan_ip(self, n: int):
+        """The address of the router of site *n* in its LAN."""
+        return getattr(self.data.ips, f"r{n}_lan{n}").ip
+
+    def host_ip(self, name: str):
+        return getattr(self.data.ips, name).ip
+
+    # -- the rules of the reference solution (used by `initial`, `final` and the instructor texts) --
+    # every router: eth0 = LAN, eth1 = WAN
+
+    def rule_masquerade(self, n: int) -> str:
+        """What comes from the LAN of site *n* and leaves by the WAN interface is masqueraded
+        (part 1 on r1; given on r2, r5 and r6)."""
+        return f'ip saddr {self.lan(n)} oifname "eth1" masquerade'
+
+    def rule_static_in(self) -> str:
+        """Part 2: everything sent to the second public address of r2 goes to srv2."""
+        return f'ip daddr {self.data.ips.r2_public.ip} dnat to {self.host_ip("srv2")}'
+
+    def rule_static_out(self) -> str:
+        """Part 2: srv2 leaves under the second public address (before the masquerade)."""
+        return f'ip saddr {self.host_ip("srv2")} oifname "eth1" snat to {self.data.ips.r2_public.ip}'
+
+    def rule_port_forward(self, n: int, by_interface: bool = False) -> str:
+        """WAN:FWD_PORT of the router of site *n* -> port 80 of its server (part 3 on r3, by the
+        address aimed at so that it also holds for the LAN; given on r6, by the interface)."""
+        server = {3: "web3", 6: "srv6"}[n]
+        criterion = 'iifname "eth1"' if by_interface else f"ip daddr {self.wan_ip(n)}"
+        return f"{criterion} tcp dport {FWD_PORT} dnat to {self.host_ip(server)}:80"
+
+    def rule_hairpin(self) -> str:
+        """Part 3: a LAN client sent to web3 by the port forward is masqueraded, so that web3
+        answers to r3."""
+        return f'ip saddr {self.lan(3)} ip daddr {self.host_ip("web3")} tcp dport 80 masquerade'
 
     def rule_load_balancing(self) -> str:
-        """Question 3: WAN:VIP_PORT -> web1 and web2 in turn."""
-        d = self.data
+        """Part 4: WAN:VIP_PORT of r4 -> web4a and web4b in turn."""
         return (f'iifname "eth1" tcp dport {VIP_PORT} dnat to numgen inc mod 2 '
-                f'map {{ 0 : {d.ips.web1.ip}, 1 : {d.ips.web2.ip} }}')
+                f'map {{ 0 : {self.host_ip("web4a")}, 1 : {self.host_ip("web4b")} }}')
+
+    def rule_proxy_exception(self) -> str:
+        """Part 5: the HTTP of admin is not handed to the proxy (placed before `rule_proxy`)."""
+        return f'iifname "eth0" ip saddr {self.host_ip("admin")} tcp dport 80 accept'
 
     def rule_proxy(self) -> str:
-        """Question 4: the HTTP leaving the LAN is handed to the local proxy of fw."""
+        """Part 5: the HTTP leaving the LAN is handed to the local proxy of r5."""
         return f'iifname "eth0" tcp dport 80 redirect to :{PROXY_PORT}'
 
-    def reference_conf(self) -> str:
-        """The ``/etc/nftables.conf`` of the reference solution (the four questions)."""
-        return "#!/usr/sbin/nft -f\nflush ruleset\n" + render_table({
-            "prerouting": [self.rule_proxy(), self.rule_port_forward(), self.rule_load_balancing()],
-            "postrouting": [self.rule_masquerade()],
-        })
+    def rules_forward(self) -> List[str]:
+        """Part 6: the forward chain of r6 (policy drop): answers, the LAN going out, what the
+        port forward translated."""
+        return ["ct state established,related accept",
+                'iifname "eth0" oifname "eth1" accept',
+                "ct status dnat accept"]
+
+    def given_tables(self, router: str) -> Dict[str, Dict[str, List[str]]]:
+        """The rules loaded at start on *router* (r2, r5, r6): what its part relies on."""
+        if router in ("r2", "r5"):
+            return {NAT_TABLE: {"postrouting": [self.rule_masquerade(int(router[1]))]}}
+        if router == "r6":
+            return {NAT_TABLE: {"prerouting": [self.rule_port_forward(6, by_interface=True)],
+                                "postrouting": [self.rule_masquerade(6)]}}
+        return {}
+
+    def reference_tables(self, router: str) -> Dict[str, Dict[str, List[str]]]:
+        """The whole ruleset of *router* in the reference solution (given rules included)."""
+        if router == "r1":
+            return {NAT_TABLE: {"postrouting": [self.rule_masquerade(1)]}}
+        if router == "r2":
+            return {NAT_TABLE: {"prerouting": [self.rule_static_in()],
+                                "postrouting": [self.rule_static_out(), self.rule_masquerade(2)]}}
+        if router == "r3":
+            return {NAT_TABLE: {"prerouting": [self.rule_port_forward(3)],
+                                "output": [self.rule_port_forward(3)],
+                                "postrouting": [self.rule_hairpin()]}}
+        if router == "r4":
+            return {NAT_TABLE: {"prerouting": [self.rule_load_balancing()]}}
+        if router == "r5":
+            return {NAT_TABLE: {"prerouting": [self.rule_proxy_exception(), self.rule_proxy()],
+                                "postrouting": [self.rule_masquerade(5)]}}
+        return {**self.given_tables("r6"), FILTER_TABLE: {"forward": self.rules_forward()}}
+
+    def given_conf(self, router: str) -> str:
+        """The ``/etc/nftables.conf`` written and loaded on *router* by `initial`."""
+        return CONF_HEADER + render_tables(self.given_tables(router))
+
+    def reference_conf(self, router: str) -> str:
+        """The ``/etc/nftables.conf`` of *router* in the reference solution."""
+        return CONF_HEADER + render_tables(self.reference_tables(router))
 
     @sre_state(user_allowed=False)
     def initial(self):
@@ -905,28 +1134,50 @@ table ip filter {
             set_net_config_entry(net_scheme=self, machine_name=m, nc_entry=self.net_config[m])
             set_ip_forward(net_scheme=self, machine_name=m, ip_forward=(m in self.routers))
 
-        firewall.flush_ruleset(self, "fw")
-        firewall.flush_ruleset(self, "fw_h")
+        for router in self.routers:
+            set_sysctl(self, router, NO_REDIRECTS)
+            firewall.flush_ruleset(self, router)
+        # The rules a part relies on without asking for them: on the visible routers only (a clone
+        # gets the ruleset of its router at each evaluation).
+        for router in ROUTERS:
+            if self.given_tables(router):
+                self.file(router, CONF_FILE, self.given_conf(router), permissions=0o644)
+                self.cmd(router, f"nft -f {CONF_FILE}")
 
-        # The controlled HTTP servers: the same ones on the visible machines (the students check
-        # their translations by hand with curl) and on their hidden clones (the probes of the
+        # The test HTTP servers: the same ones on the visible machines (the students check their
+        # translations by hand with curl) and on their hidden clones (the probes of the
         # evaluation).  A clone answers with the name of the machine it copies.
         for suffix in ("", "_h"):
-            firewall.setup_http_server(self, "ext" + suffix, NET_SVC_PORT, "ext")  # the "Internet" service
-            firewall.setup_http_server(self, "fw" + suffix, PROXY_PORT, "proxy")   # local transparent proxy
-            firewall.setup_http_server(self, "web1" + suffix, 80, "web1")          # backend 1
-            firewall.setup_http_server(self, "web2" + suffix, 80, "web2")          # backend 2
+            for machine, port, name in SERVERS:
+                firewall.setup_http_server(self, machine + suffix, port, name)
 
     @sre_state(user_allowed=False)
     def final(self):
-        """Solution de référence : note maximale."""
-        self.file("fw", "/etc/nftables.conf", self.reference_conf(), permissions=0o644)
-        self.cmd("fw", "nft -f /etc/nftables.conf")
+        """The reference solution (every point): the file of each router written and loaded."""
+        for router in ROUTERS:
+            self.file(router, CONF_FILE, self.reference_conf(router), permissions=0o644)
+            self.cmd(router, f"nft -f {CONF_FILE}")
 
 
 # ---------------------------------------------------------------------------
 # Grade
 # ---------------------------------------------------------------------------
+
+
+def _norm(s) -> str:
+    return (s or "").strip().lower()
+
+
+def _is_int(answer, expected: int) -> bool:
+    return ''.join(ch for ch in (answer or '') if ch.isdigit()) == str(expected)
+
+
+def _same_ip(answer, expected) -> bool:
+    """The address typed by a student (with or without a prefix) is *expected* (an interface or address)."""
+    try:
+        return ip_address(_norm(answer).split('/')[0]) == ip_address(str(expected).split('/')[0])
+    except ValueError:
+        return False
 
 
 class Grade(Grade0):
@@ -937,296 +1188,1074 @@ class Grade(Grade0):
     def grade(self):
         super().grade()
         d = self.get_data()
+        ns = self.net_scheme
+        ext1, ext2 = d.ips.ext1.ip, d.ips.ext2.ip
+        wan = {n: ns.wan_ip(n) for n in SITES}        # the public address of each router
+        gw = {n: ns.lan_ip(n) for n in SITES}         # its address in its LAN
+        lan = {n: ns.lan(n) for n in SITES}
+        public2 = d.ips.r2_public.ip
+        host = {name: ns.host_ip(name) for name in HOST_SITE}
 
-        for m in ("fw", "fw_h", "cli_h", "ext_h"):
-            for cmd in ("nft list ruleset", "ip -4 addr", "ip route",
-                        "cat /proc/sys/net/ipv4/ip_forward"):
-                self.test(m, cmd, allow_error=True)
+        # ---- diagnostics, and the ruleset of each router loaded on its clone ----
+        for router in ROUTERS:
+            clone = router + "_h"
+            for m in (router, clone):
+                for cmd in ("ip -4 addr", "ip route", "cat /proc/sys/net/ipv4/ip_forward"):
+                    self.test(m, cmd, allow_error=True)
+            firewall.transplant_ruleset(self, src=router, dst=clone, apply_step=LOAD_STEP)
+            self.test(clone, "nft list ruleset", step=PROBE_STEP, allow_error=True)
 
-        rs = firewall.get_ruleset(self, "fw")
-        firewall.transplant_ruleset(self, src="fw", dst="fw_h")
+        # ---- the probes, from and to the clones ----
+        def http(src, dst, port):
+            """The answer of the test server *dst*:*port* asked from the clone *src*.  Each call
+            registers its command: none may sit behind an `and` / `or`."""
+            body, _ = firewall.probe_http(self, src, dst, port=port, step=PROBE_STEP)
+            return body
 
-        fw_wan_ip = str(d.ips.fw_net2.ip)
+        field = firewall.http_field
+
+        # part 1 (r1): pc1 goes out; an Internet host that reaches pc1 keeps its address
+        p1_out = http("pc1_h", ext1, SVC_PORT)
+        p1_in = http("ext2_h", host["pc1"], 80)
+        # part 2 (r2): the second public address leads to srv2; srv2 leaves under it, pc2 does not
+        p2_in = http("ext2_h", public2, 80)
+        p2_out = http("srv2_h", ext1, SVC_PORT)
+        p2_other = http("pc2_h", ext1, SVC_PORT)
+        # part 3 (r3): the published port from the Internet, from the router, from the LAN
+        p3_wan = http("ext2_h", wan[3], FWD_PORT)
+        p3_router = http("r3_h", wan[3], FWD_PORT)
+        p3_lan = http("pc3_h", wan[3], FWD_PORT)
+        # part 4 (r4): who answers LB_REQUESTS requests in a row.  Sent by the clone of ext1, so that a
+        # balancing towards dead addresses (eight time-outs) does not delay the probes the clone of
+        # ext2 runs for the other parts.
+        p4_servers = firewall.probe_http_backends(self, "ext1_h", wan[4], port=VIP_PORT, n=LB_REQUESTS, step=PROBE_STEP)
+        # part 5 (r5): the HTTP of pc5 and of admin, and the port 80 of the WAN side
+        p5_lan = http("pc5_h", ext1, 80)
+        p5_admin = http("admin_h", ext1, 80)
+        p5_wan = http("ext2_h", wan[5], 80)
+        # part 6 (r6): the neighbour with a route, the LAN going out, the published service
+        p6_rules = firewall.get_nft_json(self, "r6")
+        p6_service = http("r6_h", host["srv6"], INTRANET_PORT)
+        p6_direct = firewall.probe_tcp_verdict(self, "ext2_h", host["srv6"], INTRANET_PORT, step=PROBE_STEP)
+        p6_ping = firewall.probe_ping(self, "ext2_h", host["srv6"], step=PROBE_STEP)
+        p6_out = http("srv6_h", ext1, SVC_PORT)
+        p6_published = http("ext2_h", wan[6], FWD_PORT)
+
+        # ---- what the probes say ----
+        masquerade = field(p1_out, "CLIENT_IP") == str(wan[1])
+        inbound_kept = field(p1_in, "SERVER") == "pc1" and field(p1_in, "CLIENT_IP") == str(ext2)
+
+        static_in = field(p2_in, "SERVER") == "srv2"
+        static_out = field(p2_out, "CLIENT_IP") == str(public2)
+        others_kept = field(p2_other, "CLIENT_IP") == str(wan[2])
+
+        port_forward = field(p3_wan, "SERVER") == "web3" and field(p3_wan, "SERVER_PORT") == "80"
+        router_itself = field(p3_router, "SERVER") == "web3"
+        hairpin = field(p3_lan, "SERVER") == "web3"
+        internet_kept = port_forward and field(p3_wan, "CLIENT_IP") == str(ext2)
+
+        answering = {name for name in p4_servers if name in ("web4a", "web4b")}
+
+        redirect = field(p5_lan, "SERVER") == "proxy"
+        wan_spared = field(p5_wan, "SERVER") != "proxy"
+        admin_spared = field(p5_admin, "SERVER") == "ext1"
+
+        forward_drop = firewall.hook_policy(p6_rules, "forward") == "drop"
+        # the negative probes only mean something while the service runs on the clone
+        service_up = field(p6_service, "SERVER") == "intranet"
+        intrusion_blocked = service_up and p6_direct in ("dropped", "refused") and not p6_ping
+        lan_out = field(p6_out, "SERVER") == "ext1"
+        published = field(p6_published, "SERVER") == "srv6"
 
         # The texts of a question are not indented: the first one starts at the margin, so an
         # indented one would be drawn as a code block.
-        addressing = tr("""
-| réseau | préfixe | machines |
-|--------|---------|----------|
-| `net1` (le LAN privé) | `{net1}` | **`fw`** eth0 (`{fw_lan}`, **le routeur à configurer**), `cli` (`{cli}`), `web1` (`{web1}`), `web2` (`{web2}`) |
-| `net2` (le WAN, « Internet ») | `{net2}` | `fw` eth1 (**`{fw_wan}`**, l'adresse WAN de `fw`), `ext` (`{ext}`) |
-""").format(net1=d.nets.net1, net2=d.nets.net2, fw_lan=d.ips.fw_net1.ip, fw_wan=fw_wan_ip, cli=d.ips.cli.ip,
-            web1=d.ips.web1.ip, web2=d.ips.web2.ip, ext=d.ips.ext.ip)
+        sites = tr("""
+| partie | routeur : adresse LAN (`eth0`) / WAN (`eth1`) | réseau privé | machines du site |
+|--------|-----------------------------------------------|--------------|------------------|
+| 1 | **`r1`** : `{g1}` / `{w1}` | `lan1` : `{l1}` | `pc1` (`{pc1}`) |
+| 2 | **`r2`** : `{g2}` / `{w2}` et `{public2}` | `lan2` : `{l2}` | `srv2` (`{srv2}`), `pc2` (`{pc2}`) |
+| 3 | **`r3`** : `{g3}` / `{w3}` | `lan3` : `{l3}` | `web3` (`{web3}`), `pc3` (`{pc3}`) |
+| 4 | **`r4`** : `{g4}` / `{w4}` | `lan4` : `{l4}` | `web4a` (`{web4a}`), `web4b` (`{web4b}`) |
+| 5 | **`r5`** : `{g5}` / `{w5}` | `lan5` : `{l5}` | `pc5` (`{pc5}`), `admin` (`{admin}`) |
+| 6 | **`r6`** : `{g6}` / `{w6}` | `lan6` : `{l6}` | `srv6` (`{srv6}`) |
+| Internet | | `wan` : `{wan}` | `ext1` (`{ext1}`), `ext2` (`{ext2}`) |
+""").format(public2=public2, wan=d.nets.wan, ext1=ext1, ext2=ext2, **host,
+            **{f"g{n}": gw[n] for n in SITES}, **{f"w{n}": wan[n] for n in SITES},
+            **{f"l{n}": lan[n] for n in SITES})
 
         self.question_dummy(
             title=tr("Organisation du TP"),
             description=tr("""
 Lisez l'onglet **Informations** : il présente la traduction d'adresses avec nftables (suivi de
-connexion, table `nat` et ses chaînes, SNAT et masquerade, DNAT et redirection de port,
-répartition de charge, `redirect` et proxy transparent) et la façon de vérifier une traduction.
+connexion, chaînes de type `nat`, SNAT et masquerade, DNAT et redirection de port, NAT statique,
+*hairpin*, répartition de charge, `redirect` et proxy transparent, traduction et filtrage) et la
+façon de vérifier une traduction.
 
-**La maquette** (onglet *Schéma*) : un réseau privé `net1`, le LAN, avec un client `cli` et deux
-serveurs web `web1` et `web2` ; un réseau `net2` qui joue le WAN (« Internet »), où se trouve
-`ext` ; entre les deux, le routeur **`fw`**, dont **`eth0` est du côté du LAN** et **`eth1` du côté
-du WAN**. Vous configurez la table `nat` de **`fw`**, et de `fw` seulement : `cli`, `web1`, `web2`
-et `ext` servent à vos tests.
+**La maquette** (onglet *Schéma*). Six petits sites sont reliés au réseau `wan`, qui joue
+**Internet**. Chaque site a un routeur `rN`, dont **`eth0` est du côté de son réseau privé `lanN`**
+et **`eth1` du côté d'Internet**, et une ou deux machines. Sur `wan` se trouvent aussi `ext1`, un
+serveur web d'Internet, et `ext2`, le poste d'un internaute.
+
+**Une partie, un site, un routeur.** La partie N du TP se fait sur le routeur `rN`, et sur lui
+seul : les six parties sont **indépendantes**. Faites-les dans l'ordre que vous voulez ; ce que
+vous configurez sur un routeur ne change rien aux autres parties.
 """)
-            + addressing
+            + sites
             + tr("""
-**Les ports du TP** : **{svc}**, le service « Internet » de `ext` (question 1) ; **{fwd}**, le port
-de `fw` côté WAN à rediriger vers le port 80 de `web1` (question 2) ; **{vip}**, le port de `fw` côté
-WAN à répartir entre `web1` et `web2`, qui servent tous deux le port 80 (question 3) ; **{proxy}**,
-le port du proxy local de `fw`, vers lequel détourner le HTTP (port 80) qui sort du LAN
-(question 4).
+**Déjà en place** (ne pas modifier) : les adresses ; le routage sur les six routeurs
+(`net.ipv4.ip_forward=1`) ; sur chaque machine d'un site, une route par défaut par le routeur du
+site. **Comme sur le véritable Internet, `ext1` et `ext2` n'ont aucune route vers les réseaux
+privés** : ils ne connaissent que `wan`. Le jeu de règles nftables de `r1`, `r3` et `r4` est vide.
+Celui de `r2`, `r5` et `r6` contient déjà quelques règles, présentées au début de leur partie et
+écrites dans leur fichier `{conf_file}` : si vous les perdez, `nft -f {conf_file}` les recharge
+(et efface les vôtres). `r2` porte deux adresses publiques sur `eth1`. Dans vos commandes,
+désignez les machines par leurs adresses (tableau ci-dessus).
 
-**Déjà en place** (ne pas modifier) : les adresses ; le routage sur `fw`
-(`net.ipv4.ip_forward=1`) ; sur chaque autre machine, une route vers le réseau d'en face par `fw`
-(`cli`, `web1` et `web2` vers `net2`, `ext` vers `net1`) : sans aucune traduction, `cli` joint déjà
-`ext`, qui voit alors l'adresse de `cli`. Le jeu de règles nftables de `fw` est vide au départ.
-Dans vos commandes, désignez les machines par leurs adresses (tableau ci-dessus).
+**Les serveurs de test** répondent par leur nom et par les adresses des deux bouts de la
+connexion, telles qu'ils les voient : `SERVER=`, `SERVER_IP=`, `SERVER_PORT=`, `CLIENT_IP=`,
+`CLIENT_PORT=` (section @@ref:test-servers@@ des Informations).
 
-**Les serveurs de test.** Les serveurs HTTP du TP répondent par leur nom et par les adresses des
-deux bouts de la connexion, telles qu'ils les voient (`SERVER=<nom>`, `SERVER_IP=`, `SERVER_PORT=`,
-`CLIENT_IP=<adresse vue par le serveur>`, `CLIENT_PORT=`) : utilisez-les avec `curl` pour vérifier
-vos traductions (section @@ref:observe@@ des Informations) :
+| machine | port | nom (`SERVER=`) |
+|---------|------|-----------------|
+| `ext1` | 80 et {svc} | `ext1` |
+| `pc1`, `srv2`, `web3`, `web4a`, `web4b` | 80 | le nom de la machine |
+| `r5` | {proxy} | `proxy` : il tient lieu de proxy web |
+| `srv6` | 80 | `srv6` |
+| `srv6` | {intranet} | `intranet` : un service interne, qui n'est pas publié |
 
-- après le **SNAT**, `CLIENT_IP` devient l'adresse WAN de `fw` ;
-- après le **DNAT**, `SERVER` indique quel serveur a réellement répondu ;
-- avec la **répartition de charge**, en répétant la requête, `SERVER` alterne ;
-- avec le **proxy transparent**, `SERVER` devient celui du proxy (`proxy`), pas la cible.
-
-**Plan du TP.** Quatre traductions à mettre en place sur `fw`, dans l'ordre que vous voulez :
-
-1. **SNAT / masquerade** : le LAN sort vers le WAN sous l'adresse WAN de `fw` ;
-2. **redirection de port** : le port {fwd} de `fw`, côté WAN, mène au port 80 de `web1` ;
-3. **répartition de charge** : le port {vip} de `fw`, côté WAN, est réparti entre `web1` et `web2` ;
-4. **proxy transparent** : le HTTP qui sort du LAN est remis au proxy local de `fw` (port {proxy}).
+**Pour tester.** `curl -s -m 5 http://ADRESSE:PORT/ ; echo "code $?"` affiche la réponse du
+serveur puis le code de retour de `curl` : **0** avec une réponse, **7** pour un échec immédiat
+(connexion refusée), **28** quand le délai de 5 secondes est dépassé (aucune réponse). Chaque
+`curl` ouvre une nouvelle connexion : c'est ce qu'il faut pour essayer une règle (section
+@@ref:ct-consequences@@). `tcpdump -n -i eth0 tcp` (ou `-i eth1`) montre ce qui circule d'un côté
+d'un routeur (section @@ref:capture@@) ; les réseaux de la maquette sont des concentrateurs
+(*hubs*) : une machine y voit aussi les paquets destinés à ses voisines. La commande `conntrack`
+n'est pas installée sur les machines du TP.
 
 Règles valables pour tout le TP :
 
-- les quatre traductions doivent être en place **en même temps** : l'évaluation vérifie le jeu de
-  règles final de `fw` ;
-- l'évaluation lit le jeu de règles **chargé** sur `fw` (`nft list ruleset`), pas un fichier : des
-  règles tapées avec `nft` suffisent (elles sont volatiles) ; si vous écrivez `/etc/nftables.conf`,
-  chargez-le (`nft -f /etc/nftables.conf`) ;
-- ce jeu de règles est **recopié sur une machine cachée identique** à `fw` (mêmes adresses, mêmes
-  interfaces `eth0` et `eth1`), entourée de copies cachées de `cli`, `web1`, `web2` et `ext` où
-  tournent les mêmes serveurs de test. L'évaluation y refait avec `curl` les requêtes des questions et lit
-  les réponses : `CLIENT_IP` vu par `ext` (question 1), le serveur qui répond sur le port {fwd}
-  (question 2) puis à huit requêtes sur le port {vip} (question 3 : `web1` et `web2` doivent répondre
-  tous les deux), et celui qui répond à `cli` quand il vise le port 80 de `ext` (question 4). Elle
-  vérifie aussi la présence d'une règle `masquerade` ou `snat` et d'une règle `dnat` ou `redirect`.
-  Seul compte ce que dit **le jeu de règles chargé sur `fw`**, pas ce que vous faites sur les autres
-  machines ;
-- pour tester sans attendre, donnez un délai court à `curl` : `curl -s -m 3 http://ADRESSE:PORT/`.
-""").format(svc=NET_SVC_PORT, fwd=FWD_PORT, vip=VIP_PORT, proxy=PROXY_PORT)
+- configurez les routeurs avec **`nft`** (pas avec `iptables`). L'évaluation lit le jeu de règles
+  **chargé** sur chaque routeur (`nft list ruleset`), pas un fichier : des règles tapées avec `nft`
+  suffisent ; si vous écrivez `{conf_file}`, chargez-le (`nft -f {conf_file}`) ;
+- ce jeu de règles est **recopié sur une copie cachée du routeur**, entourée de copies cachées des
+  machines (mêmes adresses, mêmes serveurs de test), où l'évaluation refait avec `curl` les
+  requêtes des questions et lit les réponses. Seul compte donc le jeu de règles chargé sur `rN`,
+  pas ce que vous faites sur les autres machines ;
+- certaines questions ont un **formulaire** : notez-y ce que vous observez. Ces réponses ne
+  comptent pas dans l'auto-évaluation ; elles sont notées avec le reste à la fin du TP ;
+- une traduction est décidée au premier paquet d'une connexion : après avoir changé une règle,
+  refaites une requête.
+""").format(conf_file=CONF_FILE, svc=SVC_PORT, proxy=PROXY_PORT, intranet=INTRANET_PORT)
             + instructor(tr("""
 **Pour l'enseignant.** Chaque question se termine par sa solution, calculée pour les adresses de ce
 projet. L'état `final` (onglet *Appliquer une configuration*) applique toute la solution : il écrit
-le fichier ci-dessous dans `/etc/nftables.conf` sur `fw` et le charge (`nft -f /etc/nftables.conf`) ;
-il est ré-applicable. Ce TP n'a aucun formulaire à remplir.
+dans `{conf_file}` de chaque routeur le fichier donné au début de sa partie (questions 1 à 6) et le
+charge ; il remplit aussi les formulaires. Il est ré-applicable et donne 100/100.
 
-```
-{conf}```
-
-L'évaluation (miroir caché, `lib/hidden_mirror.py` / `lib/firewall.py`) : `nft list ruleset` sur `fw`
-(étape 1), chargé tel quel sur `fw_h` après un `nft flush ruleset` (étape 2 ; un jeu de règles vide
-laisse la copie sans traduction), puis onze `curl -s -m 5` (étape 3) : depuis `cli_h` vers
-`http://{ext}:{svc}/` (question 1) et `http://{ext}:80/` (question 4), depuis `ext_h` vers
-`http://{fw_wan}:{fwd}/` (question 2) et huit fois vers `http://{fw_wan}:{vip}/?probe=N` (question 3).
-Les serveurs de test des copies : `ext_h` port {svc} (`SERVER=ext`), `web1_h` et `web2_h` port 80
-(`SERVER=web1`, `SERVER=web2`), `fw_h` port {proxy} (`SERVER=proxy`). Les mêmes serveurs tournent sur
-`ext`, `web1`, `web2` et `fw` pour les vérifications à la main des étudiants (journal
-`/var/log/sre_http_server_PORT.log`) : ils ne sont pas évalués. Barème : 15 points, dont 2 pour
-la seule présence des mots `masquerade` / `snat` et `dnat` / `redirect` dans le jeu de règles.
-""").format(conf=self.net_scheme.reference_conf(), ext=d.ips.ext.ip, fw_wan=fw_wan_ip, svc=NET_SVC_PORT,
-            fwd=FWD_PORT, vip=VIP_PORT, proxy=PROXY_PORT)),
+L'évaluation (miroir caché, `lib/hidden_mirror.py` / `lib/firewall.py`) : `nft list ruleset` sur
+`r1` … `r6` (étape 1), chargé tel quel sur leurs copies `r1_h` … `r6_h` après un `nft flush ruleset`
+(étape 2), puis les sondes (étape 3) : des `curl -s -m 5` depuis les copies cachées des machines,
+une connexion TCP et un `ping` pour la partie 6. Les copies de `ext1` et de `ext2` ont, elles, une
+route vers chaque réseau privé par le routeur du site : aucune sonde ne dépend d'une traduction
+pour son retour, et la copie de `ext2` joue le voisin qui a ajouté une route. Chaque partie a son
+routeur : rien de ce qui est fait dans une partie ne change les points d'une autre. Les éléments
+`q_…` (formulaires) ne comptent que dans l'évaluation finale. Barème : 15 + 15 + 22 + 12 + 18 + 18
+= 100.
+""").format(conf_file=CONF_FILE)),
         )
+
+        # =====================================================================
+        # Part 1 — r1: masquerade
+        # =====================================================================
+        part1 = self.add_grade_part(no_tr("part1"), tr("Partie 1 — Sortir d'un réseau privé : masquerade"))
 
         self.question_dummy(
             section=self.section(0),
-            title=tr("SNAT / masquerade"),
+            title=tr("Sortir d'un réseau privé : masquerade"),
             description=tr("""
-Faites en sorte que les machines du LAN `net1` accèdent au WAN en étant
-**masquées** derrière l'adresse WAN de `fw` (`masquerade` en `postrouting`,
-`oifname "eth1"`). Vérification : depuis `cli`, `curl http://{_arg0}:{_arg1}/` ;
-le champ `CLIENT_IP` renvoyé par `ext` doit être **{_arg2}** (l'adresse de `fw`).
-""").format(_arg0=str(d.ips.ext.ip), _arg1=NET_SVC_PORT, _arg2=fw_wan_ip)
+**Site 1** : `pc1` (`{pc1}`) dans le réseau privé `lan1` (`{lan}`), derrière **`r1`** (`eth0` :
+`{gw}`, `eth1` : `{wan}`). Le jeu de règles de `r1` est vide.
+
+**But** : les machines de `lan1` accèdent à Internet sous l'adresse publique de `r1`. **À lire** :
+sections @@ref:snat@@, @@ref:chains@@ et @@ref:conntrack@@ des Informations.
+""").format(pc1=host["pc1"], lan=lan[1], gw=gw[1], wan=wan[1])
             + instructor(tr("""
-**Solution.** Sur `fw`, une table `{table}` avec une chaîne de type `nat` accrochée au hook
-`postrouting`, et la règle qui masque ce qui vient du LAN et sort par `eth1` (le WAN) :
+**Pour l'enseignant.** Le fichier de référence de `r1` (état `final`) :
 
 ```
 {conf}```
 
-En ligne de commande : `nft add table {table}`, `nft 'add chain {table} postrouting {{ {decl} }}'`
-puis `nft 'add rule {table} postrouting {rule}'`. L'adresse WAN de `fw` étant fixe,
-`ip saddr {net1} oifname "eth1" snat to {fw_wan}` convient aussi.
+Barème de la partie : `masquerade` 6, `masquerade_scope` 3, formulaires `q_without_nat` 2 et
+`q_masquerade` 4.
+""").format(conf=ns.reference_conf("r1"))),
+        )
 
-Vérification : depuis `cli`,
-`curl -s -m 3 http://{ext}:{svc}/` renvoie `SERVER=ext` et `CLIENT_IP={fw_wan}`. Sans la règle, la
-requête aboutit déjà (`ext` a une route vers `net1`), mais avec `CLIENT_IP={cli}`. Sur `ext`,
-`tcpdump -n -i eth0 tcp port {svc}` montre des paquets venant de `{fw_wan}` et non de `{cli}`.
+        q11_answers = {"src_seen": str(host["pc1"]), "outcome": "timeout"}
+        q11 = self.question_form(
+            section=self.section(1),
+            title=tr("Sans traduction"),
+            description=tr("""
+**(a)** Sur `ext1`, lancez une capture : `tcpdump -n -i eth0 tcp port {svc}`.
 
-Pièges : une chaîne de type `filter` (`nft` y refuse `masquerade`) ; `oifname "eth0"` (le LAN) au
-lieu de `"eth1"` ; un `masquerade` sans aucun critère, qui traduit aussi les connexions entrantes
-des questions 2 et 3 (`web1` et `web2` ne voient plus alors que `{fw_lan}`, l'adresse LAN de `fw`).
+**(b)** Sur `pc1`, interrogez le serveur d'Internet :
+`curl -s -m 5 http://{ext1}:{svc}/ ; echo "code $?"`.
 
-Évaluation : `snat_masquerade` (3 points : depuis la copie cachée de `cli`, `curl` vers
-`http://{ext}:{svc}/` doit renvoyer `CLIENT_IP={fw_wan}`) et `regle_masquerade_presente` (1 point :
-le texte de `nft list ruleset` de `fw` contient `masquerade` ou `snat`).
-""").format(conf=render_table({"postrouting": [self.net_scheme.rule_masquerade()]}), table=NAT_TABLE,
-            decl=NAT_CHAINS["postrouting"], rule=self.net_scheme.rule_masquerade(), net1=d.nets.net1,
-            fw_wan=fw_wan_ip, fw_lan=d.ips.fw_net1.ip, ext=d.ips.ext.ip, cli=d.ips.cli.ip, svc=NET_SVC_PORT)),
+**(c)** Lisez la capture. Les paquets de `pc1` arrivent-ils à `ext1` ? Sous quelle adresse
+source ? `ext1` leur répond-il ? Affichez sa table de routage (`ip route`) : connaît-il un chemin
+vers `{lan}` ? C'est la situation de toute machine d'Internet devant une adresse privée (section
+@@ref:why@@).
+""").format(svc=SVC_PORT, ext1=ext1, lan=lan[1])
+            + tr("""
+- Adresse source des paquets que reçoit `ext1` : @@{src_seen:[0-9.]+}@@
+- Résultat du `curl` lancé sur `pc1` : @@{outcome:>une réponse de ext1 (code 0)>>>answer|un échec immédiat (code 7)>>>refused|aucune réponse, délai dépassé (code 28)>>>timeout}@@
+""")
+            + instructor(tr("""
+**Solution.** Rien à configurer. `r1` route le paquet tel quel : la capture de `ext1` montre les
+SYN de `{pc1}` vers `{ext1}.{svc}` (`Flags [S]`, répétés après 1 s, 2 s…) et aucune réponse. `ip
+route` sur `ext1` n'affiche que `{wan_net}` : `ext1` n'a aucun chemin vers `{lan}` et ne peut pas
+répondre à une adresse privée. `curl` attend ses 5 secondes : `code 28`.
+
+- Réponses : `{pc1}` ; aucune réponse, délai dépassé.
+- Cette question n'est évaluée que par le formulaire (`q_without_nat`, 1 point par réponse).
+""").format(pc1=host["pc1"], ext1=ext1, svc=SVC_PORT, wan_net=d.nets.wan, lan=lan[1])),
+            cheat_answers={"final": q11_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("q_without_nat"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q11.get("src_seen"), host["pc1"])) + int(_norm(q11.get("outcome")) == "timeout"),
+            description=tr("sans traduction : l'adresse privée de pc1 arrive à ext1, qui ne peut pas répondre"),
         )
 
         self.question_dummy(
-            section=self.section(0),
-            title=tr("Redirection de port (DNAT)"),
+            section=self.section(1),
+            title=tr("La règle masquerade"),
             description=tr("""
-Publiez le serveur interne `web1` : toute connexion arrivant du WAN sur
-**{_arg0}:{_arg1}** doit être redirigée (DNAT) vers **{_arg2}:80**.
-""").format(_arg0=fw_wan_ip, _arg1=FWD_PORT, _arg2=str(d.ips.web1.ip))
+Sur **`r1`** :
+
+**(a)** créez une table `ip nat` et, dans cette table, une chaîne de base de type `nat` accrochée
+au hook `postrouting` (section @@ref:nat-table@@) ;
+
+**(b)** ajoutez-y la règle qui remplace l'adresse source par celle de `r1` (`masquerade`, section
+@@ref:masquerade@@) pour les connexions qui **viennent de `lan1`** (`{lan}`) et qui **sortent par
+`eth1`** : ces deux critères font partie de la règle (section @@ref:snat-scope@@) ;
+
+**(c)** vérifiez : `nft list ruleset` sur `r1`, puis sur `pc1` le `curl` de la question
+précédente. `ext1` répond maintenant (`code 0`).
+
+Ce qui **entre** dans `lan1` ne doit pas être traduit : l'évaluation vérifie aussi qu'une machine
+d'Internet qui atteint `pc1` est vue par `pc1` sous sa propre adresse. Pour l'essayer vous-même :
+sur `ext2`, `ip route add {lan} via {wan}` (un voisin de `r1` qui s'ajoute une route vers le
+réseau privé), puis `curl -s -m 5 http://{pc1}/` : `CLIENT_IP` doit être `{ext2}`, pas `{gw}`.
+""").format(lan=lan[1], wan=wan[1], pc1=host["pc1"], ext2=ext2, gw=gw[1])
             + instructor(tr("""
-**Solution.** Dans la table `{table}` de `fw`, une chaîne de type `nat` accrochée au hook
-`prerouting`, et la règle de DNAT pour ce qui arrive du WAN (`eth1`) :
+**Solution.** Sur `r1` :
 
 ```
 {conf}```
 
-En ligne de commande : `nft 'add chain {table} prerouting {{ {decl} }}'` puis
-`nft 'add rule {table} prerouting {rule}'`. Le critère `ip daddr {fw_wan}` à la place de
-`iifname "eth1"` convient aussi.
+En ligne de commande : `nft add table {table}`, `{chain}` puis `{rule}`. L'adresse publique de
+`r1` étant fixe, `ip saddr {lan} oifname "eth1" snat to {wan}` convient aussi.
 
-Vérification : depuis `ext`,
-`curl -s -m 3 http://{fw_wan}:{fwd}/` renvoie `SERVER=web1`, `SERVER_IP={web1}`, `SERVER_PORT=80` et
-`CLIENT_IP={ext}` : le serveur voit le vrai client, seule la destination a changé. La réponse de
-`web1` repasse par `fw` (sa route vers `net2`), qui lui rend l'adresse source `{fw_wan}` : aucune
-règle pour le retour. Sur `web1`, `tcpdump -n -i eth0 tcp port 80` montre la connexion de `{ext}`
-arriver sur le port 80.
+Vérification : sur `pc1`, `curl -s -m 5 http://{ext1}:{svc}/` renvoie `SERVER=ext1` et
+`CLIENT_IP={wan}`.
 
-Pièges : la règle écrite en `postrouting` (`nft` la refuse : le routage est déjà fait) ;
-`iifname "eth0"` ; le test lancé depuis `cli` ou depuis `fw` lui-même, que la règle `iifname "eth1"`
-ne concerne pas.
+Pièges : une chaîne de type `filter` (`nft` y refuse `masquerade` : `Error: Could not process
+rule: Operation not supported`) ; `oifname "eth0"` (le LAN) au lieu de `"eth1"` ; un `masquerade`
+sans aucun critère, qui traduit aussi ce qui entre (`pc1` voit alors `ext2` sous l'adresse
+`{gw}`).
 
-Évaluation : `dnat_port_forward` (3 points : depuis la copie cachée de `ext`, `curl` vers
-`http://{fw_wan}:{fwd}/` doit renvoyer `SERVER=web1`) et `regle_dnat_presente` (1 point : le texte de
-`nft list ruleset` de `fw` contient `dnat` ou `redirect` ; les règles des questions 3 et 4 le
-donnent aussi).
-""").format(conf=render_table({"prerouting": [self.net_scheme.rule_port_forward()]}), table=NAT_TABLE,
-            decl=NAT_CHAINS["prerouting"], rule=self.net_scheme.rule_port_forward(), fw_wan=fw_wan_ip,
-            fwd=FWD_PORT, web1=d.ips.web1.ip, ext=d.ips.ext.ip)),
+- L'évaluation : `masquerade` (6 points : depuis la copie de `pc1`, `curl` vers
+  `http://{ext1}:{svc}/` doit renvoyer `CLIENT_IP={wan}`) et `masquerade_scope` (3 points, comptés
+  seulement avec le précédent : depuis la copie de `ext2`, qui a une route vers `{lan}`, `curl`
+  vers `http://{pc1}/` doit renvoyer `SERVER=pc1` et `CLIENT_IP={ext2}`).
+""").format(conf=render_tables(ns.reference_tables("r1")), table=NAT_TABLE,
+            chain=nft_chain(NAT_TABLE, "postrouting"),
+            rule=nft_rule(NAT_TABLE, "postrouting", ns.rule_masquerade(1)),
+            lan=lan[1], wan=wan[1], gw=gw[1], ext1=ext1, ext2=ext2, svc=SVC_PORT, pc1=host["pc1"])),
         )
+        self.add_grade_element(
+            title=no_tr("masquerade"), max_grade=6, grade_part=part1, grade=6 * int(masquerade),
+            description=tr("pc1 sort vers Internet sous l'adresse publique de r1"),
+        )
+        self.add_grade_element(
+            title=no_tr("masquerade_scope"), max_grade=3, grade_part=part1,
+            grade=3 * int(masquerade and inbound_kept),
+            description=tr("ce qui entre dans lan1 n'est pas traduit (compté avec le masquerade)"),
+        )
+
+        q13_answers = {"client_ip": str(wan[1]), "src_lan": str(host["pc1"]), "src_wan": str(wan[1]),
+                       "return_rule": "none"}
+        q13 = self.question_form(
+            section=self.section(1),
+            title=tr("Observer la traduction"),
+            description=tr("""
+**(a)** Sur `pc1`, `curl -s -m 5 http://{ext1}:{svc}/` : lisez `CLIENT_IP=` dans la réponse de
+`ext1`.
+
+**(b)** Sur `r1`, capturez des deux côtés du routeur, dans deux terminaux :
+`tcpdump -n -i eth0 tcp port {svc}` et `tcpdump -n -i eth1 tcp port {svc}`. Refaites la requête
+et comparez, dans les deux captures, le premier paquet de la connexion (`Flags [S]`) : c'est le
+même paquet, avant et après sa traduction (section @@ref:capture@@).
+
+**(c)** Les réponses de `ext1` arrivent à l'adresse de `r1` et parviennent pourtant à `pc1`.
+Quelle règle avez-vous écrite pour elles (section @@ref:first-packet@@) ?
+""").format(ext1=ext1, svc=SVC_PORT)
+            + tr("""
+- `CLIENT_IP=` dans la réponse de `ext1` : @@{client_ip:[0-9.]+}@@
+- Adresse source du premier paquet sur `eth0` de `r1` : @@{src_lan:[0-9.]+}@@
+- Adresse source du même paquet sur `eth1` de `r1` : @@{src_wan:[0-9.]+}@@
+- Pour les réponses de `ext1`, vous avez écrit : @@{return_rule:>une règle dnat dans une chaîne prerouting>>>dnat|aucune règle : le suivi de connexion les traduit en sens inverse>>>none|une seconde règle masquerade>>>masquerade}@@
+""")
+            + instructor(tr("""
+**Solution.** `CLIENT_IP={wan}` : `ext1` ne voit que l'adresse publique de `r1`. Sur `eth0`, le
+SYN va de `{pc1}` à `{ext1}.{svc}` ; sur `eth1`, le même SYN part de `{wan}` (le port source est
+conservé quand il est libre). Aucune règle pour le retour : la traduction, décidée au premier
+paquet, est inscrite dans l'entrée de la connexion, et les réponses sont traduites en sens inverse
+(elles retrouvent `{pc1}` comme destination dès `prerouting`, avant le routage).
+
+- Réponses : `{wan}` ; `{pc1}` ; `{wan}` ; aucune règle.
+- Cette question n'est évaluée que par le formulaire (`q_masquerade`, 1 point par réponse).
+""").format(wan=wan[1], pc1=host["pc1"], ext1=ext1, svc=SVC_PORT)),
+            cheat_answers={"final": q13_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("q_masquerade"), max_grade=4, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q13.get("client_ip"), wan[1])) + int(_same_ip(q13.get("src_lan"), host["pc1"]))
+                  + int(_same_ip(q13.get("src_wan"), wan[1])) + int(_norm(q13.get("return_rule")) == "none"),
+            description=tr("la traduction observée : ce que voit ext1, le paquet des deux côtés de r1, le retour"),
+        )
+
+        # =====================================================================
+        # Part 2 — r2: static 1:1 NAT
+        # =====================================================================
+        part2 = self.add_grade_part(no_tr("part2"), tr("Partie 2 — NAT statique : une adresse publique pour un serveur"))
 
         self.question_dummy(
             section=self.section(0),
-            title=tr("Répartition de charge (numgen)"),
+            title=tr("NAT statique : une adresse publique pour un serveur"),
             description=tr("""
-Répartissez les connexions arrivant du WAN sur **{_arg0}:{_arg1}** entre les deux
-backends **web1** ({_arg2}) et **web2** ({_arg3}), par exemple en tourniquet avec
-`dnat to numgen inc mod 2 map {{ ... }}`.
-""").format(_arg0=fw_wan_ip, _arg1=VIP_PORT, _arg2=str(d.ips.web1.ip), _arg3=str(d.ips.web2.ip))
+**Site 2** : `srv2` (`{srv2}`) et `pc2` (`{pc2}`) dans `lan2` (`{lan}`), derrière **`r2`** (`eth0` :
+`{gw}`). `r2` a **deux adresses publiques** sur `eth1` : `{wan}`, son adresse principale, et
+`{public2}`, réservée à `srv2`. Son jeu de règles fait déjà sortir `lan2` sous l'adresse
+principale :
+
+```
+{given}```
+
+**But** : `srv2` est joignable d'Internet à l'adresse `{public2}` et sort sous cette même adresse ;
+les autres machines de `lan2` continuent de sortir sous l'adresse principale. **À lire** : sections
+@@ref:static-nat@@, @@ref:snat-to@@ et @@ref:nat-rules@@ des Informations.
+""").format(srv2=host["srv2"], pc2=host["pc2"], lan=lan[2], gw=gw[2], wan=wan[2], public2=public2,
+            given=render_tables(ns.given_tables("r2")))
             + instructor(tr("""
-**Solution.** Dans la chaîne `prerouting` de la table `{table}` de `fw` (celle de la question 2) :
+**Pour l'enseignant.** Le fichier de référence de `r2` (état `final`) :
 
 ```
 {conf}```
 
-En ligne de commande : `nft 'add rule {table} prerouting {rule}'` (les apostrophes évitent que le
-shell interprète les accolades et les guillemets). `numgen inc mod 2` est un compteur qui vaut 0, 1,
-0, 1… ; la *map* associe 0 à `web1` et 1 à `web2`, et le port ({vip}) est conservé. La règle n'est
-parcourue que par le premier paquet de chaque connexion : les connexions alternent, et tous les
-paquets d'une connexion vont au même serveur.
-
-Vérification : depuis `ext`, répétez
-`curl -s -m 3 http://{fw_wan}:{vip}/` : `SERVER=web1` (`SERVER_IP={web1}`) et `SERVER=web2`
-(`SERVER_IP={web2}`) alternent, avec `CLIENT_IP={ext}`.
-
-Variantes et pièges : `numgen random mod 2` convient (les huit requêtes de l'évaluation tombent sur
-le même serveur une fois sur 128) ; `jhash ip saddr mod 2` envoie toujours `ext` au même serveur et
-ne rapporte que la moitié des points ; cette règle et celle de la question 2 visent des ports
-différents ({vip} et {fwd}), celle de la question 4 l'interface `eth0` : leur ordre dans la chaîne
-est indifférent.
-
-Évaluation : `load_balancing` (4 points : huit `curl` vers `http://{fw_wan}:{vip}/?probe=N` depuis la
-copie cachée de `ext` ; 4 si `web1` **et** `web2` répondent, 2 si un seul des deux répond).
-""").format(conf=render_table({"prerouting": [self.net_scheme.rule_load_balancing()]}), table=NAT_TABLE,
-            rule=self.net_scheme.rule_load_balancing(), fw_wan=fw_wan_ip, vip=VIP_PORT, fwd=FWD_PORT,
-            web1=d.ips.web1.ip, web2=d.ips.web2.ip, ext=d.ips.ext.ip)),
+Barème de la partie : `static_in` 5, `static_out` 5, `static_scope` 2, formulaire `q_static` 3.
+""").format(conf=ns.reference_conf("r2"))),
         )
 
         self.question_dummy(
-            section=self.section(0),
-            title=tr("Proxy transparent (redirect)"),
+            section=self.section(1),
+            title=tr("Ce qui entre : dnat"),
             description=tr("""
-Interceptez le HTTP **sortant du LAN** (`iifname "eth0"`, `tcp dport 80`) et
-redirigez-le vers le **proxy transparent local** de `fw` (port {_arg0}) avec
-`redirect to :{_arg0}`.
-""").format(_arg0=PROXY_PORT)
+**(a)** L'état de départ : sur `r2`, `ip -4 addr show dev eth1` (les deux adresses) et `nft list
+ruleset`. Depuis `ext2`, `curl -s -m 5 http://{public2}/ ; echo "code $?"` : échec immédiat, rien
+n'écoute sur le port 80 de `r2`. `ping -c 1 {public2}` aboutit, lui : c'est `r2` qui répond
+(`ttl=64`), l'adresse est la sienne.
+
+**(b)** Dans la table `ip nat` de `r2`, créez une chaîne de base de type `nat` accrochée au hook
+`prerouting`, et la règle qui envoie à `srv2` (`{srv2}`) **tout ce qui est destiné à
+`{public2}`** : critère `ip daddr`, action `dnat to` sans port ni protocole (section
+@@ref:dnat-to@@).
+
+**(c)** Vérifiez depuis `ext2` : le même `curl` renvoie `SERVER=srv2`. Le `ping` affiche
+maintenant `ttl=63` : c'est `srv2` qui répond, un routeur plus loin.
+""").format(public2=public2, srv2=host["srv2"])
             + instructor(tr("""
-**Solution.** Toujours dans la chaîne `prerouting` de la table `{table}` de `fw`, pour ce qui
-arrive du LAN (`eth0`) :
+**Solution.** Sur `r2` : `{chain}` puis `{rule}`, soit dans la table `{table}` :
 
 ```
 {conf}```
 
-En ligne de commande : `nft 'add rule {table} prerouting {rule}'`. `redirect` remplace la
-destination par l'adresse de `fw` sur l'interface d'arrivée (`{fw_lan}`) et le port par {proxy} : la
-connexion est remise au proxy local, quelle que soit l'adresse visée ; `dnat to {fw_lan}:{proxy}`
+Vérification : depuis `ext2`, `curl -s -m 5 http://{public2}/` renvoie `SERVER=srv2`,
+`SERVER_IP={srv2}` et `CLIENT_IP={ext2}`. `r2` répond aux requêtes ARP pour `{public2}`, qui est
+une de ses adresses ; la règle n'a ni protocole ni port : tout ce qui vise cette adresse va à
+`srv2`, ports conservés.
+
+Pièges : `iifname "eth1"` sans `ip daddr` (tout ce qui arrive d'Internet irait à `srv2`, y compris
+ce qui vise `{wan}`) ; la règle écrite dans la chaîne `postrouting`.
+
+- L'évaluation : `static_in` (5 points : depuis la copie de `ext2`, `curl` vers
+  `http://{public2}/` doit renvoyer `SERVER=srv2`).
+""").format(chain=nft_chain(NAT_TABLE, "prerouting"), rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_static_in()),
+            table=NAT_TABLE, conf=render_tables({NAT_TABLE: {"prerouting": [ns.rule_static_in()]}}),
+            public2=public2, srv2=host["srv2"], ext2=ext2, wan=wan[2])),
+        )
+        self.add_grade_element(
+            title=no_tr("static_in"), max_grade=5, grade_part=part2, grade=5 * int(static_in),
+            description=tr("la seconde adresse publique de r2 mène à srv2"),
+        )
+
+        q22_answers = {"client_srv2": str(public2), "client_pc2": str(wan[2]), "appended": "primary"}
+        q22 = self.question_form(
+            section=self.section(1),
+            title=tr("Ce qui sort : snat, et l'ordre des règles"),
+            description=tr("""
+**(a)** Depuis `srv2`, `curl -s -m 5 http://{ext1}:{svc}/` : sous quelle adresse `ext1` voit-il
+`srv2` pour l'instant ? C'est l'effet de la règle `masquerade` déjà en place.
+
+**(b)** Dans la chaîne `postrouting` **existante**, ajoutez la règle qui fait sortir `srv2` sous
+son adresse publique : `snat to {public2}` pour ce qui vient de `{srv2}` et sort par `eth1`
+(section @@ref:snat-to@@). Dans une chaîne `nat`, **la première règle qui convient décide**
+(section @@ref:nat-rules@@) : la vôtre doit être évaluée **avant** la règle `masquerade`. `nft add
+rule` l'ajouterait après ; utilisez `nft insert rule`, qui place la règle en tête de la chaîne.
+
+**(c)** Vérifiez l'ordre (`nft list ruleset`), puis refaites la requête depuis `srv2` et depuis
+`pc2`.
+""").format(ext1=ext1, svc=SVC_PORT, public2=public2, srv2=host["srv2"])
+            + tr("""
+- `CLIENT_IP=` vu par `ext1` pour une requête de `srv2`, une fois votre règle en place : @@{client_srv2:[0-9.]+}@@
+- `CLIENT_IP=` vu par `ext1` pour une requête de `pc2` : @@{client_pc2:[0-9.]+}@@
+- Si votre règle `snat` était placée après la règle `masquerade`, `ext1` verrait `srv2` sous : @@{appended:>son adresse privée>>>private|la seconde adresse publique de r2>>>second|l'adresse principale de r2>>>primary}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r2` : `{rule}`, ce qui donne la chaîne :
+
+```
+{conf}```
+
+Avant la règle, `ext1` voit `srv2` sous `{wan}` (la règle `masquerade` donnée) ; après,
+`CLIENT_IP={public2}` pour `srv2` et toujours `CLIENT_IP={wan}` pour `pc2`. Ajoutée avec `nft add
+rule`, la règle `snat` viendrait après la règle `masquerade`, qui convient déjà à `srv2` et décide :
+elle ne serait jamais atteinte, et `srv2` sortirait encore sous `{wan}`.
+
+Différence entre les deux actions : `snat to` écrit l'adresse dans la règle (ici la seconde
+adresse de l'interface) ; `masquerade` prend l'adresse principale de l'interface de sortie.
+
+Pièges : une règle `snat` sans `ip saddr` (toutes les machines de `lan2` sortiraient sous
+`{public2}`) ; la règle créée dans une seconde chaîne `postrouting` de priorité plus grande que
+celle de la chaîne donnée : elle ne décide pas non plus.
+
+- Réponses : `{public2}` ; `{wan}` ; l'adresse principale de `r2`.
+- L'évaluation : `static_out` (5 points : depuis la copie de `srv2`, `curl` vers
+  `http://{ext1}:{svc}/` doit renvoyer `CLIENT_IP={public2}`), `static_scope` (2 points, comptés
+  avec le précédent : depuis la copie de `pc2`, `CLIENT_IP={wan}`) et le formulaire `q_static`
+  (1 point par réponse).
+""").format(rule=nft_rule(NAT_TABLE, "postrouting", ns.rule_static_out(), verb="insert"),
+            conf=render_tables({NAT_TABLE: {"postrouting": [ns.rule_static_out(), ns.rule_masquerade(2)]}}),
+            wan=wan[2], public2=public2, ext1=ext1, svc=SVC_PORT)),
+            cheat_answers={"final": q22_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("static_out"), max_grade=5, grade_part=part2, grade=5 * int(static_out),
+            description=tr("srv2 sort vers Internet sous la seconde adresse publique de r2"),
+        )
+        self.add_grade_element(
+            title=no_tr("static_scope"), max_grade=2, grade_part=part2, grade=2 * int(static_out and others_kept),
+            description=tr("pc2 sort toujours sous l'adresse principale de r2 (compté avec la sortie de srv2)"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_static"), max_grade=3, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q22.get("client_srv2"), public2)) + int(_same_ip(q22.get("client_pc2"), wan[2]))
+                  + int(_norm(q22.get("appended")) == "primary"),
+            description=tr("NAT statique : les adresses vues par ext1, l'effet de l'ordre des règles"),
+        )
+
+        # =====================================================================
+        # Part 3 — r3: publishing a server (port forward, the router itself, hairpin)
+        # =====================================================================
+        part3 = self.add_grade_part(no_tr("part3"), tr("Partie 3 — Publier un serveur : redirection de port"))
+
+        self.question_dummy(
+            section=self.section(0),
+            title=tr("Publier un serveur : redirection de port"),
+            description=tr("""
+**Site 3** : le serveur `web3` (`{web3}`) et le poste `pc3` (`{pc3}`) dans `lan3` (`{lan}`),
+derrière **`r3`** (`eth0` : `{gw}`, `eth1` : `{wan}`). Le jeu de règles de `r3` est vide.
+
+**But** : le port {fwd} de l'adresse publique de `r3` mène au port 80 de `web3`, pour un client
+d'Internet, puis pour `r3` lui-même, puis pour les machines de `lan3`. **À lire** : section
+@@ref:dnat@@ des Informations.
+""").format(web3=host["web3"], pc3=host["pc3"], lan=lan[3], gw=gw[3], wan=wan[3], fwd=FWD_PORT)
+            + instructor(tr("""
+**Pour l'enseignant.** Le fichier de référence de `r3` (état `final`) :
+
+```
+{conf}```
+
+Barème de la partie : `port_forward` 6, `router_itself` 4, `hairpin` 6, `hairpin_scope` 2,
+formulaires `q_publish` 2 et `q_hairpin` 2.
+""").format(conf=ns.reference_conf("r3"))),
+        )
+
+        q31_answers = {"server_ip": str(host["web3"]), "client_ip": str(ext2)}
+        q31 = self.question_form(
+            section=self.section(1),
+            title=tr("Depuis Internet"),
+            description=tr("""
+**(a)** Depuis `ext2` : `curl -s -m 5 http://{wan}:{fwd}/ ; echo "code $?"`. Échec immédiat : rien
+n'écoute sur le port {fwd} de `r3`.
+
+**(b)** Sur `r3`, créez une table `ip nat`, une chaîne de base de type `nat` accrochée au hook
+`prerouting` (priorité `dstnat`) et la règle de redirection de port : ce qui **arrive par `eth1`**
+sur le port TCP {fwd} est envoyé au **port 80 de `web3`** (`{web3}`) (section @@ref:dnat-to@@).
+
+**(c)** Refaites la requête depuis `ext2` et lisez la réponse. Sur `web3`, `tcpdump -n -i eth0 tcp
+port 80` montre la connexion telle qu'elle lui arrive. Par où la réponse de `web3` repart-elle, et
+sous quelle adresse source `ext2` la reçoit-il (section @@ref:return-path@@) ?
+""").format(wan=wan[3], fwd=FWD_PORT, web3=host["web3"])
+            + tr("""
+- `SERVER_IP=` dans la réponse reçue par `ext2` : @@{server_ip:[0-9.]+}@@
+- `CLIENT_IP=` dans cette réponse : @@{client_ip:[0-9.]+}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r3` : `nft add table {table}`, `{chain}` puis `{rule}`, soit :
+
+```
+{conf}```
+
+Vérification : depuis `ext2`, `curl -s -m 5 http://{wan}:{fwd}/` renvoie `SERVER=web3`,
+`SERVER_IP={web3}`, `SERVER_PORT=80` et `CLIENT_IP={ext2}` : seule la destination a changé, le
+serveur voit le vrai client. Sa réponse repart par sa route par défaut, donc par `r3`, qui lui
+rend `{wan}` (port {fwd}) comme source : `ext2` n'a besoin d'aucune route vers `{lan}`.
+
+Pièges : la règle écrite dans une chaîne `postrouting` (`nft` refuse `dnat` à ce hook) ;
+`iifname "eth0"` ; un `dnat to {web3}` sans port (le port {fwd} serait conservé, et rien n'y
+écoute sur `web3`) ; le test lancé depuis `pc3` ou depuis `r3`, que cette règle ne concerne pas
+(questions suivantes).
+
+- Réponses : `{web3}` ; `{ext2}`.
+- L'évaluation : `port_forward` (6 points : depuis la copie de `ext2`, `curl` vers
+  `http://{wan}:{fwd}/` doit renvoyer `SERVER=web3` et `SERVER_PORT=80`) et le formulaire
+  `q_publish` (1 point par réponse).
+""").format(table=NAT_TABLE, chain=nft_chain(NAT_TABLE, "prerouting"),
+            rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_port_forward(3, by_interface=True)),
+            conf=render_tables({NAT_TABLE: {"prerouting": [ns.rule_port_forward(3, by_interface=True)]}}),
+            wan=wan[3], fwd=FWD_PORT, web3=host["web3"], ext2=ext2, lan=lan[3])),
+            cheat_answers={"final": q31_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("port_forward"), max_grade=6, grade_part=part3, grade=6 * int(port_forward),
+            description=tr("d'Internet, le port {port} de r3 mène au port 80 de web3").format(port=FWD_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("q_publish"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q31.get("server_ip"), host["web3"])) + int(_same_ip(q31.get("client_ip"), ext2)),
+            description=tr("redirection de port : le serveur qui répond et le client qu'il voit"),
+        )
+
+        self.question_dummy(
+            section=self.section(1),
+            title=tr("Depuis le routeur lui-même"),
+            description=tr("""
+**(a)** Sur `r3` : `curl -s -m 5 http://{wan}:{fwd}/ ; echo "code $?"`. Échec immédiat, alors que
+la règle de la question précédente est en place : ce que `r3` émet lui-même ne passe pas par
+`prerouting` (section @@ref:nat-output@@).
+
+**(b)** Ajoutez à la table `ip nat` une chaîne de base de type `nat` accrochée au hook
+**`output`**, de priorité `-100`, et dans cette chaîne la règle qui redirige vers le port 80 de
+`web3` ce qui est destiné au port TCP {fwd} de `{wan}`. Le critère est ici l'adresse visée (`ip
+daddr`) : un paquet émis par la machine n'a pas d'interface d'entrée.
+
+**(c)** Refaites le `curl` sur `r3` : `SERVER=web3`. Sous quelle adresse `web3` voit-il `r3` ?
+""").format(wan=wan[3], fwd=FWD_PORT)
+            + instructor(tr("""
+**Solution.** Sur `r3` : `{chain}` puis `{rule}`, soit :
+
+```
+{conf}```
+
+Vérification : sur `r3`, `curl -s -m 5 http://{wan}:{fwd}/` renvoie `SERVER=web3` et
+`CLIENT_IP={wan}` : `r3` a choisi son adresse source avant la traduction (il s'adressait à
+lui-même), le paquet est ensuite routé vers `web3`, dont la réponse revient à `r3`. Aucune règle
+`postrouting` n'est nécessaire.
+
+Pièges : la priorité écrite `dstnat`, que nftables 1.0.6 n'accepte pas au hook `output` (`Error:
+invalid priority expression value in this context` : écrire `-100`) ; `iifname` dans la règle ;
+croire que la chaîne `prerouting` suffit.
+
+- L'évaluation : `router_itself` (4 points : sur la copie de `r3`, `curl` vers
+  `http://{wan}:{fwd}/` doit renvoyer `SERVER=web3`).
+""").format(chain=nft_chain(NAT_TABLE, "output"), rule=nft_rule(NAT_TABLE, "output", ns.rule_port_forward(3)),
+            conf=render_tables({NAT_TABLE: {"output": [ns.rule_port_forward(3)]}}), wan=wan[3], fwd=FWD_PORT)),
+        )
+        self.add_grade_element(
+            title=no_tr("router_itself"), max_grade=4, grade_part=part3, grade=4 * int(router_itself),
+            description=tr("r3 lui-même atteint web3 par son adresse publique (chaîne nat du hook output)"),
+        )
+
+        q33_answers = {"reply_src": str(host["web3"]), "client_after": str(gw[3])}
+        q33 = self.question_form(
+            section=self.section(1),
+            title=tr("Depuis le réseau interne : hairpin"),
+            description=tr("""
+`pc3` veut joindre le serveur par son adresse publique, comme tout le monde (section
+@@ref:hairpin@@).
+
+**(a)** Depuis `pc3` : `curl -s -m 5 http://{wan}:{fwd}/ ; echo "code $?"`. Échec immédiat (`code
+7`) : la règle de la question 3.1 ne vaut que pour ce qui arrive par `eth1`, et le paquet de `pc3`
+arrive par `eth0`.
+
+**(b)** Faites en sorte que la redirection vaille quelle que soit l'interface d'arrivée : dans la
+chaîne `prerouting`, désignez **l'adresse visée** (`ip daddr {wan}`) au lieu de l'interface, en
+remplaçant la règle de la question 3.1 ou en en ajoutant une seconde.
+
+**(c)** Sur `pc3`, lancez `tcpdump -n -i eth0 tcp` dans un second terminal et refaites la requête :
+cette fois le délai est dépassé (`code 28`). Dans la capture, `pc3` s'adresse à `{wan}.{fwd}` ; de
+quelle adresse vient la réponse qu'il reçoit (`Flags [S.]`), et qu'en fait-il (`Flags [R]`) ? (Le
+réseau étant un concentrateur, la capture montre aussi la copie du paquet que `r3` fait suivre à
+`web3`.)
+
+**(d)** Obligez `web3` à répondre à `r3` : dans une chaîne de base de type `nat` accrochée au hook
+`postrouting`, ajoutez une règle `masquerade` pour les connexions qui **viennent de `lan3`**
+(`{lan}`) et **vont au port 80 de `web3`** (`{web3}`). Refaites la requête depuis `pc3` :
+`SERVER=web3` ; lisez `CLIENT_IP`. Vérifiez enfin, depuis `ext2`, que `web3` voit toujours un
+client d'Internet sous sa vraie adresse.
+""").format(wan=wan[3], fwd=FWD_PORT, lan=lan[3], web3=host["web3"])
+            + tr("""
+- À l'étape (c), adresse source de la réponse `Flags [S.]` que reçoit `pc3` : @@{reply_src:[0-9.]+}@@
+- À l'étape (d), `CLIENT_IP=` dans la réponse que reçoit `pc3` : @@{client_after:[0-9.]+}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r3`, la règle de redirection désigne l'adresse visée, et une règle
+`masquerade` traduit la source des clients internes :
+
+```
+{conf}```
+
+En ligne de commande : `nft flush chain {table} prerouting`, `{forward}`, `{chain}` puis
+`{hairpin}`.
+
+Les trois étapes vues de `pc3` : (a) le paquet arrive par `eth0`, aucune règle ne lui convient, il
+est destiné à `r3` lui-même où rien n'écoute sur le port {fwd} : refus immédiat, `code 7` ; (c) la
+destination est traduite, `web3` reçoit un SYN de `{pc3}` et répond **directement** à `pc3`, qui
+est dans son réseau : `pc3` reçoit un `Flags [S.]` de `{web3}.80` alors qu'il s'est adressé à
+`{wan}.{fwd}`, il le rejette (`Flags [R]`) et `curl` attend en vain, `code 28` ; (d) `web3` voit
+`r3` comme client et lui répond : `SERVER=web3`, `CLIENT_IP={gw}`.
+
+Pièges : une règle `masquerade` sans `ip saddr {lan}` (par exemple `oifname "eth0" masquerade`),
+qui traduit aussi les clients d'Internet : `web3` ne verrait plus que `{gw}` ; `oifname "eth1"`
+par habitude (ces connexions sortent par `eth0`).
+
+- Réponses : `{web3}` ; `{gw}`.
+- L'évaluation : `hairpin` (6 points : depuis la copie de `pc3`, `curl` vers
+  `http://{wan}:{fwd}/` doit renvoyer `SERVER=web3`), `hairpin_scope` (2 points, comptés avec le
+  précédent : la requête de la copie de `ext2` renvoie toujours `CLIENT_IP={ext2}`) et le
+  formulaire `q_hairpin` (1 point par réponse).
+""").format(conf=render_tables({NAT_TABLE: {"prerouting": [ns.rule_port_forward(3)],
+                                            "postrouting": [ns.rule_hairpin()]}}),
+            table=NAT_TABLE, forward=nft_rule(NAT_TABLE, "prerouting", ns.rule_port_forward(3)),
+            chain=nft_chain(NAT_TABLE, "postrouting"), hairpin=nft_rule(NAT_TABLE, "postrouting", ns.rule_hairpin()),
+            fwd=FWD_PORT, pc3=host["pc3"], web3=host["web3"], wan=wan[3], gw=gw[3], lan=lan[3], ext2=ext2)),
+            cheat_answers={"final": q33_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("hairpin"), max_grade=6, grade_part=part3, grade=6 * int(hairpin),
+            description=tr("une machine de lan3 atteint web3 par l'adresse publique de r3 (hairpin)"),
+        )
+        self.add_grade_element(
+            title=no_tr("hairpin_scope"), max_grade=2, grade_part=part3, grade=2 * int(hairpin and internet_kept),
+            description=tr("web3 voit toujours les clients d'Internet sous leur adresse (compté avec le hairpin)"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_hairpin"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q33.get("reply_src"), host["web3"])) + int(_same_ip(q33.get("client_after"), gw[3])),
+            description=tr("hairpin : d'où vient la réponse sans traduction de source, ce que voit web3 ensuite"),
+        )
+
+        # =====================================================================
+        # Part 4 — r4: load balancing
+        # =====================================================================
+        part4 = self.add_grade_part(no_tr("part4"), tr("Partie 4 — Répartir la charge entre deux serveurs"))
+
+        self.question_dummy(
+            section=self.section(0),
+            title=tr("Répartir la charge entre deux serveurs"),
+            description=tr("""
+**Site 4** : deux serveurs web identiques, `web4a` (`{web4a}`) et `web4b` (`{web4b}`), dans `lan4`
+(`{lan}`), derrière **`r4`** (`eth0` : `{gw}`, `eth1` : `{wan}`). Le jeu de règles de `r4` est
+vide.
+
+**But** : les connexions qui arrivent d'Internet sur le port {vip} de `r4` sont réparties à tour
+de rôle entre les deux serveurs. **À lire** : section @@ref:load-balancing@@ des Informations.
+""").format(web4a=host["web4a"], web4b=host["web4b"], lan=lan[4], gw=gw[4], wan=wan[4], vip=VIP_PORT)
+            + instructor(tr("""
+**Pour l'enseignant.** Le fichier de référence de `r4` (état `final`) :
+
+```
+{conf}```
+
+Barème de la partie : `load_balancing` 9, formulaire `q_balancing` 3.
+""").format(conf=ns.reference_conf("r4"))),
+        )
+
+        q41_answers = {"unit": "connection", "client_ip": str(ext2), "failure": "keeps"}
+        q41 = self.question_form(
+            section=self.section(1),
+            title=tr("Le tourniquet numgen"),
+            description=tr("""
+**(a)** Sur `r4`, créez une table `ip nat`, une chaîne de base `prerouting` de type `nat`, et une
+règle `dnat to numgen inc mod 2 map {{ … }}` pour ce qui arrive par `eth1` sur le port TCP {vip} :
+un **tourniquet strict** (`inc`) entre `{web4a}` et `{web4b}` (section @@ref:numgen@@). Entourez
+d'apostrophes ce qui suit `nft` : le shell interpréterait les accolades.
+
+**(b)** Depuis `ext2`, envoyez huit requêtes :
+`for i in 1 2 3 4 5 6 7 8; do curl -s -m 5 http://{wan}/ | grep SERVER=; done`. `web4a` et `web4b`
+doivent alterner.
+
+**(c)** Lisez `CLIENT_IP=` dans une réponse complète de `web4b`. Tous les paquets d'une même
+requête vont-ils au même serveur (section @@ref:lb-limits@@) ?
+
+**(d)** Facultatif : remplacez `numgen inc mod 2` par `jhash ip saddr mod 2` et refaites l'étape
+(b) depuis `ext2`, puis depuis `ext1` : que constatez-vous (section @@ref:jhash@@) ? **Remettez
+ensuite le tourniquet** : l'évaluation envoie huit requêtes d'un même client et attend des
+réponses des deux serveurs.
+""").format(vip=VIP_PORT, web4a=host["web4a"], web4b=host["web4b"], wan=wan[4])
+            + tr("""
+- La répartition se fait : @@{unit:>paquet par paquet>>>packet|connexion par connexion>>>connection|octet par octet>>>byte}@@
+- `CLIENT_IP=` dans une réponse de `web4b` à `ext2` : @@{client_ip:[0-9.]+}@@
+- Si `web4b` tombe en panne, `r4` : @@{failure:>le détecte et envoie tout à web4a>>>detects|renvoie une erreur aux clients>>>error|continue de lui envoyer une connexion sur deux>>>keeps}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r4` : `nft add table {table}`, `{chain}` puis `{rule}`, soit :
+
+```
+{conf}```
+
+`numgen inc mod 2` est un compteur qui vaut 0, 1, 0, 1… ; le dictionnaire associe 0 à `web4a` et
+1 à `web4b`, et le port ({vip}) est conservé. La règle n'est parcourue que par le premier paquet
+de chaque connexion : les connexions alternent, tous les paquets d'une connexion vont au même
+serveur, et le serveur voit le vrai client (`CLIENT_IP={ext2}`). Rien ne surveille les serveurs :
+si l'un s'arrête, une connexion sur deux échoue.
+
+Variantes : `numgen random mod 2` répartit au hasard (les huit requêtes de l'évaluation tombent
+sur le même serveur une fois sur 128) ; `jhash ip saddr mod 2` envoie toujours un même client au
+même serveur et ne rapporte que 4 points sur 9, comme un simple `dnat to {web4a}`.
+
+- Réponses : connexion par connexion ; `{ext2}` ; continue de lui envoyer une connexion sur deux.
+- L'évaluation : `load_balancing` ({n} `curl` vers `http://{wan}/?probe=N` depuis la copie de
+  `ext1`, un client d'Internet comme un autre : 9 points si `web4a` **et** `web4b` répondent, 4 si
+  un seul des deux répond) et le formulaire `q_balancing` (1 point par réponse).
+""").format(table=NAT_TABLE, chain=nft_chain(NAT_TABLE, "prerouting"),
+            rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_load_balancing()),
+            conf=render_tables(ns.reference_tables("r4")), vip=VIP_PORT, ext2=ext2, web4a=host["web4a"],
+            wan=wan[4], n=LB_REQUESTS)),
+            cheat_answers={"final": q41_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("load_balancing"), max_grade=9, grade_part=part4,
+            grade=(9 if len(answering) == 2 else 4 * len(answering)),
+            description=tr("les connexions au port {port} de r4 sont réparties entre web4a et web4b").format(port=VIP_PORT),
+        )
+        self.add_grade_element(
+            title=no_tr("q_balancing"), max_grade=3, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q41.get("unit")) == "connection") + int(_same_ip(q41.get("client_ip"), ext2))
+                  + int(_norm(q41.get("failure")) == "keeps"),
+            description=tr("répartition de charge : par connexion, sans traduction de source ni surveillance"),
+        )
+
+        # =====================================================================
+        # Part 5 — r5: transparent proxy and its exception
+        # =====================================================================
+        part5 = self.add_grade_part(no_tr("part5"), tr("Partie 5 — Proxy transparent"))
+
+        self.question_dummy(
+            section=self.section(0),
+            title=tr("Proxy transparent"),
+            description=tr("""
+**Site 5** : les postes `pc5` (`{pc5}`) et `admin` (`{admin}`) dans `lan5` (`{lan}`), derrière
+**`r5`** (`eth0` : `{gw}`, `eth1` : `{wan}`). Sur `r5`, un serveur de test nommé `proxy` écoute sur
+le port {proxy} : il tient lieu de proxy web. Le jeu de règles de `r5` fait déjà sortir `lan5`
+sous son adresse publique :
+
+```
+{given}```
+
+**But** : le HTTP (port 80) que les machines de `lan5` envoient vers Internet est remis au proxy
+de `r5`, sans rien configurer sur les postes ; celui du poste `admin` y échappe. **À lire** :
+section @@ref:redirect@@ des Informations.
+""").format(pc5=host["pc5"], admin=host["admin"], lan=lan[5], gw=gw[5], wan=wan[5], proxy=PROXY_PORT,
+            given=render_tables(ns.given_tables("r5")))
+            + instructor(tr("""
+**Pour l'enseignant.** Le fichier de référence de `r5` (état `final`) :
+
+```
+{conf}```
+
+Barème de la partie : `redirect` 6, `redirect_lan_only` 2, `proxy_exception` 5, formulaires
+`q_proxy` 3 et `q_exception` 2.
+""").format(conf=ns.reference_conf("r5"))),
+        )
+
+        q51_answers = {"client_before": str(wan[5]), "server_ip": str(gw[5]), "server_port": str(PROXY_PORT)}
+        q51 = self.question_form(
+            section=self.section(1),
+            title=tr("Intercepter le HTTP qui sort"),
+            description=tr("""
+**(a)** Avant de rien changer : depuis `pc5`, `curl -s -m 5 http://{ext1}/`. Qui répond, et sous
+quelle adresse `ext1` voit-il `pc5` ?
+
+**(b)** Dans la table `ip nat` de `r5`, créez une chaîne de base de type `nat` accrochée au hook
+`prerouting`, et la règle `redirect` qui remet au port {proxy} de `r5` les connexions TCP vers le
+port 80 qui **arrivent par `eth0`**, quelle que soit leur destination (section
+@@ref:redirect-to@@).
+
+**(c)** Refaites la requête depuis `pc5` et lisez `SERVER=`, `SERVER_IP=` et `SERVER_PORT=` :
+`pc5` croit toujours parler à `{ext1}` (section @@ref:transparent-proxy@@). Depuis `ext2`,
+`curl -s -m 5 http://{wan}/ ; echo "code $?"` doit échouer (`code 7`) : le proxy n'est pas offert
+à Internet.
+""").format(ext1=ext1, proxy=PROXY_PORT, wan=wan[5])
+            + tr("""
+- À l'étape (a), `CLIENT_IP=` dans la réponse de `ext1` : @@{client_before:[0-9.]+}@@
+- À l'étape (c), `SERVER_IP=` dans la réponse que reçoit `pc5` : @@{server_ip:[0-9.]+}@@
+- À l'étape (c), `SERVER_PORT=` dans cette réponse : @@{server_port:[0-9]+}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r5` : `{chain}` puis `{rule}`, soit dans la table `{table}` :
+
+```
+{conf}```
+
+Avant : `SERVER=ext1` et `CLIENT_IP={wan}` (la règle `masquerade` donnée). Après : `SERVER=proxy`,
+`SERVER_IP={gw}`, `SERVER_PORT={proxy}`, `CLIENT_IP={pc5}` : `redirect` remplace la destination
+par l'adresse de `r5` sur l'interface d'arrivée et le port par {proxy} ; `dnat to {gw}:{proxy}`
 aurait ici le même effet.
 
-Vérification : depuis `cli`,
-`curl -s -m 3 http://{ext}/` renvoie `SERVER=proxy`, `SERVER_IP={fw_lan}`, `SERVER_PORT={proxy}` et
-`CLIENT_IP={cli}` : c'est le proxy de `fw` qui a répondu, pas `ext`. Les requêtes de `cli` vers
-`web1` ou `web2` restent dans le LAN, ne traversent pas `fw` et ne sont pas interceptées.
+Pièges : sans `iifname "eth0"`, la règle capte aussi le port 80 du côté d'Internet (`ext2` obtient
+alors `SERVER=proxy` en visant `{wan}`) ; `oifname` n'a pas de sens en `prerouting`.
 
-Pièges : sans `iifname "eth0"`, la règle capte aussi le port 80 côté WAN si elle précède celle de
-la question 3 (c'est alors le proxy qui répond à `ext`) ; `oifname` n'a pas de sens en `prerouting`.
-
-Évaluation : `proxy_transparent` (3 points : depuis la copie cachée de `cli`, `curl` vers
-`http://{ext}:80/` doit renvoyer `SERVER=proxy` ; rien n'écoute sur le port 80 de la copie de `ext` :
-seule l'interception donne une réponse). Le jeu de règles complet des quatre questions est dans
-*Organisation du TP*.
-""").format(conf=render_table({"prerouting": [self.net_scheme.rule_proxy()]}), table=NAT_TABLE,
-            rule=self.net_scheme.rule_proxy(), fw_lan=d.ips.fw_net1.ip, proxy=PROXY_PORT, ext=d.ips.ext.ip,
-            cli=d.ips.cli.ip)),
+- Réponses : `{wan}` ; `{gw}` ; {proxy}.
+- L'évaluation : `redirect` (6 points : depuis la copie de `pc5`, `curl` vers `http://{ext1}/`
+  doit renvoyer `SERVER=proxy`), `redirect_lan_only` (2 points, comptés avec le précédent : depuis
+  la copie de `ext2`, `curl` vers `http://{wan}/` ne doit pas être servi par le proxy) et le
+  formulaire `q_proxy` (1 point par réponse).
+""").format(chain=nft_chain(NAT_TABLE, "prerouting"), rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_proxy()),
+            table=NAT_TABLE, conf=render_tables({NAT_TABLE: {"prerouting": [ns.rule_proxy()]}}),
+            wan=wan[5], gw=gw[5], proxy=PROXY_PORT, pc5=host["pc5"], ext1=ext1)),
+            cheat_answers={"final": q51_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("redirect"), max_grade=6, grade_part=part5, grade=6 * int(redirect),
+            description=tr("le HTTP qui sort de lan5 est remis au proxy de r5"),
+        )
+        self.add_grade_element(
+            title=no_tr("redirect_lan_only"), max_grade=2, grade_part=part5, grade=2 * int(redirect and wan_spared),
+            description=tr("le port 80 du côté d'Internet n'est pas remis au proxy (compté avec la redirection)"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_proxy"), max_grade=3, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q51.get("client_before"), wan[5])) + int(_same_ip(q51.get("server_ip"), gw[5]))
+                  + int(_is_int(q51.get("server_port"), PROXY_PORT)),
+            description=tr("proxy transparent : qui répond avant et après la redirection"),
         )
 
-        # ---- sondes ----
-        # 1. SNAT : cli -> ext:9000 ; ext voit CLIENT_IP = adresse WAN de fw
-        snat_body, _ = firewall.probe_http(self, "cli_h", d.ips.ext, port=NET_SVC_PORT)
-        snat_client = firewall.http_field(snat_body, "CLIENT_IP")
-        snat_ok = (snat_client == fw_wan_ip)
+        q52_answers = {"admin_server": "ext1", "position": "before"}
+        q52 = self.question_form(
+            section=self.section(1),
+            title=tr("Une exception : l'ordre des règles"),
+            description=tr("""
+**(a)** Depuis `admin` (`{admin}`), `curl -s -m 5 http://{ext1}/` : le proxy répond, comme à
+`pc5`.
 
-        # 2. DNAT port-forward : ext -> fw_wan:8080 ; répond web1
-        fwd_body, _ = firewall.probe_http(self, "ext_h", d.ips.fw_net2, port=FWD_PORT)
-        fwd_ok = (firewall.http_field(fwd_body, "SERVER") == "web1")
+**(b)** Le poste `admin` ne doit pas passer par le proxy. Dans une chaîne `nat`, une règle
+`accept` dispense de traduction les connexions qu'elle désigne (section @@ref:nat-rules@@), à
+condition d'être évaluée avant la règle qui traduit. Ajoutez une règle `accept` pour le HTTP qui
+arrive par `eth0` avec l'adresse source `{admin}`, à la bonne place : `nft add rule` ajoute en fin
+de chaîne, `nft insert rule` en tête.
 
-        # 3. Load balancing : ext -> fw_wan:80 répété ; web1 ET web2 répondent
-        backends = firewall.probe_http_backends(self, "ext_h", d.ips.fw_net2, port=VIP_PORT, n=8)
-        seen = {b for b in backends if b}
-        lb_both = ("web1" in seen) and ("web2" in seen)
-        lb_any = ("web1" in seen) or ("web2" in seen)
+**(c)** Vérifiez l'ordre des règles (`nft -a list table ip nat`), puis refaites la requête depuis
+`admin` et depuis `pc5`.
+""").format(admin=host["admin"], ext1=ext1)
+            + tr("""
+- Une fois l'exception en place, `SERVER=` dans la réponse que reçoit `admin` : @@{admin_server:[a-z0-9]+}@@
+- Par rapport à la règle `redirect`, la règle `accept` doit être placée : @@{position:>après>>>after|avant>>>before|dans une autre chaîne, de type filter>>>filter}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r5` : `{rule}`, ce qui donne la chaîne :
 
-        # 4. Proxy transparent : cli -> ext:80 redirigé vers le proxy local de fw
-        proxy_body, _ = firewall.probe_http(self, "cli_h", d.ips.ext, port=80)
-        proxy_ok = (firewall.http_field(proxy_body, "SERVER") == "proxy")
+```
+{conf}```
 
-        self.add_grade_element(title=no_tr("snat_masquerade"), max_grade=3, grade=3 * int(snat_ok),
-            description=tr("SNAT : le LAN sort masqué derrière l'adresse WAN de fw"))
-        self.add_grade_element(title=no_tr("dnat_port_forward"), max_grade=3, grade=3 * int(fwd_ok),
-            description=tr("DNAT : WAN:{_arg0} redirigé vers web1:80").format(_arg0=FWD_PORT))
-        self.add_grade_element(title=no_tr("load_balancing"), max_grade=4,
-            grade=(4 if lb_both else (2 if lb_any else 0)),
-            description=tr("Répartition de charge WAN:{_arg0} entre web1 et web2").format(_arg0=VIP_PORT))
-        self.add_grade_element(title=no_tr("proxy_transparent"), max_grade=3, grade=3 * int(proxy_ok),
-            description=tr("Proxy transparent : HTTP du LAN redirigé vers fw:{_arg0}").format(_arg0=PROXY_PORT))
-        self.add_grade_element(title=no_tr("regle_masquerade_presente"), max_grade=1,
-            grade=int(firewall.ruleset_mentions(rs, "masquerade") or firewall.ruleset_mentions(rs, "snat")),
-            description=tr("Présence d'une règle masquerade/snat"))
-        self.add_grade_element(title=no_tr("regle_dnat_presente"), max_grade=1,
-            grade=int(firewall.ruleset_mentions(rs, "dnat") or firewall.ruleset_mentions(rs, "redirect")),
-            description=tr("Présence d'une règle dnat/redirect"))
+Depuis `admin` : `SERVER=ext1` et `CLIENT_IP={wan}` (sa connexion, dispensée du `redirect`, sort
+par la règle `masquerade`) ; depuis `pc5`, toujours `SERVER=proxy`. `return` à la place de
+`accept`, ou le critère `ip saddr != {admin}` dans la règle `redirect`, conviennent aussi.
+
+Piège : la règle ajoutée avec `nft add rule`, donc après le `redirect`, qui a déjà décidé pour
+`admin` : elle n'est jamais atteinte.
+
+- Réponses : `ext1` ; avant.
+- L'évaluation : `proxy_exception` (5 points, comptés seulement si la redirection fonctionne pour
+  `pc5` : depuis la copie de `admin`, `curl` vers `http://{ext1}/` doit renvoyer `SERVER=ext1`) et
+  le formulaire `q_exception` (1 point par réponse).
+""").format(rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_proxy_exception(), verb="insert"),
+            conf=render_tables({NAT_TABLE: {"prerouting": [ns.rule_proxy_exception(), ns.rule_proxy()]}}),
+            wan=wan[5], admin=host["admin"], ext1=ext1)),
+            cheat_answers={"final": q52_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("proxy_exception"), max_grade=5, grade_part=part5, grade=5 * int(redirect and admin_spared),
+            description=tr("le HTTP du poste admin échappe au proxy (compté avec la redirection)"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_exception"), max_grade=2, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q52.get("admin_server")) == "ext1") + int(_norm(q52.get("position")) == "before"),
+            description=tr("exception au proxy : qui répond à admin, la place de la règle accept"),
+        )
+
+        # =====================================================================
+        # Part 6 — r6: NAT is not a firewall
+        # =====================================================================
+        part6 = self.add_grade_part(no_tr("part6"), tr("Partie 6 — Le NAT n'est pas un pare-feu"))
+
+        self.question_dummy(
+            section=self.section(0),
+            title=tr("Le NAT n'est pas un pare-feu"),
+            description=tr("""
+**Site 6** : le serveur `srv6` (`{srv6}`) dans `lan6` (`{lan}`), derrière **`r6`** (`eth0` : `{gw}`,
+`eth1` : `{wan}`). `srv6` a deux services : son site web (port 80), **publié** sur le port {fwd} de
+`r6`, et un service interne (port {intranet}, `SERVER=intranet`) qui ne doit pas sortir du site.
+Le jeu de règles de `r6` traduit déjà ce qu'il faut :
+
+```
+{given}```
+
+**But** : constater que cette traduction ne protège pas `lan6`, puis filtrer ce qui traverse `r6`
+sans rien casser de ce qui doit fonctionner. **À lire** : sections @@ref:not-a-firewall@@ et
+@@ref:nat-filter@@ des Informations.
+""").format(srv6=host["srv6"], lan=lan[6], gw=gw[6], wan=wan[6], fwd=FWD_PORT, intranet=INTRANET_PORT,
+            given=render_tables(ns.given_tables("r6")))
+            + instructor(tr("""
+**Pour l'enseignant.** Le fichier de référence de `r6` (état `final`) :
+
+```
+{conf}```
+
+Barème de la partie : `forward_policy` 2, `intrusion_blocked` 5, `lan_out` 3, `published_kept` 4,
+formulaires `q_intrusion` 2 et `q_forward` 2.
+""").format(conf=ns.reference_conf("r6"))),
+        )
+
+        q61_answers = {"intruder_server": "intranet", "nat_protects": "no"}
+        q61 = self.question_form(
+            section=self.section(1),
+            title=tr("Entrer malgré le NAT"),
+            description=tr("""
+**(a)** Ce qui fonctionne déjà : depuis `ext2`, `curl -s -m 5 http://{wan}:{fwd}/` (le service
+publié répond) ; depuis `srv6`, `curl -s -m 5 http://{ext1}:{svc}/` (`srv6` sort sous l'adresse de
+`r6`).
+
+**(b)** Jouez le voisin indélicat, celui qui partage avec `r6` le réseau du fournisseur d'accès.
+Sur `ext2`, ajoutez une route vers le réseau privé à travers `r6` : `ip route add {lan} via
+{wan}`. Puis visez directement l'adresse privée : `curl -s -m 5 http://{srv6}:{intranet}/` et
+`ping -c 1 {srv6}`.
+
+**(c)** Qui a répondu ? `r6` est un routeur : il fait suivre ce paquet comme un autre, et aucune
+règle de traduction ne s'y oppose (section @@ref:not-a-firewall@@).
+""").format(wan=wan[6], fwd=FWD_PORT, ext1=ext1, svc=SVC_PORT, lan=lan[6], srv6=host["srv6"],
+            intranet=INTRANET_PORT)
+            + tr("""
+- À l'étape (b), `SERVER=` dans la réponse que reçoit `ext2` : @@{intruder_server:[a-z0-9]+}@@
+- Les règles de traduction de `r6` ont-elles empêché `ext2` d'atteindre le service interne ? @@{nat_protects:>oui>>>yes|non>>>no}@@
+""")
+            + instructor(tr("""
+**Solution.** Rien à configurer sur `r6`. Avec la route, `ext2` envoie à `r6` un paquet destiné à
+`{srv6}` ; `r6` le route vers `lan6` (aucune règle `nat` ne lui convient, et il n'y a pas de
+filtre) ; la réponse de `srv6` appartient à une connexion déjà suivie : la règle `masquerade` ne
+la concerne pas, elle repart telle quelle. `curl` renvoie `SERVER=intranet`, `SERVER_IP={srv6}`,
+`CLIENT_IP={ext2}`, et le `ping` aboutit. Seul le fait que `{lan}` ne soit pas routé sur Internet
+« protégeait » `srv6` ; il suffit d'être du bon côté de `r6` pour s'en affranchir.
+
+- Réponses : `intranet` ; non.
+- Cette question n'est évaluée que par le formulaire (`q_intrusion`, 1 point par réponse).
+""").format(srv6=host["srv6"], ext2=ext2, lan=lan[6])),
+            cheat_answers={"final": q61_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("q_intrusion"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q61.get("intruder_server")) == "intranet") + int(_norm(q61.get("nat_protects")) == "no"),
+            description=tr("un voisin qui s'ajoute une route atteint le service interne malgré le NAT"),
+        )
+
+        q62_answers = {"forward_daddr": str(host["srv6"]), "forward_dport": "80"}
+        q62 = self.question_form(
+            section=self.section(1),
+            title=tr("Filtrer ce qui traverse le routeur"),
+            description=tr("""
+Sur `r6`, **sans toucher à la table `ip nat`**, créez une table `ip filter` et une chaîne de base
+`forward` de type `filter` (priorité `filter`) dont la **politique est `drop`** (section
+@@ref:filter-rules@@), avec les règles qui acceptent :
+
+**(a)** les paquets des connexions déjà établies, ou liées à elles (`ct state`) ;
+
+**(b)** les nouvelles connexions qui **sortent** : entrées par `eth0`, sorties par `eth1` ;
+
+**(c)** le service publié : les connexions que la règle `dnat` a traduites (`ct status dnat`) ou,
+ce qui revient au même ici, celles qui vont à l'adresse et au port que la chaîne `forward` **voit**
+pour ce service (section @@ref:what-forward-sees@@).
+
+Vérifiez avec de **nouvelles** connexions (une connexion ou un `ping` commencés avant le filtre
+restent acceptés, comme « établis ») : depuis `ext2`, `curl -s -m 5 http://{srv6}:{intranet}/` et
+`ping -c 1 -W 2 {srv6}` n'aboutissent plus ; `curl -s -m 5 http://{wan}:{fwd}/` répond toujours ;
+depuis `srv6`, `curl -s -m 5 http://{ext1}:{svc}/` aussi.
+""").format(srv6=host["srv6"], intranet=INTRANET_PORT, wan=wan[6], fwd=FWD_PORT, ext1=ext1, svc=SVC_PORT)
+            + tr("""
+- Pour une connexion de `ext2` au port publié de `r6`, adresse de destination que voit la chaîne `forward` : @@{forward_daddr:[0-9.]+}@@
+- Port de destination qu'elle voit pour cette connexion : @@{forward_dport:[0-9]+}@@
+""")
+            + instructor(tr("""
+**Solution.** Sur `r6` : `nft add table {table}`, `{chain}` puis les trois règles, soit :
+
+```
+{conf}```
+
+La chaîne `forward` voit les paquets après le DNAT (fait en `prerouting`) et avant le SNAT (fait
+en `postrouting`) : pour le service publié, la destination `{srv6}`, port 80, et non `{wan}`, port
+{fwd}. `iifname "eth1" ip daddr {srv6} tcp dport 80 accept` convient donc à la place de `ct status
+dnat accept` (mais laisse aussi passer le voisin qui vise directement `{srv6}:80`).
+
+Pièges : la politique `drop` sans la règle `ct state established,related accept` (plus aucune
+réponse ne passe) ; ouvrir le port {fwd} dans le filtre (la chaîne `forward` ne le voit jamais) ;
+`nft flush ruleset` ou un fichier qui ne reprend pas la table `ip nat` donnée.
+
+- Réponses : `{srv6}` ; 80.
+- L'évaluation : `forward_policy` (2 points : `nft -j list ruleset` de `r6` montre une chaîne de
+  base de type `filter` accrochée à `forward` dont la politique est `drop`), `intrusion_blocked`
+  (5 points : depuis la copie de `ext2`, qui a la route, la connexion TCP au port {intranet} de
+  `{srv6}` et le `ping` échouent, alors que la copie de `r6` joint ce service), puis, comptés
+  seulement quand l'intrusion est bloquée, `lan_out` (3 points : depuis la copie de `srv6`, `curl`
+  vers `http://{ext1}:{svc}/` répond) et `published_kept` (4 points : depuis la copie de `ext2`,
+  `curl` vers `http://{wan}:{fwd}/` renvoie `SERVER=srv6`) ; et le formulaire `q_forward` (1 point
+  par réponse).
+""").format(table=FILTER_TABLE, chain=nft_chain(FILTER_TABLE, "forward"),
+            conf=render_tables({FILTER_TABLE: {"forward": ns.rules_forward()}}), srv6=host["srv6"],
+            wan=wan[6], fwd=FWD_PORT, intranet=INTRANET_PORT, ext1=ext1, svc=SVC_PORT)),
+            cheat_answers={"final": q62_answers},
+        )
+        self.add_grade_element(
+            title=no_tr("forward_policy"), max_grade=2, grade_part=part6, grade=2 * int(forward_drop),
+            description=tr("une chaîne forward de type filter dont la politique est drop"),
+        )
+        self.add_grade_element(
+            title=no_tr("intrusion_blocked"), max_grade=5, grade_part=part6, grade=5 * int(intrusion_blocked),
+            description=tr("le voisin qui a une route n'atteint plus le service interne de srv6, ni son ping"),
+        )
+        self.add_grade_element(
+            title=no_tr("lan_out"), max_grade=3, grade_part=part6, grade=3 * int(intrusion_blocked and lan_out),
+            description=tr("srv6 accède toujours à Internet (compté une fois l'intrusion bloquée)"),
+        )
+        self.add_grade_element(
+            title=no_tr("published_kept"), max_grade=4, grade_part=part6,
+            grade=4 * int(intrusion_blocked and published),
+            description=tr("le service publié répond toujours à Internet (compté une fois l'intrusion bloquée)"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_forward"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            grade=int(_same_ip(q62.get("forward_daddr"), host["srv6"])) + int(_is_int(q62.get("forward_dport"), 80)),
+            description=tr("ce que voit la chaîne forward pour le service publié : l'adresse et le port internes"),
+        )
 
 
 _TRANSLATIONS = {}
