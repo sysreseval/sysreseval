@@ -1,4 +1,8 @@
 {
+  "_DRAFT_misc": {
+    "en": "*** Works in progress: various projects not yet completed and tested (some maybe bogus and/or incompletes)",
+    "fr": "*** travaux en cours : divers projets non encore finalisés et testés (certains peuvent être buggés et/ou incomplets)"
+  },
   "dhcp.py": {
     "en": "DHCP (Dynamic Host Configuration Protocol)",
     "fr": "DHCP (Dynamic Host Configuration Protocol)"
