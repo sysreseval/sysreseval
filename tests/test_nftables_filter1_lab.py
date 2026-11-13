@@ -448,21 +448,32 @@ def test_form_answers(lab, data, tmp_pub_dir):
 def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     grade, ns = _simulate(lab, data, tmp_pub_dir, _outputs_done, instructor_mode=True)
     info = _text(ns.informations)
-    assert info.count('\n## ') == 11 and 'ct state established,related' in info and 'nflog:0' in info
+    assert info.count('\n## ') == 14 and 'ct state established,related' in info and 'nflog:0' in info
     assert str(data.nets.lan) not in info     # instance data belongs to the first question
+    # the examples of the course use the documentation ranges, never an address an instance could draw
+    assert not re.search(r'\b(10\.\d+|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+\b', info)
     from SRE.informations import resolve_informations, resolve_text
     resolved, numbering = resolve_informations(ns.informations)
     course = _text(resolved)
-    assert [s.number for s in numbering.sections('fr') if s.level == 1] == [str(i) for i in range(1, 12)]
-    assert [s.tag for s in numbering.sections('fr')] == ['intro', 'hooks', 'structure', 'selectors', 'verdicts', 'conntrack',
-                                                         'nft-cli', 'logging', 'testing', 'iptables', 'cheatsheet']
+    sections = numbering.sections('fr')
+    assert [s.number for s in sections if s.level == 1] == [str(i) for i in range(1, 15)]
+    assert [s.tag for s in sections if s.level == 1] == ['intro', 'hooks', 'structure', 'selectors', 'verdicts', 'conntrack',
+                                                        'nft-cli', 'logging', 'sets', 'limits', 'nat', 'testing',
+                                                        'practices', 'cheatsheet']
+    assert {s.level for s in sections} == {1, 2} and all(s.tag for s in sections)
+    hooks = [s.tag for s in sections if s.number.startswith('2.')]
+    assert hooks == ['hooks-ip', 'ingress', 'families']        # the ingress / egress hooks have their own section
+    for hook in ('prerouting', 'input', 'forward', 'output', 'postrouting', 'ingress', 'egress'):
+        assert f'**`{hook}`**' in info, hook
+    assert 'iptables' not in [s.tag for s in sections] and 'iptables -' not in info
     assert '## <a id="conntrack"></a>6. Le suivi de connexion' in course and '- [7. La commande nft](#nft-cli)' in course
+    assert '    - [2.2. Les hooks ingress et egress](#ingress)' in course
     assert '@@' not in course
     questions = list(grade.get_questions_ordered())
     assert len(questions) == 10
     resolved_questions = [_text(resolve_text(q.description, numbering)) for q in questions]
     assert all('@@ref' not in q and '@@sec' not in q for q in resolved_questions)
-    assert 'section 9 des Informations' in resolved_questions[0] and 'section 3 des Informations' in resolved_questions[2]
+    assert 'section 12 des Informations' in resolved_questions[0] and 'section 3 des Informations' in resolved_questions[2]
     assert 'section 2 des' in resolved_questions[3] and 'sections 6 et\n7 des Informations' in resolved_questions[7]
     assert 'section 7 des Informations' in resolved_questions[8] and 'section 8 des Informations' in resolved_questions[9]
     with_instructor = [q for q in questions if has_instructor(_text(q.description))]

@@ -151,205 +151,795 @@ class NetScheme(NetScheme0):
             + info_subtitle(tr("Pare-feu, Netfilter et nftables"), tag="intro")
             + tr("""
 
-Un **pare-feu** (*firewall*) examine les paquets IP qui **entrent** dans une machine, en
-**sortent** ou la **traversent**, et applique à chacun une **politique** : le laisser passer
-(*accept*), le détruire en silence (*drop*) ou le refuser en prévenant l'émetteur (*reject*), selon
-des critères comme l'interface d'arrivée, les adresses, le protocole, les ports ou l'état de la
-connexion. Un pare-feu *de machine* (*host firewall*) protège la machine sur laquelle il tourne :
-c'est le sujet de ce TP, qui ne filtre que ce qui **entre** dans `m1`. Un pare-feu *de réseau*
-tourne sur un routeur et filtre ce qui le traverse (prochain TP).
+Un **pare-feu** (*firewall*) examine les paquets qui **entrent** dans une machine, en **sortent**
+ou la **traversent**, et applique à chacun une **politique** : le laisser passer (*accept*), le
+détruire en silence (*drop*) ou le refuser en prévenant l'émetteur (*reject*), selon des critères
+comme l'interface, les adresses, le protocole, les ports ou l'état de la connexion. Un pare-feu
+*de machine* (*host firewall*) protège la machine sur laquelle il tourne : c'est le sujet de ce
+TP, qui ne filtre que ce qui **entre** dans `m1`. Un pare-feu *de réseau* tourne sur un routeur et
+filtre ce qui le traverse (prochain TP).
 
-Sous Linux, le filtrage est fait dans le noyau par **Netfilter**. L'outil qui le configure
-aujourd'hui est **`nft`**, du projet **nftables**, qui remplace depuis Debian 10 les anciens
-`iptables`, `ip6tables`, `arptables` et `ebtables` : une seule commande et une seule syntaxe pour
-IPv4, IPv6, ARP et les ponts, un jeu de règles chargé d'un bloc (`nft -f`), des ensembles
-(`{ 80, 8080 }`) et des compteurs intégrés. La commande `iptables` existe encore (`iptables-nft`) :
-elle traduit ses règles en nftables, et `nft list ruleset` les montre aussi.
+Sous Linux, tout se passe **dans le noyau**. **Netfilter** y fournit des points d'accrochage
+(*hooks*) sur le trajet des paquets, le suivi de connexion (*conntrack*) et la traduction
+d'adresses (NAT). **nftables** exécute, à ces points d'accrochage, les règles que lui confie la
+commande **`nft`**. nftables a remplacé `iptables`, `ip6tables`, `arptables` et `ebtables` (c'est
+l'outil par défaut depuis Debian 10) : une seule commande et une seule syntaxe pour IPv4, IPv6,
+ARP et les ponts, un jeu de règles chargé d'un bloc, des ensembles et des dictionnaires intégrés
+au langage. Sur une machine récente, la commande `iptables` n'est plus qu'un traducteur : ses
+règles sont des règles nftables, que `nft list ruleset` affiche aussi.
+
+Le vocabulaire, détaillé dans les sections suivantes :
+
+| terme | rôle |
+|-------|------|
+| famille | les paquets qu'une table voit : `ip` (IPv4), `ip6` (IPv6), `inet` (les deux), `arp`, `bridge`, `netdev` |
+| table | un conteneur nommé, dans une famille, de chaînes, d'ensembles et de compteurs |
+| chaîne de base | une liste de règles accrochée à un hook, avec une priorité et une politique par défaut |
+| chaîne régulière | une liste de règles sans hook, où l'on arrive par un saut (`jump`, `goto`) |
+| règle | des critères puis des actions, évalués de gauche à droite |
+| verdict | ce que devient le paquet : `accept`, `drop`, `jump`… |
+| ensemble, dictionnaire | des valeurs (*set*) ou des associations clé : valeur (*map*) que les règles consultent |
+
+Les machines du TP ont nftables 1.0.6 (`nft --version`), la version de Debian 12 : c'est elle que
+ce cours décrit.
+
+**Comment lire ce cours.** Le TP n'en utilise qu'une partie : le hook `input`
+(section @@ref:hooks-ip@@), les tables, les chaînes et les règles (section @@ref:structure@@), les
+critères (@@ref:selectors@@), les verdicts (@@ref:verdicts@@), le suivi de connexion
+(@@ref:conntrack@@), la commande `nft` (@@ref:nft-cli@@), la journalisation (@@ref:logging@@) et
+les tests (@@ref:testing@@). Le reste (les hooks `ingress` et `egress`, les ensembles, la
+limitation de débit, la traduction d'adresses, les bonnes pratiques) complète le tableau : vous
+en aurez besoin dans les TP suivants et sur de vraies machines.
 """)
             + info_subtitle(tr("Le trajet d'un paquet : les hooks"), tag="hooks")
             + tr("""
 
-Netfilter offre cinq **points d'accrochage** (*hooks*) sur le trajet d'un paquet dans le noyau :
+Un **hook** (point d'accrochage) est un endroit du trajet d'un paquet dans le noyau où Netfilter
+appelle les chaînes qui s'y sont accrochées. Une chaîne de base s'accroche à **un** hook :
+choisir le hook, c'est choisir **quels paquets** la chaîne verra, et **à quel moment** de leur
+traitement.
 
 ```
-                                            ┌──────── processus locaux ────────┐
-                                            │                                  │
-                                          input                             output
-                                            │                                  │
-  arrivée ──> prerouting ──> [décision de routage] ──> forward ──> postrouting ──> départ
-                               (pour moi ? à router ?)                 ▲
-                                                                       │
-                                            (les paquets locaux passent aussi par postrouting)
+                              +-------- processus locaux --------+
+                              ^                                  |
+                            input                              output
+                              ^                                  v
+ --> ingress --> prerouting --+--> forward ----------------------+--> postrouting --> egress -->
+ (par interface)          (routage)                                               (par interface)
 ```
 
-- **`input`** : les paquets **destinés à la machine** (après la décision de routage) ;
-- **`output`** : les paquets **émis par la machine** ;
-- **`forward`** : les paquets qui **traversent** la machine (routeur) ;
-- **`prerouting`** / **`postrouting`** : avant / après la décision de routage, sur tous les
-  paquets ; c'est là que se fait la traduction d'adresses (NAT).
+### @@sec:hooks-ip@@ Les cinq hooks de la pile IP
 
-Un paquet émis par `m1` vers `m2` passe par `output` ; la réponse de `m2` arrive dans `input`.
-Un paquet de `m1` vers elle-même (`127.0.0.1`, ou sa propre adresse) passe par `output` **puis**
-par `input`, via l'interface `lo` : un pare-feu qui détruit tout en `input` casse aussi les
+- **`prerouting`** : tous les paquets **reçus**, avant la décision de routage (« ce paquet est-il
+  pour moi, ou à faire suivre ? ») ; c'est là que l'on change l'adresse de destination (DNAT) ;
+- **`input`** : les paquets **destinés à la machine**, juste avant leur remise à un processus
+  local ;
+- **`forward`** : les paquets qui **traversent** la machine, reçus par une interface et routés
+  vers une autre (elle doit faire office de routeur : `net.ipv4.ip_forward=1`) ;
+- **`output`** : les paquets **émis par les processus de la machine** ;
+- **`postrouting`** : tous les paquets qui **partent**, routés ou émis localement, juste avant
+  d'être confiés à l'interface de sortie ; c'est là que l'on change l'adresse source (SNAT,
+  *masquerade*).
+
+Un paquet suit donc l'un de ces trois trajets :
+
+| paquet | hooks traversés, dans l'ordre |
+|--------|-------------------------------|
+| reçu et destiné à la machine | `prerouting`, `input` |
+| reçu et routé vers une autre machine | `prerouting`, `forward`, `postrouting` |
+| émis par la machine | `output`, `postrouting` |
+
+Un paquet émis par `m1` vers `m2` passe par `output` puis `postrouting` ; la réponse de `m2`
+arrive par `prerouting` puis `input`. Un paquet de `m1` vers elle-même (`127.0.0.1`, ou sa propre
+adresse) fait les deux trajets à la suite, à travers l'interface `lo` : `output`, `postrouting`,
+puis `prerouting` et `input`. Un pare-feu qui détruit tout en `input` casse donc aussi les
 communications locales. Dans ce TP, on travaille uniquement dans le hook **`input`** de `m1`.
+
+### @@sec:ingress@@ Les hooks ingress et egress
+
+Deux autres hooks sont placés **au ras de l'interface réseau**, en dehors de la pile IP. À la
+différence des cinq précédents, ils sont attachés à **une interface**, que la chaîne nomme dans
+sa déclaration (`device`) :
+
+- **`ingress`** : tout ce que l'interface **reçoit**, **avant `prerouting`**, donc avant le
+  réassemblage des fragments, avant le suivi de connexion et avant le routage. C'est l'endroit
+  le moins coûteux pour détruire un trafic indésirable (une inondation de paquets, des adresses
+  sources impossibles) : le noyau n'a encore presque rien fait du paquet. En contrepartie,
+  l'état de la connexion (`ct state`) n'y est pas encore connu ;
+- **`egress`** : tout ce que l'interface **émet**, **après `postrouting`** : le dernier point de
+  contrôle avant le départ.
+
+Ces deux hooks appartiennent à la famille **`netdev`**, dont les chaînes voient **toutes les
+trames** de l'interface, quel que soit le protocole : IPv4 et IPv6, mais aussi ARP ou les trames
+802.1Q. Le hook `ingress` existe aussi dans la famille `inet` (depuis le noyau 5.10), où il ne
+voit que les paquets IPv4 et IPv6 ; `egress` (depuis le noyau 5.16) n'existe que dans la famille
+`netdev`.
+
+```
+nft add table netdev filter
+nft 'add chain netdev filter eth0_filter { type filter hook ingress device eth0 priority 0; }'
+nft add rule netdev filter eth0_filter ip saddr 198.51.100.0/24 drop
+```
+
+### @@sec:families@@ Les hooks de chaque famille
+
+| famille | paquets vus | hooks |
+|---------|-------------|-------|
+| `ip` | IPv4 | `prerouting`, `input`, `forward`, `output`, `postrouting` |
+| `ip6` | IPv6 | les cinq mêmes |
+| `inet` | IPv4 et IPv6 | les cinq mêmes, et `ingress` |
+| `arp` | ARP | `input`, `output` |
+| `bridge` | les trames qui traversent un pont (*bridge*) Linux | `prerouting`, `input`, `forward`, `output`, `postrouting` |
+| `netdev` | tout ce qui passe par une interface | `ingress`, `egress` |
+
+ARP n'est pas de l'IP : les chaînes des familles `ip`, `ip6` et `inet` ne voient jamais les
+requêtes ni les réponses ARP. C'est pourquoi une politique `drop` en `input` n'empêche pas une
+machine de trouver l'adresse MAC de ses voisines, ni de répondre à leurs requêtes ARP.
 """)
             + info_subtitle(tr("Tables, chaînes, règles"), tag="structure")
             + tr("""
 
 Un jeu de règles nftables (*ruleset*) est organisé en **tables**, qui contiennent des
-**chaînes**, qui contiennent des **règles**.
+**chaînes**, qui contiennent des **règles**. Au départ il est **vide** : nftables n'a ni table
+ni chaîne prédéfinie, et sans chaîne tous les paquets passent. Les noms des tables et des chaînes
+sont libres ; `filter` et `input` ne sont que des habitudes. Voici ce qu'affiche `nft list
+ruleset` pour un petit pare-feu ; c'est aussi la syntaxe d'un fichier de règles
+(section @@ref:nft-files@@) :
 
-Une **table** appartient à une **famille** : `ip` (IPv4), `ip6` (IPv6), **`inet`** (IPv4 et IPv6 à
-la fois, le choix recommandé pour un filtre), `arp`, `bridge`, `netdev`. Son nom est libre
-(`filter` par habitude). Une machine peut avoir plusieurs tables ; chacune est indépendante.
+```
+table inet filter {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                ct state established,related accept
+                iif "lo" accept
+                tcp dport 22 accept
+        }
+}
+```
 
-Une **chaîne de base** est accrochée à un hook et se déclare avec un **type** (`filter`, `nat` ou
-`route`), le **hook**, une **priorité** (l'ordre entre les chaînes accrochées au même hook ; `0`,
-alias `filter`, pour le filtrage) et une **politique** par défaut :
+### @@sec:tables@@ Les tables
+
+Une **table** appartient à une **famille** (section @@ref:families@@), qui fixe les paquets que
+ses chaînes peuvent voir et les hooks dont elles disposent. Pour filtrer, la famille **`inet`**
+est le choix recommandé : les mêmes règles valent pour IPv4 et pour IPv6.
 
 ```
 nft add table inet filter
+```
+
+Une machine peut avoir plusieurs tables. Chacune est un espace de noms indépendant : ses
+chaînes, ses ensembles et ses compteurs ne sont connus que de ses propres règles (un saut ne sort
+jamais de sa table). Un logiciel qui installe ses propres règles (Docker, par exemple) le fait
+dans ses propres tables : travaillez dans la vôtre et ne touchez pas aux siennes.
+
+### @@sec:base-chains@@ Les chaînes de base
+
+Une **chaîne de base** est accrochée à un hook. Sa déclaration donne quatre éléments :
+
+```
 nft 'add chain inet filter input { type filter hook input priority 0; policy drop; }'
 ```
 
-(les apostrophes protègent les accolades et les points-virgules du shell ; `nft list ruleset`
-réaffiche la chaîne avec `priority filter`, le nom de la priorité 0.) La **politique**
-(`accept` ou `drop`) est le verdict appliqué aux paquets qui atteignent la fin de la chaîne sans
-qu'aucune règle n'ait tranché. Avec `policy drop`, *tout ce qui n'est pas explicitement autorisé
-est interdit* : c'est la bonne façon de construire un pare-feu.
+- le **type** : `filter` (dans toutes les familles et à tous les hooks : c'est le type à utiliser
+  pour filtrer), `nat` (traduction d'adresses, section @@ref:nat@@) ou `route` (au hook `output` :
+  refait le routage d'un paquet émis par la machine quand une règle l'a modifié) ;
+- le **hook** (section @@ref:hooks@@) ; pour `ingress` et `egress`, il est suivi de `device` et du
+  nom de l'interface ;
+- la **priorité** : un entier qui ordonne les chaînes accrochées au même hook, de la plus petite
+  valeur à la plus grande ;
+- la **politique** par défaut, `accept` ou `drop` : le verdict appliqué aux paquets qui atteignent
+  la fin de la chaîne sans qu'aucune règle n'ait tranché. Sans `policy`, c'est `accept`.
 
-Une **chaîne nommée** (ou *régulière*) n'a pas de hook : on y arrive par un saut (`jump`, `goto`)
-depuis une autre chaîne ; elle sert à regrouper des règles (par exemple « journaliser puis
-détruire »).
+Les apostrophes protègent du shell les accolades et les points-virgules ; `nft list ruleset`
+réaffiche la chaîne avec `priority filter`, le nom de la priorité 0.
 
-Une **règle** est une suite de **critères** (section @@ref:selectors@@) suivie d'**actions** et
-d'un **verdict** (section @@ref:verdicts@@). Les règles d'une chaîne sont évaluées **dans l'ordre** ;
-la première dont tous les critères sont satisfaits et qui porte un verdict décide du sort du
-paquet. Une règle sans verdict (`counter`, `log`…) agit puis laisse le paquet continuer vers la
-règle suivante.
+Avec `policy drop`, *tout ce qui n'est pas explicitement autorisé est interdit* : c'est la bonne
+façon de construire un pare-feu. `reject` n'est pas une politique possible : pour refuser par
+défaut plutôt que détruire, on termine la chaîne par une règle `reject`.
+
+### @@sec:priorities@@ Priorités et chaînes multiples
+
+Les priorités usuelles ont un nom (dans les familles `ip`, `ip6` et `inet`) :
+
+| nom | valeur | usage |
+|-----|--------|-------|
+| `raw` | -300 | avant le suivi de connexion |
+| `mangle` | -150 | modification des paquets |
+| `dstnat` | -100 | traduction de l'adresse de destination (hook `prerouting`) |
+| `filter` | 0 | filtrage |
+| `security` | 50 | modules de sécurité (SELinux) |
+| `srcnat` | 100 | traduction de l'adresse source (hook `postrouting`) |
+
+On écrit `priority filter`, `priority 0` ou une valeur relative (`priority mangle - 5`, soit
+-155). Le suivi de connexion est lui-même accroché à `prerouting` et à `output` avec la priorité
+-200 : une chaîne de priorité `filter` voit des paquets dont l'état (`ct state`) est déjà connu,
+une chaîne de priorité `raw` passe avant lui.
+
+Plusieurs chaînes de base, de la même table ou de tables différentes, peuvent être accrochées
+au même hook : un paquet les traverse **toutes**, par priorité croissante, puis continue vers
+les hooks suivants de son trajet. Les deux verdicts ne sont pas symétriques :
+
+- **`drop` est définitif** : le paquet est détruit sur-le-champ, plus aucune chaîne ne le voit ;
+- **`accept` ne vaut que pour la chaîne de base en cours** : le paquet passe à la chaîne
+  suivante, qui peut encore le détruire.
+
+Un paquet n'arrive donc à destination que si **chaque** chaîne de base qu'il traverse
+l'accepte, et l'on ne peut pas « rattraper » dans une table un paquet qu'une autre a détruit.
+
+### @@sec:regular-chains@@ Les chaînes régulières
+
+Une **chaîne régulière** (on dit aussi chaîne *nommée*) n'a ni hook, ni type, ni politique :
+
+```
+nft add chain inet filter logdrop
+```
+
+Elle ne voit que les paquets qu'une règle lui envoie, par **`jump`** ou par **`goto`**, depuis
+une autre chaîne de la même table. À la fin d'une chaîne atteinte par `jump`, l'évaluation
+**reprend dans la chaîne appelante**, à la règle qui suit le saut ; avec `goto`, elle n'y revient
+pas (au bout d'une chaîne atteinte par `goto` depuis une chaîne de base, c'est la politique de
+celle-ci qui s'applique). Les sauts s'imbriquent sur 16 niveaux au plus, et le noyau refuse un
+jeu de règles qui boucle.
+
+Les chaînes régulières servent à **factoriser** (une chaîne « journaliser puis détruire »
+appelée de plusieurs endroits) et à **structurer** un grand jeu de règles (une chaîne par
+service, par zone ou par interface).
+
+### @@sec:rules@@ Les règles
+
+Une **règle** est une suite d'expressions évaluées **de gauche à droite** : des **critères**
+(section @@ref:selectors@@), puis des **actions** et, le plus souvent, un **verdict**
+(section @@ref:verdicts@@).
+
+```
+nft add rule inet filter input ip saddr 192.0.2.0/24 tcp dport 22 counter accept
+```
+
+- dès qu'un critère n'est pas satisfait, l'évaluation de la règle s'arrête et le paquet passe à
+  la règle suivante ;
+- les règles d'une chaîne sont évaluées **dans l'ordre** ; la première règle satisfaite qui porte
+  un verdict (`accept`, `drop`, `reject`) décide, et les suivantes ne sont pas consultées.
+  **L'ordre des règles fait donc partie de la politique** : une règle `accept` placée après une
+  règle `drop` qui couvre les mêmes paquets ne sert à rien ;
+- une règle sans verdict (`counter`, `log`…) agit, puis laisse le paquet continuer vers la règle
+  suivante ;
+- si aucune règle ne tranche, la politique de la chaîne de base s'applique.
+
+L'ordre des mots compte aussi à l'intérieur d'une règle : `tcp dport 22 counter accept` compte
+les paquets destinés au port 22, `counter tcp dport 22 accept` tous ceux qui atteignent la règle.
+
+Le noyau attribue à chaque règle un numéro qui ne change plus, son **handle** (`nft -a list
+ruleset`) : il sert à insérer, remplacer ou supprimer une règle précise
+(section @@ref:nft-edit@@). Une règle peut se terminer par un commentaire :
+`comment "ssh des administrateurs"`.
 """)
             + info_subtitle(tr("Les critères (sélecteurs)"), tag="selectors")
             + tr("""
 
+Un critère compare un **champ** du paquet, ou une information que le noyau lui associe, à une
+**valeur**. Plusieurs critères dans une même règle sont tous requis (un **et**) ; pour un **ou**,
+on utilise un ensemble de valeurs ou plusieurs règles.
+
+### @@sec:headers@@ Les en-têtes du paquet
+
 | critère | signification |
 |---------|---------------|
-| `iif lo`, `iifname "eth0"` | interface d'entrée (`iif` par index : l'interface doit exister ; `iifname` par nom) ; `oif` / `oifname` en sortie |
-| `ip saddr 192.168.1.2`, `ip saddr 192.168.1.0/24` | adresse IP source (une adresse, un réseau, une plage `192.168.1.10-192.168.1.20`, un ensemble `{ 192.168.1.2, 192.168.1.3 }`) |
-| `ip daddr 10.10.10.51` | adresse IP destination |
-| `ip protocol udp`, `meta l4proto udp` | protocole de niveau 4 (`tcp`, `udp`, `icmp`) ; `meta l4proto` vaut aussi pour IPv6 dans une table `inet` |
-| `tcp dport 8080`, `tcp dport { 80, 8080 }`, `tcp dport 8000-8100` | port TCP destination ; `tcp sport`, `udp dport`, `udp sport` de même |
+| `ip saddr 192.0.2.2`, `ip daddr 192.0.2.0/24` | adresse IPv4 source, destination (une adresse ou un réseau) |
+| `ip protocol udp` | protocole transporté par un paquet IPv4 (`tcp`, `udp`, `icmp`…) |
+| `ip ttl 1`, `ip length 1500`, `ip dscp ef` | autres champs de l'en-tête IPv4 |
+| `ip6 saddr 2001:db8::/32`, `ip6 daddr`, `ip6 hoplimit` | en-tête IPv6 |
+| `tcp dport 8080`, `tcp sport 1024-65535` | port TCP destination, source |
+| `udp dport 53`, `udp sport 53` | port UDP destination, source |
+| `tcp flags syn` | drapeaux TCP (voir la section @@ref:values@@) |
 | `icmp type echo-request`, `icmp type echo-reply` | type ICMP (`ping` : requête `echo-request`, réponse `echo-reply`) |
-| `ct state established,related` | état de la connexion dans le suivi de connexions (section @@ref:conntrack@@) |
-| `ip saddr != 192.168.1.2` | négation d'un critère |
+| `icmpv6 type nd-neighbor-solicit` | type ICMPv6 |
+| `ether saddr 02:00:00:00:00:01` | adresse MAC source de la trame |
+| `ct state established,related` | état de la connexion dans le suivi de connexion (section @@ref:conntrack@@) |
 
-Mentionner `tcp dport` ou `icmp type` implique le protocole : inutile d'ajouter `ip protocol tcp`.
-Plusieurs critères dans une même règle sont tous requis (un **et**).
+### @@sec:meta@@ Les informations associées au paquet
+
+| critère | signification |
+|---------|---------------|
+| `iif lo`, `iifname "eth0"` | interface d'**entrée** (aux hooks `prerouting`, `input` et `forward`) |
+| `oif eth0`, `oifname "eth0"` | interface de **sortie** (aux hooks `forward`, `output` et `postrouting`) |
+| `meta l4proto udp` | protocole de niveau 4, en IPv4 comme en IPv6 |
+| `meta nfproto ipv4` | version d'IP du paquet (`ipv4`, `ipv6`), utile dans une table `inet` |
+| `meta pkttype broadcast` | paquet adressé à la machine (`host`), diffusé (`broadcast`) ou multidiffusé (`multicast`) |
+| `meta mark 1` | marque posée sur le paquet par une autre règle (`meta mark set 1`) |
+| `meta skuid 1000` | utilisateur propriétaire du processus qui émet le paquet (au hook `output`) |
+
+**`iif` ou `iifname` ?** `iif lo` compare le **numéro** (l'index) de l'interface : c'est rapide,
+mais l'interface doit exister quand la règle est chargée, et la règle ne suit pas une interface
+supprimée puis recréée. `iifname "eth0"` compare le **nom** : un peu plus lent, mais valable pour
+une interface qui n'existe pas encore (un VPN, une connexion à la demande), et le nom peut se
+terminer par un joker (`iifname "eth*"`). Pour `lo` et les interfaces permanentes, `iif` convient.
+
+### @@sec:values@@ Les formes de valeur
+
+| forme | exemples |
+|-------|----------|
+| une valeur | `tcp dport 22`, `ip saddr 192.0.2.2` |
+| un réseau | `ip saddr 192.0.2.0/24` |
+| une plage | `tcp dport 8000-8100`, `ip saddr 192.0.2.10-192.0.2.20` |
+| un ensemble | `tcp dport { 22, 80, 443 }`, `ip saddr { 192.0.2.2, 198.51.100.0/24 }` |
+| un ensemble nommé | `ip saddr @blocklist` (section @@ref:sets@@) |
+| la négation | `ip saddr != 192.0.2.2`, `tcp dport != { 22, 80 }` |
+| une comparaison | `ip ttl lt 5`, `meta length gt 1000` (`lt` : inférieur à, `gt` : supérieur à) |
+
+Un port peut être donné par le nom de son service (`tcp dport ssh`) ; `nft list ruleset` le
+réaffiche en chiffres.
+
+Pour un champ de **drapeaux** comme `tcp flags`, `tcp flags syn` signifie « le drapeau SYN est
+positionné », quels que soient les autres : le critère vaut pour le SYN qui ouvre une connexion
+comme pour le SYN-ACK qui lui répond. Pour désigner le SYN seul, on précise les drapeaux
+examinés : `tcp flags & (fin|syn|rst|ack) == syn` (« parmi FIN, SYN, RST et ACK, seul SYN est
+positionné »). `ct state established,related` se lit de la même façon : l'état est `established`
+**ou** `related`.
+
+### @@sec:implicit@@ Protocoles implicites et famille inet
+
+Nommer un champ implique le protocole qui le porte : `tcp dport 8080` ne concerne que TCP,
+`icmp type echo-reply` que ICMP ; inutile d'ajouter `ip protocol tcp`. Dans une table `inet` :
+
+- `tcp dport 22 accept` vaut pour IPv4 **et** pour IPv6 ;
+- un critère `ip …` (`ip saddr`, `ip protocol`…) restreint la règle à IPv4, un critère `ip6 …`
+  à IPv6 ;
+- `icmp` désigne l'ICMP d'IPv4 ; celui d'IPv6 s'écrit `icmpv6` ;
+- `meta l4proto udp` désigne UDP dans les deux versions d'IP, `ip protocol udp` en IPv4 seulement.
+
+`nft describe` donne le type d'un champ et ses valeurs possibles : `nft describe icmp type`,
+`nft describe tcp flags`, `nft describe ct state`.
 """)
             + info_subtitle(tr("Verdicts et actions"), tag="verdicts")
             + tr("""
 
-- **`accept`** : le paquet passe (l'évaluation de la chaîne s'arrête) ;
-- **`drop`** : le paquet est détruit **sans rien dire** : l'émetteur attend, réessaie, puis renonce
-  (délai d'attente, *timeout*) ;
-- **`reject`** : le paquet est refusé et l'émetteur est **prévenu** par un message d'erreur, par
-  défaut un ICMP *port unreachable* ; `reject with tcp reset` envoie un segment TCP RST (ce que
-  fait une machine sans pare-feu dont le port est fermé), `reject with icmp type
-  host-unreachable` choisit le message ICMP. Côté client, l'erreur est immédiate (`Connection
-  refused`) au lieu d'un long délai ;
-- **`jump chaine`** : évalue la chaîne nommée, et revient si elle ne tranche pas ; **`goto
-  chaine`** y va sans retour ; **`return`** revient à la chaîne appelante ;
-- **`counter`** : compte les paquets et les octets qui atteignent la règle (visible dans `nft list
-  ruleset`, remis à zéro par `nft reset counters`) ; **`log`** : journalise le paquet
-  (section @@ref:logging@@) ; **`limit rate 5/minute`** : ne laisse la règle agir qu'à ce rythme.
+### @@sec:verdict-list@@ Les verdicts
 
-`counter`, `log` et `limit` sont des **actions sans verdict** : le paquet continue vers la règle
-suivante. Elles se combinent dans une règle, dans l'ordre où elles sont écrites : `limit rate
-5/minute log prefix "x" ` journalise au plus cinq paquets par minute ; `counter drop` compte puis
-détruit.
+- **`accept`** : le paquet passe ; l'évaluation de la chaîne de base s'arrête (il reste soumis
+  aux autres chaînes de son trajet, section @@ref:priorities@@) ;
+- **`drop`** : le paquet est détruit **sans rien dire** : l'émetteur attend, réessaie, puis
+  renonce (délai d'attente, *timeout*) ;
+- **`reject`** : le paquet est détruit et l'émetteur est **prévenu** par un message d'erreur
+  (section @@ref:reject@@) ;
+- **`jump chaine`** : évalue la chaîne régulière, et revient si elle ne tranche pas ; **`goto
+  chaine`** y va sans retour (section @@ref:regular-chains@@) ;
+- **`return`** : quitte la chaîne en cours et reprend dans la chaîne appelante ; dans une chaîne
+  de base, applique la politique ;
+- **`continue`** : passe à la règle suivante ; c'est le verdict implicite d'une règle qui n'en
+  porte pas ;
+- **`queue`** : confie le paquet à un programme (un système de détection d'intrusion, par
+  exemple), qui rendra le verdict.
 
-Faut-il détruire ou refuser ? `drop` ne révèle rien à un attaquant et ne coûte rien ; `reject` est
-plus agréable pour les utilisateurs légitimes et pour le diagnostic. Vers l'extérieur on détruit ;
-à l'intérieur on refuse souvent.
+### @@sec:reject@@ reject : refuser en prévenant
+
+Sans précision, `reject` répond par un message ICMP *port unreachable* ; `nft list ruleset`
+affiche alors la règle sous sa forme complète (`reject with icmp port-unreachable`, ou `icmpx`
+dans une table `inet` quand la règle ne dit pas la version d'IP). On peut choisir la réponse :
+
+| règle | réponse envoyée à l'émetteur |
+|-------|------------------------------|
+| `reject` | ICMP *port unreachable* |
+| `reject with tcp reset` | un segment TCP RST : ce que répond une machine sans pare-feu dont le port est fermé (TCP seulement) |
+| `reject with icmp host-unreachable` | ICMP *host unreachable* ; autres codes : `net-unreachable`, `prot-unreachable`, `admin-prohibited`… |
+| `reject with icmpx admin-prohibited` | dans une table `inet` : l'erreur « interdit par l'administrateur » en ICMP ou en ICMPv6, selon le paquet |
+
+Côté client, l'erreur est **immédiate** au lieu d'un long délai : `Connection refused` avec la
+réponse par défaut ou un RST, `No route to host` avec `host-unreachable` ou `admin-prohibited`.
+
+### @@sec:statements@@ Les actions sans verdict
+
+Ces actions font leur travail puis laissent le paquet continuer, dans la même règle puis vers la
+règle suivante :
+
+| action | effet |
+|--------|-------|
+| `counter` | compte les paquets et les octets qui atteignent cet endroit de la règle (section @@ref:logging@@) |
+| `log` | journalise le paquet (section @@ref:logging@@) |
+| `limit rate 5/minute` | ne laisse la règle se poursuivre qu'à ce rythme ; au-delà, le paquet passe à la règle suivante (section @@ref:limits@@) |
+| `meta mark set 1` | pose une marque sur le paquet, qu'une autre règle ou le routage (`ip rule`) retrouvera |
+| `notrack` | soustrait le paquet au suivi de connexion (dans une chaîne de priorité `raw`) |
+| `meta nftrace set 1` | trace le paquet à travers le jeu de règles (section @@ref:testing@@) |
+
+Elles se combinent, dans l'ordre où elles sont écrites : `limit rate 5/minute log prefix "x: "`
+journalise au plus cinq paquets par minute ; `counter drop` compte puis détruit.
+
+### @@sec:drop-or-reject@@ Détruire ou refuser ?
+
+`drop` ne révèle rien à un attaquant, pas même l'existence de la machine, et ne coûte rien ;
+`reject` est plus agréable pour les utilisateurs légitimes et pour le diagnostic, puisque
+l'erreur est immédiate. L'usage : on détruit ce qui vient de l'extérieur, on refuse souvent ce
+qui vient de l'intérieur.
 """)
             + info_subtitle(tr("Le suivi de connexion : filtrage à états"), tag="conntrack")
             + tr("""
 
-Netfilter mémorise les **connexions** en cours (*conntrack*) : une connexion TCP, mais aussi un
-« échange » UDP (une requête et ses réponses entre les mêmes adresses et ports) ou ICMP (une
-requête `echo-request` et sa réponse). Chaque paquet est alors dans un **état** :
+Netfilter mémorise les **connexions** en cours (*connection tracking*, ou *conntrack*) : une
+connexion TCP, mais aussi un « échange » UDP (des datagrammes entre les mêmes adresses et les
+mêmes ports) ou ICMP (une requête `echo-request` et sa réponse). Le suivi ne filtre rien : il
+**étiquette** chaque paquet d'un **état**, que les règles testent avec `ct state`.
 
-- **`new`** : il ouvre une nouvelle connexion (premier paquet, le SYN en TCP) ;
-- **`established`** : il appartient à une connexion déjà vue dans les deux sens, ou dont le
-  premier paquet a déjà été accepté : les **réponses** à ce que la machine a émis ;
-- **`related`** : il est lié à une connexion existante (une erreur ICMP la concernant, la
-  connexion de données de FTP) ;
-- **`invalid`** : il n'appartient à rien de connu (segment TCP hors séquence, erreur isolée).
+### @@sec:ct-states@@ Les états
 
-La règle **`ct state established,related accept`**, placée en **première position**, accepte
-d'un coup tout le trafic retour des communications que la machine a elle-même initiées : il ne
-reste à autoriser explicitement que les **nouvelles** connexions entrantes que l'on veut servir.
+- **`new`** : le paquet ouvre une connexion, ou appartient à une connexion dont on n'a encore vu
+  qu'**un seul sens** (le SYN en TCP, la première requête UDP et ses répétitions) ;
+- **`established`** : le paquet appartient à une connexion dont on a vu des paquets **dans les
+  deux sens**. La toute première réponse (le SYN-ACK, la réponse d'un serveur UDP,
+  l'`echo-reply`) est déjà dans cet état, comme tout ce qui suit, dans un sens et dans l'autre ;
+- **`related`** : le paquet n'appartient pas à une connexion connue, mais il est **lié** à l'une
+  d'elles : une erreur ICMP qui la concerne (*port unreachable*, *fragmentation needed*, *time
+  exceeded*), ou la connexion de données d'un protocole comme FTP (avec un module d'assistance) ;
+- **`invalid`** : le paquet ne correspond à rien de connu et ne peut pas ouvrir de connexion
+  (segment TCP incohérent ou hors séquence, erreur ICMP sans connexion…) ;
+- **`untracked`** : le paquet a été soustrait au suivi par une règle `notrack`.
+
+Une connexion est enregistrée par son premier paquet, à condition que le pare-feu l'accepte : un
+paquet `new` détruit ne laisse aucune trace. Elle est oubliée après un temps d'inactivité : 30
+secondes pour un échange UDP ou ICMP resté sans suite (120 secondes pour un flux UDP établi), 5
+jours pour une connexion TCP établie, bien moins pendant son ouverture et après sa fermeture.
+
+### @@sec:stateful-rule@@ La règle à états
+
+```
+nft insert rule inet filter input ct state established,related accept
+```
+
+Placée en **première position**, cette règle accepte d'un coup tout le trafic retour des
+communications que la machine a elle-même initiées, et la suite des connexions entrantes déjà
+acceptées : il ne reste à autoriser explicitement que les **nouvelles** connexions que l'on veut
+servir. Comme presque tous les paquets que reçoit une machine appartiennent à une connexion
+établie, la plupart ne consultent que cette règle.
+
 Sans elle, il faut ouvrir à l'aveugle tout ce qui ressemble à une réponse (« tout l'UDP venant du
 serveur », par exemple), ce qui laisse aussi passer les requêtes de ce serveur vers la machine :
-un filtre **sans état** (*stateless*) ne distingue pas le sens d'un échange. `ct state invalid
-drop` complète souvent la première règle.
+un filtre **sans état** (*stateless*) ne distingue pas le sens d'un échange.
+
+`ct state invalid drop` complète souvent la règle à états ; les deux s'écrivent aussi en une
+seule règle, avec un dictionnaire de verdicts (section @@ref:maps@@) :
+`ct state vmap { established : accept, related : accept, invalid : drop }`.
+
+### @@sec:ct-table@@ Observer et régler le suivi
+
+`conntrack -L` (paquet `conntrack`, s'il est installé) affiche la table des connexions suivies,
+`conntrack -E` les créations et les suppressions en direct. La taille de la table est bornée
+(`sysctl net.netfilter.nf_conntrack_max`) : quand elle est pleine, les nouvelles connexions sont
+détruites. On soustrait au suivi un trafic très abondant qui n'en a pas besoin avec `notrack`,
+dans une chaîne de priorité `raw` aux hooks `prerouting` et `output` ; ses paquets sont alors
+`untracked`, et la règle à états ne les accepte pas.
 """)
             + info_subtitle(tr("La commande nft"), tag="nft-cli")
             + tr("""
 
+### @@sec:nft-list@@ Consulter
+
 ```
-nft list ruleset                                   # tout le jeu de règles (vide au départ)
-nft -a list ruleset                                # avec le numéro (handle) de chaque règle
-nft add table inet filter                          # une table
-nft 'add chain inet filter input { type filter hook input priority 0; policy drop; }'
-nft add rule inet filter input iif lo accept       # ajoute une règle à la FIN de la chaîne
-nft insert rule inet filter input ct state established,related accept   # au DÉBUT
-nft insert rule inet filter input handle 7 tcp dport 8080 accept        # avant la règle 7
-nft add rule inet filter input handle 7 tcp dport 8080 accept           # après la règle 7
-nft delete rule inet filter input handle 7         # supprime la règle 7
-nft add chain inet filter logdrop                  # une chaîne nommée (sans hook)
-nft 'add rule inet filter logdrop limit rate 5/minute log prefix "input drop: " group 0'  # apostrophes : le shell garderait sinon les guillemets pour lui
-nft flush chain inet filter input                  # vide une chaîne (ses règles) ; flush table, flush ruleset
-nft delete table inet filter                       # supprime la table et tout son contenu
-nft list ruleset > /etc/nftables.conf              # sauvegarde ; nft -f /etc/nftables.conf recharge
+nft list ruleset                       # tout le jeu de règles (vide au départ)
+nft -a list ruleset                    # avec le handle de chaque table, chaîne et règle
+nft list tables                        # les tables
+nft list table inet filter             # une table
+nft list chain inet filter input       # une chaîne
+nft -s list ruleset                    # sans les valeurs des compteurs
+nft -j list ruleset                    # en JSON
+nft describe icmp type                 # le type d'un champ et ses valeurs possibles
+nft monitor                            # les modifications du jeu de règles, en direct
 ```
 
-L'ordre des règles compte (section @@ref:structure@@) : `add rule` ajoute en fin de chaîne, `insert
-rule` en tête, et `handle N` (numéro lu avec `nft -a list ruleset`) place une règle avant (`insert`)
-ou après (`add`) une règle existante. Sur une vraie machine, le service `nftables` charge
-`/etc/nftables.conf` au démarrage (`systemctl enable nftables`) ; un fichier de règles commence par
-`flush ruleset` et se charge d'un bloc, sans trou de sécurité pendant la mise à jour. Attention :
-`nft flush ruleset` efface **toutes** les tables, pas seulement les vôtres.
+### @@sec:nft-build@@ Construire
+
+```
+nft add table inet filter
+nft 'add chain inet filter input { type filter hook input priority 0; policy drop; }'
+nft add chain inet filter logdrop                    # une chaîne régulière (sans hook)
+nft add rule inet filter input iif lo accept         # ajoute la règle à la FIN de la chaîne
+nft 'add rule inet filter input tcp dport { 80, 8080 } accept'
+nft 'add rule inet filter logdrop limit rate 5/minute log prefix "input drop: " group 0'
+```
+
+**Le shell passe avant `nft`.** Le point-virgule, les guillemets, les parenthèses, `*`, `|`, `&`,
+`<` et `>` ont un sens pour le shell, qui les interprète ou les retire avant que `nft` ne voie la
+commande. La règle simple : dès qu'une commande contient autre chose que des mots, des nombres et
+des adresses, **entourez d'apostrophes tout ce qui suit `nft`**. Deux autres façons d'échapper
+au shell : le mode interactif `nft -i` (on y tape `add rule …` directement, `quit` pour en
+sortir) et les fichiers de règles (section @@ref:nft-files@@).
+
+### @@sec:nft-edit@@ Placer, remplacer, supprimer
+
+L'ordre des règles compte (section @@ref:rules@@) : `add rule` ajoute en **fin** de chaîne,
+`insert rule` en **tête**. Pour viser un autre endroit, on désigne une règle existante par son
+**handle**, que `nft -a list ruleset` affiche en fin de ligne (`# handle 7`) :
+
+```
+nft insert rule inet filter input ct state established,related accept   # au DÉBUT de la chaîne
+nft insert rule inet filter input handle 7 tcp dport 8080 accept        # AVANT la règle 7
+nft add rule inet filter input handle 7 tcp dport 8080 accept           # APRÈS la règle 7
+nft replace rule inet filter input handle 7 tcp dport 8443 accept       # À LA PLACE de la règle 7
+nft delete rule inet filter input handle 7                              # supprime la règle 7
+nft flush chain inet filter input        # vide une chaîne de ses règles ; la chaîne et sa politique restent
+nft delete chain inet filter logdrop     # supprime une chaîne vide, vers laquelle plus aucune règle ne saute
+nft delete table inet filter             # supprime la table et tout son contenu
+nft flush ruleset                        # efface TOUT : toutes les tables de toutes les familles
+```
+
+Un handle n'est pas un numéro de ligne : il ne change pas quand on ajoute ou supprime d'autres
+règles. Pour changer la **politique** d'une chaîne de base, on la déclare de nouveau, à
+l'identique, avec la nouvelle politique (ses règles restent) :
+`nft 'add chain inet filter input { type filter hook input priority 0; policy accept; }'`.
+
+Attention : `nft flush chain` laisse la politique en place (une chaîne `policy drop` vidée
+détruit tout), et `nft flush ruleset` efface **toutes** les tables, pas seulement les vôtres.
+
+### @@sec:nft-files@@ Les fichiers de règles
+
+Un vrai pare-feu ne se tape pas commande par commande : il s'écrit dans un **fichier**, dans la
+syntaxe qu'affiche `nft list ruleset`, et se charge d'un bloc.
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+define ADMIN = 192.0.2.0/24
+define WEB = { 80, 443 }
+
+table inet filter {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                ct state established,related accept
+                iif "lo" accept
+                # un commentaire : SSH pour les administrateurs seulement
+                ip saddr $ADMIN tcp dport 22 accept
+                tcp dport $WEB accept
+        }
+}
+```
+
+```
+nft -c -f /etc/nftables.conf      # vérifie le fichier sans rien changer
+nft -f /etc/nftables.conf         # le charge
+```
+
+- le chargement est **atomique** : le fichier est appliqué en entier ou, à la moindre erreur,
+  pas du tout ; à aucun moment la machine ne se retrouve sans règles, ou avec la moitié des
+  règles ;
+- le fichier commence par **`flush ruleset`** : sans cela, le recharger ajouterait ses règles
+  une seconde fois, à la suite des premières ;
+- `define` nomme une valeur, reprise par `$NOM` ; `include "/etc/nftables.d/*.nft"` insère
+  d'autres fichiers ;
+- `nft -s list ruleset > regles.nft` sauvegarde le jeu de règles en place dans un fichier
+  rechargeable (ajoutez-lui `flush ruleset` en tête) ;
+- sous Debian, le service `nftables` charge `/etc/nftables.conf` au démarrage (`systemctl enable
+  nftables`). Les règles tapées avec `nft` sont **volatiles** : elles disparaissent au
+  redémarrage.
 """)
             + info_subtitle(tr("Journaliser et compter"), tag="logging")
             + tr("""
 
-**`counter`** est le moyen le plus simple de voir si une règle sert : `nft list ruleset` affiche
-`counter packets 12 bytes 1008` sur la règle (`nft -a list ruleset` pour les handles, `nft reset
-counters` pour remettre à zéro). Pour voir **quels** paquets passent par une règle, **`log`** envoie
-une ligne par paquet (adresses, protocole, ports, interface) :
+### @@sec:counters@@ Compter
 
-- `log prefix "input drop: "` écrit dans le **journal du noyau**, lu sur une vraie machine avec
-  `dmesg -w`, `journalctl -k -f` ou dans `/var/log/kern.log` (rsyslog). Dans un conteneur, ce
-  journal est celui de la machine hôte et n'est pas accessible ;
-- `log prefix "input drop: " group 0` envoie les paquets à **nflog** (groupe 0), que l'on lit
-  avec **`tcpdump -n -i nflog:0`** (ou le démon `ulogd`) : c'est la forme à utiliser dans ce TP,
-  elle montre les paquets journalisés en direct, sur `m1` elle-même ;
-- **`limit rate 5/minute`** devant `log` borne le nombre de lignes : sans limite, une attaque ou
-  une simple boucle de `ping` remplit le journal. C'est un seau à jetons : 5 jetons au départ (la
-  rafale, *burst*, 5 par défaut ; `burst 10 packets` pour en tolérer plus), puis un jeton toutes les
-  12 secondes ; les paquets sans jeton ne sont pas journalisés mais continuent vers la règle suivante.
+**`counter`** est le moyen le plus simple de savoir si une règle sert : `nft list ruleset`
+affiche sur la règle `counter packets 12 bytes 1008`, le nombre de paquets et d'octets qui l'ont
+atteinte.
 
-Le préfixe contient une espace et des guillemets : tapée dans un shell, la règle entière doit
-être protégée par des apostrophes (`nft 'add rule inet filter logdrop log prefix "input drop: "
-group 0'`), sinon le shell retire les guillemets et `nft` ne comprend plus la commande.
+```
+nft add rule inet filter input tcp dport 8080 counter accept
+```
 
-`log` n'est pas un verdict : on le fait suivre d'un `drop` (ou d'un `accept`) dans la même règle
-ou dans la règle suivante. L'usage est d'écrire une **chaîne nommée** `logdrop` qui journalise
-puis détruit, et de sauter dedans (`jump logdrop`) en dernière règle des chaînes concernées, plutôt
-que de répéter `log` partout.
+Le compteur d'une règle ne se remet pas à zéro avec la version de `nft` des machines du TP (il
+faut remplacer la règle ; `nft reset rules` n'existe qu'à partir de nftables 1.0.7). On peut en
+revanche déclarer un **compteur nommé**, que plusieurs règles alimentent et que l'on relit ou
+remet à zéro séparément :
+
+```
+nft add counter inet filter web
+nft 'add rule inet filter input tcp dport { 80, 8080 } counter name "web" accept'
+nft list counters                 # les compteurs nommés
+nft reset counters                # les affiche, puis les remet à zéro
+```
+
+### @@sec:log@@ Journaliser
+
+Pour voir **quels** paquets passent par une règle, **`log`** produit une ligne par paquet
+(interface, adresses, protocole, ports). Il existe sous deux formes :
+
+- `log prefix "input drop: "` écrit dans le **journal du noyau**, que l'on lit sur une vraie
+  machine avec `dmesg -w`, `journalctl -k -f` ou dans `/var/log/kern.log` ; `level` choisit la
+  gravité du message (`log level info prefix "…"`) et `flags all` y ajoute des détails (options
+  IP et TCP, numéros de séquence). **Dans un conteneur, cette forme ne donne rien** : par défaut
+  le noyau ne journalise ainsi que les paquets de la machine hôte (réglage
+  `net.netfilter.nf_log_all_netns`), et son journal n'est pas lisible depuis un conteneur ;
+- `log prefix "input drop: " group 0` remet les paquets à **nflog** (ici au groupe 0), où un
+  programme vient les lire : **`tcpdump -n -i nflog:0`**, ou le démon `ulogd`, qui les range dans
+  un fichier ou une base de données. C'est la forme à utiliser dans ce TP : elle montre les
+  paquets journalisés en direct, sur `m1` elle-même.
+
+**Limiter la journalisation.** Sans limite, une attaque ou une simple boucle de `ping` remplit le
+journal. `limit rate 5/minute` placé **devant** `log` borne le nombre de lignes. C'est un seau à
+jetons (section @@ref:limits@@) : 5 jetons au départ (la rafale, *burst*, 5 par défaut), puis un
+jeton toutes les 12 secondes ; les paquets sans jeton ne sont pas journalisés, mais continuent
+vers la règle suivante.
+
+**Les apostrophes.** Le préfixe contient une espace et des guillemets : tapée dans un shell, la
+règle entière doit être protégée par des apostrophes (`nft 'add rule inet filter logdrop log
+prefix "input drop: " group 0'`), sinon le shell retire les guillemets et `nft` ne comprend plus
+la commande.
+
+**Journaliser puis détruire.** `log` n'est pas un verdict : on le fait suivre d'un `drop` (ou
+d'un `accept`), dans la même règle ou dans la règle suivante. L'usage est d'écrire une **chaîne
+régulière** `logdrop` qui journalise puis détruit, et d'y sauter (`jump logdrop`) en dernière
+règle des chaînes concernées, plutôt que de répéter `log` partout.
+""")
+            + info_subtitle(tr("Ensembles et dictionnaires"), tag="sets")
+            + tr("""
+
+Un **ensemble** (*set*) réunit des valeurs d'un même type ; une règle le consulte en une seule
+opération, quel que soit le nombre de ses éléments. Une règle qui porte un ensemble de cent
+adresses remplace cent règles, et va bien plus vite qu'elles.
+
+### @@sec:anonymous-sets@@ Les ensembles anonymes
+
+Un ensemble **anonyme** s'écrit directement dans la règle, entre accolades ; il ne change plus
+ensuite, sauf à remplacer la règle :
+
+```
+nft 'add rule inet filter input tcp dport { 22, 80, 443 } accept'
+nft 'add rule inet filter input ip saddr { 192.0.2.2, 198.51.100.0/24 } drop'
+```
+
+### @@sec:named-sets@@ Les ensembles nommés
+
+Un ensemble **nommé** est un objet de la table : on en modifie le contenu **sans toucher aux
+règles** qui le consultent (`@nom`).
+
+```
+nft 'add set inet filter blocklist { type ipv4_addr; }'
+nft 'add element inet filter blocklist { 192.0.2.7, 192.0.2.99 }'
+nft add rule inet filter input ip saddr @blocklist drop
+nft list set inet filter blocklist
+nft 'delete element inet filter blocklist { 192.0.2.7 }'
+```
+
+Le `type` fixe la nature des éléments : `ipv4_addr`, `ipv6_addr`, `ether_addr` (adresse MAC),
+`inet_proto` (protocole), `inet_service` (port), `mark`. Les drapeaux (`flags`) en fixent le
+comportement :
+
+| déclaration | effet |
+|-------------|-------|
+| `flags interval;` | les éléments peuvent être des réseaux ou des plages (`192.0.2.0/24`, `8000-8100`) ; sans ce drapeau, des valeurs isolées seulement |
+| `flags timeout; timeout 1h;` | les éléments disparaissent d'eux-mêmes après ce délai |
+| `flags dynamic;` | les règles peuvent ajouter elles-mêmes des éléments, au passage des paquets |
+| `flags constant;` | le contenu ne peut plus changer |
+
+Un élément peut réunir plusieurs champs, séparés par un point (une **concaténation**) :
+
+```
+nft 'add set inet filter allowed { type ipv4_addr . inet_service; }'
+nft 'add element inet filter allowed { 192.0.2.2 . 22, 192.0.2.3 . 443 }'
+nft add rule inet filter input ip saddr . tcp dport @allowed accept
+```
+
+### @@sec:dynamic-sets@@ Les ensembles alimentés par les règles
+
+Avec `flags dynamic`, une règle range dans un ensemble une valeur tirée du paquet qu'elle
+examine : `add @nom { … }` ajoute l'élément s'il n'y est pas, `update @nom { … }` fait de même
+et remet son délai à zéro. Exemple : quiconque tente une connexion telnet est banni dix
+minutes.
+
+```
+nft 'add set inet filter banned { type ipv4_addr; flags dynamic,timeout; timeout 10m; }'
+nft add rule inet filter input ip saddr @banned drop
+nft 'add rule inet filter input tcp dport 23 add @banned { ip saddr } drop'
+```
+
+### @@sec:maps@@ Les dictionnaires
+
+Un **dictionnaire** (*map*) associe une valeur à chaque clé. Le plus utile dans un filtre est
+le **dictionnaire de verdicts** (*verdict map*, `vmap`), qui choisit le verdict d'après un champ
+du paquet, en une seule consultation :
+
+```
+nft 'add rule inet filter input tcp dport vmap { 22 : accept, 8080 : accept, 23 : drop }'
+nft 'add rule inet filter input ct state vmap { established : accept, related : accept, invalid : drop }'
+nft 'add rule inet filter input iifname vmap { "eth0" : jump from_lan, "eth1" : jump from_wan }'
+```
+
+Un paquet dont le champ n'est pas une clé du dictionnaire passe à la règle suivante. Comme un
+ensemble, un dictionnaire peut être nommé, et son contenu modifié sans toucher aux règles :
+
+```
+nft 'add map inet filter services { type inet_service : verdict; }'
+nft 'add element inet filter services { 22 : accept, 8080 : accept }'
+nft add rule inet filter input tcp dport vmap @services
+```
+
+Les autres dictionnaires fournissent une valeur à une action ; on les rencontre surtout dans la
+traduction d'adresses : `dnat to tcp dport map { 80 : 192.0.2.10, 8080 : 192.0.2.11 }` choisit
+le serveur d'après le port demandé.
+""")
+            + info_subtitle(tr("Limiter le trafic"), tag="limits")
+            + tr("""
+
+### @@sec:limit-rate@@ limit rate : le seau à jetons
+
+`limit rate` laisse une règle se poursuivre à un rythme donné. C'est un **seau à jetons** :
+chaque paquet qui passe consomme un jeton, le seau se remplit au rythme indiqué et contient au
+plus la **rafale** (*burst*, 5 paquets par défaut). Un paquet qui ne trouve pas de jeton ne
+satisfait pas la règle : il passe à la règle suivante.
+
+| règle | effet |
+|-------|-------|
+| `icmp type echo-request limit rate 5/second accept` | accepte au plus 5 `ping` par seconde ; le surplus continue dans la chaîne, jusqu'à la politique |
+| `limit rate 10/minute burst 20 packets log` | 20 paquets d'un coup au plus, puis un toutes les 6 secondes |
+| `limit rate over 100/second drop` | `over` inverse le test : la règle vaut pour ce qui **dépasse** le rythme |
+| `limit rate 1 mbytes/second accept` | un débit en octets (`bytes`, `kbytes`, `mbytes`) |
+
+Les unités de temps sont `second`, `minute`, `hour` et `day`.
+
+**Attention à la place de la règle.** Après la règle à états, une règle `limit` ne voit plus que
+les paquets qui ouvrent une connexion : elle limite alors le rythme des **nouvelles connexions**,
+pas le débit. Pour limiter tous les paquets d'un trafic, on la place avant la règle à états
+(`limit rate over … drop`).
+
+### @@sec:limit-per-source@@ Une limite par adresse
+
+Une limite écrite dans une règle est **globale** : un seul client bruyant épuise les jetons de
+tous. Pour compter **par adresse source**, on associe la limite aux éléments d'un ensemble
+alimenté par la règle (section @@ref:dynamic-sets@@) : chaque adresse y reçoit son propre seau.
+
+```
+nft 'add set inet filter clients { type ipv4_addr; flags dynamic,timeout; timeout 1m; }'
+nft 'add rule inet filter input tcp dport 22 ct state new update @clients { ip saddr limit rate over 3/minute } drop'
+```
+
+De la même façon, `ct count over 2` vaut quand le nombre de connexions **simultanées** dépasse
+2 : avec un autre ensemble déclaré `flags dynamic`, `add @sessions { ip saddr ct count over 2 }
+reject` refuse la troisième connexion ouverte en même temps par une même adresse.
+
+### @@sec:quotas@@ Les quotas
+
+Un **quota** compte un volume, et non un rythme. C'est un objet nommé de la table, comme un
+compteur ; avec `over`, la règle vaut une fois le volume dépassé :
+
+```
+nft 'add quota inet filter guest { over 20 mbytes }'
+nft 'add rule inet filter input ip saddr 192.0.2.50 quota name "guest" drop'
+```
+""")
+            + info_subtitle(tr("La traduction d'adresses en bref"), tag="nat")
+            + tr("""
+
+La traduction d'adresses (NAT) réécrit l'adresse, et au besoin le port, source ou destination
+des paquets qui traversent un routeur. Elle fera l'objet d'un autre TP ; en voici l'essentiel.
+Elle se fait dans des chaînes de type **`nat`** :
+
+```
+nft add table ip nat
+nft 'add chain ip nat prerouting { type nat hook prerouting priority dstnat; }'
+nft 'add chain ip nat postrouting { type nat hook postrouting priority srcnat; }'
+nft add rule ip nat postrouting oif eth0 masquerade                            # ou bien :
+nft add rule ip nat postrouting oif eth0 snat to 203.0.113.1
+nft add rule ip nat prerouting iif eth0 tcp dport 80 dnat to 192.0.2.10:8080   # ou bien :
+nft add rule ip nat prerouting tcp dport 80 redirect to :8080
+```
+
+| action | hook | effet |
+|--------|------|-------|
+| `masquerade` | `postrouting` | remplace l'adresse source par celle de l'interface de sortie (partage d'une adresse publique) |
+| `snat to A` | `postrouting` | remplace l'adresse source par l'adresse A |
+| `dnat to A:P` | `prerouting` | remplace l'adresse et le port de destination (redirection de port vers un serveur interne) |
+| `redirect to :P` | `prerouting` | envoie le paquet vers le port P de la machine elle-même (mandataire transparent) |
+
+- une chaîne `nat` ne voit que le **premier paquet** de chaque connexion : le suivi de connexion
+  applique la même traduction aux suivants, et la traduction inverse aux réponses ;
+- le filtrage se fait toujours dans les chaînes `filter`. La chaîne `forward` voit un paquet
+  **après** le DNAT (fait en `prerouting`) et **avant** le SNAT (fait en `postrouting`) : ses
+  règles nomment donc l'adresse réelle du serveur interne et l'adresse d'origine du client ;
+- dans une table `inet`, on précise la version d'IP : `dnat ip to 192.0.2.10`.
 """)
             + info_subtitle(tr("Observer et tester un pare-feu"), tag="testing")
             + tr("""
+
+Un pare-feu se vérifie des deux côtés : ce qu'il **laisse passer** (ce qui doit marcher marche
+encore) et ce qu'il **arrête** (ce qui doit être bloqué l'est vraiment).
+
+### @@sec:test-servers@@ Les serveurs de test du TP
 
 Les machines du TP (`m1`, `m2`, `m3`, `gw`, `ext1`) servent toutes un petit **serveur de test**,
 en HTTP sur les ports TCP **80 et 8080** et en UDP sur les ports **530 et 630** (`ss -tulnp` les
@@ -360,42 +950,146 @@ traversé) :
 ```
 m1:~# curl http://m2/                   # ou curl http://m2:8080/ ; -m 3 pour ne pas attendre plus de 3 s
 SERVER=m2
-SERVER_IP=192.168.1.2
+SERVER_IP=192.0.2.2
 SERVER_PORT=80
-CLIENT_IP=192.168.1.1
+CLIENT_IP=192.0.2.1
 CLIENT_PORT=47152
 TTL=64
 m1:~# echo bonjour | nc -u -w 1 m2 530  # un datagramme UDP vers le port 530 (ou 630) : même réponse
 ```
 
-Pour savoir ce qu'un client voit, lisez le message d'erreur : `curl: (7) Failed to connect …
-Connection refused` **immédiat** signale un `reject` (ou un port fermé sans pare-feu) ;
-`Connection timed out` **après le délai** signale un `drop` (ou une machine éteinte). `nc -u -w 1`
-se termine sans rien afficher quand aucune réponse n'arrive (`drop`, ou le datagramme de réponse
-bloqué). `ping -c 2 -W 1 m1` : `100% packet loss` quand les requêtes ou les réponses sont
-détruites. `tcpdump -n -i eth0 icmp or tcp port 80` sur le client montre ce qu'il reçoit (le message
-ICMP *port unreachable* d'un `reject`, ou rien), `tcpdump -n -i eth0 'port 80 or port 530'` sur le
-serveur ce qui lui arrive malgré tout. Enfin `nft list ruleset` avec des `counter` dit quelle
-règle a vu les paquets : la méthode de diagnostic de base d'un pare-feu.
+### @@sec:client-view@@ Ce que voit le client
+
+Le message d'erreur du client dit ce que le pare-feu a fait du paquet :
+
+| ce que le client observe | ce qui s'est passé |
+|--------------------------|--------------------|
+| `curl: (7) Failed to connect …`, **immédiat** (connexion refusée ; `nc -vz` affiche `Connection refused`) | un `reject` (ou un port fermé, sans pare-feu) |
+| `curl: (28) Connection timed out`, **après le délai** (`-m 3`) | un `drop` (ou une machine éteinte) |
+| `nc -u -w 1` se termine sans rien afficher | le datagramme, ou sa réponse, a été détruit |
+| `ping -c 2 -W 1 m1` : `100% packet loss` | les requêtes, ou les réponses, sont détruites |
+
+### @@sec:capture@@ Capturer : où se place tcpdump
+
+`tcpdump` capture **au ras de l'interface**, à l'extérieur du pare-feu :
+
+- en réception, il voit les paquets **avant** tous les hooks : un paquet que le pare-feu détruit
+  en `input` apparaît quand même dans la capture. Voir arriver un paquet ne prouve donc pas
+  qu'il a été accepté ;
+- en émission, il voit les paquets **après** tous les hooks : un paquet détruit en `output`
+  n'apparaît pas.
+
+`tcpdump -n -i eth0 icmp or tcp port 80` sur le client montre ce qu'il reçoit (le message ICMP
+*port unreachable* d'un `reject`, ou rien) ; `tcpdump -n -i eth0 'port 80 or port 530'` sur le
+serveur montre ce qui lui arrive, que le pare-feu l'accepte ou non.
+
+### @@sec:which-rule@@ Savoir quelle règle a tranché
+
+Les **compteurs** d'abord : ajoutez `counter` aux règles (`… counter accept`, `… counter drop`)
+et relisez `nft list ruleset` après un essai : la règle dont le compteur a bougé est celle qui a
+vu le paquet. C'est la méthode de diagnostic de base d'un pare-feu.
+
+Pour suivre un paquet règle par règle, on le **trace** : une règle `meta nftrace set 1`, placée
+en tête de chaîne, marque les paquets à suivre, et `nft monitor trace` affiche leur parcours.
+
+```
+nft insert rule inet filter input ip saddr 192.0.2.3 meta nftrace set 1
+nft monitor trace
+```
+
+```
+trace id a95ea7ef inet filter input packet: iif "eth0" ip saddr 192.0.2.3 ip daddr 192.0.2.1 … tcp dport 8080 …
+trace id a95ea7ef inet filter input rule ip saddr 192.0.2.3 meta nftrace set 1 (verdict continue)
+trace id a95ea7ef inet filter input rule tcp dport 8080 accept (verdict accept)
+```
+
+Chaque ligne commence par l'identifiant du paquet, la table et la chaîne ; les lignes `rule`
+donnent les règles satisfaites et leur verdict, et un paquet qu'aucune règle n'arrête se termine
+par la politique de la chaîne (`policy drop`). Supprimez la règle de trace quand vous avez fini.
+
+### @@sec:method@@ Une démarche de diagnostic
+
+1. `nft list ruleset` : est-ce bien le jeu de règles que vous croyez avoir chargé ? Les règles
+   sont-elles dans le bon ordre ?
+2. le message d'erreur du client : refus immédiat (`reject`) ou délai d'attente (`drop`) ?
+3. les compteurs : quelle règle a vu le paquet ? Aucune : il n'arrive pas jusqu'à la chaîne, ou
+   la politique l'a détruit ;
+4. `tcpdump` des deux côtés : la requête arrive-t-elle ? La réponse repart-elle ? Souvent c'est
+   la **réponse** qui est bloquée, pas la requête ;
+5. la trace, quand le reste ne suffit pas.
 """)
-            + info_subtitle(tr("Pour qui connaît iptables"), tag="iptables")
+            + info_subtitle(tr("Bonnes pratiques"), tag="practices")
             + tr("""
 
-| iptables | nftables |
-|----------|----------|
-| `iptables -L -v -n` | `nft list ruleset` |
-| `iptables -P INPUT DROP` | `policy drop;` dans la déclaration de la chaîne de base |
-| `iptables -A INPUT -i lo -j ACCEPT` | `nft add rule inet filter input iif lo accept` |
-| `iptables -A INPUT -p icmp --icmp-type echo-reply -j ACCEPT` | `… icmp type echo-reply accept` |
-| `iptables -A INPUT -p udp -s 10.10.10.51 -j ACCEPT` | `… ip saddr 10.10.10.51 meta l4proto udp accept` |
-| `iptables -A INPUT -s 192.168.1.2 -j REJECT` | `… ip saddr 192.168.1.2 reject` |
-| `iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT` | `… ct state established,related accept` |
-| `iptables -A INPUT -p tcp --dport 8080 -j ACCEPT` | `… tcp dport 8080 accept` |
-| `iptables -I INPUT 1 …` (insérer en tête) | `nft insert rule inet filter input …` |
-| `iptables -N logetdrop`, `iptables -A INPUT -j logetdrop` | `nft add chain inet filter logdrop`, `… input jump logdrop` |
-| `iptables -A logetdrop -m limit --limit 5/min -j LOG` | `… logdrop limit rate 5/minute log prefix "…" group 0` |
-| `iptables -D INPUT 3` | `nft delete rule inet filter input handle N` (`nft -a list ruleset`) |
-| `iptables -F` | `nft flush chain inet filter input` |
+### @@sec:host-firewall@@ Le pare-feu type d'une machine
+
+Un serveur qui offre SSH à son réseau d'administration et le web à tout le monde :
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+        chain input {
+                type filter hook input priority filter; policy drop;
+
+                ct state established,related accept
+                ct state invalid drop
+                iif "lo" accept
+
+                icmp type echo-request limit rate 5/second accept
+                icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-advert } accept
+                icmpv6 type echo-request limit rate 5/second accept
+
+                ip saddr 192.0.2.0/24 tcp dport 22 accept
+                tcp dport { 80, 443 } accept
+
+                limit rate 5/minute log prefix "input drop: "
+        }
+        chain forward {
+                type filter hook forward priority filter; policy drop;
+        }
+        chain output {
+                type filter hook output priority filter; policy accept;
+        }
+}
+```
+
+### @@sec:principles@@ Les principes
+
+- **tout interdire, puis autoriser** : politique `drop` en `input` (et en `forward`), et une
+  règle par service réellement offert, restreinte à ceux qui en ont besoin (`ip saddr`). Le hook
+  `output` reste en général ouvert : on fait confiance à la machine elle-même ;
+- **la règle à états en premier** : elle traite presque tous les paquets et dispense d'ouvrir
+  quoi que ce soit pour les réponses ;
+- **ne jamais oublier `lo`** : beaucoup de services locaux se parlent par `127.0.0.1` ;
+- **ne pas bloquer tout ICMP** : les erreurs ICMP (*fragmentation needed*, *port unreachable*,
+  *time exceeded*) sont nécessaires au bon fonctionnement d'IP ; la règle à états les accepte,
+  puisqu'elles sont `related`. Répondre au `ping`, à un rythme limité, facilite le diagnostic ;
+- **en IPv6, autoriser la découverte des voisins** : elle remplace ARP et utilise ICMPv6
+  (`nd-neighbor-solicit`, `nd-neighbor-advert`, `nd-router-advert`). Ces messages ne sont pas
+  suivis par le suivi de connexion : sans règle explicite, une politique `drop` coupe IPv6 ;
+- **journaliser ce qui est détruit**, avec une limite, pour voir les attaques comme ses propres
+  erreurs ;
+- **un fichier, chargé d'un bloc** (section @@ref:nft-files@@), vérifié d'abord avec `nft -c -f`,
+  plutôt que des commandes tapées une à une.
+
+### @@sec:pitfalls@@ Les pièges
+
+- **se couper l'accès** : sur une machine administrée à distance, une chaîne `input` en
+  `policy drop` sans règle pour SSH (ni règle à états) coupe la session en cours. Chargez un
+  fichier complet, d'un bloc, et gardez un accès de secours ;
+- **l'ordre des règles** : une règle placée après un `drop` ou un `reject` qui couvre les mêmes
+  paquets n'est jamais consultée (`nft insert rule`, ou `handle`) ;
+- **le sens** : filtrer `input` ne limite pas ce que la machine émet, mais détruit les réponses à
+  ce qu'elle émet tant qu'il n'y a pas de règle à états ;
+- **le shell** : guillemets, accolades et points-virgules se protègent par des apostrophes
+  (section @@ref:nft-build@@) ;
+- **`flush ruleset`** efface aussi les tables des autres logiciels (Docker, par exemple). Sur une
+  telle machine, on ne remplace que sa propre table : le fichier commence alors par les deux
+  lignes `table inet filter` et `delete table inet filter`, au lieu de `flush ruleset` ;
+- **les règles volatiles** : ce qui n'est pas dans `/etc/nftables.conf` disparaît au
+  redémarrage.
 """)
             + info_subtitle(tr("Aide-mémoire"), tag="cheatsheet")
             + tr("""
@@ -404,13 +1098,16 @@ règle a vu les paquets : la méthode de diagnostic de base d'un pare-feu.
 |--------|----------|
 | état du pare-feu | `nft list ruleset`, `nft -a list ruleset` (handles), `nft list chain inet filter input` |
 | table et chaîne de base | `nft add table inet filter`, `nft 'add chain inet filter input { type filter hook input priority 0; policy drop; }'` |
-| règles | `nft add rule inet filter input …` (fin), `nft insert rule inet filter input …` (début), `nft insert rule inet filter input handle N …` (avant la règle N), `nft delete rule inet filter input handle N` |
-| critères | `iif lo`, `ip saddr A.B.C.D`, `meta l4proto udp`, `tcp dport 8080`, `icmp type echo-reply`, `ct state established,related` |
+| règles | `nft add rule inet filter input …` (fin), `nft insert rule inet filter input …` (début), `nft insert rule inet filter input handle N …` (avant la règle N), `nft add rule inet filter input handle N …` (après), `nft replace rule inet filter input handle N …`, `nft delete rule inet filter input handle N` |
+| critères | `iif lo`, `ip saddr A.B.C.D`, `meta l4proto udp`, `tcp dport 8080`, `tcp dport { 80, 8080 }`, `icmp type echo-reply`, `ct state established,related` |
 | verdicts et actions | `accept`, `drop`, `reject`, `jump logdrop`, `counter`, `log prefix "…" group 0`, `limit rate 5/minute` |
-| chaîne nommée | `nft add chain inet filter logdrop`, `nft 'add rule inet filter logdrop limit rate 5/minute log prefix "input drop: " group 0'`, `nft add rule inet filter logdrop counter drop`, `nft add rule inet filter input jump logdrop` |
+| chaîne régulière | `nft add chain inet filter logdrop`, `nft 'add rule inet filter logdrop limit rate 5/minute log prefix "input drop: " group 0'`, `nft add rule inet filter logdrop counter drop`, `nft add rule inet filter input jump logdrop` |
 | journal | `tcpdump -n -i nflog:0` (règles `log … group 0`) |
-| tout effacer | `nft flush chain inet filter input`, `nft delete table inet filter` |
+| ensemble nommé | `nft 'add set inet filter blocklist { type ipv4_addr; }'`, `nft 'add element inet filter blocklist { 192.0.2.7 }'`, `nft add rule inet filter input ip saddr @blocklist drop` |
+| fichier de règles | `nft -c -f fichier` (vérifier), `nft -f fichier` (charger), `nft -s list ruleset > fichier` (sauvegarder) |
+| tout effacer | `nft flush chain inet filter input`, `nft delete table inet filter`, `nft flush ruleset` |
 | tests | `curl -m 3 http://m2/`, `curl -m 3 http://m2:8080/`, `echo bonjour | nc -u -w 1 m2 530`, `ping -c 2 -W 1 m2`, `ss -tulnp`, `tcpdump -n -i eth0 icmp or tcp port 80` |
+| suivre un paquet | `… counter …` puis `nft list ruleset` ; `meta nftrace set 1` et `nft monitor trace` |
 """)
         )
 
@@ -1136,8 +1833,9 @@ paquets par minute** (`limit rate {rate}/minute` devant `log`, dans la règle de
 
 (a) `tcpdump -n -i nflog:{group}` affiche chaque SYN de `m3` vers le port 80 (retransmis toutes les
 secondes), rien de `m2` : ses paquets sont rejetés par la règle `reject`, placée avant, et
-n'atteignent jamais la fin de la chaîne. Sans `group`, `log` écrit dans le journal du noyau, que les
-conteneurs du TP ne peuvent pas lire (`dmesg` : *Operation not permitted*). (b) et (c) : la chaîne
+n'atteignent jamais la fin de la chaîne. Sans `group`, `log` vise le journal du noyau : dans un
+conteneur il n'y écrit rien par défaut (`net.netfilter.nf_log_all_netns`), et les conteneurs du TP ne
+peuvent de toute façon pas le lire (`dmesg` : *Operation not permitted*). (b) et (c) : la chaîne
 `{chain}` journalise puis détruit ; `jump {chain}` en dernière règle de `input` ; la politique `drop`
 reste en filet de sécurité. (d) `limit rate {rate}/minute` est un seau à jetons : {rate} jetons au
 départ (la rafale par défaut), puis un toutes les 12 s ; sur les 20 `echo-request` de `m3`, `tcpdump`

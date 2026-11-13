@@ -704,31 +704,45 @@ def test_cheat_answers_fill_every_form(lab, data, tmp_pub_dir):
 # texts
 # ---------------------------------------------------------------------------
 
-_TAGS = ['zones', 'hooks', 'ruleset', 'selectors', 'conntrack', 'verdicts', 'forward', 'sets', 'testing', 'iptables',
-         'cheatsheet']
+#: the numbered sections of the course (level 1), in order; the questions refer to eight of them by tag
+_TAGS = ['zones', 'hooks', 'ruleset', 'selectors', 'conntrack', 'verdicts', 'logging', 'output', 'forward', 'sets',
+         'testing', 'practices', 'cheatsheet']
+#: sub-sections the texts refer to (the reading guide, cross-references inside the course)
+_SUB_TAGS = ['matrix', 'hook-list', 'three-paths', 'chain-roles', 'families', 'files', 'output-view', 'zone-chains',
+             'router-input', 'spoofing', 'dynamic-sets', 'vmaps', 'locate', 'trace']
 
 
 @pytest.mark.parametrize('lang', ['fr', 'en'])
 def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir, lang):
     grade, ns = _simulate(lab, data, tmp_pub_dir, _done(lab, data), instructor_mode=True)
     info = _text(ns.informations, lang)
-    assert info.count('\n## ') == 11 and 'ct state established,related' in info and '@banned' in info
+    assert info.count('\n## ') == len(_TAGS) and 'ct state established,related' in info and '@banned' in info
     for value in (data.nets.ext, data.nets.dmz, data.nets.int, data.ips.ext2.ip):
         assert str(value) not in info                      # instance data belongs to the first question
+    # the examples of the course use the documentation ranges, never an address an instance could draw
+    assert not re.search(r'\b(10\.\d+|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+\b', info)
     resolved, numbering = resolve_informations(ns.informations)
     course = _text(resolved, lang)
-    assert [s.number for s in numbering.sections(lang) if s.level == 1] == [str(i) for i in range(1, 12)]
-    assert [s.tag for s in numbering.sections(lang)] == _TAGS
+    sections = numbering.sections(lang)
+    assert [s.number for s in sections if s.level == 1] == [str(i) for i in range(1, len(_TAGS) + 1)]
+    assert [s.tag for s in sections if s.level == 1] == _TAGS
+    tags = [s.tag for s in sections]
+    assert {s.level for s in sections} == {1, 2} and all(tags) and len(set(tags)) == len(tags)
+    assert set(_SUB_TAGS) <= set(tags) and 'iptables' not in tags and 'iptables' not in info
+    for hook in ('prerouting', 'input', 'forward', 'output', 'postrouting', 'ingress', 'egress'):
+        assert f'**`{hook}`**' in info, hook                # every hook is presented, ingress and egress included
     assert '## <a id="conntrack"></a>5. ' in course and '(#sets)' in course and '@@' not in course
     questions = list(grade.get_questions_ordered())
     assert len(questions) == 8
     resolved_questions = [_text(resolve_text(q.description, numbering), lang) for q in questions]
     assert all('@@ref' not in q and '@@sec' not in q for q in resolved_questions)
     section = 'section' if lang == 'fr' else 'section'
-    assert f'({section} 9 ' in resolved_questions[0] and f'({section} 3)' in resolved_questions[0]
+    assert f'({section} 11 ' in resolved_questions[0] and f'({section} 3)' in resolved_questions[0]
     assert f'({section}\n3 ' in resolved_questions[2] and f'({section} 5)' in resolved_questions[2]
+    assert f'({section} 6 ' in resolved_questions[4]        # question 4: drop or reject in the output chain
     assert f'({section} 2 ' in resolved_questions[5] and f'({section} 4)' in resolved_questions[5]
-    assert f'({section} 7 ' in resolved_questions[6] and f'({section} 9)' in resolved_questions[6]
+    assert f'({section} 9 ' in resolved_questions[6] and f'({section} 11)' in resolved_questions[6]
+    assert re.search(rf'{section}\s+10\s', resolved_questions[7])     # question 7: the sets
     assert all(has_instructor(_text(q.description, lang)) for q in questions)
     all_text = info + "".join(_text(q.description, lang) for q in questions)
     assert "{'" not in all_text and not re.search(r"(?<!@@)\{[a-z_0-9]+\}", all_text)
@@ -750,7 +764,8 @@ def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir, lang):
     assert '_h`' not in student_text and 'ext1_h' not in student_text and 'router_h' not in student_text
     assert ns2.cmds_router_ban()[1] in student_text and ns2.cmds_router_forward()[3] not in student_text
     html = markdown_to_html(info)
-    assert html.count('<table>') == 6 and '<code>nft -f /root/firewall.nft</code>' in html
+    assert html.count('<table>') == 12 and '<code>nft -f /root/firewall.nft</code>' in html
+    assert '```' not in html and html.count('<pre>') == 18      # every fenced block is rendered as code
 
 
 def test_french_and_english_differ(lab, data, tmp_pub_dir):
