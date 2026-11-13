@@ -1,16 +1,17 @@
-"""Offline tests of the ARP lab (lab/sre/_DRAFT_misc/arp.py) and its helpers (lib/arp.py,
-lib/arp_probe.py).
+"""Offline tests of the LAN layer-2 attacks lab (lab/sre/_DRAFT_misc/lan-attacks.py) and its ARP
+helpers (lib/arp.py, lib/arp_probe.py).
 
 No Docker: the probe frames are built and parsed in-process (AF_PACKET is never opened), and the
 container outputs are rendered from the generated data in the format of the real tools
-(ip -j neigh, nft list table arp filter, ping).  Covers:
+(ip -j neigh, nft list table arp filter, ping, the DHCP probe, the accept_redirects sysctl).  Covers:
 
 * lib/arp_probe.py: build_arp / parse_arp round trip (request and forged reply);
 * lib/arp.py: parse_ip_neigh (JSON and text), the neighbour helpers, the nft arp structural
   helpers, parse_arp_probe, and the base64 command builders;
-* the lab: data generation (both flavors, fixed MACs), topology (switch networks, hidden sonde),
-  the state ops, and the two-pass grading contract (nothing done → 0, everything done → 100, a
-  successful poisoning is not rewarded).
+* the lab: data generation (both flavors, fixed MACs incl. pc), topology (switch networks, the
+  addressless hidden sonde, the DHCP-client pc), the state ops (legit + rogue DHCP, echo server,
+  redirect hardening), and the two-pass grading contract (nothing done → 0, everything done →
+  full, a successful poisoning is not rewarded, the parts are independent).
 """
 import base64
 import datetime
@@ -30,7 +31,10 @@ from bridging import normalize_mac  # noqa: E402
 from arp import (arp_filter_accepts_mac, arp_filter_input_drops, arp_query_cmd, arp_sniff_cmd,  # noqa: E402
                  arp_spoof_cmd, is_permanent, neigh_lladdr, neigh_state, parse_arp_probe, parse_ip_neigh)
 
-_LAB_PATH = Path(__file__).parent.parent / 'lab' / 'sre' / '_DRAFT_misc' / 'arp.py'
+_LAB_PATH = Path(__file__).parent.parent / 'lab' / 'sre' / '_DRAFT_misc' / 'lan-attacks.py'
+
+#: the total of the combined lab's grade elements (kept in sync with the lab)
+LAB_TOTAL = 149
 
 GW_IP = "192.168.1.254"
 GW_MAC = "02:53:52:b1:26:9f"
@@ -178,7 +182,7 @@ def test_arp_filter_accepts_mac():
 def lab():
     if not _LAB_PATH.exists():
         pytest.skip(f"{_LAB_PATH} is missing")
-    spec = importlib.util.spec_from_file_location('arp_lab_under_test', _LAB_PATH)
+    spec = importlib.util.spec_from_file_location('lan_attacks_lab_under_test', _LAB_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules['srelab'] = module
     spec.loader.exec_module(module)
@@ -186,7 +190,7 @@ def lab():
 
 
 def _running_name():
-    return params.get_running_lab_name(lab_name='arp', instance_start_date=datetime.datetime(2000, 1, 1),
+    return params.get_running_lab_name(lab_name='lan-attacks', instance_start_date=datetime.datetime(2000, 1, 1),
                                        username='check')
 
 
@@ -201,11 +205,12 @@ def test_data_fixed_flavor(lab):
     data.compute_post_generate()
     assert str(data.nets.lan) == "192.168.1.0/24"
     assert str(data.ips.m1.ip) == "192.168.1.1" and str(data.ips.routeur.ip) == "192.168.1.254"
-    # every s1 interface has a fixed MAC
-    for key in ('m1', 'm2', 'mx', 'routeur', 'spy'):
+    assert str(data.ips.pc.ip) == "192.168.1.50"                          # pc's reserved DHCP address
+    # every s1 interface has a fixed MAC (pc's is the DHCP reservation key)
+    for key in ('m1', 'm2', 'mx', 'pc', 'routeur', 'spy'):
         assert normalize_mac(getattr(data.macs, key)) != ''
-    macs = {normalize_mac(getattr(data.macs, k)) for k in ('m1', 'm2', 'mx', 'routeur', 'spy')}
-    assert len(macs) == 5                                                  # all distinct
+    macs = {normalize_mac(getattr(data.macs, k)) for k in ('m1', 'm2', 'mx', 'pc', 'routeur', 'spy')}
+    assert len(macs) == 6                                                  # all distinct
 
 
 def test_data_random_flavor_private(lab):
@@ -223,10 +228,10 @@ def test_topology(lab):
     assert nets['s1'].mode == 'switch' and nets['ext'].mode == 'switch'
     machines = {m.name: m for m in ns.get_machines()}
     assert machines['spy'].hidden is True                                  # the grader's sonde is hidden
-    assert all(not machines[m].hidden for m in ('m1', 'm2', 'mx', 'routeur', 'ext1'))
-    # the fixed MAC is carried on the s1 interface of each visible+sonde machine
+    assert all(not machines[m].hidden for m in ('m1', 'm2', 'mx', 'pc', 'routeur', 'ext1'))
+    # the fixed MAC is carried on the s1 interface of each visible+sonde machine (pc included)
     s1 = nets['s1']
-    for m in ('m1', 'm2', 'mx', 'routeur', 'spy'):
+    for m in ('m1', 'm2', 'mx', 'pc', 'routeur', 'spy'):
         adapter = s1.net_adapters[machines[m]]
         assert normalize_mac(adapter.mac) == normalize_mac(getattr(data.macs, m))
 
@@ -244,13 +249,19 @@ def _state_ops(ns, name):
 def test_initial_state(lab):
     ns, data = _net_scheme(lab)
     ops = _state_ops(ns, 'initial')
-    # the sonde gets the probe script
+    # the sonde gets both probe scripts (forged ARP replies and DHCP discovers)
     spy_files = [op.filename for op in ops.get('spy', []) if not isinstance(op, str) and hasattr(op, 'filename')]
     assert '/usr/local/sbin/arp_probe.py' in spy_files
+    assert '/usr/local/sbin/dhcp_probe.py' in spy_files
     # m1 is addressed and routed toward the gateway
     m1_cmds = [op for op in ops.get('m1', []) if isinstance(op, str)]
     assert any("ip address add" in c for c in m1_cmds)
     assert any(f"default via {data.ips.routeur.ip}" in c for c in m1_cmds)
+    # the routeur runs the legitimate DHCP server; pc is a DHCP client
+    routeur_cmds = " ".join(op for op in ops.get('routeur', []) if isinstance(op, str))
+    assert "dnsmasq" in routeur_cmds and f"--dhcp-host={normalize_mac(data.macs.pc)}" in routeur_cmds
+    pc_cmds = " ".join(op for op in ops.get('pc', []) if isinstance(op, str))
+    assert "dhclient" in pc_cmds
 
 
 def test_final_state(lab):
@@ -261,8 +272,12 @@ def test_final_state(lab):
     assert "policy drop" in m1_cmds
     assert f"arp saddr ether {normalize_mac(data.macs.routeur)} accept" in m1_cmds
     assert "nud permanent" in m1_cmds
+    assert "accept_redirects=0" in m1_cmds                                 # the ICMP-redirect parade
     routeur_cmds = " ".join(op for op in ops.get('routeur', []) if isinstance(op, str))
     assert "arpwatch" in routeur_cmds
+    # the rogue DHCP server runs on the attacker so the DHCP part is detected
+    mx_cmds = " ".join(op for op in ops.get('mx', []) if isinstance(op, str))
+    assert "dnsmasq" in mx_cmds and f"--dhcp-option=3,{data.ips.mx.ip}" in mx_cmds
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +289,7 @@ def _synth(command, data, *, protected):
     gw_ip = str(data.ips.routeur.ip)
     gw_mac = normalize_mac(data.macs.routeur)
     spy_mac = normalize_mac(data.macs.spy)
+    mx_ip = str(data.ips.mx.ip)
     if command == "ip -j neigh show":
         mac = gw_mac if protected else spy_mac                            # poisoned when unprotected
         state = "PERMANENT" if protected else "REACHABLE"
@@ -288,6 +304,14 @@ def _synth(command, data, *, protected):
                 f"\t\tarp saddr ether {gw_mac} accept\n\t}}\n}}\n")
     if command == "pgrep -x arpwatch":
         return "1234\n" if protected else ""
+    if 'dhcp_probe.py' in command:
+        # one legitimate server always; the rogue (gateway = mx) answers only when the attack is up
+        offers = [{"server_id": gw_ip, "routers": [gw_ip], "msg_type": "OFFER"}]
+        if protected:
+            offers.append({"server_id": mx_ip, "routers": [mx_ip], "msg_type": "OFFER"})
+        return json.dumps({"errors": [], "replies": {"eth0": {"d": offers}}})
+    if command.startswith("cat /proc/sys/") and "accept_redirects" in command:
+        return "0" if protected else "1"                                  # hardened when protected
     return ""
 
 
@@ -322,15 +346,20 @@ def test_grade_everything_done(lab):
     ns, data = _net_scheme(lab)
     grades = _run_grade(lab, data, ns, protected=True, answers='cheat')
     assert all(g == mx for g, mx in grades.values()), grades
-    assert sum(g for g, _ in grades.values()) == 100
+    assert sum(g for g, _ in grades.values()) == LAB_TOTAL
 
 
 def test_poisoning_not_rewarded(lab):
-    """Unprotected but with the correct form answers: the behavioural protection elements stay 0."""
+    """Unprotected but with the correct form answers: every behavioural element stays 0 (the forms,
+    pure knowledge, are still credited).  This also shows the parts are independent: the knowledge
+    answers never earn the behavioural points of another part."""
     ns, data = _net_scheme(lab)
     grades = _run_grade(lab, data, ns, protected=False, answers='cheat')
     for title in ('filter_policy_drop', 'filter_accepts_gateway', 'poison_blocked',
-                  'still_reaches_gateway', 'static_permanent', 'arpwatch_running'):
+                  'still_reaches_gateway', 'static_permanent', 'arpwatch_running',
+                  'rogue_dhcp_detected', 'redirect_hardened'):
         assert grades[title][0] == 0, (title, grades[title])
     # the pure-knowledge form questions are still credited
-    assert grades['q_why_insecure'][0] == grades['q_why_insecure'][1]
+    for title in ('q_why_insecure', 'q_recon', 'q_payoff', 'q_arp_sysctls',
+                  'q_rogue_dhcp', 'q_icmp_redirect'):
+        assert grades[title][0] == grades[title][1], (title, grades[title])

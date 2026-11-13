@@ -1,4 +1,8 @@
 {
+  "lan-attacks.py": {
+    "en": "LAN layer-2 attacks and defences (ARP, MITM, rogue DHCP, ICMP redirect)",
+    "fr": "Attaques et parades sur un réseau local (niveau 2)"
+  },
   "nagios.py": {
     "en": "Nagios: supervising hosts and services",
     "fr": "Nagios : superviser des hôtes et des services"
