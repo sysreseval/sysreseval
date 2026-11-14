@@ -1,3 +1,10 @@
+sysreseval (0.17.0-1) unstable; urgency=medium
+
+  * sre-web portal can control exams on local clients and hybrid (web+local)
+    exams
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Sun, 15 Nov 2026 00:03:29 +0100
+
 sysreseval (0.16.2-1) unstable; urgency=medium
 
   * Release 0.16.2.
