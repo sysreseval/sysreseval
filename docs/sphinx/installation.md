@@ -349,13 +349,16 @@ systemctl enable --now sre-wipe-at-shutdown.service
 ### Tests
 
 ```bash
-make tests                          # every test under tests/, the functional and web tests included (excludes test_exam_mode.py, a script, and the Docker tests of make docker-tests)
+make tests                          # every test under tests/, the functional and web tests included (excludes test_exam_mode.py and test_exam_mode_web.py, scripts, and the Docker tests of make docker-tests)
 make test FILE=test_net_config.py   # single file
 make functional-tests               # functional tests (test_functional.py)
 make exam-tests                     # exam-mode integration tests (requires debug_mode=True)
+make web-exam-tests                 # the same GUI following an exam of the web site: exam.json written by the web agent on the portal's orders (requires debug_mode=True and the web dependencies; five scenarios, about seven minutes)
 make docker-tests                   # the Docker integration tests, left out of make tests and run by make all-tests (root, real containers: start/stop, save/restore, every lab of lab/sre/ from 0 to all its points with its `final` state, the connection log's database on a MariaDB container)
-make all-tests                      # tests + docker-tests + exam-tests
+make all-tests                      # tests + docker-tests + exam-tests + web-exam-tests
 ```
+
+`make web-exam-tests` (`tests/test_exam_mode_web.py`) is the end-to-end series of the exams the web site puts on machines of the pool (see *On the workstations* in the [web server](web.md) chapter). Like `make exam-tests` it runs `sysreseval --debug` as a normal user (`EXAM_USER`, `etudiant` by default) on a temporary `SRE_PUB_DIR` with the mock `sre-wrapper`, as root; but nothing writes `exam.json` by hand: the web agent of the tree does (`PUT` / `DELETE /v1/exam`), driven by the portal's own code — the registry of the exams, a pool polling that agent and the reconciler of the machines, without the HTTP server nor the database. The scenarios (`SCENARIO=2`, `SCENARIOS="1 3"`): the lock a delay before the start, waiting → active → ended and the release; minutes granted on the end screen resuming the exam, the final evaluation then run by the agent; *End now* and *Close* for the machine; a file set by hand refused, then the machine taken once it is free; a lab added during the exam.
 
 Unit tests don't need Docker or Kathara — they cover serialization, topology, grading logic, and pure-Python helpers. Functional and exam-mode tests stand up more of the system: see `tests/conftest.py` for the shared fixtures (`mock_sre_args`, `tmp_lab_dir`, `tmp_pub_dir`).
 

@@ -2,7 +2,7 @@
 SHELL:=/bin/bash
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-.PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests docker-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
+.PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests web-exam-tests docker-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
 
@@ -243,13 +243,15 @@ PYTEST = SRE_TEST_MYSQL=$(SRE_TEST_MYSQL) SRE_TEST_JS=$(SRE_TEST_JS) ${ROOT_DIR}
 
 # Every test file under tests/, sub-directories included (tests/lab/ holds the tests of the labs):
 # the web tests of `make web-tests` and the functional tests of `make functional-tests` run here
-# too.  Left out: tests/test_exam_mode.py, a script, not a pytest module (`make exam-tests`), and
+# too.  Left out: tests/test_exam_mode.py and tests/test_exam_mode_web.py, scripts, not pytest
+# modules (`make exam-tests`, `make web-exam-tests`), and
 # the Docker tests of `make docker-tests` (real containers, root), which `make all-tests` runs
 # after these.  The same ignore list serves `make test`: pytest's --ignore spares the paths given
 # on the command line, so `make test FILE=test_docker_lifecycle.py` still runs that file.
 DOCKER_TESTS = ${ROOT_DIR}/tests/test_docker_lifecycle.py ${ROOT_DIR}/tests/test_docker_labs.py \
 	${ROOT_DIR}/tests/test_web_accessdb_live.py
-TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py $(addprefix --ignore=,$(DOCKER_TESTS))
+TESTS_IGNORE = --ignore=${ROOT_DIR}/tests/test_exam_mode.py --ignore=${ROOT_DIR}/tests/test_exam_mode_web.py \
+	$(addprefix --ignore=,$(DOCKER_TESTS))
 tests:
 	$(PYTEST) ${ROOT_DIR}/tests/ $(TESTS_IGNORE)
 
@@ -295,6 +297,26 @@ exam-tests:
 		|| { echo "ERROR: debug_mode is False in params.py — set debug_mode = True before running exam-tests"; exit 1; }
 	PYTHONPATH=${ROOT_DIR}/src ${ROOT_DIR}/venv/bin/python ${ROOT_DIR}/tests/test_exam_mode.py $(EXAM_ARGS)
 
+# End-to-end tests of an exam of the web site taken at a machine of the pool: the GUI of
+# `make exam-tests` (sysreseval --debug as EXAM_USER, the mock sre-wrapper), but exam.json is
+# written by the web agent of the tree, on the orders of the portal's own code (the registry of
+# the exams, a pool polling that agent, the reconciler of the machines), with the fake sre of
+# the web tests behind the agent.  Same conditions as exam-tests (root, debug_mode = True) plus
+# the web dependencies of the venv; a series of its own: five scenarios, about seven minutes.
+# Usage: make web-exam-tests [EXAM_USER=etudiant] [EXAM_LAB=...] [EXAM_LAB2=...] [SCENARIOS="1 3"]
+#        make web-exam-tests SCENARIO=1
+WEB_EXAM_ARGS = --user $(EXAM_USER) --lab $(EXAM_LAB) --lab2 $(EXAM_LAB2) --sysreseval $(ROOT_DIR)/bin/sysreseval
+ifdef SCENARIO
+WEB_EXAM_ARGS += $(SCENARIO)
+else ifneq ($(SCENARIOS),)
+WEB_EXAM_ARGS += $(SCENARIOS)
+endif
+
+web-exam-tests:
+	@grep -qP '^debug_mode\s*=\s*True' ${ROOT_DIR}/src/SRE/params.py \
+		|| { echo "ERROR: debug_mode is False in params.py — set debug_mode = True before running web-exam-tests"; exit 1; }
+	PYTHONPATH=${ROOT_DIR}/src:${ROOT_DIR}/tests ${ROOT_DIR}/venv/bin/python ${ROOT_DIR}/tests/test_exam_mode_web.py $(WEB_EXAM_ARGS)
+
 # Docker integration tests with real containers, left out of `make tests` and run by
 # `make all-tests` (as root on a host with Docker and the SRE images, skipped otherwise): sre
 # start/stop for a non-privileged and a privileged lab, sre save/restore, checked on the Docker
@@ -308,8 +330,8 @@ docker-tests:
 	$(PYTEST) $(DOCKER_TESTS)
 
 # `make tests` already runs the functional tests; the Docker tests need root and a Docker daemon,
-# the exam tests root and debug_mode = True.
-all-tests: tests docker-tests exam-tests
+# the exam tests (the two series) root and debug_mode = True.
+all-tests: tests docker-tests exam-tests web-exam-tests
 
 images:
 	$(MAKE) -C ${ROOT_DIR}/images all
