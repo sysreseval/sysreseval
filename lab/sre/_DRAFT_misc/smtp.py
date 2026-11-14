@@ -105,6 +105,9 @@ ALIAS_NAMES = ["contact", "support", "info", "secretariat"]
 DKIM_SELECTORS = ["tp", "mail", "k1", "s1", "courrier"]
 MAILDIR_WAIT = 10  # seconds the grader waits for Postfix to deliver what the probes sent
 PC1_SENDER = "probe@alpha.tp"  # envelope sender of the grader's message submitted on pc1
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -1372,17 +1375,17 @@ ports `{port_smtp}`, `{port_submission}`, `{port_imap}`, `{port_imaps}`.
         self.add_grade_element(
             title=no_tr("smtp_codes"), max_grade=2, grade_part=part1,
             grade=2 * int(all(_int(q1.get(k)) == int(v) for k, v in q1_answers.items() if k.startswith("code_"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("codes de réponse du dialogue SMTP"),
+            description=tr("codes de réponse du dialogue SMTP"),
         )
         self.add_grade_element(
             title=no_tr("smtp_enveloppe"), max_grade=2, grade_part=part1,
             grade=int("enveloppe" in _norm(q1.get("routage"))) + int(_norm(q1.get("return_path")) == "mail from"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("enveloppe et en-têtes"),
+            scope=CHOICE_SCOPE, description=tr("enveloppe et en-têtes"),
         )
         self.add_grade_element(
             title=no_tr("smtp_ports"), max_grade=2, grade_part=part1,
             grade=2 * int(all(_int(q1.get(k)) == int(v) for k, v in q1_answers.items() if k.startswith("port_"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("ports des protocoles du courrier"),
+            description=tr("ports des protocoles du courrier"),
         )
 
         # =====================================================================
@@ -1577,11 +1580,14 @@ unknown`) ; rapport envoyé par `{exp_rebond}`.
             description=tr("un message pour delta.tp attend dans la file différée (connexion refusée)"),
         )
         self.add_grade_element(
-            title=no_tr("file_questions"), max_grade=2, grade_part=part3,
-            grade=int("refuse" in _norm(q3.get("raison")))
-            + int(_norm(q3.get("commande")).replace(" ", "") in ("postqueue-p", "mailq", "postqueue-j")
-                  and "réessaie" in _norm(q3.get("sort"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("file d'attente : raison, commande, devenir du message"),
+            title=no_tr("file_questions_typed"), max_grade=0.5, grade_part=part3,
+            grade=0.5 * int(_norm(q3.get("commande")).replace(" ", "") in ("postqueue-p", "mailq", "postqueue-j")),
+            description=tr("file d'attente : commande"),
+        )
+        self.add_grade_element(
+            title=no_tr("file_questions"), max_grade=1.5, grade_part=part3,
+            grade=int("refuse" in _norm(q3.get("raison"))) + 0.5 * int("réessaie" in _norm(q3.get("sort"))),
+            scope=CHOICE_SCOPE, description=tr("file d'attente : raison, devenir du message"),
         )
         self.add_grade_element(
             title=no_tr("rebond"), max_grade=2, grade_part=part3,
@@ -1668,10 +1674,14 @@ message dans `new/` puis `cur/`).
             description=tr("le message de test est visible par IMAP dans la boîte d'alice"),
         )
         self.add_grade_element(
-            title=no_tr("imap_questions"), max_grade=1, grade_part=part4,
-            grade=int(_int(q4.get("port_imap")) == 143 and _int(q4.get("port_imaps")) == 993
-                      and _norm(q4.get("stockage")) == "/home/alice/maildir"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("ports IMAP et emplacement des boîtes"),
+            title=no_tr("imap_questions_typed"), max_grade=0.5, grade_part=part4,
+            grade=0.5 * int(_int(q4.get("port_imap")) == 143 and _int(q4.get("port_imaps")) == 993),
+            description=tr("ports IMAP"),
+        )
+        self.add_grade_element(
+            title=no_tr("imap_questions"), max_grade=0.5, grade_part=part4,
+            grade=0.5 * int(_norm(q4.get("stockage")) == "/home/alice/maildir"),
+            scope=CHOICE_SCOPE, description=tr("emplacement des boîtes"),
         )
 
         # =====================================================================
@@ -1879,5 +1889,5 @@ ne bloque pas le courrier.
         self.add_grade_element(
             title=no_tr("spf_dkim_questions"), max_grade=1, grade_part=part6,
             grade=int("adresse ip" in _norm(q6.get("spf_verifie")) and "dns" in _norm(q6.get("dkim_cle"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("ce que vérifie SPF, où est la clé DKIM"),
+            scope=CHOICE_SCOPE, description=tr("ce que vérifie SPF, où est la clé DKIM"),
         )

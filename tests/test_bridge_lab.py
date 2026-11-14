@@ -460,7 +460,7 @@ def test_grading_nothing_done(lab, data, tmp_pub_dir):
     grade, _ = _simulate(lab, data, tmp_pub_dir, _nothing, cheat=False)
     grades = _grades(grade)
     assert sum(g for g, _ in grades.values()) == 0, {k: v for k, v in grades.items() if v[0]}
-    assert sum(mx for _, mx in grades.values()) == 100 and len(grades) == 24
+    assert sum(mx for _, mx in grades.values()) == 100 and len(grades) == 27
     assert [str(p.title) for p in grade._grade_parts] == [f'part{i}' for i in range(1, 7)]
 
 
@@ -480,6 +480,37 @@ def test_grading_everything_done(lab, data, tmp_pub_dir):
     for src, dest in (('m4', ns.data.ips.m1), ('m1', ns.data.ips.m4), ('m4', ns.data.ips.ext1)):
         assert (src, f"ip neigh flush all; {lab.PING} {_ip(dest)}") in pings     # part 6: stale switch entries
     assert not any('flush' in c for m, c in pings if m not in ('m1', 'm4'))
+
+
+def test_only_choice_answers_are_exo_only(lab, data, tmp_pub_dir):
+    # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+    # tried), a typed answer is not
+    choices = {'q_no_bridge', 'q_transparency', 'q_latency', 'q_fdb', 'q_address_on_bridge', 'q_root_election',
+               'q_blocked_port', 'q_without_stp'}
+    grade, _ = _simulate(lab, data, tmp_pub_dir, _synthetic)
+    for e in grade.get_grade_list():
+        expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+        assert e.scope == expected, e.title
+
+
+def test_split_form_elements(lab, data, tmp_pub_dir):
+    """The typed answers of a mixed form question are graded apart, each element keeping the points of
+    its answers: a wrong typed answer costs the `_typed` element only, a wrong choice the other one."""
+    split = ('q_transparency_typed', 'q_transparency', 'q_latency_typed', 'q_latency', 'q_fdb_typed', 'q_fdb')
+    grade, _ = _simulate(lab, data, tmp_pub_dir, _synthetic)
+    grades = _grades(grade)
+    assert [grades[t] for t in split] == [(1, 1), (5, 5), (2, 2), (3, 3), (2, 2), (2, 2)]
+    wrong = {'br0_mac': '00:00:00:00:00:01', 'rtt_direct': 'x', 'port_m3': 'eth0'}
+    for q in grade.get_questions_ordered():
+        names = {f['name'] for f in (getattr(q, 'fields', None) or [])}
+        if names & set(wrong):
+            answers = json.loads(grade._answers[q.question_hash])
+            answers.update({k: v for k, v in wrong.items() if k in names})
+            grade._answers[q.question_hash] = json.dumps(answers)
+    grade.reset_before_grade()
+    grade.grade()
+    grades = _grades(grade)
+    assert [grades[t] for t in split] == [(0, 1), (5, 5), (1, 2), (3, 3), (2, 2), (1, 2)]
 
 
 def test_tampering_is_not_rewarded(lab, data, tmp_pub_dir):

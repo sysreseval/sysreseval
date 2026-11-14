@@ -124,6 +124,9 @@ MAC_KEYS = {('m1', 's1'): 'm1', ('gw', 's1'): 'gw_lan', ('b1', 's1'): 'b1_eth0',
             ('m2', 's2'): 'm2', ('m3', 's2'): 'm3', ('b1', 's2'): 'b1_eth1',
             ('m4', 's3'): 'm4', ('b2', 's3'): 'b2_eth0', ('b3', 's3'): 'b3_eth0'}
 B1_MAC_KEYS = ('b1_eth0', 'b1_eth1')   # the two highest MACs of the instance (see Data.generate)
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     's1': {'m1': 0, 'gw': 0, 'b1': 0, 'b2': 1, 'b3': 1},
@@ -784,7 +787,7 @@ le `ping {m1}` de `m2`, capturez sur `m2` avec `tcpdump -e -n -i eth0` : que fai
         )
 
         self.add_grade_element(
-            title=no_tr("q_no_bridge"), max_grade=4, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_no_bridge"), max_grade=4, grade_part=part1, scope=CHOICE_SCOPE,
             grade=3 * int(_norm(q1.get("why")) == "two_domains") + int(_norm(q1.get("m2_m3")) == "same_switch"),
             description=tr("sans pont : deux domaines de diffusion séparés ; m2 et m3 sur le même switch"),
         )
@@ -896,17 +899,27 @@ formulaire est évalué sur la conclusion et sur la présence de deux mesures pl
             description=tr("à travers le pont : m2 joint m1, m1 joint m2, m3 joint ext1 (m2 vers ext1 : partie 4)"),
         )
         self.add_grade_element(
-            title=no_tr("q_transparency"), max_grade=6, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q3.get("src_mac")) == "m2") + int(_norm(q3.get("arp")) == "m2_mac")
-                  + 2 * int(_norm(q3.get("m3_sees")) == "nothing") + int(_same_mac(q3.get("br0_mac"), bridge_mac(d)))
-                  + int(_norm(q3.get("br0_mac_origin")) == "lowest_port"),
-            description=tr("transparence : adresses MAC inchangées, table ARP de m1, ce que voit m3, adresse MAC de br0"),
+            title=no_tr("q_transparency_typed"), max_grade=1, grade_part=part2,
+            grade=int(_same_mac(q3.get("br0_mac"), bridge_mac(d))),
+            description=tr("transparence : adresse MAC de br0"),
         )
         self.add_grade_element(
-            title=no_tr("q_latency"), max_grade=5, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_float_in(q4.get("rtt_bridged"), 0, 1000)) + int(_float_in(q4.get("rtt_direct"), 0, 1000))
-                  + 3 * int(_norm(q4.get("conclusion")) == "bridge_delay"),
-            description=tr("latence : deux mesures et la conclusion (le pont ajoute un délai)"),
+            title=no_tr("q_transparency"), max_grade=5, grade_part=part2, scope=CHOICE_SCOPE,
+            grade=int(_norm(q3.get("src_mac")) == "m2") + int(_norm(q3.get("arp")) == "m2_mac")
+                  + 2 * int(_norm(q3.get("m3_sees")) == "nothing")
+                  + int(_norm(q3.get("br0_mac_origin")) == "lowest_port"),
+            description=tr("transparence : adresses MAC inchangées, table ARP de m1, ce que voit m3, origine de "
+                           "l'adresse MAC de br0"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_latency_typed"), max_grade=2, grade_part=part2,
+            grade=int(_float_in(q4.get("rtt_bridged"), 0, 1000)) + int(_float_in(q4.get("rtt_direct"), 0, 1000)),
+            description=tr("latence : deux mesures"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_latency"), max_grade=3, grade_part=part2, scope=CHOICE_SCOPE,
+            grade=3 * int(_norm(q4.get("conclusion")) == "bridge_delay"),
+            description=tr("latence : la conclusion (le pont ajoute un délai)"),
         )
 
         # =====================================================================
@@ -956,10 +969,14 @@ topologie STP (partie 6), le noyau ramène de lui-même la durée de vie à 2 ×
         )
 
         self.add_grade_element(
-            title=no_tr("q_fdb"), max_grade=4, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q5.get("port_m1")) == "eth0") + int(_norm(q5.get("port_m3")) == "eth1")
-                  + 2 * int(_same_mac(q5.get("mac_m3"), d.macs.m3)),
-            description=tr("table MAC : port de m1, port de m3, adresse MAC de m3"),
+            title=no_tr("q_fdb_typed"), max_grade=2, grade_part=part3,
+            grade=2 * int(_same_mac(q5.get("mac_m3"), d.macs.m3)),
+            description=tr("table MAC : adresse MAC de m3"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_fdb"), max_grade=2, grade_part=part3, scope=CHOICE_SCOPE,
+            grade=int(_norm(q5.get("port_m1")) == "eth0") + int(_norm(q5.get("port_m3")) == "eth1"),
+            description=tr("table MAC : port de m1, port de m3"),
         )
         self.add_grade_element(
             title=no_tr("fdb_learned"), max_grade=5, grade_part=part3,
@@ -1079,7 +1096,7 @@ côtés. L'évaluation vérifie l'adresse sur `br0` (et aucune sur `eth0` / `eth
             description=tr("route par défaut de b1 via gw, b1 joint ext1"),
         )
         self.add_grade_element(
-            title=no_tr("q_address_on_bridge"), max_grade=3, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_address_on_bridge"), max_grade=3, grade_part=part5, scope=CHOICE_SCOPE,
             grade=3 * int(_norm(q7.get("why_br0")) == "port_frames_to_bridge"),
             description=tr("pourquoi l'adresse va sur br0 et non sur un port"),
         )
@@ -1207,19 +1224,18 @@ perd une vingtaine de points, tout rentre dans l'ordre quelques secondes après 
             description=tr("m4 joint m1 et, par sa route par défaut, ext1 à travers la boucle ; m1 joint m4"),
         )
         self.add_grade_element(
-            title=no_tr("q_root_election"), max_grade=3, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_root_election"), max_grade=3, grade_part=part6, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q8.get("root_bridge")) == first_root) + int(_norm(q8.get("why_root")) == "lowest_mac"),
             description=tr("pont élu racine à priorité égale ({first_root}) et pourquoi (plus petite adresse MAC)").format(
                 first_root=first_root),
         )
         self.add_grade_element(
-            title=no_tr("q_bpdu"), max_grade=4, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_bpdu"), max_grade=4, grade_part=part6,
             grade=int(_is_priority(q8.get("root_priority"), DEFAULT_PRIORITY))
                   + int(_float_in(q8.get("hello"), STP_HELLO - 0.01, STP_HELLO + 0.01))
                   + int(_float_in(q8.get("max_age"), STP_MAX_AGE - 0.01, STP_MAX_AGE + 0.01))
                   + int(_float_in(q8.get("forward_delay"), STP_FORWARD_DELAY - 0.01, STP_FORWARD_DELAY + 0.01)),
-            description=tr("BPDU : priorité de la racine ({priority}), hello {hello} s, max age {max_age} s, forward delay {fd} s").format(
-                priority=DEFAULT_PRIORITY, hello=STP_HELLO, max_age=STP_MAX_AGE, fd=STP_FORWARD_DELAY),
+            description=tr("BPDU : priorité de la racine, hello time, max age, forward delay"),
         )
         new_root = infos[final_root]
         self.add_grade_element(
@@ -1240,13 +1256,13 @@ perd une vingtaine de points, tout rentre dans l'ordre quelques secondes après 
                 first_root=first_root, final_root=final_root),
         )
         self.add_grade_element(
-            title=no_tr("q_blocked_port"), max_grade=3, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_blocked_port"), max_grade=3, grade_part=part6, scope=CHOICE_SCOPE,
             grade=3 * int(live_blocked is not None and _norm(q8.get("blocked_port")) == live_blocked),
             description=tr("le port bloqué une fois la nouvelle racine en place (comparé à l'état réel de {first_root})").format(
                 first_root=first_root),
         )
         self.add_grade_element(
-            title=no_tr("q_without_stp"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_without_stp"), max_grade=2, grade_part=part6, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q8.get("without_stp")) == "storm"),
             description=tr("sans STP : tempête de diffusion"),
         )

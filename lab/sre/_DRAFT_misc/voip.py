@@ -176,6 +176,9 @@ FIRST_NAMES = ("Alice", "Bruno", "Camille", "Dominique", "Elodie", "Fabien", "Ga
                "Karine", "Lucas", "Manon", "Nadia", "Olivier", "Pauline")
 LAST_NAMES = ("Martin", "Bernard", "Dubois", "Durand", "Leroy", "Moreau", "Simon", "Laurent", "Lefebvre", "Michel",
               "Garcia", "Roux", "Fournier", "Girard", "Bonnet", "Lambert")
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -1600,8 +1603,9 @@ donc qui vous avez entendu.
 **L'évaluation.** Elle dure une trentaine de secondes : depuis les machines des collègues, elle
 passe une douzaine d'appels avec leurs comptes et vérifie ce qu'ils donnent (réponses SIP, SDP,
 son entendu de chaque côté). Vous verrez ces appels dans la console d'Asterisk. Vos téléphones
-logiciels doivent être lancés pour que leur enregistrement soit constaté. Les réponses que vous
-tapez dans les formulaires ne sont notées qu'à l'évaluation finale.
+logiciels doivent être lancés pour que leur enregistrement soit constaté. Dans les formulaires, les
+réponses choisies dans une liste ne sont notées qu'à l'évaluation finale ; celles que vous tapez
+comptent aussi dans l'auto-évaluation.
 
 ## Plan du TP
 
@@ -1690,7 +1694,8 @@ et compter les lignes d'une seconde, ou *Flux RTP* dans Wireshark).
 Le poste est joué par `lib/sip_probe.py` sur la machine cachée `probe_office` ; ces valeurs sont
 tirées au sort pour chaque instance.
 
-- Évaluation (formulaire, noté à l'évaluation finale) : `demo_identity` 3, `demo_registration` 3,
+- Évaluation (formulaire) : `demo_identity` 3, `demo_registration_typed` 2 (durée et code),
+  `demo_registration` 1 (l'en-tête, choisi dans une liste : noté à l'évaluation finale seulement),
   `demo_call` 4 dont 2 pour la cadence.
 """).format(number=d.demo_number, ip=ns.ip(PROBE_OFFICE), user_agent=d.demo_user_agent, expires=d.demo_expires,
             service=d.demo_service, payload_type=q1_answers["demo_payload_type"], codec=d.demo_codec,
@@ -1702,19 +1707,22 @@ tirées au sort pour chaque instance.
                     + int(_norm(q1.get("demo_user_agent")) == _norm(d.demo_user_agent)))
         self.add_grade_element(
             title=no_tr("demo_identity"), max_grade=3, grade_part=part1, grade=identity,
-            scope=params.EXO_EVAL_SCOPE, description=tr("le poste : numéro, adresse, User-Agent"))
+            description=tr("le poste : numéro, adresse, User-Agent"))
         registration = (int(_close(q1.get("demo_expires"), d.demo_expires, 0))
-                        + int(_norm(q1.get("challenge_status")) == "401")
-                        + int(q1.get("challenge_header") == "WWW-Authenticate"))
+                        + int(_norm(q1.get("challenge_status")) == "401"))
         self.add_grade_element(
-            title=no_tr("demo_registration"), max_grade=3, grade_part=part1, grade=registration,
-            scope=params.EXO_EVAL_SCOPE, description=tr("son enregistrement : durée, défi d'authentification"))
+            title=no_tr("demo_registration_typed"), max_grade=2, grade_part=part1, grade=registration,
+            description=tr("son enregistrement : durée, code de la première réponse"))
+        self.add_grade_element(
+            title=no_tr("demo_registration"), max_grade=1, grade_part=part1,
+            grade=int(q1.get("challenge_header") == "WWW-Authenticate"),
+            scope=CHOICE_SCOPE, description=tr("son enregistrement : en-tête du défi d'authentification"))
         media = (int(_norm(q1.get("demo_service")) == d.demo_service)
                  + int(_close(q1.get("demo_payload_type"), {"PCMU": 0, "PCMA": 8}[d.demo_codec], 0))
                  + 2 * int(_close(q1.get("demo_pps"), pps, 1)))
         self.add_grade_element(
             title=no_tr("demo_call"), max_grade=4, grade_part=part1, grade=media,
-            scope=params.EXO_EVAL_SCOPE, description=tr("son appel : numéro, type de charge utile, cadence des paquets"))
+            description=tr("son appel : numéro, type de charge utile, cadence des paquets"))
 
         # ===== Partie 2 — Comptes =====
         part2 = self.add_grade_part(no_tr("part2"), tr("Partie 2 — Comptes SIP et softphones"))
@@ -1894,8 +1902,7 @@ quatre sur le PBX (un port RTP et un port RTCP pour chacun des deux interlocuteu
   la réponse SDP ne contient que 8 et 101 ; une offre GSM + G.722 seule reçoit `488`),
   `rtp_port_range` 4 (ports des réponses SDP), `media_through_pbx` 4 (appel du 1004 au 1003 :
   aucun *re-INVITE*, RTP venant du PBX aux deux bouts), `dscp_ef` 2 (octet TOS 184 des paquets
-  reçus du PBX, sur l'appel au 1003 ou au {echo}), `media_questions` 2 (formulaire, à l'évaluation
-  finale).
+  reçus du PBX, sur l'appel au 1003 ou au {echo}), `media_questions` 2 (formulaire).
 """).format(template=ns._solution_templates(4).split("\n\n")[0].replace("; ---- templates\n", ""),
             rtp=ns._solution_rtp().rstrip(), kbits=q4_answers["stream_kbits"], ptime=d.demo_ptime,
             payload=8 * d.demo_ptime, pps=q1_answers["demo_pps"], max_calls=q4_answers["max_calls"],
@@ -1918,7 +1925,7 @@ quatre sur le PBX (un port RTP et un port RTCP pour chacun des deux interlocuteu
             title=no_tr("media_questions"), max_grade=2, grade_part=part4,
             grade=int(_close(q4.get("stream_kbits"), stream_kbits(d.demo_ptime), 1.0))
             + int(_close(q4.get("max_calls"), d.rtp_size // 4, 0)),
-            scope=params.EXO_EVAL_SCOPE, description=tr("débit d'un flux, dimensionnement de la plage de ports"))
+            description=tr("débit d'un flux, dimensionnement de la plage de ports"))
 
         # ===== Partie 5 — Messagerie vocale et menu =====
         part5 = self.add_grade_part(no_tr("part5"), tr("Partie 5 — Messagerie vocale et menu vocal"))
@@ -3399,8 +3406,9 @@ donc qui vous avez entendu.
 **L'évaluation.** Elle dure une trentaine de secondes : depuis les machines des collègues, elle
 passe une douzaine d'appels avec leurs comptes et vérifie ce qu'ils donnent (réponses SIP, SDP,
 son entendu de chaque côté). Vous verrez ces appels dans la console d'Asterisk. Vos téléphones
-logiciels doivent être lancés pour que leur enregistrement soit constaté. Les réponses que vous
-tapez dans les formulaires ne sont notées qu'à l'évaluation finale.
+logiciels doivent être lancés pour que leur enregistrement soit constaté. Dans les formulaires, les
+réponses choisies dans une liste ne sont notées qu'à l'évaluation finale ; celles que vous tapez
+comptent aussi dans l'auto-évaluation.
 
 ## Plan du TP
 
@@ -3425,8 +3433,8 @@ each phone sends a tone of its own and records what it receives in `/shared/<mac
 **The evaluation.** It lasts about thirty seconds: from the machines of the colleagues, it places
 a dozen calls with their accounts and checks what they give (SIP responses, SDP, sound heard on
 each side). You will see these calls on the Asterisk console. Your softphones must be running
-for their registration to be noticed. The answers you type in the forms are only graded at the
-final evaluation.
+for their registration to be noticed. In the forms, the answers picked from a list are only graded
+at the final evaluation; the ones you type also count in the self-evaluation.
 
 ## Plan of the lab
 
@@ -3548,7 +3556,8 @@ et compter les lignes d'une seconde, ou *Flux RTP* dans Wireshark).
 Le poste est joué par `lib/sip_probe.py` sur la machine cachée `probe_office` ; ces valeurs sont
 tirées au sort pour chaque instance.
 
-- Évaluation (formulaire, noté à l'évaluation finale) : `demo_identity` 3, `demo_registration` 3,
+- Évaluation (formulaire) : `demo_identity` 3, `demo_registration_typed` 2 (durée et code),
+  `demo_registration` 1 (l'en-tête, choisi dans une liste : noté à l'évaluation finale seulement),
   `demo_call` 4 dont 2 pour la cadence.
 """: """
 **Answers.** Number `{number}`, address `{ip}`, User-Agent `{user_agent}`; `Expires: {expires}`,
@@ -3560,11 +3569,13 @@ the lines of one second, or *RTP Streams* in Wireshark).
 The phone is played by `lib/sip_probe.py` on the hidden machine `probe_office`; these values are
 drawn at random for each instance.
 
-- Evaluation (form, graded at the final evaluation): `demo_identity` 3, `demo_registration` 3,
+- Evaluation (form): `demo_identity` 3, `demo_registration_typed` 2 (duration and code),
+  `demo_registration` 1 (the header, picked from a list: graded at the final evaluation only),
   `demo_call` 4 of which 2 for the rate.
 """,
         "le poste : numéro, adresse, User-Agent": "the phone: number, address, User-Agent",
-        "son enregistrement : durée, défi d'authentification": "its registration: duration, authentication challenge",
+        "son enregistrement : durée, code de la première réponse": "its registration: duration, code of the first response",
+        "son enregistrement : en-tête du défi d'authentification": "its registration: header of the authentication challenge",
         "son appel : numéro, type de charge utile, cadence des paquets": "its call: number, payload type, packet rate",
         "Partie 2 — Comptes SIP et softphones": "Part 2 — SIP accounts and softphones",
         "Créer les comptes et enregistrer les téléphones": "Create the accounts and register the phones",
@@ -3801,8 +3812,7 @@ quatre sur le PBX (un port RTP et un port RTCP pour chacun des deux interlocuteu
   la réponse SDP ne contient que 8 et 101 ; une offre GSM + G.722 seule reçoit `488`),
   `rtp_port_range` 4 (ports des réponses SDP), `media_through_pbx` 4 (appel du 1004 au 1003 :
   aucun *re-INVITE*, RTP venant du PBX aux deux bouts), `dscp_ef` 2 (octet TOS 184 des paquets
-  reçus du PBX, sur l'appel au 1003 ou au {echo}), `media_questions` 2 (formulaire, à l'évaluation
-  finale).
+  reçus du PBX, sur l'appel au 1003 ou au {echo}), `media_questions` 2 (formulaire).
 """: """
 **Solution.** The template of the phones becomes, in `pjsip.conf`:
 
@@ -3829,7 +3839,7 @@ on the PBX (one RTP port and one RTCP port for each of the two parties).
   only holds 8 and 101; an offer of GSM + G.722 alone gets `488`), `rtp_port_range` 4 (ports of
   the SDP answers), `media_through_pbx` 4 (call from 1004 to 1003: no *re-INVITE*, RTP coming from
   the PBX at both ends), `dscp_ef` 2 (TOS byte 184 of the packets received from the PBX, on the
-  call to 1003 or to {echo}), `media_questions` 2 (form, at the final evaluation).
+  call to 1003 or to {echo}), `media_questions` 2 (form).
 """,
         "seul G.711 loi A est négocié ; une offre sans ce codec est refusée (488)": "only G.711 A-law is negotiated; an offer without this codec is refused (488)",
         "les ports RTP annoncés par le PBX sont dans la plage imposée": "the RTP ports announced by the PBX are within the imposed range",

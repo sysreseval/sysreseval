@@ -127,6 +127,9 @@ OID_QUESTIONS = (
     ("UDP-MIB::udpInDatagrams", ".1.3.6.1.2.1.7.1"),
     ("SNMPv2-MIB::snmpInPkts", ".1.3.6.1.2.1.11.1"),
 )
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -1094,7 +1097,7 @@ nombre qui suit `.1.3.6.1.4.1`.
         }
         for name, ok in answers1.items():
             self.add_grade_element(title=no_tr(name), max_grade=2, grade_part=part1, grade=2 * int(ok),
-                                   scope=params.EXO_EVAL_SCOPE, description=descriptions1[name])
+                                   description=descriptions1[name])
 
         # =====================================================================
         # Partie 2 — Configurer un agent
@@ -1225,10 +1228,10 @@ lecture : `noAccess`. Le nom écrit est conservé dans `/var/lib/snmp/snmpd.conf
                                description=tr("écriture refusée depuis une autre adresse"))
         self.add_grade_element(title=no_tr("answer_set_error"), max_grade=2, grade_part=part3,
                                grade=2 * int(_norm(q3.get("set_error")) == "notwritable"),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("erreur d'une écriture dans un objet fixé"))
+                               scope=CHOICE_SCOPE, description=tr("erreur d'une écriture dans un objet fixé"))
         self.add_grade_element(title=no_tr("answer_ro_set_error"), max_grade=1, grade_part=part3,
                                grade=int(_norm(q3.get("ro_set_error")) == "noaccess"),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("erreur d'une écriture en lecture seule"))
+                               scope=CHOICE_SCOPE, description=tr("erreur d'une écriture en lecture seule"))
 
         # =====================================================================
         # Partie 4 — SNMPv3
@@ -1371,7 +1374,7 @@ puis `systemctl start {unit}` et `systemctl restart snmpd`. L'index de la table 
         self.add_grade_element(title=no_tr("answer_extend_oid"), max_grade=1, grade_part=part5,
                                grade=int(normalize_oid(str(q5.get("extend_oid") or "").strip())
                                          == ext["nsExtendOutput1Line"]),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("OID de l'extension"))
+                               description=tr("OID de l'extension"))
 
         # =====================================================================
         # Partie 6 — Notifications
@@ -1506,15 +1509,15 @@ un compteur 32 bits reboucle en 3,4 s).
         wrap_ok = _near(typed_wrap, d.wrap_seconds(), 0.25) or (
             measured_kbps is not None and _near(typed_wrap, 2 ** 32 * 8 / (measured_kbps * 1000), 0.25))
         self.add_grade_element(title=no_tr("answer_rate"), max_grade=5, grade_part=part7, grade=5 * int(rate_ok),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("débit mesuré"))
+                               description=tr("débit mesuré"))
         self.add_grade_element(title=no_tr("answer_frame_size"), max_grade=3, grade_part=part7,
-                               grade=3 * int(frame_ok), scope=params.EXO_EVAL_SCOPE,
+                               grade=3 * int(frame_ok),
                                description=tr("taille moyenne des trames"))
         self.add_grade_element(title=no_tr("answer_wrap"), max_grade=2, grade_part=part7, grade=2 * int(wrap_ok),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("rebouclage d'un compteur 32 bits"))
+                               description=tr("rebouclage d'un compteur 32 bits"))
         self.add_grade_element(title=no_tr("answer_counter_choice"), max_grade=2, grade_part=part7,
                                grade=2 * int(_norm(q7.get("counter_choice")) == "hc"),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("choix du compteur"))
+                               scope=CHOICE_SCOPE, description=tr("choix du compteur"))
 
 
 _TRANSLATIONS = {}

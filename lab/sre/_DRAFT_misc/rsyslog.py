@@ -110,6 +110,9 @@ LOCAL_SOCKET = "/run/systemd/journal/syslog"
 COLLECT_WAIT = 8  # seconds the reader waits for the messages of the evaluation
 EXPECTED_REMOTE = 11  # fresh markers the full solution stores under REMOTE_ROOT
 SENDER_PROPERTIES = ("hostname", "fromhost", "fromhost-ip", "programname", "syslogtag")
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 def history_window(d):
@@ -762,7 +765,7 @@ puis `rsyslogd -N1` et `systemctl restart rsyslog`. Recherche :
             typed = _norm(q1.get(name)).rstrip("/")
             self.add_grade_element(title=no_tr(f"answer_{name}"), max_grade=points1.get(name, 1), grade_part=part1,
                                    grade=points1.get(name, 1) * int(typed == _norm(expected).rstrip("/")),
-                                   scope=params.EXO_EVAL_SCOPE, description=descriptions1[name])
+                                   description=descriptions1[name])
         app1 = local["app1"]
         self.add_grade_element(title=no_tr("local_file"), max_grade=4, grade_part=part1,
                                grade=4 * int(SHOP_LOG in where(app1, "p1_info") and SHOP_LOG in where(app1, "p1_err")
@@ -835,7 +838,7 @@ Propriété de rsyslog qui donne l'adresse de la machine qui a réellement envoy
                                description=tr("les messages locaux du collecteur restent dans ses fichiers"))
         self.add_grade_element(title=no_tr("answer_sender_property"), max_grade=2, grade_part=part2,
                                grade=2 * int(_norm(q2.get("sender_property")) == "fromhost-ip"),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("la propriété de l'émetteur réel"))
+                               scope=CHOICE_SCOPE, description=tr("la propriété de l'émetteur réel"))
 
         # =====================================================================
         # Partie 3 — les clients
@@ -934,10 +937,10 @@ champ d'une ligne d'accès est le cinquième de la ligne du collecteur). Répons
                                description=tr("sans copie locale"))
         self.add_grade_element(title=no_tr("answer_scanner_ip"), max_grade=2, grade_part=part4,
                                grade=2 * int(_norm(q4.get("scanner_ip")) == d.scanner_ip),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("adresse du balayage"))
+                               description=tr("adresse du balayage"))
         self.add_grade_element(title=no_tr("answer_scanner_count"), max_grade=3, grade_part=part4,
                                grade=3 * int(_norm(q4.get("scanner_count")) == str(d.scanner_count)),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("nombre de ses requêtes"))
+                               description=tr("nombre de ses requêtes"))
 
         # =====================================================================
         # Partie 5 — TLS

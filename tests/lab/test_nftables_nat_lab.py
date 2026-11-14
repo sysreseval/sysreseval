@@ -405,13 +405,13 @@ def test_final_ops(lab, data, tmp_pub_dir):
 def test_grading_nothing_done(lab, data, tmp_pub_dir):
     grade, _ = _simulate(lab, data, tmp_pub_dir, NOTHING, cheat=False)
     elements = grade.get_grade_list()
-    assert _total(grade) == 0 and sum(e.max_grade for e in elements) == 100 and len(elements) == 27
+    assert _total(grade) == 0 and sum(e.max_grade for e in elements) == 100 and len(elements) == 33
     assert not any(e.bonus for e in elements)
     assert [str(p.title) for p in grade.get_grade_parts()] == [f'part{n}' for n in lab.SITES]
     assert {n: sum(e.max_grade for e in elements if str(e.grade_part) == f'part{n}') for n in lab.SITES} == PART_POINTS
-    # the forms are graded by the final evaluation only
-    forms = {str(e.title) for e in elements if e.scope == params.EXO_EVAL_SCOPE}
-    assert forms == {str(e.title) for e in elements if str(e.title).startswith('q_')} and len(forms) == 10
+    # the form elements (their scopes: test_only_choice_answers_are_exo_only)
+    forms = {str(e.title) for e in elements if str(e.title).startswith('q_')}
+    assert len(forms) == 16
     assert {n: sum(e.max_grade for e in elements if str(e.grade_part) == f'part{n}' and str(e.title) not in forms)
             for n in lab.SITES} == PROBE_POINTS
     # the clones are always flushed; only a router that has rules gets a ruleset loaded
@@ -551,18 +551,34 @@ def test_form_answers(lab, data, tmp_pub_dir):
     # the forms alone: every form point, no probe point
     assert _total(grade) == sum(PART_POINTS[n] - PROBE_POINTS[n] for n in PARTS) == 25
     # an address typed with a prefix or spaces is the address; another one is not
-    assert regrade('1.1.', src_seen=f" {_ip(data.ips.pc1)}/24 ")['q_without_nat'] == (2, 2)
-    assert regrade('1.1.', src_seen=_ip(data.ips.r1_wan), outcome='refused')['q_without_nat'] == (0, 2)
-    assert regrade('1.3.', src_lan=_ip(data.ips.r1_wan), return_rule='dnat')['q_masquerade'] == (2, 4)
-    assert regrade('2.2.', client_srv2=_ip(data.ips.r2_wan))['q_static'] == (2, 3)       # the primary address
-    assert regrade('2.2.', appended='second')['q_static'] == (1, 3)
+    def split(grades, title):
+        """(typed answers, answers picked from a list) of a form split in two elements."""
+        return grades[f'{title}_typed'], grades[title]
+
+    assert split(regrade('1.1.', src_seen=f" {_ip(data.ips.pc1)}/24 "), 'q_without_nat') == ((1, 1), (1, 1))
+    assert split(regrade('1.1.', src_seen=_ip(data.ips.r1_wan), outcome='refused'), 'q_without_nat') == ((0, 1), (0, 1))
+    assert split(regrade('1.3.', src_lan=_ip(data.ips.r1_wan), return_rule='dnat'), 'q_masquerade') == ((2, 3), (0, 1))
+    assert split(regrade('2.2.', client_srv2=_ip(data.ips.r2_wan)), 'q_static') == ((1, 2), (1, 1))   # the primary address
+    assert split(regrade('2.2.', appended='second'), 'q_static') == ((1, 2), (0, 1))
     assert regrade('3.3.', reply_src=_ip(data.ips.r3_wan))['q_hairpin'] == (1, 2)
-    assert regrade('4.1.', unit='packet', failure='detects')['q_balancing'] == (1, 3)
+    assert split(regrade('4.1.', unit='packet', failure='detects'), 'q_balancing') == ((1, 1), (0, 2))
+    assert split(regrade('4.1.', client_ip=_ip(data.ips.r4_wan)), 'q_balancing') == ((0, 1), (0, 2))
     assert regrade('5.1.', server_port='80')['q_proxy'] == (2, 3)
-    assert regrade('5.2.', admin_server=' EXT1 ', position='after')['q_exception'] == (1, 2)
-    assert regrade('6.1.', nat_protects='yes')['q_intrusion'] == (1, 2)
+    assert split(regrade('5.2.', admin_server=' EXT1 ', position='after'), 'q_exception') == ((1, 1), (0, 1))
+    assert split(regrade('6.1.', nat_protects='yes'), 'q_intrusion') == ((1, 1), (0, 1))
+    assert split(regrade('6.1.', intruder_server='proxy'), 'q_intrusion') == ((0, 1), (0, 1))
     assert regrade('6.2.', forward_daddr=_ip(data.ips.r6_wan), forward_dport='8080')['q_forward'] == (0, 2)
     assert lab._same_ip('x', data.ips.pc1) is False and lab._is_int('', 80) is False and lab._is_int('port 80', 80)
+
+
+def test_only_choice_answers_are_exo_only(lab, data, tmp_pub_dir):
+    # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+    # tried), a typed answer is not
+    choices = {'q_without_nat', 'q_masquerade', 'q_static', 'q_balancing', 'q_exception', 'q_intrusion'}
+    grade, _ = _simulate(lab, data, tmp_pub_dir, DONE)
+    for e in grade.get_grade_list():
+        expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+        assert e.scope == expected, e.title
 
 
 # ---------------------------------------------------------------------------

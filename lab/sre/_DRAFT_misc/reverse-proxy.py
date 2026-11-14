@@ -144,6 +144,9 @@ HA_BURST = 12  # requests of a distribution burst through HAProxy
 RATE_BURST = 30  # rapid requests of the rate-limit test
 REPORTS_PORT = 8090  # the retired reporting application of web3: nothing listens there (502)
 HEALTH_WINDOW = 20  # seconds within which a health check of HAProxy must be found in a backend's log
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 # The sections of Debian's haproxy.cfg the students keep above their own.
 HAPROXY_DEBIAN_HEAD = """global
@@ -1671,31 +1674,46 @@ curl -s -o /dev/null -w '%{{http_code}}\\n' http://web4:8080/health # 503
 ```
 
 **Réponses.** `{old_status}` ; `{old_location}` ; `{version}` ; `{secret}` ; `{form_get}` ; `{form_token}` ;
-`{health_web4}`. Les réponses ne comptent que dans l'évaluation de l'enseignant.
+`{health_web4}`. Les codes choisis dans une liste ne comptent que dans l'évaluation de l'enseignant, les
+réponses saisies comptent aussi dans l'auto-évaluation.
 """).format(form_code=d.form_code, **q1_answers)
             ),
             cheat_answers={"final": q1_answers},
         )
         self.add_grade_element(
-            title=no_tr("http_redirect"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q1.get("old_status")) == "301")
-                  + int(_norm(q1.get("old_location")).endswith(f"/catalog/{d.old_slug}")),
-            description=tr("la redirection de /old-page : code et en-tête Location"),
+            title=no_tr("http_redirect_typed"), max_grade=1, grade_part=part1,
+            grade=int(_norm(q1.get("old_location")).endswith(f"/catalog/{d.old_slug}")),
+            description=tr("la redirection de /old-page : en-tête Location"),
         )
         self.add_grade_element(
-            title=no_tr("http_headers"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q1.get("version")) == d.app_version) + int(_norm(q1.get("health_web4")) == "503"),
-            description=tr("la version annoncée par l'en-tête X-Powered-By ; le code de la page de santé de web4"),
+            title=no_tr("http_redirect"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q1.get("old_status")) == "301"),
+            description=tr("la redirection de /old-page : code"),
         )
         self.add_grade_element(
-            title=no_tr("http_vhost"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("http_headers_typed"), max_grade=1, grade_part=part1,
+            grade=int(_norm(q1.get("version")) == d.app_version),
+            description=tr("la version de l'application annoncée par web1"),
+        )
+        self.add_grade_element(
+            title=no_tr("http_headers"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q1.get("health_web4")) == "503"),
+            description=tr("le code de la page de santé de web4"),
+        )
+        self.add_grade_element(
+            title=no_tr("http_vhost"), max_grade=2, grade_part=part1,
             grade=2 * int(_norm(q1.get("secret")) == d.intranet_secret),
-            description=tr("le site intranet.shop.tp obtenu avec l'en-tête Host"),
+            description=tr("le mot affiché par le site intranet.shop.tp"),
         )
         self.add_grade_element(
-            title=no_tr("http_methods"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q1.get("form_get")) == "405") + int(_norm(q1.get("form_token")) == d.form_token),
-            description=tr("le formulaire : 405 pour un GET, le jeton pour le POST du code"),
+            title=no_tr("http_methods_typed"), max_grade=1, grade_part=part1,
+            grade=int(_norm(q1.get("form_token")) == d.form_token),
+            description=tr("le formulaire : le jeton pour le POST du code"),
+        )
+        self.add_grade_element(
+            title=no_tr("http_methods"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q1.get("form_get")) == "405"),
+            description=tr("le formulaire : 405 pour un GET"),
         )
 
         # =====================================================================
@@ -2541,7 +2559,8 @@ curl -s -o /dev/null -w '%{{http_code}}\\n' http://web4:8080/health # 503
 ```
 
 **Réponses.** `{old_status}` ; `{old_location}` ; `{version}` ; `{secret}` ; `{form_get}` ; `{form_token}` ;
-`{health_web4}`. Les réponses ne comptent que dans l'évaluation de l'enseignant.
+`{health_web4}`. Les codes choisis dans une liste ne comptent que dans l'évaluation de l'enseignant, les
+réponses saisies comptent aussi dans l'auto-évaluation.
 """: """
 **Solution.** On `proxy`:
 
@@ -2555,7 +2574,8 @@ curl -s -o /dev/null -w '%{{http_code}}\\n' http://web4:8080/health # 503
 ```
 
 **Answers.** `{old_status}`; `{old_location}`; `{version}`; `{secret}`; `{form_get}`; `{form_token}`;
-`{health_web4}`. The answers only count in the instructor's evaluation.
+`{health_web4}`. The codes picked from a list only count in the instructor's evaluation, the typed
+answers also count in the self-evaluation.
 """,
         """
 **Solution.** `/etc/nginx/snippets/shop-proxy.conf` :

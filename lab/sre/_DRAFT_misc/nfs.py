@@ -146,6 +146,9 @@ PROBES_INVITES = [
     ('d3', 'nfs', f"{EXPORT_ROOT}/depot"), ('h3', 'nfs', f"{EXPORT_ROOT}/home"),
 ]
 PROBES_PC1 = [('a3', 'nfs', f"{EXPORT_ROOT}/admin")]
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 def probe_command(machine: str, server_ip, probes) -> str:
@@ -838,13 +841,14 @@ client NFSv3, contrôle d'accès et options d'export, identités des utilisateur
 permanents et comportement en cas de panne.
 
 **Évaluation.** L'état des machines et vos réponses aux questions sont évalués automatiquement.
-Le bouton d'évaluation (auto-évaluation) ne montre, par des lettres, que les éléments qui portent
-sur l'état des machines ; vos réponses aux formulaires sont notées par l'évaluation de
-l'enseignant. Une évaluation est aussi lancée toutes les {interval} secondes et à la fermeture du
-projet. À chaque évaluation, deux machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans
-`invites`), montent brièvement vos exports (et `pc1` l'export `admin`) : leurs adresses, que vous
-verrez dans les journaux et les captures, sont dans `/etc/hosts` sur `srv`. Vos exports, vos
-services et vos montages doivent donc être en place au moment de l'évaluation.
+Le bouton d'évaluation (auto-évaluation) montre, par des lettres, les éléments qui portent sur
+l'état des machines et sur les réponses que vous saisissez (nombres, noms, chemins) ; les réponses
+choisies dans une liste ne sont notées que par l'évaluation de l'enseignant. Une évaluation est
+aussi lancée toutes les {interval} secondes et à la fermeture du projet. À chaque évaluation, deux
+machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans `invites`), montent brièvement vos
+exports (et `pc1` l'export `admin`) : leurs adresses, que vous verrez dans les journaux et les
+captures, sont dans `/etc/hosts` sur `srv`. Vos exports, vos services et vos montages doivent donc
+être en place au moment de l'évaluation.
 """).format(interval=eval_interval_without_exam_mode)
             + instructor(tr("""
 **Pour l'enseignant.** Valeurs de cette instance :
@@ -872,8 +876,9 @@ L'évaluation porte sur le comportement : `sonde1` et `sonde2` montent réelleme
 (en NFSv3, et en NFSv4 depuis `sonde1`), `pc1` l'export `admin` ; chacune y crée un fichier en
 tant que `root` puis en tant qu'`etudiant`, et l'on note le propriétaire obtenu ou l'erreur : la
 forme de `/etc/exports` est donc libre. Les montages des clients sont lus dans `/proc/mounts`, qui
-ne bloque jamais, même serveur en panne. Les éléments dont le nom contient `_q_` (réponses aux
-formulaires) ne comptent que dans l'évaluation de l'enseignant.
+ne bloque jamais, même serveur en panne. Les éléments dont le nom contient `_q_` notent les
+réponses aux formulaires : ceux des réponses choisies dans une liste ne comptent que dans
+l'évaluation de l'enseignant, ceux des réponses saisies comptent aussi dans l'auto-évaluation.
 """).format(uid_alice=d.uid_alice, uid_alice_pc2=d.uid_alice_pc2, uid_bob=d.uid_bob, uid_depot=d.uid_depot,
             secret=d.secret, h1=d.ips.h1.ip, h2=d.ips.h2.ip,
             exports=self.net_scheme.exports_solution().rstrip())),
@@ -953,9 +958,9 @@ pour `portmapper`, le port **111** ; pour `mountd`, le programme **100005**, sur
 **`root_squash`** parmi les options de l'export, bien qu'elle ne soit pas écrite dans
 `/etc/exports`, et `/var/lib/nfs/etab` donne `anonuid={anon}` (`nobody`).
 
-Évaluation (éléments comptés par l'évaluation de l'enseignant seulement) : `serveur_q_ports`
-(1 point : 2049 et 111), `serveur_q_programmes` (1 : 100003 et 100005),
-`serveur_q_threads_anonuid` (1 : 8 et {anon}), `serveur_q_squash` (1), `serveur_q_mountd` (1).
+Évaluation : `serveur_q_ports` (1 point : 2049 et 111), `serveur_q_programmes` (1 : 100003 et
+100005), `serveur_q_threads_anonuid` (1 : 8 et {anon}) ; pour l'enseignant seulement (choix dans
+une liste) : `serveur_q_squash` (1), `serveur_q_mountd` (1).
 """).format(anon=ANON_ID)),
             cheat_answers={"final": {
                 "port_nfs": "2049", "port_rpcbind": "111", "prog_nfs": "100003", "prog_mountd": "100005",
@@ -980,26 +985,26 @@ pour `portmapper`, le port **111** ; pour `mountd`, le programme **100005**, sur
         self.add_grade_element(
             title=no_tr("serveur_q_ports"), max_grade=1, grade_part=part1,
             grade=int(_int(q1.get("port_nfs")) == 2049 and _int(q1.get("port_rpcbind")) == 111),
-            scope=params.EXO_EVAL_SCOPE, description=tr("ports de nfs et de rpcbind"),
+            description=tr("ports de nfs et de rpcbind"),
         )
         self.add_grade_element(
             title=no_tr("serveur_q_programmes"), max_grade=1, grade_part=part1,
             grade=int(_int(q1.get("prog_nfs")) == 100003 and _int(q1.get("prog_mountd")) == 100005),
-            scope=params.EXO_EVAL_SCOPE, description=tr("numéros de programme RPC de nfs et de mountd"),
+            description=tr("numéros de programme RPC de nfs et de mountd"),
         )
         self.add_grade_element(
             title=no_tr("serveur_q_threads_anonuid"), max_grade=1, grade_part=part1,
             grade=int(_int(q1.get("threads")) == 8 and _int(q1.get("anonuid")) == ANON_ID),
-            scope=params.EXO_EVAL_SCOPE, description=tr("nombre de threads nfsd et UID anonyme par défaut"),
+            description=tr("nombre de threads nfsd et UID anonyme par défaut"),
         )
         self.add_grade_element(
             title=no_tr("serveur_q_squash"), max_grade=1, grade_part=part1,
-            grade=int(q1.get("squash") == "root_squash"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q1.get("squash") == "root_squash"), scope=CHOICE_SCOPE,
             description=tr("option de squash par défaut"),
         )
         self.add_grade_element(
             title=no_tr("serveur_q_mountd"), max_grade=1, grade_part=part1,
-            grade=int(q1.get("mountd_port") == "dynamic"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q1.get("mountd_port") == "dynamic"), scope=CHOICE_SCOPE,
             description=tr("port de mountd"),
         )
 
@@ -1083,8 +1088,9 @@ Identification : **AUTH_UNIX (AUTH_SYS)** : chaque appel annonce le nom de la ma
 les GID, sans la moindre preuve. Texte lisible dans la capture : **oui**, rien n'est chiffré avec
 `sec=sys`.
 
-Évaluation (enseignant seulement) : `client_q_statd` (1 point), `client_q_proprietaire` (1 :
-`nobody` et {anon}), `client_q_proto_flavor` (1 : `tcp` et AUTH_UNIX), `client_q_clair` (1).
+Évaluation : `client_q_proprietaire` (1 point : `nobody` et {anon}) ; pour l'enseignant
+seulement (choix dans une liste) : `client_q_statd` (1), `client_q_proto_flavor` (1 : `tcp` et
+AUTH_UNIX), `client_q_clair` (1).
 """).format(anon=ANON_ID)),
             cheat_answers={"final": {"missing": "statd", "owner_name": "nobody", "owner_uid": str(ANON_ID),
                                      "proto": "tcp", "flavor": "unix", "clear": "yes"}},
@@ -1107,22 +1113,22 @@ les GID, sans la moindre preuve. Texte lisible dans la capture : **oui**, rien n
         )
         self.add_grade_element(
             title=no_tr("client_q_statd"), max_grade=1, grade_part=part2,
-            grade=int(q2.get("missing") == "statd"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q2.get("missing") == "statd"), scope=CHOICE_SCOPE,
             description=tr("service manquant pour le montage NFSv3"),
         )
         self.add_grade_element(
             title=no_tr("client_q_proprietaire"), max_grade=1, grade_part=part2,
             grade=int(_norm(q2.get("owner_name")) == "nobody" and _int(q2.get("owner_uid")) == ANON_ID),
-            scope=params.EXO_EVAL_SCOPE, description=tr("propriétaire du fichier créé par root (root_squash)"),
+            description=tr("propriétaire du fichier créé par root (root_squash)"),
         )
         self.add_grade_element(
             title=no_tr("client_q_proto_flavor"), max_grade=1, grade_part=part2,
-            grade=int(q2.get("proto") == "tcp" and q2.get("flavor") == "unix"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q2.get("proto") == "tcp" and q2.get("flavor") == "unix"), scope=CHOICE_SCOPE,
             description=tr("protocole de transport et mécanisme d'authentification"),
         )
         self.add_grade_element(
             title=no_tr("client_q_clair"), max_grade=1, grade_part=part2,
-            grade=int(q2.get("clear") == "yes"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q2.get("clear") == "yes"), scope=CHOICE_SCOPE,
             description=tr("les données circulent en clair"),
         )
 
@@ -1229,8 +1235,8 @@ répertoire est `755` et appartient à `root`, et le serveur applique ces droits
 annoncé par le client ; `no_root_squash` ne concerne que l'UID 0, et l'export est bien `rw`.
 Prise en compte de `/etc/exports` : **`exportfs -ra`**.
 
-Évaluation (enseignant seulement) : `options_q_messages` (1 point), `options_q_uid` (1 : 0 et
-{uid_depot}), `options_q_droits_unix` (1), `options_q_exportfs` (1).
+Évaluation : `options_q_uid` (1 point : 0 et {uid_depot}) ; pour l'enseignant seulement (choix
+dans une liste) : `options_q_messages` (1), `options_q_droits_unix` (1), `options_q_exportfs` (1).
 """).format(uid_depot=d.uid_depot, etudiant=ETUDIANT_ID)),
             cheat_answers={"final": {"msg_ro": "erofs", "msg_denied": "denied", "uid_admin": "0",
                                      "uid_depot": str(d.uid_depot), "why_admin": "perms", "reload": "exportfs"}},
@@ -1270,21 +1276,21 @@ Prise en compte de `/etc/exports` : **`exportfs -ra`**.
         self.add_grade_element(
             title=no_tr("options_q_messages"), max_grade=1, grade_part=part3,
             grade=int(q3.get("msg_ro") == "erofs" and q3.get("msg_denied") == "denied"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("messages d'erreur (lecture seule, montage refusé)"),
+            scope=CHOICE_SCOPE, description=tr("messages d'erreur (lecture seule, montage refusé)"),
         )
         self.add_grade_element(
             title=no_tr("options_q_uid"), max_grade=1, grade_part=part3,
             grade=int(_int(q3.get("uid_admin")) == 0 and _int(q3.get("uid_depot")) == d.uid_depot),
-            scope=params.EXO_EVAL_SCOPE, description=tr("propriétaires des fichiers créés dans admin et dans depot"),
+            description=tr("propriétaires des fichiers créés dans admin et dans depot"),
         )
         self.add_grade_element(
             title=no_tr("options_q_droits_unix"), max_grade=1, grade_part=part3,
-            grade=int(q3.get("why_admin") == "perms"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q3.get("why_admin") == "perms"), scope=CHOICE_SCOPE,
             description=tr("les droits Unix s'ajoutent aux options d'export"),
         )
         self.add_grade_element(
             title=no_tr("options_q_exportfs"), max_grade=1, grade_part=part3,
-            grade=int(q3.get("reload") == "exportfs"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q3.get("reload") == "exportfs"), scope=CHOICE_SCOPE,
             description=tr("commande de prise en compte de /etc/exports"),
         )
 
@@ -1387,9 +1393,9 @@ l'administrateur d'un client autorisé lit les fichiers de n'importe quel utilis
 serveur fait confiance aux UID annoncés (AUTH_SYS). Seul **Kerberos** (`sec=krb5`) authentifie
 réellement les utilisateurs : `all_squash` et `secure` ne prouvent l'identité de personne.
 
-Évaluation (enseignant seulement) : `identites_q_secret` (1 point), `identites_q_uid` (1 :
-{uid_alice} et {uid_alice_pc2}), `identites_q_noms` (1 : `charlie` et `root_squash`),
-`identites_q_confiance` (1 : oui et Kerberos).
+Évaluation : `identites_q_secret` (1 point), `identites_q_uid` (1 : {uid_alice} et
+{uid_alice_pc2}) ; pour l'enseignant seulement (choix dans une liste) : `identites_q_noms` (1 :
+`charlie` et `root_squash`), `identites_q_confiance` (1 : oui et Kerberos).
 """).format(secret=d.secret, uid_alice=d.uid_alice, uid_alice_pc2=d.uid_alice_pc2)),
             cheat_answers={"final": {"secret": d.secret, "uid_srv": str(d.uid_alice), "uid_pc2": str(d.uid_alice_pc2),
                                      "shown": "charlie", "root_read": "squash", "trust": "yes", "auth": "krb5"}},
@@ -1430,22 +1436,22 @@ réellement les utilisateurs : `all_squash` et `secure` ne prouvent l'identité 
         )
         self.add_grade_element(
             title=no_tr("identites_q_secret"), max_grade=1, grade_part=part4,
-            grade=int((q4.get("secret") or "").strip() == d.secret), scope=params.EXO_EVAL_SCOPE,
+            grade=int((q4.get("secret") or "").strip() == d.secret),
             description=tr("contenu de secret.txt"),
         )
         self.add_grade_element(
             title=no_tr("identites_q_uid"), max_grade=1, grade_part=part4,
             grade=int(_int(q4.get("uid_srv")) == d.uid_alice and _int(q4.get("uid_pc2")) == d.uid_alice_pc2),
-            scope=params.EXO_EVAL_SCOPE, description=tr("UID d'alice sur le serveur et sur pc2"),
+            description=tr("UID d'alice sur le serveur et sur pc2"),
         )
         self.add_grade_element(
             title=no_tr("identites_q_noms"), max_grade=1, grade_part=part4,
             grade=int(q4.get("shown") == "charlie" and q4.get("root_read") == "squash"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("nom affiché pour un UID et effet de root_squash"),
+            scope=CHOICE_SCOPE, description=tr("nom affiché pour un UID et effet de root_squash"),
         )
         self.add_grade_element(
             title=no_tr("identites_q_confiance"), max_grade=1, grade_part=part4,
-            grade=int(q4.get("trust") == "yes" and q4.get("auth") == "krb5"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q4.get("trust") == "yes" and q4.get("auth") == "krb5"), scope=CHOICE_SCOPE,
             description=tr("confiance accordée aux clients (AUTH_SYS) et Kerberos"),
         )
 
@@ -1529,8 +1535,8 @@ ni `statd`. `/mnt/nfs4/admin` vu de `pc2` : **un répertoire vide**, l'export `a
 ouvert qu'à `pc1`. Échec sur `pc3` : **la racine NFSv4 (`fsid=0`) n'est exportée qu'au `lan`** ;
 `all_squash` n'empêche aucun montage et NFSv4 n'a pas besoin de `rpc.statd`.
 
-Évaluation (enseignant seulement) : `nfs4_q_version_chemin` (1 point : 4.2 et `/home`),
-`nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
+Évaluation : `nfs4_q_version_chemin` (1 point : 4.2 et `/home`) ; pour l'enseignant seulement
+(choix dans une liste) : `nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
 """)),
             cheat_answers={"final": {"vers": "4.2", "path": "/home", "ports": "2049", "admin": "empty",
                                      "pc3": "noroot"}},
@@ -1560,21 +1566,21 @@ ouvert qu'à `pc1`. Échec sur `pc3` : **la racine NFSv4 (`fsid=0`) n'est export
         self.add_grade_element(
             title=no_tr("nfs4_q_version_chemin"), max_grade=1, grade_part=part5,
             grade=int((q5.get("vers") or "").strip() == "4.2" and path_answer == "/home"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("version négociée et chemin relatif à la racine NFSv4"),
+            description=tr("version négociée et chemin relatif à la racine NFSv4"),
         )
         self.add_grade_element(
             title=no_tr("nfs4_q_ports"), max_grade=1, grade_part=part5,
-            grade=int(q5.get("ports") == "2049"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q5.get("ports") == "2049"), scope=CHOICE_SCOPE,
             description=tr("ports utilisés par NFSv4"),
         )
         self.add_grade_element(
             title=no_tr("nfs4_q_admin"), max_grade=1, grade_part=part5,
-            grade=int(q5.get("admin") == "empty"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q5.get("admin") == "empty"), scope=CHOICE_SCOPE,
             description=tr("un export fermé à un client lui apparaît vide"),
         )
         self.add_grade_element(
             title=no_tr("nfs4_q_pc3"), max_grade=1, grade_part=part5,
-            grade=int(q5.get("pc3") == "noroot"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q5.get("pc3") == "noroot"), scope=CHOICE_SCOPE,
             description=tr("pas de racine NFSv4 pour le réseau invites"),
         )
 
@@ -1670,8 +1676,9 @@ seconde. Pour des données importantes on choisit **`hard`** : un montage `soft`
 d'entrée-sortie que beaucoup de programmes ignorent, et les données sont perdues sans bruit.
 L'option qui exclut une ligne de `mount -a` est **`noauto`**.
 
-Évaluation (enseignant seulement) : `pannes_q_soft_hard` (1 point), `pannes_q_reprise` (1),
-`pannes_q_timeo` (1), `pannes_q_choix_noauto` (1 : `hard` et `noauto`).
+Évaluation : `pannes_q_choix_noauto_typed` (0,5 point : `noauto`) ; pour l'enseignant seulement
+(choix dans une liste) : `pannes_q_soft_hard` (1), `pannes_q_reprise` (1), `pannes_q_timeo` (1),
+`pannes_q_choix_noauto` (0,5 : `hard`).
 """)),
             cheat_answers={"final": {"soft": "error", "hard": "blocked", "resume": "resume", "timeo": "3s",
                                      "choice": "hard", "noauto": "noauto"}},
@@ -1708,23 +1715,28 @@ L'option qui exclut une ligne de `mount -a` est **`noauto`**.
         )
         self.add_grade_element(
             title=no_tr("pannes_q_soft_hard"), max_grade=1, grade_part=part6,
-            grade=int(q6.get("soft") == "error" and q6.get("hard") == "blocked"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q6.get("soft") == "error" and q6.get("hard") == "blocked"), scope=CHOICE_SCOPE,
             description=tr("comportement des montages soft et hard pendant la panne"),
         )
         self.add_grade_element(
             title=no_tr("pannes_q_reprise"), max_grade=1, grade_part=part6,
-            grade=int(q6.get("resume") == "resume"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q6.get("resume") == "resume"), scope=CHOICE_SCOPE,
             description=tr("reprise d'un montage hard au retour du serveur"),
         )
         self.add_grade_element(
             title=no_tr("pannes_q_timeo"), max_grade=1, grade_part=part6,
-            grade=int(q6.get("timeo") == "3s"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(q6.get("timeo") == "3s"), scope=CHOICE_SCOPE,
             description=tr("unité de l'option timeo"),
         )
         self.add_grade_element(
-            title=no_tr("pannes_q_choix_noauto"), max_grade=1, grade_part=part6,
-            grade=int(q6.get("choice") == "hard" and _norm(q6.get("noauto")) == "noauto"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("choix hard / soft et option noauto"),
+            title=no_tr("pannes_q_choix_noauto_typed"), max_grade=0.5, grade_part=part6,
+            grade=0.5 * int(_norm(q6.get("noauto")) == "noauto"),
+            description=tr("option de /etc/fstab qui exclut une ligne de mount -a"),
+        )
+        self.add_grade_element(
+            title=no_tr("pannes_q_choix_noauto"), max_grade=0.5, grade_part=part6,
+            grade=0.5 * int(q6.get("choice") == "hard"),
+            scope=CHOICE_SCOPE, description=tr("choix hard / soft"),
         )
 _TRANSLATIONS = {
     'en': {
@@ -2436,13 +2448,14 @@ client NFSv3, contrôle d'accès et options d'export, identités des utilisateur
 permanents et comportement en cas de panne.
 
 **Évaluation.** L'état des machines et vos réponses aux questions sont évalués automatiquement.
-Le bouton d'évaluation (auto-évaluation) ne montre, par des lettres, que les éléments qui portent
-sur l'état des machines ; vos réponses aux formulaires sont notées par l'évaluation de
-l'enseignant. Une évaluation est aussi lancée toutes les {interval} secondes et à la fermeture du
-projet. À chaque évaluation, deux machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans
-`invites`), montent brièvement vos exports (et `pc1` l'export `admin`) : leurs adresses, que vous
-verrez dans les journaux et les captures, sont dans `/etc/hosts` sur `srv`. Vos exports, vos
-services et vos montages doivent donc être en place au moment de l'évaluation.
+Le bouton d'évaluation (auto-évaluation) montre, par des lettres, les éléments qui portent sur
+l'état des machines et sur les réponses que vous saisissez (nombres, noms, chemins) ; les réponses
+choisies dans une liste ne sont notées que par l'évaluation de l'enseignant. Une évaluation est
+aussi lancée toutes les {interval} secondes et à la fermeture du projet. À chaque évaluation, deux
+machines de supervision, `sonde1` (dans `lan`) et `sonde2` (dans `invites`), montent brièvement vos
+exports (et `pc1` l'export `admin`) : leurs adresses, que vous verrez dans les journaux et les
+captures, sont dans `/etc/hosts` sur `srv`. Vos exports, vos services et vos montages doivent donc
+être en place au moment de l'évaluation.
 """: """
 **At the start.** The server `srv` does not export anything yet and no NFS service is started on
 it. The four directories to share already exist under `/srv/nfs`:
@@ -2475,8 +2488,9 @@ first NFSv3 client, access control and export options, user identities, NFSv4, p
 and behaviour during an outage.
 
 **Evaluation.** The state of the machines and your answers to the questions are evaluated
-automatically. The evaluation button (self-evaluation) only shows, as letters, the elements about
-the state of the machines; your answers to the forms are graded by the instructor's evaluation.
+automatically. The evaluation button (self-evaluation) shows, as letters, the elements about the
+state of the machines and about the answers you type (numbers, names, paths); the answers picked
+from a list are only graded by the instructor's evaluation.
 An evaluation is also run every {interval} seconds and when the project is closed. At each
 evaluation, two supervision machines, `sonde1` (in `lan`) and `sonde2` (in `invites`), briefly
 mount your exports (and `pc1` the `admin` export): their addresses, which you will see in the
@@ -2509,8 +2523,9 @@ L'évaluation porte sur le comportement : `sonde1` et `sonde2` montent réelleme
 (en NFSv3, et en NFSv4 depuis `sonde1`), `pc1` l'export `admin` ; chacune y crée un fichier en
 tant que `root` puis en tant qu'`etudiant`, et l'on note le propriétaire obtenu ou l'erreur : la
 forme de `/etc/exports` est donc libre. Les montages des clients sont lus dans `/proc/mounts`, qui
-ne bloque jamais, même serveur en panne. Les éléments dont le nom contient `_q_` (réponses aux
-formulaires) ne comptent que dans l'évaluation de l'enseignant.
+ne bloque jamais, même serveur en panne. Les éléments dont le nom contient `_q_` notent les
+réponses aux formulaires : ceux des réponses choisies dans une liste ne comptent que dans
+l'évaluation de l'enseignant, ceux des réponses saisies comptent aussi dans l'auto-évaluation.
 """: """
 **For the instructor.** Values of this instance:
 
@@ -2537,8 +2552,9 @@ The evaluation is behavioural: `sonde1` and `sonde2` really mount every export (
 NFSv4 from `sonde1`), `pc1` the `admin` export; each of them creates a file there as `root` then
 as `etudiant`, and the owner obtained or the error is what gets graded: the form of
 `/etc/exports` is therefore free. The mounts of the clients are read in `/proc/mounts`, which
-never blocks, even with the server down. The elements whose name contains `_q_` (answers to the
-forms) only count in the instructor's evaluation.
+never blocks, even with the server down. The elements whose name contains `_q_` grade the answers
+to the forms: those of the answers picked from a list only count in the instructor's evaluation,
+those of the typed answers also count in the self-evaluation.
 """,
         """
 **Solution.** Sur `srv` : `chmod 777 /srv/nfs/commun`, puis dans `/etc/exports` :
@@ -2609,9 +2625,9 @@ pour `portmapper`, le port **111** ; pour `mountd`, le programme **100005**, sur
 **`root_squash`** parmi les options de l'export, bien qu'elle ne soit pas écrite dans
 `/etc/exports`, et `/var/lib/nfs/etab` donne `anonuid={anon}` (`nobody`).
 
-Évaluation (éléments comptés par l'évaluation de l'enseignant seulement) : `serveur_q_ports`
-(1 point : 2049 et 111), `serveur_q_programmes` (1 : 100003 et 100005),
-`serveur_q_threads_anonuid` (1 : 8 et {anon}), `serveur_q_squash` (1), `serveur_q_mountd` (1).
+Évaluation : `serveur_q_ports` (1 point : 2049 et 111), `serveur_q_programmes` (1 : 100003 et
+100005), `serveur_q_threads_anonuid` (1 : 8 et {anon}) ; pour l'enseignant seulement (choix dans
+une liste) : `serveur_q_squash` (1), `serveur_q_mountd` (1).
 """: """
 **Solution.** `rpcinfo -p` gives, for `nfs`, program **100003** on TCP port **2049**; for
 `portmapper`, port **111**; for `mountd`, program **100005**, on a port **assigned dynamically**
@@ -2619,9 +2635,9 @@ when `rpc.mountd` starts and published by `rpcbind`. `cat /proc/fs/nfsd/threads`
 (`rpc.nfsd 8`). `exportfs -v` shows **`root_squash`** among the options of the export, although
 it is not written in `/etc/exports`, and `/var/lib/nfs/etab` gives `anonuid={anon}` (`nobody`).
 
-Grading (elements counted by the instructor's evaluation only): `serveur_q_ports` (1 point: 2049
-and 111), `serveur_q_programmes` (1: 100003 and 100005), `serveur_q_threads_anonuid` (1: 8 and
-{anon}), `serveur_q_squash` (1), `serveur_q_mountd` (1).
+Grading: `serveur_q_ports` (1 point: 2049 and 111), `serveur_q_programmes` (1: 100003 and
+100005), `serveur_q_threads_anonuid` (1: 8 and {anon}); instructor only (choice from a list):
+`serveur_q_squash` (1), `serveur_q_mountd` (1).
 """,
         """
 **Solution.** Sur `pc1` :
@@ -2694,8 +2710,9 @@ Identification : **AUTH_UNIX (AUTH_SYS)** : chaque appel annonce le nom de la ma
 les GID, sans la moindre preuve. Texte lisible dans la capture : **oui**, rien n'est chiffré avec
 `sec=sys`.
 
-Évaluation (enseignant seulement) : `client_q_statd` (1 point), `client_q_proprietaire` (1 :
-`nobody` et {anon}), `client_q_proto_flavor` (1 : `tcp` et AUTH_UNIX), `client_q_clair` (1).
+Évaluation : `client_q_proprietaire` (1 point : `nobody` et {anon}) ; pour l'enseignant
+seulement (choix dans une liste) : `client_q_statd` (1), `client_q_proto_flavor` (1 : `tcp` et
+AUTH_UNIX), `client_q_clair` (1).
 """: """
 **Solution.** **`rpc.statd`** was missing (NFSv3 locks): `mount` says so in plain words. Seen
 from the server, `de_root.txt` belongs to **`nobody`**, UID **{anon}** (`root_squash`, applied by
@@ -2704,8 +2721,8 @@ Identification: **AUTH_UNIX (AUTH_SYS)**: every call announces the machine name,
 GIDs, without any proof. Text readable in the capture: **yes**, nothing is encrypted with
 `sec=sys`.
 
-Grading (instructor only): `client_q_statd` (1 point), `client_q_proprietaire` (1: `nobody` and
-{anon}), `client_q_proto_flavor` (1: `tcp` and AUTH_UNIX), `client_q_clair` (1).
+Grading: `client_q_proprietaire` (1 point: `nobody` and {anon}); instructor only (choice from a
+list): `client_q_statd` (1), `client_q_proto_flavor` (1: `tcp` and AUTH_UNIX), `client_q_clair` (1).
 """,
         """
 **Solution.** Sur `srv` : `chown depot:depot /srv/nfs/depot` (`id depot` : UID = GID =
@@ -2812,8 +2829,8 @@ répertoire est `755` et appartient à `root`, et le serveur applique ces droits
 annoncé par le client ; `no_root_squash` ne concerne que l'UID 0, et l'export est bien `rw`.
 Prise en compte de `/etc/exports` : **`exportfs -ra`**.
 
-Évaluation (enseignant seulement) : `options_q_messages` (1 point), `options_q_uid` (1 : 0 et
-{uid_depot}), `options_q_droits_unix` (1), `options_q_exportfs` (1).
+Évaluation : `options_q_uid` (1 point : 0 et {uid_depot}) ; pour l'enseignant seulement (choix
+dans une liste) : `options_q_messages` (1), `options_q_droits_unix` (1), `options_q_exportfs` (1).
 """: """
 **Solution.** On `pc3`: **Read-only file system** (the export is `ro` for `invites`, even though
 the mount claims `rw`). On `pc2`: **access denied by server** (`pc2` is not in the list of the
@@ -2824,8 +2841,8 @@ directory is `755` and belongs to `root`, and the server applies these permissio
 {etudiant} announced by the client; `no_root_squash` only concerns UID 0, and the export is indeed
 `rw`. Applying `/etc/exports`: **`exportfs -ra`**.
 
-Grading (instructor only): `options_q_messages` (1 point), `options_q_uid` (1: 0 and
-{uid_depot}), `options_q_droits_unix` (1), `options_q_exportfs` (1).
+Grading: `options_q_uid` (1 point: 0 and {uid_depot}); instructor only (choice from a list):
+`options_q_messages` (1), `options_q_droits_unix` (1), `options_q_exportfs` (1).
 """,
         """
 **Solution.** Sur `srv`, ajouter à `/etc/exports` la ligne suivante, puis `exportfs -ra` :
@@ -2928,9 +2945,9 @@ l'administrateur d'un client autorisé lit les fichiers de n'importe quel utilis
 serveur fait confiance aux UID annoncés (AUTH_SYS). Seul **Kerberos** (`sec=krb5`) authentifie
 réellement les utilisateurs : `all_squash` et `secure` ne prouvent l'identité de personne.
 
-Évaluation (enseignant seulement) : `identites_q_secret` (1 point), `identites_q_uid` (1 :
-{uid_alice} et {uid_alice_pc2}), `identites_q_noms` (1 : `charlie` et `root_squash`),
-`identites_q_confiance` (1 : oui et Kerberos).
+Évaluation : `identites_q_secret` (1 point), `identites_q_uid` (1 : {uid_alice} et
+{uid_alice_pc2}) ; pour l'enseignant seulement (choix dans une liste) : `identites_q_noms` (1 :
+`charlie` et `root_squash`), `identites_q_confiance` (1 : oui et Kerberos).
 """: """
 **Solution.** Content of `secret.txt`: `{secret}`. UID of `alice` on the server: **{uid_alice}**;
 on `pc2` at the beginning of the lab: **{uid_alice_pc2}**. Before the fix, `ls -l /mnt/home` on
@@ -2942,9 +2959,9 @@ allowed client reads the files of any user, since the server trusts the announce
 (AUTH_SYS). Only **Kerberos** (`sec=krb5`) really authenticates the users: `all_squash` and
 `secure` prove nobody's identity.
 
-Grading (instructor only): `identites_q_secret` (1 point), `identites_q_uid` (1: {uid_alice} and
-{uid_alice_pc2}), `identites_q_noms` (1: `charlie` and `root_squash`), `identites_q_confiance`
-(1: yes and Kerberos).
+Grading: `identites_q_secret` (1 point), `identites_q_uid` (1: {uid_alice} and
+{uid_alice_pc2}); instructor only (choice from a list): `identites_q_noms` (1: `charlie` and
+`root_squash`), `identites_q_confiance` (1: yes and Kerberos).
 """,
         """
 **Solution.** Sur `srv`, ajouter à `/etc/exports` la ligne suivante, puis `exportfs -ra` :
@@ -3023,8 +3040,8 @@ ni `statd`. `/mnt/nfs4/admin` vu de `pc2` : **un répertoire vide**, l'export `a
 ouvert qu'à `pc1`. Échec sur `pc3` : **la racine NFSv4 (`fsid=0`) n'est exportée qu'au `lan`** ;
 `all_squash` n'empêche aucun montage et NFSv4 n'a pas besoin de `rpc.statd`.
 
-Évaluation (enseignant seulement) : `nfs4_q_version_chemin` (1 point : 4.2 et `/home`),
-`nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
+Évaluation : `nfs4_q_version_chemin` (1 point : 4.2 et `/home`) ; pour l'enseignant seulement
+(choix dans une liste) : `nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
 """: """
 **Solution.** Negotiated version: **4.2** (`vers=4.2` in `nfsstat -m` or in `/proc/mounts`). Path
 of `/srv/nfs/home` for an NFSv4 client: **`srv:/home`**, relative to the `fsid=0` root (`/home`
@@ -3033,8 +3050,8 @@ is accepted too). Ports of the server: **2049 only**: neither `rpcbind`, nor `mo
 to `pc1` only. Failure on `pc3`: **the NFSv4 root (`fsid=0`) is exported to the `lan` only**;
 `all_squash` prevents no mount and NFSv4 does not need `rpc.statd`.
 
-Grading (instructor only): `nfs4_q_version_chemin` (1 point: 4.2 and `/home`), `nfs4_q_ports`
-(1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
+Grading: `nfs4_q_version_chemin` (1 point: 4.2 and `/home`); instructor only (choice from a
+list): `nfs4_q_ports` (1), `nfs4_q_admin` (1), `nfs4_q_pc3` (1).
 """,
         """
 **Solution.** Sur `pc1`, `umount -a -t nfs,nfs4`, puis ajouter à `/etc/fstab` (`timeo=30,retrans=2`
@@ -3123,8 +3140,9 @@ seconde. Pour des données importantes on choisit **`hard`** : un montage `soft`
 d'entrée-sortie que beaucoup de programmes ignorent, et les données sont perdues sans bruit.
 L'option qui exclut une ligne de `mount -a` est **`noauto`**.
 
-Évaluation (enseignant seulement) : `pannes_q_soft_hard` (1 point), `pannes_q_reprise` (1),
-`pannes_q_timeo` (1), `pannes_q_choix_noauto` (1 : `hard` et `noauto`).
+Évaluation : `pannes_q_choix_noauto_typed` (0,5 point : `noauto`) ; pour l'enseignant seulement
+(choix dans une liste) : `pannes_q_soft_hard` (1), `pannes_q_reprise` (1), `pannes_q_timeo` (1),
+`pannes_q_choix_noauto` (0,5 : `hard`).
 """: """
 **Solution.** During the outage, `ls` on the `soft` mount **fails with an error after a few
 seconds**; on the `hard` mount, it **stays blocked until the server comes back**, then **resumes
@@ -3132,8 +3150,9 @@ and ends normally**. `timeo=30` is **3 seconds**: the unit is the tenth of a sec
 data, choose **`hard`**: a `soft` mount returns an input/output error that many programs ignore,
 and the data is lost silently. The option that excludes a line from `mount -a` is **`noauto`**.
 
-Grading (instructor only): `pannes_q_soft_hard` (1 point), `pannes_q_reprise` (1),
-`pannes_q_timeo` (1), `pannes_q_choix_noauto` (1: `hard` and `noauto`).
+Grading: `pannes_q_choix_noauto_typed` (0.5 point: `noauto`); instructor only (choice from a
+list): `pannes_q_soft_hard` (1), `pannes_q_reprise` (1), `pannes_q_timeo` (1),
+`pannes_q_choix_noauto` (0.5: `hard`).
 """,
         """
 Sur `pc1` :
@@ -3295,7 +3314,7 @@ service account of the server.
         "UID d'alice sur le serveur et sur pc2": 'UID of alice on the server and on pc2',
         'Un client NFSv3': 'An NFSv3 client',
         'bob existe sur pc1 avec le même UID que sur le serveur': 'bob exists on pc1 with the same UID as on the server',
-        'choix hard / soft et option noauto': 'hard / soft choice and noauto option',
+        'choix hard / soft': 'hard / soft choice',
         'commande de prise en compte de /etc/exports': 'command that applies /etc/exports',
         'commun reste en lecture et écriture pour le lan, root y devient nobody (root_squash)': 'commun stays read-write for the lan, root becomes nobody there (root_squash)',
         'comportement des montages soft et hard pendant la panne': 'behaviour of the soft and hard mounts during the outage',
@@ -3313,6 +3332,7 @@ service account of the server.
         'nom affiché pour un UID et effet de root_squash': 'name shown for a UID and effect of root_squash',
         'nombre de threads nfsd et UID anonyme par défaut': 'number of nfsd threads and default anonymous UID',
         'numéros de programme RPC de nfs et de mountd': 'RPC program numbers of nfs and mountd',
+        'option de /etc/fstab qui exclut une ligne de mount -a': '/etc/fstab option that keeps a line out of mount -a',
         'option de squash par défaut': 'default squash option',
         'pas de racine NFSv4 pour le réseau invites': 'no NFSv4 root for the invites network',
         'pc1 a monté srv:/srv/nfs/commun sur /mnt/commun en NFSv3': 'pc1 has mounted srv:/srv/nfs/commun on /mnt/commun in NFSv3',

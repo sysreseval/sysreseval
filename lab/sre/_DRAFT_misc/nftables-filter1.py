@@ -129,6 +129,9 @@ _SPECS = {
     'guest1': {'color': 'lightyellow'},
 }
 _FULL_TOPOLOGY, _FULL_SPECS = hidden_mirror.expand_topology(_TOPOLOGY, _SPECS, suffix=MIRROR)
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 def clone(machine: str) -> str:
@@ -1797,10 +1800,15 @@ ruleset` n'affiche rien : le jeu de règles est vide, tout passe. `ss -tulnp` mo
         )
 
         self.add_grade_element(
-            title=no_tr("q_before"), max_grade=6, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_before_typed"), max_grade=4, grade_part=part1,
             grade=int(_is_int(q1.get("ttl_lan"), 64)) + 2 * int(_is_int(q1.get("ttl_ext"), 63))
-                  + int(_same_ip(q1.get("client_ip"), m1)) + 2 * int(_norm(q1.get("ruleset")) == "empty"),
-            description=tr("avant le pare-feu : TTL depuis m2 (64) et ext1 (63), CLIENT_IP vu par ext1, jeu de règles vide"),
+                  + int(_same_ip(q1.get("client_ip"), m1)),
+            description=tr("avant le pare-feu : TTL depuis m2 et ext1, CLIENT_IP vu par ext1"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_before"), max_grade=2, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=2 * int(_norm(q1.get("ruleset")) == "empty"),
+            description=tr("avant le pare-feu : jeu de règles vide"),
         )
 
         # =====================================================================
@@ -1852,7 +1860,7 @@ essais de la question 1 **depuis `m1`** (`curl -m 3 http://m2/`, `echo bonjour |
             description=tr("la chaîne input est de type filter, priorité 0"),
         )
         self.add_grade_element(
-            title=no_tr("q_policy"), max_grade=4, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_policy"), max_grade=4, grade_part=part2, scope=CHOICE_SCOPE,
             grade=4 * int(_norm(q2.get("why")) == "replies_dropped"),
             description=tr("pourquoi m1 ne joint plus m2 : les réponses sont détruites dans input"),
         )
@@ -2000,7 +2008,7 @@ bonne réponse au besoin « recevoir les réponses à mes requêtes » ; celle-c
             description=tr("une règle accept pour l'UDP venant de ext1 (ip saddr + udp)"),
         )
         self.add_grade_element(
-            title=no_tr("q_udp"), max_grade=2, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_udp"), max_grade=2, grade_part=part5, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q5.get("ext1_queries")) == "yes_stateless"),
             description=tr("le filtre sans état accepte aussi les requêtes UDP de ext1"),
         )
@@ -2071,7 +2079,7 @@ part vers `m2`, pas vers le processus `curl`), celui de `m3` est détruit.
             description=tr("une règle reject pour ip saddr m2"),
         )
         self.add_grade_element(
-            title=no_tr("q_reject"), max_grade=3, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_reject"), max_grade=3, grade_part=part6, scope=CHOICE_SCOPE,
             grade=int(_norm(q6.get("from_m2")) == "refused") + int(_norm(q6.get("from_m3")) == "timeout")
                   + int(_norm(q6.get("from_m1")) == "both_fail"),
             description=tr("drop ou reject : ce que voient m2, m3 et m1"),
@@ -2261,7 +2269,7 @@ n'affiche que les premiers (une seule ligne si des paquets détruits juste avant
             description=tr("la journalisation est limitée à {rate} paquets par minute (limit rate)").format(rate=LOG_RATE),
         )
         self.add_grade_element(
-            title=no_tr("q_log"), max_grade=2, grade_part=part9, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_log"), max_grade=2, grade_part=part9, scope=CHOICE_SCOPE,
             grade=2 * int(_norm(q9.get("where_logs")) == "nflog"),
             description=tr("où lire les paquets journalisés (nflog / journal du noyau)"),
         )
@@ -2416,7 +2424,7 @@ répondrait plus à personne.
                            "qu'elle joint son port {closed}").format(open=OPEN_PORT, closed=CLOSED_PORT),
         )
         self.add_grade_element(
-            title=no_tr("q_output"), max_grade=2, grade_part=part10, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_output"), max_grade=2, grade_part=part10, scope=CHOICE_SCOPE,
             grade=int(_norm(q10.get("with_drop")) == "timeout" and _norm(q10.get("with_reject")) == "refused")
                   + int(_norm(q10.get("from_forbidden")) == "synack_rejected"),
             description=tr("drop ou reject dans output : ce que voit le programme ; pourquoi ext2 perdait le port {open}").format(
@@ -2505,7 +2513,7 @@ consulte), et les recréer. Placée en tête, avant la règle à états, la règ
             description=tr("guest1 n'obtient plus le port {open} de m1, alors que ext1 l'obtient").format(open=OPEN_PORT),
         )
         self.add_grade_element(
-            title=no_tr("q_blocklist"), max_grade=2, grade_part=part11, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_blocklist"), max_grade=2, grade_part=part11, scope=CHOICE_SCOPE,
             grade=int(_norm(q11.get("no_interval")) == "refused") + int(_norm(q11.get("rule_place")) == "before_accept"),
             description=tr("un réseau dans un ensemble (flags interval) ; la place de la règle qui le consulte"),
         )
@@ -2571,7 +2579,7 @@ filter output handle N tcp dport @{name} accept`. La règle garde sa place et so
             description=tr("m1 joint le port {set_port} de m3 (sous la politique drop de output)").format(set_port=SET_PORT),
         )
         self.add_grade_element(
-            title=no_tr("q_port_set"), max_grade=1, grade_part=part12, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_port_set"), max_grade=1, grade_part=part12, scope=CHOICE_SCOPE,
             grade=int(_norm(q12.get("rules_changed")) == "element_only"),
             description=tr("un port de plus : seul le contenu de l'ensemble change"),
         )
@@ -2648,7 +2656,7 @@ la rejetterait.
                 first=first_machine, second_port=second_port),
         )
         self.add_grade_element(
-            title=no_tr("q_allowed"), max_grade=1, grade_part=part13, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_allowed"), max_grade=1, grade_part=part13, scope=CHOICE_SCOPE,
             grade=int(_norm(q13.get("pair_missing")) == "timeout"),
             description=tr("un couple absent de l'ensemble n'est pas accepté"),
         )
@@ -2729,7 +2737,7 @@ bannissements.
                            "{spared} toujours)").format(trap=TRAP_PORT, source=BAN_SOURCE, open=OPEN_PORT, spared=BAN_SPARED),
         )
         self.add_grade_element(
-            title=no_tr("q_ban"), max_grade=1, grade_part=part14, scope=params.EXO_EVAL_SCOPE, bonus=True,
+            title=no_tr("q_ban"), max_grade=1, grade_part=part14, scope=CHOICE_SCOPE, bonus=True,
             grade=int(_norm(q14.get("ban_effect")) == "banned_then_back"),
             description=tr("un bannissement temporaire : l'élément expire de lui-même"),
         )

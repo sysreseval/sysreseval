@@ -125,6 +125,9 @@ pathd_options="  -A 127.0.0.1"
 """
 
 FRR_VTYSH_CONF = "service integrated-vtysh-config\n"
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -874,8 +877,9 @@ KEEPALIVE). Vérifiez depuis `m1` que vous joignez `internet` (`ping`, `tracerou
 - `m3` : **`r3` n'a aucune route vers ce réseau**. `r3` ne parle pas encore BGP et OSPF ne
   transporte que les réseaux internes de l'AS 65001.
 
-Évaluation (enseignant seulement, 1 point chacun) : `decouverte_as_port`,
-`decouverte_etat_prefixes`, `decouverte_aspath`, `decouverte_ad_timers`, `decouverte_m3`.
+Évaluation : `decouverte_as_port`, `decouverte_aspath`, `decouverte_ad_timers` (1 point chacun),
+`decouverte_etat_prefixes_typed` (0,5 : nombre de préfixes) ; pour l'enseignant seulement (choix
+dans une liste) : `decouverte_etat_prefixes` (0,5 : état de la session), `decouverte_m3` (1).
 """).format(ispa_la=ip['ispa_la'], neta=neta, netb=netb, web=web)),
             cheat_answers={"final": {
                 "as_ispa": str(AS_ISPA), "port": "179", "state": "Established", "nb_prefixes": "3",
@@ -886,27 +890,32 @@ KEEPALIVE). Vérifiez depuis `m1` que vous joignez `internet` (`ping`, `tracerou
         self.add_grade_element(
             title=no_tr("decouverte_as_port"), max_grade=1, grade_part=part1,
             grade=int(_int(q1.get("as_ispa")) == AS_ISPA and _int(q1.get("port")) == 179),
-            scope=params.EXO_EVAL_SCOPE, description=tr("numéro d'AS de ispa et port TCP de BGP"),
+            description=tr("numéro d'AS de ispa et port TCP de BGP"),
         )
         self.add_grade_element(
-            title=no_tr("decouverte_etat_prefixes"), max_grade=1, grade_part=part1,
-            grade=int(_norm(q1.get("state")) == "established" and _int(q1.get("nb_prefixes")) == 3),
-            scope=params.EXO_EVAL_SCOPE, description=tr("état de la session et nombre de préfixes reçus"),
+            title=no_tr("decouverte_etat_prefixes_typed"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(_int(q1.get("nb_prefixes")) == 3),
+            description=tr("nombre de préfixes reçus"),
+        )
+        self.add_grade_element(
+            title=no_tr("decouverte_etat_prefixes"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(_norm(q1.get("state")) == "established"),
+            scope=CHOICE_SCOPE, description=tr("état de la session"),
         )
         self.add_grade_element(
             title=no_tr("decouverte_aspath"), max_grade=1, grade_part=part1,
             grade=int(_as_path(q1.get("aspath_web")) == f"{AS_ISPA} {AS_INET}"),
-            scope=params.EXO_EVAL_SCOPE, description=tr("AS_PATH de la route vers 203.0.113.0/24"),
+            description=tr("AS_PATH de la route vers 203.0.113.0/24"),
         )
         self.add_grade_element(
             title=no_tr("decouverte_ad_timers"), max_grade=1, grade_part=part1,
             grade=int(_int(q1.get("ad")) == 20 and _int(q1.get("hold")) == 180 and _int(q1.get("keepalive")) == 60),
-            scope=params.EXO_EVAL_SCOPE, description=tr("distance administrative eBGP, hold time et keepalive par défaut"),
+            description=tr("distance administrative eBGP, hold time et keepalive par défaut"),
         )
         self.add_grade_element(
             title=no_tr("decouverte_m3"), max_grade=1, grade_part=part1,
             grade=int(_norm(q1.get("why_m3")).startswith("r3 n'a aucune route")),
-            scope=params.EXO_EVAL_SCOPE, description=tr("pourquoi m3 ne joint pas internet"),
+            scope=CHOICE_SCOPE, description=tr("pourquoi m3 ne joint pas internet"),
         )
 
         # =====================================================================
@@ -999,8 +1008,8 @@ des deux routeurs et la session `Established`).
 - TTL : **1** (`tcpdump -ni eth2 -v tcp port 179` sur `r3` : `ttl 1`) : deux pairs eBGP sont
   directement connectés.
 
-Évaluation (enseignant seulement, 1 point chacun) : `ebgp_q_etat_avant`,
-`ebgp_q_aspath_nexthop`, `ebgp_q_ttl`.
+Évaluation (1 point chacun) : `ebgp_q_aspath_nexthop`, `ebgp_q_ttl` ; pour l'enseignant
+seulement (choix dans une liste) : `ebgp_q_etat_avant`.
 """).format(ispb_lb=ip['ispb_lb'])),
             cheat_answers={"final": {"state_before": "Active", "aspath_web": f"{AS_ISPB} {AS_INET}",
                                      "nexthop": ip['ispb_lb'], "ttl": "1"}},
@@ -1045,17 +1054,17 @@ des deux routeurs et la session `Established`).
         )
         self.add_grade_element(
             title=no_tr("ebgp_q_etat_avant"), max_grade=1, grade_part=part2,
-            grade=int(_norm(q2.get("state_before")) in ("active", "connect")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q2.get("state_before")) in ("active", "connect")), scope=CHOICE_SCOPE,
             description=tr("état de la session côté ispb avant la configuration de r3"),
         )
         self.add_grade_element(
             title=no_tr("ebgp_q_aspath_nexthop"), max_grade=1, grade_part=part2,
             grade=int(_as_path(q2.get("aspath_web")) == f"{AS_ISPB} {AS_INET}" and _same_ip(q2.get("nexthop"), ip['ispb_lb'])),
-            scope=params.EXO_EVAL_SCOPE, description=tr("AS_PATH et NEXT_HOP des routes reçues de ispb"),
+            description=tr("AS_PATH et NEXT_HOP des routes reçues de ispb"),
         )
         self.add_grade_element(
             title=no_tr("ebgp_q_ttl"), max_grade=1, grade_part=part2,
-            grade=int(_int(q2.get("ttl")) == 1), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q2.get("ttl")) == 1),
             description=tr("TTL des paquets eBGP"),
         )
 
@@ -1165,8 +1174,8 @@ joint `{ispb_netb}`).
   la session `r1`–`r3` s'établit très bien sans lui (OSPF suffit à joindre les loopbacks), mais
   les paquets, eux, traversent `r2`.
 
-Évaluation (enseignant seulement, 1 point chacun) : `ibgp_q_ad_sessions`, `ibgp_q_nexthop`,
-`ibgp_q_r2`.
+Évaluation (1 point chacun) : `ibgp_q_ad_sessions` ; pour l'enseignant seulement (choix dans
+une liste) : `ibgp_q_nexthop`, `ibgp_q_r2`.
 """).format(ispb_lb=ip['ispb_lb'])),
             cheat_answers={"final": {"ad_ibgp": "200", "sessions10": "45",
                                      "nh_before": "l'adresse de ispb sur le lien lb",
@@ -1199,16 +1208,16 @@ joint `{ispb_netb}`).
         self.add_grade_element(
             title=no_tr("ibgp_q_ad_sessions"), max_grade=1, grade_part=part3,
             grade=int(_int(q3.get("ad_ibgp")) == 200 and _int(q3.get("sessions10")) == 45),
-            scope=params.EXO_EVAL_SCOPE, description=tr("distance administrative iBGP et nombre de sessions d'un maillage"),
+            description=tr("distance administrative iBGP et nombre de sessions d'un maillage"),
         )
         self.add_grade_element(
             title=no_tr("ibgp_q_nexthop"), max_grade=1, grade_part=part3,
-            grade=int(_norm(q3.get("nh_before")).startswith("l'adresse de ispb")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q3.get("nh_before")).startswith("l'adresse de ispb")), scope=CHOICE_SCOPE,
             description=tr("NEXT_HOP transmis tel quel en iBGP"),
         )
         self.add_grade_element(
             title=no_tr("ibgp_q_r2"), max_grade=1, grade_part=part3,
-            grade=int(_norm(q3.get("why_r2")).startswith("r2 relaie")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q3.get("why_r2")).startswith("r2 relaie")), scope=CHOICE_SCOPE,
             description=tr("rôle de BGP sur le routeur de transit r2"),
         )
 
@@ -1366,23 +1375,23 @@ puis `clear bgp {ispb_lb} soft in` (la politique) et `clear bgp {ispb_lb}` (les 
         self.add_grade_element(
             title=no_tr("lp_q_criteres"), max_grade=1, grade_part=part4,
             grade=int(_norm(q4.get("crit_r2")).startswith("router-id") and _norm(q4.get("crit_r1")).startswith("route ebgp")),
-            scope=params.EXO_EVAL_SCOPE, description=tr("critères de choix avant la modification (r2 et r1)"),
+            scope=CHOICE_SCOPE, description=tr("critères de choix avant la modification (r2 et r1)"),
         )
         self.add_grade_element(
             title=no_tr("lp_q_chemin"), max_grade=1, grade_part=part4,
-            grade=int(_norm(q4.get("via")) == "r1, r2, r3, ispb, inet"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q4.get("via")) == "r1, r2, r3, ispb, inet"), scope=CHOICE_SCOPE,
             description=tr("chemin de m1 vers internet après la modification"),
         )
         self.add_grade_element(
             title=no_tr("lp_q_attribut"), max_grade=1, grade_part=part4,
-            grade=int(_norm(q4.get("not_sent")) == "local_pref"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q4.get("not_sent")) == "local_pref"), scope=CHOICE_SCOPE,
             description=tr("attribut jamais transmis en eBGP"),
         )
         conv_ok = (_norm(q4.get("shutdown")).startswith("immédiatement") and _norm(q4.get("linkdown")).startswith("immédiatement")
                    and _norm(q4.get("silent")).startswith("environ le hold"))
         self.add_grade_element(
             title=no_tr("lp_q_convergence"), max_grade=1, grade_part=part4, grade=int(conv_ok),
-            scope=params.EXO_EVAL_SCOPE, description=tr("temps de convergence observés"),
+            scope=CHOICE_SCOPE, description=tr("temps de convergence observés"),
         )
 
         # =====================================================================
@@ -1483,18 +1492,18 @@ puis `clear bgp {ispa_la} soft out`.
         self.add_grade_element(
             title=no_tr("prepend_q_avant"), max_grade=1, grade_part=part5,
             grade=int(_norm(q5.get("before_via")).startswith("isp a") and _norm(q5.get("before_crit")).startswith("router-id")),
-            scope=params.EXO_EVAL_SCOPE, description=tr("chemin et critère de choix de inet avant la modification"),
+            scope=CHOICE_SCOPE, description=tr("chemin et critère de choix de inet avant la modification"),
         )
         self.add_grade_element(
             title=no_tr("prepend_q_ispa"), max_grade=1, grade_part=part5,
-            grade=int(_norm(q5.get("ispa_now")).startswith("par isp b")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q5.get("ispa_now")).startswith("par isp b")), scope=CHOICE_SCOPE,
             description=tr("chemin préféré par ispa après la modification"),
         )
         self.add_grade_element(
             title=no_tr("prepend_q_med_leviers"), max_grade=1, grade_part=part5,
             grade=int(_norm(q5.get("med")) == "vrai" and _norm(q5.get("inbound")).startswith("as-path")
                       and _norm(q5.get("outbound")).startswith("local-preference")),
-            scope=params.EXO_EVAL_SCOPE, description=tr("MED et leviers sur le trafic entrant / sortant"),
+            scope=CHOICE_SCOPE, description=tr("MED et leviers sur le trafic entrant / sortant"),
         )
 
         # =====================================================================
@@ -1617,13 +1626,13 @@ l'iBGP de la partie 3 est en place : sans lui il n'y a rien à filtrer.
         )
         self.add_grade_element(
             title=no_tr("filtre_q_transit"), max_grade=1, grade_part=part6,
-            grade=int(_norm(q6.get("lab_down")).startswith("par l'as 65001")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q6.get("lab_down")).startswith("par l'as 65001")), scope=CHOICE_SCOPE,
             description=tr("conséquence d'une absence de filtre"),
         )
         self.add_grade_element(
             title=no_tr("filtre_q_boucle_rfc8212"), max_grade=1, grade_part=part6,
             grade=int(_norm(q6.get("loop")).startswith("il la rejette") and _norm(q6.get("rfc8212")).startswith("les fuites")),
-            scope=params.EXO_EVAL_SCOPE, description=tr("détection de boucle et RFC 8212"),
+            scope=CHOICE_SCOPE, description=tr("détection de boucle et RFC 8212"),
         )
 
         # =====================================================================
@@ -1716,8 +1725,9 @@ contient, hors son réseau, que la route par défaut reçue de `{r3_l34}`, insta
   loopback de `r3` (`next-hop-self`) ;
 - `summary-only` : **seul l'agrégat est annoncé, les préfixes plus spécifiques sont supprimés**.
 
-Évaluation (enseignant seulement, 1 point chacun) : `client_q_apprentissage`,
-`client_q_agregat`.
+Évaluation : `client_q_apprentissage_typed` (0,5 point : le `NEXT_HOP`) ; pour l'enseignant
+seulement (choix dans une liste) : `client_q_apprentissage` (0,5 : par iBGP depuis `r3`),
+`client_q_agregat` (1).
 """).format(net4=net4, lo3=lo['r3'])),
             cheat_answers={"final": {"learn": "par iBGP depuis r3", "nexthop": lo['r3'],
                                      "summary_only": "seul l'agrégat est annoncé, les préfixes plus spécifiques sont supprimés"}},
@@ -1752,13 +1762,18 @@ contient, hors son réseau, que la route par défaut reçue de `{r3_l34}`, insta
             description=tr("bonus : {net4} porte la communauté {community} chez ispa ou inet").format(net4=net4, community=community),
         )
         self.add_grade_element(
-            title=no_tr("client_q_apprentissage"), max_grade=1, grade_part=part7,
-            grade=int(_norm(q7.get("learn")).startswith("par ibgp") and _same_ip(q7.get("nexthop"), lo['r3'])),
-            scope=params.EXO_EVAL_SCOPE, description=tr("comment r1 apprend le préfixe du client"),
+            title=no_tr("client_q_apprentissage_typed"), max_grade=0.5, grade_part=part7,
+            grade=0.5 * int(_same_ip(q7.get("nexthop"), lo['r3'])),
+            description=tr("NEXT_HOP du préfixe du client sur r1"),
+        )
+        self.add_grade_element(
+            title=no_tr("client_q_apprentissage"), max_grade=0.5, grade_part=part7,
+            grade=0.5 * int(_norm(q7.get("learn")).startswith("par ibgp")),
+            scope=CHOICE_SCOPE, description=tr("protocole par lequel r1 apprend le préfixe du client"),
         )
         self.add_grade_element(
             title=no_tr("client_q_agregat"), max_grade=1, grade_part=part7,
-            grade=int(_norm(q7.get("summary_only")).startswith("seul l'agrégat")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q7.get("summary_only")).startswith("seul l'agrégat")), scope=CHOICE_SCOPE,
             description=tr("effet de summary-only"),
         )
 
@@ -1824,7 +1839,8 @@ partie 3).
 **Solution.** Maillage complet de 8 routeurs : 8 × 7 ÷ 2 = **28** sessions ; avec un réflecteur :
 **7** (une par client). Attributs ajoutés : **ORIGINATOR_ID et CLUSTER_LIST**.
 
-Évaluation (enseignant seulement, 1 point chacun) : `rr_q_sessions`, `rr_q_attributs`.
+Évaluation (1 point chacun) : `rr_q_sessions` ; pour l'enseignant seulement (choix dans une
+liste) : `rr_q_attributs`.
 """)),
             cheat_answers={"final": {"mesh8": "28", "rr8": "7", "attrs": "ORIGINATOR_ID et CLUSTER_LIST"}},
         )
@@ -1851,12 +1867,12 @@ partie 3).
         )
         self.add_grade_element(
             title=no_tr("rr_q_sessions"), max_grade=1, grade_part=part8,
-            grade=int(_int(q8.get("mesh8")) == 28 and _int(q8.get("rr8")) == 7), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q8.get("mesh8")) == 28 and _int(q8.get("rr8")) == 7),
             description=tr("nombre de sessions avec et sans réflecteur"),
         )
         self.add_grade_element(
             title=no_tr("rr_q_attributs"), max_grade=1, grade_part=part8,
-            grade=int(_norm(q8.get("attrs")).startswith("originator_id")), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q8.get("attrs")).startswith("originator_id")), scope=CHOICE_SCOPE,
             description=tr("attributs ajoutés par un réflecteur"),
         )
 

@@ -616,7 +616,7 @@ def test_grading_nothing_done(lab, data, tmp_pub_dir):
     assert sum(g for g, _ in grades.values()) == 0, {k: v for k, v in grades.items() if v[0]}
     elements = grade.get_grade_list()
     assert sum(e.max_grade for e in elements if not e.bonus) == 140 and sum(e.max_grade for e in elements if e.bonus) == 6
-    assert len(grades) == 51
+    assert len(grades) == 52
     assert [str(p.title) for p in grade.get_grade_parts()] == [f'part{i}' for i in range(1, 15)]
     assert [sum(e.max_grade for e in elements if str(e.grade_part) == f'part{i}') for i in range(1, 15)] == [
         6, 10, 8, 10, 10, 12, 14, 18, 12, 16, 9, 6, 9, 6]
@@ -878,12 +878,17 @@ def test_form_answers(lab, data, tmp_pub_dir):
     grade._answers[q1.question_hash] = json.dumps(answers)
     grade.reset_before_grade()
     grade.grade()
-    assert _grades(grade)['q_before'] == (6, 6)
+    assert _grades(grade)['q_before_typed'] == (4, 4) and _grades(grade)['q_before'] == (2, 2)
     answers.update({"ttl_ext": "64", "client_ip": _ip(data.ips.gw_ext)})
     grade._answers[q1.question_hash] = json.dumps(answers)
     grade.reset_before_grade()
     grade.grade()
-    assert _grades(grade)['q_before'] == (3, 6)
+    assert _grades(grade)['q_before_typed'] == (1, 4) and _grades(grade)['q_before'] == (2, 2)
+    answers.update({"ruleset": "docker"})
+    grade._answers[q1.question_hash] = json.dumps(answers)
+    grade.reset_before_grade()
+    grade.grade()
+    assert _grades(grade)['q_before_typed'] == (1, 4) and _grades(grade)['q_before'] == (0, 2)
     assert lab._same_ip('x', data.ips.m1) is False and lab._is_int('', 64) is False
     # question 10: the two "what the program sees" answers go together, the third one alone
     q10 = [q for q in grade.get_questions_ordered() if any(f['name'] == 'with_drop' for f in getattr(q, 'fields', []))][0]
@@ -897,6 +902,17 @@ def test_form_answers(lab, data, tmp_pub_dir):
         assert _grades(grade)['q_output'] == (expected, 2), answers
     assert lab._set_pairs({'items': [{'concat': ['192.0.2.2', 80]}, {'concat': [8888, '192.0.2.3']}, {'concat': [1, 2]}, 7]}) == {
         ('192.0.2.2', 80), ('192.0.2.3', 8888)}
+
+
+def test_only_choice_answers_are_exo_only(lab, data, tmp_pub_dir):
+    # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+    # tried), a typed answer is not
+    choices = {'q_before', 'q_policy', 'q_udp', 'q_reject', 'q_log', 'q_output', 'q_blocklist', 'q_port_set',
+               'q_allowed', 'q_ban'}
+    grade, _ = _simulate(lab, data, tmp_pub_dir)
+    for e in grade.get_grade_list():
+        expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+        assert e.scope == expected, e.title
 
 
 # ---------------------------------------------------------------------------

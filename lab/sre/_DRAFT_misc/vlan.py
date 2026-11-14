@@ -92,6 +92,9 @@ ADDRESSED = [('m1', 'odd'), ('m2', 'even'), ('m3', 'odd'), ('m4', 'even'), ('m5'
 SINGLE_HOMED = ('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'ext1', 'ext2')
 ODD_MACHINES = ('m1', 'm3', 'm5')
 EVEN_MACHINES = ('m2', 'm4', 'm6')
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     'ext': {'router': 0, 'router2': 0, 'ext1': 0, 'ext2': 0},
@@ -846,11 +849,15 @@ trames qu'aux ports membres du VLAN {odd}.
             description=tr("b1 joint {b2_odd} (b2) à travers le VLAN {odd}").format(b2_odd=d.ips.b2_odd.ip, odd=VLAN_ODD),
         )
         self.add_grade_element(
-            title=no_tr("q_capture_tag"), max_grade=5, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
-            grade=3 * int(_norm(q2.get("diff")) == "tag_on_eth0") + int(_is_int(q2.get("vid"), VLAN_ODD))
-                  + int(_is_int(q2.get("tag_size"), 4)),
-            description=tr("captures sur eth0 et eth0.{odd} : où est l'étiquette, numéro de VLAN, taille de l'étiquette").format(
+            title=no_tr("q_capture_tag_typed"), max_grade=2, grade_part=part1,
+            grade=int(_is_int(q2.get("vid"), VLAN_ODD)) + int(_is_int(q2.get("tag_size"), 4)),
+            description=tr("captures sur eth0 et eth0.{odd} : numéro de VLAN, taille de l'étiquette").format(
                 odd=VLAN_ODD),
+        )
+        self.add_grade_element(
+            title=no_tr("q_capture_tag"), max_grade=3, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=3 * int(_norm(q2.get("diff")) == "tag_on_eth0"),
+            description=tr("captures sur eth0 et eth0.{odd} : où est l'étiquette").format(odd=VLAN_ODD),
         )
 
         # =====================================================================
@@ -1234,11 +1241,14 @@ décrémente pas le TTL. (b) Sur `b2` : `{ttl_rule}` : les paquets de `m3` repar
         )
 
         self.add_grade_element(
-            title=no_tr("q_ttl_observed"), max_grade=5, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_is_int(q9.get("ttl_m5"), DEFAULT_TTL - 1)) + int(_is_int(q9.get("ttl_m3"), DEFAULT_TTL - 2))
-                  + 3 * int(_norm(q9.get("why")) == "extra_hop"),
-            description=tr("TTL observés sur ext1 ({ttl_m5} depuis m5, {ttl_m3} depuis m3) et leur explication").format(
-                ttl_m5=DEFAULT_TTL - 1, ttl_m3=DEFAULT_TTL - 2),
+            title=no_tr("q_ttl_observed_typed"), max_grade=2, grade_part=part6,
+            grade=int(_is_int(q9.get("ttl_m5"), DEFAULT_TTL - 1)) + int(_is_int(q9.get("ttl_m3"), DEFAULT_TTL - 2)),
+            description=tr("TTL observés sur ext1 depuis m5 et depuis m3"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_ttl_observed"), max_grade=3, grade_part=part6, scope=CHOICE_SCOPE,
+            grade=3 * int(_norm(q9.get("why")) == "extra_hop"),
+            description=tr("explication des TTL observés sur ext1"),
         )
         self.add_grade_element(
             title=no_tr("ttl_increment"), max_grade=6, grade_part=part6,
@@ -1255,9 +1265,9 @@ décrémente pas le TTL. (b) Sur `b2` : `{ttl_rule}` : les paquets de `m3` repar
                 ttl_m5=TTL_M5, after=TTL_M5 - 1),
         )
         self.add_grade_element(
-            title=no_tr("q_ttl_after"), max_grade=1, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_ttl_after"), max_grade=1, grade_part=part6,
             grade=int(_is_int(q9.get("ttl_m5_after"), TTL_M5 - 1)),
-            description=tr("TTL des paquets de m5 après le changement de ip_default_ttl ({after})").format(after=TTL_M5 - 1),
+            description=tr("TTL des paquets de m5 après le changement de ip_default_ttl"),
         )
 
 

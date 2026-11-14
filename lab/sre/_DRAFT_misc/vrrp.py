@@ -125,6 +125,9 @@ ROUTER_SYSCTLS = PROVIDER_SYSCTLS + ('net.ipv6.conf.all.keep_addr_on_down=1',
                                      'net.ipv6.conf.default.keep_addr_on_down=1',
                                      'net.ipv4.conf.all.arp_announce=2')
 CLIENT_SYSCTLS = BASE_SYSCTLS + ('net.ipv6.conf.default.autoconf=0',)
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     'lan': {'pc1': 0, 'pc2': 0, 'r1': 0, 'r2': 0},
@@ -1131,7 +1134,8 @@ En conséquence :
   annonces, routes des clients ;
 - une évaluation dure d'une demi-minute à une minute.
 
-Les questions à formulaire ne sont notées qu'à l'évaluation de l'enseignant.
+Dans les questions à formulaire, une réponse choisie dans une liste n'est notée qu'à l'évaluation de
+l'enseignant ; une réponse saisie compte aussi dans l'auto-évaluation.
 
 **Plan du TP.** 1. une première passerelle virtuelle ; 2. le côté `wan` et le groupe de
 synchronisation ; 3. test de santé et notification ; 4. authentification et homologues en unicast ;
@@ -1289,15 +1293,20 @@ l'adresse MAC de `r1` (`{mac_r1}`).
             description=tr("copie cachée, lien rétabli : r1 reprend {vip} (préemption), r2 la rend").format(vip=vip),
         )
         self.add_grade_element(
-            title=no_tr("lan_form"), max_grade=4, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("lan_form_typed"), max_grade=3.5, grade_part=part1,
             grade=0.5 * (int(_same_ip(q3.get("dst"), "224.0.0.18")) + int(_digits(q3.get("proto")) == "112")
-                         + int(_digits(q3.get("ttl")) == "255") + int(_norm(q3.get("sender")) == "r1")
+                         + int(_digits(q3.get("ttl")) == "255")
                          + int(_same_mac(q3.get("mac_before"), mac['r1'])) + int(_digits(q3.get("prio_stop")) == "0")
                          + int(_same_mac(q3.get("mac_after"), mac['r2']))
                          + int(_float_near(q3.get("down_time"), master_down_interval(ADVERT_INT, PRIORITY_BACKUP),
                                            0.02))),
-            description=tr("annonces (224.0.0.18, protocole 112, TTL 255, maître seul), adresses MAC avant et "
-                           "après la bascule, priorité 0, délai de bascule"),
+            description=tr("annonces (adresse de destination, protocole, TTL), adresses MAC avant et après la "
+                           "bascule, priorité de la dernière annonce, délai de bascule"),
+        )
+        self.add_grade_element(
+            title=no_tr("lan_form"), max_grade=0.5, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=0.5 * int(_norm(q3.get("sender")) == "r1"),
+            description=tr("annonces émises par le maître seul"),
         )
 
         # =====================================================================
@@ -1403,7 +1412,7 @@ que l'une d'elles y passe.
                            "isp se joignent toujours").format(vip=vip_wan),
         )
         self.add_grade_element(
-            title=no_tr("wan_form"), max_grade=2, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("wan_form"), max_grade=2, grade_part=part2, scope=CHOICE_SCOPE,
             grade=0.5 * (int(_norm(q5.get("lan_holder")) == "r2") + int(_norm(q5.get("wan_holder")) == "r1")
                          + int(_norm(q5.get("result")) == "blackhole")
                          + int(_norm(q5.get("group_state")) == "fault")),
@@ -1547,12 +1556,15 @@ groupe, les poids sont ramenés à 0 : un script suivi sans poids met les instan
             .format(log=NOTIFY_LOG),
         )
         self.add_grade_element(
-            title=no_tr("check_form"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
-            grade=0.5 * (int(_digits(q7.get("effective")) == str(PRIORITY_MASTER - 60))
-                         + int(_norm(q7.get("master")) == "r2") + int(_norm(q7.get("in_group")) == "ignored")
+            title=no_tr("check_form_typed"), max_grade=0.5, grade_part=part3,
+            grade=0.5 * int(_digits(q7.get("effective")) == str(PRIORITY_MASTER - 60)),
+            description=tr("poids d'un script : priorité annoncée hors groupe"),
+        )
+        self.add_grade_element(
+            title=no_tr("check_form"), max_grade=1.5, grade_part=part3, scope=CHOICE_SCOPE,
+            grade=0.5 * (int(_norm(q7.get("master")) == "r2") + int(_norm(q7.get("in_group")) == "ignored")
                          + int(_norm(q7.get("state")) == "fault")),
-            description=tr("poids d'un script : priorité 90 et r2 maître hors groupe ; ignoré dans un groupe ; "
-                           "état FAULT sans poids"),
+            description=tr("poids d'un script : r2 maître hors groupe ; ignoré dans un groupe ; état FAULT sans poids"),
         )
 
         # =====================================================================
@@ -1661,11 +1673,16 @@ Les annonces de `VI_WAN` vont à `{r2_wan}`.
                            "224.0.0.18"),
         )
         self.add_grade_element(
-            title=no_tr("secure_form"), max_grade=2, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("secure_form_typed"), max_grade=0.5, grade_part=part4,
+            grade=0.5 * int(_same_ip(q9.get("wan_dst"), wan_ip['r2'])),
+            description=tr("destination des annonces de VI_WAN"),
+        )
+        self.add_grade_element(
+            title=no_tr("secure_form"), max_grade=1.5, grade_part=part4, scope=CHOICE_SCOPE,
             grade=0.5 * (int(_norm(q9.get("auth_seen")) == "clear") + int(_norm(q9.get("forged")) == "ignored")
-                         + int(_same_ip(q9.get("wan_dst"), wan_ip['r2'])) + int(_norm(q9.get("v3")) == "no")),
-            description=tr("mot de passe en clair, annonce sans mot de passe ignorée, destination unicast, pas "
-                           "d'authentification en VRRPv3"),
+                         + int(_norm(q9.get("v3")) == "no")),
+            description=tr("mot de passe en clair, annonce sans mot de passe ignorée, pas d'authentification en "
+                           "VRRPv3"),
         )
 
         # =====================================================================
@@ -1764,7 +1781,7 @@ clients entre les deux passerelles.
             .format(vip=vip2),
         )
         self.add_grade_element(
-            title=no_tr("lan2_form"), max_grade=1, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("lan2_form"), max_grade=1, grade_part=part5, scope=CHOICE_SCOPE,
             grade=0.5 * (int(_norm(q11.get("nominal")) == "split") + int(_norm(q11.get("after")) == "r1")),
             description=tr("partage de charge : un routeur par client, r1 reprend tout si r2 s'arrête"),
         )
@@ -1852,10 +1869,14 @@ virtuelle prend l'adresse MAC du routeur qui la détient, et les clients doivent
             .format(vip=vip2, vmac=vmac),
         )
         self.add_grade_element(
-            title=no_tr("vmac_form"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
-            grade=0.5 * (int(_same_mac(q13.get("vmac"), vmac)) + int(_norm(q13.get("iface")) == vmac_iface)
-                         + int(_norm(q13.get("arp_vip2")) == "same") + int(_norm(q13.get("arp_vip1")) == "r2")),
-            description=tr("adresse MAC virtuelle, interface macvlan, cache ARP inchangé avec use_vmac"),
+            title=no_tr("vmac_form_typed"), max_grade=1, grade_part=part6,
+            grade=0.5 * (int(_same_mac(q13.get("vmac"), vmac)) + int(_norm(q13.get("iface")) == vmac_iface)),
+            description=tr("adresse MAC virtuelle, interface créée par keepalived"),
+        )
+        self.add_grade_element(
+            title=no_tr("vmac_form"), max_grade=1, grade_part=part6, scope=CHOICE_SCOPE,
+            grade=0.5 * (int(_norm(q13.get("arp_vip2")) == "same") + int(_norm(q13.get("arp_vip1")) == "r2")),
+            description=tr("cache ARP inchangé avec use_vmac, changé sans"),
         )
 
         # =====================================================================
@@ -1999,11 +2020,14 @@ Les annonces de routeur partent de `{vip6}`, que `pc1` prend pour passerelle.
             .format(vip6=VIP6_LAN),
         )
         self.add_grade_element(
-            title=no_tr("v6_form"), max_grade=2, grade_part=part7, scope=params.EXO_EVAL_SCOPE,
-            grade=0.5 * (int(_same_ip(q15.get("group6"), VRRP_GROUP6)) + int(_norm(q15.get("interval")) == "cs")
-                         + int(_norm(q15.get("announce")) == "na") + int(_same_ip(q15.get("ra_src"), VIP6_LAN))),
-            description=tr("VRRPv3 : groupe ff02::12, intervalle en centisecondes, annonce de voisin, RA depuis "
-                           "l'adresse virtuelle"),
+            title=no_tr("v6_form_typed"), max_grade=1, grade_part=part7,
+            grade=0.5 * (int(_same_ip(q15.get("group6"), VRRP_GROUP6)) + int(_same_ip(q15.get("ra_src"), VIP6_LAN))),
+            description=tr("VRRPv3 : destination des annonces, source des annonces de routeur"),
+        )
+        self.add_grade_element(
+            title=no_tr("v6_form"), max_grade=1, grade_part=part7, scope=CHOICE_SCOPE,
+            grade=0.5 * (int(_norm(q15.get("interval")) == "cs") + int(_norm(q15.get("announce")) == "na")),
+            description=tr("VRRPv3 : intervalle en centisecondes, annonce de voisin"),
         )
 
 
@@ -2850,7 +2874,8 @@ En conséquence :
   annonces, routes des clients ;
 - une évaluation dure d'une demi-minute à une minute.
 
-Les questions à formulaire ne sont notées qu'à l'évaluation de l'enseignant.
+Dans les questions à formulaire, une réponse choisie dans une liste n'est notée qu'à l'évaluation de
+l'enseignant ; une réponse saisie compte aussi dans l'auto-évaluation.
 
 **Plan du TP.** 1. une première passerelle virtuelle ; 2. le côté `wan` et le groupe de
 synchronisation ; 3. test de santé et notification ; 4. authentification et homologues en unicast ;
@@ -2876,7 +2901,8 @@ advertisements. As a consequence:
   addresses, advertisements, routes of the clients;
 - an evaluation lasts from half a minute to a minute.
 
-The form questions are graded by the instructor's evaluation only.
+In the form questions, an answer picked from a list is graded by the instructor's evaluation only;
+a typed answer also counts in the self-evaluation.
 
 **Plan of the lab.** 1. a first virtual gateway; 2. the `wan` side and the sync group; 3. health
 check and notification; 4. authentication and unicast peers; 5. load sharing; 6. virtual MAC
@@ -3045,7 +3071,8 @@ associates `{vip_ip}` with the MAC address of `r1` (`{mac_r1}`).
         'copie cachée, état nominal : {vip} sur r1 seul, qui répond à pc1': 'hidden copy, nominal state: {vip} on r1 alone, which answers pc1',
         'copie cachée, lien LAN de r1 coupé : r2 prend {vip} et répond à pc1': 'hidden copy, LAN link of r1 down: r2 takes {vip} and answers pc1',
         'copie cachée, lien rétabli : r1 reprend {vip} (préemption), r2 la rend': 'hidden copy, link restored: r1 takes {vip} back (preemption), r2 releases it',
-        'annonces (224.0.0.18, protocole 112, TTL 255, maître seul), adresses MAC avant et après la bascule, priorité 0, délai de bascule': 'advertisements (224.0.0.18, protocol 112, TTL 255, master alone), MAC addresses before and after the failover, priority 0, failover delay',
+        'annonces (adresse de destination, protocole, TTL), adresses MAC avant et après la bascule, priorité de la dernière annonce, délai de bascule': 'advertisements (destination address, protocol, TTL), MAC addresses before and after the failover, priority of the last advertisement, failover delay',
+        'annonces émises par le maître seul': 'advertisements sent by the master alone',
         'Partie 2 — Le côté wan et le groupe de synchronisation (questions 4 et 5)': 'Part 2 — The wan side and the sync group (questions 4 and 5)',
         "L'instance VI_WAN et le groupe de synchronisation": 'The VI_WAN instance and the sync group',
         """
@@ -3277,7 +3304,8 @@ state. That is the form to use in a group.
         'script de notification exécutable sous {dir}, appelé par le groupe (r1, r2)': 'notify script executable under {dir}, called by the group (r1, r2)',
         'copie cachée, isp ne répond plus aux ping de r1 : r2 prend {vip}, r1 la rend, r2 répond à pc1': 'hidden copy, isp no longer answers the pings of r1: r2 takes {vip}, r1 releases it, r2 answers pc1',
         'copie cachée : {log} contient la transition MASTER sur r2 et la transition FAULT sur r1': 'hidden copy: {log} holds the MASTER transition on r2 and the FAULT transition on r1',
-        "poids d'un script : priorité 90 et r2 maître hors groupe ; ignoré dans un groupe ; état FAULT sans poids": 'weight of a script: priority 90 and r2 master outside a group; ignored in a group; FAULT state without a weight',
+        "poids d'un script : priorité annoncée hors groupe": 'weight of a script: priority advertised outside a group',
+        "poids d'un script : r2 maître hors groupe ; ignoré dans un groupe ; état FAULT sans poids": 'weight of a script: r2 master outside a group; ignored in a group; FAULT state without a weight',
         'Partie 4 — Authentification et homologues en unicast (questions 8 et 9)': 'Part 4 — Authentication and unicast peers (questions 8 and 9)',
         'Protéger les annonces': 'Protecting the advertisements',
         """
@@ -3364,7 +3392,8 @@ advertisements of `VI_WAN` go to `{r2_wan}`.
         'copie cachée : pendant de fausses annonces de priorité 255 sans mot de passe, un routeur garde {vip}': 'hidden copy: during forged advertisements of priority 255 without the password, a router keeps {vip}',
         "VI_WAN : unicast_src_ip et unicast_peer vers l'autre routeur (r1, r2)": 'VI_WAN: unicast_src_ip and unicast_peer to the other router (r1, r2)',
         "sur la maquette : les annonces de VI_WAN vont d'un routeur à l'autre, plus au groupe 224.0.0.18": 'on the real network: the advertisements of VI_WAN go from one router to the other, no longer to the group 224.0.0.18',
-        "mot de passe en clair, annonce sans mot de passe ignorée, destination unicast, pas d'authentification en VRRPv3": 'password in clear, advertisement without the password ignored, unicast destination, no authentication in VRRPv3',
+        'destination des annonces de VI_WAN': 'destination of the advertisements of VI_WAN',
+        "mot de passe en clair, annonce sans mot de passe ignorée, pas d'authentification en VRRPv3": 'password in clear, advertisement without the password ignored, no authentication in VRRPv3',
         'Partie 5 — Partage de charge (questions 10 et 11)': 'Part 5 — Load sharing (questions 10 and 11)',
         'Une deuxième passerelle virtuelle, dont r2 est le maître': 'A second virtual gateway, of which r2 is the master',
         """
@@ -3526,7 +3555,8 @@ must be told.
         'use_vmac dans la deuxième instance (r1, r2)': 'use_vmac in the second instance (r1, r2)',
         "sur la maquette : {vip} sur une interface d'adresse MAC {vmac} ; annonces émises depuis cette adresse ; pc2 l'associe à {vip}": 'on the real network: {vip} on an interface with the MAC address {vmac}; advertisements sent from that address; pc2 associates it with {vip}',
         'copie cachée : la requête ARP pour {vip} reçoit {vmac}, avant la bascule et après': 'hidden copy: the ARP request for {vip} gets {vmac}, before the failover and after',
-        'adresse MAC virtuelle, interface macvlan, cache ARP inchangé avec use_vmac': 'virtual MAC address, macvlan interface, ARP cache unchanged with use_vmac',
+        'adresse MAC virtuelle, interface créée par keepalived': 'virtual MAC address, interface created by keepalived',
+        'cache ARP inchangé avec use_vmac, changé sans': 'ARP cache unchanged with use_vmac, changed without',
         'Partie 7 — VRRPv3 et IPv6 (questions 14 et 15)': 'Part 7 — VRRPv3 and IPv6 (questions 14 and 15)',
         'Une passerelle IPv6 : VRRPv3 et annonces de routeur': 'An IPv6 gateway: VRRPv3 and router advertisements',
         """
@@ -3639,6 +3669,7 @@ router advertisements leave from `{vip6}`, which `pc1` takes as its gateway.
         'sur la maquette : {vip6} sur r1 seul ; annonces VRRPv3 vers ff02::12 ; pc1 a reçu sa route par défaut de {vip6} et joint isp en IPv6': 'on the real network: {vip6} on r1 alone; VRRPv3 advertisements to ff02::12; pc1 got its default route from {vip6} and reaches isp over IPv6',
         'copie cachée, état nominal : annonce de routeur émise depuis {vip6} ; pc1 joint isp en IPv6': 'hidden copy, nominal state: router advertisement sent from {vip6}; pc1 reaches isp over IPv6',
         'copie cachée, lien LAN de r1 coupé : r2 prend {vip6} ; pc1 joint toujours isp en IPv6': 'hidden copy, LAN link of r1 down: r2 takes {vip6}; pc1 still reaches isp over IPv6',
-        "VRRPv3 : groupe ff02::12, intervalle en centisecondes, annonce de voisin, RA depuis l'adresse virtuelle": 'VRRPv3: group ff02::12, interval in centiseconds, neighbor advertisement, RA from the virtual address',
+        'VRRPv3 : destination des annonces, source des annonces de routeur': 'VRRPv3: destination of the advertisements, source of the router advertisements',
+        'VRRPv3 : intervalle en centisecondes, annonce de voisin': 'VRRPv3: interval in centiseconds, neighbor advertisement',
     },
 }

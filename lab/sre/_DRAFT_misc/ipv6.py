@@ -105,6 +105,9 @@ HOST_SYSCTLS = ('net.ipv6.conf.default.addr_gen_mode=0', 'net.ipv6.conf.default.
                 'net.ipv6.conf.all.use_tempaddr=0')
 STATIC_SYSCTLS = HOST_SYSCTLS + ('net.ipv6.conf.default.accept_ra=0', 'net.ipv6.conf.default.autoconf=0')
 DHCLIENT6_CLEANUP = "pkill -x dhclient; rm -f /run/dhclient6*.pid /var/lib/dhcp/dhclient6*.leases"
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 #: interfaces of the multi-homed machines are explicit: r1 0/1, wan 0/1, r2 0/1/2
 _TOPOLOGY = {
@@ -1473,25 +1476,29 @@ ip -6 addr add {r1}/64 dev eth0
             cheat_answers={"final": q1_answers},
         )
         self.add_grade_element(
-            title=no_tr("adr_q_lien_local"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("adr_q_lien_local"), max_grade=2, grade_part=part1,
             grade=int(_ipv6_in(q1.get("ll_m1"), ll_expected['m1'], ll['m1']))
             + int(_ipv6_in(q1.get("ll_r1"), ll_expected['r1'], ll['r1'])),
             description=tr("adresses de lien local de m1 et de r1 (relevées ou calculées)"),
         )
         prefixe = _norm(q1.get("prefixe_ll")).replace(" ", "")
         self.add_grade_element(
-            title=no_tr("adr_q_prefixe"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("adr_q_prefixe"), max_grade=1, grade_part=part1,
             grade=int(prefixe in ("fe80::/10", "fe80::/64", "fe80:/10", "fe80:/64")),
             description=tr("préfixe des adresses de lien local"),
         )
         self.add_grade_element(
-            title=no_tr("adr_q_nd"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_is(q1.get("ns_type"), 135) and _is(q1.get("na_type"), 136))
-            + int(_norm(q1.get("dad_src")).startswith("::")),
-            description=tr("types des messages NS / NA et source du NS de la détection d'adresse dupliquée"),
+            title=no_tr("adr_q_nd_typed"), max_grade=1, grade_part=part1,
+            grade=int(_is(q1.get("ns_type"), 135) and _is(q1.get("na_type"), 136)),
+            description=tr("types des messages NS / NA"),
         )
         self.add_grade_element(
-            title=no_tr("adr_q_sollicite"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("adr_q_nd"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q1.get("dad_src")).startswith("::")),
+            description=tr("source du NS de la détection d'adresse dupliquée"),
+        )
+        self.add_grade_element(
+            title=no_tr("adr_q_sollicite"), max_grade=1, grade_part=part1,
             grade=int(same_ipv6(q1.get("sollicite"), sollicite)
                       and _norm(q1.get("mac_sollicite")).replace("-", ":") == multicast_mac(sollicite)),
             description=tr("groupe du nœud sollicité de r1 et adresse MAC multicast correspondante"),
@@ -1664,10 +1671,15 @@ et de `r1` :
             self.add_grade_element(title=no_tr(f"route_ping_{key}"), max_grade=pts, grade_part=part2,
                                    grade=pts * int(pings[key]), description=desc)
         self.add_grade_element(
-            title=no_tr("route_q"), max_grade=1, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
-            grade=int("/48" in _norm(q2.get("agregat")) and _is(q2.get("unreach_type"), 1)
-                      and "dev" in _norm(q2.get("via_ll")) and "chaque adresse" in _norm(q2.get("kernel_route"))),
-            description=tr("agrégation, message d'erreur, prochain saut de lien local, routes du noyau"),
+            title=no_tr("route_q_typed"), max_grade=0.5, grade_part=part2,
+            grade=0.5 * int(_is(q2.get("unreach_type"), 1)),
+            description=tr("message d'erreur"),
+        )
+        self.add_grade_element(
+            title=no_tr("route_q"), max_grade=0.5, grade_part=part2, scope=CHOICE_SCOPE,
+            grade=0.5 * int("/48" in _norm(q2.get("agregat"))
+                            and "dev" in _norm(q2.get("via_ll")) and "chaque adresse" in _norm(q2.get("kernel_route"))),
+            description=tr("agrégation, prochain saut de lien local, routes du noyau"),
         )
 
         # =====================================================================
@@ -1783,18 +1795,22 @@ A : {flag_a} ; L : {flag_l}.
             description=tr("ping -6 de pc1 vers m1 (route par défaut apprise, routage de r2)"),
         )
         self.add_grade_element(
-            title=no_tr("slaac_q_pc1"), max_grade=1, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("slaac_q_pc1"), max_grade=1, grade_part=part3,
             grade=int(_ipv6_in(q3.get("adresse_pc1"), pc1_slaac, pc1_slaac_addrs)
                       and _ipv6_in(q3.get("next_hop"), ll_expected['r2'], [r['gateway'] for r in ra_default])),
             description=tr("adresse et prochain saut relevés sur pc1"),
         )
         self.add_grade_element(
-            title=no_tr("slaac_q_ra"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_is(q3.get("rs_type"), 133) and _is(q3.get("ra_type"), 134)
-                      and _norm(q3.get("route_source")).startswith("l'annonce"))
+            title=no_tr("slaac_q_ra_typed"), max_grade=0.5, grade_part=part3,
+            grade=0.5 * int(_is(q3.get("rs_type"), 133) and _is(q3.get("ra_type"), 134)),
+            description=tr("types RS / RA"),
+        )
+        self.add_grade_element(
+            title=no_tr("slaac_q_ra"), max_grade=1.5, grade_part=part3, scope=CHOICE_SCOPE,
+            grade=0.5 * int(_norm(q3.get("route_source")).startswith("l'annonce"))
             + int(_norm(q3.get("flag_a")).startswith("les machines forment")
                   and _norm(q3.get("flag_l")).startswith("le préfixe est joignable")),
-            description=tr("types RS / RA, origine de la route par défaut, drapeaux A et L"),
+            description=tr("origine de la route par défaut, drapeaux A et L"),
         )
 
         # =====================================================================
@@ -2034,19 +2050,27 @@ puis `systemctl restart isc-dhcp-server` ; sur `pc2`, `dhclient -6 -D LL -r eth0
             description=tr("pc2 a reçu l'adresse réservée {pc2_fixe}").format(pc2_fixe=d6.pc2_fixe.ip),
         )
         self.add_grade_element(
-            title=no_tr("dhcp6_q_protocole"), max_grade=1, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_is(q4a.get("port_client"), 546) and _is(q4a.get("port_serveur"), 547)
-                      and same_ipv6(q4a.get("multicast"), "ff02::1:2")
-                      and _norm(q4a.get("msg_req")) == "information-request" and _norm(q4a.get("msg_rep")) == "reply"
-                      and _norm(q4a.get("route6")).startswith("non")),
-            description=tr("ports, adresse multicast, messages sans état, route par défaut"),
+            title=no_tr("dhcp6_q_protocole_typed"), max_grade=0.5, grade_part=part4,
+            grade=0.5 * int(_is(q4a.get("port_client"), 546) and _is(q4a.get("port_serveur"), 547)
+                            and same_ipv6(q4a.get("multicast"), "ff02::1:2")),
+            description=tr("ports, adresse multicast"),
         )
         self.add_grade_element(
-            title=no_tr("dhcp6_q_bail"), max_grade=1, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
-            grade=int(normalize_duid(q4b.get("duid_pc2")) in (pc2_duid, pc2_duid_seen or "") and _is(q4b.get("prefixlen"), 128)
-                      and [_norm(q4b.get(f"msg{i}")) for i in range(1, 5)] == ["solicit", "advertise", "request", "reply"]
-                      and _is(q4b.get("valid"), d.lease6)),
-            description=tr("DUID de pc2, préfixe de l'adresse, ordre des messages, durée de validité"),
+            title=no_tr("dhcp6_q_protocole"), max_grade=0.5, grade_part=part4, scope=CHOICE_SCOPE,
+            grade=0.5 * int(_norm(q4a.get("msg_req")) == "information-request" and _norm(q4a.get("msg_rep")) == "reply"
+                            and _norm(q4a.get("route6")).startswith("non")),
+            description=tr("messages sans état, route par défaut"),
+        )
+        self.add_grade_element(
+            title=no_tr("dhcp6_q_bail_typed"), max_grade=0.5, grade_part=part4,
+            grade=0.5 * int(normalize_duid(q4b.get("duid_pc2")) in (pc2_duid, pc2_duid_seen or "")
+                            and _is(q4b.get("prefixlen"), 128) and _is(q4b.get("valid"), d.lease6)),
+            description=tr("DUID de pc2, préfixe de l'adresse, durée de validité"),
+        )
+        self.add_grade_element(
+            title=no_tr("dhcp6_q_bail"), max_grade=0.5, grade_part=part4, scope=CHOICE_SCOPE,
+            grade=0.5 * int([_norm(q4b.get(f"msg{i}")) for i in range(1, 5)] == ["solicit", "advertise", "request", "reply"]),
+            description=tr("ordre des messages"),
         )
 
         # =====================================================================
@@ -2126,17 +2150,21 @@ ping -4 -c 2 -s 3000 m2  # réussit dès le premier essai
 """).format(n=n, **q5_answers)),
             cheat_answers={"final": q5_answers},
         )
+        choices = {"pmtu_q_ptb", "pmtu_q_fragmentation"}
         for title_, pts, ok, desc in (
                 ("pmtu_q_charge", 1, _is(q5.get("charge_v6"), charge6) and _is(q5.get("charge_v4"), charge4),
                  tr("plus grandes charges utiles de ping -M do qui traversent (IPv6 et IPv4)")),
-                ("pmtu_q_ptb", 1, _is(q5.get("icmpv6_type"), 2) and _norm(q5.get("emetteur")) == "wan",
-                 tr("type et émetteur du message Packet Too Big")),
-                ("pmtu_q_fragmentation", 1, _norm(q5.get("qui_v6")) == "m1 uniquement" and _is(q5.get("next_header"), 44),
-                 tr("en IPv6 seule la source fragmente ; next header de l'en-tête Fragment")),
+                ("pmtu_q_ptb_typed", 0.5, _is(q5.get("icmpv6_type"), 2), tr("type du message Packet Too Big")),
+                ("pmtu_q_ptb", 0.5, _norm(q5.get("emetteur")) == "wan", tr("émetteur du message Packet Too Big")),
+                ("pmtu_q_fragmentation_typed", 0.5, _is(q5.get("next_header"), 44),
+                 tr("next header de l'en-tête Fragment")),
+                ("pmtu_q_fragmentation", 0.5, _norm(q5.get("qui_v6")) == "m1 uniquement",
+                 tr("en IPv6 seule la source fragmente")),
                 ("pmtu_q_mss", 1, _is(q5.get("mss_v6"), mss6), tr("MSS TCP IPv6 adapté au lien de l'opérateur")),
         ):
             self.add_grade_element(title=no_tr(title_), max_grade=pts, grade_part=part5,
-                                   scope=params.EXO_EVAL_SCOPE, grade=pts * int(ok), description=desc)
+                                   scope=CHOICE_SCOPE if title_ in choices else params.BOTH_EVAL_SCOPE,
+                                   grade=pts * int(ok), description=desc)
         self.question_dummy(
             section=self.section(1),
             title=tr("Trou noir PMTUD en double pile"),
@@ -2225,7 +2253,7 @@ selon la correction faite (1 point). Les deux autres choix ne corrigent que `m1`
             description=tr("MSS clamping IPv6 sur r1 ou r2, ou MTU réduit sur les interfaces WAN de r1 et r2"),
         )
         self.add_grade_element(
-            title=no_tr("tn_q_correctif"), max_grade=1, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("tn_q_correctif"), max_grade=1, grade_part=part5, scope=CHOICE_SCOPE,
             grade=int(_norm(q5b.get("correctif")).startswith(("mss clamping", "mtu des interfaces"))),
             description=tr("correction faite sur les routeurs"),
         )
@@ -2337,7 +2365,7 @@ ip -6 addr add {r2_tun} dev sit1
             description=tr("le plus grand paquet passe dans le tunnel, un octet de plus est refusé localement"),
         )
         self.add_grade_element(
-            title=no_tr("sit_q"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("sit_q"), max_grade=2, grade_part=part6,
             grade=int(_is(q6.get("surcout"), TUN_OVERHEAD)) + int(_is(q6.get("mtu_tunnel"), tun_mtu)),
             description=tr("surcoût d'encapsulation 6in4 et MTU du tunnel"),
         )

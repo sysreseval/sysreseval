@@ -116,6 +116,9 @@ _SPECS = {
     'int1': {}, 'int2': {},
 }
 _FULL_TOPOLOGY, _FULL_SPECS = hidden_mirror.expand_topology(_TOPOLOGY, _SPECS, suffix=MIRROR)
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 def clone(machine: str) -> str:
@@ -1456,11 +1459,16 @@ aucun filtrage, tout passe.
         )
 
         self.add_grade_element(
-            title=no_tr("q_before"), max_grade=5, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_before_typed"), max_grade=4, grade_part=part1,
             grade=int(_is_int(q1.get("ttl"), 63)) + int(_same_ip(q1.get("client_ip"), int1))
-                  + 2 * int(_same_ip(q1.get("resolver"), ext2)) + int(_norm(q1.get("ruleset")) == "empty"),
-            description=tr("avant les pare-feux : TTL à travers le routeur (63), CLIENT_IP vu par ext2, "
-                           "serveur DNS de ext1, jeu de règles vide"),
+                  + 2 * int(_same_ip(q1.get("resolver"), ext2)),
+            description=tr("avant les pare-feux : TTL à travers le routeur, CLIENT_IP vu par ext2, "
+                           "serveur DNS de ext1"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_before"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q1.get("ruleset")) == "empty"),
+            description=tr("avant les pare-feux : jeu de règles vide"),
         )
 
         # =====================================================================
@@ -1689,7 +1697,7 @@ devient :
             description=tr("ext1 : une règle reject ou drop sur tcp dport 25 dans une chaîne du hook output"),
         )
         self.add_grade_element(
-            title=no_tr("q_output"), max_grade=2, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_output"), max_grade=2, grade_part=part4, scope=CHOICE_SCOPE,
             grade=int(_norm(q4.get("with_drop")) == "timeout") + int(_norm(q4.get("with_reject")) == "refused"),
             description=tr("drop ou reject dans output : ce que voit le programme"),
         )
@@ -1940,7 +1948,7 @@ autorisés, et elles seules. (f) `iifname {{ eth0, eth2 }}` : `dmz2` est sur le 
             description=tr("int1 interroge le serveur DNS de dmz2, devenu son serveur par défaut (/etc/resolv.conf)"),
         )
         self.add_grade_element(
-            title=no_tr("q_forward"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_forward"), max_grade=2, grade_part=part6, scope=CHOICE_SCOPE,
             grade=int(_norm(q6.get("stateless_hole")) == "any_port") + int(_norm(q6.get("reply_state")) == "established"),
             description=tr("filtrage sans état : la faille du port source ; l'état de la réponse à un ping"),
         )
@@ -2016,7 +2024,7 @@ déjà détruites par la politique.
                            "(mais toujours de ext2)"),
         )
         self.add_grade_element(
-            title=no_tr("q_ban"), max_grade=1, grade_part=part7, scope=params.EXO_EVAL_SCOPE, bonus=True,
+            title=no_tr("q_ban"), max_grade=1, grade_part=part7, scope=CHOICE_SCOPE, bonus=True,
             grade=int(_norm(q7.get("ban_effect")) == "ban_source"),
             description=tr("à quoi sert l'ensemble dynamique"),
         )
@@ -4394,7 +4402,8 @@ the first. What is this device for? Test it:
         'Trois chaînes pour trois trajets': 'Three chains for three paths',
         'Verdicts : accept, drop, reject': 'Verdicts: accept, drop, reject',
         "après une tentative SSH de ext1 vers int2, int2 n'obtient plus de réponse de ext1 (mais toujours de ext2)": 'after an SSH attempt from ext1 to int2, int2 no longer gets an answer from ext1 (but still from ext2)',
-        'avant les pare-feux : TTL à travers le routeur (63), CLIENT_IP vu par ext2, serveur DNS de ext1, jeu de règles vide': 'before the firewalls: TTL across the router (63), CLIENT_IP seen by ext2, DNS server of ext1, empty ruleset',
+        'avant les pare-feux : TTL à travers le routeur, CLIENT_IP vu par ext2, serveur DNS de ext1': 'before the firewalls: TTL across the router, CLIENT_IP seen by ext2, DNS server of ext1',
+        'avant les pare-feux : jeu de règles vide': 'before the firewalls: empty ruleset',
         "dmz2 interroge un serveur DNS de l'extérieur (ext2)": 'dmz2 queries a DNS server of the outside (ext2)',
         'drop ou reject dans output : ce que voit le programme': 'drop or reject in output: what the program sees',
         'ext1 : curl http://127.0.0.1/ répond (interface lo acceptée)': 'ext1: curl http://127.0.0.1/ answers (interface lo accepted)',

@@ -387,7 +387,7 @@ class TestGrading:
         for e in grade.get_grade_list():
             if not e.bonus:
                 parts[e.grade_part] = parts.get(e.grade_part, 0) + e.max_grade
-        assert parts == PARTS and len(grade.get_grade_list()) == 53
+        assert parts == PARTS and len(grade.get_grade_list()) == 56
         assert [str(p.title) for p in grade.get_grade_parts()] == [f"part{i}" for i in range(1, 12)]
         assert all(e.grade_part == 'part11' for e in grade.get_grade_list() if e.bonus)
         assert grade.max_step == 2
@@ -511,10 +511,38 @@ class TestGrading:
     def test_form_scoring(self, lab, tmp_pub_dir):
         grade, _, data = _replay(lab, 'solved', tmp_pub_dir, answers=False)
         form = [t for t, e in _by_title(grade).items() if e.grade_part == 'part1']
-        assert _lost(grade) == set(form) == {'http_redirect', 'http_headers', 'http_vhost', 'http_methods'}
+        assert _lost(grade) == set(form) == {'http_redirect_typed', 'http_redirect', 'http_headers_typed',
+                                             'http_headers', 'http_vhost', 'http_methods_typed', 'http_methods'}
         assert _totals(grade) == (92, 100, 10)
-        assert all(_by_title(grade)[t].scope == params.EXO_EVAL_SCOPE for t in form)
-        assert all(e.scope == params.BOTH_EVAL_SCOPE for t, e in _by_title(grade).items() if t not in form)
+
+    def test_split_form_elements(self, lab, tmp_pub_dir):
+        """The answers stored in the archive earn every element of the form; a wrong typed answer costs its
+        `_typed` element only, a wrong choice the element of the list answers only."""
+        split = ('http_redirect_typed', 'http_redirect', 'http_headers_typed', 'http_headers', 'http_methods_typed',
+                 'http_methods')
+        grade, _, data = _replay(lab, 'solved', tmp_pub_dir)
+        by = _by_title(grade)
+        assert [(by[t].grade, by[t].max_grade) for t in split] == [(1, 1)] * 6
+        assert (by['http_vhost'].grade, by['http_vhost'].max_grade) == (2, 2)
+        (q1,) = [q for q in grade.get_questions_ordered() if getattr(q, 'fields', None)]
+        stored = grade._answers[q1.question_hash]
+        answers = dict(json.loads(stored) if isinstance(stored, str) else stored)
+        answers.update({'old_location': '/old-page', 'health_web4': '200', 'form_token': '0'})
+        grade._answers[q1.question_hash] = json.dumps(answers) if isinstance(stored, str) else answers
+        grade.reset_before_grade()
+        grade.grade()
+        by = _by_title(grade)
+        assert [by[t].grade for t in split] == [0, 1, 1, 0, 0, 1]
+        assert _totals(grade) == (97, 100, 10)
+
+    def test_only_choice_answers_are_exo_only(self, lab, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'http_redirect', 'http_headers', 'http_methods'}
+        grade, _, _ = _replay(lab, 'solved', tmp_pub_dir)
+        for title, e in _by_title(grade).items():
+            expected = params.EXO_EVAL_SCOPE if title in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, title
 
     def test_cheat_answers_match_the_fields(self, lab, tmp_pub_dir):
         grade, _, data = _replay(lab, 'solved', tmp_pub_dir)

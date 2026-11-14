@@ -63,6 +63,9 @@ IFACE = {
 }
 #: interfaces whose tc configuration is copied onto the mirror
 MIRRORED = {'r1': ['eth0', 'eth1', 'eth2'], 'r2': ['eth0', 'eth1'], 'serveur2': ['eth0']}
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     'netA': {'m1': 0, 'r1': 0, 'r2': 0},
@@ -711,7 +714,7 @@ fenêtre de congestion, `bytes_acked` le nombre d'octets acquittés.
             description=tr("RTT mesuré de m1 vers serveur2 (délai du WAN)"),
         )
         self.add_grade_element(
-            title=no_tr("diag_ss_rtt"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("diag_ss_rtt"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q0.get("ss_field")) == "rtt"),
             description=tr("champ rtt de ss -ti"),
         )
@@ -900,7 +903,7 @@ retransmissions rapides. `ss -ti` montre un `cwnd` qui reste à quelques segment
             description=tr("proportion de retransmissions cohérente avec les pertes"),
         )
         self.add_grade_element(
-            title=no_tr("netem_q_asym"), max_grade=1, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("netem_q_asym"), max_grade=1, grade_part=part2, scope=CHOICE_SCOPE,
             grade=int(_norm(q1.get("asym")).startswith("baisse peu")),
             description=tr("effet des pertes dans le sens retour"),
         )
@@ -1060,7 +1063,7 @@ paquet qui la traverse y attend jusqu'à la durée fixée par `latency {latency}
             description=tr("débit déclaré avec le tbf"),
         )
         self.add_grade_element(
-            title=no_tr("shape_q_bufferbloat"), max_grade=1, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("shape_q_bufferbloat"), max_grade=1, grade_part=part3, scope=CHOICE_SCOPE,
             grade=int(_norm(q2.get("bloat")) == "environ 400 ms"),
             description=tr("RTT sous charge avec le tbf (bufferbloat)"),
         )
@@ -1207,7 +1210,7 @@ est faux.
             description=tr("miroir : le flux de m2 est limité ≈ {lo} Mbit/s, total ≤ {T} Mbit/s").format(lo=T_lo, T=T),
         )
         self.add_grade_element(
-            title=no_tr("prio_q_hook"), max_grade=1, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("prio_q_hook"), max_grade=1, grade_part=part4, scope=CHOICE_SCOPE,
             grade=int(_norm(q3.get("hook")) == "prerouting ou forward"),
             description=tr("hook nftables du trafic routé"),
         )
@@ -1319,7 +1322,7 @@ et ifb n'accélère rien.
             description=tr("miroir : débit descendant depuis serveur1 ≈ {C} Mbit/s").format(C=C),
         )
         self.add_grade_element(
-            title=no_tr("ingress_q_ifb"), max_grade=1, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("ingress_q_ifb"), max_grade=1, grade_part=part5, scope=CHOICE_SCOPE,
             grade=int(_norm(q4.get("ifb")).startswith("en entrée le noyau ne peut que jeter")),
             description=tr("rôle de l'interface ifb"),
         )

@@ -413,7 +413,7 @@ def test_grading_nothing_done(lab, data, tmp_pub_dir):
     grade, _ = _simulate(lab, data, tmp_pub_dir, _nothing, cheat=False)
     grades = _grades(grade)
     assert sum(g for g, _ in grades.values()) == 0, {k: v for k, v in grades.items() if v[0]}
-    assert sum(mx for _, mx in grades.values()) == 100 and len(grades) == 27
+    assert sum(mx for _, mx in grades.values()) == 100 and len(grades) == 29
     assert [str(p.title) for p in grade._grade_parts] == [f'part{i}' for i in range(1, 7)]
 
 
@@ -428,6 +428,19 @@ def test_grading_everything_done(lab, data, tmp_pub_dir):
     assert ('trunk', 1) in tests and {c for c, _ in tests[('trunk', 1)]} == {'port/allprint', 'vlan/allprint'}
     curls = [c for m in ('m3', 'm5', 'm4', 'b2', 'm7', 'm2', 'm1') for c, _ in tests.get((m, 1), []) if c.startswith('curl')]
     assert len(curls) == 10 and all(' -m 5 ' in c for c in curls)
+
+
+def test_only_choice_answers_are_exo_only(lab, data, tmp_pub_dir):
+    # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+    # tried), a typed answer is not
+    choices = {'q_capture_tag', 'q_ttl_observed'}
+    grade, _ = _simulate(lab, data, tmp_pub_dir, _synthetic)
+    for e in grade.get_grade_list():
+        expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+        assert e.scope == expected, e.title
+    # a split element keeps its points: the typed half then the dropdown half
+    grades = _grades(grade)
+    assert [(grades[f'{t}_typed'][1], grades[t][1]) for t in sorted(choices)] == [(2, 3), (2, 3)]
 
 
 def test_tampering_is_not_rewarded(lab, data, tmp_pub_dir):

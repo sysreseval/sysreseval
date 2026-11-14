@@ -83,6 +83,9 @@ FRESH_WITNESS = 240  # seconds: a witness flow seen this recently means the chai
 FINAL_MARK = "/run/sre_final_start"  # touched by `final` before it restarts the daemons
 MCQ_TEMPLATE = ("template", "encryption", "clock", "tcp")
 MCQ_V5 = ("ipv6", "udp", "ports", "bytes")
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +690,7 @@ vers le port {bport} toutes les {period} s, de {count} paquets et {bytes} octets
         }
         for name, (points, right, description) in checks3.items():
             self.add_grade_element(title=no_tr(f"answer_{name}"), max_grade=points, grade_part=part3,
-                                   grade=points * int(right), scope=params.EXO_EVAL_SCOPE, description=description)
+                                   grade=points * int(right), description=description)
 
         # =====================================================================
         # Partie 4 — gabarits, délais, échantillonnage
@@ -734,10 +737,12 @@ délai maximal entre la fin d'un flux et sa présence dans un fichier : {inactiv
         descriptions4 = {"template_id": tr("le gabarit des données"), "records_10min": tr("le délai actif"),
                          "max_delay": tr("le délai de bout en bout"), "mcq_template": tr("le rôle des gabarits"),
                          "mcq_v5": tr("les limites de v5"), "sampled_packets": tr("l'échantillonnage")}
+        choices = {"mcq_template", "mcq_v5"}
         for name, expected in q4_answers.items():
             typed = _norm(q4.get(name)).replace(" ", "")
             self.add_grade_element(title=no_tr(f"answer_{name}"), max_grade=points4[name], grade_part=part4,
-                                   grade=points4[name] * int(typed == expected), scope=params.EXO_EVAL_SCOPE,
+                                   grade=points4[name] * int(typed == expected),
+                                   scope=CHOICE_SCOPE if name in choices else params.BOTH_EVAL_SCOPE,
                                    description=descriptions4[name])
 
 

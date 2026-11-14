@@ -378,6 +378,21 @@ class TestGrading:
             parts[e.grade_part] = parts.get(e.grade_part, 0) + e.max_grade
         assert parts == {'partie1': 12, 'partie2': 23, 'partie3': 16, 'partie4': 24, 'partie5': 15, 'partie6': 10}
 
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'adr_q_nd', 'route_q', 'slaac_q_ra', 'dhcp6_q_protocole', 'dhcp6_q_bail', 'pmtu_q_ptb',
+                   'pmtu_q_fragmentation', 'tn_q_correctif'}
+        grade, _ = _simulate(lab, data, tmp_pub_dir)
+        for e in grade.get_grade_list():
+            expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, e.title
+        # a split element keeps its points: the typed half then the dropdown half
+        by_title = {str(e.title): e.max_grade for e in grade.get_grade_list()}
+        split = ('adr_q_nd', 'route_q', 'slaac_q_ra', 'dhcp6_q_protocole', 'dhcp6_q_bail', 'pmtu_q_ptb',
+                 'pmtu_q_fragmentation')
+        assert [by_title[f'{t}_typed'] + by_title[t] for t in split] == [2, 1, 2, 1, 1, 1, 1]
+
     def test_nothing_done_scores_almost_nothing(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir, everything=False)
         scored = {str(e.title): e.grade for e in grade.get_grade_list() if e.grade}

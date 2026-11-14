@@ -113,6 +113,9 @@ pathd_options="  -A 127.0.0.1"
 """
 
 FRR_VTYSH_CONF = "service integrated-vtysh-config\n"
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -812,8 +815,9 @@ pour l'instant.
 que `net1`, `core`, `l14` et `l24`.
 
 Évaluation : `decouverte_router_id_r2` (1 point : la réponse est comparée au router-id lu sur
-`r2`), `decouverte_cout_defaut` (1), `decouverte_timers` (1), et, pour l'évaluation de
-l'enseignant seulement, `decouverte_etat_voisin` (1) et `decouverte_multicast_proto` (1).
+`r2`), `decouverte_cout_defaut` (1), `decouverte_timers` (1), `decouverte_multicast_proto_typed`
+(0,5 : protocole 89), et, pour l'évaluation de l'enseignant seulement (choix dans une liste),
+`decouverte_etat_voisin` (1) et `decouverte_multicast_proto` (0,5 : adresse 224.0.0.5).
 """).format(rid_r2=max(d.ips.r2_core.ip, d.ips.r2_l24.ip))),
             cheat_answers={"final": {
                 "rid_r2": str(max(d.ips.r2_core.ip, d.ips.r2_l24.ip)),
@@ -838,14 +842,19 @@ l'enseignant seulement, `decouverte_etat_voisin` (1) et `decouverte_multicast_pr
         )
         self.add_grade_element(
             title=no_tr("decouverte_etat_voisin"), max_grade=1, grade_part=part1,
-            grade=int(_norm(q1.get("state")) == "full"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q1.get("state")) == "full"), scope=CHOICE_SCOPE,
             description=tr("état de la relation r1–r2"),
         )
         self.add_grade_element(
-            title=no_tr("decouverte_multicast_proto"), max_grade=1, grade_part=part1,
-            grade=int(_norm(q1.get("mcast")) == "224.0.0.5" and _int(q1.get("proto")) == 89),
-            scope=params.EXO_EVAL_SCOPE,
-            description=tr("adresse multicast et numéro de protocole d'OSPF"),
+            title=no_tr("decouverte_multicast_proto_typed"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(_int(q1.get("proto")) == 89),
+            description=tr("numéro de protocole d'OSPF"),
+        )
+        self.add_grade_element(
+            title=no_tr("decouverte_multicast_proto"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(_norm(q1.get("mcast")) == "224.0.0.5"),
+            scope=CHOICE_SCOPE,
+            description=tr("adresse multicast d'OSPF"),
         )
 
         # =====================================================================
@@ -911,7 +920,7 @@ Sur `r3`, combien la route vers le réseau `net4` (`{net4}`) possède-t-elle de 
 par `core` (10), puis `r1` → `l14` (10) ou `r2` → `l24` (10), puis `r4` → `net4` (10). À coût
 égal, OSPF installe tous les prochains sauts (ECMP).
 
-Évaluation : `aire0_ecmp_r3` (1 point, évaluation de l'enseignant seulement).
+Évaluation : `aire0_ecmp_r3` (1 point).
 """).format(net4=d.nets.net4, r1_core=ip['r1_core'], r2_core=ip['r2_core'])),
             cheat_answers={"final": {"nexthops": "2"}},
         )
@@ -943,7 +952,7 @@ par `core` (10), puis `r1` → `l14` (10) ou `r2` → `l24` (10), puis `r4` → 
         )
         self.add_grade_element(
             title=no_tr("aire0_ecmp_r3"), max_grade=1, grade_part=part2,
-            grade=int(_int(q2.get("nexthops")) == 2), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q2.get("nexthops")) == 2),
             description=tr("nombre de prochains sauts de r3 vers net4"),
         )
 
@@ -1037,7 +1046,7 @@ Après l'étape 1, par quel routeur passe le trafic de `m4` vers `m1` ? @@{via:>
         )
         self.add_grade_element(
             title=no_tr("couts_via_r2"), max_grade=1, grade_part=part3,
-            grade=int(_norm(q3.get("via")) == "r2"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q3.get("via")) == "r2"), scope=CHOICE_SCOPE,
             description=tr("routeur traversé après modification des coûts"),
         )
         nb_autocost = sum(ospf_conf(r).get('auto_cost_reference_bandwidth') == d.ref_bandwidth for r in AREA0_ROUTERS)
@@ -1302,7 +1311,8 @@ routes est dans l'onglet **Informations**, section @@ref:areas@@) ?
 la métrique externe compte, elle est donc la même sur tous les routeurs du domaine, quel que soit
 leur éloignement de `r1`.
 
-Évaluation : `externe_type_route` (1 point, évaluation de l'enseignant seulement).
+Évaluation : `externe_type_route_typed` (0,5 point : métrique 20) et, pour l'évaluation de
+l'enseignant seulement (choix dans une liste), `externe_type_route` (0,5 : type O E2).
 """).format(ext=EXT_PUBLIC)),
             cheat_answers={"final": {"type": "O E2", "metric": "20"}},
         )
@@ -1325,10 +1335,15 @@ leur éloignement de `r1`.
             description=tr("m7 joint internet ({ext_host})").format(ext_host=EXT_PUBLIC_HOST.ip),
         )
         self.add_grade_element(
-            title=no_tr("externe_type_route"), max_grade=1, grade_part=part6,
-            grade=int(_norm(q6.get("type")) == "o e2" and _int(q6.get("metric")) == 20),
-            scope=params.EXO_EVAL_SCOPE,
-            description=tr("type et métrique de la route externe"),
+            title=no_tr("externe_type_route_typed"), max_grade=0.5, grade_part=part6,
+            grade=0.5 * int(_int(q6.get("metric")) == 20),
+            description=tr("métrique de la route externe"),
+        )
+        self.add_grade_element(
+            title=no_tr("externe_type_route"), max_grade=0.5, grade_part=part6,
+            grade=0.5 * int(_norm(q6.get("type")) == "o e2"),
+            scope=CHOICE_SCOPE,
+            description=tr("type de la route externe"),
         )
 
         # =====================================================================
@@ -1586,12 +1601,12 @@ silencieuse : **environ l'intervalle Dead** ({dead} s ici) : rien ne signale la 
         )
         self.add_grade_element(
             title=no_tr("convergence_coupure"), max_grade=1, grade_part=part9,
-            grade=int(_norm(q9.get("link_down")) == "moins de 5 s"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q9.get("link_down")) == "moins de 5 s"), scope=CHOICE_SCOPE,
             description=tr("convergence après une coupure franche"),
         )
         self.add_grade_element(
             title=no_tr("convergence_panne_silencieuse"), max_grade=1, grade_part=part9,
-            grade=int(_norm(q9.get("filtre")) == "environ l'intervalle dead"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q9.get("filtre")) == "environ l'intervalle dead"), scope=CHOICE_SCOPE,
             description=tr("convergence après une panne silencieuse"),
         )
 

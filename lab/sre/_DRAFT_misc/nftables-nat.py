@@ -124,6 +124,9 @@ CHAINS = {
 }
 CONF_FILE = "/etc/nftables.conf"
 CONF_HEADER = "#!/usr/sbin/nft -f\nflush ruleset\n\n"
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 def render_tables(tables: Dict[str, Dict[str, List[str]]]) -> str:
@@ -1341,8 +1344,9 @@ Règles valables pour tout le TP :
   machines (mêmes adresses, mêmes serveurs de test), où l'évaluation refait avec `curl` les
   requêtes des questions et lit les réponses. Seul compte donc le jeu de règles chargé sur `rN`,
   pas ce que vous faites sur les autres machines ;
-- certaines questions ont un **formulaire** : notez-y ce que vous observez. Ces réponses ne
-  comptent pas dans l'auto-évaluation ; elles sont notées avec le reste à la fin du TP ;
+- certaines questions ont un **formulaire** : notez-y ce que vous observez. Les valeurs que vous
+  tapez comptent dans l'auto-évaluation ; les réponses choisies dans une liste n'y comptent pas,
+  elles sont notées avec le reste à la fin du TP ;
 - une traduction est décidée au premier paquet d'une connexion : après avoir changé une règle,
   refaites une requête.
 """).format(conf_file=CONF_FILE, svc=SVC_PORT, proxy=PROXY_PORT, intranet=INTRANET_PORT)
@@ -1359,8 +1363,9 @@ une connexion TCP et un `ping` pour la partie 6. Les copies de `ext1` et de `ext
 route vers chaque réseau privé par le routeur du site : aucune sonde ne dépend d'une traduction
 pour son retour, et la copie de `ext2` joue le voisin qui a ajouté une route. Chaque partie a son
 routeur : rien de ce qui est fait dans une partie ne change les points d'une autre. Les éléments
-`q_…` (formulaires) ne comptent que dans l'évaluation finale. Barème : 15 + 15 + 22 + 12 + 18 + 18
-= 100.
+`q_…` des formulaires qui notent une réponse choisie dans une liste ne comptent que dans
+l'évaluation finale ; ceux des valeurs tapées (`q_…_typed`, `q_publish`, `q_hairpin`, `q_proxy`,
+`q_forward`) comptent aussi dans l'auto-évaluation. Barème : 15 + 15 + 22 + 12 + 18 + 18 = 100.
 """).format(conf_file=CONF_FILE)),
         )
 
@@ -1385,8 +1390,8 @@ sections @@ref:snat@@, @@ref:chains@@ et @@ref:conntrack@@ des Informations.
 ```
 {conf}```
 
-Barème de la partie : `masquerade` 6, `masquerade_scope` 3, formulaires `q_without_nat` 2 et
-`q_masquerade` 4.
+Barème de la partie : `masquerade` 6, `masquerade_scope` 3, formulaires `q_without_nat_typed` 1,
+`q_without_nat` 1, `q_masquerade_typed` 3 et `q_masquerade` 1.
 """).format(conf=ns.reference_conf("r1"))),
         )
 
@@ -1416,14 +1421,20 @@ route` sur `ext1` n'affiche que `{wan_net}` : `ext1` n'a aucun chemin vers `{lan
 répondre à une adresse privée. `curl` attend ses 5 secondes : `code 28`.
 
 - Réponses : `{pc1}` ; aucune réponse, délai dépassé.
-- Cette question n'est évaluée que par le formulaire (`q_without_nat`, 1 point par réponse).
+- Cette question n'est évaluée que par le formulaire (`q_without_nat_typed` et `q_without_nat`,
+  1 point par réponse).
 """).format(pc1=host["pc1"], ext1=ext1, svc=SVC_PORT, wan_net=d.nets.wan, lan=lan[1])),
             cheat_answers={"final": q11_answers},
         )
         self.add_grade_element(
-            title=no_tr("q_without_nat"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_same_ip(q11.get("src_seen"), host["pc1"])) + int(_norm(q11.get("outcome")) == "timeout"),
-            description=tr("sans traduction : l'adresse privée de pc1 arrive à ext1, qui ne peut pas répondre"),
+            title=no_tr("q_without_nat_typed"), max_grade=1, grade_part=part1,
+            grade=int(_same_ip(q11.get("src_seen"), host["pc1"])),
+            description=tr("sans traduction : l'adresse source des paquets que reçoit ext1"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_without_nat"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q11.get("outcome")) == "timeout"),
+            description=tr("sans traduction : ext1 ne peut pas répondre"),
         )
 
         self.question_dummy(
@@ -1514,15 +1525,21 @@ paquet, est inscrite dans l'entrée de la connexion, et les réponses sont tradu
 (elles retrouvent `{pc1}` comme destination dès `prerouting`, avant le routage).
 
 - Réponses : `{wan}` ; `{pc1}` ; `{wan}` ; aucune règle.
-- Cette question n'est évaluée que par le formulaire (`q_masquerade`, 1 point par réponse).
+- Cette question n'est évaluée que par le formulaire (`q_masquerade_typed` et `q_masquerade`,
+  1 point par réponse).
 """).format(wan=wan[1], pc1=host["pc1"], ext1=ext1, svc=SVC_PORT)),
             cheat_answers={"final": q13_answers},
         )
         self.add_grade_element(
-            title=no_tr("q_masquerade"), max_grade=4, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_masquerade_typed"), max_grade=3, grade_part=part1,
             grade=int(_same_ip(q13.get("client_ip"), wan[1])) + int(_same_ip(q13.get("src_lan"), host["pc1"]))
-                  + int(_same_ip(q13.get("src_wan"), wan[1])) + int(_norm(q13.get("return_rule")) == "none"),
-            description=tr("la traduction observée : ce que voit ext1, le paquet des deux côtés de r1, le retour"),
+                  + int(_same_ip(q13.get("src_wan"), wan[1])),
+            description=tr("la traduction observée : ce que voit ext1, le paquet des deux côtés de r1"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_masquerade"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
+            grade=int(_norm(q13.get("return_rule")) == "none"),
+            description=tr("la traduction observée : le retour"),
         )
 
         # =====================================================================
@@ -1553,7 +1570,8 @@ les autres machines de `lan2` continuent de sortir sous l'adresse principale. **
 ```
 {conf}```
 
-Barème de la partie : `static_in` 5, `static_out` 5, `static_scope` 2, formulaire `q_static` 3.
+Barème de la partie : `static_in` 5, `static_out` 5, `static_scope` 2, formulaires
+`q_static_typed` 2 et `q_static` 1.
 """).format(conf=ns.reference_conf("r2"))),
         )
 
@@ -1642,8 +1660,8 @@ celle de la chaîne donnée : elle ne décide pas non plus.
 - Réponses : `{public2}` ; `{wan}` ; l'adresse principale de `r2`.
 - L'évaluation : `static_out` (5 points : depuis la copie de `srv2`, `curl` vers
   `http://{ext1}:{svc}/` doit renvoyer `CLIENT_IP={public2}`), `static_scope` (2 points, comptés
-  avec le précédent : depuis la copie de `pc2`, `CLIENT_IP={wan}`) et le formulaire `q_static`
-  (1 point par réponse).
+  avec le précédent : depuis la copie de `pc2`, `CLIENT_IP={wan}`) et le formulaire
+  (`q_static_typed` et `q_static`, 1 point par réponse).
 """).format(rule=nft_rule(NAT_TABLE, "postrouting", ns.rule_static_out(), verb="insert"),
             conf=render_tables({NAT_TABLE: {"postrouting": [ns.rule_static_out(), ns.rule_masquerade(2)]}}),
             wan=wan[2], public2=public2, ext1=ext1, svc=SVC_PORT)),
@@ -1658,10 +1676,14 @@ celle de la chaîne donnée : elle ne décide pas non plus.
             description=tr("pc2 sort toujours sous l'adresse principale de r2 (compté avec la sortie de srv2)"),
         )
         self.add_grade_element(
-            title=no_tr("q_static"), max_grade=3, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_same_ip(q22.get("client_srv2"), public2)) + int(_same_ip(q22.get("client_pc2"), wan[2]))
-                  + int(_norm(q22.get("appended")) == "primary"),
-            description=tr("NAT statique : les adresses vues par ext1, l'effet de l'ordre des règles"),
+            title=no_tr("q_static_typed"), max_grade=2, grade_part=part2,
+            grade=int(_same_ip(q22.get("client_srv2"), public2)) + int(_same_ip(q22.get("client_pc2"), wan[2])),
+            description=tr("NAT statique : les adresses vues par ext1"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_static"), max_grade=1, grade_part=part2, scope=CHOICE_SCOPE,
+            grade=int(_norm(q22.get("appended")) == "primary"),
+            description=tr("NAT statique : l'effet de l'ordre des règles"),
         )
 
         # =====================================================================
@@ -1742,7 +1764,7 @@ Pièges : la règle écrite dans une chaîne `postrouting` (`nft` refuse `dnat` 
             description=tr("d'Internet, le port {port} de r3 mène au port 80 de web3").format(port=FWD_PORT),
         )
         self.add_grade_element(
-            title=no_tr("q_publish"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_publish"), max_grade=2, grade_part=part3,
             grade=int(_same_ip(q31.get("server_ip"), host["web3"])) + int(_same_ip(q31.get("client_ip"), ext2)),
             description=tr("redirection de port : le serveur qui répond et le client qu'il voit"),
         )
@@ -1861,7 +1883,7 @@ par habitude (ces connexions sortent par `eth0`).
             description=tr("web3 voit toujours les clients d'Internet sous leur adresse (compté avec le hairpin)"),
         )
         self.add_grade_element(
-            title=no_tr("q_hairpin"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_hairpin"), max_grade=2, grade_part=part3,
             grade=int(_same_ip(q33.get("reply_src"), host["web3"])) + int(_same_ip(q33.get("client_after"), gw[3])),
             description=tr("hairpin : d'où vient la réponse sans traduction de source, ce que voit web3 ensuite"),
         )
@@ -1888,7 +1910,7 @@ de rôle entre les deux serveurs. **À lire** : section @@ref:load-balancing@@ d
 ```
 {conf}```
 
-Barème de la partie : `load_balancing` 9, formulaire `q_balancing` 3.
+Barème de la partie : `load_balancing` 9, formulaires `q_balancing_typed` 1 et `q_balancing` 2.
 """).format(conf=ns.reference_conf("r4"))),
         )
 
@@ -1938,7 +1960,8 @@ même serveur et ne rapporte que 4 points sur 9, comme un simple `dnat to {web4a
 - Réponses : connexion par connexion ; `{ext2}` ; continue de lui envoyer une connexion sur deux.
 - L'évaluation : `load_balancing` ({n} `curl` vers `http://{wan}/?probe=N` depuis la copie de
   `ext1`, un client d'Internet comme un autre : 9 points si `web4a` **et** `web4b` répondent, 4 si
-  un seul des deux répond) et le formulaire `q_balancing` (1 point par réponse).
+  un seul des deux répond) et le formulaire (`q_balancing_typed` et `q_balancing`, 1 point par
+  réponse).
 """).format(table=NAT_TABLE, chain=nft_chain(NAT_TABLE, "prerouting"),
             rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_load_balancing()),
             conf=render_tables(ns.reference_tables("r4")), vip=VIP_PORT, ext2=ext2, web4a=host["web4a"],
@@ -1951,10 +1974,14 @@ même serveur et ne rapporte que 4 points sur 9, comme un simple `dnat to {web4a
             description=tr("les connexions au port {port} de r4 sont réparties entre web4a et web4b").format(port=VIP_PORT),
         )
         self.add_grade_element(
-            title=no_tr("q_balancing"), max_grade=3, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q41.get("unit")) == "connection") + int(_same_ip(q41.get("client_ip"), ext2))
-                  + int(_norm(q41.get("failure")) == "keeps"),
-            description=tr("répartition de charge : par connexion, sans traduction de source ni surveillance"),
+            title=no_tr("q_balancing_typed"), max_grade=1, grade_part=part4,
+            grade=int(_same_ip(q41.get("client_ip"), ext2)),
+            description=tr("répartition de charge : CLIENT_IP vu par web4b"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_balancing"), max_grade=2, grade_part=part4, scope=CHOICE_SCOPE,
+            grade=int(_norm(q41.get("unit")) == "connection") + int(_norm(q41.get("failure")) == "keeps"),
+            description=tr("répartition de charge : par connexion, sans surveillance"),
         )
 
         # =====================================================================
@@ -1986,7 +2013,7 @@ section @@ref:redirect@@ des Informations.
 {conf}```
 
 Barème de la partie : `redirect` 6, `redirect_lan_only` 2, `proxy_exception` 5, formulaires
-`q_proxy` 3 et `q_exception` 2.
+`q_proxy` 3, `q_exception_typed` 1 et `q_exception` 1.
 """).format(conf=ns.reference_conf("r5"))),
         )
 
@@ -2046,7 +2073,7 @@ alors `SERVER=proxy` en visant `{wan}`) ; `oifname` n'a pas de sens en `prerouti
             description=tr("le port 80 du côté d'Internet n'est pas remis au proxy (compté avec la redirection)"),
         )
         self.add_grade_element(
-            title=no_tr("q_proxy"), max_grade=3, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_proxy"), max_grade=3, grade_part=part5,
             grade=int(_same_ip(q51.get("client_before"), wan[5])) + int(_same_ip(q51.get("server_ip"), gw[5]))
                   + int(_is_int(q51.get("server_port"), PROXY_PORT)),
             description=tr("proxy transparent : qui répond avant et après la redirection"),
@@ -2089,7 +2116,7 @@ Piège : la règle ajoutée avec `nft add rule`, donc après le `redirect`, qui 
 - Réponses : `ext1` ; avant.
 - L'évaluation : `proxy_exception` (5 points, comptés seulement si la redirection fonctionne pour
   `pc5` : depuis la copie de `admin`, `curl` vers `http://{ext1}/` doit renvoyer `SERVER=ext1`) et
-  le formulaire `q_exception` (1 point par réponse).
+  le formulaire (`q_exception_typed` et `q_exception`, 1 point par réponse).
 """).format(rule=nft_rule(NAT_TABLE, "prerouting", ns.rule_proxy_exception(), verb="insert"),
             conf=render_tables({NAT_TABLE: {"prerouting": [ns.rule_proxy_exception(), ns.rule_proxy()]}}),
             wan=wan[5], admin=host["admin"], ext1=ext1)),
@@ -2100,9 +2127,14 @@ Piège : la règle ajoutée avec `nft add rule`, donc après le `redirect`, qui 
             description=tr("le HTTP du poste admin échappe au proxy (compté avec la redirection)"),
         )
         self.add_grade_element(
-            title=no_tr("q_exception"), max_grade=2, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q52.get("admin_server")) == "ext1") + int(_norm(q52.get("position")) == "before"),
-            description=tr("exception au proxy : qui répond à admin, la place de la règle accept"),
+            title=no_tr("q_exception_typed"), max_grade=1, grade_part=part5,
+            grade=int(_norm(q52.get("admin_server")) == "ext1"),
+            description=tr("exception au proxy : qui répond à admin"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_exception"), max_grade=1, grade_part=part5, scope=CHOICE_SCOPE,
+            grade=int(_norm(q52.get("position")) == "before"),
+            description=tr("exception au proxy : la place de la règle accept"),
         )
 
         # =====================================================================
@@ -2134,7 +2166,7 @@ sans rien casser de ce qui doit fonctionner. **À lire** : sections @@ref:not-a-
 {conf}```
 
 Barème de la partie : `forward_policy` 2, `intrusion_blocked` 5, `lan_out` 3, `published_kept` 4,
-formulaires `q_intrusion` 2 et `q_forward` 2.
+formulaires `q_intrusion_typed` 1, `q_intrusion` 1 et `q_forward` 2.
 """).format(conf=ns.reference_conf("r6"))),
         )
 
@@ -2169,14 +2201,20 @@ la concerne pas, elle repart telle quelle. `curl` renvoie `SERVER=intranet`, `SE
 « protégeait » `srv6` ; il suffit d'être du bon côté de `r6` pour s'en affranchir.
 
 - Réponses : `intranet` ; non.
-- Cette question n'est évaluée que par le formulaire (`q_intrusion`, 1 point par réponse).
+- Cette question n'est évaluée que par le formulaire (`q_intrusion_typed` et `q_intrusion`,
+  1 point par réponse).
 """).format(srv6=host["srv6"], ext2=ext2, lan=lan[6])),
             cheat_answers={"final": q61_answers},
         )
         self.add_grade_element(
-            title=no_tr("q_intrusion"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q61.get("intruder_server")) == "intranet") + int(_norm(q61.get("nat_protects")) == "no"),
-            description=tr("un voisin qui s'ajoute une route atteint le service interne malgré le NAT"),
+            title=no_tr("q_intrusion_typed"), max_grade=1, grade_part=part6,
+            grade=int(_norm(q61.get("intruder_server")) == "intranet"),
+            description=tr("un voisin qui s'ajoute une route : le serveur qui lui répond"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_intrusion"), max_grade=1, grade_part=part6, scope=CHOICE_SCOPE,
+            grade=int(_norm(q61.get("nat_protects")) == "no"),
+            description=tr("le NAT n'empêche pas ce voisin d'atteindre le service interne"),
         )
 
         q62_answers = {"forward_daddr": str(host["srv6"]), "forward_dport": "80"}
@@ -2252,9 +2290,9 @@ réponse ne passe) ; ouvrir le port {fwd} dans le filtre (la chaîne `forward` n
             description=tr("le service publié répond toujours à Internet (compté une fois l'intrusion bloquée)"),
         )
         self.add_grade_element(
-            title=no_tr("q_forward"), max_grade=2, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_forward"), max_grade=2, grade_part=part6,
             grade=int(_same_ip(q62.get("forward_daddr"), host["srv6"])) + int(_is_int(q62.get("forward_dport"), 80)),
-            description=tr("ce que voit la chaîne forward pour le service publié : l'adresse et le port internes"),
+            description=tr("ce que voit la chaîne forward pour le service publié : adresse et port de destination"),
         )
 
 

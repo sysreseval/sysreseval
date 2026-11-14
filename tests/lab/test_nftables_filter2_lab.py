@@ -512,7 +512,7 @@ def test_grading_nothing_done(lab, data, tmp_pub_dir):
     grades = _grades(grade)
     assert _totals(grade) == (0, 0), {k: v for k, v in grades.items() if v[0]}
     elements = grade.get_grade_list()
-    assert sum(e.max_grade for e in elements if not e.bonus) == 100 and len(elements) == 41
+    assert sum(e.max_grade for e in elements if not e.bonus) == 100 and len(elements) == 42
     assert [str(e.title) for e in elements if e.bonus] == ['ban_set', 'ban_rules', 'ban_works', 'q_ban']
     assert sum(e.max_grade for e in elements if e.bonus) == 6
     assert [str(p.title) for p in grade.get_grade_parts()] == [f'part{i}' for i in range(1, 8)]
@@ -673,15 +673,25 @@ def test_form_answers(lab, data, tmp_pub_dir):
     grade._answers[q1.question_hash] = json.dumps(answers)
     grade.reset_before_grade()
     grade.grade()
-    assert _grades(grade)['q_before'] == (5, 5)
+    assert _grades(grade)['q_before_typed'] == (4, 4) and _grades(grade)['q_before'] == (1, 1)
     answers.update({"ttl": "64", "resolver": _ip(data.ips.dmz1), "ruleset": "drop"})
     grade._answers[q1.question_hash] = json.dumps(answers)
     grade.reset_before_grade()
     grade.grade()
-    assert _grades(grade)['q_before'] == (1, 5)
+    assert _grades(grade)['q_before_typed'] == (1, 4) and _grades(grade)['q_before'] == (0, 1)
     assert lab._same_ip('x', data.ips.int1) is False and lab._is_int('', 63) is False
     assert lab._nameservers("search lab\nnameserver 192.0.2.1\n# nameserver 192.0.2.9\nnameserver\n") == ['192.0.2.1']
     assert lab._blocked('dropped') and lab._blocked('refused') and not lab._blocked('open') and not lab._blocked('error')
+
+
+def test_only_choice_answers_are_exo_only(lab, data, tmp_pub_dir):
+    # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+    # tried), a typed answer is not
+    choices = {'q_before', 'q_output', 'q_forward', 'q_ban'}
+    grade, _ = _simulate(lab, data, tmp_pub_dir, _done(lab, data))
+    for e in grade.get_grade_list():
+        expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+        assert e.scope == expected, e.title
 
 
 def test_cheat_answers_fill_every_form(lab, data, tmp_pub_dir):

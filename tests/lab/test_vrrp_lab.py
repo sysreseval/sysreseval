@@ -483,10 +483,15 @@ def _by_title(grade):
     return {str(e.title): e for e in grade.get_grade_list()}
 
 
+def _is_form(title):
+    """The elements grading a form: `<x>_form` (answers picked from a list) and `<x>_form_typed`."""
+    return title.endswith(('_form', '_form_typed'))
+
+
 def _lost(grade):
     """{title: points missing} of the elements that are not forms and do not have their maximum."""
     return {t: e.max_grade - e.grade for t, e in _by_title(grade).items()
-            if e.grade != e.max_grade and not t.endswith('_form')}
+            if e.grade != e.max_grade and not _is_form(t)}
 
 
 def _regrade(grade):
@@ -670,7 +675,7 @@ class TestGrading:
         assert _totals(grade) == (0, 100)
         # a fresh project is graded in one step: the mirror scenario is not even registered
         assert grade.max_step == 1 and all(step == 1 for _, step in grade.get_tests())
-        assert len(grade.get_grade_list()) == 40 and len(grade.get_questions_ordered()) == QUESTIONS
+        assert len(grade.get_grade_list()) == 45 and len(grade.get_questions_ordered()) == QUESTIONS
 
     def test_everything_done(self, lab, data, tmp_pub_dir):
         grade, ns, mock = _simulate(lab, data, tmp_pub_dir)
@@ -691,8 +696,9 @@ class TestGrading:
         for machine in ('r1_h', 'r2_h'):
             assert any(c == lab.router_reset_cmd(data, machine[:2]) for c, _ in tests[(machine, 1)])
             assert any(c == lab.router_reset_cmd(data, machine[:2]) for c, _ in tests[(machine, 8)])
-        assert sorted(title for title in _by_title(grade) if title.endswith('_form')) == [
-            'check_form', 'lan2_form', 'lan_form', 'secure_form', 'v6_form', 'vmac_form', 'wan_form']
+        assert sorted(title for title in _by_title(grade) if _is_form(title)) == [
+            'check_form', 'check_form_typed', 'lan2_form', 'lan_form', 'lan_form_typed', 'secure_form',
+            'secure_form_typed', 'v6_form', 'v6_form_typed', 'vmac_form', 'vmac_form_typed', 'wan_form']
 
     def test_each_part_earns_its_points(self, lab, data, tmp_pub_dir):
         """The reference solution of the parts 1..N earns exactly their elements (the totals
@@ -702,7 +708,7 @@ class TestGrading:
             grade, _, _ = _simulate(lab, data, tmp_pub_dir, part=part)
             earned += PART_POINTS[part]
             assert _totals(grade) == (earned + FORM_POINTS, 100), part
-            parts = {str(e.grade_part) for t, e in _by_title(grade).items() if e.grade and not t.endswith('_form')}
+            parts = {str(e.grade_part) for t, e in _by_title(grade).items() if e.grade and not _is_form(t)}
             assert parts == {f"part{i}" for i in range(1, part + 1)}, part
 
     @pytest.mark.parametrize("without, lost", [
@@ -825,23 +831,36 @@ class TestGrading:
     def test_form_scoring(self, lab, data, tmp_pub_dir):
         grade, _, _ = _simulate(lab, data, tmp_pub_dir)
         by = _regrade(grade)
-        assert [by[t].grade for t in ('lan_form', 'wan_form', 'check_form', 'secure_form', 'lan2_form', 'vmac_form',
-                                      'v6_form')] == [4, 2, 2, 2, 1, 2, 2]
+        forms = ('lan_form_typed', 'lan_form', 'wan_form', 'check_form_typed', 'check_form', 'secure_form_typed',
+                 'secure_form', 'lan2_form', 'vmac_form_typed', 'vmac_form', 'v6_form_typed', 'v6_form')
+        assert [by[t].grade for t in forms] == [3.5, 0.5, 2, 0.5, 1.5, 0.5, 1.5, 1, 1, 1, 1, 1]
+        assert [by[t].max_grade for t in forms] == [3.5, 0.5, 2, 0.5, 1.5, 0.5, 1.5, 1, 1, 1, 1, 1]
         _set_answer(grade, 'mac_before', vr_mac(data.macs.r1_lan).upper().replace(':', '-'))
         _set_answer(grade, 'down_time', '3,6')
         _set_answer(grade, 'group6', 'FF02:0:0:0:0:0:0:12')
         _set_answer(grade, 'vmac', vr.virtual_mac(data.vrid_lan2).upper())
         by = _regrade(grade)
-        assert (by['lan_form'].grade, by['v6_form'].grade, by['vmac_form'].grade) == (4, 2, 2)
+        assert (by['lan_form_typed'].grade, by['v6_form_typed'].grade, by['vmac_form_typed'].grade) == (3.5, 1, 1)
+        # typed answers (mac_after, down_time, wan_dst, iface) and one answer picked from a list (in_group)
         _set_answer(grade, 'mac_after', vr_mac(data.macs.r1_lan))
         _set_answer(grade, 'down_time', '3')
         _set_answer(grade, 'in_group', 'applied')
         _set_answer(grade, 'wan_dst', '224.0.0.18')
         _set_answer(grade, 'iface', 'eth0')
         by = _regrade(grade)
-        assert (by['lan_form'].grade, by['check_form'].grade, by['secure_form'].grade, by['vmac_form'].grade) == (
-            3, 1.5, 1.5, 1.5)
-        assert all(by[t].scope == params.EXO_EVAL_SCOPE for t in by if t.endswith('_form'))
+        assert (by['lan_form_typed'].grade, by['lan_form'].grade) == (2.5, 0.5)
+        assert (by['check_form_typed'].grade, by['check_form'].grade) == (0.5, 1)
+        assert (by['secure_form_typed'].grade, by['secure_form'].grade) == (0, 1.5)
+        assert (by['vmac_form_typed'].grade, by['vmac_form'].grade) == (0.5, 1)
+
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'lan_form', 'wan_form', 'check_form', 'secure_form', 'lan2_form', 'vmac_form', 'v6_form'}
+        grade, _, _ = _simulate(lab, data, tmp_pub_dir)
+        for title, e in _by_title(grade).items():
+            expected = params.EXO_EVAL_SCOPE if title in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, title
 
     def test_cheat_answers_match_the_fields(self, lab, data, tmp_pub_dir):
         grade, _, _ = _simulate(lab, data, tmp_pub_dir)

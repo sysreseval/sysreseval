@@ -34,6 +34,9 @@ import voip  # noqa: E402
 
 _LAB_PATH = _REPO / 'lab' / 'sre' / '_DRAFT_misc' / 'voip.py'
 _MOCK = _REPO / 'tests' / 'mock_data' / 'voip'
+#: the elements split since the evaluations were archived: archived title -> {current title: max_grade}
+#: (the typed answers of a form apart from the ones picked from a list)
+SPLIT = {'demo_registration': {'demo_registration_typed': 2, 'demo_registration': 1}}
 
 
 @pytest.fixture(scope='module')
@@ -114,6 +117,20 @@ def _grades(grade) -> dict:
     return {str(e.title): e.grade for e in grade.get_grade_list()}
 
 
+def _reference(evaluation) -> dict:
+    """{title: grade} of an archived evaluation under the current titles: an element split since then
+    (SPLIT) had none or all of its points, its parts then have none or all of theirs."""
+    reference = {}
+    for e in evaluation['grades']:
+        parts = SPLIT.get(e['title'])
+        if parts is None:
+            reference[e['title']] = e['grade']
+            continue
+        assert sum(parts.values()) == e['max_grade'] and e['grade'] in (0, e['max_grade']), e
+        reference.update({title: (maximum if e['grade'] else 0) for title, maximum in parts.items()})
+    return reference
+
+
 def _text(value, lang='fr'):
     return value.get(lang) if isinstance(value, dict) else value
 
@@ -127,14 +144,44 @@ class TestReplay:
         evaluation = _evaluation('lab_eval_final')
         grade, _ = _replay(lab, evaluation, answers='final')
         assert _totals(grade) == (100, 100, 10)
-        assert _grades(grade) == {e['title']: e['grade'] for e in evaluation['grades']}
+        assert _grades(grade) == _reference(evaluation)
+        parts = SPLIT['demo_registration']
+        assert {str(e.title): e.max_grade for e in grade.get_grade_list() if str(e.title) in parts} == parts
         assert evaluation['errors'] == []
 
     def test_initial(self, lab, tmp_pub_dir):
         evaluation = _evaluation('lab_eval_initial')
         grade, _ = _replay(lab, evaluation)
         assert _totals(grade) == (0, 100, 0)
-        assert _grades(grade) == {e['title']: e['grade'] for e in evaluation['grades']}
+        assert _grades(grade) == _reference(evaluation)
+
+    def test_split_form_element(self, lab, tmp_pub_dir):
+        """demo_registration: the typed duration and code apart from the header picked from a list,
+        each answer costing its own element only."""
+        grade, _ = _replay(lab, _evaluation('lab_eval_final'), answers='final')
+        (q1,) = [q for q in grade.get_questions_ordered()
+                 if 'challenge_header' in {f['name'] for f in (getattr(q, 'fields', None) or [])}]
+        for field, value, lost in (('challenge_header', 'Authorization', {'demo_registration': 1}),
+                                   ('demo_expires', '1', {'demo_registration_typed': 1}),
+                                   ('challenge_status', '407', {'demo_registration_typed': 1})):
+            stored = grade._answers[q1.question_hash]
+            answers = dict(json.loads(stored) if isinstance(stored, str) else stored)
+            answers[field] = value
+            grade._answers[q1.question_hash] = json.dumps(answers) if isinstance(stored, str) else answers
+            grade.reset_before_grade()
+            grade.grade()
+            by = {str(e.title): e for e in grade.get_grade_list()}
+            assert {t: by[t].max_grade - by[t].grade for t in by if by[t].grade != by[t].max_grade} == lost, field
+            grade._answers[q1.question_hash] = stored
+
+    def test_only_choice_answers_are_exo_only(self, lab, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'demo_registration'}
+        grade, _ = _replay(lab, _evaluation('lab_eval_final'), answers='final')
+        for e in grade.get_grade_list():
+            expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, e.title
 
     def test_commands_are_one_line(self, lab, tmp_pub_dir):
         grade, _ = _replay(lab, _evaluation('lab_eval_final'), answers='final')
@@ -161,7 +208,7 @@ class TestChecks:
     def lost(lab, patch):
         evaluation = _evaluation('lab_eval_final')
         grade, _ = _replay(lab, evaluation, answers='final', patch=patch)
-        reference = {e['title']: e['grade'] for e in evaluation['grades']}
+        reference = _reference(evaluation)
         return sorted(title for title, value in _grades(grade).items() if value != reference[title])
 
     def test_a_reinvite_breaks_the_media_path(self, lab, tmp_pub_dir):

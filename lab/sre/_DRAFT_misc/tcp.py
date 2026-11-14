@@ -72,6 +72,9 @@ NFT_TABLE = "tp"
 NAGLE_PCAP = "/tmp/sre_nagle.pcap"
 FINAL_STEP = 3                      # grade pass whose warnings are kept (see Grade0.add_warning)
 TIME_WAIT_S = 60
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     'a': {'m1': 0, 'r1': 0},
@@ -863,7 +866,7 @@ du `SYN, ACK` du fichier.
             description=tr("options du SYN-ACK de serveur1 lues dans la capture : MSS = MTU − 40 ({mss}), échelle de fenêtre, SACK").format(mss=d.mtu_s1 - 40),
         )
         self.add_grade_element(
-            title=no_tr("urandom"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("urandom"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q1.get("urandom")) == "/dev/random"),
             description=tr("/dev/random peut bloquer, /dev/urandom jamais"),
         )
@@ -906,17 +909,17 @@ environ {duration} s (`Connection timed out`). L'évaluation compare le nombre �
         )
         retries_unchanged = _int(m1_sys.get('net.ipv4.tcp_syn_retries')) == d.syn_retries_m1
         self.add_grade_element(
-            title=no_tr("port_ferme"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("port_ferme"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q12.get("ferme")).startswith("un segment rst")),
             description=tr("un port fermé répond par RST"),
         )
         self.add_grade_element(
-            title=no_tr("syn_port_filtre"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("syn_port_filtre"), max_grade=2, grade_part=part1,
             grade=2 * int(retries_unchanged and _int(q12.get("nb_syn")) == d.syn_retries_m1 + 1),
-            description=tr("nombre de SYN vers le port filtré = tcp_syn_retries + 1 ({n})").format(n=d.syn_retries_m1 + 1),
+            description=tr("nombre de SYN vers le port filtré"),
         )
         self.add_grade_element(
-            title=no_tr("intervalle_syn"), max_grade=1, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("intervalle_syn"), max_grade=1, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q12.get("intervalle")).startswith("il double")),
             description=tr("backoff exponentiel des retransmissions de SYN"),
         )
@@ -949,12 +952,12 @@ pendant 60 s** (2 × MSL) ; `serveur1` passe par `CLOSE-WAIT` et `LAST-ACK` et n
             cheat_answers={"final": q13_answers},
         )
         self.add_grade_element(
-            title=no_tr("etats_close_wait"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("etats_close_wait"), max_grade=2, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q13.get("etat_serveur")) == "close-wait") + int(_norm(q13.get("etat_client")) == "fin-wait-2"),
             description=tr("CLOSE-WAIT sur le serveur qui ne ferme pas, FIN-WAIT-2 sur le client"),
         )
         self.add_grade_element(
-            title=no_tr("time_wait"), max_grade=2, grade_part=part1, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("time_wait"), max_grade=2, grade_part=part1, scope=CHOICE_SCOPE,
             grade=int(_norm(q13.get("tw_qui")).startswith("m1")) + int(_digits(q13.get("tw_duree")) == "60"),
             description=tr("TIME-WAIT chez celui qui ferme en premier, pendant 60 s"),
         )
@@ -1041,7 +1044,7 @@ ports sont ceux de cette trame. Dans la capture de l'état `final` : fenêtre nu
             description=tr("ports source et destination de la sonde"),
         )
         self.add_grade_element(
-            title=no_tr("explication_fenetre_nulle"), max_grade=1, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("explication_fenetre_nulle"), max_grade=1, grade_part=part2, scope=CHOICE_SCOPE,
             grade=int(_norm(q2.get("explication")).startswith("le tampon de réception")),
             description=tr("la fenêtre nulle vient du tampon de réception plein (application suspendue)"),
         )
@@ -1085,7 +1088,7 @@ est limité à fenêtre / RTT ≈ 10 ko / 20 ms ≈ 4 Mbit/s au lieu de quelques
         )
         rmem = parse_tcp_rmem(s1_sys.get('net.ipv4.tcp_rmem') or '')
         self.add_grade_element(
-            title=no_tr("rcvbuf_fixe"), max_grade=2, grade_part=part2, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("rcvbuf_fixe"), max_grade=2, grade_part=part2, scope=CHOICE_SCOPE,
             grade=int(_norm(q22.get("fenetre")).startswith("reste autour")) + int(_norm(q22.get("debit")).startswith("bien plus faible")),
             description=tr("effet d'un tampon de réception fixe de 10 ko : fenêtre bornée, débit = fenêtre / RTT"),
         )
@@ -1176,7 +1179,7 @@ trois fois plus) pour `nagle_nodelay.py`. Les scripts de référence sont ceux d
             description=tr("nagle_nodelay.py vers la sonde : au moins 8 segments de données (un par send() jusqu'à la fenêtre de congestion)"),
         )
         self.add_grade_element(
-            title=no_tr("q_nagle"), max_grade=2, grade_part=part3, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_nagle"), max_grade=2, grade_part=part3, scope=CHOICE_SCOPE,
             grade=int(_norm(q3.get("pourquoi")).startswith("nagle accumule")) + int(_norm(q3.get("nodelay")).startswith("chaque send()")),
             description=tr("ce que font Nagle et TCP_NODELAY"),
         )
@@ -1232,10 +1235,14 @@ valeur de `cwnd` varie ; une ligne `cwnd,ssthresh` ou `cwnd,` par échantillon).
             description=tr("/shared/cwnd.csv : au moins dix échantillons de cwnd (et ssthresh) qui varient"),
         )
         self.add_grade_element(
-            title=no_tr("q_slow_start"), max_grade=2, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
-            grade=int(_norm(q41.get("algo")) == "cubic")
-                  + int(_norm(q41.get("croissance")).startswith("exponentielle") and _norm(q41.get("ssthresh_quand")).startswith("après")),
-            description=tr("cubic par défaut, slow start exponentiel, ssthresh après la première perte"),
+            title=no_tr("q_slow_start_typed"), max_grade=1, grade_part=part4,
+            grade=int(_norm(q41.get("algo")) == "cubic"),
+            description=tr("cubic par défaut"),
+        )
+        self.add_grade_element(
+            title=no_tr("q_slow_start"), max_grade=1, grade_part=part4, scope=CHOICE_SCOPE,
+            grade=int(_norm(q41.get("croissance")).startswith("exponentielle") and _norm(q41.get("ssthresh_quand")).startswith("après")),
+            description=tr("slow start exponentiel, ssthresh après la première perte"),
         )
 
         retrans_cheat = find_retransmissions(pertes_frames, src_ip=m1_a)
@@ -1307,9 +1314,9 @@ trame indiquée répète des octets déjà envoyés par `m1` et que l'autre port
         )
         avant, apres = _num(q42.get("debit_avant")), _num(q42.get("debit_apres"))
         self.add_grade_element(
-            title=no_tr("debits"), max_grade=2, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("debits"), max_grade=2, grade_part=part4,
             grade=int(_in_range(avant, 10, 80)) + int(apres is not None and 0 < apres < 10),
-            description=tr("débits mesurés : quelques dizaines de Mbit/s sans perturbation, moins de 10 avec"),
+            description=tr("débits mesurés sans et avec perturbation"),
         )
         retrans_n, sack_n = _int(q42.get("retrans")), _int(q42.get("sack"))
         self.add_grade_element(
@@ -1328,7 +1335,7 @@ trame indiquée répète des octets déjà envoyés par `m1` et que l'autre port
             description=tr("la trame indiquée est un acquittement de serveur1 portant un bloc SACK"),
         )
         self.add_grade_element(
-            title=no_tr("q_retransmission"), max_grade=1, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_retransmission"), max_grade=1, grade_part=part4, scope=CHOICE_SCOPE,
             grade=int(_norm(q42.get("declencheur")).startswith("trois ack")),
             description=tr("retransmission rapide sur trois ACK dupliqués, sinon RTO"),
         )
@@ -1365,7 +1372,7 @@ sur les pertes, fait nettement mieux. L'évaluation lit `net.ipv4.tcp_congestion
             description=tr("m1 : net.ipv4.tcp_congestion_control = reno"),
         )
         self.add_grade_element(
-            title=no_tr("q_reno"), max_grade=1, grade_part=part4, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_reno"), max_grade=1, grade_part=part4, scope=CHOICE_SCOPE,
             grade=int(_norm(q43.get("difference")).startswith("après une perte, cubic")),
             description=tr("CUBIC contre Reno après une perte"),
         )
@@ -1469,16 +1476,16 @@ moins deux sous-flux.
         q5_ok = [_norm(q5.get("sous_flux")).startswith("2 :"), _norm(q5.get("routeurs")).startswith("les deux"),
                  _norm(q5.get("coupure")).startswith("le transfert continue sur"), _norm(q5.get("mptcpize")).startswith("il force")]
         self.add_grade_element(
-            title=no_tr("q_mptcp"), max_grade=3, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_mptcp"), max_grade=3, grade_part=part5, scope=CHOICE_SCOPE,
             grade=max(0, sum(int(x) for x in q5_ok) - 1),
             description=tr("sous-flux, les deux routeurs, résilience, mptcpize (quatre réponses, trois points)"),
         )
         r_mptcp, r_tcp = _num(q5.get("debit_mptcp")), _num(q5.get("debit_tcp"))
         self.add_grade_element(
-            title=no_tr("debit_mptcp"), max_grade=2, grade_part=part5, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("debit_mptcp"), max_grade=2, grade_part=part5,
             grade=int(r_mptcp is not None and r_tcp is not None and r_mptcp > 0 and r_tcp > 0)
                   + int(r_mptcp is not None and r_tcp is not None and r_mptcp > r_tcp > 0),
-            description=tr("débits mesurés : MPTCP (deux chemins) supérieur au TCP simple par r1"),
+            description=tr("débits mesurés avec MPTCP et avec TCP simple par r1"),
         )
 
         # =====================================================================
@@ -1557,7 +1564,7 @@ contre les inondations de `SYN` ; somme de contrôle : capturée avant son calcu
             description=tr("m1 : net.ipv4.ip_local_port_range = {low} {high}").format(low=PORT_RANGE[0], high=PORT_RANGE[1]),
         )
         self.add_grade_element(
-            title=no_tr("q_complements"), max_grade=3, grade_part=part6, scope=params.EXO_EVAL_SCOPE,
+            title=no_tr("q_complements"), max_grade=3, grade_part=part6, scope=CHOICE_SCOPE,
             grade=int(_norm(q6.get("recvq")).startswith("le nombre de connexions"))
                   + int(_norm(q6.get("syncookies")).startswith("répondre aux syn"))
                   + int(_norm(q6.get("checksum")).startswith("la carte réseau")),

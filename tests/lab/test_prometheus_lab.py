@@ -388,11 +388,14 @@ class TestGrading:
         (probe,) = [c for c, _ in tests[('chat', 1)]]
         assert f"--am http://{data.ips.prom.ip}:9093 --need 3 --wait {lab.PROBE_WAIT}" in probe
 
-    def test_typed_answers_are_instructor_scope(self, lab, data, tmp_pub_dir):
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer (a value, a PromQL query) is not
+        choices = {'answer_type_requests', 'answer_type_queue', 'answer_type_duration'}
         grade, _ = _run(lab, data, {}, lambda m, c: None)
         for element in grade.get_grade_list():
-            typed = str(element.title).startswith(('answer_', 'promql_'))
-            assert (element.scope == params.EXO_EVAL_SCOPE) == typed, element.title
+            expected = params.EXO_EVAL_SCOPE if str(element.title) in choices else params.BOTH_EVAL_SCOPE
+            assert element.scope == expected, element.title
 
     def test_cheat_answers_match_the_form_fields(self, lab, data, tmp_pub_dir):
         cheats = _cheat(lab, data)

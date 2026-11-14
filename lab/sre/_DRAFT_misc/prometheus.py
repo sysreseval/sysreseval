@@ -180,6 +180,9 @@ MUST_USE = {
     "q_bitrate": ("ifHCInOctets",),
 }
 PROMQL_POINTS = {"q_status": 3, "q_errors": 3, "q_p95": 4, "q_top": 3, "q_fill": 3, "q_rx": 3, "q_maxqueue": 3}
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 def draw_requests() -> List[list]:
@@ -1094,10 +1097,12 @@ boutique : `shop_http_requests_total` est un `counter`, `shop_queue_length` une 
             "app_version": tr("version de l'application"),
             "series_count": tr("nombre de séries"),
         }
+        choices = {"type_requests", "type_queue", "type_duration"}
         for name, expected in q1_answers.items():
             self.add_grade_element(title=no_tr(f"answer_{name}"), max_grade=1, grade_part=part1,
                                    grade=int(_norm(q1.get(name)) == _norm(expected)),
-                                   scope=params.EXO_EVAL_SCOPE, description=descriptions1[name])
+                                   scope=CHOICE_SCOPE if name in choices else params.BOTH_EVAL_SCOPE,
+                                   description=descriptions1[name])
         for m in ("web1", "db1"):
             running = bool(find_samples(node[m], "node_exporter_build_info")) and codes[m] == 200
             self.add_grade_element(title=no_tr(f"node_exporter_{m}"), max_grade=1, grade_part=part1,
@@ -1253,7 +1258,7 @@ peut s'écarter de plus de 5 %.
         for key, points in PROMQL_POINTS.items():
             right = mentions(typed3[key], *MUST_USE[key]) and matches_reference(*comparison3.pair(key))
             self.add_grade_element(title=no_tr(f"promql_{key[2:]}"), max_grade=points, grade_part=part3,
-                                   grade=points * int(right), scope=params.EXO_EVAL_SCOPE,
+                                   grade=points * int(right),
                                    description=descriptions3[key])
 
         # =====================================================================
@@ -1381,7 +1386,7 @@ Requête : `{bitrate}`.
                                description=tr("les compteurs du routeur sont collectés"))
         right = mentions(typed_bitrate, *MUST_USE["q_bitrate"]) and matches_reference(*comparison5.pair("q_bitrate"))
         self.add_grade_element(title=no_tr("promql_bitrate"), max_grade=3, grade_part=part5, grade=3 * int(right),
-                               scope=params.EXO_EVAL_SCOPE, description=tr("la requête du débit en bit/s"))
+                               description=tr("la requête du débit en bit/s"))
 
         # =====================================================================
         # Partie 6 — Les règles

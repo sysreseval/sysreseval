@@ -574,6 +574,16 @@ def _grades(grade):
     return {str(e.title): (e.grade, e.max_grade) for e in grade.get_grade_list()}
 
 
+# the elements that grade the answers of the forms
+FORM_ELEMENTS = {
+    'discovery_destination_typed', 'discovery_destination', 'discovery_message', 'discovery_metric',
+    'discovery_timers', 'discovery_distance', 'site_metrics', 'convergence_route_poisoning',
+    'convergence_triggered_update', 'convergence_silent_failure', 'convergence_new_delay',
+    'convergence_split_horizon', 'passive_listens', 'default_answers_typed', 'default_answers',
+    'static_answers_typed', 'static_answers', 'backup_answers', 'rogue_answers_typed', 'rogue_answers',
+}
+
+
 def _totals(grade):
     """(regular points, bonus points)."""
     elements = grade.get_grade_list()
@@ -866,7 +876,7 @@ class TestGrading:
         elements = grade.get_grade_list()
         assert sum(e.max_grade for e in elements if not e.bonus) == 100
         assert sum(e.max_grade for e in elements if e.bonus) == 6
-        assert len(elements) == 47 and len({str(e.title) for e in elements}) == 47
+        assert len(elements) == 51 and len({str(e.title) for e in elements}) == 51
 
     def test_everything_done(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir)
@@ -878,13 +888,30 @@ class TestGrading:
         grade, _ = _simulate(lab, data, tmp_pub_dir)
         elements = grade.get_grade_list()
         exo = [e for e in elements if e.scope == params.EXO_EVAL_SCOPE]
-        assert sum(e.max_grade for e in exo) == 23 and all(e.scope == params.BOTH_EVAL_SCOPE for e in elements
-                                                           if e not in exo)
+        assert sum(e.max_grade for e in exo) == 8.5 and all(e.scope == params.BOTH_EVAL_SCOPE for e in elements
+                                                            if e not in exo)
+        assert {str(e.title) for e in exo} < FORM_ELEMENTS
         assert [str(e.title) for e in elements if e.bonus] == ['ripng_routes', 'ripng_pings']
-        # the answers alone, without any configuration, only give the instructor-only points
+        # the answers alone, without any configuration, only give the points of the forms
         answers_only, _ = _simulate(lab, data, tmp_pub_dir, final=False)
         assert _totals(answers_only) == (23, 0)
-        assert _lost(answers_only) == {str(e.title) for e in elements if e not in exo}
+        assert _lost(answers_only) == {str(e.title) for e in elements} - FORM_ELEMENTS
+
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'discovery_destination', 'discovery_message', 'convergence_triggered_update',
+                   'convergence_silent_failure', 'convergence_split_horizon', 'passive_listens',
+                   'default_answers', 'static_answers', 'rogue_answers'}
+        grade, _ = _simulate(lab, data, tmp_pub_dir)
+        for e in grade.get_grade_list():
+            expected = params.EXO_EVAL_SCOPE if str(e.title) in choices else params.BOTH_EVAL_SCOPE
+            assert e.scope == expected, e.title
+        # a split element keeps its points: the typed half then the dropdown half
+        grades = _grades(grade)
+        assert [grades[f'{t}_typed'][1] + grades[t][1]
+                for t in ('discovery_destination', 'default_answers', 'static_answers', 'rogue_answers')] \
+            == [1, 2, 2, 3]
 
     def test_every_data_set(self, lab, tmp_pub_dir):
         for _ in range(12):
@@ -1089,8 +1116,7 @@ class TestGrading:
 
     def test_wrong_answers(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir, answers=False)
-        elements = grade.get_grade_list()
-        assert _lost(grade) == {str(e.title) for e in elements if e.scope == params.EXO_EVAL_SCOPE}
+        assert _lost(grade) == FORM_ELEMENTS
         assert _totals(grade) == (77, 6)
 
     def test_cheat_answers_fill_every_form(self, lab, data, tmp_pub_dir):

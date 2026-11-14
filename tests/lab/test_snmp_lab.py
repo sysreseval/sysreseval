@@ -655,11 +655,14 @@ class TestGrading:
         _set_answer(grade, 'counter_choice', 'c32')
         assert _regrade(grade)['answer_counter_choice'].grade == 0
 
-    def test_typed_answers_are_instructor_scope(self, lab, data, tmp_pub_dir):
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'answer_set_error', 'answer_ro_set_error', 'answer_counter_choice'}
         grade, _ = _simulate(lab, data, tmp_pub_dir)
         for element in grade.get_grade_list():
-            typed = str(element.title).startswith('answer_')
-            assert (element.scope == params.EXO_EVAL_SCOPE) == typed, str(element.title)
+            expected = params.EXO_EVAL_SCOPE if str(element.title) in choices else params.BOTH_EVAL_SCOPE
+            assert element.scope == expected, str(element.title)
 
     def test_cheat_answers_match_the_form_fields(self, lab, data, tmp_pub_dir):
         grade, _ = _simulate(lab, data, tmp_pub_dir)

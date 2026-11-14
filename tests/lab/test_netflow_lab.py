@@ -243,10 +243,14 @@ class TestGrading:
                 assert "\n" not in command and "@@@" not in command
         assert 'tcpdump' in list(tests[('collector', 1)])[-1][0]       # the capture comes last
 
-    def test_typed_answers_are_instructor_scope(self, lab, data, tmp_pub_dir):
+    def test_only_choice_answers_are_exo_only(self, lab, data, tmp_pub_dir):
+        # an answer picked from a short list is hidden from the self-evaluation (every choice could be
+        # tried), a typed answer is not
+        choices = {'answer_mcq_template', 'answer_mcq_v5'}
         grade, _ = _run(lab, data, {}, lambda m, c: None)
         for element in grade.get_grade_list():
-            assert (element.scope == params.EXO_EVAL_SCOPE) == str(element.title).startswith('answer_'), element.title
+            expected = params.EXO_EVAL_SCOPE if str(element.title) in choices else params.BOTH_EVAL_SCOPE
+            assert element.scope == expected, element.title
 
 
 class TestTexts:

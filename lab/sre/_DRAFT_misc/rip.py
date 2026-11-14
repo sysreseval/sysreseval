@@ -86,6 +86,9 @@ GHOST_INTERVAL = 2                                                   # seconds b
 ROUTER_COLOR = 'lightblue'
 # an `ip link set ethX down` experiment must not lose the IPv6 addresses of the interface
 ROUTER_SYSCTLS = ('net.ipv6.conf.all.keep_addr_on_down=1', 'net.ipv6.conf.default.keep_addr_on_down=1')
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 _TOPOLOGY = {
     'lan1': {'r1': 0, 'pc1': 0, 'probe': 0},
@@ -936,8 +939,9 @@ write
 - *update* **30** s, *timeout* **180** s, *garbage* **120** s ;
 - distance administrative **120** (`R>* … [120/2]`).
 
-Évaluation, pour l'enseignant seulement : `discovery_destination` (1 point), `discovery_message`
-(1), `discovery_metric` (1), `discovery_timers` (1), `discovery_distance` (1).
+Évaluation : `discovery_destination_typed` (0,5 point : le port), `discovery_metric` (1),
+`discovery_timers` (1), `discovery_distance` (1) ; pour l'enseignant seulement (réponses choisies
+dans une liste) : `discovery_destination` (0,5 : l'adresse de groupe), `discovery_message` (1).
 """)),
             cheat_answers={"final": {
                 "group": "224.0.0.9", "port": "520", "command": "Response", "metric": "2",
@@ -956,30 +960,34 @@ write
             description=tr("pc1 et pc2 se joignent"),
         )
         self.add_grade_element(
-            title=no_tr("discovery_destination"), max_grade=1, grade_part=part1,
-            grade=int(_norm(q1.get("group")) == "224.0.0.9" and _int(q1.get("port")) == 520),
-            scope=params.EXO_EVAL_SCOPE,
-            description=tr("adresse de groupe et port de RIPv2"),
+            title=no_tr("discovery_destination_typed"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(_int(q1.get("port")) == 520),
+            description=tr("port de RIPv2"),
+        )
+        self.add_grade_element(
+            title=no_tr("discovery_destination"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(_norm(q1.get("group")) == "224.0.0.9"),
+            scope=CHOICE_SCOPE,
+            description=tr("adresse de groupe de RIPv2"),
         )
         self.add_grade_element(
             title=no_tr("discovery_message"), max_grade=1, grade_part=part1,
-            grade=int(_norm(q1.get("command")) == "response"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q1.get("command")) == "response"), scope=CHOICE_SCOPE,
             description=tr("type des annonces périodiques"),
         )
         self.add_grade_element(
             title=no_tr("discovery_metric"), max_grade=1, grade_part=part1,
-            grade=int(_int(q1.get("metric")) == 2), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q1.get("metric")) == 2),
             description=tr("métrique de lan2 sur r1"),
         )
         self.add_grade_element(
             title=no_tr("discovery_timers"), max_grade=1, grade_part=part1,
             grade=int((_int(q1.get("update")), _int(q1.get("timeout")), _int(q1.get("garbage"))) == (30, 180, 120)),
-            scope=params.EXO_EVAL_SCOPE,
             description=tr("temporisateurs par défaut"),
         )
         self.add_grade_element(
             title=no_tr("discovery_distance"), max_grade=1, grade_part=part1,
-            grade=int(_int(q1.get("distance")) == 120), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q1.get("distance")) == 120),
             description=tr("distance administrative de RIP"),
         )
 
@@ -1059,7 +1067,7 @@ Une fois les tables complètes :
 **Solution.** `lan2` est à **3** de `r4` (par `r1` puis `r2`, ou par `r3` puis `r2` : `r2`
 annonce 1, son voisin 2, `r4` 3). `lan3` est à **2** de `r1`, par le lien direct `l13`.
 
-Évaluation, pour l'enseignant seulement : `site_metrics` (2 points : 1 par réponse).
+Évaluation : `site_metrics` (2 points : 1 par réponse).
 """)),
             cheat_answers={"final": {"metric_r4_lan2": "3", "metric_r1_lan3": "2"}},
         )
@@ -1092,7 +1100,6 @@ annonce 1, son voisin 2, `r4` 3). `lan3` est à **2** de `r1`, par le lien direc
         self.add_grade_element(
             title=no_tr("site_metrics"), max_grade=2, grade_part=part2,
             grade=int(_int(q2.get("metric_r4_lan2")) == 3) + int(_int(q2.get("metric_r1_lan3")) == 2),
-            scope=params.EXO_EVAL_SCOPE,
             description=tr("métriques de r4 vers lan2 et de r1 vers lan3"),
         )
 
@@ -1171,9 +1178,9 @@ dont les annonces entendues sur le lien portent des routes à 16).
 **Solution.** Métrique **16** ; **mise à jour déclenchée** ; **180 s** (le *timeout*) ;
 **{timeout}** s ; **non**.
 
-Évaluation, pour l'enseignant seulement : `convergence_route_poisoning` (1 point),
-`convergence_triggered_update` (1), `convergence_silent_failure` (1), `convergence_new_delay`
-(1), `convergence_split_horizon` (1).
+Évaluation : `convergence_route_poisoning` (1 point), `convergence_new_delay` (1) ; pour
+l'enseignant seulement (réponses choisies dans une liste) : `convergence_triggered_update` (1),
+`convergence_silent_failure` (1), `convergence_split_horizon` (1).
 """).format(timeout=d.timeout_timer)),
             cheat_answers={"final": {
                 "poison_metric": "16", "trigger": "mise à jour déclenchée", "silent_delay": "180 s",
@@ -1204,27 +1211,27 @@ dont les annonces entendues sur le lien portent des routes à 16).
         )
         self.add_grade_element(
             title=no_tr("convergence_route_poisoning"), max_grade=1, grade_part=part3,
-            grade=int(_int(q3.get("poison_metric")) == RIP_INFINITY), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q3.get("poison_metric")) == RIP_INFINITY),
             description=tr("métrique d'une route perdue"),
         )
         self.add_grade_element(
             title=no_tr("convergence_triggered_update"), max_grade=1, grade_part=part3,
-            grade=int(_norm(q3.get("trigger")) == "mise à jour déclenchée"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q3.get("trigger")) == "mise à jour déclenchée"), scope=CHOICE_SCOPE,
             description=tr("message envoyé à la coupure"),
         )
         self.add_grade_element(
             title=no_tr("convergence_silent_failure"), max_grade=1, grade_part=part3,
-            grade=int(_norm(q3.get("silent_delay")) == "180 s"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q3.get("silent_delay")) == "180 s"), scope=CHOICE_SCOPE,
             description=tr("détection d'une panne silencieuse avec les temporisateurs par défaut"),
         )
         self.add_grade_element(
             title=no_tr("convergence_new_delay"), max_grade=1, grade_part=part3,
-            grade=int(_int(q3.get("new_delay")) == d.timeout_timer), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_int(q3.get("new_delay")) == d.timeout_timer),
             description=tr("détection d'une panne silencieuse avec les nouveaux temporisateurs"),
         )
         self.add_grade_element(
             title=no_tr("convergence_split_horizon"), max_grade=1, grade_part=part3,
-            grade=int(_norm(q3.get("split_horizon")) == "non"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q3.get("split_horizon")) == "non"), scope=CHOICE_SCOPE,
             description=tr("horizon partagé"),
         )
 
@@ -1295,7 +1302,7 @@ possible l'intrusion de la partie 8.
             )
         self.add_grade_element(
             title=no_tr("passive_listens"), max_grade=1, grade_part=part4,
-            grade=int(_norm(q4.get("passive_listens")) == "oui"), scope=params.EXO_EVAL_SCOPE,
+            grade=int(_norm(q4.get("passive_listens")) == "oui"), scope=CHOICE_SCOPE,
             description=tr("une interface passive écoute encore"),
         )
 
@@ -1341,7 +1348,8 @@ par défaut RIP), `default_pings` (6 : 2 par hôte qui joint `{internet}`).
             + instructor(tr("""
 **Solution.** **3** sur `r2` (1 sur `r4`, 2 sur ses voisins `r1` et `r3`) ; **R(d)** sur `r4`.
 
-Évaluation, pour l'enseignant seulement : `default_answers` (2 points : 1 par réponse).
+Évaluation : `default_answers_typed` (1 point : la métrique) ; pour l'enseignant seulement
+(réponse choisie dans une liste) : `default_answers` (1 : le code).
 """)),
             cheat_answers={"final": {"default_metric": "3", "default_code": "R(d)"}},
         )
@@ -1357,10 +1365,15 @@ par défaut RIP), `default_pings` (6 : 2 par hôte qui joint `{internet}`).
             description=tr("pc1, pc2 et hv joignent internet"),
         )
         self.add_grade_element(
-            title=no_tr("default_answers"), max_grade=2, grade_part=part5,
-            grade=int(_int(q5.get("default_metric")) == 3) + int(_norm(q5.get("default_code")) == "r(d)"),
-            scope=params.EXO_EVAL_SCOPE,
-            description=tr("métrique et code de la route par défaut"),
+            title=no_tr("default_answers_typed"), max_grade=1, grade_part=part5,
+            grade=int(_int(q5.get("default_metric")) == 3),
+            description=tr("métrique de la route par défaut"),
+        )
+        self.add_grade_element(
+            title=no_tr("default_answers"), max_grade=1, grade_part=part5,
+            grade=int(_norm(q5.get("default_code")) == "r(d)"),
+            scope=CHOICE_SCOPE,
+            description=tr("code de la route par défaut"),
         )
 
         # =====================================================================
@@ -1414,7 +1427,8 @@ de RIP), `static_redistributed` (3 : 1 par routeur parmi `r1`, `r2`, `r4` qui l'
 **Solution.** **S(r)** : une route statique (S) redistribuée (r) ; métrique **1** (*Default
 redistribution metric is 1* dans `show ip rip status`, modifiable avec `default-metric`).
 
-Évaluation, pour l'enseignant seulement : `static_answers` (2 points : 1 par réponse).
+Évaluation : `static_answers_typed` (1 point : la métrique par défaut) ; pour l'enseignant
+seulement (réponse choisie dans une liste) : `static_answers` (1 : le code).
 """)),
             cheat_answers={"final": {"static_code": "S(r)", "default_redistribution_metric": "1"}},
         )
@@ -1442,11 +1456,15 @@ redistribution metric is 1* dans `show ip rip status`, modifiable avec `default-
             description=tr("pc1 et pc2 joignent vm"),
         )
         self.add_grade_element(
-            title=no_tr("static_answers"), max_grade=2, grade_part=part6,
-            grade=(int(_norm(q6.get("static_code")) == "s(r)")
-                   + int(_int(q6.get("default_redistribution_metric")) == 1)),
-            scope=params.EXO_EVAL_SCOPE,
-            description=tr("code et métrique par défaut d'une route redistribuée"),
+            title=no_tr("static_answers_typed"), max_grade=1, grade_part=part6,
+            grade=int(_int(q6.get("default_redistribution_metric")) == 1),
+            description=tr("métrique par défaut d'une route redistribuée"),
+        )
+        self.add_grade_element(
+            title=no_tr("static_answers"), max_grade=1, grade_part=part6,
+            grade=int(_norm(q6.get("static_code")) == "s(r)"),
+            scope=CHOICE_SCOPE,
+            description=tr("code d'une route redistribuée"),
         )
 
         # =====================================================================
@@ -1518,7 +1536,7 @@ Après ces réglages, sur `r1` :
 vaudrait **{backup}** (1 pour `lan3` sur `r3`, plus {offset} en sortie de `r3`, plus 1 à la
 réception par `r1`).
 
-Évaluation, pour l'enseignant seulement : `backup_answers` (3 points : 1 par réponse).
+Évaluation : `backup_answers` (3 points : 1 par réponse).
 """).format(backup=2 + offset, offset=offset)),
             cheat_answers={"final": {"metric_ring": "3", "nexthops": "2", "metric_backup": str(2 + offset)}},
         )
@@ -1552,7 +1570,6 @@ réception par `r1`).
             title=no_tr("backup_answers"), max_grade=3, grade_part=part7,
             grade=(int(_int(q7.get("metric_ring")) == 3) + int(_int(q7.get("nexthops")) == 2)
                    + int(_int(q7.get("metric_backup")) == 2 + offset)),
-            scope=params.EXO_EVAL_SCOPE,
             description=tr("métriques par l'anneau et par le lien de secours"),
         )
 
@@ -1628,7 +1645,9 @@ routeurs, alors que `r1` et `r2` apprennent toujours `lan3` par RIP).
             + instructor(tr("""
 **Solution.** `{intruder}` ; `{ghost}` ; **non**.
 
-Évaluation, pour l'enseignant seulement : `rogue_answers` (3 points : 1 par réponse).
+Évaluation : `rogue_answers_typed` (2 points : 1 pour l'adresse, 1 pour le préfixe) ; pour
+l'enseignant seulement (réponse choisie dans une liste) : `rogue_answers` (1 : les interfaces
+passives).
 """).format(intruder=d.ips.intruder.ip, ghost=d.nets.ghost)),
             cheat_answers={"final": {
                 "rogue_address": str(d.ips.intruder.ip), "rogue_prefix": str(d.nets.ghost), "passive_protects": "non",
@@ -1650,12 +1669,16 @@ routeurs, alors que `r1` et `r2` apprennent toujours `lan3` par RIP).
             description=tr("le réseau annoncé par l'intrus n'est plus dans les tables"),
         )
         self.add_grade_element(
-            title=no_tr("rogue_answers"), max_grade=3, grade_part=part8,
+            title=no_tr("rogue_answers_typed"), max_grade=2, grade_part=part8,
             grade=(int(_same_ip(q8.get("rogue_address"), d.ips.intruder.ip))
-                   + int(_same_network(q8.get("rogue_prefix"), d.nets.ghost))
-                   + int(_norm(q8.get("passive_protects")) == "non")),
-            scope=params.EXO_EVAL_SCOPE,
-            description=tr("adresse de l'intrus, préfixe annoncé, limite des interfaces passives"),
+                   + int(_same_network(q8.get("rogue_prefix"), d.nets.ghost))),
+            description=tr("adresse de l'intrus, préfixe annoncé"),
+        )
+        self.add_grade_element(
+            title=no_tr("rogue_answers"), max_grade=1, grade_part=part8,
+            grade=int(_norm(q8.get("passive_protects")) == "non"),
+            scope=CHOICE_SCOPE,
+            description=tr("limite des interfaces passives"),
         )
 
         # =====================================================================

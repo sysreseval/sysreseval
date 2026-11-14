@@ -141,6 +141,9 @@ SIEVE_SCRIPT = "filters"
 PROMO_FOLDER = "Promo"
 SPAM_TAG = "[SPAM]"
 MANAGESIEVE_PORT = 4190
+# A form answer picked from a short list is graded for the instructor only: shown in a
+# self-evaluation, its grade would let a student try every choice. Typed answers count in both.
+CHOICE_SCOPE = params.EXO_EVAL_SCOPE
 
 
 # ---------------------------------------------------------------------------
@@ -1602,10 +1605,15 @@ puis `unbound-control reload` ; `dig +short MX firm.tp` doit répondre `10 mail.
             description=tr("imap.firm.tp et smtp.firm.tp résolvent vers mail"),
         )
         self.add_grade_element(
-            title=no_tr("dns_questions"), max_grade=1, grade_part=part1,
-            grade=int(PEER_MX in _norm(q1.get("mx_other")) and "petite" in _norm(q1.get("priority"))
-                      and "enregistrement a" in _norm(q1.get("mx_target")) and "adresse a" in _norm(q1.get("no_mx"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("MX : priorité, cible, absence"),
+            title=no_tr("dns_questions_typed"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int(PEER_MX in _norm(q1.get("mx_other"))),
+            description=tr("MX : réponse de dig pour other.tp"),
+        )
+        self.add_grade_element(
+            title=no_tr("dns_questions"), max_grade=0.5, grade_part=part1,
+            grade=0.5 * int("petite" in _norm(q1.get("priority")) and "enregistrement a" in _norm(q1.get("mx_target"))
+                            and "adresse a" in _norm(q1.get("no_mx"))),
+            scope=CHOICE_SCOPE, description=tr("MX : priorité, cible, absence"),
         )
 
         # =====================================================================
@@ -1721,7 +1729,7 @@ Bob : @@{relay_value:[^ ]+}@@
         self.add_grade_element(
             title=no_tr("relay_observed"), max_grade=1, grade_part=part2,
             grade=int(PEER_MX in _norm(q2.get("relay_value"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("la valeur de relay= dans le journal"),
+            description=tr("la valeur de relay= dans le journal"),
         )
 
         # =====================================================================
@@ -1810,7 +1818,7 @@ la valeur Debian de `smtpd_relay_restrictions` : `laptop` n'est ni dans `mynetwo
         self.add_grade_element(
             title=no_tr("relay_question"), max_grade=1, grade_part=part3,
             grade=int(_norm(q3.get("relay_code")).startswith("454")),
-            scope=params.EXO_EVAL_SCOPE, description=tr("le code du refus de relais"),
+            scope=CHOICE_SCOPE, description=tr("le code du refus de relais"),
         )
 
         # =====================================================================
@@ -1894,7 +1902,7 @@ que le `CN`, et les clients modernes refusent un certificat sans SAN.
             title=no_tr("cert_questions"), max_grade=2, grade_part=part4,
             grade=int("interne" in _norm(q4.get("signer")))
             + int("clients joignent" in _norm(q4.get("san_role")) and "autorité de confiance" in _norm(q4.get("client_checks"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("qui signe, rôle du SAN, ce que vérifie le client"),
+            scope=CHOICE_SCOPE, description=tr("qui signe, rôle du SAN, ce que vérifie le client"),
         )
 
         # =====================================================================
@@ -2009,9 +2017,14 @@ La phrase du message de Bob pour cette instance : **{secret}**.
             description=tr("la phrase du message de Bob, lue en IMAPS"),
         )
         self.add_grade_element(
-            title=no_tr("imap_questions"), max_grade=2, grade_part=part5,
-            grade=int(_int(q5.get("imaps_port")) == 993) + int("privacyrequired" in _norm(q5.get("plaintext_result"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("port d'IMAPS ; réponse à un LOGIN en clair"),
+            title=no_tr("imap_questions_typed"), max_grade=1, grade_part=part5,
+            grade=int(_int(q5.get("imaps_port")) == 993),
+            description=tr("port d'IMAPS"),
+        )
+        self.add_grade_element(
+            title=no_tr("imap_questions"), max_grade=1, grade_part=part5,
+            grade=int("privacyrequired" in _norm(q5.get("plaintext_result"))),
+            scope=CHOICE_SCOPE, description=tr("réponse à un LOGIN en clair"),
         )
 
         # =====================================================================
@@ -2099,9 +2112,14 @@ Journal : `postfix/lmtp[...]: ...: to=<alice@firm.tp>, relay={relay}, ... status
             description=tr("les messages rangés chez alice sont passés par LMTP (Received: ... with LMTP)"),
         )
         self.add_grade_element(
-            title=no_tr("lmtp_question"), max_grade=1, grade_part=part6,
-            grade=int("dovecot range" in _norm(q6.get("lmtp_why")) and "dovecot-lmtp" in _norm(q6.get("lmtp_relay"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("pourquoi LMTP ; la ligne relay= du journal"),
+            title=no_tr("lmtp_question_typed"), max_grade=0.5, grade_part=part6,
+            grade=0.5 * int("dovecot-lmtp" in _norm(q6.get("lmtp_relay"))),
+            description=tr("la ligne relay= du journal"),
+        )
+        self.add_grade_element(
+            title=no_tr("lmtp_question"), max_grade=0.5, grade_part=part6,
+            grade=0.5 * int("dovecot range" in _norm(q6.get("lmtp_why"))),
+            scope=CHOICE_SCOPE, description=tr("pourquoi LMTP"),
         )
 
         # =====================================================================
@@ -2197,9 +2215,14 @@ l'extension de l'adresse de l'enveloppe (`alice+promo` → `promo`), que Postfix
             description=tr("un message dont le sujet contient [SPAM] est rangé dans Junk"),
         )
         self.add_grade_element(
-            title=no_tr("sieve_questions"), max_grade=2, grade_part=part7,
-            grade=int("remise" in _norm(q7.get("sieve_when"))) + int(_int(q7.get("managesieve_port")) == MANAGESIEVE_PORT),
-            scope=params.EXO_EVAL_SCOPE, description=tr("quand Sieve s'exécute ; port de ManageSieve"),
+            title=no_tr("sieve_questions_typed"), max_grade=1, grade_part=part7,
+            grade=int(_int(q7.get("managesieve_port")) == MANAGESIEVE_PORT),
+            description=tr("port de ManageSieve"),
+        )
+        self.add_grade_element(
+            title=no_tr("sieve_questions"), max_grade=1, grade_part=part7,
+            grade=int("remise" in _norm(q7.get("sieve_when"))),
+            scope=CHOICE_SCOPE, description=tr("quand Sieve s'exécute"),
         )
 
         # =====================================================================
@@ -2330,9 +2353,14 @@ by user alice`).
             description=tr("la boîte de bob contient un message de alice@firm.tp déposé depuis laptop en ESMTPSA"),
         )
         self.add_grade_element(
-            title=no_tr("submission_questions"), max_grade=1, grade_part=part8,
-            grade=int(_norm(q8.get("auth_word")) == "esmtpsa" and _int(q8.get("mismatch_code")) == 553),
-            scope=params.EXO_EVAL_SCOPE, description=tr("ESMTPSA ; code du refus d'expéditeur"),
+            title=no_tr("submission_questions_typed"), max_grade=0.5, grade_part=part8,
+            grade=0.5 * int(_int(q8.get("mismatch_code")) == 553),
+            description=tr("code du refus d'expéditeur"),
+        )
+        self.add_grade_element(
+            title=no_tr("submission_questions"), max_grade=0.5, grade_part=part8,
+            grade=0.5 * int(_norm(q8.get("auth_word")) == "esmtpsa"),
+            scope=CHOICE_SCOPE, description=tr("ESMTPSA"),
         )
 
         # =====================================================================
@@ -2401,7 +2429,7 @@ d'enregistrement.
         self.add_grade_element(
             title=no_tr("spf_question"), max_grade=1, grade_part=part9,
             grade=int("adresse ip" in _norm(q9.get("spf_checks"))),
-            scope=params.EXO_EVAL_SCOPE, description=tr("ce que vérifie SPF"),
+            scope=CHOICE_SCOPE, description=tr("ce que vérifie SPF"),
         )
 
 
