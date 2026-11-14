@@ -23,6 +23,7 @@ from .groups import DirectoryCache, DirectoryListing, GroupStore, Memberships
 from .exams import Exams
 from .examstore import ExamStore
 from .examprojects import ExamProjects
+from .examhosts import ExamHosts
 from .roles import RoleCache
 from .manager import PoolManager
 from .pool import Pool, PoolError
@@ -97,6 +98,7 @@ class Portal:
             self.exam_store = ExamStore(cfg.access_log.database, cfg.exams, connect=connect[0])
         self.exams: Exams | None = None
         self.exam_projects: ExamProjects | None = None
+        self.exam_hosts: ExamHosts | None = None
         self._warmup: asyncio.Task | None = None
 
     def make_app(self) -> web.Application:
@@ -126,10 +128,17 @@ class Portal:
         self.exams = Exams(self.presence, self.exam_store, memberships=self.memberships, cfg=self.cfg.exams)
         self.exam_projects = ExamProjects(self.exams, self.pool, self.relay)
         self.exams.on_tick.append(self.exam_projects.reconcile)
+        # the machines of the pool an exam is taken at (the exam mode of the Qt GUI): their agents
+        # write exam.json for the portal; such a machine takes no new web project meanwhile
+        self.exam_hosts = ExamHosts(self.exams, self.pool, self.relay, exam_projects=self.exam_projects,
+                                    origin=self.exam_store.origin() if self.exam_store is not None else '')
+        self.exams.on_tick.append(self.exam_hosts.reconcile)
+        self.pool.exam_hold = self.exam_hosts.held
         self.routes = Routes(self.cfg, self.pool, self.relay, localedirs=self.localedirs, manager=self.manager,
                              access=self.access, presentations=self.presentations, roles=self.roles,
                              focuses=self.focuses, archives=self.archives, memberships=self.memberships,
-                             exams=self.exams, exam_projects=self.exam_projects, webconfs=self.webconfs)
+                             exams=self.exams, exam_projects=self.exam_projects, exam_hosts=self.exam_hosts,
+                             webconfs=self.webconfs)
         self.routes.register(app)
         static = self.web_dir / 'static'
         if static.is_dir():
@@ -205,6 +214,8 @@ class Portal:
         await self.focuses.shutdown()
         if self.exam_projects is not None:
             await self.exam_projects.shutdown()   # the running close jobs cancelled (the stops sent go on)
+        if self.exam_hosts is not None:
+            await self.exam_hosts.shutdown()      # ... and the calls to the machines of the exams
         await self.exams.stop_loop()        # the exams themselves persist (the database)
 
     async def _on_cleanup(self, app):

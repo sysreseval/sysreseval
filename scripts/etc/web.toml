@@ -256,10 +256,18 @@ session_timeout = "30m"
 # close_after: how long after the end of a student's exam their exam projects are closed (0 =
 # never: an instructor closes them from the page).  keep: days the past exams are kept (0 =
 # forever).
+# An exam may also list machines of the pool, where it is taken with the Qt GUI: their agents
+# write exam.json (what `sre set-exam` does by hand).  host_lead: how long before the start
+# the file is written, the machine locked and out of the pool; host_release: how long after
+# the end-before time it is removed and the exam projects of the machine closed (0 = at the
+# end; until then the students keep the end screen and extra minutes may still be granted).
+# Both are defaults, adjustable per exam.
 # lead = "10m"
 # pre_start = "5m"
 # eval_interval = "60s"
 # close_after = "1h"
+# host_lead = "10m"
+# host_release = "10m"
 # table = "exams"
 # keep = 0
 

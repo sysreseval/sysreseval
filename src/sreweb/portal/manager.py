@@ -54,19 +54,24 @@ class HostView:
     preload_granted: bool = False
     preload_hold: bool = False
     exam_projects: int = 0           # running projects of an exam of the web site: no preload meanwhile
+    # kept for an exam that lists the machine (``Pool.exam_hold``): no new web project there, so
+    # it is no capacity of the pool, and the policy does not power it off
+    held: bool = False
 
 
 def awake_count(hosts) -> int:
     """The shared hosts awake (``AWAKE_STATES``) or waking: what the floor ``min_hosts_up``
-    counts (a host reserved for instructors serves no student)."""
-    return sum(1 for h in hosts if not h.instructors_only and (h.state in AWAKE_STATES or h.state == STATE_WAKING))
+    counts (a host reserved for instructors, or kept for an exam, serves no student)."""
+    return sum(1 for h in hosts if not h.instructors_only and not h.held
+               and (h.state in AWAKE_STATES or h.state == STATE_WAKING))
 
 
 def spare_capacity(hosts) -> int:
     """The free project slots of the shared hosts up, plus the whole capacity of those waking
-    (a host reserved for instructors is no capacity for the students)."""
-    return sum(h.max_projects - h.projects for h in hosts if h.state == STATE_UP and not h.instructors_only) + \
-        sum(h.max_projects for h in hosts if h.state == STATE_WAKING and not h.instructors_only)
+    (a host reserved for instructors, or kept for an exam, is no capacity for the students)."""
+    return sum(h.max_projects - h.projects for h in hosts
+               if h.state == STATE_UP and not h.instructors_only and not h.held) + \
+        sum(h.max_projects for h in hosts if h.state == STATE_WAKING and not h.instructors_only and not h.held)
 
 
 def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: float) -> list:
@@ -106,6 +111,8 @@ def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
     for h in sorted(empties, key=lambda h: -(h.idle_for or 0)):
         if h.idle_for is None or h.idle_for < cfg.idle_host_timeout:
             continue
+        if h.held:
+            continue    # a machine of an exam about to start (or running): the students come to it
         if cfg.max_preloads > 0 and (is_preloading(h) or h.preload == PRELOAD_PENDING):
             continue    # pulling the images, or waiting for its turn to: off, it would never have them
         if h.instructors_only:
@@ -181,7 +188,8 @@ class PoolManager:
                                   restart_pending=rt.restart_sent is not None,
                                   preload=st.preload, preload_since=float(st.preload_since or 0),
                                   preload_granted=rt.preload_granted is not None,
-                                  preload_hold=now < rt.next_preload_at, exam_projects=st.exam_projects))
+                                  preload_hold=now < rt.next_preload_at, exam_projects=st.exam_projects,
+                                  held=self.pool.held_for_exam(host.name)))
         return views
 
     def status(self) -> dict:

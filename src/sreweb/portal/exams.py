@@ -22,6 +22,16 @@ not bind them), ``waiting`` (the lead window: countdown to the start, the exam p
 from ``prestart_at``), ``starting`` (the start passed, their projects not all created yet),
 ``active``, ``ended`` (the banner, until they dismiss it), ``done`` (dismissed: unbound again,
 their exam projects hidden until closed) and ``past`` (never started, the exam over: unbound).
+
+An exam may also list **machines** of the pool (``Exam.hosts``, an ``ExamHost`` each), where it
+is taken at the keyboard with the Qt GUI: ``examhosts.py`` has the agent of each machine write
+``exam.json`` there from ``lock_at()`` (``host_lead`` before the start) and remove it at
+``release_at()`` (``host_release`` after its end-before time: until then the students keep the
+end screen of the GUI and extra minutes may still be granted); that file is what the GUI
+computes its own phases with.  An exam is thus for the web site, for machines, or for both; a
+student of the audience seen logged in at one of its machines takes it there
+(``Member.local``, the phase ``local``): the web site starts them no exam project and keeps
+their other projects hidden until the exam left that machine.
 """
 import asyncio
 import contextlib
@@ -48,8 +58,10 @@ PHASE_ACTIVE = 'active'
 PHASE_ENDED = 'ended'
 PHASE_DONE = 'done'
 PHASE_PAST = 'past'
+#: The exam is taken at a machine of the pool (``Member.local``): the web site only binds.
+PHASE_LOCAL = 'local'
 #: The phases in which an exam binds a student (only its projects, the countdowns, the banner).
-BINDING_PHASES = frozenset({PHASE_WAITING, PHASE_STARTING, PHASE_ACTIVE, PHASE_ENDED})
+BINDING_PHASES = frozenset({PHASE_WAITING, PHASE_STARTING, PHASE_ACTIVE, PHASE_ENDED, PHASE_LOCAL})
 #: The phases in which a student may open their exam projects.
 OPEN_PHASES = frozenset({PHASE_ACTIVE})
 #: The phases in which a student may start (the browser starts) their exam projects.
@@ -62,15 +74,31 @@ DIRTY_RETRY = 10.0              # a write the database refused is tried again th
 MAX_TITLE = 200
 MAX_LABS = 20
 MAX_NETWORKS = 50
+MAX_HOSTS = 500
 MAX_MINUTES = 7 * 24 * 60       # a duration, a delay, an extra time
 MAX_EVAL_INTERVAL = 86400
 FLAVOR_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+#: The keys of a definition (what ``parse_exam`` returns): the attributes of ``Exam`` of the same
+#: names, but ``hosts``, the names of the machines.
+EXAM_FIELDS = ('title', 'logins', 'groups', 'labs', 'duration', 'start_after', 'end_before', 'lead', 'pre_start',
+               'networks', 'eval_interval', 'hosts', 'host_lead', 'host_release')
 
 #: The reasons a project call of a student is refused (the 403 texts).
 REASON_NOT_STARTED = "the exam has not started yet"
 REASON_OVER = "the exam is over"
 REASON_OTHER_LAB = "exam in progress: only the exam labs are available"
 REASON_ADDRESS = "exam: your address {address} is not allowed for this exam"
+REASON_LOCAL = "you take this exam on the workstation {host}"
+
+#: The phases of a machine of an exam (``Exam.host_phase``): before its lock, locked before the
+#: start, the start passed (``starting`` until the GUI stamped ``started_at``, then ``active``),
+#: its end passed (the end screen, until the release), the exam taken off it.
+HOST_SCHEDULED = 'scheduled'
+HOST_WAITING = 'waiting'
+HOST_STARTING = 'starting'
+HOST_ACTIVE = 'active'
+HOST_ENDED = 'ended'
+HOST_CLOSED = 'closed'
 
 
 def normal_lab(name) -> str:
@@ -142,13 +170,46 @@ class Member:
     projects: dict = field(default_factory=dict)    # lab -> {'host', 'rln', 'synced': [started_at, end_at] | None}
     orphans: list = field(default_factory=list)     # [{'host', 'rln'}]: exam projects of labs no longer theirs
     address: str = ''                           # the last address seen (for the instructors)
+    local: str = ''                             # the machine of the exam they were seen logged in at
 
     def to_dict(self) -> dict:
         return {'login': self.login, 'first_seen': self.first_seen, 'started_at': self.started_at,
                 'ended_at': self.ended_at, 'extra_minutes': self.extra_minutes,
                 'labs': None if self.labs is None else [l.to_dict() for l in self.labs],
-                'dismissed_at': self.dismissed_at, 'address': self.address,
+                'dismissed_at': self.dismissed_at, 'address': self.address, 'local': self.local,
                 'projects': {lab: dict(p) for lab, p in self.projects.items()}, 'orphans': list(self.orphans)}
+
+
+@dataclass
+class ExamHost:
+    """A machine of the pool an exam is taken at with the Qt GUI: what the instructors adjusted
+    for it.  Its clock (``started_at``) lives in its ``exam.json``: the status of its agent tells
+    it, nothing is kept here."""
+    name: str
+    extra_minutes: int = 0
+    ended_at: float | None = None               # "End now" for this machine
+    closed_at: float | None = None              # the exam taken off the machine, its projects closed: for good
+    close_pending: bool = False                 # ... which its agent has not done yet
+
+    def to_dict(self) -> dict:
+        return {'name': self.name, 'extra_minutes': self.extra_minutes, 'ended_at': self.ended_at,
+                'closed_at': self.closed_at, 'close_pending': self.close_pending}
+
+    @classmethod
+    def from_dict(cls, value) -> 'ExamHost | None':
+        """The record of a stored exam; ``None`` for anything unusable."""
+        if not isinstance(value, dict) or not isinstance(value.get('name'), str) or not value['name']:
+            return None
+
+        def instant(key):
+            v = value.get(key)
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+        extra = value.get('extra_minutes')
+        return cls(name=value['name'],
+                   extra_minutes=int(extra) if isinstance(extra, (int, float)) and not isinstance(extra, bool) else 0,
+                   ended_at=instant('ended_at'), closed_at=instant('closed_at'),
+                   close_pending=value.get('close_pending') is True)
 
 
 @dataclass(eq=False)
@@ -171,6 +232,9 @@ class Exam:
     ended_at: float | None = None               # "End now" for everybody
     members: dict = field(default_factory=dict)     # login -> Member
     memberships: object = field(default=None, repr=False)
+    hosts: dict = field(default_factory=dict)       # name -> ExamHost: the machines it is taken at
+    host_lead: float = 0.0                      # seconds before start_after: exam.json written there
+    host_release: float = 0.0                   # seconds after their end-before time: removed
 
     # -- the audience ---------------------------------------------------------------------------
 
@@ -211,6 +275,79 @@ class Exam:
         """When the exam projects may be started in the background."""
         return None if self.start_after is None else self.start_after - self.pre_start
 
+    # -- the machines ---------------------------------------------------------------------------
+
+    def lock_at(self) -> float | None:
+        """When ``exam.json`` is written on the machines (``None``: from the creation)."""
+        return None if self.start_after is None else self.start_after - self.host_lead
+
+    def hold_at(self) -> float | None:
+        """From when the machines take no new web project: their lock, or the pre-start of the
+        web exam projects when it comes first (none of them may land on a machine about to be
+        locked)."""
+        return None if self.start_after is None else self.start_after - max(self.host_lead, self.pre_start)
+
+    def host_end_before(self, host: ExamHost) -> float | None:
+        """The end-before time of a machine's file: the exam's plus the extra minutes of the
+        machine, capped by an *End now* (of everybody or of the machine)."""
+        end = None if self.end_before is None else self.end_before + host.extra_minutes * 60
+        for cap in (self.ended_at, host.ended_at):
+            if cap is not None:
+                end = cap if end is None else min(end, cap)
+        return end
+
+    def release_at(self, host: ExamHost) -> float | None:
+        """When the exam leaves a machine by itself: ``host_release`` after its end-before time
+        (the end screen stays meanwhile, and extra minutes move both)."""
+        end = self.host_end_before(host)
+        return None if end is None else end + self.host_release
+
+    def host_wanted(self, host: ExamHost, now: float) -> bool:
+        """Whether ``exam.json`` belongs on the machine now: locked, not released, not closed."""
+        if host.closed_at is not None:
+            return False
+        lock, release = self.lock_at(), self.release_at(host)
+        return (lock is None or now >= lock) and (release is None or now < release)
+
+    def host_held(self, host: ExamHost, now: float) -> bool:
+        """Whether the machine is kept for the exam (no new web project, no power off): from
+        ``hold_at()`` until the exam left it."""
+        if host.closed_at is not None:
+            return False
+        hold, release = self.hold_at(), self.release_at(host)
+        return (hold is None or now >= hold) and (release is None or now < release)
+
+    def host_phase(self, host: ExamHost, now: float, started_at: float | None = None) -> str:
+        """The phase of a machine; *started_at*: the start its file records (the status of its
+        agent), which tells ``starting`` from ``active`` and gives the end of its own clock."""
+        if host.closed_at is not None:
+            return HOST_CLOSED
+        lock = self.lock_at()
+        if lock is not None and now < lock:
+            return HOST_SCHEDULED
+        end = self.host_end_at(host, started_at)
+        if end is not None and now >= end:
+            return HOST_ENDED
+        if started_at is not None:
+            return HOST_ACTIVE
+        return HOST_WAITING if self.start_after is not None and now < self.start_after else HOST_STARTING
+
+    def host_end_at(self, host: ExamHost, started_at: float | None = None) -> float | None:
+        """The end of the exam on a machine, as its GUI computes it: its end-before time, and
+        *started_at* plus the duration (and the extra minutes) once it started."""
+        end = self.host_end_before(host)
+        if started_at is not None and self.duration is not None:
+            own = started_at + max(60.0, self.duration + host.extra_minutes * 60)
+            end = own if end is None else min(end, own)
+        return end
+
+    def local_host(self, member: Member | None) -> ExamHost | None:
+        """The machine a student takes the exam at, while the exam is on it."""
+        if member is None or not member.local:
+            return None
+        host = self.hosts.get(member.local)
+        return host if host is not None and host.closed_at is None else None
+
     def end_at(self, member: Member | None) -> float | None:
         """The end of a student's exam: ``min(started + duration, end_before)`` plus their extra
         minutes (never before their start: minutes taken beyond the time left end the exam at
@@ -234,6 +371,10 @@ class Exam:
     def phase(self, member: Member | None, now: float) -> str:
         if self.start_after is not None and now < self.start_after - self.lead:
             return PHASE_SCHEDULED
+        if member is not None and member.local:
+            # taken at a machine: the web site only keeps the other projects away, until the
+            # exam left that machine (closed by an instructor, or released after its end)
+            return PHASE_LOCAL if self.local_host(member) is not None else PHASE_PAST
         end = self.end_at(member)
         if end is not None and now >= end:
             if member.dismissed_at is not None and member.dismissed_at >= end:
@@ -250,7 +391,7 @@ class Exam:
     def may_start(self, member: Member | None, now: float) -> bool:
         """Whether a student's exam clock may start now: the start passed and their exam
         projects all created (``Member.projects``)."""
-        if member is None or member.started_at is not None:
+        if member is None or member.started_at is not None or member.local:
             return False
         if self.start_after is not None and now < self.start_after:
             return False
@@ -265,7 +406,9 @@ class Exam:
         if self.start_after is not None and now < self.start_after:
             return STATUS_SCHEDULED
         if self.end_before is not None and now >= self.end_before:
-            if all((end := self.end_at(m)) is None or now >= end for m in self.members.values()):
+            if all((end := self.end_at(m)) is None or now >= end for m in self.members.values()) \
+                    and all((end := self.host_end_before(h)) is None or now >= end
+                            for h in self.hosts.values() if h.closed_at is None):
                 return STATUS_PAST
         return STATUS_RUNNING
 
@@ -283,7 +426,9 @@ class Exam:
                 'lead': _minutes(self.lead), 'pre_start': _minutes(self.pre_start),
                 'networks': [str(n) for n in self.networks], 'eval_interval': self.eval_interval,
                 'ended_at': self.ended_at, 'members': members, 'start_at': self.start_at(),
-                'prestart_at': self.prestart_at(), 'hide_at': self.hide_at()}
+                'prestart_at': self.prestart_at(), 'hide_at': self.hide_at(),
+                'hosts': sorted(self.hosts), 'host_lead': _minutes(self.host_lead),
+                'host_release': _minutes(self.host_release), 'lock_at': self.lock_at()}
 
 
 class ExamRefused(Exception):
@@ -343,12 +488,58 @@ def parse_labs(value, known_labs: set | None = None) -> list:
     return labs
 
 
+def parse_hosts(value, known_hosts: set | None = None, kept: Iterable[str] = ()) -> list:
+    """The machines of an exam: distinct host names of the pool (*known_hosts* when given; a
+    name of *kept*, the machines the exam already lists, is accepted even when the pool no
+    longer has it), in the order given."""
+    if value is None:
+        value = []
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ValueError("hosts must be a list of machine names")
+    names = [v.strip() for v in value if v.strip()]
+    if len(names) > MAX_HOSTS:
+        raise ValueError(f"at most {MAX_HOSTS} machines")
+    if len(set(names)) != len(names):
+        raise ValueError("a machine is listed twice")
+    kept = set(kept)
+    for name in names:
+        if len(name) > MAX_TITLE or not name.isprintable():
+            raise ValueError(f"invalid machine name {name!r}")
+        if known_hosts is not None and name not in known_hosts and name not in kept:
+            raise ValueError(f"unknown machine {name!r}")
+    return names
+
+
+def host_conflict(spec: dict, exams: Iterable['Exam'], now: float, *, skip: 'Exam | None' = None) -> str | None:
+    """The reason the machines of *spec* (a ``parse_exam`` result) cannot be taken: one of them
+    is held by another exam (not *skip*, the exam being edited) while this one would hold it,
+    from its lock to its release; ``None`` when they are free."""
+    if not spec['hosts'] or spec['end_before'] is None:
+        return None
+    start = spec['start_after'] - spec['host_lead'] if spec['start_after'] is not None else now
+    end = spec['end_before'] + spec['host_release']
+    for other in exams:
+        if other is skip:
+            continue
+        other_start = other.lock_at() if other.start_after is not None else other.created_at
+        for name in spec['hosts']:
+            host = other.hosts.get(name)
+            if host is None or host.closed_at is not None:
+                continue
+            other_end = other.release_at(host)
+            if other_end is not None and other_end <= now:
+                continue        # being released
+            if start < (other_end if other_end is not None else math.inf) and other_start < end:
+                return f"the machine {name} is taken by the exam «{other.title}» at that time"
+    return None
+
+
 def parse_exam(body, *, cfg: ExamsConfig, now: float, known_labs: set | None = None,
-               current: Exam | None = None) -> dict:
+               current: Exam | None = None, known_hosts: set | None = None) -> dict:
     """The definition of an exam from a request body: the fields of ``Exam`` in their internal
-    units (seconds, epoch, ``ipaddress`` networks).  With *current* (an edit) the fields the body
-    leaves out keep their value; without it the delays and the interval default to *cfg*.
-    ``ValueError`` names the first problem."""
+    units (seconds, epoch, ``ipaddress`` networks; ``hosts``: the names of its machines).  With
+    *current* (an edit) the fields the body leaves out keep their value; without it the delays
+    and the interval default to *cfg*.  ``ValueError`` names the first problem."""
     if not isinstance(body, dict):
         raise ValueError("a JSON object is expected")
     fields = {}
@@ -362,10 +553,10 @@ def parse_exam(body, *, cfg: ExamsConfig, now: float, known_labs: set | None = N
             raise ValueError(f"the title is limited to {MAX_TITLE} characters")
         fields['title'] = title
     if given('audience') or current is None:
-        logins, groups = parse_audience(body.get('audience'), '')
-        if not logins and not groups:
-            raise ValueError("the audience is empty: give logins and/or groups")
-        fields['logins'], fields['groups'] = logins, groups
+        audience = body.get('audience')
+        fields['logins'], fields['groups'] = parse_audience({} if audience is None else audience, '')
+    if given('hosts') or current is None:
+        fields['hosts'] = parse_hosts(body.get('hosts'), known_hosts, current.hosts if current is not None else ())
     if given('labs') or current is None:
         fields['labs'] = parse_labs(body.get('labs'), known_labs)
     if given('duration') or current is None:
@@ -373,7 +564,8 @@ def parse_exam(body, *, cfg: ExamsConfig, now: float, known_labs: set | None = N
     for key in ('start_after', 'end_before'):
         if given(key) or current is None:
             fields[key] = _parse_time(body.get(key), key)
-    for key, default in (('lead', cfg.lead), ('pre_start', cfg.pre_start)):
+    for key, default in (('lead', cfg.lead), ('pre_start', cfg.pre_start), ('host_lead', cfg.host_lead),
+                         ('host_release', cfg.host_release)):
         if given(key):
             fields[key] = _parse_minutes(body.get(key), key, nullable=True)
             if fields[key] is None:
@@ -404,11 +596,16 @@ def parse_exam(body, *, cfg: ExamsConfig, now: float, known_labs: set | None = N
         fields['eval_interval'] = cfg.eval_interval
     merged = dict(fields)
     if current is not None:
-        for key in ('title', 'logins', 'groups', 'labs', 'duration', 'start_after', 'end_before', 'lead', 'pre_start',
-                    'networks', 'eval_interval'):
-            merged.setdefault(key, getattr(current, key))
+        for key in EXAM_FIELDS:
+            merged.setdefault(key, list(current.hosts) if key == 'hosts' else getattr(current, key))
+    if not merged['logins'] and not merged['groups'] and not merged['hosts']:
+        raise ValueError("the audience is empty: give logins and/or groups, or choose machines")
     if merged['duration'] is None and merged['end_before'] is None:
         raise ValueError("a duration or an end time is required")
+    if merged['hosts'] and merged['end_before'] is None:
+        # the machines are released a delay after it, and one that was off during the exam
+        # must not be locked at its next boot
+        raise ValueError("an end time is required when machines are chosen")
     if merged['end_before'] is not None and merged['end_before'] <= now and (current is None or given('end_before')):
         raise ValueError("the end time is in the past")
     if merged['start_after'] is not None and merged['end_before'] is not None \
@@ -418,16 +615,18 @@ def parse_exam(body, *, cfg: ExamsConfig, now: float, known_labs: set | None = N
 
 
 def parse_selection(body) -> tuple:
-    """``(everybody, logins, groups)`` of an action on some students of an exam: ``{"all": true}``,
-    or ``{"logins": [...], "groups": [...]}`` (``parse_audience``); ``ValueError`` when neither."""
+    """``(everybody, logins, groups, hosts)`` of an action on some students and machines of an
+    exam: ``{"all": true}``, or ``{"logins": [...], "groups": [...], "hosts": [...]}``
+    (``parse_audience``, ``parse_hosts``); ``ValueError`` when nothing is selected."""
     if not isinstance(body, dict):
         raise ValueError("a JSON object is expected")
     if body.get('all') is True:
-        return True, set(), set()
+        return True, set(), set(), set()
     logins, groups = parse_audience({'logins': body.get('logins', []), 'groups': body.get('groups', [])}, '')
-    if not logins and not groups:
-        raise ValueError("select students (logins and/or groups) or all")
-    return False, logins, groups
+    hosts = set(parse_hosts(body.get('hosts')))
+    if not logins and not groups and not hosts:
+        raise ValueError("select students (logins and/or groups), machines or all")
+    return False, logins, groups, hosts
 
 
 def parse_extra_minutes(value) -> int:
@@ -521,6 +720,8 @@ class Exams:
         binding = self.for_login(login, department, now)
         if binding is not None:
             exam, member, phase = binding
+            if phase == PHASE_LOCAL:
+                return False, REASON_LOCAL.format(host=member.local)
             if lab_of_rln(rln) not in exam.lab_names(login):
                 return False, REASON_OTHER_LAB
             if phase == PHASE_ENDED:
@@ -540,6 +741,8 @@ class Exams:
         if binding is None:
             return True, ''
         exam, member, phase = binding
+        if phase == PHASE_LOCAL:
+            return False, REASON_LOCAL.format(host=member.local)
         if lab not in exam.lab_names(login):
             return False, REASON_OTHER_LAB
         if phase == PHASE_ENDED:
@@ -553,7 +756,8 @@ class Exams:
 
     def visible_rows(self, login: str, department: str, rows: list, now: float | None = None) -> list:
         """The project rows a student sees: during an exam only its labs' projects (each row
-        marked ``exam``), the exam projects of an exam over for them hidden otherwise."""
+        marked ``exam``; never a project on a machine of the exam: that one belongs to the Qt
+        GUI there), the exam projects of an exam over for them hidden otherwise."""
         now = self._at(now)
         binding = self.for_login(login, department, now)
         if binding is not None:
@@ -563,7 +767,7 @@ class Exams:
             labs = exam.lab_names(login)
             kept = []
             for row in rows:
-                if normal_lab(row.get('lab_name')) in labs:
+                if normal_lab(row.get('lab_name')) in labs and row.get('host') not in exam.hosts:
                     kept.append(dict(row, exam={'id': exam.id, 'title': exam.title}))
             return kept
         hidden = {p.get('rln') for e in self._exams.values() for m in [e.members.get(login)] if m is not None
@@ -616,7 +820,8 @@ class Exams:
                 'prestart_at': exam.prestart_at(), 'hide_at': exam.hide_at(),
                 'started_at': member.started_at if member else None, 'end_at': exam.end_at(member),
                 'lead': exam.lead, 'labs': labs, 'address_allowed': allowed, 'address': address,
-                'dismissable': phase == PHASE_ENDED}
+                'dismissable': phase == PHASE_ENDED,
+                'local_host': member.local if member is not None and phase == PHASE_LOCAL else None}
 
     # -- life cycle -----------------------------------------------------------------------------
 
@@ -625,7 +830,9 @@ class Exams:
                     logins=set(spec['logins']), groups=set(spec['groups']), labs=list(spec['labs']),
                     duration=spec['duration'], start_after=spec['start_after'], end_before=spec['end_before'],
                     lead=spec['lead'], pre_start=spec['pre_start'], networks=list(spec['networks']),
-                    eval_interval=spec['eval_interval'], memberships=self.memberships)
+                    eval_interval=spec['eval_interval'], memberships=self.memberships,
+                    hosts={name: ExamHost(name) for name in spec['hosts']},
+                    host_lead=spec['host_lead'], host_release=spec['host_release'])
         return exam
 
     async def create(self, creator: Identity, spec: dict, now: float | None = None) -> Exam:
@@ -638,10 +845,11 @@ class Exams:
         else:
             exam.id, self._next_id = self._next_id, self._next_id + 1
         self._exams[exam.id] = exam
-        log.info("exam %d %r created by %s: labs %s, start %s, end %s, duration %s", exam.id, exam.title,
-                 creator.login, [l.lab for l in exam.labs], iso_utc(exam.start_after) if exam.start_after else 'now',
+        log.info("exam %d %r created by %s: labs %s, start %s, end %s, duration %s, %d machine(s)", exam.id,
+                 exam.title, creator.login, [l.lab for l in exam.labs],
+                 iso_utc(exam.start_after) if exam.start_after else 'now',
                  iso_utc(exam.end_before) if exam.end_before else '-',
-                 f"{exam.duration / 60:g} min" if exam.duration else '-')
+                 f"{exam.duration / 60:g} min" if exam.duration else '-', len(exam.hosts))
         await self.resync(self.members_of(exam) | self.presence.logins())
         return exam
 
@@ -652,13 +860,21 @@ class Exams:
         now = self._at(now)
         exam = self._require(exam_id)
         before = self.members_of(exam)
-        for key in ('title', 'logins', 'groups', 'labs', 'duration', 'start_after', 'end_before', 'lead', 'pre_start',
-                    'networks', 'eval_interval'):
-            setattr(exam, key, spec[key])
+        for key in EXAM_FIELDS:
+            if key != 'hosts':
+                setattr(exam, key, spec[key])
+        # the machines: those still listed keep their record (minutes, End now, closed), the
+        # new ones start afresh; a student seen at a machine no longer listed is back on the web
+        exam.hosts = {name: exam.hosts.get(name) or ExamHost(name) for name in spec['hosts']}
+        moved = [m for m in exam.members.values() if m.local and m.local not in exam.hosts]
+        for m in moved:
+            m.local = ''
         if resume:
             exam.ended_at = None
         exam.updated_at = now
         await self._persist_exam(exam)
+        for m in moved:
+            await self._persist_member(exam, m)
         log.info("exam %d %r edited", exam.id, exam.title)
         await self.resync(before | self.members_of(exam) | self.presence.logins())
         return exam
@@ -677,32 +893,66 @@ class Exams:
         await self.resync(affected)
         return exam
 
-    async def end_now(self, exam_id, logins: set | None, now: float | None = None) -> Exam:
-        """The exam over now, for everybody (*logins* ``None``) or for the students given."""
+    @staticmethod
+    def open_hosts(exam: Exam, names: Iterable[str]) -> list:
+        """The records of the machines *names* of an exam an action applies to; ``ValueError``
+        for a name that is not one of its machines, or for a closed one (the exam left it for
+        good: unselect and reselect it to run the exam there again)."""
+        hosts = []
+        for name in sorted(names):
+            host = exam.hosts.get(name)
+            if host is None:
+                raise ValueError(f"{name} is not a machine of this exam")
+            if host.closed_at is not None:
+                raise ValueError(f"the exam is closed on the machine {name}")
+            hosts.append(host)
+        return hosts
+
+    @staticmethod
+    def _at_hosts(exam: Exam, hosts: Iterable[ExamHost]) -> set:
+        """The students taking the exam at one of the machines given."""
+        names = {h.name for h in hosts}
+        return {m.login for m in exam.members.values() if m.local in names}
+
+    async def end_now(self, exam_id, logins: set | None, hosts: set | None = None,
+                      now: float | None = None) -> Exam:
+        """The exam over now, for everybody (*logins* and *hosts* ``None``) or for the students
+        and the machines given."""
         now = self._at(now)
         exam = self._require(exam_id)
-        if logins is None:
+        everybody = logins is None and hosts is None
+        if everybody:
             exam.ended_at = now
             exam.updated_at = now
             await self._persist_exam(exam)
             affected = self.members_of(exam)
         else:
-            for login in logins:
+            machines = self.open_hosts(exam, hosts or ())
+            for login in logins or ():
                 m = exam.member(login, create=True)
                 m.ended_at = now
                 await self._persist_member(exam, m)
-            affected = set(logins)
-        log.info("exam %d ended now for %s", exam.id, 'everybody' if logins is None else sorted(logins))
+            for host in machines:
+                host.ended_at = now
+            if machines:
+                exam.updated_at = now
+                await self._persist_exam(exam)
+            affected = set(logins or ()) | self._at_hosts(exam, machines)
+        log.info("exam %d ended now for %s", exam.id,
+                 'everybody' if everybody else sorted(logins or ()) + [f"machine {n}" for n in sorted(hosts or ())])
         await self.resync(affected)
         return exam
 
-    async def adjust(self, exam_id, logins: set | None, extra_minutes: int, now: float | None = None) -> Exam:
-        """*extra_minutes* (negative to reduce) for everybody — the duration and the end time
-        shifted, an End now lifted — or for the students given — their extra minutes, an End
-        now of theirs lifted."""
+    async def adjust(self, exam_id, logins: set | None, extra_minutes: int, hosts: set | None = None,
+                     now: float | None = None) -> Exam:
+        """*extra_minutes* (negative to reduce) for everybody (*logins* and *hosts* ``None``) —
+        the duration and the end time shifted, an End now lifted — or for the students and the
+        machines given — their extra minutes, an End now of theirs lifted.  The machines follow
+        while the exam is on them: minutes granted before their release resume it there."""
         now = self._at(now)
         exam = self._require(exam_id)
-        if logins is None:
+        everybody = logins is None and hosts is None
+        if everybody:
             if exam.duration is not None:
                 exam.duration = max(60.0, exam.duration + extra_minutes * 60)
             if exam.end_before is not None:
@@ -712,15 +962,69 @@ class Exams:
             await self._persist_exam(exam)
             affected = self.members_of(exam)
         else:
-            for login in logins:
+            machines = self.open_hosts(exam, hosts or ())
+            for login in logins or ():
                 m = exam.member(login, create=True)
                 m.extra_minutes += extra_minutes
                 m.ended_at = None
                 await self._persist_member(exam, m)
-            affected = set(logins)
-        log.info("exam %d: %+d min for %s", exam.id, extra_minutes, 'everybody' if logins is None else sorted(logins))
+            for host in machines:
+                host.extra_minutes += extra_minutes
+                host.ended_at = None
+            if machines:
+                exam.updated_at = now
+                await self._persist_exam(exam)
+            affected = set(logins or ()) | self._at_hosts(exam, machines)
+        log.info("exam %d: %+d min for %s", exam.id, extra_minutes,
+                 'everybody' if everybody else sorted(logins or ()) + [f"machine {n}" for n in sorted(hosts or ())])
         await self.resync(affected)
         return exam
+
+    async def close_hosts(self, exam_id, names: Iterable[str] | None = None, now: float | None = None) -> list:
+        """The exam taken off its machines (*names* ``None``: every one it is still on), their
+        exam projects to be closed: the records closed for good, ``close_pending`` until the
+        agent of each machine did it (``examhosts.py``).  The names closed now."""
+        now = self._at(now)
+        exam = self._require(exam_id)
+        if names is None:
+            machines = [h for h in exam.hosts.values() if h.closed_at is None]
+        else:
+            machines = self.open_hosts(exam, names)
+        for host in machines:
+            host.closed_at = now
+            host.close_pending = True
+        if machines:
+            exam.updated_at = now
+            await self._persist_exam(exam)
+            log.info("exam %d closed on the machine(s) %s", exam.id, sorted(h.name for h in machines))
+            await self.resync(self._at_hosts(exam, machines))
+        return [h.name for h in machines]
+
+    async def host_closed(self, exam: Exam, name: str):
+        """The agent of a machine closed the exam there (or had none): nothing left to ask."""
+        host = exam.hosts.get(name)
+        if host is not None and host.close_pending:
+            host.close_pending = False
+            await self._persist_exam(exam)
+
+    async def set_local(self, exam: Exam, login: str, host: str, now: float | None = None) -> Member | None:
+        """A student of the audience is logged in at the machine *host* of the exam: they take
+        it there (``Member.local``), unless their clock already runs on the web site.  The
+        member when that changed (their pages are told), else ``None``."""
+        now = self._at(now)
+        record = exam.hosts.get(host)
+        if record is None or record.closed_at is not None:
+            return None
+        m = exam.member(login, create=True)
+        if m.started_at is not None or m.local == host:
+            return None
+        m.local = host
+        if m.first_seen is None:
+            m.first_seen = now
+        log.info("exam %d: %s takes it on the machine %s", exam.id, login, host)
+        await self._persist_member(exam, m)
+        await self.resync({login})
+        return m
 
     async def set_labs(self, exam_id, logins: set | None, labs: list, now: float | None = None) -> Exam:
         """The labs of the exam (*logins* ``None``: every student's, the per-student lists
@@ -803,8 +1107,8 @@ class Exams:
             rln, host = row.get('running_lab_name'), row.get('host')
             if lab not in labs or not isinstance(rln, str) or not isinstance(host, str):
                 continue
-            if row.get('owner', login) != login:
-                continue
+            if row.get('owner', login) != login or host in exam.hosts:
+                continue        # a project on a machine of the exam is the Qt GUI's, not a web one
             current = m.projects.get(lab)
             if current is None or current.get('rln') != rln or current.get('host') != host:
                 m.projects[lab] = {'host': host, 'rln': rln, 'synced': None}
@@ -898,7 +1202,8 @@ class Exams:
         countdown and the automatic starts at once instead of at the next fallback poll."""
         login = None if member is None else member.login
         return (exam.id, phase, exam.start_after, exam.pre_start, exam.end_at(member),
-                tuple(lab.lab for lab in exam.labs_of(login)), exam.title)
+                tuple(lab.lab for lab in exam.labs_of(login)), exam.title,
+                member.local if member is not None else '')
 
     async def resync(self, logins: Iterable[str], now: float | None = None):
         """For each login, the exam binding them now compared with what their pages were told

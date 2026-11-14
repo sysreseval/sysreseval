@@ -773,6 +773,22 @@ class Mock:
                 if entry.is_dir() and (not self.user_mode or project_accessible(entry.name, self.username)):
                     self.remove_project(entry.name)
 
+    def action_end_exam(self):
+        """``sre end-exam``: ``ended_at`` stamped into ``exam.json`` (rewritten in place, as the
+        CLI does), then the final evaluation of every running project: one archive each."""
+        exam_path = Path(params.sre_pub_dir) / params.exam_json_name
+        if not exam_path.exists():
+            error_quit("exam.json not found; run 'sre set-exam' first")
+        exam = json.loads(exam_path.read_text())
+        exam[params.exam_ended_at] = datetime.datetime.now().isoformat()
+        exam_path.write_text(json.dumps(exam, indent=4))
+        projects = Path(params.sre_projects_dir)
+        if projects.is_dir():
+            for entry in sorted(projects.iterdir()):
+                if entry.is_dir() and (entry / params.info_json_name).exists():
+                    parts, elements, mark = stub_grades()
+                    self.write_archive(entry.name, datetime.datetime.now(), parts, elements, mark, auto_eval=False)
+
     def action_save(self):
         self.not_allowed_in_exam_mode()
         args = self.args
@@ -989,6 +1005,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser('stop-all')
 
     subparsers.add_parser('wipe')
+
+    subparsers.add_parser('end-exam')
 
     parser_connect = subparsers.add_parser('connect')
     parser_connect.add_argument('--shell', metavar='shell', default=None)

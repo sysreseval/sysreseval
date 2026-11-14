@@ -153,6 +153,8 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'pre_start': '-5m'}}, 'pre_start'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'eval_interval': 0}}, 'eval_interval'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'close_after': -1}}, 'close_after'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'host_lead': -1}}, 'host_lead'),
+        ({'secret': SECRET, 'hosts': [HOST], 'exams': {'host_release': 'later'}}, 'exams.host_release'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'table': 'bad-name'}}, 'exams.table'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'keep': -1}}, 'keep'),
         ({'secret': SECRET, 'hosts': [HOST], 'exams': {'typo': 1}}, 'typo'),
@@ -253,6 +255,7 @@ class TestWebConfig:
         cfg = web_config_from_dict(base)
         exams = cfg.exams
         assert (exams.lead, exams.pre_start, exams.eval_interval, exams.close_after) == (600, 300, 60, 3600)
+        assert (exams.host_lead, exams.host_release) == (600, 600)     # the machines of an exam
         assert (exams.table, exams.members_table, exams.keep) == ('exams', 'exams_members', 0)
         assert not cfg.exams_available                    # no database: the exams cannot be stored
         cfg = web_config_from_dict({**base, 'exams': {'lead': '15m', 'pre_start': 120, 'eval_interval': '2m',

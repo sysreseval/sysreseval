@@ -696,8 +696,9 @@ function applyExam(examState) {
   }
   const lab = labOfRunningLabName(body.dataset.rln || '');
   const examLab = (exam.labs || []).some((entry) => entry.lab_name === lab);
-  if (exam.address_allowed === false || !examLab || exam.phase === 'waiting' || exam.phase === 'starting') {
-    window.location.assign('/projects');
+  if (exam.address_allowed === false || !examLab || exam.phase === 'waiting' || exam.phase === 'starting'
+      || exam.phase === 'local') {
+    window.location.assign('/projects');     // local: the exam is taken at a workstation, nothing to open here
     return;
   }
   closeButton.hidden = true;

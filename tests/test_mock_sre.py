@@ -2,6 +2,7 @@
 agent: every subcommand is run as a subprocess (``<python> tests/mock_sre.py --user ...``) with a
 temporary ``SRE_PUB_DIR``, the way the agent spawns ``sre``.  ``connect`` on a machine is driven
 through a pty.  No Docker, no Kathara, no root."""
+import datetime
 import fcntl
 import importlib.util
 import json
@@ -870,6 +871,22 @@ class TestStop:
         assert not project_dir(pub, project).exists() and project_dir(pub, other).is_dir()
         assert run_mock(pub, 'stop-all', user=False).returncode == 0
         assert list((pub / 'projects').iterdir()) == []
+
+    def test_end_exam_stamps_the_end_and_evaluates_every_project(self, pub, project):
+        """``sre end-exam``: ``ended_at`` written into exam.json in place, the other keys kept,
+        and one archive per running project; refused without the file."""
+        completed = run_mock(pub, 'end-exam', user=False)
+        assert completed.returncode == 1 and b'exam.json not found' in completed.stderr
+        exam_file = pub / params.exam_json_name
+        exam_file.write_text(json.dumps({params.exam_duration: 90, params.exam_started_at: '2026-11-16T09:00:00'}))
+        inode = exam_file.stat().st_ino
+        assert run_mock(pub, 'end-exam', user=False).returncode == 0
+        exam = json.loads(exam_file.read_text())
+        assert exam[params.exam_duration] == 90 and exam[params.exam_started_at] == '2026-11-16T09:00:00'
+        assert datetime.datetime.fromisoformat(exam[params.exam_ended_at])
+        assert exam_file.stat().st_ino == inode
+        archives = [p.name for p in (pub / 'archives').iterdir()]
+        assert len(archives) == 1 and archives[0].endswith(f"_{project}.zst")
 
 
 # ---------------------------------------------------------------------------------------------

@@ -4,6 +4,7 @@ here.  Every operation is one transaction on a fresh connection of *connect*
 (``accessdb.connector``, or a fake), run in a thread by the registry; the two tables are
 created at the first operation when they are missing (the account needs CREATE then; the
 documentation gives the DDL to run by hand).  Like ``groups.GroupStore``."""
+import hashlib
 import json
 import logging
 import time
@@ -11,7 +12,7 @@ from datetime import datetime
 from typing import Callable
 
 from .accessdb import HistoryError, ensure_table, transaction, utc_datetime, epoch
-from .exams import Exam, ExamLab, Member
+from .exams import Exam, ExamHost, ExamLab, Member
 from ..config import AccessDatabaseConfig, ExamsConfig, parse_networks, ConfigError
 
 log = logging.getLogger('sreweb.portal')
@@ -79,15 +80,33 @@ def _ts(value) -> float | None:
 
 
 def exam_details(exam: Exam) -> str:
+    """The JSON of the ``details`` column: what has no column of its own, the machines of the
+    exam (``ExamHost``: their adjustments) and their two delays included."""
     return json.dumps({'audience': {'logins': sorted(exam.logins), 'groups': sorted(exam.groups)},
                        'labs': [l.to_dict() for l in exam.labs], 'lead': exam.lead, 'pre_start': exam.pre_start,
-                       'networks': [str(n) for n in exam.networks], 'eval_interval': exam.eval_interval},
+                       'networks': [str(n) for n in exam.networks], 'eval_interval': exam.eval_interval,
+                       'hosts': [h.to_dict() for h in exam.hosts.values()],
+                       'host_lead': exam.host_lead, 'host_release': exam.host_release},
                       separators=(',', ':'))
 
 
 def member_details(m: Member) -> str:
     return json.dumps({'labs': None if m.labs is None else [l.to_dict() for l in m.labs],
-                       'projects': m.projects, 'orphans': m.orphans}, separators=(',', ':'))
+                       'projects': m.projects, 'orphans': m.orphans, 'local': m.local}, separators=(',', ':'))
+
+
+def _hosts(value) -> dict:
+    """The machines of a stored exam (none in the rows written before they existed)."""
+    hosts = {}
+    for item in value if isinstance(value, list) else []:
+        host = ExamHost.from_dict(item)
+        if host is not None:
+            hosts[host.name] = host
+    return hosts
+
+
+def _seconds(value, default: float) -> float:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0 else default
 
 
 def _labs(value) -> list | None:
@@ -125,7 +144,9 @@ def exam_of_row(row, cfg: ExamsConfig) -> Exam:
                 start_after=_ts(row[5]), end_before=_ts(row[6]),
                 lead=float(details.get('lead', cfg.lead)), pre_start=float(details.get('pre_start', cfg.pre_start)),
                 networks=networks, eval_interval=float(details.get('eval_interval', cfg.eval_interval)),
-                ended_at=_ts(row[8]))
+                ended_at=_ts(row[8]), hosts=_hosts(details.get('hosts')),
+                host_lead=_seconds(details.get('host_lead'), cfg.host_lead),
+                host_release=_seconds(details.get('host_release'), cfg.host_release))
 
 
 def member_of_row(row) -> tuple:
@@ -142,7 +163,8 @@ def member_of_row(row) -> tuple:
                dismissed_at=_ts(row[5]), extra_minutes=int(row[6] or 0), address=str(row[7] or ''),
                labs=_labs(details.get('labs')),
                projects={str(lab): dict(p) for lab, p in projects.items() if isinstance(p, dict)},
-               orphans=[dict(o) for o in orphans if isinstance(o, dict)])
+               orphans=[dict(o) for o in orphans if isinstance(o, dict)],
+               local=details['local'] if isinstance(details.get('local'), str) else '')
     return int(row[0]), m
 
 
@@ -242,6 +264,13 @@ class ExamStore:
 
     def status(self) -> dict:
         return {'connected': self.connected, 'last_error': self.last_error}
+
+    def origin(self) -> str:
+        """What tells the exams of this portal from another's on the machines (the marker of
+        the ``exam.json`` their agents write): a digest of where the exams are stored, so that
+        two portals on the same database are one, and two databases never share an exam id."""
+        where = '\n'.join((self.db.unix_socket or self.db.host, str(self.db.port), self.db.name, self.table))
+        return hashlib.sha256(where.encode('utf-8')).hexdigest()[:16]
 
     def describe(self) -> str:
         where = self.db.unix_socket or f"{self.db.host}:{self.db.port}"

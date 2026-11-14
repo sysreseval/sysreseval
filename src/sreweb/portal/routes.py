@@ -32,8 +32,9 @@ from .bbb import BbbError, BbbUnavailable
 from .webconf import (Webconfs, Room, RoomGone, Refused, InvitationGone, ROOM_ID_RE, ROLE_NAMES, MAX_REQUEST_TEXT,
                       check_tab)
 from .exams import (Exams, Exam, Member, PHASE_STARTING, START_PHASES, REASON_ADDRESS, lab_of_rln, normal_lab,
-                    parse_exam, parse_labs, parse_selection, parse_extra_minutes)
+                    parse_exam, parse_labs, parse_selection, parse_extra_minutes, host_conflict)
 from .examprojects import ExamProjects, exam_payload, instructor_identity
+from .examhosts import ExamHosts
 from .pool import LAB_KIND_LAB, LAB_SORT_NAME
 from .ratelimit import RateLimiter
 from .relay import Relay, RELAYED_KEY
@@ -137,7 +138,7 @@ class Routes:
                  presentations: Presentations | None = None, roles=None, focuses: Focuses | None = None,
                  archives: ArchiveStore | None = None, memberships: Memberships | None = None,
                  exams: Exams | None = None, exam_projects: ExamProjects | None = None,
-                 webconfs: Webconfs | None = None):
+                 exam_hosts: ExamHosts | None = None, webconfs: Webconfs | None = None):
         self.cfg = cfg
         self.csp, self.csp_framed = security_policies(cfg)
         self.pool = pool
@@ -155,6 +156,9 @@ class Routes:
         # projects on the agents (examprojects.ExamProjects, None = the agents are not told)
         self.exams = exams if exams is not None else Exams(self.presence, memberships=self.memberships, cfg=cfg.exams)
         self.exam_projects = exam_projects
+        # ... and their machines (examhosts.ExamHosts: exam.json on the pool hosts an exam lists;
+        # None = no machine is ever told)
+        self.exam_hosts = exam_hosts
         # the web conferences (webconf.Webconfs: the BigBlueButton rooms; disabled without [bbb])
         self.webconfs = webconfs if webconfs is not None else Webconfs(self.presence, None)
         self.localedirs = localedirs
@@ -400,6 +404,18 @@ class Routes:
         if not allowed:
             raise ExamRefusal(reason)
 
+    async def _note_local(self, identity: Identity):
+        """A student logged in at the keyboard of a machine of an exam of theirs takes it there
+        (``Member.local``): seen here, on their request, before the pass of ``ExamHosts`` (the
+        automatic starts of their Projects page would come first)."""
+        if self.exam_hosts is not None and not identity.is_instructor:
+            await self.exam_hosts.note_request(identity)
+
+    async def _kick_hosts(self):
+        """After a change of an exam: its machines told now (``ExamHosts.kick``)."""
+        if self.exam_hosts is not None:
+            await self.exam_hosts.kick()
+
     async def _sync_exam_member(self, exam: Exam, member: Member):
         """The agents of a student's exam projects told their exam object (best effort: the
         reconcile pass of ``ExamProjects`` tries again)."""
@@ -567,7 +583,8 @@ class Routes:
             request, exams_database=self.exams.store is not None,
             exams_available=self.cfg.auth.mode != AUTH_ANONYMOUS,
             exam_defaults={'lead': exams.lead / 60, 'pre_start': exams.pre_start / 60,
-                           'eval_interval': exams.eval_interval}))
+                           'eval_interval': exams.eval_interval, 'host_lead': exams.host_lead / 60,
+                           'host_release': exams.host_release / 60}))
 
     async def project_page(self, request):
         if not request.get(IDENTITY_KEY):
@@ -744,6 +761,7 @@ class Routes:
         rows = await self.pool.projects_of(identity)
         if identity.is_instructor:
             return web.json_response(rows)
+        await self._note_local(identity)
         binding = self._exam_binding(identity)
         if binding is not None:
             exam, member, phase = binding
@@ -1385,6 +1403,7 @@ class Routes:
         # browsers of the student start the same lab); the agent gets the exam object
         exam_member = None
         if identity.role != ROLE_INSTRUCTOR:
+            await self._note_local(identity)
             binding = self._exam_binding(identity)
             if binding is not None and logged is not None:
                 logged.update(exam=binding[0].id)      # a refused start names the exam too
@@ -1579,6 +1598,7 @@ class Routes:
         projects are being started, their rows are read here too (the clock starts once every
         lab has one)."""
         identity = self._require_identity(request)
+        await self._note_local(identity)
         binding = self._exam_binding(identity)
         if binding is None:
             return web.json_response({'now': self.exams.clock(), 'exam': None})
@@ -1641,17 +1661,29 @@ class Routes:
         now = self.exams.clock() if now is None else now
         return exam.to_dict(now, len(self.exams.members_of(exam)))
 
-    async def _exam_selection(self, exam: Exam, body: dict) -> set | None:
-        """The students an action applies to: ``None`` for everybody, else the logins resolved
-        now (400 when the selection is malformed or names somebody outside the audience)."""
+    async def _exam_selection(self, exam: Exam, body: dict) -> tuple:
+        """``(logins, hosts)`` an action applies to: ``(None, None)`` for everybody, else the
+        logins resolved now and the machines named (400 when the selection is malformed, names
+        somebody outside the audience, a machine that is not the exam's or one it is closed
+        on)."""
         try:
-            everybody, logins, groups = parse_selection(body)
+            everybody, logins, groups, hosts = parse_selection(body)
             if everybody:
-                return None
-            await self.memberships.refresh()
-            return self.exams.resolve(exam, logins, groups)
+                return None, None
+            chosen = set()
+            if logins or groups:
+                await self.memberships.refresh()
+                chosen = self.exams.resolve(exam, logins, groups)
+            self.exams.open_hosts(exam, hosts)
+            return chosen, hosts
         except ValueError as e:
             raise PoolError(400, str(e))
+
+    def _host_conflict(self, spec: dict, skip: Exam | None = None):
+        """409 when a machine of the definition is held by another exam at that time."""
+        conflict = host_conflict(spec, self.exams.listing(), self.exams.clock(), skip=skip)
+        if conflict is not None:
+            raise PoolError(409, conflict)
 
     async def _sync_exam(self, exam: Exam, logins: set | None = None):
         for login in sorted(exam.members if logins is None else logins):
@@ -1675,15 +1707,18 @@ class Routes:
         body = await self._group_body(request)
         try:
             spec = parse_exam(body, cfg=self.cfg.exams, now=self.exams.clock(),
-                              known_labs=await self._known_labs(identity))
+                              known_labs=await self._known_labs(identity), known_hosts=set(self.pool.hosts))
         except ValueError as e:
             raise PoolError(400, str(e))
+        self._host_conflict(spec)
         await self.memberships.refresh()
         try:
             exam = await self.exams.create(identity, spec)
         except HistoryError as e:
             return self._exams_db_error(e)
-        self._log_exam(request, action='create', exam=exam.id, count=len(self.exams.members_of(exam)))
+        await self._kick_hosts()
+        self._log_exam(request, action='create', exam=exam.id, count=len(self.exams.members_of(exam)),
+                       hosts=len(exam.hosts))
         return web.json_response(self._exam_summary(exam), status=201)
 
     async def api_exam_get(self, request):
@@ -1694,7 +1729,15 @@ class Routes:
         exam = self._exam(request)
         await self.memberships.refresh()
         now = self.exams.clock()
-        rows = await self.exam_projects.rows_of(exam, identity) if self.exam_projects is not None else {}
+        # one listing of the pool for the two tables: the students' exam projects and those of
+        # the Qt GUI on the machines of the exam
+        listing = await self.pool.projects_of(identity, all_projects=True) \
+            if self.exam_projects is not None or (self.exam_hosts is not None and exam.hosts) else []
+        rows = await self.exam_projects.rows_of(exam, identity, listing) if self.exam_projects is not None else {}
+        hosts = self.exam_hosts.rows_of(exam, listing, now) if self.exam_hosts is not None else []
+        for row in hosts:
+            row['sessions'] = [{'login': login, 'fullname': self.memberships.person_row(login).get('fullname', '')}
+                               for login in row['sessions']]
         members = []
         for login in sorted(self.exams.members_of(exam)):
             m = exam.members.get(login)
@@ -1709,10 +1752,11 @@ class Routes:
                             'ended_at': m.ended_at if m is not None else None,
                             'dismissed_at': m.dismissed_at if m is not None else None,
                             'extra_minutes': m.extra_minutes if m is not None else 0,
+                            'local': m.local if m is not None else '',
                             'labs': [l.to_dict() for l in exam.labs_of(login)], 'projects': rows.get(login, [])})
         job = self.exam_projects.closing_of(exam) if self.exam_projects is not None else None
         return web.json_response({**self._exam_summary(exam, now), 'members': members, 'now': now,
-                                  'closing': job.to_dict() if job is not None else None})
+                                  'closing': job.to_dict() if job is not None else None, 'machines': hosts})
 
     async def api_exam_update(self, request):
         """Instructors: the definition edited (the keys given replace the current ones; the
@@ -1724,47 +1768,59 @@ class Routes:
         body = await self._group_body(request)
         try:
             known = await self._known_labs(identity) if 'labs' in body else None
-            spec = parse_exam(body, cfg=self.cfg.exams, now=self.exams.clock(), known_labs=known, current=exam)
+            spec = parse_exam(body, cfg=self.cfg.exams, now=self.exams.clock(), known_labs=known, current=exam,
+                              known_hosts=set(self.pool.hosts))
         except ValueError as e:
             raise PoolError(400, str(e))
+        self._host_conflict(spec, skip=exam)
         await self.memberships.refresh()
         exam = await self.exams.update(exam.id, spec, resume='end_before' in body or 'duration' in body)
         await self._sync_exam(exam)
-        self._log_exam(request, action='update', exam=exam.id, count=len(self.exams.members_of(exam)))
+        await self._kick_hosts()
+        self._log_exam(request, action='update', exam=exam.id, count=len(self.exams.members_of(exam)),
+                       hosts=len(exam.hosts))
         return web.json_response(self._exam_summary(exam))
 
     async def api_exam_delete(self, request):
         """Instructors: the exam deleted; its projects become normal projects, or are closed
-        with ``?close=1``."""
+        with ``?close=1``; its file is taken off its machines either way (their exam projects
+        left as plain ones, or stopped)."""
         self._require_instructor(request)
         exam = self._exam(request)
         self._log_exam(request, action='delete', exam=exam.id)
         closed, closing, count = 0, None, 0
+        close = request.query.get('close', '') in ('1', 'true')
         if self.exam_projects is not None:
-            if request.query.get('close', '') in ('1', 'true'):
+            if close:
                 job = await self.exam_projects.close(exam, set(exam.members))   # goes on after the deletion
                 closed, closing, count = job.closed, job.to_dict(), job.total
             else:
                 await self.exam_projects.release(exam)
+        if self.exam_hosts is not None:
+            await self.exam_hosts.release(exam, close)      # in the background too
         await self.exams.delete(exam.id)
-        self._log_exam(request, action='delete', exam=exam.id, count=count)
+        self._log_exam(request, action='delete', exam=exam.id, count=count, hosts=len(exam.hosts))
         return web.json_response({'ok': True, 'closed': closed, 'closing': closing})
 
     async def api_exam_end(self, request):
-        """Instructors: the exam over now, for everybody (no selection) or for the students
-        selected."""
+        """Instructors: the exam over now, for everybody (no selection) or for the students and
+        the machines selected."""
         self._require_instructor(request)
         exam = self._exam(request)
         self._log_exam(request, action='end', exam=exam.id)
         body = await self._group_body(request)
-        logins = None if not body else await self._exam_selection(exam, body)
-        exam = await self.exams.end_now(exam.id, logins)
+        logins, hosts = (None, None) if not body else await self._exam_selection(exam, body)
+        exam = await self.exams.end_now(exam.id, logins, hosts)
         await self._sync_exam(exam, logins)
-        self._log_exam(request, action='end', exam=exam.id, count=len(logins) if logins is not None else 0)
+        await self._kick_hosts()
+        self._log_exam(request, action='end', exam=exam.id, count=len(logins) if logins is not None else 0,
+                       hosts=len(hosts) if hosts is not None else 0)
         return web.json_response(self._exam_summary(exam))
 
     async def api_exam_adjust(self, request):
-        """Instructors: minutes added (or taken) to everybody or to the students selected."""
+        """Instructors: minutes added (or taken) to everybody or to the students and the
+        machines selected (a machine follows while the exam is on it: minutes granted before
+        its release resume the exam there)."""
         self._require_instructor(request)
         exam = self._exam(request)
         self._log_exam(request, action='adjust', exam=exam.id)
@@ -1773,11 +1829,12 @@ class Routes:
             minutes = parse_extra_minutes(body.get('extra_minutes'))
         except ValueError as e:
             raise PoolError(400, str(e))
-        logins = await self._exam_selection(exam, body)
-        exam = await self.exams.adjust(exam.id, logins, minutes)
+        logins, hosts = await self._exam_selection(exam, body)
+        exam = await self.exams.adjust(exam.id, logins, minutes, hosts)
         await self._sync_exam(exam, logins)
+        await self._kick_hosts()
         self._log_exam(request, action='adjust', exam=exam.id, minutes=minutes,
-                       count=len(logins) if logins is not None else 0)
+                       count=len(logins) if logins is not None else 0, hosts=len(hosts) if hosts is not None else 0)
         return web.json_response(self._exam_summary(exam))
 
     async def api_exam_labs(self, request):
@@ -1791,26 +1848,40 @@ class Routes:
             labs = parse_labs(body.get('labs'), await self._known_labs(identity))
         except ValueError as e:
             raise PoolError(400, str(e))
-        logins = await self._exam_selection(exam, body)
+        logins, hosts = await self._exam_selection(exam, body)
+        if hosts:
+            # the labs of a machine are those of the exam: one file for whoever sits there
+            raise PoolError(400, "the labs are changed for students or for everybody, not for a machine")
         exam = await self.exams.set_labs(exam.id, logins, labs)
         await self._sync_exam(exam, logins)
+        await self._kick_hosts()
         self._log_exam(request, action='labs', exam=exam.id, count=len(logins) if logins is not None else 0)
         return web.json_response(self._exam_summary(exam))
 
     async def api_exam_close_projects(self, request):
-        """Instructors: the exam projects of everybody or of the students selected closed."""
+        """Instructors: the exam projects of everybody or of the students selected closed; the
+        exam closed on its machines (all of them, or those selected): their agents stop the
+        exam projects of the Qt GUI and remove ``exam.json`` (``machines``: the names closed
+        now; the machines table tells when each is done)."""
         self._require_instructor(request)
         exam = self._exam(request)
         self._log_exam(request, action='close', exam=exam.id)
         body = await self._group_body(request)
-        logins = await self._exam_selection(exam, body)
+        logins, hosts = await self._exam_selection(exam, body)
         job = None
-        if self.exam_projects is not None:
+        if self.exam_projects is not None and (logins is None or logins):
             job = await self.exam_projects.close(exam, set(exam.members) if logins is None else logins)
+        try:
+            machines = await self.exams.close_hosts(exam.id, hosts)
+        except ValueError as e:
+            raise PoolError(400, str(e))
+        if machines:
+            await self._kick_hosts()
         # 202: the stops run in the background (the detail the page polls carries the progress)
-        self._log_exam(request, action='close', exam=exam.id, count=job.total if job is not None else 0)
+        self._log_exam(request, action='close', exam=exam.id, count=job.total if job is not None else 0,
+                       hosts=len(machines))
         return web.json_response({'closed': job.closed if job is not None else 0,
-                                  'closing': job.to_dict() if job is not None else None},
+                                  'closing': job.to_dict() if job is not None else None, 'machines': machines},
                                  status=202 if job is not None and job.running else 200)
 
     # -- presentations ----------------------------------------------------------------------------

@@ -848,6 +848,14 @@ table.grid.exams td.labs, table.grid.members td.labs { max-width: 220px; overflo
 table.grid.members td.phase.active { color: #2e7d32; font-weight: bold; }
 table.grid.members td.phase.ended, table.grid.members td.phase.done { color: var(--muted); }
 table.grid.members td.connected { text-align: center; }
+/* the machines of an exam (the Qt GUI there): the table under the members */
+.exam-detail h3 { margin: 14px 0 6px; font-size: 14px; }
+table.grid.machines td.phase.closed, table.grid.machines td.phase.scheduled { color: var(--muted); }
+table.grid.machines td.phase.conflict, table.grid.machines .machine-error { color: var(--danger); }
+table.grid.machines td.phase.pending { color: #b26a00; }
+table.grid.machines .machine-error { font-weight: normal; font-size: 12px; }
+table.grid.machines td.state.off, table.grid.machines td.state.disabled { color: var(--muted); }
+table.grid.members td.phase.local { color: #00695c; }
 dialog.exam { width: 720px; }
 dialog.exam fieldset { border: 1px solid var(--border-light); border-radius: 3px; margin: 8px 0; padding: 6px 10px; }
 dialog.exam legend { color: var(--muted); padding: 0 4px; }
@@ -862,5 +870,11 @@ dialog.exam .group-add input[type="text"] { display: inline-block; width: 220px;
 .exam-labs label.exam-lab { display: flex; align-items: center; gap: 6px; margin: 0; }
 .exam-labs label.exam-lab .name { flex: 0 0 auto; }
 .exam-labs label.exam-lab input.preset { width: 120px; margin: 0; display: inline-block; }
+/* the machines of the exam form: one line per group (the name without its final digits) */
+.exam-hosts { display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow: auto; }
+.exam-hosts .exam-host-group { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.exam-hosts label { display: inline-flex; align-items: center; gap: 3px; margin: 0; }
+.exam-hosts label.exam-host-all { min-width: 70px; }
+.exam-hosts label.exam-host.off, .exam-hosts label.exam-host.disabled, .exam-hosts label.exam-host.unknown { color: var(--muted); }
 dialog.exam-labs-dialog { width: 520px; }
 dialog.exam .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }

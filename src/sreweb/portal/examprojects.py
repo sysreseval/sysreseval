@@ -202,6 +202,20 @@ class ExamProjects:
         finally:
             job.done += 1
 
+    async def close_member(self, exam: Exam, m: Member):
+        """The exam projects of one student closed, outside any close job: a student who sat
+        down at a machine of the exam after their browser pre-started them (their clock never
+        started, so no agent would reap them); a project that cannot be closed now stays
+        recorded, for a later *Close projects*."""
+        changed = False
+        for lab, p in list(m.projects.items()):
+            status = await self._call(exam, p.get('host', ''), p.get('rln', ''), 'DELETE', timeout=CLOSE_TIMEOUT)
+            if status is not None and (status < 400 or status == 404):
+                m.projects.pop(lab, None)
+                changed = True
+        if changed and self.exams.get(exam.id) is exam:
+            await self.exams._persist_member(exam, m)
+
     def closing_of(self, exam: Exam) -> CloseJob | None:
         """The close job of the exam: running, or finished less than ``CLOSE_KEEP`` seconds ago."""
         job = self._closing.get(exam.id)
@@ -236,9 +250,11 @@ class ExamProjects:
             return False
         return normal_lab(row.get('lab_name')) in exam.lab_names(owner)
 
-    async def rows_of(self, exam: Exam, instructor: Identity) -> dict:
-        """The running exam projects of the students, by login, from one listing of the pool."""
-        rows = await self.pool.projects_of(instructor, all_projects=True)
+    async def rows_of(self, exam: Exam, instructor: Identity, rows: list | None = None) -> dict:
+        """The running exam projects of the students, by login, from one listing of the pool
+        (*rows*: that listing, when the caller already has it)."""
+        if rows is None:
+            rows = await self.pool.projects_of(instructor, all_projects=True)
         found: dict[str, list] = {}
         for row in rows:
             if self.is_exam_row(exam, row):

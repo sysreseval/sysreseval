@@ -81,6 +81,10 @@ function flagsText(row) {
   if (row.restart_sent) {
     flags.push(_('restart sent'));
   }
+  if (row.exam_hold && row.state !== 'exam') {
+    // a machine an exam of the Exams page is about to lock: no new project goes there
+    flags.push(_('kept for an exam'));
+  }
   const preload = preloadFlag(row);
   if (preload) {
     flags.push(preload);

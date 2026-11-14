@@ -442,11 +442,18 @@ class ExamsConfig:
     ``close_after``, how long after the end of a student's exam their exam projects are closed
     (0 = never: an instructor closes them), and the tables holding the exams and their members
     in the database of the connection log (on iff ``[access_log.database]`` is configured;
-    ``keep``: days the past exams are kept, 0 = forever)."""
+    ``keep``: days the past exams are kept, 0 = forever).  For the machines of the pool an exam
+    lists (``exam.json`` written by their agents: the exam mode of the Qt GUI), two more
+    defaults: ``host_lead``, how long before the start the file is written (the machine is
+    locked), and ``host_release``, how long after the end-before time it is removed and the
+    machine closed (0 = at the end; meanwhile the students keep the end screen and extra
+    minutes may still be granted)."""
     lead: float = 600.0                 # seconds
     pre_start: float = 300.0            # seconds
     eval_interval: float = 60.0         # seconds
     close_after: float = 3600.0         # seconds
+    host_lead: float = 600.0            # seconds
+    host_release: float = 600.0         # seconds
     table: str = 'exams'
     keep: int = 0
 
@@ -616,7 +623,7 @@ def _check_exams(cfg: ExamsConfig, path: str):
     where = f"{path}: exams."
     if not isinstance(cfg.table, str) or not _TABLE_NAME_RE.match(cfg.table) or len(cfg.table) > 56:
         raise ConfigError(f"{where}table must be a plain SQL identifier of at most 56 characters (letters, digits, _)")
-    for name in ('lead', 'pre_start', 'close_after'):
+    for name in ('lead', 'pre_start', 'close_after', 'host_lead', 'host_release'):
         if getattr(cfg, name) < 0:
             raise ConfigError(f"{where}{name} cannot be negative")
     if cfg.eval_interval <= 0:
@@ -933,7 +940,8 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
     exams_data = _section(data, 'exams', path)
     exams = _build(ExamsConfig, exams_data, f"{path}: [exams]",
                    **{k: parse_duration(exams_data[k], f'exams.{k}') for k in
-                      ('lead', 'pre_start', 'eval_interval', 'close_after') if k in exams_data})
+                      ('lead', 'pre_start', 'eval_interval', 'close_after', 'host_lead', 'host_release')
+                      if k in exams_data})
     _check_exams(exams, path)
     limits_data = _section(data, 'limits', path)
     limits = _build(LimitsConfig, limits_data, f"{path}: [limits]",

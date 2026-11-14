@@ -34,7 +34,7 @@ from SRE.form_spec import parse_form_description, chunks_to_json
 from SRE.instructor_text import markdown_to_html
 from SRE.utils import canonical_lab_name
 
-from . import access, occupancy, reports
+from . import access, hostexam, occupancy, reports
 from .access import AccessError
 from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED, WS_DISPLAY_GONE
@@ -73,6 +73,10 @@ CLIENT_MAX_SIZE = 4 << 20        # the answers of a PUT (the portal caps them lo
 #: The flavor answers of a start travel as one argv element of ``sre start --flavor-json``, which
 #: Linux caps at 128 KiB (E2BIG after the NDJSON stream began): refused above this with a 400.
 MAX_FLAVOR_JSON = 64 << 10
+#: The exam of the host (``hostexam.py``): how many of its projects a close stops at a time, and
+#: how often the lock of an evaluation still running on one of them is looked at.
+HOST_EXAM_STOPS = 2
+EVAL_LOCK_POLL = 0.5
 WS_HEARTBEAT = 30.0
 #: ``GET /v1/archives``: archives read per call by default, and at most (``?limit=``).
 ARCHIVES_PAGE = 50
@@ -228,6 +232,12 @@ class Agent:
         self.cgroup_file = '/proc/self/cgroup'
         #: When a restart was accepted (``POST /v1/restart``): no new project until it happens.
         self.restarting: float | None = None
+        #: The exam of the host (``hostexam.py``): one write or removal of ``exam.json`` at a
+        #: time; the owner of the file (the user the exam commands of the GUI run as: they
+        #: rewrite it); what the status said last, repeated while a command rewrites the file.
+        self._host_exam_lock = asyncio.Lock()
+        self.exam_file_owner: tuple | None = (params.sre_uid, params.docker_gid)
+        self._host_exam_view: dict | None = None
         self._event_sockets: set = set()
 
     # -- helpers --------------------------------------------------------------------------------
@@ -334,6 +344,8 @@ class Agent:
         app.router.add_post(f'{p}/restart', self.restart)
         app.router.add_post(f'{p}/preload/request', self.preload_request)
         app.router.add_post(f'{p}/preload/start', self.preload_start)
+        app.router.add_put(f'{p}/exam', self.host_exam_put)
+        app.router.add_delete(f'{p}/exam', self.host_exam_delete)
         app.router.add_get(f'{p}/labs', self.labs_handler)
         app.router.add_get(f'{p}/projects', self.projects_list)
         app.router.add_get(f'{p}/evaluations', self.evaluations_list)
@@ -514,6 +526,7 @@ class Agent:
             'terminals': sum(p.terminal_count() for p in self.registry.projects.values()),
             'displays': self.displays.running_count(),
             'exam_mode': self.exam_mode(),
+            'exam': self.host_exam_view(),
             'exam_projects': self._exam_projects(),
             'load1': load1, 'mem_available_mb': _mem_available_mb(),
             'occupied': occupied, 'occupied_by': reasons,
@@ -622,7 +635,9 @@ class Agent:
         everyone = request.query.get('all', '') in ('1', 'true')
         if everyone and not identity.is_instructor:
             raise AccessError(403, "instructors only")
-        if self.exam_mode():
+        if self.exam_mode() and not everyone:
+            # the list of a student is refused by sre in exam mode; an instructor's (the labs an
+            # exam is made of) is a privileged call: answered, the host may be an exam machine
             return web.json_response([])
         return web.json_response(await (self.all_labs(identity.login) if everyone else self.labs(identity.login)))
 
@@ -1062,6 +1077,134 @@ class Agent:
             project.exam_retry_at = None
             await self._exam_changed(project)
         return web.json_response({'ok': True, 'exam': None})
+
+    # -- the exam of the host ----------------------------------------------------------------------
+    # ``exam.json`` written for an exam of the web site that lists this machine (``hostexam.py``):
+    # what ``sre set-exam`` / ``sre del-exam`` do by hand.  The Qt GUI of the student logged in
+    # does the rest (pre-start, start, evaluations, end), as with a file set by hand.
+
+    def host_exam_view(self) -> dict | None:
+        """The exam file of the host for the status (``null`` without one); what was read last
+        while a command of the CLI is rewriting it."""
+        state, data = hostexam.read(self.pub_dir)
+        if state != hostexam.UNREADABLE:
+            self._host_exam_view = hostexam.view(data)
+        return self._host_exam_view
+
+    @staticmethod
+    def _host_exam_instructor(request) -> Identity:
+        identity = request[IDENTITY_KEY]
+        if not identity.is_instructor:
+            raise AccessError(403, "instructors only")
+        return identity
+
+    async def host_exam_put(self, request):
+        """The portal sets or updates the exam of this host (instructors): ``exam.json`` written
+        for the definition sent, merged into the file there (the progress the GUI recorded is
+        kept).  400 on a bad definition, 404 on a lab this host does not have, 409 when the
+        file belongs to somebody else (set by hand, another exam, another portal) or when
+        projects of an exam of the web site run here and the file is not this exam's yet, 503
+        while the agent restarts or the file cannot be read; nothing is written for a
+        definition already there (same ``rev``)."""
+        identity = self._host_exam_instructor(request)
+        if self.restarting is not None:
+            raise AccessError(503, "the agent is restarting, please retry in a moment")
+        spec, skew = hostexam.parse_host_exam(await self._read_json(request))
+        labs = await self.all_labs(identity.login)
+        known = {entry.get(params.lab_list_name_key) for entry in labs if isinstance(entry, dict)
+                 and entry.get(params.lab_list_kind_key, params.lab_list_kind_lab) == params.lab_list_kind_lab}
+        for lab, _ in spec[hostexam.KEY_LABS]:
+            if lab not in known:
+                raise AccessError(404, f"unknown lab {lab}")
+        async with self._host_exam_lock:
+            state, data = hostexam.read(self.pub_dir)
+            hostexam.check_ours(state, data, spec[hostexam.KEY_ID], spec[hostexam.KEY_ORIGIN])
+            if state == hostexam.ABSENT:
+                exams = self._exam_projects()
+                if exams:
+                    raise AccessError(409, f"{exams} exam project(s) of the web site run on this host")
+            marker = hostexam.marker_of(data) if data is not None else None
+            if marker is None or marker.get(params.exam_web_rev) != spec[hostexam.KEY_REV]:
+                if skew is not None and abs(skew) > SKEW_WARNING:
+                    log.warning("exam %s of the host: the portal's clock is %.1f s off this host",
+                                spec[hostexam.KEY_ID], skew)
+                data = await asyncio.to_thread(hostexam.write, self.pub_dir, spec, owner=self.exam_file_owner)
+                log.info("exam %s %r of the web site %s on this host by %s", spec[hostexam.KEY_ID],
+                         spec[hostexam.KEY_TITLE], "set" if state == hostexam.ABSENT else "updated", identity.login)
+            self._host_exam_view = hostexam.view(data)
+        return web.json_response({'ok': True, 'exam': self._host_exam_view})
+
+    async def host_exam_delete(self, request):
+        """The exam ``?id=`` of the web site taken off this host (instructors): ``exam.json``
+        removed, the projects left as plain ones; nothing to do without a file; 409 when the
+        file belongs to somebody else, 503 when it cannot be read.  With ``close=1`` the exam is
+        closed first (``_close_host_exam``) and the file removed last, when every project
+        stopped: 502 otherwise, the file still there, so that the portal asks again."""
+        identity = self._host_exam_instructor(request)
+        exam_id = request.query.get('id', '')
+        close = request.query.get('close', '') in ('1', 'true')
+        async with self._host_exam_lock:
+            state, data = hostexam.read(self.pub_dir)
+            if state == hostexam.ABSENT:
+                self._host_exam_view = None
+                return web.json_response({'ok': True, 'exam': None, 'closed': 0, 'failed': 0})
+            hostexam.check_ours(state, data, exam_id, request.query.get('origin') or None)
+            closed = failed = 0
+            if close:
+                closed, failed = await self._close_host_exam(identity, data)
+            if failed:
+                raise AccessError(502, f"{failed} project(s) of the exam could not be stopped")
+            hostexam.remove(self.pub_dir)
+            self._host_exam_view = None
+            log.info("exam %s of the web site removed from this host by %s%s", exam_id, identity.login,
+                     f" ({closed} project(s) closed)" if close else "")
+        return web.json_response({'ok': True, 'exam': None, 'closed': closed, 'failed': failed})
+
+    async def _close_host_exam(self, identity: Identity, data: dict) -> tuple:
+        """The exam of the host closed, ``exam.json`` still there: the final evaluation when it
+        is missing (a privileged ``sre end-exam``: the exam started and its end was not recorded
+        since — a machine closed while it runs, or an exam resumed, which the GUI ends once
+        only), then the projects of its labs this agent does not manage (those of the Qt GUI)
+        stopped, ``HOST_EXAM_STOPS`` at a time, each once no evaluation runs on it any more (the
+        ``end-exam`` the GUI launched at the end).  Never a wipe: the projects of the web users
+        of this host are left alone.  ``(closed, failed)``."""
+        if hostexam.needs_final_evaluation(data):
+            try:
+                await self.runner.run(identity.login, sre_args('end-exam'), privileged=True,
+                                      timeout=self.cfg.timeouts['eval'])
+                self.results.invalidate()
+            except (CommandError, FileNotFoundError) as e:
+                log.warning("the final evaluation of the exam of the host failed: %s", e)
+        with contextlib.suppress(Exception):
+            await self.registry.tick()
+        labs = hostexam.lab_names(data)
+        projects = [p for p in self.registry.projects.values() if not p.managed and not p.closing and p.lab_name in labs]
+        stops = asyncio.Semaphore(HOST_EXAM_STOPS)
+
+        async def stop(project: Project):
+            async with stops:
+                await self._evaluation_over(project)
+                await self.schedulers.close_project(project, evaluate=False, privileged_as=identity.login)
+
+        results = await asyncio.gather(*(stop(p) for p in projects), return_exceptions=True)
+        failed = sum(1 for r in results if isinstance(r, BaseException))
+        with contextlib.suppress(Exception):
+            await self.registry.tick()
+        return len(projects) - failed, failed
+
+    async def _evaluation_over(self, project: Project):
+        """Wait for the evaluation running on a project (the lock file of ``sre eval``, which
+        names its process), at most the timeout of an evaluation: a stop under it leaves a
+        bogus archive."""
+        lock = project.private_dir / params.eval_in_progress_name
+        deadline = time.monotonic() + self.cfg.timeouts['eval']
+        while time.monotonic() < deadline:
+            try:
+                pid = int(lock.read_text().strip() or 0)
+                os.kill(pid, 0)
+            except (OSError, ValueError):
+                return          # no lock, or the lock of a process that is gone
+            await asyncio.sleep(EVAL_LOCK_POLL)
 
     async def evaluation_get(self, request):
         """Instructors: the last archived evaluation of the project (exo-eval scope), as rows of

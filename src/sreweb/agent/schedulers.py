@@ -186,28 +186,38 @@ class Schedulers:
             log.info("closing %s: idle for %.0f s", project.rln, project.idle_seconds())
             asyncio.ensure_future(self.close_project(project))
 
-    async def close_project(self, project: Project):
+    async def close_project(self, project: Project, *, evaluate: bool | None = None,
+                            privileged_as: str | None = None):
         """Close a project as the Qt GUI does: the evaluation of ``eval_before_exit`` (outside
         exam mode), then ``sre stop``.  An exam project closed before the end of its exam is
         evaluated whatever the lab says (closing it is ending the exam for that student), one
         closed after the end got its final evaluation already.  The registry forgets the project
-        when its directory is gone (next tick); the terminals are closed first."""
+        when its directory is gone (next tick); the terminals are closed first.
+
+        *evaluate*: ``False`` skips that evaluation whatever the rules above say (a project of
+        the exam of the host: ``sre end-exam`` evaluated it).  *privileged_as*: the login of an
+        instructor, whose privileged ``sre stop`` replaces the owner's (the stop of a user is
+        refused while ``exam.json`` exists)."""
         if project.closing:
             return
         project.closing = True
         async with project.lock:
             await Registry._close_terminals(project)
-            if project.exam is not None:
-                evaluate = not project.exam_over
-            else:
-                evaluate = bool(project.info.get('eval_before_exit', False)) and not self.exam_mode()
+            if evaluate is None:
+                if project.exam is not None:
+                    evaluate = not project.exam_over
+                else:
+                    evaluate = bool(project.info.get('eval_before_exit', False)) and not self.exam_mode()
             if evaluate:
                 try:
                     await self.runner.run(project.owner, sre_args('eval', project.rln))
                 except CommandError as e:
                     log.warning("final evaluation of %s failed: %s", project.rln, e.message)
             try:
-                await self.runner.run(project.owner, sre_args('stop', project.rln))
+                if privileged_as is not None:
+                    await self.runner.run(privileged_as, sre_args('stop', project.rln), privileged=True)
+                else:
+                    await self.runner.run(project.owner, sre_args('stop', project.rln))
             except CommandError as e:
                 log.error("sre stop %s failed: %s", project.rln, e.message)
                 project.closing = False

@@ -16,7 +16,9 @@ Lives at `/var/lib/sre/exam.json` (`params.sre_pub_dir + "/" + params.exam_json_
 | `started_at` | `params.exam_started_at` | ISO datetime | Written by `start-exam` |
 | `ended_at` | `params.exam_ended_at` | ISO datetime | Written by `end-exam` |
 
-The first six are set by the instructor (via `sre set-exam`); the last three are runtime state markers.
+| `web` | `params.exam_web` | object | Only in a file the web agent wrote for an exam of the web site: `id`, `title`, `rev` (the revision of the definition), `origin` (the portal); see the [web server](web.md) chapter |
+
+The first six are set by the instructor (via `sre set-exam`, or the Exams page of the web site, whose agents write the file); the next three are runtime state markers.
 
 `labs` format: each entry is a two-element list `[lab_cli_arg, flavor_or_null]`, where `lab_cli_arg` is what `sre start` would receive (e.g. `s4/tp_ssh`) and the second element is the name of a `Flavor` preset or `null`:
 

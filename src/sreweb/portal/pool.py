@@ -4,6 +4,7 @@ new project, the fan-out of the project lists, and what is changed by hand
 merged with the ``[[hosts]]`` of the configuration so that a restart of the portal changes
 nothing."""
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -121,6 +122,11 @@ class HostStatus:
     restart_allowed: bool = False       # the agent can restart itself (its unit, or restart_command)
     restarting: bool = False            # a restart is pending on the agent (sre commands in flight)
     exam_projects: int = 0              # the running projects of an exam of the web site
+    # the exam file of the host (``exam.json``; the ``exam`` object of the status, coerced by
+    # ``host_exam_fields``): ``None`` without one; ``exam_known``: the agent tells it at all
+    # (an older one does not: it cannot be given the exam of the web site either)
+    exam: dict | None = None
+    exam_known: bool = False
     # the preload of the Docker images on the host (the ``preload`` object of the status, flat):
     # its state (one of PRELOAD_STATES; '' = an agent that does not know the preload, or
     # unreachable), the seconds in that state, the image being pulled and its rank, the error
@@ -134,6 +140,7 @@ class HostStatus:
     sre_version: str = ''
     error: str = ''
     updated: float = field(default_factory=time.monotonic)
+    polled_at: float = 0.0              # monotonic time the status was asked (``refresh_host``)
 
 
 #: The longest text (hostname, sre_version, an occupied_by entry) and list kept from a status.
@@ -181,6 +188,36 @@ def preload_fields(value) -> dict:
             'preload_image': _text(data.get('image')), 'preload_error': _text(data.get('error'))}
 
 
+def _instant(value) -> float | None:
+    """The epoch of an ISO 8601 instant with an offset of the status JSON, else ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.timestamp() if parsed.tzinfo is not None else None
+
+
+def host_exam_fields(value) -> dict | None:
+    """The exam file of a host from the ``exam`` object of a status (or of the answer to a
+    ``PUT`` / ``DELETE /v1/exam``), coerced like the rest: ``None`` without a file; ``id`` /
+    ``rev`` / ``origin`` are ``None`` for a file set by hand (``sre set-exam``), the instants
+    are epoch seconds."""
+    if not isinstance(value, dict):
+        return None
+
+    def token(key):
+        return _text(value.get(key)) or None
+
+    duration = _number(value.get('duration'))
+    return {'id': token('id'), 'title': _text(value.get('title')), 'rev': token('rev'), 'origin': token('origin'),
+            'start_after': _instant(value.get('start_after')), 'end_before': _instant(value.get('end_before')),
+            'duration': int(duration) if duration is not None else None,
+            'pre_started': value.get('pre_started') is True,
+            'started_at': _instant(value.get('started_at')), 'ended_at': _instant(value.get('ended_at'))}
+
+
 def status_from_json(data, extra_projects: int = 0) -> HostStatus:
     """The ``HostStatus`` of the JSON of ``GET /v1/status``, every field coerced to its type: a
     broken or hostile agent cannot plant a string where ``pick()`` sorts by a number (every
@@ -206,6 +243,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       restart_allowed=data.get('restart_allowed') is True,
                       restarting=data.get('restarting') is True,
                       exam_projects=_count(data.get('exam_projects')),
+                      exam=host_exam_fields(data.get('exam')), exam_known='exam' in data,
                       hostname=_text(data.get('hostname')),
                       sre_version=_text(data.get('sre_version')),
                       **preload_fields(data.get('preload')))
@@ -231,6 +269,11 @@ class HostRuntime:
     preload_granted: float | None = None
     next_preload_at: float = 0.0
     last_wake_reason: str = ''
+    # the exam file of the host as its agent answered a ``PUT`` / ``DELETE /v1/exam`` of the
+    # portal (``Pool.note_exam``), and the monotonic time of that answer: it stands for the
+    # ``exam`` of the status until a status asked after it tells (the rule of preload_granted)
+    exam_told: float | None = None
+    exam_view: dict | None = None
 
 
 class Pool:
@@ -263,6 +306,10 @@ class Pool:
         #: hand would be lost at the next restart (``sre-web-tool status``, the Pool page).
         self.state_error = ''
         self._saved_key = None      # ``_state_key()`` at the last save: ``refresh`` saves what changed since
+        #: ``exam_hold(name)``: whether an exam of the web site keeps the machine for itself (it
+        #: lists it and is about to lock it, or is on it): no new web project goes there, the
+        #: policy leaves it on.  Set by the portal (``examhosts.ExamHosts.held``); none = never.
+        self.exam_hold = None
         for host in hosts:
             self._register(host, SOURCE_CONFIG)
         self.load_state()
@@ -592,9 +639,30 @@ class Pool:
             runtime.next_wake_at = 0.0
         if runtime.preload_granted is not None and polled_at > runtime.preload_granted:
             runtime.preload_granted = None      # this status was asked after the turn was given: it tells
+        status.polled_at = polled_at
+        if runtime.exam_told is not None:
+            if polled_at > runtime.exam_told:
+                runtime.exam_told, runtime.exam_view = None, None    # asked after the agent's answer: it tells
+            elif status.reachable:
+                # asked before the portal changed the exam file of the host: what the agent
+                # answered then is newer than this status
+                status.exam, status.exam_mode = runtime.exam_view, runtime.exam_view is not None
         self._report_preload(host.name, self.status[host.name], status)
         self.status[host.name] = status
         return status
+
+    def note_exam(self, name: str, view):
+        """The agent of *name* answered a ``PUT`` / ``DELETE /v1/exam``: its exam file (``None``:
+        removed) shown at once, and kept against a status asked before the answer."""
+        if name not in self.status:
+            return
+        fields = host_exam_fields(view)
+        runtime, status = self.runtime[name], self.status[name]
+        runtime.exam_told, runtime.exam_view = time.monotonic(), fields
+        status.exam, status.exam_mode, status.exam_known = fields, fields is not None, True
+
+    def held_for_exam(self, name: str) -> bool:
+        return bool(self.exam_hold is not None and self.exam_hold(name))
 
     @staticmethod
     def _report_preload(name: str, before: HostStatus, status: HostStatus):
@@ -690,7 +758,8 @@ class Pool:
                 'waking_for': round(now - rt.woken_at) if rt.woken_at is not None else None,
                 'wake_failures': rt.wake_failures,
                 'idle_for': round(now - rt.idle_since) if rt.idle_since is not None else None,
-                **{k: v for k, v in vars(st).items() if k != 'updated'},
+                'exam_hold': self.held_for_exam(h.name),
+                **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at')},
             })
         return rows
 
@@ -742,8 +811,9 @@ class Pool:
         would be: a host up (``PLACEMENT_LOAD``), or a host occupied by a local login session of
         the user (``PLACEMENT_SESSION``, with ``follow_local_sessions``; not when a power off is
         wanted: ``state_of`` hides the drain behind the occupation).  Never a host whose agent
-        is about to restart (it refuses new projects meanwhile)."""
-        if self.runtime[h.name].restart_sent is not None:
+        is about to restart (it refuses new projects meanwhile), nor a machine an exam keeps
+        for itself (``exam_hold``: about to be locked by its ``exam.json``)."""
+        if self.runtime[h.name].restart_sent is not None or self.held_for_exam(h.name):
             return False, ''
         if state == STATE_UP:
             return True, PLACEMENT_LOAD

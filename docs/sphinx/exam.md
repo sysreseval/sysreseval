@@ -87,6 +87,19 @@ Behaviour:
 
 See [Exam Reference](exam-reference.md) for how the GUI drives the exam (phase computation and per-phase actions).
 
+### From the web site
+
+On the workstations of the pool of the [web server](web.md), `exam.json` does not have to be written
+by hand: the **Exams** page of the instructors programs an exam for chosen machines (and, in the
+same exam or not, for students working through the web site). The agent of each machine writes the
+file a delay before the start, updates it when the instructor grants minutes, ends or edits the
+exam, and removes it a delay after the end — the students keep the end screen meanwhile, so that
+extra minutes can still be granted —, stopping the exam projects of the machine without wiping it.
+The GUI behaves exactly as described here. Do not run `sre set-exam` / `sre del-exam` on a machine
+the web site manages (the file then carries a `web` key naming the exam); a file set by hand is
+never touched by the web site, which reports the machine as refused. See *On the workstations* in
+the [web server](web.md) chapter.
+
 ## Monitoring an exam
 
 Once each student machine mirrors its archives into a shared directory subtree on the instructor's machine

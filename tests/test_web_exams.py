@@ -170,9 +170,14 @@ class TestParseExam:
         assert X.parse_exam({'title': 'Late'}, cfg=CFG, now=NOW + 8000, current=exam)['end_before'] == NOW + 7200
 
     def test_selection_and_minutes(self):
-        assert X.parse_selection({'all': True}) == (True, set(), set())
-        assert X.parse_selection({'logins': ['alice'], 'groups': ['INFO1']}) == (False, {'alice'}, {'department:INFO1'})
-        for bad in ({}, {'all': False}, {'logins': 'alice'}, [], {'logins': ['bad login']}):
+        assert X.parse_selection({'all': True}) == (True, set(), set(), set())
+        assert X.parse_selection({'logins': ['alice'], 'groups': ['INFO1']}) == (False, {'alice'}, {'department:INFO1'},
+                                                                                 set())
+        # the machines of the exam are selected like its students, alone or with them
+        assert X.parse_selection({'hosts': ['z01', ' z02 ']}) == (False, set(), set(), {'z01', 'z02'})
+        assert X.parse_selection({'logins': ['bob'], 'hosts': ['z01']}) == (False, {'bob'}, set(), {'z01'})
+        for bad in ({}, {'all': False}, {'logins': 'alice'}, [], {'logins': ['bad login']}, {'hosts': 'z01'},
+                    {'hosts': []}, {'hosts': [3]}, {'hosts': ['z01', 'z01']}):
             with pytest.raises(ValueError):
                 X.parse_selection(bad)
         assert X.parse_extra_minutes(10) == 10 and X.parse_extra_minutes(-5.0) == -5
@@ -504,7 +509,7 @@ class TestRegistry:
                         'prestart_at': NOW + 3300, 'hide_at': NOW + 3000, 'started_at': None, 'end_at': None,
                         'lead': 600, 'labs': [{'lab': EXAM1, 'lab_name': 'sre@_EXAM_@exam1.py',
                                                'title': {'fr': 'Examen 1'}, 'flavor': 'hard'}],
-                        'address_allowed': True, 'address': '10.0.0.5', 'dismissable': False}
+                        'address_allowed': True, 'address': '10.0.0.5', 'dismissable': False, 'local_host': None}
         assert reg.address_allowed(exam, '10.0.0.5')
         exam.networks = [ipaddress.ip_network('10.0.0.0/8')]
         assert reg.address_allowed(exam, '10.1.2.3') and not reg.address_allowed(exam, '192.0.2.1')

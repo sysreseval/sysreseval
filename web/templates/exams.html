@@ -15,7 +15,7 @@
 </div>
 <p id="exams-hints" class="muted"{% if exams_database and exams_available %} hidden{% endif %}>{% if not exams_database %}{{ _("The exams are not stored in a database: set [access_log.database] in web.toml to program exams here.") }} {% endif %}{% if not exams_available %}{{ _("The users are anonymous (the login of a guest is not known in advance): no exam can be programmed.") }}{% endif %}</p>
 <p id="exams-notice" class="muted" hidden></p>
-<table id="exams" class="grid watch exams" data-database="{{ 'true' if exams_database else 'false' }}" data-available="{{ 'true' if exams_available else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}" data-lead="{{ exam_defaults.lead }}" data-pre-start="{{ exam_defaults.pre_start }}" data-eval-interval="{{ exam_defaults.eval_interval }}">
+<table id="exams" class="grid watch exams" data-database="{{ 'true' if exams_database else 'false' }}" data-available="{{ 'true' if exams_available else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}" data-lead="{{ exam_defaults.lead }}" data-pre-start="{{ exam_defaults.pre_start }}" data-eval-interval="{{ exam_defaults.eval_interval }}" data-host-lead="{{ exam_defaults.host_lead }}" data-host-release="{{ exam_defaults.host_release }}">
   <thead>
     <tr>
       <th class="sortable" data-sort="title">{{ _("Title") }}</th>
@@ -26,11 +26,12 @@
       <th>{{ _("Labs") }}</th>
       <th>{{ _("Audience") }}</th>
       <th class="sortable" data-sort="members">{{ _("Members") }}</th>
+      <th class="sortable" data-sort="machines" title="{{ _("The machines of the pool the exam is taken at with the Qt GUI") }}">{{ _("Machines") }}</th>
       <th class="sortable" data-sort="created_by">{{ _("Created by") }}</th>
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="10" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="11" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 <section id="exam-detail" class="exam-detail" hidden>
   <div class="toolbar">
@@ -46,12 +47,12 @@
       <label>{{ _("Minutes") }} <input type="number" id="exam-minutes" value="5" min="1" max="1440" step="1"></label>
       <button type="button" id="exam-extend-all" title="{{ _("Lengthen the exam for everybody (its duration and its end)") }}">{{ _("+ for all") }}</button>
       <button type="button" id="exam-reduce-all" title="{{ _("Shorten the exam for everybody (its duration and its end)") }}">{{ _("− for all") }}</button>
-      <button type="button" id="exam-extend-selected" title="{{ _("Extra minutes beyond the end of the exam, for the selected members") }}">{{ _("+ for selected") }}</button>
-      <button type="button" id="exam-reduce-selected" title="{{ _("Fewer minutes for the selected members") }}">{{ _("− for selected") }}</button>
-      <button type="button" id="exam-end-selected" class="danger" title="{{ _("End the exam now for the selected members") }}">{{ _("End for selected") }}</button>
+      <button type="button" id="exam-extend-selected" title="{{ _("Extra minutes beyond the end of the exam, for the selected members and machines") }}">{{ _("+ for selected") }}</button>
+      <button type="button" id="exam-reduce-selected" title="{{ _("Fewer minutes for the selected members and machines") }}">{{ _("− for selected") }}</button>
+      <button type="button" id="exam-end-selected" class="danger" title="{{ _("End the exam now for the selected members and machines") }}">{{ _("End for selected") }}</button>
     </span>
     <button type="button" id="exam-labs-selected" title="{{ _("Change the labs of the selected members (their missing labs are started by their browsers)") }}">{{ _("Change labs…") }}</button>
-    <button type="button" id="exam-close-projects" class="danger" title="{{ _("Close the exam projects of the selected members (all of them when none is selected)") }}">{{ _("Close projects…") }}</button>
+    <button type="button" id="exam-close-projects" class="danger" title="{{ _("Close the exam projects of the selected members and the exam on the selected machines (all of them when nothing is selected)") }}">{{ _("Close projects…") }}</button>
     <span class="spacer"></span>
     <button type="button" id="exam-edit">{{ _("Edit") }}</button>
     <button type="button" id="exam-delete" class="danger">{{ _("Delete") }}</button>
@@ -75,6 +76,26 @@
     </thead>
     <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
   </table>
+  <div id="exam-machines-section" hidden>
+    <h3>{{ _("Machines") }}</h3>
+    <table id="exam-machines" class="grid watch members machines">
+      <thead>
+        <tr>
+          <th class="select"><input type="checkbox" id="exam-select-all-machines" title="{{ _("Select the machines shown") }}"></th>
+          <th>{{ _("Machine") }}</th>
+          <th>{{ _("State") }}</th>
+          <th title="{{ _("The users logged in at the keyboard of the machine") }}">{{ _("Logged in") }}</th>
+          <th>{{ _("Phase") }}</th>
+          <th>{{ _("Start") }}</th>
+          <th>{{ _("End") }}</th>
+          <th title="{{ _("When the exam leaves the machine by itself: its projects closed, the machine back to normal") }}">{{ _("Release") }}</th>
+          <th>{{ _("Extra") }}</th>
+          <th>{{ _("Projects") }}</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </section>
 <dialog id="exam-form" class="modal exam">
   <h2 id="exam-form-title">{{ _("New exam") }}</h2>
@@ -85,6 +106,15 @@
       <div id="exam-logins" class="group-add"></div>
       <label>{{ _("Groups") }} <select id="exam-groups" name="groups" multiple size="5"></select></label>
       <span class="muted">{{ _("The exam binds the logins listed and every member of the groups chosen; instructors are never bound.") }}</span>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _("Machines") }}</legend>
+      <div id="exam-hosts" class="exam-hosts"><span class="muted">{{ _("Loading…") }}</span></div>
+      <div class="exam-times">
+        <label>{{ _("Lock the machines (min before the start)") }} <input type="number" id="exam-host-lead" name="host_lead" min="0" max="1440" step="1"></label>
+        <label>{{ _("Release the machines (min after the end)") }} <input type="number" id="exam-host-release" name="host_release" min="0" max="1440" step="1"></label>
+      </div>
+      <span class="muted">{{ _("On the machines chosen the exam is taken at the keyboard, with the Qt GUI: whoever logs in there gets it, the machine takes no web project meanwhile. An exam needs an audience, machines, or both; with machines an end-before time is required. After the end the machines keep the end screen until their release: extra minutes may still be granted.") }}</span>
     </fieldset>
     <fieldset>
       <legend>{{ _("Labs") }}</legend>

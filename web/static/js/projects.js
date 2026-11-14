@@ -147,6 +147,9 @@ function renderNote() {
     text = _('The exam has started: its projects are being prepared.');
   } else if (exam.phase === 'active') {
     text = _('The exam is in progress: only its projects are available.');
+  } else if (exam.phase === 'local') {
+    text = format(_('You take the exam on the workstation {host}, in its own window: no project is available here until it ends there.'),
+                  {host: exam.local_host || ''});
   } else {
     text = _('The exam is over.');
   }
@@ -179,9 +182,10 @@ function missingLabs() {
 }
 
 // whether the automatic starts may run now: the exam binds the student, from the address it
-// allows, after the pre-start instant of the countdown (or at once without one)
+// allows, after the pre-start instant of the countdown (or at once without one); never for a
+// student who takes the exam at a workstation (the phase `local`: the Qt GUI starts it there)
 function mayStart() {
-  if (!isBound(exam) || exam.address_allowed === false || exam.phase === 'ended') {
+  if (!isBound(exam) || exam.address_allowed === false || exam.phase === 'ended' || exam.phase === 'local') {
     return false;
   }
   if (exam.phase === 'waiting') {

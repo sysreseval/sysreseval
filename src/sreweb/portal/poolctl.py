@@ -95,6 +95,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append('drain')
         if row.get('restart_sent'):
             extra.append('restart')
+        if row.get('exam_hold') and value != 'exam':    # about to be locked by an exam of the Exams page
+            extra.append('kept for an exam')
         if row.get('preload') == PRELOAD_RUNNING:       # the Docker images: pulling (image 2 of 5), waiting, failed
             total = row.get('preload_total')
             extra.append(f"preload {row.get('preload_current', 0)}/{total}" if total else 'preload')

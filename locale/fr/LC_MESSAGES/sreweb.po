@@ -2038,3 +2038,117 @@ msgstr "Regroupement par partie (PDF)"
 
 msgid "Generating…"
 msgstr "Génération…"
+
+msgid "kept for an exam"
+msgstr "réservée à un examen"
+
+msgid "The machines of the pool the exam is taken at with the Qt GUI"
+msgstr "Les machines du pool où l'examen se passe avec l'interface Qt"
+
+msgid "Machine"
+msgstr "Machine"
+
+msgid "Logged in"
+msgstr "Connectés"
+
+msgid "The users logged in at the keyboard of the machine"
+msgstr "Les utilisateurs connectés au clavier de la machine"
+
+msgid "Release"
+msgstr "Libération"
+
+msgid "When the exam leaves the machine by itself: its projects closed, the machine back to normal"
+msgstr "Le moment où l'examen quitte la machine de lui-même : ses projets fermés, la machine redevenue normale"
+
+msgid "Select the machines shown"
+msgstr "Sélectionner les machines affichées"
+
+msgid "Lock the machines (min before the start)"
+msgstr "Verrouiller les machines (min avant le début)"
+
+msgid "Release the machines (min after the end)"
+msgstr "Libérer les machines (min après la fin)"
+
+msgid "On the machines chosen the exam is taken at the keyboard, with the Qt GUI: whoever logs in there gets it, the machine takes no web project meanwhile. An exam needs an audience, machines, or both; with machines an end-before time is required. After the end the machines keep the end screen until their release: extra minutes may still be granted."
+msgstr "Sur les machines choisies l'examen se passe au clavier, avec l'interface Qt : quiconque s'y connecte le reçoit, et la machine ne prend aucun projet web pendant ce temps. Un examen a besoin d'une audience, de machines, ou des deux ; avec des machines une heure de fin au plus tard est obligatoire. Après la fin les machines gardent l'écran de fin jusqu'à leur libération : des minutes supplémentaires peuvent encore être accordées."
+
+msgid "Extra minutes beyond the end of the exam, for the selected members and machines"
+msgstr "Minutes supplémentaires au-delà de la fin de l'examen, pour les membres et les machines sélectionnés"
+
+msgid "Fewer minutes for the selected members and machines"
+msgstr "Moins de minutes pour les membres et les machines sélectionnés"
+
+msgid "End the exam now for the selected members and machines"
+msgstr "Terminer l'examen maintenant pour les membres et les machines sélectionnés"
+
+msgid "Close the exam projects of the selected members and the exam on the selected machines (all of them when nothing is selected)"
+msgstr "Fermer les projets d'examen des membres sélectionnés et l'examen sur les machines sélectionnées (tous quand rien n'est sélectionné)"
+
+msgid "The pool has no machine."
+msgstr "Le pool n'a aucune machine."
+
+msgid "Every machine of {group}"
+msgstr "Toutes les machines de {group}"
+
+msgid "not in the pool any more"
+msgstr "n'est plus dans le pool"
+
+msgid "not in the pool"
+msgstr "hors du pool"
+
+msgid "An end-before time is required when machines are chosen."
+msgstr "Une heure de fin au plus tard est obligatoire quand des machines sont choisies."
+
+msgid "at a machine"
+msgstr "sur une machine"
+
+msgid "at {host}"
+msgstr "sur {host}"
+
+msgid "not locked yet"
+msgstr "pas encore verrouillée"
+
+msgid "refused"
+msgstr "refusé"
+
+msgid "closed"
+msgstr "fermé"
+
+msgid "(closing…)"
+msgstr "(fermeture…)"
+
+msgid "{n} web project(s) run there"
+msgstr "{n} projet(s) web y tournent"
+
+msgid "{n} machine(s)"
+msgstr "{n} machine(s)"
+
+msgid "{n} machine(s), locked {lead} min before, released {release} min after the end"
+msgstr "{n} machine(s), verrouillées {lead} min avant, libérées {release} min après la fin"
+
+msgid " and "
+msgstr " et "
+
+msgid "nothing selected"
+msgstr "rien n'est sélectionné"
+
+msgid "the labs of a machine are those of the exam: unselect the machines"
+msgstr "les TP d'une machine sont ceux de l'examen : désélectionnez les machines"
+
+msgid "End the exam now for {selection}?"
+msgstr "Terminer l'examen maintenant pour {selection} ?"
+
+msgid "Close the exam projects of {selection}? Their machines will be stopped; a workstation the exam is closed on is given back for good."
+msgstr "Fermer les projets d'examen de {selection} ? Leurs machines seront arrêtées ; un poste où l'examen est fermé est rendu définitivement."
+
+msgid "Close the exam projects of every member and the exam on every workstation? Their machines will be stopped; the workstations are given back for good."
+msgstr "Fermer les projets d'examen de tous les membres et l'examen sur tous les postes ? Leurs machines seront arrêtées ; les postes sont rendus définitivement."
+
+msgid "Closing the exam on {n} machine(s)…"
+msgstr "Fermeture de l'examen sur {n} machine(s)…"
+
+msgid "you take it on the workstation {host}: your other projects are hidden until it ends there."
+msgstr "vous le passez sur le poste {host} : vos autres projets sont masqués jusqu'à ce qu'il s'y termine."
+
+msgid "You take the exam on the workstation {host}, in its own window: no project is available here until it ends there."
+msgstr "Vous passez l'examen sur le poste {host}, dans sa propre fenêtre : aucun projet n'est disponible ici jusqu'à ce qu'il s'y termine."

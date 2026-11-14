@@ -442,6 +442,13 @@ exam_ended_at = "ended_at"
 exam_duration = "duration"
 exam_labs = "labs"
 exam_record_sessions = "record_sessions"
+# the marker of an exam.json the web agent wrote for an exam of the web site (sre-web): the id
+# and title of that exam, the revision of its definition, the portal it comes from
+exam_web = "web"
+exam_web_id = "id"
+exam_web_title = "title"
+exam_web_rev = "rev"
+exam_web_origin = "origin"
 
 
 def parse_lab_entry(entry) -> tuple[str, str | None]:

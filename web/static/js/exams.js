@@ -10,7 +10,11 @@
 // (everybody), ± N minutes for all (the duration and the end-before time move) or for the
 // selected members (extra minutes on their own clock), End for selected, Change labs of the
 // selected members, Close the projects of the selection.  Every action replaces the summary
-// and reloads the detail; nothing is optimistic.
+// and reloads the detail; nothing is optimistic.  An exam taken at machines of the pool (the Qt
+// GUI there, exam.json written by their agents) has a second table under its members, one row
+// per machine (its pool state, who is logged in, its phase, the clock its file records, its
+// release, its extra minutes, the exam projects of the GUI), with its own checkboxes: the
+// minutes, End for selected and Close projects act on the checked members and machines alike.
 
 import './base.js';
 import * as api from './api.js';
@@ -18,13 +22,13 @@ import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, clear, toast, formatDuration} from './ui.js';
 import {projectUrl} from './creation.js';
-import {createExamForm, labsDialog, labsText} from './exams_form.js';
+import {createExamForm, labsDialog, labsText, hostsText} from './exams_form.js';
 
 const REFRESH_INTERVAL = 5000;
 const STATUSES = ['scheduled', 'running', 'past'];
 const STATUS_ORDER = {running: 0, scheduled: 1, past: 2};
-const PHASE_ORDER = {active: 0, starting: 1, waiting: 2, ended: 3, done: 4, past: 5, scheduled: 6};
-const NUMERIC = ['start', 'end', 'duration', 'members', 'started_at', 'end_at', 'extra_minutes'];
+const PHASE_ORDER = {active: 0, starting: 1, local: 2, waiting: 3, ended: 4, done: 5, past: 6, scheduled: 7};
+const NUMERIC = ['start', 'end', 'duration', 'members', 'machines', 'started_at', 'end_at', 'extra_minutes'];
 
 const table = document.getElementById('exams');
 const body = table.querySelector('tbody');
@@ -40,6 +44,10 @@ const detailNotice = document.getElementById('exam-detail-notice');
 const membersTable = document.getElementById('exam-members');
 const membersBody = membersTable.querySelector('tbody');
 const selectAll = document.getElementById('exam-select-all');
+const machinesSection = document.getElementById('exam-machines-section');
+const machinesTable = document.getElementById('exam-machines');
+const machinesBody = machinesTable.querySelector('tbody');
+const selectAllMachines = document.getElementById('exam-select-all-machines');
 const minutesInput = document.getElementById('exam-minutes');
 const groupSourcesEnabled = table.dataset.groupSources === 'true';
 const databaseConfigured = table.dataset.database === 'true';
@@ -62,8 +70,10 @@ const buttons = {
 
 // exams: the summaries of the API; now: the portal's clock at the last answer; statuses: shown
 const state = {exams: [], now: 0, filter: '', statuses: new Set(['scheduled', 'running']), sortKey: 'start', sortAsc: true};
-// the open detail: id, the data of GET /api/exams/{id}, the selected logins, the sort of the members
-const open = {id: null, data: null, selected: new Set(), sortKey: 'login', sortAsc: true, timer: null};
+// the open detail: id, the data of GET /api/exams/{id}, the selected logins and machines, the
+// sort of the members
+const open = {id: null, data: null, selected: new Set(), selectedHosts: new Set(), sortKey: 'login', sortAsc: true,
+              timer: null};
 let labsCache = null;      // the entries of GET /api/labs?all=1
 let groupsCache = null;    // the groups of GET /api/groups
 
@@ -94,8 +104,22 @@ function statusLabel(status) {
 
 function phaseLabel(phase) {
   const labels = {scheduled: _('not yet'), waiting: _('waiting'), starting: _('starting'), active: _('in progress'),
-                  ended: _('ended'), done: _('ended'), past: _('did not take part')};
+                  ended: _('ended'), done: _('ended'), past: _('did not take part'), local: _('at a machine')};
   return labels[phase] || phase || '';
+}
+
+// the phase of a machine of an exam (Exam.host_phase and the two live ones of examhosts.py)
+function machinePhaseLabel(phase) {
+  const labels = {scheduled: _('not yet'), pending: _('not locked yet'), conflict: _('refused'), waiting: _('waiting'),
+                  starting: _('starting'), active: _('in progress'), ended: _('ended'), closed: _('closed')};
+  return labels[phase] || phase || '';
+}
+
+// the pool state of a machine, as the Pool page names it
+function machineStateLabel(state) {
+  const labels = {off: _('off'), waking: _('waking'), up: _('up'), occupied: _('occupied'), exam: _('exam'),
+                  draining: _('draining'), disabled: _('disabled')};
+  return state === null || state === undefined ? _('not in the pool') : (labels[state] || state);
 }
 
 // the Start cell of a summary: its start time, or how it starts
@@ -173,6 +197,7 @@ function sortValue(exam, key) {
     case 'end': return isNumber(exam.end_before) ? exam.end_before : Infinity;
     case 'duration': return isNumber(exam.duration) ? exam.duration : Infinity;
     case 'members': return exam.members || 0;
+    case 'machines': return (exam.hosts || []).length;
     default: return exam[key] || '';
   }
 }
@@ -199,7 +224,8 @@ function matches(exam) {
   if (!state.filter) {
     return true;
   }
-  const haystack = [exam.title, labsText(exam.labs), audienceText(exam), exam.created_by].join(' ').toLowerCase();
+  const haystack = [exam.title, labsText(exam.labs), audienceText(exam), exam.created_by, (exam.hosts || []).join(' ')]
+    .join(' ').toLowerCase();
   return state.filter.split(/\s+/).every((word) => haystack.includes(word));
 }
 
@@ -240,6 +266,7 @@ function renderRow(exam) {
     el('td', {class: 'labs', title: labsText(exam.labs)}, labsText(exam.labs)),
     el('td', {class: 'audience'}, audienceText(exam)),
     el('td', {class: 'num'}, String(exam.members || 0)),
+    el('td', {class: 'machines', title: (exam.hosts || []).join(', ')}, hostsText(exam.hosts)),
     el('td', {}, exam.created_by || ''),
     el('td', {class: 'actions'}, ...actions));
   tr.addEventListener('click', (event) => {
@@ -308,7 +335,18 @@ async function getGroups() {
   return groupsCache;
 }
 
-const form = createExamForm({table, getLabs, getGroups});
+// the hosts of the pool (name, state), read at every opening of the form: their states change
+async function getHosts() {
+  try {
+    const hosts = await api.get('/api/pool');
+    return Array.isArray(hosts) ? hosts : [];
+  } catch (e) {
+    toast(e.message, {error: true});
+    return [];
+  }
+}
+
+const form = createExamForm({table, getLabs, getGroups, getHosts});
 
 // -- create, edit, delete ---------------------------------------------------------------------
 
@@ -362,6 +400,7 @@ async function deleteExam(exam) {
 function openDetail(id) {
   if (String(open.id) !== String(id)) {
     open.selected.clear();
+    open.selectedHosts.clear();
   }
   open.id = String(id);
   open.data = null;
@@ -382,6 +421,7 @@ function closeDetail() {
   open.id = null;
   open.data = null;
   open.selected.clear();
+  open.selectedHosts.clear();
   if (open.timer) {
     window.clearInterval(open.timer);
     open.timer = null;
@@ -424,6 +464,13 @@ async function refreshDetail() {
       open.selected.delete(login);
     }
   }
+  // a machine the exam is closed on takes no action any more
+  const openMachines = new Set((data.machines || []).filter((m) => m.phase !== 'closed').map((m) => m.name));
+  for (const name of Array.from(open.selectedHosts)) {
+    if (!openMachines.has(name)) {
+      open.selectedHosts.delete(name);
+    }
+  }
   renderDetail();
 }
 
@@ -442,6 +489,10 @@ function summaryText(exam) {
                     {lead: exam.lead, pre: exam.pre_start, eval: exam.eval_interval}));
   if ((exam.networks || []).length) {
     parts.push(format(_('networks: {text}'), {text: exam.networks.join(', ')}));
+  }
+  if ((exam.hosts || []).length) {
+    parts.push(format(_('{n} machine(s), locked {lead} min before, released {release} min after the end'),
+                      {n: exam.hosts.length, lead: exam.host_lead, release: exam.host_release}));
   }
   if (exam.closing) {
     // a close of the exam projects running in the background, or just finished
@@ -501,7 +552,59 @@ function renderDetail() {
   for (const member of members) {
     membersBody.append(renderMember(member));
   }
+  const machines = exam.machines || [];
+  machinesSection.hidden = !machines.length;
+  clear(machinesBody);
+  for (const machine of machines) {
+    machinesBody.append(renderMachine(machine));
+  }
   renderSelection();
+}
+
+// one machine of the exam: its checkbox (none once the exam is closed there), its pool state,
+// who sits at it, its phase (the refusal of its agent under it), its clock, its release, its
+// extra minutes and the exam projects of the Qt GUI there (the instructor's view of each)
+function renderMachine(machine) {
+  const closed = machine.phase === 'closed';
+  const box = el('input', {type: 'checkbox', 'aria-label': machine.name});
+  box.checked = open.selectedHosts.has(machine.name);
+  box.disabled = closed;
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      open.selectedHosts.add(machine.name);
+    } else {
+      open.selectedHosts.delete(machine.name);
+    }
+    renderSelection();
+  });
+  const sessions = (machine.sessions || []).map((s) => (s.fullname ? `${s.fullname} (${s.login})` : s.login)).join(', ');
+  const phase = el('td', {class: `phase ${machine.phase || ''}`}, machinePhaseLabel(machine.phase));
+  if (machine.closing) {
+    phase.append(' ', el('small', {class: 'muted'}, _('(closing…)')));
+  }
+  if (machine.error) {
+    phase.append(el('div', {class: 'machine-error'}, machine.error));
+  }
+  if (machine.web_projects && !closed) {
+    phase.append(el('div', {class: 'muted'}, format(_('{n} web project(s) run there'), {n: machine.web_projects})));
+  }
+  const projects = el('span', {class: 'projects'});
+  for (const project of machine.projects || []) {
+    projects.append(el('a', {href: projectUrl(project.host, project.rln), title: project.rln},
+                       project.owner ? `${project.lab} (${project.owner})` : project.lab || project.rln), ' ');
+  }
+  const extra = machine.extra_minutes || 0;
+  return el('tr', {dataset: {machine: machine.name}, class: `phase-${machine.phase || ''}`},
+    el('td', {class: 'select'}, box),
+    el('td', {}, machine.name || ''),
+    el('td', {class: `state ${machine.state || ''}`}, machineStateLabel(machine.state)),
+    el('td', {}, sessions),
+    phase,
+    el('td', {title: dateText(machine.started_at)}, timeText(machine.started_at)),
+    el('td', {title: dateText(machine.end_at)}, timeText(machine.end_at)),
+    el('td', {title: dateText(machine.release_at)}, closed ? '' : timeText(machine.release_at)),
+    el('td', {class: 'num'}, extra ? (extra > 0 ? `+${extra}` : String(extra)) : ''),
+    el('td', {}, projects));
 }
 
 function renderMember(member) {
@@ -527,7 +630,8 @@ function renderMember(member) {
     el('td', {hidden: !groupSourcesEnabled}, member.group || ''),
     el('td', {class: 'connected'}, member.connected ? '✓' : ''),
     el('td', {}, member.address || ''),
-    el('td', {class: `phase ${member.phase || ''}`}, phaseLabel(member.phase)),
+    el('td', {class: `phase ${member.phase || ''}`},
+       member.phase === 'local' && member.local ? format(_('at {host}'), {host: member.local}) : phaseLabel(member.phase)),
     el('td', {title: dateText(member.started_at)}, timeText(member.started_at)),
     el('td', {title: dateText(member.end_at)}, timeText(member.end_at)),
     el('td', {class: 'num'}, extra ? (extra > 0 ? `+${extra}` : String(extra)) : ''),
@@ -542,13 +646,27 @@ function renderSelection() {
   selectAll.disabled = !members.length;
   selectAll.checked = members.length > 0 && count === members.length;
   selectAll.indeterminate = count > 0 && count < members.length;
-  const none = count === 0;
-  const running = open.data && open.data.status === 'running';
-  for (const button of [buttons.extendSelected, buttons.reduceSelected, buttons.endSelected, buttons.labsSelected]) {
+  // the machines the exam is still on (a closed one takes no action)
+  const machines = (open.data ? open.data.machines || [] : []).filter((m) => m.phase !== 'closed');
+  const hosts = open.selectedHosts.size;
+  selectAllMachines.disabled = !machines.length;
+  selectAllMachines.checked = machines.length > 0 && hosts === machines.length;
+  selectAllMachines.indeterminate = hosts > 0 && hosts < machines.length;
+  const none = count === 0 && hosts === 0;
+  // the minutes and the end act on the machines until their release: the exam may be "past"
+  // for the web site while a machine still shows its end screen
+  const running = open.data && (open.data.status === 'running' || (hosts > 0 && open.data.status !== 'scheduled'));
+  for (const button of [buttons.extendSelected, buttons.reduceSelected, buttons.endSelected]) {
     button.disabled = none || !running;
-    button.title = none ? _('no member selected') : titles.get(button);   // the template's tooltip back
+    button.title = none ? _('nothing selected') : titles.get(button);   // the template's tooltip back
   }
-  buttons.extendAll.disabled = buttons.reduceAll.disabled = !running;
+  // the labs of a machine are those of the exam: changed for members only
+  const noMember = count === 0 || hosts > 0;
+  buttons.labsSelected.disabled = noMember || !(open.data && open.data.status === 'running');
+  buttons.labsSelected.title = count === 0 ? _('no member selected')
+    : (hosts > 0 ? _('the labs of a machine are those of the exam: unselect the machines') : titles.get(buttons.labsSelected));
+  const live = open.data && (open.data.status === 'running' || machines.length > 0 && open.data.status !== 'scheduled');
+  buttons.extendAll.disabled = buttons.reduceAll.disabled = !live;
 }
 
 const titles = new Map(Object.values(buttons).map((button) => [button, button.title]));   // the tooltips of the template
@@ -558,8 +676,21 @@ function minutes() {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+// the checked members and machines, as the API takes them
 function selection() {
-  return {logins: [...open.selected].sort()};
+  return {logins: [...open.selected].sort(), hosts: [...open.selectedHosts].sort()};
+}
+
+// "3 member(s) and 2 machine(s)", for the questions of the actions on the selection
+function selectionText() {
+  const parts = [];
+  if (open.selected.size) {
+    parts.push(format(_('{n} member(s)'), {n: open.selected.size}));
+  }
+  if (open.selectedHosts.size) {
+    parts.push(format(_('{n} machine(s)'), {n: open.selectedHosts.size}));
+  }
+  return parts.join(_(' and '));
 }
 
 // one action of the detail: the summary returned replaces the row, the detail is reloaded
@@ -580,10 +711,15 @@ async function act(button, call) {
     if (result && result.closing && result.closing.running) {
       // the stops run in the background: the detail (polled) shows the progress
       toast(format(_('Closing {n} project(s)…'), {n: result.closing.total}));
+    } else if (result && Array.isArray(result.machines) && result.machines.length) {
+      // the agents of the machines stop the exam projects there: the machines table tells
+      toast(format(_('Closing the exam on {n} machine(s)…'), {n: result.machines.length}));
     } else if (result && result.closing && result.closing.total === 0) {
       toast(_('No project to close'));
-    } else if (result && isNumber(result.closed)) {
+    } else if (result && isNumber(result.closed) && result.closing) {
       toast(format(_('{n} project(s) closed'), {n: result.closed}));
+    } else if (result && Array.isArray(result.machines)) {
+      toast(_('No project to close'));
     }
   } catch (e) {
     if (e.status === 404) {
@@ -618,7 +754,7 @@ function setupDetailControls() {
   buttons.reduceSelected.addEventListener('click', () => act(buttons.reduceSelected,
     (exam) => api.post(examUrl(exam.id, '/adjust'), {...selection(), extra_minutes: -minutes()})));
   buttons.endSelected.addEventListener('click', () => {
-    if (window.confirm(format(_('End the exam now for {n} member(s)?'), {n: open.selected.size}))) {
+    if (window.confirm(format(_('End the exam now for {selection}?'), {selection: selectionText()}))) {
       act(buttons.endSelected, (exam) => api.post(examUrl(exam.id, '/end'), selection()));
     }
   });
@@ -633,12 +769,21 @@ function setupDetailControls() {
     if (chosen === null) {
       return;
     }
-    act(buttons.labsSelected, (exam) => api.post(examUrl(exam.id, '/labs'), {...selection(), labs: chosen}));
+    act(buttons.labsSelected, (exam) => api.post(examUrl(exam.id, '/labs'),
+                                                 {logins: [...open.selected].sort(), labs: chosen}));
   });
   buttons.closeProjects.addEventListener('click', () => {
-    const all = open.selected.size === 0;
-    const question = all ? _('Close the exam projects of every member? Their machines will be stopped.')
-                         : format(_('Close the exam projects of {n} member(s)? Their machines will be stopped.'), {n: open.selected.size});
+    const all = open.selected.size === 0 && open.selectedHosts.size === 0;
+    const machines = open.data && (open.data.machines || []).some((m) => m.phase !== 'closed');
+    let question;
+    if (!all) {
+      question = format(_('Close the exam projects of {selection}? Their machines will be stopped; a workstation the exam is closed on is given back for good.'),
+                        {selection: selectionText()});
+    } else if (machines) {
+      question = _('Close the exam projects of every member and the exam on every workstation? Their machines will be stopped; the workstations are given back for good.');
+    } else {
+      question = _('Close the exam projects of every member? Their machines will be stopped.');
+    }
     if (window.confirm(question)) {
       act(buttons.closeProjects, (exam) => api.post(examUrl(exam.id, '/close-projects'), all ? {all: true} : selection()));
     }
@@ -660,6 +805,17 @@ function setupDetailControls() {
         open.selected.add(member.login);
       } else {
         open.selected.delete(member.login);
+      }
+    }
+    renderDetail();
+  });
+  selectAllMachines.addEventListener('change', () => {
+    const machines = open.data ? open.data.machines || [] : [];
+    for (const machine of machines) {
+      if (selectAllMachines.checked && machine.phase !== 'closed') {
+        open.selectedHosts.add(machine.name);
+      } else {
+        open.selectedHosts.delete(machine.name);
       }
     }
     renderDetail();

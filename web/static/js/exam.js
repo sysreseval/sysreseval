@@ -9,7 +9,9 @@
 // portal's clock (its `now` gives the offset of the browser's).  The pages learn the state
 // through the `sre-exam` event on the document (projects.js starts the exam projects, project.js
 // hides Close and ends the page); a page that is not the Projects page goes there when the exam
-// starts.  Instructors are never bound by an exam: their pages get null.
+// starts.  Instructors are never bound by an exam: their pages get null.  A student logged in
+// at the keyboard of a machine of the exam takes it there, with the Qt GUI (the phase `local`,
+// `local_host` naming the machine): the bar says so, the web site starts them no exam project.
 
 import * as api from './api.js';
 import * as i18n from './i18n.js';
@@ -21,7 +23,8 @@ const PHASE_WAITING = 'waiting';
 const PHASE_STARTING = 'starting';
 const PHASE_ACTIVE = 'active';
 const PHASE_ENDED = 'ended';
-export const BOUND_PHASES = [PHASE_WAITING, PHASE_STARTING, PHASE_ACTIVE, PHASE_ENDED];
+const PHASE_LOCAL = 'local';
+export const BOUND_PHASES = [PHASE_WAITING, PHASE_STARTING, PHASE_ACTIVE, PHASE_ENDED, PHASE_LOCAL];
 
 const body = document.body;
 let state = null;           // {exam, now, offset}: offset = the browser's clock minus the portal's (seconds)
@@ -156,6 +159,9 @@ function renderBar(exam) {
     b.text.textContent = _('the exam is being prepared: its projects are starting…');
   } else if (exam.phase === PHASE_ACTIVE) {
     b.text.textContent = _('time left:') + ' ';
+  } else if (exam.phase === PHASE_LOCAL) {
+    b.text.textContent = format(_('you take it on the workstation {host}: your other projects are hidden until it ends there.'),
+                                {host: exam.local_host || ''});
   } else {
     b.text.textContent = _('the exam is over.');
   }

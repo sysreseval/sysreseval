@@ -488,28 +488,35 @@ class TestTemplates:
         exams hidden at first, New exam), the hints of what is missing, the table with the
         defaults exams.js reads, the detail section with its actions and the members table (the
         Group column hidden without a group source), the form dialog with every field."""
-        defaults = {'lead': 10, 'pre_start': 5, 'eval_interval': 60}
+        defaults = {'lead': 10, 'pre_start': 5, 'eval_interval': 60, 'host_lead': 10, 'host_release': 15}
         html = render('exams.html', instructor=True, exams_database=True, exams_available=True, exam_defaults=defaults)
         for element in ('exams', 'exams-filter', 'exams-status', 'exams-count', 'exams-new', 'exams-hints', 'exams-notice',
                         'exam-detail', 'exam-detail-title', 'exam-detail-summary', 'exam-detail-close', 'exam-detail-notice',
                         'exam-actions', 'exam-start-now', 'exam-end-now', 'exam-minutes', 'exam-extend-all', 'exam-reduce-all',
                         'exam-extend-selected', 'exam-reduce-selected', 'exam-end-selected', 'exam-labs-selected',
                         'exam-close-projects', 'exam-edit', 'exam-delete', 'exam-members', 'exam-select-all',
+                        'exam-machines-section', 'exam-machines', 'exam-select-all-machines',
                         'exam-form', 'exam-form-title', 'exam-form-fields', 'exam-title', 'exam-logins', 'exam-groups',
+                        'exam-hosts', 'exam-host-lead', 'exam-host-release',
                         'exam-labs', 'exam-start-after', 'exam-end-before', 'exam-duration', 'exam-lead', 'exam-pre-start',
                         'exam-eval-interval', 'exam-networks', 'exam-form-error', 'exam-form-cancel', 'exam-form-submit'):
             assert f'id="{element}"' in html, element
         for status, pressed in (('scheduled', 'true'), ('running', 'true'), ('past', 'false')):
             assert f'data-status="{status}" aria-pressed="{pressed}"' in html, status
-        for key in ('title', 'status', 'start', 'end', 'duration', 'members', 'created_by'):
+        for key in ('title', 'status', 'start', 'end', 'duration', 'members', 'machines', 'created_by'):
             assert f'data-sort="{key}"' in html, key
         assert ('class="grid watch exams" data-database="true" data-available="true" data-group-sources="false" '
-                'data-lead="10" data-pre-start="5" data-eval-interval="60"') in html
+                'data-lead="10" data-pre-start="5" data-eval-interval="60" data-host-lead="10" '
+                'data-host-release="15"') in html
         table, rest = html.split('<section id="exam-detail"')
-        assert len(re.findall(r'<th[ >]', table)) == 10 and 'colspan="10"' in table
+        assert len(re.findall(r'<th[ >]', table)) == 11 and 'colspan="11"' in table
         detail, form = rest.split('<dialog id="exam-form"')
         assert detail.startswith(' class="exam-detail" hidden>')
-        assert len(re.findall(r'<th[ >]', detail)) == 12 and 'colspan="12"' in detail
+        # the members table, then the one of the machines of the exam (hidden until it has some)
+        members, machines = detail.split('<div id="exam-machines-section"')
+        assert len(re.findall(r'<th[ >]', members)) == 12 and 'colspan="12"' in members
+        assert machines.startswith(' hidden>') and len(re.findall(r'<th[ >]', machines)) == 10
+        assert 'class="grid watch members machines"' in machines
         assert 'data-sort="group" hidden>' in detail
         for key in ('login', 'fullname', 'group', 'connected', 'address', 'phase', 'started_at', 'end_at', 'extra_minutes'):
             assert f'data-sort="{key}"' in detail, key
@@ -1016,15 +1023,19 @@ class TestLabKey:
 
 
 EXAMS_FORM_RUNNER = """\
-import {toLocalInput, fromLocalInput, labsText, labLabel} from './exams_form.js';
+import {toLocalInput, fromLocalInput, labsText, labLabel, hostGroup, groupHosts, hostsText} from './exams_form.js';
 
 const epochs = JSON.parse(process.argv[2]);
+const room = ['z10', 'z02', 'a01', 'z01', 'pc-a-2', 'pc-a-10', 'srv', 'z02'];
 process.stdout.write(JSON.stringify({
   roundTrip: epochs.map((e) => fromLocalInput(toLocalInput(e))),
   shape: epochs.map((e) => /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(toLocalInput(e))),
   empty: [toLocalInput(null), toLocalInput('x'), fromLocalInput(''), fromLocalInput('nope')],
   labs: labsText([{lab: 'sre/dhcp.py', flavor: null}, {lab: 'sre/_EXAM_/x.py', flavor: 'hard'}]),
   labels: [labLabel({name: 'sre/dhcp.py', title: {en: 'DHCP lab', fr: 'TP DHCP'}}), labLabel({name: 'sre/dhcp.py', title: null})],
+  hostGroups: ['z01', 'pc-a-12', 'srv', '42', ''].map(hostGroup),
+  grouped: groupHosts(room),
+  hostsText: [hostsText(['z02', 'z01', 'a01']), hostsText(room), hostsText([]), hostsText(null)],
 }));
 """
 
@@ -1042,6 +1053,12 @@ class TestExamsForm:
         assert out['empty'] == ['', '', None, None]
         assert out['labs'] == 'sre/dhcp.py, sre/_EXAM_/x.py:hard'
         assert out['labels'] == ['DHCP lab', 'sre/dhcp']
+        # the machines of the exam form: grouped by the name without its final digits (the rooms
+        # of a site), the groups and their machines in natural order, a machine listed once
+        assert out['hostGroups'] == ['z', 'pc-a-', 'srv', '42', '']
+        assert out['grouped'] == [{'group': 'a', 'names': ['a01']}, {'group': 'pc-a-', 'names': ['pc-a-2', 'pc-a-10']},
+                                  {'group': 'srv', 'names': ['srv']}, {'group': 'z', 'names': ['z01', 'z02', 'z10']}]
+        assert out['hostsText'] == ['a01, z01, z02', 'a* (1), pc-a-* (2), srv* (1), z* (3)', '', '']
 
 
 WEBCONF_MODEL_RUNNER = """\
