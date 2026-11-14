@@ -11,6 +11,14 @@ as a normal user on the same temporary SRE_PUB_DIR and must follow: locked a del
 start, waiting → active → ended, the end screen kept until the release, extra minutes granted
 meanwhile resuming the exam, End now and Close for the machine, a file set by hand left alone.
 
+The scenarios of test_exam_mode.py have their counterpart here (its scenario → this one): 1
+the end by the duration → 6; 2 another project stopped at the pre-start → 12; 3 and 4 the GUI
+restarted → 11; 5 the file removed after the end → 1, 4; 6 the end by end-before → 1; 7 and 8
+the labs changed → 5, 12; 9 time added after the end → 2.  The others are what only the web
+site does: the lock and the release (1, 10), minutes during the exam (7), Start now and a
+postponed start (8), a machine unselected and selected again (9), a file set by hand (4), a
+student of the audience logged in at the machine (13).
+
 The GUI runs the mock sre-wrapper of test_exam_mode.py (no Docker, no Kathara); the agent runs
 the fake sre of the web tests (tests/mock_sre.py) for the lab list and for the close of the
 exam (`sre end-exam`, `sre stop`).  Run as root, with debug_mode = True (the GUI then obeys
@@ -25,7 +33,7 @@ Options:
   --lab2 LAB2           second lab, for the scenario adding a lab
   --sysreseval PATH     path to the sysreseval script (default: the one of the tree)
   --keep-tmpdir         keep the temp SRE_PUB_DIR on exit (for debugging)
-  scenario_numbers      1-5 (default: all)
+  scenario_numbers      1-13 (default: all)
 """
 
 import argparse
@@ -115,14 +123,46 @@ class AgentProcess:
         wrapper.chmod(0o755)
         self.config = tmpdir / 'agent.toml'
         self.config.write_text(f'token = "{TOKEN}"\nlisten = "127.0.0.1:{self.port}"\nsre_exe = "{wrapper}"\n'
-                               'poll_interval = 0.5\noccupied_check = "never"\n')
+                               'poll_interval = 0.5\noccupied_check = "sessions"\n')
         self.config.chmod(0o600)
+        # the local login sessions the agent reports (`session:<login>` in its status) are those
+        # of this file, one login per line: a `loginctl` and a `who` of the test come first in
+        # the PATH of the agent (never the sessions of the host the tests run on)
+        self.sessions_file = tmpdir / 'sessions'
+        self.sessions_file.write_text('')
+        self.bin = tmpdir / 'agent-bin'
+        self.bin.mkdir()
+        (self.bin / 'loginctl').write_text(
+            "#!/bin/sh\n"
+            f"SESSIONS='{self.sessions_file}'\n"
+            'if [ "$1" = list-sessions ]; then\n'
+            '    n=0\n'
+            '    while read -r login; do\n'
+            '        n=$((n + 1))\n'
+            '        [ -n "$login" ] && echo "    $n 1000 $login seat0 tty2"\n'
+            '    done < "$SESSIONS"\n'
+            '    exit 0\n'
+            'fi\n'
+            'if [ "$1" = show-session ]; then\n'
+            '    printf \'Name=%s\\nSeat=seat0\\nTTY=tty2\\nClass=user\\nRemote=no\\nUser=1000\\n\' '
+            '"$(sed -n "${2}p" "$SESSIONS")"\n'
+            '    exit 0\n'
+            'fi\n'
+            'exit 1\n')
+        (self.bin / 'who').write_text("#!/bin/sh\nexit 0\n")
+        for fake in ('loginctl', 'who'):
+            (self.bin / fake).chmod(0o755)
         self._proc: subprocess.Popen | None = None
         self._out = None
 
+    def sessions(self, logins: list):
+        """Who is logged in at the keyboard of the machine, as the agent will tell (its
+        occupancy is cached five seconds)."""
+        self.sessions_file.write_text(''.join(f"{login}\n" for login in logins))
+
     def start(self, timeout: float = 20.0):
         self._out = open(self.output, 'w')
-        env = {**os.environ, 'PYTHONPATH': str(ROOT / 'src')}
+        env = {**os.environ, 'PYTHONPATH': str(ROOT / 'src'), 'PATH': f"{self.bin}:{os.environ.get('PATH', '')}"}
         self._proc = subprocess.Popen([sys.executable, '-W', 'ignore', str(AGENT_SCRIPT), '--config', str(self.config),
                                        '--pub-dir', str(self.pub_dir)], stdout=self._out, stderr=subprocess.STDOUT,
                                       env=env)
@@ -256,6 +296,13 @@ class WebSide:
         self.call(self.exams.set_labs(exam.id, None, self.X.parse_labs(labs)))
         self.call(self._pass())
 
+    def edit(self, exam, **body):
+        """The Edit of the page (the keys of ``PUT /api/exams/{id}``); *Start now* is
+        ``edit(exam, start_after=time.time())``."""
+        spec = self.X.parse_exam(body, cfg=self.cfg, now=time.time(), current=exam, known_hosts={HOST})
+        self.call(self.exams.update(exam.id, spec, resume='end_before' in body or 'duration' in body))
+        self.call(self._pass())
+
     def delete(self, exam, close: bool):
         async def gone():
             await self.hosts.release(exam, close)
@@ -264,11 +311,34 @@ class WebSide:
 
     # -- what the Exams page shows ---------------------------------------------------------------
 
-    def row(self, exam) -> dict:
-        """The row of the machine in the machines table of the exam."""
+    def rows(self, exam) -> list:
+        """The machines table of the exam."""
         async def rows():
             return self.hosts.rows_of(exam, [])
-        return self.call(rows())[0]
+        return self.call(rows())
+
+    def row(self, exam) -> dict:
+        """The row of the machine in the machines table of the exam."""
+        return self.rows(exam)[0]
+
+    # -- what a student's browser is told ----------------------------------------------------------
+
+    def binding(self, login: str) -> tuple | None:
+        """``(phase, the machine they take the exam at)`` of the exam binding *login* on the web
+        site now, ``None`` when none does (``GET /api/exam``)."""
+        async def bound():
+            found = self.exams.for_login(login, '')
+            if found is None:
+                return None
+            _, member, phase = found
+            return phase, member.local if member is not None else ''
+        return self.call(bound())
+
+    def start_access(self, login: str, lab: str) -> tuple:
+        """``(allowed, reason)`` of a start of *lab* by *login* (``POST /api/projects``)."""
+        async def access():
+            return self.exams.start_access(login, '', lab)
+        return self.call(access())
 
     def wait_row(self, exam, condition, timeout: float, what: str) -> dict:
         deadline = time.time() + timeout
@@ -315,12 +385,45 @@ class Stage:
         self.web = web
 
     def reset(self):
-        self.h.stop_sysreseval()
-        end_gui_of(self.h.user)
+        self.end_gui()
         self.web.reset()
         self.h.clean()
+        self.agent.sessions([])
         self.web.call(self.web.pool.refresh())
         self.agent.forget_calls()
+
+    def end_gui(self):
+        """The student logs out: the GUI ended for good (``start_sysreseval`` starts the next)."""
+        self.h.stop_sysreseval()
+        end_gui_of(self.h.user)
+
+    def wait_no_file(self, timeout: float = 20.0, stable: float = 3.0):
+        """exam.json gone, and for *stable* seconds: an `end-exam` of the GUI that read the file
+        just before the agent removed it writes it back (the portal then removes it again)."""
+        path = self.h.pub_dir / params.exam_json_name
+        deadline = time.time() + timeout
+        gone_since = None
+        while time.time() < deadline:
+            if path.exists():
+                gone_since = None
+            elif gone_since is None:
+                gone_since = time.time()
+            elif time.time() - gone_since >= stable:
+                return
+            time.sleep(0.2)
+        raise AssertionError("exam.json still exists (or keeps coming back) after its removal")
+
+    def other_project(self) -> Path:
+        """A project of a lab that is not the exam's, open before the exam (as scenario 2 of
+        test_exam_mode.py makes it)."""
+        name = f"{time.strftime('%Y%m%d%H%M%S')}@@@other_lab@@@{self.h.user}"
+        project = self.h.projects_dir / name
+        project.mkdir(parents=True)
+        project.chmod(0o777)       # the mock sre-wrapper removes it as the student
+        info = project / "info.json"
+        info.write_text(json.dumps({"lab_name": "other_lab", "lab_hash": "mock", "title": "Other lab"}))
+        info.chmod(0o666)
+        return project
 
     def forget_events(self):
         """The events of the GUI seen so far dropped: ``assert_event`` scans them all, and an
@@ -548,12 +651,287 @@ def scenario_5(s: Stage):
     assert calls == ['end-exam', 'stop', 'stop'], calls
 
 
+def scenario_6(s: Stage):
+    """A student logging in after the start gets their own clock, which the duration ends."""
+    h, web = s.h, s.web
+    body = s.window(start_in=15, seconds=600, duration=1)       # a minute each, in a window of ten
+    exam = web.create(**body)
+
+    # the start passes with nobody at the machine: locked, never started
+    row = web.wait_row(exam, lambda r: r['phase'] == 'starting', 30, "the machine locked, the start passed")
+    assert row['locked'] and row['started_at'] is None and not row['pre_started']
+    time.sleep(5)
+    h.start_sysreseval()                       # the student arrives late
+    h.assert_event("exam_entered", timeout=10)
+    h.assert_event("phase_change", lambda e: e.get("new") == "active", timeout=10)
+    assert h.wait_for_event("phase_change", lambda e: e.get("new") == "waiting", timeout=0.5) is None, \
+        "no waiting phase once the start passed"
+    h.assert_event("projects_ready_change", lambda e: e.get("ready") is True, timeout=30)
+    data = h.assert_field_in_exam("started_at", timeout=15)
+    assert data[params.exam_duration] == 1
+
+    # its own clock: a minute from its own start, long before the end-before time
+    row = web.wait_row(exam, lambda r: r['phase'] == 'active' and r['started_at'], 15, "the clock of the machine")
+    assert row['started_at'] - body['start_after'] >= 4, "the clock must start when the student arrives"
+    assert abs(row['end_at'] - (row['started_at'] + 60)) < 1.5, row
+    h.assert_event("phase_change", lambda e: e.get("new") == "ended", timeout=60 + 15)
+    assert time.time() < body['end_before'] - 300, "ended by the duration, not by the end-before time"
+    h.assert_field_in_exam("ended_at", timeout=15)
+    row = web.wait_row(exam, lambda r: r['phase'] == 'ended', 10, "the ended machine")
+
+    # the end screen stays until end-before + release (ten minutes away: not waited for here)
+    assert abs(row['release_at'] - (body['end_before'] + RELEASE)) < 1.5
+    time.sleep(3)
+    assert h.read_exam_json() is not None and len(s.projects()) == 1
+    web.close(exam)
+    h.assert_event("exam_exited", timeout=20)
+    s.wait_no_project()
+
+
+def scenario_7(s: Stage):
+    """Minutes added, then taken, for the machine during the exam."""
+    h, web = s.h, s.web
+    h.start_sysreseval()
+    exam = web.create(**s.window(seconds=600, duration=2))
+    started = s.until_active(exam)[params.exam_started_at]
+    row = web.wait_row(exam, lambda r: r['phase'] == 'active' and r['started_at'], 15, "the clock of the machine")
+    began = row['started_at']
+    assert abs(row['end_at'] - (began + 120)) < 1.5
+
+    s.forget_events()
+    web.adjust(exam, 1)
+    h.assert_event("exam_modified", timeout=10)
+    data = h.read_exam_json()
+    assert data[params.exam_duration] == 3 and data[params.exam_started_at] == started
+    row = web.wait_row(exam, lambda r: r['extra_minutes'] == 1, 10, "the extra minute")
+    assert row['phase'] == 'active' and abs(row['end_at'] - (began + 180)) < 1.5
+
+    # two minutes taken once more than a minute is spent: nothing is left, the exam ends at once
+    while time.time() < began + 62:
+        time.sleep(0.5)
+    s.forget_events()
+    web.adjust(exam, -2)
+    h.assert_event("phase_change", lambda e: e.get("new") == "ended", timeout=10)
+    data = h.assert_field_in_exam("ended_at", timeout=15)
+    assert data[params.exam_duration] == 1 and data[params.exam_started_at] == started
+    row = web.wait_row(exam, lambda r: r['phase'] == 'ended', 10, "the ended machine")
+    assert row['extra_minutes'] == -1
+    web.close(exam)
+    h.assert_event("exam_exited", timeout=20)
+    s.wait_no_project()
+
+
+def scenario_8(s: Stage):
+    """The start brought forward, postponed, then Start now."""
+    h, web = s.h, s.web
+    h.start_sysreseval()
+    exam = web.create(**s.window(start_in=300, seconds=600))            # in five minutes: not locked
+    time.sleep(3)
+    assert h.read_exam_json() is None and web.row(exam)['phase'] == 'scheduled'
+
+    # brought forward: the lock comes, the GUI waits (and pre-starts: less than a minute to go)
+    now = time.time()
+    web.edit(exam, start_after=now + 20, end_before=now + 620)
+    h.assert_event("exam_entered", timeout=20)
+    h.assert_event("phase_change", lambda e: e.get("new") == "waiting", timeout=10)
+    h.assert_field_in_exam("pre_start_date", timeout=15)
+    assert len(s.projects()) == 1
+
+    # postponed beyond the lock: the machine is given back, its project left as a plain one
+    s.forget_events()
+    s.agent.forget_calls()
+    now = time.time()
+    web.edit(exam, start_after=now + 300, end_before=now + 900)
+    h.assert_event("exam_exited", timeout=15)
+    s.wait_no_file()
+    assert web.row(exam)['phase'] == 'scheduled' and len(s.projects()) == 1
+    assert not [argv for argv, _, _ in s.agent.calls() if argv[0] in ('end-exam', 'stop')]
+
+    # Start now: locked and started at once, no waiting phase, the project of before reused
+    s.forget_events()
+    web.edit(exam, start_after=time.time())
+    h.assert_event("exam_entered", timeout=15)
+    h.assert_event("phase_change", lambda e: e.get("new") == "active", timeout=10)
+    assert h.wait_for_event("phase_change", lambda e: e.get("new") == "waiting", timeout=0.5) is None
+    data = h.assert_field_in_exam("started_at", timeout=20)
+    assert params.exam_pre_start_date in data and len(s.projects()) == 1
+
+    web.end_now(exam)
+    h.assert_event("phase_change", lambda e: e.get("new") == "ended", timeout=10)
+    web.close(exam)
+    h.assert_event("exam_exited", timeout=20)
+    s.wait_no_project()
+
+
+def scenario_9(s: Stage):
+    """A machine unselected, then selected again (a fresh run); the exam deleted without closing."""
+    h, web = s.h, s.web
+    h.start_sysreseval()
+    exam = web.create(**s.window(seconds=600), audience={'logins': ['alice']})   # the audience keeps it valid
+    first = s.until_active(exam)[params.exam_started_at]
+
+    # unselected in Edit: the file alone goes, the project of the GUI stays as a plain one
+    s.forget_events()
+    s.agent.forget_calls()
+    web.edit(exam, hosts=[])
+    h.assert_event("exam_exited", timeout=15)
+    s.wait_no_file()
+    assert web.rows(exam) == [] and len(s.projects()) == 1
+    assert not [argv for argv, _, _ in s.agent.calls() if argv[0] in ('end-exam', 'stop')]
+
+    # selected again: a new record, a new file, a new clock
+    time.sleep(1.5)
+    s.forget_events()
+    web.edit(exam, hosts=[HOST])
+    h.assert_event("exam_entered", timeout=15)
+    h.assert_event("phase_change", lambda e: e.get("new") == "active", timeout=15)
+    data = h.assert_field_in_exam("started_at", timeout=20)
+    assert data[params.exam_started_at] != first and params.exam_ended_at not in data
+    assert len(s.projects()) == 1, "the project of the first run serves the second"
+    row = web.wait_row(exam, lambda r: r['phase'] == 'active', 15, "the machine running again")
+    assert row['closed_at'] is None and row['extra_minutes'] == 0
+
+    # the exam deleted, its projects kept
+    s.forget_events()
+    web.delete(exam, close=False)
+    h.assert_event("exam_exited", timeout=15)
+    s.wait_no_file()
+    assert len(s.projects()) == 1
+    assert not [argv for argv, _, _ in s.agent.calls() if argv[0] in ('end-exam', 'stop')]
+
+
+def scenario_10(s: Stage):
+    """A release delay of 0: the machine is closed at the end, no end screen kept."""
+    h, web = s.h, s.web
+    h.start_sysreseval()
+    body = s.window(host_release=0)
+    exam = web.create(**body)
+    s.until_active(exam)
+    h.assert_event("phase_change", lambda e: e.get("new") == "ended", timeout=EXAM_SECONDS + 20)
+    h.assert_event("exam_exited", timeout=15)
+    assert time.time() < body['end_before'] + 15, "closed at the end, not a delay after it"
+    s.wait_no_file()
+    s.wait_no_project()
+    web.wait_row(exam, lambda r: r['phase'] == 'closed' and not r['closing'], 15, "the closed machine")
+    # the GUI and the agent both end the exam then: whoever came first, the agent stopped last
+    calls = [argv[0] for argv, _, _ in s.agent.calls() if argv[0] in ('end-exam', 'stop')]
+    assert calls and calls[-1] == 'stop' and calls.count('stop') == 1, calls
+
+
+def scenario_11(s: Stage):
+    """The student logs out and in again, while waiting then during the exam."""
+    h, web = s.h, s.web
+    h.start_sysreseval()
+    exam = web.create(**s.window(start_in=40, seconds=600, host_lead=30 / 60))    # thirty seconds of waiting
+    h.assert_event("exam_entered", timeout=25)
+    h.assert_event("phase_change", lambda e: e.get("new") == "waiting", timeout=10)
+
+    s.end_gui()
+    h.start_sysreseval()
+    h.assert_event("exam_entered", timeout=10)
+    h.assert_event("phase_change", lambda e: e.get("new") == "waiting", timeout=10)
+    h.assert_event("phase_change", lambda e: e.get("new") == "active", timeout=45)
+    h.assert_event("projects_ready_change", lambda e: e.get("ready") is True, timeout=30)
+    started = h.assert_field_in_exam("started_at", timeout=15)[params.exam_started_at]
+    web.adjust(exam, 1)                        # the portal rewrites the file in between
+
+    s.end_gui()
+    h.start_sysreseval()
+    h.assert_event("exam_entered", timeout=10)
+    h.assert_event("phase_change", lambda e: e.get("new") == "active", timeout=10)
+    assert h.wait_for_event("phase_change", lambda e: e.get("new") == "waiting", timeout=0.5) is None
+    h.assert_event("projects_ready_change", lambda e: e.get("ready") is True, timeout=10)
+    # the exam is not started a second time: the clock of the machine is the one of before
+    h.assert_event("tick", lambda e: e.get("start_exam_called") is False and e.get("phase") == "active", timeout=10)
+    time.sleep(2)
+    data = h.read_exam_json()
+    assert data[params.exam_started_at] == started and len(s.projects()) == 1
+    assert marker_of(data).get(params.exam_web_id) == str(exam.id)
+
+    web.close(exam)
+    h.assert_event("exam_exited", timeout=20)
+    s.wait_no_project()
+
+
+def scenario_12(s: Stage):
+    """A project of another lab is stopped at the pre-start; a lab added while waiting."""
+    h, web = s.h, s.web
+    if h.lab2 == h.lab:
+        raise AssertionError("this scenario needs a second lab (--lab2)")
+    h.start_sysreseval()
+    other = s.other_project()                  # the student works on something else
+    time.sleep(2)
+    exam = web.create(**s.window(start_in=45, seconds=600, host_lead=35 / 60))
+    h.assert_event("exam_entered", timeout=25)
+    h.assert_event("phase_change", lambda e: e.get("new") == "waiting", timeout=10)
+
+    # the pre-start of the GUI (less than a minute before the start): the other project goes
+    deadline = time.time() + 30
+    while other.exists() and time.time() < deadline:
+        time.sleep(0.3)
+    assert not other.exists(), "the project of another lab was not stopped by pre-start-exam"
+    h.assert_field_in_exam("pre_start_date", timeout=15)
+
+    # a second lab for everybody while the machine waits: started before the exam begins
+    s.forget_events()
+    web.set_labs(exam, [h.lab, h.lab2])
+    h.assert_event("exam_modified", timeout=10)
+    h.assert_event("phase_change", lambda e: e.get("new") == "active", timeout=50)
+
+    def both_labs(event):
+        expected = event.get("expected_labs", [])
+        return h.lab.replace("/", "@") in expected and h.lab2.replace("/", "@") in expected
+
+    h.assert_event("tick", both_labs, timeout=15)
+    h.assert_event("projects_ready_change", lambda e: e.get("ready") is True, timeout=30)
+    assert len(s.projects()) == 2
+    h.assert_field_in_exam("started_at", timeout=15)
+
+    web.close(exam)
+    h.assert_event("exam_exited", timeout=20)
+    s.wait_no_project()
+
+
+def scenario_13(s: Stage):
+    """Hybrid: a student of the audience logged in at the machine takes the exam there."""
+    h, web = s.h, s.web
+    s.agent.sessions([h.user])                 # at the keyboard of the machine
+    h.start_sysreseval()
+    exam = web.create(**s.window(seconds=600), audience={'logins': [h.user, 'alice']})
+    s.until_active(exam)
+
+    # the web site binds them without starting anything: they take the exam at the machine
+    deadline = time.time() + 20
+    while web.binding(h.user) != ('local', HOST) and time.time() < deadline:
+        time.sleep(0.5)
+    assert web.binding(h.user) == ('local', HOST), web.binding(h.user)
+    allowed, reason = web.start_access(h.user, h.lab)
+    assert not allowed and f"workstation {HOST}" in reason, reason
+    assert web.row(exam)['sessions'] == [h.user]
+    # another student of the audience, not at a machine: the web exam, as usual
+    assert web.binding('alice') == ('starting', '') and web.start_access('alice', h.lab) == (True, '')
+
+    # the machine closed: the exam is over for the student on the web site too
+    web.close(exam)
+    h.assert_event("exam_exited", timeout=20)
+    s.wait_no_project()
+    assert web.binding(h.user) is None and web.binding('alice') == ('starting', '')
+
+
 SCENARIOS = {
     1: ("Web scenario 1 — lock, waiting → active → ended, release", scenario_1),
     2: ("Web scenario 2 — minutes on the end screen resume the exam", scenario_2),
     3: ("Web scenario 3 — End now and Close for the machine", scenario_3),
     4: ("Web scenario 4 — a file set by hand is refused, then the machine taken", scenario_4),
     5: ("Web scenario 5 — a lab added during the exam", scenario_5),
+    6: ("Web scenario 6 — a late student: the clock of the machine, ended by the duration", scenario_6),
+    7: ("Web scenario 7 — minutes added then taken during the exam", scenario_7),
+    8: ("Web scenario 8 — start brought forward, postponed, Start now", scenario_8),
+    9: ("Web scenario 9 — machine unselected and selected again, exam deleted without closing", scenario_9),
+    10: ("Web scenario 10 — a release delay of 0", scenario_10),
+    11: ("Web scenario 11 — the student logs out and in, waiting then active", scenario_11),
+    12: ("Web scenario 12 — another project stopped at the pre-start, a lab added while waiting", scenario_12),
+    13: ("Web scenario 13 — hybrid: the student at the machine takes the exam there", scenario_13),
 }
 
 

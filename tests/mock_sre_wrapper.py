@@ -12,7 +12,9 @@ Environment variables:
   MOCK_LAB_LIST   comma-separated list of lab CLI args that can be started
 """
 
+import contextlib
 import datetime
+import fcntl
 import json
 import os
 import shutil
@@ -46,6 +48,23 @@ def _write_exam(data: dict):
     tmp = EXAM_JSON.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=4))
     tmp.rename(EXAM_JSON)
+
+
+@contextlib.contextmanager
+def _one_exam_command_at_a_time():
+    """The commands rewriting exam.json, one after the other (a lock on SRE_PUB_DIR).
+
+    The GUI launches `pre-start-exam` and `start-exam` in the same tick when the exam is already
+    running the moment its file appears and its projects are there (a file removed without a
+    close, then set again). The real commands rewrite the file in place, `pre-start-exam` reading
+    it again just before; this mock reads it once and replaces it through one temporary name, so
+    two commands at once lost the write of one of them, or the rename of one failed."""
+    fd = os.open(SRE_PUB_DIR, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
 
 
 def _lab_name_from_cli_arg(lab: str) -> str:
@@ -176,11 +195,14 @@ def main():
 
     try:
         if subcommand == "pre-start-exam":
-            cmd_pre_start_exam()
+            with _one_exam_command_at_a_time():
+                cmd_pre_start_exam()
         elif subcommand == "start-exam":
-            cmd_start_exam()
+            with _one_exam_command_at_a_time():
+                cmd_start_exam()
         elif subcommand == "end-exam":
-            cmd_end_exam()
+            with _one_exam_command_at_a_time():
+                cmd_end_exam()
         elif subcommand == "eval-exam":
             cmd_eval_exam()
         elif subcommand == "stop" and len(sys.argv) >= 3:

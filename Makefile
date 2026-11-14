@@ -302,7 +302,7 @@ exam-tests:
 # written by the web agent of the tree, on the orders of the portal's own code (the registry of
 # the exams, a pool polling that agent, the reconciler of the machines), with the fake sre of
 # the web tests behind the agent.  Same conditions as exam-tests (root, debug_mode = True) plus
-# the web dependencies of the venv; a series of its own: five scenarios, about seven minutes.
+# the web dependencies of the venv; a series of its own: thirteen scenarios, about fourteen minutes.
 # Usage: make web-exam-tests [EXAM_USER=etudiant] [EXAM_LAB=...] [EXAM_LAB2=...] [SCENARIOS="1 3"]
 #        make web-exam-tests SCENARIO=1
 WEB_EXAM_ARGS = --user $(EXAM_USER) --lab $(EXAM_LAB) --lab2 $(EXAM_LAB2) --sysreseval $(ROOT_DIR)/bin/sysreseval
