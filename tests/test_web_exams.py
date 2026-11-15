@@ -251,6 +251,43 @@ class TestPhases:
         m.extra_minutes = 5
         assert exam.end_at(m) == NOW + 1000 + 300
 
+    def test_allotted_and_elapsed(self):
+        """The time allotted to a student (the length of their clock) and the time they spent."""
+        exam = self.exam()
+        # before their start: the duration of the exam and their extra minutes, nothing elapsed
+        assert exam.allotted(None) == 5400 and exam.elapsed(None, NOW) is None
+        m = exam.member('alice', create=True)
+        m.extra_minutes = 10
+        assert exam.allotted(m) == 6000 and exam.elapsed(m, NOW) is None
+        m.extra_minutes = -200
+        assert exam.allotted(m) == 0
+        # started: from their start to their end, the time spent stopping at that end
+        m.extra_minutes = 10
+        m.started_at = NOW
+        assert exam.allotted(m) == 6000
+        assert (exam.elapsed(m, NOW), exam.elapsed(m, NOW + 90), exam.elapsed(m, NOW + 9000)) == (0, 90, 6000)
+        assert exam.elapsed(m, NOW - 5) == 0
+        # an End now cuts both
+        m.ended_at = NOW + 100
+        assert exam.allotted(m) == 100 and exam.elapsed(m, NOW + 500) == 100
+        m.ended_at = None
+        # minutes taken beyond the time left: nothing allotted
+        m.extra_minutes = -200
+        assert exam.allotted(m) == 0 and exam.elapsed(m, NOW + 500) == 0
+        # the end-before time cuts the duration, the extra minutes go past it
+        exam = self.exam(start_after=NOW + 60, end_before=NOW + 1000)
+        m = exam.member('alice', create=True)
+        m.started_at = NOW + 60
+        assert exam.allotted(m) == 940
+        m.extra_minutes = 5
+        assert exam.allotted(m) == 1240
+        # no duration: the window alone, unknown until they start
+        exam = self.exam(duration=None, start_after=NOW, end_before=NOW + 1000)
+        m = exam.member('alice', create=True)
+        assert exam.allotted(m) is None and exam.allotted(None) is None
+        m.started_at = NOW + 400
+        assert exam.allotted(m) == 600 and exam.elapsed(m, NOW + 500) == 100
+
     def test_audience(self):
         memberships = FakeMemberships({'custom:tp1': {'carol'}})
         _, _, reg = registry(memberships=memberships)
@@ -1014,11 +1051,17 @@ class TestThroughThePortal:
                 member = next(mm for mm in detail['members'] if mm['login'] == 'alice')
                 assert member['phase'] == 'active' and member['connected'] and member['fullname'] == 'Alice A'
                 assert member['projects'][0]['rln'] == rln and member['end_at'] == member['started_at'] + 5400
+                # the time allotted to her and the time she spent (the portal's clock at the answer)
+                assert member['allotted'] == 5400 and member['elapsed'] == detail['now'] - member['started_at']
+                assert 0 <= member['elapsed'] < 5400
                 # +5 minutes for her: her end moves, the agent is told
                 status, data = await api(h, 'POST', f'/api/exams/{xid}/adjust', prof, {'logins': ['alice'],
                                                                                         'extra_minutes': 5})
                 assert status == 200, data
                 assert (await api(h, 'GET', '/api/exam', alice))[1]['exam']['end_at'] == member['end_at'] + 300
+                longer = next(mm for mm in (await api(h, 'GET', f'/api/exams/{xid}', prof))[1]['members']
+                              if mm['login'] == 'alice')
+                assert longer['allotted'] == 5700 and longer['extra_minutes'] == 5
                 assert spy.calls[-1][1:3] == ('PUT', f"/projects/{urllib.parse.quote(rln, safe='')}/exam")
                 assert await receive(ws) == {'t': 'exam', 'id': xid, 'phase': 'active'}     # her end moved: told
                 assert (await api(h, 'POST', f'/api/exams/{xid}/adjust', prof, {'logins': ['carol'],

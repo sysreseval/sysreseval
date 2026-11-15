@@ -1668,6 +1668,15 @@ msgstr "Phase"
 msgid "Extra"
 msgstr "Supplément"
 
+msgid "Elapsed"
+msgstr "Écoulé"
+
+msgid "The time allotted to the student: from their start to their end, their extra minutes included"
+msgstr "Le temps accordé à l'étudiant : de son début à sa fin, ses minutes supplémentaires comprises"
+
+msgid "The time the student has spent in the exam"
+msgstr "Le temps que l'étudiant a passé dans l'examen"
+
 msgid "Logins"
 msgstr "Identifiants"
 

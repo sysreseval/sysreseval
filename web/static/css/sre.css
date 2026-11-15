@@ -846,8 +846,8 @@ table.grid.exams tbody tr { cursor: pointer; }
 table.grid.exams tbody tr.open { background: #fff8e1; }
 table.grid.exams td.labs, table.grid.members td.labs { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exam-detail { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
-.exam-detail .toolbar h2 { margin: 0; font-size: 16px; }
-.exam-detail .toolbar .muted { flex: 1; }
+/* the title and the parameters of the open exam, over the table of its members */
+.exam-detail h2.exam-summary { margin: 0 0 6px; font-size: 14px; font-weight: bold; }
 .exam-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
 .exam-actions .exam-adjust { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--border-light); border-radius: 3px; }
 .exam-actions .exam-adjust input { width: 60px; }

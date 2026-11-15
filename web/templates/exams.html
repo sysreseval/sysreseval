@@ -34,11 +34,6 @@
   <tbody><tr><td colspan="11" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 <section id="exam-detail" class="exam-detail" hidden>
-  <div class="toolbar">
-    <h2 id="exam-detail-title"></h2>
-    <span id="exam-detail-summary" class="muted"></span>
-    <button type="button" id="exam-detail-close">{{ _("Close") }}</button>
-  </div>
   <p id="exam-detail-notice" class="muted" hidden></p>
   <div id="exam-actions" class="exam-actions">
     <button type="button" id="exam-start-now" class="primary" title="{{ _("Start the exam now: its members are bound at once") }}">{{ _("Start now") }}</button>
@@ -56,7 +51,9 @@
     <span class="spacer"></span>
     <button type="button" id="exam-edit">{{ _("Edit") }}</button>
     <button type="button" id="exam-delete" class="danger">{{ _("Delete") }}</button>
+    <button type="button" id="exam-detail-close">{{ _("Close") }}</button>
   </div>
+  <h2 class="exam-summary"><span id="exam-detail-title"></span><span id="exam-detail-summary"></span></h2>
   <table id="exam-members" class="grid watch members">
     <thead>
       <tr>
@@ -69,12 +66,14 @@
         <th class="sortable" data-sort="phase">{{ _("Phase") }}</th>
         <th class="sortable" data-sort="started_at">{{ _("Start") }}</th>
         <th class="sortable" data-sort="end_at">{{ _("End") }}</th>
+        <th class="sortable" data-sort="allotted" title="{{ _("The time allotted to the student: from their start to their end, their extra minutes included") }}">{{ _("Duration") }}</th>
+        <th class="sortable" data-sort="elapsed" title="{{ _("The time the student has spent in the exam") }}">{{ _("Elapsed") }}</th>
         <th class="sortable" data-sort="extra_minutes">{{ _("Extra") }}</th>
         <th>{{ _("Labs") }}</th>
         <th>{{ _("Projects") }}</th>
       </tr>
     </thead>
-    <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+    <tbody><tr><td colspan="14" class="muted">{{ _("Loading…") }}</td></tr></tbody>
   </table>
   <div id="exam-machines-section" hidden>
     <h3>{{ _("Machines") }}</h3>

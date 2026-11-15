@@ -522,12 +522,22 @@ class TestTemplates:
         assert detail.startswith(' class="exam-detail" hidden>')
         # the members table, then the one of the machines of the exam (hidden until it has some)
         members, machines = detail.split('<div id="exam-machines-section"')
-        assert len(re.findall(r'<th[ >]', members)) == 12 and 'colspan="12"' in members
+        assert len(re.findall(r'<th[ >]', members)) == 14 and 'colspan="14"' in members
         assert machines.startswith(' hidden>') and len(re.findall(r'<th[ >]', machines)) == 10
         assert 'class="grid watch members machines"' in machines
         assert 'data-sort="group" hidden>' in detail
-        for key in ('login', 'fullname', 'group', 'connected', 'address', 'phase', 'started_at', 'end_at', 'extra_minutes'):
+        keys = ('login', 'fullname', 'group', 'connected', 'address', 'phase', 'started_at', 'end_at', 'allotted', 'elapsed',
+                'extra_minutes')
+        for key in keys:
             assert f'data-sort="{key}"' in detail, key
+        # the time allotted and the time elapsed follow the end of the student's clock
+        assert [members.index(f'data-sort="{key}"') for key in keys[-4:]] \
+            == sorted(members.index(f'data-sort="{key}"') for key in keys[-4:])
+        # the actions (Close among them), then the line of the exam in bold right over its members
+        actions, line = members.split('<h2 class="exam-summary">')
+        assert 'id="exam-actions"' in actions and 'id="exam-detail-close"' in actions
+        assert line.startswith('<span id="exam-detail-title"></span><span id="exam-detail-summary"></span></h2>\n'
+                               '  <table id="exam-members"')
         assert form.startswith(' class="modal exam">')
         assert 'type="datetime-local" id="exam-start-after"' in form and 'type="datetime-local" id="exam-end-before"' in form
         assert 'id="exam-groups" name="groups" multiple' in form and '<textarea id="exam-networks"' in form

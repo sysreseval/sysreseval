@@ -803,7 +803,9 @@ open pages through the presence socket (`{"t": "exam", "id", "phase"}`: the page
 
 On the page the instructor sees, per exam, every student the portal can name (the logins, the
 members of the groups it knows, those it has seen), connected or not, with their address, their
-phase, their clock, their extra minutes and their running exam projects (a link to each: the
+phase, their clock (its start and its end, the time allotted to them — *Duration*: the duration
+of the exam and their extra minutes, cut by the end-before time or an *End now* — and the time
+they have spent, *Elapsed*), their extra minutes and their running exam projects (a link to each: the
 instructor's view of the student's project, the Evaluation tab included), and can, for everybody
 or for a selection (the checked rows): add or take minutes (for everybody the duration and the
 end time move together and an *End now* is lifted; for a selection their extra minutes,

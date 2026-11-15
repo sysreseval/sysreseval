@@ -1749,6 +1749,7 @@ class Routes:
                             'connected': connected is not None, 'address': m.address if m is not None else '',
                             'phase': exam.phase(m, now), 'first_seen': m.first_seen if m is not None else None,
                             'started_at': m.started_at if m is not None else None, 'end_at': exam.end_at(m),
+                            'allotted': exam.allotted(m), 'elapsed': exam.elapsed(m, now),
                             'ended_at': m.ended_at if m is not None else None,
                             'dismissed_at': m.dismissed_at if m is not None else None,
                             'extra_minutes': m.extra_minutes if m is not None else 0,

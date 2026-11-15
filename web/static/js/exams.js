@@ -3,9 +3,11 @@
 // hidden at first), its times, its labs, its audience and its creator, sorted by any column and
 // filtered by text (kept in the URL as ?q= and ?status=); New exam, Edit and Delete through the
 // dialog of exams_form.js (POST / PUT / DELETE /api/exams…).  A click on a row (or Open) shows
-// the detail of the exam (GET /api/exams/{id} every 5 s, ?id= in the URL): its members (login,
-// name, group, connected, address, phase, start and end of their individual clock, extra
-// minutes, labs, projects linked to the instructor's view of the project), a checkbox per
+// the detail of the exam (GET /api/exams/{id} every 5 s, ?id= in the URL): its actions, then
+// one bold line (its title and its parameters) over the table of its members (login, name,
+// group, connected, address, phase, start and end of their individual clock, the time allotted
+// to them and the time they have spent, extra minutes, labs, projects linked to the
+// instructor's view of the project), a checkbox per
 // member, and the actions during the exam: Start now (the start time set to now), End now
 // (everybody), ± N minutes for all (the duration and the end-before time move) or for the
 // selected members (extra minutes on their own clock), End for selected, Change labs of the
@@ -28,7 +30,9 @@ const REFRESH_INTERVAL = 5000;
 const STATUSES = ['scheduled', 'running', 'past'];
 const STATUS_ORDER = {running: 0, scheduled: 1, past: 2};
 const PHASE_ORDER = {active: 0, starting: 1, local: 2, waiting: 3, ended: 4, done: 5, past: 6, scheduled: 7};
-const NUMERIC = ['start', 'end', 'duration', 'members', 'machines', 'started_at', 'end_at', 'extra_minutes'];
+const NUMERIC = ['start', 'end', 'duration', 'members', 'machines', 'started_at', 'end_at', 'allotted', 'elapsed',
+                 'extra_minutes'];
+const SEPARATOR = ' · ';   // between the parts of the line describing an exam
 
 const table = document.getElementById('exams');
 const body = table.querySelector('tbody');
@@ -474,7 +478,7 @@ async function refreshDetail() {
   renderDetail();
 }
 
-// the line under the title of the detail
+// the parameters of the exam, after its title on the line over the members table
 function summaryText(exam) {
   const parts = [statusLabel(exam.status)];
   parts.push(format(_('start: {text}'), {text: startText(exam)}));
@@ -500,14 +504,15 @@ function summaryText(exam) {
       ? format(_('closing projects: {done}/{total} ({failed} failed)'), exam.closing)
       : format(_('{n} project(s) closed'), {n: exam.closing.closed}));
   }
-  return parts.join(' · ');
+  return parts.join(SEPARATOR);
 }
 
 function memberSortValue(member, key) {
   switch (key) {
     case 'connected': return member.connected ? 0 : 1;
     case 'phase': return PHASE_ORDER[member.phase] === undefined ? 9 : PHASE_ORDER[member.phase];
-    case 'started_at': case 'end_at': return isNumber(member[key]) ? member[key] : Infinity;
+    case 'started_at': case 'end_at': case 'allotted': case 'elapsed':
+      return isNumber(member[key]) ? member[key] : Infinity;
     case 'extra_minutes': return member.extra_minutes || 0;
     default: return member[key] || '';
   }
@@ -534,7 +539,7 @@ function renderDetail() {
     return;
   }
   detailTitle.textContent = exam.title || '';
-  detailSummary.textContent = summaryText(exam);
+  detailSummary.textContent = SEPARATOR + summaryText(exam);
   const running = exam.status === 'running';
   buttons.startNow.disabled = isNumber(exam.start_at) && exam.start_at <= state.now;
   buttons.startNow.hidden = exam.status === 'past';
@@ -634,6 +639,8 @@ function renderMember(member) {
        member.phase === 'local' && member.local ? format(_('at {host}'), {host: member.local}) : phaseLabel(member.phase)),
     el('td', {title: dateText(member.started_at)}, timeText(member.started_at)),
     el('td', {title: dateText(member.end_at)}, timeText(member.end_at)),
+    el('td', {class: 'num'}, formatDuration(member.allotted)),
+    el('td', {class: 'num'}, formatDuration(member.elapsed)),
     el('td', {class: 'num'}, extra ? (extra > 0 ? `+${extra}` : String(extra)) : ''),
     el('td', {class: 'labs', title: labsText(member.labs)}, member.labs && member.labs.length ? labsText(member.labs) : ''),
     el('td', {}, projects));

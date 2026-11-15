@@ -368,6 +368,27 @@ class Exam:
                 end = min(end, cap)
         return end
 
+    def allotted(self, member: Member | None) -> float | None:
+        """The length of a student's exam as it stands, in seconds: from their start to their
+        end (the duration and their extra minutes, cut by the end-before time or an *End now*);
+        before their start, the duration of the exam plus their extra minutes (``None`` without
+        a duration: it depends on when they start)."""
+        if member is not None and member.started_at is not None:
+            end = self.end_at(member)
+            return None if end is None else max(0.0, end - member.started_at)
+        if self.duration is None:
+            return None
+        extra = member.extra_minutes if member is not None else 0
+        return max(0.0, self.duration + extra * 60)
+
+    def elapsed(self, member: Member | None, now: float) -> float | None:
+        """How long a student has been in the exam, in seconds: from their start to *now*, or to
+        their end once it is over; ``None`` until their clock started."""
+        if member is None or member.started_at is None:
+            return None
+        end = self.end_at(member)
+        return max(0.0, (now if end is None else min(now, end)) - member.started_at)
+
     def phase(self, member: Member | None, now: float) -> str:
         if self.start_after is not None and now < self.start_after - self.lead:
             return PHASE_SCHEDULED
