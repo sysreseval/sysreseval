@@ -500,7 +500,7 @@ class TestTemplates:
         html = render('exams.html', instructor=True, exams_database=True, exams_available=True, exam_defaults=defaults)
         for element in ('exams', 'exams-filter', 'exams-status', 'exams-count', 'exams-new', 'exams-hints', 'exams-notice',
                         'exam-detail', 'exam-detail-title', 'exam-detail-summary', 'exam-detail-close', 'exam-detail-notice',
-                        'exam-actions', 'exam-start-now', 'exam-end-now', 'exam-minutes', 'exam-extend-all', 'exam-reduce-all',
+                        'exam-actions', 'exam-start-now', 'exam-end-now', 'exam-select-group', 'exam-minutes',
                         'exam-extend-selected', 'exam-reduce-selected', 'exam-end-selected', 'exam-labs-selected',
                         'exam-close-projects', 'exam-edit', 'exam-delete', 'exam-members', 'exam-select-all',
                         'exam-machines-section', 'exam-machines', 'exam-select-all-machines',
@@ -509,6 +509,9 @@ class TestTemplates:
                         'exam-labs', 'exam-start-after', 'exam-end-before', 'exam-duration', 'exam-lead', 'exam-pre-start',
                         'exam-eval-interval', 'exam-networks', 'exam-form-error', 'exam-form-cancel', 'exam-form-submit'):
             assert f'id="{element}"' in html, element
+        # minutes for the selection alone: Select group… checks the members of a group
+        assert 'exam-extend-all' not in html and 'exam-reduce-all' not in html and 'for all' not in html
+        assert html.index('id="exam-end-now"') < html.index('id="exam-select-group"') < html.index('id="exam-minutes"')
         for status, pressed in (('scheduled', 'true'), ('running', 'true'), ('past', 'false')):
             assert f'data-status="{status}" aria-pressed="{pressed}"' in html, status
         for key in ('title', 'status', 'start', 'end', 'duration', 'members', 'machines', 'created_by'):
@@ -1045,11 +1048,19 @@ class TestLabKey:
 
 
 EXAMS_FORM_RUNNER = """\
-import {toLocalInput, fromLocalInput, labsText, labLabel, hostGroup, groupHosts, hostsText} from './exams_form.js';
+import {toLocalInput, fromLocalInput, labsText, labLabel, hostGroup, groupHosts, hostsText,
+        memberGroups} from './exams_form.js';
 
 const epochs = JSON.parse(process.argv[2]);
 const room = ['z10', 'z02', 'a01', 'z01', 'pc-a-2', 'pc-a-10', 'srv', 'z02'];
+const members = [
+  {login: 'carol', group: 'INFO2', groups: ['department:INFO2', 'custom:tp1', 'directory:sre']},
+  {login: 'alice', group: 'INFO1', groups: ['department:INFO1', 'directory:sre', 'custom:tp1']},
+  {login: 'bob', group: 'INFO1'},                       // an older portal: the department alone
+  {login: 'dave', group: '', groups: ['INFO2']},        // a bare key is a department
+  {login: 'erin', group: '', groups: []}, {login: '', group: 'INFO1'}, null];
 process.stdout.write(JSON.stringify({
+  memberGroups: memberGroups(members), noGroups: [memberGroups([]), memberGroups(null), memberGroups([{login: 'erin'}])],
   roundTrip: epochs.map((e) => fromLocalInput(toLocalInput(e))),
   shape: epochs.map((e) => /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(toLocalInput(e))),
   empty: [toLocalInput(null), toLocalInput('x'), fromLocalInput(''), fromLocalInput('nope')],
@@ -1081,6 +1092,14 @@ class TestExamsForm:
         assert out['grouped'] == [{'group': 'a', 'names': ['a01']}, {'group': 'pc-a-', 'names': ['pc-a-2', 'pc-a-10']},
                                   {'group': 'srv', 'names': ['srv']}, {'group': 'z', 'names': ['z01', 'z02', 'z10']}]
         assert out['hostsText'] == ['a01, z01, z02', 'a* (1), pc-a-* (2), srv* (1), z* (3)', '', '']
+        # the groups of the members of an exam (Select group…): by kind then name, each with the
+        # logins of its members; the department of a row counts with or without its `groups`
+        assert out['memberGroups'] == [
+            {'key': 'department:INFO1', 'kind': 'department', 'name': 'INFO1', 'members': 2, 'logins': ['alice', 'bob']},
+            {'key': 'department:INFO2', 'kind': 'department', 'name': 'INFO2', 'members': 2, 'logins': ['carol', 'dave']},
+            {'key': 'directory:sre', 'kind': 'directory', 'name': 'sre', 'members': 2, 'logins': ['alice', 'carol']},
+            {'key': 'custom:tp1', 'kind': 'custom', 'name': 'tp1', 'members': 2, 'logins': ['alice', 'carol']}]
+        assert out['noGroups'] == [[], [], []]
 
 
 WEBCONF_MODEL_RUNNER = """\

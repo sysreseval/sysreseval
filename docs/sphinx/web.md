@@ -806,14 +806,17 @@ members of the groups it knows, those it has seen), connected or not, with their
 phase, their clock (its start and its end, the time allotted to them — *Duration*: the duration
 of the exam and their extra minutes, cut by the end-before time or an *End now* — and the time
 they have spent, *Elapsed*), their extra minutes and their running exam projects (a link to each: the
-instructor's view of the student's project, the Evaluation tab included), and can, for everybody
-or for a selection (the checked rows): add or take minutes (for everybody the duration and the
-end time move together and an *End now* is lifted; for a selection their extra minutes,
-cumulative), *End now*, change the labs (the browsers start the new ones; the projects of a lab
-dropped stay as plain projects), *Close projects*, *Start now* (the start time set to now), *Edit*
-(every field; the students keep their clocks and adjustments) and *Delete* (the projects become
-plain projects, or are closed with the checkbox). The listing shows the scheduled, the running
-and the past exams.
+instructor's view of the student's project, the Evaluation tab included), and can, for a
+selection (the checked rows; the box of the header checks every row, *Select group…* the
+members of the groups chosen in its dialog — the departments, the directory groups and the
+custom groups the students of the exam belong to — in place of the rows checked before): add or
+take minutes (their extra minutes, cumulative), *End for selected*, change the labs (the
+browsers start the new ones; the projects of a lab dropped stay as plain projects), and for
+everybody or for the selection *Close projects*; then *End now* (everybody), *Start now* (the
+start time set to now), *Edit* (every field, the duration and the end time among them: saving
+lifts an *End now*; the students keep their clocks and adjustments) and *Delete* (the projects
+become plain projects, or are closed with the checkbox). The listing shows the scheduled, the
+running and the past exams.
 
 #### On the workstations
 
@@ -850,8 +853,8 @@ set-exam`, no `sre del-exam`.
   the file), its release, its extra minutes and the exam projects there, each a link to the
   instructor's view. The checked machines take the actions of the checked students: minutes
   (the end-before time and the duration of that machine's file: a student with extra time sits
-  at one machine), *End now*, *Close projects*; *+ for all*, *End now*, *Start now*, *Edit* and
-  *Change labs* for everybody reach the machines too.
+  at one machine), *End for selected*, *Close projects*; *End now*, *Start now* and *Edit* reach
+  the machines too.
 - A **closed** machine stays closed: minutes are granted before its release. To run the exam
   there again, unselect and reselect it in *Edit* (its clock lived in the file). A machine
   unselected, or an exam deleted without closing its projects, loses the file alone: the

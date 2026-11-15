@@ -9,7 +9,8 @@
 // to them and the time they have spent, extra minutes, labs, projects linked to the
 // instructor's view of the project), a checkbox per
 // member, and the actions during the exam: Start now (the start time set to now), End now
-// (everybody), ± N minutes for all (the duration and the end-before time move) or for the
+// (everybody), Select group… (the members of the groups chosen in a dialog are the checked
+// ones: the groups are those of the `groups` keys of the member rows), ± N minutes for the
 // selected members (extra minutes on their own clock), End for selected, Change labs of the
 // selected members, Close the projects of the selection.  Every action replaces the summary
 // and reloads the detail; nothing is optimistic.  An exam taken at machines of the pool (the Qt
@@ -24,7 +25,7 @@ import * as i18n from './i18n.js';
 import {_, format} from './i18n.js';
 import {el, clear, toast, formatDuration} from './ui.js';
 import {projectUrl} from './creation.js';
-import {createExamForm, labsDialog, labsText, hostsText} from './exams_form.js';
+import {createExamForm, labsDialog, labsText, hostsText, memberGroups, groupsDialog} from './exams_form.js';
 
 const REFRESH_INTERVAL = 5000;
 const STATUSES = ['scheduled', 'running', 'past'];
@@ -60,8 +61,7 @@ const available = table.dataset.available === 'true';
 const buttons = {
   startNow: document.getElementById('exam-start-now'),
   endNow: document.getElementById('exam-end-now'),
-  extendAll: document.getElementById('exam-extend-all'),
-  reduceAll: document.getElementById('exam-reduce-all'),
+  selectGroup: document.getElementById('exam-select-group'),
   extendSelected: document.getElementById('exam-extend-selected'),
   reduceSelected: document.getElementById('exam-reduce-selected'),
   endSelected: document.getElementById('exam-end-selected'),
@@ -672,8 +672,9 @@ function renderSelection() {
   buttons.labsSelected.disabled = noMember || !(open.data && open.data.status === 'running');
   buttons.labsSelected.title = count === 0 ? _('no member selected')
     : (hosts > 0 ? _('the labs of a machine are those of the exam: unselect the machines') : titles.get(buttons.labsSelected));
-  const live = open.data && (open.data.status === 'running' || machines.length > 0 && open.data.status !== 'scheduled');
-  buttons.extendAll.disabled = buttons.reduceAll.disabled = !live;
+  const noGroup = memberGroups(members).length === 0;
+  buttons.selectGroup.disabled = noGroup;
+  buttons.selectGroup.title = noGroup ? _('no group among the members') : titles.get(buttons.selectGroup);
 }
 
 const titles = new Map(Object.values(buttons).map((button) => [button, button.title]));   // the tooltips of the template
@@ -752,10 +753,27 @@ function setupDetailControls() {
       act(buttons.endNow, (exam) => api.post(examUrl(exam.id, '/end'), {all: true}));
     }
   });
-  buttons.extendAll.addEventListener('click', () => act(buttons.extendAll,
-    (exam) => api.post(examUrl(exam.id, '/adjust'), {all: true, extra_minutes: minutes()})));
-  buttons.reduceAll.addEventListener('click', () => act(buttons.reduceAll,
-    (exam) => api.post(examUrl(exam.id, '/adjust'), {all: true, extra_minutes: -minutes()})));
+  buttons.selectGroup.addEventListener('click', async () => {
+    if (!open.data) {
+      return;
+    }
+    const id = open.id;
+    const keys = await groupsDialog(memberGroups(open.data.members || []), {title: _('Select the members of groups')});
+    if (keys === null || open.id !== id || !open.data) {
+      return;
+    }
+    // the members of the groups chosen, as the detail lists them now (it is polled meanwhile)
+    const chosen = new Set(keys);
+    open.selected.clear();
+    for (const group of memberGroups(open.data.members || [])) {
+      if (chosen.has(group.key)) {
+        for (const login of group.logins) {
+          open.selected.add(login);
+        }
+      }
+    }
+    renderDetail();
+  });
   buttons.extendSelected.addEventListener('click', () => act(buttons.extendSelected,
     (exam) => api.post(examUrl(exam.id, '/adjust'), {...selection(), extra_minutes: minutes()})));
   buttons.reduceSelected.addEventListener('click', () => act(buttons.reduceSelected,

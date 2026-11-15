@@ -38,10 +38,9 @@
   <div id="exam-actions" class="exam-actions">
     <button type="button" id="exam-start-now" class="primary" title="{{ _("Start the exam now: its members are bound at once") }}">{{ _("Start now") }}</button>
     <button type="button" id="exam-end-now" class="danger" title="{{ _("End the exam now for everybody: the final evaluation runs, the banner is shown") }}">{{ _("End now") }}</button>
+    <button type="button" id="exam-select-group" title="{{ _("Check the members of one or several groups") }}">{{ _("Select group…") }}</button>
     <span class="exam-adjust">
       <label>{{ _("Minutes") }} <input type="number" id="exam-minutes" value="5" min="1" max="1440" step="1"></label>
-      <button type="button" id="exam-extend-all" title="{{ _("Lengthen the exam for everybody (its duration and its end)") }}">{{ _("+ for all") }}</button>
-      <button type="button" id="exam-reduce-all" title="{{ _("Shorten the exam for everybody (its duration and its end)") }}">{{ _("− for all") }}</button>
       <button type="button" id="exam-extend-selected" title="{{ _("Extra minutes beyond the end of the exam, for the selected members and machines") }}">{{ _("+ for selected") }}</button>
       <button type="button" id="exam-reduce-selected" title="{{ _("Fewer minutes for the selected members and machines") }}">{{ _("− for selected") }}</button>
       <button type="button" id="exam-end-selected" class="danger" title="{{ _("End the exam now for the selected members and machines") }}">{{ _("End for selected") }}</button>

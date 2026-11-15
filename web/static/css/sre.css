@@ -884,4 +884,9 @@ dialog.exam .group-add input[type="text"] { display: inline-block; width: 220px;
 .exam-hosts label.exam-host-all { min-width: 70px; }
 .exam-hosts label.exam-host.off, .exam-hosts label.exam-host.disabled, .exam-hosts label.exam-host.unknown { color: var(--muted); }
 dialog.exam-labs-dialog { width: 520px; }
+/* Select group… of the detail of an exam: the groups of its members, a checkbox each under its kind */
+dialog.exam-groups-dialog { width: 360px; }
+.exam-groups { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow: auto; }
+.exam-groups h3 { margin: 6px 0 2px; font-size: 13px; }
+.exam-groups label.exam-group { display: flex; align-items: center; gap: 6px; margin: 0; }
 dialog.exam .form-error { color: var(--danger); font-weight: bold; margin: 6px 0; }

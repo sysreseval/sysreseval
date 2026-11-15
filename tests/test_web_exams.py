@@ -1050,6 +1050,7 @@ class TestThroughThePortal:
                 status, detail = await api(h, 'GET', f'/api/exams/{xid}', prof)
                 member = next(mm for mm in detail['members'] if mm['login'] == 'alice')
                 assert member['phase'] == 'active' and member['connected'] and member['fullname'] == 'Alice A'
+                assert member['group'] == 'INFO1' and member['groups'] == ['department:INFO1']   # Select group…
                 assert member['projects'][0]['rln'] == rln and member['end_at'] == member['started_at'] + 5400
                 # the time allotted to her and the time she spent (the portal's clock at the answer)
                 assert member['allotted'] == 5400 and member['elapsed'] == detail['now'] - member['started_at']

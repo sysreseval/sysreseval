@@ -1743,9 +1743,11 @@ class Routes:
             m = exam.members.get(login)
             connected = self.presence.identity_of(login)
             person = self.memberships.person_row(login)
+            group = connected.group if connected is not None else person.get('group', '')
             members.append({'login': login,
                             'fullname': connected.fullname if connected is not None else person.get('fullname', ''),
-                            'group': connected.group if connected is not None else person.get('group', ''),
+                            # the keys of every group of the student: Select group… of the page
+                            'group': group, 'groups': self.memberships.groups_of(login, group),
                             'connected': connected is not None, 'address': m.address if m is not None else '',
                             'phase': exam.phase(m, now), 'first_seen': m.first_seen if m is not None else None,
                             'started_at': m.started_at if m is not None else None, 'end_at': exam.end_at(m),

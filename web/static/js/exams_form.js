@@ -6,7 +6,8 @@
 // the evaluation interval in seconds) and the networks the browsers must come from.  The
 // dialog hands the spec of the API to the submit callback and shows the error it raises (the
 // 400 of the portal) without closing.  Also the small dialog choosing the labs of some members
-// (labsDialog) and the conversions shared with exams.js.  The machines of the pool the exam is
+// (labsDialog), the one choosing groups among those of the members (memberGroups, groupsDialog:
+// Select group… of the detail) and the conversions shared with exams.js.  The machines of the pool the exam is
 // taken at with the Qt GUI are checkboxes over the hosts of GET /api/pool, grouped by the name
 // without its final digits (the rooms of a site: z01, z02… under "z"), each group with a box
 // ticking all of it; two delays in minutes go with them (the lock before the start, the release
@@ -15,7 +16,7 @@
 import {_, format, resolveText} from './i18n.js';
 import {el, clear} from './ui.js';
 import {createLoginPicker} from './login_picker.js';
-import {KINDS, sortGroups, kindsLabel} from './groups_model.js';
+import {KINDS, sortGroups, kindsLabel, parseKey, rowGroupKeys} from './groups_model.js';
 
 const PRESET_PATTERN = '[A-Za-z_][A-Za-z0-9_]*';
 
@@ -341,6 +342,72 @@ export function createExamForm({table, getLabs, getGroups, getHosts}) {
   cancel.addEventListener('click', () => dialog.close());
 
   return {open};
+}
+
+// the groups the members of an exam belong to (the `groups` keys of their rows and their
+// department), by kind then name, each with the logins of its members among them:
+// [{key, kind, name, members, logins}]
+export function memberGroups(members) {
+  const logins = new Map();
+  for (const member of members || []) {
+    if (!member || !member.login) {
+      continue;
+    }
+    for (const key of rowGroupKeys(member)) {
+      if (!logins.has(key)) {
+        logins.set(key, []);
+      }
+      logins.get(key).push(member.login);
+    }
+  }
+  const groups = Array.from(logins, ([key, list]) => ({key, ...parseKey(key), members: list.length, logins: list.sort()}));
+  return sortGroups(groups);
+}
+
+// A dialog choosing groups among those of memberGroups(), a checkbox each under its kind:
+// resolves with the keys ticked, or null when cancelled.
+export function groupsDialog(groups, {title}) {
+  return new Promise((resolve) => {
+    let result = null;
+    const boxes = [];
+    const list = el('div', {class: 'exam-groups'});
+    for (const kind of KINDS) {
+      const ofKind = (groups || []).filter((g) => g.kind === kind);
+      if (!ofKind.length) {
+        continue;
+      }
+      list.append(el('h3', {}, kindsLabel(kind)));
+      for (const g of ofKind) {
+        const box = el('input', {type: 'checkbox', value: g.key});
+        boxes.push(box);
+        list.append(el('label', {class: 'exam-group'}, box, `${g.name} (${g.members})`));
+      }
+    }
+    const cancel = el('button', {type: 'button'}, _('Cancel'));
+    const ok = el('button', {type: 'button', class: 'primary'}, _('Select'));
+    const sync = () => {
+      ok.disabled = !boxes.some((box) => box.checked);
+    };
+    for (const box of boxes) {
+      box.addEventListener('change', sync);
+    }
+    sync();
+    const dialog = el('dialog', {class: 'modal exam-groups-dialog'},
+      el('h2', {}, title), list,
+      el('p', {class: 'muted'}, _('The members of the groups ticked replace the current selection.')),
+      el('div', {class: 'buttons'}, cancel, el('span', {class: 'spacer'}), ok));
+    ok.addEventListener('click', () => {
+      result = boxes.filter((box) => box.checked).map((box) => box.value);
+      dialog.close();
+    });
+    cancel.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(result);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
 }
 
 // A dialog choosing labs for some members: resolves with [{lab, flavor}] (empty = the labs of

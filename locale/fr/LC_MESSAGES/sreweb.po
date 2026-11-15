@@ -1614,17 +1614,23 @@ msgstr "Terminer maintenant"
 msgid "Minutes"
 msgstr "Minutes"
 
-msgid "Lengthen the exam for everybody (its duration and its end)"
-msgstr "Allonger l'examen pour tout le monde (sa durée et sa fin)"
+msgid "Check the members of one or several groups"
+msgstr "Cocher les membres d'un ou de plusieurs groupes"
 
-msgid "+ for all"
-msgstr "+ pour tous"
+msgid "Select group…"
+msgstr "Sélectionner un groupe…"
 
-msgid "Shorten the exam for everybody (its duration and its end)"
-msgstr "Raccourcir l'examen pour tout le monde (sa durée et sa fin)"
+msgid "Select the members of groups"
+msgstr "Sélectionner les membres de groupes"
 
-msgid "− for all"
-msgstr "− pour tous"
+msgid "The members of the groups ticked replace the current selection."
+msgstr "Les membres des groupes cochés remplacent la sélection actuelle."
+
+msgid "Select"
+msgstr "Sélectionner"
+
+msgid "no group among the members"
+msgstr "aucun groupe parmi les membres"
 
 msgid "Extra minutes beyond the end of the exam, for the selected members"
 msgstr "Minutes supplémentaires au-delà de la fin de l'examen, pour les membres sélectionnés"
