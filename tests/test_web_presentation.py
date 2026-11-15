@@ -137,6 +137,40 @@ class TestPresentationsRegistry:
         run(pres.resync({'bob'}))
         assert wb.sent == [started(p)]                           # told once
 
+    def test_an_instructor_of_the_audience_is_free_and_a_new_page_is_told(self):
+        _, presence, pres = registries()
+        wa, w2 = FakeWatcher(), FakeWatcher()
+        presence.add(ALICE, '/projects', wa)
+        presence.add(PROF2, '/watch', w2)
+        p = run(pres.start(PROF, 'a01', RLN, ({'alice', 'prof2', 'dave'}, set())))
+        free = {**started(p), 'free': True}
+        # a student is kept under the presentation; an instructor may leave it (base.js)
+        assert wa.sent == [started(p)] and w2.sent == [free]
+        # a page opened meanwhile: resync has nothing new for the login, tell() informs that page
+        wa2, w22 = FakeWatcher(), FakeWatcher()
+        presence.add(ALICE, '/open', wa2)
+        presence.add(PROF2, '/projects', w22)
+        run(pres.tell(ALICE, wa2))
+        run(pres.tell(PROF2, w22))
+        run(pres.resync({'alice', 'prof2'}))
+        assert wa2.sent == [started(p)] and w22.sent == [free]
+        assert wa.sent == [started(p)] and w2.sent == [free]     # the pages that knew: not again
+        # nothing for who is not in it; the first page of a login is told by resync, once
+        wb, wd = FakeWatcher(), FakeWatcher()
+        presence.add(BOB, '/open', wb)
+        presence.add(DAVE, '/open', wd)
+        run(pres.tell(BOB, wb))
+        run(pres.tell(DAVE, wd))
+        assert wb.sent == [] and wd.sent == []
+        run(pres.resync({'bob', 'dave'}))
+        assert wb.sent == [] and wd.sent == [started(p)]
+        # over: nothing to tell
+        run(pres.end(p.id))
+        w23 = FakeWatcher()
+        presence.add(PROF2, '/open', w23)
+        run(pres.tell(PROF2, w23))
+        assert w23.sent == [] and w2.sent == [free, ended(p)]
+
     def test_groups_and_the_newest_presentation_wins(self):
         clock, presence, pres = registries()
         wa, wb, wc = FakeWatcher(), FakeWatcher(), FakeWatcher()
@@ -348,6 +382,11 @@ async def present(h, headers, rln, audience) -> dict:
                                headers={**headers, **P.CSRF})
     assert resp.status == 201, await resp.text()
     return await resp.json()
+
+
+async def nothing(ws, timeout=0.3):
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(ws.receive_json(), timeout)
 
 
 async def receive_text(ws, kind, timeout=5.0) -> dict:
@@ -684,6 +723,37 @@ class TestPresentationThroughThePortal:
                 assert resp.status == 204                                 # not a bool: the student view
                 view = (await (await h.client.get(base, headers=bob)).json())['project']
                 assert not view['instructor_view']
+        P.run(go())
+
+    def test_an_instructor_of_the_audience_is_free_and_new_pages_are_told(self, tmp_path):
+        """What the presence sockets are told: ``free`` for an instructor of the audience (their
+        browser lets them leave the presentation), and every page opened while it runs, once."""
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER) as h:
+                alice, bob, carol = P.who('alice'), P.who('bob'), P.who('carol')
+                prof, prof2 = P.who('prof', 'Pr. Of', groups=P.TEACHERS), P.who('prof2', groups=P.TEACHERS)
+                rln = await start_project(h, alice)
+                bob_ws = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=bob)
+                prof2_ws = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=prof2)
+                pid = (await present(h, prof, rln, ['bob', 'carol', 'prof2']))['id']
+                told = {'t': 'presentation', 'id': pid, 'url': f'/present/{pid}', 'presenter': 'Pr. Of'}
+                assert await asyncio.wait_for(bob_ws.receive_json(), 5) == told
+                assert await asyncio.wait_for(prof2_ws.receive_json(), 5) == {**told, 'free': True}
+                # a page opened meanwhile is told at once; the pages that knew are not told again
+                bob_ws2 = await h.client.ws_connect('/api/presence/ws?page=/open', headers=bob)
+                prof2_ws2 = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=prof2)
+                assert await asyncio.wait_for(bob_ws2.receive_json(), 5) == told
+                assert await asyncio.wait_for(prof2_ws2.receive_json(), 5) == {**told, 'free': True}
+                # the first page of a login connecting during the presentation: told, once
+                carol_ws = await h.client.ws_connect('/api/presence/ws?page=/projects', headers=carol)
+                assert await asyncio.wait_for(carol_ws.receive_json(), 5) == told
+                for ws in (bob_ws, bob_ws2, prof2_ws, prof2_ws2, carol_ws):
+                    await nothing(ws)
+                # an instructor who left it in their browser is still in the audience: the page
+                # of the presentation is theirs to come back to
+                assert (await h.client.get(f'/present/{pid}', headers=prof2)).status == 200
+                for ws in (bob_ws, bob_ws2, prof2_ws, prof2_ws2, carol_ws):
+                    await ws.close()
         P.run(go())
 
     def test_presenter_grace_through_the_portal(self, tmp_path):

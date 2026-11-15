@@ -1449,7 +1449,8 @@ connection log and the archives are in the database; the sessions are in the bro
   the instructor's page as it is (the letters of their own self-evaluation included), again
   after each evaluation. The title bar of the presented project is coloured (lavender) and names the
   instructor presenting it. The student's own page is untouched underneath, terminals included:
-  when the presentation ends it is back as it was.
+  when the presentation ends it is back as it was. Every page of the student is covered, a page
+  opened in another tab while the presentation runs included.
 
 ### Instructors
 
@@ -1685,6 +1686,12 @@ What an instructor gets:
   project, or turning the button off releases the student (their page stays where it is, grey
   again). Any instructor may end a focus; a student is in one focus at a time (the newest
   wins, an older one still running comes back when it ends).
+  **A colleague's project**: when the project belongs to another instructor, its owner is not
+  kept on it. Their pages are brought to the project once, when the focus starts (or when they
+  come to the site, if they were not there); after that they are free to open any other page —
+  another project, the Watch page… — which shows a bar in the focus colour, *Followed by* the
+  instructor's name, with *Back to the project*. Whenever the owner is on the project page, the
+  two pages are in step as above.
 - **Instructor mode** on the Open page: the instructor's own project started with
   `sre start --instructor-mode` (the instructor texts kept in `info.json`, every state listed,
   the states logged): the *Instructor mode* button of the project page then shows the
@@ -1744,6 +1751,12 @@ What an instructor gets:
   only, while the instructor's own self-evaluation may be letters). A reloaded page goes on
   presenting; a page closed for a minute ends the presentation. A student is in one presentation
   at a time (the newest that includes them), and falls back to the previous one when it ends.
+  **An instructor in the audience** sees the presentation as a student does, but is not kept
+  under it: the bar of the presented project has a *Leave the presentation* button, which gives
+  their own page back, in every tab of their browser. They then work as usual, a bar in the
+  presentation colour naming who *is presenting a project*, whose *Watch the presentation*
+  button brings it back as long as it runs (they stay in the audience meanwhile, without
+  counting among those watching).
 
 - **Webconf**: the button of the site bar (when `[bbb]` of `web.toml` names a BigBlueButton
   server, *Web conference* above) opens the rooms: start one for chosen students and groups,

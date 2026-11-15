@@ -52,6 +52,10 @@
     {% endif %}
   </div>
 </header>
+{% if instructor %}
+<div id="focus-notice" class="notice-bar focus" hidden><span class="text" data-text="{{ _("Followed by {name}") }}"></span> <a class="button" href="/projects">{{ _("Back to the project") }}</a></div>
+<div id="presentation-notice" class="notice-bar presentation" hidden><span class="text" data-text="{{ _("{name} is presenting a project") }}"></span> <button type="button">{{ _("Watch the presentation") }}</button></div>
+{% endif %}
 <main class="page {% block main_class %}{% endblock %}">
 {% block content %}{% endblock %}
 </main>

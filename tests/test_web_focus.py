@@ -18,7 +18,9 @@ from sreweb.portal.accesslog import iso_time, parse_line      # noqa: E402
 
 RLN = '20261026100000@@@sre@dhcp.py@@@alice'                   # the @ form of the real names
 RLN_PROF = '20261026100200@@@sre@dhcp.py@@@prof'
+RLN_PROF2 = '20261026100300@@@sre@dhcp.py@@@prof2'
 ALICE, BOB, PROF, PROF2 = T.ALICE, T.BOB, T.PROF, T.PROF2
+PROF3 = Identity(login='prof3', fullname='Pr. Three', role='instructor')
 run = T.run
 FakeWatcher = T.FakeWatcher
 
@@ -129,6 +131,57 @@ class TestFocusRegistry:
         assert wa.sent[5:] == [ended(f3), started(f2)] and foc.of_student('alice') is f2
         run(foc.end(f2.id))
         assert wa.sent[7:] == [ended(f2)] and foc.shown == {}
+
+    def test_an_instructor_is_brought_once_then_free(self):
+        """The owner of the focused project is an instructor (a colleague helps them): their
+        pages are told ``free``, and ``bring`` the first time only (base.js sends them to the
+        project once and does not keep them there)."""
+        clock, presence, foc = registries()
+        w = FakeWatcher()
+        presence.add(PROF2, '/watch', w)
+        f = run(foc.start(PROF, 'a01', RLN_PROF2))
+        free = {**started(f), 'free': True}
+        assert f.student == 'prof2' and w.sent == [{**free, 'bring': True}] and f.brought
+        # a page opened later is told of the focus, not sent to the project
+        w2 = FakeWatcher()
+        presence.add(PROF2, '/projects', w2)
+        run(foc.tell('prof2', w2))
+        run(foc.resync({'prof2'}))
+        assert w2.sent == [free] and w.sent == [{**free, 'bring': True}]
+        # their only page navigates (gone, then back): free still
+        for socket in list(presence._sockets['prof2']):
+            presence.remove(socket)
+        run(foc.resync({'prof2'}))
+        assert foc.shown == {}
+        w3 = FakeWatcher()
+        presence.add(PROF2, '/watch', w3)
+        run(foc.tell('prof2', w3))
+        run(foc.resync({'prof2'}))
+        assert w3.sent == [free]
+        # a newer focus brings them once in its turn; the older one, back when it ends, does not
+        clock.now = 1010
+        g = run(foc.start(PROF3, 'a01', RLN_PROF2))
+        assert w3.sent[1:] == [ended(f), {**started(g), 'free': True, 'bring': True}]
+        run(foc.end(g.id))
+        assert w3.sent[3:] == [ended(g), free]
+        run(foc.end(f.id))
+        # not connected at the start: brought when their first page comes, once
+        for socket in list(presence._sockets['prof2']):
+            presence.remove(socket)
+        run(foc.resync({'prof2'}))
+        h = run(foc.start(PROF, 'a01', RLN_PROF2))
+        assert not h.brought
+        w4 = FakeWatcher()
+        presence.add(PROF2, '/open', w4)
+        run(foc.tell('prof2', w4))
+        assert w4.sent == []
+        run(foc.resync({'prof2'}))
+        assert w4.sent == [{**started(h), 'free': True, 'bring': True}] and h.brought
+        # a student is kept on the project: nothing of this in their message
+        wa = FakeWatcher()
+        presence.add(ALICE, '/open', wa)
+        a = run(foc.start(PROF, 'a01', RLN))
+        assert wa.sent == [started(a)] and 'free' not in wa.sent[0] and 'bring' not in wa.sent[0]
 
     def test_view_sockets_and_end(self):
         _, presence, foc = registries()
@@ -391,6 +444,43 @@ class TestFocusThroughThePortal:
                 assert await asyncio.wait_for(alice_ws.receive_json(), 5) == {'t': 'focus', 'id': fid2, 'ended': True}
                 for ws in (alice_ws, alice_ws2, bob_ws):
                     await ws.close()
+        P.run(go())
+
+    def test_an_instructor_is_brought_once(self, tmp_path):
+        """The presence sockets of an instructor a colleague follows: ``bring`` on the first
+        message only; every socket told once (a page opened during the focus, the first page of a
+        login), a student's as before."""
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=P.PROXY_OVER) as h:
+                alice = P.who('alice', 'Alice')
+                prof, prof2 = P.who('prof', 'Pr. Of', groups=P.TEACHERS), P.who('prof2', groups=P.TEACHERS)
+                rln = await T.start_project(h, prof2)
+                ws = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=prof2)
+                fid = (await focus(h, prof, rln))['id']
+                told = {'t': 'focus', 'id': fid, 'url': f'/projects/a01/{urllib.parse.quote(rln, safe="")}',
+                        'host': 'a01', 'rln': rln, 'instructor': 'Pr. Of', 'free': True}
+                assert await asyncio.wait_for(ws.receive_json(), 5) == {**told, 'bring': True}
+                # the page went to the project: its socket closes, the project page's opens
+                await ws.close()
+                ws = await h.client.ws_connect(f'/api/presence/ws?page=/projects/a01/{rln}', headers=prof2)
+                assert await asyncio.wait_for(ws.receive_json(), 5) == told
+                # another page of theirs, opened meanwhile: told, not brought
+                ws2 = await h.client.ws_connect('/api/presence/ws?page=/watch', headers=prof2)
+                assert await asyncio.wait_for(ws2.receive_json(), 5) == told
+                await nothing(ws)
+                await nothing(ws2)
+                hers = await (await h.client.get('/api/focus', headers=prof2)).json()
+                assert hers['following']['id'] == fid and hers['leading'] == []
+                # a student whose first page comes during the focus: told once, kept on the project
+                own = await T.start_project(h, alice)
+                aid = (await focus(h, prof, own))['id']
+                alice_ws = await h.client.ws_connect('/api/presence/ws?page=/open', headers=alice)
+                assert await asyncio.wait_for(alice_ws.receive_json(), 5) == {
+                    't': 'focus', 'id': aid, 'url': f'/projects/a01/{urllib.parse.quote(own, safe="")}',
+                    'host': 'a01', 'rln': own, 'instructor': 'Pr. Of'}
+                await nothing(alice_ws)
+                for one in (ws, ws2, alice_ws):
+                    await one.close()
         P.run(go())
 
     def test_instructor_grace_through_the_portal(self, tmp_path):

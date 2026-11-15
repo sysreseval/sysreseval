@@ -21,7 +21,9 @@ import test_web_presentation as T                             # noqa: E402  (sta
 from test_web_terminal_browser import (browsing, project_page, point_in, type_command, until, no_errors,   # noqa: E402
                                        TABBAR_SHOWN, SELECTED_TAB, WINDOW_STATUS, WINDOW_TEXT, WINDOWS, SHELL_WAIT,
                                        PROF, ALICE, CHROME, XTERM)
-from test_web_presentation_browser import rect_of, terminal_state, PARAGRAPH, OUTPUT          # noqa: E402
+from test_web_terminal_browser import ON_PROJECT_PAGE                                          # noqa: E402
+from test_web_presentation_browser import (rect_of, terminal_state, notice_of, notice_shown,   # noqa: E402
+                                           PARAGRAPH, OUTPUT, PROF2)
 
 pytestmark = [pytest.mark.skipif(CHROME is None, reason="no Google Chrome / Chromium found (SRE_TEST_CHROME names one)"),
               pytest.mark.skipif(not XTERM.is_file(), reason="xterm.js is not vendored: run `make xterm`")]
@@ -181,4 +183,66 @@ class TestFocusPointerAndSelection:
                                      what="the student's page released, the pointer gone")
                 no_errors(prof)
                 no_errors(alice)
+        run(scenario())
+
+
+class TestFocusOnAnInstructor:
+    """The owner of the project is an instructor (a colleague follows them): their page is
+    brought to the project once and they may leave it, a notice bar showing the way back; a
+    student is kept on the project."""
+
+    def test_an_instructor_is_brought_once_and_may_leave(self, tmp_path):
+        async def scenario():
+            async with browsing(tmp_path, PROF, PROF2, ALICE) as (h, browser, urls):
+                rln = await T.start_project(h, PROF2)
+                hers = await T.start_project(h, ALICE)
+                prof = await project_page(browser, urls['prof'], rln)
+                two = await browser.page(f"{urls['prof2']}/watch", new_window=True)
+                followed = f"{ON_PROJECT_PAGE} && document.body.classList.contains('focused')"
+                notice = notice_of('focus-notice')
+                assert (await two.evaluate(notice))['hidden']
+                # the focus starts: their page is brought to the project and follows
+                await prof.wait_for("!document.getElementById('focus-student').hidden", what="the Focus button")
+                await prof.click('#focus-student')
+                await two.wait_for(followed, timeout=15.0, what="the instructor's page brought to their project, followed")
+                assert 'Pr. Of' in await two.evaluate("document.getElementById('focus-label').textContent")
+                assert (await two.evaluate(notice))['hidden']              # the bar of the project says it
+                # they leave for the Watch page: not sent back, the notice shows the way
+                await two.goto(f"{urls['prof2']}/watch")
+                seen = await two.wait_for(notice_shown('focus-notice', '/watch'), what="the notice of the focus on the Watch page")
+                assert 'Pr. Of' in seen['text'] and seen['href'] == f"/projects/a01/{quote(rln, safe='')}", seen
+                await asyncio.sleep(1.5)
+                assert await two.evaluate("window.location.pathname") == '/watch'
+                # ... and for any other page
+                await two.goto(f"{urls['prof2']}/open")
+                await two.wait_for(notice_shown('focus-notice', '/open'), what="the notice of the focus on the Open page")
+                # a page opened in another tab meanwhile is not sent to the project either
+                other = await browser.page(f"{urls['prof2']}/projects", new_window=True)
+                await other.wait_for(notice_shown('focus-notice', '/projects'), what="the notice in another tab")
+                # the way back: the project page follows again
+                await two.click('#focus-notice a')
+                await two.wait_for(followed, timeout=15.0, what="the instructor's page back on the project, followed")
+                await asyncio.sleep(1.0)
+                assert await other.evaluate("window.location.pathname") == '/projects'    # the other tab stays
+                # away again; the focus off: the notice goes
+                await two.goto(f"{urls['prof2']}/watch")
+                await two.wait_for(notice_shown('focus-notice', '/watch'), what="the notice on the Watch page again")
+                await prof.click('#focus-student')
+                gone = f"(() => {{ const n = {notice}; return Boolean(n && n.hidden); }})()"
+                await two.wait_for(gone, what="the notice gone with the focus")
+                await other.wait_for(gone, what="the notice gone in the other tab")
+                # a student is kept on the project, as before: brought, and brought back
+                helper = await browser.page(f"{urls['prof']}/projects/a01/{quote(hers, safe='')}", new_window=True)
+                alice = await browser.page(f"{urls['alice']}/open", new_window=True)
+                assert await alice.evaluate(notice) is None                # no notice bar on a student's pages
+                await helper.wait_for("!document.getElementById('focus-student').hidden", what="the Focus button on the student's project")
+                await helper.click('#focus-student')
+                await alice.wait_for(followed, timeout=15.0, what="the student's page brought to her project")
+                await alice.goto(f"{urls['alice']}/open")
+                await alice.wait_for(followed, timeout=15.0, what="the student's page sent back to her project")
+                await helper.click('#focus-student')
+                await alice.wait_for(f"{ON_PROJECT_PAGE} && !document.body.classList.contains('focused')",
+                                     what="the student's page released")
+                for page in (prof, two, other, helper, alice):
+                    no_errors(page)
         run(scenario())

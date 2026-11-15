@@ -81,6 +81,7 @@ const schemaPdfLink = document.getElementById('schema-pdf-link');
 const closeButton = document.getElementById('close-project');
 const closedBanner = document.getElementById('closed-banner');
 const endedBanner = document.getElementById('ended-banner');          // a spectator's page
+const leaveButton = document.getElementById('leave-presentation');    // a spectator's page, of an instructor
 const presentButton = document.getElementById('present');             // an instructor's page
 const presentationBar = document.getElementById('presentation-bar');
 const focusButton = document.getElementById('focus-student');         // an instructor's page
@@ -826,6 +827,16 @@ if (pointerTracker && presentButton && presentationBar) {
 if (spectator) {
   // the presenter's pointer (an arrow with their name) and selection drawn on this page
   pointerView = makePointerView(body.dataset.presenter || '');
+}
+
+if (leaveButton && window.parent !== window) {
+  // an instructor of the audience is not kept under the presentation: the page it covers (base.js)
+  // removes it when asked and shows the way back; wired here, before anything is loaded, so that
+  // the button works whatever happens to the page
+  leaveButton.hidden = false;
+  leaveButton.addEventListener('click', () => {
+    window.parent.postMessage({t: 'presentation-leave', id: presentationId}, window.location.origin);
+  });
 }
 
 if (!spectator && focusLabel && (isOwner || (isInstructor && focusButton))) {

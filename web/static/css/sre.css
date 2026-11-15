@@ -779,6 +779,13 @@ body.helping .topbar, body.helping .project-bar { background: var(--helper-bg); 
 body.focusing .topbar, body.focusing .project-bar, body.focused .topbar, body.focused .project-bar { background: var(--focus-bg); }
 body.presenting .topbar, body.presenting .project-bar, body.presenting .presentation-bar,
 body[data-presentation] .project-bar { background: var(--presentation-bg); }
+/* an instructor a colleague follows or presents to is not kept on the project (base.js): the
+   bars under the site bar of the pages elsewhere, the way back, in the colour of each mode */
+.notice-bar { display: flex; align-items: center; gap: 10px; padding: 4px 10px; border-bottom: 1px solid var(--border); flex: none; }
+.notice-bar .text { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-bar button, .notice-bar .button { padding: 2px 7px; }
+.notice-bar.focus { background: var(--focus-bg); }
+.notice-bar.presentation { background: var(--presentation-bg); }
 .presenter-name { color: var(--muted); white-space: nowrap; margin: 0 8px; }
 .presentation-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--debug-bg); border-bottom: 1px solid var(--border); flex: none; }
 .presentation-bar #presentation-status { flex: 1; font-weight: bold; }

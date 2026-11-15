@@ -13,7 +13,10 @@ presentation do) and the sockets of the instructor's page and of the student's p
 (``GET /api/focus/{id}/ws``).  The presence sockets (``presentation.Presence``) tell the
 student's pages about the focus (``{"t": "focus", "id", "url", "host", "rln", "instructor"}``
 and ``{"t": "focus", "id", "ended": true}``): a page that does not show the project navigates
-to it, the project page takes the focus colour and follows the shared view.
+to it, the project page takes the focus colour and follows the shared view.  When the owner of
+the project is an instructor (a colleague helping them), the message says ``"free": true``:
+their pages are sent to the project once (``"bring": true``, the first time they are told) and
+are not kept there, a page elsewhere showing the way back instead.
 
 A student is in at most one focus at a time: the newest one wins and ``resync()`` pushes the
 delta after every change (an older focus still running comes back when the newer one ends,
@@ -78,6 +81,7 @@ class Focus:
     student_sockets: set = field(default_factory=set)
     instructor_absent_since: float | None = None    # None while the instructor's page keeps a socket
     last_status: dict | None = None                 # the last status sent to the instructor's page
+    brought: bool = False           # the student's pages were told once: an instructor's are not sent there again
 
     def participant(self, identity: Identity | None) -> bool:
         return identity is not None and identity.login in (self.instructor.login, self.student)
@@ -211,16 +215,26 @@ class Focuses:
         await self.resync(affected)
         return f
 
-    def _started_message(self, f: Focus) -> dict:
-        return {'t': 'focus', 'id': f.id, 'url': project_page_url(f.host, f.rln), 'host': f.host, 'rln': f.rln,
-                'instructor': f.instructor.fullname or f.instructor.login}
+    def _started_message(self, f: Focus, identity: Identity | None = None) -> dict:
+        """What the pages of the one followed (*identity*, as their presence sockets give it) are
+        told.  A student is kept on the project.  An instructor (the owner of the project is one:
+        a colleague helps them) is ``free``: their pages go to the project once, the first time
+        they are told (``bring``), and they may leave it afterwards."""
+        message = {'t': 'focus', 'id': f.id, 'url': project_page_url(f.host, f.rln), 'host': f.host, 'rln': f.rln,
+                   'instructor': f.instructor.fullname or f.instructor.login}
+        if identity is not None and identity.is_instructor:
+            message['free'] = True
+            if not f.brought:
+                message['bring'] = True
+        return message
 
     async def resync(self, logins: Iterable[str]):
         """For each login, the focus their browser must follow now (``of_student``) compared
         with the one they were told about (``shown``): the ``ended`` and started pushes of the
         difference, the student sockets of a focus no longer followed closed."""
         for login in set(logins):
-            current = self.of_student(login) if self.presence.identity_of(login) is not None else None
+            identity = self.presence.identity_of(login)
+            current = self.of_student(login) if identity is not None else None
             shown = self.shown.get(login)
             if current is not None and current.id == shown:
                 continue
@@ -235,15 +249,17 @@ class Focuses:
                 await self.presence.push(login, {'t': 'focus', 'id': shown, 'ended': True})
             if current is not None:
                 self.shown[login] = current.id
-                await self.presence.push(login, self._started_message(current))
+                await self.presence.push(login, self._started_message(current, identity))
+                current.brought = True
 
     async def tell(self, login: str, watcher: Watcher):
         """The focus *login* follows now, to one new presence socket of theirs when their other
-        pages were told already (``resync`` pushes the changes only): a page opened during the
-        focus goes to the project like the others."""
+        pages were told already (``resync`` pushes the changes only): a page a student opens
+        during the focus goes to the project like the others, a page of an instructor shows the
+        way back to it."""
         f = self.of_student(login)
         if f is not None and self.shown.get(login) == f.id:
-            await watcher.send_quietly(self._started_message(f))
+            await watcher.send_quietly(self._started_message(f, self.presence.identity_of(login)))
 
     # -- the sockets of the two pages -------------------------------------------------------------
 

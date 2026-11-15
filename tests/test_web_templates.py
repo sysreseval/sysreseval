@@ -442,9 +442,17 @@ class TestTemplates:
         # a student's project only); every page has the label of a followed student
         assert 'id="focus-student" class="toggle" aria-pressed="false" hidden' in html and 'Focus student on project' in html
         assert 'id="focus-label" class="presenter-name" hidden' in html
+        # an instructor a colleague follows or presents to is not kept on the project: the notice
+        # bars of their pages (base.js), the way back; a student has none
+        assert 'id="focus-notice" class="notice-bar focus" hidden><span class="text" data-text="Followed by {name}">' in html
+        assert '<a class="button" href="/projects">Back to the project</a>' in html
+        assert 'id="presentation-notice" class="notice-bar presentation" hidden>' in html
+        assert 'data-text="{name} is presenting a project"' in html and '<button type="button">Watch the presentation</button>' in html
+        assert 'id="leave-presentation"' not in html                       # the page of a spectator only
         student = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=False, group_sources=True)
         assert 'id="present"' not in student and 'id="presentation-bar"' not in student
         assert 'id="focus-student"' not in student and 'id="focus-label"' in student
+        assert 'notice-bar' not in student and 'id="leave-presentation"' not in student
         assert 'data-group-sources="true"' in student and 'id="close-project" class="danger">' in student
         # the private conversations ([bbb] private_rooms): Talk privately, after the focus button, for an
         # instructor (shown by project.js on a student's project only); never for a student or a spectator
@@ -549,10 +557,14 @@ class TestTemplates:
         assert 'id="present"' not in html and 'id="presentation-bar"' not in html and 'id="focus-student"' not in html
         assert 'href="/open"' not in html and 'href="/projects">Back' not in html
         assert 'id="tabbar"' in html and 'id="panes"' in html and '/static/js/project.js' in html
-        # an instructor in the audience is a spectator like the others
+        assert 'id="leave-presentation"' not in html                       # a student stays
+        # an instructor in the audience is a spectator like the others, but may leave (the button
+        # is shown by project.js in the iframe)
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, instructor=True,
                       presentation={'id': 'pres1', 'presenter': 'Pr. Of'})
         assert 'id="present"' not in html and 'id="presentation-bar"' not in html
+        assert '<button type="button" id="leave-presentation" hidden>Leave the presentation</button>' in html
+        assert html.index('id="leave-presentation"') < html.index('id="close-project"')
 
     def test_project_page_escapes_the_presenter(self):
         html = render('project.html', host='a01', rln=RLN, api_base=API_BASE, presentation={'id': 'x', 'presenter': '<b>'})

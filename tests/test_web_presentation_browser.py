@@ -8,11 +8,18 @@ the arrow labelled with the instructor's name follows their mouse over the Infor
 the student's page, the text they select there is highlighted on the student's page; in a
 floating terminal the student's read-only terminal has the instructor's grid, the arrow points at
 the same cell and the text selected is selected on the same row; the pointer goes when the mouse
-leaves the panes, the selection when the instructor clicks."""
+leaves the panes, the selection when the instructor clicks.
+
+And an instructor of the audience, who is not kept under the presentation as a student is: the
+Leave button of the presented page gives their own page back, a notice bar brings the
+presentation back, in every tab of their browser, while the student stays covered."""
+import asyncio
+
 import pytest
 
 aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the web front-end needs it: run `make venv`")
 
+import test_web_portal as P                                   # noqa: E402  (who, CSRF)
 import test_web_presentation as T                             # noqa: E402  (start_project, present)
 from test_web_terminal_browser import (browsing, project_page, point_in, type_command, until, no_errors,   # noqa: E402
                                        WINDOW_STATUS, WINDOW_TEXT, SHELL_WAIT, PROF, ALICE, CHROME, XTERM)
@@ -26,6 +33,25 @@ SPECTATOR_DOC = "document.querySelector('#presentation-overlay iframe').contentD
 PRESENTED_PAGE_SHOWN = (f"(() => {{ const f = document.querySelector('#presentation-overlay iframe'); const d = f && {SPECTATOR_DOC}; "
                         f"return Boolean(d && d.querySelectorAll('#tabbar [role=tab]').length > 0); }})()")
 OUTPUT = 'sel1ect'                                         # what the command typed in the terminal prints
+PROF2 = P.who('prof2', 'Pr. Two', groups=P.TEACHERS)      # a second instructor: followed, or in an audience
+OVERLAY = "Boolean(document.getElementById('presentation-overlay'))"
+# the Leave button of the presented page: true when shown, false when hidden, null without one
+LEAVE = (f"(() => {{ const f = document.querySelector('#presentation-overlay iframe'); const d = f && {SPECTATOR_DOC}; "
+         f"const b = d && d.getElementById('leave-presentation'); return b ? !b.hidden : null; }})()")
+LEFT = "window.localStorage.getItem('sreweb.presentation.left')"
+
+
+def notice_of(element_id: str) -> str:
+    """A notice bar of an instructor's page (base.html): ``{hidden, text, href}``, null without one."""
+    return (f"(() => {{ const n = document.getElementById({element_id!r}); if (!n) {{ return null; }} "
+            f"const a = n.querySelector('a'); "
+            f"return {{hidden: n.hidden, text: n.querySelector('.text').textContent, href: a ? a.getAttribute('href') : null}}; }})()")
+
+
+def notice_shown(element_id: str, path: str) -> str:
+    """The notice bar shown on the page at *path* (its state, else null)."""
+    return (f"(() => {{ const n = {notice_of(element_id)}; "
+            f"return window.location.pathname === {path!r} && n && !n.hidden ? n : null; }})()")
 
 
 def rect_of(selector: str) -> str:
@@ -176,4 +202,68 @@ class TestPresenterPointerAndSelection:
                 await until(cleared, 10.0, "the selection gone from the student's terminal")
                 no_errors(prof)
                 no_errors(alice)
+        run(scenario())
+
+
+class TestInstructorInTheAudience:
+    def test_an_instructor_may_leave_and_come_back(self, tmp_path):
+        async def scenario():
+            async with browsing(tmp_path, PROF, PROF2, ALICE) as (h, browser, urls):
+                rln = await T.start_project(h, PROF)
+                pid = (await T.present(h, PROF, rln, ['alice', 'prof2']))['id']     # before the page loads: resume()
+                prof = await project_page(browser, urls['prof'], rln)
+                two = await browser.page(f"{urls['prof2']}/watch", new_window=True)
+                alice = await browser.page(f"{urls['alice']}/projects", new_window=True)
+                notice = notice_of('presentation-notice')
+
+                async def watching(n: int):
+                    resp = await h.client.get(f'/api/presentations/{pid}', headers=PROF)
+                    return (await resp.json())['connected'] == n
+
+                # both are covered by the presented project; the Leave button is the instructor's
+                await two.wait_for(PRESENTED_PAGE_SHOWN, timeout=15.0, what="the presented page on the instructor's page")
+                await alice.wait_for(PRESENTED_PAGE_SHOWN, timeout=15.0, what="the presented page on the student's page")
+                await two.wait_for(f"{LEAVE} === true", what="the Leave button of the presented page of an instructor")
+                assert await alice.evaluate(LEAVE) is None and await alice.evaluate(notice) is None
+                assert (await two.evaluate(notice))['hidden'] and await two.evaluate(LEFT) is None
+                await until(lambda: watching(2), 10.0, "two spectators watching")
+                # they leave: their own page is back, the notice names the presenter
+                await two.evaluate(f"{SPECTATOR_DOC}.getElementById('leave-presentation').click()")
+                seen = await two.wait_for(notice_shown('presentation-notice', '/watch'), what="the notice of the presentation")
+                assert 'Pr. Of' in seen['text'] and not await two.evaluate(OVERLAY), seen
+                assert not await two.evaluate("document.body.classList.contains('has-presentation')")
+                assert await two.evaluate(LEFT) == pid
+                await until(lambda: watching(1), 10.0, "the student alone watching")
+                # free to go elsewhere: another page is not covered, and shows the notice too
+                await two.goto(f"{urls['prof2']}/projects")
+                await two.wait_for(notice_shown('presentation-notice', '/projects'), what="the notice on another page")
+                await asyncio.sleep(1.0)
+                assert not await two.evaluate(OVERLAY) and await two.evaluate("window.location.pathname") == '/projects'
+                # a page opened in another tab meanwhile: told of the presentation, left there too
+                other = await browser.page(f"{urls['prof2']}/open", new_window=True)
+                await other.wait_for(notice_shown('presentation-notice', '/open'), what="the notice in another tab")
+                assert not await other.evaluate(OVERLAY)
+                # they come back: the presentation again, in both tabs
+                await two.click('#presentation-notice button')
+                await two.wait_for(PRESENTED_PAGE_SHOWN, timeout=15.0, what="the presented page again")
+                await other.wait_for(PRESENTED_PAGE_SHOWN, timeout=15.0, what="the presented page in the other tab")
+                assert (await two.evaluate(notice))['hidden'] and await two.evaluate(LEFT) is None
+                # ... and leave again, from the other tab: both tabs are free
+                await other.wait_for(f"{LEAVE} === true", what="the Leave button in the other tab")
+                await other.evaluate(f"{SPECTATOR_DOC}.getElementById('leave-presentation').click()")
+                await other.wait_for(notice_shown('presentation-notice', '/open'), what="the notice back in the other tab")
+                await two.wait_for(notice_shown('presentation-notice', '/projects'), what="the notice back in the first tab")
+                assert not await two.evaluate(OVERLAY) and not await other.evaluate(OVERLAY)
+                # the student never left
+                assert await alice.evaluate(PRESENTED_PAGE_SHOWN) and await alice.evaluate(LEAVE) is None
+                # the presentation ends: the notices go, the student's page is back
+                resp = await h.client.delete(f'/api/presentations/{pid}', headers={**PROF, **P.CSRF})
+                assert resp.status == 200, await resp.text()
+                gone = f"(() => {{ const n = {notice}; return Boolean(n && n.hidden) && !{OVERLAY}; }})()"
+                await two.wait_for(gone, what="the notice gone with the presentation")
+                await other.wait_for(gone, what="the notice gone in the other tab")
+                await alice.wait_for(f"!{OVERLAY}", what="the student's page uncovered")
+                assert await two.evaluate(LEFT) is None                   # nothing kept of a presentation over
+                for page in (prof, two, other, alice):
+                    no_errors(page)
         run(scenario())

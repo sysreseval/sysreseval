@@ -1944,9 +1944,12 @@ class Routes:
         watcher = self._watcher(ws)
         socket = self.presence.add(identity, page, watcher)
         try:
-            await self.presentations.resync({identity.login})    # a presentation already running for them
-            await self.focuses.resync({identity.login})          # a focus on them already
-            await self.focuses.tell(identity.login, watcher)     # ... their other pages knew of
+            # tell() before resync(): a socket gets what the other pages of the login know, or what
+            # none of them was told yet, never both (the first push of a focus is not like the next)
+            await self.presentations.tell(identity, watcher)     # the presentation their other pages show
+            await self.presentations.resync({identity.login})    # ... or one they were not told of yet
+            await self.focuses.tell(identity.login, watcher)     # the focus on them their other pages know of
+            await self.focuses.resync({identity.login})          # ... or one they were not told of yet
             await self.exams.resync({identity.login})            # an exam binding them already
             await self.webconfs.tell(identity.login, watcher)    # the web conference their other pages show
             await self.webconfs.resync({identity.login})         # ... or one they were not told of yet

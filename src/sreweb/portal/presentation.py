@@ -19,7 +19,9 @@ wrapping the WebSockets, the tests hand them fakes):
 
 A login is in at most one presentation at a time: the newest one that includes them wins, and
 ``resync()`` recomputes it after every change and pushes the delta to the browsers (so a student
-falls back to an older presentation still running when a newer one ends).  A presentation ends
+falls back to an older presentation still running when a newer one ends); ``tell()`` repeats it
+to a presence socket opened while the others knew.  The push to an instructor of the audience
+says ``"free": true``: their browser lets them leave the presentation.  A presentation ends
 when the presenter asks, when the presenter's page has kept no socket open for
 ``PRESENTER_GRACE`` seconds (a reload survives), or when the portal shuts down.
 """
@@ -434,9 +436,27 @@ class Presentations:
                 await self.presence.push(login, {'t': 'presentation', 'id': shown, 'ended': True})
             if current is not None:
                 self.shown[login] = current.id
-                await self.presence.push(login, {'t': 'presentation', 'id': current.id, 'url': f"/present/{current.id}",
-                                                 'presenter': current.presenter.fullname or current.presenter.login})
+                await self.presence.push(login, self._started_message(current, identity))
                 await self._notify_presenter(current)    # a member of a group connected: the count grew
+
+    @staticmethod
+    def _started_message(p: Presentation, identity: Identity | None = None) -> dict:
+        """What the pages of a spectator (*identity*) are told.  An instructor of the audience is
+        ``free``: their browser shows the presentation like a student's, but lets them leave it
+        and come back."""
+        message = {'t': 'presentation', 'id': p.id, 'url': f"/present/{p.id}",
+                   'presenter': p.presenter.fullname or p.presenter.login}
+        if identity is not None and identity.is_instructor:
+            message['free'] = True
+        return message
+
+    async def tell(self, identity: Identity, watcher: Watcher):
+        """The presentation shown to *identity* now, to one new presence socket of theirs when
+        their other pages were told already (``resync`` pushes the changes only): a page opened
+        during the presentation shows it like the others."""
+        p = self.of_spectator(identity)
+        if p is not None and self.shown.get(identity.login) == p.id:
+            await watcher.send_quietly(self._started_message(p, identity))
 
     # -- the sockets of the presentation page -----------------------------------------------------
 

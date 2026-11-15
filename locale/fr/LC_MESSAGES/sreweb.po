@@ -942,6 +942,15 @@ msgstr "Arrêter la présentation"
 msgid "The presentation has ended."
 msgstr "La présentation est terminée."
 
+msgid "Leave the presentation"
+msgstr "Quitter la présentation"
+
+msgid "{name} is presenting a project"
+msgstr "{name} présente un projet"
+
+msgid "Watch the presentation"
+msgstr "Regarder la présentation"
+
 msgid "Present to…"
 msgstr "Présenter à…"
 
@@ -997,6 +1006,9 @@ msgstr "En attente de la page de l'étudiant"
 
 msgid "The focus has ended."
 msgstr "La focalisation est terminée."
+
+msgid "Back to the project"
+msgstr "Revenir au projet"
 
 # --- the administrators: history.html, history.js, base.html --------------------------------
 
