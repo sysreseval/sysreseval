@@ -1,0 +1,9 @@
+Password for nina@CORP.LAN: 
+===RC 0
+Ticket cache: FILE:/tmp/cc_nina
+Default principal: nina@CORP.LAN
+
+Valid starting     Expires            Service principal
+11/18/26 12:40:21  11/18/26 22:40:21  krbtgt/CORP.LAN@CORP.LAN
+	renew until 11/19/26 12:40:21, Etype (skey, tkt): aes256-cts-hmac-sha1-96, aes256-cts-hmac-sha1-96 
+===RC 0

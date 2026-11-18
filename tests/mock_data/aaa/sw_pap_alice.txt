@@ -1,0 +1,7 @@
+Sent Access-Request Id 188 from 0.0.0.0:60953 to 192.168.98.10:1812 length 63
+	User-Name = "alice"
+	User-Password = "d7Uw3MnbvKuM"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "d7Uw3MnbvKuM"
+Received Access-Accept Id 188 from 192.168.98.10:1812 to 192.168.98.2:60953 length 20
+===RC 0

@@ -1,0 +1,8 @@
+(0) -: Expected Access-Accept got Access-Reject
+Sent Access-Request Id 144 from 0.0.0.0:38101 to 192.168.98.10:1812 length 63
+	User-Name = "alice"
+	User-Password = "wrong"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "wrong"
+Received Access-Reject Id 144 from 192.168.98.10:1812 to 192.168.98.2:38101 length 20
+===RC 1

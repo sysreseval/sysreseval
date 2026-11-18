@@ -1,0 +1,16 @@
+CTRL-EVENT-EAP-STARTED EAP authentication started
+RADIUS packet matching with station
+CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=25 -> NAK
+RADIUS packet matching with station
+CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=13
+CTRL-EVENT-EAP-METHOD EAP vendor 0 method 13 (TLS) selected
+RADIUS packet matching with station
+RADIUS packet matching with station
+RADIUS packet matching with station
+CTRL-EVENT-EAP-PEER-CERT depth=1 subject='/CN=CA corp.lan' hash=9ae5ea45411bdfe1389b82fa4d92493b4d63545902e88ee961191bbca256668d
+CTRL-EVENT-EAP-PEER-CERT depth=0 subject='/CN=radius.corp.lan' hash=0d7e2582bb4371736c70ffc991ae45f30a11a9a08ccb97077febdcabc402b7e4
+CTRL-EVENT-EAP-PEER-ALT depth=0 DNS:radius.corp.lan
+RADIUS packet matching with station
+CTRL-EVENT-EAP-FAILURE EAP authentication failed
+FAILURE
+===RC 252

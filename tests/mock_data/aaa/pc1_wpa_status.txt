@@ -1,0 +1,22 @@
+bssid=01:80:c2:00:00:03
+freq=0
+ssid=
+id=0
+mode=station
+pairwise_cipher=NONE
+group_cipher=NONE
+key_mgmt=IEEE 802.1X (no WPA)
+wpa_state=COMPLETED
+ip_address=192.168.98.101
+address=02:53:52:80:9a:35
+Supplicant PAE state=AUTHENTICATED
+suppPortStatus=Authorized
+EAP state=SUCCESS
+selectedMethod=25 (EAP-PEAP)
+eap_tls_version=TLSv1.2
+EAP TLS cipher=ECDHE-RSA-AES256-GCM-SHA384
+tls_session_reused=0
+EAP-PEAPv0 Phase2 method=MSCHAPV2
+eap_session_id=1993c32f4b7bc0b6c51926227d9b3c42a12f1bb2d52736b1f094cd9426b26438d4ea6c6a166fbd4caf96f841e59778d5222812f15fc3a91b3687e34742a1b5d4ec
+uuid=f9dc0d16-44ef-53a9-988d-028ae9e94917
+===RC 0

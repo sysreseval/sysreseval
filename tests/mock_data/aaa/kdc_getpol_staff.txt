@@ -1,0 +1,11 @@
+Authenticating as principal root/admin@CORP.LAN with password.
+Policy: staff
+Maximum password life: 0 days 00:00:00
+Minimum password life: 0 days 00:00:00
+Minimum password length: 10
+Minimum number of password character classes: 3
+Number of old keys kept: 1
+Maximum password failures before lockout: 0
+Password failure count reset interval: 0 days 00:00:00
+Password lockout duration: 0 days 00:00:00
+===RC 0

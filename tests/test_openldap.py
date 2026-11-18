@@ -403,6 +403,26 @@ def test_login_probe_results():
     assert login_probe(grade, 'm1', 'ssh', 'alice', 'pw', host='10.0.0.1') is None
 
 
+def test_login_probe_klist_option():
+    """--klist (the AAA lab's pam_krb5 check) is opt-in: the command and the JSON stay as before
+    without it."""
+    assert '--klist' not in login_probe_cmd('su', 'alice', 'pw')
+    assert login_probe_cmd('su', 'dev1', 'pw', klist=True).startswith(
+        'python3 /usr/local/sbin/sre_login_probe.py --timeout 20 --klist --as student su dev1 pw')
+    # a session captured on the AAA lab's ws (pam_krb5)
+    out = (Path(__file__).parent / 'mock_data' / 'aaa' / 'ws_su_dev1.txt').read_text()
+    grade = make_grade({login_probe_cmd('su', 'dev1', 'pw', klist=True): (out, 0)})
+    r = login_probe(grade, 'ws', 'su', 'dev1', 'pw', klist=True)
+    assert r['ok'] and r['tgt'] is True and r['login'] == 'dev1'
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('login_probe_script', Path(__file__).parent.parent / 'lib' / 'login_probe.py')
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    assert script.parse_tgt("SRE_LOGIN_OK\r\nLOGIN=dev1\r\nTGT=1\r\n") is True
+    assert script.parse_tgt("TGT=0\n") is False and script.parse_tgt("SRE_LOGIN_OK\n") is None
+    assert script.KLIST_SCRIPT.startswith('; if klist -s')
+
+
 def test_parse_s_client():
     out = ("CONNECTED(00000003)\n"
            "subject=CN = ldap1.corp.lan\n"

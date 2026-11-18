@@ -1,0 +1,5 @@
+Keytab name: FILE:/etc/krb5.keytab
+KVNO Principal
+---- --------------------------------------------------------------------------
+   3 host/srv.corp.lan@CORP.LAN
+   3 host/srv.corp.lan@CORP.LAN

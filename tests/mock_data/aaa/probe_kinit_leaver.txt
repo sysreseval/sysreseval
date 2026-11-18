@@ -1,0 +1,2 @@
+kinit: Client's credentials have been revoked while getting initial credentials
+===RC 1

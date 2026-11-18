@@ -797,6 +797,39 @@ def generate_server_cert_pem(ca_cert_pem: str, ca_key_pem: str, hostname: str, d
     return cert_pem, key_pem
 
 
+def generate_client_cert_pem(ca_cert_pem: str, ca_key_pem: str, common_name: str, days: int = 365,
+                             key_size: int = 2048) -> tuple[str, str]:
+    """``(certificate_pem, private_key_pem)`` of a fresh RSA client certificate (``CN`` =
+    *common_name*, extended key usage ``clientAuth``) signed by the CA of :func:`generate_ca_pem`:
+    an EAP-TLS supplicant (the AAA lab's ``pc2.corp.lan``)."""
+    from datetime import datetime, timedelta, timezone
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
+    ca_cert = x509.load_pem_x509_certificate(ca_cert_pem.encode())
+    ca_key = serialization.load_pem_private_key(ca_key_pem.encode(), password=None)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
+    now = datetime.now(timezone.utc) - timedelta(days=1)
+    cert = (x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)]))
+            .issuer_name(ca_cert.subject).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now)
+            .not_valid_after(now + timedelta(days=days))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=True,
+                                         data_encipherment=False, key_agreement=False, key_cert_sign=False,
+                                         crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+            .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
+            .sign(ca_key, hashes.SHA256()))
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+    key_pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                serialization.NoEncryption()).decode()
+    return cert_pem, key_pem
+
+
 def parse_stepca_config(text: str) -> dict | None:
     """Summary of a step-ca ``ca.json``: ``{'address', 'dns_names', 'root', 'provisioners':
     [{'name', 'type'}, ...]}``; ``None`` when the text is not a JSON object."""

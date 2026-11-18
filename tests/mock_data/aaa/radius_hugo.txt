@@ -1,0 +1,11 @@
+Sent Access-Request Id 82 from 0.0.0.0:58678 to 127.0.0.1:1812 length 62
+	User-Name = "hugo"
+	User-Password = "eHInKFJg3Bf6"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "eHInKFJg3Bf6"
+Received Access-Accept Id 82 from 127.0.0.1:1812 to 127.0.0.1:58678 length 43
+	Tunnel-Type:0 = VLAN
+	Tunnel-Medium-Type:0 = IEEE-802
+	Tunnel-Private-Group-Id:0 = "197"
+	Session-Timeout = 5400
+===RC 0

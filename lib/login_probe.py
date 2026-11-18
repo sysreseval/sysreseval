@@ -10,7 +10,8 @@ exists (``pam_mkhomedir``).  One JSON document on stdout: ``{"ok", "login", "hom
 "home_exists", "prompted", "exit", "timeout", "output"}``.
 
 Options: ``--timeout S`` (default 20), ``--as USER`` (the user running ``su``, default
-``student``), ``--port N`` (ssh).
+``student``), ``--port N`` (ssh), ``--klist`` (the session also reports whether it holds a Kerberos
+ticket, ``klist -s``: the JSON gains ``"tgt"``, true / false).
 """
 import json
 import os
@@ -23,6 +24,7 @@ import time
 MARK = "SRE_LOGIN_OK"
 SESSION_SCRIPT = (f'echo {MARK}; echo LOGIN=$(id -un); echo HOME=$HOME; '
                   f'if [ -d "$HOME" ]; then echo HOME_EXISTS=1; else echo HOME_EXISTS=0; fi')
+KLIST_SCRIPT = '; if klist -s 2>/dev/null; then echo TGT=1; else echo TGT=0; fi'
 PROMPT = b"assword"
 
 
@@ -107,15 +109,28 @@ def parse_session(text):
     return seen, login, home, home_exists
 
 
+def parse_tgt(text):
+    """The ``TGT=0|1`` line of :data:`KLIST_SCRIPT`: True / False, None when absent."""
+    for line in text.replace("\r", "").splitlines():
+        line = line.strip()
+        if line in ("TGT=0", "TGT=1"):
+            return line.endswith("1")
+    return None
+
+
 def main(argv):
     timeout = 20.0
     as_user = "student"
     port = 22
+    klist = False
     args = []
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a == "--timeout":
+        if a == "--klist":
+            klist = True
+            i += 1
+        elif a == "--timeout":
             timeout = float(argv[i + 1])
             i += 2
         elif a == "--as":
@@ -131,15 +146,16 @@ def main(argv):
         print("usage: login_probe.py su USER PASSWORD | ssh HOST USER PASSWORD", file=sys.stderr)
         return 2
     mode = args[0]
+    script = SESSION_SCRIPT + (KLIST_SCRIPT if klist else "")
     if mode == "su" and len(args) == 3:
         user, password = args[1], args[2]
-        cmd = ["runuser", "-u", as_user, "--", "su", "-", user, "-c", SESSION_SCRIPT]
+        cmd = ["runuser", "-u", as_user, "--", "su", "-", user, "-c", script]
     elif mode == "ssh" and len(args) == 4:
         host, user, password = args[1], args[2], args[3]
         cmd = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                "-o", "LogLevel=ERROR", "-o", "PreferredAuthentications=password,keyboard-interactive",
                "-o", "PubkeyAuthentication=no", "-o", "NumberOfPasswordPrompts=1", "-o", "ConnectTimeout=5",
-               f"{user}@{host}", SESSION_SCRIPT]
+               f"{user}@{host}", script]
     else:
         print("usage: login_probe.py su USER PASSWORD | ssh HOST USER PASSWORD", file=sys.stderr)
         return 2
@@ -155,6 +171,8 @@ def main(argv):
         "timeout": timed_out,
         "output": output[-4000:],
     }
+    if klist:
+        result["tgt"] = parse_tgt(output)
     print(json.dumps(result))
     return 0 if result["ok"] else 1
 

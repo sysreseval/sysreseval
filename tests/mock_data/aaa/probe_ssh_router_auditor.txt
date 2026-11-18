@@ -1,0 +1,1 @@
+{"ok": false, "login": "", "home": "", "home_exists": null, "prompted": true, "exit": 255, "timeout": false, "output": "\rauditor@router.corp.lan's password: \r\nauditor@router.corp.lan: Permission denied (publickey,password).\r\r\n"}

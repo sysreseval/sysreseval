@@ -365,9 +365,10 @@ def s_client_cmd(host: str, port: int, cafile: Optional[str] = None, hostname: O
 
 
 def login_probe_cmd(mode: str, user: str, password: str, host: Optional[str] = None, timeout: int = 20,
-                    as_user: str = "student") -> str:
+                    as_user: str = "student", klist: bool = False) -> str:
     """``su`` (run as *as_user* on the machine itself) or ``ssh`` (to *host*) password login of
-    *user* through :data:`LOGIN_PROBE_PATH`."""
+    *user* through :data:`LOGIN_PROBE_PATH`; *klist*: the session also reports whether it holds a
+    Kerberos ticket (``"tgt"`` in the JSON)."""
     if mode == "ssh":
         if not host:
             raise ValueError("ssh mode needs a host")
@@ -376,7 +377,8 @@ def login_probe_cmd(mode: str, user: str, password: str, host: Optional[str] = N
         args = f"--as {shlex.quote(as_user)} su {shlex.quote(user)} {shlex.quote(password)}"
     else:
         raise ValueError(f"unknown login probe mode {mode!r}")
-    return f"python3 {LOGIN_PROBE_PATH} --timeout {int(timeout)} {args} 2>&1"
+    options = f"--timeout {int(timeout)}" + (" --klist" if klist else "")
+    return f"python3 {LOGIN_PROBE_PATH} {options} {args} 2>&1"
 
 
 # ---------------------------------------------------------------------------
@@ -1034,10 +1036,10 @@ def get_listen_ports(grade: Grade0, machine: str, step: int = 1) -> Dict[int, st
 
 
 def login_probe(grade: Grade0, machine: str, mode: str, user: str, password: str, host: Optional[str] = None,
-                step: int = 1, timeout: int = 20) -> Optional[Dict[str, Any]]:
+                step: int = 1, timeout: int = 20, klist: bool = False) -> Optional[Dict[str, Any]]:
     """Run the login probe on *machine* (``su`` there, or ``ssh`` towards *host*); ``None`` until
     it ran or when it printed nothing."""
-    out, _ = grade.test(machine, login_probe_cmd(mode, user, password, host, timeout), step=step,
+    out, _ = grade.test(machine, login_probe_cmd(mode, user, password, host, timeout, klist=klist), step=step,
                         timeout=timeout + 10, allow_error=True)
     return parse_login_probe(out)
 

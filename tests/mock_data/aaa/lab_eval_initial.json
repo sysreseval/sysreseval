@@ -1,0 +1,1324 @@
+{
+ "data": {
+  "ca_cert": "-----BEGIN CERTIFICATE-----\nMIIC/DCCAeSgAwIBAgIUEr8qVgzg0nLxBB/eB8ZSzAZxxkcwDQYJKoZIhvcNAQEL\nBQAwFjEUMBIGA1UEAwwLQ0EgY29ycC5sYW4wHhcNMjYxMTE3MTQxNjI2WhcNMzYx\nMTE0MTQxNjI2WjAWMRQwEgYDVQQDDAtDQSBjb3JwLmxhbjCCASIwDQYJKoZIhvcN\nAQEBBQADggEPADCCAQoCggEBAKJrYwW0FuCrpmbsbwN+mUA/VJJuxIemtxS9n0Yv\n3oO1aDqq+qEERUi6/OLJ3toEg++vwz422+WmW/MxTZ/H/wwTyKIAv9MWAMWXafvS\nQ0QKQ8wf+qrrdmBA1lfD/ub67hOi8YnaQwr7NooYfv/XRIYEIkEbAK1GGrBFA+u3\nbI1d6jlkqtWXjPpGTQ+4+bSZx2O+5ZohM5NMoB541nZxbl01gv284XnwhIJz37zL\n652YsAmZkuAzXH8SIXFNQPPNmAY0aN+ZX3W4xkF/eK3ALRQ13q5JBorszAPi6wDo\nluPhbhRLhOPQ+tGmXc/axvct5/SNpgAjkgqEfAYDpeKg4hUCAwEAAaNCMEAwDwYD\nVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFD3OkauKbb1y\nfKrsoLbaScFheVADMA0GCSqGSIb3DQEBCwUAA4IBAQBE9mGWgOLtI44cViGby544\nyHbBOFiEBVJWqdhsDLDpdmKzRITRYOb+4k//xt/g0Ku70cHBqf6MsYR3dMDRYagz\nrC+um3gCIzvo3eY7x/HL2taurfkUIzOkGnIZuUy/Urzlvepd8Nw4yHbKp4KY1rbA\nqBUAu/lwjd+BztVsF8ilrVKvHs7Hhm5avCrIHc+GQFGptAXXE+l4ICZWyZjbnHYh\nXMCL5G9Yw88IO4Np8N+xWMgtu4/zdWdGZ6sWwQKSYlNRet8icaJGsJT9+N/XNuRX\nFCgK73gA92OMML0Wn1TjxZabHrPVPhBRcLwN8mT6D35NIKUTxPyGH9VGEOx/w6sx\n-----END CERTIFICATE-----\n",
+  "ca_key": "",
+  "nac_cert": "-----BEGIN CERTIFICATE-----\nMIIDSzCCAjOgAwIBAgIUKJPdHvyYjKHQl0Qn5UQzGkHuFxUwDQYJKoZIhvcNAQEL\nBQAwFjEUMBIGA1UEAwwLQ0EgY29ycC5sYW4wHhcNMjYxMTE3MTQxNjI2WhcNMjcx\nMTE3MTQxNjI2WjAXMRUwEwYDVQQDDAxuYWMuY29ycC5sYW4wggEiMA0GCSqGSIb3\nDQEBAQUAA4IBDwAwggEKAoIBAQC3x+3GZHDLBKVER+QK5oZ2OCc99l9Ttn8BQb6K\nZvJ0BblB25v+5cer4eU6kUWAIhQ6SL7zf2eHH4SeJ8el8B4SEALxk199Aehr+Tdd\neYxaR1fqrgMZGjAA86chKsOVLaq/OfDhGc5bH78lC0n3dUtkPs0znpdmRUufOXE5\nX8ttxoQ2vzCyZKvxFW6y9SC8c4kkv2JAb79lrYxRSmOQLgm24CrLgmFnzZukTZHo\ne54gX7O/qH0MOX2BSWVhPPNMnRquViNJ+gzGkYNf7Xd0XPf0F1adP04DwlwKiNim\ng66JugEHpjOidtTPmGAwBXgKKRH9veq3RI/jS5pP4Z1KMplfAgMBAAGjgY8wgYww\nDAYDVR0TAQH/BAIwADAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUH\nAwEwFwYDVR0RBBAwDoIMbmFjLmNvcnAubGFuMB0GA1UdDgQWBBTA1Htiwr5H+AyH\nVddUcy9ozR+c0zAfBgNVHSMEGDAWgBQ9zpGrim29cnyq7KC22knBYXlQAzANBgkq\nhkiG9w0BAQsFAAOCAQEAJ2WWGWzoWoIqr+jc3nxXtBcNkBO3rj3PqbXZofldrbpE\nZ1N/llhgDsr/npwa1pf2M0uZR2fFvziRlSYlWDoihKasFtuNpAQEmAJeQkJF+GoE\n2LuEzUhzMdCxlDZvZOErz6ci2eLlewtyANKVdSyol4gSKgF4bCyOzFPl6ysGmTQ/\nP5x2UzuqWudZaYVQsaOD3lnmmVt/bJWitOL5b4VSbNm/csABp/ZOoQMXGaZNy9V5\nvysjapwCaHzLA5LLHasgIJT9lnZFMt4N6qkC0d7Kyzr70cK122Z7mwIAJVYxnT2i\n/nNTiQJMxposhELsFA6fp4+0cOc3Ez5Uq2MNbe9mqg==\n-----END CERTIFICATE-----\n",
+  "nac_key": "",
+  "radius_cert": "-----BEGIN CERTIFICATE-----\nMIIDUTCCAjmgAwIBAgIUcsacAPuFWAIpc+Ylcnjs3A2XVsYwDQYJKoZIhvcNAQEL\nBQAwFjEUMBIGA1UEAwwLQ0EgY29ycC5sYW4wHhcNMjYxMTE3MTQxNjI2WhcNMjcx\nMTE3MTQxNjI2WjAaMRgwFgYDVQQDDA9yYWRpdXMuY29ycC5sYW4wggEiMA0GCSqG\nSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCplix90Gmxmm7KEhQuZiyJ4qO3EuyOrBdy\n2bPCP+Oi4gb5aM8OH97ygQpEauaNlPRI4O5z+F4uTH4dTJ9bUFbDhDpA5jAc6hys\nxlG09YyXaIfA8EKORzw6GnDC5W0wFspZ37nc0VJWV2+C+s8siILlEJy8u+usmr5N\nLu9Z7YfvCAWLFkYF+QdcdEIou9ig+Gsqbbw6BMG6YovAr/JNOjovufBwNfkEiHp+\nNeDNJtENy2AzPCVRY0UoihBEwBuehxyUeFC6tSwrqK4xD8MlZvI9E4KByQ4jjXAI\nHkkLuVj+/v9PjwK2DGeDXA7Lj8GRZbChRwk05fVjnfarMhVxnTtRAgMBAAGjgZIw\ngY8wDAYDVR0TAQH/BAIwADAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYB\nBQUHAwEwGgYDVR0RBBMwEYIPcmFkaXVzLmNvcnAubGFuMB0GA1UdDgQWBBT1MuGh\nTkSrMWUPD4B6Hb2t6I2xHjAfBgNVHSMEGDAWgBQ9zpGrim29cnyq7KC22knBYXlQ\nAzANBgkqhkiG9w0BAQsFAAOCAQEAmjwGLtvowk9MexevEVd11Xlr2Vf6lRBybsRQ\nQvBJnpkaIrkNrg9kzDtLfi+UZIkVs2ypxOkVzioe7mJWa9rd9Y6CmqYTfJiKqfPG\nfvzQ/A79apZEm6Uy9yMYME6rxzYgyoyPSmVR3o15+quJ/yaHvQ0ZDXVpw5eDfhd6\nnUDoIV9DEmhHHaYEDo6p9VlrnyU5xBwVZMzB0E08Zn61d7WXlG8TWDgPgXXbLex8\n7g9gULOfmJEUqoZqsRob7SAXXS3ypIVQvIiYMS34RC/q+Zz5hpexmy44dvioR4bc\nARZJ3ExWwIBuqFQrU94IeSMxBPzpxz/9RhAACsZMYV1TYtQObQ==\n-----END CERTIFICATE-----\n",
+  "radius_key": "",
+  "pc2_cert": "-----BEGIN CERTIFICATE-----\nMIIDMDCCAhigAwIBAgIUBaCTwn2iEOfDcx1m6STb5XmBYcIwDQYJKoZIhvcNAQEL\nBQAwFjEUMBIGA1UEAwwLQ0EgY29ycC5sYW4wHhcNMjYxMTE3MTQxNjI2WhcNMjcx\nMTE3MTQxNjI2WjAXMRUwEwYDVQQDDAxwYzIuY29ycC5sYW4wggEiMA0GCSqGSIb3\nDQEBAQUAA4IBDwAwggEKAoIBAQCftfkPzawMD0BUmaiqLQjETq8ha2Vvaqp660tO\nLzEk8Xg+uejrIZGIDyWZIad7TFeAq2AX8FikyrTn8uL+lBPx3+T796jiEWGidEYg\nem0iQxBQHp50xOAEldm9A0c6ece4k1shBLpyUCavME8/sYTTAXzxA//nwsxN4zPk\nYNS+NBKctB8P9lprpQuXPHdNc/HxylOWlBO8qhzcf/hWYS9n1hd5E38TswyDCJOH\nO/ELYIwQUf1gFrdKYb44v9Dx62rU6SN85gb6c/XDJ5OXF0H64phYY4IA3IvmVq9w\nl3l7zbvdwEV3zIp74aTyQyiCMq/FMA/l4xPtpdcB+V13LnHDAgMBAAGjdTBzMAwG\nA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQMMAoGCCsGAQUFBwMC\nMB0GA1UdDgQWBBROxoyWtLxcO8v+/oIZ8fqeVuVp7TAfBgNVHSMEGDAWgBQ9zpGr\nim29cnyq7KC22knBYXlQAzANBgkqhkiG9w0BAQsFAAOCAQEAh3ggzw88z5WbtO+m\npSeZ9BnQczTn9XZjOSnV0/TKpxqQbg0v2wMYGZz4xGLKkMUfYzx1sUHLAReBf87y\n0AW8ZZ8MkM+SHKABAygMXH7HSAyFCgHcu0wZ+urGd5IF3+wOrAlYIY3nZ0PBuhdd\nV4wxWVFDVORqSwlVbVVxGWeQWbfbCj6VaKR9Q4gpOba59TyUBCLzofDQLSGWnJfG\nLlj9dLm0kHjuyShpQQowER7xQ4Xd7yLCRNGyybhKvoApobCWOyEp8oAA1w+49liM\nvZ2mAufBVZ+hH1AkgWkzRSwYY8PgpKJM8aaw7zfNO6e3SDRHXdbnSFQVmPGR23L7\nu0vDWg==\n-----END CERTIFICATE-----\n",
+  "pc2_key": "",
+  "probe_tls_cert": "-----BEGIN CERTIFICATE-----\nMIIDNjCCAh6gAwIBAgIUGstTDygwQCg46yL5OIrNOrKegicwDQYJKoZIhvcNAQEL\nBQAwFjEUMBIGA1UEAwwLQ0EgY29ycC5sYW4wHhcNMjYxMTE3MTQxNjI2WhcNMjcx\nMTE3MTQxNjI2WjAdMRswGQYDVQQDDBJzcmUtcHJvYmUuY29ycC5sYW4wggEiMA0G\nCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCsAUkxzUoqzaKHeNVsndrl0NPb/i/O\nCUfKhNXe5K5WFKheBfuNK0oGxAV0cdYeRaSlEmzg1Yw+kzOo78Xv0ETlTUAJ9hfK\njd9esGgxiupoE8kixjhtis+NpVh4TzN6M6miwykJUKQ1pq9FA0CKatyj3U6f1s3e\n3JiMqvyHziIdSgmUVE7OwsqqxPnXR42d+qoysxZkxIBQpxlYioRMQn8yQeaIqWzj\n/33CFvNvgh+egNn0X9yMwx/hiufNKUfabUvEO0ac1RTkp7IyH77m0K4oGa5pFifm\n9Bx+15o/BX+b37kENbX+fIxLIc0QtfBJp9QHHyuGHYYgwNdv+q6I6RVlAgMBAAGj\ndTBzMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQMMAoGCCsG\nAQUFBwMCMB0GA1UdDgQWBBQa1BnedlOnyTdbWbDYxUeBu/DUKTAfBgNVHSMEGDAW\ngBQ9zpGrim29cnyq7KC22knBYXlQAzANBgkqhkiG9w0BAQsFAAOCAQEASR7RVSzk\npTWyH04xHwOGr/IetiREjITbxiBhFvRpDf4jKYbGexxN9DHb9hUkqxKxjjaTsqRg\nGG2GzZbToFLTWLYuoAKyiojseOO0u9a1Dzz5hF0kzqJkCUIcsuqxZLpwKfMJePY+\nT2BPCZzqfyaMqwJvJhkZvKfOnISkTt6YlPlsCQWVwHNp/aI1dAi1C1hpZPuprITq\nbZjbMzWLvDv73i6mYRrxKL5bOvIOJM+2vqJ3s+ASJLPt2ZILdhLEmNlz/WnvFmeU\n9PBck4oB65I1qK1t22TAzCn3zWkllhJaDxejnh9fHuK8eeUnTRD65nHfz9tOWEIH\npfCKdivEYthlmg==\n-----END CERTIFICATE-----\n",
+  "probe_tls_key": "",
+  "rogue_cert": "-----BEGIN CERTIFICATE-----\nMIIDPDCCAiSgAwIBAgIUW1XbOyTL5yG9H6StJ1GIwPHTBu8wDQYJKoZIhvcNAQEL\nBQAwHDEaMBgGA1UEAwwRQ0Egcm9ndWUuY29ycC5sYW4wHhcNMjYxMTE3MTQxNjI2\nWhcNMjcxMTE3MTQxNjI2WjAdMRswGQYDVQQDDBJzcmUtcHJvYmUuY29ycC5sYW4w\nggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC//TNXrmianbYZGMIXWR8Z\nQlQ5PNLk/eNBFqFUrnFTlo//UBlbAgd/e7//VPudYUWV0c6tiy6+/JYBJP5h1H+H\nGWX5qwMkRDFUk8p+TMgwRQVCqtzilfSxkMPkWeXVMdKZ2wnThTXSd3g5UWbIcOc7\nd3RCz00g+7YU8wZPk40Dr6v4sITiR/t9cOhxyIBZJDOjldY9yixC0zH4IbZ4e9xu\nkVMS0w00TCqNYQKfMmkVvb5vJ7L9Vg/iKrfzwcpS84jwG9F8xk0hAgT0we2CtNub\n8/gAQApHCCJhgNiw3lEz8mUjToIXuYCzxbXB9uNHFHQCrjHDZbqnywK4dw6vNKi/\nAgMBAAGjdTBzMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQM\nMAoGCCsGAQUFBwMCMB0GA1UdDgQWBBRg+twXGPWraO3Jk/ok4Q4ZdjYbSjAfBgNV\nHSMEGDAWgBTIi/uNSEiD8KVZ2F6htw2Zzv+n+TANBgkqhkiG9w0BAQsFAAOCAQEA\nGfl7tVQu2pBSSzdV5Unj9O0MHcgd1wMXmRYRUaZtUznp9csdIhcPN4fBwygm9F48\ny6PzOdnSUtUPqFAEKUa+g8Iz+R6OVJ4RvxEuZgfWoGh25lt3oJOHV5s3BJObp9j+\nOIoa5rcTUPG2oMHBH0wUSP4lomVevcUN57oTm2G8n/0B8/OY7DE6XAGOmDdg5MI3\nixU1QrKlOzWzzebU+i7qfgWa7Q9qWgDhATzOoyRhUTgY3sfWJwGmuMA3mejSHYqI\nHN2WQLQ5jv+4MEoehuH8tRMsO0zv05GhEyOGIHkMEzgF/JhCMxt5n66hXyPXDZcL\nhKSKVx3Eub1x+DGIqxJoVQ==\n-----END CERTIFICATE-----\n",
+  "rogue_key": "",
+  "sw_secret": "6hSRcEwIreEm",
+  "router_secret": "uHZqEEzax88c",
+  "nac_secret": "GBQFcsMcc3wP",
+  "passwords": {
+   "alice": "Pa522sXoFh3e",
+   "bob": "B56dM1c3DS21",
+   "emma": "IiMPaBOo9Dtt",
+   "hugo": "L9N6i0dzDDLn",
+   "ines": "7tPLxrfCpWX5",
+   "remy": "Bv3WzXHZXlJE",
+   "netadmin": "5qaFuw80RYQA",
+   "auditor": "Iim8CFCNIvtH",
+   "rescue": "ZU0xoRhoYXQm",
+   "carol": "ZIRKV1rmr4v1",
+   "jdoe": "nnQOMLfFL0BO",
+   "dev1": "2KJFHakeYrY0",
+   "dev2": "Pv2NzZzFKTo7",
+   "leaver": "iQyxb1eewhxI",
+   "nina": "4nnQ4gPtMEvH",
+   "omar": "AI4s9qBFZUvg",
+   "helpdesk": "Xvj6z6yJbFgq",
+   "kadmin": "xBwNED07GqWh",
+   "researcher": "9DfCCFxYZwZr"
+  },
+  "reply_message": "Bonjour bob, session 465b54",
+  "vlan_staff": 17,
+  "vlan_guest": 131,
+  "guest_timeout": 7200,
+  "totp_secret": "TBLLOQRG2X7JWDZX",
+  "ldap_admin_password": "TAiUKG7E0QxH",
+  "ldap_radius_password": "y0I0vH6TtR7q",
+  "krb_master_password": "YxGWIZHrYhJ0eAzI",
+  "probe_token": "f6803aa13077",
+  "ips": {
+   "router": "172.25.56.1/24",
+   "sw": "172.25.56.2/24",
+   "radius": "172.25.56.10/24",
+   "nac": "172.25.56.11/24",
+   "ldap": "172.25.56.12/24",
+   "kdc": "172.25.56.20/24",
+   "kdc2": "172.25.56.21/24",
+   "srv": "172.25.56.30/24",
+   "ws": "172.25.56.31/24",
+   "pc1": "172.25.56.101/24",
+   "pc2": "172.25.56.102/24",
+   "pc3": "172.25.56.103/24",
+   "probe": "172.25.56.250/24"
+  },
+  "nets": {
+   "lan": "172.25.56.0/24"
+  },
+  "ips6": {},
+  "nets6": {},
+  "macs": {
+   "pc1": "02-53-52-55-C2-A2",
+   "pc2": "02-53-52-62-5A-91",
+   "pc3": "02-53-52-D7-91-11"
+  },
+  "__current_srelab_file": "/var/tmp/sre-stage-aaa/lab/sre/_DRAFT_misc/aaa.py"
+ },
+ "tests": [
+  {
+   "machine": "kdc",
+   "step": 1,
+   "commands": [
+    {
+     "command": "cat /etc/krb5kdc/kadm5.acl; kadmin.local -q listprincs 2>&1 | tail -n 30",
+     "timeout": 20,
+     "code": 0,
+     "output": "*/admin@CORP.LAN\t*\nAuthenticating as principal root/admin@CORP.LAN with password.\nK/M@CORP.LAN\nadmin/admin@CORP.LAN\ndev1@CORP.LAN\ndev2@CORP.LAN\nhost/kdc.corp.lan@CORP.LAN\nkadmin/admin@CORP.LAN\nkadmin/changepw@CORP.LAN\nkrbtgt/CORP.LAN@CORP.LAN\nleaver@CORP.LAN\n"
+    },
+    {
+     "command": "kadmin.local -q 'addprinc -randkey sreprobe' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "No policy specified for sreprobe@CORP.LAN; defaulting to no policy\nAuthenticating as principal root/admin@CORP.LAN with password.\nPrincipal \"sreprobe@CORP.LAN\" created.\n===RC 0\n"
+    },
+    {
+     "command": "kadmin.local -q 'getprinc nina' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "get_principal: Principal does not exist while retrieving \"nina@CORP.LAN\".\nAuthenticating as principal root/admin@CORP.LAN with password.\n===RC 0\n"
+    },
+    {
+     "command": "kadmin.local -q 'getprinc omar' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "get_principal: Principal does not exist while retrieving \"omar@CORP.LAN\".\nAuthenticating as principal root/admin@CORP.LAN with password.\n===RC 0\n"
+    },
+    {
+     "command": "kadmin.local -q 'getpol staff' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "get_policy: Policy does not exist while retrieving policy \"staff\".\nAuthenticating as principal root/admin@CORP.LAN with password.\n===RC 0\n"
+    }
+   ]
+  },
+  {
+   "machine": "kdc",
+   "step": 3,
+   "commands": [
+    {
+     "command": "kadmin.local -q 'delprinc -force sreprobe' 2>&1; echo \"===RC $?\"; kadmin.local -q 'delprinc -force sreprobe-new' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "Authenticating as principal root/admin@CORP.LAN with password.\nPrincipal \"sreprobe@CORP.LAN\" deleted.\nMake sure that you have removed this principal from all ACLs before reusing.\n===RC 0\ndelete_principal: Principal does not exist while deleting principal \"sreprobe-new@CORP.LAN\"\nAuthenticating as principal root/admin@CORP.LAN with password.\n===RC 0\n"
+    }
+   ]
+  },
+  {
+   "machine": "ldap",
+   "step": 1,
+   "commands": [
+    {
+     "command": "ldappasswd -x -D cn=admin,dc=corp,dc=lan -w TAiUKG7E0QxH -H ldapi:/// -s SreTmpf6803aa13077 uid=emma,ou=people,dc=corp,dc=lan 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "===RC 0\n"
+    }
+   ]
+  },
+  {
+   "machine": "ldap",
+   "step": 3,
+   "commands": [
+    {
+     "command": "ldappasswd -x -D cn=admin,dc=corp,dc=lan -w TAiUKG7E0QxH -H ldapi:/// -s IiMPaBOo9Dtt uid=emma,ou=people,dc=corp,dc=lan 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "===RC 0\n"
+    }
+   ]
+  },
+  {
+   "machine": "nac",
+   "step": 1,
+   "commands": [
+    {
+     "command": "cat /var/log/freeradius/radacct/*/detail-* 2>/dev/null | tail -n 600; echo \"===RC 0\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "===RC 0\n"
+    }
+   ]
+  },
+  {
+   "machine": "pc1",
+   "step": 1,
+   "commands": [
+    {
+     "command": "journalctl -u wpa_supplicant-wired@eth0 --no-pager | tail -n 15",
+     "timeout": 20,
+     "code": 0,
+     "output": "-- No entries --\n"
+    },
+    {
+     "command": "wpa_cli -p /var/run/wpa_supplicant -i eth0 status 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "Failed to connect to non-global ctrl_ifname: eth0  error: No such file or directory\n===RC 255\n"
+    }
+   ]
+  },
+  {
+   "machine": "pc1",
+   "step": 2,
+   "commands": [
+    {
+     "command": "ping -c 1 -W 1 172.25.56.10 >/dev/null 2>&1 && echo BEFORE=open || echo BEFORE=closed; wpa_cli -p /var/run/wpa_supplicant -i eth0 logoff >/dev/null 2>&1; sleep 2; ping -c 2 -W 1 172.25.56.10 >/dev/null 2>&1 && echo LOGOFF=open || echo LOGOFF=closed; wpa_cli -p /var/run/wpa_supplicant -i eth0 logon >/dev/null 2>&1; for i in 1 2 3 4 5 6 7 8 9 10; do ping -c 1 -W 1 172.25.56.10 >/dev/null 2>&1 && break; sleep 1; done; ping -c 1 -W 1 172.25.56.10 >/dev/null 2>&1 && echo LOGON=open || echo LOGON=closed",
+     "timeout": 40,
+     "code": 0,
+     "output": "BEFORE=open\nLOGOFF=open\nLOGON=open\n"
+    }
+   ]
+  },
+  {
+   "machine": "pc2",
+   "step": 1,
+   "commands": [
+    {
+     "command": "journalctl -u wpa_supplicant-wired@eth0 --no-pager | tail -n 15",
+     "timeout": 20,
+     "code": 0,
+     "output": "-- No entries --\n"
+    },
+    {
+     "command": "wpa_cli -p /var/run/wpa_supplicant -i eth0 status 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "Failed to connect to non-global ctrl_ifname: eth0  error: No such file or directory\n===RC 255\n"
+    }
+   ]
+  },
+  {
+   "machine": "probe",
+   "step": 1,
+   "commands": [
+    {
+     "command": "python3 /usr/local/sbin/sre_login_probe.py --timeout 20 ssh router.corp.lan netadmin 5qaFuw80RYQA 2>&1",
+     "timeout": 30,
+     "code": 1,
+     "output": "{\"ok\": false, \"login\": \"\", \"home\": \"\", \"home_exists\": null, \"prompted\": true, \"exit\": 255, \"timeout\": false, \"output\": \"\\rnetadmin@router.corp.lan's password: \\r\\nnetadmin@router.corp.lan: Permission denied (publickey,password).\\r\\r\\n\"}\n"
+    },
+    {
+     "command": "python3 /usr/local/sbin/sre_login_probe.py --timeout 20 ssh router.corp.lan auditor Iim8CFCNIvtH 2>&1",
+     "timeout": 30,
+     "code": 1,
+     "output": "{\"ok\": false, \"login\": \"\", \"home\": \"\", \"home_exists\": null, \"prompted\": true, \"exit\": 255, \"timeout\": false, \"output\": \"\\rauditor@router.corp.lan's password: \\r\\nauditor@router.corp.lan: Permission denied (publickey,password).\\r\\r\\n\"}\n"
+    },
+    {
+     "command": "python3 /usr/local/sbin/sre_login_probe.py --timeout 20 ssh router.corp.lan rescue ZU0xoRhoYXQm 2>&1",
+     "timeout": 30,
+     "code": 0,
+     "output": "{\"ok\": true, \"login\": \"rescue\", \"home\": \"/home/rescue\", \"home_exists\": true, \"prompted\": true, \"exit\": 0, \"timeout\": false, \"output\": \"\\rrescue@router.corp.lan's password: \\r\\nSRE_LOGIN_OK\\r\\nLOGIN=rescue\\r\\nHOME=/home/rescue\\r\\nHOME_EXISTS=1\\r\\n\"}\n"
+    },
+    {
+     "command": "ping -c 2 -W 1 172.25.56.101 >/dev/null 2>&1",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "ping -c 2 -W 1 172.25.56.102 >/dev/null 2>&1",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "ping -c 2 -W 1 172.25.56.103 >/dev/null 2>&1",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "rm -f /tmp/sre_cc_nina; printf '%s\\n' 4nnQ4gPtMEvH | KRB5CCNAME=FILE:/tmp/sre_cc_nina kinit nina 2>&1; rc=$?; echo \"===RC $rc\"; rm -f /tmp/sre_cc_nina",
+     "timeout": 30,
+     "code": 0,
+     "output": "kinit: Client 'nina@CORP.LAN' not found in Kerberos database while getting initial credentials\n===RC 1\n"
+    },
+    {
+     "command": "rm -f /tmp/sre_cc_omar; printf '%s\\n' AI4s9qBFZUvg | KRB5CCNAME=FILE:/tmp/sre_cc_omar kinit omar 2>&1; rc=$?; echo \"===RC $rc\"; rm -f /tmp/sre_cc_omar",
+     "timeout": 30,
+     "code": 0,
+     "output": "kinit: Client 'omar@CORP.LAN' not found in Kerberos database while getting initial credentials\n===RC 1\n"
+    },
+    {
+     "command": "rm -f /tmp/sre_cc_leaver; printf '%s\\n' iQyxb1eewhxI | KRB5CCNAME=FILE:/tmp/sre_cc_leaver kinit leaver 2>&1; rc=$?; echo \"===RC $rc\"; rm -f /tmp/sre_cc_leaver",
+     "timeout": 30,
+     "code": 0,
+     "output": "Password for leaver@CORP.LAN: \n===RC 0\n"
+    },
+    {
+     "command": "rm -f /tmp/sre_cc_dev2; printf '%s\\n' Pv2NzZzFKTo7 | KRB5CCNAME=FILE:/tmp/sre_cc_dev2 kinit dev2 2>&1; rc=$?; echo \"===RC $rc\"; if [ $rc -eq 0 ]; then KRB5CCNAME=FILE:/tmp/sre_cc_dev2 ssh -o BatchMode=yes -o GSSAPIAuthentication=yes -o PreferredAuthentications=gssapi-with-mic -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 dev2@srv.corp.lan 'id -un' 2>&1; echo \"===RC $?\"; else echo \"===RC none\"; fi; if [ $rc -eq 0 ]; then KRB5CCNAME=FILE:/tmp/sre_cc_dev2 curl -s -m 5 --negotiate -u : -w '\\n===HTTP %{http_code}\\n' http://srv.corp.lan/private/ 2>&1; echo \"===RC $?\"; else echo \"===RC none\"; fi; rm -f /tmp/sre_cc_dev2",
+     "timeout": 30,
+     "code": 0,
+     "output": "Password for dev2@CORP.LAN: \n===RC 0\ndev2@srv.corp.lan: Permission denied (publickey,password).\r\n===RC 255\nREMOTE_USER=\n\n===HTTP 200\n===RC 0\n"
+    },
+    {
+     "command": "curl -s -m 5 -i -w '\\n===HTTP %{http_code}\\n' http://srv.corp.lan/private/ 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "HTTP/1.1 200 OK\r\nDate: Wed, 18 Nov 2026 14:17:07 GMT\r\nServer: Apache/2.4.71 (Debian)\r\nContent-Length: 13\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\nREMOTE_USER=\n\n===HTTP 200\n===RC 0\n"
+    },
+    {
+     "command": "python3 /usr/local/sbin/sre_login_probe.py --timeout 20 ssh ws.corp.lan dev2 Pv2NzZzFKTo7 2>&1",
+     "timeout": 30,
+     "code": 1,
+     "output": "{\"ok\": false, \"login\": \"\", \"home\": \"\", \"home_exists\": null, \"prompted\": true, \"exit\": 255, \"timeout\": false, \"output\": \"\\rdev2@ws.corp.lan's password: \\r\\ndev2@ws.corp.lan: Permission denied (publickey,password).\\r\\r\\n\"}\n"
+    },
+    {
+     "command": "rm -f /tmp/sre_cc_researcher; printf '%s\\n' 9DfCCFxYZwZr | KRB5CCNAME=FILE:/tmp/sre_cc_researcher kinit researcher@LAB.CORP.LAN 2>&1; rc=$?; echo \"===RC $rc\"; if [ $rc -eq 0 ]; then KRB5CCNAME=FILE:/tmp/sre_cc_researcher kvno host/kdc.corp.lan@CORP.LAN 2>&1; echo \"===RC $?\"; else echo \"===RC none\"; fi; rm -f /tmp/sre_cc_researcher",
+     "timeout": 30,
+     "code": 0,
+     "output": "kinit: Cannot contact any KDC for realm 'LAB.CORP.LAN' while getting initial credentials\n===RC 1\n===RC none\n"
+    }
+   ]
+  },
+  {
+   "machine": "probe",
+   "step": 2,
+   "commands": [
+    {
+     "command": "kadmin -p helpdesk -w Xvj6z6yJbFgq -q 'cpw -randkey sreprobe' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "kadmin: Client 'helpdesk@CORP.LAN' not found in Kerberos database while initializing kadmin interface\nAuthenticating as principal helpdesk with password.\n===RC 1\n"
+    },
+    {
+     "command": "kadmin -p helpdesk -w Xvj6z6yJbFgq -q 'addprinc -randkey sreprobe-new' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "kadmin: Client 'helpdesk@CORP.LAN' not found in Kerberos database while initializing kadmin interface\nAuthenticating as principal helpdesk with password.\n===RC 1\n"
+    },
+    {
+     "command": "kadmin -p helpdesk -w Xvj6z6yJbFgq -q 'getprinc admin/admin@CORP.LAN' 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "kadmin: Client 'helpdesk@CORP.LAN' not found in Kerberos database while initializing kadmin interface\nAuthenticating as principal helpdesk with password.\n===RC 1\n"
+    }
+   ]
+  },
+  {
+   "machine": "radius",
+   "step": 1,
+   "commands": [
+    {
+     "command": "freeradius -XC 2>&1 | tail -n 4",
+     "timeout": 20,
+     "code": 0,
+     "output": "  \tipaddr = 127.0.0.1\n  \tport = 18120\n}\nConfiguration appears to be OK\n"
+    },
+    {
+     "command": "tail -n 25 /var/log/freeradius/radius.log",
+     "timeout": 20,
+     "code": 0,
+     "output": "Wed Nov 18 14:16:48 2026 : Info: Debug state unknown (cap_sys_ptrace capability not set)\nWed Nov 18 14:16:48 2026 : Info: systemd watchdog interval is 30.00 secs\nWed Nov 18 14:16:48 2026 : Info: Loaded virtual server <default>\nWed Nov 18 14:16:48 2026 : Warning: Ignoring \"sql\" (see raddb/mods-available/README.rst)\nWed Nov 18 14:16:48 2026 : Warning: Ignoring \"ldap\" (see raddb/mods-available/README.rst)\nWed Nov 18 14:16:48 2026 : Info: Loaded virtual server default\nWed Nov 18 14:16:48 2026 : Info:  # Skipping contents of 'if' as it is always 'false' -- /etc/freeradius/3.0/sites-enabled/inner-tunnel:336\nWed Nov 18 14:16:48 2026 : Info: Loaded virtual server inner-tunnel\nWed Nov 18 14:16:48 2026 : Info: Ready to process requests\nWed Nov 18 14:16:55 2026 : Error: Ignoring request to auth address * port 1812 bound to server default from unknown client 172.25.56.1 port 53147 proto udp\n"
+    },
+    {
+     "command": "ls -l /etc/freeradius/3.0/mods-enabled/ /etc/freeradius/3.0/certs/",
+     "timeout": 20,
+     "code": 0,
+     "output": "/etc/freeradius/3.0/certs/:\ntotal 48\n-rw-r----- 1 freerad freerad 6465 Aug 18  2023 Makefile\n-rw-r----- 1 freerad freerad 8289 Aug 18  2023 README.md\n-rw-r----- 1 freerad freerad 2798 Aug 18  2023 bootstrap\n-rw-r----- 1 freerad freerad 1432 Aug 18  2023 ca.cnf\n-rw-r----- 1 freerad freerad 1103 Aug 18  2023 client.cnf\n-rw-r----- 1 freerad freerad  245 Nov 18 12:00 dh\n-rw-r----- 1 freerad freerad 1155 Aug 18  2023 inner-server.cnf\n-rw-r----- 1 freerad freerad 1734 Aug 18  2023 server.cnf\n-rw-r----- 1 freerad freerad 3046 Aug 18  2023 xpextensions\n\n/etc/freeradius/3.0/mods-enabled/:\ntotal 112\nlrwxrwxrwx 1 freerad freerad 24 Nov 18 12:00 always -> ../mods-available/always\nlrwxrwxrwx 1 freerad freerad 29 Nov 18 12:00 attr_filter -> ../mods-available/attr_filter\nlrwxrwxrwx 1 freerad freerad 22 Nov 18 12:00 chap -> ../mods-available/chap\nlrwxrwxrwx 1 freerad freerad 24 Nov 18 12:00 detail -> ../mods-available/detail\nlrwxrwxrwx 1 freerad freerad 28 Nov 18 12:00 detail.log -> ../mods-available/detail.log\nlrwxrwxrwx 1 freerad freerad 24 Nov 18 12:00 digest -> ../mods-available/digest\nlrwxrwxrwx 1 freerad freerad 33 Nov 18 12:00 dynamic_clients -> ../mods-available/dynamic_clients\nlrwxrwxrwx 1 freerad freerad 21 Nov 18 12:00 eap -> ../mods-available/eap\nlrwxrwxrwx 1 freerad freerad 22 Nov 18 12:00 echo -> ../mods-available/echo\nlrwxrwxrwx 1 freerad freerad 22 Nov 18 12:00 exec -> ../mods-available/exec\nlrwxrwxrwx 1 freerad freerad 28 Nov 18 12:00 expiration -> ../mods-available/expiration\nlrwxrwxrwx 1 freerad freerad 22 Nov 18 12:00 expr -> ../mods-available/expr\nlrwxrwxrwx 1 freerad freerad 23 Nov 18 12:00 files -> ../mods-available/files\nlrwxrwxrwx 1 freerad freerad 25 Nov 18 12:00 linelog -> ../mods-available/linelog\nlrwxrwxrwx 1 freerad freerad 27 Nov 18 12:00 logintime -> ../mods-available/logintime\nlrwxrwxrwx 1 freerad freerad 24 Nov 18 12:00 mschap -> ../mods-available/mschap\nlrwxrwxrwx 1 freerad freerad 27 Nov 18 12:00 ntlm_auth -> ../mods-available/ntlm_auth\nlrwxrwxrwx 1 freerad freerad 21 Nov 18 12:00 pap -> ../mods-available/pap\nlrwxrwxrwx 1 freerad freerad 24 Nov 18 12:00 passwd -> ../mods-available/passwd\nlrwxrwxrwx 1 freerad freerad 28 Nov 18 12:00 preprocess -> ../mods-available/preprocess\nlrwxrwxrwx 1 freerad freerad 25 Nov 18 12:00 radutmp -> ../mods-available/radutmp\nlrwxrwxrwx 1 freerad freerad 23 Nov 18 12:00 realm -> ../mods-available/realm\nlrwxrwxrwx 1 freerad freerad 27 Nov 18 12:00 replicate -> ../mods-available/replicate\nlrwxrwxrwx 1 freerad freerad 21 Nov 18 12:00 soh -> ../mods-available/soh\nlrwxrwxrwx 1 freerad freerad 26 Nov 18 12:00 sradutmp -> ../mods-available/sradutmp\nlrwxrwxrwx 1 freerad freerad 22 Nov 18 12:00 unix -> ../mods-available/unix\nlrwxrwxrwx 1 freerad freerad 24 Nov 18 12:00 unpack -> ../mods-available/unpack\nlrwxrwxrwx 1 freerad freerad 22 Nov 18 12:00 utf8 -> ../mods-available/utf8\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"hugo\\\", User-Password = \\\"L9N6i0dzDDLn\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 176 from 0.0.0.0:40082 to 127.0.0.1:1812 length 62\n\tUser-Name = \"hugo\"\n\tUser-Password = \"L9N6i0dzDDLn\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"L9N6i0dzDDLn\"\nReceived Access-Reject Id 176 from 127.0.0.1:1812 to 127.0.0.1:40082 length 20\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"hugo\\\", User-Password = \\\"f6803aa13077\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 235 from 0.0.0.0:51464 to 127.0.0.1:1812 length 62\n\tUser-Name = \"hugo\"\n\tUser-Password = \"f6803aa13077\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"f6803aa13077\"\nReceived Access-Reject Id 235 from 127.0.0.1:1812 to 127.0.0.1:51464 length 20\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"ines\\\", User-Password = \\\"7tPLxrfCpWX5\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 188 from 0.0.0.0:44471 to 127.0.0.1:1812 length 62\n\tUser-Name = \"ines\"\n\tUser-Password = \"7tPLxrfCpWX5\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"7tPLxrfCpWX5\"\nReceived Access-Reject Id 188 from 127.0.0.1:1812 to 127.0.0.1:44471 length 20\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"remy\\\", User-Password = \\\"Bv3WzXHZXlJE$(oathtool --totp -b TBLLOQRG2X7JWDZX)\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 33 from 0.0.0.0:42978 to 127.0.0.1:1812 length 78\n\tUser-Name = \"remy\"\n\tUser-Password = \"Bv3WzXHZXlJE615740\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Bv3WzXHZXlJE615740\"\nReceived Access-Reject Id 33 from 127.0.0.1:1812 to 127.0.0.1:42978 length 20\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"remy\\\", User-Password = \\\"Bv3WzXHZXlJE\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 88 from 0.0.0.0:60684 to 127.0.0.1:1812 length 62\n\tUser-Name = \"remy\"\n\tUser-Password = \"Bv3WzXHZXlJE\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Bv3WzXHZXlJE\"\nReceived Access-Reject Id 88 from 127.0.0.1:1812 to 127.0.0.1:60684 length 20\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"remy\\\", User-Password = \\\"Bv3WzXHZXlJE$(oathtool --totp -b -N 'now + 10 minutes' TBLLOQRG2X7JWDZX)\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 152 from 0.0.0.0:38914 to 127.0.0.1:1812 length 78\n\tUser-Name = \"remy\"\n\tUser-Password = \"Bv3WzXHZXlJE665637\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Bv3WzXHZXlJE665637\"\nReceived Access-Reject Id 152 from 127.0.0.1:1812 to 127.0.0.1:38914 length 20\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"auditor\\\", User-Password = \\\"Iim8CFCNIvtH\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 91 from 0.0.0.0:39085 to 127.0.0.1:1812 length 65\n\tUser-Name = \"auditor\"\n\tUser-Password = \"Iim8CFCNIvtH\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Iim8CFCNIvtH\"\nReceived Access-Reject Id 91 from 127.0.0.1:1812 to 127.0.0.1:39085 length 20\n===RC 1\n"
+    },
+    {
+     "command": "eapol_test -c /var/lib/sre-probe/peap.conf -a 127.0.0.1 -p 1812 -s testing123 -t 8 > /tmp/.sre_eapol_test.log 2>&1; rc=$?; grep -E 'CTRL-EVENT-EAP|^SUCCESS|^FAILURE|EAP-MSCHAPV2: |TLS: (Certificate verification|Failed)|alert|RADIUS packet matching' /tmp/.sre_eapol_test.log | tail -n 40; rm -f /tmp/.sre_eapol_test.log; echo \"===RC $rc\"",
+     "timeout": 23,
+     "code": 0,
+     "output": "CTRL-EVENT-EAP-STARTED EAP authentication started\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4 -> NAK\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=25\nCTRL-EVENT-EAP-METHOD EAP vendor 0 method 25 (PEAP) selected\nRADIUS packet matching with station\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PEER-CERT depth=0 subject='/CN=localhost' hash=6ba7ee323c1ee06f234f6865847f117622fbc1031802542628e41c35c26a9d53\nCTRL-EVENT-EAP-PEER-ALT depth=0 DNS:localhost\nTLS: Certificate verification failed, error 18 (self-signed certificate) depth 0 for '/CN=localhost'\nCTRL-EVENT-EAP-TLS-CERT-ERROR reason=1 depth=0 subject='/CN=localhost' err='self-signed certificate'\nOpenSSL: TX ver=0x303 content_type=21 (alert/)\nSSL: SSL3 alert: write (local SSL3 detected an error):fatal:unknown CA\nEAP: Status notification: local TLS alert (param=unknown CA)\nRADIUS packet matching with station\nCTRL-EVENT-EAP-FAILURE EAP authentication failed\nFAILURE\n===RC 252\n"
+    },
+    {
+     "command": "eapol_test -c /var/lib/sre-probe/peap-wrong.conf -a 127.0.0.1 -p 1812 -s testing123 -t 8 > /tmp/.sre_eapol_test.log 2>&1; rc=$?; grep -E 'CTRL-EVENT-EAP|^SUCCESS|^FAILURE|EAP-MSCHAPV2: |TLS: (Certificate verification|Failed)|alert|RADIUS packet matching' /tmp/.sre_eapol_test.log | tail -n 40; rm -f /tmp/.sre_eapol_test.log; echo \"===RC $rc\"",
+     "timeout": 23,
+     "code": 0,
+     "output": "CTRL-EVENT-EAP-STARTED EAP authentication started\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4 -> NAK\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=25\nCTRL-EVENT-EAP-METHOD EAP vendor 0 method 25 (PEAP) selected\nRADIUS packet matching with station\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PEER-CERT depth=0 subject='/CN=localhost' hash=6ba7ee323c1ee06f234f6865847f117622fbc1031802542628e41c35c26a9d53\nCTRL-EVENT-EAP-PEER-ALT depth=0 DNS:localhost\nTLS: Certificate verification failed, error 18 (self-signed certificate) depth 0 for '/CN=localhost'\nCTRL-EVENT-EAP-TLS-CERT-ERROR reason=1 depth=0 subject='/CN=localhost' err='self-signed certificate'\nOpenSSL: TX ver=0x303 content_type=21 (alert/)\nSSL: SSL3 alert: write (local SSL3 detected an error):fatal:unknown CA\nEAP: Status notification: local TLS alert (param=unknown CA)\nRADIUS packet matching with station\nCTRL-EVENT-EAP-FAILURE EAP authentication failed\nFAILURE\n===RC 252\n"
+    },
+    {
+     "command": "eapol_test -c /var/lib/sre-probe/tls.conf -a 127.0.0.1 -p 1812 -s testing123 -t 8 > /tmp/.sre_eapol_test.log 2>&1; rc=$?; grep -E 'CTRL-EVENT-EAP|^SUCCESS|^FAILURE|EAP-MSCHAPV2: |TLS: (Certificate verification|Failed)|alert|RADIUS packet matching' /tmp/.sre_eapol_test.log | tail -n 40; rm -f /tmp/.sre_eapol_test.log; echo \"===RC $rc\"",
+     "timeout": 23,
+     "code": 0,
+     "output": "CTRL-EVENT-EAP-STARTED EAP authentication started\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4 -> NAK\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=13\nCTRL-EVENT-EAP-METHOD EAP vendor 0 method 13 (TLS) selected\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PEER-CERT depth=0 subject='/CN=localhost' hash=6ba7ee323c1ee06f234f6865847f117622fbc1031802542628e41c35c26a9d53\nCTRL-EVENT-EAP-PEER-ALT depth=0 DNS:localhost\nTLS: Certificate verification failed, error 18 (self-signed certificate) depth 0 for '/CN=localhost'\nCTRL-EVENT-EAP-TLS-CERT-ERROR reason=1 depth=0 subject='/CN=localhost' err='self-signed certificate'\nOpenSSL: TX ver=0x303 content_type=21 (alert/)\nSSL: SSL3 alert: write (local SSL3 detected an error):fatal:unknown CA\nEAP: Status notification: local TLS alert (param=unknown CA)\nRADIUS packet matching with station\nCTRL-EVENT-EAP-FAILURE EAP authentication failed\nFAILURE\n===RC 252\n"
+    },
+    {
+     "command": "eapol_test -c /var/lib/sre-probe/rogue.conf -a 127.0.0.1 -p 1812 -s testing123 -t 8 > /tmp/.sre_eapol_test.log 2>&1; rc=$?; grep -E 'CTRL-EVENT-EAP|^SUCCESS|^FAILURE|EAP-MSCHAPV2: |TLS: (Certificate verification|Failed)|alert|RADIUS packet matching' /tmp/.sre_eapol_test.log | tail -n 40; rm -f /tmp/.sre_eapol_test.log; echo \"===RC $rc\"",
+     "timeout": 23,
+     "code": 0,
+     "output": "CTRL-EVENT-EAP-STARTED EAP authentication started\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4 -> NAK\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=13\nCTRL-EVENT-EAP-METHOD EAP vendor 0 method 13 (TLS) selected\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nRADIUS packet matching with station\nCTRL-EVENT-EAP-PEER-CERT depth=0 subject='/CN=localhost' hash=6ba7ee323c1ee06f234f6865847f117622fbc1031802542628e41c35c26a9d53\nCTRL-EVENT-EAP-PEER-ALT depth=0 DNS:localhost\nTLS: Certificate verification failed, error 18 (self-signed certificate) depth 0 for '/CN=localhost'\nCTRL-EVENT-EAP-TLS-CERT-ERROR reason=1 depth=0 subject='/CN=localhost' err='self-signed certificate'\nOpenSSL: TX ver=0x303 content_type=21 (alert/)\nSSL: SSL3 alert: write (local SSL3 detected an error):fatal:unknown CA\nEAP: Status notification: local TLS alert (param=unknown CA)\nRADIUS packet matching with station\nCTRL-EVENT-EAP-FAILURE EAP authentication failed\nFAILURE\n===RC 252\n"
+    }
+   ]
+  },
+  {
+   "machine": "radius",
+   "step": 2,
+   "commands": [
+    {
+     "command": "echo \"User-Name = \\\"emma\\\", User-Password = \\\"SreTmpf6803aa13077\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 127.0.0.1 auth testing123 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "(0) -: Expected Access-Accept got Access-Reject\nSent Access-Request Id 230 from 0.0.0.0:40622 to 127.0.0.1:1812 length 78\n\tUser-Name = \"emma\"\n\tUser-Password = \"SreTmpf6803aa13077\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"SreTmpf6803aa13077\"\nReceived Access-Reject Id 230 from 127.0.0.1:1812 to 127.0.0.1:40622 length 20\n===RC 1\n"
+    }
+   ]
+  },
+  {
+   "machine": "router",
+   "step": 1,
+   "commands": [
+    {
+     "command": "tail -n 15 /var/log/auth.log; grep -v '^#' /etc/pam.d/sshd | grep .",
+     "timeout": 20,
+     "code": 0,
+     "output": "2026-11-18T14:16:39.832856+00:00 router systemd-logind[326]: Watching system buttons on /dev/input/event0 (Sleep Button)\n2026-11-18T14:16:39.832934+00:00 router systemd-logind[326]: Watching system buttons on /dev/input/event5 (Chicony  HP Wired Desktop 320K Keyboard)\n2026-11-18T14:16:39.843023+00:00 router systemd-logind[326]: Watching system buttons on /dev/input/event1 (Power Button)\n2026-11-18T14:16:39.913388+00:00 router systemd-logind[326]: Watching system buttons on /dev/input/event7 (Chicony  HP Wired Desktop 320K Keyboard System Control)\n2026-11-18T14:16:47.059643+00:00 router useradd[699]: new group: name=netadmin, GID=1003\n2026-11-18T14:16:47.059759+00:00 router useradd[699]: new user: name=netadmin, UID=1003, GID=1003, home=/home/netadmin, shell=/bin/bash, from=none\n2026-11-18T14:16:47.094102+00:00 router usermod[706]: change user 'netadmin' password\n2026-11-18T14:16:47.164409+00:00 router useradd[715]: new group: name=auditor, GID=1004\n2026-11-18T14:16:47.164494+00:00 router useradd[715]: new user: name=auditor, UID=1004, GID=1004, home=/home/auditor, shell=/bin/bash, from=none\n2026-11-18T14:16:47.185726+00:00 router usermod[722]: change user 'auditor' password\n2026-11-18T14:16:47.239147+00:00 router useradd[731]: new group: name=rescue, GID=1005\n2026-11-18T14:16:47.241348+00:00 router useradd[731]: new user: name=rescue, UID=1005, GID=1005, home=/home/rescue, shell=/bin/bash, from=none\n2026-11-18T14:16:47.272927+00:00 router usermod[739]: change user 'rescue' password\n2026-11-18T14:16:47.427632+00:00 router sshd[750]: Server listening on 0.0.0.0 port 22.\n2026-11-18T14:16:47.427739+00:00 router sshd[750]: Server listening on :: port 22.\n@include common-auth\naccount    required     pam_nologin.so\n@include common-account\nsession [success=ok ignore=ignore module_unknown=ignore default=bad]        pam_selinux.so close\nsession optional pam_loginuid.so\nsession    optional     pam_keyinit.so force revoke\n@include common-session\nsession    optional     pam_motd.so  motd=/run/motd.dynamic\nsession    optional     pam_motd.so noupdate\nsession    optional     pam_mail.so standard noenv # [1]\nsession    required     pam_limits.so\nsession    required     pam_env.so # [1]\nsession    required     pam_env.so user_readenv=1 envfile=/etc/default/locale\nsession [success=ok ignore=ignore module_unknown=ignore default=bad]        pam_selinux.so open\n@include common-password\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"netadmin\\\", User-Password = \\\"5qaFuw80RYQA\\\", NAS-IP-Address = \\\"172.25.56.1\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 radius.corp.lan auth uHZqEEzax88c 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "Sent Access-Request Id 176 from 0.0.0.0:53147 to 172.25.56.10:1812 length 72\n\tUser-Name = \"netadmin\"\n\tUser-Password = \"5qaFuw80RYQA\"\n\tNAS-IP-Address = 172.25.56.1\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"5qaFuw80RYQA\"\n(0) No reply from server for ID 176 socket 3\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"auditor\\\", User-Password = \\\"Iim8CFCNIvtH\\\", NAS-IP-Address = \\\"172.25.56.1\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 radius.corp.lan auth uHZqEEzax88c 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "Sent Access-Request Id 241 from 0.0.0.0:39001 to 172.25.56.10:1812 length 71\n\tUser-Name = \"auditor\"\n\tUser-Password = \"Iim8CFCNIvtH\"\n\tNAS-IP-Address = 172.25.56.1\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Iim8CFCNIvtH\"\n(0) No reply from server for ID 241 socket 3\n===RC 1\n"
+    }
+   ]
+  },
+  {
+   "machine": "srv",
+   "step": 1,
+   "commands": [
+    {
+     "command": "cat /etc/krb5.conf; ls -l /etc/krb5.keytab; apache2ctl -M 2>/dev/null | grep -i gss; tail -n 10 /var/log/apache2/error.log",
+     "timeout": 20,
+     "code": 0,
+     "output": "[libdefaults]\n\tdefault_realm = EXAMPLE.ORG\n\n# The following krb5.conf variables are only for MIT Kerberos.\n\tkdc_timesync = 1\n\tccache_type = 4\n\tforwardable = true\n\tproxiable = true\n        rdns = false\n\n\n# The following libdefaults parameters are only for Heimdal Kerberos.\n\tfcc-mit-ticketflags = true\n\n[realms]\n\tATHENA.MIT.EDU = {\n\t\tkdc = kerberos.mit.edu\n\t\tkdc = kerberos-1.mit.edu\n\t\tkdc = kerberos-2.mit.edu:88\n\t\tadmin_server = kerberos.mit.edu\n\t\tdefault_domain = mit.edu\n\t}\n\tZONE.MIT.EDU = {\n\t\tkdc = casio.mit.edu\n\t\tkdc = seiko.mit.edu\n\t\tadmin_server = casio.mit.edu\n\t}\n\tCSAIL.MIT.EDU = {\n\t\tadmin_server = kerberos.csail.mit.edu\n\t\tdefault_domain = csail.mit.edu\n\t}\n\tIHTFP.ORG = {\n\t\tkdc = kerberos.ihtfp.org\n\t\tadmin_server = kerberos.ihtfp.org\n\t}\n\t1TS.ORG = {\n\t\tkdc = kerberos.1ts.org\n\t\tadmin_server = kerberos.1ts.org\n\t}\n\tANDREW.CMU.EDU = {\n\t\tadmin_server = kerberos.andrew.cmu.edu\n\t\tdefault_domain = andrew.cmu.edu\n\t}\n        CS.CMU.EDU = {\n                kdc = kerberos-1.srv.cs.cmu.edu\n                kdc = kerberos-2.srv.cs.cmu.edu\n                kdc = kerberos-3.srv.cs.cmu.edu\n                admin_server = kerberos.cs.cmu.edu\n        }\n\tDEMENTIA.ORG = {\n\t\tkdc = kerberos.dementix.org\n\t\tkdc = kerberos2.dementix.org\n\t\tadmin_server = kerberos.dementix.org\n\t}\n\tstanford.edu = {\n\t\tkdc = krb5auth1.stanford.edu\n\t\tkdc = krb5auth2.stanford.edu\n\t\tkdc = krb5auth3.stanford.edu\n\t\tmaster_kdc = krb5auth1.stanford.edu\n\t\tadmin_server = krb5-admin.stanford.edu\n\t\tdefault_domain = stanford.edu\n\t}\n        UTORONTO.CA = {\n                kdc = kerberos1.utoronto.ca\n                kdc = kerberos2.utoronto.ca\n                kdc = kerberos3.utoronto.ca\n                admin_server = kerberos1.utoronto.ca\n                default_domain = utoronto.ca\n\t}\n\n[domain_realm]\n\t.mit.edu = ATHENA.MIT.EDU\n\tmit.edu = ATHENA.MIT.EDU\n\t.media.mit.edu = MEDIA-LAB.MIT.EDU\n\tmedia.mit.edu = MEDIA-LAB.MIT.EDU\n\t.csail.mit.edu = CSAIL.MIT.EDU\n\tcsail.mit.edu = CSAIL.MIT.EDU\n\t.whoi.edu = ATHENA.MIT.EDU\n\twhoi.edu = ATHENA.MIT.EDU\n\t.stanford.edu = stanford.edu\n\t.slac.stanford.edu = SLAC.STANFORD.EDU\n        .toronto.edu = UTORONTO.CA\n        .utoronto.ca = UTORONTO.CA\n\n[Wed Nov 18 14:16:47.608455 2026] [mpm_prefork:notice] [pid 759:tid 759] AH00163: Apache/2.4.71 (Debian) configured -- resuming normal operations\n[Wed Nov 18 14:16:47.608495 2026] [core:notice] [pid 759:tid 759] AH00094: Command line: '/usr/sbin/apache2'\n"
+    },
+    {
+     "command": "klist -k /etc/krb5.keytab 2>&1",
+     "timeout": 20,
+     "code": 1,
+     "output": "klist: Key table file '/etc/krb5.keytab' not found while starting keytab scan\nKeytab name: FILE:/etc/krb5.keytab\n"
+    },
+    {
+     "command": "f=$(grep -rhoP 'GssapiCredStore\\s+keytab:\\K\\S+' /etc/apache2/ 2>/dev/null | head -n 1); echo \"KEYTAB=$f\"; [ -n \"$f\" ] && stat -L -c 'STAT=%a %U %G' \"$f\" 2>&1; true",
+     "timeout": 20,
+     "code": 0,
+     "output": "KEYTAB=\n"
+    }
+   ]
+  },
+  {
+   "machine": "sw",
+   "step": 1,
+   "commands": [
+    {
+     "command": "nft list ruleset",
+     "timeout": 20,
+     "code": 0,
+     "output": "table ip nat {\n\tchain DOCKER_OUTPUT {\n\t\tip daddr 127.0.0.11 tcp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:41799\n\t\tip daddr 127.0.0.11 udp dport 53 counter packets 0 bytes 0 dnat to 127.0.0.11:50298\n\t}\n\n\tchain OUTPUT {\n\t\ttype nat hook output priority -100; policy accept;\n\t\tip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_OUTPUT\n\t}\n\n\tchain DOCKER_POSTROUTING {\n\t\tip saddr 127.0.0.11 tcp sport 41799 counter packets 0 bytes 0 snat to :53\n\t\tip saddr 127.0.0.11 udp sport 50298 counter packets 0 bytes 0 snat to :53\n\t}\n\n\tchain POSTROUTING {\n\t\ttype nat hook postrouting priority srcnat; policy accept;\n\t\tip daddr 127.0.0.11 counter packets 0 bytes 0 jump DOCKER_POSTROUTING\n\t}\n}\n"
+    },
+    {
+     "command": "systemctl is-active hostapd@eth1 hostapd@eth2 hostapd@eth3",
+     "timeout": 20,
+     "code": 3,
+     "output": "inactive\ninactive\ninactive\n"
+    },
+    {
+     "command": "pgrep -a hostapd_cli; pgrep -a hostapd",
+     "timeout": 20,
+     "code": 1,
+     "output": ""
+    },
+    {
+     "command": "journalctl -u 'hostapd@*' --no-pager | tail -n 20",
+     "timeout": 20,
+     "code": 0,
+     "output": ""
+    },
+    {
+     "command": "echo \"User-Name = \\\"alice\\\", User-Password = \\\"Pa522sXoFh3e\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 radius.corp.lan auth 6hSRcEwIreEm 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "Sent Access-Request Id 150 from 0.0.0.0:59273 to 172.25.56.10:1812 length 63\n\tUser-Name = \"alice\"\n\tUser-Password = \"Pa522sXoFh3e\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Pa522sXoFh3e\"\n(0) No reply from server for ID 150 socket 3\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"alice\\\", CHAP-Password = \\\"Pa522sXoFh3e\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 radius.corp.lan auth 6hSRcEwIreEm 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "Sent Access-Request Id 81 from 0.0.0.0:40628 to 172.25.56.10:1812 length 64\n\tUser-Name = \"alice\"\n\tCHAP-Password = 0xfa0c04b38bfa9f2f83b80b55239cb8ee31\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"Pa522sXoFh3e\"\n(0) No reply from server for ID 81 socket 3\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"bob\\\", User-Password = \\\"B56dM1c3DS21\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 radius.corp.lan auth 6hSRcEwIreEm 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "Sent Access-Request Id 237 from 0.0.0.0:50776 to 172.25.56.10:1812 length 61\n\tUser-Name = \"bob\"\n\tUser-Password = \"B56dM1c3DS21\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"B56dM1c3DS21\"\n(0) No reply from server for ID 237 socket 3\n===RC 1\n"
+    },
+    {
+     "command": "echo \"User-Name = \\\"alice\\\", User-Password = \\\"f6803aa13077\\\", Message-Authenticator = 0\" | radclient -x -r 1 -t 2 radius.corp.lan auth 6hSRcEwIreEm 2>&1; echo \"===RC $?\"",
+     "timeout": 14,
+     "code": 0,
+     "output": "Sent Access-Request Id 100 from 0.0.0.0:39828 to 172.25.56.10:1812 length 63\n\tUser-Name = \"alice\"\n\tUser-Password = \"f6803aa13077\"\n\tMessage-Authenticator = 0x30\n\tCleartext-Password = \"f6803aa13077\"\n(0) No reply from server for ID 100 socket 3\n===RC 1\n"
+    },
+    {
+     "command": "hostapd_cli -p /var/run/hostapd -i eth1 all_sta 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "Failed to connect to hostapd - wpa_ctrl_open: No such file or directory\n===RC 255\n"
+    },
+    {
+     "command": "hostapd_cli -p /var/run/hostapd -i eth2 all_sta 2>&1; echo \"===RC $?\"",
+     "timeout": 20,
+     "code": 0,
+     "output": "Failed to connect to hostapd - wpa_ctrl_open: No such file or directory\n===RC 255\n"
+    }
+   ]
+  },
+  {
+   "machine": "ws",
+   "step": 1,
+   "commands": [
+    {
+     "command": "grep krb5 /etc/pam.d/common-*; cat /etc/krb5.conf",
+     "timeout": 20,
+     "code": 0,
+     "output": "[libdefaults]\n\tdefault_realm = EXAMPLE.ORG\n\n# The following krb5.conf variables are only for MIT Kerberos.\n\tkdc_timesync = 1\n\tccache_type = 4\n\tforwardable = true\n\tproxiable = true\n        rdns = false\n\n\n# The following libdefaults parameters are only for Heimdal Kerberos.\n\tfcc-mit-ticketflags = true\n\n[realms]\n\tATHENA.MIT.EDU = {\n\t\tkdc = kerberos.mit.edu\n\t\tkdc = kerberos-1.mit.edu\n\t\tkdc = kerberos-2.mit.edu:88\n\t\tadmin_server = kerberos.mit.edu\n\t\tdefault_domain = mit.edu\n\t}\n\tZONE.MIT.EDU = {\n\t\tkdc = casio.mit.edu\n\t\tkdc = seiko.mit.edu\n\t\tadmin_server = casio.mit.edu\n\t}\n\tCSAIL.MIT.EDU = {\n\t\tadmin_server = kerberos.csail.mit.edu\n\t\tdefault_domain = csail.mit.edu\n\t}\n\tIHTFP.ORG = {\n\t\tkdc = kerberos.ihtfp.org\n\t\tadmin_server = kerberos.ihtfp.org\n\t}\n\t1TS.ORG = {\n\t\tkdc = kerberos.1ts.org\n\t\tadmin_server = kerberos.1ts.org\n\t}\n\tANDREW.CMU.EDU = {\n\t\tadmin_server = kerberos.andrew.cmu.edu\n\t\tdefault_domain = andrew.cmu.edu\n\t}\n        CS.CMU.EDU = {\n                kdc = kerberos-1.srv.cs.cmu.edu\n                kdc = kerberos-2.srv.cs.cmu.edu\n                kdc = kerberos-3.srv.cs.cmu.edu\n                admin_server = kerberos.cs.cmu.edu\n        }\n\tDEMENTIA.ORG = {\n\t\tkdc = kerberos.dementix.org\n\t\tkdc = kerberos2.dementix.org\n\t\tadmin_server = kerberos.dementix.org\n\t}\n\tstanford.edu = {\n\t\tkdc = krb5auth1.stanford.edu\n\t\tkdc = krb5auth2.stanford.edu\n\t\tkdc = krb5auth3.stanford.edu\n\t\tmaster_kdc = krb5auth1.stanford.edu\n\t\tadmin_server = krb5-admin.stanford.edu\n\t\tdefault_domain = stanford.edu\n\t}\n        UTORONTO.CA = {\n                kdc = kerberos1.utoronto.ca\n                kdc = kerberos2.utoronto.ca\n                kdc = kerberos3.utoronto.ca\n                admin_server = kerberos1.utoronto.ca\n                default_domain = utoronto.ca\n\t}\n\n[domain_realm]\n\t.mit.edu = ATHENA.MIT.EDU\n\tmit.edu = ATHENA.MIT.EDU\n\t.media.mit.edu = MEDIA-LAB.MIT.EDU\n\tmedia.mit.edu = MEDIA-LAB.MIT.EDU\n\t.csail.mit.edu = CSAIL.MIT.EDU\n\tcsail.mit.edu = CSAIL.MIT.EDU\n\t.whoi.edu = ATHENA.MIT.EDU\n\twhoi.edu = ATHENA.MIT.EDU\n\t.stanford.edu = stanford.edu\n\t.slac.stanford.edu = SLAC.STANFORD.EDU\n        .toronto.edu = UTORONTO.CA\n        .utoronto.ca = UTORONTO.CA\n\n"
+    },
+    {
+     "command": "python3 /usr/local/sbin/sre_login_probe.py --timeout 20 --klist --as student su dev1 2KJFHakeYrY0 2>&1",
+     "timeout": 30,
+     "code": 1,
+     "output": "{\"ok\": false, \"login\": \"\", \"home\": \"\", \"home_exists\": null, \"prompted\": true, \"exit\": 1, \"timeout\": false, \"output\": \"Password: \\r\\nsu: Authentication failure\\r\\n\", \"tgt\": null}\n"
+    }
+   ]
+  }
+ ],
+ "errors": [],
+ "answers": {
+  "auto_eval_count": 0
+ },
+ "grades": {
+  "running_lab_name": "20261118151626@@@@var@tmp@sre-stage-aaa@lab@sre@_DRAFT_misc@aaa.py@@@root",
+  "eval_date": "2026-11-18T15:16:55.168514",
+  "login": "",
+  "hostname": "",
+  "grade_list": [
+   {
+    "title": "radius_pap_alice",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "alice acceptée (PAP) depuis sw"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "radius_chap_alice",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "alice acceptée (CHAP) depuis sw"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "radius_reply_message",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "bob accepté avec son Reply-Message"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "radius_wrong_password",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "un mauvais mot de passe est refusé"
+    },
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "answer_auth_port",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "answer_acct_port",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "answer_accept_code",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "answer_password",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 2,
+    "grade_part": "part1",
+    "bonus": false
+   },
+   {
+    "title": "ldap_live_auth",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "emma acceptée avec le mot de passe tout juste changé dans l'annuaire"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "ldap_vlan_staff",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "emma : VLAN du personnel"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "ldap_vlan_guest",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "hugo : VLAN des invités et durée de session"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "ldap_no_group_rejected",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "ines (aucun groupe) refusée"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "ldap_wrong_password",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "un mauvais mot de passe LDAP est refusé"
+    },
+    "scope": 3,
+    "grade_part": "part2",
+    "bonus": false
+   },
+   {
+    "title": "totp_accepted",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "mot de passe + code accepté"
+    },
+    "scope": 3,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "totp_password_alone",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "le mot de passe seul est refusé"
+    },
+    "scope": 3,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "totp_wrong_code",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "un code d'une autre heure est refusé"
+    },
+    "scope": 3,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "answer_totp_step",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "answer_totp_digits",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part3",
+    "bonus": false
+   },
+   {
+    "title": "admin_radius_netadmin",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "netadmin accepté depuis router"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "admin_radius_auditor_refused",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "auditor refusé sur router mais accepté ailleurs"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "admin_ssh_netadmin",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "connexion ssh de netadmin sur router"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "admin_ssh_auditor_refused",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "connexion ssh d'auditor refusée"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "admin_ssh_rescue",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "le compte local de secours fonctionne"
+    },
+    "scope": 3,
+    "grade_part": "part4",
+    "bonus": false
+   },
+   {
+    "title": "eap_peap",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "PEAP-MSCHAPv2 de carol, certificat du serveur vérifié"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "eap_peap_wrong_password",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "PEAP avec un mauvais mot de passe refusé"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "eap_tls",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "EAP-TLS avec un certificat client de la CA"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "eap_tls_rogue_ca",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "EAP-TLS avec le certificat d'une autre CA refusé"
+    },
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "answer_eap_peap",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "answer_eap_tls",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "answer_eap_inner",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 2,
+    "grade_part": "part5",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_pc1_peap",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "pc1 authentifié en PEAP, port autorisé"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_pc2_tls",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "pc2 authentifié en EAP-TLS, port autorisé"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_pc1_reachable",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "pc1 joignable"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_pc2_reachable",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "pc2 joignable"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_pc3_blocked",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "pc3 (sans 802.1X) n'a pas accès au réseau"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_logoff_closes",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "le port de pc1 se ferme après logoff"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_logon_reopens",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "le port de pc1 se rouvre après logon"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "dot1x_accounting",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "comptabilité : Start de pc1 reçu par nac"
+    },
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "answer_ethertype",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "answer_pae_address",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "answer_first_frame",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 2,
+    "grade_part": "part6",
+    "bonus": false
+   },
+   {
+    "title": "krb_new_users",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "kinit de nina et d'omar"
+    },
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "krb_policy_defined",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "politique staff définie"
+    },
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "krb_policy_applied",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "politique staff appliquée à nina et omar"
+    },
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "krb_leaver_disabled",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "leaver ne reçoit plus de ticket"
+    },
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "krb_helpdesk_cpw",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "helpdesk change un mot de passe"
+    },
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "krb_helpdesk_limited",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "helpdesk ne crée pas de compte et ne lit pas admin/admin"
+    },
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "answer_tgt",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "answer_enctype",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "answer_kdc_port",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": "",
+    "scope": 3,
+    "grade_part": "part7",
+    "bonus": false
+   },
+   {
+    "title": "krb_host_keytab",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "clé de host/srv.corp.lan dans /etc/krb5.keytab"
+    },
+    "scope": 3,
+    "grade_part": "part8",
+    "bonus": false
+   },
+   {
+    "title": "krb_ssh_sso",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "ssh de dev2 sur srv avec son ticket"
+    },
+    "scope": 3,
+    "grade_part": "part8",
+    "bonus": false
+   },
+   {
+    "title": "krb_http_sso",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "page /private avec le ticket de dev2"
+    },
+    "scope": 3,
+    "grade_part": "part8",
+    "bonus": false
+   },
+   {
+    "title": "krb_http_401",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "sans ticket : 401 Negotiate"
+    },
+    "scope": 3,
+    "grade_part": "part8",
+    "bonus": false
+   },
+   {
+    "title": "krb_http_keytab",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "keytab HTTP protégé"
+    },
+    "scope": 3,
+    "grade_part": "part8",
+    "bonus": false
+   },
+   {
+    "title": "pam_krb5_su",
+    "max_grade": 2,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "su - dev1 avec le mot de passe Kerberos"
+    },
+    "scope": 3,
+    "grade_part": "part9",
+    "bonus": false
+   },
+   {
+    "title": "pam_krb5_ticket",
+    "max_grade": 1,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "un ticket dans la session"
+    },
+    "scope": 3,
+    "grade_part": "part9",
+    "bonus": false
+   },
+   {
+    "title": "pam_krb5_ssh",
+    "max_grade": 3,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "ssh de dev2 sur ws avec le mot de passe Kerberos"
+    },
+    "scope": 3,
+    "grade_part": "part9",
+    "bonus": false
+   },
+   {
+    "title": "lab_realm",
+    "max_grade": 4,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "kinit de researcher@LAB.CORP.LAN"
+    },
+    "scope": 3,
+    "grade_part": "bonus",
+    "bonus": true
+   },
+   {
+    "title": "cross_realm_trust",
+    "max_grade": 6,
+    "grade": 0,
+    "grade_letter": null,
+    "description": {
+     "fr": "ticket de service de CORP.LAN pour researcher"
+    },
+    "scope": 3,
+    "grade_part": "bonus",
+    "bonus": true
+   }
+  ],
+  "grade_parts": [
+   {
+    "title": "part1",
+    "description": {
+     "fr": "Partie 1 — Premiers pas avec FreeRADIUS"
+    }
+   },
+   {
+    "title": "part2",
+    "description": {
+     "fr": "Partie 2 — FreeRADIUS sur l'annuaire LDAP"
+    }
+   },
+   {
+    "title": "part3",
+    "description": {
+     "fr": "Partie 3 — Double authentification (TOTP)"
+    }
+   },
+   {
+    "title": "part4",
+    "description": {
+     "fr": "Partie 4 — Administrer un équipement par RADIUS"
+    }
+   },
+   {
+    "title": "part5",
+    "description": {
+     "fr": "Partie 5 — EAP sur FreeRADIUS"
+    }
+   },
+   {
+    "title": "part6",
+    "description": {
+     "fr": "Partie 6 — 802.1X sur le switch"
+    }
+   },
+   {
+    "title": "part7",
+    "description": {
+     "fr": "Partie 7 — Administrer le royaume Kerberos"
+    }
+   },
+   {
+    "title": "part8",
+    "description": {
+     "fr": "Partie 8 — Des services kerberisés"
+    }
+   },
+   {
+    "title": "part9",
+    "description": {
+     "fr": "Partie 9 — Ouvrir une session avec Kerberos"
+    }
+   },
+   {
+    "title": "bonus",
+    "description": {
+     "fr": "Bonus — Un second royaume et une approbation"
+    }
+   }
+  ],
+  "total_grade_self_eval": 0,
+  "total_max_self_eval": 97,
+  "mark_self_eval": 0.0,
+  "total_grade_exo_eval": 0,
+  "total_max_exo_eval": 100,
+  "mark_exo_eval": 0.0,
+  "maximum_mark": 20,
+  "exam_json": null
+ },
+ "files": []
+}

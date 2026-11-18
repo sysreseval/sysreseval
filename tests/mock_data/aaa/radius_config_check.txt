@@ -1,0 +1,16 @@
+   	lifetime = 0
+   	idle_timeout = 30
+   }
+}
+listen {
+  	type = "acct"
+  	ipaddr = *
+  	port = 0
+}
+listen {
+  	type = "auth"
+  	ipaddr = 127.0.0.1
+  	port = 18120
+}
+Configuration appears to be OK
+===RC 0

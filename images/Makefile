@@ -3,7 +3,7 @@ SHELL := /bin/bash
 VERSION   ?= 1.33
 NAMESPACE ?= sysreseval
 
-IMAGES := base init frr ldap-mail proxy monitoring voip base13 init13
+IMAGES := base init frr ldap-mail proxy monitoring voip aaa base13 init13
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -46,6 +46,11 @@ voip: init
 		-t $(NAMESPACE)/voip:$(VERSION) \
 		voip
 
+aaa: init
+	docker build --build-arg VERSION=$(VERSION) \
+		-t $(NAMESPACE)/aaa:$(VERSION) \
+		aaa
+
 # Debian 13 (trixie) twins of base and init, built on debian:13 (kathara/base is still Debian 12):
 # the labs move to them one by one (sre_docker_image("base13") / ("init13")).
 base13:
@@ -67,8 +72,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base + init + frr + ldap-mail + proxy + monitoring + voip + base13 + init13"
-	@echo "  base | init | frr | ldap-mail | proxy | monitoring | voip | base13 | init13  build one image (deps included)"
+	@echo "  all (default)     build base + init + frr + ldap-mail + proxy + monitoring + voip + aaa + base13 + init13"
+	@echo "  base | init | frr | ldap-mail | proxy | monitoring | voip | aaa | base13 | init13  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

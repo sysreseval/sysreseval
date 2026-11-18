@@ -1,0 +1,7 @@
+Sent Access-Request Id 39 from 0.0.0.0:41242 to 192.168.98.10:1812 length 63
+	User-Name = "alice"
+	User-Password = "d7Uw3MnbvKuM"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "d7Uw3MnbvKuM"
+(0) No reply from server for ID 39 socket 3
+===RC 1

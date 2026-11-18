@@ -1,0 +1,8 @@
+Sent Access-Request Id 82 from 0.0.0.0:57830 to 192.168.98.10:1812 length 61
+	User-Name = "bob"
+	User-Password = "F9zPSXN6RzHW"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "F9zPSXN6RzHW"
+Received Access-Accept Id 82 from 192.168.98.10:1812 to 192.168.98.2:57830 length 49
+	Reply-Message = "Bonjour bob, session dd83b5"
+===RC 0

@@ -1,0 +1,321 @@
+Wed Nov 18 12:33:17 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "02-1F-7D-31-02-11:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:33:17 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "ACF7920F79C0CC1C"
+	Acct-Unique-Session-Id = "59431c1bbbcc318f62e5874c5193f403"
+	Timestamp = 1795005197
+
+Wed Nov 18 12:33:17 2026
+	Acct-Status-Type = Accounting-Off
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "02-1F-7D-31-02-11:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:33:17 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "ACF7920F79C0CC1C"
+	Acct-Unique-Session-Id = "59431c1bbbcc318f62e5874c5193f403"
+	Timestamp = 1795005197
+
+Wed Nov 18 12:33:17 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:33:17 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "AEF3F6633AB2D166"
+	Acct-Unique-Session-Id = "e3ea992d422635632b9c2a27c99d42c8"
+	Timestamp = 1795005197
+
+Wed Nov 18 12:33:17 2026
+	Acct-Status-Type = Accounting-Off
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:33:17 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "AEF3F6633AB2D166"
+	Acct-Unique-Session-Id = "e3ea992d422635632b9c2a27c99d42c8"
+	Timestamp = 1795005197
+
+Wed Nov 18 12:33:17 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:33:17 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "448C168087ABC3D4"
+	Acct-Unique-Session-Id = "57da07e725cc5c67ac2372b310e8eaca"
+	Timestamp = 1795005197
+
+Wed Nov 18 12:33:17 2026
+	Acct-Status-Type = Accounting-Off
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:33:17 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "448C168087ABC3D4"
+	Acct-Unique-Session-Id = "57da07e725cc5c67ac2372b310e8eaca"
+	Timestamp = 1795005197
+
+Wed Nov 18 12:35:07 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:35:07 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "D2052CD071357452"
+	Acct-Unique-Session-Id = "9397a8536571841082f677e29a64566f"
+	Timestamp = 1795005307
+
+Wed Nov 18 12:35:07 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:35:07 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "9EC7DD208C635E13"
+	Acct-Unique-Session-Id = "ae4b7ac910dc9c20eb80fb8d4fbd4455"
+	Timestamp = 1795005307
+
+Wed Nov 18 12:35:07 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "02-1F-7D-31-02-11:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:35:07 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "2A05505481B7AB95"
+	Acct-Unique-Session-Id = "fad96d45ec0fec89297ae1154dffddcc"
+	Timestamp = 1795005307
+
+Wed Nov 18 12:35:09 2026
+	Acct-Status-Type = Start
+	Acct-Authentic = RADIUS
+	User-Name = "pc2.corp.lan"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-6E-19-29"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "8687B209882DB8EE"
+	Event-Timestamp = "Nov 18 2026 12:35:09 UTC"
+	Acct-Delay-Time = 0
+	Acct-Unique-Session-Id = "bb7e27b529feb614fe662817dc9b484e"
+	Timestamp = 1795005309
+
+Wed Nov 18 12:35:09 2026
+	Acct-Status-Type = Start
+	Acct-Authentic = RADIUS
+	User-Name = "jdoe"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-80-9A-35"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "9093C752CF885DD0"
+	Event-Timestamp = "Nov 18 2026 12:35:09 UTC"
+	Acct-Delay-Time = 0
+	Acct-Unique-Session-Id = "4477df76cae97b2967819c53107e217f"
+	Timestamp = 1795005309
+
+Wed Nov 18 12:36:46 2026
+	Acct-Status-Type = Stop
+	Acct-Authentic = RADIUS
+	User-Name = "jdoe"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-80-9A-35"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "9093C752CF885DD0"
+	Event-Timestamp = "Nov 18 2026 12:36:46 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Time = 97
+	Acct-Terminate-Cause = User-Request
+	Acct-Unique-Session-Id = "4477df76cae97b2967819c53107e217f"
+	Timestamp = 1795005406
+
+Wed Nov 18 12:36:52 2026
+	Acct-Status-Type = Start
+	Acct-Authentic = RADIUS
+	User-Name = "jdoe"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-80-9A-35"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "7DB4ED1CE742C135"
+	Event-Timestamp = "Nov 18 2026 12:36:52 UTC"
+	Acct-Delay-Time = 0
+	Acct-Unique-Session-Id = "46d0163eb8d03184214278ef84fe911f"
+	Timestamp = 1795005412
+
+Wed Nov 18 12:39:34 2026
+	Acct-Status-Type = Accounting-Off
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:39:34 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "9EC7DD208C635E13"
+	Acct-Unique-Session-Id = "ae4b7ac910dc9c20eb80fb8d4fbd4455"
+	Timestamp = 1795005574
+
+Wed Nov 18 12:39:34 2026
+	Acct-Status-Type = Stop
+	Acct-Authentic = RADIUS
+	User-Name = "jdoe"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-80-9A-35"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "7DB4ED1CE742C135"
+	Event-Timestamp = "Nov 18 2026 12:39:34 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Time = 162
+	Acct-Unique-Session-Id = "46d0163eb8d03184214278ef84fe911f"
+	Timestamp = 1795005574
+
+Wed Nov 18 12:39:34 2026
+	Acct-Status-Type = Stop
+	Acct-Authentic = RADIUS
+	User-Name = "pc2.corp.lan"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-6E-19-29"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "8687B209882DB8EE"
+	Event-Timestamp = "Nov 18 2026 12:39:34 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Time = 265
+	Acct-Unique-Session-Id = "bb7e27b529feb614fe662817dc9b484e"
+	Timestamp = 1795005574
+
+Wed Nov 18 12:39:34 2026
+	Acct-Status-Type = Accounting-Off
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:39:34 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "D2052CD071357452"
+	Acct-Unique-Session-Id = "9397a8536571841082f677e29a64566f"
+	Timestamp = 1795005574
+
+Wed Nov 18 12:39:34 2026
+	Acct-Status-Type = Accounting-Off
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "02-1F-7D-31-02-11:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:39:34 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "2A05505481B7AB95"
+	Acct-Unique-Session-Id = "fad96d45ec0fec89297ae1154dffddcc"
+	Timestamp = 1795005574
+
+Wed Nov 18 12:39:35 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:39:35 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "600CE524B1B3B75C"
+	Acct-Unique-Session-Id = "b70a12bc7ee41294ece2aaab5a34fe09"
+	Timestamp = 1795005575
+
+Wed Nov 18 12:39:35 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:39:35 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "663662F9CE81E51C"
+	Acct-Unique-Session-Id = "bb7d8fb043147e5bf6d85be26ffc21fd"
+	Timestamp = 1795005575
+
+Wed Nov 18 12:39:35 2026
+	Acct-Status-Type = Accounting-On
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "02-1F-7D-31-02-11:"
+	NAS-Port-Type = Wireless-802.11
+	Event-Timestamp = "Nov 18 2026 12:39:35 UTC"
+	Acct-Delay-Time = 0
+	Acct-Session-Id = "598C81EFCA331577"
+	Acct-Unique-Session-Id = "fb760b49f0e5af14489aeea60b6a93a9"
+	Timestamp = 1795005575
+
+Wed Nov 18 12:39:36 2026
+	Acct-Status-Type = Start
+	Acct-Authentic = RADIUS
+	User-Name = "jdoe"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "DA-38-4F-D5-82-B1:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-80-9A-35"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "A8D3105A9DBA14B7"
+	Event-Timestamp = "Nov 18 2026 12:39:36 UTC"
+	Acct-Delay-Time = 0
+	Acct-Unique-Session-Id = "c5c23e28e2a4de92cdf47da35cebe482"
+	Timestamp = 1795005576
+
+Wed Nov 18 12:39:36 2026
+	Acct-Status-Type = Start
+	Acct-Authentic = RADIUS
+	User-Name = "pc2.corp.lan"
+	NAS-IP-Address = 192.168.98.2
+	NAS-Identifier = "sw"
+	Called-Station-Id = "0A-6E-AD-10-AC-A9:"
+	NAS-Port-Type = Wireless-802.11
+	Service-Type = Framed-User
+	Calling-Station-Id = "02-53-52-6E-19-29"
+	Connect-Info = "CONNECT 0Mbps 802.11b"
+	Acct-Session-Id = "75462F8FB7B1AA30"
+	Event-Timestamp = "Nov 18 2026 12:39:36 UTC"
+	Acct-Delay-Time = 0
+	Acct-Unique-Session-Id = "c998a712370dd92b93e66170e9fd98f5"
+	Timestamp = 1795005576
+
+===RC 0

@@ -1,0 +1,10 @@
+Sent Access-Request Id 243 from 0.0.0.0:54734 to 127.0.0.1:1812 length 62
+	User-Name = "emma"
+	User-Password = "EBofRQg52FJP"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "EBofRQg52FJP"
+Received Access-Accept Id 243 from 127.0.0.1:1812 to 127.0.0.1:54734 length 36
+	Tunnel-Type:0 = VLAN
+	Tunnel-Medium-Type:0 = IEEE-802
+	Tunnel-Private-Group-Id:0 = "91"
+===RC 0

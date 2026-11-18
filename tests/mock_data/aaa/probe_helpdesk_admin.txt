@@ -1,0 +1,3 @@
+change_password: Operation requires ``change-password'' privilege while changing password for "admin/admin@CORP.LAN".
+Authenticating as principal helpdesk with password.
+===RC 0

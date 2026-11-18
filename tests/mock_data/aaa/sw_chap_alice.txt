@@ -1,0 +1,7 @@
+Sent Access-Request Id 140 from 0.0.0.0:38026 to 192.168.98.10:1812 length 64
+	User-Name = "alice"
+	CHAP-Password = 0x6d5af798e1692effb5ba72a073c696bb33
+	Message-Authenticator = 0x30
+	Cleartext-Password = "d7Uw3MnbvKuM"
+Received Access-Accept Id 140 from 192.168.98.10:1812 to 192.168.98.2:38026 length 20
+===RC 0

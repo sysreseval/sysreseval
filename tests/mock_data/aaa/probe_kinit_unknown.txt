@@ -1,0 +1,2 @@
+kinit: Client 'zed@CORP.LAN' not found in Kerberos database while getting initial credentials
+===RC 1

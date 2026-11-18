@@ -1,0 +1,4 @@
+No policy specified for zed@CORP.LAN; defaulting to no policy
+add_principal: Operation requires ``add'' privilege while creating "zed@CORP.LAN".
+Authenticating as principal helpdesk with password.
+===RC 0

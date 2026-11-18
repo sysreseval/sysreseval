@@ -1,0 +1,8 @@
+Password for dev2@CORP.LAN: 
+===RC 0
+dev2
+===RC 0
+REMOTE_USER=dev2@CORP.LAN
+
+===HTTP 200
+===RC 0

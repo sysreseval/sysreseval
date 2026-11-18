@@ -1,0 +1,3 @@
+get_policy: Policy does not exist while retrieving policy "nopolicy".
+Authenticating as principal root/admin@CORP.LAN with password.
+===RC 0

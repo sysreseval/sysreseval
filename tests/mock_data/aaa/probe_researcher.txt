@@ -1,0 +1,4 @@
+Password for researcher@LAB.CORP.LAN: 
+===RC 0
+host/kdc.corp.lan@CORP.LAN: kvno = 1
+===RC 0

@@ -1,0 +1,3 @@
+Password for dev1@CORP.LAN: 
+kinit: Password incorrect while getting initial credentials
+===RC 1

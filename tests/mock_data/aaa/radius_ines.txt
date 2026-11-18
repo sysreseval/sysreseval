@@ -1,0 +1,8 @@
+(0) -: Expected Access-Accept got Access-Reject
+Sent Access-Request Id 204 from 0.0.0.0:36382 to 127.0.0.1:1812 length 62
+	User-Name = "ines"
+	User-Password = "KRWVZo5lkMab"
+	Message-Authenticator = 0x30
+	Cleartext-Password = "KRWVZo5lkMab"
+Received Access-Reject Id 204 from 127.0.0.1:1812 to 127.0.0.1:36382 length 20
+===RC 1

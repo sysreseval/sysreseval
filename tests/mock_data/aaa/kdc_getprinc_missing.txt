@@ -1,0 +1,3 @@
+get_principal: Principal does not exist while retrieving "nobody@CORP.LAN".
+Authenticating as principal root/admin@CORP.LAN with password.
+===RC 0

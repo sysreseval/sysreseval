@@ -922,3 +922,20 @@ def test_generate_ca_pem():
     key = serialization.load_pem_private_key(key_pem.encode(), password=None)
     assert key.public_key().public_numbers() == cert.public_key().public_numbers()
     assert cert_pem.startswith("-----BEGIN CERTIFICATE-----") and key_pem.startswith("-----BEGIN RSA PRIVATE KEY-----")
+
+
+def test_generate_client_cert_pem():
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+    from tls import generate_ca_pem, generate_client_cert_pem
+    ca_pem, ca_key_pem = generate_ca_pem("CA corp.lan", days=30)
+    cert_pem, key_pem = generate_client_cert_pem(ca_pem, ca_key_pem, "pc2.corp.lan", days=10)
+    cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    ca = x509.load_pem_x509_certificate(ca_pem.encode())
+    assert cert.subject.rfc4514_string() == "CN=pc2.corp.lan" and cert.issuer == ca.subject
+    assert cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca is False
+    assert list(cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value) == [ExtendedKeyUsageOID.CLIENT_AUTH]
+    cert.verify_directly_issued_by(ca)
+    key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+    assert key.public_key().public_numbers() == cert.public_key().public_numbers()

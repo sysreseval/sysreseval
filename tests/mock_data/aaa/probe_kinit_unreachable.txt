@@ -1,0 +1,2 @@
+kinit: Cannot find KDC for realm "NOPE.LAN" while getting initial credentials
+===RC 1

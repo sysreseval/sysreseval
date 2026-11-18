@@ -1222,6 +1222,30 @@ Facts worth knowing (verified in the running lab on 2026-11-11 and 12, Asterisk 
 - `media_encryption = sdes` refuses a plain `RTP/AVP` offer with `488`, and an endpoint without it refuses `RTP/SAVP`;
 - baresip finds `~/.baresip` through `$LOGNAME` or `$USER`, which a `docker exec` shell does not set: the image puts a wrapper in `/usr/local/bin`.
 
+### AAA helpers (from `/opt/sre/lib/radius.py`, `/opt/sre/lib/dot1x.py`, `/opt/sre/lib/kerberos.py`)
+
+```python
+from radius import (radius_request, auth_attrs, totp_shell, get_detail_records, render_client, render_users_entry,
+                    render_huntgroup, render_ldap_module, render_eap_module, render_default_site, reset_cmd)
+from dot1x import (get_all_sta, station_authorized, get_wpa_status, supplicant_authorized, eapol_test,
+                   render_hostapd_wired, render_port_control_nft, render_action_script, render_network_block)
+from kerberos import (kinit_test, gssapi_ssh, negotiate_curl, kadmin_cmd, kadmin_local_cmd, get_principal,
+                      get_policy, get_keytab, render_krb5_conf, render_kdc_conf, render_kadm5_acl, create_realm_cmds)
+```
+
+Helpers of the AAA lab (`lab/sre/_DRAFT_misc/aaa.py`: FreeRADIUS with local users, an LDAP directory, TOTP and a per-NAS policy, EAP, 802.1X on a Linux switch, MIT Kerberos with kerberized ssh / HTTP, pam_krb5 and a cross-realm trust); image `sysreseval/aaa` (init + FreeRADIUS, hostapd, wpa_supplicant, eapol_test, the MIT KDC and clients, pam_krb5, pam_radius_auth, mod_auth_gssapi, oathtool; the configuration of FreeRADIUS as installed is kept in `/usr/local/share/sre/freeradius-pristine`, which `reset_cmd()` copies back). Every command is one shell line ending with a `===RC <status>` marker, so a registration-pass placeholder never reads as an answer.
+
+**RADIUS**: `radius_request(grade, machine, server, secret, auth_attrs(user, password, chap=False, extra=[...]))` sends an Access-Request with `radclient` and returns a `RadiusResult` (`accepted`, `rejected`, `no_reply`, `attr(name)` without the tag of `Tunnel-*:0`); a password piece may be a shell expression, `(password, totp_shell(secret))` = the password followed by the current TOTP code computed in the container by `oathtool` (`totp_shell(secret, "now + 10 minutes")`: a wrong code that looks right). `get_detail_records()` parses the accounting `detail` files. The renderers write a complete `default` virtual server (`render_default_site(ldap=, ldap_policy=, totp=)`), the `eap` and `ldap` modules, `clients.conf` blocks and `users` entries. **802.1X**: `get_all_sta()` + `station_authorized()` (`hostapd_cli all_sta`), `get_wpa_status()` + `supplicant_authorized(status, 'peap'|'tls')` (`wpa_cli status`), `eapol_test(grade, machine, conf, server, secret)` → `success`, `failure`, the certificate subjects. **Kerberos**: `kinit_test(grade, machine, principal, password, ccache, then=[...])` runs `kinit` (password on stdin) into its own ccache, then each command of `then` with it (`gssapi_ssh('dev2@srv.corp.lan')`, `negotiate_curl(url)`, `kvno …`): `ok`, `error` (`revoked`, `password`, `unknown`, `unreachable`), `then` = `[(output, status)]`; `get_principal()` / `get_policy()` / `get_keytab()` read `kadmin.local getprinc|getpol` and `klist -k`.
+
+Facts worth knowing (verified in the running lab on 2026-11-18, FreeRADIUS 3.2.1, hostapd 2.10, MIT krb5 1.20):
+
+- the `hostapd@` unit is `BindsTo=` the udev device of its interface, which never becomes active in a container: systemd stops hostapd right after starting it (the image ships copies of the units without that dependency);
+- hostapd's `wired` driver authenticates but does not close the port: the lab filters with an nftables `bridge` table and a set filled by a `hostapd_cli -a` script; the EAPOL frames (`01:80:c2:00:00:03`) cross the bridge's `input` hook before reaching hostapd, so that chain must accept `0x888e`; an event that happens before `hostapd_cli` attaches is lost and a station authenticating again while authorized emits no new `AP-STA-CONNECTED`: resynchronise from `all_sta` once `hostapd_cli` runs;
+- rlm_ldap does not set `Auth-Type` itself: without the (commented) block of the installed `default` site after `-ldap`, a user found in the directory gets `No Auth-Type found`;
+- the `totp` module only works in `authenticate` (`&control:TOTP-Secret`, `&request:TOTP-Password`);
+- `pam_radius_auth` sends the NAS-IP-Address of the device: a `huntgroups` line on it works;
+- sshd builds its GSSAPI acceptor name from the short hostname (`host/srv`): with a keytab for `host/srv.corp.lan`, `GSSAPIStrictAcceptorCheck no` is needed; `kadmind` restarted on the KDC while another machine runs `kadmin` gives `Communication failure with server` (put those commands in a later step).
+
 ### SNMP helpers (from `/opt/sre/lib/snmp.py`)
 
 ```python
