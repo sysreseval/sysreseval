@@ -21,7 +21,7 @@
   <span class="swatch row-errors"></span> {{ _("errors in the last evaluation") }}
   <span class="hint">· {% if groups %}{{ _("click a row for its last evaluation, a lab for the summary of the lab, a group for that summary restricted to the group") }}{% else %}{{ _("click a row for its last evaluation, a lab for the summary of the lab") }}{% endif %}</span>
 </div>
-<table id="watch" class="grid watch" data-groups="{{ 'true' if groups else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}">
+<table id="watch" class="grid watch striped" data-groups="{{ 'true' if groups else 'false' }}" data-group-sources="{{ 'true' if group_sources else 'false' }}">
   <thead>
     <tr>
       <th class="sortable" data-sort="host">{{ _("Host") }}</th>
@@ -47,7 +47,7 @@
 </div>
 <div id="watch-clients" class="watch-clients" hidden>
 <h2>{{ _("Local GUI") }} <span id="watch-local-count" class="muted"></span></h2>
-<table id="watch-local" class="grid watch clients">
+<table id="watch-local" class="grid watch clients striped">
   <thead>
     <tr>
       <th class="sortable" data-sort="host">{{ _("Host") }}</th>
@@ -60,7 +60,7 @@
   <tbody><tr><td colspan="5" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 <h2>{{ _("Web portal") }} <span id="watch-web-count" class="muted"></span></h2>
-<table id="watch-web" class="grid watch clients" data-addresses="{{ 'true' if administrator else 'false' }}">
+<table id="watch-web" class="grid watch clients striped" data-addresses="{{ 'true' if administrator else 'false' }}">
   <thead>
     <tr>
       <th class="sortable" data-sort="login">{{ _("Login") }}</th>

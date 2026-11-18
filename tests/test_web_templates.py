@@ -290,12 +290,19 @@ class TestTemplates:
         local, web = clients.split('<table id="watch-web"')
         # the users in the Qt GUI of a pool host: one row per user and host
         assert '<h2>Local GUI <span id="watch-local-count" class="muted"></span></h2>' in local
-        assert '<table id="watch-local" class="grid watch clients">' in local and 'colspan="5"' in local
+        assert '<table id="watch-local" class="grid watch clients striped">' in local and 'colspan="5"' in local
         assert [key for key in re.findall(r'data-sort="(\w+)"', local)] == ['host', 'login', 'fullname', 'group', 'since']
         assert 'title="When the local GUI was started">Started</th>' in local
         # the browsers connected to the portal: one row per browser, the address for the administrators only
         assert '<h2>Web portal <span id="watch-web-count" class="muted"></span></h2>' in local
-        assert web.startswith(' class="grid watch clients" data-addresses="false">') and 'colspan="9"' in web
+        assert web.startswith(' class="grid watch clients striped" data-addresses="false">') and 'colspan="9"' in web
+        # every other row of the three tables lightly tinted: a class of this page only (the other pages
+        # share `grid watch`), a layer over the colour of the row, more specific than the row colours
+        assert '<table id="watch" class="grid watch striped" ' in projects
+        css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
+        assert re.search(r'--stripe:\s*rgba\(', css)
+        assert re.search(r'table\.grid\.striped tbody tr:nth-child\(even\) td\s*\{[^{}]*background-image:[^{}]*var\(--stripe\)', css)
+        assert not re.search(r'table\.grid\.watch[^{]*nth-child', css)
         assert [key for key in re.findall(r'data-sort="(\w+)"', web)] == [
             'login', 'fullname', 'group', 'role', 'browser', 'system', 'addr', 'since', 'pages']
         assert '<th class="sortable" data-sort="addr" hidden>Address</th>' in web

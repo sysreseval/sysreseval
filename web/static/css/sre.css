@@ -19,6 +19,7 @@
   --ok-light-bg: #e0f7e0;           /* a lighter tint: the Wake button of the Pool page */
   --fail-bg: #f0c8c8;               /* the red cells */
   --debug-bg: #ffd9a0;              /* the orange Connect button of a debug project */
+  --stripe: rgba(0, 0, 0, 0.05);    /* the tint laid over every other row of a striped table */
   --hidden-color: #d00000;          /* hidden machines of a debug project */
   --closed-color: #e08000;          /* devices closed to the students */
   --presentation-bg: #d1c4e9;       /* the top bars of a page while a presentation is on */
@@ -368,6 +369,10 @@ table.grid.pool td.actions .button, table.grid.pool td.actions button { margin-r
 table.grid tr.row-errors td { background: var(--fail-bg); }
 table.grid tr.row-stale td { background: var(--debug-bg); }
 table.grid tr.row-open td { background: var(--ok-light-bg); }   /* a session still open (the History page) */
+/* every other row lightly tinted (the tables of the Watch page): a layer over the colour of the
+   row, which keeps its meaning; more specific than the row colours above, whose shorthand would
+   reset the image */
+table.grid.striped tbody tr:nth-child(even) td { background-image: linear-gradient(var(--stripe), var(--stripe)); }
 .watch-filter { margin-left: 12px; width: 240px; }
 .watch-group { margin-left: 8px; }
 .watch-legend { margin: 0 8px 4px; font-size: 12px; }

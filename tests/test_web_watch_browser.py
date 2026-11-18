@@ -45,6 +45,11 @@ SELECTED = """(() => {
   const option = document.getElementById('watch-group').selectedOptions[0];
   return option ? (option.dataset.kind === 'group' ? option.value : option.dataset.kind) : '';
 })()"""
+# per row, whether its first cell carries the tint of a striped table (a layer over the row's colour)
+STRIPES = ("[...document.querySelectorAll('#watch tbody tr')]"
+           ".map((tr) => getComputedStyle(tr.children[0]).backgroundImage !== 'none')")
+ROW_COLOURS = ("[...document.querySelectorAll('#watch tbody tr')]"
+               ".map((tr) => getComputedStyle(tr.children[0]).backgroundColor)")
 URL_GROUP = "new URL(window.location.href).searchParams.get('group')"     # null without ?group=
 STORED = f"window.localStorage.getItem({json.dumps(STORAGE_KEY)})"
 
@@ -114,6 +119,11 @@ class TestWatchGroupFilter:
                 await page.wait_for(f"{OWNERS}.length === 2", what="the two projects")
                 assert await page.evaluate(SELECTED) == 'all'
                 assert await page.evaluate(URL_GROUP) is None and await page.evaluate(STORED) is None
+                # every other row is tinted, over the colour of the row: both are without
+                # evaluation, so both keep the same orange under the tint of the second
+                assert await page.evaluate(STRIPES) == [False, True]
+                colours = await page.evaluate(ROW_COLOURS)
+                assert colours[0] == colours[1] != 'rgba(0, 0, 0, 0)'
                 # one group chosen: its rows, the URL and the storage carry it
                 assert await page.evaluate(choose('group', INFO1)) == 1
                 await page.wait_for(f"{OWNERS}.length === 1", what="the row of alice")

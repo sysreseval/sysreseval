@@ -1564,7 +1564,9 @@ What an instructor gets:
   of the header or in a new tab, until another group or *All groups* is chosen, a link with
   `?group=` winning and becoming the remembered one; refreshed every 5 s; a row whose last evaluation had errors is
   red, one without an evaluation younger than 15 minutes (or twice the lab's evaluation
-  interval) is amber. Open goes to the project, Close stops it. The agents read the archives of
+  interval) is amber; every other row is lightly tinted, over its colour, so that a long line
+  is easy to follow (the two tables of the Clients view too). Open goes to the project, Close
+  stops it. The agents read the archives of
   their own host (`params.archive_dirs`) on demand, nothing is scanned while nobody watches.
   As in `sre watch`, the page also shows the details: a **click on a row** opens a dialog with
   the last archived evaluation of the project (the owner, the lab and the host in the title,
