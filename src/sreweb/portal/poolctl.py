@@ -320,7 +320,9 @@ def _dispatch(client: PoolClient, args) -> int:
     elif args.command == 'add':
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
                 'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,
-                'instructors_only': args.instructors_only, 'priority': args.priority}
+                'instructors_only': args.instructors_only}
+        if args.priority:       # left out when it is the default: a portal not restarted yet refuses a key it does not know
+            body['priority'] = args.priority
         row = client.call('POST', '/api/pool/hosts', body)
         print(json.dumps(row, indent=2) if args.json else table([row]))
     elif args.command == 'priority':

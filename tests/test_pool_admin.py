@@ -579,6 +579,27 @@ class TestCli:
         assert _cell({'state': 'off', 'priority': -3}, 'state') == 'off (priority -3)'
         assert _cell({'state': 'up', 'instructors_only': True, 'priority': 12}, 'state') == 'up (instructors, priority 12)'
 
+    def test_add_sends_the_priority_only_when_one_is_given(self, capsys):
+        """A portal still running the code of before the priorities (synced, not restarted yet)
+        refuses a host entry with a key it does not know: ``add`` without ``--priority`` sends
+        the body it always sent."""
+        from sreweb.portal import poolctl
+        bodies = []
+
+        def call(method, path, body=None):
+            bodies.append((method, path, body))
+            return {'name': body['name'], 'state': 'off', 'reachable': False}
+        client = types.SimpleNamespace(call=call)
+        args = dict(command='add', name='b02', host_url='http://b02', host_token=TOKEN, max_projects=25, mac='',
+                    wake_command='', power=False, instructors_only=False, json=False)
+        assert poolctl._dispatch(client, types.SimpleNamespace(**args, priority=0)) == 0
+        assert poolctl._dispatch(client, types.SimpleNamespace(**args, priority=-3)) == 0
+        assert [(method, path) for method, path, _ in bodies] == [('POST', '/api/pool/hosts')] * 2
+        assert 'priority' not in bodies[0][2] and bodies[1][2]['priority'] == -3
+        assert set(bodies[0][2]) == {'name', 'url', 'token', 'max_projects', 'mac', 'wake_command', 'power',
+                                     'instructors_only'}
+        capsys.readouterr()
+
     def test_preload_hosts(self, capsys):
         """``preload --all``: every reachable host whose agent knows the preload; ``--failed``:
         those whose last preload failed; one POST each, the failures on stderr."""
