@@ -619,7 +619,7 @@ class TestStates:
         for m in ns.get_machine_names():
             hosts = _files(ops, 1, m)['/etc/hosts']
             assert f"{d.ips.monitor.ip}\tmonitor\t" in hosts and f"{d.ips.router_lan.ip}\trouter\t" in hosts
-            assert str(d.ips.probe.ip) not in hosts
+            assert str(d.ips.probe.ip) not in {line.split()[0] for line in hosts.splitlines() if line.strip()}
             assert ('/etc/resolv.conf' in _files(ops, 1, m)) == (m != 'pc')
         # monitor: Nagios tuned, the fast templates, the SMS gateway, the CGI module; started at step 2
         cmds, files = _cmds(ops, 1, 'monitor'), _files(ops, 1, 'monitor')

@@ -218,7 +218,7 @@ class TestStates:
         for m in lab.VISIBLE:
             files = _files(ops, 1, m)
             assert f"{data.ips.logsrv.ip}\tlogsrv.corp.lan\tlogsrv" in files['/etc/hosts']
-            assert str(data.ips.probe.ip) not in files['/etc/hosts']
+            assert str(data.ips.probe.ip) not in {line.split()[0] for line in files['/etc/hosts'].splitlines() if line.strip()}
             assert files[f'{rs.TLS_DIR}/ca.crt'] == data.ca_cert and files[f'{rs.TLS_DIR}/{m}.key'] == getattr(data, f'{m}_key')
             assert any('imklog' in c for c in _cmds(ops, 1, m))
             assert _cmds(ops, 2, m) == ['systemctl restart rsyslog; : > /var/log/kern.log']

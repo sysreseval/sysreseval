@@ -483,7 +483,8 @@ class TestStates:
             assert files['/etc/resolv.conf'] == ''
             hosts = files['/etc/hosts']
             assert f"{d.ips.router_lan.ip}\trouter\t" in hosts and f"{d.ips.srv1.ip}\tsrv1\t" in hosts
-            assert str(d.ips.probe.ip) not in hosts and str(d.ips.outsider.ip) not in hosts
+            listed = {line.split()[0] for line in hosts.splitlines() if line.strip()}
+            assert str(d.ips.probe.ip) not in listed and str(d.ips.outsider.ip) not in listed
         for m in lab.SYSTEMD_MACHINES:
             assert "sysctl -w net.ipv4.ip_forward=0" in _cmds(ops, 1, m)
         assert "sysctl -w net.ipv4.ip_forward=1" in _cmds(ops, 1, 'router')
