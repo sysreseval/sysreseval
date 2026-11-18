@@ -70,6 +70,7 @@ RUN apt install -y \
     nfs-kernel-server \
     systemd-resolved \
     nftables \
+    iptables \
     ifupdown \
     isc-dhcp-server \
     isc-dhcp-relay \
