@@ -295,7 +295,7 @@ sre_version = "0.17.0"
 default_docker_image_version = "1.33"
 sre_docker_namespace = "sysreseval"
 
-def sre_docker_image(image_name: str = "base") -> str:
+def sre_docker_image(image_name: str = "base12") -> str:
     return f"{sre_docker_namespace}/{image_name}:{default_docker_image_version}"
 
 default_docker_image = sre_docker_image()

@@ -416,7 +416,7 @@ class TestTopology:
         assert set(ns.get_machine_names()) == {'ldap1', 'ldap2', 'm1', 'probe'}
         assert set(ns.get_visible_machine_names()) == {'ldap1', 'ldap2', 'm1'}
         probe = ns.get_machine('probe')
-        assert probe.hidden and not probe.allow_connection and not probe.privileged and '/base:' in probe.image
+        assert probe.hidden and not probe.allow_connection and not probe.privileged and probe.image == params.sre_docker_image('base12')
         for m in lab.SYSTEMD_MACHINES:
             machine = ns.get_machine(m)
             assert machine.privileged and machine.entrypoint == "/sbin/init" and '/ldap-mail:' in machine.image, m

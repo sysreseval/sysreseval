@@ -111,7 +111,7 @@ eval_before_exit = True
 record_sessions = False
 
 DOMAIN = "shop.lan"
-# The monitoring image (images/monitoring: init + Prometheus, Alertmanager, the exporters...),
+# The monitoring image (images/monitoring: init12 + Prometheus, Alertmanager, the exporters...),
 # written in full so that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
     "image": sre_docker_image("monitoring"),

@@ -1,7 +1,7 @@
 """Net-SNMP grading and state helpers of the SNMP lab (``lab/sre/_DRAFT_misc/snmp.py``).
 
 Facts and formats are those of Net-SNMP 5.9.3 (Debian 12: ``snmp``, ``snmpd``, ``snmptrapd`` in the
-``sysreseval/monitoring`` image built on ``init``); the fixtures of ``tests/mock_data/snmp/`` were
+``sysreseval/monitoring`` image built on ``init12``); the fixtures of ``tests/mock_data/snmp/`` were
 captured in those containers.  The Nagios and Prometheus labs use :func:`set_snmp_agent` to give
 their router a ready agent.
 

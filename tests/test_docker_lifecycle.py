@@ -119,7 +119,7 @@ class Data(Data0):
 class NetScheme(NetScheme0):
     # one systemd machine (privileged) next to a plain one: the whole lab is deployed as root
     _machine_specs = {
-        'srv': {"privileged": True, "entrypoint": "/sbin/init", "image": sre_docker_image("init")},
+        'srv': {"privileged": True, "entrypoint": "/sbin/init", "image": sre_docker_image("init12")},
         'client': {},
     }
     _topology = {'lan': ['srv', 'client']}
@@ -240,10 +240,10 @@ PRIVILEGED_INSTRUCTOR_LAB = INSTRUCTOR_LAB.replace(
     "import Data0, NetScheme0, Grade0, instructor, sre_state\nfrom SRE.params import sre_docker_image\n").replace(
     "_machine_specs = {'router': {}, 'client': {}}",
     """_machine_specs = {
-        'router': {"privileged": True, "entrypoint": "/sbin/init", "image": sre_docker_image("init")},
+        'router': {"privileged": True, "entrypoint": "/sbin/init", "image": sre_docker_image("init12")},
         'client': {},
     }""").replace('allow_save_restore = True\n', '')
-assert 'sre_docker_image("init")' in PRIVILEGED_INSTRUCTOR_LAB and '"privileged": True' in PRIVILEGED_INSTRUCTOR_LAB
+assert 'sre_docker_image("init12")' in PRIVILEGED_INSTRUCTOR_LAB and '"privileged": True' in PRIVILEGED_INSTRUCTOR_LAB
 
 
 # ---------------------------------------------------------------------------

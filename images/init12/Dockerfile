@@ -1,10 +1,10 @@
 ARG VERSION=latest
-FROM sysreseval/base:${VERSION}
+FROM sysreseval/base12:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
 #
-# Kathara base image (on which sre/base is build) use instead of systemd a workaround:
+# Kathara base image (on which sre/base12 is build) use instead of systemd a workaround:
 # https://github.com/gdraheim/docker-systemctl-replacement
 # which add a command /usr/local/bin/systemctl allowing in most case to do: "systemctl start XX",
 # "systemctl status CC", etc...
@@ -16,7 +16,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 #   _machine_specs = {
 #        'm1': {"privileged": True,
 #               "entrypoint": "/sbin/init",
-#               "image": sre_docker_image("init")},
+#               "image": sre_docker_image("init12")},
 #       .....
 #   }
 #
@@ -26,7 +26,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-ENV SRE_VERSION="sre/init:${VERSION}"
+ENV SRE_VERSION="sre/init12:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

@@ -19,8 +19,8 @@ keepalived tracks).  The state ``final`` applies the reference solution; every q
 with its solution in an instructor block.
 
 Image: ``sysreseval/proxy`` (``images/proxy/Dockerfile``: HAProxy, keepalived, Varnish, socat,
-hatop, apache2-utils on the init image) for ``proxy``, ``lb1``, ``lb2`` (systemd) and ``client``
-(no init); the base image for the backends and the probe.
+hatop, apache2-utils on the init12 image) for ``proxy``, ``lb1``, ``lb2`` (systemd) and ``client``
+(no init); the base12 image for the backends and the probe.
 """
 
 import random
@@ -96,14 +96,14 @@ APP_SITE = f"app.{DOMAIN}"  # the virtual address of the HAProxy pair
 INTRANET_SITE = f"intranet.{DOMAIN}"  # a virtual host of the backends, found by hand in part 1
 UNKNOWN_SITE = f"nothing.{DOMAIN}"  # a name the proxy must not serve
 CA_NAME = "Shop Internal CA"
-# The proxy image (images/proxy: init + haproxy, keepalived, varnish), written in full so that
+# The proxy image (images/proxy: init12 + haproxy, keepalived, varnish), written in full so that
 # `sre preload-images` finds it.
 PROXY_MACHINE = {
     "image": sre_docker_image("proxy"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
-SYSTEMD_MACHINES = ["proxy", "lb1", "lb2"]  # real systemd (init image): systemctl, journalctl
+SYSTEMD_MACHINES = ["proxy", "lb1", "lb2"]  # real systemd (init12 image): systemctl, journalctl
 LOAD_BALANCERS = ["lb1", "lb2"]
 BACKENDS = ["web1", "web2", "web3", "web4"]
 SICK_BACKEND = "web4"  # its /health page answers 503 from the start

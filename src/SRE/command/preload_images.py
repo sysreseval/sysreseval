@@ -16,8 +16,8 @@ _RE_MACHINE_SPECS_IMAGE = re.compile(r"""['"]image['"]\s*:\s*['"]([^'"]+)['"]"""
 # Matches Machine(..., image='some/image:tag', ...) or Machine(image='some/image:tag', ...)
 _RE_MACHINE_INIT_IMAGE = re.compile(r"""Machine\s*\([^)]*?image\s*=\s*['"]([^'"]+)['"]""", re.DOTALL)
 
-# Matches image: sre_docker_image("init")  or  image=sre_docker_image()  (also params.sre_docker_image)
-# Captures the optional quoted argument; empty/missing means default ("base").
+# Matches image: sre_docker_image("init12")  or  image=sre_docker_image()  (also params.sre_docker_image)
+# Captures the optional quoted argument; empty/missing means the default image (params.default_docker_image).
 _RE_IMAGE_FUNC_CALL = re.compile(
     r"""['"]?image['"]?\s*[:=]\s*(?:\w+\.)?sre_docker_image\s*\(\s*(?:['"]([^'"]*)['"])?\s*\)"""
 )
@@ -56,7 +56,7 @@ def _extract_images_from_file(path: Path) -> set[str]:
     for m in _RE_MACHINE_INIT_IMAGE.finditer(source):
         images.add(m.group(1))
     for m in _RE_IMAGE_FUNC_CALL.finditer(source):
-        images.add(params.sre_docker_image(m.group(1) or "base"))
+        images.add(params.sre_docker_image(m.group(1)) if m.group(1) else params.default_docker_image)
     return images
 
 

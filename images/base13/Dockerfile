@@ -1,10 +1,10 @@
 #
-# Debian 13 (trixie) twin of sysreseval/base.
+# Debian 13 (trixie) twin of sysreseval/base12.
 #
-# kathara/base (the parent of sysreseval/base) is still Debian 12, so this image rebuilds on
+# kathara/base (the parent of sysreseval/base12) is still Debian 12, so this image rebuilds on
 # debian:13 what Kathara adds (kathara/core then kathara/base:
-# https://github.com/KatharaFramework/Docker-Images) and then everything sysreseval/base adds,
-# under the Debian 13 package names.  Differences with sysreseval/base:
+# https://github.com/KatharaFramework/Docker-Images) and then everything sysreseval/base12 adds,
+# under the Debian 13 package names.  Differences with sysreseval/base12:
 #
 #   - nginx comes from nginx.org (stable 1.30, built against OpenSSL 3.5's QUIC API: HTTP/3 with
 #     0-RTT), not Debian's nginx-full: conf.d layout, user nginx, no Debian dynamic modules; a
@@ -176,7 +176,7 @@ RUN if ls /cache/nginx_*~trixie_$(dpkg --print-architecture).deb >/dev/null 2>&1
     fi \
     && nginx -V 2>&1 | grep -q -- --with-http_v3_module
 
-# sysreseval/base
+# sysreseval/base12
 RUN apt-get install -y \
     lsof \
     mg \
@@ -301,7 +301,7 @@ RUN if ls /cache/step-cli_*.deb /cache/step-ca_*.deb >/dev/null 2>&1; then \
 
 COPY .bashrc /root/.bashrc
 
-# X11 forwarding to the host (see sysreseval/base): SRE_XAUTH_COOKIE / SRE_DISPLAY / SRE_HOST_IP
+# X11 forwarding to the host (see sysreseval/base12): SRE_XAUTH_COOKIE / SRE_DISPLAY / SRE_HOST_IP
 # are set by sre-wrapper or the web agent.
 RUN cat <<'EOF' | tee -a /root/.bashrc >> /etc/skel/.bashrc
 

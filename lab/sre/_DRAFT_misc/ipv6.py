@@ -2,7 +2,7 @@
 double pile, tunnel 6in4.
 
 Maquette double pile : ``m1 — lan1 — r1 — wan1 — wan — wan2 — r2 — lan2 — m2``, plus ``lan3`` sur la
-troisième interface de ``r2`` avec le serveur ``srv`` (image init : DHCPv6) et deux postes ``pc1``
+troisième interface de ``r2`` avec le serveur ``srv`` (image init12 : DHCPv6) et deux postes ``pc1``
 (SLAAC) et ``pc2`` (DHCPv6).  L'IPv4 est déjà configuré partout (le réseau « historique ») ; les
 étudiants déploient IPv6 par-dessus : adresses et routes statiques de ``m1``, ``r1``, ``r2``, ``m2``
 et ``srv`` (l'opérateur ``wan`` est pré-configuré et route un /48 par site), annonces de routeur sur
@@ -87,7 +87,7 @@ TUN_OVERHEAD = pmtu.SIT_OVERHEAD  # 20: IPv6 packet inside a plain IPv4 packet (
 MIN_BYTES = 100_000               # a transfer "works" above this (≈ 0 under the black hole, ~5 MB otherwise)
 WAN_IFACE = {'r1': 'eth1', 'r2': 'eth0'}   # interfaces of the students' routers toward the operator
 PROBE_WAIT = 5.0                  # seconds the probe collects RAs / DHCPv6 replies
-INIT_MACHINE = {"image": sre_docker_image("init"), "privileged": True, "entrypoint": "/sbin/init"}
+INIT_MACHINE = {"image": sre_docker_image("init12"), "privileged": True, "entrypoint": "/sbin/init"}
 # the privileged machines: /proc/sys is already writable (remount_proc_sys would fail)
 PRIVILEGED = ('srv',)
 #: visible machines with a static configuration (IPv4 pre-configured, IPv6 configured by the students)

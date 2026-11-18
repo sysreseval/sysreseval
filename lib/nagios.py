@@ -1,7 +1,7 @@
 """Nagios grading and state helpers of the Nagios lab (``lab/sre/_DRAFT_misc/nagios.py``).
 
 Facts and formats are those of Nagios Core 4.4.6, monitoring-plugins 2.3.3 and NRPE 4.1.0 (Debian
-12, in the ``sysreseval/monitoring`` image built on ``init``); the fixtures of
+12, in the ``sysreseval/monitoring`` image built on ``init12``); the fixtures of
 ``tests/mock_data/nagios/`` were captured in those containers.
 
 **Object and status files**: :func:`parse_blocks` reads both ``/var/lib/nagios4/objects.cache``

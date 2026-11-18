@@ -5,7 +5,7 @@ Un réseau « Internet » `wan` relie le serveur VPN `srv` (passerelle du site A
 site B `gwb`, le poste nomade `nomade`, le serveur `inet` (routeur du fournisseur d'accès et
 serveur web) et la sonde cachée `sonde`.  Derrière `srv` : `lana` avec l'autorité de certification
 `ca` et le serveur interne `m1` ; derrière `gwb` : `lanb` avec `m2`.  `srv`, `gwb` et `nomade`
-tournent avec systemd (image `init`) pour les unités `openvpn-server@` / `openvpn-client@`.
+tournent avec systemd (image `init12`) pour les unités `openvpn-server@` / `openvpn-client@`.
 
 La sonde observe le trafic du `wan` pendant l'évaluation (``tcpdump``) et se connecte au serveur
 avec un certificat signé au vol par la CA de l'étudiant, puis avec le certificat révoqué.
@@ -70,7 +70,7 @@ CCD_DIR = f"{SRV_DIR}/ccd"
 CLIENTS = ("nomade", "siteb", "ancien")   # certificates issued by the student's CA
 REVOKED = "ancien"
 SYSTEMD_MACHINES = ("srv", "gwb", "nomade")
-INIT_MACHINE = {'image': sre_docker_image("init"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the "Internet": one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
 PROBE_DIR = "/tmp/sre_vpn"            # files of the evaluation on the probe

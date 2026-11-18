@@ -70,7 +70,7 @@ RUN find /out -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/sbin/asteris
 # ---------------------------------------------------------------------------
 # Stage 2: the image of the labs
 # ---------------------------------------------------------------------------
-FROM sysreseval/init:${VERSION}
+FROM sysreseval/init12:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
@@ -78,7 +78,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # VoIP image (the SIP / RTP lab): Asterisk 22 (chan_pjsip, voicemail, SRTP, TLS; stage 1) and the
 # SIP tools baresip (a console softphone: with the sine source and the sndfile recorder it needs
 # no sound card), sngrep (SIP call flows on a terminal), sipsak (OPTIONS / REGISTER tests) and
-# sox (wav files), on top of the init image so that the PBX runs under a genuine systemd
+# sox (wav files), on top of the init12 image so that the PBX runs under a genuine systemd
 # (systemctl restart asterisk, journalctl).  tcpdump, tshark and Wireshark come from the base
 # image.  Declare the PBX like the init machines:
 #
@@ -122,7 +122,7 @@ RUN apt clean && \
 
 COPY --from=build /out/ /
 COPY etc-asterisk/ /etc/asterisk/
-# Like the other services of the init image: installed, never started by itself.
+# Like the other services of the init12 image: installed, never started by itself.
 COPY asterisk.service /lib/systemd/system/asterisk.service
 # baresip needs $LOGNAME to find ~/.baresip: a wrapper ahead of /usr/bin in the PATH sets it.
 COPY baresip /usr/local/bin/baresip

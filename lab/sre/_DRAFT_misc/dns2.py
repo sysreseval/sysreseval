@@ -104,7 +104,7 @@ DOH_URL = f"https://{RESOLVER_NAME}/dns-query"
 TLD_TTL = 300                               # short TTLs in tp.: faults and repairs show quickly
 VIEW_INT, VIEW_EXT = "internal", "external"
 
-INIT_MACHINE = {'image': sre_docker_image("init"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
 SYSTEMD_MACHINES = ('resolver', 'ns1', 'ns2', 'root', 'tld')
 PROBES = ('h1', 'h2')
 _TOPOLOGY = {

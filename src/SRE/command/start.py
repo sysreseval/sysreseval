@@ -28,7 +28,7 @@ from ..wipe import remove_lab_leftovers
 def _install_privileged_cgroupns_patch():
     """Force a private cgroup namespace for privileged containers.
 
-    The SRE init image runs `/sbin/init` (systemd PID 1) for privileged
+    The SRE init images (init12, init13) run `/sbin/init` (systemd PID 1) for privileged
     machines. Docker's recommended setting for systemd-in-container is
     `--cgroupns=private` so systemd sees only its own cgroup subtree
     instead of the host's full tree (smaller inotify footprint, no risk

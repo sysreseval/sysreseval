@@ -17,7 +17,7 @@ that the students read over IMAPS to answer a question.  The state ``final`` app
 reference solution; every question ends with its solution in an ``instructor()`` block.
 
 Image: ``sysreseval/ldap-mail`` (``images/ldap-mail/Dockerfile``: Postfix, Dovecot, policyd-spf, swaks,
-mutt on the init image) for ``mail`` and ``peermx`` (systemd), ``pc`` and ``laptop`` (no init).
+mutt on the init12 image) for ``mail`` and ``peermx`` (systemd), ``pc`` and ``laptop`` (no init).
 """
 
 import random
@@ -93,14 +93,14 @@ FQDN = {
     "peermx": PEER_MX,
     "laptop": f"laptop.{HOME_DOMAIN}",
 }
-# The ldap-mail image (images/ldap-mail: init + postfix, dovecot, policyd-spf, swaks, mutt, nslcd), written in
+# The ldap-mail image (images/ldap-mail: init12 + postfix, dovecot, policyd-spf, swaks, mutt, nslcd), written in
 # full so that `sre preload-images` finds it.
 MAIL_MACHINE = {
     "image": sre_docker_image("ldap-mail"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
-SYSTEMD_MACHINES = ["mail", "peermx"]  # real systemd (init image): systemctl, journalctl
+SYSTEMD_MACHINES = ["mail", "peermx"]  # real systemd (init12 image): systemctl, journalctl
 PROBES = ["probe1", "probe2"]
 SINK_USER = "sink"  # hidden mailbox of peermx receiving the grader's relayed messages
 USERS = ["alice", "carol"]

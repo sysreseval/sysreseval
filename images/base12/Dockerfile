@@ -6,7 +6,7 @@ ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
 ARG VERSION
-ENV SRE_VERSION="sre/base:${VERSION}"
+ENV SRE_VERSION="sre/base12:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 

@@ -4,7 +4,7 @@ ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
 #
-# Kathara base image (on which sre/base is build) use instead of systemd a workaround:
+# Kathara base image (on which sre/base13 is build) use instead of systemd a workaround:
 # https://github.com/gdraheim/docker-systemctl-replacement
 # which add a command /usr/local/bin/systemctl allowing in most case to do: "systemctl start XX",
 # "systemctl status CC", etc...
@@ -71,7 +71,7 @@ RUN rm -f /lib/systemd/system-generators/openvpn-generator
 RUN rm -f /etc/rc*/S*slapd* /etc/rc*/S*named* /etc/rc*/S*exim* /etc/rc*/S*openvpn*
 
 # Debian 13 ships native units for slapd and exim4 (sysv scripts on Debian 12), and keepalived
-# pulls ipvsadm: none starts by itself, as on the Debian 12 init image.
+# pulls ipvsadm: none starts by itself, as on init12 (Debian 12).
 RUN rm -f /etc/systemd/system/multi-user.target.wants/slapd.service \
     /etc/systemd/system/multi-user.target.wants/exim4.service \
     /etc/systemd/system/multi-user.target.wants/ipvsadm.service \

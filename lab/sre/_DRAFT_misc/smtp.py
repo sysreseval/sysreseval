@@ -7,7 +7,7 @@ test de l'évaluation (sonde ``lib/smtp_probe.py``) ; leurs messages sont effac�
 L'état ``final`` applique la solution de référence.
 Chaque question se termine par sa solution dans un bloc ``instructor()`` (mode enseignant).
 
-Image : ``sysreseval/ldap-mail`` (``images/ldap-mail/Dockerfile``, construite sur l'image ``init`` : Postfix,
+Image : ``sysreseval/ldap-mail`` (``images/ldap-mail/Dockerfile``, construite sur l'image ``init12`` : Postfix,
 Dovecot, OpenDKIM, policyd-spf, swaks, mutt) pour ``mx1``, ``pc1``, ``mx2`` (systemd) et ``pc2``.
 """
 
@@ -82,14 +82,14 @@ record_sessions = False
 DOMAIN_A = "alpha.tp"  # lan1: mx1, pc1, dns1 (to configure)
 DOMAIN_B = "beta.tp"  # lan2: mx2, pc2 (pre-configured)
 DOMAIN_DOWN = "delta.tp"  # its MX refuses every connection: deferred mail (part 3)
-# The ldap-mail image (images/ldap-mail: init + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
+# The ldap-mail image (images/ldap-mail: init12 + postfix, dovecot, opendkim, policyd-spf, swaks, mutt, nslcd),
 # written in full so that `sre preload-images` finds it.
 MAIL_MACHINE = {
     "image": sre_docker_image("ldap-mail"),
     "privileged": True,
     "entrypoint": "/sbin/init",
 }
-SYSTEMD_MACHINES = ["mx1", "pc1", "mx2"]  # real systemd (init image): systemctl, journalctl
+SYSTEMD_MACHINES = ["mx1", "pc1", "mx2"]  # real systemd (init12 image): systemctl, journalctl
 PROBES = ["h1", "h2"]
 PROBE_USER = "sonde"  # mailbox of mx2 receiving the grader's relayed messages
 MX1_USERS = ["alice", "carol"]

@@ -16,7 +16,7 @@ measures it on the router's kernel counters.  The state ``final`` applies the re
 every question ends with its solution, shown to the instructor only.
 
 Image: ``sysreseval/monitoring`` (``images/monitoring/Dockerfile``: Net-SNMP and its MIB files on
-the init image) for ``nms``, ``srv1`` and ``srv2`` (systemd) and, without init, for ``router`` and
+the init12 image) for ``nms``, ``srv1`` and ``srv2`` (systemd) and, without init, for ``router`` and
 the two hidden machines.
 """
 
@@ -94,7 +94,7 @@ record_sessions = False
 
 DOMAIN = "corp.lab"
 CONTACT = "Equipe reseau <noc@corp.lab>"  # ASCII: a DisplayString
-# The monitoring image (images/monitoring: init + Net-SNMP, its MIB files...), written in full so
+# The monitoring image (images/monitoring: init12 + Net-SNMP, its MIB files...), written in full so
 # that `sre preload-images` finds it.
 SYSTEMD_MACHINE = {
     "image": sre_docker_image("monitoring"),

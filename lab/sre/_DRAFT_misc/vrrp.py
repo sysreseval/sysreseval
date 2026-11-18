@@ -63,7 +63,7 @@ DOMAIN = "lab"
 MIRROR = "_h"                       # suffix of the hidden clones (hidden_mirror.expand_topology)
 ROUTERS = ('r1', 'r2')
 CLIENTS = ('pc1', 'pc2')
-INIT_MACHINE = {'image': sre_docker_image("init"), 'privileged': True, 'entrypoint': "/sbin/init"}
+INIT_MACHINE = {'image': sre_docker_image("init12"), 'privileged': True, 'entrypoint': "/sbin/init"}
 #: the provider's network: one of the documentation ranges (TEST-NET-1/2/3)
 WAN_NETWORKS = [IPv4Network("192.0.2.0/24"), IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24")]
 MAC_PREFIX = "02:53:52"             # locally administered addresses

@@ -1,8 +1,8 @@
 """OpenLDAP grading and state helpers of the LDAP lab (``lab/sre/_DRAFT_misc/ldap.py``).
 
 Facts and formats are those of slapd 2.5.13, ldap-utils 2.5.13 and nss-pam-ldapd 0.9.12 (Debian
-12: ``slapd`` and ``ldap-utils`` in ``sysreseval/base``, ``nslcd``, ``libnss-ldapd`` and
-``libpam-ldapd`` in the ``sysreseval/ldap-mail`` image built on ``init``); the fixtures of
+12: ``slapd`` and ``ldap-utils`` in ``sysreseval/base12``, ``nslcd``, ``libnss-ldapd`` and
+``libpam-ldapd`` in the ``sysreseval/ldap-mail`` image built on ``init12``); the fixtures of
 ``tests/mock_data/ldap/`` were captured in those containers.
 
 **LDIF**: :func:`parse_ldif` reads what ``ldapsearch`` / ``slapcat`` print (continuation lines,
@@ -45,7 +45,7 @@ ACLs), :func:`render_person_ldif`, :func:`render_posix_group_ldif`, :func:`rende
 :func:`render_syncrepl`, :data:`PAM_MKHOMEDIR_PROFILE`.
 
 Facts (verified 2026-11-05 in the containers): ``systemctl start slapd`` / ``nslcd`` / ``ssh``
-work through the systemctl replacement of the base image (init.d scripts; ``SLAPD_SERVICES`` of
+work through the systemctl replacement of the base12 image (init.d scripts; ``SLAPD_SERVICES`` of
 ``/etc/default/slapd`` gives the listeners) but its ``stop`` leaves an init.d-started slapd
 running (``pkill -x slapd``, or a real-systemd ``init`` machine where ``systemctl restart slapd``
 behaves: what the lab uses for the servers and the client); root through ``ldapi:///`` has

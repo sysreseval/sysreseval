@@ -1,7 +1,7 @@
 """FreeRADIUS grading and state helpers of the AAA lab (``lab/sre/_DRAFT_misc/aaa.py``).
 
 Facts and formats are those of FreeRADIUS 3.2.1 and freeradius-utils 3.2.1 (Debian 12, the
-``sysreseval/aaa`` image built on ``init``, which also keeps the configuration as installed in
+``sysreseval/aaa`` image built on ``init12``, which also keeps the configuration as installed in
 :data:`PRISTINE_DIR`); the fixtures of ``tests/mock_data/aaa/`` were captured in those containers.
 
 **Commands** (one shell line each, stderr merged, ``; echo "===RC $?"`` appended so that a

@@ -1,5 +1,5 @@
 ARG VERSION=latest
-FROM sysreseval/init:${VERSION}
+FROM sysreseval/init12:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.authors="SysResEval"
 # Supervision image (the SNMP, Nagios, Prometheus, central logs and NetFlow labs): Net-SNMP (agent,
 # trap daemon, tools, MIB files), Nagios 4 with its Apache interface, the monitoring plugins and
 # NRPE, Prometheus with its node / blackbox / SNMP exporters and Alertmanager, the TLS driver of
-# rsyslog, softflowd and nfdump, on top of the init image so that the daemons run under a genuine
+# rsyslog, softflowd and nfdump, on top of the init12 image so that the daemons run under a genuine
 # systemd (systemctl restart, journalctl).  The configuration files are those of the Debian
 # packages: the students start from them.  Declare the machines like the init ones:
 #
@@ -78,7 +78,7 @@ RUN curl -fsSL "${NETSNMP_SOURCE_URL}" -o /tmp/net-snmp.tar.gz \
  && test "$(snmptranslate -On SNMPv2-MIB::sysName.0)" = ".1.3.6.1.2.1.1.5.0" \
  && test "$(snmptranslate -On IF-MIB::ifHCInOctets)" = ".1.3.6.1.2.1.31.1.1.1.6"
 
-# Like the init image: no service starts by itself when the entrypoint is /sbin/init (the labs'
+# Like the init12 image: no service starts by itself when the entrypoint is /sbin/init (the labs'
 # states or the students start the daemons).  Only the systemd links go: the /etc/rc*.d links of
 # the SysV scripts these packages also ship start nothing under systemd (the native units win),
 # but `systemctl enable` hands them to update-rc.d, which aborts ("no runlevel symlinks to modify")

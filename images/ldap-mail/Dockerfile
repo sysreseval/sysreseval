@@ -1,14 +1,14 @@
 ARG VERSION=latest
-FROM sysreseval/init:${VERSION}
+FROM sysreseval/init12:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
 #
 # Electronic mail and LDAP image (the SMTP labs and the LDAP lab): Postfix, Dovecot (IMAP, LMTP,
 # Sieve + ManageSieve), OpenDKIM, policyd-spf and the clients swaks and mutt, plus the LDAP client side, nss-pam-ldapd
-# (nslcd, libnss-ldapd, libpam-ldapd; slapd and ldap-utils come from the base image), on top of
-# the init image so that the servers run under a genuine systemd (systemctl, journalctl; the
-# systemctl replacement of the base image cannot stop an init.d-started slapd).  Declare the
+# (nslcd, libnss-ldapd, libpam-ldapd; slapd and ldap-utils come from the base12 image), on top of
+# the init12 image so that the servers run under a genuine systemd (systemctl, journalctl; the
+# systemctl replacement of the base12 image cannot stop an init.d-started slapd).  Declare the
 # machines like the init ones:
 #
 #   _machine_specs = {
@@ -67,7 +67,7 @@ RUN pam-auth-update --package --remove ldap \
  && sed -i -E 's/^((passwd|group|shadow|netgroup|aliases|ethers|hosts|networks|protocols|rpc|services):.*[[:space:]])ldap[[:space:]]*$/\1/' /etc/nsswitch.conf \
  && sed -i -E 's/[[:space:]]+$//' /etc/nsswitch.conf
 
-# Like the init image: no service starts by itself when the entrypoint is /sbin/init.
+# Like the init12 image: no service starts by itself when the entrypoint is /sbin/init.
 RUN rm -f /etc/systemd/system/multi-user.target.wants/postfix.service \
     /etc/systemd/system/multi-user.target.wants/dovecot.service \
     /etc/systemd/system/multi-user.target.wants/opendkim.service \

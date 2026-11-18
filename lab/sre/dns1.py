@@ -107,13 +107,13 @@ class NetScheme(NetScheme0):
         "ns1": {
             "privileged": True,
             "entrypoint": "/sbin/init",
-            "image": sre_docker_image("init"),
+            "image": sre_docker_image("init12"),
             "color": "lightgreen",
         },
         "ns2": {
             "privileged": True,
             "entrypoint": "/sbin/init",
-            "image": sre_docker_image("init"),
+            "image": sre_docker_image("init12"),
             "color": "lightgreen",
         },
         "r1": {},

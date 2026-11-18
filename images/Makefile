@@ -3,55 +3,56 @@ SHELL := /bin/bash
 VERSION   ?= 1.33
 NAMESPACE ?= sysreseval
 
-IMAGES := base init routing-frr ldap-mail proxy monitoring voip aaa base13 init13
+IMAGES := base12 init12 routing-frr ldap-mail proxy monitoring voip aaa base13 init13
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
 all: $(IMAGES)
 
-base:
+# Debian 12 (bookworm) images: base12 on kathara/base, init12 = base12 + a genuine systemd.
+base12:
 	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/base:$(VERSION) \
-		base
+		-t $(NAMESPACE)/base12:$(VERSION) \
+		base12
 
-init: base
+init12: base12
 	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/init:$(VERSION) \
-		init
+		-t $(NAMESPACE)/init12:$(VERSION) \
+		init12
 
-routing-frr: base
+routing-frr: base12
 	docker build --build-arg VERSION=$(VERSION) \
 		-t $(NAMESPACE)/routing-frr:$(VERSION) \
 		routing-frr
 
-ldap-mail: init
+ldap-mail: init12
 	docker build --build-arg VERSION=$(VERSION) \
 		-t $(NAMESPACE)/ldap-mail:$(VERSION) \
 		ldap-mail
 
-proxy: init
+proxy: init12
 	docker build --build-arg VERSION=$(VERSION) \
 		-t $(NAMESPACE)/proxy:$(VERSION) \
 		proxy
 
-monitoring: init
+monitoring: init12
 	docker build --build-arg VERSION=$(VERSION) \
 		-t $(NAMESPACE)/monitoring:$(VERSION) \
 		monitoring
 
 # Asterisk is compiled from its sources (see voip/Dockerfile: a few minutes, and what to put in
 # voip/cache/ on a build host without access to downloads.asterisk.org and GitHub).
-voip: init
+voip: init12
 	docker build --build-arg VERSION=$(VERSION) \
 		-t $(NAMESPACE)/voip:$(VERSION) \
 		voip
 
-aaa: init
+aaa: init12
 	docker build --build-arg VERSION=$(VERSION) \
 		-t $(NAMESPACE)/aaa:$(VERSION) \
 		aaa
 
-# Debian 13 (trixie) twins of base and init, built on debian:13 (kathara/base is still Debian 12):
+# Debian 13 (trixie) twins of base12 and init12, built on debian:13 (kathara/base is still Debian 12):
 # the labs move to them one by one (sre_docker_image("base13") / ("init13")).
 base13:
 	docker build --build-arg VERSION=$(VERSION) \
@@ -72,8 +73,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base + init + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + base13 + init13"
-	@echo "  base | init | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | base13 | init13  build one image (deps included)"
+	@echo "  all (default)     build base12 + init12 + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + base13 + init13"
+	@echo "  base12 | init12 | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | base13 | init13  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"
