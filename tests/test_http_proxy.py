@@ -85,6 +85,12 @@ class TestCommands:
         assert "-H 'Accept-Encoding: gzip'" in hp.request_cmd('http://x/big', compressed=True)
         assert hp.request_cmd('http://x/', max_time=14).startswith("curl -s -S --max-time 14 ")
 
+    def test_request_cmd_http3(self):
+        # --http3-only: QUIC without fallback to TCP (the QUIC lab, curl 8.14 of the base13 image)
+        cmd = hp.request_cmd('https://www.quic.tp/', '192.0.2.10', 443, http3=True)
+        assert "--http3-only" in cmd and "--connect-to ::192.0.2.10:443" in cmd and "--http2" not in cmd
+        assert "--http3" not in hp.request_cmd('https://www.quic.tp/', '192.0.2.10', 443)
+
     def test_shell_url(self):
         cmd = hp.request_cmd('http://www.shop.tp$u', '10.0.0.1', 6081, shell_url=True)
         assert cmd.endswith('"http://www.shop.tp$u" 2>&1')

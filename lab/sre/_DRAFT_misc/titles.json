@@ -19,6 +19,10 @@
     "en": "Prometheus: metrics, queries and alerts",
     "fr": "Prometheus : métriques, requêtes et alertes"
   },
+  "quic.py": {
+    "en": "QUIC and HTTP/3: handshake, encryption, migration, 0-RTT",
+    "fr": "QUIC et HTTP/3 : poignée de main, chiffrement, migration, 0-RTT"
+  },
   "rsyslog.py": {
     "en": "Central logs: syslog, rsyslog and logrotate",
     "fr": "Journaux centralisés : syslog, rsyslog et logrotate"

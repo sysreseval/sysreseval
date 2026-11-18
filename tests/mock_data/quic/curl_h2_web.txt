@@ -1,0 +1,14 @@
+HTTP/2 200 
+server: nginx/1.30.6
+date: Wed, 18 Nov 2026 14:50:03 GMT
+content-type: text/html
+content-length: 67
+last-modified: Wed, 18 Nov 2026 14:49:42 GMT
+etag: "6afdbb06-43"
+alt-svc: h3=":443"; ma=86400
+accept-ranges: bytes
+
+<html><body><h1>www.quic.tp</h1><p>quic-42e18159</p></body></html>
+
+===SRE_META 2 0.010316
+===SRE_CODE 200

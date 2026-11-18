@@ -193,7 +193,7 @@ def _address(value) -> str:
 
 def _curl_options(connect_ip=None, connect_port=None, method=None, headers=None, data=None, cookies=None,
                   user=None, cacert=None, insecure=False, http2=False, source=None, compressed=False,
-                  jar=None) -> List[str]:
+                  jar=None, http3=False) -> List[str]:
     opts = []
     if jar:
         opts.append(f"-b {shlex.quote(jar)} -c {shlex.quote(jar)}")
@@ -208,6 +208,8 @@ def _curl_options(connect_ip=None, connect_port=None, method=None, headers=None,
         opts.append(f"--cacert {shlex.quote(cacert)}")
     if http2:
         opts.append("--http2")
+    if http3:
+        opts.append("--http3-only")
     if compressed:
         opts.append("-H 'Accept-Encoding: gzip'")
     if method:
@@ -237,7 +239,8 @@ def request_cmd(url: str, connect_ip=None, connect_port: Optional[int] = None, m
     the name and the port of the URL (``--connect-to``: the ``Host`` header and the SNI stay
     those of the URL).  Options: ``method``, ``headers`` (dict), ``data`` (a POST body),
     ``cookies`` (dict), ``user`` ((login, password): basic authentication), ``cacert`` (a path on
-    the machine), ``insecure``, ``http2``, ``source`` (a local address to send from),
+    the machine), ``insecure``, ``http2``, ``http3`` (``--http3-only``: QUIC, no fallback to TCP;
+    needs a curl built with HTTP/3, the ``base13`` image), ``source`` (a local address to send from),
     ``compressed`` (asks for gzip without decoding it), ``jar`` (a cookie file read and written).
     *no_body* drops the body (a compressed one is not text); *shell_url* leaves ``$variables`` of
     the URL to the shell (:func:`sequence_cmd`).  The output holds the response headers, the

@@ -1,0 +1,2 @@
+80 600 /etc/nginx/quic_host.key
+80 600 /etc/nginx/quic_host.key

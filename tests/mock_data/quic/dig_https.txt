@@ -1,0 +1,25 @@
+
+; <<>> DiG 9.20.30-1~deb13u1-Debian <<>> +time=1 +tries=1 @192.0.2.90 www.quic.tp HTTPS
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 42369
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: cf32613cc4bc9260010000006afdbb1b0a0f993033a681b4 (good)
+;; QUESTION SECTION:
+;www.quic.tp.			IN	HTTPS
+
+;; ANSWER SECTION:
+www.quic.tp.		300	IN	HTTPS	1 . alpn="h3,h2"
+
+;; ADDITIONAL SECTION:
+www.quic.tp.		300	IN	A	192.0.2.129
+
+;; Query time: 4 msec
+;; SERVER: 192.0.2.90#53(192.0.2.90) (UDP)
+;; WHEN: Wed Nov 18 14:50:03 UTC 2026
+;; MSG SIZE  rcvd: 109
+

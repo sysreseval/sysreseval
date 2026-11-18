@@ -1,0 +1,13 @@
+{
+ "client": "192.0.2.222",
+ "edge": "192.0.2.116",
+ "fw_wan": "192.0.2.113",
+ "h3_secret": "voluptas omnis quo fugiat",
+ "idle_timeout": 38,
+ "max_streams": 230,
+ "ns": "192.0.2.90",
+ "ref": "192.0.2.5",
+ "versions": "nginx 1.30.6 (nginx.org, OpenSSL 3.5.7), curl 8.14.1, aioquic 1.2.0, tshark 4.4.19, BIND 9.20.30, Caddy 2.6.2; images base13 / init13 1.33, s16 2026-11-18",
+ "web": "192.0.2.129",
+ "web_token": "quic-42e18159"
+}

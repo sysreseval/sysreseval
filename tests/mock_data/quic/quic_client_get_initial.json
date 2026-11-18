@@ -1,0 +1,64 @@
+{
+ "alpn": "h3",
+ "cipher_suite": "AES_256_GCM_SHA384",
+ "command": "get",
+ "early_data_accepted": false,
+ "error": "",
+ "handshake": true,
+ "host_cid": "878d224c429e614d",
+ "new_tokens_received": 0,
+ "path_challenges_received": 0,
+ "peer_cid": "0000000000008026d859286fe019973d87b0df87",
+ "requests": [
+  {
+   "body": "<html><body><h1>cdn.quic.tp</h1></body></html>\n",
+   "body_length": 47,
+   "headers": [
+    [
+     "server",
+     "nginx/1.30.6"
+    ],
+    [
+     "date",
+     "Wed, 18 Nov 2026 14:49:59 GMT"
+    ],
+    [
+     "content-type",
+     "text/html"
+    ],
+    [
+     "content-length",
+     "47"
+    ],
+    [
+     "last-modified",
+     "Wed, 18 Nov 2026 14:49:42 GMT"
+    ],
+    [
+     "etag",
+     "\"6afdbb06-2f\""
+    ],
+    [
+     "alt-svc",
+     "h3=\":443\"; ma=86400"
+    ],
+    [
+     "accept-ranges",
+     "bytes"
+    ]
+   ],
+   "method": "GET",
+   "path": "/",
+   "sent_before_handshake": false,
+   "status": 200,
+   "stream_id": 0
+  }
+ ],
+ "retry": false,
+ "server": "192.0.2.116:443",
+ "session_resumed": false,
+ "sni": "cdn.quic.tp",
+ "time": 0.099,
+ "version": "0x00000001",
+ "zero_rtt_tried": false
+}

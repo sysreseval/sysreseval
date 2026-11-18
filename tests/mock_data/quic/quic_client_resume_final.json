@@ -1,0 +1,197 @@
+{
+ "command": "resume",
+ "first": {
+  "alpn": "h3",
+  "cipher_suite": "AES_256_GCM_SHA384",
+  "early_data_accepted": false,
+  "error": "",
+  "handshake": true,
+  "host_cid": "8af0bbc7da1318c9",
+  "new_tokens_received": 1,
+  "path_challenges_received": 0,
+  "peer_cid": "000000000000203710ab8d8720b0aece4118aafb",
+  "requests": [
+   {
+    "body": "<html><body><h1>cdn.quic.tp</h1></body></html>\n",
+    "body_length": 47,
+    "headers": [
+     [
+      "server",
+      "nginx/1.30.6"
+     ],
+     [
+      "date",
+      "Wed, 18 Nov 2026 14:50:07 GMT"
+     ],
+     [
+      "content-type",
+      "text/html"
+     ],
+     [
+      "content-length",
+      "47"
+     ],
+     [
+      "last-modified",
+      "Wed, 18 Nov 2026 14:49:42 GMT"
+     ],
+     [
+      "etag",
+      "\"6afdbb06-2f\""
+     ],
+     [
+      "alt-svc",
+      "h3=\":443\"; ma=86400"
+     ],
+     [
+      "accept-ranges",
+      "bytes"
+     ]
+    ],
+    "method": "GET",
+    "path": "/",
+    "sent_before_handshake": false,
+    "status": 200,
+    "stream_id": 0
+   },
+   {
+    "body": "order accepted\n",
+    "body_length": 15,
+    "headers": [
+     [
+      "server",
+      "nginx/1.30.6"
+     ],
+     [
+      "date",
+      "Wed, 18 Nov 2026 14:50:07 GMT"
+     ],
+     [
+      "content-type",
+      "text/plain"
+     ],
+     [
+      "content-length",
+      "15"
+     ],
+     [
+      "alt-svc",
+      "h3=\":443\"; ma=86400"
+     ]
+    ],
+    "method": "GET",
+    "path": "/order",
+    "sent_before_handshake": false,
+    "status": 200,
+    "stream_id": 4
+   }
+  ],
+  "retry": true,
+  "server": "192.0.2.116:443",
+  "session_resumed": false,
+  "sni": "cdn.quic.tp",
+  "time": 0.107,
+  "version": "0x00000001",
+  "zero_rtt_tried": false
+ },
+ "second": {
+  "alpn": "h3",
+  "cipher_suite": "AES_256_GCM_SHA384",
+  "early_data_accepted": true,
+  "error": "",
+  "handshake": true,
+  "host_cid": "938de7ce6081d199",
+  "new_tokens_received": 1,
+  "path_challenges_received": 0,
+  "peer_cid": "0000000000002038dbb22850a41d4daa1827614c",
+  "requests": [
+   {
+    "body": "<html><body><h1>cdn.quic.tp</h1></body></html>\n",
+    "body_length": 47,
+    "headers": [
+     [
+      "server",
+      "nginx/1.30.6"
+     ],
+     [
+      "date",
+      "Wed, 18 Nov 2026 14:50:07 GMT"
+     ],
+     [
+      "content-type",
+      "text/html"
+     ],
+     [
+      "content-length",
+      "47"
+     ],
+     [
+      "last-modified",
+      "Wed, 18 Nov 2026 14:49:42 GMT"
+     ],
+     [
+      "etag",
+      "\"6afdbb06-2f\""
+     ],
+     [
+      "alt-svc",
+      "h3=\":443\"; ma=86400"
+     ],
+     [
+      "early-data",
+      "1"
+     ],
+     [
+      "accept-ranges",
+      "bytes"
+     ]
+    ],
+    "method": "GET",
+    "path": "/",
+    "sent_before_handshake": true,
+    "status": 200,
+    "stream_id": 0
+   },
+   {
+    "body": "",
+    "body_length": 0,
+    "headers": [
+     [
+      "server",
+      "nginx/1.30.6"
+     ],
+     [
+      "date",
+      "Wed, 18 Nov 2026 14:50:07 GMT"
+     ],
+     [
+      "content-length",
+      "0"
+     ],
+     [
+      "alt-svc",
+      "h3=\":443\"; ma=86400"
+     ],
+     [
+      "early-data",
+      "1"
+     ]
+    ],
+    "method": "GET",
+    "path": "/order",
+    "sent_before_handshake": true,
+    "status": 425,
+    "stream_id": 4
+   }
+  ],
+  "retry": false,
+  "server": "192.0.2.116:443",
+  "session_resumed": true,
+  "sni": "cdn.quic.tp",
+  "time": 0.14,
+  "version": "0x00000001",
+  "zero_rtt_tried": true
+ },
+ "ticket_received": true,
+ "token_received": true
+}

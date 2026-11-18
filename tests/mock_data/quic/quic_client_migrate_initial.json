@@ -1,0 +1,140 @@
+{
+ "command": "migrate",
+ "connections": [
+  {
+   "alpn": "h3",
+   "error": "",
+   "handshake": true,
+   "migrated": false,
+   "path_challenges_received": 0,
+   "rebinds_ok": 0,
+   "retry": false,
+   "steps": [
+    {
+     "error": "",
+     "local_port": 54714,
+     "peer_cid": "000000000000802658626fe0f1f04e2a6229af6b",
+     "rebind": 0,
+     "status": 200
+    },
+    {
+     "error": "TimeoutError",
+     "local_port": 51031,
+     "peer_cid": "0000000000008026d9466ce3922f490fa55650bb",
+     "rebind": 1,
+     "status": null
+    }
+   ],
+   "version": "0x00000001"
+  },
+  {
+   "alpn": "h3",
+   "error": "",
+   "handshake": true,
+   "migrated": false,
+   "path_challenges_received": 0,
+   "rebinds_ok": 0,
+   "retry": false,
+   "steps": [
+    {
+     "error": "",
+     "local_port": 59511,
+     "peer_cid": "0000000000004029abe563fab881c54d0e1554dc",
+     "rebind": 0,
+     "status": 200
+    },
+    {
+     "error": "TimeoutError",
+     "local_port": 48965,
+     "peer_cid": "0000000000004029019b946c7ae9253aad6156cc",
+     "rebind": 1,
+     "status": null
+    }
+   ],
+   "version": "0x00000001"
+  },
+  {
+   "alpn": "h3",
+   "error": "",
+   "handshake": true,
+   "migrated": false,
+   "path_challenges_received": 0,
+   "rebinds_ok": 0,
+   "retry": false,
+   "steps": [
+    {
+     "error": "",
+     "local_port": 55660,
+     "peer_cid": "000000000000802639c1c163b6a0497dff0880a8",
+     "rebind": 0,
+     "status": 200
+    },
+    {
+     "error": "TimeoutError",
+     "local_port": 45316,
+     "peer_cid": "000000000000802609e888a5fa80387ddc740959",
+     "rebind": 1,
+     "status": null
+    }
+   ],
+   "version": "0x00000001"
+  },
+  {
+   "alpn": "h3",
+   "error": "",
+   "handshake": true,
+   "migrated": false,
+   "path_challenges_received": 0,
+   "rebinds_ok": 0,
+   "retry": false,
+   "steps": [
+    {
+     "error": "",
+     "local_port": 59398,
+     "peer_cid": "0000000000008027d6b5403900d9342c5deb5eb9",
+     "rebind": 0,
+     "status": 200
+    },
+    {
+     "error": "TimeoutError",
+     "local_port": 46073,
+     "peer_cid": "00000000000080273a5ad6812cb4c8a77e8ec5a3",
+     "rebind": 1,
+     "status": null
+    }
+   ],
+   "version": "0x00000001"
+  },
+  {
+   "alpn": "h3",
+   "error": "",
+   "handshake": true,
+   "migrated": false,
+   "path_challenges_received": 0,
+   "rebinds_ok": 0,
+   "retry": false,
+   "steps": [
+    {
+     "error": "",
+     "local_port": 41706,
+     "peer_cid": "00000000000080274e5a0048c1cae054d0437049",
+     "rebind": 0,
+     "status": 200
+    },
+    {
+     "error": "TimeoutError",
+     "local_port": 40086,
+     "peer_cid": "00000000000080276df10d920ef2a389e1ca447f",
+     "rebind": 1,
+     "status": null
+    }
+   ],
+   "version": "0x00000001"
+  }
+ ],
+ "error": "",
+ "migrated": 0,
+ "rebinds": 1,
+ "server": "192.0.2.116:443",
+ "sni": "cdn.quic.tp"
+}

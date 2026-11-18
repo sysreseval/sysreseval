@@ -1,0 +1,13 @@
+Files dropped here are used by the build instead of being downloaded (see the header of
+../Dockerfile): for a build host whose firewall lets deb.debian.org through but not
+git.kernel.org, nginx.org or packages.smallstep.com (the room workstations when their Internet
+access is off).  The directory is otherwise empty; the files are not committed (.gitignore).
+
+  iproute2-<version>.tar.xz           https://mirrors.edge.kernel.org/pub/linux/utils/net/iproute2/
+  nginx_<version>~trixie_amd64.deb     http://nginx.org/packages/debian/pool/nginx/n/nginx/
+  step-cli_<version>_amd64.deb         https://pkgs.infra.smallstep.com/stable/debian/pool/debs/
+  step-ca_<version>_amd64.deb          (same place)
+  systemctl3.py                        https://raw.githubusercontent.com/gdraheim/docker-systemctl-replacement/master/files/docker/systemctl3.py
+
+Check each file against the checksum its site publishes (kernel.org sha256sums.asc, the SHA256
+of the Packages index of nginx.org / smallstep) before dropping it here.
