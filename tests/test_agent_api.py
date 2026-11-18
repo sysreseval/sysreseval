@@ -17,6 +17,7 @@ aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the w
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
 from SRE import params, web_updates
+from SRE.archive_summary import read_archive
 from sreweb.agent.app import (Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup,
                               activity_ago, ACTIVITY_FRAME_MAX, ACTIVITY_MAX_AGO)
 from sreweb.agent.display import DisplayError, parse_xauthority, WS_DISPLAY_FAILED
@@ -678,6 +679,10 @@ class TestProject:
                 kinds = [r['kind'] for r in data['rows']]
                 assert kinds[0] == 'part_header' and 'mark' in kinds and data['header'][0] == 'Element'
                 assert h.calls()[-1] == ['--user', 'eval', '--auto-eval', '--', rln]
+                # the archive holds the answers file as the agent wrote it: the web client
+                [archive] = (h.pub / 'archives').iterdir()
+                archived = read_archive(str(archive))['answers']
+                assert (archived[params.client_keyword], archived[params.login_keyword]) == (params.client_web, 'alice')
                 # the cooldown of the CLI
                 data = await (await h.client.post(f'/v1/projects/{rln}/eval', headers=headers())).json()
                 assert data['result']['grades'] is None and data['rows'] == [] and 0 < data['delay_before_self_grade'] <= 60

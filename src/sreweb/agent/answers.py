@@ -3,16 +3,17 @@
 The Qt GUI writes the file itself on every keystroke, with the identity of the desktop session;
 here the browser sends the changed answers (``PUT``) and the agent merges them under the
 project's answers lock, adds the metadata from the identity the portal relayed
-(``SRE.answers.with_metadata``: login, full name, e-mail, student group, language...) and the
-hostname of the pool host, and writes the file atomically, readable by the ``sre`` user that
+(``SRE.answers.with_metadata``: login, full name, e-mail, student group, language...), the
+hostname of the pool host and its own name as the client (``params.client_web``; the Qt GUI
+writes ``params.client_local``), and writes the file atomically, readable by the ``sre`` user that
 evaluates (``Grade0.load_answers``).  The metadata alone is written as soon as a project is
 created (``rewrite``), so the Watch page names the owner before the first answer, and again
 when the owner opens the project page and the file lacks it or holds other values
 (``refresh``: the project of an older agent or of the Qt GUI gets its full name and group
 then); an empty full name or group never replaces a stored one.  An instructor helping a
 student writes in the student's file too (``put`` by a non-owner): the stored metadata is kept
-as it is (``_kept_metadata``: the student's login, full name, e-mail, group and language, never
-the instructor's), only the update time and the exam fields are new.  Every ``put`` is pushed to
+as it is (``_kept_metadata``: the student's login, full name, e-mail, group, language and
+client, never the instructor's), only the update time and the exam fields are new.  Every ``put`` is pushed to
 the open pages of the project (the ``answers`` event), so the student's page shows what the
 instructor types and the instructor's page what the student types.  ``cheat.json`` written by
 ``sre state`` is merged the same way at the next tick and pushed too; the agent reads it as
@@ -129,13 +130,16 @@ class AnswersStore:
                                fullname=identity.fullname or self._stored(answers, params.fullname_keyword),
                                email=identity.email or None, language=identity.language,
                                exam_data=self._exam_data(project),
-                               group=identity.group or self._stored(answers, params.group_keyword))
+                               group=identity.group or self._stored(answers, params.group_keyword),
+                               client=params.client_web)
 
     def _kept_metadata(self, project: Project, answers: dict, identity: Identity | None) -> dict:
         """*answers* with the stored metadata written again: the file of a student written by
         an instructor (*identity*) keeps the student's login (the owner of the project when the
         file has none), full name, e-mail, group and language (the writer's language when the
-        file has none, the lab's without a writer); the update time and the exam fields are new."""
+        file has none, the lab's without a writer) and the student's client (``local`` for a
+        student in the Qt GUI; no key when the file has none); the update time and the exam
+        fields are new."""
         fallback_language = identity.language if identity is not None \
             else (project.info.get('default_language') or 'en')
         return A.with_metadata(answers, hostname=self.hostname,
@@ -144,7 +148,8 @@ class AnswersStore:
                                email=self._stored(answers, params.email_keyword) or None,
                                language=self._stored(answers, params.language_keyword) or fallback_language,
                                exam_data=self._exam_data(project),
-                               group=self._stored(answers, params.group_keyword))
+                               group=self._stored(answers, params.group_keyword),
+                               client=self._stored(answers, params.client_keyword) or None)
 
     def metadata_stale(self, answers: dict, identity: Identity) -> bool:
         """The file lacks the metadata a current agent writes (``login``, ``group``: the file of

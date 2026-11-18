@@ -350,6 +350,40 @@ class TestAnswersStore:
         assert run(store.refresh(p, ALICE)) == data                     # nothing to write
         assert run(store.refresh(p, Identity(login='alice', group='INFO3')))[params.group_keyword] == 'INFO3'
 
+    def test_client_names_the_writer(self, tmp_pub_dir):
+        """The ``client`` key of the answers file (hence of the archives): ``web`` for what the
+        agent writes for the owner; a non-owner's write keeps the stored one, the student's."""
+        make_project(tmp_pub_dir)
+        reg = registry()
+        store = AnswersStore(reg, hostname='pool1', pub_dir=str(tmp_pub_dir), owner=None)
+        run(reg.tick())
+        p = reg.get(RLN)
+        text_hash = p.info['questions'][0]['question_hash']
+        # the owner: at the creation of the project, then at every answer
+        assert run(store.rewrite(p, ALICE))[params.client_keyword] == params.client_web == 'web'
+        assert run(store.put(p, {text_hash: 'mine'}, ALICE))[params.client_keyword] == 'web'
+        assert json.loads(p.answers_path.read_text())[params.client_keyword] == 'web'
+        # an instructor helping, the exam of the project changed: the stored client stays
+        assert run(store.put(p, {text_hash: 'helped'}, PROF))[params.client_keyword] == 'web'
+        assert run(store.rewrite_kept(p))[params.client_keyword] == 'web'
+        # the file of the student's Qt GUI: still the GUI's after the instructor wrote in it
+        gui_file = {params.login_keyword: 'alice', params.fullname_keyword: 'Alice A', params.hostname_keyword: 'pc1',
+                    params.client_keyword: params.client_local, text_hash: 'typed in the GUI'}
+        p.answers_path.write_text(json.dumps(gui_file))
+        data = run(store.put(p, {text_hash: 'helped'}, PROF))
+        assert (data[text_hash], data[params.login_keyword], data[params.client_keyword]) == ('helped', 'alice', 'local')
+        assert run(store.rewrite_kept(p))[params.client_keyword] == 'local'
+        # the owner opens it in a browser and answers there: the agent is the last writer
+        assert run(store.put(p, {text_hash: 'on the web'}, ALICE))[params.client_keyword] == 'web'
+        # a file without the key (an older GUI or agent): a non-owner's write invents none,
+        # the owner's next one adds it
+        del gui_file[params.client_keyword]
+        p.answers_path.write_text(json.dumps(gui_file))
+        assert params.client_keyword not in run(store.put(p, {text_hash: 'helped'}, PROF))
+        assert params.client_keyword not in run(store.rewrite_kept(p))
+        assert params.client_keyword not in json.loads(p.answers_path.read_text())
+        assert run(store.put(p, {text_hash: 'mine'}, ALICE))[params.client_keyword] == 'web'
+
     def test_put_refuses_unknown_questions(self, tmp_pub_dir):
         make_project(tmp_pub_dir)
         reg = registry()

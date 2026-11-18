@@ -200,6 +200,7 @@ class QuestionsView(QWidget):
                     email=_SESSION_IDENTITY.get(params.email_keyword),
                     language=self._lang_priority[0] if self._lang_priority else 'en',
                     exam_data=read_exam_json(params.sre_pub_dir),
+                    client=params.client_local,
                 )
                 self._file_sig = save_answers(path, data, atomic=True, mode=ANSWERS_FILE_MODE)
         except Exception as e:

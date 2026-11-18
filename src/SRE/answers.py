@@ -19,7 +19,10 @@ not lose one of them.
 
 The identity is the caller's: the GUI takes it from its desktop session
 (:func:`session_identity`), the web agent passes the LDAP account or the pseudonym of the
-browser user to :func:`with_metadata`.
+browser user to :func:`with_metadata`.  Each writer also names itself under the key
+``params.client_keyword`` (``params.client_local`` for the GUI, ``params.client_web`` for the
+web agent), so that an archive tells which of the two the student used: the last one that
+wrote, when both did.
 """
 import contextlib
 import fcntl
@@ -86,11 +89,13 @@ def load_answers(path: str | os.PathLike) -> dict:
 
 def with_metadata(answers: dict, *, hostname: str, login: str, fullname: str, email: str | None,
                   language: str, exam_data: dict | None, now: datetime | None = None,
-                  group: str | None = None) -> dict:
+                  group: str | None = None, client: str | None = None) -> dict:
     """A copy of *answers* with the metadata of the answers file: the identity keys
     (``hostname``, ``login``, ``fullname``, and ``email`` only when not ``None``: the GUI gives
     it only with ``params.email_in_gecos_last_field``; ``group``, the student group of the
-    user, only when not ``None``: the web agent gives it, the GUI never does),
+    user, only when not ``None``: the web agent gives it, the GUI never does), ``client``
+    (the writer of the file, ``params.client_local`` for the GUI or ``params.client_web`` for
+    the web agent, only when not ``None``: a stored value is then left as it is),
     ``answers_updated_at`` (``params.datetime_to_string`` of *now*, the current time by
     default), ``language`` and the :func:`exam_fields` of *exam_data*. Keys already present
     keep their place."""
@@ -104,6 +109,8 @@ def with_metadata(answers: dict, *, hostname: str, login: str, fullname: str, em
         data[params.email_keyword] = email
     if group is not None:
         data[params.group_keyword] = group
+    if client is not None:
+        data[params.client_keyword] = client
     data[params.sysreseval_answers_updated_at] = params.datetime_to_string(now)
     data[params.language_keyword] = language
     data.update(exam_fields(exam_data, now))

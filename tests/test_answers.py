@@ -106,6 +106,22 @@ class TestWithMetadata:
         assert data[params.group_keyword] == 'INFO1'
         assert with_metadata({}, **IDENTITY, language='en', exam_data=None, group='')[params.group_keyword] == ''
 
+    def test_client_only_when_given(self):
+        """Each writer names itself (the Qt GUI ``local``, the web agent ``web``); without the
+        argument no key is added and a stored one is left as it is."""
+        assert (params.client_keyword, params.client_local, params.client_web) == ('client', 'local', 'web')
+        data = with_metadata(ANSWERS, **IDENTITY, language='en', exam_data=None)
+        assert params.client_keyword not in data
+        data = with_metadata(ANSWERS, **IDENTITY, language='en', exam_data=None, client=params.client_local)
+        assert data[params.client_keyword] == 'local'
+        # the other writer takes the file over: its name replaces the stored one, in place
+        data = with_metadata(data, **IDENTITY, language='en', exam_data=None, client=params.client_web)
+        assert data[params.client_keyword] == 'web'
+        assert list(data).count(params.client_keyword) == 1
+        # no argument: the stored name stays
+        kept = with_metadata(data, **IDENTITY, language='en', exam_data=None)
+        assert kept[params.client_keyword] == 'web'
+
     def test_updated_at_is_now_by_default(self):
         before = datetime.now().replace(microsecond=0)
         data = with_metadata({}, **IDENTITY, language='en', exam_data=None)

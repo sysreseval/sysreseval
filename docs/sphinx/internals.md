@@ -256,6 +256,7 @@ archive = {
         "fullname":            "Alice Martin",      # from GECOS, always present
         "email":               "alice@example.com", # when email_in_gecos_last_field=True
         "group":               "INFO1",             # web front-end only, when a group source is configured
+        "client":              "local",             # the writer of the answers file: "local" (Qt GUI) or "web" (web agent)
         "language":            "fr",
         "answers_updated_at":  "20260615110000",
         "auto_eval_count":     2,                   # self-evals before this one
@@ -275,6 +276,8 @@ archive = {
 ```
 
 Archives are written by `sre eval`, `eval-all`, `eval-exam`, `end-exam`, `re-eval`, and consumed by `sre cat`, `sheet`, `outline`, `check-eval`, `watch` — see [CLI Reference](cli.md).
+
+The `answers` section is the content of `answers/answers.json` at the time of the evaluation. `client` names the program that wrote that file: `"local"` for the Qt GUI on the student's workstation, `"web"` for the agent of the web front-end (`sre-agent`). When a student used both on the same project, it is the last one that wrote; an instructor helping from the web site does not change it (a student working in the GUI stays `"local"`). The key is missing from the archives of older versions and from those of a project no client opened (`sre start` then `sre eval` from the command line: no answers file).
 
 ## Save file format
 

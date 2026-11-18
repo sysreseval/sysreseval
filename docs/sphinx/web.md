@@ -237,6 +237,10 @@ when the owner opens the project page and the file lacks it or holds other value
 project created by an older agent, or on the Qt GUI, gets its name and group then); a request
 whose identity carries no full name or no group (a header the proxy did not set) never erases
 the stored values.
+The answers file also says which program wrote it, under the key `client` (hence in the
+archives too): `web` for the agent, `local` for the Qt GUI. A project used on both sides
+carries the name of the last one that wrote; an instructor helping from the web site leaves
+the student's value as it is.
 
 ### Authentication by the reverse proxy
 

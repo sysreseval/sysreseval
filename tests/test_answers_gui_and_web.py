@@ -117,10 +117,13 @@ class TestBothWriters:
                 type_text(view, 'local 1')
                 data = on_disk(h, rln)
                 assert data[TEXT_HASH] == 'local 1' and params.group_keyword not in data
+                assert data[params.client_keyword] == params.client_local
                 # the owner opens the project page: the answers shown, the metadata completed
+                # (the agent wrote the file: it is the client until the GUI writes again)
                 assert await page_answers(h, rln) == {TEXT_HASH: 'local 1'}
                 data = on_disk(h, rln)
                 assert data[TEXT_HASH] == 'local 1' and data[params.group_keyword] == 'INFO1'
+                assert data[params.client_keyword] == params.client_web
                 assert view.reload_if_changed() is True and view.answer_text.toPlainText() == 'local 1'
                 # the GUI goes on typing: in the file, pushed to the page (lost before 2026-11-03)
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
@@ -128,8 +131,10 @@ class TestBothWriters:
                 await answers_event(ws, lambda a: a.get(TEXT_HASH) == 'local 2')
                 data = on_disk(h, rln)
                 assert data[TEXT_HASH] == 'local 2' and data[params.group_keyword] == 'INFO1'
+                assert data[params.client_keyword] == params.client_local
                 # the page answers the form question: the GUI shows it
                 await put(h, rln, {FORM_HASH: FORM_ANSWER})
+                assert on_disk(h, rln)[params.client_keyword] == params.client_web
                 await gui_sees(view, lambda v: FORM_HASH in v._answers)
                 show_row(view, 1)
                 assert view._current_form_widget.get_answers() == FORM_ANSWER
@@ -147,15 +152,19 @@ class TestBothWriters:
         async def go():
             async with Harness(tmp_path) as h:
                 rln = await h.started()
+                assert on_disk(h, rln)[params.client_keyword] == params.client_web   # written at the creation
                 await put(h, rln, {TEXT_HASH: 'web 1'})
+                assert on_disk(h, rln)[params.client_keyword] == params.client_web
                 ws = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers())
                 # the GUI opens the project: the web answer shown, the file written again with
-                # the identity of the desktop session, the group of the web identity kept
+                # the identity of the desktop session (and the GUI as the client), the group of
+                # the web identity kept
                 view = open_gui(h, rln)
                 assert view.answer_text.toPlainText() == 'web 1'
                 data = on_disk(h, rln)
                 assert (data[TEXT_HASH], data[params.login_keyword], data[params.group_keyword]) == \
                     ('web 1', getpass.getuser(), 'INFO1')
+                assert data[params.client_keyword] == params.client_local
                 type_text(view, 'local')
                 await answers_event(ws, lambda a: a.get(TEXT_HASH) == 'local')
                 assert await page_answers(h, rln) == {TEXT_HASH: 'local'}
@@ -207,11 +216,14 @@ class TestBothWriters:
                 ws_prof = await h.client.ws_connect(f'/v1/projects/{rln}/events', headers=headers(PROF))
                 assert (await page_answers(h, rln, PROF)) == {TEXT_HASH: 'student'}
                 await put(h, rln, {TEXT_HASH: 'prof'}, PROF)
+                # written by the agent for the instructor: the client stays the student's GUI
+                assert on_disk(h, rln)[params.client_keyword] == params.client_local
                 await gui_sees(view, lambda v: v.answer_text.toPlainText() == 'prof')
                 type_text(view, 'student again')
                 await answers_event(ws_prof, lambda a: a.get(TEXT_HASH) == 'student again')
                 data = on_disk(h, rln)
                 assert data[TEXT_HASH] == 'student again' and data[params.login_keyword] == getpass.getuser()
+                assert data[params.client_keyword] == params.client_local
                 assert 'prof' not in json.dumps(data)
                 assert (await page_answers(h, rln, PROF)) == {TEXT_HASH: 'student again'}
                 await ws_prof.close()

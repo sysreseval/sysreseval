@@ -525,6 +525,9 @@ fullname_keyword = "fullname"
 email_keyword = "email"
 language_keyword = "language"
 group_keyword = "group"            # the student group of the owner (web front-end, when configured)
+client_keyword = "client"          # the program that wrote the answers file: client_local or client_web
+client_local = "local"             # the Qt GUI on the student's workstation
+client_web = "web"                 # the web agent (sre-agent), for a browser user
 
 # Languages selectable in the GUI language priority dialog
 available_language_in_interface = ['en', 'fr']

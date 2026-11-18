@@ -77,6 +77,7 @@ class TestSharedAnswersFile:
         type_text(view, 'one')
         data = read(answers_dir)
         assert data[Q1] == 'one' and data[params.login_keyword] and data[params.hostname_keyword]
+        assert data[params.client_keyword] == params.client_local == 'local'
         assert stat.S_IMODE((answers_dir / params.answer_file_name).stat().st_mode) == 0o644
         assert [p.name for p in answers_dir.iterdir()] == [params.answer_file_name]   # no temporary file left
         assert view._pending == {}
