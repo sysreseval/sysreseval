@@ -920,13 +920,13 @@ def test_only_choice_answers_are_exo_only(lab, data, tmp_pub_dir):
 # ---------------------------------------------------------------------------
 
 _LEVEL_1 = ['intro', 'hooks', 'structure', 'selectors', 'verdicts', 'conntrack', 'output', 'nft-cli', 'logging', 'sets',
-            'limits', 'nat', 'testing', 'practices', 'cheatsheet']
+            'limits', 'nat', 'testing', 'practices', 'from-iptables', 'cheatsheet']
 
 
 def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     grade, ns = _simulate(lab, data, tmp_pub_dir, instructor_mode=True)
     info = _text(ns.informations)
-    assert info.count('\n## ') == 15 and 'ct state established,related' in info and 'nflog:0' in info
+    assert info.count('\n## ') == 16 and 'ct state established,related' in info and 'nflog:0' in info
     assert str(data.nets.lan) not in info     # instance data belongs to the first question
     # the examples of the course use the documentation ranges, never an address an instance could draw
     assert not re.search(r'\b(10\.\d+|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+\b', info)
@@ -934,7 +934,7 @@ def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     resolved, numbering = resolve_informations(ns.informations)
     course = _text(resolved)
     sections = numbering.sections('fr')
-    assert [s.number for s in sections if s.level == 1] == [str(i) for i in range(1, 16)]
+    assert [s.number for s in sections if s.level == 1] == [str(i) for i in range(1, 17)]
     assert [s.tag for s in sections if s.level == 1] == _LEVEL_1
     assert {s.level for s in sections} == {1, 2} and all(s.tag for s in sections)
     hooks = [s.tag for s in sections if s.number.startswith('2.')]
@@ -944,7 +944,12 @@ def test_texts_and_instructor_fragments(lab, data, tmp_pub_dir):
     assert [s.tag for s in sections if s.number.startswith('10.')] == ['anonymous-sets', 'named-sets', 'dynamic-sets', 'maps']
     for hook in ('prerouting', 'input', 'forward', 'output', 'postrouting', 'ingress', 'egress'):
         assert f'**`{hook}`**' in info, hook
-    assert 'iptables' not in [s.tag for s in sections] and 'iptables -' not in info
+    # for whoever knows iptables: the model, one firewall in both languages, the tables of equivalents
+    assert [s.tag for s in sections if s.number.startswith('15.')] == ['ipt-model', 'ipt-example', 'ipt-commands',
+                                                                      'ipt-options', 'ipt-translate', 'ipt-coexist']
+    for needle in ('-m multiport --dports 80,443', 'tcp dport { 80, 443 }', 'iptables-restore-translate -f',
+                   'iptables-nft', 'iptables-legacy', '`-j LOG --log-prefix "input drop: "`'):
+        assert needle in info, needle
     assert '## <a id="conntrack"></a>6. Le suivi de connexion' in course
     assert '- [7. Filtrer ce qui sort : la chaîne output](#output)' in course and '- [8. La commande nft](#nft-cli)' in course
     assert '    - [2.2. Les hooks ingress et egress](#ingress)' in course

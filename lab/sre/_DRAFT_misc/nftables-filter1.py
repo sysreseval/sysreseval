@@ -219,7 +219,8 @@ commande **`nft`**. nftables a remplacé `iptables`, `ip6tables`, `arptables` et
 l'outil par défaut depuis Debian 10) : une seule commande et une seule syntaxe pour IPv4, IPv6,
 ARP et les ponts, un jeu de règles chargé d'un bloc, des ensembles et des dictionnaires intégrés
 au langage. Sur une machine récente, la commande `iptables` n'est plus qu'un traducteur : ses
-règles sont des règles nftables, que `nft list ruleset` affiche aussi.
+règles sont des règles nftables, que `nft list ruleset` affiche aussi (section
+@@ref:from-iptables@@).
 
 Le vocabulaire, détaillé dans les sections suivantes :
 
@@ -243,7 +244,8 @@ critères (@@ref:selectors@@), les verdicts (@@ref:verdicts@@), le suivi de conn
 (@@ref:nft-cli@@), la journalisation (@@ref:logging@@), les ensembles (@@ref:sets@@) et les tests
 (@@ref:testing@@). Le reste (les hooks `ingress` et `egress`, les dictionnaires, la limitation de
 débit, la traduction d'adresses, les bonnes pratiques) complète le tableau : vous en aurez besoin
-dans les TP suivants et sur de vraies machines.
+dans les TP suivants et sur de vraies machines. Si vous connaissez déjà `iptables`, la section
+@@ref:from-iptables@@ fait la correspondance entre les deux.
 """)
             + info_subtitle(tr("Le trajet d'un paquet : les hooks"), tag="hooks")
             + tr("""
@@ -1276,6 +1278,185 @@ table inet filter {
   lignes `table inet filter` et `delete table inet filter`, au lieu de `flush ruleset` ;
 - **les règles volatiles** : ce qui n'est pas dans `/etc/nftables.conf` disparaît au
   redémarrage.
+""")
+            + info_subtitle(tr("Passer d'iptables à nftables"), tag="from-iptables")
+            + tr("""
+
+Beaucoup de documentations, de scripts et de réponses trouvées en ligne sont encore écrits pour
+`iptables`, et beaucoup d'administrateurs ont appris avec lui. Cette section aide à passer de
+l'un à l'autre : ce qui change dans le modèle, un même pare-feu écrit dans les deux langages, la
+correspondance des commandes et des options, la traduction automatique, et la cohabitation des
+deux sur une même machine.
+
+### @@sec:ipt-model@@ Ce qui change dans le modèle
+
+| iptables | nftables |
+|----------|----------|
+| des tables fixes (`filter`, `nat`, `mangle`, `raw`) et des chaînes prédéfinies (`INPUT`, `FORWARD`, `OUTPUT`, `PREROUTING`, `POSTROUTING`), présentes même vides | rien de prédéfini : on crée ses tables et ses chaînes de base, du nom de son choix ; c'est le `hook` qui accroche une chaîne, pas son nom (section @@ref:base-chains@@) |
+| l'ordre des tables sur un hook est figé (`raw`, `mangle`, `nat`, `filter`) | les chaînes de base d'un même hook passent par priorité croissante ; les priorités nommées `raw`, `mangle`, `dstnat`, `filter`, `srcnat` reprennent l'ordre d'iptables (section @@ref:priorities@@) |
+| une commande par famille : `iptables`, `ip6tables`, `arptables`, `ebtables` | une seule commande ; une table `inet` filtre IPv4 et IPv6 à la fois |
+| chaque règle compte ses paquets | une règle ne compte que si on lui ajoute `counter` |
+| une règle n'a qu'une cible (`-j`) : journaliser puis détruire demande deux règles | une règle enchaîne plusieurs actions : `counter log prefix "…" drop` |
+| des modules d'extension (`-m multiport`, `-m iprange`, `-m recent`) et l'outil séparé `ipset` | les ensembles, les intervalles et les dictionnaires font partie du langage (section @@ref:sets@@) |
+| une règle se désigne par son numéro, qui change quand on en ajoute ou en retire d'autres | une règle se désigne par son `handle`, qui ne change pas (section @@ref:nft-edit@@) |
+| `iptables-save` et `iptables-restore` emploient un format à part | `nft list ruleset` affiche le format même des fichiers que charge `nft -f` |
+
+Une différence se voit dès le départ : sans aucune règle, iptables a quand même ses chaînes, en
+politique `ACCEPT`, que chaque paquet traverse ; un nftables vide n'a aucune chaîne et laisse tout
+passer sans rien examiner. Le reste du fonctionnement est le même : le suivi de connexion,
+les hooks, et le fait qu'un `accept` ne termine que la chaîne en cours (un paquet accepté dans
+la table `mangle` d'iptables peut encore être détruit dans sa table `filter`, comme dans deux
+chaînes de base nftables du même hook).
+
+### @@sec:ipt-example@@ Un même pare-feu dans les deux langages
+
+En iptables, une suite de commandes, où chaque option `-m` charge un module :
+
+```
+iptables -P INPUT DROP
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 5/second -j ACCEPT
+iptables -A INPUT -s 192.0.2.0/24 -p tcp --dport 22 -j ACCEPT
+iptables -A INPUT -p tcp -m multiport --dports 80,443 -j ACCEPT
+iptables -N logdrop
+iptables -A logdrop -m limit --limit 5/minute -j LOG --log-prefix "input drop: "
+iptables -A logdrop -j DROP
+iptables -A INPUT -j logdrop
+```
+
+En nftables, un fichier chargé d'un bloc (section @@ref:nft-files@@) :
+
+```
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                ct state established,related accept
+                iif "lo" accept
+                icmp type echo-request limit rate 5/second accept
+                ip saddr 192.0.2.0/24 tcp dport 22 accept
+                tcp dport { 80, 443 } accept
+                jump logdrop
+        }
+        chain logdrop {
+                limit rate 5/minute log prefix "input drop: "
+                drop
+        }
+}
+```
+
+La correspondance est presque mot à mot ; seul `-m multiport` devient un ensemble anonyme. Une
+différence de taille, pourtant : faute de règles `ip6tables`, le script iptables laisse **IPv6
+entièrement ouvert**, alors que la table `inet` filtre IPv6 aussi. Ses règles qui ne nomment ni
+adresse ni type ICMP (`ct state`, `iif "lo"`, `tcp dport`, `jump`) valent pour les deux versions
+d'IP ; sur une machine qui a IPv6, il faut y ajouter la découverte des voisins (section
+@@ref:principles@@).
+
+### @@sec:ipt-commands@@ Les commandes
+
+| iptables | nftables |
+|----------|----------|
+| `iptables -L -n -v --line-numbers`, `iptables -S` | `nft -a list ruleset` |
+| `iptables -P INPUT DROP` | `policy drop;` dans la déclaration de la chaîne de base (section @@ref:nft-edit@@) |
+| `iptables -A INPUT …` | `nft add rule inet filter input …` |
+| `iptables -I INPUT …` | `nft insert rule inet filter input …` |
+| `iptables -I INPUT 3 …` | `nft insert rule inet filter input handle N …` (N : le handle de la règle qui doit suivre) |
+| `iptables -R INPUT 3 …` | `nft replace rule inet filter input handle N …` |
+| `iptables -D INPUT 3`, ou `iptables -D INPUT` suivi de la règle | `nft delete rule inet filter input handle N` (par handle seulement) |
+| `iptables -N logdrop`, `-j logdrop`, `-g logdrop`, `-j RETURN` | `nft add chain inet filter logdrop`, `jump logdrop`, `goto logdrop`, `return` |
+| `iptables -F INPUT`, `iptables -F` | `nft flush chain inet filter input`, `nft flush table inet filter` |
+| `iptables -X logdrop` | `nft delete chain inet filter logdrop` |
+| `iptables-save > regles`, `iptables-restore < regles` | `nft -s list ruleset > regles`, `nft -f regles` |
+| `iptables -t nat …` | une table et des chaînes de type `nat` (section @@ref:nat@@) |
+
+### @@sec:ipt-options@@ Les critères et les cibles
+
+| iptables | nftables |
+|----------|----------|
+| `-i eth0`, `-o eth0`, `-i eth+` | `iifname "eth0"`, `oifname "eth0"`, `iifname "eth*"` (ou `iif eth0`, voir plus bas) |
+| `-s 192.0.2.0/24`, `-d 192.0.2.1` | `ip saddr 192.0.2.0/24`, `ip daddr 192.0.2.1` |
+| `! -s 192.0.2.0/24` | `ip saddr != 192.0.2.0/24` |
+| `-p udp` | `meta l4proto udp` |
+| `-p tcp --dport 22`, `-p tcp --sport 1024:65535` | `tcp dport 22`, `tcp sport 1024-65535` |
+| `-p tcp -m multiport --dports 80,443` | `tcp dport { 80, 443 }` |
+| `-m iprange --src-range 192.0.2.10-192.0.2.20` | `ip saddr 192.0.2.10-192.0.2.20` |
+| `-p icmp --icmp-type echo-request` | `icmp type echo-request` |
+| `-m state --state ESTABLISHED,RELATED`, `-m conntrack --ctstate NEW` | `ct state established,related`, `ct state new` |
+| `-m mac --mac-source 02:00:00:00:00:01` | `ether saddr 02:00:00:00:00:01` |
+| `-m owner --uid-owner www-data` | `meta skuid "www-data"` (section @@ref:skuid@@) |
+| `-m comment --comment "SSH"` | `comment "SSH"`, en fin de règle |
+| `-m limit --limit 5/minute --limit-burst 10` | `limit rate 5/minute burst 10 packets` |
+| `-m hashlimit --hashlimit-name ssh --hashlimit-mode srcip --hashlimit-above 3/minute` | `update @clients { ip saddr limit rate over 3/minute }` (section @@ref:limit-per-source@@) |
+| `-m connlimit --connlimit-above 2` | `add @sessions { ip saddr ct count over 2 }` (section @@ref:limit-per-source@@) |
+| `-m set --match-set blocklist src`, l'ensemble créé par `ipset create blocklist hash:net` | `ip saddr @blocklist`, l'ensemble déclaré `type ipv4_addr; flags interval;` (section @@ref:named-sets@@) |
+| `-m recent --name banned --set`, puis `-m recent --name banned --rcheck --seconds 60 -j DROP` | `add @banned { ip saddr }`, puis `ip saddr @banned drop`, l'ensemble déclaré `flags dynamic,timeout; timeout 60s;` (section @@ref:dynamic-sets@@) |
+| `-m mark --mark 1`, `-j MARK --set-mark 1` | `meta mark 1`, `meta mark set 1` |
+| `-j ACCEPT`, `-j DROP`, `-j RETURN` | `accept`, `drop`, `return` |
+| `-j REJECT`, `-j REJECT --reject-with tcp-reset` | `reject`, `reject with tcp reset` |
+| `-j LOG --log-prefix "input drop: "` | `log prefix "input drop: "` (suivi, si besoin, d'un verdict dans la même règle) |
+| `-j NFLOG --nflog-group 0` | `log group 0` |
+| `-j TRACE`, dans la table `raw` | `meta nftrace set 1` (section @@ref:which-rule@@) |
+| `-j MASQUERADE`, `-j SNAT --to-source A`, `-j DNAT --to-destination A:P`, `-j REDIRECT --to-ports P` | `masquerade`, `snat to A`, `dnat to A:P`, `redirect to :P` |
+
+**`iifname` ou `iif` ?** L'option `-i` d'iptables compare le **nom** de l'interface, comme
+`iifname`. `iif` compare son **numéro** (son index) : c'est plus rapide, mais l'interface doit
+exister quand la règle est chargée, et une interface détruite puis recréée (un tunnel, une
+interface `ppp`, celle d'un conteneur) reçoit un autre numéro, que la règle ne suit pas. `iif lo`
+convient donc toujours ; pour une interface qui va et vient, on écrit `iifname`.
+
+### @@sec:ipt-translate@@ Traduire automatiquement
+
+Le paquet `iptables` fournit des traducteurs, qui affichent la commande `nft` équivalente sans
+rien changer au pare-feu :
+
+```
+iptables-translate -A INPUT -i eth0 -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+ip6tables-translate …                                    # la même chose pour ip6tables
+iptables-restore-translate -f regles.v4 > regles.nft     # tout un fichier écrit par iptables-save
+```
+
+La première commande affiche (à la version près) :
+
+```
+nft 'add rule ip filter INPUT iifname "eth0" tcp dport 22 ct state new counter accept'
+```
+
+La traduction est **littérale** : elle vise la table `ip filter` et la chaîne `INPUT` que crée
+`iptables-nft` (voir plus bas), ajoute `counter` à chaque règle, puisque iptables compte tout, et
+emploie `iifname`. Certaines extensions n'ont pas de traduction : relisez toujours le résultat.
+C'est un point de départ, que l'on réécrit en vrai fichier nftables. Pour convertir un pare-feu :
+
+1. sauvegarder les règles en place : `iptables-save > regles.v4` (et `ip6tables-save >
+   regles.v6`) ;
+2. les traduire avec `iptables-restore-translate -f regles.v4`, et lire le résultat ;
+3. le réécrire en fichier nftables (section @@ref:nft-files@@) : une seule table `inet` pour IPv4
+   et IPv6, des noms en minuscules, des ensembles à la place des séries de règles presque
+   identiques et des `ipset`, `counter` seulement là où il sert ;
+4. vérifier le fichier (`nft -c -f`), le charger, puis retirer les règles d'iptables et le service
+   qui les rechargeait au démarrage (`netfilter-persistent` sous Debian), au profit du service
+   `nftables`.
+
+### @@sec:ipt-coexist@@ iptables sur une machine nftables
+
+Sur une Debian récente, la commande `iptables` est **`iptables-nft`** : `iptables -V` affiche
+`iptables v1.8.9 (nf_tables)`. Elle garde la syntaxe d'iptables, mais écrit des règles nftables,
+dans des tables `ip filter`, `ip nat`, `ip6 filter`… aux chaînes `INPUT`, `FORWARD`, `OUTPUT`…,
+que `nft list ruleset` affiche à côté des vôtres. C'est ainsi que Docker, par exemple, installe
+ses règles. Quelques conséquences :
+
+- ces tables appartiennent à iptables : on les lit avec `nft`, mais on ne les modifie qu'avec
+  `iptables`, dont les règles emploient des extensions que seul iptables sait gérer ;
+- chaque table est traversée : un paquet que votre table `inet filter` accepte peut encore être
+  détruit par la table `ip filter` d'iptables, sur le même hook, et inversement (section
+  @@ref:priorities@@) ;
+- `nft flush ruleset` efface aussi ces tables (section @@ref:pitfalls@@) ;
+- l'ancien moteur, **`iptables-legacy`** (`iptables -V` affiche alors `(legacy)`), n'apparaît
+  pas du tout dans `nft list ruleset`, mais ses règles s'appliquent quand même. Ne mélangez pas
+  les deux sur une machine : `update-alternatives --config iptables` choisit le moteur que
+  désigne la commande `iptables`.
 """)
             + info_subtitle(tr("Aide-mémoire"), tag="cheatsheet")
             + tr("""
