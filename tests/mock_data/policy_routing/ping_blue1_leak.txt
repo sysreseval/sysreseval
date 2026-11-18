@@ -1,0 +1,6 @@
+PING 10.56.195.10 (10.56.195.10) 56(84) bytes of data.
+64 bytes from 10.56.195.10: icmp_seq=1 ttl=63 time=0.232 ms
+
+--- 10.56.195.10 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.232/0.232/0.232/0.000 ms

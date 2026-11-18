@@ -1,0 +1,5 @@
+PING 10.56.195.10 (10.56.195.10) 56(84) bytes of data.
+
+--- 10.56.195.10 ping statistics ---
+1 packets transmitted, 0 received, 100% packet loss, time 0ms
+

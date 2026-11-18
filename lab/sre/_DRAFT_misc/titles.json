@@ -11,6 +11,10 @@
     "en": "Flow metrology: NetFlow with softflowd and nfdump",
     "fr": "Métrologie des flux : NetFlow avec softflowd et nfdump"
   },
+  "policy-routing.py": {
+    "en": "Policy routing: ip rule, two ISPs and VRFs",
+    "fr": "Routage par politique : ip rule, deux fournisseurs d'accès et VRF"
+  },
   "prometheus.py": {
     "en": "Prometheus: metrics, queries and alerts",
     "fr": "Prometheus : métriques, requêtes et alertes"
