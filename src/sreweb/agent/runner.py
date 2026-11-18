@@ -29,6 +29,12 @@ from .. import config as _config
 EXIT_FLAVOR_FORM_NEEDED = 3
 EXIT_FLAVOR_NOT_ALLOWED = 4
 
+#: How the agent names itself to ``sre`` (params.sre_origin_env_variable / params.origin_web;
+#: copied because the portal imports this module and must not import ``SRE``; the test of
+#: ``build_env`` compares them): the origin file of a project it starts says "web".
+ORIGIN_ENV_VARIABLE = 'SRE_ORIGIN'
+ORIGIN_WEB = 'web'
+
 PHASE_MESSAGE = 'message'       # a plain stderr line
 PHASE_PROJECT = 'project'       # {"phase": "project", "status": "created", "running_lab_name": ...}
 PHASE_FLAVOR_FORM = 'flavor_form'
@@ -114,8 +120,11 @@ class RunResult:
 def build_env(user: str, *, privileged: bool = False, lang: str | None = None, term: str | None = None,
               path: str = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin') -> dict:
     """The environment of a ``sre`` process run for *user*: built from scratch, never from the
-    agent's own environment (no ``SUDO_COMMAND``, no ``SUDO_UID``)."""
-    env = {'PATH': path, 'HOME': '/root', 'USER': 'root', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'}
+    agent's own environment (no ``SUDO_COMMAND``, no ``SUDO_UID``).  It names the agent as the
+    caller (``ORIGIN_ENV_VARIABLE``): the project a ``start`` creates is a web one in its origin
+    file, what ``sre status`` shows."""
+    env = {'PATH': path, 'HOME': '/root', 'USER': 'root', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+           ORIGIN_ENV_VARIABLE: ORIGIN_WEB}
     if privileged:
         env['LOGNAME'] = user
     else:

@@ -112,6 +112,27 @@ In the GUI all three show only while the *Instructor mode* button is on (see [GU
 
 Both commands write `info.json` again; the question hashes do not depend on the mode, so the answers already given stay attached. `remove-instructor-mode` also deletes `operations.log`, unless the project is a debug project (which also keeps its instructor texts).
 
+### `sre status`
+
+Shows what runs on the machine: the version of SRE, whether the web agent (`sre-agent`, see [Web front-end](web.md)) is running, and every running project with its origin and the user who created it. Read-only, privileged only.
+
+```
+sre 0.17.0
+sre-agent: running (pid 812)
+running projects: 3
+ORIGIN  USER   PROJECT
+web     alice  20261118091203@@@sre@dhcp.py@@@alice
+local   bob    20261118091540@@@sre@nftables-filter1.py@@@bob
+local   root   20261118100111@@@sre@static_routing.py@@@root
+```
+
+- **`sre-agent`**: `running (pid N)`, `not running`, or `not running (no /etc/sreweb/agent.toml)` on a machine that is not a pool host (the path is the one of the layout). The agent is looked for among the processes (`/proc`), whatever started it: the systemd unit or a command typed by hand.
+- **`ORIGIN`**: `local` for a project started on the machine itself (the GUI of a student, or `sre start` run by root), `web` for a project the web agent started for a browser user.
+- **`USER`**: the user who created the project: the login of the session for a local project (`root` for `sudo sre start`), the login of the web site for a web project.
+- **`PROJECT`**: the running lab name, as `sre stop`, `sre connect` and `sre eval` take it. The projects are listed in start order; `running projects: none` when there is none.
+
+The origin and the user are read from `.private/origin.json`, which `sre start` (as well as `sre restore` and `sre pre-start-exam`) writes when it creates the project. A project created by an older version has no such file: its origin shows as `?` and its user is the one of its name. The web agent names itself with the environment variable `SRE_ORIGIN=web` in every `sre` it runs; `sre` ignores the variable when it was launched through `sre-wrapper` and `sudo`, so a student cannot have a local project listed as a web one. An agent started before the update keeps writing `local` until it is restarted (`sre-web-tool restart --all`).
+
 ### `sre eval-all [--display-grades / --no-display-grades]`
 
 Evaluates every running lab instance concurrently. `--no-display-grades` suppresses the per-lab grade summary.

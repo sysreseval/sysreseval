@@ -122,6 +122,14 @@ class TestParsing:
         assert result.code == 2 and result.events == []
         assert 'unrecognized arguments' in capsys.readouterr().err
 
+    def test_status_takes_no_argument(self, sre_cli, capsys):
+        """Read-only: root is dropped for good (the origin files are the sre user's)."""
+        result = sre_cli(['status'])
+        assert result.code == 0 and result.events == ['permanent drop', 'action_status']
+        result = sre_cli(['status', 'PROJECT'])
+        assert result.code == 2 and result.events == []
+        assert 'unrecognized arguments' in capsys.readouterr().err
+
     def test_preload_images_progress_option(self, sre_cli):
         """--progress (the JSON steps on stderr the web agent reads) is off unless asked."""
         result = sre_cli(['preload-images', '/opt/sre/lab'])
@@ -146,6 +154,7 @@ class TestParsing:
         assert 'Take a running project out of instructor mode (privileged only)' in text
         assert 'Stop every running project the caller may access' in text
         assert 'Remove all files and stop kathara (privileged only)' in text
+        assert 'Show the version, the state of sre-agent and the running projects (privileged only)' in text
 
     @pytest.mark.parametrize('command', ['start', 'restore'])
     def test_help_of_the_option(self, sre_cli, capsys, command):
@@ -160,6 +169,7 @@ class TestParsing:
         assert 'Passer un projet en cours en mode enseignant' in text
         assert 'Sortir un projet en cours du mode enseignant' in text
         assert 'Arrêter tous les projets en cours accessibles' in text
+        assert "Afficher la version, l'état de sre-agent et les projets en cours" in text
         assert sre_cli(['start', '--help']).code == 0
         assert 'en mode enseignant' in ' '.join(capsys.readouterr().out.split())
 
@@ -171,6 +181,7 @@ class TestParsing:
         assert 'Ein laufendes Projekt in den Lehrkraftmodus versetzen' in text
         assert 'Alle laufenden Projekte stoppen, auf die der Aufrufer zugreifen darf' in text
         assert 'Die Installation von GitHub aktualisieren' in text
+        assert 'Version, Zustand von sre-agent und laufende Projekte anzeigen' in text
         assert sre_cli(['start', '--help']).code == 0
         assert 'im Lehrkraftmodus starten' in ' '.join(capsys.readouterr().out.split())
 
@@ -316,7 +327,7 @@ class TestPrivilegeList:
         monkeypatch.setattr(params, 'allow_privileged_machines', False)
         assert sre_cli(['stop-all']).events == ['permanent drop', 'action_stop_all']
 
-    @pytest.mark.parametrize('argv', [['list'], ['export', 'PROJECT']])
+    @pytest.mark.parametrize('argv', [['list'], ['export', 'PROJECT'], ['status']])
     def test_other_actions_drop_for_good(self, sre_cli, argv):
         assert sre_cli(argv).events[0] == 'permanent drop'
 
@@ -370,6 +381,15 @@ class TestRefusals:
         assert result.args is None
         assert message in capsys.readouterr().err
         assert not Path(params.sre_projects_dir).exists()
+
+    def test_status_is_refused_in_user_mode(self, sre_cli, capsys, monkeypatch, tmp_pub_dir):
+        """`sre --user status` through sre-wrapper, with the real action: nothing is printed."""
+        monkeypatch.setenv('SUDO_USER', 'etudiant')
+        monkeypatch.setenv('USER_USERNAME', 'etudiant')
+        result = sre_cli(['--user', 'status'], real=('action_status',))
+        assert result.code == 1 and result.events == ['permanent drop']
+        captured = capsys.readouterr()
+        assert "you're not allowed to run this command" in captured.err and captured.out == ''
 
     def test_stop_all_is_refused_in_exam_mode(self, sre_cli, capsys, monkeypatch, tmp_pub_dir):
         """`stop-all` (the GUI's Close All Projects) follows `stop`: not during an exam."""

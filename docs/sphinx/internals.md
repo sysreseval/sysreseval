@@ -69,6 +69,7 @@ Every command that touches Docker runs as user `sre` (uid `1100`): `sre-wrapper`
 /var/lib/sre/projects/{timestamp}@@@{lab_name}@@@{username}/
 ├── .private/               mode 0o700
 │   ├── data.json           serialized Data instance, mode 0o600
+│   ├── origin.json         {"origin": "local"|"web", "user": <login>}: where the project was started from and by whom (`sre status`), mode 0o600
 │   ├── srelab              symlink to the lab's srelab.py
 │   ├── eval_in_progress    lock file (PID) during active eval
 │   └── auto_eval.log       one ISO timestamp per student self-evaluation

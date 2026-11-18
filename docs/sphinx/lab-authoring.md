@@ -121,6 +121,7 @@ sre connect alice router      # disambiguate by username
 | `.private/debug_project` | Marker dropped by `sre start --debug-project` (see above). |
 | `.private/instructor_mode` | Marker of the instructor mode (`sre start --instructor-mode`, `sre set-instructor-mode`; see [Instructor-only texts](#instructor-only-texts--instructor)). |
 | `.private/auto_eval.log` | One line per student-triggered self-eval; drives the `self.auto_eval_count` counter exposed to `Grade.grade()`. |
+| `.private/origin.json` | Written once when the project is created: `local` (the GUI, or `sre start` run by root) or `web` (the web agent), and the user who created it. Read by `sre status`. |
 
 Evaluation archives are **not** stored under the project directory — they go to `/var/lib/sre/archives/` (plus any extra `archive_dirs` declared at module level), named `{YYYYmmddHHMMSS}_{running_lab_name}.zst`.
 

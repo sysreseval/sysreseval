@@ -69,6 +69,14 @@ class TestEnvAndArgv:
         assert env['LOGNAME'] == 'prof' and 'SUDO_USER' not in env
         assert env['LANGUAGE'] == 'fr' and env['TERM'] == 'xterm-256color'
 
+    def test_the_agent_names_itself(self):
+        """Both forms carry the variable `sre start` reads for the origin file of the project;
+        the runner keeps its own copy of the two strings (the portal imports it, never SRE)."""
+        from SRE import params
+        assert (R.ORIGIN_ENV_VARIABLE, R.ORIGIN_WEB) == (params.sre_origin_env_variable, params.origin_web)
+        for env in (R.build_env('alice'), R.build_env('prof', privileged=True)):
+            assert env[params.sre_origin_env_variable] == params.origin_web
+
     def test_argv(self):
         assert R.build_argv('/usr/sbin/sre', ['start', 'sre/dhcp.py']) == ['/usr/sbin/sre', '--user', 'start', 'sre/dhcp.py']
         assert R.build_argv('/usr/sbin/sre', ['exec', 'x'], privileged=True) == ['/usr/sbin/sre', 'exec', 'x']

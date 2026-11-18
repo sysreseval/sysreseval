@@ -412,6 +412,27 @@ def start_by_hand(h: Harness, lab: str = 'sre/dhcp.py', login: str = 'alice') ->
     raise AssertionError("no project created")
 
 
+class TestOrigin:
+    """The origin file of a project (SRE/origin.py, shown by `sre status`): the agent names itself
+    in the environment of the sre it runs, a project started outside it is a local one."""
+
+    def test_agent_starts_are_web_and_the_others_local(self, tmp_path):
+        def origin_of(h, rln):
+            return json.loads((h.pub / 'projects' / rln / params.private_dir_name / params.origin_json_name).read_text())
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                student = await h.started(ALICE)
+                instructor = await h.started(A.PROF_NOVIEW, instructor_mode=True)      # a privileged call
+                local = start_by_hand(h, lab='s4/tp_ssh', login='bob')
+                assert origin_of(h, student) == {'origin': 'web', 'user': 'alice'}
+                assert origin_of(h, instructor) == {'origin': 'web', 'user': 'prof'}
+                assert origin_of(h, local) == {'origin': 'local', 'user': 'bob'}
+                starts = [entry['env'] for entry in h.entries() if 'start' in entry['argv']]
+                assert [env['SRE_ORIGIN'] for env in starts] == ['web', 'web']
+        run(go())
+
+
 class TestExamApi:
     def test_exam_start_is_privileged_with_preset_and_exam_only_lab(self, tmp_path):
         async def go():

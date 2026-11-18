@@ -36,6 +36,7 @@ from SRE.command.list import action_list
 from SRE.command.make_titles import action_make_titles
 from SRE.command.start import action_start
 from SRE.command.wipe import action_wipe
+from SRE.command.status import action_status
 from SRE.command.stop import action_stop
 from SRE.command.stop_all import action_stop_all
 from SRE.command.save import action_save
@@ -181,6 +182,9 @@ def parse_args():
     parser_exec.add_argument('command', nargs=argparse.REMAINDER, help=_('command to execute'))
 
     subparsers.add_parser('wipe', help=_('Remove all files and stop kathara (privileged only)'))
+
+    subparsers.add_parser('status', help=_('Show the version, the state of sre-agent and the running projects '
+                                           '(privileged only)'))
 
     parser_set_instructor = subparsers.add_parser(
         'set-instructor-mode', help=_('Put a running project in instructor mode (privileged only)'))
@@ -485,6 +489,8 @@ logger.setLevel(logging.ERROR)
 match SRE.args.action:
     case 'wipe':
         action_wipe()
+    case 'status':
+        action_status()
     case 'list':
         action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only,
                     with_readmes=SRE.args.with_readmes)

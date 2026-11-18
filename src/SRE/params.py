@@ -326,6 +326,9 @@ sre_host_ip_env_variable = "SRE_HOST_IP"
 # in place of <sre_host_ip>:0 (the X server of a workstation)
 sre_x11_display_env_variable = "SRE_X11_DISPLAY"
 sre_display_env_variable = "SRE_DISPLAY"
+# the web agent sets it to origin_web for every `sre` it runs: the origin written in the origin
+# file of a new project (origin.py); ignored when sudo launched sre (the student path)
+sre_origin_env_variable = "SRE_ORIGIN"
 
 sre_host_ip = "172.17.0.1"
 
@@ -502,6 +505,13 @@ eval_in_progress_name = "eval_in_progress"
 auto_eval_log_name = "auto_eval.log"
 debug_project_marker_name = "debug_project"
 instructor_mode_marker_name = "instructor_mode"
+# Origin file (.private/origin.json), written once when the project is created (`sre start`,
+# `sre restore`, `sre pre-start-exam`) and read by `sre status`: who started the project and from where
+origin_json_name = "origin.json"
+origin_keyword = "origin"          # origin_local or origin_web
+origin_local = "local"             # the Qt GUI through sre-wrapper, or sre run by root
+origin_web = "web"                 # the web agent (sre-agent), for a browser user
+origin_user_keyword = "user"       # the user who created the project (SRE.username)
 # Operations log (GUI "Log" tab): every `sre state` / `sre eval` of a debug project appends what it
 # executed, every `sre state` of an instructor-mode project too; lives in the public project dir,
 # never written for the other projects
@@ -729,6 +739,10 @@ def debug_project_marker_filename(running_lab_name: str) -> str:
 
 def instructor_mode_marker_filename(running_lab_name: str) -> str:
     return f"{private_lab_dir(running_lab_name)}/{instructor_mode_marker_name}"
+
+
+def origin_filename(running_lab_name: str) -> str:
+    return f"{private_lab_dir(running_lab_name)}/{origin_json_name}"
 
 
 def operations_log_filename(running_lab_name: str) -> str:

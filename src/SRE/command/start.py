@@ -12,7 +12,8 @@ import sys
 from Kathara.manager.Kathara import Kathara
 
 from .state import do_action_state
-from .. import params
+from .. import access, params
+from ..origin import project_origin, write_origin
 from ..params import SRE
 from ..progress import register_progress_handlers, emit_project_created
 
@@ -289,8 +290,8 @@ def check_grade_class(module_rvlab, current_srelab_file):
 def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab_file, debug_project: bool,
                                instructor_mode: bool = False):
     """Create the on-disk layout of a new project (public/private dirs, answers, files,
-    srelab symlink, user public dir, shared dir, debug / instructor-mode markers).  Fills
-    ``setup`` as it goes."""
+    srelab symlink, user public dir, shared dir, debug / instructor-mode markers, the origin
+    file read by ``sre status``).  Fills ``setup`` as it goes."""
     running_lab_name = setup.running_lab_name
     os.makedirs(params.sre_projects_dir, mode=0o755, exist_ok=True)
 
@@ -313,6 +314,10 @@ def create_project_directories(setup: ProjectSetup, module_rvlab, current_srelab
         Path(params.debug_project_marker_filename(running_lab_name)).touch(mode=0o600)
     if instructor_mode:
         Path(params.instructor_mode_marker_filename(running_lab_name)).touch(mode=0o600)
+    # local or web (the web agent says so in the environment of the sre it runs), and for whom
+    write_origin(params.origin_filename(running_lab_name),
+                 project_origin(os.environ, by_sudo=access.launched_by_sudo(os.environ, params.sre_exe)),
+                 SRE.username or '')
 
     files_dir = params.files_dir(running_lab_name)
     try:

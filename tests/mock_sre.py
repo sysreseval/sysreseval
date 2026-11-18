@@ -102,6 +102,7 @@ import zstandard as zstd  # noqa: E402
 
 from SRE import access, params  # noqa: E402
 from SRE.answers import load_answers  # noqa: E402
+from SRE.origin import project_origin, write_origin  # noqa: E402
 from SRE.instructor_text import instructor, set_instructor_context  # noqa: E402
 from SRE.common import (GradeElement, GradePart, InfoInterface, InfoLab, InfoMachine, InfoSwitch,  # noqa: E402
                         project_accessible,
@@ -127,7 +128,7 @@ ENV_X11 = 'MOCK_X11'               # set: the open machine of the stub lab is an
 
 #: the environment keys written to MOCK_SRE_LOG (when present in the environment)
 LOGGED_ENV = ('SUDO_USER', 'USER_USERNAME', 'LOGNAME', 'SUDO_COMMAND', 'SRE_IN_RECORDER', 'TERM',
-              'SRE_XAUTH_COOKIE', 'SRE_X11_DISPLAY')
+              'SRE_XAUTH_COOKIE', 'SRE_X11_DISPLAY', 'SRE_ORIGIN')
 
 DEFAULT_LAB_LIST = ["sre/dhcp.py", "s4/tp_ssh", "sre/_EXAM_/exam1.py"]
 #: the exam-only lab of the default list (listed with `--include-exam-only` only)
@@ -416,6 +417,9 @@ class Mock:
             Path(params.debug_project_marker_filename(running_lab_name)).touch(mode=0o600)
         if instructor_mode:
             Path(params.instructor_mode_marker_filename(running_lab_name)).touch(mode=0o600)
+        write_origin(params.origin_filename(running_lab_name),
+                     project_origin(self.env, by_sudo=access.launched_by_sudo(self.env, params.sre_exe)),
+                     self.username)
         os.makedirs(params.files_dir(running_lab_name))
         os.mkdir(params.answers_dir(running_lab_name))
         os.chmod(params.answers_dir(running_lab_name), 0o777)
