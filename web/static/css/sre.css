@@ -366,12 +366,13 @@ table.grid.watch td.num, table.grid.pool td.num { text-align: right; white-space
 table.grid.watch td.actions, table.grid.pool td.actions { white-space: nowrap; }
 table.grid.watch td.actions .button, table.grid.watch td.actions button,
 table.grid.pool td.actions .button, table.grid.pool td.actions button { margin-right: 4px; }
-table.grid tr.row-errors td { background: var(--fail-bg); }
-table.grid tr.row-stale td { background: var(--debug-bg); }
-table.grid tr.row-open td { background: var(--ok-light-bg); }   /* a session still open (the History page) */
-/* every other row lightly tinted (the tables of the Watch page): a layer over the colour of the
-   row, which keeps its meaning; more specific than the row colours above, whose shorthand would
-   reset the image */
+table.grid tr.row-errors td { background-color: var(--fail-bg); }
+table.grid tr.row-stale td { background-color: var(--debug-bg); }
+table.grid tr.row-open td { background-color: var(--ok-light-bg); }   /* a session still open (the History page) */
+/* every other row lightly tinted (the tables of the Watch, Pool and History pages): a layer over
+   the colour of the row or of the cell, which keeps its meaning (a session still open stays
+   green).  The colours of these tables are background-color, never the background shorthand,
+   which would reset the layer wherever its rule is the more specific one */
 table.grid.striped tbody tr:nth-child(even) td { background-image: linear-gradient(var(--stripe), var(--stripe)); }
 .watch-filter { margin-left: 12px; width: 240px; }
 .watch-group { margin-left: 8px; }
@@ -423,11 +424,11 @@ table.grid th.select, table.grid td.select { width: 1px; text-align: center; }
 .selection-bar details.report-options label { display: block; margin: 2px 0 2px 12px; white-space: nowrap; }
 /* the Pool page of the instructors: the state cell coloured, the status line */
 table.grid.pool td.state, table.grid.pool td.flags { white-space: nowrap; }
-table.grid.pool td.state.up { background: var(--ok-bg); }
+table.grid.pool td.state.up { background-color: var(--ok-bg); }
 table.grid.pool td.state.waking, table.grid.pool td.state.occupied, table.grid.pool td.state.exam,
-table.grid.pool td.state.draining { background: var(--debug-bg); }
-table.grid.pool td.state.off { background: var(--fail-bg); }   /* a host that does not answer: red, the grey is for a disabled one */
-table.grid.pool td.state.disabled { background: var(--bar-bg); color: var(--muted); }
+table.grid.pool td.state.draining { background-color: var(--debug-bg); }
+table.grid.pool td.state.off { background-color: var(--fail-bg); }   /* a host that does not answer: red, the grey is for a disabled one */
+table.grid.pool td.state.disabled { background-color: var(--bar-bg); color: var(--muted); }
 .pool-status { margin: 0 8px 8px; }
 
 .pool-status.unsaved { color: var(--danger); font-weight: bold; }   /* the state file cannot be written */
@@ -468,7 +469,7 @@ table.grid.archives tbody tr[data-id] { cursor: pointer; }
 .history-stats table.grid { margin: 4px 0 8px; }
 table.grid.totals th { text-align: left; white-space: nowrap; }
 table.grid.stats td.num { text-align: right; white-space: nowrap; }
-table.grid.stats tr.selected td { background: var(--ok-light-bg); }   /* the group whose users alone are listed */
+table.grid.stats tr.selected td { background-color: var(--ok-light-bg); }   /* the group whose users alone are listed */
 
 /* the Groups page of the instructors, and the group keys of the Watch select and of the audience
    dialog: a badge per kind, the members and edit dialogs, the chips of the Add row */

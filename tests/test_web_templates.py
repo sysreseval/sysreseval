@@ -296,13 +296,20 @@ class TestTemplates:
         # the browsers connected to the portal: one row per browser, the address for the administrators only
         assert '<h2>Web portal <span id="watch-web-count" class="muted"></span></h2>' in local
         assert web.startswith(' class="grid watch clients striped" data-addresses="false">') and 'colspan="9"' in web
-        # every other row of the three tables lightly tinted: a class of this page only (the other pages
-        # share `grid watch`), a layer over the colour of the row, more specific than the row colours
+        # every other row of the three tables lightly tinted: a class a table opts in with (the
+        # Pool and History pages too; not every `grid watch` table), a layer over the colour of
+        # the row.  The colours of the rows and cells of these tables are background-color: the
+        # shorthand would reset the layer wherever its rule is the more specific one
         assert '<table id="watch" class="grid watch striped" ' in projects
         css = (STATIC / 'css' / 'sre.css').read_text(encoding='utf-8')
         assert re.search(r'--stripe:\s*rgba\(', css)
         assert re.search(r'table\.grid\.striped tbody tr:nth-child\(even\) td\s*\{[^{}]*background-image:[^{}]*var\(--stripe\)', css)
         assert not re.search(r'table\.grid\.watch[^{]*nth-child', css)
+        coloured = re.findall(r'^table\.grid[^{}]*(?:tr\.row-(?:errors|stale|open)|tr\.selected|\.pool td\.state\.\w+)[^{}]*'
+                              r'\{([^{}]*)\}', css, re.M)
+        assert len(coloured) == 8, coloured
+        for body in coloured:
+            assert 'background-color: var(--' in body and 'background:' not in body, body
         assert [key for key in re.findall(r'data-sort="(\w+)"', web)] == [
             'login', 'fullname', 'group', 'role', 'browser', 'system', 'addr', 'since', 'pages']
         assert '<th class="sortable" data-sort="addr" hidden>Address</th>' in web
@@ -390,7 +397,7 @@ class TestTemplates:
                               group_sources=True)
         assert 'data-group-sources="true"' in with_sources and '<label hidden>' not in with_sources
         assert '<label>Group\n    <select name="group" id="history-group"' in with_sources
-        assert 'type="datetime-local"' in html and 'class="grid watch history"' in html
+        assert 'type="datetime-local"' in html and 'class="grid watch history striped"' in html
         assert 'id="history-older"' in html and 'id="history-newer"' in html and 'id="history-reset"' in html
         # two tables: the events (shown, ten columns, every one a sortable header: table_sort.js
         # sorts the rows shown) and the sessions (hidden until chosen, eleven columns: ten sortable,
@@ -398,14 +405,14 @@ class TestTemplates:
         # Events link column), then the container of the statistics view
         events_table, rest = html.split('<table id="history-sessions"')
         sessions_table, statistics = rest.split('<div id="history-statistics"')
-        assert 'id="history"' in events_table and 'class="grid watch history" data-database' in events_table
+        assert 'id="history"' in events_table and 'class="grid watch history striped" data-database' in events_table
         assert events_table.count('<th class="sortable" data-sort="') == 10 and events_table.count('<th>') == 0
         assert events_table.count('colspan="10"') == 1
         for key, column in (('ts', 'Time'), ('event', 'Event'), ('login', 'Login'), ('addr', 'Address'), ('host', 'Host'),
                             ('rln', 'Project'), ('lab', 'Lab'), ('status', 'Status'), ('duration', 'Duration'),
                             ('details', 'Details')):
             assert f'<th class="sortable" data-sort="{key}">{column}</th>' in events_table, key
-        assert sessions_table.startswith(' class="grid watch history sessions" data-groups="false" hidden>')
+        assert sessions_table.startswith(' class="grid watch history sessions striped" data-groups="false" hidden>')
         assert sessions_table.count('<th class="sortable" data-sort="') == 10 and sessions_table.count('colspan="11"') == 1
         assert sessions_table.count('<th>') == 1 and '<th>Events</th>' in sessions_table
         assert '<th class="sortable" data-sort="group" hidden>Group</th>' in sessions_table
@@ -417,7 +424,7 @@ class TestTemplates:
         with_groups = render('history.html', instructor=True, administrator=True, history_database=False, events=events,
                              groups=True)
         with_groups_sessions = with_groups.split('<table id="history-sessions"')[1].split('<div id="history-statistics"')[0]
-        assert with_groups_sessions.startswith(' class="grid watch history sessions" data-groups="true" hidden>')
+        assert with_groups_sessions.startswith(' class="grid watch history sessions striped" data-groups="true" hidden>')
         assert '<th class="sortable" data-sort="group">Group</th>' in with_groups_sessions
         assert ' hidden>Group</th>' not in with_groups
         # the view switch (Sessions first and pressed: the page opens on it), the filters of the
@@ -438,7 +445,13 @@ class TestTemplates:
                     'median', 'longest', 'peak', 'projects_started', 'projects_used', 'evaluations', 'page_time'):
             assert f'<td data-key="{key}"></td>' in statistics, key
         assert '<tr hidden><th>Groups</th>' in statistics and '<h2 hidden>Groups</h2>' in statistics
-        assert '<table id="stats-groups" class="grid watch history stats" hidden>' in statistics
+        assert '<table id="stats-groups" class="grid watch history stats striped" hidden>' in statistics
+        # every other row tinted in the lists (as on the Watch page); not in the totals, a key /
+        # value table one row of which is hidden without groups
+        for table_id in ('stats-users', 'stats-labs'):
+            assert f'<table id="{table_id}" class="grid watch history stats striped">' in statistics, table_id
+        assert '<table id="stats-distribution" class="grid stats striped">' in statistics
+        assert '<table id="stats-totals" class="grid stats totals">' in statistics
         assert '<th class="sortable" data-sort="group" hidden>Group</th>' in statistics
         assert '<th class="sortable" data-sort="time">Connection time</th>' in statistics          # the users
         assert '<th class="sortable" data-sort="time">On the project pages</th>' in statistics     # the labs
@@ -447,7 +460,7 @@ class TestTemplates:
         assert statistics.count('<tbody></tbody>') == 4
         statistics_with_groups = with_groups.split('<div id="history-statistics"')[1]
         assert statistics_with_groups.startswith(' class="history-stats" data-groups="true" hidden>')
-        assert '<table id="stats-groups" class="grid watch history stats">' in statistics_with_groups
+        assert '<table id="stats-groups" class="grid watch history stats striped">' in statistics_with_groups
         assert '<th class="sortable" data-sort="group">Group</th>' in statistics_with_groups
         assert '<tr><th>Groups</th>' in statistics_with_groups and '<h2>Groups</h2>' in statistics_with_groups
         assert '<tr hidden>' not in statistics_with_groups and '<h2 hidden>' not in statistics_with_groups
@@ -465,7 +478,7 @@ class TestTemplates:
         for key in ('name', 'state', 'projects', 'terminals', 'load1', 'occupied_by', 'uptime', 'priority',
                     'sre_version'):
             assert f'data-sort="{key}"' in html, key
-        assert 'data-login="alice"' in html and 'class="grid watch pool"' in html
+        assert 'data-login="alice"' in html and 'class="grid watch pool striped"' in html
         # the selection: the header checkbox, the bar of bulk buttons, one more column
         assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
         for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload', 'priority'):
@@ -2074,7 +2087,7 @@ class TestJavaScript:
         for cls in ('off', 'disabled'):
             rule = re.search(r'([^{}]*\.state\.%s\b[^{}]*)\{([^{}]*)\}' % cls, css)
             assert rule, f"no rule for td.state.{cls}"
-            token = re.search(r'background:\s*var\((--[a-z-]+-bg)\)', rule.group(2))
+            token = re.search(r'background(?:-color)?:\s*var\((--[a-z-]+-bg)\)', rule.group(2))
             assert token, f"td.state.{cls} has no background token"
             assert token.group(1) in tokens, token.group(1)
             rules[cls] = (rule.group(1).strip(), token.group(1))

@@ -1694,7 +1694,7 @@ What an instructor gets:
   pool cannot be written: a restart of the portal would undo what is changed on the page);
   the state cell is green (up), amber (waking,
   occupied, exam, draining), red (off: the agent does not answer) or grey (disabled, muted
-  text); sortable by any column, filtered by host
+  text); every other row is lightly tinted, as on the Watch page; sortable by any column, filtered by host
   name (one or several words: the hosts whose name contains any of them, `a01 a02 h` for
   those two and every `h…` host), refreshed every 5 s. The buttons of a row are the commands
   of the tool: *Enable* (green) / *Disable* (red), *Wake* (light green; a host with a `mac` or a `wake_command`, while it
@@ -1877,7 +1877,8 @@ toolbar.
 The page opens on the **Sessions** view: the log as one row per session (*The connection log*
 above: one login from one client address, from its first request to the logout, the idle
 timeout or the shutdown): the sessions still open first, in green, from the portal's memory
-(listed even without a database), then the closed ones, newest first, each built from its
+(listed even without a database), then the closed ones, newest first (every other row of the
+tables of the page is lightly tinted, over its colour: an open session is green on every row), each built from its
 `session_close` line: login, name, student group (the column is shown when a group source is
 configured, `attr_group` or `header_group`, like the Group column of the Watch page), address,
 start, end (the last request: an idle session ends there, not at its expiry), duration, number

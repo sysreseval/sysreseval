@@ -73,6 +73,22 @@ def row_count(table: str) -> str:
     return f"document.querySelectorAll('#{table} tbody tr').length"
 
 
+def stripes(table: str) -> str:
+    """Per row of *table*, whether its first cell carries the tint of a striped table."""
+    return (f"[...document.querySelectorAll('#{table} tbody tr')]"
+            ".map((tr) => getComputedStyle(tr.children[0]).backgroundImage !== 'none')")
+
+
+def row_colours(table: str) -> str:
+    """The background colour of the first cell of each row of *table* (the tint is a layer over it)."""
+    return (f"[...document.querySelectorAll('#{table} tbody tr')]"
+            ".map((tr) => getComputedStyle(tr.children[0]).backgroundColor)")
+
+
+OPEN_GREEN = 'rgb(224, 247, 224)'        # --ok-light-bg: a session still open
+NO_COLOUR = 'rgba(0, 0, 0, 0)'           # a closed session: the white of the table
+
+
 def aria_sort(table: str, key: str) -> str:
     return f"document.querySelector('#{table} th[data-sort=\"{key}\"]').getAttribute('aria-sort')"
 
@@ -120,11 +136,18 @@ class TestHistorySort:
                 assert await page.evaluate(column(SESSIONS_TABLE, 1)) == ['prof', 'etu10', 'bob', 'etu9']
                 assert await page.evaluate(aria_sort(SESSIONS_TABLE, 'end')) == 'descending'
                 assert await page.evaluate(aria_sort(SESSIONS_TABLE, 'login')) == 'none'
+                # every other row is lightly tinted; the open session, on a row without tint, is green
+                assert await page.evaluate(stripes(SESSIONS_TABLE)) == [False, True, False, True]
+                assert await page.evaluate(row_colours(SESSIONS_TABLE)) == [OPEN_GREEN, NO_COLOUR, NO_COLOUR, NO_COLOUR]
                 # a text column: ascending first, the collation of the site (etu9 before etu10), the open
                 # session among the others; a second click reverses
                 await sort_by(page, SESSIONS_TABLE, 'login', 'ascending')
                 assert await page.evaluate(column(SESSIONS_TABLE, 1)) == ['bob', 'etu9', 'etu10', 'prof']
                 assert await page.evaluate(aria_sort(SESSIONS_TABLE, 'end')) == 'none'
+                # the tint follows the rows shown, and the open session, now on a tinted row, is
+                # still green: the tint is a layer over the colour of the row
+                assert await page.evaluate(stripes(SESSIONS_TABLE)) == [False, True, False, True]
+                assert await page.evaluate(row_colours(SESSIONS_TABLE)) == [NO_COLOUR, NO_COLOUR, NO_COLOUR, OPEN_GREEN]
                 await sort_by(page, SESSIONS_TABLE, 'login', 'descending')
                 assert await page.evaluate(column(SESSIONS_TABLE, 1)) == ['prof', 'etu10', 'etu9', 'bob']
                 await sort_by(page, SESSIONS_TABLE, 'name', 'ascending')

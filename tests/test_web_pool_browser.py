@@ -45,6 +45,12 @@ ORDER = "Array.from(document.querySelectorAll('#pool tbody tr[data-host]')).map(
 BULK = '#pool-selection button[data-action="priority"]'
 BULK_DISABLED = f"document.querySelector('{BULK}').disabled"
 RENDER = "document.getElementById('pool-filter').dispatchEvent(new Event('input'))"   # the table drawn again, as a poll does
+# per row, [the first cell is tinted, the State cell is tinted, the State cell has a colour]: every
+# other row of the table is lightly tinted, the State cell too, over its colour
+STRIPES = ("[...document.querySelectorAll('#pool tbody tr[data-host]')].map((tr) => { "
+           "const first = getComputedStyle(tr.children[0]), state = getComputedStyle(tr.querySelector('td.state')); "
+           "return [first.backgroundImage !== 'none', state.backgroundImage !== 'none', "
+           "state.backgroundColor !== 'rgba(0, 0, 0, 0)']; })")
 
 
 def cell(name: str) -> str:
@@ -126,6 +132,9 @@ class TestPoolPage:
                 await page.wait_for(f"{shown('b03')} === '0'", what="the rows of the three hosts")
                 assert await page.evaluate(shown('a01')) == '1' and await page.evaluate(shown('b02')) == '0'
                 assert await page.evaluate(BULK_DISABLED) is True
+                # every other row is lightly tinted, its State cell included, which keeps its colour
+                assert await page.evaluate(ORDER) == 'a01 b02 b03'
+                assert await page.evaluate(STRIPES) == [[False, False, True], [True, True, True], [False, False, True]]
                 # the dialog of a row: the present value, kept open and focused when the table is drawn again
                 await page.click(cell('a01'))
                 await page.wait_for(f"{DIALOG_OPEN} && {FIELD_FOCUSED}", what="the dialog of a01")

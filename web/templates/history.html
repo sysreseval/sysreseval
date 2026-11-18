@@ -41,7 +41,7 @@
   <button type="button" id="history-reset">{{ _("Reset") }}</button>
 </form>
 <p id="history-notice" class="muted"{% if history_database %} hidden{% endif %}>{% if not history_database %}{{ _("The connection log is not stored in a database: set [access_log.database] in web.toml to browse it here.") }}{% endif %}</p>
-<table id="history" class="grid watch history" data-database="{{ 'true' if history_database else 'false' }}">
+<table id="history" class="grid watch history striped" data-database="{{ 'true' if history_database else 'false' }}">
   <thead>
     <tr>
       <th class="sortable" data-sort="ts">{{ _("Time") }}</th>
@@ -58,7 +58,7 @@
   </thead>
   <tbody><tr><td colspan="10" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
-<table id="history-sessions" class="grid watch history sessions" data-groups="{{ 'true' if groups else 'false' }}" hidden>
+<table id="history-sessions" class="grid watch history sessions striped" data-groups="{{ 'true' if groups else 'false' }}" hidden>
   <thead>
     <tr>
       <th class="sortable" data-sort="login">{{ _("Login") }}</th>
@@ -104,7 +104,7 @@
     </tbody>
   </table>
   <h2{% if not groups %} hidden{% endif %}>{{ _("Groups") }}</h2>
-  <table id="stats-groups" class="grid watch history stats"{% if not groups %} hidden{% endif %}>
+  <table id="stats-groups" class="grid watch history stats striped"{% if not groups %} hidden{% endif %}>
     <thead>
       <tr>
         <th>{{ _("Group") }}</th>
@@ -119,7 +119,7 @@
     <tbody></tbody>
   </table>
   <h2>{{ _("Users") }}</h2>
-  <table id="stats-users" class="grid watch history stats">
+  <table id="stats-users" class="grid watch history stats striped">
     <thead>
       <tr>
         <th class="sortable" data-sort="login">{{ _("Login") }}</th>
@@ -140,7 +140,7 @@
     <tbody></tbody>
   </table>
   <h2>{{ _("Labs") }}</h2>
-  <table id="stats-labs" class="grid watch history stats">
+  <table id="stats-labs" class="grid watch history stats striped">
     <thead>
       <tr>
         <th class="sortable" data-sort="lab">{{ _("Lab") }}</th>
@@ -156,7 +156,7 @@
     <tbody></tbody>
   </table>
   <h2>{{ _("Connection time of the students") }}</h2>
-  <table id="stats-distribution" class="grid stats">
+  <table id="stats-distribution" class="grid stats striped">
     <thead>
       <tr>
         <th>{{ _("Connection time") }}</th>
