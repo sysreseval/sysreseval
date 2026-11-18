@@ -163,6 +163,17 @@ class TestParsing:
         assert sre_cli(['start', '--help']).code == 0
         assert 'en mode enseignant' in ' '.join(capsys.readouterr().out.split())
 
+    def test_german_help(self, sre_cli, capsys, monkeypatch):
+        """The German catalog (locale/de/LC_MESSAGES/sre.mo) chosen by LANGUAGE like the French one."""
+        monkeypatch.setenv('LANGUAGE', 'de')
+        assert sre_cli(['--help']).code == 0
+        text = ' '.join(capsys.readouterr().out.split())
+        assert 'Ein laufendes Projekt in den Lehrkraftmodus versetzen' in text
+        assert 'Alle laufenden Projekte stoppen, auf die der Aufrufer zugreifen darf' in text
+        assert 'Die Installation von GitHub aktualisieren' in text
+        assert sre_cli(['start', '--help']).code == 0
+        assert 'im Lehrkraftmodus starten' in ' '.join(capsys.readouterr().out.split())
+
     def test_update_options(self, sre_cli):
         result = sre_cli([UPDATE])
         assert result.code == 0 and result.events[-1] == 'action_update'

@@ -1,0 +1,863 @@
+# German translation of the sre command line (domain "sre").
+# Every msgid of locale/fr/LC_MESSAGES/sre.po, in the same order
+# (tests/test_translation_catalogs.py).
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sre\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-09 12:55+0200\n"
+"PO-Revision-Date: 2026-11-18 12:00+0100\n"
+"Last-Translator: \n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Actions"
+msgstr "Aktionen"
+
+msgid "started from SRE-wrapper"
+msgstr "von SRE-wrapper gestartet"
+
+msgid "print debug messages on stderr"
+msgstr "Debug-Meldungen auf stderr ausgeben"
+
+msgid "lab directory"
+msgstr "Laborverzeichnis"
+
+msgid "Remove all files and stop kathara (privileged only)"
+msgstr "Alle Dateien entfernen und Kathara stoppen (nur privilegierte Benutzer)"
+
+msgid "List all available projects"
+msgstr "Alle verfügbaren Projekte auflisten"
+
+msgid "Start a lab"
+msgstr "Ein Labor starten"
+
+msgid "use this data file (rather than create a new one)"
+msgstr "diese Datendatei verwenden (statt eine neue zu erstellen)"
+
+msgid "the lab argument is a path to the lab directory"
+msgstr "das Argument lab ist ein Pfad zum Laborverzeichnis"
+
+msgid "lab name or path to the lab directory"
+msgstr "Laborname oder Pfad zum Laborverzeichnis"
+
+msgid "Connect to a device (with the predefined command)"
+msgstr "Mit einem Gerät verbinden (mit dem vordefinierten Befehl)"
+
+msgid "path to the lab directory"
+msgstr "Pfad zum Laborverzeichnis"
+
+msgid "running lab name or path to the lab directory"
+msgstr "Name des laufenden Labors oder Pfad zum Laborverzeichnis"
+
+msgid "target device"
+msgstr "Zielgerät"
+
+msgid "Apply a state"
+msgstr "Einen Zustand anwenden"
+
+msgid "name of the state to apply"
+msgstr "Name des anzuwendenden Zustands"
+
+msgid "Evaluate the project"
+msgstr "Das Projekt bewerten"
+
+msgid "Evaluate all running projects concurrently"
+msgstr "Alle laufenden Projekte gleichzeitig bewerten"
+
+msgid "print grades to stdout (default: true)"
+msgstr "Noten auf stdout ausgeben (Standard: true)"
+
+msgid "Stop a running project"
+msgstr "Ein laufendes Projekt stoppen"
+
+msgid "Stop every running project the caller may access"
+msgstr "Alle laufenden Projekte stoppen, auf die der Aufrufer zugreifen darf"
+
+msgid "running lab name"
+msgstr "Name des laufenden Labors"
+
+msgid "Export a running project as a Kathara zip archive (base64 on stdout)"
+msgstr ""
+"Ein laufendes Projekt als Kathara-Zip-Archiv exportieren (base64 auf stdout)"
+
+msgid "Evaluate all running exam projects concurrently"
+msgstr "Alle laufenden Prüfungsprojekte gleichzeitig bewerten"
+
+msgid "Remove exam configuration and wipe all projects"
+msgstr "Prüfungskonfiguration entfernen und alle Projekte löschen"
+
+msgid "Pre-start exam: stop foreign projects and start exam labs"
+msgstr ""
+"Prüfung vorstarten: fremde Projekte stoppen und Prüfungslabore starten"
+
+msgid "Mark the exam as started (sets started_at timestamp)"
+msgstr "Die Prüfung als gestartet markieren (setzt den Zeitstempel started_at)"
+
+msgid "Re-grade evaluation archives with a (possibly updated) srelab.py"
+msgstr ""
+"Bewertungsarchive mit einer (eventuell aktualisierten) srelab.py neu bewerten"
+
+msgid "path to srelab.py or to a directory containing it"
+msgstr "Pfad zu srelab.py oder zu einem Verzeichnis, das sie enthält"
+
+msgid "prefix prepended to each output filename"
+msgstr "Präfix, das jedem Ausgabedateinamen vorangestellt wird"
+
+msgid "output directory (default: current directory)"
+msgstr "Ausgabeverzeichnis (Standard: aktuelles Verzeichnis)"
+
+msgid "archive file(s) to re-evaluate"
+msgstr "neu zu bewertende Archivdatei(en)"
+
+msgid "Monitor exam archive directories in real time"
+msgstr "Prüfungsarchivverzeichnisse in Echtzeit überwachen"
+
+msgid "directories to scan for .zst archives"
+msgstr "nach .zst-Archiven zu durchsuchende Verzeichnisse"
+
+msgid "inactivity alert threshold (default: 90)"
+msgstr "Schwelle für den Inaktivitätsalarm (Standard: 90)"
+
+#, python-format
+msgid "dashboard refresh interval (default: %(default)s)"
+msgstr "Aktualisierungsintervall des Dashboards (Standard: %(default)s)"
+
+msgid ""
+"show only hostnames matching this regexp (same as the R key in the dashboard)"
+msgstr ""
+"nur Rechnernamen anzeigen, die zu diesem regulären Ausdruck passen (wie die "
+"Taste R im Dashboard)"
+
+msgid ""
+"only consider projects with an archive received after this time (15:01 or "
+"2026-09-10 15:01; same as the S key in the dashboard)"
+msgstr ""
+"nur Projekte berücksichtigen, von denen nach diesem Zeitpunkt ein Archiv "
+"empfangen wurde (15:01 oder 2026-09-10 15:01; wie die Taste S im Dashboard)"
+
+msgid ""
+"show only the most recently started instance of each lab on each host (same "
+"as the L key in the dashboard)"
+msgstr ""
+"nur die zuletzt gestartete Instanz jedes Labors auf jedem Rechner anzeigen "
+"(wie die Taste L im Dashboard)"
+
+msgid ""
+"one Sessions row per running instance of a lab instead of one per student"
+msgstr ""
+"eine Sessions-Zeile pro laufender Instanz eines Labors statt einer pro "
+"Studierendem"
+
+msgid ""
+"one PDF report and one ODS row per running instance of a lab instead of one "
+"per student"
+msgstr ""
+"ein PDF-Bericht und eine ODS-Zeile pro laufender Instanz eines Labors statt "
+"einer pro Studierendem"
+
+msgid ""
+"only consider archives created at or after this time (15:01 for today, or "
+"2026-09-10 15:01; a bare date means midnight)"
+msgstr ""
+"nur Archive berücksichtigen, die ab diesem Zeitpunkt erstellt wurden (15:01 "
+"für heute oder 2026-09-10 15:01; ein Datum allein bedeutet Mitternacht)"
+
+msgid ""
+"only consider archives created at or before this time (15:01 for today, or "
+"2026-09-10 15:01; a bare date means midnight)"
+msgstr ""
+"nur Archive berücksichtigen, die bis zu diesem Zeitpunkt erstellt wurden "
+"(15:01 für heute oder 2026-09-10 15:01; ein Datum allein bedeutet "
+"Mitternacht)"
+
+msgid "Export evaluation archives to a LibreOffice ODS spreadsheet"
+msgstr "Bewertungsarchive in eine LibreOffice-ODS-Tabelle exportieren"
+
+msgid "output .ods file"
+msgstr "ODS-Ausgabedatei"
+
+msgid "archive file(s) or director(ies) of .zst archives"
+msgstr "Archivdatei(en) oder Verzeichnis(se) mit .zst-Archiven"
+
+msgid "Print the content of evaluation archive files"
+msgstr "Den Inhalt von Bewertungsarchivdateien ausgeben"
+
+msgid "show the data field"
+msgstr "das Feld data anzeigen"
+
+msgid "show the tests field"
+msgstr "das Feld tests anzeigen"
+
+msgid "show the errors field"
+msgstr "das Feld errors anzeigen"
+
+msgid "show the answers field"
+msgstr "das Feld answers anzeigen"
+
+msgid "show grades (grade_list, total_grade, total_max)"
+msgstr "Noten anzeigen (grade_list, total_grade, total_max)"
+
+msgid "output as a single JSON-encoded dict per file"
+msgstr "Ausgabe als ein JSON-kodiertes Dict pro Datei"
+
+msgid "archive file(s) to read"
+msgstr "zu lesende Archivdatei(en)"
+
+msgid "Create or update the exam configuration"
+msgstr "Die Prüfungskonfiguration erstellen oder aktualisieren"
+
+msgid "allowed lab names"
+msgstr "erlaubte Labornamen"
+
+msgid "exam opens after this datetime (ISO format, e.g. 2026-06-01T09:00)"
+msgstr ""
+"die Prüfung öffnet nach diesem Zeitpunkt (ISO-Format, z. B. 2026-06-01T09:00)"
+
+msgid "exam closes before this datetime (ISO format)"
+msgstr "die Prüfung schließt vor diesem Zeitpunkt (ISO-Format)"
+
+msgid "maximum exam duration in minutes"
+msgstr "maximale Prüfungsdauer in Minuten"
+
+msgid "duration between two evaluations"
+msgstr "Zeitraum zwischen zwei Bewertungen"
+
+msgid "Check a lab module for errors"
+msgstr "Ein Labormodul auf Fehler prüfen"
+
+msgid "also check this state method of NetScheme"
+msgstr "auch diese Zustandsmethode von NetScheme prüfen"
+
+msgid "Generate per-student PDF reports and a summary ODS spreadsheet"
+msgstr ""
+"PDF-Berichte pro Studierendem und eine zusammenfassende ODS-Tabelle erzeugen"
+
+msgid "output .ods summary file"
+msgstr "ODS-Ausgabedatei der Zusammenfassung"
+
+msgid "output directory for PDF reports"
+msgstr "Ausgabeverzeichnis für die PDF-Berichte"
+
+msgid "Mark the exam as ended and run a final evaluation of all projects"
+msgstr ""
+"Die Prüfung als beendet markieren und eine abschließende Bewertung aller "
+"Projekte ausführen"
+
+msgid ""
+"optional version/seed passed to Data.generate() (privileged only; "
+"incompatible with --data)"
+msgstr ""
+"optionale Version/optionaler Seed für Data.generate() (nur privilegierte "
+"Benutzer; nicht mit --data kombinierbar)"
+
+msgid "schema node separation level 0-9 (default: 3)"
+msgstr "Abstandsstufe der Knoten im Schema 0-9 (Standard: 3)"
+
+msgid "draw schema edges as curved lines (default: straight)"
+msgstr "Kanten des Schemas als Kurven zeichnen (Standard: gerade)"
+
+msgid "draw schema nodes as geometric shapes instead of icons"
+msgstr "Knoten des Schemas als geometrische Formen statt als Symbole zeichnen"
+
+msgid "reverse node insertion order in the schema"
+msgstr "die Einfügereihenfolge der Knoten im Schema umkehren"
+
+msgid "random seed for node order permutation in the schema"
+msgstr "Zufalls-Seed für die Permutation der Knotenreihenfolge im Schema"
+
+msgid ""
+"Do pre-start-exam and mark the exam as started (sets started_at timestamp)"
+msgstr ""
+"pre-start-exam ausführen und die Prüfung als gestartet markieren (setzt den "
+"Zeitstempel started_at)"
+
+msgid "Pre-start exam: stop other projects and start exam projects"
+msgstr ""
+"Prüfung vorstarten: andere Projekte stoppen und Prüfungsprojekte starten"
+
+msgid "record terminal sessions (default: true)"
+msgstr "Terminalsitzungen aufzeichnen (Standard: true)"
+
+msgid "Archive session records of running projects into a directory"
+msgstr ""
+"Die Sitzungsaufzeichnungen laufender Projekte in einem Verzeichnis "
+"archivieren"
+
+msgid "destination directory for the record archives"
+msgstr "Zielverzeichnis für die Archive der Aufzeichnungen"
+
+msgid ""
+"delete previous record archives for the same running project after saving"
+msgstr ""
+"frühere Aufzeichnungsarchive desselben laufenden Projekts nach dem Sichern "
+"löschen"
+
+msgid "warning: cannot read {path}: {e}"
+msgstr "Warnung: {path} kann nicht gelesen werden: {e}"
+
+msgid "no archives to process"
+msgstr "keine Archive zu verarbeiten"
+
+msgid "written: {path}"
+msgstr "geschrieben: {path}"
+
+msgid "saved: {path}"
+msgstr "gesichert: {path}"
+
+msgid ""
+"error: at least one of --output-file or --pdf-directory must be provided"
+msgstr ""
+"Fehler: mindestens eine der Optionen --output-file oder --pdf-directory muss "
+"angegeben werden"
+
+msgid "error: cannot create output directory {path}: {e}"
+msgstr "Fehler: das Ausgabeverzeichnis {path} kann nicht erstellt werden: {e}"
+
+msgid ""
+"error: output directory {path} is not writable by user {name} (uid {uid})"
+msgstr ""
+"Fehler: das Ausgabeverzeichnis {path} ist für den Benutzer {name} (uid {uid}) "
+"nicht beschreibbar"
+
+msgid "error: cannot write {path}: {e}"
+msgstr "Fehler: {path} kann nicht geschrieben werden: {e}"
+
+msgid "warning: cannot read aux file {path}: {e}"
+msgstr "Warnung: die Benutzerdatei {path} kann nicht gelesen werden: {e}"
+
+msgid "warning: login '{login}' not found in aux file"
+msgstr "Warnung: Login '{login}' nicht in der Benutzerdatei gefunden"
+
+msgid "Evaluation Report"
+msgstr "Bewertungsbericht"
+
+msgid "Login:"
+msgstr "Login:"
+
+msgid "Hostname:"
+msgstr "Rechnername:"
+
+msgid "Project:"
+msgstr "Projekt:"
+
+msgid "Project started:"
+msgstr "Projekt gestartet:"
+
+msgid "Name:"
+msgstr "Name:"
+
+msgid "Email:"
+msgstr "E-Mail:"
+
+msgid "Date:"
+msgstr "Datum:"
+
+msgid "{weekday}, {month} {day}, {year}"
+msgstr "{weekday}, {day}. {month} {year}"
+
+msgid "Monday"
+msgstr "Montag"
+
+msgid "Tuesday"
+msgstr "Dienstag"
+
+msgid "Wednesday"
+msgstr "Mittwoch"
+
+msgid "Thursday"
+msgstr "Donnerstag"
+
+msgid "Friday"
+msgstr "Freitag"
+
+msgid "Saturday"
+msgstr "Samstag"
+
+msgid "Sunday"
+msgstr "Sonntag"
+
+msgid "January"
+msgstr "Januar"
+
+msgid "February"
+msgstr "Februar"
+
+msgid "March"
+msgstr "März"
+
+msgid "April"
+msgstr "April"
+
+msgid "May"
+msgstr "Mai"
+
+msgid "June"
+msgstr "Juni"
+
+msgid "July"
+msgstr "Juli"
+
+msgid "August"
+msgstr "August"
+
+msgid "September"
+msgstr "September"
+
+msgid "October"
+msgstr "Oktober"
+
+msgid "November"
+msgstr "November"
+
+msgid "December"
+msgstr "Dezember"
+
+msgid "Score:"
+msgstr "Punktzahl:"
+
+msgid "Raw grade:"
+msgstr "Rohpunktzahl:"
+
+msgid "Mark:"
+msgstr "Note:"
+
+msgid "Evaluation History"
+msgstr "Bewertungsverlauf"
+
+msgid "Evaluation Time"
+msgstr "Bewertungszeit"
+
+msgid "Time Remaining"
+msgstr "Verbleibende Zeit"
+
+msgid "Score"
+msgstr "Punktzahl"
+
+msgid "Mark"
+msgstr "Note"
+
+msgid "Max"
+msgstr "Max."
+
+msgid "Bonus"
+msgstr "Bonus"
+
+msgid "Best evaluation  -  {date}  ({grade} / {max})"
+msgstr "Beste Bewertung  -  {date}  ({grade} / {max})"
+
+msgid "Best evaluation  -  {date}"
+msgstr "Beste Bewertung  -  {date}"
+
+msgid "Element"
+msgstr "Element"
+
+msgid "(no details available)"
+msgstr "(keine Details verfügbar)"
+
+msgid "outline"
+msgstr "Zusammenfassung"
+
+msgid "login"
+msgstr "login"
+
+msgid "hostname"
+msgstr "rechnername"
+
+msgid "project"
+msgstr "projekt"
+
+msgid "project_start"
+msgstr "projekt_start"
+
+msgid "best_grade"
+msgstr "beste_punktzahl"
+
+msgid "best_grade_time"
+msgstr "zeit_beste_punktzahl"
+
+msgid "max_points"
+msgstr "max_punkte"
+
+msgid "mark"
+msgstr "note"
+
+msgid "maximum_mark"
+msgstr "höchste_note"
+
+msgid "name"
+msgstr "name"
+
+msgid "email"
+msgstr "email"
+
+msgid "evaluations"
+msgstr "bewertungen"
+
+msgid "force language for PDF output (e.g. en, fr)"
+msgstr "Sprache der PDF-Ausgabe erzwingen (z. B. en, fr, de)"
+
+msgid "flavor field values, e.g. --flavor a:1 b:foo"
+msgstr "Werte der Flavor-Felder, z. B. --flavor a:1 b:foo"
+
+msgid "flavor as JSON dict (used internally by the GUI)"
+msgstr "Flavor als JSON-Dict (intern von der GUI verwendet)"
+
+msgid ""
+"use a named Flavor preset defined as a class variable on the Flavor class "
+"(privileged only)"
+msgstr ""
+"eine benannte Flavor-Vorgabe verwenden, die als Klassenvariable der Klasse "
+"Flavor definiert ist (nur privilegierte Benutzer)"
+
+msgid "shell to launch instead of the machine default (privileged only)"
+msgstr ""
+"statt der Standard-Shell der Maschine zu startende Shell (nur privilegierte "
+"Benutzer)"
+
+msgid "show files saved in archive"
+msgstr "im Archiv gesicherte Dateien anzeigen"
+
+msgid "extract files saved in archive to current directory"
+msgstr "im Archiv gesicherte Dateien in das aktuelle Verzeichnis extrahieren"
+
+msgid "recurse into subdirectories when searching for .zst archives"
+msgstr "bei der Suche nach .zst-Archiven Unterverzeichnisse durchlaufen"
+
+msgid ""
+"also queue the new results for the web portal, which replaces the "
+"evaluations it holds under the same archive names (run as root on a pool "
+"host: the web agent of the host hands them over)"
+msgstr ""
+"die neuen Ergebnisse auch für das Webportal einreihen, das die Bewertungen "
+"mit denselben Archivnamen ersetzt (als root auf einem Pool-Rechner "
+"ausführen: der Web-Agent des Rechners übergibt sie)"
+
+msgid "omit the evaluation history table from PDF reports"
+msgstr "die Tabelle des Bewertungsverlaufs in den PDF-Berichten weglassen"
+
+msgid "include the time remaining column in the evaluation history table"
+msgstr ""
+"die Spalte der verbleibenden Zeit in die Tabelle des Bewertungsverlaufs "
+"aufnehmen"
+
+msgid "do not group PDF grade rows by GradePart (flat list, no subtotals)"
+msgstr ""
+"die Notenzeilen im PDF nicht nach GradePart gruppieren (flache Liste, keine "
+"Zwischensummen)"
+
+msgid "Total for {part}"
+msgstr "Summe für {part}"
+
+msgid "Total"
+msgstr "Summe"
+
+msgid ""
+"user list file with columns: LOGIN NAME EMAIL (adds Name/Email to PDFs and "
+"ODS)"
+msgstr ""
+"Benutzerlistendatei mit den Spalten: LOGIN NAME EMAIL (fügt Name/E-Mail zu "
+"PDFs und ODS hinzu)"
+
+msgid "lab names, optionally with a flavor preset (e.g. lab1:v1 lab2)"
+msgstr "Labornamen, optional mit einer Flavor-Vorgabe (z. B. lab1:v1 lab2)"
+
+msgid "Pre-pull Docker images referenced by lab files"
+msgstr "Die in Labordateien referenzierten Docker-Images vorab herunterladen"
+
+msgid "wait a random delay of 0 to N seconds before pulling"
+msgstr ""
+"vor dem Herunterladen eine zufällige Zeit von 0 bis N Sekunden warten"
+
+msgid "also report the progress as JSON lines on stderr (for the web agent)"
+msgstr ""
+"den Fortschritt zusätzlich als JSON-Zeilen auf stderr melden (für den Web-"
+"Agenten)"
+
+msgid "lab .py file(s) or director(ies) to scan recursively"
+msgstr "rekursiv zu durchsuchende Labordatei(en) (.py) oder Verzeichnis(se)"
+
+msgid "--user and --debug are mutually exclusive"
+msgstr "--user und --debug schließen sich gegenseitig aus"
+
+msgid "illegal userid"
+msgstr "ungültige Benutzer-ID"
+
+msgid "execute a command via the shell and return (privileged only)"
+msgstr ""
+"einen Befehl über die Shell ausführen und zurückkehren (nur privilegierte "
+"Benutzer)"
+
+msgid "Execute a command in a device (privileged only)"
+msgstr "Einen Befehl in einem Gerät ausführen (nur privilegierte Benutzer)"
+
+msgid "shell to use instead of the default"
+msgstr "statt der Standard-Shell zu verwendende Shell"
+
+msgid "command to execute"
+msgstr "auszuführender Befehl"
+
+msgid "lab names, optionally with a flavor preset (e.g. lab1:hard lab2)"
+msgstr "Labornamen, optional mit einer Flavor-Vorgabe (z. B. lab1:hard lab2)"
+
+msgid "Compare re-graded results with stored grades in archives"
+msgstr ""
+"Neu bewertete Ergebnisse mit den in den Archiven gespeicherten Noten "
+"vergleichen"
+
+msgid "path to srelab.py or directory (default: taken from archive)"
+msgstr "Pfad zu srelab.py oder Verzeichnis (Standard: aus dem Archiv)"
+
+msgid "archive file(s) to check"
+msgstr "zu prüfende Archivdatei(en)"
+
+msgid "must be launched via sre-wrapper"
+msgstr "muss über sre-wrapper gestartet werden"
+
+msgid "archive file(s) or director(ies) of .zst archives to re-evaluate"
+msgstr ""
+"neu zu bewertende Archivdatei(en) oder Verzeichnis(se) mit .zst-Archiven"
+
+msgid "execute a command via the shell and return"
+msgstr "einen Befehl über die Shell ausführen und zurückkehren"
+
+msgid "path to the lab file or directory"
+msgstr "Pfad zur Labordatei oder zum Laborverzeichnis"
+
+#, python-brace-format
+msgid "invalid username: '{}'"
+msgstr "ungültiger Benutzername: '{}'"
+
+msgid "Dual commands, used both by sysreseval for administration:"
+msgstr "Gemischte Befehle, von sysreseval und für die Verwaltung verwendet:"
+
+msgid "Admin-only commands:"
+msgstr "Nur für die Verwaltung:"
+
+msgid "Admin-only commands for exam management:"
+msgstr "Befehle der Verwaltung für Prüfungen:"
+
+msgid "Admin-only commands for post-exam management:"
+msgstr "Befehle der Verwaltung nach einer Prüfung:"
+
+msgid "Internal (only used by sysreseval GUI):"
+msgstr "Intern (nur von der sysreseval-GUI verwendet):"
+
+msgid "do not record the session (privileged only)"
+msgstr "die Sitzung nicht aufzeichnen (nur privilegierte Benutzer)"
+
+msgid ""
+"user-triggered self-evaluation: enable cooldown, log timestamp, return result"
+msgstr ""
+"vom Benutzer ausgelöste Selbstbewertung: Wartezeit aktivieren, Zeitstempel "
+"protokollieren, Ergebnis zurückgeben"
+
+msgid ""
+"start the project in debug mode (privileged only): exposes all grade scopes, "
+"lifts user-mode restrictions, surfaces every machine"
+msgstr ""
+"das Projekt im Debug-Modus starten (nur privilegierte Benutzer): zeigt alle "
+"Bewertungsbereiche, hebt die Einschränkungen des Benutzermodus auf, zeigt "
+"jede Maschine"
+
+msgid ""
+"start the project in debug mode like --debug-project, the lab given by its "
+"name as for a normal start (privileged only; what the web agent runs)"
+msgstr ""
+"das Projekt wie mit --debug-project im Debug-Modus starten, das Labor wie "
+"bei einem normalen Start über seinen Namen angegeben (nur privilegierte "
+"Benutzer; was der Web-Agent ausführt)"
+
+msgid "Generate titles.json file(s) for a lab directory"
+msgstr "titles.json-Datei(en) für ein Laborverzeichnis erzeugen"
+
+msgid "directory to scan"
+msgstr "zu durchsuchendes Verzeichnis"
+
+msgid "write all titles to FILE instead of <directory>/titles.json"
+msgstr "alle Titel in FILE statt in <Verzeichnis>/titles.json schreiben"
+
+msgid "recursively scan subdirectories, writing one titles.json per directory"
+msgstr ""
+"Unterverzeichnisse rekursiv durchsuchen und eine titles.json pro Verzeichnis "
+"schreiben"
+
+msgid ""
+"also list the sub-directories of each directory, with a null title to be "
+"written by hand"
+msgstr ""
+"auch die Unterverzeichnisse jedes Verzeichnisses auflisten, mit einem "
+"null-Titel, der von Hand zu schreiben ist"
+
+msgid "output .ods summary file (omit to skip ODS generation)"
+msgstr ""
+"ODS-Ausgabedatei der Zusammenfassung (weglassen, um keine ODS-Datei zu "
+"erzeugen)"
+
+msgid "output directory for PDF reports (omit to skip PDF generation)"
+msgstr ""
+"Ausgabeverzeichnis für die PDF-Berichte (weglassen, um keine PDFs zu "
+"erzeugen)"
+
+msgid ""
+"emit a list of {name, title} objects, reading translated titles from per-"
+"directory titles.json"
+msgstr ""
+"eine Liste von {name, title}-Objekten ausgeben und die übersetzten Titel aus "
+"der titles.json jedes Verzeichnisses lesen"
+
+msgid ""
+"also list the exam-only labs (a name holding _EXAM_, _OLD_, _DRAFT_ or "
+"_TESTS_; privileged only)"
+msgstr ""
+"auch die Labore nur für Prüfungen auflisten (ein Name mit _EXAM_, _OLD_, "
+"_DRAFT_ oder _TESTS_; nur privilegierte Benutzer)"
+
+msgid ""
+"with --with-titles: also give the README.md / README.<lang>.md texts of the "
+"directories listed"
+msgstr ""
+"mit --with-titles: auch die Texte README.md / README.<lang>.md der "
+"aufgelisteten Verzeichnisse liefern"
+
+msgid "display version and exit"
+msgstr "Version anzeigen und beenden"
+
+msgid ""
+"read the X11 magic cookie from this X authority file instead of "
+"$SRE_XAUTH_COOKIE (privileged only)"
+msgstr ""
+"das X11-Magic-Cookie aus dieser X-Authority-Datei statt aus "
+"$SRE_XAUTH_COOKIE lesen (nur privilegierte Benutzer)"
+
+msgid ""
+"maximum exam duration in minutes; prefix with + or - to adjust the existing "
+"duration (e.g. +30, -15)"
+msgstr ""
+"maximale Prüfungsdauer in Minuten; mit vorangestelltem + oder - wird die "
+"bestehende Dauer angepasst (z. B. +30, -15)"
+
+msgid "show this help message and exit"
+msgstr "diese Hilfe anzeigen und beenden"
+
+msgid ""
+"Save a running project (device filesystems and project files) into a save "
+"file (written to stdout, or to -o FILE)"
+msgstr ""
+"Ein laufendes Projekt (Dateisysteme der Geräte und Projektdateien) in eine "
+"Sicherungsdatei sichern (auf stdout oder in -o FILE geschrieben)"
+
+msgid "write the save file here instead of stdout (privileged only)"
+msgstr ""
+"die Sicherungsdatei hierhin statt auf stdout schreiben (nur privilegierte "
+"Benutzer)"
+
+msgid "save full device images instead of filesystem diffs (privileged only)"
+msgstr ""
+"vollständige Geräte-Images statt Dateisystemunterschieden sichern (nur "
+"privilegierte Benutzer)"
+
+msgid "Restore a saved project as a new running project"
+msgstr "Ein gesichertes Projekt als neues laufendes Projekt wiederherstellen"
+
+msgid ""
+"save file created by 'sre save' ('-' reads it from stdin; user mode accepts "
+"only '-')"
+msgstr ""
+"mit 'sre save' erstellte Sicherungsdatei ('-' liest sie von stdin; der "
+"Benutzermodus akzeptiert nur '-')"
+
+msgid ""
+"start the project in instructor mode (privileged only): keeps the "
+"instructor() texts of the lab and logs what the states execute"
+msgstr ""
+"das Projekt im Lehrkraftmodus starten (nur privilegierte Benutzer): behält "
+"die instructor()-Texte des Labors und protokolliert, was die Zustände "
+"ausführen"
+
+msgid "restore the project in instructor mode (privileged only)"
+msgstr ""
+"das Projekt im Lehrkraftmodus wiederherstellen (nur privilegierte Benutzer)"
+
+msgid "Put a running project in instructor mode (privileged only)"
+msgstr ""
+"Ein laufendes Projekt in den Lehrkraftmodus versetzen (nur privilegierte "
+"Benutzer)"
+
+msgid "Take a running project out of instructor mode (privileged only)"
+msgstr ""
+"Ein laufendes Projekt aus dem Lehrkraftmodus nehmen (nur privilegierte "
+"Benutzer)"
+
+msgid ""
+"write \"Bonus\" before the label of the bonus elements instead of next to "
+"their maximum"
+msgstr ""
+"„Bonus“ vor die Bezeichnung der Bonuselemente schreiben statt neben ihr "
+"Maximum"
+
+msgid ""
+"Update the installation from GitHub (privileged only; stops every running "
+"project first)"
+msgstr ""
+"Die Installation von GitHub aktualisieren (nur privilegierte Benutzer; "
+"stoppt zuerst alle laufenden Projekte)"
+
+msgid "follow the head of the main branch instead of the latest release"
+msgstr "dem Stand des Branches main statt der neuesten Version folgen"
+
+msgid ""
+"install this tag, branch or commit (e.g. a previous release to go back to)"
+msgstr ""
+"diesen Tag, Branch oder Commit installieren (z. B. eine frühere Version, um "
+"zu ihr zurückzukehren)"
+
+msgid "only report whether a newer version is available"
+msgstr "nur melden, ob eine neuere Version verfügbar ist"
+
+msgid "install again even when the requested commit is already installed"
+msgstr "erneut installieren, auch wenn der gewünschte Commit schon installiert ist"
+
+msgid ""
+"no question: keep every customised parameter of params.py, no confirmation"
+msgstr ""
+"keine Frage: alle angepassten Parameter von params.py behalten, keine "
+"Bestätigung"
+
+msgid "rebuild the Python virtual environment (make venv) as the last step"
+msgstr ""
+"die virtuelle Python-Umgebung (make venv) als letzten Schritt neu erstellen"
+
+msgid ""
+"Internal (web front-end): the spreadsheet of sheet, the PDF reports of "
+"outline or its summary spreadsheet alone, built from JSON archive records "
+"read on stdin and written on stdout"
+msgstr ""
+"Intern (Website): die Tabelle von sheet, die PDF-Berichte von outline oder "
+"nur deren zusammenfassende Tabelle, erstellt aus JSON-Archivdatensätzen, die "
+"von stdin gelesen und auf stdout geschrieben werden"
+
+msgid ""
+"sheet: an ODS spreadsheet; outline: a zip of the PDF reports and the summary "
+"ODS; summary: the summary ODS alone (what outline -o gives)"
+msgstr ""
+"sheet: eine ODS-Tabelle; outline: ein Zip der PDF-Berichte und der "
+"ODS-Zusammenfassung; summary: nur die ODS-Zusammenfassung (was outline -o "
+"liefert)"
+
+msgid "output file (default: stdout)"
+msgstr "Ausgabedatei (Standard: stdout)"
+
+msgid "no records to process"
+msgstr "keine Datensätze zu verarbeiten"
+
+msgid "warning: a record without running_lab_name is skipped"
+msgstr "Warnung: ein Datensatz ohne running_lab_name wird übersprungen"
+
+msgid "invalid JSON on stdin: {e}"
+msgstr "ungültiges JSON auf stdin: {e}"

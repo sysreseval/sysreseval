@@ -336,7 +336,7 @@ The hostname is part of what a student is here (the workstation: the users of a 
 | `-o` / `--output-file` | Output `.ods` summary (omit to skip). |
 | `-d` / `--pdf-directory` | Output dir for PDFs (omit to skip). |
 | `-r` / `--recursive` | Recurse into subdirectories. |
-| `--lang <lang>` | Force PDF language (e.g. `en`, `fr`). |
+| `--lang <lang>` | Force PDF language (`en`, `fr`, `de`); the long date of the header follows it. |
 | `--no-timeline` | Omit the evaluation-history table. |
 | `--remaining-time` | Include the time-remaining column in the history. |
 | `--separate-instances` | One report and one ODS row per running project instance instead of one per student. |

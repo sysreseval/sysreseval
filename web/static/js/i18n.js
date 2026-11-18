@@ -34,7 +34,7 @@ export function format(text, values) {
 }
 
 // A text of the API that may be translated ({"en": "...", "fr": "..."}) or plain: the value of
-// the language of the page, else of the default language given, else English, else any.
+// the language of the page, else English, else the default language given, else any.
 export function resolveText(value, defaultLanguage) {
   if (value === null || value === undefined) {
     return '';
@@ -42,7 +42,7 @@ export function resolveText(value, defaultLanguage) {
   if (typeof value !== 'object') {
     return String(value);
   }
-  for (const lang of [language, defaultLanguage, 'en']) {
+  for (const lang of [language, 'en', defaultLanguage]) {
     if (lang && typeof value[lang] === 'string') {
       return value[lang];
     }

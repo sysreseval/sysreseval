@@ -7,7 +7,9 @@ lib usr/lib/sysreseval/
 lab/sre usr/share/sysreseval/lab/
 graphics/*.svg usr/share/sysreseval/graphics/
 debian/build/sysreseval_fr.qm usr/share/sysreseval/translations/
-debian/build/sre.mo usr/share/locale/fr/LC_MESSAGES/
+debian/build/sysreseval_de.qm usr/share/sysreseval/translations/
+debian/build/fr/sre.mo usr/share/locale/fr/LC_MESSAGES/
+debian/build/de/sre.mo usr/share/locale/de/LC_MESSAGES/
 debian/build/sre-wrapper usr/bin/
 debian/launchers/sre usr/sbin/
 debian/launchers/sysreseval usr/bin/

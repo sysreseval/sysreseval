@@ -635,7 +635,10 @@ class TestProjectView:
 
     def test_english_fallback_and_exam(self):
         view = projectview.sanitise(make_info(), Identity(login='alice', language='de'), exam_mode=True)
-        assert view['title'] == 'Le DHCP'          # the default language of the lab before English
+        assert view['title'] == 'DHCP'             # English before the default language of the lab (fr)
+        assert view['states'][0]['label'] == 'Solution' and view['questions'][0]['title'] == 'Why?'
+        assert projectview.lang_priority(Identity(login='alice', language='de'), make_info()) == ['de', 'en', 'fr']
+        assert projectview.lang_priority(ALICE, make_info()) == ['fr', 'en']        # her language is the lab's
         assert 'evaluation' not in view['tabs'] and 'apply_config' not in view['tabs']
 
     def test_instructor_view_of_an_instructor_project(self):

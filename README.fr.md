@@ -1,5 +1,5 @@
 <p align="right">
-  <a href="README.md">English</a> · <strong>Français</strong>
+  <a href="README.md">English</a> · <strong>Français</strong> · <a href="README.de.md">Deutsch</a>
 </p>
 
 <p align="center">
@@ -50,7 +50,7 @@ affiche un compte à rebours, lance des évaluations périodiques et affiche une
 La durée peut être ajustée à la volée — utile pour les étudiants disposant d'un aménagement.
 - **Notation reproductible et traitement post-examen.** Chaque évaluation est archivée sous forme de fichier `msgpack` compressé contenant les données du projet, les sorties des commandes envoyées sur les machines, les réponses de l'étudiant et les notes par item, consultables avec `sre cat`. Si un bug de notation apparaît après coup, `sre re-eval` permet de 
 re-corriger avec un script mis à jour ; `sre outline` produit alors des rapports PDF par étudiant ainsi qu'un tableur ODS récapitulatif. Pendant les examens, chaque session de terminal est aussi enregistrée (format `asciinema`).
-- **Internationalisation.** Les TPs proposés et l'interface graphique sont livrées en français et en anglais ; 
+- **Internationalisation.** L'interface (interface graphique, CLI, site web) est livrée en anglais, en français et en allemand, les TPs proposés en français et en anglais ; 
 les outils fournis (`prepare-sre-translations`, `add-sre-translations`) permettent de traduire facilement un projet dans une autre langue.
 
 

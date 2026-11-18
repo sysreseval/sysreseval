@@ -389,6 +389,37 @@ class TestBuildInfoPdf:
         assert 'Public text' in text and 'Question' in text and 'Public description' in text
         assert 'SECRET' not in text and not has_instructor(text)
 
+    @pytest.mark.parametrize('language, shown, hidden', [('de', 'English course', 'Cours en français'),
+                                                         ('fr', 'Cours en français', 'English course')])
+    def test_a_language_the_lab_lacks_falls_back_on_english(self, tmp_pub_dir, monkeypatch, language, shown,
+                                                            hidden):
+        """The language of the answers file (a German student) is not a language of the lab: its
+        English text, not its default language (French)."""
+        from SRE.command import export as export_cmd
+        info = InfoLab(
+            lab_name='test/mylab', lab_hash='abc123', default_language='fr',
+            title=TranslatedText({'fr': 'Labo', 'en': 'Lab'}),
+            informations=TranslatedText({'fr': 'Cours en français', 'en': 'English course'}),
+            export_kathara_project=True, allow_self_grade=True, machines=[], questions=[],
+            delay_between_self_grade=60, eval_interval_without_exam_mode=0, eval_before_exit=False,
+            user_allowed_states={},
+        )
+        path = Path(params.info_filename(RUNNING_LAB))
+        path.parent.mkdir(parents=True)
+        path.write_text(info.to_json())
+        answers = Path(params.answers_filename(RUNNING_LAB))
+        answers.parent.mkdir(parents=True, exist_ok=True)
+        answers.write_text(json.dumps({params.language_keyword: language}))
+        written = []
+        original = export_cmd.SrePDF.write_html
+
+        def spy(self, html, *args, **kwargs):
+            written.append(html)
+            return original(self, html, *args, **kwargs)
+        monkeypatch.setattr(export_cmd.SrePDF, 'write_html', spy)
+        assert _build_info_pdf(RUNNING_LAB).startswith(b'%PDF')
+        assert shown in ''.join(written) and hidden not in ''.join(written)
+
 
 # ---------------------------------------------------------------------------
 # lab.conf [ipv6] lines

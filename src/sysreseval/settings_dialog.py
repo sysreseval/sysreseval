@@ -15,7 +15,8 @@ class SettingsDialog(QDialog):
         layout = QFormLayout(self)
 
         # --- Interface section ---
-        layout.addRow(QLabel(f"<b>{self.tr('Interface')}</b>"))
+        interface_heading = self.tr("Interface")
+        layout.addRow(QLabel(f"<b>{interface_heading}</b>"))
 
         self._system_font_size = QSpinBox()
         self._system_font_size.setRange(6, 48)
@@ -24,7 +25,8 @@ class SettingsDialog(QDialog):
         layout.addRow(self.tr("Font size:"), self._system_font_size)
 
         # --- Terminal section ---
-        layout.addRow(QLabel(f"<b>{self.tr('Terminal')}</b>"))
+        terminal_heading = self.tr("Terminal")
+        layout.addRow(QLabel(f"<b>{terminal_heading}</b>"))
 
         self._font_size = QSpinBox()
         self._font_size.setRange(6, 48)
@@ -45,7 +47,8 @@ class SettingsDialog(QDialog):
         layout.addRow(note)
 
         # --- Schema section ---
-        layout.addRow(QLabel(f"<b>{self.tr('Schema')}</b>"))
+        schema_heading = self.tr("Schema")
+        layout.addRow(QLabel(f"<b>{schema_heading}</b>"))
 
         self._schema_lines = QComboBox()
         self._schema_lines.addItem(self.tr("Straight"), False)
@@ -69,7 +72,8 @@ class SettingsDialog(QDialog):
         layout.addRow(self.tr("Nodes:"), self._schema_nodes)
 
         # --- Content section ---
-        layout.addRow(QLabel(f"<b>{self.tr('Content')}</b>"))
+        content_heading = self.tr("Content")
+        layout.addRow(QLabel(f"<b>{content_heading}</b>"))
 
         self._content_font_size = QSpinBox()
         self._content_font_size.setRange(6, 48)

@@ -83,8 +83,9 @@ def _build_info_pdf(running_lab_name: str) -> bytes:
     lang = _resolve_lang(running_lab_name, info_lab)
 
     def _r(v) -> str:
-        # the exported PDF is the student's document: no instructor fragment
-        return strip_instructor(TranslatedText.from_value(v).resolve(lang))
+        # the exported PDF is the student's document: no instructor fragment; a language the lab
+        # lacks (German) falls back on English, then on the lab's default language
+        return strip_instructor(TranslatedText.from_value(v).resolve_priority([lang, 'en']))
 
     pdf = SrePDF()
     pdf.set_margins(20, 20, 20)

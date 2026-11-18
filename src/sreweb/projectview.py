@@ -20,8 +20,10 @@ SCHEMA_SEP_MAX = 9
 
 
 def lang_priority(identity: Identity, info: dict) -> list:
+    """The user's language, then English, then the lab's default language: a user whose language
+    the lab lacks (German on a French lab with English texts) reads English."""
     default_language = info.get('default_language', '') or 'en'
-    return list(dict.fromkeys([identity.language, default_language, 'en']))
+    return list(dict.fromkeys([identity.language, 'en', default_language]))
 
 
 def sanitise(info: dict, identity: Identity, *, exam_mode: bool = False, display_enabled: bool = False,

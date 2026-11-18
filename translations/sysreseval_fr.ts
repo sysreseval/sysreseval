@@ -110,17 +110,17 @@
 <context>
     <name>FlavorFormDialog</name>
     <message>
-        <location filename="../src/sysreseval/flavor_form_dialog.py" line="33"/>
+        <location filename="../src/sysreseval/flavor_form_dialog.py" line="38"/>
         <source>Lab configuration</source>
         <translation>Configuration du TP</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/flavor_form_dialog.py" line="154"/>
+        <location filename="../src/sysreseval/flavor_form_dialog.py" line="120"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/flavor_form_dialog.py" line="159"/>
+        <location filename="../src/sysreseval/flavor_form_dialog.py" line="125"/>
         <source>Submit</source>
         <translation>Valider</translation>
     </message>
@@ -208,218 +208,218 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="253"/>
-        <location filename="../src/sysreseval/main_window.py" line="634"/>
+        <location filename="../src/sysreseval/main_window.py" line="255"/>
+        <location filename="../src/sysreseval/main_window.py" line="637"/>
         <source>Wrap</source>
         <translation>Retour ligne</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="302"/>
-        <location filename="../src/sysreseval/main_window.py" line="633"/>
+        <location filename="../src/sysreseval/main_window.py" line="304"/>
+        <location filename="../src/sysreseval/main_window.py" line="636"/>
         <source>closing in progress...</source>
         <translation>Fermeture en cours...</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="324"/>
-        <location filename="../src/sysreseval/main_window.py" line="617"/>
+        <location filename="../src/sysreseval/main_window.py" line="326"/>
+        <location filename="../src/sysreseval/main_window.py" line="620"/>
         <source>File</source>
         <translation>Fichier</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="327"/>
-        <location filename="../src/sysreseval/main_window.py" line="618"/>
+        <location filename="../src/sysreseval/main_window.py" line="329"/>
+        <location filename="../src/sysreseval/main_window.py" line="621"/>
         <source>Open Project</source>
         <translation>Ouvrir un projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="341"/>
-        <location filename="../src/sysreseval/main_window.py" line="434"/>
-        <location filename="../src/sysreseval/main_window.py" line="621"/>
+        <location filename="../src/sysreseval/main_window.py" line="343"/>
+        <location filename="../src/sysreseval/main_window.py" line="436"/>
+        <location filename="../src/sysreseval/main_window.py" line="624"/>
         <source>Close Project</source>
         <translation>Fermer le projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="347"/>
-        <location filename="../src/sysreseval/main_window.py" line="442"/>
-        <location filename="../src/sysreseval/main_window.py" line="622"/>
+        <location filename="../src/sysreseval/main_window.py" line="349"/>
+        <location filename="../src/sysreseval/main_window.py" line="445"/>
+        <location filename="../src/sysreseval/main_window.py" line="625"/>
         <source>Close All Projects</source>
         <translation>Fermer tous les projets</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="354"/>
-        <location filename="../src/sysreseval/main_window.py" line="623"/>
+        <location filename="../src/sysreseval/main_window.py" line="356"/>
+        <location filename="../src/sysreseval/main_window.py" line="626"/>
         <source>Export Kathara Project</source>
         <translation>Exporter le projet Kathara</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="271"/>
-        <location filename="../src/sysreseval/main_window.py" line="366"/>
-        <location filename="../src/sysreseval/main_window.py" line="625"/>
-        <location filename="../src/sysreseval/main_window.py" line="636"/>
+        <location filename="../src/sysreseval/main_window.py" line="273"/>
+        <location filename="../src/sysreseval/main_window.py" line="368"/>
+        <location filename="../src/sysreseval/main_window.py" line="628"/>
+        <location filename="../src/sysreseval/main_window.py" line="639"/>
         <source>Settings</source>
         <translation>Paramètres</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="264"/>
-        <location filename="../src/sysreseval/main_window.py" line="635"/>
+        <location filename="../src/sysreseval/main_window.py" line="266"/>
+        <location filename="../src/sysreseval/main_window.py" line="638"/>
         <source>Instructor mode</source>
         <translation>Mode enseignant</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="277"/>
-        <location filename="../src/sysreseval/main_window.py" line="370"/>
-        <location filename="../src/sysreseval/main_window.py" line="626"/>
-        <location filename="../src/sysreseval/main_window.py" line="637"/>
+        <location filename="../src/sysreseval/main_window.py" line="279"/>
+        <location filename="../src/sysreseval/main_window.py" line="372"/>
+        <location filename="../src/sysreseval/main_window.py" line="629"/>
+        <location filename="../src/sysreseval/main_window.py" line="640"/>
         <source>Language</source>
         <translation>Langue</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="332"/>
-        <location filename="../src/sysreseval/main_window.py" line="619"/>
-        <location filename="../src/sysreseval/main_window.py" line="1223"/>
+        <location filename="../src/sysreseval/main_window.py" line="334"/>
+        <location filename="../src/sysreseval/main_window.py" line="622"/>
+        <location filename="../src/sysreseval/main_window.py" line="1226"/>
         <source>Restore Project</source>
         <translation>Restaurer un projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="336"/>
-        <location filename="../src/sysreseval/main_window.py" line="620"/>
-        <location filename="../src/sysreseval/main_window.py" line="1210"/>
-        <location filename="../src/sysreseval/main_window.py" line="1219"/>
+        <location filename="../src/sysreseval/main_window.py" line="338"/>
+        <location filename="../src/sysreseval/main_window.py" line="623"/>
+        <location filename="../src/sysreseval/main_window.py" line="1213"/>
+        <location filename="../src/sysreseval/main_window.py" line="1222"/>
         <source>Save Project</source>
         <translation>Enregistrer le projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="359"/>
-        <location filename="../src/sysreseval/main_window.py" line="520"/>
-        <location filename="../src/sysreseval/main_window.py" line="624"/>
+        <location filename="../src/sysreseval/main_window.py" line="361"/>
+        <location filename="../src/sysreseval/main_window.py" line="523"/>
+        <location filename="../src/sysreseval/main_window.py" line="627"/>
         <source>Export Schema to PDF</source>
         <translation>Exporter le schéma en PDF</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="376"/>
-        <location filename="../src/sysreseval/main_window.py" line="627"/>
+        <location filename="../src/sysreseval/main_window.py" line="378"/>
+        <location filename="../src/sysreseval/main_window.py" line="630"/>
         <source>Quit</source>
         <translation>Quitter</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="382"/>
-        <location filename="../src/sysreseval/main_window.py" line="628"/>
+        <location filename="../src/sysreseval/main_window.py" line="384"/>
+        <location filename="../src/sysreseval/main_window.py" line="631"/>
         <source>Edit</source>
         <translation>Édition</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="386"/>
-        <location filename="../src/sysreseval/main_window.py" line="629"/>
+        <location filename="../src/sysreseval/main_window.py" line="388"/>
+        <location filename="../src/sysreseval/main_window.py" line="632"/>
         <source>Select All</source>
         <translation>Tout sélectionner</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="393"/>
-        <location filename="../src/sysreseval/main_window.py" line="630"/>
+        <location filename="../src/sysreseval/main_window.py" line="395"/>
+        <location filename="../src/sysreseval/main_window.py" line="633"/>
         <source>Cut</source>
         <translation>Couper</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="398"/>
-        <location filename="../src/sysreseval/main_window.py" line="631"/>
+        <location filename="../src/sysreseval/main_window.py" line="400"/>
+        <location filename="../src/sysreseval/main_window.py" line="634"/>
         <source>Copy</source>
         <translation>Copier</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="403"/>
-        <location filename="../src/sysreseval/main_window.py" line="632"/>
+        <location filename="../src/sysreseval/main_window.py" line="405"/>
+        <location filename="../src/sysreseval/main_window.py" line="635"/>
         <source>Paste</source>
         <translation>Coller</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="474"/>
+        <location filename="../src/sysreseval/main_window.py" line="477"/>
         <source>&apos;sre {cmd}&apos; failed (exit code {code}):
 {detail}</source>
         <translation>Échec de « sre {cmd} » (code de sortie {code}) :
 {detail}</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="475"/>
+        <location filename="../src/sysreseval/main_window.py" line="478"/>
         <source>(no output)</source>
         <translation>(aucune sortie)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="495"/>
-        <location filename="../src/sysreseval/main_window.py" line="503"/>
-        <location filename="../src/sysreseval/main_window.py" line="535"/>
-        <location filename="../src/sysreseval/main_window.py" line="541"/>
+        <location filename="../src/sysreseval/main_window.py" line="498"/>
+        <location filename="../src/sysreseval/main_window.py" line="506"/>
+        <location filename="../src/sysreseval/main_window.py" line="538"/>
+        <location filename="../src/sysreseval/main_window.py" line="544"/>
         <source>Export Error</source>
         <translation>Erreur d&apos;exportation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="496"/>
-        <location filename="../src/sysreseval/main_window.py" line="535"/>
+        <location filename="../src/sysreseval/main_window.py" line="499"/>
+        <location filename="../src/sysreseval/main_window.py" line="538"/>
         <source>Export failed:
 </source>
         <translation>L&apos;exportation a échoué :
 </translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="504"/>
-        <location filename="../src/sysreseval/main_window.py" line="542"/>
+        <location filename="../src/sysreseval/main_window.py" line="507"/>
+        <location filename="../src/sysreseval/main_window.py" line="545"/>
         <source>Failed to save file:
 </source>
         <translation>Erreur d&apos;enregistrement du fichier :
 </translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="507"/>
-        <location filename="../src/sysreseval/main_window.py" line="545"/>
+        <location filename="../src/sysreseval/main_window.py" line="510"/>
+        <location filename="../src/sysreseval/main_window.py" line="548"/>
         <source>Export</source>
         <translation>Exportation</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="508"/>
+        <location filename="../src/sysreseval/main_window.py" line="511"/>
         <source>Project exported to </source>
         <translation>Le projet a été exporté vers </translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="521"/>
+        <location filename="../src/sysreseval/main_window.py" line="524"/>
         <source>PDF files (*.pdf)</source>
         <translation>Fichiers PDF (*.pdf)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="545"/>
+        <location filename="../src/sysreseval/main_window.py" line="548"/>
         <source>Schema exported to </source>
         <translation>Le schéma a été exporté vers </translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="972"/>
+        <location filename="../src/sysreseval/main_window.py" line="975"/>
         <source>The machines are starting, exam will start shortly</source>
         <translation>Démarrage des machines, l&apos;examen va bientôt débuter</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="1118"/>
+        <location filename="../src/sysreseval/main_window.py" line="1121"/>
         <source>Exam starts in {days}d {time}</source>
         <translation>L&apos;examen commence dans {days}j {time}</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="1120"/>
+        <location filename="../src/sysreseval/main_window.py" line="1123"/>
         <source>Exam starts in {time}</source>
         <translation>L&apos;examen commence dans {time}</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="1123"/>
+        <location filename="../src/sysreseval/main_window.py" line="1126"/>
         <source>Exam starts soon</source>
         <translation>L&apos;examen commence bientôt</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="1150"/>
+        <location filename="../src/sysreseval/main_window.py" line="1153"/>
         <source>Time remaining: {time}</source>
         <translation>Temps restant : {time}</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="1199"/>
+        <location filename="../src/sysreseval/main_window.py" line="1202"/>
         <source>SRE save files (*{suffix})</source>
         <translation>Fichiers de sauvegarde SRE (*{suffix})</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/main_window.py" line="1220"/>
+        <location filename="../src/sysreseval/main_window.py" line="1223"/>
         <source>Project saved to </source>
         <translation>Projet enregistré dans </translation>
     </message>
@@ -427,37 +427,38 @@
 <context>
     <name>OpenProjectDialog</name>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="68"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="146"/>
         <source>Open project</source>
+        <extracomment>The roles of the items of the tree: the raw segment of the path (rebuilt from it for ``sre start``), the kind of the entry (dir / lab), its arrival index, on a parent the sort mode its children are placed by, and on a directory (the invisible root item for the top of the lab directory) the markdown of its README in the user&apos;s language, ``&apos;&apos;`` without one. The size of the dialog: the one it always had, and the one it opens with when a directory of the tree has a README to show under the tree.</extracomment>
         <translation>Ouvrir un projet</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="74"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="154"/>
         <source>Loading available projects…</source>
         <translation>Chargement des projets disponibles…</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="84"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="179"/>
         <source>Open</source>
         <translation>Ouvrir</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="87"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="182"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="102"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="197"/>
         <source>(no output)</source>
         <translation>(vide)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="104"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="199"/>
         <source>Error running &apos;sre list&apos; (exit {code}): {detail}</source>
         <translation>Erreur lors de l&apos;exécution de &apos;sre list&apos; (code {code}) : {detail}</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/open_project_dialog.py" line="111"/>
+        <location filename="../src/sysreseval/open_project_dialog.py" line="206"/>
         <source>Error: {error}</source>
         <translation>Erreur : {error}</translation>
     </message>
@@ -528,12 +529,12 @@
 <context>
     <name>QuestionsView</name>
     <message>
-        <location filename="../src/sysreseval/view/questions_view.py" line="63"/>
+        <location filename="../src/sysreseval/view/questions_view.py" line="72"/>
         <source>Write your answer here...</source>
         <translation>Écrivez votre réponse ici…</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/view/questions_view.py" line="102"/>
+        <location filename="../src/sysreseval/view/questions_view.py" line="111"/>
         <source>Untitled</source>
         <translation>Sans titre</translation>
     </message>
@@ -645,78 +646,86 @@
         <translation>Paramètres</translation>
     </message>
     <message>
+        <location filename="../src/sysreseval/settings_dialog.py" line="18"/>
         <source>Interface</source>
-        <translation type="vanished">Interface</translation>
+        <translation>Interface</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="24"/>
-        <location filename="../src/sysreseval/settings_dialog.py" line="33"/>
-        <location filename="../src/sysreseval/settings_dialog.py" line="78"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="25"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="35"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="82"/>
         <source>Font size:</source>
         <translation>Taille de police :</translation>
     </message>
     <message>
+        <location filename="../src/sysreseval/settings_dialog.py" line="28"/>
         <source>Terminal</source>
-        <translation type="vanished">Terminal</translation>
+        <translation>Terminal</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="36"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="38"/>
         <source>White on Black</source>
         <translation>Blanc sur noir</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="37"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="39"/>
         <source>Black on White</source>
         <translation>Noir sur blanc</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="41"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="43"/>
         <source>Color scheme:</source>
         <translation>Schéma de couleurs :</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="43"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="45"/>
         <source>(Changes apply to terminals opened after this point.)</source>
         <translation>(Les changements s&apos;appliquent aux terminaux ouverts après ce point.)</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="51"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="50"/>
+        <source>Schema</source>
+        <translation>Schéma</translation>
+    </message>
+    <message>
+        <location filename="../src/sysreseval/settings_dialog.py" line="54"/>
         <source>Straight</source>
         <translation>Droites</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="52"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="55"/>
         <source>Curved</source>
         <translation>Courbées</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="55"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="58"/>
         <source>Lines:</source>
         <translation>Liaisons :</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="62"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="65"/>
         <source>Spacing:</source>
         <translation>Espacement :</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="65"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="68"/>
         <source>Icons</source>
         <translation>Icônes</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="66"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="69"/>
         <source>Shapes</source>
         <translation>Formes</translation>
     </message>
     <message>
-        <location filename="../src/sysreseval/settings_dialog.py" line="69"/>
+        <location filename="../src/sysreseval/settings_dialog.py" line="72"/>
         <source>Nodes:</source>
         <translation>Nœuds :</translation>
     </message>
     <message>
+        <location filename="../src/sysreseval/settings_dialog.py" line="75"/>
         <source>Content</source>
-        <translation type="vanished">Contenu</translation>
+        <translation>Contenu</translation>
     </message>
 </context>
 <context>

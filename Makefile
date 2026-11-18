@@ -175,6 +175,13 @@ venv: fonts
 
 #	python3 -m pip install pyuv; \
 #   python3 -m pip install graphviz;
+
+# The languages of the interface besides English (the source language): the Qt GUI
+# (translations/sysreseval_<l>.ts), the CLI (locale/<l>/LC_MESSAGES/sre.po) and the web front-end
+# (locale/<l>/LC_MESSAGES/sreweb.po).  tests/test_translation_catalogs.py checks that every
+# catalog has the msgids of the French one, translated.
+TRANSLATION_LANGS := fr de
+
 translations:
 	${ROOT_DIR}/venv/bin/pyside6-lupdate \
 		src/sysreseval.py \
@@ -192,14 +199,13 @@ translations:
 		src/sysreseval/view/apply_config_view.py \
 		src/sysreseval/view/schema_view.py \
 		src/sysreseval/view/log_view.py \
-		-ts translations/sysreseval_fr.ts
-	${ROOT_DIR}/venv/bin/pyside6-lrelease \
-		translations/sysreseval_fr.ts \
-		-qm translations/sysreseval_fr.qm
-	xgettext --language=Python --keyword=_ --join-existing --no-location \
-		-o locale/fr/LC_MESSAGES/sre.po \
-		src/sre.py
-	msgfmt locale/fr/LC_MESSAGES/sre.po -o locale/fr/LC_MESSAGES/sre.mo
+		-ts $(foreach l,$(TRANSLATION_LANGS),translations/sysreseval_$(l).ts)
+	for l in $(TRANSLATION_LANGS); do \
+		${ROOT_DIR}/venv/bin/pyside6-lrelease translations/sysreseval_$$l.ts -qm translations/sysreseval_$$l.qm || exit 1; \
+		xgettext --language=Python --keyword=_ --join-existing --no-location \
+			-o locale/$$l/LC_MESSAGES/sre.po src/sre.py || exit 1; \
+		msgfmt locale/$$l/LC_MESSAGES/sre.po -o locale/$$l/LC_MESSAGES/sre.mo || exit 1; \
+	done
 	$(MAKE) -C ${ROOT_DIR} web-translations
 
 wrappers:
@@ -348,16 +354,19 @@ images:
 # The gettext catalog of the web front-end (domain "sreweb", src/sreweb/i18n.py): the strings
 # of the Python sources and of the JavaScript modules are merged into the hand-maintained .po
 # by xgettext.  xgettext cannot read the Jinja2 templates (web/templates/*.html): their
-# _("...") strings are added to locale/fr/LC_MESSAGES/sreweb.po by hand (tests/test_web_templates.py
-# checks that every string of the templates and of the JavaScript has a translation).
+# _("...") strings are added to locale/<l>/LC_MESSAGES/sreweb.po by hand, in every language of
+# TRANSLATION_LANGS (tests/test_web_templates.py checks that every string of the templates and of
+# the JavaScript has a translation, tests/test_translation_catalogs.py that the catalogs agree).
 web-translations:
-	xgettext --language=Python --keyword=_ --join-existing --no-location --from-code=UTF-8 \
-		-o locale/fr/LC_MESSAGES/sreweb.po \
-		src/sreweb/*.py src/sreweb/portal/*.py
-	xgettext --language=JavaScript --keyword=_ --join-existing --no-location --from-code=UTF-8 \
-		-o locale/fr/LC_MESSAGES/sreweb.po \
-		web/static/js/*.js web/static/js/tabs/*.js
-	msgfmt -o locale/fr/LC_MESSAGES/sreweb.mo locale/fr/LC_MESSAGES/sreweb.po
+	for l in $(TRANSLATION_LANGS); do \
+		xgettext --language=Python --keyword=_ --join-existing --no-location --from-code=UTF-8 \
+			-o locale/$$l/LC_MESSAGES/sreweb.po \
+			src/sreweb/*.py src/sreweb/portal/*.py || exit 1; \
+		xgettext --language=JavaScript --keyword=_ --join-existing --no-location --from-code=UTF-8 \
+			-o locale/$$l/LC_MESSAGES/sreweb.po \
+			web/static/js/*.js web/static/js/tabs/*.js || exit 1; \
+		msgfmt -o locale/$$l/LC_MESSAGES/sreweb.mo locale/$$l/LC_MESSAGES/sreweb.po || exit 1; \
+	done
 
 # xterm.js and its fit addon, vendored into web/static/vendor/xterm (the terminals of the web
 # front-end; UMD builds loaded by web/templates/project.html).  Downloaded from unpkg at pinned

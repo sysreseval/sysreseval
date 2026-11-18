@@ -195,7 +195,7 @@ merges other files into this one, as for `web.toml` below.
 | `public_url` | none | the URL the users type (the `Origin` of the WebSockets is checked against it) |
 | `secret` | required | signs the session cookies (32+ random characters) |
 | `trusted_proxies` | `[]` | proxy mode: the addresses or networks of the reverse proxy, the only peers whose identity headers are trusted (the TCP peer address, never `X-Forwarded-For`); required in that mode. In every mode, the connection log takes the client address from the `X-Forwarded-For` header of these peers |
-| `languages` | `["en", "fr"]` | the languages offered at login, the first one by default |
+| `languages` | `["en", "fr", "de"]` | the languages offered at login, the first one by default |
 | `tls_cert`, `tls_key` | none | own TLS instead of a proxy |
 | `[auth] mode` | `anonymous` | `anonymous`: a pseudonym `guest-xxxxxxxx` per browser (the user may type a display name); `ldap`: the directory account; `proxy`: the identity the reverse proxy passes in headers (below) |
 | `[auth] administrators` | `[]` | the logins of the administrators: instructors who may read the connection log on the History page (*Administrators* below); a login that is not an instructor gets nothing. By group: `administrator_groups` / `administrator_group_filter` of `[auth.ldap]`, `administrator_groups` of `[auth.proxy]` |
@@ -2106,8 +2106,9 @@ the browser reaches a desktop through the owner check of the portal and of the a
 --config agent.toml --listen 127.0.0.1:8451` and `python3 -m sreweb.portal --config web.toml
 --listen 127.0.0.1:8450 --web-dir web` (from `src/`, in the venv) run both locally; with
 `sre_exe` pointed at a wrapper of `tests/mock_sre.py` (`SRE_PUB_DIR` exported in the wrapper),
-the whole site works without Docker. The French catalog is `locale/fr/LC_MESSAGES/sreweb.po`
-(hand-maintained, `make web-translations`).
+the whole site works without Docker. The catalogs are `locale/fr/LC_MESSAGES/sreweb.po` and
+`locale/de/LC_MESSAGES/sreweb.po` (hand-maintained, `make web-translations`: a string of a template
+is added by hand to both).
 
 The pure JavaScript modules (the lab tree of the Open page, the group keys, the exam form, the
 floating terminal windows) are tested under `node` or `bun`; on a machine with neither, `make

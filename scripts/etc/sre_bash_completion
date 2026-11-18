@@ -76,7 +76,7 @@ pre-start-exam start-exam"
             COMPREPLY=($(compgen -W "/bin/sh /bin/bash /bin/dash /bin/zsh" -- "$cur"))
             return ;;
         --lang)
-            COMPREPLY=($(compgen -W "en fr" -- "$cur"))
+            COMPREPLY=($(compgen -W "en fr de" -- "$cur"))
             return ;;
         --record-sessions)
             COMPREPLY=($(compgen -W "true false" -- "$cur"))

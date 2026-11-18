@@ -45,7 +45,7 @@ class TestWebConfig:
         assert cfg.listen == ('127.0.0.1', 8450) and cfg.auth.mode == config.AUTH_ANONYMOUS
         assert cfg.pool.idle_timeout_anonymous == 7200 and cfg.pool.idle_timeout_authenticated == 86400
         assert cfg.hosts[0].name == 'a01' and cfg.hosts[0].max_projects == 10
-        assert cfg.languages == ['en', 'fr'] and cfg.limits.eval_interval == 10
+        assert cfg.languages == ['en', 'fr', 'de'] and cfg.limits.eval_interval == 10
         assert cfg.trusted_proxies == [] and cfg.auth.proxy.header_login == 'X-Remote-User'
 
     def test_full(self):

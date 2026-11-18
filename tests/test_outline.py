@@ -343,3 +343,36 @@ class TestMakePdfBonus:
         outline._make_pdf(outline._collect_archives(_args(tmp_path)), tmp_path / 'bob.pdf', forced_lang='fr')
         assert '2 (Bonus)' in cells          # same word in French
         assert 'Total pour Part one' in cells
+
+    @pytest.mark.parametrize('lang, label, date', [
+        ('en', 'Date:', 'Thursday, September 10, 2026'),
+        ('fr', 'Date :', 'jeudi 10 septembre 2026'),
+        ('de', 'Datum:', 'Donnerstag, 10. September 2026')])
+    def test_long_date_in_the_language_of_the_report(self, tmp_path, cells, monkeypatch, lang, label, date):
+        """The names and the order of the date come from the catalog of --lang, not from the C
+        library: the web agent runs the reports with LC_ALL=C.UTF-8."""
+        monkeypatch.setenv('LC_ALL', 'C.UTF-8')
+        write_bonus_archive(tmp_path)
+        outline._make_pdf(outline._collect_archives(_args(tmp_path)), tmp_path / 'bob.pdf', forced_lang=lang)
+        assert cells[cells.index(label) + 1] == date
+
+
+class TestReportLanguage:
+    @pytest.mark.parametrize('iso, lang, text', [
+        ('2026-11-18', 'de', 'Mittwoch, 18. November 2026'),
+        ('2026-03-01', 'de', 'Sonntag, 1. März 2026'),
+        ('2026-08-03', 'fr', 'lundi 3 août 2026'),
+        ('2026-05-02', 'en', 'Saturday, May 2, 2026'),
+        ('2026-05-02T10:11:12', 'en', 'Saturday, May 2, 2026'),
+        ('not a date', 'de', 'not a date')])
+    def test_long_date(self, iso, lang, text):
+        assert outline._long_date(iso, outline._setup_i18n(lang)) == text
+
+    def test_a_language_the_lab_lacks_falls_back_on_english(self):
+        from SRE.command import sheet
+        title = {'fr': 'Routage', 'en': 'Routing'}
+        for module in (outline, sheet):
+            assert module._tt_str(title, 'de') == 'Routing'
+            assert module._tt_str(title, 'fr') == 'Routage'
+            assert module._tt_str({'fr': 'Routage'}, 'de') == 'Routage'
+            assert module._tt_str('plain', 'de') == 'plain' and module._tt_str({}, 'de') == ''

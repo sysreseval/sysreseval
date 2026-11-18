@@ -15,7 +15,7 @@ from SRE.utils import error_quit
 from SRE.utils_privileges import drop_privileges_temporarily, drop_privileges_permanently
 
 
-# i18n — load French translations when LANG is set to a French locale.
+# i18n — the catalog of the language of LANGUAGE / LC_ALL / LC_MESSAGES / LANG (fr, de), English without one.
 # Searches params.locale_dirs: <repo>/locale/ then <main_sre_dir>/locale/ on a checkout,
 # /usr/share/locale for the Debian package.
 def _setup_i18n():

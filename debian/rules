@@ -20,9 +20,13 @@ override_dh_auto_configure:
 override_dh_auto_build:
 	mkdir -p $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $(BUILD)/sre-wrapper src/sre-wrapper/sre-wrapper.c
-	/usr/lib/qt6/bin/lrelease translations/sysreseval_fr.ts -qm $(BUILD)/sysreseval_fr.qm
-	msgfmt locale/fr/LC_MESSAGES/sre.po -o $(BUILD)/sre.mo
-	msgfmt locale/fr/LC_MESSAGES/sreweb.po -o $(BUILD)/sreweb.mo
+	# the catalogs of the interface languages (TRANSLATION_LANGS of the Makefile)
+	for l in fr de; do \
+		mkdir -p $(BUILD)/$$l && \
+		/usr/lib/qt6/bin/lrelease translations/sysreseval_$$l.ts -qm $(BUILD)/sysreseval_$$l.qm && \
+		msgfmt locale/$$l/LC_MESSAGES/sre.po -o $(BUILD)/$$l/sre.mo && \
+		msgfmt locale/$$l/LC_MESSAGES/sreweb.po -o $(BUILD)/$$l/sreweb.mo || exit 1; \
+	done
 
 # the unit tests of the repository (what `make tests` runs), without Docker
 override_dh_auto_test:

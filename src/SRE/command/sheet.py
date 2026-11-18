@@ -43,9 +43,10 @@ def _lab_name_from_running(running_lab_name: str) -> str:
 
 
 def _tt_str(v, lang='en') -> str:
-    """Resolve a possibly-multilingual title/description to a plain string."""
+    """Resolve a possibly-multilingual title/description to a plain string: the language asked,
+    else English (a German report of a French lab with English texts), else the first one."""
     if isinstance(v, dict):
-        return v.get(lang) or next(iter(v.values()), '') if v else ''
+        return (v.get(lang) or v.get('en') or next(iter(v.values()), '')) if v else ''
     return str(v) if v else ''
 
 

@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong> · <a href="README.fr.md">Français</a>
+  <strong>English</strong> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a>
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ It is developed at the **IUT d'Orsay, Université Paris-Saclay**.
 - **Time-limited exams.** `sysreseval` starts each student's project (immediately or at a scheduled time), shows a countdown, runs periodic evaluations, and posts an end-of-exam banner. Duration can be adjusted on the fly — useful for accommodations.
 - **Reproducible grading and post-exam tooling.** Each evaluation is archived as a compressed msgpack file capturing the project data, raw command outputs, student answers, and per-item grades — inspect any archive with `sre cat`.
 If a grading bug surfaces after the fact, `sre re-eval` re-runs the scoring against an updated script; `sre outline` then produces per-student PDF reports and a recap ODS spreadsheet. During exams, every terminal session is also saved as an asciinema cast for later review.
-- **Internationalisable.** Lab strings and GUI translations ship in French and English; tools (`prepare-sre-translations`, `add-sre-translations`) make multilingual authoring straightforward.
+- **Internationalisable.** The interface (GUI, CLI, web site) ships in English, French and German, the labs in French and English; tools (`prepare-sre-translations`, `add-sre-translations`) make multilingual authoring straightforward.
 
 
 ## Web server (remote use)

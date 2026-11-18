@@ -19,7 +19,14 @@ WEB = ROOT / 'web'
 TEMPLATES = WEB / 'templates'
 STATIC = WEB / 'static'
 JS = STATIC / 'js'
-PO = ROOT / 'locale' / 'fr' / 'LC_MESSAGES' / 'sreweb.po'
+#: the languages of the catalogs of the web front-end (TRANSLATION_LANGS of the Makefile; the
+#: catalogs agree with the French one: tests/test_translation_catalogs.py)
+PO_LANGS = ('fr', 'de')
+
+
+def po_of(lang: str) -> Path:
+    return ROOT / 'locale' / lang / 'LC_MESSAGES' / 'sreweb.po'
+
 
 #: SRE_TEST_JS: how the tests running a module of web/static/js (TestLabTreeOrder, TestGroupsModel,
 #: TestExamsForm, TestTerminalGeometry) get a JavaScript runtime.  Unset: node, then bun, on the
@@ -121,6 +128,18 @@ class TestTemplates:
         assert {'base.html', 'login.html', 'projects.html', 'open.html', 'project.html', 'watch.html',
                 'pool.html', 'history.html', 'archives.html', 'groups.html', 'exams.html',
                 'webconf_left.html'} <= set(template_names())
+
+    def test_pages_in_german(self):
+        """The login and projects pages rendered with the German catalog of the portal."""
+        from sreweb.i18n import translator
+        german = {'_': translator('de', [ROOT / 'locale']), 'language': 'de',
+                  'languages': LANGUAGES + [('de', 'Deutsch')]}
+        html = render('login.html', identity=None, auth_mode='ldap', error='password', **german)
+        assert '<html lang="de"' in html and 'Anmelden - SRE' in html
+        assert 'Falscher Benutzername oder falsches Passwort.' in html and 'Passwort' in html
+        assert 'Deutsch' in html and 'Sign in' not in html
+        html = render('projects.html', **german)
+        assert 'Laufende Projekte' in html and 'Ein Labor öffnen' in html and 'Abmelden' in html
 
     @pytest.mark.parametrize('auth_mode', ['anonymous', 'ldap', 'proxy'])
     def test_login_page(self, auth_mode):
@@ -636,13 +655,14 @@ class TestTemplates:
 # translations
 # ---------------------------------------------------------------------------------------------
 
+@pytest.mark.parametrize('lang', PO_LANGS)
 class TestTranslations:
-    def test_po_and_mo_exist(self):
-        assert PO.is_file()
-        assert PO.with_suffix('.mo').is_file(), "run msgfmt (make web-translations)"
+    def test_po_and_mo_exist(self, lang):
+        assert po_of(lang).is_file()
+        assert po_of(lang).with_suffix('.mo').is_file(), "run msgfmt (make web-translations)"
 
-    def test_every_string_of_the_templates_and_the_js_is_translated(self):
-        entries = parse_po(PO)
+    def test_every_string_of_the_templates_and_the_js_is_translated(self, lang):
+        entries = parse_po(po_of(lang))
         missing = set()
         found = 0
         sources = [TEMPLATES / name for name in template_names()] + js_modules()
@@ -655,16 +675,16 @@ class TestTranslations:
         assert found > 50
         assert not missing, f"untranslated: {sorted(missing)}"
 
-    def test_placeholders_kept_in_translations(self):
-        for msgid, msgstr in parse_po(PO).items():
+    def test_placeholders_kept_in_translations(self, lang):
+        for msgid, msgstr in parse_po(po_of(lang)).items():
             if not msgid:
                 continue
             assert set(re.findall(r'\{\w+\}', msgid)) == set(re.findall(r'\{\w+\}', msgstr)), msgid
 
-    def test_mo_matches_po(self):
+    def test_mo_matches_po(self, lang):
         import gettext
-        translation = gettext.translation('sreweb', localedir=str(ROOT / 'locale'), languages=['fr'])
-        for msgid, msgstr in parse_po(PO).items():
+        translation = gettext.translation('sreweb', localedir=str(ROOT / 'locale'), languages=[lang])
+        for msgid, msgstr in parse_po(po_of(lang)).items():
             if msgid:
                 assert translation.gettext(msgid) == msgstr, msgid
 
@@ -857,6 +877,32 @@ class TestLabTreeOrder:
     def test_order(self, tmp_path, js):
         runner = js_project(tmp_path, LAB_TREE_RUNNER, 'tree.js', 'i18n.js', 'ui.js')
         assert json.loads(js.run(tmp_path, runner, json.dumps(LAB_TREE_IN), 'fr')) == LAB_TREE_OUT
+
+
+#: resolveText() of i18n.js for a page language (argv[2]) on [value, defaultLanguage] pairs (argv[3])
+RESOLVE_TEXT_RUNNER = """\
+globalThis.document = {documentElement: {lang: process.argv[2]}};
+globalThis.fetch = async () => ({ok: false});
+const {init, resolveText} = await import('./i18n.js');
+await init();
+process.stdout.write(JSON.stringify(JSON.parse(process.argv[3]).map(([value, lang]) => resolveText(value, lang))));
+"""
+
+
+class TestResolveText:
+    """The lab texts of the API in the browser: the language of the page, then English, then the
+    default language given (a German user reads the English text of a French lab)."""
+
+    CASES = [[{'fr': 'Routage', 'en': 'Routing'}, 'fr'], [{'fr': 'Routage'}, 'fr'], [{'it': 'Instradamento'}, 'fr'],
+             ['plain', 'fr'], [None, 'fr'], [{'fr': 'Routage', 'en': 'Routing', 'de': 'Routing (de)'}, 'fr']]
+
+    @pytest.mark.parametrize('page, expected', [
+        ('de', ['Routing', 'Routage', 'Instradamento', 'plain', '', 'Routing (de)']),
+        ('fr', ['Routage', 'Routage', 'Instradamento', 'plain', '', 'Routage']),
+        ('en', ['Routing', 'Routage', 'Instradamento', 'plain', '', 'Routing'])])
+    def test_order(self, tmp_path, js, page, expected):
+        runner = js_project(tmp_path, RESOLVE_TEXT_RUNNER, 'i18n.js')
+        assert json.loads(js.run(tmp_path, runner, page, json.dumps(self.CASES))) == expected
 
 
 #: what GET /api/labs gives with READMEs (readme_html: html by language, "" being README.md): the

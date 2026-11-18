@@ -1,0 +1,2395 @@
+# German translation of the SRE web front-end (the templates of web/templates and the
+# JavaScript of web/static/js; domain "sreweb", src/sreweb/i18n.py).
+# Every msgid of locale/fr/LC_MESSAGES/sreweb.po, in the same order and sections
+# (tests/test_translation_catalogs.py): a string added to the French catalog by hand is added
+# here too.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: sysreseval\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-21 12:00+0200\n"
+"PO-Revision-Date: 2026-11-18 12:00+0100\n"
+"Last-Translator: \n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# --- base.html, login.html ------------------------------------------------------------------
+msgid "Language"
+msgstr "Sprache"
+
+msgid "Logout"
+msgstr "Abmelden"
+
+# the logout dialog (base.html, logout.js)
+msgid "You still have running projects:"
+msgstr "Sie haben noch laufende Projekte:"
+
+msgid "Close them before logging out? Their machines will be stopped."
+msgstr "Vor dem Abmelden schließen? Ihre Maschinen werden gestoppt."
+
+msgid ""
+"Some projects could not be closed: try again, or log out and leave them "
+"running."
+msgstr ""
+"Einige Projekte konnten nicht geschlossen werden: versuchen Sie es erneut "
+"oder melden Sie sich ab und lassen Sie sie weiterlaufen."
+
+msgid "Log out"
+msgstr "Abmelden"
+
+msgid "Close the projects and log out"
+msgstr "Projekte schließen und abmelden"
+
+msgid "Sign in"
+msgstr "Anmelden"
+
+msgid "Login"
+msgstr "Benutzername"
+
+msgid "Password"
+msgstr "Passwort"
+
+msgid "Display name (optional)"
+msgstr "Anzeigename (optional)"
+
+msgid ""
+"You get a pseudonym; the name you give here goes into your answer files."
+msgstr ""
+"Sie erhalten ein Pseudonym; der hier angegebene Name wird in Ihre "
+"Antwortdateien eingetragen."
+
+msgid "Continue"
+msgstr "Weiter"
+
+msgid "The web server passed no identity."
+msgstr "Der Webserver hat keine Identität übermittelt."
+
+msgid ""
+"The sign-in is done by the web server in front of this site: check its "
+"configuration."
+msgstr ""
+"Die Anmeldung erfolgt durch den Webserver vor dieser Website: prüfen Sie "
+"dessen Konfiguration."
+
+# --- projects.html, projects.js -------------------------------------------------------------
+msgid "Projects"
+msgstr "Projekte"
+
+msgid "Running projects"
+msgstr "Laufende Projekte"
+
+msgid "Open a lab"
+msgstr "Ein Labor öffnen"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "No running project."
+msgstr "Kein laufendes Projekt."
+
+msgid "Lab: "
+msgstr "Labor:"
+
+msgid "Host: "
+msgstr "Rechner:"
+
+msgid "Started: "
+msgstr "Gestartet:"
+
+msgid "Mode: "
+msgstr "Modus:"
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Close Project"
+msgstr "Projekt schließen"
+
+msgid "Close this project? Its machines will be stopped."
+msgstr "Dieses Projekt schließen? Seine Maschinen werden gestoppt."
+
+msgid "closing in progress..."
+msgstr "wird geschlossen..."
+
+# --- open.html, open.js, tree.js, creation.js, form.js --------------------------------------
+msgid "Back to the projects"
+msgstr "Zurück zu den Projekten"
+
+msgid "Loading available labs…"
+msgstr "Verfügbare Labore werden geladen…"
+
+msgid "Start"
+msgstr "Starten"
+
+msgid "No lab is available."
+msgstr "Kein Labor verfügbar."
+
+msgid "Starting…"
+msgstr "Wird gestartet…"
+
+msgid "Project created, opening it…"
+msgstr "Projekt erstellt, wird geöffnet…"
+
+msgid "The start failed."
+msgstr "Der Start ist fehlgeschlagen."
+
+msgid "Lab configuration"
+msgstr "Laborkonfiguration"
+
+msgid "This flavor is not allowed."
+msgstr "Diese Variante ist nicht erlaubt."
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Submit"
+msgstr "Bestätigen"
+
+msgid "Downloading images…"
+msgstr "Images werden heruntergeladen…"
+
+msgid "Downloading images: {pct}%"
+msgstr "Images werden heruntergeladen: {pct} %"
+
+msgid "Images ready."
+msgstr "Images bereit."
+
+msgid "Starting {n} machine(s)…"
+msgstr "{n} Maschine(n) werden gestartet…"
+
+msgid "Starting machines: {cur}/{tot}"
+msgstr "Maschinen werden gestartet: {cur}/{tot}"
+
+msgid "All machines started."
+msgstr "Alle Maschinen gestartet."
+
+msgid "Retry"
+msgstr "Erneut versuchen"
+
+msgid "Retry in {n} s"
+msgstr "Erneuter Versuch in {n} s"
+
+msgid "The connection was closed before the end."
+msgstr "Die Verbindung wurde vor dem Ende geschlossen."
+
+# --- project.html, project.js ---------------------------------------------------------------
+msgid "Instructor mode"
+msgstr "Lehrkraftmodus"
+
+msgid "Show the instructor texts and every state"
+msgstr "Die Texte für Lehrkräfte und alle Zustände anzeigen"
+
+msgid "Wrap"
+msgstr "Umbruch"
+
+msgid "Smaller text"
+msgstr "Kleinerer Text"
+
+msgid "Larger text"
+msgstr "Größerer Text"
+
+msgid "Export Schema to PDF"
+msgstr "Schema als PDF exportieren"
+
+msgid "This project is closed."
+msgstr "Dieses Projekt ist geschlossen."
+
+msgid "Schema"
+msgstr "Schema"
+
+msgid "Full Schema"
+msgstr "Vollständiges Schema"
+
+msgid "Informations"
+msgstr "Informationen"
+
+msgid "Machines"
+msgstr "Maschinen"
+
+msgid "Networks"
+msgstr "Netzwerke"
+
+msgid "Questions"
+msgstr "Fragen"
+
+msgid "Evaluation"
+msgstr "Bewertung"
+
+msgid "Terminals"
+msgstr "Terminals"
+
+msgid "Apply Configuration"
+msgstr "Konfiguration anwenden"
+
+msgid "Log"
+msgstr "Protokoll"
+
+# --- tabs/schema.js -------------------------------------------------------------------------
+msgid "Lines:"
+msgstr "Linien:"
+
+msgid "Straight"
+msgstr "Gerade"
+
+msgid "Curved"
+msgstr "Gebogen"
+
+msgid "Compact"
+msgstr "Kompakt"
+
+msgid "Spread"
+msgstr "Weit"
+
+msgid "Order:"
+msgstr "Reihenfolge:"
+
+msgid "random"
+msgstr "zufällig"
+
+msgid "Nodes:"
+msgstr "Knoten:"
+
+msgid "Icons"
+msgstr "Symbole"
+
+msgid "Shapes"
+msgstr "Formen"
+
+# --- tabs/machines.js, tabs/networks.js -----------------------------------------------------
+msgid "Name"
+msgstr "Name"
+
+msgid "NAT network to host"
+msgstr "NAT-Netzwerk zum Host"
+
+msgid "Connection"
+msgstr "Verbindung"
+
+msgid "Ports"
+msgstr "Ports"
+
+msgid "Yes"
+msgstr "Ja"
+
+msgid "No"
+msgstr "Nein"
+
+msgid "Connect"
+msgstr "Verbinden"
+
+msgid "Type"
+msgstr "Typ"
+
+msgid "Manageable switch"
+msgstr "Verwaltbarer Switch"
+
+msgid "Switch"
+msgstr "Switch"
+
+msgid "Hub"
+msgstr "Hub"
+
+# --- tabs/questions.js ----------------------------------------------------------------------
+msgid "Write your answer here..."
+msgstr "Schreiben Sie Ihre Antwort hier…"
+
+msgid "Untitled"
+msgstr "Ohne Titel"
+
+# --- tabs/evaluation.js ---------------------------------------------------------------------
+msgid "Start evaluation"
+msgstr "Bewertung starten"
+
+msgid "Next evaluation allowed in {n} s"
+msgstr "Nächste Bewertung möglich in {n} s"
+
+msgid "Error: {error}"
+msgstr "Fehler: {error}"
+
+msgid "The project is busy, try again later."
+msgstr "Das Projekt ist beschäftigt, versuchen Sie es später erneut."
+
+# --- tabs/terminals.js, terminal.js ---------------------------------------------------------
+msgid "Color scheme"
+msgstr "Farbschema"
+
+msgid "Black on White"
+msgstr "Schwarz auf Weiß"
+
+msgid "White on Black"
+msgstr "Weiß auf Schwarz"
+
+msgid "Smaller terminal font"
+msgstr "Kleinere Terminalschrift"
+
+msgid "Larger terminal font"
+msgstr "Größere Terminalschrift"
+
+msgid "Reconnect"
+msgstr "Neu verbinden"
+
+msgid "Connecting…"
+msgstr "Verbindung wird hergestellt…"
+
+msgid "Connected."
+msgstr "Verbunden."
+
+msgid "Disconnected"
+msgstr "Getrennt"
+
+msgid "Disconnected."
+msgstr "Getrennt."
+
+msgid "Disconnected (exit code {code})."
+msgstr "Getrennt (Exit-Code {code})."
+
+msgid "Error"
+msgstr "Fehler"
+
+msgid "Not logged in."
+msgstr "Nicht angemeldet."
+
+msgid "Connection to this device is not allowed."
+msgstr "Die Verbindung zu diesem Gerät ist nicht erlaubt."
+
+msgid "The project is gone."
+msgstr "Das Projekt existiert nicht mehr."
+
+msgid "Too many terminals are open."
+msgstr "Zu viele Terminals sind geöffnet."
+
+msgid "The host does not answer."
+msgstr "Der Rechner antwortet nicht."
+
+msgid "New terminal…"
+msgstr "Neues Terminal…"
+
+msgid "Close terminal"
+msgstr "Terminal schließen"
+
+msgid "New window…"
+msgstr "Neues Fenster…"
+
+msgid "Open in a window"
+msgstr "In einem Fenster öffnen"
+
+msgid "Dock into the Terminals tab"
+msgstr "In den Reiter Terminals andocken"
+
+msgid "idle"
+msgstr "inaktiv"
+
+msgid "{device} ({n})"
+msgstr "{device} ({n})"
+
+# --- tabs/display.js ------------------------------------------------------------------------
+msgid "Display"
+msgstr "Anzeige"
+
+msgid "Starting the display…"
+msgstr "Die Anzeige wird gestartet…"
+
+msgid "Connection lost."
+msgstr "Verbindung verloren."
+
+msgid "Fit to window"
+msgstr "An Fenster anpassen"
+
+msgid "Resize the desktop"
+msgstr "Die Größe des Desktops ändern"
+
+msgid "Send to the X clipboard"
+msgstr "In die X-Zwischenablage senden"
+
+msgid "Text to paste into the X desktop"
+msgstr "In den X-Desktop einzufügender Text"
+
+msgid "Open this link in a new tab?"
+msgstr "Diesen Link in einem neuen Tab öffnen?"
+
+msgid "Wrong login or password."
+msgstr "Falscher Benutzername oder falsches Passwort."
+
+msgid "Too many sign-in attempts: try again in a minute."
+msgstr "Zu viele Anmeldeversuche: versuchen Sie es in einer Minute erneut."
+
+msgid "The directory does not answer."
+msgstr "Der Verzeichnisdienst antwortet nicht."
+
+msgid "Closing {n} project(s)…"
+msgstr "{n} Projekt(e) werden geschlossen…"
+
+msgid "No project to close"
+msgstr "Kein Projekt zu schließen"
+
+msgid "closing projects: {done}/{total} ({failed} failed)"
+msgstr "Projekte werden geschlossen: {done}/{total} ({failed} fehlgeschlagen)"
+
+msgid "Text to paste into the X desktop, or received from it"
+msgstr "In den X-Desktop einzufügender oder von ihm empfangener Text"
+
+msgid "No display for this project."
+msgstr "Keine Anzeige für dieses Projekt."
+
+msgid "The X server stopped."
+msgstr "Der X-Server wurde beendet."
+
+msgid "Connection to the display is not allowed."
+msgstr "Die Verbindung zur Anzeige ist nicht erlaubt."
+
+# --- tabs/states.js, tabs/log.js ------------------------------------------------------------
+msgid "Apply"
+msgstr "Anwenden"
+
+msgid "Clear"
+msgstr "Leeren"
+
+# --- the instructor role: watch.html, watch.js, base.html, open.html ---------------------------
+msgid "Watch"
+msgstr "Überblick"
+
+msgid "All running projects"
+msgstr "Alle laufenden Projekte"
+
+msgid "Filter…"
+msgstr "Filtern…"
+
+msgid "Host, owner, group or lab"
+msgstr "Rechner, Eigentümer, Gruppe oder Labor"
+
+msgid "Student group"
+msgstr "Studierendengruppe"
+
+msgid "All groups"
+msgstr "Alle Gruppen"
+
+msgid "No group"
+msgstr "Keine Gruppe"
+
+msgid "no recent evaluation"
+msgstr "keine aktuelle Bewertung"
+
+msgid "errors in the last evaluation"
+msgstr "Fehler in der letzten Bewertung"
+
+msgid "Host"
+msgstr "Rechner"
+
+msgid "Owner"
+msgstr "Eigentümer"
+
+msgid "Group"
+msgstr "Gruppe"
+
+msgid "Lab"
+msgstr "Labor"
+
+msgid "Started"
+msgstr "Gestartet"
+
+msgid "Last action"
+msgstr "Letzte Aktion"
+
+msgid ""
+"The last time the student did something on the project: a key, a click or a "
+"scroll on its page, an answer, an evaluation"
+msgstr ""
+"Das letzte Mal, dass die oder der Studierende etwas im Projekt getan hat: "
+"eine Taste, ein Klick oder ein Scrollen auf der Seite, eine Antwort, eine "
+"Bewertung"
+
+msgid "Last evaluation"
+msgstr "Letzte Bewertung"
+
+msgid "Grade"
+msgstr "Punkte"
+
+msgid "Mark"
+msgstr "Note"
+
+msgid "Errors"
+msgstr "Fehler"
+
+msgid "The number of self-evaluations the student has run"
+msgstr ""
+"Die Anzahl der Selbstbewertungen, die die oder der Studierende ausgeführt hat"
+
+msgid "Mode"
+msgstr "Modus"
+
+msgid "Actions"
+msgstr "Aktionen"
+
+msgid "{n} s ago"
+msgstr "vor {n} s"
+
+msgid "{n} min ago"
+msgstr "vor {n} min"
+
+msgid "{n} h ago"
+msgstr "vor {n} h"
+
+msgid "{n} project(s)"
+msgstr "{n} Projekt(e)"
+
+msgid "{n} of {total} project(s)"
+msgstr "{n} von {total} Projekt(en)"
+
+msgid "No project matches the filter."
+msgstr "Kein Projekt entspricht dem Filter."
+
+msgid "No project on the pool."
+msgstr "Kein Projekt im Pool."
+
+msgid "Close"
+msgstr "Schließen"
+
+msgid "Close the project of {owner}? Its machines will be stopped."
+msgstr "Das Projekt von {owner} schließen? Seine Maschinen werden gestoppt."
+
+msgid "never"
+msgstr "nie"
+
+msgid "web"
+msgstr "Web"
+
+msgid "local"
+msgstr "lokal"
+
+# --- the dialogs of the Watch page (watch.html, watch.js, watch_detail.js, watch_summary.js) and the
+# --- evaluation table the agent lays out (SRE/evaluation_table.py, translated with this domain) ----
+msgid "click a row for its last evaluation, a lab for the summary of the lab"
+msgstr ""
+"eine Zeile anklicken für ihre letzte Bewertung, ein Labor für die "
+"Zusammenfassung des Labors"
+
+msgid ""
+"click a row for its last evaluation, a lab for the summary of the lab, a "
+"group for that summary restricted to the group"
+msgstr ""
+"eine Zeile anklicken für ihre letzte Bewertung, ein Labor für die "
+"Zusammenfassung des Labors, eine Gruppe für diese Zusammenfassung auf die "
+"Gruppe beschränkt"
+
+msgid "Summary of the lab for the projects shown"
+msgstr "Zusammenfassung des Labors für die angezeigten Projekte"
+
+msgid "Summary of the lab for the students of the group"
+msgstr "Zusammenfassung des Labors für die Studierenden der Gruppe"
+
+msgid "Open the project"
+msgstr "Das Projekt öffnen"
+
+msgid "The project is closed."
+msgstr "Das Projekt ist geschlossen."
+
+msgid "Lab summary: {lab}"
+msgstr "Zusammenfassung des Labors: {lab}"
+
+msgid "Lab summary: {lab}, group {group}"
+msgstr "Zusammenfassung des Labors: {lab}, Gruppe {group}"
+
+msgid "{n} project(s) shown, {m} evaluated"
+msgstr "{n} Projekt(e) angezeigt, {m} bewertet"
+
+msgid "never evaluated"
+msgstr "nie bewertet"
+
+msgid "Max"
+msgstr "Max."
+
+msgid "Min"
+msgstr "Min."
+
+msgid "Average"
+msgstr "Durchschnitt"
+
+msgid "Success"
+msgstr "Erfolg"
+
+msgid "Distribution"
+msgstr "Verteilung"
+
+msgid "{max} (Bonus)"
+msgstr "{max} (Bonus)"
+
+msgid "Subtotal for {part}"
+msgstr "Zwischensumme für {part}"
+
+msgid "Element"
+msgstr "Element"
+
+msgid "Scope"
+msgstr "Bereich"
+
+msgid "self Grade"
+msgstr "Punkte (selbst)"
+
+msgid "exo Grade"
+msgstr "Punkte (exo)"
+
+msgid "Max grade"
+msgstr "Max. Punkte"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "MEH"
+msgstr "MÄSSIG"
+
+msgid "FAIL"
+msgstr "FEHLER"
+
+msgid "Bonus"
+msgstr "Bonus"
+
+msgid "Total for {part}"
+msgstr "Summe für {part}"
+
+msgid "Total"
+msgstr "Summe"
+
+msgid "Total (self)"
+msgstr "Summe (selbst)"
+
+msgid "Total (exo)"
+msgstr "Summe (exo)"
+
+msgid ""
+"(keeps the instructor texts, lists every state, logs the states applied)"
+msgstr ""
+"(behält die Texte für Lehrkräfte, listet alle Zustände auf, protokolliert "
+"die angewendeten Zustände)"
+
+msgid "Project mode"
+msgstr "Projektmodus"
+
+msgid "Standard"
+msgstr "Standard"
+
+msgid "(the project as a student gets it)"
+msgstr "(das Projekt, wie es Studierende erhalten)"
+
+msgid "Debug mode"
+msgstr "Debug-Modus"
+
+msgid ""
+"(every machine, the hidden ones included, every state and grade, the "
+"evaluations logged, no cooldown; every lab listed, the drafts included)"
+msgstr ""
+"(alle Maschinen einschließlich der versteckten, alle Zustände und "
+"Bewertungsbereiche, die Bewertungen protokolliert, keine Wartezeit; alle "
+"Labore aufgelistet, einschließlich der Entwürfe)"
+
+# --- the instructor role: pool.html, pool.js, base.html -------------------------------------
+msgid "Pool"
+msgstr "Pool"
+
+msgid "The hosts of the pool"
+msgstr "Die Rechner des Pools"
+
+msgid "Host name: one or several words, any of them"
+msgstr "Rechnername: ein oder mehrere Wörter, eines davon"
+
+msgid "State"
+msgstr "Zustand"
+
+msgid "Load"
+msgstr "Last"
+
+msgid "Occupied by"
+msgstr "Belegt von"
+
+msgid "Uptime"
+msgstr "Laufzeit"
+
+msgid "Flags"
+msgstr "Kennzeichen"
+
+msgid "Version"
+msgstr "Version"
+
+msgid "Last error"
+msgstr "Letzter Fehler"
+
+msgid "Enable"
+msgstr "Aktivieren"
+
+msgid "Disable"
+msgstr "Deaktivieren"
+
+msgid "Wake"
+msgstr "Aufwecken"
+
+msgid "Drain"
+msgstr "Auslaufen"
+
+msgid "Power off"
+msgstr "Ausschalten"
+
+msgid ""
+"Power off {name}? The agent refuses while a project runs or someone is "
+"logged in there."
+msgstr ""
+"{name} ausschalten? Der Agent verweigert dies, solange dort ein Projekt "
+"läuft oder jemand angemeldet ist."
+
+msgid "in progress…"
+msgstr "läuft…"
+
+msgid "up"
+msgstr "an"
+
+msgid "off"
+msgstr "aus"
+
+msgid "waking"
+msgstr "wird geweckt"
+
+msgid "occupied"
+msgstr "belegt"
+
+msgid "exam"
+msgstr "Prüfung"
+
+msgid "draining"
+msgstr "läuft aus"
+
+msgid "disabled"
+msgstr "deaktiviert"
+
+msgid "{n} s"
+msgstr "{n} s"
+
+msgid "{n} failed"
+msgstr "{n} fehlgeschlagen"
+
+msgid "idle for {n} min"
+msgstr "seit {n} min inaktiv"
+
+msgid "instructors"
+msgstr "Lehrkräfte"
+
+msgid "power"
+msgstr "Auto-Aus"
+
+msgid "drain"
+msgstr "Auslaufen"
+
+msgid "power off sent"
+msgstr "Ausschalten gesendet"
+
+msgid "restart sent"
+msgstr "Neustart gesendet"
+
+msgid "the host is not reachable"
+msgstr "der Rechner ist nicht erreichbar"
+
+msgid "no MAC address nor wake command"
+msgstr "weder MAC-Adresse noch Weckbefehl"
+
+msgid "the host is up"
+msgstr "der Rechner ist an"
+
+msgid "the host is disabled"
+msgstr "der Rechner ist deaktiviert"
+
+msgid "already draining"
+msgstr "läuft bereits aus"
+
+msgid "the agent does not allow it (allow_power_off)"
+msgstr "der Agent erlaubt es nicht (allow_power_off)"
+
+msgid "none"
+msgstr "keine"
+
+msgid "{awake} host(s) awake (floor {floor})"
+msgstr "{awake} Rechner wach (Untergrenze {floor})"
+
+msgid "spare capacity: {spare} slot(s) (wanted: {wanted})"
+msgstr "freie Kapazität: {spare} Platz/Plätze (gewünscht: {wanted})"
+
+msgid "waking: {names}"
+msgstr "wird geweckt: {names}"
+
+msgid "outside the active hours"
+msgstr "außerhalb der aktiven Zeiten"
+
+msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
+msgstr ""
+"die Änderungen werden NICHT gespeichert, ein Neustart des Portals verliert "
+"sie: {error}"
+
+# the preload of the Docker images of the labs (sre preload-images run by the agents, a few hosts at a time)
+msgid "Preload images"
+msgstr "Images vorladen"
+
+msgid "preload queued"
+msgstr "Vorladen eingereiht"
+
+msgid "preloading"
+msgstr "wird vorgeladen"
+
+msgid "preloading {current}/{total}"
+msgstr "wird vorgeladen {current}/{total}"
+
+msgid "preload failed"
+msgstr "Vorladen fehlgeschlagen"
+
+msgid "the agent does not know the preload (older version)"
+msgstr "der Agent kennt das Vorladen nicht (ältere Version)"
+
+msgid "already queued"
+msgstr "bereits eingereiht"
+
+msgid "already preloading"
+msgstr "wird bereits vorgeladen"
+
+msgid ""
+"image preloads: {running} running, {queued} queued, {failed} failed (at most "
+"{max} at a time)"
+msgstr ""
+"Vorladen der Images: {running} laufend, {queued} eingereiht, {failed} "
+"fehlgeschlagen (höchstens {max} gleichzeitig)"
+
+msgid "{n} host(s)"
+msgstr "{n} Rechner"
+
+msgid "{n} of {total} host(s)"
+msgstr "{n} von {total} Rechner(n)"
+
+msgid "No host matches the filter."
+msgstr "Kein Rechner entspricht dem Filter."
+
+msgid "No host in the pool."
+msgstr "Kein Rechner im Pool."
+
+msgid "Select the hosts shown"
+msgstr "Die angezeigten Rechner auswählen"
+
+msgid "{n} host(s) selected"
+msgstr "{n} Rechner ausgewählt"
+
+msgid "({n} not shown)"
+msgstr "({n} nicht angezeigt)"
+
+msgid "no host selected"
+msgstr "kein Rechner ausgewählt"
+
+msgid "applies to none of the selected hosts"
+msgstr "gilt für keinen der ausgewählten Rechner"
+
+msgid "applies to {n} of the {total} selected host(s)"
+msgstr "gilt für {n} der {total} ausgewählten Rechner"
+
+msgid "the host is enabled"
+msgstr "der Rechner ist aktiviert"
+
+msgid "{failed} of {total} action(s) failed: {details}"
+msgstr "{failed} von {total} Aktion(en) fehlgeschlagen: {details}"
+
+msgid "Priority"
+msgstr "Priorität"
+
+msgid "Priority…"
+msgstr "Priorität…"
+
+msgid "The lowest priority is used first"
+msgstr "Die niedrigste Priorität wird zuerst verwendet"
+
+msgid "Change the priority: the lowest one is used first"
+msgstr "Die Priorität ändern: die niedrigste wird zuerst verwendet"
+
+msgid "Priority of {name}"
+msgstr "Priorität von {name}"
+
+msgid "Priority of the {n} selected host(s)"
+msgstr "Priorität der {n} ausgewählten Rechner"
+
+msgid ""
+"The host with the lowest priority is woken first and gets a project first "
+"among the hosts without project; the one with the highest is powered off "
+"first when idle. 0 by default; a negative number comes before."
+msgstr ""
+"Der Rechner mit der niedrigsten Priorität wird zuerst geweckt und erhält "
+"unter den Rechnern ohne Projekt zuerst ein Projekt; der mit der höchsten "
+"wird im Leerlauf zuerst ausgeschaltet. Standardmäßig 0; eine negative Zahl "
+"kommt davor."
+
+# --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
+msgid "No archived evaluation yet."
+msgstr "Noch keine archivierte Bewertung."
+
+msgid "Last archived evaluation: {date}"
+msgstr "Letzte archivierte Bewertung: {date}"
+
+msgid "{errors} error(s), {warnings} warning(s)"
+msgstr "{errors} Fehler, {warnings} Warnung(en)"
+
+msgid "This connection fell behind the terminal output."
+msgstr "Diese Verbindung kam mit der Terminalausgabe nicht nach."
+
+msgid "This terminal is closed."
+msgstr "Dieses Terminal ist geschlossen."
+
+msgid "Private terminal (the student does not see it)"
+msgstr "Privates Terminal (die oder der Studierende sieht es nicht)"
+
+msgid "Shared terminal (the student can join it)"
+msgstr "Geteiltes Terminal (die oder der Studierende kann beitreten)"
+
+msgid "Closed to the student: private terminal only"
+msgstr "Für Studierende geschlossen: nur privates Terminal"
+
+msgid "{n} viewers"
+msgstr "{n} Zuschauende"
+
+msgid "Live terminals:"
+msgstr "Offene Terminals:"
+
+msgid "you"
+msgstr "Sie"
+
+msgid "Join {device} ({who})"
+msgstr "{device} beitreten ({who})"
+
+msgid "private"
+msgstr "privat"
+
+msgid "{title} (private)"
+msgstr "{title} (privat)"
+
+msgid "{device} ({who})"
+msgstr "{device} ({who})"
+
+msgid "Automatic placement"
+msgstr "Automatische Platzierung"
+
+msgid "(a host reserved for instructors, or the least loaded one)"
+msgstr ""
+"(ein für Lehrkräfte reservierter Rechner oder der am wenigsten ausgelastete)"
+
+# --- presentations: project.html, project.js, present.js ---
+msgid "Present"
+msgstr "Präsentieren"
+
+msgid "Show this project, read-only, on the browsers of chosen students"
+msgstr ""
+"Dieses Projekt schreibgeschützt in den Browsern ausgewählter Studierender "
+"zeigen"
+
+msgid "Presented by {name}"
+msgstr "Präsentiert von {name}"
+
+msgid "Edit audience"
+msgstr "Publikum bearbeiten"
+
+msgid "Stop presenting"
+msgstr "Präsentation beenden"
+
+msgid "The presentation has ended."
+msgstr "Die Präsentation ist beendet."
+
+msgid "Leave the presentation"
+msgstr "Die Präsentation verlassen"
+
+msgid "{name} is presenting a project"
+msgstr "{name} präsentiert ein Projekt"
+
+msgid "Watch the presentation"
+msgstr "Die Präsentation ansehen"
+
+msgid "Present to…"
+msgstr "Präsentieren für…"
+
+msgid "Select all"
+msgstr "Alle auswählen"
+
+msgid "None"
+msgstr "Keine"
+
+msgid "No user is connected."
+msgstr "Kein Benutzer ist verbunden."
+
+msgid "No user matches the filter."
+msgstr "Kein Benutzer entspricht dem Filter."
+
+msgid "{n} selected"
+msgstr "{n} ausgewählt"
+
+msgid "instructor"
+msgstr "Lehrkraft"
+
+msgid "debug"
+msgstr "Debug"
+
+msgid "in a presentation"
+msgstr "in einer Präsentation"
+
+msgid "via group"
+msgstr "über die Gruppe"
+
+msgid "{group} ({n} connected)"
+msgstr "{group} ({n} verbunden)"
+
+msgid "Presenting to {n} students ({m} connected)"
+msgstr "Präsentation für {n} Studierende ({m} verbunden)"
+
+# --- focus: project.html, focus.js ---
+msgid "Focus student on project"
+msgstr "Studierende auf das Projekt fokussieren"
+
+msgid ""
+"Bring the student's browser to this project and keep both pages on the same "
+"tab, terminal and question"
+msgstr ""
+"Den Browser der oder des Studierenden auf dieses Projekt bringen und beide "
+"Seiten auf demselben Reiter, Terminal und derselben Frage halten"
+
+msgid "Followed by {name}"
+msgstr "Gefolgt von {name}"
+
+msgid "The student's page follows"
+msgstr "Die Seite der oder des Studierenden folgt"
+
+msgid "Waiting for the student's page"
+msgstr "Warten auf die Seite der oder des Studierenden"
+
+msgid "The focus has ended."
+msgstr "Der Fokus ist beendet."
+
+msgid "Back to the project"
+msgstr "Zurück zum Projekt"
+
+# --- the administrators: history.html, history.js, base.html --------------------------------
+msgid "History"
+msgstr "Verlauf"
+
+msgid "Connection log"
+msgstr "Verbindungsprotokoll"
+
+msgid "The beginning of the login"
+msgstr "Der Anfang des Benutzernamens"
+
+msgid "Address"
+msgstr "Adresse"
+
+msgid "The beginning of the client address (a prefix is a subnet)"
+msgstr "Der Anfang der Client-Adresse (ein Präfix ist ein Subnetz)"
+
+msgid "Event"
+msgstr "Ereignis"
+
+msgid "All events"
+msgstr "Alle Ereignisse"
+
+msgid "The exact name of a pool host"
+msgstr "Der genaue Name eines Pool-Rechners"
+
+msgid "Project"
+msgstr "Projekt"
+
+msgid "A part of the running lab name"
+msgstr "Ein Teil des Namens des laufenden Labors"
+
+msgid "A part of the lab name (the start lines only)"
+msgstr "Ein Teil des Labornamens (nur die start-Zeilen)"
+
+msgid "From"
+msgstr "Von"
+
+msgid "To"
+msgstr "Bis"
+
+msgid "Rows"
+msgstr "Zeilen"
+
+msgid "Search"
+msgstr "Suchen"
+
+msgid "Reset"
+msgstr "Zurücksetzen"
+
+msgid ""
+"The connection log is not stored in a database: set [access_log.database] in "
+"web.toml to browse it here."
+msgstr ""
+"Das Verbindungsprotokoll wird nicht in einer Datenbank gespeichert: setzen "
+"Sie [access_log.database] in web.toml, um es hier anzuzeigen."
+
+msgid "Time"
+msgstr "Zeit"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Duration"
+msgstr "Dauer"
+
+msgid "Details"
+msgstr "Details"
+
+msgid "Newer"
+msgstr "Neuere"
+
+msgid "Older"
+msgstr "Ältere"
+
+msgid "Click to filter on this value"
+msgstr "Klicken, um nach diesem Wert zu filtern"
+
+msgid "No event matches the filters."
+msgstr "Kein Ereignis entspricht den Filtern."
+
+msgid "{n} event(s) shown, older ones exist"
+msgstr "{n} Ereignis(se) angezeigt, es gibt ältere"
+
+msgid "{n} event(s) shown"
+msgstr "{n} Ereignis(se) angezeigt"
+
+msgid "page {n}"
+msgstr "Seite {n}"
+
+msgid "The last events may be missing: the database does not answer ({error})."
+msgstr ""
+"Die letzten Ereignisse fehlen möglicherweise: die Datenbank antwortet nicht "
+"({error})."
+
+# the Sessions view of the History page
+msgid "Events"
+msgstr "Ereignisse"
+
+msgid "Sessions"
+msgstr "Sitzungen"
+
+msgid "For a session: the time it was closed"
+msgstr "Für eine Sitzung: der Zeitpunkt ihres Schließens"
+
+msgid "Start time"
+msgstr "Beginn"
+
+msgid "End time"
+msgstr "Ende"
+
+msgid "Requests"
+msgstr "Anfragen"
+
+msgid "Closed by"
+msgstr "Geschlossen durch"
+
+msgid "show"
+msgstr "anzeigen"
+
+msgid "The events of this session"
+msgstr "Die Ereignisse dieser Sitzung"
+
+msgid "Idle"
+msgstr "Inaktivität"
+
+msgid "Shutdown"
+msgstr "Herunterfahren des Portals"
+
+msgid "Still open"
+msgstr "Noch offen"
+
+msgid "Still open ({n} connection(s))"
+msgstr "Noch offen ({n} Verbindung(en))"
+
+msgid "{n} session(s) shown, older ones exist"
+msgstr "{n} Sitzung(en) angezeigt, es gibt ältere"
+
+msgid "{n} session(s) shown"
+msgstr "{n} Sitzung(en) angezeigt"
+
+msgid "{n} open"
+msgstr "{n} offen"
+
+msgid "No session matches the filters."
+msgstr "Keine Sitzung entspricht den Filtern."
+
+# the Statistics view of the History page (history.html, history.js, history_stats.js)
+msgid "Statistics"
+msgstr "Statistik"
+
+msgid "Totals"
+msgstr "Summen"
+
+msgid "Period"
+msgstr "Zeitraum"
+
+msgid "Users"
+msgstr "Benutzer"
+
+msgid "Students"
+msgstr "Studierende"
+
+msgid "Instructors"
+msgstr "Lehrkräfte"
+
+msgid "Groups"
+msgstr "Gruppen"
+
+msgid "Addresses"
+msgstr "Adressen"
+
+msgid "Total connection time"
+msgstr "Gesamte Verbindungszeit"
+
+msgid "Average connection time of a student"
+msgstr "Durchschnittliche Verbindungszeit pro Studierendem"
+
+msgid "Median connection time of a student"
+msgstr "Mediane Verbindungszeit pro Studierendem"
+
+msgid "Longest connection time of a student"
+msgstr "Längste Verbindungszeit eines Studierenden"
+
+msgid "Users at once"
+msgstr "Gleichzeitige Benutzer"
+
+msgid "Projects started"
+msgstr "Gestartete Projekte"
+
+msgid "Projects used"
+msgstr "Verwendete Projekte"
+
+msgid "Evaluations"
+msgstr "Bewertungen"
+
+msgid "Time on the project pages"
+msgstr "Zeit auf den Projektseiten"
+
+msgid "On the project pages"
+msgstr "Auf den Projektseiten"
+
+msgid "Role"
+msgstr "Rolle"
+
+msgid "First seen"
+msgstr "Zuerst gesehen"
+
+msgid "Last seen"
+msgstr "Zuletzt gesehen"
+
+msgid "Starts"
+msgstr "Starts"
+
+msgid "Labs"
+msgstr "Labore"
+
+msgid "Connection time of the students"
+msgstr "Verbindungszeit der Studierenden"
+
+msgid "Connection time"
+msgstr "Verbindungszeit"
+
+msgid "student"
+msgstr "Studierende(r)"
+
+msgid "less than {n} min"
+msgstr "weniger als {n} min"
+
+msgid "{a} to {b} min"
+msgstr "{a} bis {b} min"
+
+msgid "{a} to {b} h"
+msgstr "{a} bis {b} h"
+
+msgid "more than {n} h"
+msgstr "mehr als {n} h"
+
+msgid "{n} user(s) over the period"
+msgstr "{n} Benutzer im Zeitraum"
+
+msgid "No session in the period."
+msgstr "Keine Sitzung im Zeitraum."
+
+msgid ""
+"The statistics are computed on the {n} newest rows only: narrow the period."
+msgstr ""
+"Die Statistik umfasst nur die {n} neuesten Zeilen: grenzen Sie den Zeitraum "
+"ein."
+
+msgid "Click to show the users of this group only (again: every user)"
+msgstr ""
+"Klicken, um nur die Benutzer dieser Gruppe anzuzeigen (erneut: alle Benutzer)"
+
+# --- the Archives page of the instructors: archives.html, archives.js, archive_detail.js, base.html ---
+msgid "Archives"
+msgstr "Archive"
+
+msgid "Evaluation archives"
+msgstr "Bewertungsarchive"
+
+msgid "Summary"
+msgstr "Zusammenfassung"
+
+msgid "Student"
+msgstr "Studierende(r)"
+
+msgid "The beginning of a login, or a part of a name"
+msgstr "Der Anfang eines Benutzernamens oder ein Teil eines Namens"
+
+msgid "The student group (its exact name)"
+msgstr "Die Studierendengruppe (ihr genauer Name)"
+
+msgid "A part of the lab name"
+msgstr "Ein Teil des Labornamens"
+
+msgid "The time of the evaluation"
+msgstr "Der Zeitpunkt der Bewertung"
+
+msgid "Exam"
+msgstr "Prüfung"
+
+msgid "All"
+msgstr "Alle"
+
+msgid "Exam only"
+msgstr "Nur Prüfung"
+
+msgid "No exam"
+msgstr "Keine Prüfung"
+
+msgid "Show"
+msgstr "Anzeigen"
+
+msgid "The last evaluation of each project"
+msgstr "Die letzte Bewertung jedes Projekts"
+
+msgid "The last evaluation of each student"
+msgstr "Die letzte Bewertung jeder oder jedes Studierenden"
+
+msgid "Every evaluation"
+msgstr "Alle Bewertungen"
+
+msgid ""
+"The evaluations are not stored in a database: set [access_log.database] in "
+"web.toml to browse them here."
+msgstr ""
+"Die Bewertungen werden nicht in einer Datenbank gespeichert: setzen Sie "
+"[access_log.database] in web.toml, um sie hier anzuzeigen."
+
+msgid "Project start"
+msgstr "Projektstart"
+
+msgid "The number of self-evaluations the student had run"
+msgstr ""
+"Die Anzahl der Selbstbewertungen, die die oder der Studierende ausgeführt "
+"hatte"
+
+msgid "Self-evaluations"
+msgstr "Selbstbewertungen"
+
+msgid "errors / warnings"
+msgstr "Fehler / Warnungen"
+
+msgid "No evaluation matches the filters."
+msgstr "Keine Bewertung entspricht den Filtern."
+
+msgid "{n} evaluation(s)"
+msgstr "{n} Bewertung(en)"
+
+msgid "{n} evaluation(s) in the summary"
+msgstr "{n} Bewertung(en) in der Zusammenfassung"
+
+msgid "{n} evaluation(s) shown, older ones exist"
+msgstr "{n} Bewertung(en) angezeigt, es gibt ältere"
+
+msgid "{n} evaluation(s) shown"
+msgstr "{n} Bewertung(en) angezeigt"
+
+msgid ""
+"The last evaluations may be missing: the database does not answer ({error})."
+msgstr ""
+"Die letzten Bewertungen fehlen möglicherweise: die Datenbank antwortet nicht "
+"({error})."
+
+msgid "Give a lab to see its summary."
+msgstr "Geben Sie ein Labor an, um seine Zusammenfassung zu sehen."
+
+msgid "Choose a lab to see its summary:"
+msgstr "Wählen Sie ein Labor, um seine Zusammenfassung zu sehen:"
+
+msgid "The summary shows the {n} newest evaluations only: narrow the filters."
+msgstr ""
+"Die Zusammenfassung zeigt nur die {n} neuesten Bewertungen: grenzen Sie die "
+"Filter ein."
+
+msgid "Evaluation of {date}"
+msgstr "Bewertung vom {date}"
+
+msgid "project started {date}"
+msgstr "Projekt gestartet am {date}"
+
+# --- the Groups page of the instructors: groups.html, groups.js, group_members.js, groups_model.js, base.html;
+# --- the group keys of watch.js / present.js ---
+msgid "User groups"
+msgstr "Benutzergruppen"
+
+msgid "Group name, description or creator"
+msgstr "Gruppenname, Beschreibung oder Ersteller"
+
+msgid "Departments"
+msgstr "Abteilungen"
+
+msgid "Directory groups"
+msgstr "Verzeichnisgruppen"
+
+msgid "Custom groups"
+msgstr "Eigene Gruppen"
+
+msgid "Department"
+msgstr "Abteilung"
+
+msgid "Directory"
+msgstr "Verzeichnis"
+
+msgid "Custom"
+msgstr "Eigene"
+
+msgid "Read the directory again"
+msgstr "Das Verzeichnis neu lesen"
+
+msgid "Refresh"
+msgstr "Aktualisieren"
+
+msgid "New group"
+msgstr "Neue Gruppe"
+
+msgid ""
+"No LDAP directory is configured: set uri and search_base of [auth.ldap] in "
+"web.toml to list the departments and the directory groups."
+msgstr ""
+"Kein LDAP-Verzeichnis ist konfiguriert: setzen Sie uri und search_base von "
+"[auth.ldap] in web.toml, um die Abteilungen und die Verzeichnisgruppen "
+"aufzulisten."
+
+msgid ""
+"The custom groups are not stored in a database: set [access_log.database] in "
+"web.toml to create groups here."
+msgstr ""
+"Die eigenen Gruppen werden nicht in einer Datenbank gespeichert: setzen Sie "
+"[access_log.database] in web.toml, um hier Gruppen zu erstellen."
+
+msgid "Kind"
+msgstr "Art"
+
+msgid "Members"
+msgstr "Mitglieder"
+
+msgid "Description"
+msgstr "Beschreibung"
+
+msgid "Created by"
+msgstr "Erstellt von"
+
+msgid "Created"
+msgstr "Erstellt"
+
+msgid "{n} group(s)"
+msgstr "{n} Gruppe(n)"
+
+msgid "{n} of {total} group(s)"
+msgstr "{n} von {total} Gruppe(n)"
+
+msgid "No group."
+msgstr "Keine Gruppe."
+
+msgid "No group matches the filter."
+msgstr "Keine Gruppe entspricht dem Filter."
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Delete the group {name}? Its members are not affected."
+msgstr "Die Gruppe {name} löschen? Ihre Mitglieder sind nicht betroffen."
+
+msgid "Edit the group"
+msgstr "Die Gruppe bearbeiten"
+
+msgid "Create"
+msgstr "Erstellen"
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "1 to 64 characters, without \":\" or \"/\""
+msgstr "1 bis 64 Zeichen, ohne „:“ oder „/“"
+
+msgid "The group no longer exists."
+msgstr "Die Gruppe existiert nicht mehr."
+
+msgid "Directory read {date}: {n} people"
+msgstr "Verzeichnis gelesen am {date}: {n} Personen"
+
+msgid "The directory could not be read: {error}"
+msgstr "Das Verzeichnis konnte nicht gelesen werden: {error}"
+
+msgid ""
+"The custom groups may be missing: the database does not answer ({error})."
+msgstr ""
+"Die eigenen Gruppen fehlen möglicherweise: die Datenbank antwortet nicht "
+"({error})."
+
+msgid "{n} member(s)"
+msgstr "{n} Mitglied(er)"
+
+msgid "created by {login} on {date}"
+msgstr "erstellt von {login} am {date}"
+
+msgid "Login or name…"
+msgstr "Benutzername oder Name…"
+
+msgid "More people match: type more of the name"
+msgstr "Weitere Personen passen: geben Sie mehr vom Namen ein"
+
+msgid "Add"
+msgstr "Hinzufügen"
+
+msgid "Add the members of…"
+msgstr "Die Mitglieder hinzufügen von…"
+
+msgid "Remove the members of…"
+msgstr "Die Mitglieder entfernen von…"
+
+msgid "Remove from this group every member of {name}?"
+msgstr "Alle Mitglieder von {name} aus dieser Gruppe entfernen?"
+
+msgid "{n} member(s) removed"
+msgstr "{n} Mitglied(er) entfernt"
+
+msgid "Remove"
+msgstr "Entfernen"
+
+msgid "Added by"
+msgstr "Hinzugefügt von"
+
+msgid "Added"
+msgstr "Hinzugefügt"
+
+msgid "Unknown logins: {logins}"
+msgstr "Unbekannte Benutzernamen: {logins}"
+
+msgid "{n} member(s) added"
+msgstr "{n} Mitglied(er) hinzugefügt"
+
+msgid "No member."
+msgstr "Kein Mitglied."
+
+msgid "No member matches the filter."
+msgstr "Kein Mitglied entspricht dem Filter."
+
+msgid "{group} ({n} connected, {m} members)"
+msgstr "{group} ({n} verbunden, {m} Mitglieder)"
+
+# --- exams: base.html, exam.js (every page of a student), projects.html, projects.js, project.js ---
+msgid "Exams"
+msgstr "Prüfungen"
+
+msgid "Exam «{title}»"
+msgstr "Prüfung „{title}“"
+
+msgid "starts in"
+msgstr "beginnt in"
+
+msgid "the exam is being prepared: its projects are starting…"
+msgstr "die Prüfung wird vorbereitet: ihre Projekte starten…"
+
+msgid "time left:"
+msgstr "verbleibende Zeit:"
+
+msgid "the exam is over."
+msgstr "die Prüfung ist vorbei."
+
+msgid "your address {address} is not allowed for this exam."
+msgstr "Ihre Adresse {address} ist für diese Prüfung nicht zugelassen."
+
+msgid "your other projects are hidden until it ends"
+msgstr "Ihre anderen Projekte sind bis zu ihrem Ende ausgeblendet"
+
+msgid "The exam «{title}» is over."
+msgstr "Die Prüfung „{title}“ ist vorbei."
+
+msgid ""
+"Your work has been evaluated. Press Continue to get back to your projects."
+msgstr ""
+"Ihre Arbeit wurde bewertet. Drücken Sie auf Weiter, um zu Ihren Projekten "
+"zurückzukehren."
+
+msgid "Available when the exam starts"
+msgstr "Verfügbar, wenn die Prüfung beginnt"
+
+msgid "Exam: "
+msgstr "Prüfung:"
+
+msgid ""
+"The exam is reserved to the browsers of its rooms: no project is available "
+"from your address."
+msgstr ""
+"Die Prüfung ist den Browsern ihrer Räume vorbehalten: von Ihrer Adresse aus "
+"ist kein Projekt verfügbar."
+
+msgid ""
+"Your other projects are hidden until the end of the exam. Its projects will "
+"be prepared shortly before it starts."
+msgstr ""
+"Ihre anderen Projekte sind bis zum Ende der Prüfung ausgeblendet. Ihre "
+"Projekte werden kurz vor ihrem Beginn vorbereitet."
+
+msgid ""
+"Your other projects are hidden until the end of the exam. Its projects are "
+"being prepared."
+msgstr ""
+"Ihre anderen Projekte sind bis zum Ende der Prüfung ausgeblendet. Ihre "
+"Projekte werden vorbereitet."
+
+msgid "The exam has started: its projects are being prepared."
+msgstr "Die Prüfung hat begonnen: ihre Projekte werden vorbereitet."
+
+msgid "The exam is in progress: only its projects are available."
+msgstr "Die Prüfung läuft: nur ihre Projekte sind verfügbar."
+
+msgid "The exam is over."
+msgstr "Die Prüfung ist vorbei."
+
+msgid "Starting {lab} for the exam…"
+msgstr "{lab} wird für die Prüfung gestartet…"
+
+msgid "Next attempt in {n} s"
+msgstr "Nächster Versuch in {n} s"
+
+# --- the Exams page of the instructors: exams.html, exams.js, exams_form.js, login_picker.js ---
+msgid "Title, lab, audience or creator"
+msgstr "Titel, Labor, Publikum oder Ersteller"
+
+msgid "Scheduled"
+msgstr "Geplant"
+
+msgid "Running"
+msgstr "Laufend"
+
+msgid "Past"
+msgstr "Vergangen"
+
+msgid "New exam"
+msgstr "Neue Prüfung"
+
+msgid ""
+"The exams are not stored in a database: set [access_log.database] in "
+"web.toml to program exams here."
+msgstr ""
+"Die Prüfungen werden nicht in einer Datenbank gespeichert: setzen Sie "
+"[access_log.database] in web.toml, um hier Prüfungen zu planen."
+
+msgid ""
+"The users are anonymous (the login of a guest is not known in advance): no "
+"exam can be programmed."
+msgstr ""
+"Die Benutzer sind anonym (der Benutzername eines Gastes ist nicht im Voraus "
+"bekannt): es kann keine Prüfung geplant werden."
+
+msgid "Title"
+msgstr "Titel"
+
+msgid "End"
+msgstr "Ende"
+
+msgid "Audience"
+msgstr "Publikum"
+
+msgid "Start the exam now: its members are bound at once"
+msgstr "Die Prüfung jetzt beginnen: ihre Mitglieder sind sofort gebunden"
+
+msgid "Start now"
+msgstr "Jetzt beginnen"
+
+msgid ""
+"End the exam now for everybody: the final evaluation runs, the banner is "
+"shown"
+msgstr ""
+"Die Prüfung jetzt für alle beenden: die abschließende Bewertung läuft, das "
+"Banner wird angezeigt"
+
+msgid "End now"
+msgstr "Jetzt beenden"
+
+msgid "Minutes"
+msgstr "Minuten"
+
+msgid "Check the members of one or several groups"
+msgstr "Die Mitglieder einer oder mehrerer Gruppen ankreuzen"
+
+msgid "Select group…"
+msgstr "Gruppe auswählen…"
+
+msgid "Select the members of groups"
+msgstr "Die Mitglieder von Gruppen auswählen"
+
+msgid "The members of the groups ticked replace the current selection."
+msgstr "Die Mitglieder der angekreuzten Gruppen ersetzen die aktuelle Auswahl."
+
+msgid "Select"
+msgstr "Auswählen"
+
+msgid "no group among the members"
+msgstr "keine Gruppe unter den Mitgliedern"
+
+msgid "Extra minutes beyond the end of the exam, for the selected members"
+msgstr ""
+"Zusätzliche Minuten über das Ende der Prüfung hinaus, für die ausgewählten "
+"Mitglieder"
+
+msgid "+ for selected"
+msgstr "+ für Auswahl"
+
+msgid "Fewer minutes for the selected members"
+msgstr "Weniger Minuten für die ausgewählten Mitglieder"
+
+msgid "− for selected"
+msgstr "− für Auswahl"
+
+msgid "End the exam now for the selected members"
+msgstr "Die Prüfung jetzt für die ausgewählten Mitglieder beenden"
+
+msgid "End for selected"
+msgstr "Für Auswahl beenden"
+
+msgid ""
+"Change the labs of the selected members (their missing labs are started by "
+"their browsers)"
+msgstr ""
+"Die Labore der ausgewählten Mitglieder ändern (ihre fehlenden Labore werden "
+"von ihren Browsern gestartet)"
+
+msgid "Change labs…"
+msgstr "Labore ändern…"
+
+msgid ""
+"Close the exam projects of the selected members (all of them when none is "
+"selected)"
+msgstr ""
+"Die Prüfungsprojekte der ausgewählten Mitglieder schließen (aller "
+"Mitglieder, wenn keines ausgewählt ist)"
+
+msgid "Close projects…"
+msgstr "Projekte schließen…"
+
+msgid "Select the members shown"
+msgstr "Die angezeigten Mitglieder auswählen"
+
+msgid "Connected"
+msgstr "Verbunden"
+
+msgid "Phase"
+msgstr "Phase"
+
+msgid "Extra"
+msgstr "Zusatz"
+
+msgid "Elapsed"
+msgstr "Verstrichen"
+
+msgid ""
+"The time allotted to the student: from their start to their end, their extra "
+"minutes included"
+msgstr ""
+"Die der oder dem Studierenden zugestandene Zeit: von ihrem Beginn bis zu "
+"ihrem Ende, einschließlich der zusätzlichen Minuten"
+
+msgid "The time the student has spent in the exam"
+msgstr "Die Zeit, die die oder der Studierende in der Prüfung verbracht hat"
+
+msgid "Logins"
+msgstr "Benutzernamen"
+
+msgid ""
+"The exam binds the logins listed and every member of the groups chosen; "
+"instructors are never bound."
+msgstr ""
+"Die Prüfung bindet die aufgeführten Benutzernamen und alle Mitglieder der "
+"gewählten Gruppen; Lehrkräfte werden nie gebunden."
+
+msgid ""
+"The exam-only labs (_EXAM_) are listed too; the preset is the name of a "
+"Flavor preset of the lab, when it defines one."
+msgstr ""
+"Die Labore nur für Prüfungen (_EXAM_) werden ebenfalls aufgeführt; die "
+"Vorgabe ist der Name einer Flavor-Vorgabe des Labors, wenn es eine definiert."
+
+msgid "When"
+msgstr "Wann"
+
+msgid "Start after"
+msgstr "Beginn ab"
+
+msgid "End before"
+msgstr "Ende vor"
+
+msgid "Duration (min)"
+msgstr "Dauer (min)"
+
+msgid ""
+"Without a start time the exam starts for each student when they log in; the "
+"end-before time wins over the duration; a duration or an end-before time is "
+"required."
+msgstr ""
+"Ohne Startzeit beginnt die Prüfung für jede und jeden Studierenden bei der "
+"Anmeldung; die Endzeit hat Vorrang vor der Dauer; eine Dauer oder eine "
+"Endzeit ist erforderlich."
+
+msgid "Hide the other projects (min before)"
+msgstr "Die anderen Projekte ausblenden (min vorher)"
+
+msgid "Start the projects (min before)"
+msgstr "Die Projekte starten (min vorher)"
+
+msgid "Evaluation every (s)"
+msgstr "Bewertung alle (s)"
+
+msgid "Browsers"
+msgstr "Browser"
+
+msgid "Allowed networks (one address or network per line; empty: anywhere)"
+msgstr ""
+"Erlaubte Netzwerke (eine Adresse oder ein Netzwerk pro Zeile; leer: überall)"
+
+msgid "{n} exam(s)"
+msgstr "{n} Prüfung(en)"
+
+msgid "{n} of {total} exam(s)"
+msgstr "{n} von {total} Prüfung(en)"
+
+msgid "No exam matches the filter."
+msgstr "Keine Prüfung entspricht dem Filter."
+
+msgid "No exam."
+msgstr "Keine Prüfung."
+
+msgid "scheduled"
+msgstr "geplant"
+
+msgid "running"
+msgstr "laufend"
+
+msgid "past"
+msgstr "vergangen"
+
+msgid "not yet"
+msgstr "noch nicht"
+
+msgid "waiting"
+msgstr "wartend"
+
+msgid "starting"
+msgstr "startet"
+
+msgid "in progress"
+msgstr "läuft"
+
+msgid "ended"
+msgstr "beendet"
+
+msgid "did not take part"
+msgstr "hat nicht teilgenommen"
+
+msgid "when the student logs in"
+msgstr "bei der Anmeldung der oder des Studierenden"
+
+msgid "ended {date}"
+msgstr "beendet am {date}"
+
+msgid "{n} login(s)"
+msgstr "{n} Benutzername(n)"
+
+msgid ""
+"Delete the exam «{title}»? OK also closes its running projects; Cancel keeps "
+"everything."
+msgstr ""
+"Die Prüfung „{title}“ löschen? OK schließt auch ihre laufenden Projekte; "
+"Abbrechen behält alles."
+
+msgid "Delete the exam «{title}» and leave its projects running?"
+msgstr "Die Prüfung „{title}“ löschen und ihre Projekte weiterlaufen lassen?"
+
+msgid "{n} project(s) closed"
+msgstr "{n} Projekt(e) geschlossen"
+
+msgid "The exam no longer exists."
+msgstr "Die Prüfung existiert nicht mehr."
+
+msgid "start: {text}"
+msgstr "Beginn: {text}"
+
+msgid "duration: {text}"
+msgstr "Dauer: {text}"
+
+msgid "end: {text}"
+msgstr "Ende: {text}"
+
+msgid "labs: {text}"
+msgstr "Labore: {text}"
+
+msgid ""
+"hidden {lead} min before, started {pre} min before, evaluated every {eval} s"
+msgstr ""
+"ausgeblendet {lead} min vorher, gestartet {pre} min vorher, bewertet alle "
+"{eval} s"
+
+msgid "networks: {text}"
+msgstr "Netzwerke: {text}"
+
+msgid "no member selected"
+msgstr "kein Mitglied ausgewählt"
+
+msgid "End the exam now for everybody?"
+msgstr "Die Prüfung jetzt für alle beenden?"
+
+msgid "End the exam now for {n} member(s)?"
+msgstr "Die Prüfung jetzt für {n} Mitglied(er) beenden?"
+
+msgid "Labs of {n} member(s)"
+msgstr "Labore von {n} Mitglied(ern)"
+
+msgid ""
+"Close the exam projects of every member? Their machines will be stopped."
+msgstr ""
+"Die Prüfungsprojekte aller Mitglieder schließen? Ihre Maschinen werden "
+"gestoppt."
+
+msgid ""
+"Close the exam projects of {n} member(s)? Their machines will be stopped."
+msgstr ""
+"Die Prüfungsprojekte von {n} Mitglied(ern) schließen? Ihre Maschinen werden "
+"gestoppt."
+
+msgid "No lab is available: is a host of the pool up?"
+msgstr "Kein Labor verfügbar: ist ein Rechner des Pools an?"
+
+msgid "preset"
+msgstr "Vorgabe"
+
+msgid "The name of a Flavor preset of the lab (optional)"
+msgstr "Der Name einer Flavor-Vorgabe des Labors (optional)"
+
+msgid "A title is required."
+msgstr "Ein Titel ist erforderlich."
+
+msgid "Choose at least one lab."
+msgstr "Wählen Sie mindestens ein Labor."
+
+msgid "A duration or an end-before time is required."
+msgstr "Eine Dauer oder eine Endzeit ist erforderlich."
+
+msgid "The end-before time must come after the start."
+msgstr "Die Endzeit muss nach dem Beginn liegen."
+
+msgid "Edit the exam «{title}»"
+msgstr "Die Prüfung „{title}“ bearbeiten"
+
+msgid "No lab chosen: the members get the labs of the exam again."
+msgstr ""
+"Kein Labor gewählt: die Mitglieder erhalten wieder die Labore der Prüfung."
+
+msgid ""
+"The members of a user group of any kind: a department, a directory group, a "
+"custom group"
+msgstr ""
+"Die Mitglieder einer Benutzergruppe beliebiger Art: eine Abteilung, eine "
+"Verzeichnisgruppe, eine eigene Gruppe"
+
+msgid "Click to filter on this group"
+msgstr "Klicken, um nach dieser Gruppe zu filtern"
+
+msgid "The group has no member known to the portal."
+msgstr "Die Gruppe hat kein dem Portal bekanntes Mitglied."
+
+# --- web conferences (BigBlueButton): base.html, webconf_left.html, webconf.js, webconf_dialog.js, tabs/webconf.js, audience_dialog.js ---
+msgid "Webconf"
+msgstr "Webkonferenz"
+
+msgid "You have left the conference."
+msgstr "Sie haben die Konferenz verlassen."
+
+msgid "Rejoin"
+msgstr "Erneut beitreten"
+
+msgid "Web conference"
+msgstr "Webkonferenz"
+
+msgid "Web conferences"
+msgstr "Webkonferenzen"
+
+msgid "{name} ({owner})"
+msgstr "{name} ({owner})"
+
+msgid "Minimize"
+msgstr "Minimieren"
+
+msgid "Restore"
+msgstr "Wiederherstellen"
+
+msgid "Dock into the Webconf tab"
+msgstr "In den Reiter Webkonferenz andocken"
+
+msgid "Full screen"
+msgstr "Vollbild"
+
+msgid "Open in a separate browser window"
+msgstr "In einem separaten Browserfenster öffnen"
+
+msgid "Leave the conference"
+msgstr "Die Konferenz verlassen"
+
+msgid "Back to a window"
+msgstr "Zurück in ein Fenster"
+
+msgid "Show in the Webconf tab"
+msgstr "Im Reiter Webkonferenz anzeigen"
+
+msgid "Webconf: {name}"
+msgstr "Webkonferenz: {name}"
+
+msgid "Webconf in a separate window"
+msgstr "Webkonferenz in einem separaten Fenster"
+
+msgid "Bring back"
+msgstr "Zurückholen"
+
+msgid "Webconf open in another tab"
+msgstr "Webkonferenz in einem anderen Tab geöffnet"
+
+msgid "Bring here"
+msgstr "Hierher holen"
+
+msgid "The conference {name} has ended"
+msgstr "Die Konferenz {name} ist beendet"
+
+msgid "The browser blocked the separate window."
+msgstr "Der Browser hat das separate Fenster blockiert."
+
+# --- private conversations: project.html, talk.js, webconf_invite.js, webconf.js, webconf_dialog.js ---
+msgid "Talk privately"
+msgstr "Privat sprechen"
+
+msgid "Invite the student to a private voice and text conversation"
+msgstr ""
+"Die oder den Studierenden zu einem privaten Sprach- und Textgespräch einladen"
+
+msgid ""
+"Invite {name} to a private voice and text conversation (a web conference of "
+"the two of you)"
+msgstr ""
+"{name} zu einem privaten Sprach- und Textgespräch einladen (eine "
+"Webkonferenz zu zweit)"
+
+msgid "Calling… (cancel)"
+msgstr "Anruf… (abbrechen)"
+
+msgid "{name} is being asked: click to take the invitation back"
+msgstr "{name} wird gefragt: klicken, um die Einladung zurückzuziehen"
+
+msgid "End conversation"
+msgstr "Gespräch beenden"
+
+msgid ""
+"End the private conversation with {name}: both go back to the class "
+"conference"
+msgstr ""
+"Das private Gespräch mit {name} beenden: beide kehren in die Konferenz der "
+"Klasse zurück"
+
+msgid "End the conversation"
+msgstr "Das Gespräch beenden"
+
+msgid "{name} would like to talk with you"
+msgstr "{name} möchte mit Ihnen sprechen"
+
+msgid "Not now"
+msgstr "Nicht jetzt"
+
+msgid "The invitation is over."
+msgstr "Die Einladung ist nicht mehr gültig."
+
+msgid "{name} declined the conversation."
+msgstr "{name} hat das Gespräch abgelehnt."
+
+msgid "{name} did not answer."
+msgstr "{name} hat nicht geantwortet."
+
+msgid "{name} is no longer calling."
+msgstr "{name} ruft nicht mehr an."
+
+msgid "The private conversation could not be started."
+msgstr "Das private Gespräch konnte nicht gestartet werden."
+
+msgid "Private — {name}"
+msgstr "Privat — {name}"
+
+msgid "The private conversation with {name} has ended"
+msgstr "Das private Gespräch mit {name} ist beendet"
+
+msgid "Private conversation with {name}"
+msgstr "Privates Gespräch mit {name}"
+
+msgid "New room"
+msgstr "Neuer Raum"
+
+msgid "Room name"
+msgstr "Raumname"
+
+msgid "Audience…"
+msgstr "Publikum…"
+
+msgid "Audience of the conference…"
+msgstr "Publikum der Konferenz…"
+
+msgid "Choose"
+msgstr "Wählen"
+
+msgid "{n} users, {m} groups"
+msgstr "{n} Benutzer, {m} Gruppen"
+
+msgid "Join"
+msgstr "Beitreten"
+
+msgid "In the room"
+msgstr "Im Raum"
+
+msgid "End the conference «{name}»? Its participants will be disconnected."
+msgstr "Die Konferenz „{name}“ beenden? Ihre Teilnehmenden werden getrennt."
+
+msgid "No room is open."
+msgstr "Kein Raum ist geöffnet."
+
+msgid "in a conference"
+msgstr "in einer Konferenz"
+
+# --- the reports of the Archives page: archives.html, archives.js ------------------------------
+msgid "Select the evaluations shown"
+msgstr "Die angezeigten Bewertungen auswählen"
+
+msgid "{n} evaluation(s) selected"
+msgstr "{n} Bewertung(en) ausgewählt"
+
+msgid "Spreadsheet"
+msgstr "Tabelle"
+
+msgid "PDF reports"
+msgstr "PDF-Berichte"
+
+msgid "A spreadsheet of the selected evaluations, as sre sheet gives it"
+msgstr "Eine Tabelle der ausgewählten Bewertungen, wie sre sheet sie liefert"
+
+msgid ""
+"One PDF report per student and the summary spreadsheet, as sre outline gives "
+"them"
+msgstr ""
+"Ein PDF-Bericht pro Studierendem und die zusammenfassende Tabelle, wie sre "
+"outline sie liefert"
+
+msgid "Summary spreadsheet"
+msgstr "Zusammenfassende Tabelle"
+
+msgid ""
+"The summary spreadsheet alone: one row per student with the best evaluation, "
+"as sre outline -o gives it"
+msgstr ""
+"Nur die zusammenfassende Tabelle: eine Zeile pro Studierendem mit der besten "
+"Bewertung, wie sre outline -o sie liefert"
+
+msgid "Options"
+msgstr "Optionen"
+
+msgid "Every evaluation of the selected projects"
+msgstr "Alle Bewertungen der ausgewählten Projekte"
+
+msgid "One report / row per project instance"
+msgstr "Ein Bericht / eine Zeile pro Projektinstanz"
+
+msgid "\"Bonus\" before the label of a bonus element"
+msgstr "„Bonus“ vor der Bezeichnung eines Bonuselements"
+
+msgid "Evaluation history (PDF)"
+msgstr "Bewertungsverlauf (PDF)"
+
+msgid "Remaining time column (PDF, exams)"
+msgstr "Spalte der verbleibenden Zeit (PDF, Prüfungen)"
+
+msgid "Group by part (PDF)"
+msgstr "Nach Teil gruppieren (PDF)"
+
+msgid "Generating…"
+msgstr "Wird erzeugt…"
+
+msgid "kept for an exam"
+msgstr "für eine Prüfung reserviert"
+
+msgid "The machines of the pool the exam is taken at with the Qt GUI"
+msgstr ""
+"Die Arbeitsplätze des Pools, an denen die Prüfung mit der Qt-GUI abgelegt "
+"wird"
+
+msgid "Machine"
+msgstr "Arbeitsplatz"
+
+msgid "Logged in"
+msgstr "Angemeldet"
+
+msgid "The users logged in at the keyboard of the machine"
+msgstr "Die an der Tastatur des Arbeitsplatzes angemeldeten Benutzer"
+
+msgid "Release"
+msgstr "Freigabe"
+
+msgid ""
+"When the exam leaves the machine by itself: its projects closed, the machine "
+"back to normal"
+msgstr ""
+"Wann die Prüfung den Arbeitsplatz von selbst verlässt: ihre Projekte "
+"geschlossen, der Arbeitsplatz wieder normal"
+
+msgid "Select the machines shown"
+msgstr "Die angezeigten Arbeitsplätze auswählen"
+
+msgid "Lock the machines (min before the start)"
+msgstr "Die Arbeitsplätze sperren (min vor dem Beginn)"
+
+msgid "Release the machines (min after the end)"
+msgstr "Die Arbeitsplätze freigeben (min nach dem Ende)"
+
+msgid ""
+"On the machines chosen the exam is taken at the keyboard, with the Qt GUI: "
+"whoever logs in there gets it, the machine takes no web project meanwhile. "
+"An exam needs an audience, machines, or both; with machines an end-before "
+"time is required. After the end the machines keep the end screen until their "
+"release: extra minutes may still be granted."
+msgstr ""
+"An den gewählten Arbeitsplätzen wird die Prüfung an der Tastatur mit der Qt-"
+"GUI abgelegt: wer sich dort anmeldet, erhält sie, und der Arbeitsplatz nimmt "
+"währenddessen kein Webprojekt an. Eine Prüfung braucht ein Publikum, "
+"Arbeitsplätze oder beides; mit Arbeitsplätzen ist eine Endzeit erforderlich. "
+"Nach dem Ende behalten die Arbeitsplätze den Endbildschirm bis zu ihrer "
+"Freigabe: es können noch zusätzliche Minuten gewährt werden."
+
+msgid ""
+"Extra minutes beyond the end of the exam, for the selected members and "
+"machines"
+msgstr ""
+"Zusätzliche Minuten über das Ende der Prüfung hinaus, für die ausgewählten "
+"Mitglieder und Arbeitsplätze"
+
+msgid "Fewer minutes for the selected members and machines"
+msgstr "Weniger Minuten für die ausgewählten Mitglieder und Arbeitsplätze"
+
+msgid "End the exam now for the selected members and machines"
+msgstr ""
+"Die Prüfung jetzt für die ausgewählten Mitglieder und Arbeitsplätze beenden"
+
+msgid ""
+"Close the exam projects of the selected members and the exam on the selected "
+"machines (all of them when nothing is selected)"
+msgstr ""
+"Die Prüfungsprojekte der ausgewählten Mitglieder und die Prüfung auf den "
+"ausgewählten Arbeitsplätzen schließen (alle, wenn nichts ausgewählt ist)"
+
+msgid "The pool has no machine."
+msgstr "Der Pool hat keinen Arbeitsplatz."
+
+msgid "Every machine of {group}"
+msgstr "Alle Arbeitsplätze von {group}"
+
+msgid "not in the pool any more"
+msgstr "nicht mehr im Pool"
+
+msgid "not in the pool"
+msgstr "nicht im Pool"
+
+msgid "An end-before time is required when machines are chosen."
+msgstr "Eine Endzeit ist erforderlich, wenn Arbeitsplätze gewählt sind."
+
+msgid "at a machine"
+msgstr "an einem Arbeitsplatz"
+
+msgid "at {host}"
+msgstr "an {host}"
+
+msgid "not locked yet"
+msgstr "noch nicht gesperrt"
+
+msgid "refused"
+msgstr "abgelehnt"
+
+msgid "closed"
+msgstr "geschlossen"
+
+msgid "(closing…)"
+msgstr "(wird geschlossen…)"
+
+msgid "{n} web project(s) run there"
+msgstr "dort laufen {n} Webprojekt(e)"
+
+msgid "{n} machine(s)"
+msgstr "{n} Arbeitsplatz/Arbeitsplätze"
+
+msgid ""
+"{n} machine(s), locked {lead} min before, released {release} min after the "
+"end"
+msgstr ""
+"{n} Arbeitsplatz/Arbeitsplätze, gesperrt {lead} min vorher, freigegeben "
+"{release} min nach dem Ende"
+
+msgid " and "
+msgstr " und"
+
+msgid "nothing selected"
+msgstr "nichts ausgewählt"
+
+msgid "the labs of a machine are those of the exam: unselect the machines"
+msgstr ""
+"die Labore eines Arbeitsplatzes sind die der Prüfung: heben Sie die Auswahl "
+"der Arbeitsplätze auf"
+
+msgid "End the exam now for {selection}?"
+msgstr "Die Prüfung jetzt für {selection} beenden?"
+
+msgid ""
+"Close the exam projects of {selection}? Their machines will be stopped; a "
+"workstation the exam is closed on is given back for good."
+msgstr ""
+"Die Prüfungsprojekte von {selection} schließen? Ihre Maschinen werden "
+"gestoppt; ein Arbeitsplatz, auf dem die Prüfung geschlossen wird, wird "
+"endgültig freigegeben."
+
+msgid ""
+"Close the exam projects of every member and the exam on every workstation? "
+"Their machines will be stopped; the workstations are given back for good."
+msgstr ""
+"Die Prüfungsprojekte aller Mitglieder und die Prüfung auf allen "
+"Arbeitsplätzen schließen? Ihre Maschinen werden gestoppt; die Arbeitsplätze "
+"werden endgültig freigegeben."
+
+msgid "Closing the exam on {n} machine(s)…"
+msgstr "Die Prüfung wird auf {n} Arbeitsplatz/Arbeitsplätzen geschlossen…"
+
+msgid ""
+"you take it on the workstation {host}: your other projects are hidden until "
+"it ends there."
+msgstr ""
+"Sie legen sie am Arbeitsplatz {host} ab: Ihre anderen Projekte sind "
+"ausgeblendet, bis sie dort endet."
+
+msgid ""
+"You take the exam on the workstation {host}, in its own window: no project "
+"is available here until it ends there."
+msgstr ""
+"Sie legen die Prüfung am Arbeitsplatz {host} in einem eigenen Fenster ab: "
+"hier ist kein Projekt verfügbar, bis sie dort endet."

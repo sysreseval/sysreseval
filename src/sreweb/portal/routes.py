@@ -53,7 +53,7 @@ log = logging.getLogger('sreweb.portal')
 
 TERMINAL_SUBPROTOCOL = 'sre-term.v1'
 DISPLAY_SUBPROTOCOL = 'sre-display.v1'   # the RFB stream of the virtual X desktop (binary frames only)
-LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français'}
+LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français', 'de': 'Deutsch'}
 #: The security policy of every page; the page of a presentation (``/present/{id}``) is shown in
 #: an iframe of the student's current page, so it alone allows a same-origin frame ancestor.
 CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"

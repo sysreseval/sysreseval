@@ -36,6 +36,26 @@ _ = _setup_i18n()
 # A4 effective width with default margins
 _PAGE_W = 190
 
+# The names of the long date of the report header, translated by the catalog of the report's
+# language (``t``) rather than by the C library: the web agent runs ``sre report`` with
+# LC_ALL=C.UTF-8, whose names are English whatever ``--lang``.  The order of the words is a msgid
+# of its own: "{weekday}, {month} {day}, {year}" (fr "{weekday} {day} {month} {year}", de
+# "{weekday}, {day}. {month} {year}").
+_WEEKDAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+_MONTHS = ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+           'September', 'October', 'November', 'December')
+
+
+def _long_date(iso_date: str, t) -> str:
+    """*iso_date* (``YYYY-mm-dd``…) as the long date of the language of the catalog *t*; the
+    string unchanged when it is not a date."""
+    try:
+        dt = datetime.fromisoformat(iso_date)
+    except (TypeError, ValueError):
+        return iso_date
+    return t('{weekday}, {month} {day}, {year}').format(
+        weekday=t(_WEEKDAYS[dt.weekday()]), month=t(_MONTHS[dt.month - 1]), day=dt.day, year=dt.year)
+
 
 def _read_archive(path) -> dict:
     dctx = zstd.ZstdDecompressor()
@@ -150,9 +170,10 @@ def _best_record(records: list) -> dict:
 
 
 def _tt_str(v, lang='en') -> str:
-    """Resolve a possibly-multilingual title/description to a plain string."""
+    """Resolve a possibly-multilingual title/description to a plain string: the language asked,
+    else English (a German report of a French lab with English texts), else the first one."""
     if isinstance(v, dict):
-        return v.get(lang) or next(iter(v.values()), '') if v else ''
+        return (v.get(lang) or v.get('en') or next(iter(v.values()), '')) if v else ''
     return str(v) if v else ''
 
 
@@ -219,7 +240,6 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
     if not records:
         return
 
-    locale.setlocale(locale.LC_TIME, '')
     records = sorted(records, key=lambda r: r['eval_date'] or '')
     first = records[0]
     best = _best_record(records)
@@ -259,18 +279,11 @@ def _make_pdf(records: list, output_path: Path, forced_lang: str | None = None,
         pdf.set_font(pdf.text_font, '', 11)
 
     lang = forced_lang or (locale.getlocale()[0] or '').split('_')[0].lower()
-    date_fmt = '%A, %B %d, %Y' if lang == 'en' else '%A %d %B %Y'
-
-    def _fmt_date(iso_date: str) -> str:
-        try:
-            return datetime.fromisoformat(iso_date).strftime(date_fmt)
-        except Exception:
-            return iso_date
 
     dates = sorted({r['eval_date'][:10] for r in records if r['eval_date']})
     pdf.cell(40, 7, t('Date:'))
     pdf.set_font(pdf.text_font, 'B', 11)
-    pdf.cell(0, 7, '   '.join(_fmt_date(d) for d in dates), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 7, '   '.join(_long_date(d, t) for d in dates), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font(pdf.text_font, '', 11)
 
     pdf.cell(40, 7, t('Raw grade:'))

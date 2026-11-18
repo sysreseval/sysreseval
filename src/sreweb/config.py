@@ -714,7 +714,7 @@ class WebConfig:
     trusted_proxies: list = field(default_factory=list)   # ipaddress networks: the peers trusted in proxy mode
     tls_cert: str = ''
     tls_key: str = ''
-    languages: list = field(default_factory=lambda: ['en', 'fr'])
+    languages: list = field(default_factory=lambda: ['en', 'fr', 'de'])
     auth: AuthConfig = field(default_factory=AuthConfig)
     pool: PoolConfig = field(default_factory=PoolConfig)
     limits: LimitsConfig = field(default_factory=LimitsConfig)

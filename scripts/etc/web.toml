@@ -26,7 +26,7 @@ secret = "change-me-to-a-long-random-string"
 # identity headers are trusted.  The portal reads no X-Forwarded-* header.
 trusted_proxies = ["127.0.0.1", "::1"]
 # Languages offered on the login page, the first one is the default.
-languages = ["fr", "en"]
+languages = ["fr", "en", "de"]
 # Own TLS instead of a proxy (optional).
 # tls_cert = "/etc/sreweb/web.crt"
 # tls_key = "/etc/sreweb/web.key"

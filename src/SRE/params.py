@@ -530,8 +530,8 @@ client_local = "local"             # the Qt GUI on the student's workstation
 client_web = "web"                 # the web agent (sre-agent), for a browser user
 
 # Languages selectable in the GUI language priority dialog
-available_language_in_interface = ['en', 'fr']
-language_display_names = {'en': 'English', 'fr': 'Français'}
+available_language_in_interface = ['en', 'fr', 'de']
+language_display_names = {'en': 'English', 'fr': 'Français', 'de': 'Deutsch'}
 
 running_lab_name_keyword = "running_lab_name"
 eval_date_keyword = "eval_date"

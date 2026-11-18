@@ -21,7 +21,7 @@ def load():
             not _cfg.get("interface", "language", fallback=""):
         if "interface" not in _cfg:
             _cfg["interface"] = {}
-        _cfg["interface"]["language_priority"] = _system_locale_lang()
+        _cfg["interface"]["language_priority"] = ','.join(_default_priority(_system_locale_lang()))
 
 
 def get_font_size() -> int:
@@ -86,6 +86,13 @@ def _system_locale_lang() -> str:
     return 'en'
 
 
+def _default_priority(lang: str) -> list:
+    """The priority list of a user who never set one: *lang*, then English for the lab texts
+    that lack it (a German user on a French lab whose texts exist in French and English reads
+    English, not French)."""
+    return [lang] if lang == 'en' else [lang, 'en']
+
+
 def get_language_priority() -> list:
     """Return the user's language priority list (most preferred first)."""
     raw = _cfg.get("interface", "language_priority", fallback='')
@@ -93,7 +100,7 @@ def get_language_priority() -> list:
         return [c.strip() for c in raw.split(',') if c.strip()]
     # Fallback: old single-language setting or system locale
     single = _cfg.get("interface", "language", fallback=_system_locale_lang())
-    return [single]
+    return _default_priority(single)
 
 
 def get_language() -> str:
