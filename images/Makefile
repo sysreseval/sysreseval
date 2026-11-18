@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION   ?= 1.33
+VERSION   ?= 1.34
 NAMESPACE ?= sysreseval
 
 IMAGES := base12 init12 routing-frr ldap-mail proxy monitoring voip aaa base13 init13

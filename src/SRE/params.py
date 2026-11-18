@@ -292,7 +292,7 @@ del _fhs, _root
 #################################################################################
 
 sre_version = "0.17.0"
-default_docker_image_version = "1.33"
+default_docker_image_version = "1.34"
 sre_docker_namespace = "sysreseval"
 
 def sre_docker_image(image_name: str = "base12") -> str:
