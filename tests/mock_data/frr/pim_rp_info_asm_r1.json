@@ -1,0 +1,12 @@
+{
+  "10.106.99.2":[
+    {
+      "rpAddress":"10.106.99.2",
+      "outboundInterface":"eth1",
+      "iAmRP":false,
+      "group":"239.0.0.0/8",
+      "source":"Static",
+      "groupType":"ASM"
+    }
+  ]
+}

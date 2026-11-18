@@ -1,0 +1,31 @@
+{
+  "totalGroups":2,
+  "watermarkLimit":0,
+  "eth1":{
+    "name":"eth1",
+    "state":"up",
+    "address":"10.106.43.167",
+    "index":476,
+    "flagMulticast":true,
+    "flagBroadcast":true,
+    "lanDelayEnabled":true,
+    "groups":[
+      {
+        "group":"239.232.9.9",
+        "mode":"INCLUDE",
+        "timer":"--:--:--",
+        "sourcesCount":1,
+        "version":3,
+        "uptime":"00:00:04"
+      },
+      {
+        "group":"232.9.9.9",
+        "mode":"INCLUDE",
+        "timer":"--:--:--",
+        "sourcesCount":1,
+        "version":3,
+        "uptime":"00:00:04"
+      }
+    ]
+  }
+}

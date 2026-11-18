@@ -1,4 +1,4 @@
-"""FRR / OSPF / BGP / RIP grading helpers.
+"""FRR / OSPF / BGP / RIP / PIM grading helpers.
 
 Every ``get_*`` function registers one command through ``grade.test()`` -- so it
 follows the two-pass contract of ``Grade.grade()`` (placeholder result on the
@@ -9,13 +9,15 @@ registration pass, real output afterwards) -- and hands the text to a pure
 ``json`` output (``show bgp ipv4 unicast ... json``).  On the placeholder output
 every parser returns its empty shape (``{}``/``[]``), never an exception.  What a
 RIP router really announces on a link is read by the passive probe of ``lib/rip.py``.
+The PIM / IGMP / MSDP / MLD helpers (end of the file) parse the ``json`` output of pimd and
+pim6d; what multicast traffic really reaches a host is read by ``lib/mcast.py``.
 
 Pass ``allow_error=True`` when the router may not run OSPF/BGP/RIP yet (``vtysh``
 then exits non-zero and the error would otherwise be recorded in the archive).
 """
 import json
 import re
-from ipaddress import IPv4Address
+from ipaddress import IPv4Address, ip_address, ip_network
 from typing import Any, Dict, List, Optional
 
 from SRE.lib_sre import Grade0
@@ -533,7 +535,7 @@ def _empty_interface_config() -> Dict[str, Any]:
         'cost': None, 'priority': None, 'hello_interval': None, 'dead_interval': None,
         'authentication': None, 'message_digest_keys': {}, 'authentication_key': None,
         'area': None, 'bandwidth': None, 'passive': None, 'network_type': None,
-        'addresses': [],
+        'addresses': [], 'pim': False, 'igmp': False, 'multicast_boundary': None,
     }
 
 
@@ -830,6 +832,12 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 iface['bandwidth'] = int(words[1])
             elif words[:2] == ['ip', 'address'] and len(words) >= 3:
                 iface['addresses'].append(words[2])
+            elif words == ['ip', 'pim']:
+                iface['pim'] = True
+            elif words == ['ip', 'igmp']:
+                iface['igmp'] = True
+            elif words[:4] == ['ip', 'multicast', 'boundary', 'oil'] and len(words) >= 5:
+                iface['multicast_boundary'] = words[4]
             continue
 
         if section == 'route_map' and rm_entry is not None:
@@ -881,6 +889,34 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             continue
 
     return cfg
+
+
+def prefix_list_permits(prefix_lists: Dict[str, List[Dict[str, Any]]], name: str, prefix) -> Optional[bool]:
+    """How the prefix-list *name* of :func:`parse_frr_config` treats *prefix* (an address or a
+    network): True for permit, False for deny (the first matching entry in ``seq`` order, an
+    implicit deny when none matches), ``None`` when the list does not exist.  An address is the
+    host prefix (/32 or /128), which is how pimd matches a group."""
+    entries = prefix_lists.get(name)
+    if entries is None:
+        return None
+    try:
+        target = ip_network(str(prefix), strict=False)
+    except ValueError:
+        return False
+    ordered = sorted(entries, key=lambda e: (e['seq'] is None, e['seq'] if isinstance(e['seq'], int) else 0))
+    for entry in ordered:
+        try:
+            network = ip_network(entry['prefix'], strict=False)
+        except ValueError:
+            continue
+        if network.version != target.version or not target.subnet_of(network):
+            continue
+        low = entry['ge'] if entry['ge'] is not None else network.prefixlen
+        high = entry['le'] if entry['le'] is not None else (network.max_prefixlen if entry['ge'] is not None
+                                                            else network.prefixlen)
+        if low <= target.prefixlen <= high:
+            return entry['action'] == 'permit'
+    return False
 
 
 def get_frr_running_config(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Any]:
@@ -1425,3 +1461,328 @@ def get_rip_status(grade: Grade0, machine_name: str, step: int = 1, allow_error:
     if code != 0 or not output:
         return {}
     return parse_rip_status(output)
+
+
+# ---------------------------------------------------------------------------
+# PIM, IGMP, MSDP (pimd) and PIMv6, MLD (pim6d): json output of vtysh
+# ---------------------------------------------------------------------------
+#
+# Shapes of FRR 9.1.3 (fixtures tests/mock_data/frr/pim_*.json, captured in the multicast lab).
+# pimd adds a `pimreg` interface (`pim6reg` for pim6d), left out of every result.  Without
+# `ip pim` / `ip igmp` anywhere, the show commands print `{}` (exit 0).
+
+PIM_REGISTER_INTERFACES = ('pimreg', 'pim6reg')
+
+
+def _str_or_none(value) -> Optional[str]:
+    return None if value in (None, '', '-', '*') else str(value)
+
+
+def _bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ('true', 'yes', 'local', '1')
+    return bool(value)
+
+
+def _vrf_default(data: Any) -> Dict[str, Any]:
+    """Some pim6d outputs are wrapped in ``{"default": {...}}`` (the VRF): unwrap it."""
+    if isinstance(data, dict) and set(data) == {'default'} and isinstance(data['default'], dict):
+        return data['default']
+    return data if isinstance(data, dict) else {}
+
+
+def parse_pim_interfaces(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show ip pim interface json`` (or ``show ipv6 pim interface json``) → ``{ifname:
+    {'address', 'up', 'neighbors' (count), 'dr' (address of the designated router), 'dr_local'}}``
+    for every interface PIM is enabled on (the register interface left out)."""
+    result = {}
+    for ifname, entry in _vrf_default(data).items():
+        if ifname in PIM_REGISTER_INTERFACES or not isinstance(entry, dict):
+            continue
+        result[ifname] = {
+            'address': _str_or_none(entry.get('address')), 'up': entry.get('state') == 'up',
+            'neighbors': _int_or_none(entry.get('pimNeighbors')) or 0,
+            'dr': _str_or_none(entry.get('pimDesignatedRouter')), 'dr_local': _bool(entry.get('pimDesignatedRouterLocal')),
+        }
+    return result
+
+
+def get_pim_interfaces(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                       ipv6: bool = False) -> Dict[str, Dict[str, Any]]:
+    family = 'ipv6' if ipv6 else 'ip'
+    return parse_pim_interfaces(_vtysh_json(grade, machine_name, f"show {family} pim interface", step, allow_error))
+
+
+def parse_pim_neighbors(data: Any) -> Dict[str, List[str]]:
+    """``show ip pim neighbor json`` (or the ipv6 one) → ``{ifname: [neighbor addresses]}``
+    (interfaces without neighbour left out; IPv6 neighbours are link-local addresses)."""
+    result = {}
+    for ifname, neighbors in _vrf_default(data).items():
+        if ifname in PIM_REGISTER_INTERFACES or not isinstance(neighbors, dict):
+            continue
+        addresses = []
+        for key, entry in neighbors.items():
+            address = entry.get('neighbor', key) if isinstance(entry, dict) else key
+            if address:
+                addresses.append(str(address))
+        if addresses:
+            result[ifname] = sorted(addresses)
+    return result
+
+
+def get_pim_neighbors(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                      ipv6: bool = False) -> Dict[str, List[str]]:
+    family = 'ipv6' if ipv6 else 'ip'
+    return parse_pim_neighbors(_vtysh_json(grade, machine_name, f"show {family} pim neighbor", step, allow_error))
+
+
+def pim_neighbor_on(neighbors: Dict[str, List[str]], ifname: str, address=None) -> bool:
+    """True when *ifname* has a PIM neighbour (*address* when given)."""
+    found = neighbors.get(ifname) or []
+    return bool(found) if address is None else str(address) in found
+
+
+def parse_pim_rp_info(data: Any) -> List[Dict[str, Any]]:
+    """``show ip pim rp-info json`` → ``[{'rp', 'group' (range), 'source' (Static, BSR...),
+    'group_type' (ASM), 'iface' (the RPF interface towards the RP), 'i_am_rp'}]``."""
+    result = []
+    for rp, entries in _vrf_default(data).items():
+        for entry in entries if isinstance(entries, list) else [entries]:
+            if not isinstance(entry, dict):
+                continue
+            result.append({'rp': str(entry.get('rpAddress', rp)), 'group': _str_or_none(entry.get('group')),
+                           'source': _str_or_none(entry.get('source')), 'group_type': _str_or_none(entry.get('groupType')),
+                           'iface': _str_or_none(entry.get('outboundInterface')), 'i_am_rp': _bool(entry.get('iAmRP'))})
+    return result
+
+
+def get_pim_rp_info(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                    ipv6: bool = False) -> List[Dict[str, Any]]:
+    family = 'ipv6' if ipv6 else 'ip'
+    return parse_pim_rp_info(_vtysh_json(grade, machine_name, f"show {family} pim rp-info", step, allow_error))
+
+
+def rp_for_group(rp_info: List[Dict[str, Any]], group) -> Optional[Dict[str, Any]]:
+    """The entry of *rp_info* whose range holds *group* with the longest prefix (``None``)."""
+    try:
+        address = ip_address(str(group))
+    except ValueError:
+        return None
+    best, best_len = None, -1
+    for entry in rp_info:
+        try:
+            network = ip_network(entry['group'] or '', strict=False)
+        except ValueError:
+            continue
+        if network.version == address.version and address in network and network.prefixlen > best_len:
+            best, best_len = entry, network.prefixlen
+    return best
+
+
+def parse_pim_group_type(data: Any) -> Optional[str]:
+    """``show ip pim group-type A.B.C.D json`` → ``'SSM'`` / ``'ASM'`` / ... (``None``)."""
+    return _str_or_none(data.get('groupType')) if isinstance(data, dict) else None
+
+
+def get_pim_group_type(grade: Grade0, machine_name: str, group, step: int = 1,
+                       allow_error: bool = False) -> Optional[str]:
+    return parse_pim_group_type(_vtysh_json(grade, machine_name, f"show ip pim group-type {group}", step, allow_error))
+
+
+def parse_mroutes(data: Any) -> Dict[tuple, Dict[str, Any]]:
+    """``show ip mroute json`` (or ``show ipv6 mroute json``) → ``{(source or '*', group):
+    {'iif', 'oil' ([outgoing interfaces]), 'flags', 'installed'}}``."""
+    result = {}
+    for group, sources in _vrf_default(data).items():
+        if not isinstance(sources, dict):
+            continue
+        for source, entry in sources.items():
+            if not isinstance(entry, dict):
+                continue
+            oil = entry.get('oil') or {}
+            result[(str(entry.get('source', source)), str(entry.get('group', group)))] = {
+                'iif': _str_or_none(entry.get('iif')),
+                'oil': sorted(str(name) for name in oil if name not in PIM_REGISTER_INTERFACES)
+                if isinstance(oil, dict) else [],
+                'flags': str(entry.get('flags') or ''), 'installed': _bool(entry.get('installed')),
+            }
+    return result
+
+
+def get_mroutes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                ipv6: bool = False) -> Dict[tuple, Dict[str, Any]]:
+    family = 'ipv6' if ipv6 else 'ip'
+    return parse_mroutes(_vtysh_json(grade, machine_name, f"show {family} mroute", step, allow_error))
+
+
+def parse_pim_upstream(data: Any) -> Dict[tuple, Dict[str, Any]]:
+    """``show ip pim upstream json`` → ``{(source or '*', group): {'join_state', 'reg_state',
+    'iif', 'rpf' (the RPF neighbour), 'spt' (the SPT bit)}}``."""
+    result = {}
+    for group, sources in _vrf_default(data).items():
+        if not isinstance(sources, dict):
+            continue
+        for source, entry in sources.items():
+            if not isinstance(entry, dict):
+                continue
+            result[(str(entry.get('source', source)), str(entry.get('group', group)))] = {
+                'join_state': _str_or_none(entry.get('joinState')), 'reg_state': _str_or_none(entry.get('regState')),
+                'iif': _str_or_none(entry.get('inboundInterface')),
+                'rpf': _str_or_none(entry.get('rpfAddress')), 'spt': _bool(entry.get('sptBit')),
+            }
+    return result
+
+
+def get_pim_upstream(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[tuple, Dict[str, Any]]:
+    return parse_pim_upstream(_vtysh_json(grade, machine_name, "show ip pim upstream", step, allow_error))
+
+
+def _seconds(value) -> Optional[float]:
+    """Seconds of ``"00:02:05"`` / ``"00:00:29.743"`` / a number of seconds."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    parts = str(value).strip().split(':')
+    try:
+        total = 0.0
+        for part in parts:
+            total = total * 60 + float(part)
+        return total
+    except ValueError:
+        return None
+
+
+def parse_igmp_interfaces(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show ip igmp interface [detail] json`` (or ``show ipv6 mld interface json``) →
+    ``{ifname: {'address', 'up', 'version', 'querier' (this router is the querier),
+    'querier_ip', 'query_interval' (s), 'query_response_interval' (s), 'last_member_interval'
+    (s), 'last_member_count', 'robustness', 'mtrace_only'}}``.  The timers come from the
+    ``detail`` form (``None`` in the short one); an interface with ``mtraceOnly`` has PIM but no
+    ``ip igmp``."""
+    result = {}
+    for ifname, entry in _vrf_default(data).items():
+        if not isinstance(entry, dict) or 'name' not in entry:
+            continue
+        querier = entry.get('querier')
+        query_interval = entry.get('timerQueryInterval')
+        if query_interval is None and entry.get('timerQueryIntervalMsec') is not None:
+            query_interval = (_int_or_none(entry.get('timerQueryIntervalMsec')) or 0) / 1000
+        response = entry.get('timerQueryResponseIntervalMsec', entry.get('timerQueryResponseTimerMsec'))
+        last_member = entry.get('timerLastMemberQueryMsec', entry.get('timerLastMemberQueryIntervalMsec'))
+        result[ifname] = {
+            'address': _str_or_none(entry.get('address')), 'up': entry.get('state') == 'up',
+            'version': _int_or_none(entry.get('version')),
+            'querier': querier is True or str(querier).lower() in ('local', 'true'),
+            'querier_ip': _str_or_none(entry.get('querierIp')),
+            'query_interval': None if query_interval is None else float(query_interval),
+            'query_response_interval': None if response is None else (_int_or_none(response) or 0) / 1000,
+            'last_member_interval': None if last_member is None else (_int_or_none(last_member) or 0) / 1000,
+            'last_member_count': _int_or_none(entry.get('lastMemberQueryCount')),
+            'robustness': _int_or_none(entry.get('timerRobustnessVariable', entry.get('timerRobustnessValue'))),
+            'mtrace_only': _bool(entry.get('mtraceOnly')),
+        }
+    return result
+
+
+def igmp_enabled(interfaces: Dict[str, Dict[str, Any]], ifname: str) -> bool:
+    """``ip igmp`` (``ipv6 mld``) is configured on *ifname* (not only PIM: ``mtraceOnly``)."""
+    entry = interfaces.get(ifname)
+    return bool(entry) and not entry['mtrace_only']
+
+
+def get_igmp_interfaces(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                        detail: bool = True) -> Dict[str, Dict[str, Any]]:
+    command = "show ip igmp interface detail" if detail else "show ip igmp interface"
+    return parse_igmp_interfaces(_vtysh_json(grade, machine_name, command, step, allow_error))
+
+
+def get_mld_interfaces(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
+    return parse_igmp_interfaces(_vtysh_json(grade, machine_name, "show ipv6 mld interface", step, allow_error))
+
+
+def parse_igmp_groups(data: Any) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """``show ip igmp groups json`` (or ``show ipv6 mld groups json``) → ``{ifname: {group:
+    {'version', 'mode' (INCL / EXCL), 'sources_count', 'uptime' (s), 'reporter'}}}``."""
+    result: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for ifname, entry in _vrf_default(data).items():
+        if not isinstance(entry, dict) or not isinstance(entry.get('groups'), list):
+            continue
+        groups = result.setdefault(ifname, {})
+        for g in entry['groups']:
+            if not isinstance(g, dict) or not g.get('group'):
+                continue
+            groups[str(g['group'])] = {
+                'version': _int_or_none(g.get('version')), 'mode': _str_or_none(g.get('mode')),
+                'sources_count': _int_or_none(g.get('sourcesCount')), 'uptime': _seconds(g.get('uptime')),
+                'reporter': _str_or_none(g.get('source', g.get('lastReporter'))),
+            }
+    return result
+
+
+def get_igmp_groups(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    return parse_igmp_groups(_vtysh_json(grade, machine_name, "show ip igmp groups", step, allow_error))
+
+
+def get_mld_groups(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    return parse_igmp_groups(_vtysh_json(grade, machine_name, "show ipv6 mld groups", step, allow_error))
+
+
+def parse_igmp_sources(data: Any) -> Dict[str, Dict[str, List[str]]]:
+    """``show ip igmp sources json`` → ``{ifname: {group: [sources]}}`` (the (S,G) records of the
+    IGMPv3 INCLUDE reports; ``*`` for an EXCLUDE {} / IGMPv2 group is left out)."""
+    result: Dict[str, Dict[str, List[str]]] = {}
+    for ifname, entry in _vrf_default(data).items():
+        if not isinstance(entry, dict):
+            continue
+        for group, g in entry.items():
+            if not isinstance(g, dict) or not isinstance(g.get('sources'), list):
+                continue
+            sources = [str(s.get('source')) for s in g['sources']
+                       if isinstance(s, dict) and _str_or_none(s.get('source'))]
+            if sources:
+                result.setdefault(ifname, {})[str(g.get('group', group))] = sorted(sources)
+    return result
+
+
+def get_igmp_sources(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Dict[str, List[str]]]:
+    return parse_igmp_sources(_vtysh_json(grade, machine_name, "show ip igmp sources", step, allow_error))
+
+
+def parse_msdp_peers(data: Any) -> Dict[str, Dict[str, Any]]:
+    """``show ip msdp peer json`` → ``{peer: {'state' (inactive / listen / connecting /
+    established), 'established', 'local', 'sa_count'}}``."""
+    result = {}
+    for peer, entry in _vrf_default(data).items():
+        if not isinstance(entry, dict):
+            continue
+        state = str(entry.get('state') or '').lower()
+        result[str(entry.get('peer', peer))] = {'state': state, 'established': state == 'established',
+                                                'local': _str_or_none(entry.get('local')),
+                                                'sa_count': _int_or_none(entry.get('saCount')) or 0}
+    return result
+
+
+def get_msdp_peers(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
+    return parse_msdp_peers(_vtysh_json(grade, machine_name, "show ip msdp peer", step, allow_error))
+
+
+def parse_msdp_sa(data: Any) -> Dict[tuple, Dict[str, Any]]:
+    """``show ip msdp sa json`` → ``{(source, group): {'rp' (the RP that originated it), 'local'
+    (originated by this router), 'spt' (an (S,G) join was sent)}}``."""
+    result = {}
+    for group, sources in _vrf_default(data).items():
+        if not isinstance(sources, dict):
+            continue
+        for source, entry in sources.items():
+            if not isinstance(entry, dict):
+                continue
+            result[(str(entry.get('source', source)), str(entry.get('group', group)))] = {
+                'rp': _str_or_none(entry.get('rp')), 'local': _bool(entry.get('local')),
+                'spt': _bool(entry.get('sptSetup')),
+            }
+    return result
+
+
+def get_msdp_sa(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[tuple, Dict[str, Any]]:
+    return parse_msdp_sa(_vtysh_json(grade, machine_name, "show ip msdp sa", step, allow_error))

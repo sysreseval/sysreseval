@@ -1,0 +1,19 @@
+{
+  "default":{
+    "eth1":{
+      "name":"eth1",
+      "address":"fe80::783f:5dff:fe7f:a5b",
+      "state":"up",
+      "version":"2",
+      "upTime":"00:01:04.959",
+      "querier":true,
+      "querierIp":"fe80::783f:5dff:fe7f:a5b",
+      "queryTimer":"00:02:02.541",
+      "timerRobustnessValue":2,
+      "lastMemberQueryCount":2,
+      "timerQueryIntervalMsec":125000,
+      "timerQueryResponseTimerMsec":10000,
+      "timerLastMemberQueryIntervalMsec":1000
+    }
+  }
+}

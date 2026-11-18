@@ -1255,3 +1255,222 @@ class TestRipStatus:
         assert get_rip_status(grade, 'r1', allow_error=True)['update'] == 5
         grade.test.assert_called_once_with('r1', 'vtysh -c "show ip rip status"', step=1, allow_error=True)
         assert get_rip_status(make_grade('', 0), 'r1') == {}
+
+
+# ---------------------------------------------------------------------------
+# PIM / IGMP / MSDP / MLD (pimd, pim6d) — captured in the multicast lab (lab/sre/_DRAFT_misc/multicast.py)
+# ---------------------------------------------------------------------------
+
+from frr import (  # noqa: E402
+    PIM_REGISTER_INTERFACES, get_igmp_groups, get_igmp_interfaces, get_mld_groups, get_mld_interfaces, get_mroutes,
+    get_msdp_peers, get_msdp_sa, get_pim_group_type, get_pim_interfaces, get_pim_neighbors, get_pim_rp_info,
+    igmp_enabled, parse_frr_config, parse_igmp_groups, parse_igmp_interfaces, parse_igmp_sources, parse_mroutes,
+    parse_msdp_peers, parse_msdp_sa, parse_pim_group_type, parse_pim_interfaces, parse_pim_neighbors,
+    parse_pim_rp_info, parse_pim_upstream, pim_neighbor_on, prefix_list_permits, rp_for_group,
+)
+
+
+class TestPimInterfacesNeighbors:
+    def test_interfaces_leave_pimreg_out(self):
+        interfaces = parse_pim_interfaces(load_json('pim_interface_asm_r3.json'))
+        assert set(interfaces) == {'eth0', 'eth1', 'eth2'}
+        assert not set(interfaces) & set(PIM_REGISTER_INTERFACES)
+        assert interfaces['eth0'] == {'address': '10.106.34.2', 'up': True, 'neighbors': 1, 'dr': '10.106.34.2',
+                                      'dr_local': True}
+        assert interfaces['eth2']['neighbors'] == 0
+
+    def test_ipv6_interfaces(self):
+        interfaces = parse_pim_interfaces(load_json('pim6_interface_v6_r2.json'))
+        assert 'pim6reg' not in interfaces and interfaces['eth0']['address'].startswith('fe80::')
+
+    def test_neighbors(self):
+        neighbors = parse_pim_neighbors(load_json('pim_neighbor_asm_r3.json'))
+        assert neighbors == {'eth0': ['10.106.34.1'], 'eth1': ['10.106.33.1']}
+        assert pim_neighbor_on(neighbors, 'eth0') and pim_neighbor_on(neighbors, 'eth1', '10.106.33.1')
+        assert not pim_neighbor_on(neighbors, 'eth1', '10.106.33.9') and not pim_neighbor_on(neighbors, 'eth2')
+
+    def test_ipv6_neighbors_are_link_local(self):
+        neighbors = parse_pim_neighbors(load_json('pim6_neighbor_v6_r2.json'))
+        assert neighbors == {'eth0': ['fe80::9045:f2ff:feb4:161a']}
+
+    def test_get_commands(self):
+        grade = make_grade(load('pim_neighbor_asm_r3.json'))
+        assert get_pim_neighbors(grade, 'asm_r3', allow_error=True)['eth1'] == ['10.106.33.1']
+        grade.test.assert_called_once_with('asm_r3', 'vtysh -c "show ip pim neighbor json"', step=1, allow_error=True)
+        grade = make_grade(load('pim6_interface_v6_r2.json'))
+        get_pim_interfaces(grade, 'v6_r2', ipv6=True)
+        grade.test.assert_called_once_with('v6_r2', 'vtysh -c "show ipv6 pim interface json"', step=1)
+
+    @pytest.mark.parametrize('output, code', [('', 0), ('{\n}\n', 0), ('% PIM not enabled', 1)])
+    def test_empty(self, output, code):
+        assert get_pim_neighbors(make_grade(output, code), 'r') == {}
+        assert get_pim_interfaces(make_grade(output, code), 'r') == {}
+
+
+class TestPimRpAndGroupType:
+    def test_rp_info(self):
+        rp_info = parse_pim_rp_info(load_json('pim_rp_info_asm_r3.json'))
+        assert rp_info == [{'rp': '10.106.99.2', 'group': '239.0.0.0/8', 'source': 'Static', 'group_type': 'ASM',
+                            'iface': 'eth0', 'i_am_rp': False}]
+        assert parse_pim_rp_info(load_json('pim_rp_info_asm_r2.json'))[0]['i_am_rp'] is True
+
+    def test_rp_for_group(self):
+        rp_info = parse_pim_rp_info(load_json('pim_rp_info_asm_r3.json'))
+        assert rp_for_group(rp_info, '239.5.5.6')['rp'] == '10.106.99.2'
+        assert rp_for_group(rp_info, '232.1.1.1') is None and rp_for_group(rp_info, 'garbage') is None
+        both = rp_info + [{'rp': '10.0.0.1', 'group': '239.5.0.0/16', 'source': 'Static', 'group_type': 'ASM',
+                           'iface': 'eth1', 'i_am_rp': False}]
+        assert rp_for_group(both, '239.5.5.6')['rp'] == '10.0.0.1'      # the longest prefix
+
+    def test_wrong_rp_of_the_fix_site(self):
+        rp_info = parse_pim_rp_info(load_json('pim_rp_info_fix_r2_broken.json'))
+        assert rp_for_group(rp_info, '239.1.1.1')['rp'] == '10.106.72.2'
+
+    def test_group_type(self):
+        assert parse_pim_group_type(load_json('pim_group_type_ssm.json')) == 'SSM'
+        assert parse_pim_group_type({}) is None and parse_pim_group_type([]) is None
+        grade = make_grade(load('pim_group_type_ssm.json'))
+        assert get_pim_group_type(grade, 'ssm_r1', '239.232.9.9', allow_error=True) == 'SSM'
+        grade.test.assert_called_once_with('ssm_r1', 'vtysh -c "show ip pim group-type 239.232.9.9 json"', step=1,
+                                           allow_error=True)
+
+    def test_get_rp_info(self):
+        assert get_pim_rp_info(make_grade(load('pim_rp_info_asm_r1.json')), 'asm_r1')[0]['iface'] == 'eth1'
+
+
+class TestMroutesUpstream:
+    def test_shared_tree_only(self):
+        mroutes = parse_mroutes(load_json('pim_mroute_asm_r3_star.json'))
+        assert mroutes == {('*', '239.5.5.6'): {'iif': 'eth0', 'oil': ['eth2'], 'flags': 'SC', 'installed': True}}
+
+    def test_after_the_spt_switchover(self):
+        mroutes = parse_mroutes(load_json('pim_mroute_asm_r3.json'))
+        assert mroutes[('10.106.31.159', '239.5.5.6')]['iif'] == 'eth1'
+        assert mroutes[('*', '239.5.5.6')]['iif'] == 'eth0'
+
+    def test_first_hop_router(self):
+        mroutes = parse_mroutes(load_json('pim_mroute_asm_r1.json'))
+        assert mroutes[('10.106.31.159', '239.5.5.6')] == {'iif': 'eth0', 'oil': ['eth1', 'eth2'], 'flags': 'SFT',
+                                                           'installed': True}
+
+    def test_ipv6(self):
+        mroutes = parse_mroutes(load_json('pim6_mroute_v6_r2.json'))
+        assert mroutes[('fd39:deb4:cd32:61::f97', 'ff3e::1:2345')]['oil'] == ['eth1']
+
+    def test_upstream(self):
+        upstream = parse_pim_upstream(load_json('pim_upstream_asm_r3.json'))
+        assert upstream[('*', '239.5.5.6')] == {'join_state': 'Joined', 'reg_state': 'RegNoInfo', 'iif': 'eth0',
+                                                'rpf': '10.106.99.2', 'spt': False}
+        assert upstream[('10.106.31.159', '239.5.5.6')]['iif'] == 'eth1'
+
+    def test_get_mroutes(self):
+        grade = make_grade(load('pim6_mroute_v6_r2.json'))
+        assert len(get_mroutes(grade, 'v6_r2', step=3, ipv6=True)) == 1
+        grade.test.assert_called_once_with('v6_r2', 'vtysh -c "show ipv6 mroute json"', step=3)
+        assert get_mroutes(make_grade('{\n}\n'), 'r') == {}
+
+
+class TestIgmp:
+    def test_detail_querier_and_timers(self):
+        interfaces = parse_igmp_interfaces(load_json('igmp_interface_detail_igmp_r1.json'))
+        eth0 = interfaces['eth0']
+        assert eth0['querier'] is True and eth0['querier_ip'] == '10.106.10.35' and eth0['version'] == 3
+        assert eth0['query_interval'] == 40.0 and eth0['query_response_interval'] == 10.0
+        assert eth0['last_member_interval'] == 2.0 and eth0['robustness'] == 2
+        assert igmp_enabled(interfaces, 'eth0') and not igmp_enabled(interfaces, 'eth1')
+
+    def test_the_other_router_is_not_querier(self):
+        before = parse_igmp_interfaces(load_json('igmp_interface_detail_igmp_r2_before.json'))['eth0']
+        after = parse_igmp_interfaces(load_json('igmp_interface_detail_igmp_r2_after.json'))['eth0']
+        assert before['querier'] is True
+        assert after['querier'] is False and after['querier_ip'] == '10.106.10.35'
+
+    def test_short_form_and_mtrace_only(self):
+        interfaces = parse_igmp_interfaces(load_json('igmp_interface_asm_r3.json'))
+        assert interfaces['eth0']['mtrace_only'] and not igmp_enabled(interfaces, 'eth0')
+        assert igmp_enabled(interfaces, 'eth2') and interfaces['eth2']['querier'] is True
+        assert interfaces['eth2']['query_interval'] is None
+
+    def test_nothing_configured(self):
+        assert parse_igmp_interfaces(load_json('igmp_interface_detail_none.json')) == {}
+
+    def test_groups_versions(self):
+        groups = parse_igmp_groups(load_json('igmp_groups_igmp_r1.json'))['eth0']
+        assert groups['239.3.3.1']['version'] == 3 and groups['239.3.3.1']['mode'] == 'EXCLUDE'
+        assert groups['239.3.3.2']['version'] == 2 and groups['239.3.3.2']['mode'] is None
+        assert groups['239.3.3.1']['uptime'] == 11.0
+
+    def test_sources(self):
+        assert parse_igmp_sources(load_json('igmp_sources_ssm_r2.json')) == {
+            'eth1': {'239.232.9.9': ['10.106.41.139'], '232.9.9.9': ['10.106.41.139']}}
+        assert parse_igmp_sources(load_json('igmp_sources_asm_r3.json')) == {}          # EXCLUDE {}: source '*'
+
+    def test_get(self):
+        grade = make_grade(load('igmp_interface_detail_igmp_r1.json'))
+        assert get_igmp_interfaces(grade, 'igmp_r1', allow_error=True)['eth0']['querier']
+        grade.test.assert_called_once_with('igmp_r1', 'vtysh -c "show ip igmp interface detail json"', step=1,
+                                           allow_error=True)
+        grade = make_grade(load('igmp_groups_ssm_r2.json'))
+        assert set(get_igmp_groups(grade, 'ssm_r2', step=3)['eth1']) == {'239.232.9.9', '232.9.9.9'}
+
+
+class TestMld:
+    def test_interface_in_a_vrf_wrapper(self):
+        interfaces = parse_igmp_interfaces(load_json('mld_interface_v6_r2.json'))
+        assert interfaces['eth1']['version'] == 2 and interfaces['eth1']['querier'] is True
+        assert interfaces['eth1']['query_interval'] == 125.0 and interfaces['eth1']['last_member_interval'] == 1.0
+
+    def test_groups(self):
+        groups = parse_igmp_groups(load_json('mld_groups_v6_r2.json'))['eth1']
+        assert 'ff3e::1:2345' in groups and 'ff02::16' in groups and groups['ff3e::1:2345']['version'] == 2
+
+    def test_get(self):
+        grade = make_grade(load('mld_interface_v6_r2.json'))
+        assert igmp_enabled(get_mld_interfaces(grade, 'v6_r2'), 'eth1')
+        grade.test.assert_called_once_with('v6_r2', 'vtysh -c "show ipv6 mld interface json"', step=1)
+        assert 'ff3e::1:2345' in get_mld_groups(make_grade(load('mld_groups_v6_r2.json')), 'v6_r2')['eth1']
+
+
+class TestMsdp:
+    def test_peers(self):
+        assert parse_msdp_peers(load_json('msdp_peer_r2.json')) == {
+            '10.106.99.51': {'state': 'established', 'established': True, 'local': '10.106.99.52', 'sa_count': 2}}
+        assert parse_msdp_peers(load_json('msdp_peer_none.json')) == {}
+        listening = parse_msdp_peers({'10.1.1.1': {'peer': '10.1.1.1', 'local': '10.1.1.2', 'state': 'listen'}})
+        assert listening['10.1.1.1']['established'] is False
+
+    def test_sa_cache(self):
+        sa = parse_msdp_sa(load_json('msdp_sa_r2.json'))
+        assert sa[('10.106.51.117', '239.7.7.7')] == {'rp': '10.106.99.51', 'local': False, 'spt': True}
+        local = parse_msdp_sa(load_json('msdp_sa_r1.json'))
+        assert local[('10.106.51.117', '239.7.7.7')] == {'rp': None, 'local': True, 'spt': False}
+
+    def test_get(self):
+        grade = make_grade(load('msdp_sa_r2.json'))
+        assert len(get_msdp_sa(grade, 'msdp_r2', step=3, allow_error=True)) == 2
+        grade.test.assert_called_once_with('msdp_r2', 'vtysh -c "show ip msdp sa json"', step=3, allow_error=True)
+        assert get_msdp_peers(make_grade('', 1), 'msdp_r1') == {}
+
+
+class TestPimRunningConfig:
+    def test_boundary_and_prefix_list(self):
+        config = parse_frr_config(load('pim_running_config_msdp_r1.txt'))
+        assert config['interfaces']['eth1']['multicast_boundary'] == 'ORG-SCOPE'
+        assert config['interfaces']['eth1']['pim'] is True and config['interfaces']['eth0']['igmp'] is False
+        assert config['interfaces']['eth0']['multicast_boundary'] is None
+        plists = config['prefix_lists']
+        assert prefix_list_permits(plists, 'ORG-SCOPE', '239.193.1.1') is False
+        assert prefix_list_permits(plists, 'ORG-SCOPE', '239.7.7.7') is True
+        assert prefix_list_permits(plists, 'ORG-SCOPE', '10.0.0.1') is False          # implicit deny
+        assert prefix_list_permits(plists, 'NOPE', '239.7.7.7') is None
+
+    @pytest.mark.parametrize('entries, prefix, expected', [
+        ([{'seq': 10, 'action': 'permit', 'prefix': '239.0.0.0/8', 'ge': None, 'le': None}], '239.0.0.0/8', True),
+        ([{'seq': 10, 'action': 'permit', 'prefix': '239.0.0.0/8', 'ge': None, 'le': None}], '239.1.1.1', False),
+        ([{'seq': 10, 'action': 'permit', 'prefix': '239.0.0.0/8', 'ge': 24, 'le': None}], '239.1.1.1', True),
+        ([{'seq': 10, 'action': 'permit', 'prefix': '239.0.0.0/8', 'ge': 24, 'le': 24}], '239.1.1.1', False),
+        ([{'seq': 20, 'action': 'permit', 'prefix': '224.0.0.0/4', 'ge': None, 'le': 32},
+          {'seq': 5, 'action': 'deny', 'prefix': '239.192.0.0/14', 'ge': None, 'le': 32}], '239.192.0.1', False),
+    ])
+    def test_prefix_list_semantics(self, entries, prefix, expected):
+        assert prefix_list_permits({'P': entries}, 'P', prefix) is expected

@@ -19,7 +19,7 @@ from SRE.params import sre_docker_image
 class NetScheme(NetScheme0):
     _machine_specs = {
         "m1": {"image": "debian:12"},
-        'r1': {'image': sre_docker_image("frr")},
+        'r1': {'image': sre_docker_image("routing-frr")},
         "srv": {"image": params.sre_docker_image()},
     }
     extra = Machine("m2", image='alpine:3.20')
@@ -59,13 +59,13 @@ def events(err: str) -> list:
     return [json.loads(line) for line in err.splitlines() if line.startswith('{')]
 
 
-EXPECTED = sorted({'debian:12', 'alpine:3.20', params.sre_docker_image('frr'), params.default_docker_image})
+EXPECTED = sorted({'debian:12', 'alpine:3.20', params.sre_docker_image('routing-frr'), params.default_docker_image})
 
 
 class TestImages:
     def test_forms_found_in_a_lab_file(self, lab_dir):
         found = preload_images._extract_images_from_file(lab_dir / 'lab.py')
-        assert found == {'debian:12', 'alpine:3.20', params.sre_docker_image('frr'), params.sre_docker_image()}
+        assert found == {'debian:12', 'alpine:3.20', params.sre_docker_image('routing-frr'), params.sre_docker_image()}
 
     def test_directory_scanned_recursively(self, lab_dir, pulls, capsys):
         run([lab_dir])

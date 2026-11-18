@@ -225,6 +225,125 @@ def port_states(info: Optional[Dict[str, Any]]) -> Dict[str, Optional[str]]:
     return {ifname: port['state'] for ifname, port in (info or {}).get('ports', {}).items()}
 
 
+# ---------------------------------------------------------------------------
+# multicast snooping (IGMP / MLD) of a bridge
+# ---------------------------------------------------------------------------
+
+
+def bridge_mcast_info(links: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
+    """The multicast snooping settings of the bridge *name* in an ``ip -j -d link`` output,
+    ``None`` when it does not exist or is not a bridge:
+
+    - ``snooping`` (``mcast_snooping 1``: the default of a new bridge), ``querier``
+      (``mcast_querier 1``: the bridge sends the IGMP / MLD queries itself), ``query_use_ifaddr``
+      (the queries come from the address of the bridge instead of 0.0.0.0),
+    - ``igmp_version`` (2 by default), ``mld_version`` (1 by default), ``router``
+      (``mcast_router``: 1 = learned, the default), ``vlan_snooping``,
+    - ``query_interval``, ``query_response_interval``, ``membership_interval``,
+      ``querier_interval``, ``last_member_interval``, ``startup_query_interval`` **in seconds**
+      (centiseconds in the JSON), ``last_member_count``, ``startup_query_count``,
+    - ``ports``: ``{ifname: {'fast_leave', 'multicast_router' (0 disabled, 1 learned, 2
+      permanent, 3 temporary), 'mcast_flood', 'mcast_to_unicast'}}``.
+    """
+    by_name = links_by_name(links)
+    link = by_name.get(name)
+    if not link or (link.get('linkinfo') or {}).get('info_kind') != 'bridge':
+        return None
+    data = (link.get('linkinfo') or {}).get('info_data') or {}
+    ports: Dict[str, Dict[str, Any]] = {}
+    for ifname, port in by_name.items():
+        if port.get('master') != name:
+            continue
+        slave = (port.get('linkinfo') or {}).get('info_slave_data') or {}
+        ports[ifname] = {
+            'fast_leave': bool(slave.get('fastleave')),
+            'multicast_router': _int_or_none(slave.get('multicast_router')),
+            'mcast_flood': bool(slave.get('mcast_flood', True)),
+            'mcast_to_unicast': bool(slave.get('mcast_to_unicast')),
+        }
+    return {
+        'snooping': _int_or_none(data.get('mcast_snooping')) == 1,
+        'querier': _int_or_none(data.get('mcast_querier')) == 1,
+        'query_use_ifaddr': _int_or_none(data.get('mcast_query_use_ifaddr')) == 1,
+        'igmp_version': _int_or_none(data.get('mcast_igmp_version')),
+        'mld_version': _int_or_none(data.get('mcast_mld_version')),
+        'router': _int_or_none(data.get('mcast_router')),
+        'vlan_snooping': _int_or_none(data.get('mcast_vlan_snooping')) == 1,
+        'query_interval': _centiseconds(data.get('mcast_query_intvl')),
+        'query_response_interval': _centiseconds(data.get('mcast_query_response_intvl')),
+        'membership_interval': _centiseconds(data.get('mcast_membership_intvl')),
+        'querier_interval': _centiseconds(data.get('mcast_querier_intvl')),
+        'last_member_interval': _centiseconds(data.get('mcast_last_member_intvl')),
+        'startup_query_interval': _centiseconds(data.get('mcast_startup_query_intvl')),
+        'last_member_count': _int_or_none(data.get('mcast_last_member_cnt')),
+        'startup_query_count': _int_or_none(data.get('mcast_startup_query_cnt')),
+        'ports': ports,
+    }
+
+
+def mdb_cmd(bridge: str) -> str:
+    """``bridge -j -d mdb show dev <bridge>`` (the multicast database of one bridge, JSON)."""
+    return f"bridge -j -d mdb show dev {shlex.quote(str(bridge))}"
+
+
+def parse_mdb_json(output: str) -> List[Dict[str, Any]]:
+    """The group entries of a ``bridge -j [-d] mdb show`` output: one dict per (port, group,
+    source) with ``dev`` (the bridge), ``port``, ``grp`` (the group address), ``src`` (the source
+    of an IGMPv3 / MLDv2 (S,G) entry, ``None`` for a (*,G) one), ``state`` (``temp`` for a
+    learned entry, ``permanent`` for one added by hand), ``vid``, ``flags`` (list), ``timer``
+    (seconds, a float, ``None`` without ``-d``), ``filter_mode`` (``include`` / ``exclude`` with
+    IGMPv3).  The router ports (``router`` list of the same output) are left out.  ``[]`` when
+    invalid."""
+    try:
+        document = json.loads(output or '[]')
+    except ValueError:
+        return []
+    if isinstance(document, dict):
+        document = [document]
+    if not isinstance(document, list):
+        return []
+    result = []
+    for item in document:
+        if not isinstance(item, dict):
+            continue
+        for entry in item.get('mdb') or []:
+            if not isinstance(entry, dict) or not entry.get('grp'):
+                continue
+            timer = entry.get('timer')
+            try:
+                timer = None if timer is None else float(str(timer).strip())
+            except ValueError:
+                timer = None
+            result.append({'dev': entry.get('dev'), 'port': entry.get('port'), 'grp': str(entry.get('grp')),
+                           'src': str(entry['src']) if entry.get('src') else None,
+                           'state': str(entry.get('state') or ''), 'vid': _int_or_none(entry.get('vid')),
+                           'flags': [str(f) for f in (entry.get('flags') or [])], 'timer': timer,
+                           'filter_mode': entry.get('filter_mode')})
+    return result
+
+
+def mdb_ports(entries: List[Dict[str, Any]], group, source=None) -> List[str]:
+    """The ports of the mdb entries of *group* (only those of the (S,G) entry of *source* when
+    given; with *source* None, the (*,G) entries and the (S,G) ones alike)."""
+    wanted_group = str(group)
+    ports = []
+    for entry in entries:
+        if entry['grp'] != wanted_group:
+            continue
+        if source is not None and entry['src'] != str(source):
+            continue
+        if entry['port'] and entry['port'] not in ports:
+            ports.append(entry['port'])
+    return ports
+
+
+def get_mdb(grade: Grade0, machine_name: str, bridge: str, step: int = 1) -> List[Dict[str, Any]]:
+    """:func:`parse_mdb_json` of ``bridge -j -d mdb show dev <bridge>`` on *machine_name* (``[]``
+    on failure)."""
+    out, code = grade.test(machine_name, mdb_cmd(bridge), step=step, allow_error=True)
+    return parse_mdb_json(out) if code == 0 else []
+
+
 def parse_tcpdump_stp(output: str) -> List[Dict[str, Any]]:
     """The BPDUs of a ``tcpdump -n [-v] -i eth0 stp`` output (tcpdump 4.99): one dict per frame with
     ``type`` (``'Config'`` or ``'Topology Change Notification'``), ``flags`` (``'none'``,

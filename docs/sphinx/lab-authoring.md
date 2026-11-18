@@ -1379,6 +1379,49 @@ from rip import (install_rip_probe, rip_listen_cmd, rip_announce_cmd, get_rip_pr
 
 Only the responses sent to a group address are recorded: the request a passive interface still emits and the unicast answers to a request are counted apart. An evaluation sees a configuration change once the router has sent an update with it, at most one update period later; the student texts must say so. A silence alone does not prove a passive interface: an interface RIP has just been enabled on sends a request, then its first update up to a period later, so pair `not heard()` with `get_rip_status()` (the interface is in `passive_interfaces`, or absent from `interfaces`). A reference state that must remove a route learned under long timers runs `clear ip rip` on every router at the same step: a router cleared alone learns the route again from its neighbours. Since the export of a project replays `initial` for the hidden machines too, a lab with a rogue speaker sets `export_kathara_project = False`.
 
+### Multicast helpers (from `/opt/sre/lib/frr.py`, `/opt/sre/lib/mcast.py` and `/opt/sre/lib/bridging.py`)
+
+```python
+from frr import (get_pim_interfaces, get_pim_neighbors, pim_neighbor_on, get_pim_rp_info, rp_for_group,
+                 get_pim_group_type, get_mroutes, get_pim_upstream, get_igmp_interfaces, igmp_enabled,
+                 get_igmp_groups, get_igmp_sources, get_msdp_peers, get_msdp_sa, get_mld_interfaces,
+                 get_mld_groups, prefix_list_permits)
+from mcast import (install_mcast_probe, mcast_recv_cmd, mcast_sniff_cmd, mcast_send_cmd, get_mcast_dump,
+                   received, group_mac, mac_aliases, multicast_scope)
+from bridging import bridge_mcast_info, get_mdb, mdb_ports
+```
+
+**The state of pimd / pim6d** (`lib/frr.py`). Every helper runs one `vtysh -c "… json"` command (two-pass contract, `allow_error`, `{}` / `[]` when nothing is configured: pimd prints `{}` then) and leaves the register interfaces (`pimreg`, `pim6reg`) out. The ones with `ipv6=True` run the `show ipv6 …` form.
+
+| Function | Returns |
+|----------|---------|
+| `get_pim_interfaces(grade, m, ipv6=False)` | `{ifname: {address, up, neighbors, dr, dr_local}}` for every interface with `ip pim` |
+| `get_pim_neighbors(grade, m, ipv6=False)` + `pim_neighbor_on(neighbors, ifname, address=None)` | `{ifname: [neighbour addresses]}` (link-local addresses with PIMv6) |
+| `get_pim_rp_info(grade, m)` + `rp_for_group(rp_info, group)` | `[{rp, group, source, group_type, iface (the RPF interface towards the RP), i_am_rp}]`; the entry of the longest range holding a group |
+| `get_pim_group_type(grade, m, group)` | `'SSM'` / `'ASM'` (`show ip pim group-type G`) |
+| `get_mroutes(grade, m, ipv6=False)` | `{(source or '*', group): {iif, oil, flags, installed}}`; the `iif` of a last-hop router's (S,G) tells whether it switched to the shortest-path tree |
+| `get_pim_upstream(grade, m)` | `{(source or '*', group): {join_state, reg_state, iif, rpf, spt}}` |
+| `get_igmp_interfaces(grade, m, detail=True)` / `get_mld_interfaces(grade, m)` + `igmp_enabled(interfaces, ifname)` | `{ifname: {version, querier, querier_ip, query_interval (s), query_response_interval, last_member_interval, last_member_count, robustness, mtrace_only}}`; an interface with `mtrace_only` has PIM but no `ip igmp` |
+| `get_igmp_groups(grade, m)` / `get_mld_groups(grade, m)` | `{ifname: {group: {version, mode, sources_count, uptime}}}`; a group a v2 host joined shows `version` 2 |
+| `get_igmp_sources(grade, m)` | `{ifname: {group: [sources]}}` of the IGMPv3 INCLUDE records |
+| `get_msdp_peers(grade, m)` / `get_msdp_sa(grade, m)` | `{peer: {state, established, local, sa_count}}`; `{(source, group): {rp, local, spt}}` |
+| `prefix_list_permits(parse_frr_config(text)['prefix_lists'], name, prefix)` | how a prefix-list treats a group (first match in `seq` order, implicit deny, `None` for a missing list); `parse_frr_config` also returns `pim`, `igmp` and `multicast_boundary` (the list of `ip multicast boundary oil`) per interface |
+
+**What really reaches a host** (`lib/mcast.py`, `lib/mcast_probe.py`, standard library only). The probe runs on the hosts the students see; one evaluation uses three steps:
+
+| Function | Description |
+|----------|-------------|
+| `install_mcast_probe(net_scheme, machine, step=1)` | Copy `lib/mcast_probe.py` to `/usr/local/sbin/mcast_probe.py` |
+| `mcast_recv_cmd(tag, port, joins, iface='eth0', duration=30)` | Step 1: (re)start a receiver daemon that joins each of `joins` (a group, or `(group, source)` for an IGMPv3 / MLDv2 source-specific join) with `IP_MULTICAST_ALL` off, and records per group the count, the sources, the tokens and the TTL of what reaches UDP `port`. It returns at once; the previous state of the tag is removed first |
+| `mcast_sniff_cmd(tag, iface, groups, duration=30)` | Step 1: an `AF_PACKET` sniffer that joins nothing and counts the frames of `groups` seen on `iface` (and the IGMP messages): the proof that a host did **not** get a stream |
+| `mcast_send_cmd(group, port, token, count=20, interval=0.4, delay=2, ttl=16, source=None, iface=None, background=None)` | Step 2: a burst of datagrams carrying `token`, from the address `source` of the machine and / or out of `iface` (a host without a route for 224.0.0.0/4 needs `iface`), blocking for `delay + 19 × interval` s unless `background` (a tag) sends it from a daemon (two bursts of one source at once) |
+| `get_mcast_dump(grade, machine, tags, step=3)` + `received(probe, group, token=None, source=None)` | Step 3: `{tag: McastProbe}` (`ran=False` on the placeholder or for a daemon that did not run); the number of datagrams of a group, with the token, from the source |
+| `group_mac(group)`, `mac_aliases(group, within=224.0.0.0/4)`, `multicast_scope(address)`, `glop_block(asn)` | `01:00:5e` + 23 bits (or `33:33` + 32 bits for IPv6); the 32 groups sharing that MAC; `link-local` / `internetwork-control` / `ssm` / `glop` / `local-scope` / `organization-scope` / `admin-scoped` / `global` (the scope nibble's name for IPv6) |
+
+Use a token and groups of the evaluation that the students do not use, require several datagrams of the burst (a PIM join, an SPT switchover or an MSDP SA loses the first ones), and count an absence (`received(...) == 0`) only when the probe ran **and** the stream it is compared with arrived. Receivers on a host alone are enough to create the IGMP state of its router.
+
+**Snooping of a Linux bridge** (`lib/bridging.py`). `bridge_mcast_info(get_ip_links(grade, m), 'br0')` → `snooping`, `querier`, `query_use_ifaddr`, `igmp_version`, the timers in seconds (`query_interval`, `membership_interval`…) and `ports` (`fast_leave`, `multicast_router`, `mcast_flood`); `get_mdb(grade, m, 'br0')` (`bridge -j -d mdb show dev br0`) + `mdb_ports(entries, group, source=None)`. A Linux bridge with snooping on but **no querier** (neither its own nor another one) still floods every group to every port.
+
 ### Standard machine wiring (from `/opt/sre/lib/std.py`)
 
 `machine_config(net_scheme, machine_name, config)` — concise helper for wiring a machine inside `NetScheme.build()` (or `initial()`). `config` is a `(interfaces, sysctls)` tuple:

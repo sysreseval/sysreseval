@@ -1,0 +1,16 @@
+{
+  "eth2":{
+    "name":"eth2",
+    "239.5.5.6":{
+      "group":"239.5.5.6",
+      "sources":[
+        {
+          "source":"*",
+          "timer":"04:18",
+          "forwarded":true,
+          "uptime":"00:00:33"
+        }
+      ]
+    }
+  }
+}

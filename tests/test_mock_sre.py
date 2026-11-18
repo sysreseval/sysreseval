@@ -1050,7 +1050,7 @@ class TestPreloadImages:
         assert "All 1 image(s) preloaded successfully." in out
 
     def test_progress_events(self, pub):
-        images = ['debian:12', 'sysreseval/frr:1.0', 'alpine:3']
+        images = ['debian:12', 'sysreseval/routing-frr:1.0', 'alpine:3']
         completed = run_mock(pub, 'preload-images', '--progress', str(pub), user=False,
                              extra_env={'MOCK_PRELOAD_IMAGES': json.dumps(images)})
         assert completed.returncode == 0

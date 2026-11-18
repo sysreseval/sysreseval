@@ -1,0 +1,1 @@
+{"rx": {"done": false, "errors": [], "groups": {"239.1.2.4": {"count": 20, "first_age": 9.358, "last_age": 1.755, "sources": {"10.106.20.213": 20}, "tokens": {"tokz": 20}, "ttl_max": 16, "ttl_min": 16}}, "heartbeat_age": 0.753, "igmp": {}, "joins": [{"group": "239.1.2.4"}], "kind": "recv", "uptime": 14.134, "watched": []}}

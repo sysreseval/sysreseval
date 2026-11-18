@@ -1,0 +1,28 @@
+{
+  "ff3e::1:2345":{
+    "fd39:deb4:cd32:61::f97":{
+      "source":"fd39:deb4:cd32:61::f97",
+      "group":"ff3e::1:2345",
+      "installed":1,
+      "refCount":2,
+      "oilSize":1,
+      "oilInheritedRescan":0,
+      "iif":"eth0",
+      "upTime":"00:00:23",
+      "flags":"SC",
+      "oil":{
+        "eth1":{
+          "source":"fd39:deb4:cd32:61::f97",
+          "group":"ff3e::1:2345",
+          "protocolMld":true,
+          "inboundInterface":"eth0",
+          "iVifI":1,
+          "outboundInterface":"eth1",
+          "oVifI":2,
+          "ttl":1,
+          "upTime":"00:00:23"
+        }
+      }
+    }
+  }
+}

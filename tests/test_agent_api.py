@@ -402,7 +402,7 @@ class TestPreload:
         run(go())
 
     def test_at_start_waits_for_its_turn_then_runs(self, tmp_path):
-        images = ['debian:12', 'sysreseval/base:1.0', 'sysreseval/frr:1.0']
+        images = ['debian:12', 'sysreseval/base:1.0', 'sysreseval/routing-frr:1.0']
         async def go():
             async with Harness(tmp_path, mock_env={'MOCK_PRELOAD_IMAGES': json.dumps(images), 'MOCK_PRELOAD_DELAY': '0.4'},
                                preload={'at_start': True, 'paths': [str(tmp_path)]}) as h:

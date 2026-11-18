@@ -3,7 +3,7 @@ FROM sysreseval/base:${VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 
-ENV SRE_VERSION="sre/frr:${VERSION}"
+ENV SRE_VERSION="sre/routing-frr:${VERSION}"
 RUN echo "${SRE_VERSION}" >/etc/sre_version
 LABEL version="${SRE_VERSION}"
 
@@ -16,6 +16,12 @@ RUN apt update && apt install -y frr frr-pythontools frr-rpki-rtrlib
 
 RUN sed -i -e 's/service/no service/' /etc/frr/vtysh.conf \
     && rm /etc/frr/frr.conf
+
+# Multicast tools (the multicast lab): iperf 2 (UDP to a group, -B / -T / -H), ssmping / asmping
+# (ssmpingd answers), smcroute (static multicast routes and joins; mcjoin is not packaged before
+# trixie).  smcroute is a daemon: nothing starts it, a lab runs `smcrouted` itself.
+RUN apt update && apt install -y iperf ssmping smcroute \
+    && rm -f /etc/systemd/system/multi-user.target.wants/smcroute.service /etc/rc*.d/S*smcroute*
 
 RUN apt clean && \
     rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*

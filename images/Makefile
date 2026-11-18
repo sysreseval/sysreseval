@@ -3,7 +3,7 @@ SHELL := /bin/bash
 VERSION   ?= 1.33
 NAMESPACE ?= sysreseval
 
-IMAGES := base init frr ldap-mail proxy monitoring voip aaa base13 init13
+IMAGES := base init routing-frr ldap-mail proxy monitoring voip aaa base13 init13
 
 .PHONY: all $(IMAGES) push $(addprefix push-,$(IMAGES)) help
 
@@ -19,10 +19,10 @@ init: base
 		-t $(NAMESPACE)/init:$(VERSION) \
 		init
 
-frr: base
+routing-frr: base
 	docker build --build-arg VERSION=$(VERSION) \
-		-t $(NAMESPACE)/frr:$(VERSION) \
-		frr
+		-t $(NAMESPACE)/routing-frr:$(VERSION) \
+		routing-frr
 
 ldap-mail: init
 	docker build --build-arg VERSION=$(VERSION) \
@@ -72,8 +72,8 @@ $(PUSH_TARGETS): push-%:
 
 help:
 	@echo "Targets:"
-	@echo "  all (default)     build base + init + frr + ldap-mail + proxy + monitoring + voip + aaa + base13 + init13"
-	@echo "  base | init | frr | ldap-mail | proxy | monitoring | voip | aaa | base13 | init13  build one image (deps included)"
+	@echo "  all (default)     build base + init + routing-frr + ldap-mail + proxy + monitoring + voip + aaa + base13 + init13"
+	@echo "  base | init | routing-frr | ldap-mail | proxy | monitoring | voip | aaa | base13 | init13  build one image (deps included)"
 	@echo "  push              push all images"
 	@echo "  push-<name>       push one image"
 	@echo "Variables:"

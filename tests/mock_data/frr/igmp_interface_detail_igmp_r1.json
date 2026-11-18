@@ -1,0 +1,27 @@
+{
+  "eth0":{
+    "name":"eth0",
+    "state":"up",
+    "address":"10.106.10.35",
+    "index":459,
+    "flagMulticast":true,
+    "flagBroadcast":true,
+    "lanDelayEnabled":true,
+    "upTime":"00:00:11",
+    "querier":"local",
+    "querierIp":"10.106.10.35",
+    "queryStartCount":0,
+    "queryQueryTimer":"00:00:39",
+    "queryOtherTimer":"--:--:--",
+    "version":3,
+    "timerGroupMembershipIntervalMsec":90000,
+    "lastMemberQueryCount":2,
+    "timerLastMemberQueryMsec":2000,
+    "timerOlderHostPresentIntervalMsec":90000,
+    "timerOtherQuerierPresentIntervalMsec":85000,
+    "timerQueryInterval":40,
+    "timerQueryResponseIntervalMsec":10000,
+    "timerRobustnessVariable":2,
+    "timerStartupQueryInterval":10
+  }
+}

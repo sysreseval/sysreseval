@@ -195,7 +195,7 @@ class Data(Data0):
 
 class NetScheme(NetScheme0):
     _machine_specs = {
-        **{r: {'image': sre_docker_image("frr"), 'color': AS_COLORS[AS_OF[r]]} for r in ROUTER_IFACES},
+        **{r: {'image': sre_docker_image("routing-frr"), 'color': AS_COLORS[AS_OF[r]]} for r in ROUTER_IFACES},
         'm1': {'color': AS_COLORS[AS1]}, 'm3': {'color': AS_COLORS[AS1]},
         'm4': {'color': AS_COLORS[AS_CUST]}, 'web': {'color': AS_COLORS[AS_INET]},
     }

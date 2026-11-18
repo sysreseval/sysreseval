@@ -1,0 +1,14 @@
+{
+  "eth0":{
+    "fe80::9045:f2ff:feb4:161a":{
+      "interface":"eth0",
+      "neighbor":"fe80::9045:f2ff:feb4:161a",
+      "upTime":"00:01:01",
+      "holdTime":"00:01:44",
+      "holdTimeMax":105,
+      "drPriority":1
+    }
+  },
+  "eth1":{
+  }
+}

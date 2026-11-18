@@ -665,7 +665,7 @@ class TestTopology:
         assert set(ns.get_machine_names()) == {'r1', 'r2', 'r3', 'r4', 'pc1', 'pc2', 'hv', 'isp', 'probe', 'intruder'}
         specs = lab.NetScheme._machine_specs
         for router in lab.ROUTER_IFACES:
-            assert specs[router]['image'].startswith('sysreseval/frr:')
+            assert specs[router]['image'].startswith('sysreseval/routing-frr:')
             assert 'net.ipv6.conf.all.keep_addr_on_down=1' in specs[router]['sysctls']
         for hidden in ('probe', 'intruder'):
             assert specs[hidden] == {'hidden': True, 'allow_connection': False, 'ipv6': False}

@@ -1,0 +1,23 @@
+{
+  "totalGroups":1,
+  "watermarkLimit":0,
+  "eth2":{
+    "name":"eth2",
+    "state":"up",
+    "address":"10.106.35.24",
+    "index":478,
+    "flagMulticast":true,
+    "flagBroadcast":true,
+    "lanDelayEnabled":true,
+    "groups":[
+      {
+        "group":"239.5.5.6",
+        "mode":"EXCLUDE",
+        "timer":"00:03:49",
+        "sourcesCount":1,
+        "version":3,
+        "uptime":"00:00:31"
+      }
+    ]
+  }
+}

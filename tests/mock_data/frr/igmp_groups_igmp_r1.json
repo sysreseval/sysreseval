@@ -1,0 +1,30 @@
+{
+  "totalGroups":2,
+  "watermarkLimit":0,
+  "eth0":{
+    "name":"eth0",
+    "state":"up",
+    "address":"10.106.10.35",
+    "index":459,
+    "flagMulticast":true,
+    "flagBroadcast":true,
+    "lanDelayEnabled":true,
+    "groups":[
+      {
+        "group":"239.3.3.1",
+        "mode":"EXCLUDE",
+        "timer":"00:01:28",
+        "sourcesCount":1,
+        "version":3,
+        "uptime":"00:00:11"
+      },
+      {
+        "group":"239.3.3.2",
+        "timer":"00:01:26",
+        "sourcesCount":1,
+        "version":2,
+        "uptime":"00:00:09"
+      }
+    ]
+  }
+}

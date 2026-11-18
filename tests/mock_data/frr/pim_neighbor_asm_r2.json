@@ -1,0 +1,24 @@
+{
+  "eth0":{
+    "10.106.32.2":{
+      "interface":"eth0",
+      "neighbor":"10.106.32.2",
+      "upTime":"00:01:11",
+      "holdTime":"00:01:34",
+      "holdTimeMax":105,
+      "drPriority":1
+    }
+  },
+  "eth1":{
+    "10.106.34.2":{
+      "interface":"eth1",
+      "neighbor":"10.106.34.2",
+      "upTime":"00:01:11",
+      "holdTime":"00:01:41",
+      "holdTimeMax":105,
+      "drPriority":1
+    }
+  },
+  "lo":{
+  }
+}
