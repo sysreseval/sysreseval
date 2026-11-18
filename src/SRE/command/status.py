@@ -16,12 +16,13 @@ The projects are those of ``sre stop-all`` run by a privileged caller: the direc
 ``info.json``, in start order.
 
 The agent has neither a pid file nor a local socket, and its unit name depends on the layout:
-it is looked for in ``/proc`` (:func:`agent_pids`).
+it is looked for in ``/proc`` (:func:`agent_pids`, on the scan of ``procscan.py``).
 """
 import os
 
 from .. import params
 from ..origin import read_origin
+from ..procscan import command_lines, runs_script
 from ..utils import user_not_allowed
 from .stop_all import accessible_projects
 
@@ -36,32 +37,16 @@ _COLUMNS = ('ORIGIN', 'USER', 'PROJECT')
 def _is_agent(argv: list[str]) -> bool:
     """A Python interpreter running the agent's script or module: not the shell wrapper that
     execs it, nor an editor or a grep naming the file."""
-    if not argv or not os.path.basename(argv[0]).startswith('python'):
-        return False
-    rest = argv[1:]
-    return (any(os.path.basename(arg) == AGENT_SCRIPT for arg in rest)
-            or any(option == '-m' and module == AGENT_MODULE for option, module in zip(rest, rest[1:])))
+    return runs_script(argv, AGENT_SCRIPT, AGENT_MODULE)
 
 
 def agent_pids(proc: str = '/proc') -> list[int] | None:
     """The pids of the running web agents (normally one), sorted; ``None`` when *proc* cannot
     be listed (not a Linux system).  A process that ended meanwhile or cannot be read is skipped."""
-    try:
-        entries = os.listdir(proc)
-    except OSError:
+    lines = command_lines(proc)
+    if lines is None:
         return None
-    pids = []
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        try:
-            with open(os.path.join(proc, entry, 'cmdline'), 'rb') as f:
-                cmdline = f.read()
-        except OSError:
-            continue
-        if _is_agent([arg.decode(errors='replace') for arg in cmdline.split(b'\0') if arg]):
-            pids.append(int(entry))
-    return sorted(pids)
+    return sorted(pid for pid, argv in lines if _is_agent(argv))
 
 
 def agent_line(pids: list[int] | None, configured: bool) -> str:

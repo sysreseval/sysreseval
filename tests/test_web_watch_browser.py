@@ -7,7 +7,9 @@ shown): the group chosen in the select is kept in the URL and remembered by the 
 the header, which carries no query string, until another group or All groups is chosen; a link
 with ``?group=`` wins and is remembered; No group (the rows without department) is remembered
 too.  And the Last action column: the gestures of the student on their project page (a real mouse
-press on a tab, a key) reach the row, those of an instructor on that page do not."""
+press on a tab, a key) reach the row, those of an instructor on that page do not.  And the two
+views of the page (Projects, where it lands, and Clients: the browsers connected to the portal
+and the users in a local GUI) with the Clients column of the projects."""
 import asyncio
 import contextlib
 import json
@@ -62,14 +64,17 @@ def choose(kind: str, value: str = '') -> str:
 
 
 @contextlib.asynccontextmanager
-async def browser_of(tmp_path, *others):
+async def browser_of(tmp_path, *others, administrators=()):
     """The harness (proxy mode, the real web directory, the fake database of the custom groups as
     the group source), the identity proxy making the browser the instructor, and the browser:
     ``(h, browser, url)``, followed by the address of one more proxy per identity of *others*
     (the pages of a student in the same browser).  The proxies are closed after the browser: a
-    proxy closed under an open page waits a minute for its WebSockets."""
+    proxy closed under an open page waits a minute for its WebSockets.  *administrators*: the
+    logins of ``[auth] administrators``."""
     h = harness(tmp_path, server=FakeGroupsServer())
     h.web_dir = WEB
+    if administrators:
+        h.web_over['auth'] = {**h.web_over['auth'], 'administrators': list(administrators)}
     async with h:
         proxies = [IdentityProxy(f'http://127.0.0.1:{h.client.port}', identity) for identity in (PROF, *others)]
         try:
@@ -227,4 +232,165 @@ class TestLastAction:
                 await helper.press_enter()
                 await asyncio.sleep(1.0)
                 assert await last_action() is None
+        P.run(go())
+
+
+# -- the Projects / Clients views and the Clients column ----------------------------------------
+
+ADMIN = P.who('admin', 'Ada Min', groups=P.TEACHERS)          # an instructor listed in [auth] administrators
+VIEW = "(document.querySelector('.history-views button[aria-pressed=true]') || {dataset: {}}).dataset.view"
+URL_VIEW = "new URL(window.location.href).searchParams.get('view')"       # null without ?view=
+SECTIONS = ("({projects: !document.getElementById('watch-projects').hidden, "
+            "clients: !document.getElementById('watch-clients').hidden})")
+TITLE = "document.getElementById('watch-title').textContent"
+# the Clients cell of the first project (the 14th column, after Terminals): its text and its tooltip
+CLIENTS_CELL = """(() => {
+  const td = document.querySelector('#watch tbody tr td:nth-child(14)');
+  return td ? {text: td.textContent, title: td.title} : null;
+})()"""
+ADDRESS_HIDDEN = "document.querySelector('#watch-web th[data-sort=addr]').hidden"
+PAGE_LINKS = "[...document.querySelectorAll('#watch-web td.pages a')].map((a) => a.getAttribute('href'))"
+
+
+def table_rows(table: str) -> str:
+    """The texts of the cells of each row of a clients table (a message row has one cell: left out)."""
+    return (f"[...document.querySelectorAll('#{table} tbody tr')].filter((tr) => tr.children.length > 1)"
+            ".map((tr) => [...tr.children].map((td) => td.textContent))")
+
+
+LOCAL_ROWS, WEB_ROWS = table_rows('watch-local'), table_rows('watch-web')
+LOCAL_MESSAGE = "(document.querySelector('#watch-local tbody td.muted') || {textContent: ''}).textContent"
+
+
+def view_button(view: str) -> str:
+    return f'.history-views button[data-view="{view}"]'
+
+
+def type_filter(text: str) -> str:
+    return (f"(() => {{ const input = document.getElementById('watch-filter'); input.value = {json.dumps(text)}; "
+            "input.dispatchEvent(new Event('input')); return true; })()")
+
+
+class TestClientsView:
+    def test_the_two_views_and_the_clients_of_a_project(self, tmp_path, monkeypatch):
+        """The page lands on the projects; the Clients button shows who is connected, one row
+        per browser (the two pages of the instructor are one browser) and one per user in a
+        local GUI, with the addresses for an administrator only; ``?view=clients`` is in the URL
+        and never remembered.  The Clients column counts the clients of the owner on the
+        project: her browser on its page (not the instructor's, not a page she left, which the
+        browser keeps in its back/forward cache) and her local GUI."""
+        import os
+        from urllib.parse import quote
+        from sreweb.agent import localgui
+        from sreweb.portal import clients as C
+        from test_agent_localgui import GUI, fake_proc, users
+        monkeypatch.setattr(localgui, 'SYSTEM_UID_MAX', -1)    # the fake processes belong to whoever runs the tests
+
+        async def go():
+            async with browser_of(tmp_path, ALICE, ADMIN, administrators=['admin']) as (
+                    h, browser, url, student_url, admin_url):
+                await start(h, ALICE)
+                rln = (await (await h.client.get('/api/watch', headers=PROF)).json())[0]['running_lab_name']
+                project_path = f'/projects/a01/{quote(rln, safe="")}'
+                presence = h.portal.presence
+
+                async def clients():
+                    return (await (await h.client.get('/api/watch', headers=PROF)).json())[0]['clients']
+
+                async def until(predicate, what, timeout=10.0):
+                    async with asyncio.timeout(timeout):
+                        while True:
+                            result = predicate()
+                            if asyncio.iscoroutine(result):
+                                result = await result
+                            if result:
+                                return
+                            await asyncio.sleep(0.05)
+
+                def on_project(login):
+                    return [s for s in presence.sockets()
+                            if s.identity.login == login and C.page_project(s.page) == ('a01', rln)]
+
+                watch = await browser.page(f'{url}/watch')
+                await watch.wait_for(f"{OWNERS}.length === 1", what="the project of alice")
+                # the page lands on the projects
+                assert await watch.evaluate(VIEW) == 'projects' and await watch.evaluate(URL_VIEW) is None
+                assert await watch.evaluate(SECTIONS) == {'projects': True, 'clients': False}
+                assert await watch.evaluate(TITLE) == 'All running projects'
+                assert await watch.evaluate(CLIENTS_CELL) == {'text': '0', 'title': ''}
+                # the student opens her project: one client
+                page = await browser.page(f'{student_url}{project_path}', new_window=True)
+                await page.wait_for(f"{TABS}.includes('informations')", what="the tabs of the project")
+                await watch.wait_for(f"({CLIENTS_CELL} || {{}}).text === '1'", timeout=15.0, what="the browser of alice counted")
+                # the instructor opens it too: not a client of the project
+                helper = await browser.page(f'{url}{project_path}', new_window=True)
+                await helper.wait_for(f"{TABS}.includes('informations')", what="the tabs on the instructor's page")
+                await until(lambda: on_project('prof'), "the presence socket of the instructor's page")
+                assert await clients() == 1
+
+                # the Clients view: alice's browser, and the instructor's with its two pages
+                await watch.click(view_button('clients'))
+                await watch.wait_for(f"{WEB_ROWS}.length === 2", what="the two browsers")
+                assert await watch.evaluate(VIEW) == 'clients' and await watch.evaluate(URL_VIEW) == 'clients'
+                assert await watch.evaluate(SECTIONS) == {'projects': False, 'clients': True}
+                assert await watch.evaluate(TITLE) == 'Connected clients'
+                assert await watch.evaluate(COUNT) == '2 client(s)'
+                assert await watch.evaluate(LOCAL_MESSAGE) == 'Nobody is in a local GUI.'
+                alice, prof = await watch.evaluate(WEB_ROWS)
+                assert alice[:4] == ['alice', 'Alice A', 'INFO1', 'student'] and alice[4].startswith('Chrome')
+                assert alice[6] == '' and alice[7] and alice[8] == 'sre/dhcp.py (alice)'
+                assert prof[:4] == ['prof', 'Prof Essor', '', 'instructor'] and prof[4].startswith('Chrome')
+                assert prof[8] == 'sre/dhcp.py (alice)/watch'                   # one browser, two pages
+                assert await watch.evaluate(PAGE_LINKS) == [project_path, project_path]
+                assert await watch.evaluate(ADDRESS_HIDDEN) is True               # not an administrator
+                # the text filter of the page applies to the clients
+                await watch.evaluate(type_filter('student'))
+                await watch.wait_for(f"{WEB_ROWS}.length === 1", what="the students only")
+                assert await watch.evaluate(COUNT) == '1 of 2 client(s)'
+                await watch.evaluate(type_filter(''))
+                await watch.wait_for(f"{WEB_ROWS}.length === 2", what="everybody again")
+
+                # alice also sits in the local GUI of the host
+                h.agent.proc_dir = fake_proc(tmp_path / 'proc', {4242: {'argv': GUI, 'start': 0}})
+                h.agent.user_of = localgui.Users(users({os.getuid(): ('alice', 'alice a')}))
+                h.agent._gui_users = None
+                await watch.wait_for(f"{LOCAL_ROWS}.length === 1", timeout=20.0, what="the local GUI of alice")
+                local, = await watch.evaluate(LOCAL_ROWS)
+                assert local[:3] == ['a01', 'alice', 'alice a'] and local[4]
+                assert await watch.evaluate(COUNT) == '3 client(s)'
+
+                # an administrator lands on the view named by the link, and sees the addresses
+                admin = await browser.page(f'{admin_url}/watch?view=clients', new_window=True)
+                await admin.wait_for(f"{WEB_ROWS}.length === 3", what="the three browsers")
+                assert await admin.evaluate(VIEW) == 'clients' and await admin.evaluate(ADDRESS_HIDDEN) is False
+                assert all(row[6] for row in await admin.evaluate(WEB_ROWS))
+                await admin.close()
+
+                # back to the projects: her browser and her local GUI
+                await watch.click(view_button('projects'))
+                await watch.wait_for(f"({CLIENTS_CELL} || {{}}).text === '2'", timeout=15.0, what="the browser and the GUI")
+                assert await watch.evaluate(VIEW) == 'projects' and await watch.evaluate(URL_VIEW) is None
+                assert (await watch.evaluate(CLIENTS_CELL))['title'] == 'The local GUI of the owner is one of them'
+                # she leaves her project page for another one: the GUI alone, then comes back
+                await page.goto(f'{student_url}/projects')
+                # (Chrome keeps the page left in its back/forward cache with the presence socket
+                # open: the page said `away` in its pagehide handler; a browser that closes the
+                # socket instead gives the same count)
+                await until(lambda: not [s for s in on_project('alice') if not s.away], "the page of alice left")
+                assert await clients() == 1
+                await page.evaluate('history.back(); true')
+                await page.wait_for(f"{TABS}.includes('informations')", what="the project page again")
+                await until(lambda: [s for s in on_project('alice') if not s.away], "the page of alice shown again")
+                assert await clients() == 2
+
+                # the view is never remembered: the Watch link of the header lands on the projects
+                await watch.click(view_button('clients'))
+                await watch.wait_for(f"{WEB_ROWS}.length >= 2", what="the clients again")
+                await back_through_the_nav(watch, url)
+                assert await watch.evaluate(VIEW) == 'projects' and await watch.evaluate(URL_VIEW) is None
+                assert await watch.evaluate(SECTIONS) == {'projects': True, 'clients': False}
+                # ... and a link with ?view=clients opens the clients
+                await watch.goto(f'{url}/watch?view=clients')
+                await watch.wait_for(f"{WEB_ROWS}.length >= 2", what="the clients of the link")
+                assert await watch.evaluate(VIEW) == 'clients'
         P.run(go())

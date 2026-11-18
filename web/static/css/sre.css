@@ -375,6 +375,10 @@ table.grid tr.row-open td { background: var(--ok-light-bg); }   /* a session sti
 .watch-legend .swatch.row-stale { background: var(--debug-bg); }
 .watch-legend .swatch.row-errors { background: var(--fail-bg); }
 .watch-legend .hint { margin-left: 12px; }
+/* the Clients view of the Watch page: the users in a local GUI, the browsers on the portal */
+.watch-clients h2 { margin: 12px 8px 4px; font-size: 1.1em; }
+.watch-clients h2 .muted { font-weight: normal; font-size: 12px; }
+table.grid.clients td.pages a { white-space: nowrap; }
 /* the dialogs of the Watch page: the last evaluation of a project, the summary of a lab (for
    the rows shown, or for one student group) */
 table.grid.watch tbody tr[data-rln] { cursor: pointer; }

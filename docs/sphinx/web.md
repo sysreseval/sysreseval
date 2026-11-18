@@ -17,7 +17,8 @@ The instructors get, on top of what a student sees (*Instructors* below):
 - a **Watch page**, the web counterpart of `sre watch`: every running project of the pool, one
   row per project with its owner, its lab, the last time the student did something on it, the
   grade and mark of its last evaluation, its age and its errors, the number of self-evaluations
-  the student has run, refreshed every few seconds;
+  the student has run, refreshed every few seconds; and, behind its *Clients* button, who is
+  connected: the browsers on the portal and the users sitting in the Qt GUI of a pool host;
 - an **Archives page**: every evaluation of the pool hosts, the closed projects included, kept
   in a database (the results, never the answers), searched by student, group, lab, host and
   period, with the detail of an evaluation and the summary matrix of a lab;
@@ -1548,8 +1549,12 @@ What an instructor gets:
   agent counts the lines of the project's `.private/auto_eval.log`, one per `sre eval
   --auto-eval` of the student: live, whereas the `auto_eval_count` of an archive, the AUTO-EVAL
   column of `sre watch` and the Self-evaluations column of the Archives page, is the count
-  before that evaluation), its open terminals and whether the web or the Qt GUI runs it;
-  sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
+  before that evaluation), its open terminals, the **clients** of its owner on it (how many
+  browsers of the owner show the project's page, plus one when the owner has the Qt GUI open
+  on the project's host, which shows every project they have there — the tooltip of the cell
+  says so; nobody else counts: neither an instructor who opened the page nor the spectators of
+  a presentation; blank for a portal older than the column) and whether the web or the Qt GUI
+  runs it; sortable by any column, filtered by text (host, owner, group, lab) and, with a group source,
   by the select listing the groups by kind (the departments of the rows, the directory groups
   and the custom groups of the Groups page, *User groups* above; every group, one group, or *No
   group*: the projects whose owner has no department, those started on the Qt GUI carrying none
@@ -1584,6 +1589,34 @@ What an instructor gets:
   follow the polls: a new evaluation of the project, or of one of the projects of the lab,
   reloads the content, a project closed is said so. Reading the results of a student this way
   never counts as their activity (their project's idle clock is left alone).
+
+  The page has two views, chosen by the **Projects** and **Clients** buttons of its toolbar
+  (the buttons of the History page). It always opens on the projects, the table above;
+  `?view=clients` in the address opens the clients (a bookmark), and the view is never
+  remembered. The **Clients** view tells who is connected, in two tables refreshed every 5 s,
+  sortable by their headers, to which the text filter and the group select of the page apply:
+  - **Local GUI**: the users who have the Qt GUI open on a pool host, one row per user and
+    host (the host, the login, the name — the directory's when the portal reads it, as for the
+    projects of the Qt GUI —, the group, and when the GUI was started). The agent of each host
+    finds them among the processes of its machine (a Python interpreter running
+    `sysreseval.py`, the processes of the lab containers left out) and reports them in its
+    status (`gui_users`), so a GUI open without any project is listed, and the list follows
+    the status polls (a few seconds). A host whose agent is older than this, or whose agent
+    was started on another projects directory (`--pub-dir`), reports nobody.
+  - **Web portal**: the browsers connected to the portal, **one row per browser**: the user
+    (login, name, group, role), the browser and its version, its system (with *mobile* for a
+    phone or a tablet; the full `User-Agent` as the tooltip), since when it is connected (the
+    start of its session) and the pages it shows — a project page as a link to that project,
+    named by its lab and its owner, any other page by its path. The tabs and windows of one
+    browser are one row listing their pages; a second browser, another device or a private
+    window is another row, so a user connected twice has two rows. The portal tells the
+    browsers apart by a random identifier each one keeps in its local storage and sends with
+    the presence socket of its pages (never logged, never shown), or, when the browser refuses
+    the storage, by its address and `User-Agent`. A page the user has left does not count,
+    even while the browser keeps it in its back/forward cache with its socket open: the page
+    tells the portal when it is left and when it is shown again. The **Address** column (the
+    address of the client, as the connection log records it) is shown to the
+    **administrators** only: the portal does not send the addresses to the other instructors.
 - **Archives** (the link in the header, `/archives`): the evaluations collected into the
   database (*The archives of the evaluations* above; without `[access_log.database]` the page
   says so), the closed projects included. The **Evaluations** view lists them newest first, one

@@ -1212,6 +1212,134 @@ class TestInstructorThroughThePortal:
         before = [{'owner': 'alice', 'group': ''}, {'owner': 'alice', 'group': 'G', 'fullname': 'alice', 'managed': False}]
         assert run(complete_owners([dict(r) for r in before], failing)) == before
 
+    def test_clients_of_the_watch_page(self, tmp_path, monkeypatch):
+        """The Clients view: one row per browser connected to the portal (the tabs of a browser
+        are one row, told by the id it sends, else by its address and User-Agent), one per user
+        in the Qt GUI of a pool host; the addresses for the administrators only; and the
+        ``clients`` of the Watch rows: the browsers of the owner on the project's page and their
+        Qt GUI on its host, nobody else."""
+        import os
+        import time
+        import urllib.parse
+        from sreweb.agent import localgui
+        from test_agent_localgui import BOOT, GUI, fake_proc, users
+        from test_web_useragent import CHROME_WINDOWS, FIREFOX_LINUX
+        monkeypatch.setattr(localgui, 'SYSTEM_UID_MAX', -1)    # the fake processes belong to whoever runs the tests
+        over = {**PROXY_OVER, 'auth': {**PROXY_OVER['auth'], 'administrators': ['admin']}}
+        id_a, id_b = 'a' * 24, 'b' * 24
+
+        async def go():
+            async with Harness(tmp_path, auth_mode='proxy', web_over=over) as h:
+                presence = h.portal.presence
+
+                async def until(predicate):
+                    deadline = time.monotonic() + 5
+                    while not predicate():
+                        assert time.monotonic() < deadline, "the portal did not get there"
+                        await asyncio.sleep(0.02)
+
+                async def socket(headers, page, client=None):
+                    before = len(presence.sockets())
+                    params = {'page': page, **({'client': client} if client else {})}
+                    ws = await h.client.ws_connect('/api/presence/ws', params=params, headers=headers)
+                    await until(lambda: len(presence.sockets()) == before + 1)
+                    return ws
+
+                async def clients_of(headers):
+                    resp = await h.client.get('/api/watch/clients', headers=headers)
+                    assert resp.status == 200, await resp.text()
+                    return await resp.json()
+
+                async def watch_row():
+                    return (await (await h.client.get('/api/watch', headers=prof)).json())[0]
+
+                admin, prof = who('admin', 'Ada', groups=TEACHERS), who('prof', 'Prof', groups=TEACHERS)
+                alice, bob = who('alice', 'Alice', group='INFO1'), who('bob', 'Bob')
+                assert (await h.client.get('/api/watch/clients', headers=alice)).status == 403
+                assert (await h.client.get('/api/watch/clients')).status == 401
+                assert await clients_of(prof) == {'local': [], 'web': []}
+                resp = await h.client.post('/api/projects', json={'lab': 'sre/dhcp.py'}, headers={**alice, **CSRF})
+                rln = [json.loads(l) for l in (await resp.text()).splitlines()][-1]['running_lab_name']
+                page = f'/projects/a01/{urllib.parse.quote(rln, safe="")}'
+                row = await watch_row()
+                assert (row['owner'], row['clients'], row['client_local']) == ('alice', 0, False)
+
+                # alice in Firefox on one machine: two tabs, one of them on her project
+                firefox = {**alice, 'User-Agent': FIREFOX_LINUX, 'X-Forwarded-For': '10.0.1.7'}
+                assert (await h.client.get('/api/me', headers=firefox)).status == 200    # her session from there
+                session_start = h.portal.access.visits.get(('alice', '10.0.1.7')).first_seen
+                tab1 = await socket(firefox, '/projects', id_a)
+                tab2 = await socket(firefox, page, id_a)
+                # ... and in Chrome on another one, without an id (a blocked storage): two tabs too
+                chrome = {**alice, 'User-Agent': CHROME_WINDOWS, 'X-Forwarded-For': '10.0.1.8'}
+                tab3 = await socket(chrome, '/open')
+                tab4 = await socket(chrome, '/open')
+                # bob claims the page of her project, the instructor helps on it
+                tab5 = await socket({**bob, 'User-Agent': FIREFOX_LINUX}, page, id_b)
+                tab6 = await socket({**prof, 'User-Agent': FIREFOX_LINUX}, page, id_b)
+
+                data = await clients_of(admin)
+                assert data['local'] == []
+                rows = {(r['login'], r['browser']): r for r in data['web']}
+                assert sorted(rows) == [('alice', 'Chrome'), ('alice', 'Firefox'), ('bob', 'Firefox'), ('prof', 'Firefox')]
+                ff = rows[('alice', 'Firefox')]
+                assert (ff['version'], ff['system'], ff['mobile'], ff['tabs']) == ('131', 'Linux', False, 2)
+                assert (ff['fullname'], ff['group'], ff['role']) == ('Alice', 'INFO1', 'student')
+                assert ff['pages'] == [{'path': '/projects', 'host': None, 'rln': None},
+                                       {'path': page, 'host': 'a01', 'rln': rln}]
+                assert ff['addrs'] == ['10.0.1.7'] and ff['since'] == round(session_start, 3) and ff['ua'] == FIREFOX_LINUX
+                assert 'department:INFO1' in ff['groups'] and 'client' not in ff
+                cr = rows[('alice', 'Chrome')]
+                assert (cr['system'], cr['tabs'], cr['addrs']) == ('Windows', 2, ['10.0.1.8'])
+                assert [p['path'] for p in cr['pages']] == ['/open']
+                assert rows[('prof', 'Firefox')]['role'] == 'instructor'
+                # the addresses are for the administrators: another instructor's rows carry none
+                plain = await clients_of(prof)
+                assert len(plain['web']) == 4 and not any('addrs' in r for r in plain['web'])
+                assert all('addrs' in r for r in data['web'])
+
+                # the count of the Watch row: the owner's browser on the page, neither bob nor the instructor
+                assert (await watch_row())['clients'] == 1
+                tab7 = await socket(chrome, page)                 # her second browser comes to the project
+                assert (await watch_row())['clients'] == 2
+                # the first one leaves the page (kept in the back/forward cache with its socket open)
+                await tab2.send_str('{"t": "away"}')
+                await until(lambda: sum(s.away for s in presence.sockets()) == 1)
+                assert (await watch_row())['clients'] == 1
+                ff = next(r for r in (await clients_of(admin))['web'] if (r['login'], r['browser']) == ('alice', 'Firefox'))
+                assert ff['tabs'] == 1 and [p['path'] for p in ff['pages']] == ['/projects']
+                await tab2.send_str('not json')                   # anything else changes nothing
+                await tab2.send_str('{"t": "back"}')
+                await until(lambda: not any(s.away for s in presence.sockets()))
+                assert (await watch_row())['clients'] == 2
+
+                # a page that is no path of the site is not kept, a long project path is
+                long_page = '/projects/a01/' + urllib.parse.quote('1@@@' + '@'.join(['dir'] * 60) + '@x.py@@@bob', safe='')
+                tab8 = await socket(bob, '//evil.example/x', id_b)
+                tab9 = await socket(bob, long_page, id_b)
+                assert len(long_page) > 200
+                bob_row = next(r for r in (await clients_of(prof))['web'] if r['login'] == 'bob')
+                assert sorted(p['path'] for p in bob_row['pages']) == sorted([page, long_page]) and bob_row['tabs'] == 3
+
+                # alice also sits in the Qt GUI of the host: a local row, one more client of her project
+                h.agent.proc_dir = fake_proc(tmp_path / 'proc', {4242: {'argv': GUI, 'start': 0}})
+                h.agent.user_of = localgui.Users(users({os.getuid(): ('alice', 'alice liddell')}))
+                h.agent._gui_users = None
+                await h.portal.pool.refresh()
+                data = await clients_of(prof)
+                assert data['local'] == [{'host': 'a01', 'login': 'alice', 'fullname': 'alice liddell', 'group': '',
+                                          'since': BOOT, 'managed': False, 'groups': []}]
+                row = await watch_row()
+                assert (row['clients'], row['client_local']) == (3, True)
+                assert all('gui_users' not in r for r in await (await h.client.get('/api/pool', headers=prof)).json())
+
+                for ws in (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9):
+                    await ws.close()
+                await until(lambda: not presence.sockets())
+                assert (await clients_of(prof))['web'] == []
+                assert (await watch_row())['clients'] == 1          # the GUI alone
+        run(go())
+
 
 class TestArchives:
     """The Archives page of the instructors and the collection of the evaluation archives into

@@ -3,7 +3,11 @@
 {% block nav %}<a href="/projects">{{ _("Running projects") }}</a> <a href="/open">{{ _("Open a lab") }}</a>{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>{{ _("All running projects") }}</h1>
+  <h1 id="watch-title">{{ _("All running projects") }}</h1>
+  <div class="history-views">
+    <button type="button" class="toggle" data-view="projects" aria-pressed="true">{{ _("Projects") }}</button>
+    <button type="button" class="toggle" data-view="clients" aria-pressed="false">{{ _("Clients") }}</button>
+  </div>
   <input type="text" id="watch-filter" class="watch-filter" placeholder="{{ _("Filter…") }}" title="{{ _("Host, owner, group or lab") }}">
   <select id="watch-group" class="watch-group" title="{{ _("Group") }}"{% if not group_sources %} hidden{% endif %}>
     <option value="" data-kind="all">{{ _("All groups") }}</option>
@@ -11,6 +15,7 @@
   </select>
   <span id="watch-count" class="muted"></span>
 </div>
+<div id="watch-projects">
 <div class="watch-legend muted">
   <span class="swatch row-stale"></span> {{ _("no recent evaluation") }}
   <span class="swatch row-errors"></span> {{ _("errors in the last evaluation") }}
@@ -32,11 +37,45 @@
       <th class="sortable" data-sort="errors">{{ _("Errors") }}</th>
       <th class="sortable" data-sort="auto_eval_count" title="{{ _("The number of self-evaluations the student has run") }}">{{ _("Self-evaluations") }}</th>
       <th class="sortable" data-sort="terminals">{{ _("Terminals") }}</th>
+      <th class="sortable" data-sort="clients" title="{{ _("The clients of the owner on the project: their browsers showing its page, and their local GUI on the host") }}">{{ _("Clients") }}</th>
       <th class="sortable" data-sort="managed">{{ _("Mode") }}</th>
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="15" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="16" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
+</div>
+<div id="watch-clients" class="watch-clients" hidden>
+<h2>{{ _("Local GUI") }} <span id="watch-local-count" class="muted"></span></h2>
+<table id="watch-local" class="grid watch clients">
+  <thead>
+    <tr>
+      <th class="sortable" data-sort="host">{{ _("Host") }}</th>
+      <th class="sortable" data-sort="login">{{ _("Login") }}</th>
+      <th class="sortable" data-sort="fullname">{{ _("Name") }}</th>
+      <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
+      <th class="sortable" data-sort="since" title="{{ _("When the local GUI was started") }}">{{ _("Started") }}</th>
+    </tr>
+  </thead>
+  <tbody><tr><td colspan="5" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+</table>
+<h2>{{ _("Web portal") }} <span id="watch-web-count" class="muted"></span></h2>
+<table id="watch-web" class="grid watch clients" data-addresses="{{ 'true' if administrator else 'false' }}">
+  <thead>
+    <tr>
+      <th class="sortable" data-sort="login">{{ _("Login") }}</th>
+      <th class="sortable" data-sort="fullname">{{ _("Name") }}</th>
+      <th class="sortable" data-sort="group"{% if not groups %} hidden{% endif %}>{{ _("Group") }}</th>
+      <th class="sortable" data-sort="role">{{ _("Role") }}</th>
+      <th class="sortable" data-sort="browser">{{ _("Browser") }}</th>
+      <th class="sortable" data-sort="system">{{ _("System") }}</th>
+      <th class="sortable" data-sort="addr"{% if not administrator %} hidden{% endif %}>{{ _("Address") }}</th>
+      <th class="sortable" data-sort="since">{{ _("Connected since") }}</th>
+      <th class="sortable" data-sort="pages" title="{{ _("The pages the browser shows, one per tab") }}">{{ _("Pages") }}</th>
+    </tr>
+  </thead>
+  <tbody><tr><td colspan="9" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+</table>
+</div>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/watch.js"></script>{% endblock %}

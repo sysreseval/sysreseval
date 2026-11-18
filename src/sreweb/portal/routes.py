@@ -14,7 +14,8 @@ import aiohttp_jinja2
 from aiohttp import web, WSMsgType
 
 from . import auth_anon, session as S
-from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS
+from .accesslog import AccessLog, ACCESS_KEY, ALL_EVENTS, LOGIN_EVENTS, MAX_USER_AGENT
+from .clients import annotate_projects, local_clients, web_clients
 from .accesshistory import (parse_filters, session_filters, session_of_row, session_of_visit, visit_matches, resolve_group,
                             UNLOGGED_FILTERS, HistoryError)
 from .accessstats import statistics_window, statistics_query, compute_statistics, MAX_ROWS
@@ -26,7 +27,8 @@ from .groups import (Memberships, GroupError, KINDS, KIND_CUSTOM, MAX_BATCH, MAX
                      group_dict, group_key, parse_group_key, sort_key as group_sort_key)
 from .pool import Pool, PoolError
 from .presentation import (Presence, Presentation, Presentations, Watcher, SPECTATOR_KEY, WS_PRESENTATION_ENDED,
-                           MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, MAX_PAGE_LENGTH, parse_audience, audience_size)
+                           MAX_VIEW_BYTES, MAX_EVALUATION_BYTES, parse_audience, audience_size, clean_page,
+                           clean_client, away_after)
 from .focus import Focus, Focuses, WS_FOCUS_ENDED, FOCUS_MAX_FRAME
 from .bbb import BbbError, BbbUnavailable
 from .webconf import (Webconfs, Room, RoomGone, Refused, InvitationGone, ROOM_ID_RE, ROLE_NAMES, MAX_REQUEST_TEXT,
@@ -197,6 +199,7 @@ class Routes:
         r.add_post('/api/pool/hosts/{name}/{action}', self.api_pool_action)
         r.add_get('/api/projects', self.api_projects)
         r.add_get('/api/watch', self.api_watch)
+        r.add_get('/api/watch/clients', self.api_watch_clients)
         r.add_get('/api/watch/evaluations', self.api_watch_evaluations)
         r.add_get('/api/history', self.api_history)
         r.add_get('/api/history/sessions', self.api_history_sessions)
@@ -792,13 +795,36 @@ class Routes:
         """Instructors: every project of every reachable host, with its owner and the summary of
         its last archived evaluation (the agents read their archives); from the directory when
         it is readable, the group of the owners the agents know none for and the full name of
-        the owners of the Qt GUI projects (``roles.complete_owners``)."""
+        the owners of the Qt GUI projects (``roles.complete_owners``); ``clients`` = the clients
+        of the owner on the project, their browsers showing its page and their Qt GUI on its
+        host (``clients.annotate_projects``)."""
         identity = self._require_instructor(request)
         rows = await self.pool.projects_of(identity, all_projects=True)
         if self.roles is not None:
             await complete_owners(rows, self.roles)
+        annotate_projects(rows, self.presence.sockets(), self.pool.gui_users())
         await self.memberships.refresh()
         return web.json_response(self.memberships.annotate(rows))
+
+    async def api_watch_clients(self, request):
+        """Instructors: who is connected (the Clients view of the Watch page).  ``local``: the
+        users in the Qt GUI of a pool host, as the agents report them; ``web``: the browsers
+        connected to the portal, one row per browser with its kind and the pages it shows
+        (``clients.py``).  The names and the groups are completed from the directory as for
+        ``/api/watch``.  The client addresses (``addrs``) go to the administrators only, as
+        those of the History page: the rows of another instructor do not carry the key."""
+        identity = self._require_instructor(request)
+        local = local_clients(self.pool.gui_users())
+        browsers = web_clients(self.presence.sockets(), visit_of=self.access.visits.get)
+        if not identity.administrator:
+            for row in browsers:
+                del row['addrs']
+        if self.roles is not None:
+            await complete_owners(local, self.roles, login_key='login')
+            await complete_owners(browsers, self.roles, login_key='login')
+        await self.memberships.refresh()
+        return web.json_response({'local': self.memberships.annotate(local, login_key='login'),
+                                  'web': self.memberships.annotate(browsers, login_key='login')})
 
     async def api_watch_evaluations(self, request):
         """Instructors: the lab summary of the Watch page, every running project of the lab
@@ -1951,16 +1977,20 @@ class Routes:
 
     async def api_presence_ws(self, request):
         """The socket every page of a logged-in user keeps open: the portal pushes the start and
-        the end of the presentations the user is in; the frames of the browser are ignored."""
+        the end of the presentations the user is in.  It also says which browser shows which
+        page (the Clients view of the Watch page, ``clients.py``): the page (``?page=``), the
+        id the browser keeps (``?client=``), its address and ``User-Agent``; of the frames of
+        the browser only ``{"t": "away"}`` / ``{"t": "back"}`` are read (the page is being
+        left, it is shown again from the back/forward cache), the others are ignored."""
         identity = self._require_identity(request)
-        page = request.query.get('page', '')
-        if not (page.startswith('/') and len(page) <= MAX_PAGE_LENGTH and page.isprintable()):
-            page = ''
+        page = clean_page(request.query.get('page', ''))
         await self.memberships.refresh()        # the groups of the user, for the presentations including them
         ws = web.WebSocketResponse(heartbeat=30.0, max_msg_size=4096)
         await ws.prepare(request)
         watcher = self._watcher(ws)
-        socket = self.presence.add(identity, page, watcher)
+        socket = self.presence.add(identity, page, watcher, addr=self.access.address(request),
+                                   ua=request.headers.get('User-Agent', '')[:MAX_USER_AGENT],
+                                   client=clean_client(request.query.get('client', '')))
         try:
             # tell() before resync(): a socket gets what the other pages of the login know, or what
             # none of them was told yet, never both (the first push of a focus is not like the next)
@@ -1974,6 +2004,8 @@ class Routes:
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
+                if msg.type == WSMsgType.TEXT:
+                    socket.away = away_after(msg.data, socket.away)
         finally:
             self.presence.remove(socket)
             with contextlib.suppress(Exception):

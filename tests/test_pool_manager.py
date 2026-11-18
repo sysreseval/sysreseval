@@ -359,6 +359,53 @@ class TestStatusCoercion:
                                                                 'current': 2.7, 'image': 7, 'error': 'e' * 500}))
         assert fields(st) == ('failed', None, 2, 0, '', 'e' * MAX_STATUS_TEXT, 0)
 
+    def test_gui_users(self):
+        """The users in the Qt GUI of a host (the Clients view of the Watch page): one valid
+        login each, a capped name, a number or nothing as the start; an agent older than the key
+        sends none, a hostile one plants nothing."""
+        from sreweb.portal.pool import status_from_json, MAX_STATUS_TEXT, MAX_GUI_USERS
+        assert status_from_json(up()).gui_users == [] and HostStatus(error='down').gui_users == []
+        st = status_from_json(up(gui_users=[{'login': 'alice', 'fullname': 'Alice', 'since': 1700000000.5},
+                                            {'login': 'bob', 'fullname': '', 'since': None}]))
+        assert st.gui_users == [{'login': 'alice', 'fullname': 'Alice', 'since': 1700000000.5},
+                                {'login': 'bob', 'fullname': '', 'since': None}]
+        odd = status_from_json(up(gui_users=[
+            'alice', None, 7, ['bob'], {}, {'login': 5}, {'login': ''}, {'login': 'a b'}, {'login': '<script>'},
+            {'login': 'x' * 200}, {'login': 'carol', 'fullname': ['x'], 'since': 'yesterday', 'extra': 1},
+            {'login': 'dave', 'fullname': 'd' * 500, 'since': True}, {'login': 'carol', 'fullname': 'again'},
+            {'login': 'erin', 'since': float('inf')}]))
+        assert odd.gui_users == [{'login': 'carol', 'fullname': '', 'since': None},
+                                 {'login': 'dave', 'fullname': 'd' * MAX_STATUS_TEXT, 'since': None},
+                                 {'login': 'erin', 'fullname': '', 'since': None}]
+        for value in ('alice', {'login': 'alice'}, None, 3):
+            assert status_from_json(up(gui_users=value)).gui_users == [], value
+        many = status_from_json(up(gui_users=[{'login': f'user{i}'} for i in range(MAX_GUI_USERS + 10)]))
+        assert len(many.gui_users) == MAX_GUI_USERS
+
+    def test_gui_users_of_the_pool(self):
+        """``Pool.gui_users()``: the reachable hosts with somebody in the GUI; the rows of the
+        Pool page and of ``sre-web-tool list --json`` do not carry them."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10),
+                 HostConfig('c', 'http://c', TOKEN, 10)]
+        session = FakeSession()
+        session.answers['http://a'] = up(gui_users=[{'login': 'alice', 'fullname': 'Alice', 'since': 5.0}])
+        session.answers['http://b'] = up()
+        session.answers['http://c'] = up(gui_users=[{'login': 'carol'}])
+        pool = Pool(hosts, session)
+
+        async def go():
+            assert pool.gui_users() == {}                                  # nothing polled yet
+            await pool.refresh()
+            assert pool.gui_users() == {'a': [{'login': 'alice', 'fullname': 'Alice', 'since': 5.0}],
+                                        'c': [{'login': 'carol', 'fullname': '', 'since': None}]}
+            pool.gui_users()['a'][0]['login'] = 'changed'                  # a copy: the status is untouched
+            assert pool.gui_users()['a'][0]['login'] == 'alice'
+            assert all('gui_users' not in row for row in pool.summary())
+            session.answers['http://a'] = None                             # the host does not answer any more
+            await pool.refresh()
+            assert not pool.status['a'].reachable and set(pool.gui_users()) == {'c'}
+        run(go())
+
     def test_one_odd_agent_does_not_break_the_placement(self):
         hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10)]
         session = FakeSession()

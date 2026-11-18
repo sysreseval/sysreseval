@@ -129,7 +129,8 @@ WS_EVENTS = frozenset({'project', 'terminal', 'display'})
 PROJECT_EVENTS = frozenset({'project', 'terminal', 'display', 'display_start', 'stop', 'eval', 'state',
                             'present_start', 'present_open', 'focus_start'})
 #: The polls of the browser: they keep the session alive but are not counted as requests.
-KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/pool'),
+KEEPALIVE = frozenset({('GET', '/api/projects'), ('GET', '/api/watch'), ('GET', '/api/watch/clients'),
+                       ('GET', '/api/pool'),
                        ('GET', '/api/pool/status'), ('POST', '/api/projects/{host}/{rln}/touch'),
                        ('GET', '/api/presence'), ('GET', '/api/presentations'), ('GET', '/api/presentations/{id}'),
                        ('PUT', '/api/presentations/{id}/view'), ('PUT', '/api/presentations/{id}/evaluation'),

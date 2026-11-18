@@ -112,6 +112,8 @@ class TestEventFor:
         ('GET', '/api/projects/{host}/{rln}', None),
         ('PUT', '/api/projects/{host}/{rln}/answers', None),
         ('GET', '/api/pool', None),
+        ('GET', '/api/watch', None),
+        ('GET', '/api/watch/clients', None),
         ('GET', '/projects/{host}/{rln}', None),
         ('GET', '/static', None),
         ('GET', '', None),
@@ -123,6 +125,7 @@ class TestEventFor:
         assert A.WS_EVENTS == {'project', 'terminal', 'display'}
         assert ('GET', '/api/projects') in A.KEEPALIVE and ('POST', '/api/projects/{host}/{rln}/touch') in A.KEEPALIVE
         assert ('GET', '/api/pool') in A.KEEPALIVE and ('GET', '/api/pool/status') in A.KEEPALIVE
+        assert ('GET', '/api/watch') in A.KEEPALIVE and ('GET', '/api/watch/clients') in A.KEEPALIVE   # the Watch polls
         assert '/static' in A.IGNORED and '' in A.IGNORED and '/i18n/{lang}.json' in A.IGNORED
         assert '/api/presence/ws' in A.IGNORED
         assert ('GET', '/api/presence') in A.KEEPALIVE and ('PUT', '/api/presentations/{id}/view') in A.KEEPALIVE

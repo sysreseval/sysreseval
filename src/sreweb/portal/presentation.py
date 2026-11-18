@@ -29,6 +29,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -48,7 +49,13 @@ MAX_EVALUATION_BYTES = 256 * 1024   # the serialized evaluation table of the pre
 MAX_POINTER_BYTES = 1024      # the serialized locator of the presenter's mouse pointer (a frame of their socket)
 MAX_POINTER_RATE = 60         # pointer frames taken per clock second and presentation (the excess dropped)
 MAX_AUDIENCE = 1000           # logins + groups of one presentation
-MAX_PAGE_LENGTH = 200         # the ``?page=`` of a presence socket
+MAX_PAGE_LENGTH = 1024        # the ``?page=`` of a presence socket (a project page names its lab path)
+#: The ``?client=`` of a presence socket: the random id a browser keeps (``base.js``).
+CLIENT_ID = re.compile(r'^[A-Za-z0-9_-]{8,64}$')
+#: The text frames a page sends on its presence socket: it is being left (it may stay in the
+#: back/forward cache of the browser with its socket open), it is shown again from that cache.
+FRAME_AWAY = 'away'
+FRAME_BACK = 'back'
 #: Close code of a presentation socket when the presentation is over.
 WS_PRESENTATION_ENDED = 4411
 #: ``request[SPECTATOR_KEY]``: the ``Presentation`` a project call is relayed for (a spectator).
@@ -97,12 +104,48 @@ class Watcher:
 
 # -- presence ----------------------------------------------------------------------------------
 
+def clean_page(value) -> str:
+    """The ``?page=`` of a presence socket as it is kept: a path of the site (it starts with one
+    ``/``, never ``//`` — that would be another site in a link —, holds no backslash, is
+    printable and at most ``MAX_PAGE_LENGTH`` long), else ``''``."""
+    if not isinstance(value, str) or not value.startswith('/') or value.startswith('//') or '\\' in value:
+        return ''
+    return value if len(value) <= MAX_PAGE_LENGTH and value.isprintable() else ''
+
+
+def clean_client(value) -> str:
+    """The ``?client=`` of a presence socket when it has the form of a browser id, else ``''``."""
+    return value if isinstance(value, str) and CLIENT_ID.match(value) else ''
+
+
+def away_after(frame, away: bool) -> bool:
+    """Whether a page is away after the text *frame* of its presence socket: ``{"t": "away"}``
+    and ``{"t": "back"}`` set it, anything else leaves it as it was."""
+    try:
+        message = json.loads(frame)
+    except (TypeError, ValueError):
+        return away
+    kind = message.get('t') if isinstance(message, dict) else None
+    if kind == FRAME_AWAY:
+        return True
+    if kind == FRAME_BACK:
+        return False
+    return away
+
+
 @dataclass(eq=False)
 class PresenceSocket:
+    """One open page.  *addr*, *ua* and *client* say which browser holds it (the client
+    address, the ``User-Agent`` header, the id the browser keeps: ``clients.py``); *away*: the
+    page said it is being left (it does not count as a page shown, the pushes still reach it)."""
     identity: Identity
     page: str
     watcher: Watcher
     since: float
+    addr: str = ''
+    ua: str = ''
+    client: str = ''
+    away: bool = False
 
 
 class Presence:
@@ -112,10 +155,15 @@ class Presence:
         self.clock = clock
         self._sockets: dict[str, list[PresenceSocket]] = {}
 
-    def add(self, identity: Identity, page: str, watcher: Watcher) -> PresenceSocket:
-        socket = PresenceSocket(identity, page, watcher, self.clock())
+    def add(self, identity: Identity, page: str, watcher: Watcher, *, addr: str = '', ua: str = '',
+            client: str = '') -> PresenceSocket:
+        socket = PresenceSocket(identity, page, watcher, self.clock(), addr=addr, ua=ua, client=client)
         self._sockets.setdefault(identity.login, []).append(socket)
         return socket
+
+    def sockets(self) -> list:
+        """Every presence socket (a snapshot), by login then age."""
+        return [socket for login in sorted(self._sockets) for socket in self._sockets[login]]
 
     def remove(self, socket: PresenceSocket):
         sockets = self._sockets.get(socket.identity.login)
@@ -146,7 +194,7 @@ class Presence:
                   groups_of=None, webconf_of=lambda identity: None) -> list:
         """One row per connected login, sorted: identity fields, the keys of their groups
         (*groups_of(identity)*, ``groups.Memberships.groups_of_identity``; the department alone
-        without it), the distinct pages open, the time of the oldest socket and, through
+        without it), the distinct pages open (those being left apart), the time of the oldest socket and, through
         *presentation_of(identity)* / *webconf_of(identity)*, the presentation shown to them and
         the web conference they are in (``None`` when none)."""
         rows = []
@@ -160,7 +208,7 @@ class Presence:
             else:
                 groups = [group_key(KIND_DEPARTMENT, identity.group)] if identity.group else []
             rows.append({'login': login, 'fullname': identity.fullname, 'group': identity.group, 'role': identity.role,
-                         'groups': groups, 'pages': sorted({s.page for s in sockets if s.page}),
+                         'groups': groups, 'pages': sorted({s.page for s in sockets if s.page and not s.away}),
                          'since': iso_time(min(s.since for s in sockets)),
                          'presentation': presentation_of(identity), 'webconf': webconf_of(identity)})
         return rows

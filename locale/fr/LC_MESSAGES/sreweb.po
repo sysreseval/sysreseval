@@ -544,6 +544,70 @@ msgstr "Aucun projet ne correspond au filtre."
 msgid "No project on the pool."
 msgstr "Aucun projet sur le parc."
 
+# --- the Clients view of the Watch page (watch.html, watch.js, watch_clients.js) ----------------
+msgid "Clients"
+msgstr "Clients"
+
+msgid "The clients of the owner on the project: their browsers showing its page, and their local GUI on the host"
+msgstr "Les clients du propriétaire sur le projet : ses navigateurs affichant sa page, et son interface Qt locale sur la machine"
+
+msgid "The local GUI of the owner is one of them"
+msgstr "L'interface Qt locale du propriétaire en fait partie"
+
+msgid "Connected clients"
+msgstr "Clients connectés"
+
+msgid "Host, user, group, browser or page"
+msgstr "Machine, utilisateur, groupe, navigateur ou page"
+
+msgid "{n} client(s)"
+msgstr "{n} client(s)"
+
+msgid "{n} of {total} client(s)"
+msgstr "{n} client(s) sur {total}"
+
+msgid "Local GUI"
+msgstr "Interface Qt locale"
+
+msgid "When the local GUI was started"
+msgstr "Le moment où l'interface Qt locale a été lancée"
+
+msgid "Web portal"
+msgstr "Portail web"
+
+msgid "Browser"
+msgstr "Navigateur"
+
+msgid "System"
+msgstr "Système"
+
+msgid "Connected since"
+msgstr "Connecté depuis"
+
+msgid "Pages"
+msgstr "Pages"
+
+msgid "The pages the browser shows, one per tab"
+msgstr "Les pages affichées par le navigateur, une par onglet"
+
+msgid "{n} page(s) open"
+msgstr "{n} page(s) ouverte(s)"
+
+msgid "{system} (mobile)"
+msgstr "{system} (mobile)"
+
+msgid "unknown"
+msgstr "inconnu"
+
+msgid "No client matches the filter."
+msgstr "Aucun client ne correspond au filtre."
+
+msgid "Nobody is in a local GUI."
+msgstr "Personne n'utilise l'interface Qt locale."
+
+msgid "No browser is connected."
+msgstr "Aucun navigateur n'est connecté."
+
 msgid "Close"
 msgstr "Fermer"
 

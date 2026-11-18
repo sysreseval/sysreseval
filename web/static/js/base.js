@@ -2,7 +2,9 @@
 // the new language to the portal (the session cookie is rewritten) and reloads the page.
 //
 // Every page of a logged-in user also keeps the presence socket open (GET /api/presence/ws):
-// the portal lists the connected users to the instructors through it, and pushes the start
+// the portal lists the connected users to the instructors through it (and, on the Watch page,
+// the browsers: the socket names the page shown and the random id this browser keeps, and
+// says when the page is left, see clientId() below), and pushes the start
 // and the end of a presentation the user is in ({"t": "presentation", "id", "url",
 // "presenter"} / {"t": "presentation", "id", "ended": true}).  A presentation is shown in an
 // iframe covering the page (the project page of the presenter, read-only: /present/{id}), so
@@ -220,9 +222,54 @@ function onPresence(message) {
   }
 }
 
+// -- this browser, for the Clients view of the instructors' Watch page -----------------------------
+
+const CLIENT_KEY = 'sreweb.client';
+
+// The random id of this browser, kept in its local storage: the same in every tab and window of
+// a browser profile, another one in a private window or another browser.  The portal lists the
+// pages of one id as one client.  '' when the storage is blocked: the portal then tells the
+// browser by its address and User-Agent.
+function clientId() {
+  try {
+    let id = window.localStorage.getItem(CLIENT_KEY);
+    if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+      const bytes = new Uint8Array(12);
+      window.crypto.getRandomValues(bytes);
+      id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      window.localStorage.setItem(CLIENT_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    return '';
+  }
+}
+
 if (body.dataset.login && !framed) {
-  new ReconnectingSocket(api.withQuery('/api/presence/ws', {page: window.location.pathname}),
-                         {onMessage: onPresence}).connect();
+  // A page that is left may stay in the back/forward cache of the browser with this socket
+  // open (Chrome): it says `away` when it is hidden for good and `back` when it is shown again
+  // from the cache, so that the portal does not count it as a page somebody looks at.  A socket
+  // that opens late (it was connecting when the page was left) repeats it.
+  let away = false;
+  const presence = new ReconnectingSocket(
+    api.withQuery('/api/presence/ws', {page: window.location.pathname, client: clientId()}),
+    {onMessage: onPresence,
+     onOpen: () => {
+       if (away) {
+         presence.send({t: 'away'});
+       }
+     }});
+  presence.connect();
+  window.addEventListener('pagehide', () => {
+    away = true;
+    presence.send({t: 'away'});
+  });
+  window.addEventListener('pageshow', (ev) => {
+    if (ev.persisted) {
+      away = false;
+      presence.send({t: 'back'});
+    }
+  });
   // the iframe says the presentation is over (its own socket was closed), or that its user, an
   // instructor, leaves it (the Leave button of project.js)
   window.addEventListener('message', (ev) => {

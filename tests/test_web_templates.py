@@ -274,9 +274,35 @@ class TestTemplates:
         assert 'id="watch"' in html and 'id="watch-filter"' in html and 'id="watch-count"' in html
         assert '/static/js/watch.js' in html and 'href="/watch"' in html
         for key in ('host', 'owner', 'fullname', 'group', 'title', 'started_at', 'last_action', 'last_eval', 'grade', 'mark',
-                    'errors', 'auto_eval_count', 'terminals', 'managed'):
+                    'errors', 'auto_eval_count', 'terminals', 'clients', 'managed'):
             assert f'data-sort="{key}"' in html, key
-        assert 'data-sort="fullname">Name</th>' in html and 'colspan="15"' in html   # the full name as a column
+        assert 'data-sort="fullname">Name</th>' in html and 'colspan="16"' in html   # the full name as a column
+        # the clients of the owner on the project, between the terminals and the mode
+        assert html.index('data-sort="terminals"') < html.index('data-sort="clients"') < html.index('data-sort="managed"')
+        assert 'their browsers showing its page, and their local GUI on the host">Clients</th>' in html
+        # the two views (Projects first and pressed: the page lands on it), the buttons of the History page
+        assert 'id="watch-title">All running projects</h1>' in html and '<div class="history-views">' in html
+        assert 'data-view="projects" aria-pressed="true">Projects<' in html
+        assert 'data-view="clients" aria-pressed="false">Clients<' in html
+        assert html.index('data-view="projects"') < html.index('data-view="clients"') < html.index('id="watch-filter"')
+        projects, clients = html.split('<div id="watch-clients" class="watch-clients" hidden>')
+        assert '<div id="watch-projects">' in projects and 'id="watch"' in projects and 'watch-legend' in projects
+        local, web = clients.split('<table id="watch-web"')
+        # the users in the Qt GUI of a pool host: one row per user and host
+        assert '<h2>Local GUI <span id="watch-local-count" class="muted"></span></h2>' in local
+        assert '<table id="watch-local" class="grid watch clients">' in local and 'colspan="5"' in local
+        assert [key for key in re.findall(r'data-sort="(\w+)"', local)] == ['host', 'login', 'fullname', 'group', 'since']
+        assert 'title="When the local GUI was started">Started</th>' in local
+        # the browsers connected to the portal: one row per browser, the address for the administrators only
+        assert '<h2>Web portal <span id="watch-web-count" class="muted"></span></h2>' in local
+        assert web.startswith(' class="grid watch clients" data-addresses="false">') and 'colspan="9"' in web
+        assert [key for key in re.findall(r'data-sort="(\w+)"', web)] == [
+            'login', 'fullname', 'group', 'role', 'browser', 'system', 'addr', 'since', 'pages']
+        assert '<th class="sortable" data-sort="addr" hidden>Address</th>' in web
+        assert '>Browser</th>' in web and '>System</th>' in web and '>Connected since</th>' in web and '>Pages</th>' in web
+        administrator = render('watch.html', instructor=True, administrator=True)
+        assert 'data-addresses="true">' in administrator
+        assert '<th class="sortable" data-sort="addr">Address</th>' in administrator
         # the last action of the owner, between the start and the last evaluation
         assert html.index('data-sort="started_at"') < html.index('data-sort="last_action"') < html.index('data-sort="last_eval"')
         assert 'a key, a click or a scroll on its page, an answer, an evaluation">Last action</th>' in html
@@ -1094,6 +1120,44 @@ class TestLabKey:
                 {'lab': 's3/r306/dns1.py'}, {'canonical_lab': ''}, {}, None]
         assert json.loads(js.run(tmp_path, runner, json.dumps(rows))) == \
             ['sre@dns1.py', 's3@r306@dns1.py', 'sre/dns1.py', 's3/r306/dns1.py', '', '', '']
+
+
+WATCH_CLIENTS_RUNNER = """\
+import {pageLabel, browserText, clientHaystack} from './watch_clients.js';
+
+const input = JSON.parse(process.argv[2]);
+process.stdout.write(JSON.stringify({
+  labels: input.pages.map(pageLabel),
+  browsers: input.rows.map(browserText),
+  haystacks: input.rows.map(clientHaystack),
+}));
+"""
+
+
+class TestWatchClients:
+    """The pure helpers of watch_clients.js (the Clients view of the Watch page): what a page of
+    a browser is called, the browser text, the words the text filter searches; run by the ``js``
+    runtime, skipped without one."""
+
+    def test_labels_and_filter_words(self, tmp_path, js):
+        runner = js_project(tmp_path, WATCH_CLIENTS_RUNNER, 'watch_clients.js', 'i18n.js', 'ui.js', 'creation.js',
+                            'api.js', 'form.js', 'table_sort.js', 'groups_model.js')
+        rln = '20261118091203@@@s3@r306@dhcp.py@@@alice'
+        pages = [{'path': '/projects/a01/x', 'host': 'a01', 'rln': rln},        # a project page: lab (owner)
+                 {'path': '/watch', 'host': None, 'rln': None}, {'path': '/open'},
+                 {'path': '/projects/a01/x', 'host': 'a01', 'rln': 'broken'},    # no running lab name: the path
+                 {'path': '/projects/a01/x', 'host': '', 'rln': rln}, {}, None]
+        rows = [{'login': 'alice', 'fullname': 'Alice Liddell', 'group': 'INFO1', 'groups': ['custom:tp1'],
+                 'role': 'student', 'browser': 'Firefox', 'version': '131', 'system': 'Linux', 'addrs': ['10.0.1.7'],
+                 'pages': pages[:2]},
+                {'host': 'z02', 'login': 'bob', 'fullname': '', 'group': ''},    # a local GUI row
+                {'login': 'carol', 'browser': 'Chrome', 'version': ''}, {'login': 'dave', 'browser': '', 'version': '9'}]
+        out = json.loads(js.run(tmp_path, runner, json.dumps({'pages': pages, 'rows': rows})))
+        assert out['labels'] == ['s3/r306/dhcp.py (alice)', '/watch', '/open', '/projects/a01/x', '/projects/a01/x', '', '']
+        assert out['browsers'] == ['Firefox 131', '', 'Chrome', '']
+        assert out['haystacks'] == [
+            'alice alice liddell info1 tp1 info1 student firefox 131 linux 10.0.1.7 s3/r306/dhcp.py (alice) /watch',
+            'z02 bob', 'carol chrome', 'dave']
 
 
 EXAMS_FORM_RUNNER = """\

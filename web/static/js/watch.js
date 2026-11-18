@@ -19,7 +19,14 @@
 // shown (the lab file really run, lab_key.js: the paths and symbolic links leading to one file
 // are one lab), a click on its group cell the summary of that lab for the whole group (every project
 // of the pool whose owner has that group, whatever the filter; watch_summary.js); all follow
-// the polls.
+// the polls.  The Clients column counts the clients of the owner on the project: their
+// browsers showing its page and their local GUI on its host (blank for an older portal).
+//
+// Two views, chosen by the Projects / Clients buttons of the toolbar (the buttons of the
+// History page): the projects, where the page always lands, and the clients (?view=clients,
+// never remembered), the users in a local GUI and the browsers connected to the portal
+// (watch_clients.js, GET /api/watch/clients).  Only the view shown is polled; the text filter
+// and the group select apply to both.
 
 import './base.js';
 import * as api from './api.js';
@@ -29,6 +36,7 @@ import {el, clear, toast, formatTimestamp, formatNumber} from './ui.js';
 import {projectUrl} from './creation.js';
 import {createDetailDialog} from './watch_detail.js';
 import {createSummaryDialog} from './watch_summary.js';
+import {createClientsView} from './watch_clients.js';
 import {labKey} from './lab_key.js';
 import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, rowGroupKeys, rowMatchesGroup, sortGroups,
         kindsLabel} from './groups_model.js';
@@ -36,8 +44,14 @@ import {KINDS, KIND_DEPARTMENT, groupKey, parseKey, normalizeKey, rowGroupKeys, 
 const REFRESH_INTERVAL = 5000;
 const STALE_AFTER_S = 900;     // without an evaluation younger than this (or 2 × the lab's interval): amber
 const STORAGE_KEY = 'sreweb.watch';   // the group chosen last, remembered across the pages: {group: key}
+const VIEWS = ['projects', 'clients'];
+const DEFAULT_VIEW = 'projects';
+const URLS = {projects: '/api/watch', clients: '/api/watch/clients'};
 
 const table = document.getElementById('watch');
+const titleElement = document.getElementById('watch-title');
+const sections = {projects: document.getElementById('watch-projects'), clients: document.getElementById('watch-clients')};
+const viewButtons = Array.from(document.querySelectorAll('.history-views button[data-view]'));
 const body = table.querySelector('tbody');
 const filterInput = document.getElementById('watch-filter');
 const groupSelect = document.getElementById('watch-group');
@@ -47,8 +61,18 @@ const countElement = document.getElementById('watch-count');
 const closing = new Set();     // running lab names whose close is in progress
 
 // group: null = every group, '' = the rows without department, else the key of one group; shown:
-// the rows after the filters, in the order of the table
-const state = {rows: [], shown: [], sortKey: 'started_at', sortAsc: false, filter: '', group: null};
+// the rows after the filters, in the order of the table; view: the view shown
+const state = {rows: [], shown: [], sortKey: 'started_at', sortAsc: false, filter: '', group: null,
+               view: DEFAULT_VIEW};
+// The template of a portal not restarted since the files were updated has no clients section
+// (the scripts are read from the disk at every request, the templates when the portal starts):
+// the page is then the projects table alone, as before.
+const hasViews = Boolean(titleElement && sections.projects && sections.clients);
+const clientsColumn = Boolean(table.querySelector('th[data-sort="clients"]'));
+const clients = hasViews
+  ? createClientsView(sections.clients, {groupsEnabled})
+  : {render: () => ({shown: 0, total: 0}), setData: () => {}, showError: () => {}, rows: () => []};
+const loaded = {projects: false, clients: false};   // the views the portal answered for at least once
 let listedGroups = '';         // the groups the select offers, joined: rebuilt only when they change
 let catalog = [];              // the groups of GET /api/groups (every kind), read once per page load
 
@@ -112,6 +136,7 @@ function sortValue(row, key) {
     case 'errors': return last ? last.errors * 1000 + last.warnings : -1;
     case 'auto_eval_count': return typeof row.auto_eval_count === 'number' ? row.auto_eval_count : -1;
     case 'terminals': return Number(row.terminals) || 0;
+    case 'clients': return typeof row.clients === 'number' ? row.clients : -1;
     case 'managed': return row.managed ? 1 : 0;
     default: return '';
   }
@@ -163,7 +188,7 @@ function fillGroups() {
   for (const group of catalog) {
     entries.set(group.key, group);
   }
-  for (const row of state.rows) {
+  for (const row of [...state.rows, ...clients.rows()]) {
     for (const key of rowGroupKeys(row)) {
       if (!entries.has(key)) {
         entries.set(key, {key, ...parseKey(key)});
@@ -266,7 +291,53 @@ function rowClass(row) {
   return '';
 }
 
+// the view named by the URL (?view=clients), the projects without it or with anything else
+function viewFromUrl() {
+  const view = new URLSearchParams(window.location.search).get('view');
+  return hasViews && VIEWS.includes(view) ? view : DEFAULT_VIEW;
+}
+
+function storeViewInUrl() {
+  const url = new URL(window.location.href);
+  if (state.view === DEFAULT_VIEW) {
+    url.searchParams.delete('view');
+  } else {
+    url.searchParams.set('view', state.view);
+  }
+  window.history.replaceState(null, '', url);
+}
+
+// the buttons, the section and the texts of the view shown
+function applyView() {
+  if (!hasViews) {
+    return;
+  }
+  for (const button of viewButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
+  }
+  for (const [name, section] of Object.entries(sections)) {
+    section.hidden = name !== state.view;
+  }
+  const onClients = state.view === 'clients';
+  titleElement.textContent = onClients ? _('Connected clients') : _('All running projects');
+  filterInput.title = onClients ? _('Host, user, group, browser or page') : _('Host, owner, group or lab');
+}
+
+function renderClients() {
+  if (groupSourcesEnabled) {
+    fillGroups();
+  }
+  const {shown, total} = clients.render({filter: state.filter, group: state.group});
+  countElement.textContent = shown === total
+    ? format(_('{n} client(s)'), {n: shown})
+    : format(_('{n} of {total} client(s)'), {n: shown, total});
+}
+
 function render() {
+  if (state.view === 'clients') {
+    renderClients();
+    return;
+  }
   clear(body);
   if (groupSourcesEnabled) {
     fillGroups();
@@ -337,6 +408,11 @@ function renderRow(row) {
     // blank for the row of an agent older than the count
     el('td', {class: 'num'}, typeof row.auto_eval_count === 'number' ? String(row.auto_eval_count) : ''),
     el('td', {class: 'num'}, String(row.terminals || 0)),
+    // blank for the row of a portal older than the count; no cell under a template without the column
+    clientsColumn
+      ? el('td', {class: 'num', title: row.client_local ? _('The local GUI of the owner is one of them') : null},
+           typeof row.clients === 'number' ? String(row.clients) : '')
+      : null,
     el('td', {}, row.managed ? _('web') : _('local')),
     el('td', {class: 'actions'},
       el('a', {class: 'button primary', href: projectUrl(row.host, rln)}, _('Open')),
@@ -351,16 +427,34 @@ function renderRow(row) {
   return tr;
 }
 
+// asks the portal for the view shown; an answer that comes back after the view changed is dropped
 async function refresh() {
-  let rows;
+  const view = state.view;
+  let answer;
   try {
-    rows = await api.get('/api/watch');
+    answer = await api.get(URLS[view]);
   } catch (e) {
-    clear(body);
-    body.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'error'}, e.message)));
+    if (view !== state.view) {
+      return;
+    }
+    if (view === 'clients') {
+      clients.showError(e.message);
+    } else {
+      clear(body);
+      body.append(el('tr', {}, el('td', {colspan: columnCount(), class: 'error'}, e.message)));
+    }
     return;
   }
-  state.rows = Array.isArray(rows) ? rows : [];
+  if (view !== state.view) {
+    return;
+  }
+  loaded[view] = true;
+  if (view === 'clients') {
+    clients.setData(answer);
+    render();
+    return;
+  }
+  state.rows = Array.isArray(answer) ? answer : [];
   render();
   detail.update(state.rows);
   summary.update();
@@ -375,9 +469,25 @@ function setupControls() {
       } else {
         state.sortKey = key;
         state.sortAsc = !['last_action', 'last_eval', 'grade', 'mark', 'errors', 'auto_eval_count', 'terminals',
-                          'started_at'].includes(key);
+                          'clients', 'started_at'].includes(key);
       }
       render();
+    });
+  }
+  for (const button of viewButtons) {
+    button.addEventListener('click', () => {
+      if (button.dataset.view === state.view) {
+        return;
+      }
+      state.view = VIEWS.includes(button.dataset.view) ? button.dataset.view : DEFAULT_VIEW;
+      storeViewInUrl();
+      applyView();
+      if (loaded[state.view]) {
+        render();        // what the view held last, at once
+      } else {
+        countElement.textContent = '';
+      }
+      refresh();
     });
   }
   filterInput.addEventListener('input', () => {
@@ -409,6 +519,8 @@ function setupControls() {
 
 async function main() {
   await i18n.init();
+  state.view = viewFromUrl();
+  applyView();
   setupControls();
   if (groupSourcesEnabled) {
     loadCatalog();

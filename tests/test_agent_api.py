@@ -173,6 +173,34 @@ class TestOccupancyAndPower:
                 assert (await h.client.post('/v1/power/off', headers=headers())).status == 403
         run(go())
 
+    def test_users_in_the_qt_gui(self, tmp_path, monkeypatch):
+        """The status names the users with a running Qt GUI on the machine (the Clients view of
+        the Watch page).  An agent given its own projects directory, as every test and the fake
+        pool, is not the agent of the machine: it looks nowhere unless told."""
+        import os
+        from sreweb.agent import localgui
+        from test_agent_localgui import BOOT, GUI, fake_proc, users
+        monkeypatch.setattr(localgui, 'SYSTEM_UID_MAX', -1)    # the fake processes belong to whoever runs the tests
+
+        async def go():
+            async with Harness(tmp_path) as h:
+                assert h.agent.proc_dir is None
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['gui_users'] == []
+                h.agent.proc_dir = fake_proc(tmp_path / 'proc', {7: {'argv': ['sshd'], 'start': 1},
+                                                                 4242: {'argv': GUI, 'start': 0}})
+                h.agent.user_of = localgui.Users(users({os.getuid(): ('alice', 'Alice Liddell,,,')}))
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['gui_users'] == [{'login': 'alice', 'fullname': 'Alice Liddell', 'since': BOOT}]
+                # the scan is kept a few seconds: a GUI that ended is gone at the next one
+                (tmp_path / 'proc' / '4242' / 'cmdline').unlink()
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert [user['login'] for user in st['gui_users']] == ['alice']
+                h.agent._gui_users = None
+                st = await (await h.client.get('/v1/status', headers=headers())).json()
+                assert st['gui_users'] == []
+        run(go())
+
     def test_local_projects_count_as_occupied(self, tmp_path):
         async def go():
             async with Harness(tmp_path, occupied_check='projects') as h:

@@ -34,7 +34,7 @@ from SRE.form_spec import parse_form_description, chunks_to_json
 from SRE.instructor_text import markdown_to_html
 from SRE.utils import canonical_lab_name
 
-from . import access, hostexam, occupancy, reports
+from . import access, hostexam, localgui, occupancy, reports
 from .access import AccessError
 from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED, WS_DISPLAY_GONE
@@ -222,6 +222,12 @@ class Agent:
         self._all_labs_lock = asyncio.Lock()
         self._refused_clients: set = set()
         self._occupancy: tuple[float, tuple] | None = None
+        #: Where the Qt GUIs of the machine are looked for (``localgui.py``); ``None``: nowhere.
+        #: An agent given its own projects directory (``--pub-dir``: the tests, the fake pool)
+        #: is not the agent of the machine, whose GUIs show the real projects directory.
+        self.proc_dir: str | None = '/proc' if pub_dir is None else None
+        self.user_of = localgui.Users()
+        self._gui_users: tuple[float, list] | None = None
         self._started_at = time.monotonic()
         #: Whether the system is going down (SIGTERM at shutdown): injectable for the tests.
         self.system_stopping = _system_stopping
@@ -461,6 +467,18 @@ class Agent:
         self._occupancy = (now, result)
         return result
 
+    async def gui_users(self) -> list:
+        """The users with a running Qt GUI on the machine (``localgui.gui_users``: login, full
+        name, start time), looked for in a thread at most every OCCUPANCY_TTL seconds; empty
+        without a ``proc_dir``."""
+        if self.proc_dir is None:
+            return []
+        if self._gui_users is not None and time.monotonic() - self._gui_users[0] < OCCUPANCY_TTL:
+            return self._gui_users[1]
+        users = await asyncio.to_thread(localgui.gui_users, self.proc_dir, user_of=self.user_of)
+        self._gui_users = (time.monotonic(), users)
+        return users
+
     # -- middlewares ----------------------------------------------------------------------------
 
     @web.middleware
@@ -518,6 +536,7 @@ class Agent:
         except OSError:
             load1 = None
         occupied, reasons = self.occupied()
+        gui_users = await self.gui_users()
         managed = sum(1 for p in self.registry.projects.values() if p.managed)
         return web.json_response({
             'hostname': self.hostname, 'sre_version': params.sre_version,
@@ -530,6 +549,8 @@ class Agent:
             'exam_projects': self._exam_projects(),
             'load1': load1, 'mem_available_mb': _mem_available_mb(),
             'occupied': occupied, 'occupied_by': reasons,
+            # the users in the Qt GUI of the machine: the Clients view of the Watch page
+            'gui_users': gui_users,
             'uptime': _uptime_seconds(), 'agent_uptime': round(time.monotonic() - self._started_at),
             'power_off_allowed': self.cfg.allow_power_off,
             'restart_allowed': bool(self.restart_argvs()), 'restarting': self.restarting is not None,

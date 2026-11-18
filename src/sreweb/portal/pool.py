@@ -17,7 +17,7 @@ from ..agent.occupancy import SESSION_PREFIX
 from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
                             LAB_README_KEY)
 from ..config import HostConfig, host_config_from_dict, check_priority, ConfigError
-from ..identity import Identity
+from ..identity import Identity, is_valid_login
 
 log = logging.getLogger('sreweb.portal')
 
@@ -122,6 +122,10 @@ class HostStatus:
     exam_mode: bool = False
     occupied: bool = False
     occupied_by: list = field(default_factory=list)
+    # the users with a running Qt GUI on the host (the ``gui_users`` of the status, coerced by
+    # ``gui_user_fields``: ``{login, fullname, since}``): the Clients view of the Watch page;
+    # empty for an agent older than the key
+    gui_users: list = field(default_factory=list)
     uptime: int | None = None
     power_off_allowed: bool = False
     agent_uptime: int | None = None     # seconds since the agent started: a restart resets it
@@ -152,6 +156,7 @@ class HostStatus:
 #: The longest text (hostname, sre_version, an occupied_by entry) and list kept from a status.
 MAX_STATUS_TEXT = 200
 MAX_OCCUPIED_BY = 100
+MAX_GUI_USERS = 64
 
 
 def _number(value) -> float | None:
@@ -175,6 +180,25 @@ def _seconds(value) -> int | None:
 
 def _text(value) -> str:
     return value[:MAX_STATUS_TEXT] if isinstance(value, str) else ''
+
+
+def gui_user_fields(value) -> list:
+    """The ``gui_users`` of a status as the portal keeps them: ``{login, fullname, since}`` for
+    every entry that is an object with a valid login, one per login, at most ``MAX_GUI_USERS``
+    (*fullname* a capped text, *since* epoch seconds or ``None``); anything else is dropped."""
+    if not isinstance(value, list):
+        return []
+    users = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        login = entry.get('login')
+        if not isinstance(login, str) or not is_valid_login(login) or login in users:
+            continue
+        users[login] = {'login': login, 'fullname': _text(entry.get('fullname')), 'since': _number(entry.get('since'))}
+        if len(users) >= MAX_GUI_USERS:
+            break
+    return list(users.values())
 
 
 def _names(value) -> list:
@@ -243,6 +267,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       occupied=data.get('occupied') is True,
                       occupied_by=([_text(x) for x in occupied_by if isinstance(x, str)][:MAX_OCCUPIED_BY]
                                    if isinstance(occupied_by, list) else []),
+                      gui_users=gui_user_fields(data.get('gui_users')),
                       uptime=_seconds(data.get('uptime')),
                       power_off_allowed=data.get('power_off_allowed') is True,
                       agent_uptime=_seconds(data.get('agent_uptime')),
@@ -807,9 +832,20 @@ class Pool:
                 'wake_failures': rt.wake_failures,
                 'idle_for': round(now - rt.idle_since) if rt.idle_since is not None else None,
                 'exam_hold': self.held_for_exam(h.name),
-                **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at')},
+                # the users in the Qt GUI are for the Watch page (``gui_users()``), not for the pool
+                **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at', 'gui_users')},
             })
         return rows
+
+    def gui_users(self) -> dict:
+        """The users with a running Qt GUI on each reachable host, as its last status said:
+        ``{host name: [{login, fullname, since}]}``, the hosts without one left out."""
+        found = {}
+        for h in self.hosts.values():
+            st = self.status[h.name]
+            if st.reachable and st.gui_users:
+                found[h.name] = [dict(user) for user in st.gui_users]
+        return found
 
     # -- placement ------------------------------------------------------------------------------
 
