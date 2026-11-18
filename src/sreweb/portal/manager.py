@@ -57,6 +57,8 @@ class HostView:
     # kept for an exam that lists the machine (``Pool.exam_hold``): no new web project there, so
     # it is no capacity of the pool, and the policy does not power it off
     held: bool = False
+    # the lowest priority is woken first, the highest powered off first when idle (``Pool.set_priority``)
+    priority: int = 0
 
 
 def awake_count(hosts) -> int:
@@ -75,7 +77,8 @@ def spare_capacity(hosts) -> int:
 
 
 def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: float) -> list:
-    """The names of the hosts to wake now, in configuration order: enough sleeping hosts to bring
+    """The names of the hosts to wake now, the lowest priority first and in configuration order
+    among equal ones: enough sleeping hosts to bring
     the spare capacity back to ``spare_projects`` and, during the active hours, the awake hosts
     up to ``min_hosts_up``; at most one wake per ``wake_interval``.  A host reserved for
     instructors is never woken by the policy (``sre-web-tool wake``, or its own boot)."""
@@ -84,7 +87,7 @@ def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: fl
     awake = awake_count(hosts)
     spare = spare_capacity(hosts)
     wanted = []
-    for h in hosts:
+    for h in sorted(hosts, key=lambda h: h.priority):      # a stable sort: equal priorities keep their order
         if h.state != STATE_OFF or not h.can_wake or not h.enabled or h.instructors_only or now < h.next_wake_at \
                 or h.restart_pending:
             continue
@@ -98,7 +101,9 @@ def wake_plan(hosts, cfg: PoolConfig, now: float, active: bool, last_wake_at: fl
 def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
     """The names of the hosts to power off now: a draining host as soon as it is empty; with
     ``idle_host_timeout``, one idle host that the floor and the spare capacity can spare (a
-    host reserved for instructors counts for neither: idle long enough is enough)."""
+    host reserved for instructors counts for neither: idle long enough is enough), the one
+    with the highest priority first, then the longest idle: the hosts left awake are those the
+    placement prefers."""
     empties = [h for h in hosts if h.state in (STATE_UP, STATE_DRAINING) and h.projects == 0 and h.power
                and h.power_off_allowed and not h.power_off_pending and not h.restart_pending]
     drained = [h.name for h in empties if h.drain]
@@ -108,7 +113,7 @@ def poweroff_plan(hosts, cfg: PoolConfig, active: bool) -> list:
         return []
     awake = awake_count(hosts)
     floor = cfg.min_hosts_up if active else 0
-    for h in sorted(empties, key=lambda h: -(h.idle_for or 0)):
+    for h in sorted(empties, key=lambda h: (-h.priority, -(h.idle_for or 0))):
         if h.idle_for is None or h.idle_for < cfg.idle_host_timeout:
             continue
         if h.held:
@@ -189,7 +194,7 @@ class PoolManager:
                                   preload=st.preload, preload_since=float(st.preload_since or 0),
                                   preload_granted=rt.preload_granted is not None,
                                   preload_hold=now < rt.next_preload_at, exam_projects=st.exam_projects,
-                                  held=self.pool.held_for_exam(host.name)))
+                                  held=self.pool.held_for_exam(host.name), priority=rt.priority))
         return views
 
     def status(self) -> dict:

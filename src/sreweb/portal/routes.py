@@ -40,7 +40,8 @@ from .ratelimit import RateLimiter
 from .relay import Relay, RELAYED_KEY
 from .roles import complete_owners
 from ..agent.runner import RESULT_FLAVOR_FORM, RESULT_FLAVOR_ERROR, RESULT_CREATED
-from ..config import WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, ConfigError
+from ..config import (WebConfig, AUTH_LDAP, AUTH_ANONYMOUS, AUTH_PROXY, host_config_from_dict, check_priority,
+                      ConfigError)
 from ..identity import (Identity, IdentityError, ROLE_INSTRUCTOR, running_lab_name_owner, VIEW_INSTRUCTOR, IDENTITY_KEY,
                         is_valid_login)
 
@@ -724,12 +725,26 @@ class Routes:
     async def api_pool_action(self, request):
         """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host, or
         ask for a ``preload`` of the Docker images on it (it then waits for its turn: the portal
-        lets a few hosts preload at a time): the commands of sre-web-tool and the buttons of the
-        Pool page (which has no Restart button: the tool alone offers it); the answer is the
-        updated row."""
+        lets a few hosts preload at a time), or set its ``priority`` (a JSON body
+        ``{"priority": N}``; ``Pool.set_priority``: the lowest one is used first): the commands
+        of sre-web-tool and the buttons of the Pool page (which has no Restart button: the tool
+        alone offers it); the answer is the updated row."""
         identity = self._require_pool_access(request)
         name, action = request.match_info['name'], request.match_info['action']
-        if action == 'enable':
+        if action == 'priority':
+            try:
+                body = await request.json()
+            except ValueError:
+                return json_error(400, "a JSON body is expected")
+            try:
+                priority = check_priority(body.get('priority') if isinstance(body, dict) else None, "priority")
+            except ConfigError as e:
+                return json_error(400, str(e))
+            self.pool.set_priority(name, priority)
+            logged = request.get(ACCESS_KEY)      # the admin line of the connection log: the value asked
+            if logged is not None:
+                logged['priority'] = priority
+        elif action == 'enable':
             self.pool.set_enabled(name, True)
         elif action == 'disable':
             self.pool.set_enabled(name, False)

@@ -41,6 +41,12 @@
 #   INSTRUCTOR_MACHINES none             the machines ("s0 h3", names as in the file, any case) whose host
 #                                        gets instructors_only = true on its own, whatever its room; a name
 #                                        that is not one of the selected hosts is reported and ignored
+#   ROOM_PRIORITIES     none             the priority of the hosts of a room, "<room>=<integer>" pairs
+#                                        ("z=-1 h=5", from -9999 to 9999): priority = <integer> in [[hosts]].
+#                                        The portal wakes the lowest priority first and gives it a project
+#                                        first among the hosts without project; a room not named has 0, the
+#                                        default.  A priority changed since on the Pool page (or with
+#                                        `sre-web-tool priority`) holds until this value changes
 #   DOMAIN              none             when set, DNS:<name>.<DOMAIN> is a SAN of the certificate too
 #   PORTAL_ADDRESS      none             when set, allowed_clients = ["<it>"] in agent-<name>.toml
 #   TLS_DIR_ON_HOSTS    /etc/sreweb/tls  where the hosts and the portal keep the files (the paths
@@ -67,10 +73,11 @@
 #                                         "<ip>:AGENT_PORT", token, tls_*, allowed_clients, allow_power_off;
 #                                         the shared agent.toml must then have no listen line)
 # Every run computes hosts.toml and every agent-<name>.toml from the variables of the moment (REGEXP /
-# ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS / INSTRUCTOR_MACHINES / POWER... may change at any time)
+# ROOMS / DISABLED_ROOMS / INSTRUCTOR_ROOMS / INSTRUCTOR_MACHINES / ROOM_PRIORITIES / POWER... may
+# change at any time)
 # and compares them with the files of the previous run: a file whose content did not change is left
 # as it is (its date too), the others are replaced, and what changed is printed per host (hosts.toml:
-# enabled, instructors_only, url, max_projects, mac, power; agent-<name>.toml: listen, tls_*,
+# enabled, instructors_only, priority, url, max_projects, mac, power; agent-<name>.toml: listen, tls_*,
 # allowed_clients, allow_power_off), with the new hosts and those no longer selected (their entry is
 # dropped, their files are left in OUT_DIR); the last line says whether hosts.toml and which
 # agent-<name>.toml are to deploy again.  The CA and the portal's certificate are made once and kept.
@@ -87,14 +94,21 @@ in_list() {   # in_list WORD LIST: WORD is one of the space-separated LIST
     return 1
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+priority_of() {   # priority_of ROOM: the priority ROOM_PRIORITIES gives the hosts of ROOM, 0 when it does not name it
+    local pair
+    for pair in $ROOM_PRIORITIES; do
+        if [ "${pair%%=*}" = "$1" ]; then printf '%s' "${pair#*=}"; return 0; fi
+    done
+    printf 0
+}
 entries_of() {   # entries_of FILE: the [[hosts]] entries of a hosts.toml, one line each, to compare two runs:
-                 # "name;url;token;max_projects;mac;power;enabled;instructors_only" (the default of a key left out)
+                 # "name;url;token;max_projects;mac;power;enabled;instructors_only;priority" (the default of a key left out)
     [ -f "$1" ] || return 0
     awk '
-        function reset() { split("", v); v["power"] = "false"; v["enabled"] = "true"; v["instructors_only"] = "false" }
+        function reset() { split("", v); v["power"] = "false"; v["enabled"] = "true"; v["instructors_only"] = "false"; v["priority"] = "0" }
         function flush() {
             if (name != "")
-                print name ";" v["url"] ";" v["token"] ";" v["max_projects"] ";" v["mac"] ";" v["power"] ";" v["enabled"] ";" v["instructors_only"]
+                print name ";" v["url"] ";" v["token"] ";" v["max_projects"] ";" v["mac"] ";" v["power"] ";" v["enabled"] ";" v["instructors_only"] ";" v["priority"]
             name = ""; reset()
         }
         BEGIN { reset() }
@@ -110,9 +124,9 @@ entry_of() {   # entry_of NAME LINES: the line of host NAME among the entry LINE
     printf '%s\n' "$2" | awk -F';' -v n="$1" '$1 == n { print; exit }'
 }
 entry_changes() {   # entry_changes OLD NEW [ignore_token]: what differs between two entry lines, "" when nothing
-    local name o_url o_token o_max o_mac o_power o_enabled o_instr n_url n_token n_max n_mac n_power n_enabled n_instr changes=""
-    IFS=';' read -r name o_url o_token o_max o_mac o_power o_enabled o_instr <<< "$1"
-    IFS=';' read -r name n_url n_token n_max n_mac n_power n_enabled n_instr <<< "$2"
+    local name o_url o_token o_max o_mac o_power o_enabled o_instr o_prio n_url n_token n_max n_mac n_power n_enabled n_instr n_prio changes=""
+    IFS=';' read -r name o_url o_token o_max o_mac o_power o_enabled o_instr o_prio <<< "$1"
+    IFS=';' read -r name n_url n_token n_max n_mac n_power n_enabled n_instr n_prio <<< "$2"
     [ "${3:-}" != ignore_token ] || o_token=$n_token
     [ "$o_url" = "$n_url" ] || changes="$changes, url $o_url -> $n_url"
     [ "$o_token" = "$n_token" ] || changes="$changes, token"
@@ -121,6 +135,7 @@ entry_changes() {   # entry_changes OLD NEW [ignore_token]: what differs between
     [ "$o_power" = "$n_power" ] || changes="$changes, power $o_power -> $n_power"
     [ "$o_enabled" = "$n_enabled" ] || changes="$changes, enabled $o_enabled -> $n_enabled"
     [ "$o_instr" = "$n_instr" ] || changes="$changes, instructors_only $o_instr -> $n_instr"
+    [ "$o_prio" = "$n_prio" ] || changes="$changes, priority $o_prio -> $n_prio"
     printf '%s' "${changes#, }"
 }
 agent_changes() {   # agent_changes OLD NEW [ignore_token]: the keys whose line differs between two agent-<name>.toml,
@@ -161,6 +176,7 @@ MAX_PROJECTS="${MAX_PROJECTS:-25}"
 POWER="${POWER:-false}"
 INSTRUCTOR_ROOMS="${INSTRUCTOR_ROOMS:-}"
 INSTRUCTOR_MACHINES="${INSTRUCTOR_MACHINES:-}"
+ROOM_PRIORITIES="${ROOM_PRIORITIES:-}"
 DOMAIN="${DOMAIN:-}"
 PORTAL_ADDRESS="${PORTAL_ADDRESS:-}"
 TLS_DIR_ON_HOSTS="${TLS_DIR_ON_HOSTS:-/etc/sreweb/tls}"
@@ -184,7 +200,19 @@ fi
 if [[ probe =~ $REGEXP ]]; then :; elif [ $? -eq 2 ]; then die "REGEXP '$REGEXP': bad regular expression"; fi
 ROOMS=$(lower "$ROOMS"); DISABLED_ROOMS=$(lower "$DISABLED_ROOMS")
 INSTRUCTOR_ROOMS=$(lower "$INSTRUCTOR_ROOMS"); INSTRUCTOR_MACHINES=$(lower "$INSTRUCTOR_MACHINES")
+ROOM_PRIORITIES=$(lower "$ROOM_PRIORITIES")
+# <room>=<integer>, an integer as TOML writes it (no leading zero) from -9999 to 9999, a room once
+priority_re='^[^=]+=(0|-?[1-9][0-9]{0,3})$'
+priority_rooms=""
+for pair in $ROOM_PRIORITIES; do
+    [[ $pair =~ $priority_re ]] || die "ROOM_PRIORITIES: '$pair' is not <room>=<integer from -9999 to 9999>"
+    ! in_list "${pair%%=*}" "$priority_rooms" || die "ROOM_PRIORITIES: the room '${pair%%=*}' is given twice"
+    priority_rooms="$priority_rooms ${pair%%=*}"
+done
 if [ -n "$ROOMS" ]; then
+    for room in $priority_rooms; do
+        in_list "$room" "$ROOMS" || warn "the room '$room' of ROOM_PRIORITIES is not in ROOMS ($ROOMS): its machines are left out"
+    done
     for room in $DISABLED_ROOMS; do
         in_list "$room" "$ROOMS" || warn "disabled room '$room' is not in ROOMS ($ROOMS): its machines are left out"
     done
@@ -258,7 +286,7 @@ old_entries=$(entries_of "$hosts_toml")                          # the previous 
 ignore_token=""; [ "$KEEP" = true ] || ignore_token=ignore_token  # tokens made anew: not a change of one host
 (umask 077; cat > "$tmp" <<EOH
 # [[hosts]] of the SRE web portal (scripts/etc/web.toml), made by scripts/make-web-hosts.sh on $(date '+%Y-%m-%d %H:%M')
-# from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}${INSTRUCTOR_ROOMS:+, instructor rooms: $INSTRUCTOR_ROOMS}${INSTRUCTOR_MACHINES:+, instructor machines: $INSTRUCTOR_MACHINES}.
+# from $input: names matching '$REGEXP'${ROOMS:+, rooms $ROOMS}${DISABLED_ROOMS:+, disabled at start: $DISABLED_ROOMS}${INSTRUCTOR_ROOMS:+, instructor rooms: $INSTRUCTOR_ROOMS}${INSTRUCTOR_MACHINES:+, instructor machines: $INSTRUCTOR_MACHINES}${ROOM_PRIORITIES:+, room priorities: $ROOM_PRIORITIES}.
 # A file of web.d/ (web.toml: import = ["web.d"]) or pasted at the end of web.toml; owner
 # root:sre-web, mode 0640.  The [pool] table of web.toml needs the CA and the portal's client
 # certificate (ca.crt, portal.crt, portal.key of the same directory as the hosts' certificates):
@@ -293,7 +321,8 @@ while IFS=';' read -r name ip mac room; do
         instructors_only=true; instructors=$((instructors + 1))
     fi
     power=false; [ "$POWER" != true ] || power=true
-    entry="$name;https://$ip:$AGENT_PORT;$token;$MAX_PROJECTS;$mac;$power;$enabled;$instructors_only"
+    priority=0; [ -z "$room" ] || priority=$(priority_of "$room")
+    entry="$name;https://$ip:$AGENT_PORT;$token;$MAX_PROJECTS;$mac;$power;$enabled;$instructors_only;$priority"
     new_entries="$new_entries$entry
 "
     {
@@ -307,6 +336,7 @@ while IFS=';' read -r name ip mac room; do
         if [ "$POWER" = true ]; then echo "power = true"; fi
         if [ "$enabled" = false ]; then echo "enabled = false"; fi
         if [ "$instructors_only" = true ]; then echo "instructors_only = true"; fi
+        if [ "$priority" != 0 ]; then echo "priority = $priority"; fi
     } >> "$tmp"
     agent_toml="$out/agent-$name.toml"
     (umask 077; {

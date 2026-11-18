@@ -869,6 +869,27 @@ msgstr "la machine est activée"
 msgid "{failed} of {total} action(s) failed: {details}"
 msgstr "{failed} action(s) sur {total} ont échoué : {details}"
 
+msgid "Priority"
+msgstr "Priorité"
+
+msgid "Priority…"
+msgstr "Priorité…"
+
+msgid "The lowest priority is used first"
+msgstr "La priorité la plus basse est utilisée en premier"
+
+msgid "Change the priority: the lowest one is used first"
+msgstr "Changer la priorité : la plus basse est utilisée en premier"
+
+msgid "Priority of {name}"
+msgstr "Priorité de {name}"
+
+msgid "Priority of the {n} selected host(s)"
+msgstr "Priorité des {n} machine(s) sélectionnée(s)"
+
+msgid "The host with the lowest priority is woken first and gets a project first among the hosts without project; the one with the highest is powered off first when idle. 0 by default; a negative number comes before."
+msgstr "La machine de priorité la plus basse est réveillée en premier et reçoit un projet en premier parmi les machines sans projet ; celle de priorité la plus haute est éteinte en premier quand elle est inoccupée. 0 par défaut ; un nombre négatif passe avant."
+
 # --- the instructor role: tabs/evaluation.js, terminal.js, tabs/terminals.js -------------------
 
 msgid "No archived evaluation yet."

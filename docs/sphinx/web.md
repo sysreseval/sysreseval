@@ -211,7 +211,7 @@ merges other files into this one, as for `web.toml` below.
 | `[exams]` | | the exams of the Exams page (*Exams* below; on iff `[access_log.database]` is set): the defaults of a new exam, each adjustable per exam — `lead` (`10m`: how long before the start the other projects of the students are hidden and the countdown shown), `pre_start` (`5m`: how long before the start their exam projects are started in the background), `eval_interval` (`60s`: the period of the evaluations the agents run during the exam) —, `close_after` (`1h`: how long after the end of a student's exam their exam projects are closed; `0` = never, an instructor closes them), `table` (`exams`, with `<table>_members`, both created when missing), `keep` (`0` = the past exams are kept forever; else days, purged daily); for the machines of the pool an exam lists, two more defaults per exam: `host_lead` (`10m`: how long before the start their agents write `exam.json`, which locks them) and `host_release` (`10m`: how long after the end-before time the file is removed and the exam projects of the machine closed; `0` = at the end) |
 | `[site]` | none | the institution shown next to the SRE logo in the header of every page, the login page included: `logo` (the absolute path of an image file, JPG / PNG / SVG…, readable by `sre-web`, served at `/site/logo`), `name` (a string, or one per language: `{ fr = "IUT de Démo", en = "Demo Institute" }`, the first configured language when the page's one is missing), `url` (the page the two link to; none: plain text) |
 | `[bbb]` | none | the BigBlueButton server behind the **Webconf** button of the instructors (*Web conference* below): `url` (the server, or its `bigbluebutton/` / `bigbluebutton/api/` path) and `secret` (the shared secret of its API, `bbb-conf --secret`; both or none), `checksum` (`sha1`; `sha256` or `sha512` when the server is restricted to them), `welcome` (the welcome message of the client: a string, or one per language; the server's message by default), `record` (`false`), `mute_on_start` (`false`), `duration` (`0` = unlimited; a duration, `"2h"`: the server ends the meeting after it), `max_participants` (`0` = unlimited), `poll_interval` (`10s`: how often the participants and the ended meetings are read from the server), `[bbb.userdata]` (the `bbb_*` client settings sent with every join, e.g. `bbb_skip_check_audio = true`), `private_rooms` (`true`: the **Talk privately** button of an instructor on a student's project, *Private conversations* below; `false` removes it), `[bbb.private_userdata]` (the `bbb_*` client settings of the joins of a private conversation, over `[bbb.userdata]` and the portal's own) |
-| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*) |
+| `[[hosts]]` | required | one per pool host: `name` (what the URLs show), `url` of its agent, `token` of its `agent.toml`, `max_projects` (`25`); to wake it, `mac` (Wake-on-LAN) or `wake_command` (`{name}`, `{mac}` substituted); `power = true` lets the portal power it off; `enabled = false` keeps it polled without placing projects; `instructors_only = true` reserves it for the instructors' projects (a student is never placed there and does not see its labs; a project already running there stays reachable; outside the elastic pool, see *Reserved hosts*); `priority` (an integer from -9999 to 9999, `0`): the host with the lowest one is woken first and gets a project first among the hosts without project, see *Priorities* |
 | `import` | none | other files merged into this one before it is checked: a path or a list of paths, relative to the directory of `web.toml`: a directory (its `*.toml` files, by name), a glob pattern (`"web.d/*.toml"`, possibly matching nothing) or a file. Tables merge, `[[hosts]]` entries add up; a key given in two files is refused, naming both; an imported file cannot `import` |
 
 `import = ["web.d"]` splits the configuration into `/etc/sysreseval/web.toml` and the `*.toml`
@@ -382,7 +382,7 @@ session and the request following a logout opens another one. The other events:
 - `eval`, `state` (`state`), `stop`, `display_start`: the HTTP status and the duration;
 - `denied`: a call answered 401, 403 or 429 (`method`, `path`), `login=-` when nobody was logged
   in; `admin`: a call of `sre-web-tool` changing the pool, or an action of the Pool page of an
-  instructor (their `login`); `history`: an administrator read the log on the History page
+  instructor (their `login`; `priority`, the value asked, when it sets one); `history`: an administrator read the log on the History page
   (*Administrators* below; the filters asked come as `login_filter`, `addr_filter`,
   `event_filter`, `host_filter`, `rln_filter`, `lab_filter`, `group_filter` (the key of the
   group, `kind:name`), `since_filter`, `until_filter`, `before_filter`; `view=sessions` for
@@ -1148,7 +1148,8 @@ default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in th
 `allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
 get `instructors_only = true`) and `INSTRUCTOR_MACHINES` (the names of the hosts that get it on
-their own, whatever their room), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
+their own, whatever their room), `ROOM_PRIORITIES` (`"z=-1 h=5"`: the `priority` of the hosts
+of a room, 0 for a room it does not name; see *Priorities*), `TLS_DIR_ON_HOSTS` (`/etc/sreweb/tls`,
 the paths written in the files) and `CA_KEY` / `CA_CRT` (both set: an existing CA copied into
 `OUT_DIR` instead of a new one, so that the hosts of a new `OUT_DIR` are signed by the CA the
 portal already knows; refused when `OUT_DIR` holds another CA) are optional.
@@ -1170,7 +1171,7 @@ Copy `<name>.crt`, `<name>.key` and `ca.crt` to `TLS_DIR_ON_HOSTS` of each host,
 from the variables of the moment, so the rooms, the disabled or reserved hosts may change at any
 time, and compares them with the previous run: a file whose content did not change is left as it
 is, the others are replaced, what changed is printed per host (`enabled`, `instructors_only`,
-`allow_power_off`...) with the new hosts and those no longer selected, and the last line says
+`priority`, `allow_power_off`...) with the new hosts and those no longer selected, and the last line says
 whether `hosts.toml` and which agent files are to deploy again; the CA and the portal's
 certificate are made once. The hosts' keys, certificates and tokens are made anew on every run,
 to deploy again, unless the script is run with `--keep`: the files already there are kept and
@@ -1205,7 +1206,8 @@ until the exam left it: `exam_hold` in `GET /api/pool`; the portal does not powe
 meanwhile and counts it neither as spare capacity nor towards `min_hosts_up`), and whose agent
 has no restart pending (`sre-web-tool restart`: the agent
 refuses new projects until it is back). Among them: the host of the user's own session first,
-then the lowest `projects / max_projects`, then the lowest one-minute load, then the name, so
+then the lowest `projects / max_projects`, then, between hosts without project, the lowest
+`priority` (*Priorities* below), then the lowest one-minute load, then the name, so
 that equal hosts are always settled the same way. The project count of the chosen host is raised
 at once and a *reservation* is kept until the start is over and a status poll sent after its end
 has answered: a burst of simultaneous starts is spread over the pool instead of piling onto the
@@ -1221,7 +1223,8 @@ line of the connection log says why the host was chosen: `placement=load`, `sess
 **Waking.** A host with a `mac` gets a magic packet (UDP port 9 to `wol_broadcast`: the portal
 must be on the hosts' network, or the routers must forward the directed broadcast); a host with a
 `wake_command` gets that command instead (`ssh relay wakeonlan {mac}`, an IPMI or VM call…).
-The portal wakes one sleeping host, in configuration order, whenever the free project slots of
+The portal wakes one sleeping host, the one with the lowest `priority` and in configuration
+order among equal ones, whenever the free project slots of
 the hosts up (plus the capacity of those waking) drop below `spare_projects`, and keeps
 `min_hosts_up` hosts awake during `active_hours`: the floor is re-established in the morning and
 not fought at night after the cron. A host still silent after `wake_timeout` is retried after 1,
@@ -1254,6 +1257,31 @@ powers it off when idle like any host with `power = true`, whatever the floor an
 `list` shows `(instructors)` after its state. A student logged in at the keyboard of a reserved
 host is still placed elsewhere: `follow_local_sessions` never overrides the reservation.
 
+**Priorities.** Every host has a `priority`, an integer from -9999 to 9999, `0` unless its
+`[[hosts]]` entry gives one: it says which machines the pool uses first, the **lowest priority
+first**. Whenever the portal brings a machine into use it takes the one with the lowest
+priority: the sleeping host it wakes (then the configuration order), and the host a new project
+goes to among the hosts up **without project** (then the load and the name). When it lets
+machines go, it takes the highest first: of the idle hosts `idle_host_timeout` may power off,
+the one with the highest priority goes first (then the longest idle), so that the hosts left
+awake for the floor and the spare capacity are the preferred ones. Nothing else changes: a
+project still goes to the least loaded host, so the priority only tells the empty hosts apart
+(a start in flight counts as a project), and a pool where no priority is set behaves as it did.
+A negative priority puts a room before the hosts left at 0, a positive one after them:
+
+| To | Set |
+|---|---|
+| use the machines of a room first | a negative priority on them (`-1`) |
+| keep the machines of a room for last | a positive priority on them (`5`) |
+| rank every room | `1`, `2`, `3`… in the order wanted |
+
+The priority is changed without a restart on the **Pool** page (the *Priority* column, or
+*Priority…* for the selected hosts) and with `sre-web-tool priority a03 -1`; `list` shows
+`(priority -1)` after the state of a host whose priority is not 0. A change made by hand is kept
+across the restarts of the portal and holds until the `priority` of the host in `web.toml`
+changes (*Restarting the portal* below). `ROOM_PRIORITIES` of `make-web-hosts.sh` writes the
+priorities of whole rooms into `hosts.toml`.
+
 **Going down.** When the agent's unit stops because the system halts (the nightly cron, a
 `poweroff`), the agent closes the projects it manages as a Close would (the last evaluation,
 then `sre stop`), concurrently, within `TimeoutStopSec`; the browsers see "project closed".
@@ -1270,7 +1298,8 @@ the [installation](installation.md) page), so that no container is running when 
 powers off.
 With `power = true` on the host and `allow_power_off = true` in its `agent.toml`, the portal
 powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron does it), above
-`min_hosts_up` and as long as the spare capacity stays, or at once with `sre-web-tool poweroff`.
+`min_hosts_up` and as long as the spare capacity stays, the host with the highest `priority`
+first and then the one idle for the longest time, or at once with `sre-web-tool poweroff`.
 
 **Pre-loading the images.** A project whose Docker images are not on its host yet waits for
 their download at its start, and a room of workstations pulling them at the same time takes the
@@ -1343,10 +1372,11 @@ portal through its administration API (`[admin] token`, loopback only by default
 ```
 sre-web-tool list                 # one line per host: state, projects/max, load, terminals, occupied by, uptime
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
-sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only]
+sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
 sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
 sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powered off once the last project is closed
+sre-web-tool priority a03 -1      # the lowest priority is woken first and gets a project first among the hosts without project
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 sre-web-tool preload a03 | --all | --failed   # the hosts pull the Docker images of the labs, max_preloads of them at a time
 ```
@@ -1366,14 +1396,19 @@ portal leaves the pool as it was:
 | the hosts added and removed by hand | `added` (the whole entry, its token included: the file is `0600`), `removed` |
 | a host enabled or disabled by hand | `enabled` / `disabled`: the hosts whose flag differs from the `enabled` of their `[[hosts]]` entry, in both directions (a host of `DISABLED_ROOMS` enabled for a class stays enabled) |
 | a drain | `drain`, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped |
+| a priority set by hand | `priority`: per host, the `value` set and the `configured` one, the `priority` of its `[[hosts]]` entry at that time, for the hosts where the two differ |
 | a wake in progress, the pause after failed wakes or after a power off, a power off or a restart sent | `clocks` (written within one poll and when the portal stops); each is dropped at the start when too old to mean anything |
 
 The file only holds what differs from the configuration, and **an edit of the configuration
 wins**: a flag set by hand holds for as long as the `enabled` of that host in `web.toml` is what
 it was then. Once the file says the same (the room taken out of `DISABLED_ROOMS`, for instance)
 the entry is dropped at the next start, and a later edit of `web.toml` is followed again; so is
-the entry of a host that is no longer in the pool (one line of the journal each). The start logs
-`pool state read from …: 0 removed, 0 added, 21 enabled and 1 disabled by hand, 0 draining`.
+the entry of a host that is no longer in the pool (one line of the journal each). A priority
+set by hand follows the same rule: it holds for as long as the `priority` of that host in
+`web.toml` is the one it was set over, and is dropped once `web.toml` gives the host another
+priority (which is then used) or the same one. The start logs
+`pool state read from …: 0 removed, 0 added, 21 enabled and 1 disabled by hand, 0 draining, 12
+priorities set by hand`.
 
 A state file that cannot be written (a read-only directory, a container without its volume) would
 lose all of this at the next restart: the portal says so in its journal at the start and at every
@@ -1614,7 +1649,8 @@ What an instructor gets:
   for a class.
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
-  projects and terminals, its load, who occupies it, its uptime, its flags (reserved for
+  projects and terminals, its load, who occupies it, its uptime, its priority (*Priorities*
+  above: the lowest is used first), its flags (reserved for
   instructors, power, drain, power off sent, restart sent, and where the preload of the Docker
   images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
   the error), the agent's version and its last error, the line
@@ -1635,7 +1671,10 @@ What an instructor gets:
   *Pre-loading the images* above), each acting on every
   selected host its action applies to, one call per host run together (the tooltip says how
   many, the button is disabled when none; *Power off* asks once with the names; the failures
-  come in one message, the selection stays). Adding and removing hosts, and restarting the
+  come in one message, the selection stays). The value of the *Priority* column opens a small
+  dialog to change the priority of that host, and *Priority…* of the bar sets one value on
+  every selected host (a whole room: filter on its letter, tick the header's checkbox); the
+  change applies at once and is kept across the restarts of the portal. Adding and removing hosts, and restarting the
   agents (`restart`, shown as the flag *restart sent* while it lasts), stay with
   `sre-web-tool`. Every action, of a row or of the bar, is an `admin` line of the connection
   log with the instructor's login.

@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import test_web_portal as P   # noqa: E402  (the Harness: a real agent on the fake sre, a portal in front)
 
+from sreweb.portal.accesslog import parse_line   # noqa: E402
+
 SRC = Path(__file__).resolve().parent.parent / 'src'
 ADMIN = 'a' * 32
 TOKEN = P.TOKEN
@@ -350,6 +352,61 @@ class TestInstructorPage:
                 assert (await row_of(h))['state'] == 'disabled'
         run(go())
 
+    def test_priority(self, tmp_path):
+        """The priority of a host: set by an instructor on the Pool page or with the token, told
+        by the row, kept in the state file and across a restart, in the ``admin`` line of the
+        connection log; what is no priority is refused; an edit of the configuration wins."""
+        state = tmp_path / 'state' / 'pool.json'
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL,
+                'access_log': {'file': str(tmp_path / 'access.log'), 'journal': False}}
+        teacher = P.who('prof', groups=P.TEACHERS)
+        bob, prof = {**P.who('bob'), **CSRF}, {**teacher, **CSRF}
+        url = '/api/pool/hosts/a01/priority'
+
+        async def priority_of(h):
+            return (await (await h.client.get('/api/pool', headers=prof)).json())[0]['priority']
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over, host_over={'priority': 2}) as h:
+                assert await priority_of(h) == 2                    # the one of the configuration
+                assert (await h.client.post(url, json={'priority': 1}, headers=bob)).status == 403
+                resp = await h.client.post(url, json={'priority': 1}, headers=teacher)
+                assert resp.status == 403 and 'X-Requested-With' in (await resp.json())['error']
+                resp = await h.client.post(url, json={'priority': -3}, headers=prof)
+                assert resp.status == 200, await resp.text()
+                row = await resp.json()
+                assert row['name'] == 'a01' and row['priority'] == -3 and row['state'] == 'up'
+                assert json.loads(state.read_text())['priority'] == {'a01': {'value': -3, 'configured': 2}}
+                for body in ({'priority': '1'}, {'priority': True}, {'priority': 1.5}, {'priority': 10000},
+                             {'priority': -10000}, {'priority': None}, {}, [1], 4):
+                    resp = await h.client.post(url, json=body, headers=prof)
+                    assert resp.status == 400, body
+                    assert 'priority must be an integer from -9999 to 9999' in (await resp.json())['error'], body
+                resp = await h.client.post(url, data=b'seven', headers=prof)
+                assert resp.status == 400 and 'JSON body' in (await resp.json())['error']
+                resp = await h.client.post('/api/pool/hosts/nope/priority', json={'priority': 1}, headers=prof)
+                assert resp.status == 404
+                assert await priority_of(h) == -3                   # the refused calls changed nothing
+                # the token (sre-web-tool priority); the limits are priorities
+                resp = await h.client.post(url, json={'priority': 9999}, headers=auth(ADMIN))
+                assert resp.status == 200 and (await resp.json())['priority'] == 9999
+                resp = await h.client.post(url, json={'priority': 7}, headers=auth(ADMIN))
+                assert resp.status == 200 and (await resp.json())['priority'] == 7
+            async with P.Harness(tmp_path / 'again', auth_mode='proxy', web_over=over, host_over={'priority': 2}) as h:
+                assert await priority_of(h) == 7
+                assert h.portal.pool.runtime['a01'].priority == 7 and h.portal.pool.hosts['a01'].priority == 2
+            # the configuration gives the host another priority: it is followed, nothing by hand is left
+            async with P.Harness(tmp_path / 'edited', auth_mode='proxy', web_over=over, host_over={'priority': 4}) as h:
+                assert await priority_of(h) == 4
+                assert json.loads(state.read_text())['priority'] == {}
+            lines = [parse_line(l) for l in (tmp_path / 'access.log').read_text().splitlines()]
+            asked = [(l['login'], l['priority'], l['status']) for l in lines
+                     if l['event'] == 'admin' and 'priority' in l]
+            assert asked == [('prof', '-3', '200'), ('', '9999', '200'), ('', '7', '200')]
+            refused = [l for l in lines if l['event'] == 'admin' and l['path'] == url and l['status'] == '400']
+            assert len(refused) == 10 and all('priority' not in l for l in refused)
+        run(go())
+
     def test_bulk_actions(self, tmp_path):
         """The bar of the Pool page sends one call per selected host, all at once: the per-host
         route serves them together, each answer being the row of its host, a failure (the wake
@@ -424,6 +481,30 @@ class TestCli:
                 assert [l.split()[:2] for l in r.stdout.splitlines()[1:]] == [['a01', 'up'], ['b02', 'off']]
                 assert 'Cannot connect' in r.stdout.splitlines()[2]     # the last error of the unreachable host
                 assert '(instructors)' in r.stdout.splitlines()[2] and '(instructors)' not in r.stdout.splitlines()[1]
+                # priority: a negative value too, shown by list for the hosts that have one; add --priority
+                assert 'priority' not in r.stdout
+                r = await loop.run_in_executor(None, cli, 'priority', 'a01', '-2')
+                assert r.returncode == 0, r.stderr
+                assert r.stdout.splitlines()[1].split()[:4] == ['a01', 'up', '(priority', '-2)']
+                assert json.loads(state.read_text())['priority'] == {'a01': {'value': -2, 'configured': 0}}
+                r = await loop.run_in_executor(None, lambda: cli('priority', 'b02', '5', '--json'))
+                assert r.returncode == 0 and json.loads(r.stdout)['priority'] == 5
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert '(priority -2)' in r.stdout.splitlines()[1] and '(instructors, priority 5)' in r.stdout.splitlines()[2]
+                r = await loop.run_in_executor(None, cli, 'priority', 'a01', '0')
+                assert r.returncode == 0 and 'priority' not in r.stdout     # the default: not shown
+                r = await loop.run_in_executor(None, cli, 'priority', 'a01', '10000')
+                assert r.returncode == 1 and 'priority must be an integer' in r.stderr and '(400)' in r.stderr
+                r = await loop.run_in_executor(None, cli, 'priority', 'nope', '1')
+                assert r.returncode == 1 and '(404)' in r.stderr
+                r = await loop.run_in_executor(None, cli, 'priority', 'a01', 'high')
+                assert r.returncode == 2 and 'invalid int value' in r.stderr
+                r = await loop.run_in_executor(None, lambda: cli('add', 'c03', '--url', 'http://127.0.0.1:9',
+                                                                 '--token', TOKEN, '--priority', '-4', '--json'))
+                assert r.returncode == 0 and json.loads(r.stdout)['priority'] == -4
+                assert [e['priority'] for e in json.loads(state.read_text())['added']] == [0, -4]
+                r = await loop.run_in_executor(None, cli, 'remove', 'c03')
+                assert r.returncode == 0, r.stderr
                 r = await loop.run_in_executor(None, cli, 'disable', 'b02')
                 assert r.returncode == 0 and r.stdout.splitlines()[1].split()[:2] == ['b02', 'disabled']
                 r = await loop.run_in_executor(None, cli, 'remove', 'b02')
@@ -493,6 +574,10 @@ class TestCli:
             assert _cell({'name': 'd04', 'state': 'up', 'reachable': True, **preload}, 'state') == cell, preload
         assert _cell({'state': 'up', 'drain': True, 'preload': 'pending', 'instructors_only': True}, 'state') == \
             'up (drain, preload queued, instructors)'
+        # the priority, when it is not the default
+        assert _cell({'state': 'up', 'priority': 0}, 'state') == 'up'
+        assert _cell({'state': 'off', 'priority': -3}, 'state') == 'off (priority -3)'
+        assert _cell({'state': 'up', 'instructors_only': True, 'priority': 12}, 'state') == 'up (instructors, priority 12)'
 
     def test_preload_hosts(self, capsys):
         """``preload --all``: every reachable host whose agent knows the preload; ``--failed``:

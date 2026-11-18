@@ -11,7 +11,11 @@
 // ticks the hosts shown) selects hosts for the buttons of the bar above the table, which run the
 // same commands on every selected host the action applies to, one call per host; Preload images
 // is one of them, in the bar only: the selected hosts wait for their turn to pull the images
-// (`sre-web-tool preload`), the portal letting a few of them download at a time.
+// (`sre-web-tool preload`), the portal letting a few of them download at a time.  The Priority
+// column is the priority of the host (the lowest one is woken first and gets a project first among
+// the hosts without project, the highest one is powered off first when idle; `sre-web-tool
+// priority`): its value opens a dialog to change it, and Priority… of the bar sets one value on
+// every selected host (POST /api/pool/hosts/{name}/priority with {priority}).
 
 import './base.js';
 import * as api from './api.js';
@@ -23,6 +27,7 @@ const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
 const STATE_ORDER = ['up', 'occupied', 'exam', 'draining', 'waking', 'off', 'disabled'];   // the sort of the State column
 const NUMERIC = ['projects', 'terminals', 'load1', 'uptime'];   // sorted descending first
+const PRIORITY_LIMIT = 9999;   // a priority: an integer from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
 
 const table = document.getElementById('pool');
 const body = table.querySelector('tbody');
@@ -129,6 +134,11 @@ function errorText(row) {
   return text.length <= ERROR_WIDTH ? text : text.slice(0, ERROR_WIDTH - 1) + '…';
 }
 
+// the priority of a host (0 for an older portal, which says nothing)
+function priorityOf(row) {
+  return Number(row.priority) || 0;
+}
+
 // the value a column sorts on
 function sortValue(row, key) {
   switch (key) {
@@ -141,6 +151,7 @@ function sortValue(row, key) {
     case 'load1': return isNumber(row.load1) ? row.load1 : -1;
     case 'uptime': return isNumber(row.uptime) ? row.uptime : -1;
     case 'occupied_by': return (row.occupied_by || []).join(',');
+    case 'priority': return priorityOf(row);
     default: return row[key] || '';
   }
 }
@@ -225,21 +236,80 @@ function powerOffQuestion(names) {
                 {name: names.join(', ')});
 }
 
-// one call of the route; the answer (the updated row) replaces the row at once
-async function postAction(row, action) {
-  const updated = await api.post(`/api/pool/hosts/${encodeURIComponent(row.name)}/${action}`);
+// one call of the route (body: what the action takes, the priority alone has one); the answer
+// (the updated row) replaces the row at once
+async function postAction(row, action, body) {
+  const updated = await api.post(`/api/pool/hosts/${encodeURIComponent(row.name)}/${action}`, body);
   if (updated && updated.name) {
     state.rows = state.rows.map((r) => (r.name === updated.name ? updated : r));
   }
 }
 
+// the dialog asking for a priority: a modal outside the table, whose rows are built anew at
+// every poll (an input in a cell would lose its focus and what is typed).  Resolves with the
+// integer, or null when the dialog is cancelled; value: the number shown first ('' for none).
+function priorityDialog(title, value) {
+  return new Promise((resolve) => {
+    let result = null;
+    const input = el('input', {type: 'number', name: 'priority', required: true, step: '1',
+                               min: String(-PRIORITY_LIMIT), max: String(PRIORITY_LIMIT), value: String(value)});
+    const cancel = el('button', {type: 'button'}, _('Cancel'));
+    const save = el('button', {type: 'submit', class: 'primary'}, _('Save'));
+    const form = el('form', {},
+      el('label', {}, _('Priority'), input),
+      el('p', {class: 'muted'},
+         _('The host with the lowest priority is woken first and gets a project first among the hosts without project; the one with the highest is powered off first when idle. 0 by default; a negative number comes before.')),
+      el('div', {class: 'buttons'}, cancel, el('span', {class: 'spacer'}), save));
+    const dialog = el('dialog', {class: 'modal pool-priority'}, el('h2', {}, title), form);
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', (event) => {    // the browser checked the field: a whole number in the range
+      event.preventDefault();
+      const number = Number(input.value);
+      if (input.value.trim() === '' || !Number.isInteger(number) || Math.abs(number) > PRIORITY_LIMIT) {
+        return;
+      }
+      result = number;
+      dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(result);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    input.focus();
+    input.select();
+  });
+}
+
+// the priority of one host, asked in the dialog (the row is read again afterwards: the pool was
+// polled meanwhile, the host may be gone or have got that priority)
+async function editPriority(name) {
+  const before = state.rows.find((row) => row.name === name);
+  if (!before) {
+    return;
+  }
+  const value = await priorityDialog(format(_('Priority of {name}'), {name}), priorityOf(before));
+  const row = state.rows.find((r) => r.name === name);
+  if (value === null || !row || pending.has(name) || value === priorityOf(row)) {
+    return;
+  }
+  await act(row, 'priority', {priority: value});
+}
+
+// the priority the hosts share, '' when they do not have the same: what the dialog of the bar shows first
+function commonPriority(rows) {
+  const values = new Set(rows.map(priorityOf));
+  return values.size === 1 ? priorityOf(rows[0]) : '';
+}
+
 // one action on a host: the row's buttons disabled meanwhile, the answer (the updated row) shown
 // at once, then a refresh (the status line changes too)
-async function act(row, action) {
+async function act(row, action, body) {
   pending.set(row.name, action);
   render();
   try {
-    await postAction(row, action);
+    await postAction(row, action, body);
   } catch (e) {
     toast(e.message, {error: true});
   } finally {
@@ -256,14 +326,26 @@ function targets(action) {
 
 // one action on every selected host it applies to: one call per host, run together (one admin
 // line of the connection log each), the rows' buttons disabled meanwhile, every answer shown at
-// once, the failures in one message, then a refresh; the selection is kept
+// once, the failures in one message, then a refresh; the selection is kept.  The priority is
+// asked first, in its dialog: one value for all of them (the targets are taken again afterwards,
+// the pool was polled meanwhile).
 async function actMany(action) {
-  const rows = targets(action);
+  let rows = targets(action);
   if (!rows.length) {
     return;
   }
   if (action === 'poweroff' && !window.confirm(powerOffQuestion(rows.map((row) => row.name)))) {
     return;
+  }
+  let body;
+  if (action === 'priority') {
+    const value = await priorityDialog(format(_('Priority of the {n} selected host(s)'), {n: rows.length}),
+                                       commonPriority(rows));
+    rows = targets(action);
+    if (value === null || !rows.length) {
+      return;
+    }
+    body = {priority: value};
   }
   for (const row of rows) {
     pending.set(row.name, action);
@@ -272,7 +354,7 @@ async function actMany(action) {
   const failures = new Map();
   await Promise.all(rows.map(async (row) => {
     try {
-      await postAction(row, action);
+      await postAction(row, action, body);
     } catch (e) {
       failures.set(row.name, e.message);
     } finally {
@@ -320,6 +402,16 @@ function actions(row) {
     actionButton(row, 'poweroff', _('Power off'),
                  {tone: 'danger', reason: actionReason(row, 'poweroff'), confirm: powerOffQuestion([row.name])}),
   ];
+}
+
+// the Priority cell: the value is a button opening the dialog that changes it (disabled while an
+// action runs on the host, like the buttons of the row)
+function priorityCell(row) {
+  const button = el('button', {type: 'button', title: _('Change the priority: the lowest one is used first')},
+                    String(priorityOf(row)));
+  button.disabled = pending.has(row.name);
+  button.addEventListener('click', () => editPriority(row.name));
+  return el('td', {class: 'num priority'}, button);
 }
 
 // the checkbox of a row
@@ -431,6 +523,7 @@ function renderRow(row) {
     el('td', {class: 'num'}, isNumber(row.load1) ? row.load1.toFixed(2) : ''),
     el('td', {}, (row.occupied_by || []).join(', ')),
     el('td', {class: 'num'}, uptimeText(row.uptime)),
+    priorityCell(row),
     el('td', {class: 'flags', title: flagsTitle(row)}, flagsText(row)),
     el('td', {}, row.sre_version || ''),
     el('td', {class: 'error', title: row.reachable ? '' : (row.error || '')}, errorText(row)),

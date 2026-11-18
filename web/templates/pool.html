@@ -16,6 +16,7 @@
   <button type="button" data-action="drain" disabled>{{ _("Drain") }}</button>
   <button type="button" data-action="poweroff" disabled class="danger">{{ _("Power off") }}</button>
   <button type="button" data-action="preload" disabled>{{ _("Preload images") }}</button>
+  <button type="button" data-action="priority" disabled>{{ _("Priority…") }}</button>
 </div>
 <table id="pool" class="grid watch pool">
   <thead>
@@ -28,13 +29,14 @@
       <th class="sortable" data-sort="load1">{{ _("Load") }}</th>
       <th class="sortable" data-sort="occupied_by">{{ _("Occupied by") }}</th>
       <th class="sortable" data-sort="uptime">{{ _("Uptime") }}</th>
+      <th class="sortable" data-sort="priority" title="{{ _("The lowest priority is used first") }}">{{ _("Priority") }}</th>
       <th>{{ _("Flags") }}</th>
       <th class="sortable" data-sort="sre_version">{{ _("Version") }}</th>
       <th>{{ _("Last error") }}</th>
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="12" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="13" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/pool.js"></script>{% endblock %}

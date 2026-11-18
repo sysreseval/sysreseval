@@ -29,7 +29,7 @@ def view(name, state, projects=0, max_projects=10, can_wake=True, enabled=True, 
          power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False,
          instructors_only=False, restart_pending=False, **more):
     """*more*: the preload fields (``preload``, ``preload_since``, ``preload_granted``,
-    ``preload_hold``, ``exam_projects``)."""
+    ``preload_hold``, ``exam_projects``), ``held``, ``priority``."""
     return HostView(name=name, state=state, projects=projects, max_projects=max_projects, can_wake=can_wake,
                     enabled=enabled, power=power, power_off_allowed=power_off_allowed, next_wake_at=next_wake_at,
                     idle_for=idle_for, drain=drain, power_off_pending=power_off_pending,
@@ -90,7 +90,52 @@ class TestWakePlan:
         assert wake_plan(hosts, floor, 1000.0, active=True, last_wake_at=0.0) == ['b']   # r is not the floor
 
 
+    def test_lowest_priority_first(self):
+        """The sleeping host with the lowest priority is woken first; equal priorities keep the
+        order of the configuration, and the priority changes nothing to who may be woken."""
+        cfg = PoolConfig(spare_projects=5, min_hosts_up=0)
+        hosts = [view('a', STATE_OFF), view('b', STATE_OFF, priority=-2), view('c', STATE_OFF, priority=3),
+                 view('d', STATE_OFF, priority=-2)]
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['b']       # b and d are equal: b comes first
+        hosts[1].state = STATE_WAKING                                   # 10 slots to come: enough
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == []
+        hosts[1].state = STATE_UP
+        hosts[1].projects = 8
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['d']
+        hosts[3].next_wake_at = 2000.0                                  # d is held after a failed wake
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['a']       # 0, the default, before 3
+        hosts[0].enabled = False
+        assert wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['c']
+        # the floor of the active hours too
+        hosts = [view('a', STATE_OFF, priority=1), view('b', STATE_OFF)]
+        assert wake_plan(hosts, PoolConfig(spare_projects=0, min_hosts_up=1), 1000.0, True, 0.0) == ['b']
+        # a pool without priorities: the order of the configuration, as before
+        assert wake_plan([view('b', STATE_OFF), view('a', STATE_OFF)], cfg, 1000.0, False, 0.0) == ['b']
+
+
 class TestPowerOffPlan:
+    def test_highest_priority_first(self):
+        """Among the hosts idle long enough the one with the highest priority goes first, then
+        the most idle: the hosts left awake are those the placement prefers."""
+        cfg = PoolConfig(idle_host_timeout=600, spare_projects=5, min_hosts_up=1)
+
+        def idle(name, seconds, **more):
+            return view(name, STATE_UP, power=True, power_off_allowed=True, idle_for=seconds, **more)
+        hosts = [idle('a', 900), idle('b', 700, priority=5), idle('c', 800, priority=5), idle('d', 5000, priority=-1)]
+        assert poweroff_plan(hosts, cfg, active=True) == ['c']          # 5 before 0 and -1; c idle longer than b
+        hosts[2].idle_for = 100                                         # c not idle long enough: the next one
+        assert poweroff_plan(hosts, cfg, active=True) == ['b']
+        hosts[1].idle_for = 100
+        assert poweroff_plan(hosts, cfg, active=True) == ['a']          # then the default, d (-1) last
+        hosts[0].idle_for = 100
+        assert poweroff_plan(hosts, cfg, active=True) == ['d']
+        # a drained host still goes first, whatever its priority
+        hosts = [idle('a', 900, priority=5), view('z', STATE_DRAINING, power=True, power_off_allowed=True, drain=True,
+                                                  priority=-5)]
+        assert poweroff_plan(hosts, cfg, active=True) == ['z']
+        # a pool without priorities: the most idle, as before
+        assert poweroff_plan([idle('a', 700), idle('b', 900)], cfg, active=True) == ['b']
+
     def test_drained_host_first(self):
         cfg = PoolConfig(idle_host_timeout=0)   # never for idleness
         hosts = [view('a', STATE_DRAINING, projects=0, power=True, power_off_allowed=True, drain=True),
@@ -362,6 +407,41 @@ class TestStates:
         assert rows['b']['state'] == STATE_OCCUPIED and rows['b']['occupied_by'] == ['session:bob']
         assert rows['d']['drain'] is True and rows['e']['enabled'] is False and 'token' not in rows['a']
 
+    def test_pick_priority_among_the_hosts_without_project(self):
+        """The lowest priority decides between the hosts without project; a loaded host is
+        still chosen on its load alone, and the user's own session comes before everything."""
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc'] + [HostConfig('d', 'http://d', TOKEN, 10, priority=-1)]
+        pool = Pool(hosts, session=None)
+        assert [pool.runtime[n].priority for n in 'abcd'] == [0, 0, 0, -1]      # those of the configuration
+        for name in 'abcd':
+            pool.status[name] = HostStatus(reachable=True, load1=1.0)
+        pool.status['d'].load1 = 9.0                 # the priority comes before the load
+        assert pool.pick()[0].name == 'd'
+        assert pool.pick()[0].name == 'a'            # d has a start in flight: the others, by name
+        pool.set_priority('c', -5)
+        pool.set_priority('b', 7)
+        assert pool.pick()[0].name == 'c' and pool.pick()[0].name == 'b'      # b, the last one without project
+        assert {row['name']: row['priority'] for row in pool.summary()} == {'a': 0, 'b': 7, 'c': -5, 'd': -1}
+        # every host has one project: the load and the name, the priorities play no part
+        pool.status['b'].load1 = 0.5
+        assert pool.pick()[0].name == 'b'
+        assert [pool.pick()[0].name for _ in range(3)] == ['a', 'c', 'd']
+        # an empty host that cannot be used is not waited for: the least loaded of the others
+        pool.status['c'].projects = 0
+        pool.runtime['c'].drain = True
+        assert pool.pick()[0].name == 'b'
+        # the host of a local session of the user first, whatever its priority and its load
+        pool.runtime['c'].drain = False
+        pool.status['a'] = HostStatus(reachable=True, projects=6, occupied=True, occupied_by=['session:bob'])
+        pool.set_priority('a', 50)
+        host, reservation = pool.pick(Identity(login='bob'))
+        assert host.name == 'a' and reservation.placement == PLACEMENT_SESSION
+        host, reservation = pool.pick(Identity(login='alice'))
+        assert host.name == 'c' and reservation.placement == PLACEMENT_LOAD
+        with pytest.raises(PoolError) as e:
+            pool.set_priority('nope', 1)
+        assert e.value.status == 404
+
     def test_pick_reserved_host(self):
         """A host reserved for instructors: never a student's, an instructor's by the automatic
         rule or by name; a shared host may be named too."""
@@ -473,6 +553,27 @@ class TestStates:
 
 
 class TestManager:
+    def test_the_lowest_priority_is_woken_first(self):
+        """The policy reads the priorities of the pool, those set by hand included."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10, mac='0a:00:00:00:00:01'),
+                 HostConfig('b', 'http://b', TOKEN, 10, mac='0a:00:00:00:00:02', priority=-1),
+                 HostConfig('c', 'http://c', TOKEN, 10, mac='0a:00:00:00:00:03')]
+        session = FakeSession()
+        pool = Pool(hosts, session, wake_timeout=100.0)
+        sent = []
+        mgr = PoolManager(pool, PoolConfig(spare_projects=15, min_hosts_up=0, active_hours='', wake_interval=0),
+                          wol=lambda mac, broadcast: sent.append(mac))
+
+        async def go():
+            await pool.refresh()
+            pool.set_priority('c', -7)
+            assert {v.name: v.priority for v in mgr.views(time.monotonic())} == {'a': 0, 'b': -1, 'c': -7}
+            await mgr.tick()
+            assert sent == ['0a:00:00:00:00:03'] and pool.state_of('c') == STATE_WAKING       # c, -7
+            await mgr.tick()                                    # 10 slots to come, 15 wanted: b, -1, before a
+            assert sent[1:] == ['0a:00:00:00:00:02'] and pool.state_of('a') == STATE_OFF
+        run(go())
+
     def test_wake_command_wol_and_backoff(self, tmp_path):
         wakes = tmp_path / 'wakes'
         hosts = [HostConfig('a', 'http://a', TOKEN, 10, mac='aa:bb:cc:dd:ee:ff',

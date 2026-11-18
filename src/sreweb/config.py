@@ -165,8 +165,10 @@ AUTH_MODES = (AUTH_ANONYMOUS, AUTH_LDAP, AUTH_PROXY)
 class HostConfig:
     """A host of the pool: the URL of its agent and the token of that agent; how to wake it
     (a MAC address for a Wake-on-LAN packet, or a command with ``{name}`` / ``{mac}``),
-    whether the portal may power it off, and whether it is reserved for the instructors'
-    projects (``instructors_only``: never a student's project, outside the elastic pool)."""
+    whether the portal may power it off, whether it is reserved for the instructors'
+    projects (``instructors_only``: never a student's project, outside the elastic pool), and
+    its ``priority``: the lowest one is woken first and gets a project first among the hosts
+    without project (the highest one is powered off first when idle)."""
     name: str
     url: str
     token: str
@@ -176,10 +178,22 @@ class HostConfig:
     power: bool = False
     enabled: bool = True              # placement allowed (``sre-web-tool disable`` flips it)
     instructors_only: bool = False    # only the instructors' projects are placed there (chosen on their Open page)
+    priority: int = 0                 # the lowest is used first (the Pool page, ``sre-web-tool priority`` change it)
 
     @property
     def can_wake(self) -> bool:
         return bool(self.mac or self.wake_command)
+
+
+PRIORITY_LIMIT = 9999      # the priority of a host: an integer from -PRIORITY_LIMIT to PRIORITY_LIMIT
+
+
+def check_priority(value, where: str) -> int:
+    """The priority of a pool host (``[[hosts]] priority``, the Pool page, ``sre-web-tool``, the
+    state file of the pool), checked."""
+    if isinstance(value, bool) or not isinstance(value, int) or abs(value) > PRIORITY_LIMIT:
+        raise ConfigError(f"{where} must be an integer from -{PRIORITY_LIMIT} to {PRIORITY_LIMIT}")
+    return value
 
 
 _ATTRIBUTE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9;-]*$')
@@ -793,6 +807,7 @@ def host_config_from_dict(h: dict, where: str) -> HostConfig:
     for key in ('power', 'enabled', 'instructors_only'):
         if not isinstance(getattr(host, key), bool):
             raise ConfigError(f"{where}.{key} must be true or false")
+    check_priority(host.priority, f"{where}.priority")
     return host
 
 

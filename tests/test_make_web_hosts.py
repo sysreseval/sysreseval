@@ -1,6 +1,7 @@
 """scripts/make-web-hosts.sh, run for real (bash + openssl) on a small machine list in a temporary
 directory: the selection by REGEXP / ROOMS and the order of the entries, the disabled and the
-reserved hosts (DISABLED_ROOMS, INSTRUCTOR_ROOMS, INSTRUCTOR_MACHINES), the TLS material and its
+reserved hosts (DISABLED_ROOMS, INSTRUCTOR_ROOMS, INSTRUCTOR_MACHINES), the priorities of the rooms
+(ROOM_PRIORITIES), the TLS material and its
 SANs, the tokens, hosts.toml and agent-<name>.toml loaded by sreweb.config, the plain rerun against
 --keep, the change report of a second run, an existing CA, the errors."""
 import os
@@ -170,6 +171,36 @@ class TestSelection:
         assert '# ca = "/srv/tls/ca.crt"' in header
         assert '5 hosts (2 disabled at start, 3 instructors only)' in result.stdout
 
+    def test_room_priorities(self, site):
+        """ROOM_PRIORITIES: ``priority = N`` for the hosts of the rooms it names (any case), the
+        default 0 left out; the file loads in the portal's configuration; a room that is not in
+        ROOMS is reported; a second run reports the priorities that changed."""
+        result = site.run(env={'ROOM_PRIORITIES': 'H=-1 s=5 a=0 z=3', 'TLS_DIR_ON_HOSTS': str(site.out)})
+        hosts = site.hosts()
+        assert [h.get('priority') for h in hosts.values()] == [None, None, -1, -1, 5]
+        assert "the room 'z' of ROOM_PRIORITIES is not in ROOMS (a h s)" in result.stderr
+        text = (site.out / 'hosts.toml').read_text()
+        assert 'room priorities: h=-1 s=5 a=0 z=3.' in text.split('\n[[hosts]]')[0]
+        assert text.count('priority = ') == 3 and 'priority = 0' not in text
+        pool = f'[pool]\nca = "{site.out}/ca.crt"\nclient_cert = "{site.out}/portal.crt"\nclient_key = "{site.out}/portal.key"'
+        (site.out / 'web.toml').write_text(f'secret = "{"s" * 32}"\nimport = ["hosts.toml"]\n{pool}\n')
+        web = load_web_config(site.out / 'web.toml')
+        assert [(h.name, h.priority) for h in web.hosts] == [('a01', 0), ('a02', 0), ('h01', -1), ('h0', -1), ('S0', 5)]
+        # other priorities: what changed is reported per host, hosts.toml alone is to deploy
+        result = site.run('--keep', env={'ROOM_PRIORITIES': 'a=2 h=-1', 'TLS_DIR_ON_HOSTS': str(site.out)})
+        lines = result.stdout.splitlines()
+        assert 'make-web-hosts: a01: hosts.toml: priority 0 -> 2' in lines
+        assert 'make-web-hosts: S0: hosts.toml: priority 5 -> 0' in lines
+        assert not any(line.startswith('make-web-hosts: h01:') for line in lines)
+        assert lines[-1] == ('make-web-hosts: hosts.toml rewritten (3 entries changed), to deploy on the portal; '
+                             'no agent-<name>.toml changed')
+        assert [h.get('priority') for h in site.hosts().values()] == [2, 2, -1, -1, None]
+        # a hosts.toml of before the priorities (no key): nothing to report
+        result = site.run('--keep', env={'TLS_DIR_ON_HOSTS': str(site.out)})
+        assert 'priority' not in (site.out / 'hosts.toml').read_text()
+        result = site.run('--keep', env={'TLS_DIR_ON_HOSTS': str(site.out)})
+        assert result.stdout.splitlines()[-1] == 'make-web-hosts: hosts.toml unchanged; no agent-<name>.toml changed'
+
     def test_names_not_selected_are_reported(self, site):
         result = site.run(env={'ROOMS': 'a', 'DISABLED_ROOMS': 'h', 'INSTRUCTOR_ROOMS': 's', 'INSTRUCTOR_MACHINES': 's0 a02 nope'})
         assert "disabled room 'h' is not in ROOMS (a)" in result.stderr
@@ -310,6 +341,12 @@ class TestErrors:
         ({'REGEXP': '^[a-z][0-9]+$'}, [], "ROOMS is 'a h s' but REGEXP '^[a-z][0-9]+$' has no (...) group"),
         ({'REGEXP': '^zz'}, [], "no machine of"),
         ({'ROOMS': 'z'}, [], "none of the 5 machines matching REGEXP '^([a-z])[0-9]+$' is in the rooms 'z'"),
+        ({'ROOM_PRIORITIES': 'a'}, [], "ROOM_PRIORITIES: 'a' is not <room>=<integer from -9999 to 9999>"),
+        ({'ROOM_PRIORITIES': 'a=1 h=high'}, [], "ROOM_PRIORITIES: 'h=high' is not <room>=<integer"),
+        ({'ROOM_PRIORITIES': 'a=10000'}, [], "ROOM_PRIORITIES: 'a=10000' is not <room>=<integer"),
+        ({'ROOM_PRIORITIES': 'a=01'}, [], "ROOM_PRIORITIES: 'a=01' is not <room>=<integer"),
+        ({'ROOM_PRIORITIES': 'a=1.5'}, [], "ROOM_PRIORITIES: 'a=1.5' is not <room>=<integer"),
+        ({'ROOM_PRIORITIES': 'a=1 h=2 A=3'}, [], "ROOM_PRIORITIES: the room 'a' is given twice"),
     ])
     def test_variables(self, site, env, unset, message):
         result = site.run(env=env, unset=unset, check=False)

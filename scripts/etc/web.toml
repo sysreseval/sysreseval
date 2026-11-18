@@ -175,9 +175,10 @@ max_preloads = 2
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted
 # from the loopback only unless listen_any = true.
 token = "change-me-to-another-long-random-string"
-# What is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), merged
+# What is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained, their
+# priorities), merged
 # with [[hosts]] at startup so that a restart of the portal leaves the pool as it was; an edit of
-# the `enabled` of a host below wins over an older change made by hand
+# the `enabled` or of the `priority` of a host below wins over an older change made by hand
 # (default: /var/lib/sre-web/pool.json when that directory exists, else pool.json next to this file;
 # the sre-web user must be able to write there: in a container, mount /var/lib/sre-web).
 # state_file = "/var/lib/sre-web/pool.json"
@@ -320,7 +321,11 @@ max_answer_bytes = 1048576
 # instructors_only = true reserves a host for the instructors' projects: never a student's, they
 # choose it on their Open page; it is outside the elastic pool (no spare capacity, no floor, never
 # woken by the portal; powered off when idle like the others).
-# `sre-web-tool add / remove / enable / disable` change the pool without a restart.
+# priority (an integer from -9999 to 9999, 0 by default) says which hosts are used first: the one
+# with the lowest priority is woken first and gets a project first among the hosts without
+# project, the one with the highest is powered off first when idle; the instructors change it on
+# the Pool page.
+# `sre-web-tool add / remove / enable / disable / priority` change the pool without a restart.
 [[hosts]]
 name = "a01"
 url = "https://10.0.0.11:8451"       # http:// without TLS on the agent
@@ -337,3 +342,4 @@ max_projects = 25
 # wake_command = "ssh relay wakeonlan {mac}"
 # enabled = false                    # kept in the pool, no project placed there
 # instructors_only = true            # never a student's project; the instructors choose it on the Open page
+# priority = 5                       # used after the hosts left at 0 (a negative one: before them)

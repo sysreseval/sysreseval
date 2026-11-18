@@ -3,9 +3,10 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
 
   sre-web-tool list                 the hosts, their state, projects, load, terminals...
   sre-web-tool status               the spare capacity, the floor, the active hours, who is waking, the state file
-  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only]
+  sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only] [--priority N]
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
+  sre-web-tool priority NAME VALUE  the lowest priority is woken first and gets a project first among the empty hosts
   sre-web-tool restart NAME | --all [--wait] [--timeout S]   the agents restart themselves (new code after an update)
   sre-web-tool preload NAME | --all | --failed   the hosts pull the Docker images of the labs, a few at a time
 """
@@ -106,6 +107,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append('preload failed')
         if row.get('instructors_only'):
             extra.append('instructors')
+        if row.get('priority'):                         # not the default 0: the lowest is used first
+            extra.append(f"priority {row['priority']}")
         return value + (f" ({', '.join(extra)})" if extra else '')
     if key == 'error':
         text = '' if row.get('reachable') else (value or '')
@@ -239,6 +242,7 @@ def main(argv, default_config: str) -> int:
     add.add_argument('--max-projects', type=int, default=25)
     add.add_argument('--power', action='store_true', help="the portal may power it off")
     add.add_argument('--instructors-only', action='store_true', help="only the instructors' projects are placed there")
+    add.add_argument('--priority', type=int, default=0, help="the lowest priority is used first (default: %(default)s)")
     remove = sub.add_parser('remove', help="remove a host", parents=[common])
     remove.add_argument('name')
     remove.add_argument('--force', action='store_true', help="even with projects (they stay on the host)")
@@ -246,6 +250,10 @@ def main(argv, default_config: str) -> int:
                          ('wake', "wake the host now"), ('poweroff', "power the host off now (refused with projects)"),
                          ('drain', "no new project, power off when empty")):
         sub.add_parser(action, help=text, parents=[common]).add_argument('name')
+    priority = sub.add_parser('priority', help="set the priority of the host: the lowest one is woken first and gets a "
+                                               "project first among the hosts without project", parents=[common])
+    priority.add_argument('name')
+    priority.add_argument('value', type=int, help="an integer, 0 by default (negative: before the others)")
     restart = sub.add_parser('restart', help="the agent of a host restarts itself (new code after an update; "
                                              "the projects stay, the open terminals are lost)", parents=[common])
     restart.add_argument('name', nargs='?', help="the host (or --all)")
@@ -312,8 +320,11 @@ def _dispatch(client: PoolClient, args) -> int:
     elif args.command == 'add':
         body = {'name': args.name, 'url': args.host_url, 'token': args.host_token, 'max_projects': args.max_projects,
                 'mac': args.mac, 'wake_command': args.wake_command, 'power': args.power,
-                'instructors_only': args.instructors_only}
+                'instructors_only': args.instructors_only, 'priority': args.priority}
         row = client.call('POST', '/api/pool/hosts', body)
+        print(json.dumps(row, indent=2) if args.json else table([row]))
+    elif args.command == 'priority':
+        row = client.call('POST', f"/api/pool/hosts/{args.name}/priority", {'priority': args.value})
         print(json.dumps(row, indent=2) if args.json else table([row]))
     elif args.command == 'remove':
         client.call('DELETE', f"/api/pool/hosts/{args.name}" + ('?force=1' if args.force else ''))

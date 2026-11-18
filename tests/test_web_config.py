@@ -104,6 +104,11 @@ class TestWebConfig:
         ({'secret': SECRET, 'hosts': [dict(HOST, instructors_only='yes')]}, 'instructors_only'),
         ({'secret': SECRET, 'hosts': [dict(HOST, power=1)]}, 'power'),
         ({'secret': SECRET, 'hosts': [dict(HOST, enabled='no')]}, 'enabled'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority='1')]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=True)]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=1.5)]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=10000)]}, 'priority'),
+        ({'secret': SECRET, 'hosts': [dict(HOST, priority=-10000)]}, 'priority'),
         ({'secret': SECRET, 'hosts': [HOST], 'tls_cert': '/c.pem'}, 'tls'),
         ({'secret': SECRET, 'hosts': [HOST], 'listen': 'nowhere'}, 'listen'),
         ({'secret': SECRET, 'hosts': 'a01'}, 'hosts'),
@@ -410,12 +415,14 @@ class TestWebConfig:
         cfg = web_config_from_dict({'secret': SECRET, 'hosts': [
             dict(HOST, mac='AA-BB-CC-DD-EE-01', power=True),
             dict(HOST, name='b', wake_command='ipmitool -H {name} power on'),
-            dict(HOST, name='c', enabled=False), dict(HOST, name='d', instructors_only=True)]})
-        a, b, c, d = cfg.hosts
+            dict(HOST, name='c', enabled=False), dict(HOST, name='d', instructors_only=True),
+            dict(HOST, name='e', priority=-3), dict(HOST, name='f', priority=9999)]})
+        a, b, c, d, e, f = cfg.hosts
         assert a.mac == 'aa:bb:cc:dd:ee:01' and a.power and a.can_wake and a.enabled and not a.instructors_only
         assert b.wake_command.startswith('ipmitool') and b.can_wake and not b.power
         assert not c.enabled and not c.can_wake
         assert d.instructors_only and d.enabled
+        assert [h.priority for h in cfg.hosts] == [0, 0, 0, 0, -3, 9999]      # 0 when the key is left out
         with pytest.raises(ConfigError, match='MAC'):
             web_config_from_dict({'secret': SECRET, 'hosts': [dict(HOST, mac='zz')]})
         with pytest.raises(ConfigError, match='host name'):

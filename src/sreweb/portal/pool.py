@@ -1,6 +1,6 @@
 """The pool of hosts: the status of their agents, the state of each host, the placement of a
 new project, the fan-out of the project lists, and what is changed by hand
-(``sre-web-tool add / remove / enable / disable / drain``, the Pool page), kept in a state file
+(``sre-web-tool add / remove / enable / disable / drain / priority``, the Pool page), kept in a state file
 merged with the ``[[hosts]]`` of the configuration so that a restart of the portal changes
 nothing."""
 import asyncio
@@ -16,7 +16,7 @@ import aiohttp
 from ..agent.occupancy import SESSION_PREFIX
 from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
                             LAB_README_KEY)
-from ..config import HostConfig, host_config_from_dict, ConfigError
+from ..config import HostConfig, host_config_from_dict, check_priority, ConfigError
 from ..identity import Identity
 
 log = logging.getLogger('sreweb.portal')
@@ -37,10 +37,13 @@ SOURCE_CONFIG = 'config'
 SOURCE_ADDED = 'added'
 #: The state file (``[admin] state_file``), version 2.  ``enabled`` / ``disabled``: the hosts
 #: whose flag was set by hand and differs from their ``enabled`` of the configuration (of their
-#: ``added`` entry for an added host); ``drain``: host -> when it was asked; ``clocks``: per
+#: ``added`` entry for an added host); ``drain``: host -> when it was asked; ``priority``: host
+#: -> the priority set by hand (``value``) and the one of the configuration it was set over
+#: (``configured``), for the hosts where they differ; ``clocks``: per
 #: host, the wake in progress, the hold after failed wakes or a power off, the power off and
 #: the restart sent.  Every time is a wall-clock one (the runtime keeps monotonic ones).  A
-#: version 1 file had ``removed``, ``added`` and every disabled host in ``disabled``.
+#: version 1 file had ``removed``, ``added`` and every disabled host in ``disabled``; a version
+#: 2 file written before the priorities has no ``priority`` key.
 STATE_VERSION = 2
 KEY_VERSION = 'version'
 KEY_SAVED_AT = 'saved_at'
@@ -49,6 +52,9 @@ KEY_ADDED = 'added'
 KEY_ENABLED = 'enabled'
 KEY_DISABLED = 'disabled'
 KEY_DRAIN = 'drain'
+KEY_PRIORITY = 'priority'
+PRIORITY_VALUE = 'value'
+PRIORITY_CONFIGURED = 'configured'
 KEY_CLOCKS = 'clocks'
 CLOCK_WOKEN_AT = 'woken_at'
 CLOCK_NEXT_WAKE_AT = 'next_wake_at'
@@ -254,6 +260,7 @@ class HostRuntime:
     """What the portal remembers about a host between polls."""
     source: str = SOURCE_CONFIG
     enabled: bool = True
+    priority: int = 0                  # the one of the configuration until it is set by hand (``set_priority``)
     woken_at: float | None = None      # monotonic time of the last wake, None when not waking
     wake_failures: int = 0
     next_wake_at: float = 0.0          # backoff after failed wakes
@@ -320,7 +327,7 @@ class Pool:
     def _register(self, host: HostConfig, source: str):
         self.hosts[host.name] = host
         self.status[host.name] = HostStatus()
-        self.runtime[host.name] = HostRuntime(source=source, enabled=host.enabled)
+        self.runtime[host.name] = HostRuntime(source=source, enabled=host.enabled, priority=host.priority)
         self._reservations[host.name] = []
         self._reported.pop(host.name, None)
 
@@ -381,6 +388,15 @@ class Pool:
             runtime.drain_at = round(time.time(), 3) if drain else 0.0
             self.save_state()
 
+    def set_priority(self, name: str, priority: int):
+        """``priority``: the host with the lowest one is woken first and takes a project first
+        among the hosts without project; the one with the highest is powered off first when
+        idle (``pick``, ``manager.wake_plan`` / ``poweroff_plan``)."""
+        self.host(name)
+        self.runtime[name].priority = priority
+        self.save_state()
+        log.info("host %s: priority %d", name, priority)
+
     # -- the state file -------------------------------------------------------------------------
 
     def _forget(self, name: str):
@@ -390,13 +406,16 @@ class Pool:
 
     def _settings(self) -> dict:
         """What was set by hand, as the state file keeps it: the membership, the ``enabled``
-        flags differing from the configuration and the drains."""
+        flags and the priorities differing from the configuration (a priority with the one of
+        the configuration it was set over) and the drains."""
         return {
             KEY_REMOVED: sorted(self._removed),
             KEY_ADDED: [asdict(self.hosts[n]) for n, r in self.runtime.items() if r.source == SOURCE_ADDED],
             KEY_ENABLED: sorted(n for n, r in self.runtime.items() if r.enabled and not self.hosts[n].enabled),
             KEY_DISABLED: sorted(n for n, r in self.runtime.items() if not r.enabled and self.hosts[n].enabled),
             KEY_DRAIN: {n: r.drain_at for n, r in sorted(self.runtime.items()) if r.drain},
+            KEY_PRIORITY: {n: {PRIORITY_VALUE: r.priority, PRIORITY_CONFIGURED: self.hosts[n].priority}
+                           for n, r in sorted(self.runtime.items()) if r.priority != self.hosts[n].priority},
         }
 
     def _clocks(self) -> dict:
@@ -426,7 +445,7 @@ class Pool:
         """What the state file depends on in the runtime of the hosts: ``refresh`` writes the
         file when it changed otherwise than by the calls saving it themselves (a drain over,
         a wake, a power off or a restart sent by the manager)."""
-        return tuple((name, rt.enabled, rt.drain, rt.woken_at, rt.next_wake_at, rt.wake_failures,
+        return tuple((name, rt.enabled, rt.drain, rt.priority, rt.woken_at, rt.next_wake_at, rt.wake_failures,
                       rt.power_off_sent, rt.restart_sent) for name, rt in self.runtime.items())
 
     def state_info(self) -> dict:
@@ -464,7 +483,7 @@ class Pool:
         file holds while the ``enabled`` of the host in the configuration is the one it was set
         against: once the configuration says the same, or the host is gone, the entry is
         dropped (the file is written again at once), so that an edit of the configuration
-        wins over an older change made by hand."""
+        wins over an older change made by hand.  The same for a priority (``_load_priorities``)."""
         if not self.state_file:
             return
         try:
@@ -519,15 +538,44 @@ class Pool:
             runtime = self.runtime.get(name)
             if runtime is not None:
                 runtime.drain, runtime.drain_at = True, _number(asked_at) or 0.0
+        self._load_priorities(state.get(KEY_PRIORITY))
         self._load_clocks(state.get(KEY_CLOCKS))
         settings = self._settings()
-        log.info("pool state read from %s: %d removed, %d added, %d enabled and %d disabled by hand, %d draining",
+        log.info("pool state read from %s: %d removed, %d added, %d enabled and %d disabled by hand, %d draining, "
+                 "%d priorities set by hand",
                  self.state_file, len(settings[KEY_REMOVED]), len(settings[KEY_ADDED]), len(settings[KEY_ENABLED]),
-                 len(settings[KEY_DISABLED]), len(settings[KEY_DRAIN]))
+                 len(settings[KEY_DISABLED]), len(settings[KEY_DRAIN]), len(settings[KEY_PRIORITY]))
         if not current or any(state.get(key) != value for key, value in settings.items()):
             self.save_state()
         else:
             self._check_writable()
+
+    def _load_priorities(self, priorities):
+        """The priorities set by hand, over those of the configuration.  An entry holds while
+        the priority of the host in the configuration is the one it was set over
+        (``configured``): once the configuration gives another one, or the same as the entry,
+        or the host is gone, the entry is dropped — an edit of the configuration wins.  A plain
+        number (written by hand, without the configured value) holds."""
+        for name, entry in (priorities if isinstance(priorities, dict) else {}).items():
+            runtime = self.runtime.get(name)
+            if runtime is None:
+                if name not in self._removed:
+                    log.info("pool state: %s (priority set by hand) is not in the pool any more: forgotten", name)
+                continue
+            value, configured = entry, None
+            if isinstance(entry, dict):
+                value, configured = entry.get(PRIORITY_VALUE), entry.get(PRIORITY_CONFIGURED)
+            try:
+                value = check_priority(value, f"{self.state_file}: the priority of {name}")
+            except ConfigError as e:
+                log.error("%s", e)
+                continue
+            in_config = self.hosts[name].priority
+            if configured is not None and configured != in_config:
+                log.info("pool state: the priority of %s was set by hand to %d over %r and the configuration says "
+                         "%d now: it follows the configuration", name, value, configured, in_config)
+                continue
+            runtime.priority = value
 
     def _load_clocks(self, clocks):
         """The clocks of the state file back as monotonic times, each one only while it still
@@ -752,7 +800,7 @@ class Pool:
             rows.append({
                 'name': h.name, 'url': h.url, 'max_projects': h.max_projects, 'state': self.state_of(h.name, now),
                 'source': rt.source, 'enabled': rt.enabled, 'can_wake': h.can_wake, 'power': h.power,
-                'instructors_only': h.instructors_only,
+                'instructors_only': h.instructors_only, 'priority': rt.priority,
                 'drain': rt.drain, 'power_off_sent': rt.power_off_sent is not None,
                 'restart_sent': rt.restart_sent is not None,
                 'waking_for': round(now - rt.woken_at) if rt.woken_at is not None else None,
@@ -769,7 +817,9 @@ class Pool:
         """The host of a new project and its reservation.  Without *host*: the host of a local
         login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
         occupied by them, whatever its load), else the least loaded (projects / max_projects, then
-        load) of the hosts up (enabled, reachable, not occupied, not in exam mode, not draining);
+        load) of the hosts up (enabled, reachable, not occupied, not in exam mode, not draining),
+        the one with the lowest priority among those without project (``set_priority``; a start
+        in flight counts as a project);
         always below their maximum and among the hosts *identity* may use: a host with
         ``instructors_only`` takes an instructor's project only, and the caller is a student
         without identity.  With *host* (an instructor naming one on the Open page): that host,
@@ -797,14 +847,17 @@ class Pool:
             st = self.status[h.name]
             if not available or st.projects >= h.max_projects:
                 continue
+            # the priority only tells the hosts without project apart: the least loaded host is
+            # one of them whenever there is one, and the loaded hosts are settled as before
             candidates.append((placement != PLACEMENT_SESSION, st.projects / h.max_projects,
+                               self.runtime[h.name].priority if st.projects == 0 else 0,
                                st.load1 if st.load1 is not None else 0.0, h.name, h, placement))
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)
             raise PoolError(503, "no host available for a new project", retry_after=60)
-        candidates.sort(key=lambda c: c[:4])
-        return self._reserve(candidates[0][4], candidates[0][5])
+        candidates.sort(key=lambda c: c[:5])
+        return self._reserve(candidates[0][5], candidates[0][6])
 
     def _available_to(self, h: HostConfig, identity: Identity | None, state: str) -> tuple:
         """Whether a new project of *identity* may go on *h*, in *state*, and what the placement
