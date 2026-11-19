@@ -8,7 +8,9 @@
 // sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
 // Disable, Wake, Drain, Power off: POST /api/pool/hosts/{name}/{action}; add, remove and restart
 // stay with the tool), each disabled with the reason as its tooltip when it does not apply; the
-// answer of an action is the updated row, shown at once.  A checkbox per row (the header's one
+// answer of an action is the updated row, shown at once.  Enable also cancels a drain: the row of
+// a draining host shows it in place of Drain, and the one of the bar applies to it (not once the
+// power off is sent: the host is going down).  A checkbox per row (the header's one
 // ticks the hosts shown) selects hosts for the buttons of the bar above the table, which run the
 // same commands on every selected host the action applies to, one call per host; Preload images
 // is one of them, in the bar only: the selected hosts wait for their turn to pull the images
@@ -202,7 +204,14 @@ function actionReason(row, action) {
   const unreachable = row.reachable ? '' : _('the host is not reachable');
   switch (action) {
     case 'enable':
-      return row.enabled ? _('the host is enabled') : '';
+      if (!row.enabled) {
+        return '';
+      }
+      if (!row.drain) {
+        return _('the host is enabled');
+      }
+      // an enabled host that drains: Enable cancels the drain, unless the host is going down
+      return row.power_off_sent ? _('power off sent') : '';
     case 'disable':
       return row.enabled ? '' : _('the host is disabled');
     case 'wake':
@@ -382,10 +391,11 @@ async function actMany(action) {
 }
 
 // a button of the Actions cell: options.reason (a text) disables it with the reason as its tooltip,
-// options.confirm is asked before the action, options.tone is its class: danger (red text), ok (green), ok-light (light green)
+// options.title is the tooltip of a button that applies, options.confirm is asked before the
+// action, options.tone is its class: danger (red text), ok (green), ok-light (light green)
 function actionButton(row, action, label, options = {}) {
   const button = el('button', {type: 'button', class: options.tone,
-                               title: options.reason || undefined}, label);
+                               title: options.reason || options.title || undefined}, label);
   if (options.reason) {
     button.disabled = true;
   }
@@ -404,12 +414,17 @@ function actionButton(row, action, label, options = {}) {
   return button;
 }
 
-// the buttons of a row, always there (a stable layout), each with the reason it is disabled
+// the buttons of a row, always there (a stable layout), each with the reason it is disabled; an
+// enabled host that drains has Enable in place of Drain: it cancels the drain
 function actions(row) {
+  const cancelsDrain = row.enabled && row.drain;
   return [
     row.enabled ? actionButton(row, 'disable', _('Disable'), {tone: 'danger'}) : actionButton(row, 'enable', _('Enable'), {tone: 'ok'}),
     actionButton(row, 'wake', _('Wake'), {tone: 'ok-light', reason: actionReason(row, 'wake')}),
-    actionButton(row, 'drain', _('Drain'), {reason: actionReason(row, 'drain')}),
+    cancelsDrain
+      ? actionButton(row, 'enable', _('Enable'),
+                     {tone: 'ok', reason: actionReason(row, 'enable'), title: _('cancels the drain')})
+      : actionButton(row, 'drain', _('Drain'), {reason: actionReason(row, 'drain')}),
     actionButton(row, 'poweroff', _('Power off'),
                  {tone: 'danger', reason: actionReason(row, 'poweroff'), confirm: powerOffQuestion([row.name])}),
   ];

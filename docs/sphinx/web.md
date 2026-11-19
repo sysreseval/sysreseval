@@ -1195,7 +1195,7 @@ the *Pool* page of the instructors) shows it:
 | `up` | the agent answers, the host is free | yes |
 | `occupied` | the agent answers, the host is used locally (`occupied_check`) | only the new projects of the users logged in there (`follow_local_sessions`); the web projects already running there go on |
 | `exam` | the agent answers, `exam.json` is on the host: set by hand with `sre set-exam`, or written by the agent for an exam of the web site that lists the machine (*Exams*, *On the workstations*) | no |
-| `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty |
+| `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty (`sre-web-tool enable`, or *Enable* on the Pool page, cancels the drain) |
 | `disabled` | `sre-web-tool disable`, or `enabled = false` | no; the projects already running there go on (listed, usable, evaluated and closed as usual), the host stays polled and is never powered off by the portal — `drain` is the way to empty a host and shut it down |
 
 **Placement.** A new project (`POST /api/projects`) goes to one host, chosen by the portal from
@@ -1379,7 +1379,7 @@ sre-web-tool list                 # one line per host: state, projects/max, load
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
-sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them
+sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them; enable also cancels a drain
 sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powered off once the last project is closed
 sre-web-tool priority a03 -1      # the lowest priority is woken first and gets a project first among the hosts without project
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
@@ -1797,7 +1797,9 @@ What an instructor gets:
   of the tool: *Enable* (green) / *Disable* (red), *Wake* (light green; a host with a `mac` or a `wake_command`, while it
   is off), *Drain*, *Power off* (asked to confirm; allowed by the agent's `allow_power_off`,
   refused while the host has a project or a local session), each disabled with the reason as
-  its tooltip when it does not apply. A checkbox per row (the one of the header ticks the hosts
+  its tooltip when it does not apply. *Enable* also cancels a drain: the row of a draining
+  host shows it in place of *Drain*, and the one of the bar applies to the draining hosts
+  selected (not once the power off is sent: the host is going down). A checkbox per row (the one of the header ticks the hosts
   shown by the filter) selects hosts for the bar above the table: the count of the selected
   hosts (and how many the filter hides), the same five buttons and *Preload images* (the bar
   only: the selected hosts wait for their turn to pull the Docker images of the labs, see

@@ -5,9 +5,11 @@ the portal of test_web_portal.py (proxy mode behind an identity proxy, a real ag
 the page of a portal started again on the same state file; a state file that cannot be written
 is said in red in the status line, for as long as it lasts; the Priority column, the dialog that
 changes the priority of a host or of the selected hosts, the column sorted, the priorities back
-after a restart."""
+after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
+not once the power off of the host is sent."""
 import contextlib
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -61,6 +63,31 @@ def cell(name: str) -> str:
 def shown(name: str) -> str:
     """The priority the row of host *name* shows, as a JavaScript expression ('' without row)."""
     return f"(document.querySelector('{cell(name)}') || {{textContent: ''}}).textContent"
+
+
+# the drain: the buttons of the Actions cell of a01 (Enable / Disable, Wake, Drain, Power off), the
+# checkbox of its row and the buttons of the bar
+CHECKBOX = '#pool tbody tr[data-host="a01"] td.select input'
+BAR_ENABLE = '#pool-selection button[data-action="enable"]'
+BAR_DRAIN = '#pool-selection button[data-action="drain"]'
+
+
+def action(n: int) -> str:
+    """The selector of the *n*-th button of the Actions cell of a01."""
+    return f'#pool tbody tr[data-host="a01"] td.actions button:nth-child({n})'
+
+
+def button(selector: str) -> str:
+    """``[text, disabled, tooltip]`` of a button, as a JavaScript expression (null without it)."""
+    return (f"(() => {{ const b = document.querySelector('{selector}'); "
+            f"return b ? [b.textContent, b.disabled, b.title] : null; }})()")
+
+
+def is_button(selector: str, text: str, *, disabled: bool = False, title: str = '') -> str:
+    """Whether the button shows *text*, is *disabled* and has the tooltip *title*: a JavaScript
+    expression to wait for."""
+    wanted = json.dumps([text, disabled, title], separators=(',', ':'))
+    return f"JSON.stringify({button(selector)}) === {json.dumps(wanted)}"
 
 
 @contextlib.asynccontextmanager
@@ -189,4 +216,47 @@ class TestPoolPage:
                 page = await browser.page(f'{url}/pool')
                 await page.wait_for(f"{shown('b03')} === '7'", what="the rows of the three hosts")
                 assert await page.evaluate(shown('a01')) == '7' and await page.evaluate(shown('b02')) == '7'
+        P.run(go())
+
+    def test_enable_cancels_a_drain(self, tmp_path):
+        """The row of a draining host has Enable in place of Drain, and the Enable of the bar
+        applies to it: both cancel the drain; neither does once the power off is sent."""
+        state = tmp_path / 'state' / 'pool.json'
+
+        async def go():
+            async with browser_of(tmp_path / 'first', state, host_over={}) as (h, browser, url):
+                runtime = h.portal.pool.runtime['a01']
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{STATE} === 'up'", what="the host up")
+                assert await page.evaluate(button(action(1))) == ['Disable', False, '']
+                assert await page.evaluate(button(action(3))) == ['Drain', False, '']
+                # the row: Drain, then Enable in its place (green, as the Enable of a disabled host)
+                await page.click(action(3))
+                await page.wait_for(is_button(action(3), 'Enable', title='cancels the drain'),
+                                    what="Enable in place of Drain")
+                assert await page.evaluate(STATE) == 'draining'
+                assert list(json.loads(state.read_text())['drain']) == ['a01']
+                assert await page.evaluate(button(action(1))) == ['Disable', False, '']
+                assert await page.evaluate(f"document.querySelector('{action(3)}').className") == 'ok'
+                await page.click(action(3))
+                await page.wait_for(is_button(action(3), 'Drain'), what="Drain back in the row")
+                assert await page.evaluate(STATE) == 'up' and runtime.drain is False
+                assert json.loads(state.read_text())['drain'] == {}
+                # the bar: its Enable skips an enabled host, unless it drains
+                await page.click(CHECKBOX)
+                await page.wait_for(f"!document.querySelector('{BAR_DRAIN}').disabled", what="Drain of the bar")
+                assert (await page.evaluate(button(BAR_ENABLE)))[1] is True
+                await page.click(BAR_DRAIN)
+                await page.wait_for(f"{STATE} === 'draining' && !document.querySelector('{BAR_ENABLE}').disabled",
+                                    what="Enable of the bar for the draining host")
+                assert runtime.drain is True
+                await page.click(BAR_ENABLE)
+                await page.wait_for(f"{STATE} === 'up'", what="the drain cancelled from the bar")
+                assert runtime.drain is False and json.loads(state.read_text())['drain'] == {}
+                # the power off is sent: the host is going down, its drain is not cancelled any more
+                runtime.drain, runtime.power_off_sent = True, time.monotonic()
+                await page.wait_for(is_button(action(3), 'Enable', disabled=True, title='power off sent'),
+                                    timeout=POLL, what="Enable disabled once the power off is sent")
+                assert (await page.evaluate(button(BAR_ENABLE)))[1] is True
+                assert page.errors == []
         P.run(go())

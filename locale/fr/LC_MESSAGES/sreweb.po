@@ -859,6 +859,9 @@ msgstr "la machine est désactivée"
 msgid "already draining"
 msgstr "déjà en vidage"
 
+msgid "cancels the drain"
+msgstr "annule le vidage"
+
 msgid "the agent does not allow it (allow_power_off)"
 msgstr "l'agent ne le permet pas (allow_power_off)"
 

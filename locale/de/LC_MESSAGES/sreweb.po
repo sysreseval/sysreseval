@@ -878,6 +878,9 @@ msgstr "der Rechner ist deaktiviert"
 msgid "already draining"
 msgstr "läuft bereits aus"
 
+msgid "cancels the drain"
+msgstr "bricht das Auslaufen ab"
+
 msgid "the agent does not allow it (allow_power_off)"
 msgstr "der Agent erlaubt es nicht (allow_power_off)"
 
