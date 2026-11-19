@@ -1,3 +1,11 @@
+sysreseval (0.18.0-1) unstable; urgency=medium
+
+  * projects moved from Debian 12 to Debian 13.
+  * German translation
+  * Various improvements of the web portal
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Thu, 19 Nov 2026 13:18:02 +0100
+
 sysreseval (0.17.0-1) unstable; urgency=medium
 
   * sre-web portal can control exams on local clients and hybrid (web+local)
