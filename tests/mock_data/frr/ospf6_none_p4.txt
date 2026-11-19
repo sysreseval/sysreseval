@@ -1,0 +1,66 @@
+== show ipv6 ospf6 json
+rc=0
+== show ipv6 ospf6 neighbor json
+rc=0
+== show ipv6 ospf6 interface json
+rc=0
+== show ipv6 ospf6 route json
+rc=0
+== show ipv6 ospf6 border-routers
+% OSPFv3 instance not found
+rc=0
+== show bgp ipv6 unicast summary json
+{
+  "routerId":"4.4.4.4",
+  "as":65004,
+  "vrfId":0,
+  "vrfName":"default",
+  "tableVersion":2,
+  "ribCount":3,
+  "ribMemory":288,
+  "peerCount":1,
+  "peerMemory":20600,
+  "peers":{
+    "eth0":{
+      "hostname":"p3",
+      "remoteAs":65003,
+      "localAs":65004,
+      "version":4,
+      "msgRcvd":34,
+      "msgSent":32,
+      "tableVersion":2,
+      "outq":0,
+      "inq":0,
+      "peerUptime":"00:08:14",
+      "peerUptimeMsec":494000,
+      "peerUptimeEstablishedEpoch":1795042608,
+      "pfxRcd":1,
+      "pfxSnt":2,
+      "state":"Established",
+      "peerState":"OK",
+      "connectionsEstablished":2,
+      "connectionsDropped":1,
+      "idType":"interface"
+    }
+  },
+  "failedPeers":0,
+  "displayedPeers":1,
+  "totalPeers":1,
+  "dynamicPeers":0,
+  "bestPath":{
+    "multiPathRelax":"false"
+  }
+}
+rc=0
+== show bgp ipv6 unicast json
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 2,
+ "routerId": "4.4.4.4",
+ "defaultLocPrf": 100,
+ "localAS": 65004,
+ "routes": { "3fff:550:5cfb:ff::3/128": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"3fff:550:5cfb:ff::3","prefixLen":128,"network":"3fff:550:5cfb:ff::3/128","version":2,"metric":0,"weight":0,"peerId":"fe80::53:52ff:fefa:aa16","path":"65003","origin":"IGP","nexthops":[{"ip":"fe80::53:52ff:fefa:aa16","hostname":"p3","afi":"ipv6","scope":"global","used":true},{"ip":"fe80::53:52ff:fefa:aa16","hostname":"p3","afi":"ipv6","scope":"link-local"}]}]
+,"3fff:550:5cfb:ff::4/128": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"3fff:550:5cfb:ff::4","prefixLen":128,"network":"3fff:550:5cfb:ff::4/128","version":1,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"IGP","nexthops":[{"ip":"::","hostname":"p4","afi":"ipv6","scope":"global","used":true}]}]
+ }  } 
+rc=0

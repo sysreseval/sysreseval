@@ -1,0 +1,54 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 9.1.3
+frr defaults traditional
+hostname po_r1
+log file /var/log/frr/frr.log
+service integrated-vtysh-config
+!
+ipv6 route 3fff:fef:500::/48 blackhole
+!
+router bgp 65030
+ bgp router-id 5.0.0.1
+ no bgp default ipv4-unicast
+ neighbor 3fff:fef:510:c1::1 remote-as 65110
+ neighbor 3fff:fef:510:c1::1 description ISP-A
+ neighbor 3fff:fef:520:c1::1 remote-as 65120
+ neighbor 3fff:fef:520:c1::1 description ISP-B
+ !
+ address-family ipv6 unicast
+  network 3fff:fef:500::/48
+  neighbor 3fff:fef:510:c1::1 activate
+  neighbor 3fff:fef:510:c1::1 route-map ISPA-IN in
+  neighbor 3fff:fef:510:c1::1 route-map ISPA-OUT out
+  neighbor 3fff:fef:520:c1::1 activate
+  neighbor 3fff:fef:520:c1::1 route-map ISPB-IN in
+  neighbor 3fff:fef:520:c1::1 route-map ISPB-OUT out
+ exit-address-family
+exit
+!
+ipv6 prefix-list BOGONS seq 5 deny 2001:db8::/32 le 128
+ipv6 prefix-list BOGONS seq 10 permit 2000::/3 le 48
+ipv6 prefix-list MINE seq 5 permit 3fff:fef:500::/48
+!
+route-map ISPA-IN permit 10
+ match ipv6 address prefix-list BOGONS
+ set local-preference 200
+exit
+!
+route-map ISPA-OUT permit 10
+ match ipv6 address prefix-list MINE
+exit
+!
+route-map ISPB-IN permit 10
+ match ipv6 address prefix-list BOGONS
+exit
+!
+route-map ISPB-OUT permit 10
+ match ipv6 address prefix-list MINE
+ set as-path prepend 65030 65030
+exit
+!
+end

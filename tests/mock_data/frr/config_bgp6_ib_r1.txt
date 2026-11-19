@@ -1,0 +1,51 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 9.1.3
+frr defaults traditional
+hostname ib_r1
+log file /var/log/frr/frr.log
+service integrated-vtysh-config
+!
+ipv6 route 3fff:fef:400::/48 blackhole
+!
+interface eth1
+ ipv6 ospf6 area 0
+ ipv6 ospf6 network point-to-point
+exit
+!
+interface lo
+ ipv6 ospf6 area 0
+exit
+!
+router bgp 65020
+ bgp router-id 4.0.0.1
+ no bgp default ipv4-unicast
+ neighbor 3fff:fef:400:ff::2 remote-as 65020
+ neighbor 3fff:fef:400:ff::2 update-source lo
+ neighbor 3fff:fef:400:ff::3 remote-as 65020
+ neighbor 3fff:fef:400:ff::3 update-source lo
+ neighbor 3fff:fef:410:c1::1 remote-as 65200
+ neighbor 3fff:fef:410:c1::1 description ISP
+ !
+ address-family ipv6 unicast
+  network 3fff:fef:400::/48
+  neighbor 3fff:fef:400:ff::2 activate
+  neighbor 3fff:fef:400:ff::2 next-hop-self
+  neighbor 3fff:fef:400:ff::3 activate
+  neighbor 3fff:fef:400:ff::3 next-hop-self
+  neighbor 3fff:fef:410:c1::1 activate
+  neighbor 3fff:fef:410:c1::1 route-map ALL in
+  neighbor 3fff:fef:410:c1::1 route-map ALL out
+ exit-address-family
+exit
+!
+router ospf6
+ ospf6 router-id 4.0.0.1
+exit
+!
+route-map ALL permit 10
+exit
+!
+end

@@ -1,0 +1,46 @@
+Building configuration...
+
+Current configuration:
+!
+frr version 9.1.3
+frr defaults traditional
+hostname p3
+log file /var/log/frr/frr.log
+service integrated-vtysh-config
+!
+interface eth0
+ ipv6 ospf6 area 1
+exit
+!
+interface eth2
+ ipv6 ospf6 area 1
+ ipv6 ospf6 passive
+exit
+!
+interface eth3
+ ipv6 ospf6 area 1
+ ipv6 ospf6 passive
+exit
+!
+router bgp 65003
+ bgp router-id 3.3.3.3
+ no bgp default ipv4-unicast
+ neighbor eth1 interface remote-as external
+ !
+ address-family ipv6 unicast
+  network 3fff:550:5cfb:ff::3/128
+  neighbor eth1 activate
+  neighbor eth1 route-map ALL in
+  neighbor eth1 route-map ALL out
+ exit-address-family
+exit
+!
+router ospf6
+ ospf6 router-id 3.3.3.3
+ area 1 stub
+exit
+!
+route-map ALL permit 10
+exit
+!
+end

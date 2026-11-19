@@ -1474,3 +1474,281 @@ class TestPimRunningConfig:
     ])
     def test_prefix_list_semantics(self, entries, prefix, expected):
         assert prefix_list_permits({'P': entries}, 'P', prefix) is expected
+
+
+# ---------------------------------------------------------------------------
+# OSPFv3 and BGP over IPv6 — fixtures ospf6_* / bgp6_* / config_ospf6_* / ip6route_* captured on
+# FRR 9.1.3 (routing-frr:1.34) in an IPv6-only probe: p1 (area 0, ASBR, auth on eth1) — p2 (ABR,
+# area 1 stub with a /60 range) — p3 (area 1, BGP unnumbered to p4), p1–p2 in eBGP, p5 (auth)
+# ---------------------------------------------------------------------------
+
+from frr import (  # noqa: E402
+    OSPF6_PATH_TYPES, bgp_neighbor_activated, get_bgp_routes, get_bgp_summary, get_kernel_routes,
+    get_ospf6_border_routers, get_ospf6_info, get_ospf6_interfaces, get_ospf6_neighbors, get_ospf6_routes,
+    neighbor_is_full, parse_bgp_advertised_routes, parse_bgp_neighbor, parse_bgp_prefix, parse_bgp_routes,
+    parse_bgp_summary, parse_frr_config, parse_kernel_routes, parse_ospf6_border_routers, parse_ospf6_info,
+    parse_ospf6_interfaces, parse_ospf6_neighbors, parse_ospf6_routes, prefix_list_permits,
+)
+
+P6 = '3fff:550:5cfb'
+
+
+class TestOspf6Info:
+    def test_abr_with_stub_area(self):
+        info = parse_ospf6_info(load_json('ospf6_info_p2.json'))
+        assert info['router_id'] == '2.2.2.2' and info['abr'] is True
+        assert set(info['areas']) == {'0.0.0.0', '0.0.0.1'}          # typed "0" / "1", normalised
+        assert info['areas']['0.0.0.1']['stub'] is True and info['areas']['0.0.0.0']['stub'] is False
+        assert info['areas']['0.0.0.1']['interfaces'] == ['eth1']
+
+    def test_internal_router(self):
+        info = parse_ospf6_info(load_json('ospf6_info_p3.json'))
+        assert info['router_id'] == '3.3.3.3' and info['abr'] is False
+        assert info['areas']['0.0.0.1']['interfaces'] == ['eth0', 'eth2', 'eth3']
+
+    def test_not_running(self):
+        # without ospf6d the json commands print nothing (exit 0)
+        assert parse_ospf6_info({}) == {}
+        assert get_ospf6_info(make_grade('', 0), 'p4') == {}
+        assert get_ospf6_neighbors(make_grade('', 0), 'p4') == []
+        assert get_ospf6_interfaces(make_grade('', 0), 'p4') == {}
+        assert get_ospf6_routes(make_grade('', 0), 'p4') == {}
+        assert get_ospf6_border_routers(make_grade('% OSPFv3 instance not found\n', 0), 'p4') == {}
+
+    def test_wrapper_runs_json_command(self):
+        grade = make_grade(load('ospf6_info_p2.json'))
+        assert get_ospf6_info(grade, 'p2')['router_id'] == '2.2.2.2'
+        assert grade.test.call_args[0][1] == 'vtysh -c "show ipv6 ospf6 json"'
+
+
+class TestOspf6Neighbors:
+    def test_full_neighbors(self):
+        neighbors = parse_ospf6_neighbors(load_json('ospf6_neighbor_p2.json'))
+        assert [(n['neighbor_id'], n['interface'], n['state']) for n in neighbors] == [
+            ('1.1.1.1', 'eth0', 'Full'), ('3.3.3.3', 'eth1', 'Full')]
+        assert neighbors[0]['role'] == 'BDR' and neighbors[0]['interface_state'] == 'DR'
+        assert neighbor_is_full(neighbors, neighbor_id='3.3.3.3', interface='eth1')
+        assert not neighbor_is_full(neighbors, neighbor_id='3.3.3.3', interface='eth0')
+
+    def test_twoway_while_waiting(self):
+        data = {'neighbors': [{'neighborId': '1.1.1.1', 'priority': 1, 'deadTime': '00:00:34', 'state': 'Twoway',
+                               'ifState': 'DROther', 'duration': '00:00:15', 'interfaceName': 'eth0',
+                               'interfaceState': 'Waiting'}]}
+        neighbors = parse_ospf6_neighbors(data)
+        assert neighbors[0]['state'] == 'Twoway' and not neighbor_is_full(neighbors, neighbor_id='1.1.1.1')
+
+
+class TestOspf6Interfaces:
+    def test_passive_and_disabled(self):
+        interfaces = parse_ospf6_interfaces(load_json('ospf6_interface_p3.json'))
+        assert interfaces['eth2']['enabled'] and interfaces['eth2']['passive'] is True
+        assert interfaces['eth2']['area'] == '0.0.0.1' and interfaces['eth2']['cost'] == 10
+        assert interfaces['eth0']['passive'] is False and interfaces['eth0']['state'] == 'DR'
+        assert interfaces['eth0']['mtu'] == 1500 and interfaces['eth0']['mtu_ignore'] is False
+        assert f'{P6}:23::3/64' in interfaces['eth0']['addresses']
+        # eth1 (the unnumbered BGP link) is not in OSPFv3
+        assert interfaces['eth1']['enabled'] is False and interfaces['eth1']['area'] is None
+
+    def test_authentication_trailer(self):
+        interfaces = parse_ospf6_interfaces(load_json('ospf6_interface_p1.json'))
+        assert interfaces['eth1']['auth_type'] == 'manualkey'
+        assert interfaces['eth0']['auth_type'] == 'NULL'
+
+
+class TestOspf6Routes:
+    def test_stub_area_gets_a_default(self):
+        routes = parse_ospf6_routes(load_json('ospf6_route_p3.json'))
+        assert routes['::/0']['type'] == 'inter-area' and routes['::/0']['code'] == 'IE'
+        assert routes['::/0']['nexthops'][0][0].startswith('fe80::')
+        assert routes[f'{P6}:130::/64']['type'] == 'intra-area'
+        assert routes[f'{P6}:130::/64']['nexthops'] == [(None, 'eth2')]       # connected: '::'
+        assert not any(r['type'].startswith('external') for r in routes.values())
+
+    def test_range_and_externals(self):
+        backbone = parse_ospf6_routes(load_json('ospf6_route_p1.json'))
+        assert backbone[f'{P6}:130::/60']['type'] == 'inter-area'
+        assert f'{P6}:130::/64' not in backbone and f'{P6}:131::/64' not in backbone
+        abr = parse_ospf6_routes(load_json('ospf6_route_p2.json'))
+        assert abr[f'{P6}:e0::/64']['type'] == 'external-2'
+        assert set(OSPF6_PATH_TYPES.values()) >= {r['type'] for r in abr.values()}
+
+
+class TestOspf6BorderRouters:
+    def test_bits(self):
+        seen_from_backbone = parse_ospf6_border_routers(load('ospf6_border_routers_p1.txt'))
+        assert seen_from_backbone['1.1.1.1']['asbr'] and not seen_from_backbone['1.1.1.1']['abr']
+        assert seen_from_backbone['2.2.2.2']['abr'] and not seen_from_backbone['2.2.2.2']['asbr']
+        on_abr = parse_ospf6_border_routers(load('ospf6_border_routers_p2.txt'))
+        assert on_abr['2.2.2.2']['areas'] == ['0.0.0.0', '0.0.0.1']
+        in_stub = parse_ospf6_border_routers(load('ospf6_border_routers_p3.txt'))
+        assert set(in_stub) == {'2.2.2.2'}                                    # the ASBR is not seen
+
+
+class TestKernelRoutes6:
+    def test_ipv6_default_and_host_routes(self):
+        routes = parse_kernel_routes(load('ip6route_ospf6_p3.json'), ipv6=True)
+        assert routes['::/0']['protocol'] == 'ospf'
+        assert routes[f'{P6}:ff::3/128']['protocol'] == 'kernel'
+        assert routes['fe80::/64']['nexthops'] == [(None, 'eth0')]            # first entry wins
+
+    def test_wrapper(self):
+        grade = make_grade(load('ip6route_bgp6_p2.json'))
+        routes = get_kernel_routes(grade, 'p2', ipv6=True)
+        assert grade.test.call_args[0][1] == 'ip -j -6 route'
+        assert routes[f'{P6}:e0::/64']['protocol'] == 'bgp'
+        assert routes[f'{P6}:e0::/64']['nexthops'][0][0].startswith('fe80::')
+
+
+class TestBgpIpv6:
+    def test_summary_policy_and_unnumbered(self):
+        summary = parse_bgp_summary(load_json('bgp6_summary_p2.json'))
+        assert summary['as'] == 65002 and summary['peers'][f'{P6}:12::1']['established']
+        assert summary['peers'][f'{P6}:12::1']['id_type'] == 'ipv6'
+        unnumbered = parse_bgp_summary(load_json('bgp6_summary_p3_unnumbered.json'))
+        assert unnumbered['peers']['eth1']['id_type'] == 'interface'
+        assert unnumbered['peers']['eth1']['remote_as'] == 65004 and unnumbered['peers']['eth1']['pfx_rcd'] == 1
+
+    def test_summary_wrapper_of_show_bgp_summary(self):
+        wrapped = {'ipv6Unicast': load_json('bgp6_summary_p2.json')}
+        assert parse_bgp_summary(wrapped)['router_id'] == '2.2.2.2'
+
+    def test_afi_keyword(self):
+        grade = make_grade(load('bgp6_summary_p2.json'))
+        get_bgp_summary(grade, 'p2', afi='ipv6')
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp ipv6 unicast summary json"'
+        grade = make_grade(load('bgp6_routes_p2.json'))
+        assert f'{P6}:e0::/64' in get_bgp_routes(grade, 'p2', afi='ipv6')
+        assert grade.test.call_args[0][1] == 'vtysh -c "show bgp ipv6 unicast json"'
+        with pytest.raises(ValueError):
+            get_bgp_routes(make_grade('{}'), 'p2', afi='ipv5')
+
+    def test_two_next_hops(self):
+        path = parse_bgp_routes(load_json('bgp6_routes_p2.json'))[f'{P6}:e0::/64'][0]
+        assert path['nexthop_global'] == f'{P6}:12::1'
+        assert path['nexthop_link_local'].startswith('fe80::') and path['nexthop'] == path['nexthop_link_local']
+        assert path['as_list'] == [65001] and path['path_from'] == 'external'
+        detail = parse_bgp_prefix(load_json('bgp6_prefix_p2.json'))['paths'][0]
+        assert detail['nexthop_global'] == f'{P6}:12::1' and detail['accessible'] is True
+
+    def test_unnumbered_next_hop(self):
+        path = parse_bgp_routes(load_json('bgp6_routes_p3_unnumbered.json'))[f'{P6}:ff::4/128'][0]
+        assert path['peer'].startswith('fe80::') and path['nexthop_global'].startswith('fe80::')
+
+    def test_advertised_routes_next_hop_global(self):
+        adv = parse_bgp_advertised_routes(load_json('bgp6_advertised_p1.json'))
+        assert adv[f'{P6}::/48']['nexthop'] == '::' and adv[f'{P6}:130::/60']['as_list'] == [65002]
+
+    def test_neighbor_ipv6_family(self):
+        data = load_json('bgp6_neighbor_p1.json')
+        n = parse_bgp_neighbor(data, peer=f'{P6}:12::2', afi='ipv6')
+        assert n['established'] and n['accepted_prefixes'] == 1 and n['route_map_in'] == 'ALL'
+        assert n['nexthop_global'] == f'{P6}:12::1' and n['nexthop_local'].startswith('fe80::')
+        assert parse_bgp_neighbor(data, peer=f'{P6}:12::2')['af'] == {}       # not active in IPv4
+        unnumbered = parse_bgp_neighbor(load_json('bgp6_neighbor_p3_eth1.json'), peer='eth1', afi='ipv6')
+        assert unnumbered['established'] and unnumbered['foreign_host'].startswith('fe80::')
+
+
+class TestFrrConfigIpv6:
+    def test_ospf6_interfaces_and_router(self):
+        c = parse_frr_config(load('config_ospf6_p1.txt'))
+        assert c['static_routes6'] == [(f'{P6}::/48', 'blackhole')] and c['static_routes'] == []
+        assert c['interfaces']['eth0']['ospf6']['area'] == '0.0.0.0'
+        assert c['interfaces']['eth1']['ospf6']['authentication'] == {'key_id': 7, 'hash_algo': 'hmac-sha-256',
+                                                                     'key': 'S3cretKey'}
+        r6 = c['router_ospf6']
+        assert r6['present'] and r6['router_id'] == '1.1.1.1' and r6['redistribute'] == ['connected']
+        assert r6['default_information_originate'] and r6['default_information_always']
+        assert c['router_ospf']['present'] is False
+
+    def test_stub_range_passive(self):
+        abr = parse_frr_config(load('config_ospf6_p2.txt'))['router_ospf6']
+        assert abr['areas']['0.0.0.1']['stub'] and abr['areas']['0.0.0.1']['ranges'] == [f'{P6}:130::/60']
+        p3 = parse_frr_config(load('config_ospf6_p3.txt'))
+        assert p3['interfaces']['eth2']['ospf6']['passive'] is True
+        assert p3['interfaces']['eth0']['ospf6']['passive'] is None
+
+    def test_bgp_address_families(self):
+        rb = parse_frr_config(load('config_ospf6_p1.txt'))['router_bgp']
+        assert rb['default_ipv4_unicast'] is False
+        v6 = rb['address_families']['ipv6 unicast']
+        assert v6['neighbors'][f'{P6}:12::2'] == {'activate': True, 'route_map_in': 'ALL', 'route_map_out': 'ALL'}
+        assert v6['networks'] == [f'{P6}::/48', f'{P6}:e0::/64']
+        assert bgp_neighbor_activated(rb, f'{P6}:12::2', 'ipv6')
+        assert not bgp_neighbor_activated(rb, f'{P6}:12::2', 'ipv4')
+        assert not bgp_neighbor_activated(rb, f'{P6}:12::9', 'ipv6')
+
+    def test_unnumbered_neighbor(self):
+        rb = parse_frr_config(load('config_ospf6_p3.txt'))['router_bgp']
+        assert rb['neighbors']['eth1']['interface'] is True and rb['neighbors']['eth1']['remote_as'] == 'external'
+        assert bgp_neighbor_activated(rb, 'eth1', 'ipv6')
+
+    def test_ipv4_family_by_default_and_negation(self):
+        text = ("router bgp 65001\n neighbor 10.0.0.2 remote-as 65002\n neighbor 2001:db8::2 remote-as 65003\n"
+                " address-family ipv4 unicast\n  no neighbor 2001:db8::2 activate\n exit-address-family\n"
+                " address-family ipv6 unicast\n  neighbor 2001:db8::2 activate\n"
+                "  neighbor 2001:db8::2 next-hop-self\n exit-address-family\nexit\n"
+                "ipv6 prefix-list IN6 seq 5 deny fc00::/7 le 128\nipv6 prefix-list IN6 seq 10 permit 2000::/3 le 48\n")
+        c = parse_frr_config(text)
+        rb = c['router_bgp']
+        assert bgp_neighbor_activated(rb, '10.0.0.2', 'ipv4') and not bgp_neighbor_activated(rb, '10.0.0.2', 'ipv6')
+        assert not bgp_neighbor_activated(rb, '2001:db8::2', 'ipv4') and bgp_neighbor_activated(rb, '2001:db8::2', 'ipv6')
+        assert rb['address_families']['ipv6 unicast']['neighbors']['2001:db8::2']['next_hop_self'] is True
+        assert 'next_hop_self' not in rb['address_families']['ipv4 unicast']['neighbors']['2001:db8::2']
+        assert c['prefix_lists'] == {}
+        assert prefix_list_permits(c['prefix_lists6'], 'IN6', 'fd12:3456::/48') is False
+        assert prefix_list_permits(c['prefix_lists6'], 'IN6', '3fff:550::/48') is True
+        assert prefix_list_permits(c['prefix_lists6'], 'IN6', '3fff:550:1:2::/64') is False
+
+
+class TestIpv6LabCaptures:
+    """Captured in the solved OSPFv3 + BGP-IPv6 lab (instance 3fff:fef::/32, final state, FRR 9.1.3)."""
+
+    def test_ibgp_path_has_one_global_next_hop(self):
+        path = parse_bgp_routes(load_json('bgp6_routes_ib_r3_nhs.json'))['3fff:fef:410::/48'][0]
+        # next-hop-self over loopbacks: only the global next hop, no link-local
+        assert path['path_from'] == 'internal' and path['valid']
+        assert path['nexthop_global'] == '3fff:fef:400:ff::1' == path['nexthop']
+        assert path['nexthop_link_local'] is None
+
+    def test_ibgp_neighbor_between_loopbacks(self):
+        n = parse_bgp_neighbor(load_json('bgp6_neighbor_ib_r3_lo1.json'), peer='3fff:fef:400:ff::1', afi='ipv6')
+        assert n['established'] and n['link'] == 'internal' and n['af']
+        assert (n['local_host'], n['foreign_host']) == ('3fff:fef:400:ff::3', '3fff:fef:400:ff::1')
+
+    def test_local_preference_and_filters(self):
+        routes = parse_bgp_routes(load_json('bgp6_routes_po_r1_policy.json'))
+        assert set(routes) == {'3fff:fef:500::/48', '3fff:fef:510::/48', '3fff:fef:520::/48', '3fff:fef:530::/48'}
+        best = [p for p in routes['3fff:fef:530::/48'] if p['best']]
+        assert len(best) == 1 and best[0]['locprf'] == 200 and best[0]['peer'] == '3fff:fef:510:c1::1'
+        assert best[0]['as_list'] == [65110, 65110, 65000]
+
+    def test_prepend_seen_from_the_internet(self):
+        paths = parse_bgp_routes(load_json('bgp6_routes_po_inet_prepend.json'))['3fff:fef:500::/48']
+        via_b = next(p for p in paths if p['peer'] == '3fff:fef:530:b::1')
+        assert via_b['as_list'] == [65120, 65030, 65030, 65030] and not via_b['best']
+        assert next(p for p in paths if p['best'])['peer'] == '3fff:fef:530:a::1'
+
+    def test_advertised_only_own_prefix(self):
+        adv = parse_bgp_advertised_routes(load_json('bgp6_advertised_po_r1_ispb.json'))
+        assert list(adv) == ['3fff:fef:500::/48'] and adv['3fff:fef:500::/48']['as_list'] == [65030, 65030]
+
+    def test_policy_running_config(self):
+        c = parse_frr_config(load('config_bgp6_po_r1_policy.txt'))
+        assert c['prefix_lists'] == {} and set(c['prefix_lists6']) == {'BOGONS', 'MINE'}
+        assert prefix_list_permits(c['prefix_lists6'], 'BOGONS', '2001:db8:3bad::/48') is False
+        assert prefix_list_permits(c['prefix_lists6'], 'BOGONS', '3fff:fef:530::/48') is True
+        assert c['route_maps']['ISPB-OUT'][0]['set'] == ['as-path prepend 65030 65030']
+        assert c['route_maps']['ISPA-IN'][0]['match'] == ['ipv6 address prefix-list BOGONS']
+        v6 = c['router_bgp']['address_families']['ipv6 unicast']['neighbors']
+        assert v6['3fff:fef:520:c1::1']['route_map_out'] == 'ISPB-OUT'
+        ib_r1 = parse_frr_config(load('config_bgp6_ib_r1.txt'))
+        assert ib_r1['interfaces']['lo']['ospf6']['area'] == '0.0.0.0'
+        assert ib_r1['interfaces']['eth1']['ospf6']['network_type'] == 'point-to-point'
+        v6 = ib_r1['router_bgp']['address_families']['ipv6 unicast']['neighbors']
+        assert v6['3fff:fef:400:ff::3'] == {'activate': True, 'next_hop_self': True}
+        assert ib_r1['router_bgp']['neighbors']['3fff:fef:400:ff::3']['update_source'] == 'lo'
+
+    def test_stub_default_in_the_kernel_and_fixed_router_id(self):
+        routes = parse_kernel_routes(load('ip6route_ospf6_o2_r1_stub.json'), ipv6=True)
+        assert routes['::/0']['protocol'] == 'ospf' and routes['::/0']['nexthops'][0][0].startswith('fe80::')
+        assert parse_ospf6_info(load_json('ospf6_info_fix_r2_fixed.json'))['router_id'] == '6.0.0.2'

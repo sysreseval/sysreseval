@@ -1,0 +1,24 @@
+{
+  "neighbors":[
+    {
+      "neighborId":"2.2.2.2",
+      "priority":1,
+      "deadTime":"00:00:33",
+      "state":"Full",
+      "ifState":"DR",
+      "duration":"00:11:26",
+      "interfaceName":"eth0",
+      "interfaceState":"BDR"
+    },
+    {
+      "neighborId":"5.5.5.5",
+      "priority":1,
+      "deadTime":"00:00:37",
+      "state":"Full",
+      "ifState":"BDR",
+      "duration":"00:01:26",
+      "interfaceName":"eth1",
+      "interfaceState":"DR"
+    }
+  ]
+}

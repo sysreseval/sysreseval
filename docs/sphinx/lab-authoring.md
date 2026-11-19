@@ -1344,6 +1344,29 @@ These helpers parse the `json` output of `vtysh` (FRR 9). Like the OSPF ones, ea
 
 Verified FRR 9 defaults worth knowing when writing a BGP lab: `bgp ebgp-requires-policy` is on (an eBGP session without route-map/prefix-list exchanges no prefix), `bgp network import-check` is on (a `network` statement needs a matching route, e.g. `ip route X/22 blackhole`), and `interface lo` / `ip address A/32` in `frr.conf` configures the loopback address through zebra.
 
+### OSPFv3 and BGP over IPv6 helpers (from `/opt/sre/lib/frr.py`)
+
+```python
+from frr import (get_ospf6_info, get_ospf6_neighbors, get_ospf6_interfaces, get_ospf6_routes,
+                 get_ospf6_border_routers, get_kernel_routes, get_bgp_summary, get_bgp_routes,
+                 bgp_neighbor_activated, neighbor_is_full)
+```
+
+The OSPFv3 helpers parse the `json` output of `ospf6d` (FRR 9.1), with the same two-pass contract and `allow_error` flag; without `ospf6d` (or `router ospf6`) the commands print nothing and every helper returns its empty shape.
+
+| Function | Returns |
+|----------|---------|
+| `get_ospf6_info(grade, machine)` | `show ipv6 ospf6`: `router_id` (`'0.0.0.0'` when none could be chosen), `abr` (interfaces in two areas or more), `areas: {'0.0.0.1': {stub, nssa, no_summary, interfaces, lsa_count}}` (areas normalised to the dotted form) |
+| `get_ospf6_neighbors(grade, machine)` | `show ipv6 ospf6 neighbor`: a list with the keys of `get_ospf_neighbors()` (`neighbor_id`, `state` — `Init`, `Twoway`, `ExStart`, `Full`…, `role`, `interface`, `interface_state`), so `neighbor_is_full(n, interface='eth1')` works; OSPFv3 neighbours are named by router-id |
+| `get_ospf6_interfaces(grade, machine)` | `show ipv6 ospf6 interface`: `{ifname: {enabled, area, cost, state, type, passive, mtu, mtu_ignore, hello_interval, dead_interval, dr, bdr, addresses, auth_type ('NULL' / 'manualkey' / 'keychain'), auth_rx_drops}}` |
+| `get_ospf6_routes(grade, machine)` | `show ipv6 ospf6 route`: `{prefix: {type ('intra-area' / 'inter-area' / 'external-1' / 'external-2'), code ('IA' / 'IE' / 'E1' / 'E2'), best, nexthops: [(link-local or None, ifname)]}}`; the default a stub area receives is `'::/0'` of type `inter-area` |
+| `get_ospf6_border_routers(grade, machine)` | `show ipv6 ospf6 border-routers` (text: no json form): `{router_id: {abr, asbr, path_type, areas}}` |
+| `get_kernel_routes(grade, machine, ipv6=True)` | `ip -j -6 route`: `default` becomes `::/0`, host routes `/128`; ospf6d and bgpd routes have the protocols `ospf` and `bgp` |
+
+The BGP helpers take `afi='ipv6'` for the IPv6 unicast family (`get_bgp_summary`, `get_bgp_neighbor`, `get_bgp_routes`, `get_bgp_prefix`, `get_bgp_advertised_routes`); a path then has `nexthop_global` and `nexthop_link_local` (the two next hops of MP_REACH_NLRI; `nexthop` is the one installed, the link-local for an eBGP neighbour on the link), an unnumbered neighbour is keyed by its interface (`'eth0'`, `id_type: 'interface'`). `parse_frr_config` also returns `static_routes6`, `prefix_lists6`, `router_ospf6` (`router_id`, `areas` with `stub` / `ranges`, `redistribute`, `default_information_originate`), per interface `addresses6` and `ospf6` (`area`, `cost`, `passive`, `mtu_ignore`, `network_type`, `authentication`), and `router_bgp['address_families']` (the statements of each family: `activate`, route-maps, `next-hop-self`, `networks`); `bgp_neighbor_activated(router_bgp, peer, afi='ipv6')` tells whether a neighbour is active in a family.
+
+Verified on FRR 9.1.3 in IPv6-only containers: on an Ethernet link an OSPFv3 interface stays `Waiting` for a Dead interval (40 s) before the DR election, so a reference state waits about 50 s; a router without IPv4 address has no router-id until one is configured, and a new router-id needs `clear ipv6 ospf6 process`; a duplicate router-id gives no neighbour at all, an MTU mismatch blocks the neighbours in `ExStart`; a BGP neighbour activated in no family stays `Idle`. Example: `lab/sre/_DRAFT_misc/ospfv3-bgp-ipv6.py`.
+
 ### RIP helpers (from `/opt/sre/lib/frr.py` and `/opt/sre/lib/rip.py`)
 
 ```python

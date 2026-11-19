@@ -9,8 +9,11 @@ registration pass, real output afterwards) -- and hands the text to a pure
 ``json`` output (``show bgp ipv4 unicast ... json``).  On the placeholder output
 every parser returns its empty shape (``{}``/``[]``), never an exception.  What a
 RIP router really announces on a link is read by the passive probe of ``lib/rip.py``.
-The PIM / IGMP / MSDP / MLD helpers (end of the file) parse the ``json`` output of pimd and
-pim6d; what multicast traffic really reaches a host is read by ``lib/mcast.py``.
+The PIM / IGMP / MSDP / MLD helpers parse the ``json`` output of pimd and pim6d; what
+multicast traffic really reaches a host is read by ``lib/mcast.py``.  The OSPFv3 helpers (end
+of the file) parse the ``json`` output of ospf6d (``show ipv6 ospf6 ... json``) and the text of
+``show ipv6 ospf6 border-routers``; the BGP helpers take ``afi='ipv6'`` for the IPv6 unicast
+address family.
 
 Pass ``allow_error=True`` when the router may not run OSPF/BGP/RIP yet (``vtysh``
 then exits non-zero and the error would otherwise be recorded in the archive).
@@ -459,13 +462,14 @@ def get_ospf_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error
 # ip -j route  (kernel routing table)
 # ---------------------------------------------------------------------------
 
-def parse_kernel_routes(output: str) -> Dict[str, Dict[str, Any]]:
-    """Parse the JSON of ``ip -j route``.
+def parse_kernel_routes(output: str, ipv6: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Parse the JSON of ``ip -j route`` (``ip -j -6 route`` with ``ipv6=True``).
 
     Returns ``{prefix: {'protocol': str, 'metric': int, 'scope': str | None,
-    'nexthops': [(gateway | None, dev)]}}``; ``default`` becomes ``0.0.0.0/0`` and
-    host routes get ``/32``.  ECMP routes list every next hop.  When the same prefix
-    appears several times (different metrics) the first entry wins.
+    'nexthops': [(gateway | None, dev)]}}``; ``default`` becomes ``0.0.0.0/0`` (``::/0``)
+    and host routes get ``/32`` (``/128``).  ECMP routes list every next hop.  When the
+    same prefix appears several times (different metrics, or ``fe80::/64`` on every
+    interface) the first entry wins.
     """
     try:
         routes = json.loads(output)
@@ -481,9 +485,9 @@ def parse_kernel_routes(output: str) -> Dict[str, Dict[str, Any]]:
         if not dst:
             continue
         if dst == 'default':
-            dst = '0.0.0.0/0'
+            dst = '::/0' if ipv6 else '0.0.0.0/0'
         elif '/' not in dst:
-            dst += '/32'
+            dst += '/128' if ipv6 or ':' in dst else '/32'
         if dst in result:
             continue
         if isinstance(r.get('nexthops'), list):
@@ -499,12 +503,15 @@ def parse_kernel_routes(output: str) -> Dict[str, Dict[str, Any]]:
     return result
 
 
-def get_kernel_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
-    """Run 'ip -j route' and parse it (see :func:`parse_kernel_routes`). Returns {} on error."""
-    output, code = _test(grade, machine_name, 'ip -j route', step, allow_error)
+def get_kernel_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                      ipv6: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Run 'ip -j route' ('ip -j -6 route' with ``ipv6=True``) and parse it (see
+    :func:`parse_kernel_routes`). Returns {} on error."""
+    command = 'ip -j -6 route' if ipv6 else 'ip -j route'
+    output, code = _test(grade, machine_name, command, step, allow_error)
     if code != 0 or not output:
         return {}
-    return parse_kernel_routes(output)
+    return parse_kernel_routes(output, ipv6=ipv6)
 
 
 def kernel_route_gateways(routes: Dict[str, Dict[str, Any]], prefix, ospf_only: bool = True,
@@ -536,7 +543,19 @@ def _empty_interface_config() -> Dict[str, Any]:
         'authentication': None, 'message_digest_keys': {}, 'authentication_key': None,
         'area': None, 'bandwidth': None, 'passive': None, 'network_type': None,
         'addresses': [], 'pim': False, 'igmp': False, 'multicast_boundary': None,
+        'addresses6': [], 'ospf6': _empty_ospf6_interface_config(),
     }
+
+
+def _empty_ospf6_interface_config() -> Dict[str, Any]:
+    return {'area': None, 'cost': None, 'passive': None, 'mtu_ignore': False, 'priority': None,
+            'hello_interval': None, 'dead_interval': None, 'network_type': None, 'authentication': None}
+
+
+def _empty_router_ospf6_config() -> Dict[str, Any]:
+    return {'present': False, 'router_id': None, 'areas': {}, 'redistribute': [],
+            'default_information_originate': False, 'default_information_always': False,
+            'interface_areas': {}}
 
 
 def _empty_area_config() -> Dict[str, Any]:
@@ -552,7 +571,20 @@ def _empty_bgp_neighbor_config() -> Dict[str, Any]:
         'default_originate_route_map': None, 'route_map_in': None, 'route_map_out': None,
         'prefix_list_in': None, 'prefix_list_out': None, 'filter_list_in': None, 'filter_list_out': None,
         'soft_reconfiguration': False, 'send_community': True, 'activate': None,
+        'interface': False,
     }
+
+
+#: neighbour statements that belong to an address family (``address-family X unicast`` block,
+#: or the IPv4 unicast family at router level): the per-family view of ``router_bgp``
+_BGP_AF_NEIGHBOR_KEYS = ('activate', 'next_hop_self', 'route_reflector_client', 'default_originate',
+                         'default_originate_route_map', 'route_map_in', 'route_map_out', 'prefix_list_in',
+                         'prefix_list_out', 'filter_list_in', 'filter_list_out', 'soft_reconfiguration',
+                         'send_community')
+
+
+def _empty_bgp_af_config() -> Dict[str, Any]:
+    return {'neighbors': {}, 'networks': [], 'aggregate_addresses': [], 'redistribute': []}
 
 
 def _empty_router_bgp_config() -> Dict[str, Any]:
@@ -560,12 +592,17 @@ def _empty_router_bgp_config() -> Dict[str, Any]:
         'present': False, 'as': None, 'router_id': None, 'ebgp_requires_policy': True,
         'network_import_check': True, 'default_ipv4_unicast': True, 'bestpath': [], 'cluster_id': None,
         'default_local_preference': None, 'timers': None, 'neighbors': {}, 'networks': [],
-        'aggregate_addresses': [], 'redistribute': [],
+        'aggregate_addresses': [], 'redistribute': [], 'address_families': {},
     }
 
 
-def _parse_router_bgp_line(rb: Dict[str, Any], words: List[str], neighbor_cfg) -> None:
-    """Apply one indented ``router bgp`` statement (router level or address-family) to ``rb``."""
+def _parse_router_bgp_line(rb: Dict[str, Any], words: List[str], neighbor_cfg, af: str = None) -> None:
+    """Apply one indented ``router bgp`` statement (router level or address-family) to ``rb``.
+
+    *af* is the address family of the enclosing ``address-family`` block (``'ipv6 unicast'``),
+    ``None`` at router level: the family statements found there (``network``, ``neighbor X
+    route-map``...) belong to IPv4 unicast.  They are applied to the merged view (the
+    neighbour / router keys, as before) and to ``rb['address_families'][family]``."""
     if not words:
         return
     negated = words[0] == 'no'
@@ -574,46 +611,76 @@ def _parse_router_bgp_line(rb: Dict[str, Any], words: List[str], neighbor_cfg) -
         return
     if w[0] in ('address-family', 'exit-address-family'):
         return
+    family = af or 'ipv4 unicast'
+
+    def af_cfg() -> Dict[str, Any]:
+        return rb['address_families'].setdefault(family, _empty_bgp_af_config())
+
     if w[0] == 'neighbor' and len(w) >= 3:
         n = neighbor_cfg(w[1])
         kw, arg = w[2], (w[3] if len(w) >= 4 else None)
-        if kw == 'remote-as' and arg:
-            n['remote_as'] = int(arg) if arg.isdigit() else arg
-        elif kw == 'peer-group' and arg:
-            n['peer_group'] = arg
-        elif kw == 'description':
-            n['description'] = " ".join(w[3:]) or None
-        elif kw == 'update-source' and arg:
-            n['update_source'] = arg
-        elif kw == 'timers' and len(w) >= 5 and w[3].isdigit() and w[4].isdigit():
-            n['timers'] = (int(w[3]), int(w[4]))
-        elif kw == 'shutdown':
-            n['shutdown'] = not negated
-        elif kw == 'password':
-            n['password'] = None if negated else arg
-        elif kw == 'ebgp-multihop':
-            n['ebgp_multihop'] = None if negated else (int(arg) if arg and arg.isdigit() else 255)
-        elif kw == 'next-hop-self':
-            n['next_hop_self'] = not negated
-        elif kw == 'route-reflector-client':
-            n['route_reflector_client'] = not negated
-        elif kw == 'default-originate':
-            n['default_originate'] = not negated
-            if not negated and len(w) >= 5 and w[3] == 'route-map':
-                n['default_originate_route_map'] = w[4]
-        elif kw == 'route-map' and len(w) >= 5 and w[4] in ('in', 'out'):
-            n[f'route_map_{w[4]}'] = None if negated else w[3]
-        elif kw == 'prefix-list' and len(w) >= 5 and w[4] in ('in', 'out'):
-            n[f'prefix_list_{w[4]}'] = None if negated else w[3]
-        elif kw == 'filter-list' and len(w) >= 5 and w[4] in ('in', 'out'):
-            n[f'filter_list_{w[4]}'] = None if negated else w[3]
-        elif kw == 'soft-reconfiguration':
-            n['soft_reconfiguration'] = not negated
-        elif kw == 'send-community':
-            n['send_community'] = not negated
-        elif kw == 'activate':
-            n['activate'] = not negated
+        if kw == 'interface':
+            # unnumbered peer: ``neighbor eth0 interface [remote-as external|internal|N]``
+            n['interface'] = not negated
+            if len(w) >= 5 and w[3] == 'remote-as':
+                n['remote_as'] = int(w[4]) if w[4].isdigit() else w[4]
+            return
+        before = {k: n[k] for k in _BGP_AF_NEIGHBOR_KEYS}
+        _apply_bgp_neighbor_keyword(n, w, kw, arg, negated)
+        changed = {k: n[k] for k in _BGP_AF_NEIGHBOR_KEYS if n[k] != before[k]}
+        if changed or kw in ('activate', 'send-community'):
+            per_af = af_cfg()['neighbors'].setdefault(w[1], {})
+            per_af.update(changed)
+            if kw == 'activate':
+                per_af['activate'] = not negated
         return
+    _apply_bgp_router_keyword(rb, w, negated, af_cfg if (w[0] in ('network', 'aggregate-address', 'redistribute'))
+                              else None)
+
+
+def _apply_bgp_neighbor_keyword(n: Dict[str, Any], w: List[str], kw: str, arg, negated: bool) -> None:
+    """One ``neighbor PEER <kw> ...`` statement applied to the merged neighbour config *n*."""
+    if kw == 'remote-as' and arg:
+        n['remote_as'] = int(arg) if arg.isdigit() else arg
+    elif kw == 'peer-group' and arg:
+        n['peer_group'] = arg
+    elif kw == 'description':
+        n['description'] = " ".join(w[3:]) or None
+    elif kw == 'update-source' and arg:
+        n['update_source'] = arg
+    elif kw == 'timers' and len(w) >= 5 and w[3].isdigit() and w[4].isdigit():
+        n['timers'] = (int(w[3]), int(w[4]))
+    elif kw == 'shutdown':
+        n['shutdown'] = not negated
+    elif kw == 'password':
+        n['password'] = None if negated else arg
+    elif kw == 'ebgp-multihop':
+        n['ebgp_multihop'] = None if negated else (int(arg) if arg and arg.isdigit() else 255)
+    elif kw == 'next-hop-self':
+        n['next_hop_self'] = not negated
+    elif kw == 'route-reflector-client':
+        n['route_reflector_client'] = not negated
+    elif kw == 'default-originate':
+        n['default_originate'] = not negated
+        if not negated and len(w) >= 5 and w[3] == 'route-map':
+            n['default_originate_route_map'] = w[4]
+    elif kw == 'route-map' and len(w) >= 5 and w[4] in ('in', 'out'):
+        n[f'route_map_{w[4]}'] = None if negated else w[3]
+    elif kw == 'prefix-list' and len(w) >= 5 and w[4] in ('in', 'out'):
+        n[f'prefix_list_{w[4]}'] = None if negated else w[3]
+    elif kw == 'filter-list' and len(w) >= 5 and w[4] in ('in', 'out'):
+        n[f'filter_list_{w[4]}'] = None if negated else w[3]
+    elif kw == 'soft-reconfiguration':
+        n['soft_reconfiguration'] = not negated
+    elif kw == 'send-community':
+        n['send_community'] = not negated
+    elif kw == 'activate':
+        n['activate'] = not negated
+
+
+def _apply_bgp_router_keyword(rb: Dict[str, Any], w: List[str], negated: bool, af_cfg) -> None:
+    """A ``router bgp`` statement that is not a neighbour one; *af_cfg* returns the per-family
+    view for the family statements (``network``, ``aggregate-address``, ``redistribute``)."""
     if w[0] == 'bgp' and len(w) >= 2:
         if w[1] == 'router-id' and len(w) >= 3:
             rb['router_id'] = None if negated else w[2]
@@ -631,15 +698,18 @@ def _parse_router_bgp_line(rb: Dict[str, Any], words: List[str], neighbor_cfg) -
             rb['cluster_id'] = None if negated else w[2]
         return
     if w[0] == 'network' and len(w) >= 2:
-        if negated:
-            if w[1] in rb['networks']:
-                rb['networks'].remove(w[1])
-        else:
-            rb['networks'].append(w[1])
+        for target in (rb, af_cfg()):
+            if negated:
+                if w[1] in target['networks']:
+                    target['networks'].remove(w[1])
+            else:
+                target['networks'].append(w[1])
     elif w[0] == 'aggregate-address' and len(w) >= 2 and not negated:
         rb['aggregate_addresses'].append((w[1], w[2:]))
+        af_cfg()['aggregate_addresses'].append((w[1], w[2:]))
     elif w[0] == 'redistribute' and len(w) >= 2 and not negated:
         rb['redistribute'].append(w[1])
+        af_cfg()['redistribute'].append(w[1])
     elif w[0] == 'timers' and len(w) >= 4 and w[1] == 'bgp' and w[2].isdigit() and w[3].isdigit():
         rb['timers'] = (int(w[2]), int(w[3]))
 
@@ -686,7 +756,26 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                                 'match': ['ip address prefix-list P', ...],
                                 'set': ['local-preference 200', ...]}]},
          'as_path_lists': {name: [(seq | None, action, regexp)]},
-         'community_lists': {name: [(seq | None, action, 'community ...')]}}
+         'community_lists': {name: [(seq | None, action, 'community ...')]},
+         # IPv6 (separate keys: the IPv4 ones above are unchanged)
+         'static_routes6': [(prefix, nexthop)],      # ``ipv6 route P blackhole`` -> (P, 'blackhole')
+         'prefix_lists6': {name: [...same entries as prefix_lists...]},
+         'router_ospf6': {'present': bool, 'router_id': str | None,
+                          'areas': {area: {'stub', 'nssa', 'no_summary', 'ranges': [prefix], ...}},
+                          'redistribute': [protocol, ...], 'default_information_originate': bool,
+                          'default_information_always': bool,
+                          'interface_areas': {ifname: area}},   # old ``interface X area A`` form
+         }
+
+    Interfaces also get ``'addresses6'`` (``ipv6 address``) and ``'ospf6'``: ``{'area', 'cost',
+    'passive', 'mtu_ignore', 'priority', 'hello_interval', 'dead_interval', 'network_type',
+    'authentication': {'key_id', 'hash_algo', 'key'} | {'keychain'} | None}`` (``ipv6 ospf6 ...``).
+    ``router_bgp['address_families']`` is the per-family view of ``router bgp``:
+    ``{'ipv4 unicast' | 'ipv6 unicast': {'neighbors': {peer: {'activate', 'route_map_in', ...
+    only the keys set in that family}}, 'networks', 'aggregate_addresses', 'redistribute'}}``
+    (router-level family statements count for IPv4 unicast); :func:`bgp_neighbor_activated`
+    tells whether a neighbour is active in a family.  An unnumbered neighbour
+    (``neighbor eth0 interface remote-as external``) has ``'interface': True``.
 
     Area ids are normalised to dotted form (``area 1`` -> ``'0.0.0.1'``).  Both the
     router-level ``passive-interface X`` and the interface-level ``ip ospf passive``
@@ -711,11 +800,17 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
         'route_maps': {},
         'as_path_lists': {},
         'community_lists': {},
+        'static_routes6': [],
+        'prefix_lists6': {},
+        'router_ospf6': _empty_router_ospf6_config(),
     }
-    section: Optional[str] = None  # 'router_ospf' | 'router_bgp' | 'interface' | 'route_map' | 'other' | None
+    # 'router_ospf' | 'router_ospf6' | 'router_bgp' | 'interface' | 'route_map' | 'other' | None
+    section: Optional[str] = None
     iface: Dict[str, Any] | None = None
     rm_entry: Dict[str, Any] | None = None
+    bgp_af: Optional[str] = None   # address family of the open ``address-family`` block of router bgp
     ro = cfg['router_ospf']
+    ro6 = cfg['router_ospf6']
     rb = cfg['router_bgp']
 
     def neighbor_cfg(peer: str) -> Dict[str, Any]:
@@ -729,11 +824,22 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             return int(w[1]), w[2:]
         return None, w
 
-    def area_cfg(area: str) -> Dict[str, Any]:
+    def area_cfg(area: str, router: Dict[str, Any] = None) -> Dict[str, Any]:
+        router = ro if router is None else router
         key = normalize_area(area)
-        if key not in ro['areas']:
-            ro['areas'][key] = _empty_area_config()
-        return ro['areas'][key]
+        if key not in router['areas']:
+            router['areas'][key] = _empty_area_config()
+        return router['areas'][key]
+
+    def prefix_list_entry(words: List[str], target: Dict[str, List[Dict[str, Any]]]) -> None:
+        # (ip|ipv6) prefix-list NAME [seq N] permit|deny PREFIX [ge X] [le Y]
+        seq, rest = seq_of(words[3:])
+        if len(rest) >= 2 and rest[0] in ('permit', 'deny'):
+            entry = {'seq': seq, 'action': rest[0], 'prefix': rest[1], 'ge': None, 'le': None}
+            for i in range(2, len(rest) - 1):
+                if rest[i] in ('ge', 'le') and rest[i + 1].isdigit():
+                    entry[rest[i]] = int(rest[i + 1])
+            target.setdefault(words[2], []).append(entry)
 
     for raw in text.splitlines():
         line = raw.rstrip()
@@ -756,8 +862,12 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 iface = None
                 ro['present'] = True
                 continue
+            if words[0] == 'router' and len(words) >= 2 and words[1] == 'ospf6':
+                section, iface = 'router_ospf6', None
+                ro6['present'] = True
+                continue
             if words[0] == 'router' and len(words) >= 3 and words[1] == 'bgp':
-                section, iface = 'router_bgp', None
+                section, iface, bgp_af = 'router_bgp', None, None
                 rb['present'] = True
                 rb['as'] = int(words[2]) if words[2].isdigit() else words[2]
                 continue
@@ -775,15 +885,12 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 cfg['hostname'] = words[1]
             elif words[0] == 'ip' and len(words) >= 4 and words[1] == 'route':
                 cfg['static_routes'].append((words[2], words[3]))
+            elif words[0] == 'ipv6' and len(words) >= 4 and words[1] == 'route':
+                cfg['static_routes6'].append((words[2], words[3]))
             elif words[:2] == ['ip', 'prefix-list'] and len(words) >= 5:
-                # ip prefix-list NAME [seq N] permit|deny PREFIX [ge X] [le Y]
-                seq, rest = seq_of(words[3:])
-                if len(rest) >= 2 and rest[0] in ('permit', 'deny'):
-                    entry = {'seq': seq, 'action': rest[0], 'prefix': rest[1], 'ge': None, 'le': None}
-                    for i in range(2, len(rest) - 1):
-                        if rest[i] in ('ge', 'le') and rest[i + 1].isdigit():
-                            entry[rest[i]] = int(rest[i + 1])
-                    cfg['prefix_lists'].setdefault(words[2], []).append(entry)
+                prefix_list_entry(words, cfg['prefix_lists'])
+            elif words[:2] == ['ipv6', 'prefix-list'] and len(words) >= 5:
+                prefix_list_entry(words, cfg['prefix_lists6'])
             elif words[:3] == ['bgp', 'as-path', 'access-list'] and len(words) >= 6:
                 # bgp as-path access-list NAME [seq N] permit|deny REGEXP
                 seq, rest = seq_of(words[4:])
@@ -838,6 +945,12 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
                 iface['igmp'] = True
             elif words[:4] == ['ip', 'multicast', 'boundary', 'oil'] and len(words) >= 5:
                 iface['multicast_boundary'] = words[4]
+            elif words[:2] == ['ipv6', 'address'] and len(words) >= 3:
+                iface['addresses6'].append(words[2])
+            elif words[:2] == ['ipv6', 'ospf6'] and len(words) >= 3:
+                _parse_ospf6_interface_line(iface['ospf6'], words[2:], negated=False)
+            elif words[:3] == ['no', 'ipv6', 'ospf6'] and len(words) >= 4:
+                _parse_ospf6_interface_line(iface['ospf6'], words[3:], negated=True)
             continue
 
         if section == 'route_map' and rm_entry is not None:
@@ -848,7 +961,34 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             continue
 
         if section == 'router_bgp':
-            _parse_router_bgp_line(rb, words, neighbor_cfg)
+            if words[0] == 'address-family' and len(words) >= 2:
+                bgp_af = " ".join(words[1:3]) if len(words) >= 3 else f"{words[1]} unicast"
+            elif words[0] == 'exit-address-family':
+                bgp_af = None
+            _parse_router_bgp_line(rb, words, neighbor_cfg, af=bgp_af)
+            continue
+
+        if section == 'router_ospf6':
+            if words[:2] == ['ospf6', 'router-id'] and len(words) >= 3:
+                ro6['router_id'] = words[2]
+            elif words[0] == 'area' and len(words) >= 3:
+                a = area_cfg(words[1], ro6)
+                kw = words[2]
+                if kw == 'stub':
+                    a['stub'] = True
+                    a['no_summary'] = 'no-summary' in words[3:]
+                elif kw == 'nssa':
+                    a['nssa'] = True
+                    a['no_summary'] = 'no-summary' in words[3:]
+                elif kw == 'range' and len(words) >= 4:
+                    a['ranges'].append(words[3])
+            elif words[0] == 'redistribute' and len(words) >= 2:
+                ro6['redistribute'].append(words[1])
+            elif words[:2] == ['default-information', 'originate']:
+                ro6['default_information_originate'] = True
+                ro6['default_information_always'] = 'always' in words[2:]
+            elif words[0] == 'interface' and len(words) >= 4 and words[2] == 'area':
+                ro6['interface_areas'][words[1]] = normalize_area(words[3])
             continue
 
         if section == 'router_ospf':
@@ -889,6 +1029,54 @@ def parse_frr_config(text: str) -> Dict[str, Any]:
             continue
 
     return cfg
+
+
+def _parse_ospf6_interface_line(o6: Dict[str, Any], w: List[str], negated: bool) -> None:
+    """``ipv6 ospf6 <w...>`` (or its ``no`` form) of an interface block applied to *o6*."""
+    sub = w[0]
+    arg = w[1] if len(w) >= 2 else None
+    if sub == 'area':
+        o6['area'] = None if negated or not arg else normalize_area(arg)
+    elif sub == 'passive':
+        o6['passive'] = not negated
+    elif sub == 'mtu-ignore':
+        o6['mtu_ignore'] = not negated
+    elif sub in ('cost', 'priority', 'hello-interval', 'dead-interval'):
+        key = sub.replace('-', '_')
+        o6[key] = None if negated or not (arg and arg.isdigit()) else int(arg)
+    elif sub == 'network':
+        o6['network_type'] = None if negated else arg
+    elif sub == 'authentication':
+        if negated:
+            o6['authentication'] = None
+        elif arg == 'keychain' and len(w) >= 3:
+            o6['authentication'] = {'keychain': w[2]}
+        else:
+            # ipv6 ospf6 authentication key-id N hash-algo ALGO key KEY
+            auth = {'key_id': None, 'hash_algo': None, 'key': None}
+            for i in range(1, len(w) - 1):
+                if w[i] == 'key-id' and w[i + 1].isdigit():
+                    auth['key_id'] = int(w[i + 1])
+                elif w[i] == 'hash-algo':
+                    auth['hash_algo'] = w[i + 1]
+                elif w[i] == 'key':
+                    auth['key'] = w[i + 1]
+            o6['authentication'] = auth
+
+
+def bgp_neighbor_activated(router_bgp: Dict[str, Any], peer, afi: str = 'ipv4') -> bool:
+    """Whether the neighbour *peer* of a ``router_bgp`` of :func:`parse_frr_config` is active in
+    the unicast family *afi*: an explicit ``[no] neighbor X activate`` of that family wins; else
+    IPv4 unicast follows ``bgp default ipv4-unicast`` (on by default in FRR's traditional
+    profile) and IPv6 unicast is off."""
+    peer = str(peer)
+    if peer not in (router_bgp or {}).get('neighbors', {}):
+        return False
+    family = f"{afi} unicast"
+    per_af = router_bgp.get('address_families', {}).get(family, {}).get('neighbors', {}).get(peer, {})
+    if per_af.get('activate') is not None:
+        return bool(per_af['activate'])
+    return afi == 'ipv4' and bool(router_bgp.get('default_ipv4_unicast', True))
 
 
 def prefix_list_permits(prefix_lists: Dict[str, List[Dict[str, Any]]], name: str, prefix) -> Optional[bool]:
@@ -968,6 +1156,18 @@ def _int_or_none(value) -> Optional[int]:
         return None
 
 
+def _afi_safi(afi: str) -> str:
+    """``'ipv4'`` / ``'ipv6'`` -> the ``show bgp`` keywords of that unicast family."""
+    if afi not in ('ipv4', 'ipv6'):
+        raise ValueError(f"afi must be 'ipv4' or 'ipv6', not {afi!r}")
+    return f"{afi} unicast"
+
+
+def _af_key(afi: str) -> str:
+    """``'ipv4'`` -> ``'ipv4Unicast'`` (the key of a family in the json of bgpd)."""
+    return 'ipv6Unicast' if afi == 'ipv6' else 'ipv4Unicast'
+
+
 def as_list_from_string(path) -> List[int]:
     """``'65100 65000'`` -> ``[65100, 65000]`` (AS sets ``{65100,65000}`` keep their members)."""
     if not path:
@@ -980,8 +1180,10 @@ def as_list_from_string(path) -> List[int]:
 def parse_bgp_summary(data: Any) -> Dict[str, Any]:
     """Parse the JSON of ``show bgp ipv4 unicast summary``.
 
-    Accepts the flat address-family object or the ``{'ipv4Unicast': {...}}`` wrapper of
-    ``show bgp summary json``.  Returns ``{}`` when no BGP process answers, else::
+    Accepts the flat address-family object or the ``{'ipv4Unicast': {...}}`` /
+    ``{'ipv6Unicast': {...}}`` wrapper of ``show bgp summary json`` (IPv4 first).  Peers are
+    keyed by address, or by interface name for an unnumbered neighbour (``'eth1'``).
+    Returns ``{}`` when no BGP process answers, else::
 
         {'router_id': '10.0.0.1', 'as': 65001,
          'peers': {'10.1.1.2': {'remote_as': 65100, 'state': 'Established', 'established': True,
@@ -991,8 +1193,10 @@ def parse_bgp_summary(data: Any) -> Dict[str, Any]:
     """
     if not isinstance(data, dict):
         return {}
-    if 'ipv4Unicast' in data and isinstance(data['ipv4Unicast'], dict):
-        data = data['ipv4Unicast']
+    for key in ('ipv4Unicast', 'ipv6Unicast'):
+        if key in data and isinstance(data[key], dict):
+            data = data[key]
+            break
     if 'routerId' not in data and 'peers' not in data:
         return {}
     peers: Dict[str, Dict[str, Any]] = {}
@@ -1009,23 +1213,31 @@ def parse_bgp_summary(data: Any) -> Dict[str, Any]:
             'pfx_snt': _int_or_none(p.get('pfxSnt')) or 0,
             'description': p.get('desc'),
             'uptime': p.get('peerUptime'),
+            'id_type': p.get('idType'),
         }
     return {'router_id': data.get('routerId'), 'as': _int_or_none(data.get('as')), 'peers': peers}
 
 
-def get_bgp_summary(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Any]:
-    """Run 'vtysh -c "show bgp ipv4 unicast summary json"' (see :func:`parse_bgp_summary`).
-    Returns {} when BGP is not running."""
-    return parse_bgp_summary(_vtysh_json(grade, machine_name, 'show bgp ipv4 unicast summary', step, allow_error))
+def get_bgp_summary(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                    afi: str = 'ipv4') -> Dict[str, Any]:
+    """Run 'vtysh -c "show bgp ipv4 unicast summary json"' (``afi='ipv6'``: the IPv6 unicast
+    family; see :func:`parse_bgp_summary`).  Returns {} when BGP is not running, and when no
+    neighbour is active in that family."""
+    return parse_bgp_summary(_vtysh_json(grade, machine_name, f'show bgp {_afi_safi(afi)} summary', step,
+                                         allow_error))
 
 
 # -- show bgp neighbors X -----------------------------------------------------
 
-def parse_bgp_neighbor(data: Any, peer: str = None) -> Dict[str, Any]:
+def parse_bgp_neighbor(data: Any, peer: str = None, afi: str = 'ipv4') -> Dict[str, Any]:
     """Parse the JSON of ``show bgp neighbors <peer>``.
 
-    The output is keyed by peer address; ``peer`` selects an entry (the first one when
-    omitted).  Returns ``{}`` when the neighbour does not exist, else::
+    The output is keyed by peer address (interface name for an unnumbered neighbour);
+    ``peer`` selects an entry (the first one when omitted).  The per-family fields (prefix
+    counters, policies, next-hop-self...) are those of the unicast family *afi*
+    (``addressFamilyInfo.ipv4Unicast`` / ``ipv6Unicast``; ``af`` = ``{}`` when the neighbour is
+    not active in it).  ``nexthop_global`` / ``nexthop_local`` are the IPv6 next hops the
+    router sends this peer.  Returns ``{}`` when the neighbour does not exist, else::
 
         {'peer': '10.1.1.2', 'remote_as': 65100, 'local_as': 65001, 'state': 'Established',
          'established': True, 'link': 'external' | 'internal', 'description': 'ISP-A',
@@ -1037,7 +1249,8 @@ def parse_bgp_neighbor(data: Any, peer: str = None) -> Dict[str, Any]:
          'route_reflector_client': False, 'next_hop_self': False, 'default_originate': False,
          'default_originate_route_map': None,
          'route_map_in': 'LP-IN', 'route_map_out': None, 'prefix_list_in': None, 'prefix_list_out': None,
-         'send_community': True, 'af': {...ipv4Unicast...}, 'raw': {...}}
+         'send_community': True, 'nexthop_global': None, 'nexthop_local': None,
+         'af': {...ipv4Unicast...}, 'raw': {...}}
     """
     if not isinstance(data, dict) or not data:
         return {}
@@ -1049,7 +1262,7 @@ def parse_bgp_neighbor(data: Any, peer: str = None) -> Dict[str, Any]:
         entry = next((v for v in data.values() if isinstance(v, dict)), None)
     if not isinstance(entry, dict) or 'bgpState' not in entry:
         return {}
-    af = ((entry.get('addressFamilyInfo') or {}).get('ipv4Unicast')) or {}
+    af = ((entry.get('addressFamilyInfo') or {}).get(_af_key(afi))) or {}
     if not isinstance(af, dict):
         af = {}
     peer_ip = peer if peer is not None else next(iter(data))
@@ -1092,16 +1305,21 @@ def parse_bgp_neighbor(data: Any, peer: str = None) -> Dict[str, Any]:
         'prefix_list_in': af.get('incomingUpdatePrefixFilterList'),
         'prefix_list_out': af.get('outgoingUpdatePrefixFilterList'),
         'send_community': 'commAttriSentToNbr' in af if af else True,
+        'nexthop_global': entry.get('nexthopGlobal'),
+        'nexthop_local': entry.get('nexthopLocal'),
         'af': af,
         'raw': entry,
     }
 
 
-def get_bgp_neighbor(grade: Grade0, machine_name: str, peer, step: int = 1, allow_error: bool = False) -> Dict[str, Any]:
-    """Run 'vtysh -c "show bgp neighbors <peer> json"' (see :func:`parse_bgp_neighbor`).
-    Returns {} when BGP is not running or the neighbour is unknown."""
+def get_bgp_neighbor(grade: Grade0, machine_name: str, peer, step: int = 1, allow_error: bool = False,
+                     afi: str = 'ipv4') -> Dict[str, Any]:
+    """Run 'vtysh -c "show bgp neighbors <peer> json"' (see :func:`parse_bgp_neighbor`; *afi*
+    picks the family of the per-family fields).  Returns {} when BGP is not running or the
+    neighbour is unknown."""
+    _afi_safi(afi)
     return parse_bgp_neighbor(_vtysh_json(grade, machine_name, f'show bgp neighbors {peer}', step, allow_error),
-                              peer=str(peer))
+                              peer=str(peer), afi=afi)
 
 
 # -- show bgp ipv4 unicast (whole table) --------------------------------------
@@ -1124,6 +1342,10 @@ def _parse_bgp_path_entry(e: Dict[str, Any]) -> Dict[str, Any]:
         best = bool(best)
     nexthops = [n for n in (e.get('nexthops') or []) if isinstance(n, dict)]
     used = next((n for n in nexthops if n.get('used')), nexthops[0] if nexthops else {})
+    # IPv6: the global next hop of MP_REACH_NLRI and the link-local one (eBGP on a link; the
+    # link-local one is ``used``).  An unnumbered peer's link-local comes as ``scope: global``.
+    global_nh = next((n for n in nexthops if n.get('scope') == 'global'), nexthops[0] if nexthops else {})
+    link_local_nh = next((n for n in nexthops if n.get('scope') == 'link-local'), {})
     peer = e.get('peer')
     if isinstance(peer, dict):
         peer_id, peer_router_id = peer.get('peerId'), peer.get('routerId')
@@ -1152,6 +1374,8 @@ def _parse_bgp_path_entry(e: Dict[str, Any]) -> Dict[str, Any]:
         'path_from': path_from,
         'nexthop': used.get('ip'),
         'nexthop_used': bool(used.get('used')),
+        'nexthop_global': global_nh.get('ip'),
+        'nexthop_link_local': link_local_nh.get('ip'),
         'accessible': used.get('accessible'),
         'peer': peer_id,
         'peer_router_id': peer_router_id,
@@ -1169,12 +1393,13 @@ def _parse_bgp_path_entry(e: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def parse_bgp_routes(data: Any) -> Dict[str, List[Dict[str, Any]]]:
-    """Parse the JSON of ``show bgp ipv4 unicast`` (the whole BGP table).
+    """Parse the JSON of ``show bgp ipv4 unicast`` (or ``ipv6 unicast``: the whole BGP table).
 
     Returns ``{prefix: [path, ...]}`` (``{}`` when BGP is not running), each path being::
 
         {'valid': True, 'best': True, 'reason': 'Local Pref', 'path_from': 'internal',
          'nexthop': '10.0.3.3', 'nexthop_used': True, 'accessible': None,
+         'nexthop_global': '10.0.3.3', 'nexthop_link_local': None,   # IPv6: both next hops
          'peer': '10.0.3.2', 'peer_router_id': None, 'aspath': '65200 65000',
          'as_list': [65200, 65000], 'locprf': 200, 'med': 0, 'weight': 0, 'origin': 'IGP',
          'local': False, 'originator_id': None, 'cluster_list': [], 'communities': []}
@@ -1197,9 +1422,11 @@ def parse_bgp_routes(data: Any) -> Dict[str, List[Dict[str, Any]]]:
     return result
 
 
-def get_bgp_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, List[Dict[str, Any]]]:
-    """Run 'vtysh -c "show bgp ipv4 unicast json"' (see :func:`parse_bgp_routes`). Returns {} on error."""
-    return parse_bgp_routes(_vtysh_json(grade, machine_name, 'show bgp ipv4 unicast', step, allow_error))
+def get_bgp_routes(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False,
+                   afi: str = 'ipv4') -> Dict[str, List[Dict[str, Any]]]:
+    """Run 'vtysh -c "show bgp ipv4 unicast json"' (``afi='ipv6'``: ``ipv6 unicast``; see
+    :func:`parse_bgp_routes`). Returns {} on error."""
+    return parse_bgp_routes(_vtysh_json(grade, machine_name, f'show bgp {_afi_safi(afi)}', step, allow_error))
 
 
 def bgp_best_path(routes: Dict[str, List[Dict[str, Any]]], prefix) -> Dict[str, Any]:
@@ -1250,9 +1477,12 @@ def parse_bgp_prefix(data: Any) -> Dict[str, Any]:
             'paths': [_parse_bgp_path_entry(e) for e in data['paths'] if isinstance(e, dict)]}
 
 
-def get_bgp_prefix(grade: Grade0, machine_name: str, prefix, step: int = 1, allow_error: bool = False) -> Dict[str, Any]:
-    """Run 'vtysh -c "show bgp ipv4 unicast <prefix> json"' (see :func:`parse_bgp_prefix`)."""
-    return parse_bgp_prefix(_vtysh_json(grade, machine_name, f'show bgp ipv4 unicast {prefix}', step, allow_error))
+def get_bgp_prefix(grade: Grade0, machine_name: str, prefix, step: int = 1, allow_error: bool = False,
+                   afi: str = 'ipv4') -> Dict[str, Any]:
+    """Run 'vtysh -c "show bgp ipv4 unicast <prefix> json"' (``afi='ipv6'``: ``ipv6 unicast``;
+    see :func:`parse_bgp_prefix`)."""
+    return parse_bgp_prefix(_vtysh_json(grade, machine_name, f'show bgp {_afi_safi(afi)} {prefix}', step,
+                                        allow_error))
 
 
 # -- show bgp ipv4 unicast neighbors X advertised-routes ------------------------
@@ -1262,7 +1492,8 @@ def parse_bgp_advertised_routes(data: Any) -> Dict[str, Dict[str, Any]]:
     (the routes sent to that peer, after the outbound policy).
 
     Returns ``{prefix: {'nexthop', 'aspath', 'as_list', 'locprf', 'med', 'weight', 'origin'}}``
-    (``{}`` on error or when nothing is advertised).
+    (``{}`` on error or when nothing is advertised); ``nexthop`` is ``nextHop`` (IPv4) or
+    ``nextHopGlobal`` (IPv6).
     """
     if not isinstance(data, dict):
         return {}
@@ -1275,7 +1506,7 @@ def parse_bgp_advertised_routes(data: Any) -> Dict[str, Dict[str, Any]]:
             continue
         path = e.get('path') or ''
         result[prefix] = {
-            'nexthop': e.get('nextHop'),
+            'nexthop': e.get('nextHop') if 'nextHop' in e else e.get('nextHopGlobal'),
             'aspath': path,
             'as_list': as_list_from_string(path),
             'locprf': _int_or_none(e.get('locPrf')),
@@ -1287,11 +1518,12 @@ def parse_bgp_advertised_routes(data: Any) -> Dict[str, Dict[str, Any]]:
 
 
 def get_bgp_advertised_routes(grade: Grade0, machine_name: str, peer, step: int = 1,
-                              allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
+                              allow_error: bool = False, afi: str = 'ipv4') -> Dict[str, Dict[str, Any]]:
     """Run 'vtysh -c "show bgp ipv4 unicast neighbors <peer> advertised-routes json"'
-    (see :func:`parse_bgp_advertised_routes`)."""
+    (``afi='ipv6'``: ``ipv6 unicast``; see :func:`parse_bgp_advertised_routes`)."""
     return parse_bgp_advertised_routes(
-        _vtysh_json(grade, machine_name, f'show bgp ipv4 unicast neighbors {peer} advertised-routes', step, allow_error))
+        _vtysh_json(grade, machine_name, f'show bgp {_afi_safi(afi)} neighbors {peer} advertised-routes', step,
+                    allow_error))
 
 
 # ---------------------------------------------------------------------------
@@ -1786,3 +2018,217 @@ def parse_msdp_sa(data: Any) -> Dict[tuple, Dict[str, Any]]:
 
 def get_msdp_sa(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[tuple, Dict[str, Any]]:
     return parse_msdp_sa(_vtysh_json(grade, machine_name, "show ip msdp sa", step, allow_error))
+
+
+# ---------------------------------------------------------------------------
+# OSPFv3 (ospf6d: json output, text of show ipv6 ospf6 border-routers)
+# ---------------------------------------------------------------------------
+#
+# Captured on FRR 9.1.3 (tests/mock_data/frr/ospf6_*).  Without ospf6d (or without
+# ``router ospf6``) the json commands print nothing and exit 0: every parser then returns
+# its empty shape.  The areas of ``show ipv6 ospf6 json`` are keyed as they were typed
+# (``"0"``, ``"0.0.0.1"``): they are normalised to the dotted form here.
+
+#: ``pathType`` of ``show ipv6 ospf6 route json`` -> route type
+OSPF6_PATH_TYPES = {'IA': 'intra-area', 'IE': 'inter-area', 'E1': 'external-1', 'E2': 'external-2'}
+
+
+def parse_ospf6_info(data: Any) -> Dict[str, Any]:
+    """Parse the JSON of ``show ipv6 ospf6``.
+
+    Returns ``{}`` when ospf6d does not answer, else::
+
+        {'router_id': '2.2.2.2',          # '0.0.0.0' when none could be chosen
+         'abr': True,                     # interfaces attached to two areas or more
+         'areas': {'0.0.0.1': {'stub': True, 'nssa': False, 'no_summary': False,
+                               'interfaces': ['eth1'], 'lsa_count': 9}},
+         'as_scoped_lsa_count': 4}
+
+    The json has no ABR / ASBR flag: ``abr`` is computed from the areas, and what the other
+    routers see is in :func:`get_ospf6_border_routers`.
+    """
+    if not isinstance(data, dict) or 'routerId' not in data:
+        return {}
+    areas: Dict[str, Dict[str, Any]] = {}
+    for key, a in (data.get('areas') or {}).items():
+        if not isinstance(a, dict):
+            continue
+        areas[normalize_area(key)] = {
+            'stub': bool(a.get('areaIsStub')),
+            'nssa': bool(a.get('areaIsNSSA')),
+            'no_summary': bool(a.get('areaNoSummary')),
+            'interfaces': [str(i) for i in (a.get('interfacesAttachedToArea') or [])],
+            'lsa_count': _int_or_none(a.get('numberOfAreaScopedLsa')),
+        }
+    return {
+        'router_id': data.get('routerId'),
+        'abr': sum(1 for a in areas.values() if a['interfaces']) >= 2,
+        'areas': areas,
+        'as_scoped_lsa_count': _int_or_none(data.get('numberOfAsScopedLsa')),
+    }
+
+
+def get_ospf6_info(grade: Grade0, machine_name: str, step: int = 1, allow_error: bool = False) -> Dict[str, Any]:
+    """Run 'vtysh -c "show ipv6 ospf6 json"' (see :func:`parse_ospf6_info`)."""
+    return parse_ospf6_info(_vtysh_json(grade, machine_name, 'show ipv6 ospf6', step, allow_error))
+
+
+def parse_ospf6_neighbors(data: Any) -> List[Dict[str, Any]]:
+    """Parse the JSON of ``show ipv6 ospf6 neighbor``: one dict per neighbour, with the keys
+    of :func:`get_ospf_neighbors` (so :func:`find_neighbor` / :func:`neighbor_is_full` work)::
+
+        {'neighbor_id': '1.1.1.1', 'priority': 1, 'state': 'Full',   # Init, Twoway, ExStart...
+         'role': 'BDR',                   # the neighbour's role on the link
+         'dead_time': '00:00:37', 'up_time': '00:00:32', 'interface': 'eth0',
+         'interface_state': 'DR',         # this router's role on the link
+         'address': None, 'local_address': None}
+
+    OSPFv3 neighbours are named by router-id; their (link-local) address is not in the json.
+    """
+    if not isinstance(data, dict):
+        return []
+    result: List[Dict[str, Any]] = []
+    for n in data.get('neighbors') or []:
+        if not isinstance(n, dict):
+            continue
+        result.append({
+            'neighbor_id': n.get('neighborId'),
+            'priority': _int_or_none(n.get('priority')),
+            'state': n.get('state'),
+            'role': n.get('ifState'),
+            'dead_time': n.get('deadTime'),
+            'up_time': n.get('duration'),
+            'interface': n.get('interfaceName'),
+            'interface_state': n.get('interfaceState'),
+            'address': None,
+            'local_address': None,
+        })
+    return result
+
+
+def get_ospf6_neighbors(grade: Grade0, machine_name: str, step: int = 1,
+                        allow_error: bool = False) -> List[Dict[str, Any]]:
+    """Run 'vtysh -c "show ipv6 ospf6 neighbor json"' (see :func:`parse_ospf6_neighbors`)."""
+    return parse_ospf6_neighbors(_vtysh_json(grade, machine_name, 'show ipv6 ospf6 neighbor', step, allow_error))
+
+
+def parse_ospf6_interfaces(data: Any) -> Dict[str, Dict[str, Any]]:
+    """Parse the JSON of ``show ipv6 ospf6 interface``.
+
+    Returns ``{ifname: {...}}`` for every interface ospf6d knows; ``enabled`` is false (and the
+    other keys ``None``) for an interface not attached to an area::
+
+        {'enabled': True, 'area': '0.0.0.1', 'cost': 10, 'state': 'DR',  # PointToPoint, Waiting...
+         'type': 'BROADCAST', 'passive': False, 'mtu': 1500, 'mtu_ignore': False,
+         'priority': 1, 'hello_interval': 10, 'dead_interval': 40, 'dr': '3.3.3.3', 'bdr': '2.2.2.2',
+         'addresses': ['fe80::53:52ff:fe48:ead/64', '3fff:550:5cfb:23::3/64'],
+         'auth_type': 'NULL',             # 'manualkey' / 'keychain' with an authentication trailer
+         'auth_rx_drops': None}
+    """
+    if not isinstance(data, dict):
+        return {}
+    result: Dict[str, Dict[str, Any]] = {}
+    for ifname, e in data.items():
+        if not isinstance(e, dict):
+            continue
+        enabled = bool(e.get('attachedToArea'))
+        auth = e.get('authInfo') if isinstance(e.get('authInfo'), dict) else {}
+        detection = e.get('mtuMismatchDetection')
+        result[ifname] = {
+            'enabled': enabled,
+            'area': normalize_area(e['areaId']) if enabled and e.get('areaId') else None,
+            'cost': _int_or_none(e.get('cost')),
+            'state': e.get('ospf6InterfaceState'),
+            'type': e.get('type'),
+            'passive': bool(e.get('timerPassiveIface')) if enabled else None,
+            'mtu': _int_or_none(e.get('interfaceMtu')),
+            'mtu_ignore': (detection != 'enabled') if detection is not None else None,
+            'priority': _int_or_none(e.get('priority')),
+            'hello_interval': _int_or_none(e.get('timerIntervalsConfigHello')),
+            'dead_interval': _int_or_none(e.get('timerIntervalsConfigDead')),
+            'dr': e.get('dr'),
+            'bdr': e.get('bdr'),
+            'addresses': [a.get('address') for a in (e.get('internetAddress') or [])
+                          if isinstance(a, dict) and a.get('address')],
+            'auth_type': auth.get('authType'),
+            'auth_rx_drops': _int_or_none(auth.get('rxPktDrop')),
+        }
+    return result
+
+
+def get_ospf6_interfaces(grade: Grade0, machine_name: str, step: int = 1,
+                         allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Run 'vtysh -c "show ipv6 ospf6 interface json"' (see :func:`parse_ospf6_interfaces`)."""
+    return parse_ospf6_interfaces(_vtysh_json(grade, machine_name, 'show ipv6 ospf6 interface', step, allow_error))
+
+
+def parse_ospf6_routes(data: Any) -> Dict[str, Dict[str, Any]]:
+    """Parse the JSON of ``show ipv6 ospf6 route``.
+
+    Returns ``{prefix: {'type': 'intra-area' | 'inter-area' | 'external-1' | 'external-2',
+    'code': 'IA' | 'IE' | 'E1' | 'E2', 'best': bool, 'nexthops': [(nexthop | None, ifname)]}}``;
+    a directly connected network has the next hop ``None`` (``::`` in the json).  The default
+    route a stub area receives from its ABR is ``'::/0'`` of type ``inter-area``.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get('routes'), dict):
+        return {}
+    result: Dict[str, Dict[str, Any]] = {}
+    for prefix, e in data['routes'].items():
+        if not isinstance(e, dict):
+            continue
+        code = e.get('pathType')
+        nexthops = []
+        for n in e.get('nextHops') or []:
+            if isinstance(n, dict):
+                nh = n.get('nextHop')
+                nexthops.append((None if nh in (None, '', '::') else nh, n.get('interfaceName')))
+        result[prefix] = {
+            'type': OSPF6_PATH_TYPES.get(code, code),
+            'code': code,
+            'best': bool(e.get('isBestRoute')),
+            'nexthops': nexthops,
+        }
+    return result
+
+
+def get_ospf6_routes(grade: Grade0, machine_name: str, step: int = 1,
+                     allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Run 'vtysh -c "show ipv6 ospf6 route json"' (see :func:`parse_ospf6_routes`)."""
+    return parse_ospf6_routes(_vtysh_json(grade, machine_name, 'show ipv6 ospf6 route', step, allow_error))
+
+
+_OSPF6_BORDER_ROUTER_RE = re.compile(r'^(\d{1,3}(?:\.\d{1,3}){3})\s+(\S{8})\s+\S+\s+(\S+)\s+(\d{1,3}(?:\.\d{1,3}){3})\s*$')
+
+
+def parse_ospf6_border_routers(output: str) -> Dict[str, Dict[str, Any]]:
+    """Parse the text of ``show ipv6 ospf6 border-routers`` (no json form in FRR 9.1)::
+
+        Router-ID       Rtr-Bits Options        Path-Type  Area
+        1.1.1.1         ------E- --|-|--|-|-|--|R|-|--|E|V6 Intra-Area 0.0.0.0
+        2.2.2.2         -------B --|-|--|-|-|--|R|-|--|E|V6 Intra-Area 0.0.0.0
+
+    Returns ``{router_id: {'abr': bool, 'asbr': bool, 'path_type': 'Intra-Area', 'areas':
+    ['0.0.0.0', ...]}}`` (an ABR is listed once per area); ``{}`` without ospf6d
+    (``% OSPFv3 instance not found``).  The router itself appears when it is a border router.
+    """
+    result: Dict[str, Dict[str, Any]] = {}
+    for line in (output or '').splitlines():
+        m = _OSPF6_BORDER_ROUTER_RE.match(line.strip())
+        if not m:
+            continue
+        rid, bits, path_type, area = m.groups()
+        entry = result.setdefault(rid, {'abr': False, 'asbr': False, 'path_type': path_type, 'areas': []})
+        entry['abr'] = entry['abr'] or 'B' in bits
+        entry['asbr'] = entry['asbr'] or 'E' in bits
+        if area not in entry['areas']:
+            entry['areas'].append(area)
+    return result
+
+
+def get_ospf6_border_routers(grade: Grade0, machine_name: str, step: int = 1,
+                             allow_error: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Run 'vtysh -c "show ipv6 ospf6 border-routers"' (see :func:`parse_ospf6_border_routers`)."""
+    output, code = _test(grade, machine_name, 'vtysh -c "show ipv6 ospf6 border-routers"', step, allow_error)
+    if code != 0 or not output:
+        return {}
+    return parse_ospf6_border_routers(output)

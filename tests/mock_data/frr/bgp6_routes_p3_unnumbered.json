@@ -1,0 +1,10 @@
+{
+ "vrfId": 0,
+ "vrfName": "default",
+ "tableVersion": 2,
+ "routerId": "3.3.3.3",
+ "defaultLocPrf": 100,
+ "localAS": 65003,
+ "routes": { "3fff:550:5cfb:ff::3/128": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"3fff:550:5cfb:ff::3","prefixLen":128,"network":"3fff:550:5cfb:ff::3/128","version":1,"metric":0,"weight":32768,"peerId":"(unspec)","path":"","origin":"IGP","nexthops":[{"ip":"::","hostname":"p3","afi":"ipv6","scope":"global","used":true}]}]
+,"3fff:550:5cfb:ff::4/128": [{"valid":true,"bestpath":true,"selectionReason":"First path received","pathFrom":"external","prefix":"3fff:550:5cfb:ff::4","prefixLen":128,"network":"3fff:550:5cfb:ff::4/128","version":2,"metric":0,"weight":0,"peerId":"fe80::53:52ff:fec2:6f3d","path":"65004","origin":"IGP","nexthops":[{"ip":"fe80::53:52ff:fec2:6f3d","hostname":"p4","afi":"ipv6","scope":"global","used":true},{"ip":"fe80::53:52ff:fec2:6f3d","hostname":"p4","afi":"ipv6","scope":"link-local"}]}]
+ }  } 

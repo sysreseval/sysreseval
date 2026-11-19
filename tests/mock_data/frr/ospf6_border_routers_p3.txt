@@ -1,0 +1,2 @@
+Router-ID       Rtr-Bits Options        Path-Type  Area           
+2.2.2.2         -------B --|-|--|-|-|--|R|-|--|-|V6 Intra-Area 0.0.0.1        
