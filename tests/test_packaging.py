@@ -38,6 +38,14 @@ def _imported_modules(subtree='src', excluded=('tools', 'sreweb')):
     return found - set(sys.stdlib_module_names) - LOCAL_MODULES
 
 
+def _pyside6_modules(subtree: str) -> set:
+    """The PySide6 submodules (QtCore, QtTest…) imported by the Python files of a subtree."""
+    found = set()
+    for path in (ROOT / subtree).rglob('*.py'):
+        found |= set(re.findall(r'from PySide6\.(Qt\w+) import', path.read_text()))
+    return found
+
+
 def _stanza(package: str) -> str:
     return CONTROL.split(f'Package: {package}\n', 1)[1].split('\nPackage: ', 1)[0]
 
@@ -54,11 +62,17 @@ class TestControl:
             assert IMPORT_TO_PACKAGE[module] in stanza, (package, module)
 
     def test_pyside6_modules(self):
-        used = set()
-        for path in (ROOT / 'src').rglob('*.py'):
-            used |= set(re.findall(r'from PySide6\.(Qt\w+) import', path.read_text()))
-        for qt in used:
-            assert f'python3-pyside6.{qt.lower()}' in CONTROL, qt
+        """Debian ships one package per Qt module (python3-pyside6.qtcore, .qttest…) where pip's
+        PySide6 has them all: a new `from PySide6.QtX` passes `make tests` in the venv and breaks
+        the package build, whose unit tests only have the `<!nocheck>` Build-Depends (QtTest of
+        tests/test_gui_form_question.py: no packages for 0.17.0 and 0.18.0).  The modules of src/
+        are runtime dependencies of sysreseval; those of src/ and tests/ are Build-Depends."""
+        source = CONTROL.split('\nPackage: ', 1)[0]
+        runtime = _pyside6_modules('src')
+        for qt in runtime:
+            assert f'python3-pyside6.{qt.lower()},' in _stanza('sysreseval'), qt
+        for qt in runtime | _pyside6_modules('tests'):
+            assert f'python3-pyside6.{qt.lower()} <!nocheck>' in source, qt
 
     def test_kathara_requirements_are_mapped(self):
         """packaging/kathara: the requirements kept by the patch all exist as python3-* packages."""

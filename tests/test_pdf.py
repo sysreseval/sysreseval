@@ -132,6 +132,7 @@ class TestTableCells:
     @pytest.mark.parametrize('with_fonts', [True, False])
     def test_render(self, tmp_path, monkeypatch, with_fonts):
         """The texts and the whole-cell styles reach the cells fpdf2 draws."""
+        import fpdf
         import fpdf.table
         from fpdf.enums import TextEmphasis
         if not with_fonts:
@@ -156,7 +157,12 @@ class TestTableCells:
                                'plain', 'a < b & c', '']
         assert cells['bold'].emphasis == TextEmphasis.B
         assert cells['italic'].emphasis == TextEmphasis.I
-        assert cells['code'].family == pdf.mono_font
+        # fpdf2 < 2.8.4 (2.8.3 of Debian 13) gives a cell its emphasis and colour only, not the font
+        # family of a <code>: the cell is drawn in the text font
+        if tuple(map(int, re.findall(r'\d+', fpdf.__version__)[:3])) >= (2, 8, 4):
+            assert cells['code'].family == pdf.mono_font
+        else:
+            assert cells['code'] is None
         assert cells['text with italic, bold and code'] is None and cells['code then text'] is None
 
 

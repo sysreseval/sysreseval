@@ -26,6 +26,7 @@ Build-Depends: debhelper-compat (= 13),
                python3-pyside6.qtgui <!nocheck>,
                python3-pyside6.qtsvg <!nocheck>,
                python3-pyside6.qtsvgwidgets <!nocheck>,
+               python3-pyside6.qttest <!nocheck>,
                python3-pyside6.qtwidgets <!nocheck>,
                python3-pytest <!nocheck>,
                python3-aiohttp <!nocheck>,
@@ -112,8 +113,8 @@ Description: web site of SysResEval
  The users log in with an LDAP directory (the portal itself, or an Apache
  reverse proxy in front of it), or everybody is anonymous.
  .
- This host needs neither Docker nor the labs.  Configuration: /etc/sysreseval/web.toml
- (see /usr/share/doc/sysreseval-web/examples/).
+ This host needs neither Docker nor the labs.  Configuration:
+ /etc/sysreseval/web.toml (see /usr/share/doc/sysreseval-web/examples/).
 
 Package: sysreseval-agent
 Architecture: all
@@ -130,7 +131,8 @@ Description: pool-host agent of the SysResEval web site
  tigervnc-standalone-server and openbox it also runs the virtual X desktops of
  the projects (the Display tab of the web site: the graphical applications of
  the labs), as the unprivileged user sreweb-x11.
- Configuration: /etc/sysreseval/agent.toml (see /usr/share/doc/sysreseval-agent/examples/).
+ Configuration: /etc/sysreseval/agent.toml (see
+ /usr/share/doc/sysreseval-agent/examples/).
 
 Package: sysreseval-doc
 Architecture: all
