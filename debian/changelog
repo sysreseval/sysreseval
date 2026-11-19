@@ -1,3 +1,11 @@
+sysreseval (0.18.1-1) unstable; urgency=medium
+
+  * Debian packages build again: the GUI form tests need python3-pyside6.qttest,
+    and a PDF table test now accepts the fpdf2 2.8.3 of Debian 13 (0.17.0 and
+    0.18.0 have no packages).
+
+ -- emotchane <emmanuel.motchane@gmail.com>  Thu, 19 Nov 2026 14:19:04 +0100
+
 sysreseval (0.18.0-1) unstable; urgency=medium
 
   * projects moved from Debian 12 to Debian 13.

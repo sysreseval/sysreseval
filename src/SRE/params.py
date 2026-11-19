@@ -291,7 +291,7 @@ del _fhs, _root
 #
 #################################################################################
 
-sre_version = "0.18.0"
+sre_version = "0.18.1"
 default_docker_image_version = "1.34"
 # Version of the images that have their own, e.g. {"ldap-mail": "1.35"}; the others take
 # default_docker_image_version.  Both lines are written by `make images` from images/Makefile
