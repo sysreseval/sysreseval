@@ -293,10 +293,15 @@ del _fhs, _root
 
 sre_version = "0.17.0"
 default_docker_image_version = "1.34"
+# Version of the images that have their own, e.g. {"ldap-mail": "1.35"}; the others take
+# default_docker_image_version.  Both lines are written by `make images` from images/Makefile
+# (VERSION and its VERSION_<image> lines): keep this one on a single line.
+docker_image_versions = {}
 sre_docker_namespace = "sysreseval"
 
 def sre_docker_image(image_name: str = "base13") -> str:
-    return f"{sre_docker_namespace}/{image_name}:{default_docker_image_version}"
+    version = docker_image_versions.get(image_name, default_docker_image_version)
+    return f"{sre_docker_namespace}/{image_name}:{version}"
 
 default_docker_image = sre_docker_image()
 
@@ -305,7 +310,8 @@ default_docker_image = sre_docker_image()
 update_state_file_name = ".sre-update.json"
 update_lock_file_name = ".sre-update.lock"
 update_tmp_prefix = ".sre-update-"
-update_params_follow_new = ("sre_version", "default_docker_image_version")  # always take the new value
+update_params_follow_new = ("sre_version", "default_docker_image_version",
+                            "docker_image_versions")  # always take the new value
 update_params_backup_suffix = ".bak."   # params.py.bak.<YYYYmmdd-HHMMSS>, like scripts/install.sh
 update_system_templates_dir = "scripts/etc"   # files installed by hand on every host (sudoers, .desktop...)
 # keys of the state file

@@ -15,6 +15,7 @@ from SRE import params
 
 PARAMS_FILE = Path(__file__).parent.parent / 'src' / 'SRE' / 'params.py'
 FHS_FILE = '/usr/lib/sysreseval/SRE/params.py'
+IMAGES_DIR = PARAMS_FILE.parent.parent.parent / 'images'
 
 
 def _set(text, **values):
@@ -185,6 +186,37 @@ class TestSelfGradeTimestampFile:
         assert params.self_grade_timestamp_file(params.get_lab_name_from_running_lab_name(rln),
                                                 params.get_username_from_running_lab_name(rln)) == \
             '/x/sre@dhcp.py@@@alice'
+
+
+class TestDockerImages:
+    """The name of an SRE image: its own version when `docker_image_versions` gives one, else the
+    default version."""
+
+    def test_default_version(self, monkeypatch):
+        monkeypatch.setattr(params, 'default_docker_image_version', '1.34')
+        monkeypatch.setattr(params, 'docker_image_versions', {})
+        assert params.sre_docker_image('ldap-mail') == f'{params.sre_docker_namespace}/ldap-mail:1.34'
+        assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
+
+    def test_own_version(self, monkeypatch):
+        monkeypatch.setattr(params, 'default_docker_image_version', '1.34')
+        monkeypatch.setattr(params, 'docker_image_versions', {'ldap-mail': '1.35'})
+        assert params.sre_docker_image('ldap-mail') == f'{params.sre_docker_namespace}/ldap-mail:1.35'
+        assert params.sre_docker_image('init13') == f'{params.sre_docker_namespace}/init13:1.34'
+        assert params.sre_docker_image() == f'{params.sre_docker_namespace}/base13:1.34'
+
+    def test_params_follow_the_images_makefile(self):
+        """`make images` copies the versions of images/Makefile into params.py: `VERSION` and the
+        `VERSION_<image>` lines, each naming an image of images/."""
+        if not (IMAGES_DIR / 'Makefile').is_file():
+            pytest.skip(f"no {IMAGES_DIR}/Makefile in this tree")
+        text = (IMAGES_DIR / 'Makefile').read_text()
+        default = re.search(r'^VERSION[ \t]*[:?]?=[ \t]*(\S+)[ \t]*$', text, re.M).group(1)
+        own = dict(re.findall(r'^VERSION_([^\s:?=]+)[ \t]*[:?]?=[ \t]*(\S+)[ \t]*$', text, re.M))
+        assert params.default_docker_image_version == default
+        assert params.docker_image_versions == own
+        for name in own:
+            assert (IMAGES_DIR / name / 'Dockerfile').is_file(), name
 
 
 # --- layout and site parameters ---------------------------------------------------------------

@@ -534,6 +534,16 @@ class TestParams:
     def test_merge_identity(self):
         assert upd.merge_params(NEW_PARAMS, NEW_PARAMS, set(upd.extract_params(NEW_PARAMS))) == NEW_PARAMS
 
+    def test_image_versions_follow_new(self):
+        """The versions of the images (the default one and those of single images) are not a choice
+        of the site: the new values are taken, nothing is asked."""
+        old = 'default_docker_image_version = "1.34"\ndocker_image_versions = {"voip": "1.33"}\n'
+        new = 'default_docker_image_version = "1.35"\ndocker_image_versions = {"ldap-mail": "1.36"}\n'
+        diff = upd.diff_params(old, new, follow_new=params.update_params_follow_new)
+        assert [o.name for o, n in diff.follow_new] == ['default_docker_image_version', 'docker_image_versions']
+        assert diff.changed == [] and diff.origin == {}
+        assert upd.merge_params(new, old, set()) == new
+
     def test_check_params(self, tmp_path):
         upd.check_params(NEW_PARAMS, tmp_path / 'params.py')
         with pytest.raises(upd.UpdateError, match='does not run: NameError'):

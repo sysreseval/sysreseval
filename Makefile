@@ -5,6 +5,9 @@ ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 .PHONY: venv fonts network-plugin deb release release-setup translations wrappers sre-wrapper install check-debug-mode tests web-tests test functional-tests exam-tests web-exam-tests docker-tests all-tests set-debug-mode remove-debug-mode docs api_doc main_docs main_doc_pdf main_doc_html images
 
 IMAGES_VERSION := $(shell awk '/^VERSION[[:space:]]*\??=/ {print $$NF; exit}' $(ROOT_DIR)/images/Makefile)
+# The images with their own version (the `VERSION_<image> := <version>` lines of images/Makefile), as
+# the items of the dict params.docker_image_versions: "ldap-mail": "1.35", "voip": "1.36"
+IMAGE_VERSIONS := $(shell awk '/^VERSION_[^[:space:]:?=]+[[:space:]]*[:?]?=/ {name = $$0; sub(/^VERSION_/, "", name); sub(/[[:space:]]*[:?]?=.*/, "", name); value = $$0; sub(/^[^=]*=[[:space:]]*/, "", value); sub(/[[:space:]]+$$/, "", value); printf "%s\"%s\": \"%s\"", sep, name, value; sep = ", "}' $(ROOT_DIR)/images/Makefile)
 
 # DejaVu fonts embedded in the PDFs of "sre export" and "sre outline" (params.pdf_font_files).
 DEJAVU_VERSION := 2.37
@@ -341,8 +344,9 @@ all-tests: tests docker-tests exam-tests web-exam-tests
 
 images:
 	$(MAKE) -C ${ROOT_DIR}/images all
-	@sed -i 's|^default_docker_image_version[[:space:]]*=.*|default_docker_image_version = "$(IMAGES_VERSION)"|' ${ROOT_DIR}/src/SRE/params.py
-	@grep '^default_docker_image_version' ${ROOT_DIR}/src/SRE/params.py
+	@sed -i -e 's|^default_docker_image_version[[:space:]]*=.*|default_docker_image_version = "$(IMAGES_VERSION)"|' \
+		-e 's|^docker_image_versions[[:space:]]*=.*|docker_image_versions = {$(IMAGE_VERSIONS)}|' ${ROOT_DIR}/src/SRE/params.py
+	@grep -E '^(default_docker_image_version|docker_image_versions)[[:space:]]*=' ${ROOT_DIR}/src/SRE/params.py
 
 
 # ---------------------------------------------------------------------------------------------

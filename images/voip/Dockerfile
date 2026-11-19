@@ -1,4 +1,6 @@
 ARG VERSION=latest
+# version of the parent image: its own when it has one (images/Makefile), else the same as this image
+ARG PARENT_VERSION=${VERSION}
 ARG NAMESPACE=sysreseval
 
 # ---------------------------------------------------------------------------
@@ -71,7 +73,7 @@ RUN find /out -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/sbin/asteris
 # ---------------------------------------------------------------------------
 # Stage 2: the image of the labs
 # ---------------------------------------------------------------------------
-FROM ${NAMESPACE}/init13:${VERSION}
+FROM ${NAMESPACE}/init13:${PARENT_VERSION}
 ARG VERSION
 LABEL org.opencontainers.image.authors="SysResEval"
 

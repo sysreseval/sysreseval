@@ -278,7 +278,7 @@ class TestNetScheme:
         assert macs[('lan1', 'm1')] == data.macs.m1 and macs[('lan1', 'r1')] == data.macs.r1_lan1
         assert macs[('lan3', 'r2')] == data.macs.r2_lan3 and macs[('lan3', 'pc1')] == data.macs.pc1
         assert macs[('lan3', 'pc2')] == data.macs.pc2 and macs[('lan1', 'h1')] is None
-        assert ns.get_machine('srv').privileged and ns.get_machine('srv').image.endswith(':' + params.default_docker_image_version)
+        assert ns.get_machine('srv').privileged and ns.get_machine('srv').image == params.sre_docker_image('init13')
         assert 'net.ipv6.conf.default.addr_gen_mode=0' in ns.get_machine('pc1').sysctls
         assert 'net.ipv6.conf.default.accept_ra=0' in ns.get_machine('m1').sysctls
         assert 'net.ipv6.conf.default.accept_ra=0' not in ns.get_machine('pc1').sysctls
