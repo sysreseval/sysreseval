@@ -745,7 +745,9 @@ class NetScheme0:
 
     Class-level attributes:
 
-    * ``_machine_specs`` — ``{name: {Machine kwargs}}`` — one entry per container.
+    * ``_machine_specs`` — ``{name: {Machine kwargs}}`` — one entry per container.  A machine
+      without ``image`` gets the module-level ``default_image`` of the lab, else
+      ``params.default_docker_image``.
     * ``_network_specs`` — ``{net_name: {Network kwargs}}`` — optional: display hints
       (``color``, ``shape``) and type of switch (``mode``: ``'hub'`` by default, ``'switch'`` or
       ``'managed'``; for a managed switch ``allow_connection`` and ``vlans``, see :class:`Network`).
@@ -818,7 +820,12 @@ class NetScheme0:
         _network_specs = self._resolve_spec('_network_specs', 'network_specs')
         _topology = self._resolve_spec('_topology', 'topology')
 
+        # module-level `default_image` of the lab: the image of the machines without one (a lab kept on
+        # Debian 12 by scripts/keep-images-debian12 sets it to sre_docker_image("base12"))
+        default_image = getattr(_lab_module(), 'default_image', params.default_docker_image)
         for name, parameters in _machine_specs.items():
+            if 'image' not in parameters:
+                parameters = {**parameters, 'image': default_image}  # the class-level spec stays as it is
             setattr(self, name, Machine(name=name, **parameters))
 
         # Create networks from _network_specs (with optional color), then remaining from _topology

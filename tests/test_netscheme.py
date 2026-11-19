@@ -1221,3 +1221,50 @@ class TestX11DisplayEnv:
         assert _resolve_x11_display() == '0099'
         monkeypatch.setenv(params.sre_x11_display_env_variable, '12\n')
         assert _resolve_x11_display() is None
+
+
+# ---------------------------------------------------------------------------
+# default_image: the module-level image of the machines without one (scripts/keep-images-debian12)
+# ---------------------------------------------------------------------------
+
+class DefaultImageScheme(NetScheme0):
+    _machine_specs = {
+        'm1': {'color': 'red'},
+        'r1': {'image': params.sre_docker_image('routing-frr')},
+    }
+    _topology = {'net1': ['m1', 'r1']}
+
+    def __init__(self, data):
+        super().__init__(data=data, running_lab_name=RUNNING_LAB)
+
+
+class TestDefaultImage:
+    FRR = params.sre_docker_image('routing-frr')
+
+    def test_without_lab_module(self, monkeypatch):
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        s = DefaultImageScheme(MockData())
+        assert (s.m1.image, s.r1.image) == (params.default_docker_image, self.FRR)
+
+    def test_lab_module_without_attribute(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace())
+        s = DefaultImageScheme(MockData())
+        assert (s.m1.image, s.r1.image) == (params.default_docker_image, self.FRR)
+
+    def test_fallback_reads_params_at_construction(self, monkeypatch):
+        monkeypatch.delitem(sys.modules, 'srelab', raising=False)
+        monkeypatch.setattr(params, 'default_docker_image', params.sre_docker_image('base13'))
+        assert DefaultImageScheme(MockData()).m1.image == params.sre_docker_image('base13')
+
+    def test_module_attribute_for_machines_without_image(self, monkeypatch):
+        monkeypatch.setattr(params, 'default_docker_image', params.sre_docker_image('base13'))
+        monkeypatch.setitem(sys.modules, 'srelab',
+                            types.SimpleNamespace(default_image=params.sre_docker_image('base12')))
+        s = DefaultImageScheme(MockData())
+        assert (s.m1.image, s.r1.image) == (params.sre_docker_image('base12'), self.FRR)
+        assert s.m1.color == 'red'
+
+    def test_class_level_specs_unchanged(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, 'srelab', types.SimpleNamespace(default_image='x/y:1'))
+        DefaultImageScheme(MockData())
+        assert DefaultImageScheme._machine_specs == {'m1': {'color': 'red'}, 'r1': {'image': self.FRR}}

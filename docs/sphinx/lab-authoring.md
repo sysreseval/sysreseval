@@ -393,7 +393,7 @@ class NetScheme(NetScheme0):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `image` | `params.default_docker_image` | Docker image: `sre_docker_image(name)` gives `sysreseval/<name>:<version>`. The default is `base12` (Debian 12); `init12` adds a genuine systemd (with `privileged=True` and `entrypoint="/sbin/init"`); `base13` / `init13` are their Debian 13 twins |
+| `image` | the lab's `default_image`, else `params.default_docker_image` | Docker image: `sre_docker_image(name)` gives `sysreseval/<name>:<version>`. The default is `base12` (Debian 12); `init12` adds a genuine systemd (with `privileged=True` and `entrypoint="/sbin/init"`); `base13` / `init13` are their Debian 13 twins |
 | `bridged` | `False` | Enable host-network bridging (required for `ports`) |
 | `x11_host` | `False` | Forward X11 to the host: inject `SRE_HOST_IP` (and the host's X magic cookie as `SRE_XAUTH_COOKIE`) so GUI apps launched in the container display on the host's X server (`DISPLAY` is set by the `.bashrc` of the images; needs `bridged=True` to reach the host). On the web site the apps show in the Display tab, a virtual desktop of the project (`SRE_DISPLAY`) |
 | `hidden` | `False` | Hidden from the Machines tab; left out of the project `sre export` writes |
@@ -1672,6 +1672,7 @@ Declare these at the top level of `srelab.py` to customize behavior. They are re
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `ipv6` | `bool` | `params.default_ipv6` (`None`: Kathara's own setting, off) | If `True`, IPv6 is enabled in every machine (`disable_ipv6=0`, forwarding and `accept_ra=0` set by Kathara); `Machine(ipv6=...)` overrides it per machine. The effective value is written to the `lab.conf` of `sre export`. See [IPv6 labs](#ipv6-labs) |
+| `default_image` | `str` | `params.default_docker_image` | Image of the machines whose spec has no `image` (e.g. `sre_docker_image("base12")`), so that a lab keeps its image when the default of SRE changes. `scripts/keep-images-debian12 [-r] <file_or_dir>...` adds `default_image = sre_docker_image("base12")` to every lab file that does not set it, and replaces the former names `sre_docker_image("init")` / `("base")` and `sre_docker_image()` with `init12` / `base12` |
 
 ### Filesystem and export
 
