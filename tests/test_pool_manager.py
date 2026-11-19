@@ -14,10 +14,10 @@ import aiohttp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
-from sreweb.config import HostConfig, PoolConfig
+from sreweb.config import HostConfig, PoolConfig, PLACEMENT_PACK, PLACEMENT_SPREAD
 from sreweb.identity import Identity, ROLE_INSTRUCTOR
-from sreweb.portal.manager import (HostView, PoolManager, magic_packet, poweroff_plan, preload_plan, spare_capacity,
-                                   wake_plan, BACKOFF_MIN, PRELOAD_REFUSED_HOLD)
+from sreweb.portal.manager import (HostView, PoolManager, free_slots, magic_packet, poweroff_plan, preload_plan,
+                                   spare_capacity, wake_plan, BACKOFF_MIN, PRELOAD_REFUSED_HOLD)
 from sreweb.portal.pool import (Pool, HostStatus, PoolError, STATE_OFF, STATE_UP, STATE_WAKING,
                                 STATE_OCCUPIED, STATE_DRAINING, STATE_DISABLED, STATE_EXAM,
                                 PLACEMENT_LOAD, PLACEMENT_SESSION, PLACEMENT_NAMED)
@@ -29,7 +29,7 @@ def view(name, state, projects=0, max_projects=10, can_wake=True, enabled=True, 
          power_off_allowed=False, next_wake_at=0.0, idle_for=None, drain=False, power_off_pending=False,
          instructors_only=False, restart_pending=False, **more):
     """*more*: the preload fields (``preload``, ``preload_since``, ``preload_granted``,
-    ``preload_hold``, ``exam_projects``), ``held``, ``priority``."""
+    ``preload_hold``, ``exam_projects``), ``held``, ``priority``, ``memory_room``."""
     return HostView(name=name, state=state, projects=projects, max_projects=max_projects, can_wake=can_wake,
                     enabled=enabled, power=power, power_off_allowed=power_off_allowed, next_wake_at=next_wake_at,
                     idle_for=idle_for, drain=drain, power_off_pending=power_off_pending,
@@ -51,6 +51,25 @@ class TestWakePlan:
         hosts = [view('a', STATE_UP, projects=8), view('b', STATE_OFF)]
         assert wake_plan(hosts, PoolConfig(spare_projects=5, wake_interval=30), 1000.0, False, 990.0) == []
         assert wake_plan(hosts, PoolConfig(spare_projects=5, wake_interval=30), 1000.0, False, 960.0) == ['b']
+
+    def test_memory_room_in_the_spare_capacity(self):
+        """A host up gives no more free slots than its memory holds (``memory_room``), so a host
+        short of memory makes the policy wake the next one; None = the memory is not checked."""
+        assert free_slots(view('a', STATE_UP, projects=2)) == 8
+        assert free_slots(view('a', STATE_UP, projects=2, memory_room=3)) == 3
+        assert free_slots(view('a', STATE_UP, projects=8, memory_room=5)) == 2      # max_projects first
+        assert free_slots(view('a', STATE_UP, projects=2, memory_room=0)) == 0
+        cfg = PoolConfig(spare_projects=5, min_hosts_up=0)
+        hosts = [view('a', STATE_UP, projects=2, memory_room=9), view('b', STATE_OFF)]
+        assert spare_capacity(hosts) == 8 and wake_plan(hosts, cfg, 1000.0, False, 0.0) == []
+        hosts[0].memory_room = 4                       # 8 slots by the count, 4 by the memory: b is woken
+        assert spare_capacity(hosts) == 4 and wake_plan(hosts, cfg, 1000.0, False, 0.0) == ['b']
+        # an idle host is not powered off while the others' memory leaves less than the spare
+        hosts = [view('a', STATE_UP, projects=3, memory_room=1), view('b', STATE_UP, power=True,
+                                                                       power_off_allowed=True, idle_for=999.0)]
+        assert poweroff_plan(hosts, PoolConfig(spare_projects=5, min_hosts_up=0, idle_host_timeout=60), False) == []
+        hosts[0].memory_room = None
+        assert poweroff_plan(hosts, PoolConfig(spare_projects=5, min_hosts_up=0, idle_host_timeout=60), False) == ['b']
 
     def test_backoff_wakeability_and_disabled(self):
         cfg = PoolConfig(spare_projects=5, min_hosts_up=0)
@@ -334,6 +353,11 @@ class TestStatusCoercion:
             (0, 0, 2, None, False, False, [], None, False, None, True, False, '', '')
         assert status_from_json({'load1': float('inf')}).load1 is None
         assert status_from_json({'load1': True}).load1 is None and status_from_json({'load1': 2}).load1 == 2.0
+        # the available memory of the host, in MiB: a whole number, 0 or more, or None
+        for value, expected in ((2048, 2048), (2048.9, 2048), (-5, 0), ('2048', None), (True, None),
+                                (float('nan'), None), (None, None)):
+            assert status_from_json({'mem_available_mb': value}).mem_available_mb == expected, value
+        assert status_from_json({}).mem_available_mb is None        # an agent older than the key
         assert status_from_json({'occupied_by': ['a', 3, None, 'b']}).occupied_by == ['a', 'b']
         assert status_from_json({'hostname': 'x' * 500}).hostname == 'x' * MAX_STATUS_TEXT
         for body in ([1, 2], 'up', None, 3):
@@ -488,6 +512,86 @@ class TestStates:
         with pytest.raises(PoolError) as e:
             pool.set_priority('nope', 1)
         assert e.value.status == 404
+
+    def test_pick_pack(self):
+        """``placement = "pack"``: the lowest priority until it is full, the fullest among equal
+        priorities (then the load and the name); the user's own session still comes first."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 4), HostConfig('b', 'http://b', TOKEN, 4),
+                 HostConfig('c', 'http://c', TOKEN, 4, priority=-1)]
+        pool = Pool(hosts, session=None, placement=PLACEMENT_PACK)
+        for name in 'abc':
+            pool.status[name] = HostStatus(reachable=True, load1=1.0)
+        pool.status['a'].projects = 1
+        # c first (priority -1) until it is full, though a has a project and c none
+        assert [pool.pick()[0].name for _ in range(4)] == ['c'] * 4
+        # then a, the fullest of the hosts at 0, until it is full; b last
+        assert [pool.pick()[0].name for _ in range(4)] == ['a', 'a', 'a', 'b']
+        # equal priority and fill: the lowest load, then the name
+        pool = Pool([HostConfig(n, f'http://{n}', TOKEN, 4) for n in 'xyz'], session=None, placement=PLACEMENT_PACK)
+        for name, load in zip('xyz', (2.0, 1.0, 1.0)):
+            pool.status[name] = HostStatus(reachable=True, load1=load, projects=1)
+        assert pool.pick()[0].name == 'y'
+        assert [pool.pick()[0].name for _ in range(3)] == ['y', 'y', 'z']    # y full after the first three
+        # the fill is a ratio: 3 of 10 is emptier than 2 of 4
+        pool = Pool([HostConfig('big', 'http://big', TOKEN, 10), HostConfig('small', 'http://small', TOKEN, 4)],
+                    session=None, placement=PLACEMENT_PACK)
+        pool.status['big'] = HostStatus(reachable=True, projects=3)
+        pool.status['small'] = HostStatus(reachable=True, projects=2)
+        assert pool.pick()[0].name == 'small'
+        # the host of the user's session first, whatever its priority and its fill
+        pool.status['big'] = HostStatus(reachable=True, projects=0, occupied=True, occupied_by=['session:bob'])
+        host, reservation = pool.pick(Identity(login='bob'))
+        assert host.name == 'big' and reservation.placement == PLACEMENT_SESSION
+        # the default placement is unchanged: the least loaded
+        spread = Pool([HostConfig('a', 'http://a', TOKEN, 4), HostConfig('b', 'http://b', TOKEN, 4)], session=None)
+        spread.status['a'] = HostStatus(reachable=True, projects=1)
+        spread.status['b'] = HostStatus(reachable=True, projects=0)
+        assert spread.placement == PLACEMENT_SPREAD and spread.pick()[0].name == 'b'
+
+    def test_pick_memory_room(self):
+        """``project_memory_mb``: a host takes no more new projects than its available memory
+        holds of them, each start in flight counting as one until a status asked after its end;
+        a host named by an instructor too; nothing checked at 0 or without the agent's figure."""
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10), HostConfig('b', 'http://b', TOKEN, 10)]
+        pool = Pool(hosts, session=None, project_memory_mb=1000)
+        pool.status['a'] = HostStatus(reachable=True, mem_available_mb=2500)    # two projects of 1000
+        pool.status['b'] = HostStatus(reachable=True, projects=5)               # no figure: not checked
+        assert (pool.memory_room('a'), pool.memory_room('b')) == (2, None)
+        picked = [pool.pick() for _ in range(2)]
+        assert [host.name for host, _ in picked] == ['a', 'a'] and pool.memory_room('a') == 0
+        assert pool.pick()[0].name == 'b'            # a is the least loaded but its memory is full
+        rows = {row['name']: row for row in pool.summary()}
+        assert rows['a']['memory_room'] == 0 and rows['a']['mem_available_mb'] == 2500
+        assert rows['b']['memory_room'] is None
+        # the elastic pool reads the same room
+        mgr = PoolManager(pool, PoolConfig(project_memory_mb=1000))
+        assert {v.name: v.memory_room for v in mgr.views()} == {'a': 0, 'b': None}
+        status = mgr.status()
+        assert (status['placement'], status['project_memory_mb'], status['memory_full']) == ('spread', 1000, ['a'])
+        # a host named by an instructor whose memory is full: 503
+        prof = Identity(login='prof', role=ROLE_INSTRUCTOR)
+        with pytest.raises(PoolError) as e:
+            pool.pick(prof, host='a')
+        assert e.value.status == 503 and 'memory' in e.value.message
+        # the starts are over and a status asked afterwards tells the memory they took: the
+        # reservations are consumed, the room follows the new reading alone
+        for _, reservation in picked:
+            Pool.release(reservation)
+        assert pool._consume('a', time.monotonic()) == 0
+        pool.status['a'] = HostStatus(reachable=True, projects=2, mem_available_mb=1200)
+        assert pool.memory_room('a') == 1 and pool.pick(prof, host='a')[0].name == 'a'
+        assert pool.memory_room('a') == 0            # that start in flight takes the last one
+        # no host with room: refused
+        pool.status['b'] = HostStatus(reachable=True, mem_available_mb=900)
+        with pytest.raises(PoolError) as e:
+            pool.pick()
+        assert e.value.status == 503 and 'no host' in e.value.message
+        # an unreachable host, or the memory not checked: no room computed
+        pool.status['b'] = HostStatus(reachable=False, mem_available_mb=900)
+        assert pool.memory_room('b') is None
+        unchecked = Pool(hosts, session=None)
+        unchecked.status['a'] = HostStatus(reachable=True, mem_available_mb=10)
+        assert unchecked.memory_room('a') is None and unchecked.pick()[0].name == 'a'
 
     def test_pick_reserved_host(self):
         """A host reserved for instructors: never a student's, an instructor's by the automatic

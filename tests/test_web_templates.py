@@ -475,9 +475,11 @@ class TestTemplates:
         html = render('pool.html', instructor=True)
         assert 'id="pool"' in html and 'id="pool-filter"' in html and 'id="pool-count"' in html
         assert 'id="pool-status"' in html and '/static/js/pool.js' in html and 'href="/pool"' in html
-        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'occupied_by', 'uptime', 'priority',
-                    'sre_version'):
+        for key in ('name', 'state', 'projects', 'terminals', 'load1', 'mem_available_mb', 'occupied_by', 'uptime',
+                    'priority', 'sre_version'):
             assert f'data-sort="{key}"' in html, key
+        # the Free memory column, after the load
+        assert html.index('data-sort="load1"') < html.index('data-sort="mem_available_mb"') < html.index('data-sort="occupied_by"')
         assert 'data-login="alice"' in html and 'class="grid watch pool striped"' in html
         # the selection: the header checkbox, the bar of bulk buttons, one more column
         assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
@@ -485,7 +487,7 @@ class TestTemplates:
             assert f'data-action="{action}"' in html, action
         # the Priority column (the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')
-        assert 'colspan="13"' in html and len(re.findall(r'<th[ >]', html)) == 13
+        assert 'colspan="14"' in html and len(re.findall(r'<th[ >]', html)) == 14
         assert 'Host name: one or several words' in html
 
     def test_project_page(self):

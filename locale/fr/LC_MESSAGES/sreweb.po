@@ -751,6 +751,18 @@ msgstr "État"
 msgid "Load"
 msgstr "Charge"
 
+msgid "Free memory"
+msgstr "Mémoire libre"
+
+msgid "The available memory of the host"
+msgstr "La mémoire disponible de la machine"
+
+msgid "{n} GiB"
+msgstr "{n} Gio"
+
+msgid "memory full"
+msgstr "mémoire pleine"
+
 msgid "Occupied by"
 msgstr "Occupée par"
 
@@ -864,6 +876,12 @@ msgstr "en démarrage : {names}"
 
 msgid "outside the active hours"
 msgstr "hors des heures actives"
+
+msgid "placement: pack"
+msgstr "placement : regroupé"
+
+msgid "memory full: {names}"
+msgstr "mémoire pleine : {names}"
 
 msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
 msgstr "les changements ne sont PAS enregistrés, un redémarrage du portail les perd : {error}"

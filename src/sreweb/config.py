@@ -325,6 +325,16 @@ class AuthConfig:
     proxy: ProxyAuthConfig = field(default_factory=ProxyAuthConfig)
 
 
+#: ``[pool] placement``: where the automatic placement puts a new project among the hosts up.
+#: ``spread``: on the least loaded (projects / max_projects; workstations, each with its own
+#: processors); ``pack``: on the host with the lowest priority that still has room, the fullest
+#: first among equal priorities, so that the others empty and the policy can power them off
+#: (virtual machines sharing the processors of one server).
+PLACEMENT_SPREAD = 'spread'
+PLACEMENT_PACK = 'pack'
+PLACEMENT_MODES = (PLACEMENT_SPREAD, PLACEMENT_PACK)
+
+
 @dataclass
 class PoolConfig:
     idle_timeout_anonymous: float = 2 * 3600.0      # seconds; 0 = never reaped
@@ -361,6 +371,13 @@ class PoolConfig:
     # the portal lets this many hosts download at the same time, the others wait for their turn;
     # 0 = it lets none
     max_preloads: int = 2
+    # PLACEMENT_SPREAD or PLACEMENT_PACK (above)
+    placement: str = PLACEMENT_SPREAD
+    # the memory one project may need, in MiB (0 = the memory is not checked): a host takes as
+    # many new projects as its available memory (MemAvailable, in the status of its agent) holds
+    # of them, each start in flight counting as one (its containers may not show yet), and no
+    # more than its max_projects; the spare capacity of the elastic pool counts the same slots
+    project_memory_mb: int = 0
 
 
 @dataclass
@@ -929,6 +946,11 @@ def web_config_from_dict(data: dict, path: str = 'web.toml') -> WebConfig:
         raise ConfigError(f"{path}: pool.labs_cache_ttl cannot be negative")
     if isinstance(pool.max_preloads, bool) or not isinstance(pool.max_preloads, int) or pool.max_preloads < 0:
         raise ConfigError(f"{path}: pool.max_preloads must be an integer, 0 or more")
+    if pool.placement not in PLACEMENT_MODES:
+        raise ConfigError(f"{path}: pool.placement must be one of {', '.join(PLACEMENT_MODES)}")
+    if isinstance(pool.project_memory_mb, bool) or not isinstance(pool.project_memory_mb, int) \
+            or pool.project_memory_mb < 0:
+        raise ConfigError(f"{path}: pool.project_memory_mb must be an integer, 0 or more (MiB)")
     admin_data = _section(data, 'admin', path)
     admin = _build(AdminConfig, admin_data, f"{path}: [admin]")
     if admin.token and len(admin.token) < MIN_SECRET_LENGTH:

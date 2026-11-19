@@ -457,6 +457,21 @@ class TestWebConfig:
         with pytest.raises(ConfigError, match='admin.token'):
             web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'admin': {'token': 'short'}})
 
+    def test_placement_and_project_memory(self):
+        """``placement`` (spread by default, or pack) and ``project_memory_mb`` (0 = the memory is
+        not checked): the old placement unless asked."""
+        defaults = web_config_from_dict({'secret': SECRET, 'hosts': [HOST]}).pool
+        assert (defaults.placement, defaults.project_memory_mb) == (config.PLACEMENT_SPREAD, 0)
+        cfg = web_config_from_dict({'secret': SECRET, 'hosts': [HOST],
+                                    'pool': {'placement': 'pack', 'project_memory_mb': 2048}}).pool
+        assert (cfg.placement, cfg.project_memory_mb) == (config.PLACEMENT_PACK, 2048)
+        for bad in ('Pack', 'fill', '', 1):
+            with pytest.raises(ConfigError, match='placement'):
+                web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'placement': bad}})
+        for bad in (-1, True, '2G', 1.5):
+            with pytest.raises(ConfigError, match='project_memory_mb'):
+                web_config_from_dict({'secret': SECRET, 'hosts': [HOST], 'pool': {'project_memory_mb': bad}})
+
     def test_active_hours(self):
         from sreweb.config import parse_active_hours, in_active_hours
         assert parse_active_hours('') is None and in_active_hours(None, 0)

@@ -26,7 +26,7 @@ ERROR_WIDTH = 60
 RESTART_WAIT_TIMEOUT = 180.0    # --wait: seconds for the agents to be back (the portal's hold is 120 s)
 RESTART_POLL = 2.0              # --wait: seconds between two readings of the pool
 COLUMNS = [('name', 'NAME'), ('state', 'STATE'), ('projects', 'PROJECTS'), ('load1', 'LOAD'),
-           ('terminals', 'TERMINALS'), ('occupied_by', 'OCCUPIED'), ('uptime', 'UPTIME'), ('source', 'SOURCE'),
+           ('mem_available_mb', 'FREE MEM'), ('terminals', 'TERMINALS'), ('occupied_by', 'OCCUPIED'), ('uptime', 'UPTIME'), ('source', 'SOURCE'),
            ('error', 'LAST ERROR')]
 
 
@@ -77,6 +77,10 @@ def _cell(row: dict, key: str) -> str:
         return f"{row.get('projects', 0)}/{row.get('max_projects', '?')}" if row.get('reachable') else '-'
     if key == 'load1':
         return f"{value:.2f}" if isinstance(value, (int, float)) else '-'
+    if key == 'mem_available_mb':       # MemAvailable of the host (an older agent or portal says nothing)
+        if isinstance(value, (int, float)) and row.get('reachable'):
+            return f"{value / 1024:.1f}G"
+        return '-' if row.get('reachable') else ''
     if key == 'terminals':
         return str(value) if row.get('reachable') else '-'
     if key == 'occupied_by':
@@ -98,6 +102,8 @@ def _cell(row: dict, key: str) -> str:
             extra.append('restart')
         if row.get('exam_hold') and value != 'exam':    # about to be locked by an exam of the Exams page
             extra.append('kept for an exam')
+        if row.get('memory_room') == 0 and row.get('reachable'):    # [pool] project_memory_mb: no new project
+            extra.append('memory full')
         if row.get('preload') == PRELOAD_RUNNING:       # the Docker images: pulling (image 2 of 5), waiting, failed
             total = row.get('preload_total')
             extra.append(f"preload {row.get('preload_current', 0)}/{total}" if total else 'preload')
@@ -307,6 +313,14 @@ def _dispatch(client: PoolClient, args) -> int:
                   f"{'active' if status['active_now'] else 'inactive'} now)")
             print(f"waking: {', '.join(status['waking']) or 'none'}")
             print(f"idle host timeout: {status['idle_host_timeout'] or 'never (the nightly cron)'}")
+            if 'placement' in status:           # an older portal says nothing
+                print(f"placement: {status['placement']}")
+                memory = status.get('project_memory_mb') or 0
+                if memory:
+                    full = ', '.join(status.get('memory_full') or []) or 'none'
+                    print(f"memory per project: {memory} MiB (memory full: {full})")
+                else:
+                    print("memory per project: not checked")
             if 'max_preloads' in status:        # the preloads of the Docker images (an older portal says nothing)
                 running = status.get('preloading') or []
                 names = f" ({', '.join(running)})" if running else ''

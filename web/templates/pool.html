@@ -27,6 +27,7 @@
       <th class="sortable" data-sort="projects">{{ _("Projects") }}</th>
       <th class="sortable" data-sort="terminals">{{ _("Terminals") }}</th>
       <th class="sortable" data-sort="load1">{{ _("Load") }}</th>
+      <th class="sortable" data-sort="mem_available_mb" title="{{ _("The available memory of the host") }}">{{ _("Free memory") }}</th>
       <th class="sortable" data-sort="occupied_by">{{ _("Occupied by") }}</th>
       <th class="sortable" data-sort="uptime">{{ _("Uptime") }}</th>
       <th class="sortable" data-sort="priority" title="{{ _("The lowest priority is used first") }}">{{ _("Priority") }}</th>
@@ -36,7 +37,7 @@
       <th>{{ _("Actions") }}</th>
     </tr>
   </thead>
-  <tbody><tr><td colspan="13" class="muted">{{ _("Loading…") }}</td></tr></tbody>
+  <tbody><tr><td colspan="14" class="muted">{{ _("Loading…") }}</td></tr></tbody>
 </table>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/pool.js"></script>{% endblock %}

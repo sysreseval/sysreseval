@@ -203,7 +203,7 @@ merges other files into this one, as for `web.toml` below.
 | `[auth] administrators` | `[]` | the logins of the administrators: instructors who may read the connection log on the History page (*Administrators* below); a login that is not an instructor gets nothing. By group: `administrator_groups` / `administrator_group_filter` of `[auth.ldap]`, `administrator_groups` of `[auth.proxy]` |
 | `[auth.ldap]` | | `uri`, then either `bind_dn_template = "uid={login},ou=people,…"` (bind as the user) or `search_base` + `search_filter` (+ `bind_dn` / `bind_password` of a service account) to find the user first; `attr_fullname` (`cn`), `attr_mail` (`mail`), `attr_group` (none; the attribute holding the student group, e.g. `departmentNumber`, its first value: the Group column and filter of the Watch page); the instructor tests (below): `instructor_groups` (DNs; `memberOf`, or `group_filter = "(member={dn})"`), `instructor_filter` (`"(gidNumber=2000)"`, `""` = none), `group_search_base` (none = no membership test) + `instructor_group_filter` (`"(&(objectClass=posixGroup)(gidNumber=2000)(memberUid={login}))"`); the administrator tests (*Administrators* below): `administrator_groups` (DNs, tested like `instructor_groups`) and `administrator_group_filter` (a group search under `group_search_base`, none by default); the connection: `ldaps://` or `ldap://` + `start_tls`, the server certificate always verified against the system CA store or `tls_ca` (the absolute path of a PEM file: a CA bundle, or the self-signed certificate of the server itself) and the host of the `uri` against the names of the certificate (`subjectAltName`, else the CN: name the server as its certificate does, not by address); a plain `ldap://` without `start_tls` is refused at startup unless `allow_cleartext = true` (the passwords in LDAP mode, the roles, groups and administrators in every mode would travel unprotected); `timeout`. The login attribute: `attr_login` (none = the attribute of a `search_filter` of the form `(attribute={login})`, else the RDN attribute of `bind_dn_template`); in LDAP mode the identity carries its stored value, whatever case the user typed (the directory matches `Bob` for `bob`: one user, not two), and the Groups page (*User groups* below) lists the people by it, in every mode, with `groups_filter` (`"(objectClass=posixGroup)"`: the groups listed under `group_search_base`; `""` = none), `attr_group_name` (`cn`), `attr_group_members` (`memberUid`; a value may be the login, the `uid` or the DN of a person). Also read in proxy mode with `ldap_roles` / `ldap_groups` |
 | `[auth.proxy]` | | `header_login` (`X-Remote-User`), `header_fullname` (`X-Remote-Name`), `header_email` (`X-Remote-Email`), `header_groups` (`X-Remote-Groups`): the headers set by the proxy; `groups_separator` (`;`); `header_group` (none; the header holding the student group, e.g. `X-Remote-Group` from `departmentNumber`, its first value); `instructor_groups`: the values of the groups header giving the instructor role; `instructor_header` + `instructor_values` (e.g. `X-Remote-Gid` and `["2000"]`): a second header test; `administrator_groups`: the values of the groups header making an instructor an administrator; `ldap_roles` (`false`): the portal runs the tests of `[auth.ldap]` itself for the login the proxy gives, and reads its `attr_group`, the result cached per login for `ldap_roles_ttl` (`10m`); `ldap_groups` (`false`): the group part alone (`attr_group` of `[auth.ldap]` for a user whose group header is empty, and for the owners of the Watch page the agents know no group for; the roles stay those of the headers; `ldap_roles` implies it); `logout_url`: where Logout sends the browser (the `/apache-logout` location of the Apache example; none: no Logout button) |
-| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open); `max_preloads` (`2`): the hosts pulling the Docker images of the labs at the same time (*Pre-loading the images* below; `0` = the portal lets none) |
+| `[pool]` | | `idle_timeout_anonymous` (`2h`), `idle_timeout_authenticated` (`24h`): the idle timeout given to the agents per user, `0` = never; `poll_interval` (`2`): seconds between two polls of the agents; `ca`: the CA the agents' certificates are verified against (the system store without it); `client_cert`, `client_key`: the client certificate of the portal, presented to every agent; the elastic pool (below): `spare_projects` (`5`), `min_hosts_up` (`1`), `active_hours` (`07:00-20:00`, local time, `""` = always), `wake_timeout` (`180`), `wake_interval` (`30`), `wol_broadcast` (`255.255.255.255`), `idle_host_timeout` (`0` = never); `follow_local_sessions` (`true`): a user logged in at the keyboard of a pool host gets their new projects there whatever its load, below its `max_projects` (*Occupied hosts* below); `labs_cache_ttl` (`60`): seconds the lab list of the Open page, asked from one host, is kept per role (`0` = asked at every open); `max_preloads` (`2`): the hosts pulling the Docker images of the labs at the same time (*Pre-loading the images* below; `0` = the portal lets none); `placement` (`spread`): where a new project goes, `spread` = the least loaded host, `pack` = the host with the lowest priority that still has room (*A pool of virtual machines* below); `project_memory_mb` (`0` = not checked): the memory one project may need, in MiB: a host takes no more new projects than its available memory holds of them (same section) |
 | `[limits]` | | `eval_interval` (`10` s between two self-evaluations of a user), `start_interval` (`30` s between two starts of a user; a start that created no project — the flavor form shown or refused, no host available, the agent not answering — gives the slot back at once), `login_per_minute` (`5` per client address), `max_answer_bytes`; in anonymous mode `eval_interval` and `start_interval` count per client address too, since a new pseudonym costs one `POST /login` |
 | `[admin]` | | `token`: the token of `sre-web-tool …` (32+ characters; none = the command is refused), accepted from the loopback only unless `listen_any = true`; `state_file`: what is changed by hand in the pool (the hosts added, removed, enabled, disabled, drained), kept across the restarts of the portal (`/var/lib/sre-web/pool.json` when that directory exists, else `pool.json` next to `web.toml`; *Restarting the portal* below) |
 | `[access_log]` | | the connection log (below): `file` (none; the absolute path of the log file, e.g. `/var/log/sre-web/access.log`, rotated daily), `keep` (`400` days of rotated files kept; `0` = no rotation, for logrotate), `journal` (`true`: the lines also go to the portal's own log: stderr, the journal, `docker logs`), `session_timeout` (`30m` of inactivity closes a session); `database` (the next row) |
@@ -1201,7 +1201,8 @@ the *Pool* page of the instructors) shows it:
 **Placement.** A new project (`POST /api/projects`) goes to one host, chosen by the portal from
 the last status poll of every agent (`poll_interval`) without asking them again. The candidates
 are the hosts `up` (plus, for a user logged in at the keyboard of an `occupied` host, that host:
-*Occupied hosts* below), below their `max_projects`, not reserved for the instructors when the
+*Occupied hosts* below), below their `max_projects` (and, with `project_memory_mb`, with memory
+for one more project: *A pool of virtual machines* below), not reserved for the instructors when the
 caller is a student, not kept for an exam (a machine an exam of the web site lists takes no new
 project from its lock, or from the pre-start of the web exam projects when it comes first,
 until the exam left it: `exam_hold` in `GET /api/pool`; the portal does not power it off
@@ -1210,7 +1211,8 @@ has no restart pending (`sre-web-tool restart`: the agent
 refuses new projects until it is back). Among them: the host of the user's own session first,
 then the lowest `projects / max_projects`, then, between hosts without project, the lowest
 `priority` (*Priorities* below), then the lowest one-minute load, then the name, so
-that equal hosts are always settled the same way. The project count of the chosen host is raised
+that equal hosts are always settled the same way (with `placement = "pack"`: the lowest
+priority, then the fullest, see *A pool of virtual machines*). The project count of the chosen host is raised
 at once and a *reservation* is kept until the start is over and a status poll sent after its end
 has answered: a burst of simultaneous starts is spread over the pool instead of piling onto the
 host the last poll showed emptiest, and `sre-web-tool list` may count a project one poll before
@@ -1218,7 +1220,8 @@ the agent does. Without any candidate the start is refused with 503 and a `retry
 page obeys: "a host is starting" (30 s) when a host the caller may use is `waking` or
 restarting, "no host available for a new project" (60 s) otherwise. An instructor naming a host
 on the Open page skips the ranking: the host must exist (404), be open to them (403 for a
-student), be available to them (503 "not available") and have room (503 "full"). The `start`
+student), be available to them (503 "not available") and have room (503 "full", or "not enough
+free memory" with `project_memory_mb`). The `start`
 line of the connection log says why the host was chosen: `placement=load`, `session` or
 `named`.
 
@@ -1427,6 +1430,99 @@ listed under *Limitations* (the presentations, the focuses, the open sockets: th
 by themselves, a terminal with its Reconnect button). The exams, the custom groups, the
 connection log and the archives are in the database; the sessions are in the browsers' cookies
 (`secret`).
+
+### A pool of virtual machines
+
+The pool hosts may also be virtual machines of one large server (Proxmox VE, libvirt…): a
+small virtual machine for the portal, always on, and a number of agent machines cloned from one
+template (Debian, Docker, the `sysreseval` and `sysreseval-agent` packages, the Docker images of
+the labs already pulled). A virtual machine that is stopped uses no memory of the server, so
+the elastic pool is what adjusts the resources to the load: the agent machines are started when
+the spare capacity drops and powered off when idle, as the workstations are.
+
+**Starting and stopping the machines.** A `wake_command` per host starts its machine through the
+API of the hypervisor; the command is run by the portal (user `sre-web`) without a shell, the
+`{name}` and `{mac}` of the host substituted, and a non-zero exit counts as a failed wake (retried
+after 1, 2, 4… up to 30 minutes). With Proxmox, an API token whose role holds `VM.PowerMgmt` alone,
+on a resource pool holding the agent machines:
+
+```sh
+#!/bin/sh
+# /usr/local/bin/pve-start VMID: start a virtual machine through the Proxmox API
+. /etc/sreweb/pve.env    # PVE_URL=https://pve:8006  PVE_NODE=pve  PVE_TOKEN='sre-web@pve!wake=<uuid>'
+exec curl -fsS -X POST -H "Authorization: PVEAPIToken=$PVE_TOKEN" \
+  "$PVE_URL/api2/json/nodes/$PVE_NODE/qemu/$1/status/start"
+```
+
+The machine is powered off from inside: `power = true` on the host, `allow_power_off = true` in
+its `agent.toml` (`power_off_command = "systemctl poweroff"`: the guest halts, the virtual
+machine stops and its memory goes back to the server) and `idle_host_timeout` in `[pool]`. A
+virtual machine boots in less time than a workstation: `wake_timeout` can be shorter. In a
+container, the portal needs the script and `curl` inside it.
+
+```toml
+[pool]
+placement = "pack"
+project_memory_mb = 2048        # measured on the heaviest lab, with a margin
+spare_projects = 15             # about one class arriving at once
+min_hosts_up = 1
+active_hours = "07:30-19:30"
+wake_timeout = 90
+idle_host_timeout = "20m"
+idle_timeout_authenticated = "3h"
+
+[[hosts]]
+name = "vm01"
+url = "https://10.0.10.11:8451"
+token = "..."
+max_projects = 12
+wake_command = "/usr/local/bin/pve-start 111"
+power = true
+priority = 1                    # vm02 = 2, vm03 = 3…: started in that order, powered off in reverse
+```
+
+**Packing.** The default placement (`placement = "spread"`) puts a new project on the least
+loaded host: right for workstations, each with its own processors, but on one server the virtual
+machines share the processors, and spreading the projects keeps every machine busy with a few
+of them until the end of the session, so none goes idle. With `placement = "pack"` a new project
+goes to the host with the **lowest priority** that still has room, the **fullest** first among
+equal priorities (then the load and the name): the projects gather on the fewest machines, the
+others empty as their projects end, and `idle_host_timeout` powers them off, the highest
+priority first. The user's own session (`follow_local_sessions`) and a host named by an
+instructor come first as before. A burst of starts then lands on one machine at a time, whose
+agent runs `max_concurrent_starts` of them at once (`agent.toml`, `2`): raise it on a large
+machine. Projects are never moved from one host to another: `sre-web-tool drain` empties a
+machine by hand (no new project, powered off once empty).
+
+**Memory.** `max_projects` counts projects, whatever their size, and the labs differ a lot (a
+few containers for some, more than thirty for others). With `project_memory_mb` (the memory one
+project may need, in MiB) the portal also reads the available memory of each host
+(`MemAvailable`, in the status of its agent) and gives it no more new projects than that memory
+holds of them: `mem_available_mb // project_memory_mb`, less the starts in flight (a project
+being started counts until a status asked after the end of its start, since its containers may
+not show in the reading yet), and never more than `max_projects`. A host whose memory holds no
+more project takes none, by the automatic placement or named by an instructor (503 "not enough
+free memory"); the spare capacity of the elastic pool counts the same slots, so a machine
+running short of memory makes the portal start the next one. Measure a project of the heaviest
+lab you run (`free -m` before and after, or `docker stats --no-stream`) and add a margin; `0`
+(the default) leaves the memory unchecked, and a host whose agent does not send it (older than
+the key) is not checked either. `sre-web-tool list` shows the free memory of every host (FREE
+MEM) and `(memory full)` after the state of a host that takes no more project for want of memory;
+`sre-web-tool status` prints the placement and `memory per project: 2048 MiB (memory full: …)`;
+the Pool page has a *Free memory* column, the flag *memory full* and the same summary.
+
+**On the server.** Create only as many agent machines as the memory of the server holds while
+they all run (keep memory for the hypervisor and, with ZFS, its cache): the pool would otherwise
+start a machine the server cannot hold. Leave the ballooning of the agent machines off (or its
+minimum equal to its maximum): stopping whole machines already returns the memory, and a
+balloon only reclaims it under pressure. Kernel samepage merging (on by default with Proxmox)
+lets identical containers of different machines share pages. Linked clones of the template share
+the images on disk; for a new version of the images, rebuild the template or set `[preload]
+at_start` in `agent.toml` so that each machine pulls them at its boot (*Pre-loading the images*).
+Each clone needs its own name, address, token and certificate (`make-web-hosts.sh`). Start the
+portal's machine at the boot of the server, not the agent machines: the portal starts them. A
+project left open keeps its machine running until `idle_timeout_authenticated` (24 hours by
+default): a shorter value lets the machines empty sooner.
 
 ## What the users see
 
@@ -1685,9 +1781,10 @@ What an instructor gets:
   for a class.
 - **Pool** (the link in the header, `/pool`): every host of the pool, one row per host with its
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
-  projects and terminals, its load, who occupies it, its uptime, its priority (*Priorities*
-  above: the lowest is used first), its flags (reserved for
-  instructors, power, drain, power off sent, restart sent, and where the preload of the Docker
+  projects and terminals, its load, its free memory, who occupies it, its uptime, its priority
+  (*Priorities* above: the lowest is used first), its flags (reserved for
+  instructors, power, drain, power off sent, restart sent, memory full (`project_memory_mb`,
+  *A pool of virtual machines* above), and where the preload of the Docker
   images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
   the error), the agent's version and its last error, the line
   of `sre-web-tool status` above the table (in red, with the reason, when the state file of the

@@ -170,6 +170,16 @@ labs_cache_ttl = 60
 # / the Pool page): this many hosts download at the same time, the others wait for their turn,
 # the one that waited longest first; 0 = the portal gives no turn (nothing is preloaded).
 max_preloads = 2
+# Where a new project goes among the hosts up: "spread" = the least loaded one (workstations,
+# each with its own processors); "pack" = the one with the lowest priority that still has room,
+# the fullest first among equal priorities, so that the others empty and idle_host_timeout
+# powers them off (virtual machines sharing the processors of one server).
+placement = "spread"
+# The memory one project may need, in MiB (0 = not checked): a host takes no more new projects
+# than its available memory (MemAvailable, sent by its agent) holds of them, each start in flight
+# counting as one, and the spare capacity of the elastic pool counts the same slots.  Measure a
+# project of the heaviest lab you run and add a margin.
+project_memory_mb = 0
 
 [admin]
 # The token of `sre-web-tool ...` (32+ random characters; empty: the command is refused), accepted

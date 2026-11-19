@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_web_portal as P   # noqa: E402  (the Harness: a real agent on the fake sre, a portal in front)
 
 from sreweb.portal.accesslog import parse_line   # noqa: E402
+from sreweb.portal.pool import PoolError   # noqa: E402
 
 SRC = Path(__file__).resolve().parent.parent / 'src'
 ADMIN = 'a' * 32
@@ -458,8 +459,8 @@ class TestCli:
                 r = await loop.run_in_executor(None, cli, 'list')
                 assert r.returncode == 0, r.stderr
                 lines = r.stdout.splitlines()
-                assert lines[0].split() == ['NAME', 'STATE', 'PROJECTS', 'LOAD', 'TERMINALS', 'OCCUPIED', 'UPTIME',
-                                            'SOURCE', 'LAST', 'ERROR']
+                assert lines[0].split() == ['NAME', 'STATE', 'PROJECTS', 'LOAD', 'FREE', 'MEM', 'TERMINALS',
+                                            'OCCUPIED', 'UPTIME', 'SOURCE', 'LAST', 'ERROR']
                 assert lines[1].split()[:3] == ['a01', 'up', '0/3'] and lines[1].split()[-1] == 'config'
                 r = await loop.run_in_executor(None, lambda: cli('add', 'b02', '--url', 'http://127.0.0.1:9',
                                                                  '--token', TOKEN, '--max-projects', '2', '--json',
@@ -471,6 +472,7 @@ class TestCli:
                 assert r.returncode == 0 and r.stdout.startswith('spare capacity: 3 project slot(s)')
                 assert 'waking: none' in r.stdout and r.stdout.splitlines()[-1] == f'pool state: {state}'
                 assert 'image preloads: 0 running, 0 queued, 0 failed (at most 2 at a time)' in r.stdout
+                assert 'placement: spread\nmemory per project: not checked\n' in r.stdout
                 # the state file cannot be written: said by the status, the pool goes on
                 h.portal.pool.state_error = 'Read-only file system'
                 r = await loop.run_in_executor(None, cli, 'status')
@@ -552,17 +554,54 @@ class TestCli:
                 assert r.returncode == 2 and 'sre-web-tool' in r.stderr
         run(go())
 
+    def test_free_memory_and_memory_full(self, tmp_path, monkeypatch):
+        """The MemAvailable the agent sends reaches the FREE MEM column; with project_memory_mb a
+        host whose memory holds no more project is ``(memory full)`` in ``list`` and named by
+        ``status``, which also tells the placement."""
+        from sreweb.agent import app as agent_app
+        monkeypatch.setattr(agent_app, '_mem_available_mb', lambda: 3000)
+        over = {'admin': {'token': ADMIN}, 'pool': {**QUIET_POOL, 'placement': 'pack', 'project_memory_mb': 1000}}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over=over) as h:
+                url = f"http://127.0.0.1:{h.client.port}"
+                env = {**os.environ, 'PYTHONPATH': str(SRC)}
+
+                def cli(*args):
+                    return subprocess.run([sys.executable, '-m', 'sreweb.tool', '--url', url, '--token', ADMIN,
+                                           *args], capture_output=True, text=True, env=env, timeout=120)
+                loop = asyncio.get_running_loop()
+                row = await pool_row(h, lambda row: row['mem_available_mb'] == 3000)
+                assert row['memory_room'] == 3
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert r.returncode == 0, r.stderr
+                cells = r.stdout.splitlines()[1].split()
+                assert cells[:3] == ['a01', 'up', '0/3'] and cells[4] == '2.9G'    # cells[3]: the load of this machine
+                r = await loop.run_in_executor(None, cli, 'status')
+                assert r.returncode == 0 and 'placement: pack\nmemory per project: 1000 MiB (memory full: none)\n' in r.stdout
+                h.portal.pool.project_memory_mb = 4000                 # 3000 MiB hold no project of 4000
+                r = await loop.run_in_executor(None, cli, 'list')
+                assert r.stdout.splitlines()[1].split()[:4] == ['a01', 'up', '(memory', 'full)']
+                r = await loop.run_in_executor(None, cli, 'status')
+                assert 'memory per project: 4000 MiB (memory full: a01)\n' in r.stdout
+                assert 'spare capacity: 0 project slot(s)' in r.stdout   # the elastic pool counts the memory
+                with pytest.raises(PoolError) as e:
+                    h.portal.pool.pick()
+                assert e.value.status == 503 and 'no host' in e.value.message
+        run(go())
+
     def test_table_cells(self):
         from sreweb.portal.poolctl import table
         rows = [{'name': 'a01', 'state': 'waking', 'waking_for': 12, 'wake_failures': 1, 'reachable': False,
                  'error': 'down', 'source': 'config', 'max_projects': 3},
                 {'name': 'b02', 'state': 'up', 'drain': True, 'reachable': True, 'projects': 2, 'max_projects': 3,
-                 'load1': 1.234, 'terminals': 4, 'occupied_by': ['session:bob'], 'uptime': 3725, 'source': 'added'},
+                 'load1': 1.234, 'mem_available_mb': 12595, 'terminals': 4, 'occupied_by': ['session:bob'],
+                 'uptime': 3725, 'source': 'added'},
                 {'name': 'c03', 'state': 'off', 'instructors_only': True, 'reachable': False, 'source': 'config',
                  'max_projects': 3, 'restart_sent': True}]
         out = table(rows).splitlines()
         assert out[1].split()[:2] == ['a01', 'waking'] and '(12s, 1 failed)' in out[1] and out[1].endswith('down')
-        assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '4', 'session:bob', '1h02', 'added']
+        assert out[2].split() == ['b02', 'up', '(drain)', '2/3', '1.23', '12.3G', '4', 'session:bob', '1h02', 'added']
         assert out[3].split()[:4] == ['c03', 'off', '(restart,', 'instructors)']
         # the preload of the Docker images: pulling (image 2 of 5), waiting for its turn, failed
         from sreweb.portal.poolctl import _cell
@@ -578,6 +617,14 @@ class TestCli:
         assert _cell({'state': 'up', 'priority': 0}, 'state') == 'up'
         assert _cell({'state': 'off', 'priority': -3}, 'state') == 'off (priority -3)'
         assert _cell({'state': 'up', 'instructors_only': True, 'priority': 12}, 'state') == 'up (instructors, priority 12)'
+        # the free memory (an older agent or portal: none) and a host whose memory takes no more project
+        assert _cell({'reachable': True, 'mem_available_mb': 2048}, 'mem_available_mb') == '2.0G'
+        assert _cell({'reachable': True}, 'mem_available_mb') == '-'
+        assert _cell({'reachable': False, 'mem_available_mb': 2048}, 'mem_available_mb') == ''
+        assert _cell({'state': 'up', 'reachable': True, 'memory_room': 0}, 'state') == 'up (memory full)'
+        assert _cell({'state': 'up', 'reachable': True, 'memory_room': 1}, 'state') == 'up'
+        assert _cell({'state': 'up', 'reachable': True, 'memory_room': None}, 'state') == 'up'
+        assert _cell({'state': 'off', 'reachable': False, 'memory_room': 0}, 'state') == 'off'
 
     def test_add_sends_the_priority_only_when_one_is_given(self, capsys):
         """A portal still running the code of before the priorities (synced, not restarted yet)

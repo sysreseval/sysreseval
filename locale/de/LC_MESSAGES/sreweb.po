@@ -766,6 +766,18 @@ msgstr "Zustand"
 msgid "Load"
 msgstr "Last"
 
+msgid "Free memory"
+msgstr "Freier Speicher"
+
+msgid "The available memory of the host"
+msgstr "Der verfügbare Arbeitsspeicher des Rechners"
+
+msgid "{n} GiB"
+msgstr "{n} GiB"
+
+msgid "memory full"
+msgstr "Speicher voll"
+
 msgid "Occupied by"
 msgstr "Belegt von"
 
@@ -883,6 +895,12 @@ msgstr "wird geweckt: {names}"
 
 msgid "outside the active hours"
 msgstr "außerhalb der aktiven Zeiten"
+
+msgid "placement: pack"
+msgstr "Platzierung: gebündelt"
+
+msgid "memory full: {names}"
+msgstr "Speicher voll: {names}"
 
 msgid "the changes are NOT saved, a restart of the portal loses them: {error}"
 msgstr ""

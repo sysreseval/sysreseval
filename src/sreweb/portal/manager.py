@@ -59,6 +59,15 @@ class HostView:
     held: bool = False
     # the lowest priority is woken first, the highest powered off first when idle (``Pool.set_priority``)
     priority: int = 0
+    # the new projects its free memory holds (``Pool.memory_room``; None: not checked or not told)
+    memory_room: int | None = None
+
+
+def free_slots(host) -> int:
+    """The new projects a host up takes: below its ``max_projects`` and, when its memory is
+    checked (``project_memory_mb``), no more than its memory holds."""
+    free = host.max_projects - host.projects
+    return free if host.memory_room is None else min(free, host.memory_room)
 
 
 def awake_count(hosts) -> int:
@@ -69,9 +78,10 @@ def awake_count(hosts) -> int:
 
 
 def spare_capacity(hosts) -> int:
-    """The free project slots of the shared hosts up, plus the whole capacity of those waking
-    (a host reserved for instructors, or kept for an exam, is no capacity for the students)."""
-    return sum(h.max_projects - h.projects for h in hosts
+    """The free project slots of the shared hosts up (``free_slots``: a host short of memory
+    has none), plus the whole capacity of those waking (a host reserved for instructors, or
+    kept for an exam, is no capacity for the students)."""
+    return sum(free_slots(h) for h in hosts
                if h.state == STATE_UP and not h.instructors_only and not h.held) + \
         sum(h.max_projects for h in hosts if h.state == STATE_WAKING and not h.instructors_only and not h.held)
 
@@ -194,7 +204,8 @@ class PoolManager:
                                   preload=st.preload, preload_since=float(st.preload_since or 0),
                                   preload_granted=rt.preload_granted is not None,
                                   preload_hold=now < rt.next_preload_at, exam_projects=st.exam_projects,
-                                  held=self.pool.held_for_exam(host.name), priority=rt.priority))
+                                  held=self.pool.held_for_exam(host.name), priority=rt.priority,
+                                  memory_room=self.pool.memory_room(host.name)))
         return views
 
     def status(self) -> dict:
@@ -209,6 +220,8 @@ class PoolManager:
                 'preloading': [h.name for h in views if is_preloading(h)],
                 'preload_queued': sum(1 for h in views if h.preload == PRELOAD_PENDING and not h.preload_granted),
                 'preload_failed': sum(1 for h in views if h.preload == PRELOAD_FAILED),
+                'placement': self.pool.placement, 'project_memory_mb': self.pool.project_memory_mb,
+                'memory_full': [h.name for h in views if h.state == STATE_UP and h.memory_room == 0],
                 **self.pool.state_info()}
 
     # -- the loop -------------------------------------------------------------------------------

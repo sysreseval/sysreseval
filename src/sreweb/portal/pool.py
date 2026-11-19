@@ -16,7 +16,8 @@ import aiohttp
 from ..agent.occupancy import SESSION_PREFIX
 from ..agent.runner import (PRELOAD_STATES, PRELOAD_PENDING, PRELOAD_RUNNING, PRELOAD_DONE, PRELOAD_FAILED,
                             LAB_README_KEY)
-from ..config import HostConfig, host_config_from_dict, check_priority, ConfigError
+from ..config import (HostConfig, host_config_from_dict, check_priority, ConfigError, PLACEMENT_SPREAD,
+                      PLACEMENT_PACK)
 from ..identity import Identity, is_valid_login
 
 log = logging.getLogger('sreweb.portal')
@@ -119,6 +120,9 @@ class HostStatus:
     local_projects: int = 0
     terminals: int = 0
     load1: float | None = None
+    # MemAvailable of the host in MiB (``None``: an agent older than the key, or unreachable): the
+    # projects it still takes with ``[pool] project_memory_mb`` (``Pool.memory_room``)
+    mem_available_mb: int | None = None
     exam_mode: bool = False
     occupied: bool = False
     occupied_by: list = field(default_factory=list)
@@ -174,6 +178,7 @@ def _count(value) -> int:
 
 
 def _seconds(value) -> int | None:
+    """A whole number of the status JSON, 0 or more (seconds, MiB), else ``None``."""
     number = _number(value)
     return max(0, int(number)) if number is not None else None
 
@@ -263,6 +268,7 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       local_projects=_count(data.get('local_projects')),
                       terminals=_count(data.get('terminals')),
                       load1=_number(data.get('load1')),
+                      mem_available_mb=_seconds(data.get('mem_available_mb')),
                       exam_mode=data.get('exam_mode') is True,
                       occupied=data.get('occupied') is True,
                       occupied_by=([_text(x) for x in occupied_by if isinstance(x, str)][:MAX_OCCUPIED_BY]
@@ -311,7 +317,7 @@ class HostRuntime:
 class Pool:
     def __init__(self, hosts: list, session, *, poll_interval: float = 2.0, wake_timeout: float = 180.0,
                  state_file: str = '', follow_local_sessions: bool = True, labs_cache_ttl: float = 60.0,
-                 restart_hold: float = RESTART_HOLD):
+                 restart_hold: float = RESTART_HOLD, placement: str = PLACEMENT_SPREAD, project_memory_mb: int = 0):
         self.hosts: dict[str, HostConfig] = {}
         self.status: dict[str, HostStatus] = {}
         self.runtime: dict[str, HostRuntime] = {}
@@ -322,6 +328,8 @@ class Pool:
         self.state_file = state_file
         self.follow_local_sessions = follow_local_sessions
         self.labs_cache_ttl = labs_cache_ttl
+        self.placement = placement                  # [pool] placement: spread or pack (``pick``)
+        self.project_memory_mb = project_memory_mb  # [pool] project_memory_mb: 0 = memory not checked
         #: The lab list of the Open page per role (``labs``), kept labs_cache_ttl seconds, and the
         #: lock making the requests of a role wait for the one fetching it.
         self._labs_cache: dict[tuple, tuple[float, list]] = {}      # (instructor, all labs) -> (when, labs)
@@ -832,6 +840,7 @@ class Pool:
                 'wake_failures': rt.wake_failures,
                 'idle_for': round(now - rt.idle_since) if rt.idle_since is not None else None,
                 'exam_hold': self.held_for_exam(h.name),
+                'memory_room': self.memory_room(h.name),
                 # the users in the Qt GUI are for the Watch page (``gui_users()``), not for the pool
                 **{k: v for k, v in vars(st).items() if k not in ('updated', 'polled_at', 'gui_users')},
             })
@@ -849,14 +858,32 @@ class Pool:
 
     # -- placement ------------------------------------------------------------------------------
 
+    def memory_room(self, name: str) -> int | None:
+        """The new projects the memory of *name* still holds (``project_memory_mb``): its
+        available memory at the last poll divided by the memory of a project, less the starts in
+        flight (a reservation counts until a status asked after the end of its start: the
+        containers of a project starting may not show in the reading yet); ``None`` when the
+        memory is not checked, or the agent does not tell it (unreachable, older than the key)."""
+        st = self.status[name]
+        if not self.project_memory_mb or not st.reachable or st.mem_available_mb is None:
+            return None
+        return max(0, st.mem_available_mb // self.project_memory_mb - len(self._reservations[name]))
+
+    def _has_room(self, h: HostConfig) -> bool:
+        """Below its ``max_projects`` and, with ``project_memory_mb``, memory for one more."""
+        return self.status[h.name].projects < h.max_projects and self.memory_room(h.name) != 0
+
     def pick(self, identity: Identity | None = None, host: str | None = None) -> tuple:
         """The host of a new project and its reservation.  Without *host*: the host of a local
         login session of *identity* (``follow_local_sessions``: the workstation the user sits at,
-        occupied by them, whatever its load), else the least loaded (projects / max_projects, then
-        load) of the hosts up (enabled, reachable, not occupied, not in exam mode, not draining),
-        the one with the lowest priority among those without project (``set_priority``; a start
-        in flight counts as a project);
-        always below their maximum and among the hosts *identity* may use: a host with
+        occupied by them, whatever its load), else, among the hosts up (enabled, reachable, not
+        occupied, not in exam mode, not draining), with ``placement = "spread"`` the least loaded
+        (projects / max_projects, then load), the one with the lowest priority among those
+        without project (``set_priority``; a start in flight counts as a project), with
+        ``placement = "pack"`` the one with the lowest priority, the fullest first among equal
+        priorities (then load): the hosts left empty can be powered off;
+        always with room (below their maximum, and memory for one more project with
+        ``project_memory_mb``: ``memory_room``) and among the hosts *identity* may use: a host with
         ``instructors_only`` takes an instructor's project only, and the caller is a student
         without identity.  With *host* (an instructor naming one on the Open page): that host,
         when the identity may use it (403 otherwise), it is available to them (503) and has room
@@ -871,6 +898,8 @@ class Pool:
                 raise PoolError(503, f"the host {host} is not available", retry_after=60)
             if self.status[host].projects >= chosen.max_projects:
                 raise PoolError(503, f"the host {host} is full", retry_after=60)
+            if self.memory_room(host) == 0:
+                raise PoolError(503, f"the host {host} has not enough free memory", retry_after=60)
             return self._reserve(chosen, PLACEMENT_NAMED)
         candidates = []
         waking = False
@@ -880,14 +909,19 @@ class Pool:
             state = self.state_of(h.name, now)
             waking = waking or state == STATE_WAKING or self.runtime[h.name].restart_sent is not None
             available, placement = self._available_to(h, identity, state)
-            st = self.status[h.name]
-            if not available or st.projects >= h.max_projects:
+            if not available or not self._has_room(h):
                 continue
-            # the priority only tells the hosts without project apart: the least loaded host is
-            # one of them whenever there is one, and the loaded hosts are settled as before
-            candidates.append((placement != PLACEMENT_SESSION, st.projects / h.max_projects,
-                               self.runtime[h.name].priority if st.projects == 0 else 0,
-                               st.load1 if st.load1 is not None else 0.0, h.name, h, placement))
+            st, priority = self.status[h.name], self.runtime[h.name].priority
+            fill, load = st.projects / h.max_projects, st.load1 if st.load1 is not None else 0.0
+            if self.placement == PLACEMENT_PACK:
+                # the lowest priority until it is full, the fullest among equal ones: the
+                # projects gather on the fewest hosts, the others empty
+                candidates.append((placement != PLACEMENT_SESSION, priority, -fill, load, h.name, h, placement))
+            else:
+                # the priority only tells the hosts without project apart: the least loaded host
+                # is one of them whenever there is one, and the loaded hosts are settled as before
+                candidates.append((placement != PLACEMENT_SESSION, fill, priority if st.projects == 0 else 0,
+                                   load, h.name, h, placement))
         if not candidates:
             if waking:
                 raise PoolError(503, "a host is starting, please retry in a moment", retry_after=30)

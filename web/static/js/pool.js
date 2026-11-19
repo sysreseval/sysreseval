@@ -1,7 +1,8 @@
 // The Pool page of the instructors: every host of the pool (GET /api/pool and /api/pool/status
 // every 5 s), one row per host with its state as `sre-web-tool list` shows it (the seconds and
-// the failed attempts of a wake), its projects, terminals, load, who occupies it, its uptime,
-// its flags (reserved for instructors, power, drain, power off sent, restart sent, and where the
+// the failed attempts of a wake), its projects, terminals, load, free memory, who occupies it, its
+// uptime, its flags (reserved for instructors, power, drain, power off sent, restart sent, memory
+// full with [pool] project_memory_mb, and where the
 // preload of the Docker images is: queued, preloading 2/5, failed), the agent's version and
 // its last error, and the summary of `sre-web-tool status` above the table.  The rows can be
 // sorted by any column and filtered by host name.  The buttons are the commands of the tool (Enable /
@@ -26,7 +27,7 @@ import {el, clear, toast} from './ui.js';
 const REFRESH_INTERVAL = 5000;
 const ERROR_WIDTH = 60;        // the Last error cell (the whole text in its tooltip), as the tool
 const STATE_ORDER = ['up', 'occupied', 'exam', 'draining', 'waking', 'off', 'disabled'];   // the sort of the State column
-const NUMERIC = ['projects', 'terminals', 'load1', 'uptime'];   // sorted descending first
+const NUMERIC = ['projects', 'terminals', 'load1', 'mem_available_mb', 'uptime'];   // sorted descending first
 const PRIORITY_LIMIT = 9999;   // a priority: an integer from -9999 to 9999 (config.PRIORITY_LIMIT of the portal)
 
 const table = document.getElementById('pool');
@@ -90,6 +91,10 @@ function flagsText(row) {
     // a machine an exam of the Exams page is about to lock: no new project goes there
     flags.push(_('kept for an exam'));
   }
+  if (row.memory_room === 0 && row.reachable) {
+    // [pool] project_memory_mb: the free memory of the host holds no new project
+    flags.push(_('memory full'));
+  }
   const preload = preloadFlag(row);
   if (preload) {
     flags.push(preload);
@@ -121,6 +126,11 @@ function flagsTitle(row) {
   return row.preload === 'failed' ? (row.preload_error || '') : '';
 }
 
+function memoryText(row) {   // 12.3 GiB: the MemAvailable of the host (an older agent says nothing)
+  return row.reachable && isNumber(row.mem_available_mb)
+    ? format(_('{n} GiB'), {n: (row.mem_available_mb / 1024).toFixed(1)}) : '';
+}
+
 function uptimeText(seconds) {   // 1h02, as the tool
   if (!isNumber(seconds)) {
     return '';
@@ -149,6 +159,7 @@ function sortValue(row, key) {
     case 'projects': return row.reachable ? Number(row.projects) || 0 : -1;
     case 'terminals': return row.reachable ? Number(row.terminals) || 0 : -1;
     case 'load1': return isNumber(row.load1) ? row.load1 : -1;
+    case 'mem_available_mb': return row.reachable && isNumber(row.mem_available_mb) ? row.mem_available_mb : -1;
     case 'uptime': return isNumber(row.uptime) ? row.uptime : -1;
     case 'occupied_by': return (row.occupied_by || []).join(',');
     case 'priority': return priorityOf(row);
@@ -473,6 +484,12 @@ function renderStatus() {
   if (s.active_now === false) {
     pieces.push(_('outside the active hours'));
   }
+  if (s.placement === 'pack') {   // the default (spread) goes without saying
+    pieces.push(_('placement: pack'));
+  }
+  if (Array.isArray(s.memory_full) && s.memory_full.length) {
+    pieces.push(format(_('memory full: {names}'), {names: s.memory_full.join(', ')}));
+  }
   // the preloads of the Docker images, when there is something to say
   const preloading = Array.isArray(s.preloading) ? s.preloading.length : 0;
   if (isNumber(s.max_preloads) && (preloading || s.preload_queued || s.preload_failed)) {
@@ -521,6 +538,7 @@ function renderRow(row) {
     el('td', {class: 'num'}, row.reachable ? `${row.projects} / ${row.max_projects}` : ''),
     el('td', {class: 'num'}, row.reachable ? String(row.terminals) : ''),
     el('td', {class: 'num'}, isNumber(row.load1) ? row.load1.toFixed(2) : ''),
+    el('td', {class: 'num memory'}, memoryText(row)),
     el('td', {}, (row.occupied_by || []).join(', ')),
     el('td', {class: 'num'}, uptimeText(row.uptime)),
     priorityCell(row),

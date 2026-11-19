@@ -130,7 +130,9 @@ async function fillHosts() {
       continue;
     }
     const detail = row.reachable ? `${row.state}, ${row.projects}/${row.max_projects}` : row.state;
-    select.append(el('option', {value: row.name, disabled: row.state !== 'up' || row.projects >= row.max_projects},
+    // full: its max_projects, or no memory for one more project ([pool] project_memory_mb)
+    const full = row.projects >= row.max_projects || row.memory_room === 0;
+    select.append(el('option', {value: row.name, disabled: row.state !== 'up' || full},
                      `${row.name} (${detail})`));
     added += 1;
   }
