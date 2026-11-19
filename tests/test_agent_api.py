@@ -16,7 +16,7 @@ import pytest
 aiohttp = pytest.importorskip('aiohttp', reason="aiohttp is not installed: the web front-end needs it: run `make venv` (or pip install aiohttp jinja2 aiohttp-jinja2 ldap3 in the venv)")
 from aiohttp.test_utils import TestServer, TestClient  # noqa: E402
 
-from SRE import params, web_updates
+from SRE import local_drain, params, web_updates
 from SRE.archive_summary import read_archive
 from sreweb.agent.app import (Agent, TERMINAL_SUBPROTOCOL, DISPLAY_SUBPROTOCOL, PROBE_DELAY, unit_of_cgroup,
                               activity_ago, ACTIVITY_FRAME_MAX, ACTIVITY_MAX_AGO)
@@ -2175,3 +2175,167 @@ class TestLingeringTerminals:
                 assert (await (await h.client.get('/v1/status', headers=headers())).json())['terminals'] == 1
                 await end_terminal(second)
         run(go())
+
+
+class TestLocalDrain:
+    """The drain asked on the host itself (`sre set-drain`): the request read at every status,
+    what the portal does about it, what holds across a restart of the agent."""
+    BOOT = 'boot-1'
+    ASKED = 1795104130.0
+
+    @pytest.fixture(autouse=True)
+    def boot(self, monkeypatch):
+        monkeypatch.setattr(local_drain, 'boot_id', lambda: self.BOOT)
+
+    @staticmethod
+    def request_file(h) -> str:
+        return local_drain.request_path(str(h.pub))
+
+    def ask(self, h, boot=None):
+        """What `sre set-drain` writes on the host."""
+        local_drain.write_request(self.request_file(h), self.BOOT if boot is None else boot, now=self.ASKED)
+
+    def asked(self, h) -> bool:
+        return os.path.exists(self.request_file(h))
+
+    def published(self, h, boot=None):
+        return local_drain.read_agent_state(local_drain.agent_state_path(str(h.pub)), boot or self.BOOT)
+
+    @staticmethod
+    async def drain_of(h) -> dict:
+        return (await (await h.client.get('/v1/status', headers=headers(None))).json())['local_drain']
+
+    @staticmethod
+    async def post(h, action) -> dict:
+        resp = await h.client.post(f'/v1/local-drain/{action}', headers=headers(None))
+        assert resp.status == 200, await resp.text()
+        body = await resp.json()
+        assert body['ok'] is True
+        return body['local_drain']
+
+    def test_forbidden_by_default(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path) as h:
+                assert await self.drain_of(h) == {'asked': False, 'since': None, 'allowed': False, 'default': False}
+                assert self.published(h) == {'allowed': False, 'default': False}      # what `sre set-drain` reads
+                # a request left all the same: dropped, never told to the portal
+                self.ask(h)
+                assert (await self.drain_of(h))['asked'] is False and not self.asked(h)
+        run(go())
+
+    def test_asked_then_cancelled_by_the_portal(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, allow_local_drain=True) as h:
+                idle = {'asked': False, 'since': None, 'allowed': True, 'default': True}
+                assert await self.drain_of(h) == idle and self.published(h) == {'allowed': True, 'default': True}
+                self.ask(h)
+                assert await self.drain_of(h) == {'asked': True, 'since': self.ASKED, 'allowed': True, 'default': True}
+                assert await self.drain_of(h) == {'asked': True, 'since': self.ASKED, 'allowed': True, 'default': True}
+                assert await self.post(h, 'cancel') == idle and not self.asked(h)       # Enable on the Pool page
+                assert await self.post(h, 'cancel') == idle                               # nothing asked: the same
+                # removed on the host itself (`sre remove-drain`)
+                self.ask(h)
+                assert (await self.drain_of(h))['asked'] is True
+                os.unlink(self.request_file(h))
+                assert await self.drain_of(h) == idle
+        run(go())
+
+    def test_forbidden_and_allowed_by_the_portal(self, tmp_path):
+        async def go():
+            async with Harness(tmp_path, allow_local_drain=True) as h:
+                self.ask(h)
+                assert (await self.drain_of(h))['asked'] is True
+                # forbidding drops the request waiting, and the next ones
+                forbidden = {'asked': False, 'since': None, 'allowed': False, 'default': True}
+                assert await self.post(h, 'forbid') == forbidden and not self.asked(h)
+                assert self.published(h) == {'allowed': False, 'default': True}
+                self.ask(h)
+                assert await self.drain_of(h) == forbidden and not self.asked(h)
+                assert (await self.post(h, 'allow'))['allowed'] is True
+                assert self.published(h) == {'allowed': True, 'default': True}
+                self.ask(h)
+                assert (await self.drain_of(h))['asked'] is True
+        run(go())
+
+    def test_the_token_and_no_user(self, tmp_path):
+        """The portal itself calls: the token, no identity headers."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                for action in ('cancel', 'allow', 'forbid'):
+                    resp = await h.client.post(f'/v1/local-drain/{action}', headers=headers(None, 'x' * 32))
+                    assert resp.status == 401, action
+                    assert (await h.client.post(f'/v1/local-drain/{action}')).status == 401, action
+                    await self.post(h, action)
+        run(go())
+
+    def test_a_request_that_is_not_to_be_honoured(self, tmp_path):
+        """Asked before the last boot (the drain ended with its power off), or not a request at
+        all: removed, nothing told."""
+        async def go():
+            async with Harness(tmp_path, allow_local_drain=True) as h:
+                self.ask(h, boot='boot-0')
+                assert (await self.drain_of(h))['asked'] is False and not self.asked(h)
+                Path(self.request_file(h)).write_text('drain me')
+                assert (await self.drain_of(h))['asked'] is False and not self.asked(h)
+                os.symlink(local_drain.agent_state_path(str(h.pub)), self.request_file(h))
+                assert (await self.drain_of(h))['asked'] is False and not os.path.lexists(self.request_file(h))
+                assert self.published(h) == {'allowed': True, 'default': True}       # the link was removed, not its target
+        run(go())
+
+    def test_what_the_portal_chose_holds_until_the_next_boot(self, tmp_path, monkeypatch):
+        async def go():
+            async with Harness(tmp_path) as h:                      # agent.toml: forbidden
+                assert (await self.post(h, 'allow'))['allowed'] is True
+                self.ask(h)
+            # the agent restarts (sre-web-tool restart, an update): still allowed, the drain still asked
+            async with Harness(tmp_path) as h:
+                assert await self.drain_of(h) == {'asked': True, 'since': self.ASKED, 'allowed': True, 'default': False}
+            # the host boots again: agent.toml decides, the request of the previous boot is dropped
+            monkeypatch.setattr(local_drain, 'boot_id', lambda: 'boot-2')
+            async with Harness(tmp_path) as h:
+                assert await self.drain_of(h) == {'asked': False, 'since': None, 'allowed': False, 'default': False}
+                assert not self.asked(h) and self.published(h, 'boot-2') == {'allowed': False, 'default': False}
+        run(go())
+
+    def test_an_edit_of_agent_toml_wins(self, tmp_path):
+        """The state file of an agent that ran with another default is not a choice of the portal."""
+        async def go():
+            async with Harness(tmp_path) as h:
+                assert self.published(h) == {'allowed': False, 'default': False}
+            async with Harness(tmp_path, allow_local_drain=True) as h:
+                assert await self.drain_of(h) == {'asked': False, 'since': None, 'allowed': True, 'default': True}
+                assert (await self.post(h, 'forbid'))['allowed'] is False
+            async with Harness(tmp_path, allow_local_drain=True) as h:      # the same default: the choice is kept
+                assert (await self.drain_of(h))['allowed'] is False
+            async with Harness(tmp_path) as h:                                # the default edited: it applies
+                assert self.published(h) == {'allowed': False, 'default': False}
+            async with Harness(tmp_path, allow_local_drain=True) as h:      # and back: nothing was chosen since
+                assert (await self.drain_of(h))['allowed'] is True
+        run(go())
+
+    def test_a_request_that_cannot_be_removed(self, tmp_path, caplog):
+        """A directory in place of the request: never a drain, and one line of log, not one per poll."""
+        async def go():
+            async with Harness(tmp_path, allow_local_drain=True) as h:
+                os.mkdir(self.request_file(h))
+                with caplog.at_level('ERROR', logger='sreweb.agent'):
+                    for _ in range(3):
+                        assert (await self.drain_of(h))['asked'] is False
+                assert caplog.text.count('local drain: cannot remove') == 1
+                os.rmdir(self.request_file(h))
+                self.ask(h)
+                assert (await self.drain_of(h))['asked'] is True
+        run(go())
+
+    def test_a_public_directory_that_cannot_be_written(self, tmp_path, caplog):
+        """The agent runs all the same; `sre set-drain` finds no state and refuses."""
+        async def go():
+            h = Harness(tmp_path, allow_local_drain=True)
+            assert self.published(h) == {'allowed': True, 'default': True}
+        run(go())
+        missing = tmp_path / 'nowhere'
+        from sreweb.agent.localdrain import LocalDrain
+        with caplog.at_level('ERROR', logger='sreweb.agent'):
+            drain = LocalDrain(str(missing), True)
+        assert 'sre set-drain is refused on this host' in caplog.text
+        assert drain.view() == {'asked': False, 'since': None, 'allowed': True, 'default': True}

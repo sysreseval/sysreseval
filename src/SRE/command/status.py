@@ -5,6 +5,7 @@ with its origin and the user who created it::
 
     sre 0.17.0
     sre-agent: running (pid 812)
+    local drain: allowed, not asked
     running projects: 2
     ORIGIN  USER   PROJECT
     web     alice  20261118091203@@@sre@dhcp.py@@@alice
@@ -15,23 +16,31 @@ The origin and the user come from the origin file of each project (``origin.py``
 The projects are those of ``sre stop-all`` run by a privileged caller: the directories holding an
 ``info.json``, in start order.
 
+The ``local drain:`` line is there on a pool host whose agent knows the drains asked on the host
+itself (``sre set-drain``, ``local_drain.py``): ``forbidden``, ``allowed, not asked`` or ``allowed,
+asked on 2026-11-19 at 17:02:10``.
+
 With ``--json`` the same information is printed as one JSON document (:func:`status_dict`), for
 scripts::
 
     {"sre_version": "0.17.0",
-     "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml"},
+     "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml",
+               "local_drain": {"allowed": true, "asked": false, "asked_at": null}},
      "projects": [{"running_lab_name": "20261118091203@@@sre@dhcp.py@@@alice", "lab_name": "sre@dhcp.py",
                    "origin": "web", "user": "alice"}]}
 
-``running`` and ``pids`` are ``null`` without ``/proc``; ``origin`` is ``null`` where the table shows ``?``.
+``running`` and ``pids`` are ``null`` without ``/proc``; ``local_drain`` is ``null`` when the agent
+of the host says nothing about it (no agent, an older one), ``asked_at`` is in epoch seconds;
+``origin`` is ``null`` where the table shows ``?``.
 
 The agent has neither a pid file nor a local socket, and its unit name depends on the layout:
 it is looked for in ``/proc`` (:func:`agent_pids`, on the scan of ``procscan.py``).
 """
 import json
 import os
+import time
 
-from .. import params
+from .. import local_drain, params
 from ..origin import read_origin
 from ..procscan import command_lines, runs_script
 from ..utils import user_not_allowed
@@ -87,8 +96,24 @@ def project_rows() -> list[tuple[str, str, str]]:
     return rows
 
 
-def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]]) -> list[str]:
+def local_drain_line(drain: dict) -> str:
+    """The ``local drain:`` line for the *drain* of ``local_drain.summary()``."""
+    if not drain[params.local_drain_allowed_keyword]:
+        state = "forbidden"
+    elif not drain[params.local_drain_asked_keyword]:
+        state = "allowed, not asked"
+    else:
+        asked_at = time.localtime(drain[params.local_drain_asked_at_keyword])
+        state = f"allowed, asked on {time.strftime('%Y-%m-%d', asked_at)} at {time.strftime('%H:%M:%S', asked_at)}"
+    return f"local drain: {state}"
+
+
+def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]],
+                 drain: dict | None = None) -> list[str]:
+    """*drain*: ``local_drain.summary()``, ``None`` when the agent of the host says nothing about
+    the local drains (no line then)."""
     lines = [f"sre {params.sre_version}", agent_line(pids, configured),
+             *([local_drain_line(drain)] if drain is not None else []),
              f"running projects: {len(rows) if rows else 'none'}"]
     if rows:
         table = [_COLUMNS, *rows]
@@ -97,9 +122,11 @@ def status_lines(pids: list[int] | None, configured: bool, rows: list[tuple[str,
     return lines
 
 
-def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]]) -> dict:
+def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, str, str]],
+                drain: dict | None = None) -> dict:
     """The document of ``sre status --json``: the inputs of :func:`status_lines`, without the
-    display placeholders (``None`` for an unknown origin or without ``/proc``)."""
+    display placeholders (``None`` for an unknown origin, without ``/proc``, or for the local
+    drain of a host whose agent says nothing about it)."""
     return {
         params.status_sre_version_keyword: params.sre_version,
         params.status_agent_keyword: {
@@ -107,6 +134,7 @@ def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, 
             params.status_agent_pids_keyword: pids,
             params.status_agent_configured_keyword: configured,
             params.status_agent_config_file_keyword: params.agent_config_file,
+            params.local_drain_keyword: drain,
         },
         params.status_projects_keyword: [{
             params.running_lab_name_keyword: running_lab_name,
@@ -120,7 +148,8 @@ def status_dict(pids: list[int] | None, configured: bool, rows: list[tuple[str, 
 def action_status(as_json: bool = False):
     user_not_allowed()
     pids, configured, rows = agent_pids(), os.path.exists(params.agent_config_file), project_rows()
+    drain = local_drain.summary()
     if as_json:
-        print(json.dumps(status_dict(pids, configured, rows), ensure_ascii=False))
+        print(json.dumps(status_dict(pids, configured, rows, drain), ensure_ascii=False))
     else:
-        print('\n'.join(status_lines(pids, configured, rows)))
+        print('\n'.join(status_lines(pids, configured, rows, drain)))

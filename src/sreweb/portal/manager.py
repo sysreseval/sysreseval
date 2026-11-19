@@ -196,7 +196,8 @@ class PoolManager:
                                   can_wake=host.can_wake, enabled=rt.enabled, power=host.power,
                                   power_off_allowed=st.power_off_allowed, next_wake_at=rt.next_wake_at,
                                   idle_for=(now - rt.idle_since) if rt.idle_since is not None and st.projects == 0
-                                  and state in (STATE_UP, STATE_DRAINING) else None, drain=rt.drain,
+                                  and state in (STATE_UP, STATE_DRAINING) else None,
+                                  drain=self.pool.draining(host.name),
                                   power_off_pending=rt.power_off_sent is not None
                                   and now - rt.power_off_sent < self.pool.wake_timeout,
                                   instructors_only=host.instructors_only,
@@ -244,7 +245,7 @@ class PoolManager:
                 log.warning("preload of %s: %s", name, e.message)
         for name in poweroff_plan(views, self.cfg, active):
             try:
-                await self.power_off(name, "draining" if self.pool.runtime[name].drain else "idle")
+                await self.power_off(name, "draining" if self.pool.draining(name) else "idle")
             except PoolError as e:
                 log.warning("power off of %s: %s", name, e.message)
 
@@ -380,6 +381,40 @@ class PoolManager:
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             raise PoolError(502, f"{host.name} does not answer: {e or type(e).__name__}")
         return body
+
+    # -- the drain asked on the host itself ---------------------------------------------------------
+
+    async def _local_drain(self, name: str, action: str):
+        """``POST /v1/local-drain/<action>`` on the agent of *name*; what it answers about its
+        local drain is shown at once (``Pool.note_local_drain``)."""
+        host = self.pool.host(name)
+        st = self.pool.status[name]
+        if not st.reachable:
+            raise PoolError(409, f"{name} is not reachable")
+        if st.local_drain_allowed is None:
+            raise PoolError(409, f"{name}: its agent does not know the local drains (an older version)")
+        body = await self._post(host, f'/v1/local-drain/{action}')
+        self.pool.note_local_drain(name, body.get('local_drain'))
+
+    async def cancel_local_drain(self, name: str) -> bool:
+        """The drain *name* asked for itself (``sre set-drain`` on the host) is cancelled, on its
+        agent: what ``enable`` does next to cancelling the drain of the portal.  Whether there
+        was one; nothing is asked of a host that says none."""
+        self.pool.host(name)
+        st = self.pool.status[name]
+        if not (st.reachable and st.local_drain):
+            return False
+        await self._local_drain(name, 'cancel')
+        log.info("host %s: its own drain is cancelled", name)
+        return True
+
+    async def set_local_drain_allowed(self, name: str, allowed: bool):
+        """Whether *name* may ask for its own drain (the Pool page, ``sre-web-tool
+        allow-local-drain`` / ``forbid-local-drain``): told to its agent, which keeps it until
+        the host boots again (then ``allow_local_drain`` of its agent.toml); forbidding also
+        cancels a drain the host asked for."""
+        await self._local_drain(name, 'allow' if allowed else 'forbid')
+        log.info("host %s: local drains %s", name, 'allowed' if allowed else 'forbidden')
 
     def _note_preload(self, name: str, body: dict):
         """What the agent answered about its preload, shown at once (the next status says it again)."""

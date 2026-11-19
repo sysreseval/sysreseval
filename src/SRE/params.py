@@ -612,6 +612,20 @@ web_updates_max_age = 24 * 3600     # seconds: an update the portal never took (
 web_updates_max_size = 8 << 20      # bytes: a bigger entry is refused
 archive_keyword = "archive"         # the file name of an archive in its record
 
+# --- the drain of a pool host asked on the host itself (`sre set-drain`, local_drain.py) ---
+# two files of sre_pub_dir: the request `sre set-drain` leaves for the web agent of the host, and
+# what that agent publishes for sre (whether a local drain is allowed); both name the boot they
+# were written in, and are ignored after a reboot
+local_drain_json_name = "local-drain.json"
+agent_state_json_name = "agent.json"
+local_drain_max_size = 4096                 # bytes: a bigger file is refused
+boot_id_keyword = "boot_id"                 # /proc/sys/kernel/random/boot_id when the file was written
+local_drain_keyword = "local_drain"         # the object of agent.json, and of the agent of `sre status --json`
+local_drain_asked_at_keyword = "asked_at"   # epoch seconds
+local_drain_allowed_keyword = "allowed"     # whether the host may ask for its own drain, as the agent says now
+local_drain_default_keyword = "default"     # what allow_local_drain of agent.toml says
+local_drain_asked_keyword = "asked"         # `sre status --json`: a local drain is asked
+
 srelab_link_name = "srelab"
 
 graphviz_default_nodesep = 0.8

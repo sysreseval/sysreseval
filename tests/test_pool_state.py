@@ -325,6 +325,28 @@ class TestDrain:
             assert saved(state)['drain'] == {} and again.runtime['s02'].drain_at == 0.0
         run(go())
 
+    def test_a_local_drain_is_not_in_the_file(self, tmp_path):
+        """The drain a host asks for itself (`sre set-drain` there) lives on the host: its agent
+        says it again to a portal that restarts, and the state file knows nothing of it."""
+        state = tmp_path / 'pool.json'
+        session = M.FakeSession()
+        session.answers = {'http://s01': up(projects=1, local_drain=M.asking(True)), 'http://s02': up()}
+        pool = Pool(hosts(s01=True, s02=True), session, state_file=str(state))
+
+        async def go():
+            await pool.refresh()
+            assert pool.state_of('s01') == STATE_DRAINING
+            pool.save_state()
+            assert saved(state)['drain'] == {} and 'local_drain' not in json.dumps(saved(state))
+            # `enable` in the pool cancels the drain of the portal alone (the route asks the agent)
+            pool.set_drain('s01')
+            pool.set_enabled('s01', True)
+            assert saved(state)['drain'] == {} and pool.state_of('s01') == STATE_DRAINING
+            again = Pool(hosts(s01=True, s02=True), session, state_file=str(state))
+            await again.refresh()
+            assert again.state_of('s01') == STATE_DRAINING and again.pick()[0].name == 's02'
+        run(go())
+
     @pytest.mark.parametrize('asked_ago, uptime, kept', [
         (3600, 100, False),        # booted 100 s ago, the drain is one hour old: it went down and came back
         (3600, 7200, True),        # up since before the drain

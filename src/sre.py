@@ -37,6 +37,7 @@ from SRE.command.make_titles import action_make_titles
 from SRE.command.start import action_start
 from SRE.command.wipe import action_wipe
 from SRE.command.status import action_status
+from SRE.command.drain import action_set_drain, action_remove_drain
 from SRE.command.stop import action_stop
 from SRE.command.stop_all import action_stop_all
 from SRE.command.save import action_save
@@ -186,6 +187,10 @@ def parse_args():
     parser_status = subparsers.add_parser('status', help=_('Show the version, the state of sre-agent and the '
                                                            'running projects (privileged only)'))
     parser_status.add_argument('--json', action='store_true', help=_('output as a JSON dict (for scripts)'))
+
+    subparsers.add_parser('set-drain', help=_('Ask for the drain of this pool host: no new web project, powered off '
+                                              'once it is empty (privileged only)'))
+    subparsers.add_parser('remove-drain', help=_('Remove the drain asked on this host by set-drain (privileged only)'))
 
     parser_set_instructor = subparsers.add_parser(
         'set-instructor-mode', help=_('Put a running project in instructor mode (privileged only)'))
@@ -492,6 +497,10 @@ match SRE.args.action:
         action_wipe()
     case 'status':
         action_status(as_json=SRE.args.json)
+    case 'set-drain':
+        action_set_drain()
+    case 'remove-drain':
+        action_remove_drain()
     case 'list':
         action_list(with_titles=SRE.args.with_titles, include_exam_only=SRE.args.include_exam_only,
                     with_readmes=SRE.args.with_readmes)

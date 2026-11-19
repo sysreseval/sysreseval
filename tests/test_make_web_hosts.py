@@ -268,6 +268,18 @@ class TestReruns:
         site.run()                                         # the plain run makes a certificate with the new address
         assert 'IP Address:10.0.128.7' in site.cert_text('a01')
 
+    def test_local_drain(self, site):
+        """LOCAL_DRAIN: the hosts may ask for their own drain (`sre set-drain` there)."""
+        site.run()
+        assert 'allow_local_drain' not in site.agent('a01')
+        result = site.run('--keep', env={'LOCAL_DRAIN': 'true', 'POWER': 'true'})
+        assert site.agent('a01')['allow_local_drain'] is True and site.agent('a01')['allow_power_off'] is True
+        assert 'make-web-hosts: a01: hosts.toml: power false -> true; agent-a01.toml: allow_power_off, allow_local_drain' \
+            in result.stdout.splitlines()
+        result = site.run('--keep', env={'POWER': 'true'})
+        assert 'allow_local_drain' not in site.agent('a01')
+        assert 'make-web-hosts: a01: agent-a01.toml: allow_local_drain' in result.stdout.splitlines()
+
     def test_changes_of_the_variables_are_reported(self, site):
         site.run()
         before = site.snapshot('S0.key', 'S0.crt', 'S0.token', 'agent-S0.toml', 'agent-a02.toml')

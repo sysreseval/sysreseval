@@ -80,8 +80,17 @@ function flagsText(row) {
   if (row.power) {
     flags.push(_('power'));
   }
-  if (row.drain) {
-    flags.push(_('drain'));
+  if (row.local_drain) {
+    // asked on the host itself (sre set-drain there), not on this page
+    flags.push(_('local drain'));
+  } else {
+    if (row.drain) {
+      flags.push(_('drain'));
+    }
+    const localDrain = localDrainFlag(row);
+    if (localDrain) {
+      flags.push(localDrain);
+    }
   }
   if (row.power_off_sent) {
     flags.push(_('power off sent'));
@@ -104,6 +113,19 @@ function flagsText(row) {
   return flags.join(', ');
 }
 
+// whether the host may ask for its own drain (sre set-drain there): told when it may, and when it
+// may not although its agent.toml allows it (forbidden from this page); nothing for a host that
+// is not reachable or whose agent does not know the local drains (null)
+function localDrainFlag(row) {
+  if (!row.reachable || typeof row.local_drain_allowed !== 'boolean') {
+    return '';
+  }
+  if (row.local_drain_allowed) {
+    return _('local drain allowed');
+  }
+  return row.local_drain_default ? _('local drain forbidden') : '';
+}
+
 // the preload of the Docker images on the host: waiting for its turn, pulling (image 2 of 5), failed
 function preloadFlag(row) {
   switch (row.preload) {
@@ -120,12 +142,16 @@ function preloadFlag(row) {
   }
 }
 
-// the tooltip of the Flags cell: the image being pulled, or why the preload failed
+// the tooltip of the Flags cell: the image being pulled, or why the preload failed, else where a
+// local drain comes from
 function flagsTitle(row) {
   if (row.preload === 'running') {
     return row.preload_image || '';
   }
-  return row.preload === 'failed' ? (row.preload_error || '') : '';
+  if (row.preload === 'failed') {
+    return row.preload_error || '';
+  }
+  return row.local_drain ? _('drain asked on the host itself (sre set-drain)') : '';
 }
 
 function memoryText(row) {   // 12.3 GiB: the MemAvailable of the host (an older agent says nothing)
@@ -246,6 +272,18 @@ function actionReason(row, action) {
         return _('already queued');
       }
       return row.preload === 'running' ? _('already preloading') : '';
+    case 'allow-local-drain':
+    case 'forbid-local-drain':
+      if (unreachable) {
+        return unreachable;
+      }
+      if (typeof row.local_drain_allowed !== 'boolean') {
+        return _('the agent does not know the local drains (older version)');
+      }
+      if (action === 'allow-local-drain') {
+        return row.local_drain_allowed ? _('local drain is already allowed') : '';
+      }
+      return row.local_drain_allowed ? '' : _('local drain is already forbidden');
     default:
       return '';
   }

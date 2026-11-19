@@ -37,6 +37,12 @@ msgstr "Version, Zustand von sre-agent und laufende Projekte anzeigen (nur privi
 msgid "output as a JSON dict (for scripts)"
 msgstr "Ausgabe als JSON-Dict (für Skripte)"
 
+msgid "Ask for the drain of this pool host: no new web project, powered off once it is empty (privileged only)"
+msgstr "Das Auslaufen dieses Pool-Rechners anfordern: keine neuen Webprojekte, Ausschalten, sobald er leer ist (nur privilegierte Benutzer)"
+
+msgid "Remove the drain asked on this host by set-drain (privileged only)"
+msgstr "Das auf diesem Rechner mit set-drain angeforderte Auslaufen aufheben (nur privilegierte Benutzer)"
+
 msgid "List all available projects"
 msgstr "Alle verfügbaren Projekte auflisten"
 

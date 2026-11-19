@@ -119,6 +119,7 @@ Shows what runs on the machine: the version of SRE, whether the web agent (`sre-
 ```
 sre 0.17.0
 sre-agent: running (pid 812)
+local drain: allowed, not asked
 running projects: 3
 ORIGIN  USER   PROJECT
 web     alice  20261118091203@@@sre@dhcp.py@@@alice
@@ -127,6 +128,7 @@ local   root   20261118100111@@@sre@static_routing.py@@@root
 ```
 
 - **`sre-agent`**: `running (pid N)`, `not running`, or `not running (no /etc/sreweb/agent.toml)` on a machine that is not a pool host (the path is the one of the layout). The agent is looked for among the processes (`/proc`), whatever started it: the systemd unit or a command typed by hand.
+- **`local drain`**: only on a pool host whose agent knows the drains asked on the host itself (`sre set-drain` below): `forbidden`, `allowed, not asked`, or `allowed, asked on 2026-11-19 at 17:02:10`.
 - **`ORIGIN`**: `local` for a project started on the machine itself (the GUI of a student, or `sre start` run by root), `web` for a project the web agent started for a browser user.
 - **`USER`**: the user who created the project: the login of the session for a local project (`root` for `sudo sre start`), the login of the web site for a web project.
 - **`PROJECT`**: the running lab name, as `sre stop`, `sre connect` and `sre eval` take it. The projects are listed in start order; `running projects: none` when there is none.
@@ -137,15 +139,35 @@ With `--json` the same information is printed as one line of JSON, easier to rea
 
 ```json
 {"sre_version": "0.17.0",
- "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml"},
+ "agent": {"running": true, "pids": [812], "configured": true, "config_file": "/etc/sreweb/agent.toml",
+           "local_drain": {"allowed": true, "asked": false, "asked_at": null}},
  "projects": [
    {"running_lab_name": "20261118091203@@@sre@dhcp.py@@@alice", "lab_name": "sre@dhcp.py", "origin": "web", "user": "alice"},
    {"running_lab_name": "20261118100111@@@sre@static_routing.py@@@carol", "lab_name": "sre@static_routing.py", "origin": null, "user": "carol"}
  ]}
 ```
 
-- **`agent`**: `running` is `true` or `false` and `pids` the list of the agent's processes; both are `null` when the processes cannot be listed (no `/proc`). `configured` tells whether `config_file` exists (a pool host).
+- **`agent`**: `running` is `true` or `false` and `pids` the list of the agent's processes; both are `null` when the processes cannot be listed (no `/proc`). `configured` tells whether `config_file` exists (a pool host). `local_drain` is `null` when the agent says nothing about the drains asked on the host (no agent, or an older one); else `allowed` tells whether `sre set-drain` is accepted, `asked` whether a drain is asked and `asked_at` when (epoch seconds, `null` when not asked).
 - **`projects`**: in start order, an empty list when nothing runs. `origin` is `local`, `web`, or `null` for a project without an origin file (the `?` of the table); `lab_name` is the lab of the running lab name.
+
+### `sre set-drain` and `sre remove-drain`
+
+On a pool host of the web site (see [Web front-end](web.md), *A drain asked on the host*), `sre set-drain` asks for the **drain** of the machine it runs on: the portal places no new web project there and powers the host off once it is empty (nobody logged in, no project left), as *Drain* on the Pool page does. It is meant for the script of a session-end button, in place of a shutdown that would stop the web projects other users run on the workstation. Privileged only.
+
+```
+# sre set-drain
+drain asked: no new web project on this host, powered off once it is empty
+# sre remove-drain
+local drain removed
+```
+
+`sre set-drain` leaves a request for the web agent of the host (`local-drain.json` in `/var/lib/sre`), which tells the portal within a few seconds. It exits with 1 and asks for nothing when no agent would honour the request, so that a script can fall back on a plain shutdown:
+
+- `sre-agent is not running on this host`;
+- `the sre-agent of this host does not handle local drains` (an agent older than this command);
+- `local drains are forbidden on this host`: `allow_local_drain` of `agent.toml` is false, or an instructor forbade it from the Pool page (which holds until the next boot).
+
+`sre remove-drain` removes the request, whatever the agent says (`no local drain was asked on this host` when there was none). It only removes the drain asked on the host: a drain an instructor set from the portal is cancelled there (*Enable*), and an instructor can cancel the one of the host too. The request does not survive a reboot. `sre status` shows where the host stands.
 
 ### `sre eval-all [--display-grades / --no-display-grades]`
 

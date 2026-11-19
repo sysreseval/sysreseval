@@ -532,6 +532,15 @@ class TestAgentConfig:
             with pytest.raises(ConfigError):
                 agent_config_from_dict({'token': 't' * 32, **bad}, sre_exe='/x', state_dir='/y')
 
+    def test_local_drain(self):
+        """``allow_local_drain``: whether the host may ask for its own drain (`sre set-drain`)."""
+        assert agent_config_from_dict({'token': 't' * 32}, sre_exe='/x', state_dir='/y').allow_local_drain is False
+        cfg = agent_config_from_dict({'token': 't' * 32, 'allow_local_drain': True}, sre_exe='/x', state_dir='/y')
+        assert cfg.allow_local_drain is True
+        for bad in ('true', 'false', 1, 0, []):
+            with pytest.raises(ConfigError, match='allow_local_drain must be true or false'):
+                agent_config_from_dict({'token': 't' * 32, 'allow_local_drain': bad}, sre_exe='/x', state_dir='/y')
+
     def test_tls_and_allowed_clients(self):
         import ipaddress
         cfg = agent_config_from_dict({'token': 't' * 32, 'tls_cert': '/x/a.crt', 'tls_key': '/x/a.key',

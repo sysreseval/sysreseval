@@ -310,6 +310,62 @@ class TestInstructorPage:
                 assert (await h.client.delete('/api/pool/hosts/b02', headers={**prof, **CSRF})).status == 401
         run(go())
 
+    def test_local_drain(self, tmp_path):
+        """A drain asked on the host itself (`sre set-drain` there, here its request file): the
+        host drains, Enable cancels it on the agent, and the two actions of the bar let the host
+        ask for one or not."""
+        from SRE import local_drain
+        over = {**P.PROXY_OVER, 'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
+
+        async def go():
+            async with P.Harness(tmp_path, auth_mode='proxy', web_over=over,
+                                 agent_over={'allow_local_drain': True}) as h:
+                bob, prof = P.who('bob'), {**P.who('prof', groups=P.TEACHERS), **CSRF}
+                request, boot = local_drain.request_path(str(h.pub)), local_drain.boot_id()
+                a01 = '/api/pool/hosts/a01/'
+
+                def ask():
+                    local_drain.write_request(request, boot, now=1795104130.0)
+
+                row = await pool_row(h, lambda row: row['local_drain_allowed'] is True)
+                assert (row['state'], row['drain'], row['local_drain'], row['local_drain_default']) == \
+                    ('up', False, False, True)
+                ask()
+                row = await pool_row(h, lambda row: row['local_drain'])
+                assert (row['state'], row['drain'], row['local_drain_since']) == ('draining', True, 1795104130.0)
+                assert h.portal.pool.runtime['a01'].drain is False
+                # Enable cancels it: on the agent, the request is gone
+                assert (await h.client.post(a01 + 'enable', headers={**bob, **CSRF})).status == 403
+                row = await (await h.client.post(a01 + 'enable', headers=prof)).json()
+                assert (row['state'], row['drain'], row['local_drain']) == ('up', False, False)
+                assert not os.path.exists(request)
+                await asyncio.sleep(0.3)                                    # a few polls: it does not come back
+                assert (await pool_row(h, lambda row: True))['drain'] is False
+                # both drains at once: Enable cancels both
+                ask()
+                await pool_row(h, lambda row: row['local_drain'])
+                assert (await h.client.post(a01 + 'drain', headers=prof)).status == 200
+                row = await (await h.client.post(a01 + 'enable', headers=prof)).json()
+                assert row['drain'] is False and not os.path.exists(request)
+                assert h.portal.pool.runtime['a01'].drain is False
+                # forbidden from the page: a request is dropped by the agent, the host stays up
+                assert (await h.client.post(a01 + 'forbid-local-drain', headers={**bob, **CSRF})).status == 403
+                row = await (await h.client.post(a01 + 'forbid-local-drain', headers=prof)).json()
+                assert (row['local_drain_allowed'], row['local_drain_default']) == (False, True)
+                ask()
+                row = await pool_row(h, lambda row: not os.path.exists(request))
+                assert row['drain'] is False and row['state'] == 'up'
+                # allowed again (the token of sre-web-tool); forbidding cancels the drain asked
+                row = await (await h.client.post(a01 + 'allow-local-drain', headers=auth(ADMIN))).json()
+                assert row['local_drain_allowed'] is True
+                ask()
+                await pool_row(h, lambda row: row['local_drain'])
+                row = await (await h.client.post(a01 + 'forbid-local-drain', headers=prof)).json()
+                assert (row['state'], row['drain'], row['local_drain_allowed']) == ('up', False, False)
+                assert not os.path.exists(request)
+                assert (await h.client.post('/api/pool/hosts/nope/allow-local-drain', headers=prof)).status == 404
+        run(go())
+
     def test_actions_are_kept_across_a_restart(self, tmp_path):
         """A host the configuration disables (the DISABLED_ROOMS of make-web-hosts.sh), enabled
         then drained by an instructor on the Pool page: a new portal on the same configuration
@@ -590,6 +646,40 @@ class TestCli:
                 assert e.value.status == 503 and 'no host' in e.value.message
         run(go())
 
+    def test_local_drain_commands(self, tmp_path):
+        """``sre-web-tool allow-local-drain`` / ``forbid-local-drain``, and the drain a host asked
+        for itself in ``list``; ``enable`` cancels it."""
+        from SRE import local_drain
+        over = {'admin': {'token': ADMIN}, 'pool': QUIET_POOL}
+
+        async def go():
+            async with P.Harness(tmp_path, web_over=over) as h:              # agent.toml: forbidden
+                url = f"http://127.0.0.1:{h.client.port}"
+                env = {**os.environ, 'PYTHONPATH': str(SRC)}
+                loop = asyncio.get_running_loop()
+
+                async def cli(*args):
+                    return await loop.run_in_executor(None, lambda: subprocess.run(
+                        [sys.executable, '-m', 'sreweb.tool', '--url', url, '--token', ADMIN, *args],
+                        capture_output=True, text=True, env=env, timeout=120))
+                await pool_row(h, lambda row: row['local_drain_allowed'] is False)
+                r = await cli('allow-local-drain', 'a01', '--json')
+                assert r.returncode == 0, r.stderr
+                assert json.loads(r.stdout)['local_drain_allowed'] is True
+                local_drain.write_request(local_drain.request_path(str(h.pub)), local_drain.boot_id())
+                await pool_row(h, lambda row: row['local_drain'])
+                r = await cli('list')
+                assert r.returncode == 0 and r.stdout.splitlines()[1].split()[:4] == ['a01', 'draining', '(local', 'drain)']
+                r = await cli('enable', 'a01')
+                assert r.returncode == 0 and r.stdout.splitlines()[1].split()[:3] == ['a01', 'up', '0/3']
+                r = await cli('forbid-local-drain', 'a01', '--json')
+                assert r.returncode == 0 and json.loads(r.stdout)['local_drain_allowed'] is False
+                r = await cli('forbid-local-drain', 'nope')
+                assert r.returncode == 1 and '(404)' in r.stderr
+                r = await cli('allow-local-drain')
+                assert r.returncode == 2
+        run(go())
+
     def test_table_cells(self):
         from sreweb.portal.poolctl import table
         rows = [{'name': 'a01', 'state': 'waking', 'waking_for': 12, 'wake_failures': 1, 'reachable': False,
@@ -613,6 +703,10 @@ class TestCli:
             assert _cell({'name': 'd04', 'state': 'up', 'reachable': True, **preload}, 'state') == cell, preload
         assert _cell({'state': 'up', 'drain': True, 'preload': 'pending', 'instructors_only': True}, 'state') == \
             'up (drain, preload queued, instructors)'
+        # a drain the host asked for itself (sre set-drain there): told in every state
+        assert _cell({'state': 'draining', 'drain': True, 'local_drain': True}, 'state') == 'draining (local drain)'
+        assert _cell({'state': 'occupied', 'drain': True, 'local_drain': True}, 'state') == 'occupied (local drain)'
+        assert _cell({'state': 'draining', 'drain': True, 'local_drain': False}, 'state') == 'draining'
         # the priority, when it is not the default
         assert _cell({'state': 'up', 'priority': 0}, 'state') == 'up'
         assert _cell({'state': 'off', 'priority': -3}, 'state') == 'off (priority -3)'

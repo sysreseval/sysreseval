@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 
 import aiohttp
 
@@ -150,6 +150,14 @@ class HostStatus:
     preload_total: int = 0
     preload_image: str = ''
     preload_error: str = ''
+    # the drain asked on the host itself (`sre set-drain` there; the ``local_drain`` object of the
+    # status, flat): whether one is asked and since when (epoch seconds), whether the host may ask
+    # for one now and what its agent.toml says (``None``: an agent that does not know the local
+    # drains, or unreachable)
+    local_drain: bool = False
+    local_drain_since: float | None = None
+    local_drain_allowed: bool | None = None
+    local_drain_default: bool | None = None
     hostname: str = ''
     sre_version: str = ''
     error: str = ''
@@ -223,6 +231,19 @@ def preload_fields(value) -> dict:
             'preload_image': _text(data.get('image')), 'preload_error': _text(data.get('error'))}
 
 
+def local_drain_fields(value) -> dict:
+    """The ``local_drain*`` fields of a ``HostStatus`` from the ``local_drain`` object of a status
+    (or of the answer to a ``POST /v1/local-drain/...``), coerced like the rest; an agent older
+    than the local drains sends none: no drain asked, ``None`` for what is allowed."""
+    if not isinstance(value, dict):
+        return {'local_drain': False, 'local_drain_since': None,
+                'local_drain_allowed': None, 'local_drain_default': None}
+    allowed, default = value.get('allowed') is True, value.get('default') is True
+    asked = allowed and value.get('asked') is True      # never a drain where the agent forbids them
+    return {'local_drain': asked, 'local_drain_since': _number(value.get('since')) if asked else None,
+            'local_drain_allowed': allowed, 'local_drain_default': default}
+
+
 def _instant(value) -> float | None:
     """The epoch of an ISO 8601 instant with an offset of the status JSON, else ``None``."""
     if not isinstance(value, str):
@@ -283,7 +304,8 @@ def status_from_json(data, extra_projects: int = 0) -> HostStatus:
                       exam=host_exam_fields(data.get('exam')), exam_known='exam' in data,
                       hostname=_text(data.get('hostname')),
                       sre_version=_text(data.get('sre_version')),
-                      **preload_fields(data.get('preload')))
+                      **preload_fields(data.get('preload')),
+                      **local_drain_fields(data.get('local_drain')))
 
 
 @dataclass
@@ -312,6 +334,12 @@ class HostRuntime:
     # ``exam`` of the status until a status asked after it tells (the rule of preload_granted)
     exam_told: float | None = None
     exam_view: dict | None = None
+    # the local drain of the host as its agent answered a ``POST /v1/local-drain/...`` of the
+    # portal (``Pool.note_local_drain``: the ``local_drain*`` fields) and the monotonic time of
+    # that answer: the rule of exam_told, so that a status asked before a cancel never brings the
+    # drain back (the policy would power the host off)
+    local_drain_told: float | None = None
+    local_drain_view: dict | None = None
 
 
 class Pool:
@@ -413,7 +441,8 @@ class Pool:
 
     def set_drain(self, name: str, drain: bool = True):
         """``drain``: no new project on the host, powered off once it is empty; cancelled by
-        ``enable``, over when the host is gone or back (``refresh_host``)."""
+        ``enable``, over when the host is gone or back (``refresh_host``).  This is the drain of
+        the portal; a host may also ask for its own (``draining``)."""
         self.host(name)
         runtime = self.runtime[name]
         if runtime.drain != drain:
@@ -728,7 +757,16 @@ class Pool:
                 # asked before the portal changed the exam file of the host: what the agent
                 # answered then is newer than this status
                 status.exam, status.exam_mode = runtime.exam_view, runtime.exam_view is not None
+        if runtime.local_drain_told is not None:
+            if polled_at > runtime.local_drain_told:
+                runtime.local_drain_told, runtime.local_drain_view = None, None    # asked after the agent's answer: it tells
+            elif status.reachable:
+                # asked before the portal cancelled, allowed or forbade the local drain of the
+                # host: what the agent answered then is newer than this status
+                for key, value in runtime.local_drain_view.items():
+                    setattr(status, key, value)
         self._report_preload(host.name, self.status[host.name], status)
+        self._report_local_drain(host.name, self.status[host.name], status)
         self.status[host.name] = status
         return status
 
@@ -742,6 +780,25 @@ class Pool:
         runtime.exam_told, runtime.exam_view = time.monotonic(), fields
         status.exam, status.exam_mode, status.exam_known = fields, fields is not None, True
 
+    def note_local_drain(self, name: str, view):
+        """The agent of *name* answered a ``POST /v1/local-drain/...``: its local drain shown at
+        once, and kept against a status asked before the answer."""
+        if name not in self.status:
+            return
+        fields = local_drain_fields(view)
+        runtime, status = self.runtime[name], self.status[name]
+        runtime.local_drain_told, runtime.local_drain_view = time.monotonic(), fields
+        before = replace(status)
+        for key, value in fields.items():
+            setattr(status, key, value)
+        self._report_local_drain(name, before, status)
+
+    def draining(self, name: str) -> bool:
+        """Whether a drain is wanted for *name*: the one of the portal (``set_drain``), or the
+        one asked on the host itself (``sre set-drain`` there, told by its agent's status)."""
+        st = self.status[name]
+        return self.runtime[name].drain or (st.reachable and st.local_drain)
+
     def held_for_exam(self, name: str) -> bool:
         return bool(self.exam_hold is not None and self.exam_hold(name))
 
@@ -754,6 +811,15 @@ class Pool:
             log.info("host %s: %d image(s) preloaded", name, status.preload_total)
         elif status.preload == PRELOAD_FAILED:
             log.warning("host %s: preload of the images failed: %s", name, status.preload_error)
+
+    @staticmethod
+    def _report_local_drain(name: str, before: HostStatus, status: HostStatus):
+        """A drain asked on the host itself, or no longer asked while the host is there (gone
+        with its power off, it says nothing)."""
+        if status.local_drain and not before.local_drain:
+            log.info("host %s asked for its own drain: no new project, power off when empty", name)
+        elif before.local_drain and not status.local_drain and status.reachable:
+            log.info("host %s: its own drain is no longer asked", name)
 
     @staticmethod
     def _drain_over(runtime: HostRuntime):
@@ -821,7 +887,7 @@ class Pool:
             return STATE_EXAM
         if st.occupied:
             return STATE_OCCUPIED
-        if rt.drain:
+        if self.draining(name):
             return STATE_DRAINING
         return STATE_UP
 
@@ -834,7 +900,8 @@ class Pool:
                 'name': h.name, 'url': h.url, 'max_projects': h.max_projects, 'state': self.state_of(h.name, now),
                 'source': rt.source, 'enabled': rt.enabled, 'can_wake': h.can_wake, 'power': h.power,
                 'instructors_only': h.instructors_only, 'priority': rt.priority,
-                'drain': rt.drain, 'power_off_sent': rt.power_off_sent is not None,
+                # a drain is wanted: the portal's, or the one asked on the host (``local_drain``, below)
+                'drain': self.draining(h.name), 'power_off_sent': rt.power_off_sent is not None,
                 'restart_sent': rt.restart_sent is not None,
                 'waking_for': round(now - rt.woken_at) if rt.woken_at is not None else None,
                 'wake_failures': rt.wake_failures,
@@ -941,7 +1008,7 @@ class Pool:
         if state == STATE_UP:
             return True, PLACEMENT_LOAD
         if (state == STATE_OCCUPIED and self.follow_local_sessions and identity is not None
-                and not self.runtime[h.name].drain
+                and not self.draining(h.name)
                 and SESSION_PREFIX + identity.login in self.status[h.name].occupied_by):
             return True, PLACEMENT_SESSION
         return False, ''

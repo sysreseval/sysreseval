@@ -729,7 +729,9 @@ class Routes:
         """``enable`` / ``disable`` / ``wake`` / ``poweroff`` / ``drain`` / ``restart`` a host, or
         ask for a ``preload`` of the Docker images on it (it then waits for its turn: the portal
         lets a few hosts preload at a time), or set its ``priority`` (a JSON body
-        ``{"priority": N}``; ``Pool.set_priority``: the lowest one is used first): the commands
+        ``{"priority": N}``; ``Pool.set_priority``: the lowest one is used first), or let it ask
+        for its own drain or not (``allow-local-drain`` / ``forbid-local-drain``: ``sre set-drain``
+        on the host; ``enable`` cancels that drain too): the commands
         of sre-web-tool and the buttons of the Pool page (which has no Restart button: the tool
         alone offers it); the answer is the updated row."""
         identity = self._require_pool_access(request)
@@ -749,6 +751,9 @@ class Routes:
                 logged['priority'] = priority
         elif action == 'enable':
             self.pool.set_enabled(name, True)
+            if self.manager is not None:
+                # the drain the host asked for itself (`sre set-drain` there) is cancelled on its agent
+                await self.manager.cancel_local_drain(name)
         elif action == 'disable':
             self.pool.set_enabled(name, False)
         elif action == 'wake':
@@ -762,6 +767,8 @@ class Routes:
         elif action == 'drain':
             self.pool.set_drain(name, True)
             log.info("host %s draining: no new project, power off when empty", name)
+        elif action in ('allow-local-drain', 'forbid-local-drain'):
+            await self.manager.set_local_drain_allowed(name, action == 'allow-local-drain')
         else:
             return json_error(404, f"unknown action {action}")
         log.info("pool: %s %s by %s", action, name, identity.login if identity else "the admin token")

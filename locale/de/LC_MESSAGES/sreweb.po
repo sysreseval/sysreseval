@@ -881,6 +881,33 @@ msgstr "läuft bereits aus"
 msgid "cancels the drain"
 msgstr "bricht das Auslaufen ab"
 
+msgid "local drain"
+msgstr "lokales Auslaufen"
+
+msgid "local drain allowed"
+msgstr "lokales Auslaufen erlaubt"
+
+msgid "local drain forbidden"
+msgstr "lokales Auslaufen verboten"
+
+msgid "drain asked on the host itself (sre set-drain)"
+msgstr "Auslaufen auf dem Rechner selbst angefordert (sre set-drain)"
+
+msgid "Allow local drain"
+msgstr "Lokales Auslaufen erlauben"
+
+msgid "Forbid local drain"
+msgstr "Lokales Auslaufen verbieten"
+
+msgid "the agent does not know the local drains (older version)"
+msgstr "der Agent kennt das lokale Auslaufen nicht (ältere Version)"
+
+msgid "local drain is already allowed"
+msgstr "lokales Auslaufen ist bereits erlaubt"
+
+msgid "local drain is already forbidden"
+msgstr "lokales Auslaufen ist bereits verboten"
+
 msgid "the agent does not allow it (allow_power_off)"
 msgstr "der Agent erlaubt es nicht (allow_power_off)"
 

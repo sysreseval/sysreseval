@@ -329,8 +329,169 @@ def preloading(state, since=0, **over):
     return {'state': state, 'since': since, 'total': 0, 'current': 0, 'image': '', 'error': '', **over}
 
 
+def asking(asked=False, allowed=True, default=True, since=None):
+    """The ``local_drain`` object of the status of an agent that knows the drains asked on the
+    host itself (``up()`` alone is an older agent): ``up(local_drain=asking(True))``."""
+    return {'asked': asked, 'since': (ASKED if asked else None) if since is None else since,
+            'allowed': allowed, 'default': default}
+
+
+ASKED = 1795104130.5
+
+
 def run(coro):
     return asyncio.run(coro)
+
+
+class TestLocalDrain:
+    """The drain a host asks for itself (`sre set-drain` there), told by the status of its agent."""
+
+    @staticmethod
+    def fields(st) -> tuple:
+        return st.local_drain, st.local_drain_since, st.local_drain_allowed, st.local_drain_default
+
+    def test_status_is_coerced(self):
+        from sreweb.portal.pool import status_from_json
+        assert self.fields(status_from_json(up(local_drain=asking(True, default=False)))) == (True, ASKED, True, False)
+        assert self.fields(status_from_json(up(local_drain=asking()))) == (False, None, True, True)
+        # an agent older than the local drains: nothing asked, nothing known
+        assert self.fields(status_from_json(up())) == (False, None, None, None)
+        for odd in ('yes', [], 3, None):
+            assert self.fields(status_from_json(up(local_drain=odd))) == (False, None, None, None), odd
+        # never a drain where the agent forbids them, nor from anything but true
+        assert self.fields(status_from_json(up(local_drain=asking(True, allowed=False)))) == (False, None, False, True)
+        odd = status_from_json(up(local_drain={'asked': 'yes', 'since': 'now', 'allowed': True, 'default': 'no'}))
+        assert self.fields(odd) == (False, None, True, False)
+        odd = status_from_json(up(local_drain={'asked': True, 'since': 'now', 'allowed': 1}))
+        assert self.fields(odd) == (False, None, False, False)
+        assert self.fields(HostStatus()) == (False, None, None, None)      # unreachable
+
+    def test_state_and_placement(self):
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abcd']
+        pool = Pool(hosts, session=None)
+        pool.status['a'] = HostStatus(reachable=True, local_drain=True, local_drain_allowed=True)
+        pool.status['b'] = HostStatus(reachable=True, occupied=True, occupied_by=['session:bob'],
+                                      local_drain=True, local_drain_allowed=True)
+        pool.status['c'] = HostStatus(reachable=True, projects=5, local_drain_allowed=True)
+        pool.status['d'] = HostStatus(local_drain=True)             # not reachable: its last word is not a drain
+        assert [pool.state_of(n) for n in 'abcd'] == [STATE_DRAINING, STATE_OCCUPIED, STATE_UP, STATE_OFF]
+        assert [pool.draining(n) for n in 'abcd'] == [True, True, False, False]
+        assert pool.runtime['a'].drain is False                     # the drain of the portal is another one
+        assert pool.pick()[0].name == 'c'                           # not the empty host that drains
+        host, reservation = pool.pick(Identity(login='bob'))        # nor the workstation bob is leaving
+        assert host.name == 'c' and reservation.placement == PLACEMENT_LOAD
+        rows = {r['name']: r for r in pool.summary()}
+        assert rows['a']['drain'] is True and rows['a']['local_drain'] is True and rows['a']['state'] == STATE_DRAINING
+        assert rows['b']['drain'] is True and rows['b']['state'] == STATE_OCCUPIED
+        assert rows['c']['drain'] is False and rows['c']['local_drain'] is False
+        assert rows['c']['local_drain_allowed'] is True and rows['d']['local_drain_allowed'] is None
+        # both drains at once: still one drain
+        pool.runtime['a'].drain = True
+        assert pool.state_of('a') == STATE_DRAINING and pool.draining('a')
+
+    def test_powered_off_when_empty_and_cancelled(self, caplog):
+        hosts = [HostConfig('a', 'http://a', TOKEN, 10, power=True), HostConfig('b', 'http://b', TOKEN, 10, power=True)]
+        session = FakeSession()
+        session.answers = {'http://a': up(projects=1, local_drain=asking(True)), 'http://b': up(local_drain=asking())}
+        pool = Pool(hosts, session, wake_timeout=100.0)
+        mgr = PoolManager(pool, PoolConfig(spare_projects=0, min_hosts_up=0, active_hours='', idle_host_timeout=0),
+                          wol=lambda mac, broadcast: None)
+        cancel = 'http://a/v1/local-drain/cancel'
+
+        async def go():
+            with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+                await pool.refresh()
+            assert 'host a asked for its own drain' in caplog.text
+            assert pool.state_of('a') == STATE_DRAINING and pool.state_of('b') == STATE_UP
+            assert pool.status['a'].local_drain_since == ASKED
+            await mgr.tick()
+            assert session.posts == []                                  # a project still runs there
+            # the instructor cancels it (Enable): on the agent, shown at once
+            session.post_answers[cancel] = (200, {'ok': True, 'local_drain': asking()})
+            assert await mgr.cancel_local_drain('a') is True
+            assert session.posts == [cancel] and pool.state_of('a') == STATE_UP
+            # a status asked before the cancel and answered after it does not bring the drain back
+            pool.runtime['a'].local_drain_told = time.monotonic() + 60
+            session.answers['http://a'] = up(local_drain=asking(True))  # empty now: it would be powered off
+            await pool.refresh()
+            assert pool.state_of('a') == STATE_UP and pool.status['a'].local_drain is False
+            await mgr.tick()
+            assert session.posts == [cancel]
+            # a status asked after the answer tells
+            pool.runtime['a'].local_drain_told = time.monotonic() - 1
+            session.answers['http://a'] = up(local_drain=asking())
+            await pool.refresh()
+            assert pool.runtime['a'].local_drain_told is None and pool.runtime['a'].local_drain_view is None
+            assert pool.state_of('a') == STATE_UP
+            assert await mgr.cancel_local_drain('a') is False           # nothing asked: nothing sent
+            assert await mgr.cancel_local_drain('b') is False
+            assert session.posts == [cancel]
+            # asked again on an empty host: powered off, as a drain of the portal
+            session.answers['http://a'] = up(local_drain=asking(True))
+            caplog.clear()
+            with caplog.at_level(logging.INFO, logger='sreweb.portal'):
+                await pool.refresh()
+                await mgr.tick()
+            assert session.posts[-1] == 'http://a/v1/power/off' and 'powering off host a (draining)' in caplog.text
+            assert pool.runtime['a'].power_off_sent is not None
+            await mgr.tick()
+            assert session.posts.count('http://a/v1/power/off') == 1    # not repeated while it goes down
+            # gone, then back after its boot: nothing is asked any more
+            session.answers['http://a'] = None
+            await pool.refresh()
+            assert pool.runtime['a'].drain is False and not pool.draining('a')
+            session.answers['http://a'] = up(local_drain=asking())
+            await pool.refresh()
+            assert pool.state_of('a') == STATE_UP
+            # the agent does not answer the cancel: an error, the drain stays
+            session.answers['http://a'] = up(projects=1, local_drain=asking(True))
+            await pool.refresh()
+            session.post_answers[cancel] = None
+            with pytest.raises(PoolError) as e:
+                await mgr.cancel_local_drain('a')
+            assert e.value.status == 502 and pool.state_of('a') == STATE_DRAINING
+            with pytest.raises(PoolError) as e:
+                await mgr.cancel_local_drain('nope')
+            assert e.value.status == 404
+        run(go())
+
+    def test_allowed_and_forbidden_by_the_portal(self):
+        hosts = [HostConfig(n, f'http://{n}', TOKEN, 10) for n in 'abc']
+        session = FakeSession()
+        session.answers = {'http://a': up(local_drain=asking(True)), 'http://b': up(), 'http://c': None}
+        pool = Pool(hosts, session)
+        mgr = PoolManager(pool, PoolConfig(spare_projects=0, min_hosts_up=0, active_hours=''),
+                          wol=lambda mac, broadcast: None)
+        allow, forbid = 'http://a/v1/local-drain/allow', 'http://a/v1/local-drain/forbid'
+
+        async def go():
+            await pool.refresh()
+            assert pool.state_of('a') == STATE_DRAINING
+            # forbidding also cancels the drain the host asked for
+            session.post_answers[forbid] = (200, {'ok': True, 'local_drain': asking(allowed=False)})
+            await mgr.set_local_drain_allowed('a', False)
+            st = pool.status['a']
+            assert (st.local_drain, st.local_drain_allowed, st.local_drain_default) == (False, False, True)
+            assert pool.state_of('a') == STATE_UP and session.posts == [forbid]
+            session.post_answers[allow] = (200, {'ok': True, 'local_drain': asking()})
+            await mgr.set_local_drain_allowed('a', True)
+            assert pool.status['a'].local_drain_allowed is True and session.posts == [forbid, allow]
+            # an agent older than the local drains, a host that is down, an unknown one
+            for name, status, text in (('b', 409, 'older version'), ('c', 409, 'not reachable'), ('nope', 404, 'unknown')):
+                with pytest.raises(PoolError) as e:
+                    await mgr.set_local_drain_allowed(name, True)
+                assert e.value.status == status and text in e.value.message, name
+            # the agent does not answer, or refuses: nothing changes
+            session.post_answers[forbid] = None
+            with pytest.raises(PoolError) as e:
+                await mgr.set_local_drain_allowed('a', False)
+            assert e.value.status == 502 and pool.status['a'].local_drain_allowed is True
+            session.post_answers[forbid] = (500, {'error': 'internal error'})
+            with pytest.raises(PoolError) as e:
+                await mgr.set_local_drain_allowed('a', False)
+            assert e.value.status == 500 and 'refused' in e.value.message
+            assert pool.status['a'].local_drain_allowed is True and len(session.posts) == 2 + 2
+        run(go())
 
 
 class TestStatusCoercion:

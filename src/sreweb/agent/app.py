@@ -40,6 +40,7 @@ from .answers import AnswersStore
 from .display import DisplayManager, DisplayError, WS_DISPLAY_FAILED, WS_DISPLAY_GONE
 from .exam import (parse_exam, check_flavor_preset, view as exam_view, end_epoch, is_over as exam_is_over,
                    KEY_ENDED_AT, KEY_FINAL_EVAL_AT, SKEW_WARNING)
+from .localdrain import LocalDrain
 from .preload import Preloader
 from .registry import Registry, Project, EVENT_INFO, EVENT_TERMINALS, EVENT_EVALUATED, EVENT_EXAM
 from .results import ArchiveIndex
@@ -216,6 +217,8 @@ class Agent:
                                      on_exam_ended=self._exam_ended)
         # the Docker images of the labs, pulled when the portal gives this host its turn
         self.preloader = Preloader(self.runner, cfg.preload, default_paths=_lab_directories())
+        # the drain asked on the host itself (`sre set-drain`), told to the portal in the status
+        self.local_drain = LocalDrain(self.pub_dir, cfg.allow_local_drain)
         self._labs_cache: tuple[float, list] | None = None
         self._labs_lock = asyncio.Lock()
         self._all_labs_cache: tuple[float, list] | None = None
@@ -350,6 +353,9 @@ class Agent:
         app.router.add_post(f'{p}/restart', self.restart)
         app.router.add_post(f'{p}/preload/request', self.preload_request)
         app.router.add_post(f'{p}/preload/start', self.preload_start)
+        app.router.add_post(f'{p}/local-drain/cancel', self.local_drain_cancel)
+        app.router.add_post(f'{p}/local-drain/allow', self.local_drain_allow)
+        app.router.add_post(f'{p}/local-drain/forbid', self.local_drain_forbid)
         app.router.add_put(f'{p}/exam', self.host_exam_put)
         app.router.add_delete(f'{p}/exam', self.host_exam_delete)
         app.router.add_get(f'{p}/labs', self.labs_handler)
@@ -497,6 +503,8 @@ class Agent:
             return json_error(401, "bad agent token")
         if request.path in (f'{API_PREFIX}/status', f'{API_PREFIX}/power/off', f'{API_PREFIX}/restart',
                             f'{API_PREFIX}/preload/request', f'{API_PREFIX}/preload/start',
+                            f'{API_PREFIX}/local-drain/cancel', f'{API_PREFIX}/local-drain/allow',
+                            f'{API_PREFIX}/local-drain/forbid',
                             f'{API_PREFIX}/archives', f'{API_PREFIX}/archives/updates'):
             request[IDENTITY_KEY] = None   # the portal itself, no user behind it
             return await handler(request)
@@ -555,6 +563,8 @@ class Agent:
             'power_off_allowed': self.cfg.allow_power_off,
             'restart_allowed': bool(self.restart_argvs()), 'restarting': self.restarting is not None,
             'preload': self.preloader.to_dict(),
+            # the drain asked on this host (`sre set-drain`) and whether the host may ask for one
+            'local_drain': self.local_drain.view(),
         })
 
     def _exam_projects(self) -> int:
@@ -623,6 +633,29 @@ class Agent:
             ok = await self._run_command(argv, "restart")
         if not ok:
             self.restarting = None
+
+    # -- the drain asked on the host itself ---------------------------------------------------------
+
+    def _local_drain_answer(self) -> web.Response:
+        return web.json_response({'ok': True, 'local_drain': self.local_drain.view()})
+
+    async def local_drain_cancel(self, request):
+        """The portal cancels the drain this host asked for (``sre set-drain``; *Enable* on the
+        Pool page): the request is removed.  Nothing changes when none was asked."""
+        self.local_drain.cancel()
+        return self._local_drain_answer()
+
+    async def local_drain_allow(self, request):
+        """The portal lets this host ask for its own drain, until the next boot (then
+        ``allow_local_drain`` of agent.toml again)."""
+        self.local_drain.set_allowed(True)
+        return self._local_drain_answer()
+
+    async def local_drain_forbid(self, request):
+        """The portal forbids the drains asked on this host, until the next boot; a request
+        waiting is dropped."""
+        self.local_drain.set_allowed(False)
+        return self._local_drain_answer()
 
     # -- the preload of the Docker images ---------------------------------------------------------
 

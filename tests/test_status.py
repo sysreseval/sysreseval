@@ -1,11 +1,12 @@
-"""`sre status` (SRE/command/status.py): the version, the state of sre-agent, the running projects
-with their origin and user."""
+"""`sre status` (SRE/command/status.py): the version, the state of sre-agent, the local drain of
+the host, the running projects with their origin and user."""
 import json
+import time
 from pathlib import Path
 
 import pytest
 
-from SRE import origin, params
+from SRE import local_drain, origin, params
 from SRE.command import status
 
 ALICE = '20261118091203@@@sre@dhcp.py@@@alice'
@@ -127,7 +128,8 @@ class TestStatusDict:
     def test_running_agent_and_projects(self):
         assert status.status_dict([812], True, self.ROWS) == {
             'sre_version': '0.17.0',
-            'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': '/etc/sreweb/agent.toml'},
+            'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': '/etc/sreweb/agent.toml',
+                      'local_drain': None},
             'projects': [
                 {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice'},
                 {'running_lab_name': BOB, 'lab_name': 'sre@nftables-filter1.py', 'origin': 'local', 'user': 'bob'},
@@ -136,7 +138,8 @@ class TestStatusDict:
 
     def test_agent_not_running(self):
         agent = status.status_dict([], False, [])['agent']
-        assert agent == {'running': False, 'pids': [], 'configured': False, 'config_file': '/etc/sreweb/agent.toml'}
+        assert agent == {'running': False, 'pids': [], 'configured': False, 'config_file': '/etc/sreweb/agent.toml',
+                         'local_drain': None}
         assert status.status_dict([], True, [])['agent']['configured'] is True
 
     def test_unknown_without_proc(self):
@@ -145,6 +148,33 @@ class TestStatusDict:
 
     def test_no_project(self):
         assert status.status_dict([812], True, [])['projects'] == []
+
+    def test_local_drain(self):
+        """What ``local_drain.summary()`` gives goes into the agent object as it is."""
+        drain = {'allowed': True, 'asked': True, 'asked_at': 1795104130.0}
+        assert status.status_dict([812], True, [], drain)['agent']['local_drain'] == drain
+
+
+class TestLocalDrainLine:
+    def test_forbidden(self):
+        assert status.local_drain_line({'allowed': False, 'asked': False, 'asked_at': None}) == 'local drain: forbidden'
+
+    def test_allowed(self):
+        line = status.local_drain_line({'allowed': True, 'asked': False, 'asked_at': None})
+        assert line == 'local drain: allowed, not asked'
+
+    def test_asked(self):
+        asked_at = 1795104130.0
+        line = status.local_drain_line({'allowed': True, 'asked': True, 'asked_at': asked_at})
+        local = time.localtime(asked_at)
+        assert line == (f"local drain: allowed, asked on {time.strftime('%Y-%m-%d', local)} "
+                        f"at {time.strftime('%H:%M:%S', local)}")
+
+    def test_the_line_comes_after_the_agent(self):
+        drain = {'allowed': True, 'asked': False, 'asked_at': None}
+        assert status.status_lines([812], True, [], drain)[1:] == [
+            'sre-agent: running (pid 812)', 'local drain: allowed, not asked', 'running projects: none']
+        assert len(status.status_lines([812], True, [])) == 3       # no line when the agent says nothing
 
 
 class TestAction:
@@ -195,7 +225,8 @@ class TestAction:
         assert out.count('\n') == 1
         assert json.loads(out) == {
             'sre_version': '0.17.0',
-            'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': str(host)},
+            'agent': {'running': True, 'pids': [812], 'configured': True, 'config_file': str(host),
+                      'local_drain': None},
             'projects': [
                 {'running_lab_name': ALICE, 'lab_name': 'sre@dhcp.py', 'origin': 'web', 'user': 'alice'},
                 {'running_lab_name': CAROL, 'lab_name': 'sre@static_routing.py', 'origin': None, 'user': 'carol'},
@@ -206,8 +237,24 @@ class TestAction:
         monkeypatch.setattr(status, 'agent_pids', lambda: [])
         status.action_status(as_json=True)
         document = json.loads(capsys.readouterr().out)
-        assert document['agent'] == {'running': False, 'pids': [], 'configured': False, 'config_file': str(host)}
+        assert document['agent'] == {'running': False, 'pids': [], 'configured': False, 'config_file': str(host),
+                                     'local_drain': None}
         assert document['projects'] == []
+
+    def test_local_drain_of_a_pool_host(self, host, capsys, tmp_pub_dir):
+        """The agent of the host published its state: the line and the JSON object are there,
+        and follow the request `sre set-drain` leaves."""
+        boot = local_drain.boot_id()
+        local_drain.write_agent_state(local_drain.agent_state_path(), boot, allowed=True, default=True)
+        status.action_status()
+        assert capsys.readouterr().out.splitlines()[:3] == [
+            'sre 0.17.0', 'sre-agent: running (pid 812)', 'local drain: allowed, not asked']
+        local_drain.write_request(local_drain.request_path(), boot, now=1795104130.0)
+        status.action_status(as_json=True)
+        assert json.loads(capsys.readouterr().out)['agent']['local_drain'] == {
+            'allowed': True, 'asked': True, 'asked_at': 1795104130.0}
+        status.action_status()
+        assert capsys.readouterr().out.splitlines()[2].startswith('local drain: allowed, asked on ')
 
     @pytest.mark.parametrize('as_json', [False, True])
     def test_privileged_only(self, host, capsys, mock_sre_args, as_json):

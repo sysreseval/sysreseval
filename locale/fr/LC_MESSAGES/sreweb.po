@@ -862,6 +862,33 @@ msgstr "déjà en vidage"
 msgid "cancels the drain"
 msgstr "annule le vidage"
 
+msgid "local drain"
+msgstr "vidage local"
+
+msgid "local drain allowed"
+msgstr "vidage local autorisé"
+
+msgid "local drain forbidden"
+msgstr "vidage local interdit"
+
+msgid "drain asked on the host itself (sre set-drain)"
+msgstr "vidage demandé sur la machine elle-même (sre set-drain)"
+
+msgid "Allow local drain"
+msgstr "Autoriser le vidage local"
+
+msgid "Forbid local drain"
+msgstr "Interdire le vidage local"
+
+msgid "the agent does not know the local drains (older version)"
+msgstr "l'agent ne connaît pas le vidage local (version plus ancienne)"
+
+msgid "local drain is already allowed"
+msgstr "le vidage local est déjà autorisé"
+
+msgid "local drain is already forbidden"
+msgstr "le vidage local est déjà interdit"
+
 msgid "the agent does not allow it (allow_power_off)"
 msgstr "l'agent ne le permet pas (allow_power_off)"
 

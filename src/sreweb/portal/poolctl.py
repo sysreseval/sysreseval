@@ -6,6 +6,7 @@ through its administration API (``[admin] token`` of web.toml; stdlib ``urllib``
   sre-web-tool add NAME --url URL --token TOKEN [--mac MAC | --wake-command CMD] [--max-projects N] [--power] [--instructors-only] [--priority N]
   sre-web-tool remove NAME [--force]
   sre-web-tool enable | disable | wake | poweroff | drain NAME
+  sre-web-tool allow-local-drain | forbid-local-drain NAME   whether the host may ask for its own drain (sre set-drain)
   sre-web-tool priority NAME VALUE  the lowest priority is woken first and gets a project first among the empty hosts
   sre-web-tool restart NAME | --all [--wait] [--timeout S]   the agents restart themselves (new code after an update)
   sre-web-tool preload NAME | --all | --failed   the hosts pull the Docker images of the labs, a few at a time
@@ -96,7 +97,9 @@ def _cell(row: dict, key: str) -> str:
             extra.append(f"{row['waking_for']}s")
         if row.get('wake_failures'):
             extra.append(f"{row['wake_failures']} failed")
-        if row.get('drain') and value != 'draining':
+        if row.get('local_drain'):      # asked on the host itself (sre set-drain)
+            extra.append('local drain')
+        elif row.get('drain') and value != 'draining':
             extra.append('drain')
         if row.get('restart_sent'):
             extra.append('restart')
@@ -254,7 +257,10 @@ def main(argv, default_config: str) -> int:
     remove.add_argument('--force', action='store_true', help="even with projects (they stay on the host)")
     for action, text in (('enable', "place projects on the host again"), ('disable', "no new project (the running ones go on, the host is never powered off)"),
                          ('wake', "wake the host now"), ('poweroff', "power the host off now (refused with projects)"),
-                         ('drain', "no new project, power off when empty")):
+                         ('drain', "no new project, power off when empty"),
+                         ('allow-local-drain', "the host may ask for its own drain (sre set-drain there), until its next boot"),
+                         ('forbid-local-drain', "the host may not ask for its own drain, until its next boot; "
+                                                "cancels the one it asked for")):
         sub.add_parser(action, help=text, parents=[common]).add_argument('name')
     priority = sub.add_parser('priority', help="set the priority of the host: the lowest one is woken first and gets a "
                                                "project first among the hosts without project", parents=[common])

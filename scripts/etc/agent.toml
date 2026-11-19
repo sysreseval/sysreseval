@@ -62,6 +62,13 @@ shutdown_timeout = 240
 # any project), and how.
 allow_power_off = false
 power_off_command = "systemctl poweroff"
+# Whether this host may ask for its own drain: `sre set-drain` run by root on the host (the
+# script of a session-end button, in place of a shutdown) makes the portal place no new project
+# here and power the host off once it is empty, like Drain on the Pool page (so power = true in
+# web.toml and allow_power_off = true above). `sre remove-drain`, or Enable on the Pool page,
+# cancels it. This is the default of the host: the Pool page can allow or forbid it until the
+# next boot.
+allow_local_drain = false
 # How the agent restarts itself on `sre-web-tool restart` (POST /v1/restart: new code after an
 # update; the projects stay, the open terminals and desktops are lost): by default
 # `systemctl restart` of its own unit, found in /proc/self/cgroup; a command for an agent

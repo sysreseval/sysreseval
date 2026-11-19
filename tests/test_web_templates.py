@@ -483,7 +483,8 @@ class TestTemplates:
         assert 'data-login="alice"' in html and 'class="grid watch pool striped"' in html
         # the selection: the header checkbox, the bar of bulk buttons, one more column
         assert 'id="pool-select-all"' in html and 'id="pool-selection"' in html and 'id="pool-selected"' in html
-        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload', 'priority'):
+        for action in ('enable', 'disable', 'wake', 'drain', 'poweroff', 'preload', 'priority',
+                       'allow-local-drain', 'forbid-local-drain'):
             assert f'data-action="{action}"' in html, action
         # the Priority column (the lowest is used first), before the flags
         assert html.index('data-sort="uptime"') < html.index('data-sort="priority"') < html.index('data-sort="sre_version"')

@@ -6,9 +6,12 @@ the page of a portal started again on the same state file; a state file that can
 is said in red in the status line, for as long as it lasts; the Priority column, the dialog that
 changes the priority of a host or of the selected hosts, the column sorted, the priorities back
 after a restart; Enable cancelling a drain, from the row (in place of Drain) and from the bar, and
-not once the power off of the host is sent."""
+not once the power off of the host is sent; a drain the host asked for itself, its flag, Enable
+cancelling it, the local drains forbidden and allowed from the bar."""
+import asyncio
 import contextlib
 import json
+import os
 import time
 from pathlib import Path
 
@@ -70,6 +73,10 @@ def shown(name: str) -> str:
 CHECKBOX = '#pool tbody tr[data-host="a01"] td.select input'
 BAR_ENABLE = '#pool-selection button[data-action="enable"]'
 BAR_DRAIN = '#pool-selection button[data-action="drain"]'
+BAR_ALLOW = '#pool-selection button[data-action="allow-local-drain"]'
+BAR_FORBID = '#pool-selection button[data-action="forbid-local-drain"]'
+FLAGS = f"({ROW} ? {ROW}.querySelector('td.flags').textContent : null)"
+FLAGS_TITLE = f"{ROW}.querySelector('td.flags').title"
 
 
 def action(n: int) -> str:
@@ -91,12 +98,13 @@ def is_button(selector: str, text: str, *, disabled: bool = False, title: str = 
 
 
 @contextlib.asynccontextmanager
-async def browser_of(tmp_path, state, host_over=None):
+async def browser_of(tmp_path, state, host_over=None, agent_over=None):
     """The harness (proxy mode, the real web directory, its only host disabled by the
-    configuration unless *host_over* says otherwise, the state file *state*), the identity proxy
-    making the browser the instructor, and the browser: ``(h, browser, url)``."""
+    configuration unless *host_over* says otherwise, the state file *state*, *agent_over* in the
+    agent.toml of its agent), the identity proxy making the browser the instructor, and the
+    browser: ``(h, browser, url)``."""
     over = {**P.PROXY_OVER, 'admin': {'token': ADMIN, 'state_file': str(state)}, 'pool': QUIET_POOL}
-    h = P.Harness(tmp_path, auth_mode='proxy', web_over=over,
+    h = P.Harness(tmp_path, auth_mode='proxy', web_over=over, agent_over=agent_over,
                   host_over={'enabled': False} if host_over is None else host_over)
     h.web_dir = WEB
     async with h:
@@ -258,5 +266,55 @@ class TestPoolPage:
                 await page.wait_for(is_button(action(3), 'Enable', disabled=True, title='power off sent'),
                                     timeout=POLL, what="Enable disabled once the power off is sent")
                 assert (await page.evaluate(button(BAR_ENABLE)))[1] is True
+                assert page.errors == []
+        P.run(go())
+
+    def test_local_drain(self, tmp_path):
+        """A drain the host asked for itself (`sre set-drain` there, here its request file): the
+        flag, Enable in place of Drain, which cancels it on the agent, and the two buttons of the
+        bar that forbid and allow the local drains of the selected hosts."""
+        from SRE import local_drain
+        state = tmp_path / 'state' / 'pool.json'
+
+        async def go():
+            async with browser_of(tmp_path / 'first', state, host_over={},
+                                  agent_over={'allow_local_drain': True}) as (h, browser, url):
+                request = local_drain.request_path(str(h.pub))
+                page = await browser.page(f'{url}/pool')
+                await page.wait_for(f"{FLAGS} === 'local drain allowed'", what="the host allowed to drain itself")
+                assert await page.evaluate(STATE) == 'up'
+                assert await page.evaluate(button(action(3))) == ['Drain', False, '']
+                # the bar: Forbid applies to the selected host, Allow does not (it is allowed already)
+                await page.click(CHECKBOX)
+                await page.wait_for(f"!document.querySelector('{BAR_FORBID}').disabled", what="Forbid of the bar")
+                assert await page.evaluate(button(BAR_ALLOW)) == [
+                    'Allow local drain', True, 'applies to none of the selected hosts']
+                # the host asks for its drain: seen at a poll of the page
+                local_drain.write_request(request, local_drain.boot_id())
+                await page.wait_for(f"{FLAGS} === 'local drain'", timeout=POLL, what="the flag of the local drain")
+                assert await page.evaluate(STATE) == 'draining'
+                assert await page.evaluate(FLAGS_TITLE) == 'drain asked on the host itself (sre set-drain)'
+                assert await page.evaluate(button(action(3))) == ['Enable', False, 'cancels the drain']
+                # the drain of the host, not one of the portal: nothing of it in the state file
+                assert h.portal.pool.runtime['a01'].drain is False
+                assert not state.exists() or json.loads(state.read_text())['drain'] == {}
+                # Enable of the row cancels it, on the agent
+                await page.click(action(3))
+                await page.wait_for(is_button(action(3), 'Drain'), what="Drain back in the row")
+                assert await page.evaluate(STATE) == 'up' and await page.evaluate(FLAGS) == 'local drain allowed'
+                assert not os.path.exists(request)
+                # forbidden from the bar (the agent.toml of the host allows it: the flag says so), then allowed
+                await page.click(BAR_FORBID)
+                await page.wait_for(f"{FLAGS} === 'local drain forbidden'", what="the local drain forbidden")
+                assert await page.evaluate(button(BAR_FORBID)) == [
+                    'Forbid local drain', True, 'applies to none of the selected hosts']
+                assert h.agent.local_drain.allowed is False
+                local_drain.write_request(request, local_drain.boot_id())      # refused by the agent
+                await page.wait_for(RENDER + f", {FLAGS} === 'local drain forbidden'", what="the page drawn again")
+                await asyncio.sleep(0.5)
+                assert not os.path.exists(request) and await page.evaluate(STATE) == 'up'
+                await page.click(BAR_ALLOW)
+                await page.wait_for(f"{FLAGS} === 'local drain allowed'", what="the local drain allowed again")
+                assert h.agent.local_drain.allowed is True
                 assert page.errors == []
         P.run(go())

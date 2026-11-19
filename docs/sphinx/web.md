@@ -180,6 +180,7 @@ The postinst of `sysreseval-agent` creates the `sreweb-x11` user of the virtual 
 | `occupied_check` | `both` | when the host reports itself *occupied* (no new project, never powered off): `sessions` (a local login session: `loginctl`, or `who`), `projects` (projects of the Qt GUI on the host), `both`, `never` |
 | `close_projects_on_stop` | `shutdown` | what the agent does with the projects it manages when its unit stops: `shutdown` closes them (last evaluation, `sre stop`) only when the system is going down, `always`, `never`; within `shutdown_timeout` (`240` s, the unit's `TimeoutStopSec` is 300) |
 | `allow_power_off` | `false` | the portal may power the host off (`POST /v1/power/off`, refused when occupied or with any project) with `power_off_command` (`systemctl poweroff`) |
+| `allow_local_drain` | `false` | the host may ask for its own drain: `sre set-drain` run by root on the host (*A drain asked on the host* below); the default of the host, which the Pool page or `sre-web-tool` changes until its next boot |
 | `restart_command` | none | how the agent restarts itself on `sre-web-tool restart` (`POST /v1/restart`): by default `systemctl restart` of its own unit, read from `/proc/self/cgroup`; a command for an agent run otherwise (refused, 409, when neither applies) |
 | `[timeouts]` | `start = 900`, `eval = 600`, `state = 600`, `stop = 300`, `list = 30`, `report = 600` | seconds, per `sre` command (`report`: the spreadsheet / PDF reports of the Archives page, built by `sre report` on this host; `export`, the timeout of the former Kathara export, is still accepted) |
 | `[display]` | `enabled = false` | one virtual X desktop per project whose lab has an `x11_host` machine, shown in the Display tab (see *The Display tab* below): `user` (`sreweb-x11`, the unprivileged account the X processes run as), `xvnc_command` (`Xvnc`, TigerVNC), `window_manager_command` (`openbox`, `""` = none), `geometry` (`1280x800`), `depth` (`24`), `frame_rate` (`30`), `first_display` / `last_display` (`10` / `99`: display `:N` listens on TCP port 6000+N for the containers), `runtime_dir` (`/run/sre-agent`: the RFB sockets and X authority files), `start_timeout` (`10` s for the X server to come up) |
@@ -1147,7 +1148,8 @@ is one, is its room, so that `ROOMS` selects the rooms joining the pool (empty: 
 machine) and `DISABLED_ROOMS` those whose hosts start with `enabled = false` (polled, no project
 placed there until `sre-web-tool enable`). These five variables are required and have no
 default; `AGENT_PORT` (8451), `MAX_PROJECTS` (25), `POWER` (`power = true` in the entries and
-`allow_power_off = true` on the agents), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
+`allow_power_off = true` on the agents), `LOCAL_DRAIN` (`allow_local_drain = true` on the
+agents: *A drain asked on the host* below), `DOMAIN` (a `DNS:<name>.<domain>` SAN too),
 `PORTAL_ADDRESS` (`allowed_clients` of the agents), `INSTRUCTOR_ROOMS` (the rooms whose hosts
 get `instructors_only = true`) and `INSTRUCTOR_MACHINES` (the names of the hosts that get it on
 their own, whatever their room), `ROOM_PRIORITIES` (`"z=-1 h=5"`: the `priority` of the hosts
@@ -1164,7 +1166,7 @@ the CA and the portal's client certificate once, then per host a key and a certi
   lines of `web.toml` in its header; a file of `web.d/` (`import = ["web.d"]`) or pasted at the
   end of `web.toml`;
 - `agent-<name>.toml`: the host-specific lines of that host's `agent.toml` (`listen = "<ip>:8451"`,
-  `token`, `tls_*`, and `allowed_clients` / `allow_power_off` when asked), to complete with the
+  `token`, `tls_*`, and `allowed_clients` / `allow_power_off` / `allow_local_drain` when asked), to complete with the
   example file, whose own `listen` and `token` lines are then removed (a key given twice is
   refused).
 
@@ -1195,7 +1197,7 @@ the *Pool* page of the instructors) shows it:
 | `up` | the agent answers, the host is free | yes |
 | `occupied` | the agent answers, the host is used locally (`occupied_check`) | only the new projects of the users logged in there (`follow_local_sessions`); the web projects already running there go on |
 | `exam` | the agent answers, `exam.json` is on the host: set by hand with `sre set-exam`, or written by the agent for an exam of the web site that lists the machine (*Exams*, *On the workstations*) | no |
-| `draining` | the portal asked the host to power off, or `sre-web-tool drain` | no; powered off once it is empty (`sre-web-tool enable`, or *Enable* on the Pool page, cancels the drain) |
+| `draining` | the portal asked the host to power off, `sre-web-tool drain`, or `sre set-drain` on the host itself (*A drain asked on the host* below) | no; powered off once it is empty (`sre-web-tool enable`, or *Enable* on the Pool page, cancels the drain) |
 | `disabled` | `sre-web-tool disable`, or `enabled = false` | no; the projects already running there go on (listed, usable, evaluated and closed as usual), the host stays polled and is never powered off by the portal — `drain` is the way to empty a host and shut it down |
 
 **Placement.** A new project (`POST /api/projects`) goes to one host, chosen by the portal from
@@ -1306,6 +1308,49 @@ powers off an idle host itself: `idle_host_timeout` (0 by default: only the cron
 `min_hosts_up` and as long as the spare capacity stays, the host with the highest `priority`
 first and then the one idle for the longest time, or at once with `sre-web-tool poweroff`.
 
+**A drain asked on the host.** A workstation whose student leaves is often shut down by a
+session-end button, which stops the web projects other users run there. With
+`allow_local_drain = true` in its `agent.toml`, the host asks for its own drain instead:
+`sre set-drain`, run by root on the host, leaves a request that the agent tells the portal in
+its next status (within `poll_interval`). The host then drains as if an instructor had pressed
+*Drain*: no new project is placed there, not even one of the user logged in, and the portal
+powers it off once nobody is logged in and no project is left (so `power = true` on the host and
+`allow_power_off = true` on its agent, as for any drain; without them the host only stops taking
+projects). The Pool page shows the flag *local drain*, `sre-web-tool list` shows `(local drain)`.
+
+```
+sre set-drain       # on the host, as root: ask for the drain (privileged only)
+sre remove-drain    # remove that request
+sre status          # … "local drain: allowed, asked on 2026-11-19 at 17:02:10"
+```
+
+- `sre set-drain` exits with 1, and asks for nothing, when no agent would honour the request:
+  `sre-agent` not running, an agent older than this feature, or local drains forbidden on the
+  host. A script can then fall back on what it did before.
+- The drain is cancelled by `sre remove-drain` on the host, or from the portal by *Enable* on
+  the Pool page (`sre-web-tool enable`), as any drain. `sre remove-drain` only removes the
+  request of the host: a drain an instructor set from the portal stays the portal's.
+- Whether a host may ask is `allow_local_drain` of its `agent.toml`, and an instructor changes
+  it from the Pool page (*Allow local drain* / *Forbid local drain* of the bar) or with
+  `sre-web-tool allow-local-drain | forbid-local-drain <name>`; forbidding also cancels the
+  drain the host asked for. The change holds until the host boots again (it survives a restart
+  of the agent), then `agent.toml` decides again.
+- The request does not survive a reboot either: the drain ends with the power off it asked for.
+
+Logging the user out is left to the site. The script of a session-end button can be, with the
+site's own steps around it:
+
+```sh
+# as the student, first: their projects of the Qt GUI would keep the host "occupied"
+sre-wrapper stop-all
+# as root
+if /opt/sre/sbin/sre set-drain; then
+    loginctl terminate-user "$student"      # the portal powers the host off once it is empty
+else
+    systemctl poweroff                      # no agent, or local drains forbidden: as before
+fi
+```
+
 **Pre-loading the images.** A project whose Docker images are not on its host yet waits for
 their download at its start, and a room of workstations pulling them at the same time takes the
 whole bandwidth of the site; the boot unit `sre-preload-images.service` (see
@@ -1379,8 +1424,9 @@ sre-web-tool list                 # one line per host: state, projects/max, load
 sre-web-tool status               # spare capacity, hosts awake vs the floor, active hours, hosts waking, the state file
 sre-web-tool add a03 --url https://10.0.0.13:8451 --token … [--mac … | --wake-command …] [--max-projects 25] [--power] [--instructors-only] [--priority 0]
 sre-web-tool remove a03 [--force] # refused while the host has projects (--force leaves them to the agent's idle reaper)
-sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them; enable also cancels a drain
+sre-web-tool disable a03 | enable a03   # disable: no new project on the host, the running ones go on until their users close them; enable also cancels a drain (the one the host asked for itself too)
 sre-web-tool wake a03 | poweroff a03 | drain a03   # drain: no new project, powered off once the last project is closed
+sre-web-tool allow-local-drain a03 | forbid-local-drain a03   # whether the host may ask for its own drain (sre set-drain there), until its next boot
 sre-web-tool priority a03 -1      # the lowest priority is woken first and gets a project first among the hosts without project
 sre-web-tool restart a03 | --all [--wait] [--timeout 180]   # the agents restart themselves (new code), the projects stay
 sre-web-tool preload a03 | --all | --failed   # the hosts pull the Docker images of the labs, max_preloads of them at a time
@@ -1400,7 +1446,7 @@ portal leaves the pool as it was:
 |---|---|
 | the hosts added and removed by hand | `added` (the whole entry, its token included: the file is `0600`), `removed` |
 | a host enabled or disabled by hand | `enabled` / `disabled`: the hosts whose flag differs from the `enabled` of their `[[hosts]]` entry, in both directions (a host of `DISABLED_ROOMS` enabled for a class stays enabled) |
-| a drain | `drain`, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped |
+| a drain | `drain`, with the time it was asked; over when the host is gone, or was booted again while the portal was stopped (a drain the host asked for itself is not in the file: its agent says it again at every poll) |
 | a priority set by hand | `priority`: per host, the `value` set and the `configured` one, the `priority` of its `[[hosts]]` entry at that time, for the hosts where the two differ |
 | a wake in progress, the pause after failed wakes or after a power off, a power off or a restart sent | `clocks` (written within one poll and when the portal stops); each is dropped at the start when too old to mean anything |
 
@@ -1783,7 +1829,9 @@ What an instructor gets:
   state as `sre-web-tool list` shows it (the seconds and the failed attempts of a wake), its
   projects and terminals, its load, its free memory, who occupies it, its uptime, its priority
   (*Priorities* above: the lowest is used first), its flags (reserved for
-  instructors, power, drain, power off sent, restart sent, memory full (`project_memory_mb`,
+  instructors, power, drain, *local drain* for a drain the host asked for itself and *local drain
+  allowed* for a host that may ask for one (*local drain forbidden* when it was forbidden from
+  this page; *A drain asked on the host* above), power off sent, restart sent, memory full (`project_memory_mb`,
   *A pool of virtual machines* above), and where the preload of the Docker
   images is: *preload queued*, *preloading 2/5* with the image as tooltip, *preload failed* with
   the error), the agent's version and its last error, the line
@@ -1801,9 +1849,10 @@ What an instructor gets:
   host shows it in place of *Drain*, and the one of the bar applies to the draining hosts
   selected (not once the power off is sent: the host is going down). A checkbox per row (the one of the header ticks the hosts
   shown by the filter) selects hosts for the bar above the table: the count of the selected
-  hosts (and how many the filter hides), the same five buttons and *Preload images* (the bar
+  hosts (and how many the filter hides), the same five buttons, *Preload images* (the bar
   only: the selected hosts wait for their turn to pull the Docker images of the labs, see
-  *Pre-loading the images* above), each acting on every
+  *Pre-loading the images* above) and *Allow local drain* / *Forbid local drain* (the bar only:
+  whether the selected hosts may ask for their own drain, until their next boot), each acting on every
   selected host its action applies to, one call per host run together (the tooltip says how
   many, the button is disabled when none; *Power off* asks once with the names; the failures
   come in one message, the selection stays). The value of the *Priority* column opens a small

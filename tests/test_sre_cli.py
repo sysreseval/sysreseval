@@ -337,9 +337,16 @@ class TestPrivilegeList:
         monkeypatch.setattr(params, 'allow_privileged_machines', False)
         assert sre_cli(['stop-all']).events == ['permanent drop', 'action_stop_all']
 
-    @pytest.mark.parametrize('argv', [['list'], ['export', 'PROJECT'], ['status']])
+    @pytest.mark.parametrize('argv', [['list'], ['export', 'PROJECT'], ['status'], ['set-drain'], ['remove-drain']])
     def test_other_actions_drop_for_good(self, sre_cli, argv):
         assert sre_cli(argv).events[0] == 'permanent drop'
+
+    @pytest.mark.parametrize('command', ['set-drain', 'remove-drain'])
+    def test_the_drain_of_the_host(self, sre_cli, command):
+        """The request is a file of the public directory, the sre user's: written after the drop."""
+        result = sre_cli([command])
+        assert result.code == 0 and result.events == ['permanent drop', f"action_{command.replace('-', '_')}"]
+        assert sre_cli([command, 'now']).code == 2          # no argument
 
     @pytest.mark.parametrize('command', [SET, REMOVE])
     def test_permanent_drop_without_privileged_machines(self, sre_cli, monkeypatch, command):
@@ -400,6 +407,18 @@ class TestRefusals:
         assert result.code == 1 and result.events == ['permanent drop']
         captured = capsys.readouterr()
         assert "you're not allowed to run this command" in captured.err and captured.out == ''
+
+    @pytest.mark.parametrize('command', ['set-drain', 'remove-drain'])
+    def test_the_drain_of_the_host_is_refused_in_user_mode(self, sre_cli, capsys, monkeypatch, tmp_pub_dir, command):
+        """A student never drains the workstation through sre-wrapper: nothing is written."""
+        Path(params.sre_pub_dir).mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv('SUDO_USER', 'etudiant')
+        monkeypatch.setenv('USER_USERNAME', 'etudiant')
+        result = sre_cli(['--user', command], real=(f"action_{command.replace('-', '_')}",))
+        assert result.code == 1 and result.events == ['permanent drop']
+        captured = capsys.readouterr()
+        assert "you're not allowed to run this command" in captured.err and captured.out == ''
+        assert list(Path(params.sre_pub_dir).iterdir()) == []
 
     def test_stop_all_is_refused_in_exam_mode(self, sre_cli, capsys, monkeypatch, tmp_pub_dir):
         """`stop-all` (the GUI's Close All Projects) follows `stop`: not during an exam."""
