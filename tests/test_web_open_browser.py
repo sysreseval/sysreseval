@@ -193,7 +193,10 @@ class TestOpenPage:
         start_interval from the page otherwise; the host of the harness takes 3 by default)."""
         async def go():
             over = {**P.PROXY_OVER, 'limits': {'start_interval': 0}}
-            async with browser_of(tmp_path, PROF, over=over, host_over={'max_projects': 4}) as (h, browser, url):
+            # four projects on the host, and room to spare: a status poll landing at the end of
+            # a start counts the project (the agent has seen its info.json) and its reservation
+            # (not released yet), so a cap of 4 refused the fourth start one time in forty
+            async with browser_of(tmp_path, PROF, over=over, host_over={'max_projects': 6}) as (h, browser, url):
                 for identity, body in ((PROF, {'lab': DHCP}), (PROF, {'lab': DHCP, 'instructor_mode': True}),
                                        (PROF, {'lab': EXAM_ONLY, 'debug_project': True}), (ALICE, {'lab': DHCP})):
                     resp = await h.client.post('/api/projects', json=body, headers={**identity, **P.CSRF})
